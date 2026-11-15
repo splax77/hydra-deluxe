@@ -43,6 +43,7 @@
 #include "scoped_hook.h"
 #include "store/record_store.h"
 #include "store_fixtures.h"  // save_as_old_build
+#include "store_lock_holder.h"
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
@@ -54,6 +55,7 @@ using hydra::app::AnalysisSettings;
 using hydra::app::BatchRun;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordStore;
+using hydra::test::StoreLockHolder;
 using hydra::ui::BatchClock;
 using hydra::ui::BatchJob;
 
@@ -456,47 +458,6 @@ std::vector<ChartLibraryEntry> charts_with_a_copy(int n) {
     charts.push_back(copy);
     return charts;
 }
-
-// Holds the store's lock from a thread of its own, the way a batch's open
-// save group does, until release() or kWaitCap, whichever comes first, so a
-// broken build fails its checks instead of hanging.
-class StoreLockHolder {
-public:
-    explicit StoreLockHolder(RecordStore& store)
-        : thread_([this, &store] {
-              store.begin_save_group();
-              holding_ = true;
-              const auto until = std::chrono::steady_clock::now() + testwait::kWaitCap;
-              while (!release_.load() && std::chrono::steady_clock::now() < until)
-                  std::this_thread::sleep_for(1ms);
-              let_go_ = true;
-              store.commit_save_group();
-          }) {
-        try {
-            wait_until([this] { return holding_.load(); }, "the helper to take the store lock");
-        } catch (...) {
-            release();
-            thread_.join();
-            throw;
-        }
-    }
-    ~StoreLockHolder() {
-        release();
-        thread_.join();
-    }
-    StoreLockHolder(const StoreLockHolder&) = delete;
-    StoreLockHolder& operator=(const StoreLockHolder&) = delete;
-
-    void release() { release_ = true; }
-    // True once the helper has let the lock go (or is about to).
-    bool let_go() const { return let_go_.load(); }
-
-private:
-    std::atomic<bool> holding_{false};
-    std::atomic<bool> release_{false};
-    std::atomic<bool> let_go_{false};
-    std::thread thread_;  // last, so the flags exist before it starts
-};
 
 }  // namespace
 

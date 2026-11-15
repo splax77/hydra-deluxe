@@ -278,28 +278,42 @@ bool AppState::reload_after_scan() {
 
 void AppState::tick_library(double now) {
     reload_after_scan();
-    // A batch stores results on its own threads. Re-read the summaries at
-    // most once per kBatchRefreshSeconds, only when it stored something since
-    // the last read, and once more when it ends so the last results show.
-    // The rows hold their order through these reads.
+    // A batch stores results on its own threads and leaves the store's
+    // answer for each chart it saved in its tray (BatchJob::take_saved_rows),
+    // so a tick never reads the store and never waits on the batch's saves.
+    // The tray is emptied onto the rows at most once per
+    // kBatchRefreshSeconds, and on every tick once the batch has ended so the
+    // last answers show. The rows hold their order through this.
     bool batch_over = true;  // the finished strip's X can let the job go first
     if (batch_job) {
         const BatchJob::Snapshot snap = batch_job->snapshot();
         batch_over = snap.finished;
-        if (snap.completed != batch_seen_completed_ &&
-            (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
-            batch_seen_completed_ = snap.completed;
-            batch_refreshed_at_ = now;
-            // The open song's panel shows the engine's own result, which a
-            // batch under the same settings finds again, so only the rows are
-            // read (D87 item 1).
-            read_summaries_in_place();
+        // Taken after the snapshot: a finished snapshot means the tray
+        // already holds the run's last answers.
+        if (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds) {
+            BatchJob::SavedRows saved = batch_job->take_saved_rows();
+            if (!saved.answers.empty() || !saved.problem.empty()) {
+                batch_refreshed_at_ = now;
+                // The open song's panel shows the engine's own result, which
+                // a batch under the same settings finds again, so only the
+                // rows take the answers (D87 item 1).
+                library.set_summaries_for(saved.answers);
+                // A lookup the batch could not make reads as any failed store
+                // read does (read_store).
+                if (!saved.problem.empty()) set_problem(saved.problem);
+            }
         }
+        // A run that failed as a whole reports none of the charts its open
+        // save group stored (run_batch), so their answers never reach the
+        // tray. Once, when it ends, every row is read again; the batch is
+        // over, so nothing holds the store. batch_end_sort_due_ is cleared
+        // below in this same tick, which keeps it to one read.
+        if (snap.finished && batch_end_sort_due_ && !snap.run_error.empty())
+            read_summaries_in_place();
     }
-    // The list sorts once when a batch ends, however it ended. This stands
-    // apart from the read above, which a batch whose last result was already
-    // read never reaches. It goes by the same snapshot as that read, so it
-    // can't run ahead of the last results.
+    // The list sorts once when a batch ends, however it ended. It goes by the
+    // same snapshot as the tray taken above, so it can't run ahead of the
+    // last answers.
     if (batch_over && batch_end_sort_due_) {
         batch_end_sort_due_ = false;
         library.sort_if_out_of_date();
@@ -740,7 +754,6 @@ void AppState::start_batch(bool redo) {
                                            settings.batch_run(), *store);
     close_batch_confirm();
     report_started = false;
-    batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
     batch_end_sort_due_ = true;
     batch_finish_seen_ = false;
@@ -752,7 +765,8 @@ void AppState::update_background_jobs() {
     settle_report_wait();
     if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {
         batch_finish_seen_ = true;
-        // tick_library re-reads the summaries once the batch ends. Stopped
+        // tick_library puts the batch's last answers on their rows once it
+        // ends. Stopped
         // or not, the run stored results, so both reports in memory now
         // read an older library (D103). Their windows name this moment as
         // the batch's finish time (D103 item 21).

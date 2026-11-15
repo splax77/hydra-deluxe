@@ -200,16 +200,36 @@ inline void wait_batch_finished(hydra::ui::AppState& app) {
                          "the batch to finish");
 }
 
+// Whether chart `md5` has no Ready record under `profile`, or has the empty
+// one save_batch_record files. Any other Ready record in these tests came from
+// the engine (a click's ViewJob), so a batch files it again by running the
+// engine itself.
+inline bool stored_record_is_empty(hydra::ui::AppState& app, const std::string& md5,
+                                   const hydra::store::Profile& profile) {
+    const hydra::store::RecordLookup stored = app.store->lookup_one(md5, profile);
+    if (stored.status != hydra::store::RecordStatus::Ready) return true;
+    return stored.record == hydra::store::record_of(stored.record.song_id,
+                                                    hydra::test::empty_analysis_under(profile));
+}
+
 // Runs a Redo batch over the one chart `search` finds and waits for it to
-// end. The batch's own analysis fails on purpose, so it writes nothing: the
-// result the test stored behind the app's back is the one the batch
-// "stored". Redo, so the batch does not skip a chart with a result.
+// end. The batch files the chart's stored record again: the empty analysis
+// when the stored record is empty or missing (these charts may have no file),
+// and otherwise the engine's own analysis under the batch's settings, as a
+// real batch does. The batch stores it itself, so the window learns of it
+// from the batch (BatchJob's tray). Redo, so the batch does not skip a chart
+// with a result.
 inline void run_redo_batch_over(hydra::ui::AppState& app, const std::string& search) {
     app.set_search(search);
     REQUIRE(app.library_shown_count() == 1);
-    start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
-                             const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-        throw std::runtime_error("no chart file in this test");
+    const hydra::store::Profile profile = app.settings.profile();
+    const bool empty = stored_record_is_empty(app, app.library_row_at(0).entry.md5, profile);
+    const hydra::HydraRecord empty_analysis = hydra::test::empty_analysis_under(profile);
+    start_redo_batch(app, [empty, empty_analysis](const std::string& path,
+                                                  const hydra::app::AnalysisSettings& settings,
+                                                  const std::function<void(float)>& on_progress) {
+        if (!empty) return hydra::app::analyze_chart_file(path, settings, on_progress);
+        return hydra::app::AnalysisResult{empty_analysis, hydra::Song(192)};
     });
     wait_batch_finished(app);
 }

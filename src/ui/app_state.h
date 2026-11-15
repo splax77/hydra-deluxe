@@ -343,10 +343,12 @@ public:
     // (LibraryModel::sort_if_out_of_date). True when its row changed.
     bool refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
-    // and re-reads summaries while a batch runs -- at most once per
-    // kBatchRefreshSeconds, and only when the batch stored something since
-    // the last look. Those reads leave the rows in place; the list sorts once
-    // when the batch ends.
+    // and while a batch runs puts the answers the batch left in its tray
+    // (BatchJob::take_saved_rows) on their rows -- at most once per
+    // kBatchRefreshSeconds, and every frame once the batch has ended. It
+    // reads no summary from the store for that; only a batch that failed as
+    // a whole has every row read again, once, when it ends. The rows stay in
+    // place; the list sorts once when the batch ends.
     void tick_library(double now);
 
     // The rows on screen, in order, as indices into library.rows().
@@ -948,11 +950,10 @@ private:
     // read is the status line's problem.
     void read_summaries_in_place();
     // reload_after_scan's memory: whether the current scan's result was read
-    // yet. Then tick_library's: the batch's stored count and time at the last
-    // summary read, and whether the latest batch still owes the list its one
+    // yet. Then tick_library's: the time it last put a batch's answers on
+    // the rows, and whether the latest batch still owes the list its one
     // sort at the end.
     bool scan_reloaded_ = true;
-    int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
     bool batch_end_sort_due_ = false;
 

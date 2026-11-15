@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -14,6 +15,7 @@
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "app/analysis.h"
@@ -24,11 +26,13 @@
 #include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // save_batch_record
 #include "library_fixtures.h"  // library_entry
+#include "parse/song.h"  // NoNotesError
 #include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "scratch_settings.h"
 #include "store/record_store.h"
 #include "store/upgrade_files.h"  // set_aside_path, with_side_files
+#include "store_lock_holder.h"
 #include "ui/app_state.h"
 #include "ui/generation.h"
 #include "wait_util.h"
@@ -38,6 +42,7 @@ using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordStatus;
 using hydra::store::RecordStore;
+using hydra::test::StoreLockHolder;
 using hydra::ui::AppState;
 using hydra::ui::GenerationWatcher;
 using hydra::ui::ViewedSong;
@@ -211,11 +216,17 @@ hydra::app::ChartAnalyzer gated_scores(std::shared_ptr<ChartGate> gate) {
 }
 
 // Lets `charts` charts in all through the gate and waits until the batch counts
-// them.
+// them and has put the store's answer for each in its tray. A chart is counted
+// before its answer is made (BatchJob::answered_count), so the count alone
+// would let a tick run ahead of the tray.
 void let_through(AppState& app, ChartGate& gate, int charts) {
     gate.allowed.store(charts);
-    wait_until([&] { return app.batch_job->snapshot().completed == charts; },
-               "the batch to store its charts");
+    wait_until(
+        [&] {
+            return app.batch_job->snapshot().completed == charts &&
+                   app.batch_job->answered_count() == charts;
+        },
+        "the batch to store its charts");
 }
 
 // A library under Best path whose batch has stored two charts and whose rows
@@ -316,6 +327,220 @@ TEST_CASE("a batch that fails as a whole sorts a held order when it ends") {
     REQUIRE_FALSE(app->batch_job->snapshot().run_error.empty());
     app->tick_library(0.0);
     CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+}
+
+// ---- the rows take the batch's answers, not a store read --------------------
+
+namespace {
+
+// Whether chart `chart`'s row reads "<score>  <path>" with this score, as
+// best_path_label writes it.
+bool row_scores(const AppState& app, int chart, const char* score) {
+    return row_of(app, library_entry(chart).md5).best_label().find(score) == 0;
+}
+
+}  // namespace
+
+// A tick takes the batch's tray and asks the store nothing, so a save group
+// holding the store's lock does not hold the frame.
+TEST_CASE("a tick during a batch does not wait for the store") {
+    ScratchPaths paths("appstate_ticknowait");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    auto gate = std::make_shared<ChartGate>();
+    start_redo_batch(*app, gated_scores(gate));
+    let_through(*app, *gate, 2);  // both charts' lookups are done
+
+    StoreLockHolder holder(*app->store);
+    app->tick_library(0.0);
+    const bool returned_while_held = !holder.let_go();
+    holder.release();
+    CHECK(returned_while_held);
+    CHECK(row_scores(*app, 0, "1,000"));
+    CHECK(row_scores(*app, 1, "2,000"));
+}
+
+// Question 1 of the batch-rows plan: a result saved by someone other than the
+// batch reaches its row at the next whole read, not at a batch tick.
+TEST_CASE("a tick during a batch re-reads no row the batch did not save") {
+    ScratchPaths paths("appstate_tickonlysaved");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    auto gate = std::make_shared<ChartGate>();
+    start_redo_batch(*app, gated_scores(gate));
+    let_through(*app, *gate, 1);  // chart 0
+    save_scored(*app, 3, 5000);   // behind the batch's back
+    app->tick_library(0.0);
+    CHECK(row_scores(*app, 0, "1,000"));
+    CHECK(row_of(*app, library_entry(3).md5).status == RecordStatus::NotAnalyzed);
+}
+
+TEST_CASE("a batch's end re-reads no row the batch did not save") {
+    ScratchPaths paths("appstate_endonlysaved");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    // A batch over chart 0 alone, so it finishes with nothing stopped.
+    app->set_search(library_entry(0).md5);
+    REQUIRE(app->library_shown_count() == 1);
+    auto gate = std::make_shared<ChartGate>();
+    start_redo_batch(*app, gated_scores(gate));
+    app->set_search("");
+    gate->allowed.store(1);
+    wait_batch_finished(*app);
+    REQUIRE(app->batch_job->snapshot().run_error.empty());
+    REQUIRE_FALSE(app->batch_job->is_cancelled());
+    save_scored(*app, 3, 5000);  // behind the batch's back, before the end's tick
+    app->tick_library(0.0);
+    CHECK(row_scores(*app, 0, "1,000"));
+    CHECK(row_of(*app, library_entry(3).md5).status == RecordStatus::NotAnalyzed);
+}
+
+// The charts a run that fails as a whole saved never reach the tray
+// (run_batch reports none of its open group), so its end reads every row.
+TEST_CASE("a batch that fails as a whole still re-reads every row when it ends") {
+    ScratchPaths paths("appstate_errorreread");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              gated_scores(std::make_shared<ChartGate>()), /*workers=*/0);
+        app->start_batch(true);
+    }
+    REQUIRE(app->batch_job != nullptr);
+    wait_batch_finished(*app);
+    REQUIRE_FALSE(app->batch_job->snapshot().run_error.empty());
+    save_scored(*app, 3, 5000);  // behind the batch's back
+    app->tick_library(0.0);
+    CHECK(row_scores(*app, 3, "5,000"));
+}
+
+// The batch's lookup fails once (the records table moved aside between chart
+// 0's save and its lookup): the status line says what any failed store read
+// says, and no row changes.
+TEST_CASE("a lookup the batch could not make shows the store's problem") {
+    ScratchPaths paths("appstate_traylookupfails");
+    std::atomic<int> lookups{0};  // before the app, so it outlives the batch's thread
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    auto gate = std::make_shared<ChartGate>();
+    start_redo_batch(*app, gated_scores(gate));
+    // Set after start(), while the gate holds every chart: the batch thread
+    // reads the seam only once a chart is through, and letting the chart
+    // through (the gate's atomic, then run_batch's own hand-off) orders this
+    // write before that read.
+    app->batch_job->set_lookup_hold_for_test([&lookups, db = paths.db] {
+        if (lookups++ == 0)
+            hydra::test::exec_on_file(db, "ALTER TABLE records RENAME TO records_aside");
+    });
+    const std::vector<int> before = shown(*app);
+    gate->allowed.store(1);
+    double now = 0.0;
+    wait_until(
+        [&] {
+            app->tick_library(now += 1.0);
+            return app->status_is_problem;
+        },
+        "the batch's lookup to fail");
+    const std::string from_tick = app->status_message;
+    CHECK(row_of(*app, library_entry(0).md5).status == RecordStatus::NotAnalyzed);
+    CHECK(shown(*app) == before);
+    CHECK(app->library.counts().analyzed == 0);
+
+    // The same failure through the window's own row read (read_store).
+    app->dismiss_status();
+    CHECK_FALSE(app->refresh_library_row(library_entry(0).md5));
+    CHECK(app->status_is_problem);
+    CHECK(app->status_message == from_tick);
+    CHECK_FALSE(from_tick.empty());
+
+    hydra::test::exec_on_file(paths.db, "ALTER TABLE records_aside RENAME TO records");
+}
+
+// O4: the one answer for a chart fills every row that lists it.
+TEST_CASE("a chart in two folders gets both rows from one batch result") {
+    ScratchPaths paths("appstate_traycopy");
+    ChartLibraryEntry copy = library_entry(0);
+    copy.title = "Song hash000 copy";
+    copy.notespath = "C:\\charts\\copy\\notes.chart";
+    std::unique_ptr<AppState> app = app_with(paths, {library_entry(0), copy, library_entry(1)});
+    app->set_search(library_entry(0).md5);
+    REQUIRE(app->library_shown_count() == 2);
+    start_redo_batch(*app, [](const std::string&, const hydra::app::AnalysisSettings&,
+                              const std::function<void(float)>&) {
+        return hydra::app::AnalysisResult{scored_record(7000), hydra::Song(192)};
+    });
+    wait_batch_finished(*app);
+    REQUIRE(app->batch_job->answered_count() == 1);  // one chart, one answer
+    app->set_search("");
+    app->tick_library(0.0);
+
+    int rows = 0;
+    for (size_t i = 0; i < app->library_shown_count(); ++i) {
+        const hydra::ui::LibraryRow& row = app->library_row_at(i);
+        if (row.entry.md5 != library_entry(0).md5) continue;
+        ++rows;
+        CHECK(row.status == RecordStatus::Ready);
+        CHECK(row.best_label().find("7,000") == 0);
+    }
+    CHECK(rows == 2);
+    CHECK(row_of(*app, library_entry(1).md5).status == RecordStatus::NotAnalyzed);
+}
+
+// O7 and O13: a failure the store keeps reaches its row as the store's
+// answer, read here by a second app's own row read on the same file; a
+// failure the store does not keep leaves its row as it was.
+TEST_CASE("a failed chart whose failure the batch stored shows on its row, and one it did not "
+          "store keeps its row") {
+    ScratchPaths paths("appstate_trayfailures");
+    std::unique_ptr<AppState> app = app_with(paths, {library_entry(0), library_entry(1)});
+    const std::string kept = library_entry(0).md5;
+    const std::string not_kept = library_entry(1).md5;
+    const RecordStatus not_kept_before = row_of(*app, not_kept).status;
+    const std::string not_kept_path = library_entry(1).notespath;
+    start_redo_batch(*app, [not_kept_path](const std::string& path,
+                                           const hydra::app::AnalysisSettings&,
+                                           const std::function<void(float)>&)
+                               -> hydra::app::AnalysisResult {
+        // A song file that cannot be opened is a failure the store does not
+        // keep; a chart with no notes is one it keeps.
+        if (path == not_kept_path)
+            throw hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
+        throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
+    });
+    wait_batch_finished(*app);
+    REQUIRE(app->batch_job->snapshot().failed == 2);
+    app->tick_library(0.0);
+
+    AppState second(Settings{}, std::make_unique<RecordStore>(paths.db));
+    second.refresh_library_row(kept);
+    second.refresh_library_row(not_kept);
+    CHECK(row_of(*app, kept).status == row_of(second, kept).status);
+    CHECK(row_of(*app, kept).best_label() == row_of(second, kept).best_label());
+    CHECK(row_of(*app, not_kept).status == not_kept_before);
+    CHECK(row_of(*app, not_kept).status == row_of(second, not_kept).status);
+}
+
+TEST_CASE("a paused batch's stored results reach their rows") {
+    ScratchPaths paths("appstate_traypaused");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    auto gate = std::make_shared<ChartGate>();
+    start_redo_batch(*app, gated_scores(gate));
+    let_through(*app, *gate, 1);
+    app->batch_job->pause();
+    REQUIRE(app->batch_job->snapshot().paused);
+    app->tick_library(0.0);
+    CHECK(row_scores(*app, 0, "1,000"));
+    CHECK(app->library.counts().analyzed == 1);
+}
+
+// No tick ran while the batch ran: the stopped batch's end puts both answers
+// on their rows, then sorts once.
+TEST_CASE("a stopped batch's stored results reach their rows, then the list sorts") {
+    ScratchPaths paths("appstate_traystopped");
+    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    auto gate = std::make_shared<ChartGate>();
+    start_redo_batch(*app, gated_scores(gate));
+    let_through(*app, *gate, 2);
+    stop_batch(*app);
+    app->tick_library(10.0);
+    CHECK(row_scores(*app, 0, "1,000"));
+    CHECK(row_scores(*app, 1, "2,000"));
+    CHECK(shown(*app) == std::vector<int>{1, 0, 2, 3});
 }
 
 // The user's wording: for a single opened song the row stays put until the
