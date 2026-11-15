@@ -111,7 +111,19 @@ The repeated-values pass first sorted these as K3 ("the test's own input, typing
 
 The same holds for outside data. A hand-written reply from a service Hydra talks to (dmleaderboards, GitHub) is a made-up stand-in too. The user: "fake data will never appear in the real hydra and we should be testing the behavior of the real code". The DMBot fakes are listed under X5.
 
-This list is not complete. The pass's K3 rows were never read for this question. The rows are in `RP1.md` to `RP3.md`: about 150 rows by the sorters' counts.
+**The K3 re-read.** Three readers re-read every K3 row of the repeated-values pass for this question (`repeats/X9-RP1.md` to `X9-RP3.md`). Then a fresh verifier checked each reader's file (`V-X9-RP1.md` and `V-X9-RP1b.md`, `V-X9-RP2.md`, `V-X9-RP3.md`), judging by the three rulings filed in `docs/agents/rulings/tests-and-runs.md`. Where a verifier and its reader differ, the verifier's file holds the final list.
+
+Some verifiers first disputed made-up inputs because the expected text followed from the typed input. The rulings overrule that, since the user's own overlay-layout example was such a case. The verifiers withdrew those disputes, or a second verifier checked the inputs again. The one dispute left is `test_app_click.cpp:1069`. It feeds a count of shown charts to a label builder, which is app state, not engine output, so it is sound.
+
+What the re-read found, by the code under test:
+- Made-up summary rows (`ready(...)`, `analyzed(...)`) fed to the Library model and search. That is 27 uses of `ready` in `test_library_model.cpp` alone, several copying Burnout's real result.
+- Hand-built Activations, squeezes and paths fed to the activation badges, the path buttons, the preview boxes and the preview scene builder (`test_activation_rows.cpp`, `test_path_list.cpp`, `test_preview_boxes.cpp`, `test_sp_meter_curve.cpp`).
+- Made-up records written to the store and read back by the reports (`test_store_results.cpp`, `test_report_rows.cpp`, `test_chart_index.cpp`, and `test_fill_report.cpp`, which overwrites a real record's score, path and counts).
+- Hand-built activations and path JSON fed to the replay tool's writers and readers (`test_replay.cpp`, `test_replay_schedule.cpp`).
+- Made-up scores from the fake analyzer `gated_scores` (`test_app_library.cpp`).
+- Hand-written DMBot replies (`test_dm_report.cpp:118-130`, and the fakes under X5).
+
+The same files list the snapshots, X10 pins and X12 citations each verifier found along the way.
 
 Exit: not chosen.
 
