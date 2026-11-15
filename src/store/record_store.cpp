@@ -1980,7 +1980,8 @@ ChartIndex StoreReader::chart_index() {
 // ---- OwnReader --------------------------------------------------------------
 
 OwnReader::OwnReader(RecordStore& store, const std::string& path)
-    : own_(path.empty() ? nullptr : std::make_unique<StoreReader>(store, path)),
+    : own_(path.empty() ? std::unique_ptr<StoreReader>()
+                        : std::make_unique<StoreReader>(store, path)),
       reads_(own_ ? static_cast<StoreReads&>(*own_) : static_cast<StoreReads&>(store)) {
     if (own_) own_->open_now();
 }
