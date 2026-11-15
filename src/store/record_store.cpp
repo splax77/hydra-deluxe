@@ -64,7 +64,7 @@ Stmt prepare_write(sqlite3* db, const char* sql) { return prepare_as(db, sql, fa
 
 namespace {
 
-// A statement borrowed from the store's cache (RecordStore::stmt_cache_). At
+// A statement borrowed from a connection's cache (StoreConnection::stmt_cache). At
 // scope end it is reset and its bindings cleared, so no cursor stays open and
 // no value carries into its next use; the cache keeps it compiled.
 struct CachedStmt {
@@ -564,7 +564,7 @@ void RecordStore::in_transaction(F work) {
         work();
         exec("COMMIT");
     } catch (...) {
-        rollback_if_open(db_);
+        rollback_if_open(writer_.db);
         throw;
     }
 }
@@ -850,7 +850,7 @@ void RecordStore::add_album_column() {
     // DatabaseUpgrade says so. Running out of memory keeps its own type.
     try {
         in_transaction([&] {
-            if (charts_table_lacks_album(db_))
+            if (charts_table_lacks_album(writer_.db))
                 exec((std::string("ALTER TABLE charts ADD COLUMN ") + kAlbumColumnSql).c_str());
         });
     } catch (const std::bad_alloc&) {
@@ -887,7 +887,8 @@ void RecordStore::convert_results() {
     // as it was: DatabaseUpgrade says so. A stop asked for and running out of
     // memory keep their own kinds.
     try {
-        const int64_t rows_total = count_of(db_, "SELECT COUNT(*) FROM results WHERE " + kept);
+        const int64_t rows_total =
+            count_of(writer_.db, "SELECT COUNT(*) FROM results WHERE " + kept);
         int64_t rows_done = 0;
         report(OpenStep::ConvertingRecords, rows_done, rows_total);
         in_transaction([&] {
@@ -902,7 +903,7 @@ void RecordStore::convert_results() {
             const std::string sql = std::string("SELECT ") + kLeadColumns + ", " +
                                     kLensColumnList + ", " + kSummaryColumnList +
                                     " FROM results WHERE " + kept + " ORDER BY result_id";
-            Stmt s = prepare_read(db_, sql.c_str());
+            Stmt s = prepare_read(writer_.db, sql.c_str());
             while (step_row(s)) {
                 Profile profile;
                 profile.chartmode = column_text(s, 1);
@@ -935,8 +936,9 @@ void RecordStore::convert_results() {
 }
 
 void RecordStore::open_file(const std::string& dbpath) {
-    if (open_sqlite(dbpath, &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) != SQLITE_OK) {
-        std::string msg = db_ ? sqlite3_errmsg(db_) : "unknown error";
+    if (open_sqlite(dbpath, &writer_.db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE) !=
+        SQLITE_OK) {
+        std::string msg = writer_.db ? sqlite3_errmsg(writer_.db) : "unknown error";
         close();
         throw KindedError(ErrorKind::DatabaseOpen,
                           "failed to open database '" + dbpath + "': " + msg);
@@ -953,21 +955,23 @@ void RecordStore::report(OpenStep step, int64_t rows_done, int64_t rows_total) {
         throw Cancelled("opening the database was stopped");
 }
 
-RecordStore::~RecordStore() { close(); }
-
-void RecordStore::close() {
+void StoreConnection::close() {
     // A statement still compiled keeps the connection from closing.
-    for (auto& [sql, p] : stmt_cache_) sqlite3_finalize(p);
-    stmt_cache_.clear();
-    if (db_) {
-        sqlite3_close(db_);
-        db_ = nullptr;
+    for (auto& [sql, p] : stmt_cache) sqlite3_finalize(p);
+    stmt_cache.clear();
+    if (db) {
+        sqlite3_close(db);
+        db = nullptr;
     }
 }
 
+RecordStore::~RecordStore() { close(); }
+
+void RecordStore::close() { writer_.close(); }
+
 void RecordStore::exec(const char* sql) {
     char* errmsg = nullptr;
-    if (sqlite3_exec(db_, sql, nullptr, nullptr, &errmsg) != SQLITE_OK) {
+    if (sqlite3_exec(writer_.db, sql, nullptr, nullptr, &errmsg) != SQLITE_OK) {
         std::string msg = errmsg ? errmsg : "unknown error";
         sqlite3_free(errmsg);
         throw KindedError(ErrorKind::DatabaseWrite, "sqlite exec failed: " + msg);
@@ -977,16 +981,16 @@ void RecordStore::exec(const char* sql) {
 void RecordStore::ctl(const char* sql) {
     // sqlite3_stmt_readonly calls transaction control read-only, so it is
     // compiled as a read; a failed step is a failed write, worded as exec's.
-    CachedStmt s = use_read(db_, stmt_cache_, sql);
+    CachedStmt s = use_read(writer_.db, writer_.stmt_cache, sql);
     step_done(s, "sqlite exec");
 }
 
 void RecordStore::begin_save_group() {
-    mutex_.lock();
+    writer_.mutex.lock();
     try {
         ctl("BEGIN");
     } catch (...) {
-        mutex_.unlock();
+        writer_.mutex.unlock();
         throw;
     }
     group_open_ = true;
@@ -1006,15 +1010,15 @@ void RecordStore::commit_save_group() {
         ctl("COMMIT");
     } catch (...) {
         group_lost_ = false;
-        rollback_if_open(db_);
-        mutex_.unlock();
+        rollback_if_open(writer_.db);
+        writer_.mutex.unlock();
         throw;
     }
-    mutex_.unlock();
+    writer_.mutex.unlock();
 }
 
 RecordStore::BatchWrites::BatchWrites(RecordStore& store) : store_(store) {
-    std::lock_guard<std::recursive_mutex> lock(store_.mutex_);
+    std::lock_guard<std::recursive_mutex> lock(store_.writer_.mutex);
     store_.exec(("PRAGMA wal_autocheckpoint=" + std::to_string(kBatchWalAutocheckpointPages))
                     .c_str());
 }
@@ -1024,33 +1028,33 @@ RecordStore::BatchWrites::~BatchWrites() {
     // (another connection still reading) loses nothing: SQLite folds the rest
     // of the log in at a later checkpoint. Nothing here throws out of a
     // destructor.
-    std::lock_guard<std::recursive_mutex> lock(store_.mutex_);
-    sqlite3_exec(store_.db_, "PRAGMA wal_checkpoint(TRUNCATE)", nullptr, nullptr, nullptr);
+    std::lock_guard<std::recursive_mutex> lock(store_.writer_.mutex);
+    sqlite3_exec(store_.writer_.db, "PRAGMA wal_checkpoint(TRUNCATE)", nullptr, nullptr, nullptr);
     // SQLite's own default threshold (D86 item 3).
-    sqlite3_exec(store_.db_, "PRAGMA wal_autocheckpoint=1000", nullptr, nullptr, nullptr);
+    sqlite3_exec(store_.writer_.db, "PRAGMA wal_autocheckpoint=1000", nullptr, nullptr, nullptr);
 }
 
 int RecordStore::wal_autocheckpoint_for_test() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare_read(db_, "PRAGMA wal_autocheckpoint");
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
+    Stmt s = prepare_read(writer_.db, "PRAGMA wal_autocheckpoint");
     return step_row(s) ? sqlite3_column_int(s, 0) : -1;
 }
 
 int64_t RecordStore::journal_size_limit_for_test() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    Stmt s = prepare_read(db_, "PRAGMA journal_size_limit");
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
+    Stmt s = prepare_read(writer_.db, "PRAGMA journal_size_limit");
     return step_row(s) ? sqlite3_column_int64(s, 0) : -1;
 }
 
 std::optional<std::string> RecordStore::meta_get(const std::string& key) {
-    Stmt s = prepare_read(db_, "SELECT value FROM meta WHERE key=?");
+    Stmt s = prepare_read(writer_.db, "SELECT value FROM meta WHERE key=?");
     bind_text(s, 1, key);
     if (!step_row(s)) return std::nullopt;
     return column_text(s, 0);
 }
 
 void RecordStore::meta_set(const std::string& key, const std::string& value) {
-    Stmt s = prepare_write(db_, "INSERT OR REPLACE INTO meta (key, value) VALUES (?,?)");
+    Stmt s = prepare_write(writer_.db, "INSERT OR REPLACE INTO meta (key, value) VALUES (?,?)");
     bind_text(s, 1, key);
     bind_text(s, 2, value);
     step_done(s, "meta_set");
@@ -1062,7 +1066,7 @@ constexpr const char* kChartMetaKey = "chart_meta_version";
 
 template <class F>
 void RecordStore::in_save_frame(F work) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     // Inside a save group this chart is one SAVEPOINT of the group's
     // transaction; otherwise it is a transaction of its own.
     const bool grouped = group_open_;
@@ -1077,10 +1081,10 @@ void RecordStore::in_save_frame(F work) {
         ctl(grouped ? "RELEASE chart" : "COMMIT");
     } catch (...) {
         if (!grouped) {
-            rollback_if_open(db_);
-        } else if (transaction_open(db_)) {
-            sqlite3_exec(db_, "ROLLBACK TO chart", nullptr, nullptr, nullptr);
-            sqlite3_exec(db_, "RELEASE chart", nullptr, nullptr, nullptr);
+            rollback_if_open(writer_.db);
+        } else if (transaction_open(writer_.db)) {
+            sqlite3_exec(writer_.db, "ROLLBACK TO chart", nullptr, nullptr, nullptr);
+            sqlite3_exec(writer_.db, "RELEASE chart", nullptr, nullptr, nullptr);
         } else {
             // SQLite rolled the whole group back itself: the group is lost,
             // not just this chart.
@@ -1117,8 +1121,8 @@ void RecordStore::delete_records_where(const std::string& where,
                                        const std::function<void(sqlite3_stmt*)>& bind,
                                        const std::string& what) {
     for (const char* table : {"record_paths", "records"}) {
-        CachedStmt d = use_write(db_, stmt_cache_, std::string("DELETE FROM ") + table +
-                                                       " WHERE " + where);
+        CachedStmt d = use_write(writer_.db, writer_.stmt_cache,
+                                 std::string("DELETE FROM ") + table + " WHERE " + where);
         bind(d);
         step_done(d, what);
     }
@@ -1135,19 +1139,19 @@ int64_t RecordStore::profile_id_for(const Profile& profile, const std::string& h
         bind_blob(s, idx, rules_fp);
     };
     {
-        CachedStmt find = use_read(db_, stmt_cache_,
+        CachedStmt find = use_read(writer_.db, writer_.stmt_cache,
             "SELECT id FROM profiles WHERE chartmode=? AND " + cap_match("") + " AND " +
                 lens_match("") + " AND hyversion=? AND rules_fp=?");
         bind_profile(find);
         if (step_row(find)) return sqlite3_column_int64(find, 0);
     }
-    CachedStmt insert = use_write(db_, stmt_cache_,
+    CachedStmt insert = use_write(writer_.db, writer_.stmt_cache,
         std::string("INSERT INTO profiles (chartmode, sp_cap, ") + kLensColumnList +
             ", hyversion, rules_fp) VALUES (" +
             placeholders(2 + count_list_names(kLensColumnList) + 2) + ")");
     bind_profile(insert);
     step_done(insert, "filing a record's profile");
-    return sqlite3_last_insert_rowid(db_);
+    return sqlite3_last_insert_rowid(writer_.db);
 }
 
 void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
@@ -1159,7 +1163,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         },
         "replacing a record");
     {
-        CachedStmt s = use_write(db_, stmt_cache_,
+        CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
             std::string("INSERT INTO records (song_id, profile_id, ") + kRecordColumnList +
                 ") VALUES (" + placeholders(2 + count_list_names(kRecordColumnList)) + ")");
         bind_text(s, 1, record.song_id);
@@ -1182,7 +1186,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         step_done(s, "saving a record");
     }
     for (const PathRow& p : record.paths) {
-        CachedStmt s = use_write(db_, stmt_cache_,
+        CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
             std::string("INSERT INTO record_paths (song_id, profile_id, rank, ") +
                 kPathRowColumnList + ") VALUES (" +
                 placeholders(3 + count_list_names(kPathRowColumnList)) + ")");
@@ -1212,7 +1216,7 @@ void RecordStore::drop_empty_profiles() {
         // save group, does not fail the open: no read shows an empty
         // profile, so it can wait for an open that can write. exec leaves
         // the failed statement's code on the connection.
-        const int code = sqlite3_errcode(db_) & 0xff;
+        const int code = sqlite3_errcode(writer_.db) & 0xff;
         if (code == SQLITE_BUSY || code == SQLITE_LOCKED) return;
         throw;
     }
@@ -1257,11 +1261,12 @@ std::string not_in_library(const char* hash) {
 
 void RecordStore::reidentify_chart(const std::string& notespath, const std::string& new_md5,
                                    const std::string& new_sig) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     in_transaction([&] {
         {
             CachedStmt s =
-                use_write(db_, stmt_cache_, "UPDATE charts SET md5 = ?, sig = ? WHERE path = ?");
+                use_write(writer_.db, writer_.stmt_cache,
+                          "UPDATE charts SET md5 = ?, sig = ? WHERE path = ?");
             bind_text(s, 1, new_md5);
             bind_text(s, 2, new_sig);
             bind_text(s, 3, notespath);
@@ -1278,8 +1283,13 @@ void RecordStore::purge_charts_not_in_library(const char* caller) {
     // from set_up_schema).
 }
 
-std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& song_ids,
-                                              const Profile& want) {
+namespace {
+
+// RecordStore::lookup, answered on `conn` for a store whose rules are
+// `rules`. Every connection's lookup is this one.
+std::vector<RecordLookup> lookup_on(StoreConnection& conn, const core::RulesStamp& rules,
+                                    const std::vector<std::string>& song_ids,
+                                    const Profile& want) {
     std::vector<RecordLookup> out(song_ids.size());
     if (song_ids.empty()) return out;
 
@@ -1297,14 +1307,14 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
     // rank_row says which is readable.
     static constexpr const char* kLeadColumns = "r.song_id, p.hyversion, p.id, p.rules_fp";
     static constexpr int kFirstRecord = count_list_names(kLeadColumns);
-    const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
+    const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules);
     WinnerPicker picker;
     std::vector<RecordRow> offered;
     std::unordered_map<std::string, RecordLookup> by_id;
     // The profile each Ready record is filed under, by song id: whose path
     // rows the second read keeps.
     std::unordered_map<std::string, int64_t> ready_profile;
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(conn.mutex);
     for (size_t first = 0; first < distinct.size(); first += kHashesPerQuery) {
         const size_t n = std::min(kHashesPerQuery, distinct.size() - first);
         std::string sql = std::string("SELECT ") + kLeadColumns + ", " +
@@ -1313,7 +1323,7 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
                           " WHERE p.chartmode=? AND r.song_id IN (" +
                           placeholders(n) + ")";
         append_candidate_filter(sql, "p.");
-        CachedStmt s = use_read(db_, stmt_cache_, sql);
+        CachedStmt s = use_read(conn.db, conn.stmt_cache, sql);
         int idx = 1;
         bind_text(s, idx++, want.chartmode);
         for (size_t i = 0; i < n; ++i) bind_text(s, idx++, distinct[first + i]);
@@ -1364,7 +1374,7 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
                                 path_row_columns("") +
                                 " FROM record_paths WHERE song_id IN (" + placeholders(n) +
                                 ") ORDER BY song_id, profile_id, rank";
-        CachedStmt s = use_read(db_, stmt_cache_, sql);
+        CachedStmt s = use_read(conn.db, conn.stmt_cache, sql);
         for (size_t i = 0; i < n; ++i) bind_text(s, static_cast<int>(i + 1), ready_ids[first + i]);
         while (step_row(s)) {
             const std::string id = column_text(s, 0);
@@ -1381,36 +1391,50 @@ std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& so
     return out;
 }
 
-RecordLookup RecordStore::lookup_one(const std::string& song_id, const Profile& want) {
-    return lookup({song_id}, want).front();
-}
-
-std::vector<std::string> RecordStore::candidate_song_ids(const Profile& want) {
+// Every chart with a record under `want`'s mode, cap and lens, any stamp or
+// rules, read on `conn`: what lookup is asked about to list the Ready ones.
+// The caller holds `conn`'s lock.
+std::vector<std::string> candidate_song_ids(StoreConnection& conn, const Profile& want) {
     std::vector<std::string> out;
     std::string sql =
         "SELECT DISTINCT r.song_id FROM records r JOIN profiles p ON p.id = r.profile_id"
         " WHERE p.chartmode=?";
     append_candidate_filter(sql, "p.");
-    Stmt s = prepare_read(db_, sql.c_str());
+    Stmt s = prepare_read(conn.db, sql.c_str());
     bind_text(s, 1, want.chartmode);
     bind_candidate_filter(s, 2, want.cap, want.lens);
     while (step_row(s)) out.push_back(column_text(s, 0));
     return out;
 }
 
-std::unordered_map<std::string, RecordStatus> RecordStore::settled_song_ids(const Profile& want) {
+// RecordStore::settled_song_ids, answered on `conn`. Every connection's
+// settled_song_ids is this one.
+std::unordered_map<std::string, RecordStatus> settled_on(StoreConnection& conn,
+                                                         const core::RulesStamp& rules,
+                                                         const Profile& want) {
     // Every chart with a candidate record under these settings, then
     // lookup's answer for each (D79), so the batch skips exactly the charts
     // the library's chips count as Analyzed or Can't analyze. One lock over
-    // both reads, so no write lands between them.
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
-    const std::vector<std::string> candidates = candidate_song_ids(want);
-    const std::vector<RecordLookup> found = lookup(candidates, want);
+    // both reads, so no write on this connection lands between them.
+    std::lock_guard<std::recursive_mutex> lock(conn.mutex);
+    const std::vector<std::string> candidates = candidate_song_ids(conn, want);
+    const std::vector<RecordLookup> found = lookup_on(conn, rules, candidates, want);
     std::unordered_map<std::string, RecordStatus> out;
     for (size_t i = 0; i < candidates.size(); ++i)
         if (found[i].status == RecordStatus::Ready || found[i].status == RecordStatus::CantAnalyze)
             out.emplace(candidates[i], found[i].status);
     return out;
+}
+
+}  // namespace
+
+std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& song_ids,
+                                              const Profile& want) {
+    return lookup_on(writer_, rules_fingerprint_, song_ids, want);
+}
+
+std::unordered_map<std::string, RecordStatus> RecordStore::settled_song_ids(const Profile& want) {
+    return settled_on(writer_, rules_fingerprint_, want);
 }
 
 std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
@@ -1425,8 +1449,8 @@ std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
     std::vector<RecordRow> out;
     {
         // As ready_song_ids: one lock over both reads.
-        std::lock_guard<std::recursive_mutex> lock(mutex_);
-        const std::vector<std::string> candidates = candidate_song_ids(want);
+        std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
+        const std::vector<std::string> candidates = candidate_song_ids(writer_, want);
         for (RecordLookup& found : lookup(candidates, want))
             if (found.status == RecordStatus::Ready) out.push_back(std::move(found.record));
     }
@@ -1443,9 +1467,9 @@ std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
 }
 
 int64_t RecordStore::record_count() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     // A failure record is the row whose failure_kind is set (failure_record).
-    Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL");
+    Stmt s = prepare_read(writer_.db, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL");
     if (!step_row(s)) return 0;
     return sqlite3_column_int64(s, 0);
 }
@@ -1467,7 +1491,7 @@ std::vector<int64_t> RecordStore::ready_profile_ids(const Profile& want) {
         "SELECT DISTINCT p.id, p.hyversion, p.rules_fp FROM records r"
         " JOIN profiles p ON p.id = r.profile_id WHERE p.chartmode=?";
     append_candidate_filter(sql, "p.");
-    Stmt s = prepare_read(db_, sql.c_str());
+    Stmt s = prepare_read(writer_.db, sql.c_str());
     bind_text(s, 1, want.chartmode);
     bind_candidate_filter(s, 2, want.cap, want.lens);
     const std::vector<uint8_t> fixed_fp = ready_rules_fp(rules_fingerprint_);
@@ -1485,7 +1509,7 @@ std::vector<int64_t> RecordStore::ready_profile_ids(const Profile& want) {
 }
 
 std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& profile) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     std::vector<MissingHardestRow> out;
     const std::vector<int64_t> ids = ready_profile_ids(profile);
     if (ids.empty()) return out;
@@ -1496,7 +1520,7 @@ std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& 
         "SELECT song_id, profile_id, rank, path, score, sqin_count, sqout_count"
         " FROM record_paths WHERE profile_id IN (" + placeholders(ids.size()) +
         ") AND hardest_ms IS NULL AND sqin_count > 0 ORDER BY song_id, profile_id, rank";
-    Stmt s = prepare_read(db_, sql.c_str());
+    Stmt s = prepare_read(writer_.db, sql.c_str());
     for (size_t i = 0; i < ids.size(); ++i) sqlite3_bind_int64(s, static_cast<int>(i + 1), ids[i]);
     while (step_row(s)) {
         MissingHardestRow row;
@@ -1518,10 +1542,10 @@ std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& 
 
 void RecordStore::set_hardest(const std::string& song_id, int64_t profile_id,
                               const std::vector<HardestFigure>& figures) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     in_transaction([&] {
         for (const HardestFigure& f : figures) {
-            CachedStmt s = use_write(db_, stmt_cache_,
+            CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
                 "UPDATE record_paths SET hardest_ms=?"
                 " WHERE song_id=? AND profile_id=? AND rank=? AND hardest_ms IS NULL");
             sqlite3_bind_double(s, 1, f.hardest_ms);
@@ -1534,14 +1558,14 @@ void RecordStore::set_hardest(const std::string& song_id, int64_t profile_id,
 }
 
 bool RecordStore::hardest_figure_filled(const Profile& profile) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     for (int64_t id : ready_profile_ids(profile))
         if (!meta_get(hardest_filled_key(id))) return false;
     return true;
 }
 
 void RecordStore::mark_hardest_figure_filled(const Profile& profile) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     in_transaction([&] {
         for (int64_t id : ready_profile_ids(profile)) meta_set(hardest_filled_key(id), "1");
     });
@@ -1601,7 +1625,7 @@ std::vector<ChartLibraryEntry> read_library_entries(sqlite3_stmt* s, bool timing
 }
 
 void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& items) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
     // One transaction around the whole swap, opened before anything changes:
     // a failure anywhere rolls back to the previous scan's rows, which are
@@ -1609,7 +1633,7 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
     // columns and index stay as they are.
     in_transaction([&] {
         exec("DELETE FROM charts");
-        Stmt s = prepare_write(db_,
+        Stmt s = prepare_write(writer_.db,
             (std::string("INSERT INTO charts (") + kLibraryColumnList + ") VALUES (" +
              placeholders(count_list_names(kLibraryColumnList)) + ")")
                 .c_str());
@@ -1637,7 +1661,7 @@ void RecordStore::rebuild_chart_library(const std::vector<ChartLibraryEntry>& it
 }
 
 ChartLibraryCache RecordStore::chart_library_cache() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
     ChartLibraryCache cache;
     // Rows the current readers didn't vouch for are no cache at all: a file
@@ -1645,7 +1669,7 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     // The next scan reads every chart once and stamps what it writes.
     if (!chart_meta_current()) return cache;
 
-    Stmt s = prepare_read(db_, library_entry_select().c_str());
+    Stmt s = prepare_read(writer_.db, library_entry_select().c_str());
     for (ChartLibraryEntry& e : read_library_entries(s, /*timing_read=*/true)) {
         if (!sig_can_show_unchanged(e.sig)) continue;
         std::string key = e.notespath;
@@ -1660,15 +1684,15 @@ bool RecordStore::chart_meta_current() {
 }
 
 int64_t RecordStore::chart_library_count() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
-    Stmt s = prepare_read(db_, "SELECT COUNT(*) FROM charts");
+    Stmt s = prepare_read(writer_.db, "SELECT COUNT(*) FROM charts");
     if (!step_row(s)) return 0;
     return sqlite3_column_int64(s, 0);
 }
 
 bool RecordStore::chart_library_out_of_date() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
     return chart_library_count() > 0 && !chart_meta_current();
 }
@@ -1837,19 +1861,19 @@ std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int limit,
                                                                const RowsReadFn& on_row,
                                                                LibraryOrder order) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
     const bool timing_read = chart_meta_current();
     // The whole library unsorted reads on threads, one connection each, split
     // by rowid. It needs a file the other connections can open (a ":memory:"
     // store has none), and no transaction open on this connection, whose
     // writes the others would not see.
-    const char* file = sqlite3_db_filename(db_, "main");
+    const char* file = sqlite3_db_filename(writer_.db, "main");
     if (order == LibraryOrder::Unsorted && offset == 0 && limit < 0 && file && *file &&
-        !transaction_open(db_)) {
+        !transaction_open(writer_.db)) {
         int64_t max_rowid = 0;
         {
-            Stmt s = prepare_read(db_, "SELECT max(rowid) FROM charts");
+            Stmt s = prepare_read(writer_.db, "SELECT max(rowid) FROM charts");
             if (step_row(s)) max_rowid = sqlite3_column_int64(s, 0);
         }
         // One share per rowid at most, so no share is empty by its range.
@@ -1863,28 +1887,29 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
     // Unsorted asks for no order, so SQLite reads the table without a sort.
     const char* order_by = order == LibraryOrder::Unsorted ? "" : kByName;
     Stmt s = prepare_read(
-        db_, (library_entry_select() + order_by + " LIMIT ? OFFSET ?").c_str());
+        writer_.db, (library_entry_select() + order_by + " LIMIT ? OFFSET ?").c_str());
     sqlite3_bind_int(s, 1, limit);
     sqlite3_bind_int(s, 2, offset);
     return read_library_entries(s, timing_read, on_row);
 }
 
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std::string& md5) {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
     const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_, (library_entry_select() + " WHERE md5 = ?" + kByName).c_str());
+    Stmt s = prepare_read(writer_.db,
+                          (library_entry_select() + " WHERE md5 = ?" + kByName).c_str());
     bind_text(s, 1, md5);
     return read_library_entries(s, timing_read);
 }
 
 ChartIndex RecordStore::chart_index() {
-    std::lock_guard<std::recursive_mutex> lock(mutex_);
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
 
     // rebuild_chart_library inserts the rows in the scan's order, so rowid
     // order is scan order.
     const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(db_, (library_entry_select() + " ORDER BY rowid").c_str());
+    Stmt s = prepare_read(writer_.db, (library_entry_select() + " ORDER BY rowid").c_str());
     return ChartIndex::from_rows(read_library_entries(s, timing_read));
 }
 
