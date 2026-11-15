@@ -515,6 +515,9 @@ public:
         int offset, int limit, const RowsReadFn& on_row = {},
         LibraryOrder order = LibraryOrder::ByName) = 0;
     virtual std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) = 0;
+    virtual int64_t record_count() = 0;
+    virtual int64_t chart_library_count() = 0;
+    virtual ChartIndex chart_index() = 0;
 
 protected:
     StoreReads() = default;
@@ -548,6 +551,9 @@ public:
         int offset, int limit, const RowsReadFn& on_row = {},
         LibraryOrder order = LibraryOrder::ByName) override;
     std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
+    int64_t record_count() override;
+    int64_t chart_library_count() override;
+    ChartIndex chart_index() override;
     // Closes the connection; a later read opens it again.
     void close();
 
@@ -695,7 +701,7 @@ public:
 
     // How many real records the file holds, under any profile. A failure
     // record is not counted.
-    int64_t record_count();
+    int64_t record_count() override;
 
     // ---- the saved hardest figure (PathRow::hardest_ms) -----------------
     //
@@ -763,7 +769,7 @@ public:
     // order, from the calling thread only, while the other threads read; a
     // stop it asks for stops every thread. A connection that fails to open
     // fails the whole read with ErrorKind::DatabaseRead and returns no rows.
-    int64_t chart_library_count();
+    int64_t chart_library_count() override;
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
                                                       const RowsReadFn& on_row = {},
                                                       LibraryOrder order = LibraryOrder::ByName) override;
@@ -785,7 +791,7 @@ public:
 
     // The library's charts, their copies and naming copies (ChartIndex),
     // built from the library rows in the order the scan listed them.
-    ChartIndex chart_index();
+    ChartIndex chart_index() override;
 
 private:
     // Reads the rules fingerprint and the two reader seams.

@@ -832,3 +832,69 @@ TEST_CASE("a reader sees a rescan once it is saved") {
     check_same_list(store.reader().list_chart_library_copies("z"),
                     store.list_chart_library_copies("z"));
 }
+
+// ---- the chart index read on the store's reader (StoreReader) ---------------
+
+namespace {
+
+// Checks two chart indexes list the same song ids in the same order, with the
+// same copies and the same naming row for each.
+void check_same_index(const ChartIndex& got, const ChartIndex& want) {
+    CHECK(got.song_ids() == want.song_ids());
+    for (const std::string& id : want.song_ids()) {
+        CAPTURE(id);
+        CHECK(got.lists(id));
+        CHECK(got.copies(id) == want.copies(id));
+        const ChartLibraryEntry* got_name = got.naming(id);
+        const ChartLibraryEntry* want_name = want.naming(id);
+        REQUIRE((got_name != nullptr) == (want_name != nullptr));
+        if (!want_name) continue;
+        CHECK(got_name->md5 == want_name->md5);
+        check_same_entry(*got_name, *want_name);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("the reader builds the chart index the writer builds") {
+    StoreFile file("reader_chart_index");
+    {
+        RecordStore store(file.path);
+        store.rebuild_chart_library(timed_library());
+        const ChartIndex want = store.chart_index();
+        // A current stamp: the chart in two folders is listed once, with two
+        // copies, and its naming row carries timing.
+        REQUIRE(want.song_ids().size() == 2);
+        REQUIRE(want.copies("x") == 2);
+        REQUIRE(want.naming("x") != nullptr);
+        REQUIRE(want.naming("x")->timing.has_value());
+        check_same_index(store.reader().chart_index(), want);
+    }
+    // A stamp that is not current (chart_meta_current): the writer's naming
+    // rows carry no timing, and neither do the reader's.
+    exec_on_file(file.path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(file.path);
+        const ChartIndex want = store.chart_index();
+        REQUIRE(want.naming("x") != nullptr);
+        REQUIRE_FALSE(want.naming("x")->timing.has_value());
+        check_same_index(store.reader().chart_index(), want);
+    }
+}
+
+TEST_CASE("a reader's chart index does not wait while a save group is open") {
+    StoreFile file("reader_index_no_wait");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const ChartIndex want = store.chart_index();
+    const int64_t want_count = store.chart_library_count();
+
+    HeldSaveGroup group(store);
+    const ChartIndex got = store.reader().chart_index();
+    const int64_t got_count = store.reader().chart_library_count();
+    const bool returned_while_held = group.held();
+    group.let_go();
+    CHECK(returned_while_held);
+    check_same_index(got, want);
+    CHECK(got_count == want_count);
+}
