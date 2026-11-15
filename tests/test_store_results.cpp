@@ -464,7 +464,7 @@ TEST_CASE("prepare_record refuses a profile that names the other fill rule") {
 TEST_CASE("lookups on one thread and saves on another share one store without error") {
     // The store has one connection, and a read on it would see a save's
     // half-done work, transaction or not. What keeps a lookup out of a save
-    // is the store lock (RecordStore::mutex_ in store/record_store.h), held
+    // is the store lock (StoreConnection::mutex in store/record_store.h), held
     // for the whole save frame and for the lookup. This case runs the two
     // side by side and checks every lookup came back whole and nothing
     // threw. It does not force a lookup to land inside a save, so it cannot

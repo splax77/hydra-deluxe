@@ -20,7 +20,7 @@
       "owner_lines": [
         {
           "file": "src/store/record_store.cpp",
-          "line_text": "Stmt s = prepare_read(db_, (library_entry_select() + \" ORDER BY rowid\").c_str());",
+          "line_text": "Stmt s = prepare_read(writer_.db, (library_entry_select() + \" ORDER BY rowid\").c_str());",
           "why": "RecordStore::chart_index, the one scan-order read that feeds the owner"
         }
       ],

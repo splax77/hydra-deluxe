@@ -1442,7 +1442,10 @@ TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its 
     // frontend, as on every squeeze row.
     const AnalysisResult& ar = analyzed_like_the_gui("Eric Moore - Get Ur Freak On");
     const Path& best = ar.record.best_path();
-    REQUIRE(best.pathstring() == "5- 2+ 2- 0 0");
+    // A guard that the search picked this path. Activations 3 to 5 carry an
+    // E because Star Power comes ready less than the early-fill window before
+    // each one's fill deadline (is_e0 owns the window).
+    REQUIRE(best.pathstring() == "5- 2+ E2- E0 E0");
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
     const ActivationsView view = window_rows_of(ar, best, &chords);
