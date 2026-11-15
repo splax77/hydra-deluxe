@@ -352,7 +352,7 @@ TEST_CASE("Profile compares on every part of the identity") {
     CHECK(kLensA != Lens::from(10, 0, 21));
     CHECK(kLensA != Lens::from(std::nullopt, 0, 20));
     CHECK(kLensA != Lens::from(10, 0, 20, /*legacy_fills=*/true));
-    CHECK(kLensA != Lens::from(10, 0, 20, false, static_cast<int>(kHitWindowMs)));
+    CHECK(kLensA != Lens::from(10, 0, 20, false, kMaxEarlyFillWindowMs));
     // A lens left to its default names the setting's default window.
     CHECK(Lens{}.efill_window_ms == static_cast<int>(kDefaultEarlyFillWindowMs));
     CHECK(kLensA.efill_window_ms == static_cast<int>(kDefaultEarlyFillWindowMs));

@@ -111,6 +111,9 @@ constexpr double kHitWindowMs = 85.0;
 // search graph, Activation, HydraRecord) is this one constant.
 constexpr double kDefaultEarlyFillWindowMs = 60.0;
 
+// The most the Early fill window setting allows, in whole ms: the hit window.
+constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kHitWindowMs);
+
 // The squeeze horizon in ms. The search graph only looks this far from the SP
 // end for a reachable squeeze, and backends within it of the deactivation are
 // stored and shown, so nothing the engine collects is trimmed. The Backend

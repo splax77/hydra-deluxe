@@ -1899,13 +1899,14 @@
         "src",
         "tests"
       ],
-      "exempt": [
+      "owner_lines": [
         {
-          "file": "src/app/config.cpp",
-          "why": "The settings key table writes the Early fill window box's top edge as a whole number from kHitWindowMs, the way kWindowMs is written from kSqueezeWindowMs: that answers the box's range, not what the hit window is (the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md)."
+          "file": "src/core/model.h",
+          "line_text": "constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kHitWindowMs);",
+          "why": "kMaxEarlyFillWindowMs, the most the Early fill window setting allows in whole ms: the one whole-ms cut of the hit window for the setting's range (the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md)"
         }
       ],
-      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, the settings key table cuts it once for the Early fill window box's range, and everything else reads kHitWindowMs as it is."
+      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, the Early fill window setting's top edge is kMaxEarlyFillWindowMs, and everything else reads kHitWindowMs as it is."
     },
     {
       "question": "What does squeezing out a row cost?",

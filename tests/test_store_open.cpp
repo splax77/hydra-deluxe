@@ -1013,14 +1013,14 @@ TEST_CASE("the v2.12.1 file's profiles table is rebuilt with the early-fill wind
         CHECK(store.lookup_one(song, batch_profile).status == RecordStatus::Stale);
         // At another window the chart has no result yet.
         Profile at_85 = batch_profile;
-        at_85.lens.efill_window_ms = static_cast<int>(kHitWindowMs);
+        at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
         CHECK(store.lookup_one(song, at_85).status == RecordStatus::NotAnalyzed);
 
         // Two profiles that differ only in the window can now both be saved.
         HydraRecord searched_at_85 = at_cap(4);
         searched_at_85.early_fill_window_ms = kHitWindowMs;
         Profile mode_at_85 = at4();
-        mode_at_85.lens.efill_window_ms = static_cast<int>(kHitWindowMs);
+        mode_at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
         store.save(prepare_record("h", at4(), at_cap(4)));
         store.save(prepare_record("h", mode_at_85, searched_at_85));
         CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
@@ -1067,7 +1067,7 @@ TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgra
     const std::string profiles_before = older_profile_columns(path);
     const std::string profiles_sql_before =
         text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'");
-    const int64_t records_before = scalar_on_file(path, "SELECT COUNT(*) FROM records");
+    const int64_t records_before = record_rows_in(path);
     const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
     try {
         RecordStore store(path);
@@ -1081,7 +1081,7 @@ TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgra
     CHECK(text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'") ==
           profiles_sql_before);
     CHECK(older_profile_columns(path) == profiles_before);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records") == records_before);
+    CHECK(record_rows_in(path) == records_before);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
     CHECK(records_under_profiles(path) == records_before);
     remove_db(path);

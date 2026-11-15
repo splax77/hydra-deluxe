@@ -326,7 +326,7 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
     const HydraRecord& analysis = fixture().record;
     REQUIRE(analysis.early_fill_window_ms == kDefaultEarlyFillWindowMs);
     Profile at_85 = at4();
-    at_85.lens.efill_window_ms = static_cast<int>(kHitWindowMs);
+    at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
     CHECK_THROWS_AS(prepare_record("h1", at_85, analysis), std::invalid_argument);
     // And the other way: a record searched at 85 under the default profile.
     HydraRecord searched_at_85 = at_cap(4);
@@ -334,7 +334,7 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
     CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_85), std::invalid_argument);
     // The matching pair files.
     CHECK(prepare_record("h1", at_85, searched_at_85).profile.lens.efill_window_ms ==
-          static_cast<int>(kHitWindowMs));
+          kMaxEarlyFillWindowMs);
 }
 
 TEST_CASE("store: one chart's results at two early-fill windows are two results") {
@@ -342,7 +342,7 @@ TEST_CASE("store: one chart's results at two early-fill windows are two results"
     // record, and each lookup gets its own back.
     const Profile at_default = at4();
     Profile at_85 = at4();
-    at_85.lens.efill_window_ms = static_cast<int>(kHitWindowMs);
+    at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
     REQUIRE(at_default != at_85);
     HydraRecord searched_at_85 = no_paths_at_cap(4);
     searched_at_85.early_fill_window_ms = kHitWindowMs;

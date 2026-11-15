@@ -198,9 +198,7 @@ const std::vector<Key>& keys() {
         // allowed as a what-if (D51 Q16).
         number("sp_cap", &Settings::sp_cap, 1, kNoCeiling),
         on_off("legacy_fills", &Settings::legacy_fills),
-        // The hit window is the widest the early-fill window goes.
-        number("early_fill_window_ms", &Settings::early_fill_window_ms, 0,
-               static_cast<int>(kHitWindowMs)),
+        number("early_fill_window_ms", &Settings::early_fill_window_ms, 0, kMaxEarlyFillWindowMs),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
         word("skipped_update_version", &Settings::skipped_update_version),

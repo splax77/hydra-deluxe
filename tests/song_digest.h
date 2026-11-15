@@ -329,7 +329,7 @@ inline app::Settings digest_settings(const char* difficulty, bool pro, bool bass
     s.view_difficulty = difficulty;
     s.view_prodrums = pro;
     s.view_bass2x = bass2x;
-    s.early_fill_window_ms = static_cast<int>(kHitWindowMs);
+    s.early_fill_window_ms = kMaxEarlyFillWindowMs;
     return s;
 }
 
