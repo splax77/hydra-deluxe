@@ -243,4 +243,14 @@ Round 18 ran as one workflow (wf_2de95388-9f9): auditors for C13, C14, C15 and D
 
 Round 19's split: `tools/ch_mcp/tests/test_game_tools.py` is cut at line 1780, a test-function boundary near the plan's 1778: D4 holds 101 test functions, D5 holds 134.
 
-Round 19 ran as one workflow: auditors for D2 to D5, the fuzz auditor, and verifiers for C13 to D1, launched together.
+Round 19 ran as one workflow (wf_6a59f866-770): auditors for D2 to D5, the fuzz auditor, and verifiers for C13 to D1, launched together. About 9.5 minutes, 302 tool calls; every slice finished.
+
+- D2 (7e7c4b58): 155 records. Keep 16, Rewrite 29, Remove 6, Investigate 104.
+- D3 (3415bf75): 162 records, verdicts about Keep 42, Rewrite 23, Remove 4, Investigate 95 by its auditor's grep. Its answers are written in shared blocks and several production files were not read; its verifier is told so. Split: `game_files.py:348-350` reads song.ini `pro_drums` as true only for "true" or "1"; `src/parse/song.cpp:2280-2283` reads any non-zero integer as true.
+- D4 (9ce16810, 81cae4b8, d846875c): 101 records. Keep 7, Rewrite 19, Investigate 75.
+- D5 (07e205c7, b71bfadc, 5c47e961): 134 records. Keep 4, Rewrite 16, Remove 3, Investigate 111.
+- fuzz (638949f2, `records/C14-C15-fuzz.md`): 22 records. Keep 7, Investigate 15.
+- verify C13 and C14 (a0d3c9be): C13 52 agreed, 2 disputed; the removed font-role plan (`git show 6804353f:docs/superpowers/plans/2026-10-22-font-role-single-owner.md`) gives the four sizes C13's auditor could not source.
+- verify C15 and D1 (71a5291f): its verifier also wrote the four fuzz records C15 lacked, in `verify/C15.md`; the fuzz auditor's file covers the same four, so T8 reads both.
+
+Round 20 ran as one workflow: auditors for D6 to D9 and verifiers for D2 to D5 and the fuzz records, launched together.
