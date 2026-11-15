@@ -11,8 +11,10 @@ It reads only the audit folder. It writes two kinds of row into one file:
                T8 plan (docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md).
 
 Each count row gets the id of the one record row it belongs to (join_counts),
-or an empty join and a reason. It does not read verify/ or capture/byreading/
-yet. It is not trusted to see everything: it prints each count file's row
+or an empty join and a reason. The by-reading and verifier verdicts reach
+record rows through the same join (second_verdicts); the verifier reader knows
+only one line shape, so most verify/ files are not read yet. The script is
+not trusted to see everything: it prints each count file's row
 count beside TOTALS.md section 1 and its joined and unjoined rows, and writes
 every record title with no verdict it could read and every unjoined count row
 to exits/not-in-ledger.md.
@@ -476,6 +478,55 @@ def join_counts(counts, recs):
                 r['join'] = ''
 
 
+BYREADING = re.compile(r'SHOWN BY RUN|HOLDS BY READING|CONTRADICTED|CANNOT TELL')
+VERIFY_LINE = re.compile(r'^\s*(?:\*\*)?(\d+(?:\.\d+)?)\.\s+(.*?)\((?:line |:)?(\d+)\)')
+
+
+def second_verdicts(recs):
+    """The by-reading verdict (capture/byreading/*-verdicts.md tables) and the
+    verifier's verdict (verify/*.md lines "17. name (683). ... Verdict: Rewrite.")
+    for each record row, through the same checked join as the count rows. Rows that
+    do not join are returned, not guessed."""
+    rows = []
+    bdir = os.path.join(AUD, 'capture', 'byreading')
+    for name in sorted(os.listdir(bdir)):
+        if name.endswith('-verdicts.md'):
+            for section, header, cells, i, raw in table_rows(os.path.join(bdir, name)):
+                v = BYREADING.search(' '.join(cells))
+                if v and 'record' in header:
+                    rows.append({'cf': 'byreading/' + name[:-3], 'line': i, 'section': '', 'kind2': 'byreading',
+                                 'rec': col(header, cells, 'record'), 'test': col(header, cells, 'test'),
+                                 'header': header, 'cells': cells, 'text': ' '.join(cells), 'v': v.group(0)})
+    vdir = os.path.join(AUD, 'verify')
+    for name in sorted(os.listdir(vdir)):
+        if not name.endswith('.md'):
+            continue
+        # verify/A10.md, A26-resend.md, D10-resend.md and E1a.md check records/A10.md, A26.md, D10.md, E1.md.
+        fid = re.sub(r'(-resend|-reread|-q3)$', '', name[:-3])
+        fid = re.sub(r'^(E\d)[ab]$', r'\1', fid)
+        if '-' in fid and not fid.startswith(('delta-', 'window-', 'C14-C15')):
+            continue                                   # A3-A4-reread.md checks two files
+        for i, line in enumerate(lines_of(os.path.join(vdir, name)), 1):
+            m, vs = VERIFY_LINE.match(line), VERDICT.findall(line)
+            if m and vs:
+                rows.append({'cf': 'verify/' + name[:-3], 'line': i, 'section': '', 'kind2': 'verify',
+                             'rec': f'{fid} {m.group(1)}', 'test': ':' + m.group(3),
+                             'header': ['record', 'test'], 'cells': [f'{fid} {m.group(1)}', ':' + m.group(3)],
+                             'text': clean(line)[:120], 'v': vs[-1]})
+    join_counts(rows, recs)
+    idx = {f"records/{r['file']}:{r['hline']}": r for r in recs}
+    for r in rows:
+        if r['join']:
+            x = idx[r['join']]
+            key = 'byreading' if r['kind2'] == 'byreading' else 'verifier'
+            if key == 'verifier' and r['v'] == x['verdicts'][-1]:
+                continue                               # the column holds only a verdict that differs
+            x.setdefault(key, [])
+            if r['v'] not in x[key]:
+                x[key].append(r['v'])
+    return rows
+
+
 def write_not_in_ledger(path, unread, counts):
     """List what the script could not read, by file and line, for the scouts to fill."""
     unj = [r for r in counts if not r['join']]
@@ -515,10 +566,11 @@ def main():
     left = apply_corrections(counts, read_corrections())
     settle = apply_answers(counts)
     join_counts(counts, recs)
+    seconds = second_verdicts(recs)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     cols = ['kind', 'file', 'line', 'heading_or_section', 'record', 'test', 'verdict', 'earlier_verdicts',
             'faults_counter', 'faults', 'correction', 'answer', 't6', 't7_reopened', 'reason',
-            'id', 'joins_record']
+            'id', 'joins_record', 'verifier_verdict_if_different', 'byreading_verdict']
     with open(OUT, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\t'.join(cols) + '\n')
         for r in recs:
@@ -527,12 +579,13 @@ def main():
             fh.write('\t'.join(['record', 'records/' + r['file'], str(r['line']), r['heading'], r['record'],
                                 '', v[-1], ','.join(v[:-1]), '', '', '', '', t6,
                                 'yes' if r['file'] in T7_REOPENED else '', '',
-                                f"records/{r['file']}:{r['hline']}", '']) + '\n')
+                                f"records/{r['file']}:{r['hline']}", '',
+                                ','.join(r.get('verifier', [])), ','.join(r.get('byreading', []))]) + '\n')
         for r in counts:
             fh.write('\t'.join(['count', 'counts/' + r['cf'] + '.md', str(r['line']), r['section'],
                                 (r['rec'] + ' ' + r['num']).strip(), r['test'], '', '',
                                 r['faults_raw'], ','.join(r['faults']) or 'none', r['fix'], r['answer'],
-                                '', '', r['reason'][:200], '', r['join']]) + '\n')
+                                '', '', r['reason'][:200], '', r['join'], '', '']) + '\n')
 
     from collections import Counter
     vc = Counter(r['verdicts'][-1] for r in recs)
@@ -564,6 +617,12 @@ def main():
     print('\nunjoined count rows, by file and line:', len(unj))
     for r in unj:
         print(f'  counts/{r["cf"]}.md:{r["line"]} {r["why"]} | {r["text"][:70]}')
+    for kind in ('byreading', 'verify'):
+        rs = [r for r in seconds if r['kind2'] == kind]
+        j = sum(1 for r in rs if r['join'])
+        print(f'\n{kind} verdict lines read: {len(rs)}, joined to one record row: {j}, unjoined: {len(rs) - j}')
+    print('record rows with a verifier verdict that differs:', sum(1 for r in recs if r.get('verifier')),
+          '| with a by-reading verdict:', sum(1 for r in recs if r.get('byreading')))
     print('\ncorrections not applied (count of candidate rows):')
     for c, n in left:
         print(f'  {n} candidates: {c["line"]}')

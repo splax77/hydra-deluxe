@@ -128,6 +128,16 @@ class LedgerOnRealFiles(unittest.TestCase):
             else:
                 self.assertTrue(r['why'])
 
+    def test_a_byreading_verdict_reaches_its_record(self):
+        # capture/byreading/B1-verdicts.md line 13: "A17 17 | test_library_query.cpp:313 | ... |
+        # HOLDS BY READING" is records/A17.md line 316, "17. library query: unknown field names
+        # are words ... (tests/test_library_query.cpp:313)".
+        rows = ledger.second_verdicts(self.recs)
+        hit = [r for r in rows if r['cf'] == 'byreading/B1-verdicts' and r['line'] == 13]
+        self.assertEqual(len(hit), 1)
+        self.assertEqual(hit[0]['join'], 'records/A17.md:316')
+        self.assertEqual(self.by_start('A17.md', 316)['byreading'], ['HOLDS BY READING'])
+
     def test_count_rows_match_totals_where_totals_reports_no_gap(self):
         # TOTALS.md section 4 names the files with a gap; these four are not among them.
         tot = ledger.totals_section1()
