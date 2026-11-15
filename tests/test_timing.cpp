@@ -79,6 +79,8 @@ TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4
     const int x3_from = 20;
     const int x4_from = 30;
 
+    // SC-05: 1x runs from combo 0 up to the combo before x2_from.
+    CHECK(to_multiplier(0) == 1);
     CHECK(to_multiplier(x2_from - 1) == 1);
     CHECK(to_multiplier(x2_from) == 2);
     CHECK(to_multiplier(x3_from - 1) == 2);
