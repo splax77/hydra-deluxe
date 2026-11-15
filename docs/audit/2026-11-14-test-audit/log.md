@@ -295,3 +295,16 @@ Round 23 ran as one workflow: auditors for E1 to E4, verifiers for D14 with A50 
 - re-send D10 (d1ae10d6): 11 checked, 9 agreed, 2 disputed. re-send D13 (f0fa98b6): 12 checked, 12 agreed. No D record is left unreached.
 
 Round 24 verifies E1 to E4, two verifiers a slice, because the slices hold 158 to 307 records.
+
+Round 24 ran as one workflow (wf_c57ab98a-71b): eight Sonnet verifiers, two for each hook slice E1 to E4. About 7.5 minutes, 337 tool calls. Every record was reached, and no test case lacks a record.
+
+- E1a (c2d1c6ff): 103 records, 80 agreed, 23 disputed. 11 hand-typed Keeps in `test_agent_stop.py` go to "Investigate, claim not checked only". `test_agent_files.py`'s reviewer-order test should be Remove, because `reviewer.md` states no order. Real recorded input that no record names: `gates\state\agents\*\*.handback` and `.json`.
+- E1b (97f53d84): 146 records, 140 agreed, 6 disputed. `test_the_limit_is_the_users_number` cites `review-and-hooks.md` line 40, which is under `## Unconfirmed`. `delete_rule.body` and its `__main__` have no production caller (`settings.json` registers `percall.py`, which calls `check`). `gates\tests\probe_results.md` lines 93, 98 and 100 are real Git Bash measurements the records called unread.
+- E2a (0da0c57d): 83 records, 68 agreed, 15 disputed, mostly hand-typed Keeps.
+- E2b (77b6ed9a): 75 records, 48 agreed, 27 disputed. 7 Keeps go to Investigate; lines 498 and 606 repeat `test_percall_key.py` and should be Remove.
+- E3a (a97fd4a1): 98 records. refusals 5 agreed; review_dispatch 33 agreed, 3 disputed; ref_judge 44 agreed, 13 disputed. `test_pack_refs_traffic_passes` asserts `calls() == []` at line 266, which is always true because `rules(None)` deletes the fake that writes calls.txt.
+- E3b (f26e1640): 120 records, 109 agreed, 11 disputed.
+- E4a (9f492c98, d6067139): ruling_rules 44 agreed, 2 disputed; stall 44 agreed, 4 disputed; shell_output 62 agreed, 4 disputed.
+- E4b (9557b2e5): status_append 7 records, 1 agreed, 6 disputed (its Keeps run a typed line in a temp folder under Windows PowerShell 5.1); h53 56 records, 54 agreed, 2 disputed; h52 81 records, 73 agreed, 8 disputed. The auditor never opened `cleanup_sweep.ps1`; the verifier read it in full.
+
+The find and verify rounds of T5 are complete for every slice. What remains is in the handoff `docs/handoffs/2026-11-15-test-audit-after-rounds-handoff.md`.
