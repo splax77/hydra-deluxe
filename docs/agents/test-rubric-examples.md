@@ -39,7 +39,7 @@ The rewrite takes the expected side from the record. For each step in the activa
 
 They fail Q4 first: a reader cannot tell what 13440 is. The answer is in a comment above `make_late_sqin_song`, in `tests/record_fixtures.h`. They fail Q2 and Q3 for the reason in B1, and Q10 because three tests pin one rule.
 
-An earlier version of this page judged line 485 and proposed naming the number: `old_end` in place of 13440. That keeps the wrong claim and makes it easier to read. Naming a value is never a fix for a claim nobody checked.
+An earlier version of this page judged line 485 and proposed naming the number: "old_end" in place of 13440. That keeps the wrong claim and makes it easier to read. Naming a value is never a fix for a claim nobody checked.
 
 The rewrite removes both lines. Line 483 of the first test already checks what the engine recorded: the squeeze-in step sits on the phrase's own chord. That check has its own Q4 fault, raw ticks, and is rewritten with the step's chord named as the fixture's third phrase.
 
@@ -183,7 +183,7 @@ It fails Q4, Q5 and Q9. The comment above the test says "The three numbers are p
 
 The test builds a chart at 125 BPM with 480 ticks a beat, so one tick is one millisecond. Fill A starts at tick 9120 and ends at 9600. Clone Hero's 1.1 deadline is four beats before a fill's start (FL-19 in `docs/clone-hero/04-fills.md`): 9120 minus 1920 is 7200. Hydra keeps a fill offered until Star Power comes ready up to 85 ms after that deadline (FL-23, Hydra's own reach, which the game does not have). So 7285 is "the fill's start, minus four beats, plus Hydra's 85 ms reach". None of that is in the check. It fails question 4: cover the comments and nobody can tell what 7285 is. The comment's reason for typing it ("so a changed window fails here") is real, but a named rule number does the same job.
 
-The rewrite names the inputs and the two rules: `fill_a_start`, `deadline = fill_a_start - 4 * beat` with the four beats cited to FL-19, and `reach = deadline + 85` with the 85 cited to FL-23. Then `passed_over(reach)` holds fill A, written as fill A's named end and not as 9600, and `passed_over(reach + 1)` is empty. This page has not done Q2 and Q3 for the reach rule (who uses it, and what the engine recorded on a real chart). So this is a sketch of the checks only, and the test stays off the good list until both are answered.
+The rewrite names the inputs and the two rules: a name "fill_a_start", `deadline = fill_a_start - 4 * beat` with the four beats cited to FL-19, and `reach = deadline + 85` with the 85 cited to FL-23. Then `passed_over(reach)` holds fill A, written as fill A's named end and not as 9600, and `passed_over(reach + 1)` is empty. This page has not done Q2 and Q3 for the reach rule (who uses it, and what the engine recorded on a real chart). So this is a sketch of the checks only, and the test stays off the good list until both are answered.
 
 ### B14. A near miss: rule numbers, plus one number nobody can explain and one line that guards nothing
 

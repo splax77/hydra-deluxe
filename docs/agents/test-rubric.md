@@ -145,7 +145,7 @@ Question 4 lets a check be the rule applied to the chart's named inputs: "measur
 
 One trap matters now. A helper that names a tick by calling Hydra's timing code, or `test::tick_ms` in `tests/record_fixtures.h`, which reads the song's own tempo map, is fine for finding an input. It may never produce an expected result. An expected value that came out of production code is a copy.
 
-Naming is also never the whole fix. Giving 13440 the name `old_end` leaves the claim untouched. Do questions 1 to 3 first.
+Naming is also never the whole fix. Giving 13440 the name "old_end" leaves the claim untouched. Do questions 1 to 3 first.
 
 ## Running it as an audit
 
