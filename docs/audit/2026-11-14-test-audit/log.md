@@ -136,4 +136,17 @@ Round 7 ran as one workflow (wf_b33dc705-fe4): auditors for A25 to A28 and verif
 - A28 (15e10100): 24 records. Rewrite 13, Remove 1, Investigate 10.
 - verify A21 and A22, verify A23 and A24 (4dfaeb38): committed. The A23 verifier finished record 2 from the existing Beg captures and moved it to Keep.
 
-Round 8 ran as one workflow: auditors for A29 to A32 and verifiers for A25 to A28, launched together.
+Round 8 ran as one workflow (wf_927e024b-d9e): auditors for A29 to A32 and verifiers for A25 to A28, launched together. About 9 minutes, 265 tool calls; every find slice finished.
+
+- A29 (58685164, a90e27d2): 27 records. Rewrite 13, Remove 2, Investigate 12. Split A: `CONTEXT.md` lines 965 to 968 still say a late squeeze-in refills at the old SP end; D9 and the code refill on the squeezed chord.
+- A30 (ef02b89f, 83f432d2): 29 records. Keep 2, Rewrite 19, Remove 1, Investigate 7.
+- A31 (30053308): 39 records. Keep 9, Rewrite 11, Remove 1, Investigate 18. `testdata/input` holds no audio, so every stem claim needs a real stem.
+- A32 (b5f1bb57): 31 records. Keep 7, Rewrite 8, Remove 1, Investigate 15.
+- verify A25 and A26 (551752c0): A25 checked in full, 36 agreed, 6 disputed. A26 only partly: 35 of 46 records not reached.
+- verify A27 and A28 (828bd40a): A28 checked in full, 20 agreed, 4 disputed. A27 only partly: 16 of 44 checked. It also corrects A28's production finding: `nominal_end()` is called from `tools/replay_schedule.cpp:415`, `tools/replay_json.cpp:135` and `tools/replay.cpp:766`; only `collected_phrase_ticks()` has no caller.
+
+A26 and A27 get their one re-send each (`briefs/T5-verify-resend.md`), for the records their verify files list under "Not reached".
+
+A capture defect, from A29: the screen records' "SP end" screenshots set the playhead just before the end (`believer_path4.cmd.txt:26` sets 109.255572 s; the engine's end is 109255.57244 ms), so they still draw Star Power running, and no capture sits at or after a window end. This also explains the handoff's open point about Believer path 4's second SP end. The capture pass after the last round fixes `moments.py`'s rounding so the end frame lands at or after the end.
+
+Round 9 ran as one workflow: auditors for A33 to A36, verifiers for A29 to A32, and the A26 and A27 re-sends, launched together.
