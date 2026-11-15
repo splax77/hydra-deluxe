@@ -283,3 +283,15 @@ Round 22 finished in about 6 minutes (248 tool calls), the re-sends in about 6 (
 Round 23's briefs carry a hook reading for question 3: a hook test's claim is checked on real input when it feeds the hook a recorded tool call or a real git state, against the hook's real decision. The hook repo `C:\Users\Patrick\.claude` is at `0586e15`, the commit `coverage.md` names.
 
 Round 23 ran as one workflow: auditors for E1 to E4, verifiers for D14 with A50 and D15 with D16, and the D10 and D13 re-sends, launched together.
+ Workflow wf_c9665164-95e; every slice finished.
+
+- E1 (c0924623, a86665f6): 249 records, about Keep 44, Rewrite 14, Remove 2, Investigate 189. Commit c0924623 also swept in E4's staged records file, so E4's first records sit in E1's commit.
+- E2 (40167770, 6bf04455): 158 records. Keep 20, Rewrite 28, Remove 2, Investigate 108. The auditor stated answers 2, 3, 6, 7 and 11 once per group, read the hooks only in outline and ran no `git log -S`, so every adding commit is "not read". Split: `progress.py` lines 16-18 own the budget numbers, and about 25 tests type them again.
+- E3 (cc6ec4d1, d6fd4cc9): 218 records. Keep 33, Rewrite 7, Remove 1, Investigate 177.
+- E4 (1a05f27b, c3be71a5, 31e6487b): 307 records. Keep 43, Rewrite 42, Remove 1, Investigate 221.
+- The E auditors leaned on shared answer blocks and read many hooks only in outline. The E verifiers must read the hook code behind each verdict.
+- verify D14 and A50 (1d6c7e32): D14 121 records, 6 disputed, all from "Investigate, claim not checked only" to Rewrite, each for a fault in the test itself.
+- verify D15 and D16 (cb5dd553): D15 144 records, 125 agreed, 19 disputed. BP-9 and BP-28 close as Keep on the real old lock script (`git show 4e5cd897^:tools/new_worktree.ps1`). Python 58, 66 and 68 copy the C++ default `double timeout = 30.0` (`tests/ui/uitest_commands.h` line 19). Python 71, 73, 82 and 83 assert `charts=98` through `scan()`.
+- re-send D10 (d1ae10d6): 11 checked, 9 agreed, 2 disputed. re-send D13 (f0fa98b6): 12 checked, 12 agreed. No D record is left unreached.
+
+Round 24 verifies E1 to E4, two verifiers a slice, because the slices hold 158 to 307 records.
