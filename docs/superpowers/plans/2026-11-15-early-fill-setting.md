@@ -149,7 +149,11 @@ Real chart examples need a build. Live step LS1 gets them from `testdata/input`:
 ## Questions
 
 1. **Results saved today.** Any result you saved on a dev build since this morning's merge (the 85 ms window) was analyzed at 85. Two answers. (a) Mark them out of date, the plan's way: after this change those charts show `Stale` at every box value until you analyze them again, and the settings stamp moves to `3.1.2+efillwindow`. (b) Keep them: the library file files those results under 85, so a chart shows `Ready` when the box is at 85 and `Not analyzed` at the default 60, and the stamp does not move. Results from 3.1.1 already read `Stale` and read `Stale` either way. Which?
+
+   The user chose "Mark them Stale": the stamp moves to `3.1.2+efillwindow` (T3).
 2. **The batch confirm box and `hydra_batch`'s header.** They list the settings a batch runs under (Difficulty, SP cap, Fills, Score range, Path limit). Your words did not ask for a new line there. Two answers. (a) Leave them: a batch at 85 and a batch at 60 print the same settings lines. (b) Add an `Early fill window` line to each, worded like `Path limit`. Until you say, the plan leaves both as they are.
+
+   The user chose "Add a line": an `Early fill window` line goes in each, worded like `Path limit` (T2).
 
 ## Tasks
 
@@ -311,7 +315,6 @@ Calls: `hydra_stop` (never tried)
 ## Out of scope, for the user to approve
 
 - Opening a rebuilt library file with an older Hydra build. Nothing in this plan tests it. Such a build looks results up by five lens columns, so it would not tell a result analyzed at 60 from one analyzed at 85. The column is added with no default, so an older build's save into the rebuilt file fails rather than filing a wrong row.
-- A line for the new setting in the batch confirm box and `hydra_batch`'s header, unless question 2 says yes.
 - Any change to the squeeze budgets, Rating words, timing tiers or `kHitWindowMs`.
 
 ## Promise map
