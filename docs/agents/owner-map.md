@@ -4,7 +4,7 @@ An owner map is a table a scout writes before a plan is written. It lists each q
 
 ## Why it exists
 
-On 2026-11-14 three plans in a row for the Preview's Star Power gauge invented rules the engine already had. Each planner pictured a design first, then searched for a function shaped like it. When none matched, it wrote its own: an empty gauge through a gap, a new "end as played" value, and a gate built from an engine check that answers a different question. Each one noticed that its result contradicted the user's words, and delivered the plan anyway. The user asked: "so why do planners keep failing to find the rules we already have? why are they inventing their own rules? how can we prevent this in the future?" Then the user approved the fix: "Yes, write them".
+On 2026-11-14 three plans in a row for the Preview's Star Power gauge invented rules the engine already had. Each planner pictured a design first, then searched for a function shaped like it, and wrote its own rule when none matched. The user asked: "so why do planners keep failing to find the rules we already have? why are they inventing their own rules? how can we prevent this in the future?" Then the user approved the fix: "Yes, write them".
 
 The map splits finding from planning. A scout that only finds the owners has no design to bend the search toward. A planner that may only use the map's rows has nothing to invent with.
 
@@ -40,7 +40,7 @@ A question can have only one owner. If two places answer it, the row names both 
 
 ## What the planner may do with the map
 
-The planner uses each row's owner as it is. It never builds a new value out of several owners. It never adds a condition to an owner, and never uses an owner for a question its own words do not claim. If a plan step needs a question the map lacks, the planner stops and asks for the row; it does not search and fill the row itself.
+The planner uses each row's owner as it is. It never builds a new value out of several owners. It never adds a condition to an owner, and never uses an owner for a question its own words do not claim. If a plan step needs a question the map lacks, the planner stops and asks the main session for the row; it does not search and fill the row itself.
 
 ## Who checks it
 
