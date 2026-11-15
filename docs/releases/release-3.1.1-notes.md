@@ -1,0 +1,9 @@
+Hydra Deluxe 3.1.1 fixes where the Preview tab draws Star Power on a path that squeezes. The Preview now draws each squeeze on the note the path squeezes. Your saved results carry over as they are from 3.0.0 or later: nothing reads `Stale` and nothing is analyzed again. If you update from 2.14.0 or earlier, the 3.0.0 notes apply: your results read `Stale` once.
+
+**Update from the app.** If you run 2.12.0 or later, the bar at the top of the window offers this release the next time Hydra Deluxe starts; click `Update`. If you run 2.11.0 or 2.11.1 with its update check on, a line under the toolbar offers it once its daily check runs. From 2.10.2 or earlier, download the `-setup.exe` file below and run it.
+
+**A squeeze-out ends Star Power on the squeezed note.** When a path squeezes out a note that sits before the end of Star Power, the Preview ends Star Power as that note crosses the strikeline. The teal floor, the railings, the timeline, the `SP drain` box and the multiplier all stop there. Before, they ran on to the end of the measure. The SP gauge drains to that note too, so at the activation note it can read a little below the bars you spent. The phrase the squeeze-out saves comes back on the gauge on that same note.
+
+**A squeeze-in refills the SP gauge on the squeezed note.** On a squeeze-in, the gauge refills as the squeezed note crosses the strikeline. Before, it refilled one note early. Between Star Power's old end and the squeezed note, the gauge reads empty while the floor stays teal and the `SP drain` box keeps counting.
+
+**The Path Builder names the squeezed-out note's measure.** On an activation that squeezes out a note before its Star Power end, the Path Builder's texts that say where Star Power ends now name that note's measure. That covers "Activation N runs until", "Hydra would end it at", the `ends` text of an end choice and the measure span of each step.
