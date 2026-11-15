@@ -33,3 +33,11 @@ The code that decides an E, at 326cd4e0, is in `src/core/model.h`, "the early-fi
 This code is about to change again. Main at c10c7f54 filed two rulings (session a3ba79d1, `docs/agents/rulings/code-and-engine.md`): "make the early fill threshold an adjustable setting pinned to one number in both directions" and "analysis settings panel, default 60ms, supports 0ms to 85ms". Beg's E0 has an `e_offset` of 0, inside the window at any value from 0 to 85 ms. Any other E record is retaken once the setting lands.
 
 **No activation.** `flammarker_ingame.dump.json` keeps one path, "(No activations.)" at 155295, and its schedule's `activations` is empty. It shows none of the cases above and stays as the record of a chart with no activation. Its screen shows a multiplier squeeze (+15).
+
+## The same charts at 60 ms (capture pass, 2026-11-15)
+
+`efill60/` holds each chart above dumped and scheduled again at `--efill 60`, with `hydra_replay` built from main `e60ab3c3` (code of `5ec682c7`), by the main session. Each dump is identical to the one in this folder at 85 ms apart from its `hydra_replay_build` stamp: the same paths, the same totals and the same notation, Beg's "1- 0 0 E0" included. Each schedule's `activations` are identical too. So none of these seven charts moves between the two windows.
+
+Burnout (Green Day, `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid`) is added at both windows, with the GUI tests' settings (`--cap 4 --ms 10 --depth 2`): `burnout.efill60.dump.json` and `burnout.efill85.dump.json`, identical apart from the stamp. Its best path is "3- 1 2" at 378315.
+
+A dump does not write the window it was made at. Neither `dump` nor `schedule` output names `--efill`; the schedule's `constants.window_back_ms` is the hit window (85), not the early-fill window. So the file name is the only record of which window a dump used.
