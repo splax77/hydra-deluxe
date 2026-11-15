@@ -120,4 +120,12 @@ Round 5 ran as one workflow (wf_9f326d56-f28): auditors for A17 to A20 and verif
 - verify A13 and A14 (79500919): A13 24 agreed, 1 disputed (record 13 Remove should be Rewrite); A14 29 agreed, 13 disputed, among them its only Keep (record 41) and 12 "input only" Rewrites that should be Investigate, "claim not checked only".
 - verify A15 and A16 (364943a0): A15 28 agreed, 2 disputed (records 20 and 21 should be Rewrite); A16 21 agreed, 4 disputed, all Keeps (records 7, 15, 21, 25). It also found that records 11 and 13 of A15 name `pitch_dark_preview_1_act.png` as chord 437; the capture is at 85963 ms, chord 144.
 
-Round 6 ran as one workflow: auditors for A21 to A24 and verifiers for A17 to A20, launched together.
+Round 6 ran as one workflow (wf_c6addab9-6e9): auditors for A21 to A24 and verifiers for A17 to A20, launched together. About 10 minutes, 275 tool calls; every slice finished.
+
+- A21 (b465e417): 30 records. Keep 9, Rewrite 11, Investigate 10. Case 30 compares against the saved Onyx screenshot `golden_onyx.png`; the filed ruling at `code-and-engine.md:50` reads "we don't need golden anymore, remove it all", and the auditor found the card showing it answered a question about the Python `golden/` folder. Whether it reaches the Onyx image is a question for the user.
+- A22 (d268dd66): 40 records. Keep 2, Rewrite 20, Investigate 18. Production finding: `saved_enough` (`src/ui/preview_timeline.cpp:493-515`) works out "enough Star Power to activate" from drawn y positions, not the engine's `sp_ready_ms`.
+- A23 (413f78ab): 21 records. Rewrite 13, Investigate 8.
+- A24 (a3c7d531, 2ed115b9): 27 records. Rewrite 18, Remove 4, Investigate 5.
+- verify A17 and A18, verify A19 and A20: committed; the A19 verifier moved PB1 to Remove, PC2 and PC3 to Rewrite (each returns after a MESSAGE when its commit is missing), and PC5 to Keep.
+
+Round 7 ran as one workflow: auditors for A25 to A28 and verifiers for A21 to A24, launched together.
