@@ -233,4 +233,14 @@ Round 17 ran as one workflow (wf_c5a224d6-6f2): auditors for C9 to C12, verifier
 - C12: committed in parts (srb, stars, stream_mix, strutil).
 - verify C5 and C7 reached every record. C6's verifier did not open nine records (NW15, OBJ1, OBJ6, OL19, OL20 and others, listed in `verify/C6.md`), and C8's four; each gets the slice's one re-send. The C3 re-send (`verify/C3-resend.md`) checked all six and agreed with all six.
 
-Round 18 ran as one workflow: auditors for C13, C14, C15 and D1, verifiers for C9 to C12, and the C6 and C8 re-sends, launched together.
+Round 18 ran as one workflow (wf_2de95388-9f9): auditors for C13, C14, C15 and D1, verifiers for C9 to C12, and the C6 and C8 re-sends, launched together. About 7.5 minutes, 302 tool calls; every slice finished.
+
+- C13 (cc2450b4, 35014df0): 54 records. Keep 4, Rewrite 14, Investigate 36.
+- C14 (37475313): 18 records. Keep 8, Rewrite 8, Investigate 2. Its auditor wrote no record for `tests/fuzz/fuzz_audio.cpp`, `fuzz_chart.cpp` or `tests/single_owner/engine.cpp`.
+- C15 (cb1bf706): no record; its auditor judged the four fuzz files as holding no test case. The plan (T5) counts each fuzz file as one record, so the six fuzz files and `engine.cpp` go to one fresh auditor (`briefs/T5-fuzz.md`, writing `records/C14-C15-fuzz.md`).
+- D1 (d192e6c7): 161 records. Keep 5, Rewrite 17, Remove 3, Investigate 136.
+- verify C9 to C12 committed with nothing unreached; the C6 and C8 re-sends checked every listed record.
+
+Round 19's split: `tools/ch_mcp/tests/test_game_tools.py` is cut at line 1780, a test-function boundary near the plan's 1778: D4 holds 101 test functions, D5 holds 134.
+
+Round 19 ran as one workflow: auditors for D2 to D5, the fuzz auditor, and verifiers for C13 to D1, launched together.
