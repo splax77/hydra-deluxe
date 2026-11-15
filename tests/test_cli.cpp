@@ -192,7 +192,7 @@ TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
     CHECK(contains(r.output, "SP cap     : 4 bars"));
     CHECK(contains(r.output, "Path limit : 10 ms"));
     CHECK(contains(r.output, "Fills      : Clone Hero 1.1"));
-    CHECK(contains(r.output, "Early fill window: 60 ms"));
+    CHECK(contains(r.output, "Early fill : 60 ms"));
     CHECK(contains(r.output, "Found 1 chart."));
     // Every number is the batch's progress, in library rows (D79); the
     // store's raw row count is not printed.

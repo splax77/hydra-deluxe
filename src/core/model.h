@@ -971,7 +971,9 @@ struct HydraRecord {
     // names the other rule.
     bool legacy_fills = false;
     // The early-fill window, in ms, the search ran under
-    // (SearchSettings::early_fill_window_ms). analyze_chart sets it.
+    // (SearchSettings::early_fill_window_ms). analyze_chart sets it. A saved
+    // record's profile carries it (store::Lens::efill_window_ms), and
+    // prepare_record refuses a profile that names another window.
     double early_fill_window_ms = kDefaultEarlyFillWindowMs;
     std::vector<Path> paths;
 
