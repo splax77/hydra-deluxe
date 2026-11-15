@@ -2,7 +2,7 @@
 
 These are real tests from this repo, judged by the questions in `docs/agents/test-rubric.md`. "Q3" means question 3 on that page. Every quoted line was copied from the file at the commit that last changed this page; line numbers are from that commit and will drift. Where a neighbouring line was not read again for this page, the example says so.
 
-Thirteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. There is no good-examples list, because no test in this repo passes every question yet; the last section says what a good test looks like.
+Fourteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. Then comes one good example, G1, with its full record. No existing test was found that passes every question, so G1 was written for this page.
 
 ## Bad examples: the framing is the bug
 
@@ -20,7 +20,7 @@ It fails Q2, Q3 and Q6. The claim (Q1) is that the gauge refills at the old SP e
 
 Q3 shows what that costs. On Pitch Dark (`testdata/input/test_pitch_dark_ratio`), the engine's record for the first activation has its squeeze-in step on chord 243, at tick 128520. `refill_tick` hands the gauge tick 128400 instead, the end in force before that step. The gauge refills at a moment the record never named. The test types that moment in milliseconds, so it holds the gauge to the wrong place.
 
-The rewrite takes the expected side from the record. For each step in the activation's `sp_end_steps`, the gauge changes at the tick that step names, and it changes nowhere else. No millisecond and no bar reading is typed. The values 7000 ms and 0.875 do not survive. The finding against `refill_tick` is reported on its own line (derive-once, kind A), and the test rewrite does not close it.
+The rewrite takes the expected side from the record. For each step in the activation's `sp_end_steps`, the gauge changes at the tick that step names, and it changes nowhere else. No millisecond and no bar reading is typed. The values 7000 ms and 0.875 do not survive. This rewrite fails on today's code, because the gauge still asks `refill_tick`; it is written together with the Preview fix, not before it. The finding against `refill_tick` is reported on its own line (derive-once, kind A), and the test rewrite does not close it.
 
 ### B2. The same rule pinned as a raw number, twice more
 
@@ -71,7 +71,7 @@ The rewrite states the behaviour on the record's own fields. For every step that
 
 It fails Q3 and Q6. The claim is that the gauge shows nothing at the squeezed-out chord, drains to the end of the window, and gains the bar there. The engine names the squeeze-out chord: the activation's `sqout_tick`, and the `squeezes` entry in the schedule output. On Blight (Hail The Sun, from the user's library) the record's squeeze-out is chord 228 at tick 64800, and the SP end is tick 65280 with no chord between. The gauge draws Star Power ending at 65280 and marks nothing on chord 228. The test requires exactly that: "no step there".
 
-The rewrite takes the squeeze-out from the record: where the activation has a `sqout_tick`, the gauge marks the squeeze-out on that chord. No millisecond is typed, and "no step there" does not survive. What the gauge reads after that chord is for the Preview fix to decide, not for this page.
+The rewrite takes the squeeze-out from the record: where the activation has a `sqout_tick`, the gauge marks the squeeze-out on that chord. No millisecond is typed, and "no step there" does not survive. Like B1's, this rewrite fails on today's code and is written together with the Preview fix. What the gauge reads after that chord is for the Preview fix to decide, not for this page.
 
 ### B5. The engine-side twin, typed as raw ticks
 
@@ -111,7 +111,7 @@ The rewrite keeps the test's one property (every saved row shows the timing the 
     IM_CHECK_EQ(shown(), (size_t)98);
 ```
 
-It fails Q5 and Q6. The promise is that the library shows every chart the scan found. 98 is a snapshot. The rewrite takes the count from the scan the test just ran, and checks each place that shows a count against it. The number is never typed.
+It fails Q5 and Q6. The promise is that the library shows every chart the scan found. 98 is a snapshot. The rewrite takes the charts from the scan the test just ran. It checks the rows by name, one row for each scanned chart and no other row, because a count alone passes with the wrong rows (Q9). Each place that shows a count is then checked against the size of that same scan. The number is never typed.
 
 ### B8. A loop floor
 
@@ -142,7 +142,7 @@ It fails Q9. A chart that loads with no notes is passed over without a word. If 
             auto scales = frontend_transfer_scales(act, song.timing());
 ```
 
-It fails Q9. The test calls `frontend_transfer_scales` and compares the result with the scale stored on the activation. If the engine stamps the stored scale through the same function, as an earlier version of this page reported from the test's header comment, the test proves only that the value was stored and read back. That comment was not re-read for this page. The test's name also says a display recomputes the scale, which is a Q2 question in its own right: find who calls the function before judging the test.
+It fails Q9. The test calls `frontend_transfer_scales` and compares the result with the scale stored on the activation. The engine stamps the stored scale through that same function: `src/search/engine.cpp` line 2099 is its only caller in `src/` and `tools/`. So the test proves only that the value was stored and read back. The test's name says a display recomputes the scale, and no display calls the function, so the name is wrong too (Q1).
 
 The record calls it a wiring check and names the test that checks `frontend_transfer_scales` against a hand-built tempo change. With none, the verdict is rewrite.
 
@@ -167,7 +167,7 @@ It fails Q5. The expected value comes out of Hydra: `tick_ms` (`tests/record_fix
     CHECK(all == 622);
 ```
 
-It fails Q4, Q5 and Q9. The comment above the test says "The three numbers are pinned from one run". And 622 belongs to whichever chart sorts first. The same comment states the rule: "one row per chart timestamp". The rewrite checks that against the song the test loaded.
+It fails Q4, Q5 and Q9. The comment above the test says "The three numbers are pinned from one run". And 622 belongs to whichever chart sorts first. The same comment states the rule: "one row per chart timestamp". The rewrite checks that against the song the test loaded, item by item: every row sits on one of the song's timestamps, and every timestamp has exactly one row. Comparing the two counts would be a stand-in (Q9).
 
 ### B13. A raw result whose meaning lives in a comment
 
@@ -183,14 +183,150 @@ It fails Q4, Q5 and Q9. The comment above the test says "The three numbers are p
 
 The test builds a chart at 125 BPM with 480 ticks a beat, so one tick is one millisecond. Fill A starts at tick 9120 and ends at 9600. Clone Hero's 1.1 deadline is four beats before a fill's start (FL-19 in `docs/clone-hero/04-fills.md`): 9120 minus 1920 is 7200. Hydra keeps a fill offered until Star Power comes ready up to 85 ms after that deadline (FL-23, Hydra's own reach, which the game does not have). So 7285 is "the fill's start, minus four beats, plus Hydra's 85 ms reach". None of that is in the check. It fails question 4: cover the comments and nobody can tell what 7285 is. The comment's reason for typing it ("so a changed window fails here") is real, but a named rule number does the same job.
 
-The rewrite names the inputs and the two rules: `fill_a_start`, `deadline = fill_a_start - 4 * beat`, and `reach = deadline + 85` with the 85 cited to FL-23. Then `passed_over(reach)` holds fill A and `passed_over(reach + 1)` is empty.
+The rewrite names the inputs and the two rules: `fill_a_start`, `deadline = fill_a_start - 4 * beat` with the four beats cited to FL-19, and `reach = deadline + 85` with the 85 cited to FL-23. Then `passed_over(reach)` holds fill A, written as fill A's named end and not as 9600, and `passed_over(reach + 1)` is empty. This page has not done Q2 and Q3 for the reach rule (who uses it, and what the engine recorded on a real chart). So this is a sketch of the checks only, and the test stays off the good list until both are answered.
 
-## What a good test looks like
+### B14. A near miss: rule numbers, plus one number nobody can explain and one line that guards nothing
 
-No test in this repo passes every question yet. Earlier versions of this page listed "good examples" that each broke a question: a raw result such as 7285, a silent skip, a check in the same test as snapshot totals, or a display check that tested only one direction. They are gone, because a good list that holds bad tests teaches the wrong thing.
+"timing: to_multiplier thresholds", `tests/test_timing.cpp` lines 72 to 82. This is the closest any existing test came, so it is quoted whole:
 
-A good test of a display, the case this page was rewritten for, would take every chart in `testdata/input` and skip none. At each chord it asks the engine's record what happens there: did Star Power pay this chord, is it the squeezed chord, does Star Power end or refill here. Then it requires the display to draw exactly that at that chord, and nothing of the kind at any other chord. It types no number but zero. A failure names the chart and the chord. Today it would fail on Pitch Dark, where the gauge refills one note before the squeezed snare, and on Blight, where Star Power is drawn running past the squeezed-out chord. The first test written to this shape becomes this page's first good example.
+```cpp
+TEST_CASE("timing: to_multiplier thresholds") {
+    using hydra::to_multiplier;
+    CHECK(to_multiplier(0) == 1);
+    CHECK(to_multiplier(9) == 1);
+    CHECK(to_multiplier(10) == 2);
+    CHECK(to_multiplier(19) == 2);
+    CHECK(to_multiplier(20) == 3);
+    CHECK(to_multiplier(29) == 3);
+    CHECK(to_multiplier(30) == 4);
+    CHECK(to_multiplier(1000) == 4);
+}
+```
+
+Its claim is right (Q1 to Q3, as in G1's record below). It still fails four questions.
+
+It fails Q5 on line 81. Nothing says why 1000. The line is there to show the multiplier stops at x4, and 1000 is just a big number somebody picked. It fails Q8 on line 74: every small change to `to_multiplier` in `src/core/timing.cpp` that turns `to_multiplier(0) == 1` red also turns line 75 red, so line 74 guards nothing of its own. It fails Q4 on lines 75, 77 and 79: 9, 19 and 29 are each "one below a step", but the line does not say so, and the test cites no page for 10, 20 and 30. It fails Q7: the commit that added it, 3b699581, is a bulk checkpoint that names no failure.
+
+The verdict is rewrite, and G1 is that rewrite.
+
+## A good example
+
+### G1. The combo multiplier steps up at combos 10, 20 and 30 and stops at x4
+
+This test was written for this page. It is not in `tests/` at this page's commit. It belongs in `tests/test_timing.cpp`, where it replaces "timing: to_multiplier thresholds" (B14), and the file gains `#include <limits>`. It is on this page because its record below answers every question with no exception. If a later reader finds an answer in that record that is wrong, G1 comes off this page; it does not stay with a note.
+
+```cpp
+TEST_CASE("timing: the combo multiplier steps up at combos 10, 20 and 30 and stops at x4") {
+    using hydra::to_multiplier;
+
+    // The combo at which each multiplier starts: SC-05 in
+    // docs/clone-hero/06-scoring.md.
+    const int x2_from = 10;
+    const int x3_from = 20;
+    const int x4_from = 30;
+
+    CHECK(to_multiplier(x2_from - 1) == 1);
+    CHECK(to_multiplier(x2_from) == 2);
+    CHECK(to_multiplier(x3_from - 1) == 2);
+    CHECK(to_multiplier(x3_from) == 3);
+    CHECK(to_multiplier(x4_from - 1) == 3);
+    CHECK(to_multiplier(x4_from) == 4);
+
+    // x4 is the top, however long the combo runs.
+    CHECK(to_multiplier(std::numeric_limits<int>::max()) == 4);
+}
+```
+
+Every number in it is either typed in SC-05 (10, 20, 30 and the multipliers 1 to 4) or written as its working (`x2_from - 1`). The last line's input is the longest combo an `int` can hold, so no big number is picked.
+
+The record, in the rubric's own shape:
+
+```
+timing: the combo multiplier steps up at combos 10, 20 and 30 and stops
+            at x4 (written for this page; for tests/test_timing.cpp)
+Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
+            :12-17); multiplier_step and crosses_multiplier_step (:19-27);
+            category_scores (src/core/scoring.cpp:41-57);
+            MultSqueeze::applies' call (src/core/model.cpp:369); grep
+            to_multiplier in src/ and tools/ (core files only); SC-05
+            (docs/clone-hero/06-scoring.md:53-61); the hydra_replay
+            schedule output for Pitch Dark (testdata/input/
+            test_pitch_dark_ratio), from the main session; where that
+            output's per-note multiplier is written
+            (tools/replay_schedule.cpp:391) and filled from
+            category_scores' per-note answer (src/core/replay.cpp:160,
+            ReplayNote in src/core/replay.h:147-154); the old test
+            (tests/test_timing.cpp:72-82) and its commit, 3b699581; grep
+            to_multiplier and multiplier_step in tests/.
+1 Claim:    The 10th note in a row is the first that pays double, the
+            20th the first that pays triple, the 30th the first that pays
+            four times, and no combo pays more than four times.
+2 Owner:    to_multiplier works it out. The engine owns it: category_scores
+            calls it for every note it scores (scoring.cpp:57, after
+            combo += 1 on :56), and multiplier_step calls it for
+            category_scores (:46) and for the multiplier squeeze
+            (model.cpp:369). No file under src/app, src/ui or tools calls
+            it.
+3 Real chart: Engine, Pitch Dark, per-note multiplier in the schedule
+            output, every note hit from the start: note 9 (chord 4, tick
+            72240) x1; note 10 (chord 5, tick 72480) x2; note 19 (chord
+            12, tick 74160) x2; note 20 (chord 13, tick 74400) x3; note 29
+            (chord 18, tick 75840) x3; note 30 (chord 19, tick 76000) x4;
+            note 31 (chord 20) x4. No Star Power pays these chords.
+            Claim: x2 from the 10th, x3 from the 20th, x4 from the 30th.
+            They agree.
+4 Direct:   Seven checks. Six read "at this combo, this multiplier", each
+            combo written as a step SC-05 names or as one below it. The
+            seventh reads "the longest combo still pays x4". With the two
+            comments covered, the constants' names still say what each
+            number is.
+5 Reason:   10, 20, 30 and the multipliers 1 to 4: SC-05, "So 1x at 0 to
+            9, 2x at 10 to 19, 3x at 20 to 29 and 4x from 30", Label:
+            Proven in the game's code. The "- 1" is the test's working,
+            on the line. numeric_limits<int>::max() is the test's own
+            input, and its name says what it is. No other number.
+6 Display:  Not a display test. Question 2's callers are all in src/core;
+            nothing a person reads calls to_multiplier directly.
+7 Failure:  A step that sits one combo early or late, or a missing top.
+            Every chord near a step would be scored at the wrong
+            multiplier, and a multiplier squeeze would be offered on the
+            wrong chord. Still possible: to_multiplier is three
+            hand-typed comparisons. The old test's commit named no
+            failure, so this one is named here (reasoned).
+8 Deleted:  All reasoned, each a change to to_multiplier.
+            (x2_from - 1) == 1: "combo < 10" typed as "combo < 9".
+            (x2_from) == 2:     "combo < 10" typed as "combo <= 10".
+            (x3_from - 1) == 2: "combo < 20" typed as "combo < 19".
+            (x3_from) == 3:     "combo < 20" typed as "combo <= 20".
+            (x4_from - 1) == 3: "combo < 30" typed as "combo < 29".
+            (x4_from) == 4:     "combo < 30" typed as "combo <= 30".
+            (max) == 4:         the body replaced by SC-05's formula,
+                                1 + combo / 10, without its cap. The six
+                                lines above all still pass on that.
+            Each line can fail, and no other line catches its bug.
+9 Stand-in: None. The risk is a wrong multiplier at a step, and each line
+            asks for the multiplier at a step. It leans on no chart, file
+            order, timing or other test. A failure prints the line, and
+            the line names the step.
+10 Same rule: tests/test_timing.cpp:72 states it and is replaced by this
+            test (B14). tests/test_model.cpp:249 tests multiplier_step, a
+            different question: what a chord's first and last notes pay.
+            tests/test_stars.cpp:124 and tests/test_replay.cpp:1613 call
+            to_multiplier for a value and do not state where the steps
+            sit. tests/test_docs_match_code.cpp:345 reads the first x2
+            combo out of the code to check a page, and states no rule.
+11 Real:    Yes. Pitch Dark reaches all three steps in its first 20
+            chords. A combo as long as the last line's input cannot
+            happen; the line says why it is used (no combo, however long).
+Verdict:    Keep.
+```
+
+## The display test that comes with the Preview fix
+
+This page was rewritten because of a display, the Preview's gauge, so it should hold a good display test. It cannot hold one today. A good display test checks the gauge against the engine's record, and the gauge disagrees with the record today (B1 and B4). A test that is right would fail, and a test that passes would be wrong.
+
+Here is the test to write in the same change as the Preview fix. It takes every chart in `testdata/input` and skips none. At each chord it asks the engine's record what happens there: did Star Power pay this chord, is it the squeezed chord, does Star Power end or refill here. Then it requires the display to draw exactly that at that chord, and nothing of the kind at any other chord. It types no number but zero. A failure names the chart and the chord. Today it would fail on Pitch Dark, where the gauge refills one note before the squeezed snare, and on Blight, where Star Power is drawn running past the squeezed-out chord. When it is written and passes, it gets its own record here and becomes G2.
 
 ## What was removed from this page, and why
 
-An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13).
+An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13). The version after that had no good example at all; G1 was written to fill that gap.

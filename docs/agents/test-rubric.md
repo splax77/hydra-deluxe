@@ -18,7 +18,7 @@ So the questions below start with what the test claims, and who owns that claim.
 
 ## Two kinds of number
 
-A **rule number** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". The game or the user chose it, a page or a ruling states it, and the test would be wrong with any other value. Rule numbers are fine. Only the rule itself counts: 85 is a rule number, but 7285 (a deadline on a made-up chart plus 85) is a raw result built from one, and fails like any other raw result.
+A **rule number** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". The game or the user chose it, a page or a ruling states it, and the test would be wrong with any other value. Rule numbers are fine. Only the rule itself counts: 85 is a rule number, but 7285 (a deadline on a made-up chart plus 85) is a raw result built from one, and fails like any other raw result. The same holds for small numbers: 10 is the combo where the multiplier first doubles, and 9 is a result built from it. Write the working, `x2_from - 1`, so the line shows which rule the 9 comes from.
 
 A **snapshot number** is what the code printed on the day the test was written. A total over `testdata/input` is always one, because adding a chart changes it. A number "pinned from one run" is one. A number an agent picked and someone approved is one too, until somebody writes down why that value and no other. Snapshot numbers are never fine.
 
@@ -56,22 +56,22 @@ A decision record does not answer this question. The squeeze-in claim cites one:
 
 **4. Does each check state the expected behaviour directly?** Go through the test one assertion at a time. For each, say in one plain sentence what it checks, then look at what it compares against. These pass:
 
-- A rule number, typed because the test is about that rule.
+- A rule number, typed because the test is about that rule, with the page and rule id that state it written where the number is typed. Calling a number a rule number does not make it one: open the rule and find that exact value in it.
 - A property: two things that must agree, or a condition every item must meet. "No row differs." "Every stored fill is a fill on the screen."
 - The owner's answer, compared item by item (question 6).
 - The rule applied to the chart's named inputs, so the check reads as the rule.
 
 These fail: a snapshot number, a floor with no reason, and a raw result whose meaning lives in a comment. The test for a raw result is to cover the comments and ask whether a reader can still tell what behaviour the line protects.
 
-**5. Can each number be traced to a reason?** A reason says why this value and not another, and why the test needs it. An approval is not a reason. A citation is not a reason until you open it. So open every D-number, ruling and page the test cites, and write down what it said. Four things give a reason: a Clone Hero rule (cite the page and rule id under `docs/clone-hero/`, and copy its `Label:` line); a line under `## Confirmed` in `docs/agents/rulings/` that names the value; the test's own input, which the test is free to choose; and a property, which needs no number. Zero is the one literal a property may use freely.
+**5. Can each number be traced to a reason?** A reason says why this value and not another, and why the test needs it. An approval is not a reason. A citation is not a reason until you open it. So open every D-number, ruling and page the test cites, and write down what it said. Four things give a reason: a Clone Hero rule (cite the page and rule id under `docs/clone-hero/`, and copy its `Label:` line); a line under `## Confirmed` in `docs/agents/rulings/` that names the value; the test's own input, which the test is free to choose; and a property, which needs no number. An input is free only when its name or its working says what it stands for. `to_multiplier(1000)` holds an input nobody can explain: why 1000, and not 31 or a million? If the value matters, write it from the rule. If it does not, say what range it stands for, in code. Zero is the one literal a property may use freely.
 
 Three things never give one. A snapshot. A copy, where the test repeats the production code's steps to make its expected value, so it agrees with any bug in them. And a saved expected-output file: the ruling in `docs/agents/rulings/code-and-engine.md` reads "we don't need golden anymore, remove it all", so never propose one.
 
-**6. For a test of a display: is the display checked against what the engine already knows?** A display is anything a person reads: the Preview, the gauge, a report, a table, a label. Its test takes the expected side from the engine's record, and compares item by item: for each chord, step or row the record names, the screen shows that one, at that place. The test never types the value the display should show, and never calls a function only the display uses to get it. A display test with a typed expected value can only prove the display does what the display does.
+**6. For a test of a display: is the display checked against what the engine already knows?** A display is anything a person reads: the Preview, the gauge, a report, a table, a label. Its test takes the expected side from the engine's record, and compares item by item: for each chord, step or row the record names, the screen shows that one, at that place. The test never types the value the display should show, and never calls a function only the display uses to get it. A display test with a typed expected value can only prove the display does what the display does. "Not a display test" is an answer only with question 2's caller list beside it, showing that nothing a person reads calls the function directly.
 
 This is not the fault question 9 describes. Comparing a screen with the record is the right shape for a display test, because the record is the screen's owner. The record itself is tied to the game by the engine's own tests.
 
-**7. What failure is the test for, and can it still happen?** Find the commit that added the test (`git log -S` on its name) and read what broke. Say the failure in one sentence. Then read today's code and say whether it is still possible. A test nobody can name a failure for was written to make a number green.
+**7. What failure is the test for, and can it still happen?** Find the commit that added the test (`git log -S` on its name) and read what broke. Say the failure in one sentence. Then read today's code and say whether it is still possible. A test nobody can name a failure for was written to make a number green. A commit that names no failure, such as a bulk checkpoint, leaves the question unanswered; it does not answer it. Then name the failure yourself, as a wrong result a player would see, or give the verdict investigate.
 
 **8. Line by line: can this check fail, and if it were deleted, what bug would go unnoticed?** Answer for every assertion. First read the production code and ask whether the line can fail at all. `CHECK(act.refill_tick(k) <= prev.end_tick)` in `tests/test_sp_end.cpp` sits under the comment "SP never runs dry inside a window". For a squeeze-in step, `refill_tick` returns the smaller of the step's tick and `prev.end_tick`. So the line is true by construction there, and it proves nothing about Star Power running dry. Then name the bug the line catches, as a small change in a named function: a comparison turned around, a boundary moved by one tick, a step skipped. If the answer is "none, another line catches it", the line goes. If the answer is "any change at all", the line is a snapshot. Mark each claim **reasoned** (you read the code) or **confirmed** (the main session planted the bug, built, and saw red). Agents cannot build, so every agent claim starts as reasoned.
 
@@ -87,7 +87,7 @@ This is not the fault question 9 describes. Comparing a screen with the record i
 
 One line, one of four.
 
-- **Keep.** The claim agrees with the owner's answer on a real chart, and every other question holds for every assertion.
+- **Keep.** The claim agrees with the owner's answer on a real chart, and every other question holds for every assertion. One answer of "no", "partly", "not read" or "claim not checked", on any question or any line, rules Keep out. A fault that the record admits is still a fault.
 - **Rewrite.** The promise is worth keeping, but the claim is the display's own rule, or a check is a snapshot, a copy, a stand-in or a raw result. Say what the test should check instead, as the behaviour stated directly. A rewrite never keeps a value that question 3 showed to be wrong, under a new name or any other way.
 - **Remove.** Another test already makes the same promise (name it), or the failure can no longer happen (say why).
 - **Investigate.** You cannot say what the test should promise, or the engine's record and a decision disagree, or a value has no reason you can find. This goes to the user as a question (exit 2 in `docs/agents/audit-method.md`). Do not assume the current code is right.
@@ -141,7 +141,7 @@ Finding:    Activation::refill_tick is a game rule only the Preview uses
 
 ## Named inputs
 
-Question 4 lets a check be the rule applied to the chart's named inputs: "measure 3", "a quarter measure after this end". No test helper does this today, and this page does not write one; that is a code change with its own plan and review. The fixtures state their grid in comments, such as the one above `make_late_sqin_song` in `tests/record_fixtures.h`.
+Question 4 lets a check be the rule applied to the chart's named inputs: "measure 3", "a quarter measure after this end". No test helper does this today, and this page does not write one; that is a code change with its own plan and review. A test needs no helper to do it, though: example G1 on the examples page names its three inputs as plain constants in the test. The fixtures state their grid in comments, such as the one above `make_late_sqin_song` in `tests/record_fixtures.h`.
 
 One trap matters now. A helper that names a tick by calling Hydra's timing code, or `test::tick_ms` in `tests/record_fixtures.h`, which reads the song's own tempo map, is fine for finding an input. It may never produce an expected result. An expected value that came out of production code is a copy.
 
