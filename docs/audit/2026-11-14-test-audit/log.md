@@ -270,3 +270,16 @@ Round 21 ran as one workflow (wf_b1327db0-d65): auditors for D10 to D13 and veri
 - verify D6 and D7 (e4e69121): partial, 96 of 334 records reached. verify D8 and D9 (103a52b4, be659b59): partial, D8 124 of 168 reached and D9 almost none. A D slice holds 114 to 168 records, so two slices are more than one verifier can read inside the caps. Each of D6 to D9 gets its one re-send (`briefs/T5-verify-resend.md`), and from round 22 each D slice gets a verifier of its own.
 
 Round 22 ran as two workflows launched together: one with auditors for D14, D15, A50 and D16 and one verifier each for D10 to D13 (`briefs/T5-verify-R21-D10.md` to `-D13.md`); one with the D6 to D9 re-sends.
+
+Round 22 finished in about 6 minutes (248 tool calls), the re-sends in about 6 (173 calls); every slice finished.
+
+- D14 (8d260d9f): 121 records. Rewrite 2, Investigate 119. F1: `compare_db.py` TABLES lists tables `src/store` no longer creates. The effort-test plan was removed (`git show 6804353f:docs/superpowers/plans/2026-11-07-agent-effort-test.md`), and no page names `effort_test_*`; whether the experiment still runs is a question for the user.
+- D15 (208be24f): 84 Python records and 60 PowerShell records, one per block of `Check` calls that sets up one situation, each listing its `Check` lines. The plan's unit for a `.ps1` file is one `Check` call; T8 counts the `Check` lines inside the blocks. Split: the 120 s unclaimed-pass limit's only source, `agents-and-workflow.md` line 35, is under `## Unconfirmed`.
+- A50 (d6faf045): 2 records, both Keep, checked on a real corpus chart's record against SQLite's planner.
+- D16 (a0597b24): 2 records.
+- verify D10: 103 of 114 reached; 11 left. verify D11, D12: every record reached. verify D13: records 122 to 124 left. Each of D10 and D13 gets its one re-send.
+- re-sends D6 (d4fb4023), D7 (96564929), D8 (e7f95eeb) and D9: every listed record reached. D8's re-send moved seven `test_mono_facts.py` records to Keep, checked on the real Mono facts file (`hydra-data/ch-dumps/4045/facts.json`) and the real 1.0 game folder.
+
+Round 23's briefs carry a hook reading for question 3: a hook test's claim is checked on real input when it feeds the hook a recorded tool call or a real git state, against the hook's real decision. The hook repo `C:\Users\Patrick\.claude` is at `0586e15`, the commit `coverage.md` names.
+
+Round 23 ran as one workflow: auditors for E1 to E4, verifiers for D14 with A50 and D15 with D16, and the D10 and D13 re-sends, launched together.
