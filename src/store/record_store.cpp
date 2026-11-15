@@ -839,6 +839,10 @@ void RecordStore::set_up_schema(LibraryFileKind kind) {
     if (kind == LibraryFileKind::Convertible || kind == LibraryFileKind::LacksFailureColumns ||
         kind == LibraryFileKind::LacksAlbumColumn)
         add_album_column();
+    // The saves and the scan's purge leave a profile they emptied in place:
+    // the deletion reads every record, too slow to run on each save. Every
+    // read joins records to profiles, so an empty profile shows nowhere.
+    drop_empty_profiles();
 }
 
 void RecordStore::add_album_column() {
@@ -1200,10 +1204,18 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
 }
 
 void RecordStore::drop_empty_profiles() {
-    CachedStmt d = use_write(db_, stmt_cache_,
-        "DELETE FROM profiles WHERE NOT EXISTS"
-        " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)");
-    step_done(d, "deleting emptied profiles");
+    try {
+        exec("DELETE FROM profiles WHERE NOT EXISTS"
+             " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)");
+    } catch (const KindedError&) {
+        // Another connection holding the write lock, such as a batch's open
+        // save group, does not fail the open: no read shows an empty
+        // profile, so it can wait for an open that can write. exec leaves
+        // the failed statement's code on the connection.
+        const int code = sqlite3_errcode(db_) & 0xff;
+        if (code == SQLITE_BUSY || code == SQLITE_LOCKED) return;
+        throw;
+    }
 }
 
 void RecordStore::file_record(const Profile& profile, const std::string& hyversion,
@@ -1230,8 +1242,8 @@ void RecordStore::file_record(const Profile& profile, const std::string& hyversi
 
     // (2) The record, replacing the chart's record under the same profile.
     write_record(profile_id_for(profile, hyversion, rules_fp_bytes(rules_fp)), record);
-    // (3) A profile the purge emptied goes with its last record.
-    drop_empty_profiles();
+    // A profile the purge emptied stays until the next open
+    // (drop_empty_profiles, from set_up_schema).
 }
 
 namespace {
@@ -1262,7 +1274,8 @@ void RecordStore::reidentify_chart(const std::string& notespath, const std::stri
 void RecordStore::purge_charts_not_in_library(const char* caller) {
     delete_records_where(not_in_library("song_id"), [](sqlite3_stmt*) {},
                          std::string(caller) + " purge");
-    drop_empty_profiles();
+    // A profile this emptied stays until the next open (drop_empty_profiles,
+    // from set_up_schema).
 }
 
 std::vector<RecordLookup> RecordStore::lookup(const std::vector<std::string>& song_ids,

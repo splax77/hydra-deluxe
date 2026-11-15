@@ -66,9 +66,11 @@ One owner answers each question:
 - `RecordStore::save` is the one write, used by the click, the batch,
   `hydra_batch` and `tools/bench.cpp`. In one transaction it replaces the
   chart's record under its profile, deletes the chart's records under every
-  profile whose results stamp this build cannot read, and deletes any profile
-  left with no records. A record made under other rules but a readable stamp
-  stays, because it reads Ready again if the rules come back (D51 call 8).
+  profile whose results stamp this build cannot read. A profile left with no
+  records stays until the store next opens, which deletes it
+  (`RecordStore::drop_empty_profiles`). A record made under other rules but
+  a readable stamp stays, because it reads Ready again if the rules come back
+  (D51 call 8).
 - `RecordStore::lookup` and `RecordStore::lookup_one` answer Ready, Stale or
   Not analyzed (below). The library's chips, the batch's skip list
   (`RecordStore::settled_song_ids`), the report and both comparison pages
@@ -202,7 +204,9 @@ date).
 when the winning record is a failure. Every rule above still applies to a
 failure record: the stamp and rules checks (so a stamp bump makes it Stale
 and it is tried again), the purge of charts that left the library, the
-deletion of empty profiles and the save's replace. The batch's skip list is
+deletion of empty profiles and the save's replace. That deletion runs once,
+when the store opens, not in a save or a purge
+(`RecordStore::drop_empty_profiles`). The batch's skip list is
 now `RecordStore::settled_song_ids` (Ready or CantAnalyze), and the report
 reads one lookup over the library through `report::library_lookup`. The
 section "The path report reads stored paths" is history where it says the

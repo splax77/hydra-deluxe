@@ -512,8 +512,9 @@ public:
     // save group when there is one: deletes the chart's records under every
     // profile whose results stamp this build cannot read, in any mode; files
     // the record under its profile, this build's stamp and its rules,
-    // replacing the chart's record there; deletes any profile left with no
-    // records. A record made under other rules stays (D51 call 8).
+    // replacing the chart's record there. A profile left with no records
+    // stays until the store next opens (drop_empty_profiles). A record made
+    // under other rules stays (D51 call 8).
     //
     // A failure record (failure_record) is saved the same way, under the rules
     // this store runs, so it replaces a real record and its paths, and a real
@@ -730,8 +731,9 @@ private:
     // The constructor's work after the file opens: the journal settings, the
     // tables, and, by the file's kind (classify_library_file), the conversion
     // of a Convertible file, the failure columns a LacksFailureColumns file
-    // gains, and the album column every kind older than Current gains. The
-    // constructor turns any throw from it into a failed open.
+    // gains, and the album column every kind older than Current gains; last,
+    // the deletion of empty profiles (drop_empty_profiles). The constructor
+    // turns any throw from it into a failed open.
     void set_up_schema(LibraryFileKind kind);
     void exec(const char* sql);
     // Runs `work` inside one BEGIN ... COMMIT. A throw from it rolls back
@@ -775,8 +777,7 @@ private:
     // The body of save and save_under_build_for_test: `prepared` filed under
     // the stamp `build`, in the save frame.
     void save_under(const PreparedRecord& prepared, const std::string& build);
-    // The body of every save: the purge, the record and the emptied
-    // profiles, as save says. `hyversion` is the stamp the record is filed
+    // The body of every save: the purge and the record, as save says. `hyversion` is the stamp the record is filed
     // under. The caller holds the lock and an open transaction.
     void file_record(const Profile& profile, const std::string& hyversion, uint64_t rules_fp,
                      const RecordRow& record);
@@ -796,8 +797,10 @@ private:
     // rows under that profile are replaced. The caller holds the lock and an
     // open transaction.
     void write_record(int64_t profile_id, const RecordRow& record);
-    // Deletes every profile no record is filed under. The caller holds the
-    // lock and an open transaction.
+    // Deletes every profile no record is filed under. It runs once, at the end
+    // of set_up_schema, while the constructor still owns the store alone.
+    // When another connection holds the file's write lock it deletes nothing
+    // and returns; any other failure throws KindedError(DatabaseWrite).
     void drop_empty_profiles();
     // Deletes the records `where` names, and their path rows (an SQL
     // fragment over song_id and profile_id, which both tables have, bound by

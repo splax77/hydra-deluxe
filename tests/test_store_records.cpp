@@ -160,7 +160,8 @@ TEST_CASE("store: a lookup after a second save reads the second record, not the 
     CHECK(store.lookup_one("h2", at4()).status == RecordStatus::NotAnalyzed);
 }
 
-TEST_CASE("store: a save purges the chart's unreadable records in every mode and their profiles") {
+TEST_CASE("store: a save purges the chart's unreadable records in every mode, and the next open "
+          "deletes their emptied profiles") {
     FileStore file;
     {
         RecordStore store(file.path);
@@ -172,10 +173,77 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode and
 
         CHECK(store.lookup_one("h1", at4("other mode")).status == RecordStatus::NotAnalyzed);
         CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
+        CHECK(store.record_count() == 1);
+        // The save leaves the old build's emptied profile in place.
+        CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") ==
+              1);
     }
-    // The old build's profile went with its last record.
+    // Closing alone deletes nothing; the next open does.
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 1);
+    { RecordStore reopened(file.path); }
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 0);
+}
+
+TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the next open "
+          "deletes it") {
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.rebuild_chart_library({library_row("gone", "Gone"), library_row("kept", "Kept")});
+        store.save(prepare_record("gone", at4("gone mode"), fixture().record));
+        store.save(prepare_record("kept", at4(), fixture().record));
+        REQUIRE(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::Ready);
+
+        // The library no longer lists "gone", so the scan's purge takes its
+        // only record and leaves its profile empty.
+        store.rebuild_chart_library({library_row("kept", "Kept")});
+        CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+        // No read shows the empty profile.
+        CHECK(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::NotAnalyzed);
+        CHECK(store.settled_song_ids(at4("gone mode")).empty());
+        CHECK(store.ready_song_ids(at4("gone mode")).empty());
+        CHECK(store.ready_records(at4("gone mode")).empty());
+        CHECK(store.record_count() == 1);
+    }
+    { RecordStore reopened(file.path); }
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE chartmode='gone mode'") ==
+          0);
+    RecordStore store(file.path);
+    CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
+}
+
+TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
+          "profiles, and a later open deletes them") {
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.rebuild_chart_library({library_row("kept", "Kept")});
+        // Not in the library, so the next scan's purge empties its profile.
+        store.save(prepare_record("gone", at4("gone mode"), fixture().record));
+        store.save(prepare_record("kept", at4(), fixture().record));
+        store.rebuild_chart_library({library_row("kept", "Kept")});
+    }
+    REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+
+    // Another connection holds the write lock, as a batch's open save group
+    // does; reading the file still works, as WAL allows.
+    sqlite3* holder = nullptr;
+    REQUIRE(sqlite3_open(file.path.c_str(), &holder) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(holder, "BEGIN IMMEDIATE; DELETE FROM meta WHERE key = 'none';", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    {
+        RecordStore store(file.path);
+        CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::NotAnalyzed);
+    }
+    sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr);
+    sqlite3_close(holder);
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+
+    { RecordStore reopened(file.path); }
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
 }
 
 TEST_CASE("store: a record saved under another build's stamp reads back Stale for that build") {
@@ -406,11 +474,13 @@ TEST_CASE("store: a profile whose only record is a failure is kept") {
                                                         library_row("real", "Real")};
         store.rebuild_chart_library(library);
         store.save(failure_record("failed", at4("failed mode"), ErrorKind::NoNotes, "No notes."));
-        // Each save drops emptied profiles, and so does the scan's purge.
         store.save(prepare_record("real", at4(), fixture().record));
         store.rebuild_chart_library(library);
         CHECK(store.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
     }
+    // The open's deletion of empty profiles counts a failure as a record.
+    RecordStore reopened(file.path);
+    CHECK(reopened.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
 }
 

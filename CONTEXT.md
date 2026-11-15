@@ -138,7 +138,8 @@ profile. A page that needs another asks for it by name:
 `Settings::profile_at_clone_hero_cap` for the leaderboard comparison and
 `Settings::profile_with_fills` for the fill comparison. `KeyPart` in
 src/app/config.h names the part each analysis setting is filed under. There is
-no limit on profiles; a save deletes a profile left with no records (D115).
+no limit on profiles; a profile left with no records is deleted the next time
+the store opens (`RecordStore::drop_empty_profiles`).
 A player never sees the word: the library and the reports always show the
 current profile.
 _Avoid_: result identity, record key
