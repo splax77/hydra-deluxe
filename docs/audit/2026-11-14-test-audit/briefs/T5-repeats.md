@@ -24,7 +24,7 @@ For each row, open enough of its places to say what the value is in each, and so
 
 - **K1, an engine answer copied.** The value is what the engine, the store or the app computes from a real chart or a real input (a score, a path, a tick an activation lands on, an E mark, a count of paths, a ms figure), typed instead of read from the engine's record. Name the chart and the owner that computes it (file and function in `src/`). This is X1's kind.
 - **K2, a product constant or text copied.** The value is a constant or a string `src/` owns (a window, a cap, a limit, a message, a label), typed instead of read from that constant. Name the owner (file, line, name).
-- **K3, the test's own input.** The value is something the test or its fixture builds and owns: a resolution, a tick on a hand-built chart, a tempo, a path a test writes. Typing it is not a copy. Say where the test builds it.
+- **K3, the test's own input.** The value is something the test or its fixture builds and owns: a resolution, a tick on a hand-built chart, a tempo, a path a test writes. Typing it is not a copy. Say where the test builds it. A value that stands in for engine output is not K3, even when the test types it as input. A made-up path label, score or measure fed to a function that formats, wraps, lists or stores engine output is finding X9 in `cross-findings.md`. The user, in session 63c70014: "tests should test their intended behavior directly, not make up an arbitrary meaningless string".
 - **K4, a fact of a real chart file.** The value is read from the chart file itself, not computed (a note count, a resolution, a song name), and the engine does not decide it.
 - **Unclear.** Say what you could not tell.
 

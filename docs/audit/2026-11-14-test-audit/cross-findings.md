@@ -16,7 +16,7 @@ Why it is a bad test: the rubric's question 5 (an expected value with no named s
 
 The window change from 85 to 60 ms did not move Burnout's result. `records-engine/burnout.efill60.dump.json` and `burnout.efill85.dump.json` (`hydra_replay dump --cap 4 --ms 10 --depth 2`, the GUI tests' settings, built from main `5ec682c7`'s code) are identical apart from the window: "3- 1 2" 378315, "0 4 1" 378175, "2 1 2" 378075 at both. So the copies are not wrong today. The finding is the design: the day an engine change does move Burnout, every copy fails at once.
 
-The repeated-values pass (`repeats/`, session 63c70014) changes this list in three ways. First, `test_overlay_layout.cpp` is not a copy: every line there feeds a made-up "3- 1 2  (optimal)" string to the word-wrap and trim functions, so it is the test's own input (V-RP1, V-RP2). That leaves the path text copied in 9 files, not 10. `test_path_list.cpp:434` is the same kind of input. Second, `test_sp_meter_curve.cpp:948` uses "3- 1 2" only as a key to look up the engine's path, which is sound. Third, it adds more Burnout figures typed from the same run:
+The repeated-values pass (`repeats/`, session 63c70014) changes this list in two ways. First, `test_sp_meter_curve.cpp:948` uses "3- 1 2" only as a key to look up the engine's path, which is sound. Second, it adds more Burnout figures typed from the same run:
 - "0 4 1" and 378,175, the second path (RP2-1);
 - 364675 twice and the cost 13,640 at `test_pb_coach.cpp:66`, under the comment "From one run" (V-RP1);
 - the cost −140, in 3 files (RP2-1, confirmed by V-RP2);
@@ -25,6 +25,8 @@ The repeated-values pass (`repeats/`, session 63c70014) changes this list in thr
 - 71040, Burnout's first activation's stored end, with 70800 and 48783.075 ms, at `test_sp_meter_curve.cpp:954-956` (V-RP3-B).
 
 Every copy's `file:line` is in those candidates. Where a verifier removed or added copies, its V file holds the final list.
+
+V-RP1 and V-RP2 removed `test_overlay_layout.cpp` and `test_path_list.cpp:434` from these copies, because the test makes up "3- 1 2  (optimal)" and feeds it to the word-wrap and trim functions. That removal is overruled. The user, in session 63c70014: "that doesnt make it any better. tests should test their intended behavior directly, not make up an arbitrary meaningless string". Those lines stay in X1's count, so the path text is still in 10 files, and they are also an instance of X9.
 
 The records that already see a copy (each judges only its own): `records/A2.md`, `A3.md`, `A19.md`, `A26.md`, `A33.md`, `A39.md`, `A44.md`, `A45.md`, `A48.md`, `A49.md`, `C5.md`, `C6.md`, `C7.md`, `C12.md`, `delta-DL4.md`, `window-WN2.md`, `window-WN4b.md`, `window-WN4c.md`, `window-WN5.md`, `window-WN6.md`, `window-WN7.md`, and their verify files. WN5, V-WN6 and V-WN7 name it as a split (one fact, several homes).
 
@@ -95,7 +97,23 @@ Exit: not chosen.
 
 Exit: not chosen.
 
-## What the repeated-values pass left out of X3 to X8
+## X9. Tests feed made-up stand-ins for real engine output
+
+A test that checks how Hydra handles an engine value (wraps it, trims it, lists it, stores it) should run on a value the engine made from a real chart. Many tests instead type a string or number that looks like a real result but is tied to nothing. The user, in session 63c70014: "tests should test their intended behavior directly, not make up an arbitrary meaningless string".
+
+Why it is a bad test: the input has no link to what the engine produces, so the test proves the code works on the input someone imagined. When the engine's real output changes shape (a longer label, a new mark, a different separator), the made-up input does not, and the test stays green while the screen breaks. Where the made-up value copies a real one, it also carries X1's harm, a second answer with no owner.
+
+The repeated-values pass first sorted these as K3 ("the test's own input, typing it is not a copy"). That reading is wrong for this kind of input. The instances found so far, each from the named file:
+- `test_overlay_layout.cpp` wraps and trims "3- 1 2  (optimal)" (lines 340 to 344, 472 to 480, 505 to 510) and lays out "at m58.1.0" and "at m32..." (324, 331, 397, 398). Sources: V-RP1, V-RP2 and V-RP3, which all set these aside as input.
+- `test_path_list.cpp:434` feeds the same "(optimal)" label (V-RP2).
+- `test_library_model.cpp` builds made-up summaries such as `ready(378315,"3- 1 2",7,163.0)`, and `test_library_query.cpp` uses `analyzed(7, 163.0)`. Line 393 there carries the comment "Burnout's real 163.0 ms" (RP1-1, V-RP1).
+- `test_model.cpp:1286` builds `one_step(59520, 71040)`, reusing Burnout's activation numbers on a hand-built step (V-RP3-B).
+
+This list is not complete. The pass's K3 rows were never read for this question. The rows are in `RP1.md` to `RP3.md`: about 150 rows by the sorters' counts.
+
+Exit: not chosen.
+
+## What the repeated-values pass left out of X3 to X9
 
 - **Disputed:** RP3-10 ("chart" and "charts" are arguments passed to the product's `counted()`, not copies of its output) and RP3-6's `kDot`.
 - **Not settled:** RP1-7, 48 kHz. Only `test_audio_decode.cpp:155` is clearly the product's rate (`kRate`, `src/audio/opus_reader.cpp:52`). Three places were not traced (V-RP1).
