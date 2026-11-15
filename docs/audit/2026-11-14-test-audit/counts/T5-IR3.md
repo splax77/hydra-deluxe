@@ -32,7 +32,7 @@ The first column gives the record's line number in D2.md. File:line in the table
 | 308 first_listed_type_is_base | DF:174 | X9 | DF:175-178 | hand-cut fragment | X9 yes |
 | 319 interface_listed_first | DF:180 | X9 | DF:181-184 | hand-written class line | X9 yes |
 | 330 empty_class_one_brace | DF:186 | X9 | DF:187-190 | hand-cut fragment | X9 yes |
-| 352 method_without_rva | DF:200 | X9 X10 | DF:201-203 | hand-written broken dump; error text regex typed | X9 yes; X10 no |
+| 352 method_without_rva | DF:200 | X10 | DF:201-203 | hand-written broken dump; error text regex typed | X10 no |
 | 366 ctor_rva_finds_engine | DF:207 | X9 X11 | DF:208-213 | hand-cut fragment; ctor RVA and version typed in, returned | X9 yes; X11 no |
 | 377 ctor_rva_no_class | DF:215 | X9 X10 | DF:216-217 | hand-cut fragment; message typed | X9 yes; X10 no |
 | 388 ctor_rva_two_classes | DF:219 | X9 X10 | DF:220-221 | hand-written second class; message typed | X9 yes; X10 no |
@@ -53,17 +53,17 @@ The first column gives the record's line number in D2.md. File:line in the table
 | 584 split_instance | DF:523 | X9 | DF:524-527 | typed name strings, no real dump name | X9 yes |
 | 595 facts_json_no_instantiation | DF:529 | X9 | DF:530-536 | hand-built facts dict, hand page | X9 yes |
 | 606 header_md5 | DF:538 | X9 X11 | DF:539-541 | hand DLL bytes; version typed in, returned in header | X9 yes; X11 no |
-| 617 python_name_not_game_facts | DF:543 | X9 | DF:553-555 | hand page (lines 544-552 use plain strings) | X9 yes |
+| 617 python_name_not_game_facts | DF:543 | none | DF:553-555 | hand page (lines 544-552 use plain strings) | - |
 | 629 check_fresh_and_stale | DF:557 | X9 | DF:558-568 | tiny dump, hand page, hand-edited table | X9 yes |
 | 640 block_naming_another_build | DF:570 | X9 | DF:571-575 | hand page | X9 yes |
 | 651 4045_facts_json | DF:577 | X9 X11 | DF:578-591 | hand-built facts dict; version typed in, returned (591) | X9 yes; X11 no |
-| 662 file_under_code_and_build | DF:593 | X9 | DF:594-601 | made-up "9999" heading, hand paths | X9 yes |
+| 662 file_under_code_and_build | DF:593 | none | DF:594-601 | made-up "9999" heading, hand paths | - |
 | 687 our_names_resolve | DF:681 | X9 | DF:682-694 | hand-written names map | X9 yes |
 | 698 namespaced_class | DF:696 | X9 | DF:697-702 | map dump, hand page | X9 yes |
-| 709 scrambled_span_error | DF:704 | X9 X10 | DF:705-711 | hand page; message text typed | X9 yes; X10 no |
+| 709 scrambled_span_error | DF:704 | X10 | DF:705-711 | hand page; message text typed | X10 no |
 | 720 uncited_row_warning | DF:713 | X9 X10 | DF:714-720 | hand map; message text typed | X9 yes; X10 no |
-| 742 check_exits_1_on_map_error | DF:743 | X9 | DF:744-751 | hand map and page | X9 yes |
-| 753 bad_column_line | DF:753 | X9 X10 | DF:754-757 | hand map; message typed | X9 yes; X10 no |
+| 742 check_exits_1_on_map_error | DF:743 | none | DF:744-751 | hand map and page | - |
+| 753 bad_column_line | DF:753 | X10 | DF:754-757 | hand map; message typed | X10 no |
 | 786 6142_span_member_lacking | DF:818 | X9 X10 | DF:819-824 | hand map; message typed | X9 yes; X10 no |
 | 805 detaches_after_normal_end | FA:256 | X9 X11 | FA:257-267 | fake frida, fake messages; written messages equal messages typed in | X9 yes; X11 no |
 | 817 start_settings | FA:269 | X9 X11 | FA:270-277 | fake frida; start dict typed, posted back | X9 yes; X11 no |
@@ -121,16 +121,22 @@ The first column gives the record's line number in D2.md. File:line in the table
 
 Investigate records read: 104 of 104. None left unread.
 
-Records with at least one fault: 103. Only record 1575 (kit calls match the data file) is clean.
+Records with at least one fault: 100. Four are clean: 1575, and after the ruling on hand-built input, 617, 662 and 742.
 
 Records per fault (a record can hold more than one):
 
-- X9, made-up input: 97.
+- X9, made-up input: 91.
 - X10, constant pin: 50. About 33 are message or line text typed as the expected value; 5 are source-text pins on agent files (1587 to 1857 less the clean one); the rest are a typed constant, column line, file name or default.
 - X11, echo: 23.
 - X12, cited non-code: 1 (record 1587).
 - Snapshot: 0.
 
-Records whose fault the record already named: X9 in 97, through the shared Q3 answer, as an unchecked claim and not as a fault. X10 named by the record in the 3 I opened for it (42, 1587, 1757). X11 named in none I saw. X12 named in 1 (1587). I did not open every record for X10 and X11, so those two "named" counts are a floor.
+Records whose fault the record already named: X9 in 91, through the shared Q3 answer, as an unchecked claim and not as a fault. X10 named by the record in the 3 I opened for it (42, 1587, 1757). X11 named in none I saw. X12 named in 1 (1587). I did not open every record for X10 and X11, so those two "named" counts are a floor.
 
 Judgement calls the reader may overrule. First, every FG, DF and FA case except the source scans is X9, because the whole file runs on scripted, hand-cut or fake input; the DF fixtures were copied from the real dump (Q3-DF), but a hand-written dump is still hand-written. Second, I marked few DF cases as echo: a parser turning typed text into numbers is not an echo. Third, the source-text scans (1587 to 1857) read the real agent files, so they carry X10 only, not X9.
+
+Revision after the ruling on hand-built input: a hand-written file or chart that the real code reads is not fake. Only a stand-in for the code's own output, for outside data, or fake code is X9.
+
+I cleared X9 on six DF records whose claim depends only on a hand-written page, map or malformed text the real code reads: 352, 617, 662, 709, 742 and 753. Records 352, 709 and 753 keep X10. Records 617, 662 and 742 now have no fault.
+
+I kept X9 on every case using the hand-cut dump.cs or hand-built facts dict (a stand-in for the dumper output), the fake runner, the scripted windows and fake clock, and the fake frida sessions with hand-written game replies. X9 went from 97 to 91. X10 stays 50, X11 stays 23, X12 stays 1.
