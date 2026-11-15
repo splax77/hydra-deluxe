@@ -18,7 +18,7 @@ So the questions below start with what the test claims, and who owns that claim.
 
 ## Two kinds of number
 
-A **rule number** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". The game or the user chose it, a page or a ruling states it, and the test would be wrong with any other value. Rule numbers are fine.
+A **rule number** is a number that is the rule. Clone Hero's 85 ms hit window is one. So is "one Star Power bar lasts two measures". The game or the user chose it, a page or a ruling states it, and the test would be wrong with any other value. Rule numbers are fine. Only the rule itself counts: 85 is a rule number, but 7285 (a deadline on a made-up chart plus 85) is a raw result built from one, and fails like any other raw result.
 
 A **snapshot number** is what the code printed on the day the test was written. A total over `testdata/input` is always one, because adding a chart changes it. A number "pinned from one run" is one. A number an agent picked and someone approved is one too, until somebody writes down why that value and no other. Snapshot numbers are never fine.
 
