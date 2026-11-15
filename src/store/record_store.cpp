@@ -1204,17 +1204,18 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
 }
 
 void RecordStore::drop_empty_profiles() {
-    CachedStmt d = use_write(db_, stmt_cache_,
-        "DELETE FROM profiles WHERE NOT EXISTS"
-        " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)");
-    const int rc = sqlite3_step(d);
-    if (rc == SQLITE_DONE) return;
-    // Another connection holding the write lock, such as a batch's open save
-    // group, does not fail the open: no read shows an empty profile, so it
-    // can wait for an open that can write.
-    if ((rc & 0xff) == SQLITE_BUSY || (rc & 0xff) == SQLITE_LOCKED) return;
-    throw KindedError(ErrorKind::DatabaseWrite,
-                      std::string("deleting empty profiles failed: ") + sqlite3_errmsg(db_));
+    try {
+        exec("DELETE FROM profiles WHERE NOT EXISTS"
+             " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)");
+    } catch (const KindedError&) {
+        // Another connection holding the write lock, such as a batch's open
+        // save group, does not fail the open: no read shows an empty
+        // profile, so it can wait for an open that can write. exec leaves
+        // the failed statement's code on the connection.
+        const int code = sqlite3_errcode(db_) & 0xff;
+        if (code == SQLITE_BUSY || code == SQLITE_LOCKED) return;
+        throw;
+    }
 }
 
 void RecordStore::file_record(const Profile& profile, const std::string& hyversion,
