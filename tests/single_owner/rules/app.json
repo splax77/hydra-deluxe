@@ -77,7 +77,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "window_end_tick",
       "date": "2026-11-14",
-      "decision": "the user's words of 2026-11-14 under D9 in docs/audit/2026-10-03-fix-decisions.md (\"the engine already knows this, the preview invents its own rule\"), task PS1",
+      "decision": "the user's Blight words of 2026-11-14 under D9 in docs/audit/2026-10-03-fix-decisions.md (\"starpower ends when the green cymbal + kick is squeezed out, not when the measure ends\"), task PS1",
       "added_by": "PS1",
       "pattern": "\\bdeact_tick\\(\\)|\\bsqout_tick\\b|after_sp_end\\(",
       "scope": [
