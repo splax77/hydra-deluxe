@@ -609,14 +609,14 @@ src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
 An activation timing (the `E` notation) near a fill's spawn deadline. The
-window is one fixed number on both sides of the deadline, the hit window,
-85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs`). It is never a setting,
-because the search reads it (src/core/model.h; D344).
+window is one number on both sides of the deadline: the `Early fill window`
+setting, 60 ms<!-- default: kDefaultEarlyFillWindowMs --> by default, from 0
+to the hit window.
 On the orange side, Star Power comes ready after the deadline, so you must
-hit early to summon the fill. Later than the hit window (`fill_refuses`), the
+hit early to summon the fill. Later than the window (`fill_refuses`), the
 fill never spawns, and the search drops the activation.
 On the white side, Star Power comes ready before the deadline with less than
-the hit window to spare (`is_e0`). The activation still gets the `E` mark, but
+the window to spare (`is_e0`). The activation still gets the `E` mark, but
 has nothing to time.
 
 **Fill spawn deadline (CH 1.1)**:
@@ -684,9 +684,9 @@ rule. The conversion deletes the retired `engine_mode` row
 The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums
 window: 85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs` in
 src/core/model.h). It is one fixed number, not a setting (D270 call 8). The
-search's early fill reach (`fill_refuses`), the squeeze budgets
-(`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words and the report's
-timing tiers all read it. The old `hit_window_ms` key is retired and skipped
+squeeze budgets (`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words
+and the report's timing tiers all read it. It is also the most the
+`Early fill window` setting allows (Early fill (E)). The old `hit_window_ms` key is retired and skipped
 (Settings files). The report's timing tiers are Normal up to 2 ms
 (`kDifficultMs`), then Hard up to half a hit window, Extreme up to one window,
 Insane up to one and a half, Insane+ up to two, and Beyond past two windows;
