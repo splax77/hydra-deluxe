@@ -241,16 +241,31 @@ TEST_CASE("search: SP ready 70 ms before a fill's deadline marks the activation 
 // all-0 only when A was its early fill (an E1, allzero_activation): so at 85
 // the best all-0 path activates at 19200, and at 60, where A is a plain fill,
 // it activates at A.
+//
+// The record states the all-0 answer in one of two ways (attach_allzero in
+// search/pather.cpp): when the best path is itself all-0 inside the all-0
+// pass's limit, it is the answer and allzero_paths stays empty; otherwise the
+// answer is allzero_paths' first path.
 TEST_CASE("all-0 pass: passing over a fill with 70 ms to spare is an E1 at 85, a skip at 60") {
     const Song song = early_fill_song(7130, /*second_fill=*/true);
+    const double allzero_limit = *allzero_options().ms_filter;
 
+    // At 85 the best path passes A over as an E1, so it is the all-0 answer.
     const HydraRecord wide = analyze_chart(song, window_settings(kHitWindowMs));
-    REQUIRE(!wide.allzero_paths.empty());
-    CAPTURE(wide.allzero_paths.front().pathstring());
-    CHECK(test::act_ticks(wide.allzero_paths.front()) == std::vector<int64_t>{19200});
+    REQUIRE(!wide.paths.empty());
+    CAPTURE(wide.best_path().pathstring());
+    CHECK(test::act_ticks(wide.best_path()) == std::vector<int64_t>{19200});
+    CHECK(wide.best_path().is_allzero());
+    CHECK(wide.best_path().within_ms_limit(allzero_limit));
+    CHECK(wide.allzero_paths.empty());
     check_window_carried(wide, kHitWindowMs);
 
+    // At 60 passing A over is a plain skip, so the best path is not all-0 and
+    // the all-0 pass's own answer activates at A.
     const HydraRecord narrow = analyze_chart(song, window_settings(kDefaultEarlyFillWindowMs));
+    REQUIRE(!narrow.paths.empty());
+    CAPTURE(narrow.best_path().pathstring());
+    CHECK_FALSE(narrow.best_path().is_allzero());
     REQUIRE(!narrow.allzero_paths.empty());
     CAPTURE(narrow.allzero_paths.front().pathstring());
     CHECK(test::act_ticks(narrow.allzero_paths.front()) == std::vector<int64_t>{9600});
