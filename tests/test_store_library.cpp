@@ -7,10 +7,12 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <map>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -24,6 +26,7 @@
 #include "store/record_store.h"
 #include "store_fixtures.h"  // at_cap, at4
 #include "temp_util.h"
+#include "wait_util.h"  // wait_until, WaitTimeout, kWaitCap
 
 using namespace hydra;
 using namespace hydra::store;
@@ -722,4 +725,170 @@ TEST_CASE("store: rows read by name compare byte for byte, and one name keeps sc
     CHECK(listed == std::vector<std::string>{"C:\\q\\notes.chart", "C:\\o\\notes.chart",
                                              "C:\\z\\notes.chart", "C:\\a\\notes.chart",
                                              "C:\\l\\notes.chart"});
+}
+
+// ---- the chart list read on the store's reader (StoreReader) ----------------
+
+namespace {
+
+// A library file in the temp folder, removed when the case ends. The same
+// shape as test_store_records.cpp's FileStore, which lives in that file alone.
+struct LibraryFile {
+    std::string path;
+    explicit LibraryFile(const char* name) : path(testtemp::temp_path(name, ".db")) {
+        remove_all();
+    }
+    ~LibraryFile() { remove_all(); }
+    void remove_all() const {
+        for (const char* ext : {"", "-wal", "-shm"}) std::remove((path + ext).c_str());
+    }
+};
+
+// A save group a helper thread opens on `store` and holds, so the store's
+// lock is taken on another thread, until the test lets go or kWaitCap
+// passes. The same shape as test_store_records.cpp's HeldSaveGroup, which
+// lives in that file alone. The constructor returns once the group is open.
+class HeldSaveGroup {
+public:
+    explicit HeldSaveGroup(RecordStore& store)
+        : helper_([this, &store] {
+              try {
+                  store.begin_save_group();
+              } catch (...) {
+                  return;  // never held: the constructor's wait gives up
+              }
+              held_ = true;
+              try {
+                  testwait::wait_until([this] { return let_go_.load(); },
+                                       "the test to let go of the save group");
+              } catch (const testwait::WaitTimeout&) {
+              }
+              held_ = false;
+              try {
+                  store.commit_save_group();
+              } catch (...) {
+              }
+          }) {
+        try {
+            testwait::wait_until([this] { return held_.load(); }, "the helper's save group");
+        } catch (...) {
+            let_go();
+            throw;
+        }
+    }
+    ~HeldSaveGroup() { let_go(); }
+    HeldSaveGroup(const HeldSaveGroup&) = delete;
+    HeldSaveGroup& operator=(const HeldSaveGroup&) = delete;
+
+    // Whether the helper still holds the group.
+    bool held() const { return held_.load(); }
+    // Lets the group go and waits for the helper to commit it.
+    void let_go() {
+        let_go_ = true;
+        if (helper_.joinable()) helper_.join();
+    }
+
+private:
+    std::atomic<bool> held_{false};
+    std::atomic<bool> let_go_{false};
+    std::thread helper_;
+};
+
+// Checks two reads of the chart list gave the same rows in the same order,
+// field for field.
+void check_same_list(const std::vector<ChartLibraryEntry>& got,
+                     const std::vector<ChartLibraryEntry>& want) {
+    REQUIRE(got.size() == want.size());
+    CHECK(md5s_of(got) == md5s_of(want));
+    for (size_t i = 0; i < got.size(); ++i) {
+        CAPTURE(want[i].md5);
+        CHECK(got[i].md5 == want[i].md5);
+        check_same_entry(got[i], want[i]);
+    }
+}
+
+// A library with a chart in two folders and one other chart, every row
+// carrying timing, so a current stamp shows it on every row.
+std::vector<ChartLibraryEntry> timed_library() {
+    ChartLibraryEntry first = library_row("x", "Song");
+    ChartLibraryEntry second = library_row("x", "Song Copy");
+    second.notespath = "C:\\charts\\copy\\notes.chart";
+    ChartLibraryEntry other = library_row("y", "Other");
+    std::vector<ChartLibraryEntry> rows = {first, second, other};
+    for (size_t i = 0; i < rows.size(); ++i)
+        rows[i].timing = ChartTimingMeta{1000.0 * static_cast<double>(i + 1), 0.0};
+    return rows;
+}
+
+}  // namespace
+
+TEST_CASE("the reader lists a chart's copies as the writer does") {
+    LibraryFile file("reader_copies");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+
+    const std::vector<ChartLibraryEntry> want = store.list_chart_library_copies("x");
+    REQUIRE(want.size() == 2);
+    check_same_list(store.reader().list_chart_library_copies("x"), want);
+}
+
+TEST_CASE("the reader lists the library by name as the writer does") {
+    LibraryFile file("reader_by_name");
+    {
+        RecordStore store(file.path);
+        store.rebuild_chart_library(timed_library());
+        const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
+        // A current stamp: the writer's rows carry their timing.
+        REQUIRE(want.size() == 3);
+        REQUIRE(want[0].timing.has_value());
+        check_same_list(store.reader().list_chart_library(0, -1), want);
+        // The whole list unsorted reads on the reader's one connection, and
+        // gives the same rows.
+        const std::vector<ChartLibraryEntry> unsorted =
+            store.reader().list_chart_library(0, -1, {}, LibraryOrder::Unsorted);
+        CHECK(md5_set_of(unsorted) == md5_set_of(want));
+    }
+    // A stamp that is not current (chart_meta_current): the writer's rows
+    // carry no timing, and neither do the reader's.
+    exec_on_file(file.path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(file.path);
+        const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
+        REQUIRE(want.size() == 3);
+        REQUIRE_FALSE(want[0].timing.has_value());
+        check_same_list(store.reader().list_chart_library(0, -1), want);
+        check_same_list(store.reader().list_chart_library_copies("x"),
+                        store.list_chart_library_copies("x"));
+    }
+}
+
+TEST_CASE("a reader's chart list does not wait while a save group is open") {
+    LibraryFile file("reader_list_no_wait");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const std::vector<ChartLibraryEntry> want_list = store.list_chart_library(0, -1);
+    const std::vector<ChartLibraryEntry> want_copies = store.list_chart_library_copies("x");
+
+    HeldSaveGroup group(store);
+    const std::vector<ChartLibraryEntry> list = store.reader().list_chart_library(0, -1);
+    const std::vector<ChartLibraryEntry> copies = store.reader().list_chart_library_copies("x");
+    const bool returned_while_held = group.held();
+    group.let_go();
+    CHECK(returned_while_held);
+    check_same_list(list, want_list);
+    check_same_list(copies, want_copies);
+}
+
+TEST_CASE("a reader sees a rescan once it is saved") {
+    LibraryFile file("reader_rescan");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const std::vector<ChartLibraryEntry> before = store.reader().list_chart_library(0, -1);
+
+    store.rebuild_chart_library({library_row("z", "New Song"), library_row("y", "Other")});
+    const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
+    REQUIRE(md5s_of(want) != md5s_of(before));
+    check_same_list(store.reader().list_chart_library(0, -1), want);
+    check_same_list(store.reader().list_chart_library_copies("z"),
+                    store.list_chart_library_copies("z"));
 }
