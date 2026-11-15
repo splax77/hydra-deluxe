@@ -111,8 +111,9 @@ using RowsAnsweredFn = std::function<bool(uint64_t rows_answered)>;
 // hash, and `on_slice`, when given, is told after each. Each answer goes back
 // to its own row, and the answers go to the model in one call, so the table is
 // filtered once. Throws when the read fails, and Cancelled when `on_slice`
-// returns false.
-void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
+// returns false. `store` is the connection asked: a RecordStore, or the
+// reader() the window reads through.
+void read_library_summaries(store::StoreReads& store, const app::Settings& settings,
                             LibraryModel& library, const RowsAnsweredFn& on_slice = {},
                             size_t slice_charts = kResultsSliceCharts);
 
