@@ -308,3 +308,38 @@ Round 24 ran as one workflow (wf_c57ab98a-71b): eight Sonnet verifiers, two for 
 - E4b (9557b2e5): status_append 7 records, 1 agreed, 6 disputed (its Keeps run a typed line in a temp folder under Windows PowerShell 5.1); h53 56 records, 54 agreed, 2 disputed; h52 81 records, 73 agreed, 8 disputed. The auditor never opened `cleanup_sweep.ps1`; the verifier read it in full.
 
 The find and verify rounds of T5 are complete for every slice. What remains is in the handoff `docs/handoffs/2026-11-15-test-audit-after-rounds-handoff.md`.
+
+## Delta round and the question-3 sweep (session e633f7f6, 2026-11-15)
+
+The audit branch merged main at `5ec682c7` (main `e60ab3c3`, 68 commits after `c10c7f54`). The delta round audits only the test cases those commits added, changed or removed. Briefs: `briefs/T5-delta.md`, `T5-verify-delta.md`, `T5-sweep.md`, `T5-delta-resend.md`. Two workflows, wf_cc3421db-979 (five auditors and four sweep scouts) and wf_f73c1bb1-af9 (one re-send, two sweep re-sends and five verifiers), all Sonnet scouts. Every in-scope test case was reached.
+
+`moments.py` was fixed first (84912ea3): the scrubber is a SliderFloat, so each moment is now printed as the smallest float32 at or after it. Believer path 4's end prints 109.255577 s, against the engine's 109255.57244 ms. Nothing has been recaptured yet.
+
+Delta records, with the verifier's result (counts from each agent's report):
+
+- DL1, store records and results (d1ac5b7e): 35 records, Keep 16, Rewrite 6, Remove 1, Investigate 12. Verify (883e2ae4, committed under SW5's subject by accident): 34 agreed, 1 disputed (test 1023, Keep to Investigate, claim not checked only).
+- DL2, store open, store library and the two new store helpers (e0ae88a8): 21 records, Keep 5, Rewrite 8, Investigate 8. Verify (6c341f13): 17 agreed, 4 disputed (records 13 and 16, Keep to Rewrite; records 19 and 21, "Keep under the split" is no verdict).
+- DL3, app click, library, reports and state fixtures (bda0abf4): 41 test records and 2 helper records, Keep 3, Rewrite 8, Investigate 30. Verify (91ad5dab): 38 agreed, 3 disputed (click 2 and 10, Rewrite to Keep with a dead sleep dropped; reports 38, Investigate to Keep).
+- DL4, library jobs, library model, model and config (ed883c96): 28 records, Keep 5, Rewrite 9, Remove 2, Investigate 12. Verify (040a277f): 23 agreed, 5 disputed (jobs 1 to 3, Keep to Investigate; model 4, Remove to Investigate; config 8, Investigate to Rewrite).
+- DL5, early-fill window changes across ten files (e23b878c) and DL5b, full records for DL5's ten short ones (65909a1f): 36 test records. DL5b gives Rewrite 6, Investigate 11, Remove 3. Verify (ada38629): 36 agreed, 0 disputed.
+
+Splits and points raised in the delta round, each in its records or verify file:
+
+- Old profile rows are filed under the default 60 ms window when a v2.12.1 file is rebuilt (DL2, test_store_open.cpp:992 and 1033). No ruling names that choice; D344 says old results read Stale.
+- Test 456 (DL1) pins a log that grows during a hold, while production sets a journal size limit.
+- HeldSaveGroup (`store_file_fixtures.h`) and StoreLockHolder (`store_lock_holder.h`) are two test helpers for one job, with different `let_go()` meanings. StoreLockHolder's thread has no try/catch.
+- `analyzed_like_the_gui` and `digest_settings` pin the window at 85 ms while the app defaults to 60 ms. Burnout runs at 60 in the same loops as three charts at 85.
+- `corpus::settings_key` (tests) and `store::Lens::from` (app) both answer "which settings change a stored analysis".
+- The all-0 answer is stored either as the best path or as `allzero_paths`.
+- `ui-and-display.md` lines 108 and 110 (Unconfirmed) against the activation-row tests at 1396, 1439 and 1469, which pin a row for an optional early fill (V-DL5 S6).
+- `records-engine/index.md:33` says Beg's E0 holds at any window from 0 to 85 ms. At window 0, `is_e0` is a strict `<` (model.h:336), so it does not (V-DL5 S7).
+- Two test comments quote user words found nowhere in `docs/`: "Mark them Stale" (test_store_records.cpp:1213) and the "Add a line" answer (test_batch_text.cpp:183).
+- Library tests 13 and 14 cite the batch-rows plan, which is at 7cd9de67 on `claude/handoff-batch-rows`. Its question 1 was closed on chat words, not a filed ruling.
+
+Open for the main session: V-DL5 found that the default window moved from 85 to 60 ms under every test that runs the engine on default settings (`corpus::analyzed` alone has 168 uses in 34 test files). Those tests are unchanged, so the delta round did not read them.
+
+The sweep. `sweep/rewrites.tsv` listed 1,168 Rewrite records by heading, but missed records in files with other heading forms. SW5 and SW6 found those (32 and 46 new). Totals across SW1 to SW6:
+
+- Q3 only, to move to Investigate in T8: 32. A9 has 12 (records 5, 9, 13, 16, 17, 22, 25, 27, 30, 35, 36, 37), A10 has 5 (3, 5, 19, 27, 28), A12 has 3 (2, 3, 14) and A14 has 12 (3, 4, 5, 6, 9, 21, 33, 34, 35, 36, 37, 38).
+- Unclear: A10 records 15 and 30. The A14 and A20 rows were prose sections, not records.
+- Every other Rewrite names a second fault. SW1 to SW4 judged mostly from the verdict line and the verify file, not from every answer.
