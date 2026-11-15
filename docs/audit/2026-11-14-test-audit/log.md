@@ -149,4 +149,15 @@ A26 and A27 get their one re-send each (`briefs/T5-verify-resend.md`), for the r
 
 A capture defect, from A29: the screen records' "SP end" screenshots set the playhead just before the end (`believer_path4.cmd.txt:26` sets 109.255572 s; the engine's end is 109255.57244 ms), so they still draw Star Power running, and no capture sits at or after a window end. This also explains the handoff's open point about Believer path 4's second SP end. The capture pass after the last round fixes `moments.py`'s rounding so the end frame lands at or after the end.
 
-Round 9 ran as one workflow: auditors for A33 to A36, verifiers for A29 to A32, and the A26 and A27 re-sends, launched together.
+Round 9 ran as one workflow (wf_95bdef43-d21): auditors for A33 to A36, verifiers for A29 to A32, and the A26 and A27 re-sends, launched together. About 8 minutes, 346 tool calls; every slice finished.
+
+- A33 (50f9ac37): 34 records. Keep 2, Rewrite 12, Investigate 20. `RecordStore::reader()` and `StoreReads` have no caller in `src/` or `tools/`.
+- A34 (9c815abc): 33 records. Keep 2, Rewrite 6, Remove 3, Investigate 22. `RecordStore::ready_song_ids` and `ready_records` have no caller in `src/` or `tools/` (A33 found the same).
+- A35 (344d2e3e): 13 records. Rewrite 10, Investigate 3.
+- A36 (0cdef4a4): 23 records. Rewrite 13, Remove 1, Investigate 9.
+- verify A29 and A30 (87d377b5), verify A31 and A32 (67bb4bbe): checked in full. A29 23 agreed, 4 disputed; A31 33 agreed, 6 disputed.
+- re-send A26 (2dcc5f36): 35 of 35 checked, 26 agreed, 9 disputed. Re-send A27 (01a46767): 28 of 28 checked, 26 agreed, 2 disputed. Both slices are now fully verified.
+
+Round 10's files: `tests/ui/uitest_commands.cpp`, `uitest_engine.cpp` and `uitest_harness.cpp` hold no test. Their unit is one record per verb (commands) or per function a GUI test calls (engine and harness), as A1 was done for `report_samples.cpp`. `uitest_batch_reports.cpp` has 15 and `uitest_details.cpp` 26 `void test_*(ImGuiTestContext*)` functions, one record each; the main session still checks those counts against `hydra_uitest.exe --list` (plan T5).
+
+Round 10 ran as one workflow: auditors for A37 to A40 and verifiers for A33 to A36, launched together.
