@@ -110,7 +110,7 @@ std::string compare_tooltip();
 // library (report::lacks_chart_library, D92). A chart mode no settings spell
 // throws (Settings::with_known_chartmode). Only results whose chart the
 // library lists join (ChartIndex::lists).
-std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
+std::vector<DmReportRow> collect_dm_rows(store::StoreReads& store,
                                          const std::vector<net::DmScore>& scores,
                                          const store::Profile& profile);
 
@@ -209,7 +209,7 @@ struct GeneratedDmReport {
     std::string username;
 };
 
-GeneratedDmReport generate_dm_report(store::RecordStore& store,
+GeneratedDmReport generate_dm_report(store::StoreReads& store,
                                      const std::vector<net::DmScore>& scores,
                                      const store::Profile& profile,
                                      const std::string& username);

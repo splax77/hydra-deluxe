@@ -816,7 +816,15 @@ void ReportJob::run() {
         options.cancel = &cancel_;
         options.run = run_;
         if (hold_) hold_();
-        app::report::GeneratedReport report = app::report::generate_report(store_, options);
+        app::report::GeneratedReport report = [&] {
+            // A connection of the report's own, so a batch's save group never
+            // makes it wait, and one hold, so every read sees the store at the
+            // same moment (store::OwnReader). Both end before the job finishes,
+            // so a finished or cancelled report holds no connection.
+            const std::unique_ptr<store::OwnReader> reader = store_.open_own_reader();
+            const store::OwnReader::Hold moment = reader->hold();
+            return app::report::generate_report(reader->reads(), options);
+        }();
         // Checked before the "no records" throw: a cancelled run has no rows
         // because it stopped, not because the store is empty, and the last
         // report in memory stays as it was.
