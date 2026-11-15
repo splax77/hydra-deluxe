@@ -316,7 +316,8 @@ static void engine_mode(const std::string& folder, const app::Settings& st,
         {
             ScoreGraph g(*song,
                          std::optional<int>(graph_build_cap(settings.sp_cap, song->sp_phrase_count())),
-                         fill_rule_for(settings.legacy_fills), settings.rules);
+                         fill_rule_for(settings.legacy_fills), settings.rules,
+                         settings.early_fill_window_ms);
             t_graph += secs_since(t);
             t = clk::now();
         }

@@ -420,9 +420,10 @@ public:
     // `options` must outlive the engine: target_act_ticks_ points into it.
     Engine(const Enum& en, bool has_sp_cap, int32_t sp_cap,
            const EngineOptions& options, double backend_leeway_ms,
-           int32_t max_tied_paths)
+           int32_t max_tied_paths, double early_fill_window_ms)
         : en_(en),
           backend_leeway_ms_(backend_leeway_ms),
+          early_fill_window_ms_(early_fill_window_ms),
           max_tied_paths_(max_tied_paths),
           has_sp_cap_(has_sp_cap),
           sp_cap_(sp_cap),
@@ -716,6 +717,10 @@ private:
     const Enum& en_;
     // hydra_rules.ini: the backend leeway edge and the tied-path fold limit.
     double backend_leeway_ms_;
+    // The early-fill window, in ms, from the search graph
+    // (ScoreGraph::early_fill_window_ms). Every early-fill question this
+    // engine asks passes it, and every activation it copies out carries it.
+    double early_fill_window_ms_;
     int32_t max_tied_paths_;
     bool has_sp_cap_;
     int32_t sp_cap_;
@@ -851,16 +856,17 @@ uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
         // Every deadline from here on is at least this one. When even this
         // one leaves too much time to spare for an E0, none is an E0, and none
         // refuses (is_e0 holds for every fill that refuses).
-        if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
+        if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0, early_fill_window_ms_))
+            break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
-        if (fill_refuses(e_offset)) ++refused;
+        if (fill_refuses(e_offset, early_fill_window_ms_)) ++refused;
         if (allzero_activation(recorded_e_offset(p.skipped_e_offset, e_offset),
-                               p.currentskips + 1))
+                               p.currentskips + 1, early_fill_window_ms_))
             ++can_pass;
         // A pinned fill is never over the limit (act_within_limit), so the
         // count skips it and the key agrees with the filter.
         if (has_ms_filter_ && !is_pinned_fill(fill_tick_[k]) &&
-            !fill_within_limit(e_offset, p.currentskips, ms_filter_))
+            !fill_within_limit(e_offset, p.currentskips, ms_filter_, early_fill_window_ms_))
             ++over;
     }
     if (refused > 0xFFFF || over > 0xFFFF) throw std::logic_error("search group key out of range");
@@ -998,7 +1004,7 @@ bool Engine::branch_activate(Path& p, Path* child) {
     const ScoreGraphEdge* eo = eobj(n.branch_edge);
 
     const double e_offset = fill_e_offset(e.activation_fill_deadline_ms, p.sp_ready_ms);
-    if (fill_refuses(e_offset)) return false;
+    if (fill_refuses(e_offset, early_fill_window_ms_)) return false;
 
     // activation_initial_end_times, keyed by SP meter. The flat form was a list
     // with NO_TIME gaps in range [0, top]; here the map has meters
@@ -1215,7 +1221,7 @@ bool Engine::act_within_limit(int32_t act) const {
         const SPSqueeze sq{sqs_[(size_t)s].kind, sqs_[(size_t)s].offset};
         if (!sq.within_limit(ms_filter_)) return false;
     }
-    return fill_within_limit(a.e_offset, a.skips, ms_filter_);
+    return fill_within_limit(a.e_offset, a.skips, ms_filter_, early_fill_window_ms_);
 }
 
 void Engine::close_last_activation(Path& p) const {
@@ -1927,7 +1933,8 @@ bool Engine::run() {
                         has_child = false;
                     }
                 } else if (!(no_skips_ && has_child &&
-                             !allzero_activation(p.skipped_e_offset, p.currentskips))) {
+                             !allzero_activation(p.skipped_e_offset, p.currentskips,
+                                                 early_fill_window_ms_))) {
                     // The parent is the path that declined this opportunity, and
                     // branch_activate has just charged it a skip. Under no_skips_
                     // that parent can still reach an all-0 path only when this
@@ -2018,6 +2025,9 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
                                           out_ticks.begin() + oa.skip_end);
             act.frontend_sp_points = node->branch_edge->frontend_sp_points;
             act.e_offset = oa.e_offset;
+            // The window the engine judged this activation's fill by, the
+            // graph's, so the activation's own E tests give the search's answer.
+            act.e_window_ms = graph.early_fill_window_ms();
             if (oa.deact_edge >= 0) {
                 act.backends = graph.edge_backends(*en.edges[(size_t)oa.deact_edge]);
             } else if (oa.final_sp_end != NO_TIME) {
@@ -2162,7 +2172,8 @@ std::vector<MPath> run_search(const ScoreGraph& graph, const EngineOptions& opti
     const int32_t cap = static_cast<int32_t>(graph.sp_meter_cap().value_or(0));
 
     Engine engine(en, has_cap, cap, options, graph.rules().backend_leeway_ms,
-                  static_cast<int32_t>(graph.rules().max_tied_paths));
+                  static_cast<int32_t>(graph.rules().max_tied_paths),
+                  graph.early_fill_window_ms());
     if (on_progress) engine.set_progress_cb(on_progress);
 
     if (!engine.run())

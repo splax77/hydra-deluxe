@@ -39,6 +39,10 @@ struct SearchSettings {
     // store::Lens::legacy_fills (docs/adr/0010); fill_rule_for in
     // search/graph.h reads it as a FillDeadlineRule.
     bool legacy_fills = false;
+    // The early-fill window, in ms, on both sides of a fill's deadline (the
+    // early-fill rule in core/model.h). search_graph puts it on the graph,
+    // which carries it to every engine run.
+    double early_fill_window_ms = kDefaultEarlyFillWindowMs;
     // The user's rule choices (hydra_rules.ini). Defaults are today's rules.
     core::Rules rules = core::default_rules();
 };

@@ -21,6 +21,8 @@
 #include "core/rules.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
+#include "search/graph.h"
+#include "search/pather.h"
 
 using namespace hydra;
 
@@ -149,28 +151,36 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
     CHECK_FALSE(std::signbit(squeeze_difficulty(false, 0.0)));
     CHECK(SPSqueeze{SqueezeKind::SqOut, -3.5}.difficulty() == squeeze_difficulty(false, -3.5));
 
-    CHECK(is_e0(kHitWindowMs - 0.1, 0));
-    CHECK_FALSE(is_e0(kHitWindowMs, 0));
-    CHECK_FALSE(is_e0(10.0, 1));
+    const double w = kDefaultEarlyFillWindowMs;
+    CHECK(is_e0(w - 0.1, 0, w));
+    CHECK_FALSE(is_e0(w, 0, w));
+    CHECK_FALSE(is_e0(10.0, 1, w));
     CHECK(early_fill_difficulty(-4.0) == 4.0);
     CHECK_FALSE(std::signbit(early_fill_difficulty(0.0)));
 
     Activation a;
     a.e_offset = 10.0;
     test::set_skips(a, 0);
-    CHECK(a.is_E0() == is_e0(10.0, 0));
+    CHECK(a.is_E0() == is_e0(10.0, 0, a.e_window_ms));
     REQUIRE(a.e_difficulty().has_value());
     CHECK(*a.e_difficulty() == early_fill_difficulty(10.0));
 }
 
-// The all-0 rule (D102): no skips, or one skip that was the early fill.
+// The all-0 rule (D102): no skips, or one skip that was the early fill. Run
+// at the default window and at the widest one the setting allows.
 TEST_CASE("allzero_activation: no skips, or an E1") {
-    CHECK(allzero_activation(500.0, 0));                     // a plain 0
-    CHECK(allzero_activation(kHitWindowMs - 0.1, 0));        // an E0
-    CHECK(allzero_activation(kHitWindowMs - 0.1, 1));        // an E1
-    CHECK(allzero_activation(-kHitWindowMs, 1));             // an E1, as late as a fill spawns
-    CHECK_FALSE(allzero_activation(kHitWindowMs, 1));        // a plain 1
-    CHECK_FALSE(allzero_activation(10.0, 2));                // an E2 skips a real fill
+    for (const double w : {kDefaultEarlyFillWindowMs, kHitWindowMs}) {
+        CAPTURE(w);
+        CHECK(allzero_activation(500.0, 0, w));               // a plain 0
+        CHECK(allzero_activation(w - 0.1, 0, w));             // an E0
+        CHECK(allzero_activation(w - 0.1, 1, w));             // an E1
+        CHECK(allzero_activation(-w, 1, w));                  // an E1, as late as a fill spawns
+        CHECK_FALSE(allzero_activation(w, 1, w));             // a plain 1
+        CHECK_FALSE(allzero_activation(10.0, 2, w));          // an E2 skips a real fill
+    }
+    // One offset, two windows: 70 ms to spare is an E1 at 85 and a plain 1 at 60.
+    CHECK(allzero_activation(70.0, 1, kHitWindowMs));
+    CHECK_FALSE(allzero_activation(70.0, 1, kDefaultEarlyFillWindowMs));
 
     Path p;
     Activation e1;
@@ -178,28 +188,100 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
     test::set_skips(e1, 1);
     p.activations.push_back(e1);
     CHECK(p.is_allzero());
-    p.activations.front().e_offset = kHitWindowMs;
+    p.activations.front().e_offset = e1.e_window_ms;
+    CHECK_FALSE(p.is_allzero());
+    // Path::is_allzero reads each activation's own window.
+    p.activations.front().e_offset = 70.0;
+    p.activations.front().e_window_ms = kHitWindowMs;
+    CHECK(p.is_allzero());
+    p.activations.front().e_window_ms = kDefaultEarlyFillWindowMs;
     CHECK_FALSE(p.is_allzero());
 }
 
 // The early-fill window has one owner: model.h states both sides of it, the
-// fill that refuses (fill_refuses) and the E0 (is_e0), both read from the hit
-// window kHitWindowMs (D344). A fill that refuses is an E0 too, which
-// Engine::ready_class leans on. The single-owner scan (core.json) says what
-// may read the constant; this checks each side's edge.
+// fill that refuses (fill_refuses) and the E0 (is_e0), both read from the
+// window the caller passes. Each side's edge is checked at the default and at
+// the widest window the setting allows, so a side that read a constant
+// instead of its argument fails at one of them.
 TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_e_offset(10000.0, 10050.0) == -50.0);
-    CHECK_FALSE(fill_refuses(-kHitWindowMs));  // exactly at the reach still spawns
-    CHECK(fill_refuses(-kHitWindowMs - 0.1));
-    CHECK(is_e0(-kHitWindowMs - 0.1, 0));  // a fill that refuses is an E0 too
+    for (const double w : {kDefaultEarlyFillWindowMs, kHitWindowMs}) {
+        CAPTURE(w);
+        CHECK_FALSE(fill_refuses(-w, w));  // ready exactly the window late still spawns
+        CHECK(fill_refuses(-w - 0.1, w));  // a hair later refuses
+        CHECK_FALSE(is_e0(w, 0, w));       // exactly the window to spare: no E
+        CHECK(is_e0(w - 0.1, 0, w));       // a hair less: an E
+
+        Activation a;
+        a.e_window_ms = w;
+        a.e_offset = w - 0.1;  // SP ready just under the window before the deadline
+        test::set_skips(a, 1);
+        CHECK(a.is_e_critical());
+        CHECK(a.is_e_critical() == is_e0(a.e_offset, 0, w));
+        a.e_offset = w;  // exactly the window to spare: no E
+        CHECK_FALSE(a.is_e_critical());
+        CHECK(a.is_e_critical() == is_e0(a.e_offset, 0, w));
+    }
+    // Between the two windows the answers differ, so neither side can be a
+    // fixed number: 70 ms late spawns at 85 and refuses at 60, and 70 ms to
+    // spare is an E at 85 and not at 60.
+    CHECK_FALSE(fill_refuses(-70.0, kHitWindowMs));
+    CHECK(fill_refuses(-70.0, kDefaultEarlyFillWindowMs));
+    CHECK(is_e0(70.0, 0, kHitWindowMs));
+    CHECK_FALSE(is_e0(70.0, 0, kDefaultEarlyFillWindowMs));
+    CHECK_FALSE(fill_within_limit(70.0, 0, -80.0, kHitWindowMs));
+    CHECK(fill_within_limit(70.0, 0, -80.0, kDefaultEarlyFillWindowMs));
+}
+
+// Both sides read one number (O13): every offset at which a fill refuses is
+// an E0 at the same window, which Engine::ready_class leans on. Walked over
+// windows from 0 to the widest, and offsets on both sides of each edge.
+TEST_CASE("early-fill window: every fill that refuses is an E0 at the same window") {
+    for (const double w : {0.0, 1.0, 30.0, kDefaultEarlyFillWindowMs, 70.0, kHitWindowMs}) {
+        CAPTURE(w);
+        int refusing = 0;
+        for (double e = -200.0; e <= 200.0; e += 0.5) {
+            CAPTURE(e);
+            if (!fill_refuses(e, w)) continue;
+            ++refusing;
+            CHECK(is_e0(e, 0, w));
+        }
+        CHECK(refusing > 0);
+    }
+}
+
+// The 0 ms window (O19): a fill spawns only when SP was ready by its
+// deadline, and no activation that spawns is an early fill.
+TEST_CASE("early-fill window: at 0 ms no spawning activation is an E") {
+    CHECK(fill_refuses(-0.1, 0.0));        // a hair after the deadline refuses
+    CHECK_FALSE(fill_refuses(0.0, 0.0));   // exactly on it spawns
+    for (double e = 0.0; e <= 200.0; e += 0.5) {
+        CAPTURE(e);
+        CHECK_FALSE(fill_refuses(e, 0.0));
+        CHECK_FALSE(is_e0(e, 0, 0.0));
+        CHECK_FALSE(allzero_activation(e, 1, 0.0));
+        CHECK(fill_within_limit(e, 0, 0.0, 0.0));
+    }
     Activation a;
-    a.e_offset = kHitWindowMs - 0.1;  // SP ready just under the hit window before the deadline
-    test::set_skips(a, 1);
-    CHECK(a.is_e_critical());
-    CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
-    a.e_offset = kHitWindowMs;  // exactly the hit window to spare: no E
+    a.e_window_ms = 0.0;
+    a.e_offset = 0.0;
+    test::set_skips(a, 0);
     CHECK_FALSE(a.is_e_critical());
-    CHECK(a.is_e_critical() == is_e0(a.e_offset, 0));
+    CHECK_FALSE(a.e_difficulty().has_value());
+}
+
+// The default window has one home, kDefaultEarlyFillWindowMs, and every
+// carrier starts from it.
+TEST_CASE("early-fill window: every default is kDefaultEarlyFillWindowMs") {
+    CHECK(SearchSettings{}.early_fill_window_ms == kDefaultEarlyFillWindowMs);
+    CHECK(Activation{}.e_window_ms == kDefaultEarlyFillWindowMs);
+    CHECK(HydraRecord{}.early_fill_window_ms == kDefaultEarlyFillWindowMs);
+    const Song song = test::ready_time_fold_song();
+    const ScoreGraph graph(song, 2);
+    CHECK(graph.early_fill_window_ms() == kDefaultEarlyFillWindowMs);
+    // The default is inside the setting's range, 0 to the hit window.
+    CHECK(kDefaultEarlyFillWindowMs >= 0.0);
+    CHECK(kDefaultEarlyFillWindowMs <= kHitWindowMs);
 }
 
 TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
@@ -572,17 +654,25 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps"
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     Activation a;
     test::set_skips(a, 2);
-    a.e_offset = 300.0;  // not e-critical (>= kHitWindowMs)
+    a.e_offset = 300.0;  // not e-critical (at or past the window)
     CHECK(a.notationstr() == "2");
 
-    a.e_offset = kHitWindowMs;  // boundary: not e-critical
+    a.e_offset = a.e_window_ms;  // boundary: not e-critical
     CHECK(a.notationstr() == "2");
 
     a.e_offset = 50.0;  // e-critical
     CHECK(a.notationstr() == "E2");
 
-    a.e_offset = kHitWindowMs - 0.1;  // boundary: e-critical
+    a.e_offset = a.e_window_ms - 0.1;  // boundary: e-critical
     CHECK(a.notationstr() == "E2");
+
+    // The E prefix follows the activation's own window, not a constant.
+    a.e_window_ms = kHitWindowMs;
+    a.e_offset = kHitWindowMs - 0.1;
+    CHECK(a.notationstr() == "E2");
+    a.e_window_ms = kDefaultEarlyFillWindowMs;
+    CHECK(a.notationstr() == "2");
+    a.e_offset = 50.0;
 
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -1.0});
     a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 1.0});
