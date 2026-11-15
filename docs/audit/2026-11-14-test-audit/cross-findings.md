@@ -56,7 +56,7 @@ Exit: not chosen.
 
 ## X4. The squeeze timing tiers, their names and edges, are typed in many tests
 
-The tier names ("Normal", "Extreme", "Insane", "Insane+", "Beyond", "Hard (uncounted)") and the edges at 85 ms and 170 ms are typed in about ten test files outside the tier table's own tests. Owners: `timing_tiers()`, `src/core/squeeze_rating.cpp:241-251`; `kHitWindowMs`, `src/core/model.h:106`; " (uncounted)", `src/core/model.cpp:354`; `kFormulaScale` and `kWindowBackMs`, `src/core/note_window.h`. Renaming a tier or moving an edge turns all of them red at once. `test_squeeze_rating.cpp` and `test_note_window.cpp` are the owner's own tests, so their lines pin the owner rather than copy it. Sources: RP1-4, RP2-2 and RP3-3, all agreed. V-RP2 removed `test_config.cpp:285,302` (the test sets its own early-fill window to 85, a different constant) and `test_report_view.cpp:339,342` (song names that equal tier names).
+The tier names ("Normal", "Extreme", "Insane", "Insane+", "Beyond", "Hard (uncounted)") and the edges at 85 ms and 170 ms are typed in about ten test files outside the tier table's own tests. Owners: `timing_tiers()`, `src/core/squeeze_rating.cpp:241-251`; `kHitWindowMs`, `src/core/model.h:106`; " (uncounted)", `src/core/model.cpp:354`; `kFormulaScale` and `kWindowBackMs`, `src/core/note_window.h`. Renaming a tier or moving an edge turns all of them red at once. `test_squeeze_rating.cpp` and `test_note_window.cpp` are the tier table's own tests, but re-typing the table there is no better: it pins the constant, not what the rating does (X10). Sources: RP1-4, RP2-2 and RP3-3, all agreed. V-RP2 removed `test_config.cpp:285,302` (the test sets its own early-fill window to 85, a different constant) and `test_report_view.cpp:339,342` (song names that equal tier names).
 
 Exit: not chosen.
 
@@ -67,7 +67,7 @@ Each of these messages is written once in `src/` and typed again in three or mor
 - "cancelled", owner `src/core/error_kind.h:158` (RP3-7).
 - "sqlite exec failed: ...", owner `src/store/record_store.cpp:1058` (RP3-7).
 - "cannot open file: ", in 4 test files (RP2-6). This one has no single owner: `src/` types the phrase in at least six places (`src/audio/mapped_file.cpp:28,33,46,49`, `src/core/winstr.cpp:290`, `src/app/analysis.cpp:113`, `src/app/update_verify.cpp:54`), none a shared constant (V-RP2). So it is a split on the product side as well as a copy on the test side.
-- "/all-users", owner `src/net/dmbot_client.cpp:122` (RP3-7). The copies are fakes that answer that path. A renamed path would make them quietly return the wrong canned answer rather than fail.
+- "/all-users", owner `src/net/dmbot_client.cpp:122` (RP3-7). The copies are fakes that answer that path. A renamed path would make them quietly return the wrong canned answer rather than fail. The answers themselves are written by hand: `canned_dm_users()` and `canned_dm_scores` in `ui/uitest_harness.cpp:200-206`, and `kDmUsersJson` and `kDmScoresJson` in `test_app_reports.cpp`. They stand in for the dmleaderboards reply the same way X9's made-up summaries stand in for the engine's, and no saved real reply exists on this machine (`capture/RUNS.md`).
 
 Exit: not chosen.
 
@@ -113,11 +113,40 @@ This list is not complete. The pass's K3 rows were never read for this question.
 
 Exit: not chosen.
 
-## What the repeated-values pass left out of X3 to X9
+## X10. Tests pin a typed constant instead of what the code does
+
+The user, in session 63c70014: "tests should not be pinned to typed constants. they should be pinned to the behavior of the code. i have repeatedly told you this is bad and you never listen."
+
+A check such as `kDefaultEarlyFillWindowMs == 60.0` (`test_config.cpp:255`), or a search of `model.h`'s source text for `kHitWindowMs = 85.0` and `kSqueezeWindowMs = 500.0` (`test_replay_schedule.cpp:355,356`), proves only that the number is still the number. An intended change of the constant turns it red with no bug. A broken rule that never reads the constant leaves it green. The check that belongs there states the behaviour: a squeeze 1 ms past an edge rates in the next tier, or a fill 1 ms inside the window is refused.
+
+So these are all X10, not just the repeats across files:
+- The single-file pins listed below under "Pins in one file only".
+- The tier table re-typed in its own tests (X4).
+- The product texts and keys typed into the tests that check them (X5 to X8). For a message, the behaviour is when it is shown and what it names, not its spelling.
+
+`docs/agents/test-rubric.md` has no question that catches this, and the per-test records were judged by that rubric. So records that keep a constant pin may exist in every slice. They have not been counted.
+
+Exit: not chosen.
+
+## X11. Echo checks
+
+A check that types a value in and requires the same value back tests nothing. `test_user_messages.cpp:120-121` types "No Expert Pro Drums notes in this chart." into `ChartFileError(AlreadyPlain, msg)` and requires `plain_error` to return it. The next line already runs the real `NoNotesError` through `plain_error`, so the made-up line adds nothing. The placeholder tests in X6 mostly feed "(unknown)" in and check for "(unknown)". Sources: V-RP1, X9-RP1.
+
+Exit: not chosen.
+
+## X12. Tests that cite something that is not code
+
+The user, in session 63c70014: "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong".
+
+Many expected values name their source in a comment instead of in code: "From one run" (`test_pb_coach.cpp:66`, `:161`), "pinned from one run" (`test_replay.cpp:1516`, `test_preview_boxes.cpp:512-516`, `test_audio_player.cpp:139`), "The engine's record" (`test_sp_meter_curve.cpp:461`, `:464`), "as PS0b saved it" (`test_sp_meter_curve.cpp:951`), and "Burnout's real 163.0 ms" (`test_library_query.cpp:393`). Each comment admits the value belongs to the engine, and none ties it there. They are the snapshot instances in `repeats/X9-RP1.md` to `X9-RP3.md`.
+
+Exit: not chosen.
+
+## What the repeated-values pass left out of X3 to X12
 
 - **Disputed:** RP3-10 ("chart" and "charts" are arguments passed to the product's `counted()`, not copies of its output) and RP3-6's `kDot`.
 - **Not settled:** RP1-7, 48 kHz. Only `test_audio_decode.cpp:155` is clearly the product's rate (`kRate`, `src/audio/opus_reader.cpp:52`). Three places were not traced (V-RP1).
-- **Pins in one file only, not repeats.** Each sits in a single test file. They are listed so T8 sees them; whether such a pin is a fault is not decided here. RP1-6 lists six of them, among them `kReportConfirmAbove` 500, `kDefaultEarlyFillWindowMs` 60.0 and the source text of `kSqueezeWindowMs`. V-RP1 adds the backend cap 500 (`uitest_paths.cpp:408,410`) and `wal_autocheckpoint` 1000 (`test_store_open.cpp:1284,1292`; the owner is a bare literal at `src/store/record_store.cpp:1115`). V-RP2 adds four more:
+- **Pins in one file only, not repeats.** Each sits in a single test file. Each is a fault by X10, even in one file. RP1-6 lists six of them, among them `kReportConfirmAbove` 500, `kDefaultEarlyFillWindowMs` 60.0 and the source text of `kSqueezeWindowMs`. V-RP1 adds the backend cap 500 (`uitest_paths.cpp:408,410`) and `wal_autocheckpoint` 1000 (`test_store_open.cpp:1284,1292`; the owner is a bare literal at `src/store/record_store.cpp:1115`). V-RP2 adds four more:
   - the MIDI message-length limit text (`test_midi.cpp:524`);
   - the star cutoffs (`test_stars.cpp:222,259,341`);
   - the Library column widths (`test_column_widths.cpp:146,214`);
