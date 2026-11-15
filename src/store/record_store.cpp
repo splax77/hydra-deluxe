@@ -1798,7 +1798,7 @@ std::vector<RecordLookup> StoreReader::lookup(const std::vector<std::string>& so
                                               const Profile& want) {
     std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
     open_if_closed();
-    const ReadTransaction read(conn_.db);
+    const ReadTransaction one_moment(conn_.db);
     return lookup_on(conn_, store_.rules_fingerprint_, song_ids, want,
                      store_.between_lookup_reads_for_test_);
 }
@@ -1806,7 +1806,7 @@ std::vector<RecordLookup> StoreReader::lookup(const std::vector<std::string>& so
 std::unordered_map<std::string, RecordStatus> StoreReader::settled_song_ids(const Profile& want) {
     std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
     open_if_closed();
-    const ReadTransaction read(conn_.db);
+    const ReadTransaction one_moment(conn_.db);
     return settled_on(conn_, store_.rules_fingerprint_, want,
                       store_.between_lookup_reads_for_test_);
 }
