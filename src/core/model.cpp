@@ -571,6 +571,13 @@ std::vector<Activation> Path::all_activations() const {
 
 bool Path::has_activations() const { return !walk_activations().empty(); }
 
+std::vector<int64_t> Path::bank_arrivals(size_t i) const {
+    const ActivationWalk acts = walk_activations();
+    std::vector<int64_t> out = i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
+    if (!out.empty() && i > 0 && acts[i - 1].sqout_tick) out.front() = *acts[i - 1].sqout_tick;
+    return out;
+}
+
 int64_t Path::totalscore() const {
     return score_total(notes_points, score_combo, score_sp, score_solo, score_accents,
                        score_ghosts);
@@ -707,6 +714,12 @@ std::optional<int64_t> Activation::deact_tick() const {
     return sp_end_steps.back().end_tick;
 }
 
+std::optional<int64_t> Activation::window_end_tick() const {
+    const std::optional<int64_t> d = deact_tick();
+    if (d && sqout_tick && !core::after_sp_end(*sqout_tick, *d)) return sqout_tick;
+    return d;
+}
+
 namespace {
 
 // Which note did the SP cap last pin, at or before step `last`? The tick of
@@ -757,14 +770,6 @@ std::optional<int64_t> Activation::squeeze_end_tick(size_t squeeze_index) const 
 // clamp at or before the step that set it, else the activation.
 int64_t Activation::end_anchor_tick(size_t step_index) const {
     return last_clamp_tick(sp_end_steps, step_index).value_or(timecode.ticks());
-}
-
-int64_t Activation::refill_tick(size_t step_index) const {
-    const SpEndStep& s = sp_end_steps.at(step_index);
-    if (step_index == 0 || !is_sqin_kind(s.kind)) return s.tick;
-    // A late squeeze-in: the phrase sits past the end in force, and the
-    // player hits it early, so the bar arrives at that end.
-    return std::min(s.tick, sp_end_steps[step_index - 1].end_tick);
 }
 
 // The note whose timing moves the final SP end D: the latest Clamped step,

@@ -103,9 +103,9 @@ struct PreviewActivation {
     // earlier activation already took it). Empty when the activation's tick
     // ends no fill. The highway's fill-lane colour reads it.
     std::optional<size_t> taken_fill;
-    // The deact node: where this activation's SP runs out, read off the
-    // record (the search stamps it). has_sp_end is false for an activation
-    // with no SP-end steps, which is a hand-built one (Activation::deact_tick).
+    // Where this activation's SP is over: Activation::window_end_tick, read
+    // off the record. has_sp_end is false for an activation with no SP-end
+    // steps, which is a hand-built one.
     bool has_sp_end = false;
     int64_t sp_end_tick = 0;
     double sp_end_ms = 0.0;
@@ -125,10 +125,11 @@ struct PreviewActivation {
     // highway's sp_active sweep answers it separately, and test_track_state
     // pins the two together.
     bool sp_running_at(double now) const;
-    // Where this window's SP end changed, read off the record: the tick the
-    // change takes effect (Activation::refill_tick) and the end after it. The
-    // first entry is the activation itself. The gauge draws the window from
-    // these alone; a squeezed-out phrase has no entry.
+    // Where this window's SP end changed, read off the record: each stored
+    // step's tick (SpEndStep::tick) and the end after it, the last end being
+    // Activation::window_end_tick. The first entry is the activation itself.
+    // The gauge draws the window from these alone; a squeezed-out phrase has
+    // no entry.
     struct SpEndChange {
         int64_t at_tick = 0;
         int64_t end_tick = 0;
@@ -138,7 +139,7 @@ struct PreviewActivation {
         bool operator!=(const SpEndChange& o) const { return !(*this == o); }
     };
     std::vector<SpEndChange> sp_end_changes;
-    // Where each bar this activation spends arrived (Activation::bank_rise_ticks).
+    // Where each bar this activation spends arrived (Path::bank_arrivals).
     std::vector<int64_t> bank_rise_ticks;
     // The activation note's lane (the chord's highest-priority note, Green
     // first): the lane the activated fill lights. Kick when the record has no
@@ -292,7 +293,7 @@ struct PreviewScene {
     // with no ghost path.
     std::vector<std::pair<double, double>> ghost_windows;
     // Overlay: where each bar banked after the path's last window arrived
-    // (Path::trailing_bank_ticks). Empty without a path.
+    // (Path::bank_arrivals for the trailing bars). Empty without a path.
     std::vector<int64_t> trailing_bank_ticks;
     // Overlay: the fills the path passed over after its last activation
     // (Path::trailing_skipped_fill_ticks). Empty without a path.
@@ -413,7 +414,8 @@ inline bool PreviewActivation::sp_running_at(double now) const {
 // kMeasuresPerSpBar measures at the local measure length the song's timing
 // gives (SongTiming::ms_per_measure_at). The box is `active` when the path has
 // SP running at the playhead (PreviewActivation::sp_running_at).
-// Then `detail` is "empties in X s", that stored end minus the playhead.
+// Then `detail` is "empties in X s", the end of that activation's sp_window()
+// minus the playhead.
 // Otherwise `detail` is "full meter X s": the meter's cap in bars at that same
 // bar time, so it jumps exactly when the rate does. A chart with no Star Power
 // never has SP running, so its box always reads that idle form.

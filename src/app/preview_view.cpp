@@ -118,9 +118,9 @@ SpMeterCurve build_unanalyzed_sp_meter_curve(const PreviewScene& scene, int sp_c
 }
 
 // The SP meter along a path (see SpMeterCurve), drawn only from what the
-// record stamped: each bar's arrival between windows (bank_rise_ticks,
-// trailing_bank_ticks), and where each window's SP end changed, up to its
-// deact node. It counts no phrase and applies no cap; the engine already did
+// record stamped: each bar's arrival between windows (Path::bank_arrivals),
+// and where each window's SP end changed, up to its end
+// (Activation::window_end_tick). It counts no phrase and applies no cap; the engine already did
 // both. Every comparison is in ticks; ms only places the drawing.
 SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& timing,
                                   int sp_cap) {
@@ -140,8 +140,8 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         }
     };
     // Bars left at `tick` while SP ends at `end_tick`: the measures between,
-    // two to a bar. Never below empty, though a fresh record never asks for a
-    // tick past the end in force.
+    // two to a bar. Never below empty: between an end in force and a late
+    // phrase's chord past it, the tick is past that end.
     auto bars_left = [&](int64_t tick, int64_t end_tick) {
         const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -
                                 timing.measures_at_tick_f(static_cast<double>(tick));
@@ -165,8 +165,10 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         if (act.sp_end_changes.empty()) continue;
 
         // Inside the window: the measures left until the SP end in force, two
-        // to a bar. Cut where the record says the end changed and at each
-        // tempo and meter change, where measures stop being linear in ms.
+        // to a bar. Cut where the record says the end changed, at an end in
+        // force that falls before the next change (so the drain reaches empty
+        // on that end and waits there), and at each tempo and meter change,
+        // where measures stop being linear in ms.
         struct Cut {
             int64_t tick;
             double ms;
@@ -175,6 +177,8 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
         for (size_t k = 1; k < act.sp_end_changes.size(); ++k) {
             const int64_t t = act.sp_end_changes[k].at_tick;
             cuts.push_back({t, timing.ms_index().at(t)});
+            const int64_t before = act.sp_end_changes[k - 1].end_tick;
+            if (before < t) cuts.push_back({before, timing.ms_index().at(before)});
         }
         // The tempo and meter changes strictly inside the window. Each index
         // first steps past the changes at or before this activation note; the
@@ -195,9 +199,9 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
                          [](const Cut& a, const Cut& b) { return a.tick < b.tick; });
 
         // At a change the segment before it ends on the old end's value, and
-        // the next starts on the new one's: that is the step. A change at the
-        // end in force (the record's refill tick for a late phrase) ends the
-        // first segment at empty and starts the next at a bar.
+        // the next starts on the new one's: that is the step. A late phrase's
+        // change sits on its own chord, past the end in force, so the drain
+        // holds at empty from that end until the chord, then steps up.
         size_t step = 0;  // the change in force
         int64_t prev_tick = act.tick;
         double prev_ms = act.ms;
@@ -211,7 +215,7 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const SongTiming& t
             prev_tick = cut.tick;
             prev_ms = cut.ms;
         }
-        // The last stretch runs to the deact node, the last change's end:
+        // The last stretch runs to the window's end, the last change's end:
         // empty exactly there.
         const int64_t end_tick = act.sp_end_changes[step].end_tick;
         push_segment(curve, prev_ms, act.sp_end_ms, bars_left(prev_tick, end_tick),
@@ -418,18 +422,26 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     // One activation as the Preview holds it, ms resolved against the song's
     // timing. The drawn path's activations and the ghost path's windows are
     // both built here.
-    auto preview_activation = [&](const Activation& a) {
+    // Activation i of path p (walk_activations order).
+    auto preview_activation = [&](const Path& p, size_t i) {
+        const Activation& a = p.walk_activations()[i];
         PreviewActivation pa;
         pa.tick = a.timecode.ticks();
         pa.ms = song.timecode(pa.tick).ms();
         pa.skipped_fill_ticks = a.skipped_fill_ticks;
-        pa.bank_rise_ticks = a.bank_rise_ticks;
-        for (size_t k = 0; k < a.sp_end_steps.size(); ++k)
-            pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});
-        if (std::optional<int64_t> d = a.deact_tick()) {
+        pa.bank_rise_ticks = p.bank_arrivals(i);
+        // Each stored step's tick and end, the last step's end being the
+        // window's end (Activation::window_end_tick).
+        const std::optional<int64_t> window_end = a.window_end_tick();
+        for (size_t k = 0; k < a.sp_end_steps.size(); ++k) {
+            const bool last = k + 1 == a.sp_end_steps.size();
+            pa.sp_end_changes.push_back(
+                {a.sp_end_steps[k].tick, last ? *window_end : a.sp_end_steps[k].end_tick});
+        }
+        if (window_end) {
             pa.has_sp_end = true;
-            pa.sp_end_tick = *d;
-            pa.sp_end_ms = timing.ms_index().at(*d);
+            pa.sp_end_tick = *window_end;
+            pa.sp_end_ms = timing.ms_index().at(*window_end);
         }
         if (a.chord.count() > 0) {
             pa.has_lane = true;
@@ -443,9 +455,10 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
 
     // Overlay: the path's activations.
     if (path != nullptr) {
-        for (const Activation& a : path->walk_activations())
-            scene.activations.push_back(preview_activation(a));
-        scene.trailing_bank_ticks = path->trailing_bank_ticks;
+        const size_t count = path->walk_activations().size();
+        for (size_t i = 0; i < count; ++i)
+            scene.activations.push_back(preview_activation(*path, i));
+        scene.trailing_bank_ticks = path->bank_arrivals(count);
         scene.trailing_skipped_fill_ticks = path->trailing_skipped_fill_ticks;
     }
 
@@ -487,11 +500,13 @@ PreviewScene apply_preview_overlay(PreviewScene scene, const Song& song, const P
     // are the sp_window() of the same activation build the drawn path gets.
     if (ghost_path != nullptr) {
         size_t next_fill = 0;
-        for (const Activation& a : ghost_path->walk_activations()) {
+        const ActivationWalk ghost_acts = ghost_path->walk_activations();
+        for (size_t k = 0; k < ghost_acts.size(); ++k) {
             if (const std::optional<size_t> i =
-                    fill_on_chord(scene.fills, a.timecode.ticks(), next_fill))
+                    fill_on_chord(scene.fills, ghost_acts[k].timecode.ticks(), next_fill))
                 scene.ghost_fills.push_back(*i);
-            if (const std::optional<std::pair<double, double>> w = preview_activation(a).sp_window())
+            if (const std::optional<std::pair<double, double>> w =
+                    preview_activation(*ghost_path, k).sp_window())
                 scene.ghost_windows.push_back(*w);
         }
     }
@@ -650,16 +665,17 @@ PreviewDrainBox build_drain_box(const PreviewScene& scene, double now_ms, double
     std::snprintf(buf, sizeof buf, "1 bar / %.1f s", bar_ms / 1000.0);
     box.rate = buf;
 
-    // SP is running when the playhead sits in an activation's stored window.
-    // A record with no deact node cannot say, so it reads idle. The score box
-    // asks the same helper.
+    // SP is running when the playhead sits in an activation's window
+    // (PreviewActivation::sp_window). A record with no SP end cannot say, so
+    // it reads idle. The score box asks the same helper.
     const PreviewActivation* running = running_activation(scene, now);
 
     if (running != nullptr) {
         box.active = true;
         box.header = "SP drain";
+        // sp_running_at is true only inside sp_window(), so it is set here.
         std::snprintf(buf, sizeof buf, "empties in %.1f s",
-                      (running->sp_end_ms - now) / 1000.0);
+                      (running->sp_window()->second - now) / 1000.0);
     } else {
         box.header = "SP drain (if activated)";
         // The cap at the bar time in force here, so it jumps exactly when the

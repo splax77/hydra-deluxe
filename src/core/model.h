@@ -616,9 +616,10 @@ struct Activation {
 
     // Where each bar this activation spends arrived, since the previous window
     // closed (or the chart began), in order. A phrase hit at the cap gains
-    // nothing and is not here. A squeezed-out phrase's bar is here at the
-    // later of the previous deact node and that phrase, when the player hits
-    // it. Stamped by the search. sp_meter() is its size.
+    // nothing and is not here. A squeezed-out phrase's bar is the first
+    // entry, stamped where the search's own bookkeeping puts it
+    // (search/engine.cpp, the SqOut branch); Path::bank_arrivals gives the
+    // arrival as played. Stamped by the search. sp_meter() is its size.
     std::vector<int64_t> bank_rise_ticks;
 
     // Bars of SP this activation spends: one per stored arrival.
@@ -649,13 +650,19 @@ struct Activation {
     //                              and a clamped phrase included; never a
     //                              squeezed-out phrase.
     std::optional<int64_t> deact_tick() const;           // the last step's end
+    // Where this window's Star Power is over as played: the squeezed-out
+    // chord when core::after_sp_end says it is not after deact_tick(), since
+    // set_sqout treats every chord past it as hit after SP ended; otherwise
+    // deact_tick(). The search asks the same function of the same two ticks
+    // (SqueezeChoice::late). deact_tick() stays the stored end the search,
+    // the replay and the press schedule read.
+    std::optional<int64_t> window_end_tick() const;
     std::optional<int64_t> clamp_tick() const;           // the last Clamped step's tick
     std::vector<int64_t> collected_phrase_ticks() const; // every step after the first
     std::optional<int64_t> nominal_end() const;          // the first step's end
     std::optional<size_t> squeeze_end_step(size_t squeeze_index) const;
     std::optional<int64_t> squeeze_end_tick(size_t squeeze_index) const;
     int64_t end_anchor_tick(size_t step_index) const;
-    int64_t refill_tick(size_t step_index) const;
     // The note whose timing moves D: end_anchor_tick of the last step.
     std::optional<int64_t> deact_anchor_tick() const;
     // The note whose timing moves the end squeeze k was measured from.
@@ -832,6 +839,16 @@ struct Path {
 
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
+
+    // Where the bars spent by activation i (walk_activations order) arrived
+    // as played; i equal to the activation count means the trailing bars,
+    // and i is never more than that.
+    // The stored list (Activation::bank_rise_ticks, trailing_bank_ticks),
+    // with its first entry on the previous activation's sqout_tick when that
+    // activation squeezed out: the search banks that bar when the player hits
+    // the phrase, and starts a fresh list for it (search/engine.cpp, the SqOut
+    // branch). An empty list is returned as it is.
+    std::vector<int64_t> bank_arrivals(size_t i) const;
 
     int64_t notes_points = 0;
     int64_t score_combo = 0;
