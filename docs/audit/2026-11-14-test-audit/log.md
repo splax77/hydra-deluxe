@@ -33,3 +33,19 @@ Score against the key: key count 6, found 6 (all six reported as not Keep, the f
 Size, for T4: the agent finished its whole file (1,097 lines) well inside the 20-minute warning. So the slice table stands, if the audit goes on.
 
 The agent also raised a point about the rubric itself (its S0): question 3 asks for an engine record, and a rule only a display owns (a text format, a clamp) has none, so no display-only test can get Keep. Thirteen of its eighteen Investigate verdicts rest on that alone.
+
+## 2026-11-15, the fix between the runs
+
+The user's words on the agent's point: "well the display doesnt exist in a vacuum, does it? its displaying things that are tied to real charts. and we can measure those." On the first draft of a brief rule: "draft 2 is weaker because it is only talking about abstract concepts with room for interpretation. harder rules with concrete examples of good and bad work better. if there isnt a good example right now, create one." Then "okay proceed". Chat words, not filed rulings.
+
+So the rubric changed on main (4c6272e2, merged here at 29759095), not the brief. Question 3 now reads a real chart for every display rule, putting what the screen shows beside what the chart and the engine say. A hard rule follows it for a claim that differs from the record, and a bad record of B1's test now sits beside the good one, showing the mistake. The T3 brief stayed as it was, apart from its worktree and output file.
+
+## 2026-11-15, T3, run 2
+
+One fresh Sonnet scout, launched by a workflow from `briefs/T3-run2.md`, in a throwaway worktree on `claude/test-audit-cal2` where run 1's records and this log were removed, so it could not read them. It judged all 53 test cases in 43 calls and about 8 minutes (records at 069cd3a7 there, copied here). Its verdicts: Rewrite 39, Remove 9, Investigate 5, Keep 0.
+
+Score against the key: key count 6, found 6. Verdict: **pass**. Both tests whose claim is the fault were reported as failing question 2 or 3, each with a production-code finding and a split, and given Investigate. The four snapshot tests were reported on the key's lines. The key is now in `calibration/key.md`.
+
+T4: the agent finished its whole file well inside the warning, so the slice table stands.
+
+One thing to carry into the find rounds: most of its records still read "claim not checked" on question 3, because T1 saved only engine dumps, not what the screens show on those charts. Under the new question 3, the main session captures both sides, so the screen side is still to capture before the rounds.
