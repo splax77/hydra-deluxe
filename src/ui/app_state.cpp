@@ -219,14 +219,15 @@ const LibraryChart* AppState::library_row_for(const std::string& key) const {
 std::optional<store::ChartLibraryEntry> AppState::read_entry(const std::string& key,
                                                              const std::string& md5) {
     std::vector<store::ChartLibraryEntry> copies;
-    if (!read_store([&] { copies = store->list_chart_library_copies(md5); })) return std::nullopt;
+    if (!read_store([&] { copies = store->reader().list_chart_library_copies(md5); }))
+        return std::nullopt;
     for (store::ChartLibraryEntry& copy : copies)
         if (row_key(copy) == key) return std::move(copy);
     return std::nullopt;
 }
 
 void AppState::read_summaries_in_place() {
-    read_store([&] { read_library_summaries(*store, settings, library); });
+    read_store([&] { read_library_summaries(store->reader(), settings, library); });
 }
 
 void AppState::refresh_library_summaries() {
@@ -237,7 +238,8 @@ void AppState::refresh_library_summaries() {
 bool AppState::refresh_library_row(const std::string& md5) {
     bool changed = false;
     read_store([&] {
-        changed = library.set_summary_for(md5, store->lookup_one(md5, settings.profile())) > 0;
+        changed =
+            library.set_summary_for(md5, store->reader().lookup_one(md5, settings.profile())) > 0;
     });
     return changed;
 }
@@ -255,7 +257,7 @@ std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
     for (size_t k = 0; k < matched.size(); ++k)
         place.emplace(row_key(library.rows()[matched[k]].entry), k);
     std::vector<std::optional<store::ChartLibraryEntry>> found(matched.size());
-    for (store::ChartLibraryEntry& e : store->list_chart_library(0, -1)) {  // -1 = no limit
+    for (store::ChartLibraryEntry& e : store->reader().list_chart_library(0, -1)) {  // -1 = no limit
         const auto it = place.find(row_key(e));
         if (it != place.end()) found[it->second] = std::move(e);
     }
@@ -663,7 +665,7 @@ void AppState::select_chart(const std::string& hyhash) {
     // pick"). The rows are not kept in that order, so the store lists
     // this chart's copies in it.
     std::vector<store::ChartLibraryEntry> copies;
-    if (!read_store([&] { copies = store->list_chart_library_copies(hyhash); })) return;
+    if (!read_store([&] { copies = store->reader().list_chart_library_copies(hyhash); })) return;
     for (const store::ChartLibraryEntry& copy : copies) {
         if (const LibraryChart* row = library_row_for(row_key(copy))) {
             select(*row, SelectionSource::Elsewhere);
@@ -717,8 +719,9 @@ bool AppState::plan_batches(const std::function<std::vector<app::ScanItem>()>& l
     const app::BatchRun run = settings.batch_run();
     return read_store([&] {
         const std::vector<app::ScanItem> items = list_items();
-        batch_plan = app::plan_batch(items, app::charts_with_result(*store, run, false));
-        batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
+        batch_plan = app::plan_batch(items, app::charts_with_result(store->reader(), run, false));
+        batch_redo_plan =
+            app::plan_batch(items, app::charts_with_result(store->reader(), run, true));
     });
 }
 
@@ -923,7 +926,7 @@ void AppState::request_path_report(PathReportCause cause) {
     // Every library row, planned as a batch plans it, so the run's counts
     // and the strip's are one plan's (D79).
     reload_after_scan();
-    if (!plan_batches([&] { return store->list_chart_library(0, -1); })) {  // -1 = no limit
+    if (!plan_batches([&] { return store->reader().list_chart_library(0, -1); })) {  // -1 = no limit
         // The database failed and the status line says so; the build reads
         // the store too and shows its own failure in the window.
         close_batch_confirm();

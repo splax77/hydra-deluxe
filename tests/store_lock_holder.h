@@ -54,6 +54,18 @@ private:
     std::thread thread_;  // last, so the flags exist before it starts
 };
 
+// Runs call() while a save group holds the store's lock, then lets the lock
+// go. True when call() came back before the holder let the lock go, that is,
+// when it did not wait for the lock.
+template <typename Call>
+bool returns_while_held(store::RecordStore& store, Call&& call) {
+    StoreLockHolder holder(store);
+    call();
+    const bool returned_while_held = !holder.let_go();
+    holder.release();
+    return returned_while_held;
+}
+
 }  // namespace hydra::test
 
 #endif  // HYDRA_TESTS_STORE_LOCK_HOLDER_H

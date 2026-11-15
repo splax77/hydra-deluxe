@@ -86,7 +86,10 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
                 return progress(Step::ReadingResults, rows_answered, charts_total);
             };
         }
-        read_library_summaries(store, settings, library, on_slice);
+        // The chart list above stays on the store's own connection, where its
+        // threaded read runs (RecordStore::list_chart_library). The results go
+        // through the store's reader, so they never wait for a save group.
+        read_library_summaries(store.reader(), settings, library, on_slice);
         library.sort_if_out_of_date();
     } catch (const Cancelled&) {
         throw;  // a stop, not a failed read
@@ -96,7 +99,7 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
     return "";
 }
 
-void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
+void read_library_summaries(store::StoreReads& store, const app::Settings& settings,
                             LibraryModel& library, const RowsAnsweredFn& on_slice,
                             size_t slice_charts) {
     const std::vector<std::string> hashes = library.hashes();

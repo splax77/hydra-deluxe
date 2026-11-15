@@ -269,9 +269,10 @@ struct BatchRun {
 // as md5s, each with its status: Ready, or CantAnalyze for a stored failure
 // (store::RecordStore::settled_song_ids decides what counts). Empty when
 // `redo`, so a redo tries the stored failures again. One query for the whole
-// library.
+// library, on whichever connection `store` answers on (a RecordStore, or its
+// reader()).
 using SettledCharts = std::unordered_map<std::string, store::RecordStatus>;
-SettledCharts charts_with_result(store::RecordStore& store, const BatchRun& run, bool redo);
+SettledCharts charts_with_result(store::StoreReads& store, const BatchRun& run, bool redo);
 
 // The record a failed analysis of `song_id` under `profile` is stored as, or
 // nothing when the failure is not one the store remembers

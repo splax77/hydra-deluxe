@@ -42,7 +42,7 @@ using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordStatus;
 using hydra::store::RecordStore;
-using hydra::test::StoreLockHolder;
+using hydra::test::returns_while_held;
 using hydra::ui::AppState;
 using hydra::ui::GenerationWatcher;
 using hydra::ui::ViewedSong;
@@ -350,11 +350,7 @@ TEST_CASE("a tick during a batch does not wait for the store") {
     start_redo_batch(*app, gated_scores(gate));
     let_through(*app, *gate, 2);  // both charts' lookups are done
 
-    StoreLockHolder holder(*app->store);
-    app->tick_library(0.0);
-    const bool returned_while_held = !holder.let_go();
-    holder.release();
-    CHECK(returned_while_held);
+    CHECK(returns_while_held(*app->store, [&] { app->tick_library(0.0); }));
     CHECK(row_scores(*app, 0, "1,000"));
     CHECK(row_scores(*app, 1, "2,000"));
 }
@@ -1232,4 +1228,109 @@ TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     CHECK(app->status_message == kDatabaseReadSentence);
     CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+}
+
+// ---- the window's reads go through the store's reader ------------------------
+
+// Each test below holds a save group on the app's store from a helper thread,
+// the way a batch's group holds the store's lock, and makes one of the
+// window's reads. The read goes through store->reader(), whose own connection
+// never waits for that lock. Of these reads, only opening a song can happen
+// during a batch in the running app; the batch confirm and a settings change
+// are closed then, so their tests prove the one-way rule only.
+
+TEST_CASE("opening a song does not wait for a save") {
+    ScratchPaths paths("appstate_readeropen");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const auto chart = row_of(*app, library_entry(5).md5).entry;
+    CHECK(returns_while_held(*app->store, [&] {
+        app->select(chart, hydra::ui::SelectionSource::Click);
+    }));
+    REQUIRE(app->selected.has_value());
+    const std::vector<ChartLibraryEntry> copies =
+        app->store->list_chart_library_copies(library_entry(5).md5);
+    REQUIRE(copies.size() == 1);
+    CHECK(app->selected->md5 == copies.front().md5);
+    CHECK(app->selected->notespath == copies.front().notespath);
+    CHECK(app->selected->title == copies.front().title);
+    CHECK(app->selected->sig == copies.front().sig);
+}
+
+// A report row's click on a chart the search hides: the store lists its
+// copies, and the row's whole entry is read, both through the reader.
+TEST_CASE("select_chart on a hidden chart does not wait for a save") {
+    ScratchPaths paths("appstate_readerselectchart");
+    std::unique_ptr<AppState> app = app_on(paths);
+    app->set_search(library_entry(17).md5);
+    REQUIRE(app->library_shown_count() == 1);
+    CHECK(returns_while_held(*app->store, [&] { app->select_chart(library_entry(5).md5); }));
+    REQUIRE(app->selected.has_value());
+    const std::vector<ChartLibraryEntry> copies =
+        app->store->list_chart_library_copies(library_entry(5).md5);
+    REQUIRE(copies.size() == 1);
+    CHECK(app->selected->md5 == copies.front().md5);
+    CHECK(app->selected->notespath == copies.front().notespath);
+}
+
+// The running app cannot open the confirm during a batch (the Analyze button
+// is off then), so the test calls open_batch_confirm directly.
+TEST_CASE("opening the batch confirm does not wait for a save") {
+    ScratchPaths paths("appstate_readerconfirm");
+    std::unique_ptr<AppState> app = app_on(paths);
+    CHECK(returns_while_held(*app->store, [&] { app->open_batch_confirm(); }));
+    REQUIRE(app->batch_confirm_pending);
+
+    // The same questions from a second app on the same file, nothing held.
+    AppState second(Settings{}, std::make_unique<RecordStore>(paths.db));
+    second.open_batch_confirm();
+    REQUIRE(second.batch_confirm_pending);
+    CHECK(app->batch_question(false) == second.batch_question(false));
+    CHECK(app->batch_question(true) == second.batch_question(true));
+}
+
+// The settings controls are locked during a batch, so the test changes the
+// cap directly and makes the re-read a settings change makes.
+TEST_CASE("a settings change re-reads the rows without waiting for a save") {
+    ScratchPaths paths("appstate_readersettings");
+    std::unique_ptr<AppState> app = app_on(paths);
+    const std::string seeded = library_entry(0).md5;
+    const RecordStatus seeded_before = row_of(*app, seeded).status;
+    app->settings.sp_cap = kSeededCap + 1;
+    CHECK(returns_while_held(*app->store, [&] { app->refresh_library_summaries(); }));
+
+    // A second app opened under the changed settings reads every row itself.
+    AppState second(app->settings, std::make_unique<RecordStore>(paths.db));
+    REQUIRE(row_of(second, seeded).status != seeded_before);  // the change reaches a row
+    for (int i = 0; i < kChartCount; ++i) {
+        const std::string md5 = library_entry(i).md5;
+        CHECK(row_of(*app, md5).status == row_of(second, md5).status);
+        CHECK(row_of(*app, md5).best_label() == row_of(second, md5).best_label());
+    }
+}
+
+// O22: a read the reader cannot make reads as any failed store read does.
+TEST_CASE("a failed reader read shows the store's problem") {
+    ScratchPaths paths("appstate_readerfails");
+    std::unique_ptr<AppState> app = app_on(paths);
+    // The app's first read opened the reader. Closed here, so the next read
+    // opens it again, and the store's seam makes that open fail.
+    dynamic_cast<hydra::store::StoreReader&>(app->store->reader()).close();
+    app->store->fail_next_reader_open_for_test();
+    const auto chart = row_of(*app, library_entry(5).md5).entry;
+    app->select(chart, hydra::ui::SelectionSource::Click);
+    CHECK(app->status_is_problem);
+    const std::string from_select = app->status_message;
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == library_entry(0).md5);  // the click selected nothing
+
+    // The same failure, read straight from the reader.
+    app->store->fail_next_reader_open_for_test();
+    std::string from_reader;
+    try {
+        (void)app->store->reader().list_chart_library_copies(chart.md5);
+    } catch (const std::exception& e) {
+        from_reader = hydra::app::plain_error(e);
+    }
+    CHECK_FALSE(from_reader.empty());
+    CHECK(from_select == from_reader);
 }
