@@ -340,13 +340,13 @@ TEST_CASE("an own reader gives the writer's answer for every read") {
     save_four_charts(store);
 
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
-    check_answers_as_store(store, *reader);
+    check_answers_as_store(store, reader->reads());
     REQUIRE(store.record_count() > 0);
-    CHECK(reader->record_count() == store.record_count());
-    CHECK(reader->chart_library_count() == store.chart_library_count());
+    CHECK(reader->reads().record_count() == store.record_count());
+    CHECK(reader->reads().chart_library_count() == store.chart_library_count());
     // The chart list reads, field for field, are in test_store_library.cpp
     // ("an own reader lists and indexes the library as the writer does").
-    CHECK(reader->chart_index().song_ids() == store.chart_index().song_ids());
+    CHECK(reader->reads().chart_index().song_ids() == store.chart_index().song_ids());
 }
 
 TEST_CASE("a hold makes every call see one moment") {
@@ -360,9 +360,9 @@ TEST_CASE("a hold makes every call see one moment") {
     {
         const OwnReader::Hold hold = reader->hold();
         // The hold's first read fixes its moment, before the writer moves on.
-        reader->lookup_one("h1", at4());
+        reader->reads().lookup_one("h1", at4());
         move_on(store);
-        held = moment_reads(*reader);
+        held = moment_reads(reader->reads());
     }
     const MomentReads after = moment_reads(store);
 
@@ -370,7 +370,7 @@ TEST_CASE("a hold makes every call see one moment") {
     REQUIRE(after.records != before.records);
     REQUIRE(after.charts != before.charts);
     check_same_moment(held, before);
-    check_same_moment(moment_reads(*reader), after);
+    check_same_moment(moment_reads(reader->reads()), after);
 }
 
 TEST_CASE("an own reader with no hold sees each commit") {
@@ -380,11 +380,11 @@ TEST_CASE("an own reader with no hold sees each commit") {
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
     const MomentReads before = moment_reads(store);
 
-    check_same_moment(moment_reads(*reader), before);
+    check_same_moment(moment_reads(reader->reads()), before);
     move_on(store);
     const MomentReads after = moment_reads(store);
     REQUIRE(after.records != before.records);
-    check_same_moment(moment_reads(*reader), after);
+    check_same_moment(moment_reads(reader->reads()), after);
 }
 
 TEST_CASE("a held own reader does not wait for a save group, and a save group does not wait for it") {
@@ -398,7 +398,7 @@ TEST_CASE("a held own reader does not wait for a save group, and a save group do
     // A helper holds a save group (capped by kWaitCap) while the held reader
     // reads.
     HeldSaveGroup group(store);
-    const RecordLookup got = reader->lookup_one("h1", at4());
+    const RecordLookup got = reader->reads().lookup_one("h1", at4());
     const bool returned_while_held = group.held();
     group.let_go();
     CHECK(returned_while_held);
@@ -420,7 +420,7 @@ TEST_CASE("an open hold does not stop the window's reader") {
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
 
     const OwnReader::Hold hold = reader->hold();
-    const RecordLookup held_before = reader->lookup_one("h2", at4());
+    const RecordLookup held_before = reader->reads().lookup_one("h2", at4());
     store.save(prepare_record("h2", at4(), fixture().record));
     const RecordLookup now = store.lookup_one("h2", at4());
     REQUIRE_FALSE(same_answer(now, held_before));
@@ -433,7 +433,7 @@ TEST_CASE("a hold open at a batch's end loses nothing, and the next batch's end 
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
     {
         const OwnReader::Hold hold = reader->hold();
-        reader->record_count();  // the hold's moment
+        reader->reads().record_count();  // the hold's moment
         {
             const RecordStore::BatchWrites batch(store);
             save_four_charts(store);
@@ -463,7 +463,7 @@ TEST_CASE("the log keeps growing while a hold is open") {
         const std::unique_ptr<OwnReader> reader = store.open_own_reader();
         std::vector<uintmax_t> sizes;
         const auto save_groups = [&] {
-            reader->record_count();  // the hold's moment, when there is one
+            reader->reads().record_count();  // the hold's moment, when there is one
             const RecordStore::BatchWrites batch(store);
             // One page, the least there is, so every group's commit crosses
             // it and SQLite folds the log after each group.
@@ -515,7 +515,7 @@ TEST_CASE("an own reader that cannot open fails the read") {
     }
     CHECK(threw);
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
-    CHECK(same_answer(reader->lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+    CHECK(same_answer(reader->reads().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
 }
 
 TEST_CASE("closing an own reader lets go of the file") {
@@ -525,8 +525,8 @@ TEST_CASE("closing an own reader lets go of the file") {
     std::unique_ptr<OwnReader> reader = store.open_own_reader();
     {
         const OwnReader::Hold hold = reader->hold();
-        reader->lookup_one("h1", at4());
-        reader->record_count();
+        reader->reads().lookup_one("h1", at4());
+        reader->reads().record_count();
     }
     reader.reset();
     store.close();
@@ -537,20 +537,20 @@ TEST_CASE("an in-memory store's own reader reads through the store") {
     RecordStore store(":memory:");
     save_four_charts(store);
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
-    check_answers_as_store(store, *reader);
-    CHECK(reader->record_count() == store.record_count());
-    CHECK(reader->chart_library_count() == store.chart_library_count());
+    check_answers_as_store(store, reader->reads());
+    CHECK(reader->reads().record_count() == store.record_count());
+    CHECK(reader->reads().chart_library_count() == store.chart_library_count());
 
     // A hold changes nothing.
     {
         const OwnReader::Hold hold = reader->hold();
-        check_answers_as_store(store, *reader);
+        check_answers_as_store(store, reader->reads());
     }
 
     // Inside an open save group the own reader sees what the store sees there.
     store.begin_save_group();
     store.save(prepare_record("h1", at4(), fixture().record));
-    CHECK(same_answer(reader->lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+    CHECK(same_answer(reader->reads().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
     store.commit_save_group();
 }
 

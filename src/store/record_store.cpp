@@ -1999,31 +1999,6 @@ OwnReader::Hold OwnReader::hold() {
     return Hold(own_.get(), owns);
 }
 
-std::vector<RecordLookup> OwnReader::lookup(const std::vector<std::string>& song_ids,
-                                            const Profile& want) {
-    return reads_.lookup(song_ids, want);
-}
-
-std::unordered_map<std::string, RecordStatus> OwnReader::settled_song_ids(const Profile& want) {
-    return reads_.settled_song_ids(want);
-}
-
-std::vector<ChartLibraryEntry> OwnReader::list_chart_library(int offset, int limit,
-                                                             const RowsReadFn& on_row,
-                                                             LibraryOrder order) {
-    return reads_.list_chart_library(offset, limit, on_row, order);
-}
-
-std::vector<ChartLibraryEntry> OwnReader::list_chart_library_copies(const std::string& md5) {
-    return reads_.list_chart_library_copies(md5);
-}
-
-int64_t OwnReader::record_count() { return reads_.record_count(); }
-
-int64_t OwnReader::chart_library_count() { return reads_.chart_library_count(); }
-
-ChartIndex OwnReader::chart_index() { return reads_.chart_index(); }
-
 std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
     const std::string& path, int64_t max_rowid, size_t shares, bool timing_read,
     const RowsReadFn& on_row) {

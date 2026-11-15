@@ -581,7 +581,7 @@ private:
 // StoreReader of its own, opened at once. For a store with none (":memory:")
 // it reads through the store, and its hold does nothing. The store must
 // outlive it, and it must outlive its holds.
-class OwnReader : public StoreReads {
+class OwnReader {
 public:
     // While it lives, every call on its reader joins one read transaction, so
     // every call sees the file as it was at the first read made under it. It
@@ -600,20 +600,13 @@ public:
         bool owns_;
     };
 
-    ~OwnReader() override;
+    ~OwnReader();
     OwnReader(const OwnReader&) = delete;
     OwnReader& operator=(const OwnReader&) = delete;
 
-    std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
-                                     const Profile& want) override;
-    std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
-    std::vector<ChartLibraryEntry> list_chart_library(
-        int offset, int limit, const RowsReadFn& on_row = {},
-        LibraryOrder order = LibraryOrder::ByName) override;
-    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
-    int64_t record_count() override;
-    int64_t chart_library_count() override;
-    ChartIndex chart_index() override;
+    // The reads: its own StoreReader, or the store itself for a store with
+    // no file, each answering unchanged.
+    StoreReads& reads() { return reads_; }
 
     // Opens a hold (Hold). A hold opened inside another owns nothing, and the
     // outer one decides when the moment ends.
@@ -626,7 +619,7 @@ private:
     OwnReader(RecordStore& store, const std::string& path);
     // The reader's own connection; null for a store with no file.
     std::unique_ptr<StoreReader> own_;
-    // What every call reads through: own_, or the store itself.
+    // What reads() hands out: own_, or the store itself.
     StoreReads& reads_;
     // Hold's end, which only OwnReader may ask of a StoreReader.
     static void end_hold(StoreReader& reader);

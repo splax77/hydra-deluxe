@@ -912,14 +912,14 @@ TEST_CASE("an own reader lists and indexes the library as the writer does") {
     const std::vector<ChartLibraryEntry> want_copies = store.list_chart_library_copies("x");
     const ChartIndex want_index = store.chart_index();
     REQUIRE(want_copies.size() == 2);
-    check_same_list(reader->list_chart_library(0, -1), want_list);
-    check_same_list(reader->list_chart_library_copies("x"), want_copies);
-    check_same_index(reader->chart_index(), want_index);
-    CHECK(reader->chart_library_count() == store.chart_library_count());
+    check_same_list(reader->reads().list_chart_library(0, -1), want_list);
+    check_same_list(reader->reads().list_chart_library_copies("x"), want_copies);
+    check_same_index(reader->reads().chart_index(), want_index);
+    CHECK(reader->reads().chart_library_count() == store.chart_library_count());
 
     // Under a hold the same reads give the same rows.
     const OwnReader::Hold hold = reader->hold();
-    check_same_list(reader->list_chart_library(0, -1), want_list);
-    check_same_list(reader->list_chart_library_copies("x"), want_copies);
-    check_same_index(reader->chart_index(), want_index);
+    check_same_list(reader->reads().list_chart_library(0, -1), want_list);
+    check_same_list(reader->reads().list_chart_library_copies("x"), want_copies);
+    check_same_index(reader->reads().chart_index(), want_index);
 }
