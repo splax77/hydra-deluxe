@@ -551,6 +551,20 @@ def write_not_in_ledger(path, unread, counts):
     return sum(len(v) for v in by.values())
 
 
+def short_sections(rs):
+    """Sections whose title states a record count ("D12 (40 Keep records)") that the
+    table under it does not hold: rows the counter's file never wrote."""
+    seen = {}
+    for r in rs:
+        seen[r['section']] = seen.get(r['section'], 0) + 1
+    out = []
+    for sec, have in seen.items():
+        m = re.search(r'\((\d+) (?:Keep )?records\)', sec)
+        if m and int(m.group(1)) != have:
+            out.append((sec, int(m.group(1)), have))
+    return out
+
+
 def totals_section1():
     out = {}
     for line in lines_of(os.path.join(AUD, 'counts', 'TOTALS.md')):
@@ -607,6 +621,13 @@ def main():
         rd, fy = tot[cf]
         flag = '' if (len(rs), faulty) == (rd, fy) else '   MISMATCH'
         print(f'  {cf:8} {len(rs):4} / {faulty:4}   vs  {rd:4} / {fy:4}{flag}')
+        if flag:
+            for sec, want, have in short_sections(rs):
+                print(f'           section "{sec}" says {want} records and its table holds {have}')
+    rows_all = sum(1 for r in counts if r['cf'] in tot)
+    faulty_all = sum(1 for r in counts if r['cf'] in tot and r['faults'])
+    print(f'  all      {rows_all:4} / {faulty_all:4}   vs  {sum(v[0] for v in tot.values()):4} / '
+          f'{sum(v[1] for v in tot.values()):4}   (TOTALS s1 sums; s1 faulty is before answers 2 and 3)')
     print('\nper count file: rows joined to one record row / unjoined')
     for cf in sorted({r['cf'] for r in counts}):
         rs = [r for r in counts if r['cf'] == cf]
