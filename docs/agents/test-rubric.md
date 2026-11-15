@@ -16,7 +16,7 @@ Answer each one in writing, in a sentence or two. Name files and functions. An a
 
 **2. Where does each expected value come from?** Every number, string and list the test compares against has one of these four sources:
 
-- **A Clone Hero rule.** Cite the page in `docs/clone-hero/` that states it.
+- **A Clone Hero rule.** Cite the page and rule id in `docs/clone-hero/` that states it, and copy its `Label:` line. A rule labelled as Hydra's assumption (SP-33 on `docs/clone-hero/05-star-power.md` is one) still counts as a source; the label goes in the record so an audit can list every test that rests on an unchecked rule.
 - **Worked by hand from the test's own small input.** The arithmetic is written next to it, as in "scoring: category_scores is unchanged by sqout_pays_outside" in `tests/test_scoring.cpp`. That comment works out Red and Kick at combo 8 to 100 note points, 50 combo points and 150 Star Power points, and the checks compare against those.
 - **A user ruling** under `## Confirmed` in `docs/agents/rulings/`. Quote it.
 - **A property.** Two things Hydra computes must agree, or every item must meet a condition. The `shown_differs` check in the sweep test above is one: every saved row must show the same timing as `Path::difficulty()`.
@@ -26,7 +26,11 @@ Two sources are not allowed:
 - **A snapshot.** The value is what the code printed when the test was written. It freezes today's behaviour, bugs included. A total over `testdata/input` is always one, because adding a chart changes it.
 - **A copy.** The expected value is worked out by repeating the production code's steps in the test. A copy agrees with any bug in the code it copies.
 
+Calling the owner is not a copy. "graph: every deactivation edge lists the chords squeeze_window_phrases names" in `tests/test_sp_end.cpp` compares the graph's choices with `squeeze_window_phrases`, the owner the graph is meant to use. That is a property: it proves the graph passes the owner's answer on, and it can prove nothing about whether the owner is right. So question 5 for such a test asks which test checks the owner itself. With none, the verdict is rewrite or investigate, not keep.
+
 A count on its own is weak even when its source is fine. "Three rows came back" passes with the wrong three rows. Check which items came back, or say why the count alone is the promise.
+
+A floor is different from a count. A sweep over `testdata/input` that checks every item would pass with zero items, so it often ends with a loose floor such as `acts > 1000` to prove the loop ran. A floor promises nothing about Hydra; it guards the test. It is fine when it sits far below the real number, so adding or removing a chart never trips it, and when a comment says it guards the loop. Approved floors are listed under D43 in `docs/audit/2026-10-03-fix-decisions.md`; a comment that cites D43 must match a floor listed there for that file.
 
 When you cannot find where a value comes from, do not guess and do not assume the current code is right. The verdict is **investigate**.
 
