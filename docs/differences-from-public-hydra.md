@@ -27,7 +27,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 | Ghost and accent kicks | Scored as normal kicks | Scored double, like the pads |
 | Hit window | 70 ms | 85 ms |
 | Squeeze-in/out search window | 140 ms | 500 ms |
-| Early fill window | 70 ms | Up to 85 ms early to summon a fill; under 60 ms to spare still shows `E` |
+| Early fill window | 70 ms | 85 ms, the hit window, on both sides: up to 85 ms early to summon a fill, and under 85 ms to spare still shows `E` |
 | Rules you can change | None | `hydra_rules.ini` |
 | Analyzing many songs | `hydra_runfolder.py` script | In-app batch, plus `hydra_batch` |
 | Reports | JSON from the runfolder script | Path report and leaderboard comparison windows in the app |
