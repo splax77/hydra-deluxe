@@ -481,8 +481,6 @@ TEST_CASE("SP end history: a late squeeze-in is a SqIn step on its phrase") {
     const Activation& act = paths.front().activations.front();
     CHECK((act.sp_end_steps == std::vector<SpEndStep>{
                {5760, 13440, SpEndKind::Activation}, {13920, 17280, SpEndKind::SqIn}}));
-    // The bar arrives at the old end: the player hits the phrase early.
-    CHECK(act.refill_tick(1) == 13440);
     CHECK(act.deact_tick() == std::optional<int64_t>(17280));
     CHECK(act.nominal_end() == std::optional<int64_t>(13440));
     CHECK((act.collected_phrase_ticks() == std::vector<int64_t>{13920}));
@@ -785,10 +783,6 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
                     const SpEndStep& st = act.sp_end_steps[k];
                     CHECK(st.kind != SpEndKind::Activation);
                     CHECK(st.tick > prev.tick);
-                    // SP never runs dry inside a window: every step takes
-                    // effect at or before the end in force.
-                    CHECK(act.refill_tick(k) <= prev.end_tick);
-                    CHECK(act.refill_tick(k) >= prev.tick);
                 }
                 // D34: one SqIn step per SqIn, never repeated or squeezed out
                 // (tests/bank_check.h).

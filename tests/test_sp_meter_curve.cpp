@@ -400,33 +400,42 @@ TEST_CASE("sp meter curve: a chart with no SP and no path has no curve at all") 
     CHECK(sp_meter_bars_at(scene.sp_meter, 1000.0) == doctest::Approx(0.0));
 }
 
-TEST_CASE("sp meter curve: a late squeeze-in refills at the old SP end") {
-    // Finding 5. The player hits the late phrase early, so SP never stops:
-    // the engine extends one bar from the old end (7000 ms). At the phrase
-    // (7250 ms) a quarter measure of that bar is gone: 0.875, not 1.0.
+TEST_CASE("sp meter curve: a late squeeze-in refills on the squeezed chord") {
+    // Finding 5's chart. The engine's record puts the squeeze-in's step on
+    // the late phrase's own chord, 13920 (7250 ms), past the end in force,
+    // 13440 (7000 ms); the step's end is 17280 (9000 ms). The gauge reaches
+    // empty on the old end, waits there, and gains the bar on the chord.
     Song song = test::make_late_sqin_song();
     ScoreGraph graph(song, 4);
     std::vector<Path> paths = run_search(graph, EngineOptions{});
     REQUIRE(!paths.empty());
     const Path& best = paths.front();
     REQUIRE(best.activations.size() == 1);
-    REQUIRE(best.activations.front().deact_tick() == std::optional<int64_t>(17280));
+    REQUIRE((best.activations.front().sp_end_steps ==
+             std::vector<SpEndStep>{{5760, 13440, SpEndKind::Activation},
+                                    {13920, 17280, SpEndKind::SqIn}}));
 
     PreviewScene scene = build_preview_scene(song, &best);
+    REQUIRE(scene.activations.size() == 1);
+    // The change sits on the stored step's tick, the squeezed chord.
+    CHECK(scene.activations.front().sp_end_changes.at(1).at_tick ==
+          best.activations.front().sp_end_steps[1].tick);
     const SpMeterCurve& c = scene.sp_meter;
     check_curve_well_formed(c);
     CHECK(sp_meter_bars_at(c, 3000.0) == doctest::Approx(2.0));   // the activation
     CHECK(sp_meter_bars_at(c, 5000.0) == doctest::Approx(1.0));   // a bar per 2000 ms
-    CHECK(sp_meter_bars_at(c, 7000.0 - 1e-6) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.0));   // the refill, at the old end
-    CHECK(sp_meter_bars_at(c, 7250.0) == doctest::Approx(0.875)); // the late phrase
+    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(0.0));   // empty on the old end
+    CHECK(sp_meter_bars_at(c, 7125.0) == doctest::Approx(0.0));   // and waits there
+    CHECK(sp_meter_readout(c, 7200.0) == "0.0/4");
+    CHECK(sp_meter_bars_at(c, 7250.0 - 1e-6) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 7250.0) == doctest::Approx(0.875)); // the squeezed chord
     CHECK(sp_meter_readout(c, 7250.0) == "0.9/4");
     CHECK(sp_meter_bars_at(c, 8000.0) == doctest::Approx(0.5));
-    CHECK(sp_meter_bars_at(c, 9000.0) == doctest::Approx(0.0));   // the deact node
+    CHECK(sp_meter_bars_at(c, 9000.0) == doctest::Approx(0.0));   // the window's end
     CHECK(sp_meter_bars_at(c, 9500.0) == doctest::Approx(0.0));   // collected: nothing banks after
 }
 
-TEST_CASE("sp meter curve: a squeezed-out bar arrives at the deact node") {
+TEST_CASE("sp meter curve: a squeezed-out bar arrives on the squeezed chord") {
     Song song = test::make_early_sqout_song();
     ScoreGraph graph(song, 4);
     // The best path collects 12960 instead and keeps SP running over the
@@ -439,14 +448,25 @@ TEST_CASE("sp meter curve: a squeezed-out bar arrives at the deact node") {
         if (!p.activations.empty() && p.activations.front().sqout_tick) found = &p;
     REQUIRE(found != nullptr);
     REQUIRE(found->activations.size() == 2);
+    // The engine's record: the squeezed-out chord is 12960 (6750 ms), before
+    // the stored end 13440 (7000 ms), and the search stamped the bar on the
+    // stored end.
+    REQUIRE(found->activations[0].sqout_tick == std::optional<int64_t>(12960));
+    REQUIRE(found->activations[0].deact_tick() == std::optional<int64_t>(13440));
+    REQUIRE((found->activations[1].bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
     PreviewScene scene = build_preview_scene(song, found);
+    // Star Power is over on the chord: the window ends there.
+    REQUIRE(scene.activations.size() == 2);
+    REQUIRE(scene.activations[0].sp_window().has_value());
+    CHECK(scene.activations[0].sp_window()->second ==
+          doctest::Approx(song.timecode(*found->activations[0].sqout_tick).ms()));
     const SpMeterCurve& c = scene.sp_meter;
     check_curve_well_formed(c);
-    // Straight through the squeezed-out phrase (6750 ms): no step there.
-    CHECK(sp_meter_bars_at(c, 6750.0 - 1e-6) == doctest::Approx(0.125));
-    CHECK(sp_meter_bars_at(c, 6750.0) == doctest::Approx(0.125));
-    CHECK(sp_meter_bars_at(c, 7000.0 - 1e-6) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.0));   // its bar, as SP ends
+    // The activation drains toward the chord: (12960 - 5760) / 3840 bars.
+    CHECK(sp_meter_bars_at(c, 3000.0) == doctest::Approx(1.875));
+    CHECK(sp_meter_bars_at(c, 6750.0 - 1e-6) == doctest::Approx(0.0));
+    CHECK(sp_meter_bars_at(c, 6750.0) == doctest::Approx(1.0));   // its bar, on the chord
+    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.0));   // nothing at the stored end
     CHECK(sp_meter_bars_at(c, 7500.0) == doctest::Approx(2.0));   // the next phrase
     CHECK(sp_meter_bars_at(c, 9000.0) == doctest::Approx(2.0));   // the second activation
     CHECK(sp_meter_bars_at(c, 11000.0) == doctest::Approx(1.0));
@@ -658,12 +678,15 @@ TEST_CASE("sp meter curve: a stored SP end that drops a fraction of a tick") {
 }
 
 // The gauge on every stored path of every corpus chart, held to what the
-// record says, through the record's own facts. At each activation it starts
-// at the bars the activation spent (Activation::sp_meter), up to one tick's
-// worth of drain lower (D15: the stored end drops a fraction of a tick); it
-// is empty at the stored deact node; and between windows it holds whole bars,
-// never over the cap. Without a path it holds whole bars that never fall.
-TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empties at its deact node") {
+// record says, through the record's own facts. Each window ends on
+// Activation::window_end_tick, and the gauge is empty there. At each
+// activation it is never above the bars the activation spent
+// (Activation::sp_meter); when the window ends on the stored end it is at
+// most one tick's worth of drain lower (D15: the stored end drops a fraction
+// of a tick), and an early squeezed-out chord ends it sooner. Between windows
+// it holds whole bars, never over the cap. Without a path it holds whole bars
+// that never fall.
+TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empties at its window's end") {
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int charts = 0, windows = 0;
     for (const std::string& chart : corpus::chart_paths()) {
@@ -699,10 +722,15 @@ TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empti
                 const PreviewActivation& pa = scene.activations.at(i++);
                 REQUIRE(pa.has_sp_end);
                 ++windows;
+                const std::optional<int64_t> end = a.window_end_tick();
+                REQUIRE(end.has_value());
+                CHECK(pa.sp_end_tick == *end);
+                const double end_ms = song.timing().ms_index().at(*end);
+                CHECK(pa.sp_end_ms == doctest::Approx(end_ms));
                 const double at_act = sp_meter_bars_at(c, pa.ms);
                 CHECK(at_act <= a.sp_meter() + 1e-9);
-                CHECK(at_act >= a.sp_meter() - one_tick - 1e-9);
-                CHECK(sp_meter_bars_at(c, std::nextafter(pa.sp_end_ms, -1e300)) < 1e-6);
+                if (end == a.deact_tick()) CHECK(at_act >= a.sp_meter() - one_tick - 1e-9);
+                CHECK(sp_meter_bars_at(c, std::nextafter(end_ms, -1e300)) < 1e-6);
             }
             for (const SpMeterSegment& s : c.segments) {
                 bool in_window = false;

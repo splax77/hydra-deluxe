@@ -148,9 +148,12 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(figure_under(h, kBestReachLabel).c_str(), "378,315");
 
     // Before any click, every fill that costs nothing says "best" under it.
-    // From one run: one such fill, m32, whose list row says "best" too.
+    // From one run: one such fill, m32, whose list row says "best" too. Its
+    // window ends on the squeezed-out chord, tick 70800 (m37.4.240), before
+    // the stored end 71040 (m38.1.0), as the engine's record holds them
+    // (Activation::window_end_tick).
     IM_CHECK_EQ(best_words_under_fills(h), size_t{1});
-    IM_CHECK(on_screen(h, "m32 0:40.945 · 3 phrases · ends m38 · squeeze out 163.0 ms best"));
+    IM_CHECK(on_screen(h, "m32 0:40.945 · 3 phrases · ends m37 · squeeze out 163.0 ms best"));
 
     // The hover on the first fill: its card gives the phrases saved, the best
     // finish with this fill and its cost, then the best choice now and where

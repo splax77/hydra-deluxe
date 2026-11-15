@@ -56,6 +56,7 @@ std::string fill_reason(const PreviewScene& scene, size_t fill_index, FillRefusa
         // Whether the fill's chord falls under this window is the engine's
         // side-of-the-end rule (core::after_sp_end), the one the fill's state
         // came from, so a chord on the end tick is still under Star Power.
+        // The end is the Preview's (Activation::window_end_tick).
         const app::PreviewActivation& a = scene.activations[i];
         if (a.sp_window() && fill.chord_tick > a.tick && !core::after_sp_end(fill.chord_tick, a.sp_end_tick))
             return "Star Power is already on here. Activation " + std::to_string(i + 1) +
@@ -123,7 +124,7 @@ std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
     std::string t = app::clock_str(timing.timecode(fill.chord_tick).ms()) + app::kFactSeparator +
                     counted(bars_saved_at(scene, fill), "phrase", "phrases");
     if (!end) return t + app::kFactSeparator + kPendingText;
-    if (end->deact_tick()) t += app::kFactSeparator + end_choice_text(timing, *end);
+    if (end->window_end_tick()) t += app::kFactSeparator + end_choice_text(timing, *end);
     return t;
 }
 
@@ -155,7 +156,7 @@ std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
 StepShort step_short(const SongTiming& timing, const Activation& act) {
     StepShort s;
     s.span = measure_label(act.timecode);
-    if (const std::optional<int64_t> d = act.deact_tick())
+    if (const std::optional<int64_t> d = act.window_end_tick())
         s.span += " \xE2\x86\x92 " + measure_at(timing, *d);  // a right arrow
     s.saved = counted(act.sp_meter(), "phrase", "phrases");
     s.squeezes = badges_text(act);
@@ -163,7 +164,7 @@ StepShort step_short(const SongTiming& timing, const Activation& act) {
 }
 
 std::string end_choice_text(const SongTiming& timing, const Activation& act) {
-    const std::optional<int64_t> d = act.deact_tick();
+    const std::optional<int64_t> d = act.window_end_tick();
     return (d ? "ends " + measure_at(timing, *d) : act.notationstr()) + badges_after(act);
 }
 
@@ -174,9 +175,10 @@ std::string cost_or_best(int64_t cost) {
 namespace {
 
 // "Hydra would end it at m97 · squeeze out 0.0 ms." for the candidate's
-// activation, or nothing when it has no deact node. fill_hover_card says it.
+// activation, at its window's end (Activation::window_end_tick), or nothing
+// when it has no SP end. fill_hover_card says it.
 std::optional<std::string> hydra_end_sentence(const PreviewScene& scene, const Activation& end) {
-    const std::optional<int64_t> d = end.deact_tick();
+    const std::optional<int64_t> d = end.window_end_tick();
     if (!d) return std::nullopt;
     return "Hydra would end it at " + measure_at(scene_timing(scene), *d) + badges_after(end) + ".";
 }

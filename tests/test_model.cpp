@@ -1172,15 +1172,66 @@ TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the S
     CHECK_THROWS_AS(none.set_sqout(200), std::logic_error);  // no row on that tick
 }
 
-TEST_CASE("refill_tick: a late squeeze-in's bar arrives at the old end") {
-    Activation a;
-    a.timecode = Timecode::raw(5760);
-    a.sp_end_steps = {{5760, 13440, SpEndKind::Activation},
-                      {12000, 15360, SpEndKind::Collected},
-                      {15840, 19200, SpEndKind::SqIn}};
-    CHECK(a.refill_tick(0) == 5760);
-    CHECK(a.refill_tick(1) == 12000);
-    CHECK(a.refill_tick(2) == 15360);  // past the end in force: the old end
+TEST_CASE("Bank arrivals and window_end_tick: a squeezed-out chord ends the window it is not after") {
+    // An activation whose only stored step is the activation itself.
+    auto one_step = [](int64_t act_tick, int64_t end_tick) {
+        Activation a;
+        a.timecode = Timecode::raw(act_tick);
+        a.sp_end_steps = {{act_tick, end_tick, SpEndKind::Activation}};
+        return a;
+    };
+
+    // An early squeeze-out: the chord, 64800, is before the stored end, so
+    // Star Power is over on the chord. The stored end is unchanged.
+    Activation early = one_step(57600, 65280);
+    early.sqout_tick = 64800;
+    CHECK(early.window_end_tick() == std::optional<int64_t>(64800));
+    CHECK(early.deact_tick() == std::optional<int64_t>(65280));
+
+    // A late squeeze-out: the chord, 71200, is after the stored end, so the
+    // stored end stands.
+    Activation late = one_step(59520, 71040);
+    late.sqout_tick = 71200;
+    CHECK(late.window_end_tick() == std::optional<int64_t>(71040));
+
+    // The chord exactly on the stored end is not after it: the window ends
+    // there, which is both ticks.
+    Activation on_end = one_step(59520, 71040);
+    on_end.sqout_tick = 71040;
+    CHECK(on_end.window_end_tick() == std::optional<int64_t>(71040));
+
+    // No squeeze-out: the stored end.
+    Activation plain = one_step(5760, 13440);
+    CHECK(plain.window_end_tick() == std::optional<int64_t>(13440));
+
+    // A hand-built activation with no steps has no end at all.
+    Activation bare;
+    bare.sqout_tick = 64800;
+    CHECK_FALSE(bare.window_end_tick().has_value());
+
+    // bank_arrivals: the bars activation 1 spends were stored at 65280 (the
+    // squeezed-out bar, stamped by the search), 70000 and 74000. Activation 0
+    // squeezed out on 64800, so the first bar arrives there; the rest stand.
+    Path path;
+    Activation first = one_step(57600, 65280);
+    first.sqout_tick = 64800;
+    first.bank_rise_ticks = {20000, 30000, 40000, 50000};
+    Activation second = one_step(80000, 95360);
+    second.bank_rise_ticks = {65280, 70000, 74000};
+    path.activations = {first, second};
+    path.trailing_bank_ticks = {100000};
+    // The first activation has no activation before it: its list as stored.
+    CHECK(path.bank_arrivals(0) == std::vector<int64_t>{20000, 30000, 40000, 50000});
+    CHECK(path.bank_arrivals(1) == std::vector<int64_t>{64800, 70000, 74000});
+    // The trailing bars follow activation 1, which did not squeeze out.
+    CHECK(path.bank_arrivals(2) == std::vector<int64_t>{100000});
+
+    // The trailing bars after a squeezed-out last activation: the first moves
+    // to the chord. An empty list stays empty.
+    path.activations[1].sqout_tick = 95000;
+    CHECK(path.bank_arrivals(2) == std::vector<int64_t>{95000});
+    path.trailing_bank_ticks.clear();
+    CHECK(path.bank_arrivals(2).empty());
 }
 
 // The rows of "backend_row_value: every engine case": what the squeezed-out

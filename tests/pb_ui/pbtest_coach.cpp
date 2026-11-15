@@ -173,12 +173,14 @@ void test_tight_window_note(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(paste_best_path(ctx), );
     IM_CHECK_RETV(s.history().current().windows.size() == 5, );
     // The fourth step opens to its ending lines and the note when its row is
-    // clicked. From one run.
+    // clicked. From one run. The window ends on the squeezed-out chord, tick
+    // 253320 (m135), before the stored end 253440 (m136), as the engine's
+    // record holds them (Activation::window_end_tick).
     IM_CHECK_RETV(click_step(ctx, 3), );
     IM_CHECK_RETV(wait_idle(ctx), );
     ctx->Yield(2);
     const std::string note = "needs 130.4 ms, your limit is 10 ms";
-    const std::string kept_line = "(x) ends m136 · squeeze out 130.4 ms";
+    const std::string kept_line = "(x) ends m135 · squeeze out 130.4 ms";
     const std::string text = visible_text(h);
     IM_CHECK(text.find(kept_line) != std::string::npos);
     IM_CHECK(text.find(note) != std::string::npos);

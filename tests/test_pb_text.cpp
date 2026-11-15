@@ -57,7 +57,10 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
     // August Burns Red "White Washed" with the player's path on its best
     // path's first three activations: the fourth's fill is offered next, and
     // its candidate activation (best_finish with it pinned, as the candidate
-    // queue prices it) ends with a squeeze-out. Pinned from one run.
+    // queue prices it) ends with a squeeze-out. Pinned from one run. The
+    // engine's record has the squeezed-out chord on tick 253320 (m135), before
+    // the stored end 253440 (m136), so the window ends on the chord
+    // (Activation::window_end_tick).
     const std::string name = "August Burns Red - White Washed";
     const Song& song = song_named(name);
     const HydraRecord& rec = corpus::analyzed(corpus::chart_named(name), default_cfg());
@@ -75,7 +78,7 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
     const size_t idx = fill_index(three, 245760);
     CHECK(fill_refusal(three, idx) == FillRefusal::None);
     CHECK(candidate_row_text(three, idx, &ends[3]) ==
-          "2:51.485 · 2 phrases · ends m136 · squeeze out 130.4 ms");
+          "2:51.485 · 2 phrases · ends m135 · squeeze out 130.4 ms");
     // Before its search lands, the end reads kPendingText.
     CHECK(candidate_row_text(three, idx, nullptr) == "2:51.485 · 2 phrases · ...");
     // With no squeeze the row stops at the end: the best path's last
@@ -83,7 +86,8 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
     const app::PreviewScene best = scene_for(song, rec.best_path());
     CHECK(candidate_row_text(best, fill_index(best, 272640), &acts[4]) ==
           "3:20.702 · 2 phrases · ends m150");
-    // A hand-built activation with the same end carries one squeeze of each
+    // A hand-built activation with the same stored end, and no squeezed-out
+    // chord stamped, so its window ends there (m136), carries one squeeze of each
     // kind just inside Star Power, so neither needs timing
     // (SPSqueeze::needs_no_timing): the row still words each as the Paths
     // tab's badge does, with its figure, joined by the separator. A
@@ -150,7 +154,7 @@ TEST_CASE("step short: the row carries the Paths tab's badge words") {
     REQUIRE(acts.size() == 5);
     const app::PreviewScene scene = scene_for(song, rec.best_path());
     const StepShort fourth = step_short(*scene.timing, acts[3]);
-    CHECK(fourth.span == "m132 → m136");
+    CHECK(fourth.span == "m132 → m135");  // the squeezed-out chord, as the row above
     CHECK(fourth.saved == "2 phrases");
     CHECK(fourth.squeezes == "squeeze out 130.4 ms");
     const StepShort first = step_short(*scene.timing, acts[0]);
@@ -168,10 +172,13 @@ TEST_CASE("end choice text: the end measure and the Paths tab's badge words") {
     REQUIRE(acts.size() == 5);
     const app::PreviewScene scene = scene_for(song, rec.best_path());
     const SongTiming& timing = *scene.timing;
-    CHECK(end_choice_text(timing, acts[3]) == "ends m136 · squeeze out 130.4 ms");
+    // The window ends on the squeezed-out chord (tick 253320, m135), as the
+    // candidate row test says.
+    CHECK(end_choice_text(timing, acts[3]) == "ends m135 · squeeze out 130.4 ms");
     // No timing to name, no badge words.
     CHECK(end_choice_text(timing, acts[0]) == "ends m29");
-    // A hand-built end on the same deact node with a squeeze-in inside Star
+    // A hand-built end on the same stored end (m136), with no squeezed-out
+    // chord, and a squeeze-in inside Star
     // Power, which needs no timing, and one exactly on the SP end, which
     // needs 0.0 ms (D302). Both read their badge's figure. Each hand-built
     // Activation is an E0 (no skips, early-fill offset 0), so its early fill
