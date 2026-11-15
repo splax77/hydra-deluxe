@@ -34,7 +34,7 @@ Columns: record, test (file:line), faults, faulty checks, reason, did the record
 | D11 29 | TP:574 dots go to out only | X9, X10 | TP:578-585 | fake search and process; "...." typed | yes |
 | D11 30 | TP:621 cap reaches play_chords | X9, X11 | TP:590-618, 622 | fake engine and mocked `play_chords`; 320.504 typed in and read back | X9 yes, X11 no |
 | D11 32 | TP:645 keys through the driver | X9, X11 | TP:649-657, 664 | mocked `play_chords`, fake window and driver; handle 0x77 typed in and read back | X9 yes, X11 partly |
-| D11 34 | TP:754 dynamics beside lanes | X9, X11 | TP:690-694, 756-758 | hand-built chord dump; the typed dynamics are read back | X9 yes, X11 no |
+| D11 34 | TP:754 dynamics beside lanes | X11 | TP:690-694, 756-758 | hand-built chord dump; the typed dynamics are read back (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | X9 yes, X11 no |
 | D11 35 | TP:760 ghost threshold | X9, X11 | TP:701-725, 764 | `_ThresholdEngine` fake; threshold 64 typed in and read back; expected axes come from the same `pad_axis` | yes |
 | D11 36 | TP:769 threshold 0 raises | X9, X10 | TP:701-725, 772 | fake engine reading 0; field name "OFF_DYN_THRESHOLD" typed | X9 yes, X10 partly |
 | D11 37 | TP:774 keys route reads no threshold | X9 | TP:775-785 | fake engine, mocked `play_chords` | yes |
@@ -77,17 +77,17 @@ Columns: record, test (file:line), faults, faulty checks, reason, did the record
 | D11 95 | TP:1778 no fallback unmoved | X9 | TP:1780-1784 | hand-built press | yes |
 | D11 96 | TP:1786 squeeze-in outside plain | X9 | TP:1788-1791 | hand-built fallback block | yes |
 | D11 97 | TP:1793 squeeze-out late gem outside | X9 | TP:1795-1804 | hand-built presses | yes |
-| D11 98 | TP:1822 fields are read | X9, X11 | TP:1813-1831 | hand-written end fields in a hand-built schedule, read back | yes |
-| D11 99 | TP:1833 null range | X9 | TP:1835-1838 | hand-built | yes |
-| D11 100 | TP:1840 missing field named | X9, X10 | TP:1840-1847 | hand-built schedule with a key deleted; message format typed | yes |
-| D11 101 | TP:1849 null number named | X9, X10 | TP:1849-1861 | hand-built; "null `<key>`" and "has no `late`" typed | yes |
+| D11 98 | TP:1822 fields are read | X11 | TP:1813-1831 | hand-written end fields in a hand-built schedule, read back (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes |
+| D11 99 | TP:1833 null range | none | TP:1835-1838 | hand-built (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes |
+| D11 100 | TP:1840 missing field named | X10 | TP:1840-1847 | hand-built schedule with a key deleted; message format typed (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes |
+| D11 101 | TP:1849 null number named | X10 | TP:1849-1861 | hand-built; "null `<key>`" and "has no `late`" typed (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes |
 | D11 104 | TP:1923 reply without groups | X9, X10 | record's lines 1926-1938 | hand-made kit replies; sentence typed | yes |
 | D11 105 | TP:1940 reply not a dict | X9, X10 | record's lines 1952-1962 | hand-made replies; text typed | yes |
 | D11 106 | TP:1964 keys reply not read | X9 | record's line 1967 | fake keys run | yes |
-| D11 107 | TP:1979 missing key refused | X9, X10 | record's lines 1987-1995 | hand-built doc with a key deleted; texts typed | yes |
-| D11 108 | TP:1997 chord with no notes | X9, X10 | record's line 2000 | hand-built chord; "chord 45 has no gems" typed; no sign the C++ can write it | X9 yes, X10 partly |
-| D11 109 | TP:2002 empty chord list | X9, X10 | record's line 2004 | hand-built schedule; "schedule.json has no chords to play" typed | yes |
-| D11 110 | TP:2006 press names missing chord | X9, X10 | record's lines 2009, 2012 | hand-built; messages typed | X9 yes, X10 no |
+| D11 107 | TP:1979 missing key refused | X10 | record's lines 1987-1995 | hand-built doc with a key deleted; texts typed (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes |
+| D11 108 | TP:1997 chord with no notes | X10 | record's line 2000 | hand-built chord; "chord 45 has no gems" typed; no sign the C++ can write it (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | X9 yes, X10 partly |
+| D11 109 | TP:2002 empty chord list | X10 | record's line 2004 | hand-built schedule; "schedule.json has no chords to play" typed (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes |
+| D11 110 | TP:2006 press names missing chord | X10 | record's lines 2009, 2012 | hand-built; messages typed (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | X9 yes, X10 no |
 | D11 111 | TP:2043 main exits nonzero | X9, X10 | record's lines 2067-2080 | `live_play` replaced by fakes; reasons and "Done." typed (and they disagree on spacing) | yes |
 | D11 112 | TP:2082 main prints notes | X9, X10 | record's lines 2086-2088 | made-up note; "Done.\n" typed | yes |
 | D11 114 | TP:2127 clock past last note | X9, X10 | record's lines 2129-2132 | fake clock at 200 s; line typed in full | yes |
@@ -98,8 +98,8 @@ Columns: record, test (file:line), faults, faulty checks, reason, did the record
 | D11 119 | TP:2295 timing columns in log | X9 | record's lines 2305-2308 | fake run | yes |
 | A1 sample_index | RS:47 | X9 | RS:47-62 | a hand-built list of library rows (made-up folders and ids) goes into the real index builder | partly (record says "types only the input rows" and finds the rows disagree with the paths) |
 | A1 counted_against | RS:64 | X9 | RS:64-68 and `sample_path_rows` RS:12-45 | glue over hand-built report rows (acts, skip and sqin made up and disagreeing with the path text) | partly |
-| A11 4 | DM:502 what counts as a code name | X9 | DM:502-520 and the record's lines | typed text spans fed to the classifier; the real doc pages are not used | yes ("no real input") |
-| A11 6 | DM:1092 which CH lines name Hydra code | X9 | DM:1092-1105 | a hand-written page ("docs/clone-hero/04-fills.md" and its lines) | yes ("only fixture input") |
+| A11 4 | DM:502 what counts as a code name | none | DM:502-520 and the record's lines | typed text spans fed to the classifier; the real doc pages are not used (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes ("no real input") |
+| A11 6 | DM:1092 which CH lines name Hydra code | none | DM:1092-1105 | a hand-written page ("docs/clone-hero/04-fills.md" and its lines) (Cleared of X9 by the user's hand-built-input ruling: a file the test writes for the real code to read.) | yes ("only fixture input") |
 | A35 5 | TV:263 clamped_sqin charts | none | | loads two real corpus charts and runs the real analysis; checks a property of the engine's own record | n/a |
 | A35 8 | TV:361 twin SP ends | none | | a chart the test names runs through the real search; the expected offsets are worked from the tempo and named ticks, comment at 367-370 | n/a |
 | A44 6 | UP:513 paths-fit-narrow | X9, X10 | UP:69-90 (`FakeClipboard`), UP:528 | a fake clipboard stands in for the OS one; "Copied!" typed | no |
@@ -115,16 +115,17 @@ Columns: record, test (file:line), faults, faulty checks, reason, did the record
 
 ## Counts
 
-Counted from the table's own rows.
+Counted from the table's own rows, after the user's ruling on hand-built input (a file or chart the test builds and feeds to the real code is not fake; stand-ins for the code's own output, outside data, or fake code are X9).
 
 - Investigate records read: 86 (D11 78, A1 2, A11 2, A35 2, A44 2).
-- Records with at least one fault: 82. Records with none: 4 (D11 46, A35 5, A35 8, A44 7).
-- X9, made-up input: 81 records (every faulty record except D11 9).
+- Records with at least one fault: 79. Records with none: 7 (D11 46, D11 99, A11 4, A11 6, A35 5, A35 8, A44 7).
+- X9, made-up input: 70 records.
 - X10, typed constant or text: 28 records.
 - X11, echo: 10 records.
 - X12, cited non-code: 1 record (D11 116).
 - Snapshot: 0 records.
-- Records whose fault the record already named in its own words ("fake", "hand-built", "typed", "claim not checked"): 70 of the 82 name every fault they hold. 12 name only part of it: D11 30, 32, 34, 36, 50, 60, 108, 110, 116, A1 sample_index, A1 counted_against, and A44 6 (which names none). No record called any of it a fault, because the rubric had no question for it.
+- Marks cleared by the ruling: X9 on D11 34, 98, 99, 100, 101, 107, 108, 109, 110 (hand-built schedule files with a key missing, null or odd, read by the real loader) and on A11 4 and 6 (hand-written doc text read by the real checker). Marks kept: hand-built schedules that stand in for what `hydra_replay schedule` wrote (D11 6, 7 and the run cases), hand-built presses and chords that stand in for the loader's output, fake clocks, games, engines, processes, readers and replies, A1's hand-built library and report rows, and A44 6's fake clipboard.
+- Records whose fault the record already named in its own words ("fake", "hand-built", "typed", "claim not checked"): see the Named column. No record called any of it a fault, because the rubric had no question for it.
 
 ## What was not done
 
