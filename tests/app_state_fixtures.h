@@ -200,37 +200,36 @@ inline void wait_batch_finished(hydra::ui::AppState& app) {
                          "the batch to finish");
 }
 
-// The analysis behind chart `md5`'s Ready record under `profile`, so a batch
-// can file the same record again. The store keeps rows, not analyses, so this
-// picks the analysis whose row is the stored one: the open panel's (a click
-// filed it) or an empty one (save_batch_record filed it). A chart with no
-// Ready record gets the empty one.
-inline hydra::HydraRecord stored_analysis_of(hydra::ui::AppState& app, const std::string& md5,
-                                             const hydra::store::Profile& profile) {
-    const hydra::HydraRecord empty = hydra::test::empty_analysis_under(profile);
+// Whether chart `md5` has no Ready record under `profile`, or has the empty
+// one save_batch_record files. Any other Ready record in these tests came from
+// the engine (a click's ViewJob), so a batch files it again by running the
+// engine itself.
+inline bool stored_record_is_empty(hydra::ui::AppState& app, const std::string& md5,
+                                   const hydra::store::Profile& profile) {
     const hydra::store::RecordLookup stored = app.store->lookup_one(md5, profile);
-    if (stored.status != hydra::store::RecordStatus::Ready) return empty;
-    const std::string& id = stored.record.song_id;
-    if (stored.record == hydra::store::record_of(id, empty)) return empty;
-    if (app.viewed.ready() && stored.record == hydra::store::record_of(id, *app.viewed.record))
-        return *app.viewed.record;
-    FAIL("chart " << md5 << "'s stored record is neither empty nor the open panel's");
-    throw std::logic_error("unreachable");
+    if (stored.status != hydra::store::RecordStatus::Ready) return true;
+    return stored.record == hydra::store::record_of(stored.record.song_id,
+                                                    hydra::test::empty_analysis_under(profile));
 }
 
 // Runs a Redo batch over the one chart `search` finds and waits for it to
-// end. The batch's test analysis returns the analysis behind the chart's
-// stored record (stored_analysis_of), and the batch stores it itself, so the
-// window learns of it from the batch (BatchJob's tray). Redo, so the batch
-// does not skip a chart with a result.
+// end. The batch files the chart's stored record again: the empty analysis
+// when the stored record is empty or missing (these charts may have no file),
+// and otherwise the engine's own analysis under the batch's settings, as a
+// real batch does. The batch stores it itself, so the window learns of it
+// from the batch (BatchJob's tray). Redo, so the batch does not skip a chart
+// with a result.
 inline void run_redo_batch_over(hydra::ui::AppState& app, const std::string& search) {
     app.set_search(search);
     REQUIRE(app.library_shown_count() == 1);
-    const hydra::HydraRecord analysis = stored_analysis_of(
-        app, app.library_row_at(0).entry.md5, app.settings.profile());
-    start_redo_batch(app, [analysis](const std::string&, const hydra::app::AnalysisSettings&,
-                                     const std::function<void(float)>&) {
-        return hydra::app::AnalysisResult{analysis, hydra::Song(192)};
+    const hydra::store::Profile profile = app.settings.profile();
+    const bool empty = stored_record_is_empty(app, app.library_row_at(0).entry.md5, profile);
+    const hydra::HydraRecord empty_analysis = hydra::test::empty_analysis_under(profile);
+    start_redo_batch(app, [empty, empty_analysis](const std::string& path,
+                                                  const hydra::app::AnalysisSettings& settings,
+                                                  const std::function<void(float)>& on_progress) {
+        if (!empty) return hydra::app::analyze_chart_file(path, settings, on_progress);
+        return hydra::app::AnalysisResult{empty_analysis, hydra::Song(192)};
     });
     wait_batch_finished(app);
 }
