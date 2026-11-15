@@ -29,7 +29,7 @@
           "why": "profile_id_for, the owner"
         }
       ],
-      "note": "A record is filed under the profile row profile_id_for finds or files. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT) and the emptied profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged."
+      "note": "A record is filed under the profile row profile_id_for finds or files. A second lookup of that row by its key could match a different set of columns and file a record twice. The write purge's unreadable profiles (a WHERE with a NOT) and the open's deletion of empty profiles (a NOT EXISTS) are other questions, so those are left alone; any other WHERE on the profiles table is flagged."
     },
     {
       "question": "Which stored rows belong to a chart no library row lists?",
