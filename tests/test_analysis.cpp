@@ -862,6 +862,140 @@ TEST_CASE("run_batch stores nothing for a song file it can't open") {
     CHECK(charts_with_result(store, run, /*redo=*/false).empty());
 }
 
+// ---- on_failure_saved: which failed chart the batch stored -----------------
+
+namespace {
+
+// The callback order a batch's failures come out in, one line per call:
+// "error|<title>" for on_error, "saved|<md5>|<notespath>|<record's song_id>"
+// for on_failure_saved and "result|<md5>" for on_result.
+void record_failure_calls(BatchCallbacks& callbacks, std::vector<std::string>& calls) {
+    callbacks.on_error = [&calls](const std::string& title, const std::string&,
+                                  const std::string&) { calls.push_back("error|" + title); };
+    callbacks.on_failure_saved = [&calls](const ScanItem& item,
+                                          const hydra::store::PreparedRecord& rec) {
+        calls.push_back("saved|" + item.md5 + "|" + item.notespath + "|" + rec.record.song_id);
+    };
+    callbacks.on_result = [&calls](const ScanItem& item, const hydra::store::PreparedRecord&) {
+        calls.push_back("result|" + item.md5);
+    };
+}
+
+}  // namespace
+
+// The chart with no notes of "run_batch stores a chart with no notes, and the
+// next batch skips it", listed in two folders: each row gets its on_error and
+// then its on_failure_saved, both under the first copy (D76, D51 call 10).
+TEST_CASE("run_batch hands on_failure_saved the chart whose failure it stored") {
+    Settings settings;
+    settings.view_difficulty = "Hard";  // the corpus has charts with no Hard part
+    const BatchRun run = settings.batch_run();
+    const ScanItem item = chart_item(corpus::first_chart_without_notes(hydra::Difficulty::Hard));
+    ScanItem copy = item;
+    copy.title = "a later copy's own name";
+    copy.notespath = item.notespath + ".copy";
+    hydra::store::RecordStore store(":memory:");
+
+    BatchCallbacks callbacks;
+    std::vector<std::string> calls;
+    record_failure_calls(callbacks, calls);
+    run_planned({item, copy}, run, store, /*redo=*/false, 1, callbacks);
+
+    // The failure was stored, so the calls below name a stored failure.
+    REQUIRE(store.lookup_one(item.md5, run.profile).status ==
+            hydra::store::RecordStatus::CantAnalyze);
+    const std::string error = "error|" + item.title;
+    const std::string saved = "saved|" + item.md5 + "|" + item.notespath + "|" + item.md5;
+    CHECK(calls == std::vector<std::string>{error, saved, error, saved});
+}
+
+// A failure that can pass on a retry is never stored ("run_batch stores
+// nothing for a song file it can't open"), so nothing is handed out for it.
+TEST_CASE("run_batch hands on_failure_saved nothing for a failure the store does not keep") {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [](const std::string&, const AnalysisSettings&,
+                           const std::function<void(float)>&) -> AnalysisResult {
+        throw hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
+    };
+    std::vector<std::string> calls;
+    record_failure_calls(callbacks, calls);
+    BatchRun run;
+    run.profile.chartmode = "failure-saved-transient-test";
+    hydra::store::RecordStore store(":memory:");
+    const std::vector<ScanItem> items = fake_items(1);
+    run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+    CHECK(calls == std::vector<std::string>{"error|" + items[0].title});
+}
+
+// The failure record's save is refused the way "run_batch counts a failed
+// save as a failed chart and goes on" refuses a result's (O13): that chart is
+// still a failure, and neither on_failure_saved nor on_result names it.
+TEST_CASE("run_batch hands on_failure_saved nothing when the failure record's save fails") {
+    BatchCallbacks callbacks;
+    callbacks.analyze = [](const std::string&, const AnalysisSettings&,
+                           const std::function<void(float)>&) -> AnalysisResult {
+        throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
+    };
+    std::vector<std::string> calls;
+    record_failure_calls(callbacks, calls);
+    const std::vector<ScanItem> items = fake_items(2);
+
+    const std::string path = testtemp::temp_path("batch_failure_save_fail", ".db");
+    std::remove(path.c_str());
+    { hydra::store::RecordStore store(path); }
+    // A trigger refuses chart fake1's record, so its save throws.
+    hydra::test::exec_on_file(path,
+                              "CREATE TRIGGER refuse_fake1 BEFORE INSERT ON records"
+                              " WHEN NEW.song_id = 'fake1' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    BatchRun run;
+    run.profile.chartmode = "failure-saved-save-fail-test";
+    {
+        hydra::store::RecordStore store(path);
+        run_planned(items, run, store, /*redo=*/false, 1, callbacks);
+
+        CHECK(store.lookup_one("fake0", run.profile).status ==
+              hydra::store::RecordStatus::CantAnalyze);
+        CHECK(store.lookup_one("fake1", run.profile).status ==
+              hydra::store::RecordStatus::NotAnalyzed);
+        const std::string saved0 = "saved|fake0|" + items[0].notespath + "|fake0";
+        const std::vector<std::string> expected = {"error|" + items[0].title, saved0,
+                                                   "error|" + items[1].title};
+        CHECK(calls == expected);
+    }
+    std::remove(path.c_str());
+}
+
+// A callback that throws ends the run (run_batch's own catch). The first
+// chart's failure is stored before any of its callbacks run, and the throw
+// comes from the progress that counts it, so it and every chart stored behind
+// it get neither on_failure_saved nor on_result.
+TEST_CASE("run_batch hands on_failure_saved nothing after a run fails as a whole") {
+    RecordedBatch batch;
+    BatchCallbacks& callbacks = batch.callbacks;
+    // fake1 saves a real result; fake0 and fake2 are stored failures.
+    callbacks.analyze = [&batch](const std::string& path, const AnalysisSettings&,
+                                 const std::function<void(float)>&) -> AnalysisResult {
+        if (path == "fake_1.chart") return batch.real;
+        throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
+    };
+    std::vector<std::string> calls;
+    record_failure_calls(callbacks, calls);
+    callbacks.on_progress = [](const BatchProgress& p) {
+        if (p.completed >= 1) throw std::runtime_error("the caller's callback failed");
+    };
+    BatchRun run;
+    run.profile.chartmode = "failure-saved-run-fails-test";
+    hydra::store::RecordStore store(":memory:");
+
+    CHECK_THROWS_AS(run_planned(fake_items(3), run, store, /*redo=*/false, 1, callbacks),
+                    std::runtime_error);
+    // fake0 is on disk, yet no callback named it or anything after it.
+    CHECK(store.lookup_one("fake0", run.profile).status ==
+          hydra::store::RecordStatus::CantAnalyze);
+    CHECK(calls.empty());
+}
+
 TEST_CASE("prepare_failed_chart: a remembered kind becomes a failure record, anything else nothing") {
     Settings settings;
     const hydra::store::Profile profile = settings.profile();

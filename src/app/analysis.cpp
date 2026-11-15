@@ -857,6 +857,9 @@ void run_batch(const BatchPlan& plan, const BatchRun& run, store::RecordStore& s
             if (callbacks.on_progress) callbacks.on_progress(progress);
             if (wr.failed) {
                 if (callbacks.on_error) callbacks.on_error(wr.item.title, wr.sentence, wr.error);
+                // A failed chart still holding its row had its failure saved.
+                if (wr.row && callbacks.on_failure_saved)
+                    callbacks.on_failure_saved(wr.item, *wr.row);
             } else {
                 if (callbacks.on_result) callbacks.on_result(wr.item, *wr.row);
             }
