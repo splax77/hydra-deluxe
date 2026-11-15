@@ -261,7 +261,8 @@ std::vector<Path> keep_prefix_paths(std::vector<Path> paths,
 ScoreGraph search_graph(const Song& song, const SearchSettings& settings) {
     return ScoreGraph(song,
                       std::optional<int>(graph_build_cap(settings.sp_cap, song.sp_phrase_count())),
-                      fill_rule_for(settings.legacy_fills), settings.rules);
+                      fill_rule_for(settings.legacy_fills), settings.rules,
+                      settings.early_fill_window_ms);
 }
 
 namespace {
@@ -544,6 +545,7 @@ HydraRecord analyze_chart(const Song& song, const SearchSettings& settings,
                    split ? scaled_progress(on_progress, kMainProgressShare, 1.0f) : on_progress);
     record.rules_fingerprint = settings.rules.fingerprint();
     record.legacy_fills = settings.legacy_fills;
+    record.early_fill_window_ms = settings.early_fill_window_ms;
     return record;
 }
 

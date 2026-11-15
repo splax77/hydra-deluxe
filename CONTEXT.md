@@ -93,7 +93,7 @@ The search that computes a chart's analysis and saves it as a record. A click
 on a song analyzes it, and so does a batch, and both save through
 `prepare_record` and `RecordStore::save`. A click saves only when the stored
 record is missing, Stale or different from the fresh one
-(`AppState::save_view_summary`), and a click that saves marks both open
+(`ViewJob::write_results`), and a click that saves marks both open
 reports out of date, as a finished batch does (D115). Its progress bar moves in steps of at least half a percent of the chart
 (src/search/engine.cpp), and the main search owns the first 90% of the bar,
 the all-0 pass the rest (src/search/pather.cpp; D273).
@@ -197,12 +197,12 @@ scores are not achievable in game.
 _Avoid_: edition, uncapped, SP meter
 
 **Analysis settings**:
-The eight settings that make up a record's profile, shown together in the
+The nine settings that make up a record's profile, shown together in the
 analysis settings panel and applied to every song: difficulty, Pro Drums, 2x Bass and
 Note Shuffle (together the chart mode, read off the settings as a
 `ChartReading` by `Settings::reading` and spelled by `chartmode_key`),
-the SP cap, 1.0 fills (the fill spawn deadline),
-the score range, and the path limit.
+the SP cap, 1.0 fills (the fill spawn deadline), the early fill window
+(Early fill (E)), the score range, and the path limit.
 Changing one shows the library's records under the new combination, and
 analyzes the open song again under it (D90 item 1). Changing it back brings
 the library's old rows back with no batch. The backend limit is
@@ -215,8 +215,8 @@ confirmed both defaults (D48, Q33); `Settings` in src/app/config.h owns them.
 The score range starts at 4<!-- default: kDefaultDepthValue --> scores below
 the best. `kDefaultDepthValue` in src/search/pather.h owns that number, and
 the search and `Settings` both start from it (D54).
-`kAnalysisFields` in src/app/config.h lists the ten `Settings` fields behind
-the eight settings, each with the part of the profile it is filed
+`kAnalysisFields` in src/app/config.h lists the eleven `Settings` fields behind
+the nine settings, each with the part of the profile it is filed
 under. The panel's Reset (`Settings::with_analysis_defaults`) and the settings
 button's summary (`Settings::analysis_changes`) read that list, so a new
 analysis setting is one new row there (concept audit M13).
@@ -609,14 +609,14 @@ src/core/stars.cpp; D48, Q33).
 
 **Early fill (E)**:
 An activation timing (the `E` notation) near a fill's spawn deadline. The
-window is one fixed number on both sides of the deadline, the hit window,
-85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs`). It is never a setting,
-because the search reads it (src/core/model.h; D344).
+window is one number on both sides of the deadline: the `Early fill window`
+setting, 60 ms<!-- default: kDefaultEarlyFillWindowMs --> by default, from 0
+to the hit window.
 On the orange side, Star Power comes ready after the deadline, so you must
-hit early to summon the fill. Later than the hit window (`fill_refuses`), the
+hit early to summon the fill. Later than the window (`fill_refuses`), the
 fill never spawns, and the search drops the activation.
 On the white side, Star Power comes ready before the deadline with less than
-the hit window to spare (`is_e0`). The activation still gets the `E` mark, but
+the window to spare (`is_e0`). The activation still gets the `E` mark, but
 has nothing to time.
 
 **Fill spawn deadline (CH 1.1)**:
@@ -684,9 +684,9 @@ rule. The conversion deletes the retired `engine_mode` row
 The per-side ms window Clone Hero registers a hit in, Clone Hero's Pro Drums
 window: 85 ms<!-- default: kHitWindowMs --> (`kHitWindowMs` in
 src/core/model.h). It is one fixed number, not a setting (D270 call 8). The
-search's early fill reach (`fill_refuses`), the squeeze budgets
-(`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words and the report's
-timing tiers all read it. The old `hit_window_ms` key is retired and skipped
+squeeze budgets (`squeeze_budget_ms`, `nominal_budget_ms`), the Rating words
+and the report's timing tiers all read it. It is also the most the
+`Early fill window` setting allows (Early fill (E)). The old `hit_window_ms` key is retired and skipped
 (Settings files). The report's timing tiers are Normal up to 2 ms
 (`kDifficultMs`), then Hard up to half a hit window, Extreme up to one window,
 Insane up to one and a half, Insane+ up to two, and Beyond past two windows;

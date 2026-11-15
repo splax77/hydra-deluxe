@@ -319,13 +319,17 @@ inline size_t loading_chart_count(const std::vector<std::string>& notespaths,
 }
 
 // The settings a digest is pinned under, built the way the app builds them
-// from an ini that sets only these three things. A test that pins more
-// fields sets them on the result before it calls batch_run.
+// from an ini that sets only these three things and the early-fill window. A
+// test that pins more fields sets them on the result before it calls
+// batch_run. The window is the hit window, the one the digests were pinned
+// under, stated here so they keep describing that search whatever the
+// setting's default is.
 inline app::Settings digest_settings(const char* difficulty, bool pro, bool bass2x) {
     app::Settings s;
     s.view_difficulty = difficulty;
     s.view_prodrums = pro;
     s.view_bass2x = bass2x;
+    s.early_fill_window_ms = kMaxEarlyFillWindowMs;
     return s;
 }
 

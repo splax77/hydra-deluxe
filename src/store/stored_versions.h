@@ -52,7 +52,7 @@ struct StampRule {
 // example: the store saves the engine's own figure (engine_hardest_ms,
 // core/model.h) and the screens apply shown_timing when they show it. The
 // stamp is only compared as a whole string, never parsed.
-inline constexpr StampRule<std::string_view, 1> kResultsStamp{"3.1.2+efillhitwindow", {"3.1.2+efillhitwindow"}};
+inline constexpr StampRule<std::string_view, 1> kResultsStamp{"3.1.2+efillwindow", {"3.1.2+efillwindow"}};
 
 // ---- Scanned chart facts (the charts table) --------------------------------
 

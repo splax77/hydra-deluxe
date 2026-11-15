@@ -469,10 +469,10 @@ std::string MultSqueeze::howto(bool pro) const {
 // ---- Activation ---------------------------------------------------------
 
 // The early fill is E0-grade (is_e0 owns the window), skipped fills or not:
-// is_e0 with none skipped.
-bool Activation::is_e_critical() const { return is_e0(e_offset, 0); }
+// is_e0 with none skipped, at the window this activation's search ran under.
+bool Activation::is_e_critical() const { return is_e0(e_offset, 0, e_window_ms); }
 
-bool Activation::is_E0() const { return is_e0(e_offset, skips()); }
+bool Activation::is_E0() const { return is_e0(e_offset, skips(), e_window_ms); }
 
 std::optional<double> Activation::e_difficulty(bool verbose) const {
     if (is_E0() || verbose) return early_fill_difficulty(e_offset);
@@ -532,7 +532,7 @@ bool Activation::needs_timing() const { return difficulty().has_value(); }
 bool Activation::within_ms_limit(double limit_ms) const {
     for (const SPSqueeze& sq : sqinouts)
         if (!sq.within_limit(limit_ms)) return false;
-    return fill_within_limit(e_offset, skips(), limit_ms);
+    return fill_within_limit(e_offset, skips(), limit_ms, e_window_ms);
 }
 
 bool Activation::is_difficult() const {
@@ -852,7 +852,7 @@ bool Path::is_allzero() const {
     const ActivationWalk acts = walk_activations();
     if (acts.empty()) return false;
     for (const Activation& act : acts)
-        if (!allzero_activation(act.e_offset, act.skips())) return false;
+        if (!allzero_activation(act.e_offset, act.skips(), act.e_window_ms)) return false;
     return true;
 }
 

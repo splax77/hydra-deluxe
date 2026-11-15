@@ -7,10 +7,13 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -22,12 +25,16 @@
 #include "record_fixtures.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
+#include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
 #include "store_fixtures.h"  // at_cap, at4
 #include "temp_util.h"
+#include "wait_util.h"  // wait_until, WaitTimeout, kWaitCap
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::HeldSaveGroup;
+using hydra::test::StoreFile;
 using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::exec_on_file;
@@ -722,4 +729,197 @@ TEST_CASE("store: rows read by name compare byte for byte, and one name keeps sc
     CHECK(listed == std::vector<std::string>{"C:\\q\\notes.chart", "C:\\o\\notes.chart",
                                              "C:\\z\\notes.chart", "C:\\a\\notes.chart",
                                              "C:\\l\\notes.chart"});
+}
+
+// ---- the chart list read on the store's reader (StoreReader) ----------------
+
+namespace {
+
+// Checks two reads of the chart list gave the same rows in the same order,
+// field for field.
+void check_same_list(const std::vector<ChartLibraryEntry>& got,
+                     const std::vector<ChartLibraryEntry>& want) {
+    REQUIRE(got.size() == want.size());
+    CHECK(md5s_of(got) == md5s_of(want));
+    for (size_t i = 0; i < got.size(); ++i) {
+        CAPTURE(want[i].md5);
+        CHECK(got[i].md5 == want[i].md5);
+        check_same_entry(got[i], want[i]);
+    }
+}
+
+// A library with a chart in two folders and one other chart, every row
+// carrying timing, so a current stamp shows it on every row.
+std::vector<ChartLibraryEntry> timed_library() {
+    ChartLibraryEntry first = library_row("x", "Song");
+    ChartLibraryEntry second = library_row("x", "Song Copy");
+    second.notespath = "C:\\charts\\copy\\notes.chart";
+    ChartLibraryEntry other = library_row("y", "Other");
+    std::vector<ChartLibraryEntry> rows = {first, second, other};
+    for (size_t i = 0; i < rows.size(); ++i)
+        rows[i].timing = ChartTimingMeta{1000.0 * static_cast<double>(i + 1), 0.0};
+    return rows;
+}
+
+}  // namespace
+
+TEST_CASE("the reader lists a chart's copies as the writer does") {
+    StoreFile file("reader_copies");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+
+    const std::vector<ChartLibraryEntry> want = store.list_chart_library_copies("x");
+    REQUIRE(want.size() == 2);
+    check_same_list(store.reader().list_chart_library_copies("x"), want);
+}
+
+TEST_CASE("the reader lists the library by name as the writer does") {
+    StoreFile file("reader_by_name");
+    {
+        RecordStore store(file.path);
+        store.rebuild_chart_library(timed_library());
+        const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
+        // A current stamp: the writer's rows carry their timing.
+        REQUIRE(want.size() == 3);
+        REQUIRE(want[0].timing.has_value());
+        check_same_list(store.reader().list_chart_library(0, -1), want);
+        // The whole list unsorted reads on the reader's one connection, and
+        // gives the same rows.
+        const std::vector<ChartLibraryEntry> unsorted =
+            store.reader().list_chart_library(0, -1, {}, LibraryOrder::Unsorted);
+        CHECK(md5_set_of(unsorted) == md5_set_of(want));
+    }
+    // A stamp that is not current (chart_meta_current): the writer's rows
+    // carry no timing, and neither do the reader's.
+    exec_on_file(file.path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(file.path);
+        const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
+        REQUIRE(want.size() == 3);
+        REQUIRE_FALSE(want[0].timing.has_value());
+        check_same_list(store.reader().list_chart_library(0, -1), want);
+        check_same_list(store.reader().list_chart_library_copies("x"),
+                        store.list_chart_library_copies("x"));
+    }
+}
+
+TEST_CASE("a reader's chart list does not wait while a save group is open") {
+    StoreFile file("reader_list_no_wait");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const std::vector<ChartLibraryEntry> want_list = store.list_chart_library(0, -1);
+    const std::vector<ChartLibraryEntry> want_copies = store.list_chart_library_copies("x");
+
+    HeldSaveGroup group(store);
+    const std::vector<ChartLibraryEntry> list = store.reader().list_chart_library(0, -1);
+    const std::vector<ChartLibraryEntry> copies = store.reader().list_chart_library_copies("x");
+    const bool returned_while_held = group.held();
+    group.let_go();
+    CHECK(returned_while_held);
+    check_same_list(list, want_list);
+    check_same_list(copies, want_copies);
+}
+
+TEST_CASE("a reader sees a rescan once it is saved") {
+    StoreFile file("reader_rescan");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const std::vector<ChartLibraryEntry> before = store.reader().list_chart_library(0, -1);
+
+    store.rebuild_chart_library({library_row("z", "New Song"), library_row("y", "Other")});
+    const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
+    REQUIRE(md5s_of(want) != md5s_of(before));
+    check_same_list(store.reader().list_chart_library(0, -1), want);
+    check_same_list(store.reader().list_chart_library_copies("z"),
+                    store.list_chart_library_copies("z"));
+}
+
+// ---- the chart index read on the store's reader (StoreReader) ---------------
+
+namespace {
+
+// Checks two chart indexes list the same song ids in the same order, with the
+// same copies and the same naming row for each.
+void check_same_index(const ChartIndex& got, const ChartIndex& want) {
+    CHECK(got.song_ids() == want.song_ids());
+    for (const std::string& id : want.song_ids()) {
+        CAPTURE(id);
+        CHECK(got.lists(id));
+        CHECK(got.copies(id) == want.copies(id));
+        const ChartLibraryEntry* got_name = got.naming(id);
+        const ChartLibraryEntry* want_name = want.naming(id);
+        REQUIRE((got_name != nullptr) == (want_name != nullptr));
+        if (!want_name) continue;
+        CHECK(got_name->md5 == want_name->md5);
+        check_same_entry(*got_name, *want_name);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("the reader builds the chart index the writer builds") {
+    StoreFile file("reader_chart_index");
+    {
+        RecordStore store(file.path);
+        store.rebuild_chart_library(timed_library());
+        const ChartIndex want = store.chart_index();
+        // A current stamp: the chart in two folders is listed once, with two
+        // copies, and its naming row carries timing.
+        REQUIRE(want.song_ids().size() == 2);
+        REQUIRE(want.copies("x") == 2);
+        REQUIRE(want.naming("x") != nullptr);
+        REQUIRE(want.naming("x")->timing.has_value());
+        check_same_index(store.reader().chart_index(), want);
+    }
+    // A stamp that is not current (chart_meta_current): the writer's naming
+    // rows carry no timing, and neither do the reader's.
+    exec_on_file(file.path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    {
+        RecordStore store(file.path);
+        const ChartIndex want = store.chart_index();
+        REQUIRE(want.naming("x") != nullptr);
+        REQUIRE_FALSE(want.naming("x")->timing.has_value());
+        check_same_index(store.reader().chart_index(), want);
+    }
+}
+
+TEST_CASE("a reader's chart index does not wait while a save group is open") {
+    StoreFile file("reader_index_no_wait");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const ChartIndex want = store.chart_index();
+    const int64_t want_count = store.chart_library_count();
+
+    HeldSaveGroup group(store);
+    const ChartIndex got = store.reader().chart_index();
+    const int64_t got_count = store.reader().chart_library_count();
+    const bool returned_while_held = group.held();
+    group.let_go();
+    CHECK(returned_while_held);
+    check_same_index(got, want);
+    CHECK(got_count == want_count);
+}
+
+// ---- the chart list read on a reader of the caller's own (OwnReader) --------
+
+TEST_CASE("an own reader lists and indexes the library as the writer does") {
+    StoreFile file("own_reader_library");
+    RecordStore store(file.path);
+    store.rebuild_chart_library(timed_library());
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+
+    const std::vector<ChartLibraryEntry> want_list = store.list_chart_library(0, -1);
+    const std::vector<ChartLibraryEntry> want_copies = store.list_chart_library_copies("x");
+    const ChartIndex want_index = store.chart_index();
+    REQUIRE(want_copies.size() == 2);
+    check_same_list(reader->reads().list_chart_library(0, -1), want_list);
+    check_same_list(reader->reads().list_chart_library_copies("x"), want_copies);
+    check_same_index(reader->reads().chart_index(), want_index);
+    CHECK(reader->reads().chart_library_count() == store.chart_library_count());
+
+    // Under a hold the same reads give the same rows.
+    const OwnReader::Hold hold = reader->hold();
+    check_same_list(reader->reads().list_chart_library(0, -1), want_list);
+    check_same_list(reader->reads().list_chart_library_copies("x"), want_copies);
+    check_same_index(reader->reads().chart_index(), want_index);
 }

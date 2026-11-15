@@ -543,10 +543,14 @@ void test_command_bare_ref_ambiguous(ImGuiTestContext* ctx) {
     close_settings_panel(ctx);
     IM_CHECK(!r.ok);
     IM_CHECK(!ctx->IsError());
-    const std::string head =
-        "refused: \"-\" matches 3 widgets, and **/- would take only one of them; "
+    // How many "-" buttons there are follows the panel's number inputs, so the
+    // count is not pinned here; the refusal's wording around it is.
+    const std::string head = "refused: \"-\" matches ";
+    const std::string tail =
+        " widgets, and **/- would take only one of them; "
         "name one with a longer ref: \"-\" id=0x";
     IM_CHECK_STR_EQ(r.text.substr(0, head.size()).c_str(), head.c_str());
+    IM_CHECK(r.text.find(tail) != std::string::npos);
 }
 
 // A scan leaves its "Scanning charts" dialog open until Continue, and the

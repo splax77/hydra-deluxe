@@ -23,6 +23,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -110,8 +111,9 @@ using RowsAnsweredFn = std::function<bool(uint64_t rows_answered)>;
 // hash, and `on_slice`, when given, is told after each. Each answer goes back
 // to its own row, and the answers go to the model in one call, so the table is
 // filtered once. Throws when the read fails, and Cancelled when `on_slice`
-// returns false.
-void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
+// returns false. `store` is the connection asked: a RecordStore, or the
+// reader() the window reads through.
+void read_library_summaries(store::StoreReads& store, const app::Settings& settings,
                             LibraryModel& library, const RowsAnsweredFn& on_slice = {},
                             size_t slice_charts = kResultsSliceCharts);
 
@@ -333,8 +335,42 @@ public:
     };
     Snapshot snapshot() const;
 
+    // The store's answers for the charts this run saved, waiting for the
+    // window to put them on their rows. Each answer is
+    // RecordStore::lookup's, asked on the batch's thread under the run's
+    // profile right after the chart's save group committed; the job decides
+    // no status itself. A chart in two folders has one answer.
+    struct SavedRows {
+        std::vector<std::pair<std::string, store::RecordLookup>> answers;  // md5, answer
+        // app::plain_error of the last lookup that failed since the last
+        // take; empty when none did. Its charts are asked about again with
+        // the next saved chart, and once more when the run ends.
+        std::string problem;
+    };
+    // Hands over what the tray holds and empties it. Never waits on the
+    // store: a lookup runs without the job's own lock.
+    SavedRows take_saved_rows();
+    // How many charts' answers the job has made so far, taken or not. A
+    // snapshot's `completed` can count a chart before its answer is made
+    // (run_batch's on_progress fires first), so tests wait on this instead.
+    // Reads only the job's own count.
+    int answered_count() const;
+
+    // Test seam: called on the batch thread just before each lookup, so a
+    // test can hold the batch there. Call before start().
+    void set_lookup_hold_for_test(std::function<void()> hold) { lookup_hold_ = std::move(hold); }
+
 private:
     void run();
+    // On the batch thread, from run_batch's on_result and on_failure_saved:
+    // `md5` was saved, so it waits for its answer unless it already has one.
+    // Then asks about everything waiting. Lets no exception out, because one
+    // out of a batch callback ends the whole run.
+    void note_saved(const std::string& md5) noexcept;
+    // On the batch thread: asks the store about every waiting chart in one
+    // lookup and moves the answers into the tray. A lookup that fails keeps
+    // them waiting and leaves its sentence in the tray. Lets no exception out.
+    void answer_waiting() noexcept;
     // Ends a run that failed as a whole, around its charts: the plain
     // sentence for `e` with `detail` under it in run_error, the clock
     // stopped. No count changes.
@@ -368,6 +404,15 @@ private:
     // its window; read by snapshot(). Its window follows workers_ (see
     // kTimeLeftWorkerRounds). Guarded by mu_.
     mutable app::TimeLeftClock time_left_;
+
+    // Saved charts still waiting for their answer, and the charts already
+    // answered this run. Only the batch thread (run_batch's callbacks, then
+    // run()) touches them, so they need no lock.
+    std::vector<std::string> waiting_;
+    std::unordered_set<std::string> answered_md5s_;
+    std::function<void()> lookup_hold_;  // set_lookup_hold_for_test
+    SavedRows tray_;    // guarded by mu_
+    int answered_ = 0;  // answers made so far (answered_count); guarded by mu_
 };
 
 // GUI-test seam: when set, every batch the app starts runs this analyzer on
@@ -403,20 +448,37 @@ struct ViewOutcome {
     std::optional<app::DynamicsBreakdown> dynamics;
     std::string dynamics_message;  // app::plain_error
     std::string dynamics_error;    // app::plain_error_detail
+    // What the job wrote to the store (ViewJob::write_results), so the window
+    // can bring its rows up to it whatever becomes of the result. These are
+    // set however the job ended, cancelled included.
+    bool wrote_hash = false;  // the library row took new_md5 and new_sig
+    bool wrote_save = false;  // the chart's record was saved
+    // app::plain_error of a save that failed; the result itself still shows.
+    std::string save_error;
+    // The id the chart's record is saved under: the new hash once the row
+    // took it, else the row's own (`row_md5`).
+    const std::string& stored_id(const std::string& row_md5) const {
+        return wrote_hash ? new_md5 : row_md5;
+    }
 };
 
 // The song panel's job: re-identifies an edited chart, runs the engine's
-// normal analysis and counts the Dynamics, all for one click. cancel()
-// interrupts the search at its next progress tick; the stretch before the
-// first tick (parse + graph build) can't be interrupted. The UI thread drops
-// a result whose generation is not the current click's.
+// normal analysis, counts the Dynamics, and then writes the click's two
+// store writes on its own thread (write_results), so the window keeps
+// drawing while a batch's save group holds the store. cancel() interrupts
+// the search at its next progress tick; the stretch before the first tick
+// (parse + graph build) can't be interrupted, and a cancel seen just before
+// either write stops the job with nothing more written. The UI thread drops
+// a result whose generation is not the current click's, and still follows
+// what the job wrote (AppState::take_view_outcome).
 class ViewJob : public ResultJobBase {
 public:
     // The song, its profile and the settings are snapshotted at start, so
     // the result is saved against the song and settings it ran for.
     // `analysis_off` (broken rules) skips the engine and keeps the count.
+    // `store` is the window's, and must outlive the job.
     ViewJob(store::ChartLibraryEntry song, store::Profile profile, app::AnalysisSettings settings,
-            bool analysis_off, int generation);
+            bool analysis_off, int generation, store::RecordStore& store);
     ~ViewJob() { shutdown(); }
 
     void start();
@@ -433,20 +495,26 @@ public:
     // report (i.e. show an indeterminate spinner until then).
     float progress() const { return progress_.load(std::memory_order_relaxed); }
 
-    // Valid once finished() && ok(); moves the outcome out (call once).
+    // Moves the outcome out (call once, once finished()). Its analysis is
+    // valid only when ok(); what it says the job wrote is valid always.
     ViewOutcome take_outcome() { return std::move(out_); }
 
 private:
     void run();
+    // The click's writes, after the analysis: the new hash, then the save.
+    void write_results();
 
     store::ChartLibraryEntry song_;
     store::Profile profile_;
     app::AnalysisSettings settings_;
     bool analysis_off_;
     int generation_;
+    store::RecordStore& store_;
     std::atomic<float> progress_{-1.0f};
     ViewOutcome out_;
     app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
+    std::function<void()> before_save_check_;  // the test seam's, copied at construction
+    std::function<void()> after_save_check_;   // the test seam's, copied at construction
 };
 
 // Test seam: when set, every click's job built from now on runs this analyzer
@@ -454,6 +522,18 @@ private:
 // (Cancel, the progress box's delay, a burst of setting changes) instead of
 // racing a fast chart. An empty analyzer clears it. Only tests set it.
 void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
+
+// Test seam: when set, every click's job built from now on calls this on its
+// own thread just before its last cancel check, the one before its save, so
+// a test can cancel, close or replace the click right there. An empty
+// function clears it. Only tests set it.
+void set_view_before_save_check_for_test(std::function<void()> hook);
+
+// Test seam: when set, every click's job built from now on calls this on its
+// own thread just after that last cancel check, before its save, so a test
+// can cancel, close or replace the click once the save can no longer be
+// stopped. An empty function clears it. Only tests set it.
+void set_view_after_save_check_for_test(std::function<void()> hook);
 
 // ---- ReportJob --------------------------------------------------------
 

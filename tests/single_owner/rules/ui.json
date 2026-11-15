@@ -1956,7 +1956,7 @@
       "pattern": "app::plan_batch\\(",
       "must_match": [
         "batch_plan = app::plan_batch(items, with_result);",
-        "redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));"
+        "app::plan_batch(items, app::charts_with_result(store->reader(), run, true));"
       ],
       "must_not_match": [
         "if (!plan_batches([&] { return library_matches(); })) {",
@@ -1965,12 +1965,12 @@
       "owner_lines": [
         {
           "file": "src/ui/app_state.cpp",
-          "line_text": "batch_plan = app::plan_batch(items, app::charts_with_result(*store, run, false));",
+          "line_text": "batch_plan = app::plan_batch(items, app::charts_with_result(store->reader(), run, false));",
           "why": "AppState::plan_batches, the owner"
         },
         {
           "file": "src/ui/app_state.cpp",
-          "line_text": "batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));",
+          "line_text": "app::plan_batch(items, app::charts_with_result(store->reader(), run, true));",
           "why": "AppState::plan_batches, the owner"
         }
       ],

@@ -343,10 +343,12 @@ public:
     // (LibraryModel::sort_if_out_of_date). True when its row changed.
     bool refresh_library_row(const std::string& md5);
     // Once per frame, from the library pane: reloads after a scan finishes,
-    // and re-reads summaries while a batch runs -- at most once per
-    // kBatchRefreshSeconds, and only when the batch stored something since
-    // the last look. Those reads leave the rows in place; the list sorts once
-    // when the batch ends.
+    // and while a batch runs puts the answers the batch left in its tray
+    // (BatchJob::take_saved_rows) on their rows -- at most once per
+    // kBatchRefreshSeconds, and every frame once the batch has ended. It
+    // reads no summary from the store for that; only a batch that failed as
+    // a whole has every row read again, once, when it ends. The rows stay in
+    // place; the list sorts once when the batch ends.
     void tick_library(double now);
 
     // The rows on screen, in order, as indices into library.rows().
@@ -836,24 +838,22 @@ private:
     // window.
     bool open_report_when_shown_ = false;
 
-    // The click's job lifecycle on the UI thread: drop a late result, then
-    // re-identify an edited chart, save the summary when needed and show the
-    // result. tick() calls it every frame, whichever tab shows.
+    // The click's job lifecycle on the UI thread: drop a late result, follow
+    // what the job wrote, and show the result. The job itself writes the new
+    // hash and the save (ViewJob::write_results). tick() calls it every
+    // frame, whichever tab shows.
     void update_view_job();
     // Whether the click's job thread is still working, cancelled or not. The
     // one spelling of that test.
     bool view_thread_alive() const;
-    // Saves the click's record under `profile` when the chart's stored record
-    // is missing, Stale or different (D87 item 2), marks both open reports
-    // out of date when it saves (D115 question 4), and returns the summary
-    // the record now gives. Throws on a store failure.
-    store::PathSummary save_view_summary(const std::string& song_id, const store::Profile& profile,
-                                         const app::AnalysisResult& result);
-    // The click's one save, for a result or a stored failure: writes
-    // `prepared` unless the chart's stored answer already says the same,
-    // and marks both open reports out of date when it writes. Throws on a
-    // store failure.
-    void save_view_record(const store::PreparedRecord& prepared);
+    // Takes a finished click job's outcome and brings the window up to what
+    // its worker wrote to the store, whatever becomes of the result: the
+    // library is read again after a new hash (the panel's entry follows its
+    // row, and the next row click looks its chart up by the row's hash), and
+    // after a save the chart's row is read again and both open reports are
+    // marked out of date (D115 question 4). Every place a finished click job
+    // is let go calls it, so no row says less than the store holds.
+    ViewOutcome take_view_outcome(ViewJob& job);
     // Starts view_job for the latest request. view_job must be empty.
     void launch_view_job();
     // When the latest request was made (start_view), for view_progress_shown.
@@ -948,11 +948,10 @@ private:
     // read is the status line's problem.
     void read_summaries_in_place();
     // reload_after_scan's memory: whether the current scan's result was read
-    // yet. Then tick_library's: the batch's stored count and time at the last
-    // summary read, and whether the latest batch still owes the list its one
+    // yet. Then tick_library's: the time it last put a batch's answers on
+    // the rows, and whether the latest batch still owes the list its one
     // sort at the end.
     bool scan_reloaded_ = true;
-    int batch_seen_completed_ = 0;
     double batch_refreshed_at_ = -1.0;
     bool batch_end_sort_due_ = false;
 

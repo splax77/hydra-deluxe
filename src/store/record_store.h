@@ -2,7 +2,8 @@
 // chart library, one record per chart and profile, and `meta`.
 //
 //   * `profiles` — one row per set of settings a record is filed under: the
-//     chart mode, the SP cap, the Lens (ms limit, score range and fill rule),
+//     chart mode, the SP cap, the Lens (ms limit, score range, fill rule and
+//     early-fill window),
 //     the results stamp (stored_versions.h) and the hydra_rules.ini
 //     fingerprint. A record made under other rules or by another build sits
 //     under its own profile, beside this build's.
@@ -26,9 +27,11 @@
 #ifndef HYDRA_STORE_RECORD_STORE_H
 #define HYDRA_STORE_RECORD_STORE_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -101,8 +104,9 @@ struct CapQuery {
 };
 
 // The rest of the settings a run happened under: the ms limit, the score
-// range and the fill rule. Two runs of the same chart at the same cap under
-// different lenses are two results, neither overwriting the other.
+// range, the fill rule and the early-fill window. Two runs of the same chart
+// at the same cap under different lenses are two results, neither
+// overwriting the other.
 //
 // Canonical form, so equal settings always compare equal: a disabled ms limit
 // stores value 0, because the engine ignores the number when the limit is off
@@ -118,16 +122,24 @@ struct Lens {
     // rule (FillDeadlineRule, core/song.h). Part of the key, so a chart's 1.0
     // and 1.1 results sit side by side; docs/adr/0010's notes say why.
     int legacy_fills = 0;
+    // The early-fill window the search ran under, in whole ms
+    // (HydraRecord::early_fill_window_ms). Part of the key, so a chart's
+    // results at two windows sit side by side. A row saved before the store
+    // kept it is filed under the default (add_early_fill_column).
+    int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
 
     // `ms` is Settings::mslimit_value when the limit is on, nullopt when off.
+    // `efill_window_ms` is the early-fill setting.
     static Lens from(std::optional<int> ms, int depth_mode, int depth_value,
-                     bool legacy_fills = false) {
+                     bool legacy_fills = false,
+                     int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs)) {
         Lens lens;
         lens.ms_enabled = ms ? 1 : 0;
         lens.ms_value = ms ? *ms : 0;
         lens.depth_mode = depth_mode;
         lens.depth_value = depth_value;
         lens.legacy_fills = legacy_fills ? 1 : 0;
+        lens.efill_window_ms = efill_window_ms;
         return lens;
     }
 
@@ -135,7 +147,7 @@ struct Lens {
     bool operator==(const Lens& other) const {
         return ms_enabled == other.ms_enabled && ms_value == other.ms_value &&
                depth_mode == other.depth_mode && depth_value == other.depth_value &&
-               legacy_fills == other.legacy_fills;
+               legacy_fills == other.legacy_fills && efill_window_ms == other.efill_window_ms;
     }
     bool operator!=(const Lens& other) const { return !(*this == other); }
 };
@@ -295,8 +307,9 @@ struct PreparedRecord {
 // std::invalid_argument if the analysis carries no sp_cap (every analyzer
 // result does), if the profile's cap isn't the cap it was analyzed at, if the
 // profile's lens has the ms limit on at a value it wasn't analyzed under (or
-// off when it was), or if the lens names the other fill rule: each mismatch
-// would file the analysis under settings it doesn't belong to.
+// off when it was), if the lens names the other fill rule, or if the lens's
+// early-fill window isn't the one it was analyzed under: each mismatch would
+// file the analysis under settings it doesn't belong to.
 PreparedRecord prepare_record(std::string song_id, const Profile& profile,
                               const HydraRecord& analysis);
 
@@ -396,6 +409,11 @@ inline constexpr int kJournalSizeLimitBytes = 4194304;
 
 // ---- opening, and converting a Convertible file ----------------------------
 
+// The name an older file's profiles table goes by while
+// RecordStore::add_early_fill_column rebuilds it. Named here so a test can
+// leave a table of that name in the way and see the rebuild undone.
+inline constexpr const char* kProfilesBeforeEarlyFillTable = "profiles_before_efill";
+
 // What the store is doing while it opens, in the order the steps run. An open
 // of a file this build already wrote reports Opening alone.
 enum class OpenStep {
@@ -474,7 +492,8 @@ class ChartIndex;  // store/chart_index.h
 
 // One connection to the store's file: its handle, the lock over its sqlite
 // calls, and its compiled statements. A read written over a connection
-// answers on any connection the store holds. RecordStore holds the writer's.
+// answers on any connection the store holds. RecordStore holds the writer's,
+// and a StoreReader holds a read-only one.
 struct StoreConnection {
     sqlite3* db = nullptr;
     // The rule: this lock covers sqlite calls and nothing else. A prepared
@@ -508,11 +527,118 @@ public:
     }
     virtual std::unordered_map<std::string, RecordStatus> settled_song_ids(
         const Profile& want) = 0;
+    virtual std::vector<ChartLibraryEntry> list_chart_library(
+        int offset, int limit, const RowsReadFn& on_row = {},
+        LibraryOrder order = LibraryOrder::ByName) = 0;
+    virtual std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) = 0;
+    virtual int64_t record_count() = 0;
+    virtual int64_t chart_library_count() = 0;
+    virtual ChartIndex chart_index() = 0;
 
 protected:
     StoreReads() = default;
     StoreReads(const StoreReads&) = default;
     StoreReads& operator=(const StoreReads&) = default;
+};
+
+class RecordStore;
+
+// A read-only connection to a store's file, answering StoreReads with the
+// store's own rules fingerprint and the same code the store reads with.
+// RecordStore::reader() hands one out. It opens at its first read, through
+// open_reader in record_store.cpp, and a failed open is a failed read; the
+// next read tries again. Each outermost call runs in one read transaction, so
+// it sees one moment of the file, and nothing stays open between calls. The
+// store must outlive it.
+class StoreReader : public StoreReads {
+public:
+    // `path`: the store's file, as shared_file_path in record_store.cpp gives it.
+    StoreReader(RecordStore& store, std::string path);
+    ~StoreReader() override;
+    StoreReader(const StoreReader&) = delete;
+    StoreReader& operator=(const StoreReader&) = delete;
+
+    std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
+                                     const Profile& want) override;
+    std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
+    // The whole library unsorted is read on this one connection too, inside
+    // the call's one read transaction, never on threads.
+    std::vector<ChartLibraryEntry> list_chart_library(
+        int offset, int limit, const RowsReadFn& on_row = {},
+        LibraryOrder order = LibraryOrder::ByName) override;
+    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
+    int64_t record_count() override;
+    int64_t chart_library_count() override;
+    ChartIndex chart_index() override;
+    // Closes the connection; a later read opens it again.
+    void close();
+
+private:
+    // Opens it at once, and gives its hold (OwnReader::Hold).
+    friend class OwnReader;
+    RecordStore& store_;
+    std::string path_;
+    StoreConnection conn_;
+    // Opens conn_ when it is closed. The caller holds conn_'s lock.
+    void open_if_closed();
+    // Opens conn_ now, so an open that fails throws here. Takes conn_'s lock.
+    void open_now();
+    // Opens the read transaction a hold keeps, which every call made until
+    // end_hold joins; false when one is already open, so the caller owns
+    // nothing to end. Takes conn_'s lock.
+    bool begin_hold();
+    // Ends the read transaction begin_hold opened. Takes conn_'s lock.
+    void end_hold();
+};
+
+// A reader a caller owns (RecordStore::open_own_reader), for code that makes
+// several reads and wants them to see one moment of the file: a hold keeps
+// one read transaction open across them. For a store with a file it is a
+// StoreReader of its own, opened at once. For a store with none (":memory:")
+// it reads through the store, and its hold does nothing. The store must
+// outlive it, and it must outlive its holds.
+class OwnReader {
+public:
+    // While it lives, every call on its reader joins one read transaction, so
+    // every call sees the file as it was at the first read made under it. It
+    // must end before its reader goes.
+    class Hold {
+    public:
+        ~Hold();
+        Hold(const Hold&) = delete;
+        Hold& operator=(const Hold&) = delete;
+
+    private:
+        friend class OwnReader;
+        Hold(StoreReader* reader, bool owns) : reader_(reader), owns_(owns) {}
+        StoreReader* reader_;
+        // Whether this hold opened the read transaction, so it ends it.
+        bool owns_;
+    };
+
+    ~OwnReader();
+    OwnReader(const OwnReader&) = delete;
+    OwnReader& operator=(const OwnReader&) = delete;
+
+    // The reads: its own StoreReader, or the store itself for a store with
+    // no file, each answering unchanged.
+    StoreReads& reads() { return reads_; }
+
+    // Opens a hold (Hold). A hold opened inside another owns nothing, and the
+    // outer one decides when the moment ends.
+    [[nodiscard]] Hold hold();
+
+private:
+    // Only RecordStore::open_own_reader makes one.
+    friend class RecordStore;
+    // `path`: the store's file, or empty for a store with none.
+    OwnReader(RecordStore& store, const std::string& path);
+    // The reader's own connection; null for a store with no file.
+    std::unique_ptr<StoreReader> own_;
+    // What reads() hands out: own_, or the store itself.
+    StoreReads& reads_;
+    // Hold's end, which only OwnReader may ask of a StoreReader.
+    static void end_hold(StoreReader& reader);
 };
 
 class RecordStore : public StoreReads {
@@ -608,6 +734,9 @@ public:
     };
     // The connection's checkpoint threshold in pages, for the tests.
     int wal_autocheckpoint_for_test();
+    // Test seam: sets the writer's checkpoint threshold to `pages`, so a test
+    // under a BatchWrites guard can make a few saves cross it.
+    void set_wal_autocheckpoint_for_test(int pages);
     // The connection's journal_size_limit in bytes, for the tests.
     int64_t journal_size_limit_for_test();
 
@@ -629,9 +758,23 @@ public:
     // Every chart lookup calls Ready or CantAnalyze under `want`, with that
     // status: the charts that have a current result, which a batch skips.
     std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
-    // The reads a caller that only reads goes through. For now every store
-    // hands back itself, so a read answers on the store's own connection.
-    StoreReads& reader() { return *this; }
+    // The reads a caller that only reads goes through. A store with a file
+    // hands back its StoreReader, whose own connection and lock never wait for
+    // the writer's lock. A store with none (":memory:") cannot be opened
+    // twice, so it hands back itself, and a read answers on its connection.
+    StoreReads& reader();
+    // A reader of the caller's own (OwnReader), on a connection of its own
+    // opened now, so a failed open throws KindedError(DatabaseRead) from this
+    // call. Unlike reader(), it offers a hold. The store must outlive it.
+    std::unique_ptr<OwnReader> open_own_reader();
+    // Test seam: the next open of any reader this store hands out fails, as
+    // an open that fails does. It fires once.
+    void fail_next_reader_open_for_test() { fail_next_reader_open_for_test_ = true; }
+    // Test seam: every reader this store hands out calls `fn` between
+    // lookup's two reads, so a test can save in between. Empty to stop.
+    void set_between_lookup_reads_for_test(std::function<void()> fn) {
+        between_lookup_reads_for_test_ = std::move(fn);
+    }
     // Every chart lookup calls Ready under `want`.
     std::unordered_set<std::string> ready_song_ids(const Profile& want);
     // Every Ready record under `want`, paths included, best score first (a
@@ -641,7 +784,7 @@ public:
 
     // How many real records the file holds, under any profile. A failure
     // record is not counted.
-    int64_t record_count();
+    int64_t record_count() override;
 
     // ---- the saved hardest figure (PathRow::hardest_ms) -----------------
     //
@@ -709,10 +852,10 @@ public:
     // order, from the calling thread only, while the other threads read; a
     // stop it asks for stops every thread. A connection that fails to open
     // fails the whole read with ErrorKind::DatabaseRead and returns no rows.
-    int64_t chart_library_count();
+    int64_t chart_library_count() override;
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
                                                       const RowsReadFn& on_row = {},
-                                                      LibraryOrder order = LibraryOrder::ByName);
+                                                      LibraryOrder order = LibraryOrder::ByName) override;
     // Test seam: the next threaded chart list read fails to open its
     // `nth` reader connection (1 = the first), as an open that fails does.
     void fail_chart_list_reader_open_for_test(int nth) {
@@ -727,15 +870,28 @@ public:
     // the way list_chart_library reads them, in LibraryOrder::ByName. A click
     // on a library row picks its copy from these (ui::AppState::select), and
     // so does a chart whose every copy is hidden (ui::AppState::select_chart).
-    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5);
+    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
 
     // The library's charts, their copies and naming copies (ChartIndex),
     // built from the library rows in the order the scan listed them.
-    ChartIndex chart_index();
+    ChartIndex chart_index() override;
 
 private:
+    // Reads the rules fingerprint and the two reader seams.
+    friend class StoreReader;
     // The connection every write and every RecordStore read goes through.
     StoreConnection writer_;
+    // The file other connections open beside the writer (shared_file_path in
+    // record_store.cpp); empty for a store with none. Set when the store
+    // opens, so a reader opened later never waits for the writer's lock.
+    std::string shared_file_;
+    // What reader() hands out for a store with a file; null for one with none.
+    // Made when the store opens; close() closes it before the writer.
+    std::unique_ptr<StoreReader> reader_;
+    // What fail_next_reader_open_for_test set; the open it fails clears it.
+    std::atomic<bool> fail_next_reader_open_for_test_{false};
+    // What set_between_lookup_reads_for_test set.
+    std::function<void()> between_lookup_reads_for_test_;
     // The fingerprint of the rules this process runs under. A row stamped
     // with anything but `fixed` reads Stale. Computed once, when the store
     // opens.
@@ -770,8 +926,9 @@ private:
     // The constructor's work after the file opens: the journal settings, the
     // tables, and, by the file's kind (classify_library_file), the conversion
     // of a Convertible file, the failure columns a LacksFailureColumns file
-    // gains, and the album column every kind older than Current gains; last,
-    // the deletion of empty profiles (drop_empty_profiles). The constructor
+    // gains, and the album column and the profiles' early-fill window column
+    // every kind older than Current gains; last, the deletion of empty
+    // profiles (drop_empty_profiles). The constructor
     // turns any throw from it into a failed open.
     void set_up_schema(LibraryFileKind kind);
     void exec(const char* sql);
@@ -805,6 +962,17 @@ private:
     // KindedError(DatabaseUpgrade) with the file as it was. Only the scan's
     // stamp moves for the album (kChartMetaStamp); the results stamp does not.
     void add_album_column();
+    // Gives the profiles table its early-fill window column when it lacks one
+    // (profiles_table_lacks_early_fill), with the column in the table's
+    // UNIQUE key too, so two profiles that differ only in the window never
+    // collide. SQLite cannot add a column to a key in place, so the table is
+    // rebuilt: renamed to kProfilesBeforeEarlyFillTable, made again from the
+    // same SQL a new file uses, every row copied across with its id kept and
+    // the default window (Lens::efill_window_ms), and the old table dropped.
+    // records and record_paths name a profile by id, so they are untouched.
+    // One transaction; a failure throws KindedError(DatabaseUpgrade) with the
+    // file as it was.
+    void add_early_fill_column();
     // Opens the writer's connection on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);

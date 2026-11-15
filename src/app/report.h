@@ -130,7 +130,7 @@ struct CantAnalyzeChart {
 };
 
 // Every chart the library lists, sorted by its result under one profile:
-// one RecordStore::lookup over ChartIndex::song_ids.
+// one StoreReads::lookup over ChartIndex::song_ids.
 struct LibraryLookup {
     // The Ready records, by song id.
     std::unordered_map<std::string, store::RecordRow> ready;
@@ -145,7 +145,7 @@ struct LibraryLookup {
 // doesn't list, and no page shows one (D87 item 4, D92). The path report and
 // both comparison pages read their records through here, so the three pages
 // agree on which charts are covered.
-LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& profile,
+LibraryLookup library_lookup(store::StoreReads& store, const store::Profile& profile,
                              const store::ChartIndex& library);
 
 // The max_paths that asks for every path, a count no chart reaches. It is the
@@ -182,7 +182,7 @@ struct CollectedRows {
 // scan order, each giving up to options.max_paths rows in its stored rank
 // order. The row list holds exactly its rows, with no spare capacity (D282).
 // Nothing is analyzed and no chart file is opened.
-CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options);
+CollectedRows collect_rows(store::StoreReads& store, const ReportOptions& options);
 
 // ---- generate_report -------------------------------------------------------
 // The whole report in one call: counts + rows + the standard framing
@@ -213,7 +213,7 @@ inline constexpr const char* kNoChartLibrary =
 // Whether `store` holds results but no chart library to report them on: the
 // one answer every page asks before it says kNoChartLibrary (D89 item 2,
 // D92). A database with no results at all keeps each page's own words.
-bool lacks_chart_library(store::RecordStore& store);
+bool lacks_chart_library(store::StoreReads& store);
 
 // The start of the sentence an empty report gives when the database holds
 // results under other settings (nothing_under_settings builds the whole
@@ -286,7 +286,7 @@ struct GeneratedReport {
 };
 
 // The library's charts through collect_rows.
-GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options);
+GeneratedReport generate_report(store::StoreReads& store, const ReportOptions& options);
 
 // The user settings generate_report reads, stated once. A new read of a
 // setting by the page joins this list, and settings_change_touches compares

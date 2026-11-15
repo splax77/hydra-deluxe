@@ -10,6 +10,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -20,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "app/allocator.h"
@@ -37,9 +39,11 @@
 #include "env_util.h"  // read_env
 #include "library_fixtures.h"  // library_row
 #include "net/dmbot_client.h"
+#include "parse/song.h"  // NoNotesError
 #include "scoped_hook.h"
 #include "store/record_store.h"
 #include "store_fixtures.h"  // save_as_old_build
+#include "store_lock_holder.h"
 #include "temp_util.h"
 #include "ui/dm_jobs.h"
 #include "ui/library_jobs.h"
@@ -51,6 +55,7 @@ using hydra::app::AnalysisSettings;
 using hydra::app::BatchRun;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordStore;
+using hydra::test::StoreLockHolder;
 using hydra::ui::BatchClock;
 using hydra::ui::BatchJob;
 
@@ -394,6 +399,319 @@ TEST_CASE("jobs: the snapshot's counts come from the batch in one piece") {
     CHECK(s.skipped == 0);
     CHECK(s.total == 3);
     CHECK(job.batch_run().profile == test_run().profile);
+}
+
+// ---- The batch job's tray: the store's answer for each chart it saved -----
+
+namespace {
+
+using hydra::store::RecordLookup;
+using SavedRows = BatchJob::SavedRows;
+
+// A chart that returns `real` once the test has released it: the chart that
+// started n-th (from 0) waits until `released` is above n.
+hydra::app::ChartAnalyzer real_in_turn(std::atomic<int>& released, const AnalysisResult& real) {
+    auto started = std::make_shared<std::atomic<int>>(0);
+    return [&released, &real, started](const std::string&, const AnalysisSettings&,
+                                       const std::function<void(float)>&) -> AnalysisResult {
+        const int me = (*started)++;
+        wait_until([&released, me] { return released.load() > me; }, "the test to release it");
+        return real;
+    };
+}
+
+// A chart that returns `real` at once.
+hydra::app::ChartAnalyzer always(const AnalysisResult& real) {
+    return [&real](const std::string&, const AnalysisSettings&,
+                   const std::function<void(float)>&) -> AnalysisResult { return real; };
+}
+
+// Whether two answers say the same thing, field by field (RecordLookup has
+// no operator==).
+bool same_answer(const RecordLookup& a, const RecordLookup& b) {
+    return a.status == b.status && a.stale_build == b.stale_build &&
+           a.stale_rules == b.stale_rules && a.record == b.record &&
+           a.failure_kind == b.failure_kind && a.failure_text == b.failure_text;
+}
+
+// How many of the tray's answers are for `md5`.
+size_t answers_for(const SavedRows& rows, const std::string& md5) {
+    return static_cast<size_t>(std::count_if(rows.answers.begin(), rows.answers.end(),
+                                             [&md5](const auto& a) { return a.first == md5; }));
+}
+
+// Checks each tray answer equals the store's own answer, asked now.
+void check_answers_match_store(const SavedRows& rows, RecordStore& store, const BatchRun& run) {
+    for (const auto& answer : rows.answers) {
+        INFO("chart " << answer.first);
+        CHECK(same_answer(answer.second, store.lookup_one(answer.first, run.profile)));
+    }
+}
+
+// fake_charts(n) with chart 0 listed in a second folder too: one chart, two
+// library rows.
+std::vector<ChartLibraryEntry> charts_with_a_copy(int n) {
+    std::vector<ChartLibraryEntry> charts = fake_charts(n);
+    ChartLibraryEntry copy = charts[0];
+    copy.title = "fake 0 copy";
+    copy.notespath = "fake_0_copy.chart";
+    charts.push_back(copy);
+    return charts;
+}
+
+}  // namespace
+
+TEST_CASE("jobs: answered_count reaches the number of charts saved, and counts a chart in two "
+          "folders once") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    RecordStore store(":memory:");
+    // Two charts, three library rows: chart 0 sits in two folders.
+    BatchJob job(plan_of(charts_with_a_copy(2)), test_run(), store);
+    job.set_analyzer_for_test(always(real), /*workers=*/1);
+    job.start();
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+
+    CHECK(job.snapshot().completed == 3);
+    CHECK(job.answered_count() == 2);
+    // Taking the tray does not lower the count.
+    (void)job.take_saved_rows();
+    CHECK(job.answered_count() == 2);
+}
+
+TEST_CASE("jobs: a batch job's tray holds the store's answer for each chart it saved") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    BatchJob job(plan_of(fake_charts(2)), run, store);
+    job.set_analyzer_for_test(always(real), /*workers=*/1);
+    job.start();
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+
+    const SavedRows rows = job.take_saved_rows();
+    CHECK(rows.problem.empty());
+    REQUIRE(rows.answers.size() == 2);
+    CHECK(answers_for(rows, "fake0") == 1);
+    CHECK(answers_for(rows, "fake1") == 1);
+    check_answers_match_store(rows, store, run);
+}
+
+TEST_CASE("jobs: a chart in two folders is asked about once") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    const hydra::app::BatchPlan plan = plan_of(charts_with_a_copy(2));
+    REQUIRE(plan.todo.size() == 2);
+    REQUIRE(plan.todo[0].md5 == "fake0");
+    REQUIRE(plan.rows[0] == 2);
+    std::atomic<int> lookups{0};  // before the job, so it outlives the job's thread
+    BatchJob job(plan, run, store);
+    job.set_analyzer_for_test(always(real), /*workers=*/1);
+    job.set_lookup_hold_for_test([&lookups] { ++lookups; });
+    job.start();
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+
+    const SavedRows rows = job.take_saved_rows();
+    CHECK(answers_for(rows, "fake0") == 1);
+    CHECK(answers_for(rows, "fake1") == 1);
+    CHECK(rows.answers.size() == 2);
+    CHECK(lookups.load() == 2);  // one per chart, none for the second folder's row
+    check_answers_match_store(rows, store, run);
+}
+
+// O7 and O13: a failure the store keeps reaches its row as the store's answer
+// (the test names no status); a failure it does not keep, and a failure whose
+// save failed, leave nothing for their rows.
+TEST_CASE("jobs: a failed chart whose failure was stored reaches the tray as the store's answer") {
+    testtemp::ScopedFile db("jobs_tray_failures", ".db");
+    { RecordStore create(db.path); }
+    // A trigger refuses chart fake2's record, so its failure record's save
+    // throws, the way "run_batch counts a failed save as a failed chart and
+    // goes on" refuses a save.
+    hydra::test::exec_on_file(db.path,
+                              "CREATE TRIGGER refuse_fake2 BEFORE INSERT ON records"
+                              " WHEN NEW.song_id = 'fake2' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    const BatchRun run = test_run();
+    {
+        RecordStore store(db.path);
+        BatchJob job(plan_of(fake_charts(3)), run, store);
+        job.set_analyzer_for_test(
+            [](const std::string& path, const AnalysisSettings&,
+               const std::function<void(float)>&) -> AnalysisResult {
+                // A song file that cannot be opened is a failure the store
+                // does not keep; a chart with no notes is one it keeps.
+                if (path == "fake_1.chart")
+                    throw hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
+                throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
+            },
+            /*workers=*/1);
+        job.start();
+        wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+        CHECK(job.snapshot().failed == 3);
+
+        const SavedRows rows = job.take_saved_rows();
+        CHECK(rows.problem.empty());
+        REQUIRE(rows.answers.size() == 1);
+        CHECK(rows.answers[0].first == "fake0");
+        check_answers_match_store(rows, store, run);
+        CHECK(job.answered_count() == 1);
+    }
+}
+
+TEST_CASE("jobs: the tray is empty after it is taken, and a stopped run's tray holds only what it "
+          "saved") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    std::atomic<int> released{0};
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    BatchJob job(plan_of(fake_charts(2)), run, store);
+    job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
+    job.start();
+
+    released = 1;
+    wait_until([&] { return job.answered_count() == 1; }, "the first chart's answer");
+    job.stop();
+    released = 2;  // the second chart finishes after the stop, so it is dropped
+    wait_until([&] { return job.snapshot().finished; }, "the stopped batch to finish");
+
+    const SavedRows rows = job.take_saved_rows();
+    REQUIRE(rows.answers.size() == 1);
+    CHECK(rows.answers[0].first == "fake0");
+    check_answers_match_store(rows, store, run);
+
+    const SavedRows again = job.take_saved_rows();
+    CHECK(again.answers.empty());
+    CHECK(again.problem.empty());
+    CHECK(job.answered_count() == 1);
+}
+
+TEST_CASE("jobs: a paused batch job's tray keeps its answers") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    std::atomic<int> released{0};
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    BatchJob job(plan_of(fake_charts(2)), run, store);
+    job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
+    job.start();
+    wait_until([&] { return job.snapshot().current_title == "fake 0"; }, "the first chart to start");
+
+    // Paused with the first chart in flight: it finishes and is stored, and
+    // the second never starts.
+    job.pause();
+    released = 2;
+    wait_until([&] { return job.answered_count() == 1; }, "the first chart's answer");
+    std::this_thread::sleep_for(200ms);
+    CHECK(job.answered_count() == 1);  // nothing added while paused
+    CHECK(job.snapshot().paused);
+
+    const SavedRows paused = job.take_saved_rows();
+    REQUIRE(paused.answers.size() == 1);
+    CHECK(paused.answers[0].first == "fake0");
+    check_answers_match_store(paused, store, run);
+
+    job.resume();
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+    const SavedRows rest = job.take_saved_rows();
+    REQUIRE(rest.answers.size() == 1);
+    CHECK(rest.answers[0].first == "fake1");
+}
+
+// A lookup that fails shows the same sentence a failed store read shows, and
+// its chart is asked about again with the next saved chart. The records
+// table is moved aside between chart 0's save and its lookup (the seam), so
+// the save lands and the lookup fails, then moved back before chart 1 runs.
+TEST_CASE("jobs: a lookup that fails leaves its sentence in the tray and is tried again") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    testtemp::ScopedFile db("jobs_tray_lookup_fails", ".db");
+    std::atomic<int> released{0};
+    std::atomic<int> lookups{0};
+    const BatchRun run = test_run();
+    {
+        RecordStore store(db.path);
+        BatchJob job(plan_of(fake_charts(2)), run, store);
+        job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
+        job.set_lookup_hold_for_test([&] {
+            if (lookups++ == 0)
+                hydra::test::exec_on_file(db.path, "ALTER TABLE records RENAME TO records_aside");
+        });
+        job.start();
+
+        released = 1;
+        SavedRows failed;
+        wait_until(
+            [&] {
+                SavedRows taken = job.take_saved_rows();
+                if (taken.problem.empty() && taken.answers.empty()) return false;
+                failed = std::move(taken);
+                return true;
+            },
+            "the first chart's lookup to fail");
+        CHECK(failed.answers.empty());
+        CHECK(job.answered_count() == 0);
+
+        // The same failure, read by the test through the store.
+        std::string expected;
+        try {
+            (void)store.lookup_one("fake0", run.profile);
+        } catch (const std::exception& e) {
+            expected = hydra::app::plain_error(e);
+        }
+        REQUIRE_FALSE(expected.empty());
+        CHECK(failed.problem == expected);
+
+        hydra::test::exec_on_file(db.path, "ALTER TABLE records_aside RENAME TO records");
+        released = 2;
+        wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+
+        const BatchJob::Snapshot s = job.snapshot();
+        CHECK(s.run_error.empty());
+        CHECK(s.failed == 0);
+        CHECK(lookups.load() == 2);  // chart 1's lookup asked about chart 0 again
+        const SavedRows rows = job.take_saved_rows();
+        CHECK(rows.problem.empty());
+        CHECK(rows.answers.size() == 2);
+        CHECK(answers_for(rows, "fake0") == 1);
+        CHECK(answers_for(rows, "fake1") == 1);
+        check_answers_match_store(rows, store, run);
+        CHECK(job.answered_count() == 2);
+    }
+}
+
+// The batch thread is held at its lookup while a helper takes the store lock
+// the way a save group does; then the lookup is let go, so it waits on that
+// lock. A frame's snapshot and tray take still return at once.
+TEST_CASE("jobs: a frame's snapshot does not wait while the batch job waits on the store") {
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    RecordStore store(":memory:");
+    const BatchRun run = test_run();
+    std::atomic<bool> at_lookup{false};
+    std::atomic<bool> go{false};
+    BatchJob job(plan_of(fake_charts(1)), run, store);
+    job.set_analyzer_for_test(always(real), /*workers=*/1);
+    job.set_lookup_hold_for_test([&] {
+        at_lookup = true;
+        wait_until([&go] { return go.load(); }, "the test to let the lookup go");
+    });
+    job.start();
+    wait_until([&] { return at_lookup.load(); }, "the batch to reach its lookup");
+
+    {
+        StoreLockHolder holder(store);
+        go = true;
+        std::this_thread::sleep_for(50ms);  // the lookup now waits on the store lock
+        const BatchJob::Snapshot s = job.snapshot();
+        const SavedRows rows = job.take_saved_rows();
+        const bool returned_while_held = !holder.let_go();
+        holder.release();
+        CHECK(returned_while_held);
+        CHECK_FALSE(s.finished);
+        CHECK(rows.answers.empty());  // the lookup had not got the lock
+    }
+
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+    const SavedRows rows = job.take_saved_rows();
+    REQUIRE(rows.answers.size() == 1);
+    CHECK(rows.answers[0].first == "fake0");
+    check_answers_match_store(rows, store, run);
 }
 
 // D88: every exe runs on mimalloc, this one too. An exe whose link puts

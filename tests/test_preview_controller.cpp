@@ -31,6 +31,7 @@
 #include "render/track_state.h"
 #include "scratch_paths.h"  // ScopedPathOverrides
 #include "store/record_store.h"
+#include "store_file_fixtures.h"  // StoreFile
 #include "temp_util.h"
 #include "app/config.h"
 #include "ui/library_jobs.h"  // ViewJob
@@ -361,8 +362,11 @@ TEST_CASE("a cancelled click job stops before counting") {
     const hydra::store::ChartLibraryEntry entry =
         entry_for(corpus::first_chart_with_suffix(".chart"));
     const hydra::app::Settings settings;
+    // Before the job, which writes to it on its thread and must not outlive it.
+    const hydra::test::StoreFile file("preview_cancelled_click_job");
+    hydra::store::RecordStore store(file.path);
     ViewJob job(entry, settings.profile(), settings.to_analysis_settings(),
-                /*analysis_off=*/false, /*generation=*/0);
+                /*analysis_off=*/false, /*generation=*/0, store);
     job.cancel();
     job.start();
     wait_finished(job);

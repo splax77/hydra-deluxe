@@ -20,6 +20,10 @@ inline constexpr const char* kOldestConvertibleVersion = "2.2.0";
 enum class LibraryFileKind {
     Fresh,        // no file, an empty file, or SQLite's in-memory name
     Current,      // this build's layout (profiles, records, record_paths)
+    // the layout before results were saved per early-fill window: its
+    // profiles table lacks kEarlyFillWindowColumn, which the open rebuilds
+    // the table to hold
+    LacksEarlyFillColumn,
     // the layout before the scan stored each chart's album: its charts table
     // lacks the album column, which the open adds in place
     LacksAlbumColumn,
@@ -44,6 +48,20 @@ LibraryFileKind classify_library_file(const std::string& dbpath);
 // cannot read the table's columns it answers true, so the add runs and
 // SQLite's own failure reaches the open.
 bool charts_table_lacks_album(sqlite3* db);
+
+// The profiles table's early-fill window column (store::Lens::efill_window_ms),
+// by the name the store's lens column list gives it (record_store.cpp checks
+// the two agree).
+inline constexpr const char* kEarlyFillWindowColumn = "efill_window_ms";
+
+// Whether the open file's profiles table exists without kEarlyFillWindowColumn,
+// the one test classify_library_file names LacksEarlyFillColumn by. The
+// store's set-up asks it on its own handle for every kind older than Current,
+// as it asks charts_table_lacks_album. A file with no profiles table yet
+// answers false: the set-up makes the table with the column. When SQLite
+// cannot read the table's columns it answers true, so the rebuild runs and
+// SQLite's own failure reaches the open.
+bool profiles_table_lacks_early_fill(sqlite3* db);
 
 // What an open does with a TooOld file. Every caller names one; there is no
 // default, because the app and the command-line tools want different things.

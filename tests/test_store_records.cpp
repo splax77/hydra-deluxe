@@ -2,17 +2,23 @@
 // RecordStore::save, lookup, lookup_one, settled_song_ids, ready_song_ids and
 // ready_records, the status rules a
 // lookup answers by (which stamps read Ready, why a record is Stale, what reads
-// Not analyzed), plus the path-row size measured on the corpus. How saved
+// Not analyzed), the store's readers (RecordStore::reader, StoreReader, and
+// RecordStore::open_own_reader, OwnReader, with its hold), plus
+// the path-row size measured on the corpus. How saved
 // records read back across caps, lenses and the corpus is in
 // test_store_results.cpp.
 #include "doctest.h"
 
+#include <atomic>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <system_error>
+#include <thread>
 #include <unordered_set>
 #include <vector>
 
@@ -28,14 +34,19 @@
 #include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
 #include "library_fixtures.h"  // library_row
 #include "parse/song.h"
+#include "store/chart_index.h"  // ChartIndex::song_ids
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
+#include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
 #include "store_fixtures.h"  // fixture, at_cap, at4, no_paths_at_cap
 #include "temp_util.h"
+#include "wait_util.h"  // wait_until, WaitTimeout
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::HeldSaveGroup;
+using hydra::test::StoreFile;
 using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::fixture;
@@ -58,14 +69,6 @@ std::vector<const HydraRecord*> corpus_analyses() {
     return out;
 }
 
-// A file store in the temp folder, removed when the case ends.
-struct FileStore {
-    std::string path = testtemp::temp_path("store_records", ".db");
-    ~FileStore() {
-        for (const char* ext : {"", "-wal", "-shm"}) std::remove((path + ext).c_str());
-    }
-};
-
 // Whether two lookups gave the same answer, field by field: RecordLookup has
 // no operator==.
 bool same_answer(const RecordLookup& a, const RecordLookup& b) {
@@ -74,17 +77,24 @@ bool same_answer(const RecordLookup& a, const RecordLookup& b) {
            a.failure_kind == b.failure_kind && a.failure_text == b.failure_text;
 }
 
-}  // namespace
-
-TEST_CASE("the store's reader answers every lookup as the store does") {
-    RecordStore store(":memory:");
+// The four charts the reader tests ask about: a Ready chart, a failure
+// record, a record saved under another build, and a chart with no record.
+const std::vector<std::string>& four_chart_ids() {
+    static const std::vector<std::string> ids = {"ready", "failed", "build", "never"};
+    return ids;
+}
+void save_four_charts(RecordStore& store) {
     store.save(prepare_record("ready", at4(), fixture().record));
     store.save(failure_record("failed", at4(), ErrorKind::NoNotes, "No notes."));
     store.save_under_build_for_test(prepare_record("build", at4(), fixture().record),
                                     hydra::test::kOldBuildStamp);
-    const std::vector<std::string> ids = {"ready", "failed", "build", "never"};
+}
 
-    StoreReads& reader = store.reader();
+// `reader`, one of the store's readers, gives the store's own answers for the
+// four charts, by lookup, lookup_one and settled_song_ids. The expected
+// values are the writer's.
+void check_answers_as_store(RecordStore& store, StoreReads& reader) {
+    const std::vector<std::string>& ids = four_chart_ids();
     const std::vector<RecordLookup> by_store = store.lookup(ids, at4());
     const std::vector<RecordLookup> by_reader = reader.lookup(ids, at4());
     REQUIRE(by_reader.size() == by_store.size());
@@ -96,6 +106,27 @@ TEST_CASE("the store's reader answers every lookup as the store does") {
     CHECK(reader.settled_song_ids(at4()) == store.settled_song_ids(at4()));
 }
 
+// The store's window reader gives the store's own answers for the four charts.
+void check_reader_answers_as_store(RecordStore& store) {
+    check_answers_as_store(store, store.reader());
+}
+
+// Whether `path` can be deleted now, which on Windows means no connection
+// holds it open.
+bool can_delete(const std::string& path) {
+    std::error_code ec;
+    const bool removed = std::filesystem::remove(std::filesystem::u8path(path), ec);
+    return removed && !ec;
+}
+
+}  // namespace
+
+TEST_CASE("the store's reader answers every lookup as the store does") {
+    RecordStore store(":memory:");
+    save_four_charts(store);
+    check_reader_answers_as_store(store);
+}
+
 TEST_CASE("an in-memory store reads through itself") {
     RecordStore store(":memory:");
     CHECK(&store.reader() == static_cast<StoreReads*>(&store));
@@ -104,6 +135,422 @@ TEST_CASE("an in-memory store reads through itself") {
     store.begin_save_group();
     store.save(prepare_record("h1", at4(), fixture().record));
     CHECK(same_answer(store.reader().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+    store.commit_save_group();
+}
+
+// ---- the reader of a store with a file (StoreReader) ------------------------
+
+TEST_CASE("a reader's lookup does not wait while a save group is open") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+    const RecordLookup want = store.lookup_one("h1", at4());
+
+    HeldSaveGroup group(store);
+    const RecordLookup got = store.reader().lookup_one("h1", at4());
+    const bool returned_while_held = group.held();
+    group.let_go();
+    CHECK(returned_while_held);
+    CHECK(same_answer(got, want));
+}
+
+TEST_CASE("a reader sees a save group's chart only once the group commits") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    const RecordLookup before = store.reader().lookup_one("h1", at4());
+
+    store.begin_save_group();
+    store.save(prepare_record("h1", at4(), fixture().record));
+    const RecordLookup during = store.reader().lookup_one("h1", at4());
+    store.commit_save_group();
+
+    CHECK(same_answer(during, before));
+    CHECK(same_answer(store.reader().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+}
+
+TEST_CASE("the file store's reader gives the writer's answer for every lookup") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    save_four_charts(store);
+    check_reader_answers_as_store(store);
+}
+
+TEST_CASE("a store opened under other rules reads the same through its reader") {
+    StoreFile file("store_records");
+    {
+        RecordStore store(file.path);
+        save_four_charts(store);
+    }
+    RecordStore store(file.path, core::RulesStamp{core::default_stamp().fixed + 1});
+    check_reader_answers_as_store(store);
+}
+
+TEST_CASE("a reader's lookup reads one moment") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    const PreparedRecord first = prepare_record("h1", at4(), fixture().record);
+    store.save(first);
+    PreparedRecord second = first;
+    second.record.paths.resize(1);
+    second.record.paths.front().path = "second";
+    const RecordLookup before = store.lookup_one("h1", at4());
+
+    // The writer saves the second record between the reader's two reads.
+    bool saved = false;
+    store.set_between_lookup_reads_for_test([&] {
+        if (saved) return;
+        saved = true;
+        store.save(second);
+    });
+    const RecordLookup during = store.reader().lookup_one("h1", at4());
+    store.set_between_lookup_reads_for_test({});
+    const RecordLookup after = store.lookup_one("h1", at4());
+
+    REQUIRE(saved);
+    REQUIRE_FALSE(same_answer(after, before));
+    CHECK(same_answer(during, before));
+    CHECK(same_answer(store.reader().lookup_one("h1", at4()), after));
+}
+
+TEST_CASE("a reader holds nothing open between reads") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    const std::filesystem::path wal = std::filesystem::u8path(file.path + "-wal");
+    {
+        const RecordStore::BatchWrites batch(store);
+        save_four_charts(store);
+        store.reader().lookup(four_chart_ids(), at4());
+        store.reader().settled_song_ids(at4());
+        REQUIRE(std::filesystem::file_size(wal) > 0);
+    }
+    // The guard's truncating checkpoint empties the log only when no other
+    // connection holds a read open.
+    CHECK(std::filesystem::file_size(wal) == 0);
+}
+
+TEST_CASE("a reader that cannot open fails the read and the next read tries again") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+
+    // Armed before the reader's first read, so its first open is the one that
+    // fails.
+    store.fail_next_reader_open_for_test();
+    bool threw = false;
+    try {
+        store.reader().lookup_one("h1", at4());
+    } catch (const KindedError& e) {
+        threw = true;
+        CHECK(e.kind() == ErrorKind::DatabaseRead);
+    }
+    CHECK(threw);
+    CHECK(same_answer(store.reader().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+}
+
+TEST_CASE("closing the store closes its reader") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+    store.reader().lookup_one("h1", at4());
+    store.reader().settled_song_ids(at4());
+    store.close();
+    CHECK(can_delete(file.path));
+}
+
+TEST_CASE("the reader counts records and library charts as the writer does") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    // The library lists the four charts first, since a rescan deletes the
+    // results of charts it does not list.
+    std::vector<ChartLibraryEntry> library;
+    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
+    store.rebuild_chart_library(library);
+    save_four_charts(store);
+
+    // The writer's counts are the expected values; neither is zero, so a
+    // reader that read nothing would not pass.
+    const int64_t records = store.record_count();
+    const int64_t charts = store.chart_library_count();
+    REQUIRE(records > 0);
+    REQUIRE(charts > 0);
+    CHECK(store.reader().record_count() == records);
+    CHECK(store.reader().chart_library_count() == charts);
+}
+
+TEST_CASE("a reader's counts see a save only once it commits") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+    const int64_t before = store.reader().record_count();
+
+    store.begin_save_group();
+    store.save(prepare_record("h2", at4(), fixture().record));
+    const int64_t during = store.reader().record_count();
+    store.commit_save_group();
+
+    CHECK(during == before);
+    REQUIRE(store.record_count() != before);
+    CHECK(store.reader().record_count() == store.record_count());
+}
+
+// ---- a reader of the caller's own (OwnReader) and its hold ------------------
+
+namespace {
+
+// Three reads of one moment of the store: the second chart's answer, the
+// record count, and the charts the library lists. move_on changes all three.
+struct MomentReads {
+    RecordLookup second;
+    int64_t records = 0;
+    std::vector<std::string> charts;
+};
+MomentReads moment_reads(StoreReads& reads) {
+    return {reads.lookup_one("h2", at4()), reads.record_count(), reads.chart_index().song_ids()};
+}
+void check_same_moment(const MomentReads& got, const MomentReads& want) {
+    CHECK(same_answer(got.second, want.second));
+    CHECK(got.records == want.records);
+    CHECK(got.charts == want.charts);
+}
+
+// A store whose library lists "h1", with a result saved for it.
+void list_and_save_first(RecordStore& store) {
+    store.rebuild_chart_library({library_row("h1", "h1")});
+    store.save(prepare_record("h1", at4(), fixture().record));
+}
+// The writer moves on: the library lists "h2" too, and "h2" gets a result.
+void move_on(RecordStore& store) {
+    store.rebuild_chart_library({library_row("h1", "h1"), library_row("h2", "h2")});
+    store.save(prepare_record("h2", at4(), fixture().record));
+}
+
+// The -wal file's size in bytes.
+uintmax_t wal_size(const StoreFile& file) {
+    return std::filesystem::file_size(std::filesystem::u8path(file.path + "-wal"));
+}
+
+}  // namespace
+
+TEST_CASE("an own reader gives the writer's answer for every read") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    std::vector<ChartLibraryEntry> library;
+    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
+    store.rebuild_chart_library(library);
+    save_four_charts(store);
+
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    check_answers_as_store(store, reader->reads());
+    REQUIRE(store.record_count() > 0);
+    CHECK(reader->reads().record_count() == store.record_count());
+    CHECK(reader->reads().chart_library_count() == store.chart_library_count());
+    // The chart list reads, field for field, are in test_store_library.cpp
+    // ("an own reader lists and indexes the library as the writer does").
+    CHECK(reader->reads().chart_index().song_ids() == store.chart_index().song_ids());
+}
+
+TEST_CASE("a hold makes every call see one moment") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    list_and_save_first(store);
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    const MomentReads before = moment_reads(store);
+
+    MomentReads held;
+    {
+        const OwnReader::Hold hold = reader->hold();
+        // The hold's first read fixes its moment, before the writer moves on.
+        reader->reads().lookup_one("h1", at4());
+        move_on(store);
+        held = moment_reads(reader->reads());
+    }
+    const MomentReads after = moment_reads(store);
+
+    REQUIRE_FALSE(same_answer(after.second, before.second));
+    REQUIRE(after.records != before.records);
+    REQUIRE(after.charts != before.charts);
+    check_same_moment(held, before);
+    check_same_moment(moment_reads(reader->reads()), after);
+}
+
+TEST_CASE("an own reader with no hold sees each commit") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    list_and_save_first(store);
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    const MomentReads before = moment_reads(store);
+
+    check_same_moment(moment_reads(reader->reads()), before);
+    move_on(store);
+    const MomentReads after = moment_reads(store);
+    REQUIRE(after.records != before.records);
+    check_same_moment(moment_reads(reader->reads()), after);
+}
+
+TEST_CASE("a held own reader does not wait for a save group, and a save group does not wait for it") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    list_and_save_first(store);
+    const RecordLookup want = store.lookup_one("h1", at4());
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+
+    const OwnReader::Hold hold = reader->hold();
+    // A helper holds a save group (capped by kWaitCap) while the held reader
+    // reads.
+    HeldSaveGroup group(store);
+    const RecordLookup got = reader->reads().lookup_one("h1", at4());
+    const bool returned_while_held = group.held();
+    group.let_go();
+    CHECK(returned_while_held);
+    CHECK(same_answer(got, want));
+
+    // A save group on the writer while the hold is open. The store sets no
+    // busy timeout, so a writer the hold refused would throw here rather than
+    // wait.
+    store.begin_save_group();
+    store.save(prepare_record("h2", at4(), fixture().record));
+    store.commit_save_group();
+    CHECK(store.lookup_one("h2", at4()).status == RecordStatus::Ready);
+}
+
+TEST_CASE("an open hold does not stop the window's reader") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    list_and_save_first(store);
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+
+    const OwnReader::Hold hold = reader->hold();
+    const RecordLookup held_before = reader->reads().lookup_one("h2", at4());
+    store.save(prepare_record("h2", at4(), fixture().record));
+    const RecordLookup now = store.lookup_one("h2", at4());
+    REQUIRE_FALSE(same_answer(now, held_before));
+    CHECK(same_answer(store.reader().lookup_one("h2", at4()), now));
+}
+
+TEST_CASE("a hold open at a batch's end loses nothing, and the next batch's end empties the log") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    {
+        const OwnReader::Hold hold = reader->hold();
+        reader->reads().record_count();  // the hold's moment
+        {
+            const RecordStore::BatchWrites batch(store);
+            save_four_charts(store);
+        }
+        // The guard's checkpoint could not pass the hold, so the log is not
+        // emptied; every result is still read back from the writer.
+        CHECK(wal_size(file) > 0);
+        CHECK(store.lookup_one("ready", at4()).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("failed", at4()).status == RecordStatus::CantAnalyze);
+        CHECK(store.lookup_one("build", at4()).status == RecordStatus::Stale);
+    }
+    {
+        const RecordStore::BatchWrites batch(store);
+    }
+    CHECK(wal_size(file) == 0);
+    // The results reached the file: a second connection reads them too.
+    CHECK(store.reader().lookup_one("ready", at4()).status == RecordStatus::Ready);
+}
+
+TEST_CASE("the log keeps growing while a hold is open") {
+    // The same four save groups, each saving the same charts again, with and
+    // without a hold open; returns the -wal file's size after each group.
+    const auto sizes_after_groups = [](bool with_hold) {
+        StoreFile file("own_reader_log");
+        RecordStore store(file.path);
+        store.save(prepare_record("h1", at4(), fixture().record));
+        const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+        std::vector<uintmax_t> sizes;
+        const auto save_groups = [&] {
+            reader->reads().record_count();  // the hold's moment, when there is one
+            const RecordStore::BatchWrites batch(store);
+            // One page, the least there is, so every group's commit crosses
+            // it and SQLite folds the log after each group.
+            store.set_wal_autocheckpoint_for_test(1);
+            for (int group = 0; group < 4; ++group) {
+                store.begin_save_group();
+                for (const char* id : {"a", "b", "c", "d"})
+                    store.save(prepare_record(id, at4(), fixture().record));
+                store.commit_save_group();
+                sizes.push_back(wal_size(file));
+            }
+        };
+        if (with_hold) {
+            const OwnReader::Hold hold = reader->hold();
+            save_groups();
+        } else {
+            save_groups();
+        }
+        return sizes;
+    };
+
+    const std::vector<uintmax_t> held = sizes_after_groups(true);
+    for (size_t i = 1; i < held.size(); ++i) {
+        CAPTURE(i);
+        CHECK(held[i] > held[i - 1]);
+    }
+    // With no hold, the fold after the first group lets the second start the
+    // log over, and no later group makes it larger.
+    const std::vector<uintmax_t> unheld = sizes_after_groups(false);
+    for (size_t i = 2; i < unheld.size(); ++i) {
+        CAPTURE(i);
+        CHECK(unheld[i] <= unheld[1]);
+    }
+    CHECK(unheld.back() < held.back());
+}
+
+TEST_CASE("an own reader that cannot open fails the read") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+
+    store.fail_next_reader_open_for_test();
+    bool threw = false;
+    try {
+        store.open_own_reader();
+    } catch (const KindedError& e) {
+        threw = true;
+        CHECK(e.kind() == ErrorKind::DatabaseRead);
+    }
+    CHECK(threw);
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    CHECK(same_answer(reader->reads().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+}
+
+TEST_CASE("closing an own reader lets go of the file") {
+    StoreFile file("own_reader");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+    std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    {
+        const OwnReader::Hold hold = reader->hold();
+        reader->reads().lookup_one("h1", at4());
+        reader->reads().record_count();
+    }
+    reader.reset();
+    store.close();
+    CHECK(can_delete(file.path));
+}
+
+TEST_CASE("an in-memory store's own reader reads through the store") {
+    RecordStore store(":memory:");
+    save_four_charts(store);
+    const std::unique_ptr<OwnReader> reader = store.open_own_reader();
+    check_answers_as_store(store, reader->reads());
+    CHECK(reader->reads().record_count() == store.record_count());
+    CHECK(reader->reads().chart_library_count() == store.chart_library_count());
+
+    // A hold changes nothing.
+    {
+        const OwnReader::Hold hold = reader->hold();
+        check_answers_as_store(store, reader->reads());
+    }
+
+    // Inside an open save group the own reader sees what the store sees there.
+    store.begin_save_group();
+    store.save(prepare_record("h1", at4(), fixture().record));
+    CHECK(same_answer(reader->reads().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
     store.commit_save_group();
 }
 
@@ -139,6 +586,56 @@ TEST_CASE("store: prepare_record refuses a profile the analysis did not run unde
                                    Profile{"mode", CapQuery::at(4), Lens::from(std::nullopt, 0, 0, true)},
                                    analysis),
                     std::invalid_argument);
+}
+
+TEST_CASE("store: prepare_record refuses a profile at another early-fill window") {
+    // A record searched at the default window, filed under a profile at the
+    // widest the setting allows.
+    const HydraRecord& analysis = fixture().record;
+    REQUIRE(analysis.early_fill_window_ms == kDefaultEarlyFillWindowMs);
+    Profile at_85 = at4();
+    at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
+    CHECK_THROWS_AS(prepare_record("h1", at_85, analysis), std::invalid_argument);
+    // And the other way: a record searched at 85 under the default profile.
+    HydraRecord searched_at_85 = at_cap(4);
+    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_85), std::invalid_argument);
+    // The matching pair files.
+    CHECK(prepare_record("h1", at_85, searched_at_85).profile.lens.efill_window_ms ==
+          kMaxEarlyFillWindowMs);
+}
+
+TEST_CASE("store: one chart's results at two early-fill windows are two results") {
+    // Two profiles that differ only in the window. Each save keeps the other's
+    // record, and each lookup gets its own back.
+    const Profile at_default = at4();
+    Profile at_85 = at4();
+    at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
+    REQUIRE(at_default != at_85);
+    HydraRecord searched_at_85 = no_paths_at_cap(4);
+    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    const PreparedRecord saved_default = prepare_record("h1", at_default, at_cap(4));
+    const PreparedRecord saved_85 = prepare_record("h1", at_85, searched_at_85);
+    REQUIRE(saved_default.record != saved_85.record);
+
+    StoreFile file("store_records");
+    {
+        RecordStore store(file.path);
+        store.save(saved_default);
+        store.save(saved_85);
+        const RecordLookup got_default = store.lookup_one("h1", at_default);
+        const RecordLookup got_85 = store.lookup_one("h1", at_85);
+        REQUIRE(got_default.status == RecordStatus::Ready);
+        REQUIRE(got_85.status == RecordStatus::Ready);
+        CHECK(got_default.record == saved_default.record);
+        CHECK(got_85.record == saved_85.record);
+        CHECK(store.record_count() == 2);
+    }
+    // Two profile rows, one per window, and a reopen reads both again.
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    RecordStore reopened(file.path);
+    CHECK(reopened.lookup_one("h1", at_default).record == saved_default.record);
+    CHECK(reopened.lookup_one("h1", at_85).record == saved_85.record);
 }
 
 TEST_CASE("store: every path of one analysis carries the same note count") {
@@ -201,7 +698,7 @@ TEST_CASE("store: a lookup after a second save reads the second record, not the 
 
 TEST_CASE("store: a save purges the chart's unreadable records in every mode, and the next open "
           "deletes their emptied profiles") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         // An old build's record in another mode, then a save in this one.
@@ -226,7 +723,7 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode, an
 
 TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the next open "
           "deletes it") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library({library_row("gone", "Gone"), library_row("kept", "Kept")});
@@ -255,7 +752,7 @@ TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the n
 
 TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
           "profiles, and a later open deletes them") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library({library_row("kept", "Kept")});
@@ -423,7 +920,7 @@ TEST_CASE("store: a failure under other rules reads Stale, and one a store with 
         store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
         CHECK(store.lookup_one("h1", at4()).status == RecordStatus::CantAnalyze);
     }
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path, core::RulesStamp{core::default_stamp().fixed + 1});
         store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
@@ -464,7 +961,7 @@ TEST_CASE("store: a real save replaces a failure, and a failure replaces a real 
 }
 
 TEST_CASE("store: a failure replaces the real record's path rows in the file") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(prepare_record("h1", at4(), fixture().record));
@@ -506,7 +1003,7 @@ TEST_CASE("store: settled_song_ids lists exactly lookup's Ready and CantAnalyze 
 }
 
 TEST_CASE("store: a profile whose only record is a failure is kept") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         const std::vector<ChartLibraryEntry> library = {library_row("failed", "Failed"),
@@ -524,7 +1021,7 @@ TEST_CASE("store: a profile whose only record is a failure is kept") {
 }
 
 TEST_CASE("store: a failure of a kind this build cannot name reads Stale for another build") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
@@ -619,7 +1116,7 @@ TEST_CASE("store: path rows measured on the corpus") {
     // path rows (A), without them (B), and without the records too (C). The
     // vendored SQLite has no dbstat, so a size is a difference of files.
     // Nothing here is pinned but the read-back; the numbers are printed.
-    FileStore file;
+    StoreFile file("store_records");
     constexpr int kCopies = 10;
     int64_t records = 0, path_rows = 0;
     {
@@ -707,7 +1204,7 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
 // Not analyzed.
 
 TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
-    // The stamp is not the app version (ADR 0018). Only "3.1.2+efillhitwindow"
+    // The stamp is not the app version (ADR 0018). Only "3.1.2+efillwindow"
     // reads Ready. Results stamped "1.8.2" (every release from 1.8.4 to
     // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
     // earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
@@ -718,10 +1215,14 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // written fills (FL-08), and "2.14.1+coda" predates the five-lane drum
     // conversion (D337), "2.14.1+fivelane" predates the all-toms step
     // for a drum chart with neither track flag up, and "2.14.1+alltoms"
-    // predates the early-fill E mark reading the hit window (D344), so they
-    // read Stale, through lookup and the skip list it backs (ready_song_ids).
-    CHECK(kResultsStamp.is_current("3.1.2+efillhitwindow"));
-    CHECK(std::string(kResultsStamp.written) == "3.1.2+efillhitwindow");
+    // predates the early-fill E mark reading the hit window (D344), and
+    // "3.1.2+efillhitwindow" was analyzed at 85 ms on both sides, before the
+    // early-fill window became a setting saved per result (the user's answer
+    // "Mark them Stale"), so they read Stale, through lookup and the skip list
+    // it backs (ready_song_ids).
+    CHECK(kResultsStamp.is_current("3.1.2+efillwindow"));
+    CHECK(std::string(kResultsStamp.written) == "3.1.2+efillwindow");
+    CHECK_FALSE(kResultsStamp.is_current("3.1.2+efillhitwindow"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+alltoms"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+fivelane"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+coda"));
@@ -741,7 +1242,8 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
         const char* id;
         const char* stamp;
         RecordStatus want;
-    } cases[] = {{"a", "3.1.2+efillhitwindow", RecordStatus::Ready},
+    } cases[] = {{"a", "3.1.2+efillwindow", RecordStatus::Ready},
+                 {"n", "3.1.2+efillhitwindow", RecordStatus::Stale},
                  {"m", "2.14.1+alltoms", RecordStatus::Stale},
                  {"l", "2.14.1+fivelane", RecordStatus::Stale},
                  {"k", "2.14.1+coda", RecordStatus::Stale},
@@ -798,7 +1300,7 @@ TEST_CASE("store: a record made under other rules reads Stale until the store ru
 
     // A record made under the default rules reads Stale to a store running
     // other rules, and Ready again once the rules match.
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(prepare_record("h", at4(), fixture().record));
@@ -829,7 +1331,7 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
     const core::Rules other = hydra::test::other_rules();
     const PreparedRecord foreign =
         prepare_record("h", at4(), hydra::test::other_rules_record(fixture().record));
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(foreign);
