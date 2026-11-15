@@ -160,4 +160,14 @@ Round 9 ran as one workflow (wf_95bdef43-d21): auditors for A33 to A36, verifier
 
 Round 10's files: `tests/ui/uitest_commands.cpp`, `uitest_engine.cpp` and `uitest_harness.cpp` hold no test. Their unit is one record per verb (commands) or per function a GUI test calls (engine and harness), as A1 was done for `report_samples.cpp`. `uitest_batch_reports.cpp` has 15 and `uitest_details.cpp` 26 `void test_*(ImGuiTestContext*)` functions, one record each; the main session still checks those counts against `hydra_uitest.exe --list` (plan T5).
 
-Round 10 ran as one workflow: auditors for A37 to A40 and verifiers for A33 to A36, launched together.
+Round 10 ran as one workflow (wf_79987c72-c50): auditors for A37 to A40 and verifiers for A33 to A36, launched together. About 8.5 minutes, 211 tool calls; every slice finished.
+
+- A37 (482a83b3, b3037a92, 63efb255): 57 records. Keep 1, Rewrite 10, Remove 5, Investigate 41.
+- A38 (29e7b6b1): 21 verb records. Keep 7 (click, type, open, timeout, wait-idle, wait-text, screenshot, each used by the screen records), Investigate 14. `docs/agents/ui-testing.md` line 88 says `timeout` limits wait-text and wait-idle only; the code also uses it for open, reset and the live cap on wait.
+- A39 (0af10bbf): 26 records. Rewrite 11, Investigate 15. Its auditor flags three of its own "claim not checked only" records that also carry a second fault (`test_panel_split`, `test_panel_hide_library`, `test_settings_lock`); their verifier settles them.
+- A40 (88a60614): 58 records. Keep 9, Rewrite 1, Remove 1, Investigate 47.
+- verify A33 and A34 (5fa9cbe4), verify A35 and A36 (efa7281c): checked in full. A33 33 agreed, 1 disputed (T23, Keep to Investigate); A35 11 agreed, 2 disputed.
+
+Round 11's split: `tests/ui/uitest_library.cpp` is cut at line 1069, a test-function boundary near the plan's 1034: A41 holds 18 test functions, A42 holds 12.
+
+Round 11 ran as one workflow: auditors for A41 to A44 and verifiers for A37 to A40, launched together.
