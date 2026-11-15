@@ -180,4 +180,15 @@ Round 11 ran as one workflow (wf_74d48d8a-2cc): auditors for A41 to A44 and veri
 
 Round 12's split: `tests/ui/uitest_report_windows.cpp` is cut at line 991, a test-function boundary near the plan's 830: A46 holds 13 test functions, A47 holds 11.
 
-Round 12 ran as one workflow: auditors for A45 to A48 and verifiers for A41 to A44, launched together.
+Round 12 ran as one workflow (wf_bdb96218-840): auditors for A45 to A48 and verifiers for A41 to A44, launched together. About 5.5 minutes, 223 tool calls; every slice finished.
+
+- A45 (6528220f): 16 records. Keep 3, Rewrite 6, Investigate 7.
+- A46 (013bed28): 13 records. Rewrite 7, Remove 1, Investigate 5 (its auditor corrected its own count).
+- A47 (3db8efb6): 11 records. Keep 1, Rewrite 2, Investigate 8. The file's 24 test functions match its two entry lists (10 and 14).
+- A48 (76210ddd): 15 test records (Rewrite 11, Investigate 4) and 16 function records.
+- verify A41 (1889b17d) and A42 (6d6fafc5): A41 14 agreed, 4 disputed; among them `test_scan` line 72 cannot fail, because the Scan library button has one fixed label (`library_toolbar.cpp:71`), and `is_rescan` is written at `library_dialogs.cpp:207, 249, 310` and read nowhere in `src/`.
+- verify A43 and A44 (7fd5c24e): A43 19 agreed, 2 disputed (L13 and L16, both Keeps).
+
+Round 13's split: `tests/test_replay_schedule.cpp` is cut at line 851, a `TEST_CASE` boundary near the plan's 865: B3 holds 24 test cases, B4 holds 16.
+
+Round 13 ran as one workflow: auditors for A49, B1, B2 and B3 and verifiers for A45 to A48, launched together.
