@@ -11,6 +11,7 @@
 #include <iterator>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "app/user_messages.h"  // stale_text, stored_failure_text: the rows' tooltips
@@ -720,6 +721,115 @@ TEST_CASE("library model: one chart in two folders gets both rows updated") {
     CHECK(m.counts().analyzed == 2);
     // Asking again with the same answer changes nothing.
     CHECK(m.set_summary_for("same", ready(1000, "1", 3, 0.0)) == 0);
+}
+
+namespace {
+
+using Answers = std::vector<std::pair<std::string, RecordLookup>>;
+
+// One chart in two folders and two other charts, all Not analyzed.
+LibraryModel two_folders_and_two_more() {
+    LibraryModel m;
+    m.set_charts({chart("same", "Song", "A", "C", "Pack 1"), chart("same", "Song", "A", "C", "Pack 2"),
+                  chart("first", "First", "B", "C", "Pack 1"),
+                  chart("second", "Second", "D", "C", "Pack 2")});
+    return m;
+}
+
+// The answer `answers` gives for `md5`.
+const RecordLookup& answer_for(const Answers& answers, const std::string& md5) {
+    const auto found = std::find_if(answers.begin(), answers.end(),
+                                    [&](const auto& a) { return a.first == md5; });
+    REQUIRE(found != answers.end());
+    return found->second;
+}
+
+}  // namespace
+
+TEST_CASE("library model: set_summaries_for gives every row the answer set_summary_for would") {
+    RecordLookup cant;
+    cant.status = RecordStatus::CantAnalyze;
+    cant.failure_kind = hydra::ErrorKind::NoNotes;
+    cant.failure_text = "x";
+    const Answers answers{{"same", ready(1000, "1", 3, 0.0)},
+                          {"first", stale()},
+                          {"second", cant}};
+
+    LibraryModel at_once = two_folders_and_two_more();
+    const size_t changed_at_once = at_once.set_summaries_for(answers);
+
+    LibraryModel one_by_one = two_folders_and_two_more();
+    size_t changed_one_by_one = 0;
+    for (const auto& [md5, lookup] : answers)
+        changed_one_by_one += one_by_one.set_summary_for(md5, lookup);
+
+    CHECK(changed_at_once == changed_one_by_one);
+    CHECK(changed_at_once == at_once.rows().size());  // every row was Not analyzed
+    REQUIRE(at_once.rows().size() == one_by_one.rows().size());
+    for (size_t i = 0; i < at_once.rows().size(); ++i) {
+        const RecordLookup& expected = answer_for(answers, at_once.rows()[i].entry.md5);
+        CHECK(at_once.rows()[i].shows_same_as(expected));
+        CHECK(one_by_one.rows()[i].shows_same_as(expected));
+    }
+    CHECK(at_once.counts().all == one_by_one.counts().all);
+    CHECK(at_once.counts().not_analyzed == one_by_one.counts().not_analyzed);
+    CHECK(at_once.counts().stale == one_by_one.counts().stale);
+    CHECK(at_once.counts().analyzed == one_by_one.counts().analyzed);
+    CHECK(at_once.counts().cant_analyze == one_by_one.counts().cant_analyze);
+}
+
+TEST_CASE("library model: set_summaries_for updates both rows of a chart in two folders") {
+    LibraryModel m = two_folders_and_two_more();
+    const Answers answers{{"same", ready(1000, "1", 3, 0.0)}};
+    CHECK(m.set_summaries_for(answers) == 2);
+    size_t shown = 0;
+    for (const hydra::ui::LibraryRow& row : m.rows()) {
+        if (row.entry.md5 != "same") continue;
+        CHECK(row.shows_same_as(answers.front().second));
+        ++shown;
+    }
+    CHECK(shown == 2);
+    CHECK(m.counts().analyzed == 2);
+    CHECK(m.counts().not_analyzed == 2);  // first and second are untouched
+}
+
+// Many new scores at once fill in where their rows sit, as one does through
+// set_summary_for.
+TEST_CASE("library model: set_summaries_for holds the row order under the Best path sort until "
+          "sort_if_out_of_date") {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::BestPath, false);
+    const std::vector<std::string> before = titles(m);
+    REQUIRE(m.set_summaries_for({{"yyz", ready(500000, "2 2", 7, 12.0)},
+                                 {"halo", ready(400000, "1 1", 6, 10.0)}}) == 2);
+    CHECK(titles(m) == before);
+    CHECK(m.counts().analyzed == 3);
+
+    CHECK(m.sort_if_out_of_date());
+    // Highest score first: YYZ 500,000, Halo 400,000, Burnout 378,315, then
+    // the unscored rows as before.
+    CHECK(titles(m) == std::vector<std::string>{"YYZ", "Halo", "Burnout", "Chair", "Acid Romance",
+                                                "Other"});
+    CHECK_FALSE(m.sort_if_out_of_date());
+}
+
+TEST_CASE("library model: set_summaries_for with answers that change nothing rebuilds nothing") {
+    LibraryModel m = sample();
+    m.set_sort(LibrarySort::BestPath, false);
+    const hydra::ui::ChipCounts before = m.counts();
+    // Each answer is the one sample() already gave its row.
+    CHECK(m.set_summaries_for({{"burnout", ready(378315, "3- 1 2", 7, 163.0)},
+                               {"chair", stale()},
+                               {"yyz", RecordLookup{}}}) == 0);
+    CHECK(m.set_summaries_for({}) == 0);
+    CHECK(m.counts().all == before.all);
+    CHECK(m.counts().not_analyzed == before.not_analyzed);
+    CHECK(m.counts().stale == before.stale);
+    CHECK(m.counts().analyzed == before.analyzed);
+    CHECK(m.counts().cant_analyze == before.cant_analyze);
+    // A rebuild under the Best path sort would have left the order out of
+    // date (summaries_changed); nothing did.
+    CHECK_FALSE(m.sort_if_out_of_date());
 }
 
 TEST_CASE("library model: library_cell_text is what each column shows") {
