@@ -24,7 +24,7 @@ Nothing else moves. `kHitWindowMs` stays 85 and keeps its three other readers: t
 
 ## Owner map
 
-The scout's table, copied in unchanged. The scout's own file, with its Stops and search notes, is `docs/superpowers/plans/2026-11-15-early-fill-setting-owner-map.md`. Tasks below name rows by id (O1 to O19).
+The scout's table, copied in unchanged. The scout's own file, with its Stops and search notes, is `docs/superpowers/plans/2026-11-15-early-fill-setting-owner-map.md` (removed; `git show 89950507:docs/superpowers/plans/2026-11-15-early-fill-setting-owner-map.md`). Tasks below name rows by id (O1 to O19).
 
 | Question | Owner | Its own words | Status |
 |---|---|---|---|
@@ -149,7 +149,11 @@ Real chart examples need a build. Live step LS1 gets them from `testdata/input`:
 ## Questions
 
 1. **Results saved today.** Any result you saved on a dev build since this morning's merge (the 85 ms window) was analyzed at 85. Two answers. (a) Mark them out of date, the plan's way: after this change those charts show `Stale` at every box value until you analyze them again, and the settings stamp moves to `3.1.2+efillwindow`. (b) Keep them: the library file files those results under 85, so a chart shows `Ready` when the box is at 85 and `Not analyzed` at the default 60, and the stamp does not move. Results from 3.1.1 already read `Stale` and read `Stale` either way. Which?
+
+   The user chose "Mark them Stale": the stamp moves to `3.1.2+efillwindow` (T3).
 2. **The batch confirm box and `hydra_batch`'s header.** They list the settings a batch runs under (Difficulty, SP cap, Fills, Score range, Path limit). Your words did not ask for a new line there. Two answers. (a) Leave them: a batch at 85 and a batch at 60 print the same settings lines. (b) Add an `Early fill window` line to each, worded like `Path limit`. Until you say, the plan leaves both as they are.
+
+   The user chose "Add a line": an `Early fill window` line goes in each, worded like `Path limit` (T2).
 
 ## Tasks
 
@@ -311,7 +315,6 @@ Calls: `hydra_stop` (never tried)
 ## Out of scope, for the user to approve
 
 - Opening a rebuilt library file with an older Hydra build. Nothing in this plan tests it. Such a build looks results up by five lens columns, so it would not tell a result analyzed at 60 from one analyzed at 85. The column is added with no default, so an older build's save into the rebuilt file fails rather than filing a wrong row.
-- A line for the new setting in the batch confirm box and `hydra_batch`'s header, unless question 2 says yes.
 - Any change to the squeeze budgets, Rating words, timing tiers or `kHitWindowMs`.
 
 ## Promise map
@@ -340,7 +343,7 @@ Calls: `hydra_stop` (never tried)
 | `CONTEXT.md`, the public pages and the scans say what the code does | T5 | T5 | docs-match-code test; single-owner scan; reviewer's style read |
 | Real chart examples come from `testdata/input`, never the whole library | What the user will see | LS1 | LS1's command lines and cap |
 | The panel change is seen in the real app before merge | LS3 to LS5 | LS5 | the capture shown to the user |
-| A new line in the batch confirm waits for the user's yes | Questions | question 2 | no diff to `batch_settings_summary` or `src/cli/batch.cpp` unless answered |
+| The batch confirm and `hydra_batch`'s header gain an `Early fill window` line (question 2: "Add a line") | Questions | question 2 | T2's diff to `batch_settings_summary` and `src/cli/batch.cpp` |
 
 ## Premise map
 
@@ -367,7 +370,7 @@ Calls: `hydra_stop` (never tried)
 | P19: The stamp is `3.1.2+efillhitwindow`, compared as a whole string, and one bump covers a release | code | `src/store/stored_versions.h:42-55` | checked 2026-11-15 |
 | P20: `hydra_replay` starts from default settings and clamps its number flags through `Settings::clamp` | code | `tools/replay.cpp:189-234` | checked 2026-11-15 |
 | P21: `testdata/store/v2.12.1_library.db` holds one `profiles` row with the five lens columns, no `album` column, and classifies `LacksAlbumColumn` | code | `testdata/store/README.md` "Facts the test pins" (one profile, `ms_enabled` 1, `legacy_fills` 0, stamp `2.8.0+efill85`); `src/store/library_file.cpp:101-103` | checked 2026-11-15 |
-| P22: Some chart in `testdata/input` has an activation between 60 and 85 ms from a fill deadline | unchecked | no run exists yet | LS1; blocks nothing |
+| P22: Some chart in `testdata/input` has an activation between 60 and 85 ms from a fill deadline | unchecked | `testdata/input`: no run of `hydra_replay dump --efill` exists yet | LS1; blocks nothing |
 | P23: `hydra_replay dump` analyzes a chart and prints each path's notation (with its `E` marks) and the best path | code | `tools/replay.cpp:496-519` (`cmd_dump` runs `analyze_chart_file` under `settings_from`), `tools/replay_json.cpp:184` (`pathstring`) and `:199` (`bestpath`) | checked 2026-11-15 |
 | P24: The release notes already tell users their saved results read Stale in 3.1.2 | code | `docs/releases/release-next-notes.md:3` | checked 2026-11-15 |
 | P25: `CONTEXT.md` says the early-fill window is never a setting | code | `CONTEXT.md:610-620` | checked 2026-11-15 |
