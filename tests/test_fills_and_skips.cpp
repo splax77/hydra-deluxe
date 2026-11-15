@@ -144,6 +144,38 @@ TEST_CASE("search: a fill that needs a 70 ms early hit is taken as a required ea
     CHECK(act.e_difficulty() == std::optional<double>{70.0});
 }
 
+// The white side of the same window (D344): SP comes ready 70 ms before the
+// fill's deadline. That is under the hit window, kHitWindowMs, so the
+// activation is E-critical and its early fill is listed with 70 ms to spare.
+// Same fixture as above, with the ready note moved before the deadline.
+TEST_CASE("search: SP ready 70 ms before a fill's deadline still marks the activation E") {
+    constexpr int64_t ready = 7130;
+    std::vector<test::FixtureNote> notes;
+    for (int64_t t = 0; t <= 28800; t += 480) {
+        test::FixtureNote n{t};
+        n.phrase = t == 480;
+        if (t == 9600) n.fill_length = 480;
+        notes.push_back(n);
+    }
+    notes.push_back({ready, true, 0});
+    std::sort(notes.begin(), notes.end(),
+              [](const test::FixtureNote& a, const test::FixtureNote& b) { return a.tick < b.tick; });
+    const Song song = test::build_fixture_song(480, 125.0, notes);
+    REQUIRE(activation_fill_deadline_ms(song.timing(), 9600, 480, FillDeadlineRule::Ch11) == 7200.0);
+    REQUIRE(song.timecode(ready).ms() == static_cast<double>(ready));
+    ScoreGraph graph(song, 4, FillDeadlineRule::Ch11);
+    std::vector<Path> paths;
+    REQUIRE_NOTHROW(paths = run_search(graph, EngineOptions{}));
+    REQUIRE(!paths.empty());
+    CAPTURE(paths.front().pathstring());
+    REQUIRE(test::act_ticks(paths.front()) == std::vector<int64_t>{9600});
+    const Activation& act = paths.front().activations.front();
+    CHECK(act.e_offset == 70.0);
+    CHECK(act.is_e_critical());
+    CHECK(act.is_E0());
+    CHECK(act.e_difficulty() == std::optional<double>{early_fill_difficulty(70.0)});
+}
+
 // The lasting order checks, on root paths. A tied variant's list is checked
 // by lone pricing (test::lone_pricing in record_fixtures.h).
 TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
