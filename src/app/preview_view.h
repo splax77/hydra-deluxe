@@ -206,7 +206,7 @@ struct PreviewTimeSig {
 // SP drains at one bar per two measures — linear in MEASURES, not in ms. Inside
 // a single tempo section crossed with a single meter section, measures are
 // linear in ms, so cutting the curve at every tempo change, meter change,
-// stored SP end step, activation and deact node makes it exactly piecewise
+// stored SP end step, activation and window end makes it exactly piecewise
 // linear in ms. Nothing here is an approximation.
 struct SpMeterSegment {
     double start_ms = 0.0;
@@ -304,7 +304,7 @@ struct PreviewScene {
     std::vector<PreviewMeasureSpan> measure_spans;  // one per time signature, tick order
     // Banked SP over time, for the meter gauge. With a path every value is
     // the record's: the bank steps at each stored bar arrival, and each
-    // window drains from the stored SP end changes to the deact node. Without
+    // window drains from the stored SP end changes to the window's end. Without
     // a path there is no record, so it fills one bar per phrase and pins at
     // the cap: that chart-only view has nothing to spend the bank. Empty when
     // the chart has no SP phrase and the path stamps no bar.

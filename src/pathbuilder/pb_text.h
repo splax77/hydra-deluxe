@@ -90,7 +90,7 @@ extern const char* const kNoChoicesText;
 // the candidate's activation (DecisionList::candidate_end) with its
 // timings as end_choice_text words them.
 // A null `end` (the candidate's search has not landed) reads kPendingText in
-// place of the end; an `end` with no deact node leaves the end out.
+// place of the end; an `end` with no SP end leaves the end out.
 std::string candidate_row_text(const PreviewScene& scene, size_t fill_index,
                                const Activation* end);
 
@@ -105,7 +105,7 @@ std::vector<int64_t> choice_order(const std::vector<int64_t>& offered,
 
 // A compact step's two pieces: `span` is where the activation starts and
 // where its Star Power ends, "m32 → m36" (measure_label of the activation
-// and of its deact node; the start alone when it has none), `saved` the
+// and of its window's end, Activation::window_end_tick; the start alone when it has none), `saved` the
 // phrases it spends, "2 phrases" (Activation::sp_meter),
 // and `squeezes` its timings as the Paths tab's badges word them (badges_text;
 // empty when it has none).
@@ -119,7 +119,7 @@ struct StepShort {
 StepShort step_short(const SongTiming& timing, const Activation& act);
 
 // One ending line of an opened step, "ends m89 · squeeze out 0.0 ms": where
-// `act`'s Star Power ends (measure_label of its deact node; its
+// `act`'s Star Power ends (measure_label of its window's end, Activation::window_end_tick; its
 // Activation::notationstr when it has none), then its timings (badges_text),
 // joined by app::kFactSeparator, when it has any. The
 // list row's end (candidate_row_text) reads it too.
@@ -175,7 +175,7 @@ struct FillHoverCard {
 // sentence alone. A fill the player can take gets three rows: the phrases
 // saved (bars_saved_at), the best finish here and the cost (cost_or_best),
 // then a grey line naming the best choice (kBestChoiceNowText when this fill
-// costs nothing) and, when `numbers` has a hydra_end with a deact node, where
+// costs nothing) and, when `numbers` has a hydra_end with a window end, where
 // Hydra would end it (its timings by badges_text). `numbers` empty means the
 // candidate's search has not landed: the last two rows read kPendingText and
 // no grey line follows.

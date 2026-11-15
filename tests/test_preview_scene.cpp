@@ -496,10 +496,11 @@ TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
         CHECK(pa.tick >= 0);
         CHECK(pa.ms >= 0.0);
         CHECK(pa.ms <= last_note + 1.0);
-        // The active SP window ends exactly at the deact node the record
-        // carries, in the song's own ms. The engine stamps that node on every
-        // activation it produces, so it is always there on a fresh record.
-        std::optional<int64_t> d = a.deact_tick();
+        // The active SP window ends exactly at the window end the record
+        // gives (Activation::window_end_tick), in the song's own ms. The engine
+        // stamps an end on every activation it produces, so it is always there
+        // on a fresh record.
+        std::optional<int64_t> d = a.window_end_tick();
         CHECK(d.has_value());
         CHECK(pa.has_sp_end == d.has_value());
         if (d) {

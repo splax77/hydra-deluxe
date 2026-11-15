@@ -274,7 +274,7 @@ private:
 // last note; Onyx's phrase extends past it). A scene with spans must carry
 // its timing; build_preview_scene always sets it, and a scene with spans but
 // no timing throws std::invalid_argument. Active SP
-// windows end exactly at the deact node. Offered fills drive `fill` and taken
+// windows end exactly at the window's end (Activation::window_end_tick). Offered fills drive `fill` and taken
 // ones `fill_taken`; hidden fills produce no intervals at all, since the game
 // would never have shown them. The scene's ghost_fills drive `fill_ghost`,
 // whatever their state. The activated fill's lane comes from the activation
