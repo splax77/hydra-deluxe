@@ -64,3 +64,9 @@ What closed each gap:
 Main moved during this work. Another session merged the hit-window change (0bfa2dce, from eef6b1d6: the E mark reads the 85 ms hit window on both sides; the 60 ms slack is gone) and filed two more rulings at c10c7f54 (an adjustable early-fill setting, default 60 ms, 0 to 85 ms). The engine records had come from a19b9cb2, and the first screen captures from programs built before that merge. So `hydra_replay` was rebuilt at 326cd4e0 (pass 36e1ec78, slot 2) and every chart re-dumped and re-scheduled: every dump came out the same, and every schedule changed only in its build stamp and source path. `hydra_uitest` was rebuilt at c10c7f54 (pass 6a816298, slot 1; `src/` the same as 326cd4e0) and every capture rerun: the five that had run before gave the same text. Two window sessions left records in `.git/realapp.jsonl` that name 326cd4e0, though the Hydra.exe they ran was built at 09:47, before the merge; all their captures were replaced by the headless runs.
 
 One correction to the engine index came out of the check: it said `flammarker_ingame`'s dump has no paths. It has one, "(No activations.)" at 155295.
+
+## 2026-11-15, T5, find round 1
+
+Session 16892967 took over from the handoff. Every git claim in it was checked: main is still c10c7f54, `src/` is the same at 326cd4e0 and c10c7f54, and 0bfa2dce was not yet in the audit branch. Main was merged into the audit branch (515e05c1) before the briefs, so the auditors judge the tests main has.
+
+Briefs `briefs/T5-A1.md` to `T5-A4.md` are made from `briefs/T3.md`, with the screen records added to question 3. `tests/test_activation_rows.cpp` is cut at line 841, a `TEST_CASE` boundary near the plan's 847: A2 holds 15 test cases, A3 holds 22. `tests/report_samples.cpp` (A1) holds no `TEST_CASE`; it is sample data for four other test files, so A1 writes one record per helper function.
