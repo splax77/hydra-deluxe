@@ -50,7 +50,7 @@ The PowerShell helper is `Check` in all five scripts (`function Check(` in each)
 | `tests/test_path_list.cpp` | 436 | A19 | 5 |
 | `tests/test_pb_text.cpp` | 365 | A19 | 5 |
 | `tests/test_precheck.cpp` | 511 | A19 | 5 |
-| `tests/test_preview_boxes.cpp` | 1097 | A20 | 5 |
+| `tests/test_preview_scene.cpp` | 1005 | A20 | 5 |
 | `tests/test_preview_controller.cpp` | 998 | A21 | 6 |
 | `tests/test_preview_golden.cpp` | 415 | A21 | 6 |
 | `tests/test_preview_load_progress.cpp` | 445 | A22 | 6 |
@@ -288,4 +288,4 @@ The PowerShell helper is `Check` in all five scripts (`function Check(` in each)
 | `C:\Users\Patrick\.claude\gates\tests\test_h52_cleanup_sweep.ps1` | 489 | E4 | 23 |
 | `C:\Users\Patrick\.claude\gates\tests\test_h53_session_cards_start.ps1` | 269 | E4 | 23 |
 | `C:\Users\Patrick\.claude\gates\tests\test_status_append.ps1` | 49 | E4 | 23 |
-| `tests/test_preview_scene.cpp` | 1005 | T3 |  |
+| `tests/test_preview_boxes.cpp` | 1097 | T3 |  |
