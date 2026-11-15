@@ -60,3 +60,22 @@ Rows 74, 76, 77, 84, 90, 91, 92, 94, 95, 98, 107, 109, 112, 115, 116, 121, 125, 
 ## Not reached
 
 I read the places of rows 78, 79, 130, 136 and 137 in test_preview_timeline, test_preview_transport and test_preview_boxes (600-660, 910-965) only as the asserted line plus the test title; where I looked they follow stated tempo arithmetic. I did not open test_sp_end:134 (`extended_tick = 6912`) beyond its lines. The comment near :150 says the extended end "came from no such count" and gives no arithmetic, so it may be an unmarked snapshot. I did not check test_audio_*, test_cli:526 or the row-111 uitest places beyond the asserted line. The "outside the rows" list is a grep result I did not open.
+
+## Addendum after the user's three rulings (X10 and X12)
+
+Rulings in `docs/agents/rulings/tests-and-runs.md`: "tests should not be pinned to typed constants. they should be pinned to the behavior of the code.", "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong", and "tests should test their intended behavior directly, not make up an arbitrary meaningless string". Two consequences for the file above.
+
+First, the two soft disputes under "Verdict on the reader's X9 instances" (12.6 in test_activation_rows, -12.0 in test_library_query:353) are withdrawn as disputes. A made-up engine record fed to code that handles engine records is X9 even when the expected text follows from the input. Treat both as X9, with their neighbours 12.5, 20.0 and 2.5, and the hand-built records in test_sp_meter_curve (already added above). The DMBot payload (test_dm_report:118-130) stays unclear: it stands in for outside data, and I did not check it against the real API.
+
+Second, every instance I called a snapshot is also X12, because its stated source is a run, a saved file or "the engine's record". That covers the reader's four rows, my widened extents and my added places: test_replay:1513-1590; test_pb_coach, test_pb_text and pbtest_coach (130.4); test_preview_boxes:294 and :515-560; the pbtest files (140 and the figures beside it); test_fill_deadline:116-138; test_dm_report:86-90; test_sp_meter_curve:424-432 and :465,466. Add the places whose comment cites a person's chart rather than code: test_library_query:340 ("Burnout's real 163.0 ms"), test_activation_rows:745-800 (-163.0) and test_library_model:589 (`ready(378315, "3- 1 2", 7, 163.0)`).
+
+X10 (an expected value that is a typed product constant or text) in the rows I opened. These come from what I read. I did not scan every place of every row for X10.
+- Row 87 (170): test_report_rows:468 (`"'Beyond' means past the 170 ms window."`) and test_report_view:423,447 (`"Beyond 170 ms"`). The 170 px in test_overlay_layout:344,472,505 is a typed layout fixture (`ten_per_char`), not a product constant.
+- Row 98 (12345): test_batch_text:22,32,33 type the product sentences "12,345 charts" and "12,345 of these can't be analyzed. Check the box to try them again." The behaviour there is the thousands grouping and the singular or plural noun. The sentence is product text typed back.
+- Rows 72, 83, 86, 97, 110 (badge texts): test_activation_rows:745-837,877-921 type "early fill -10.0 ms", "squeeze in 12.6 ms", "squeeze out 5.0 ms" and so on as expected product text.
+- Row 100 (130.4): test_pb_coach:163,174 and test_pb_text:159,177 type "needs 130.4 ms, your limit is 10 ms" and "squeeze out 130.4 ms" (also X12).
+- Rows 71 and 94: test_stars:215 types the multiplier table `{0.1, 0.5, 1.0, 2.0, 2.8, 3.6, 4.4}` against `kStarMultipliers`. test_model:37-45 types the note score table (50, 65, 100, 130) against `basescore()`. test_stars:341 types "the game stops at 7". The products at test_stars:222-223 and :259 are stated arithmetic from that table, so I leave them sound.
+- Row 70 (5000): test_path_list:303 types "Within 5,000 points" (product text).
+- test_config:407-410 types the hit window 85 (`early_fill_window_ms == 85`) where lines 372-405 use `kSqueezeWindowMs` by name. The by-name checks are not a constant pin.
+
+Echo (X11): test_store_results:641,645 type -315.8 in and read it back through the store. It checks that the store keeps the sign, but the value is typed, not made by the engine. I found no other echo in my rows.
