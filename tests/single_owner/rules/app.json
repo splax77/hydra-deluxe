@@ -77,7 +77,7 @@
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "window_end_tick",
       "date": "2026-11-14",
-      "decision": "plan docs/superpowers/plans/2026-11-14-preview-draws-engine-sp.md, PS1 (the user's Blight line, 2026-11-14)",
+      "decision": "the user's words of 2026-11-14 under D9 in docs/audit/2026-10-03-fix-decisions.md (\"the engine already knows this, the preview invents its own rule\"), task PS1",
       "added_by": "PS1",
       "pattern": "\\bdeact_tick\\(\\)|\\bsqout_tick\\b|after_sp_end\\(",
       "scope": [
@@ -99,7 +99,7 @@
       "owner_file": "src/app/preview_view.h",
       "owner_symbol": "sp_window",
       "date": "2026-11-14",
-      "decision": "plan docs/superpowers/plans/2026-11-14-preview-draws-engine-sp.md, PS1",
+      "decision": "the user's words of 2026-11-14 under D9 in docs/audit/2026-10-03-fix-decisions.md (\"the engine already knows this, the preview invents its own rule\"), task PS1",
       "added_by": "PS1",
       "pattern": "sp_end_ms\\s*-",
       "scope": [

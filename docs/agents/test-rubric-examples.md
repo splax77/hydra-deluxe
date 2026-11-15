@@ -6,6 +6,8 @@ Fourteen bad examples follow. The first five are the ones earlier audits missed:
 
 ## Bad examples: the framing is the bug
 
+B1 to B4 quote their tests as they stood at commit 003d76a3. The Preview fix those four asked for has since landed. The Preview's own refill-tick function is gone, the gauge refills at the squeeze-in step's stored tick, and the quoted lines were rewritten from the engine's record.
+
 ### B1. A display test that pins the display's own rule
 
 "sp meter curve: a late squeeze-in refills at the old SP end", `tests/test_sp_meter_curve.cpp` lines 420 to 422:
@@ -16,11 +18,11 @@ Fourteen bad examples follow. The first five are the ones earlier audits missed:
     CHECK(sp_meter_bars_at(c, 7250.0) == doctest::Approx(0.875)); // the late phrase
 ```
 
-It fails Q2, Q3 and Q6. The claim (Q1) is that the gauge refills at the old SP end, a quarter measure before the phrase the player squeezes in. `Activation::refill_tick` in `src/core/model.cpp` works that moment out, and the only caller in `src/` is the Preview (`src/app/preview_view.cpp` line 428). The search never asks for it. So it is a game rule that only a display uses.
+It fails Q2, Q3 and Q6. The claim (Q1) is that the gauge refills at the old SP end, a quarter measure before the phrase the player squeezes in. A refill-tick function on the activation, in `src/core/model.cpp`, worked that moment out, and the only caller in `src/` was the Preview (`src/app/preview_view.cpp` line 428). The search never asked for it. So it was a game rule that only a display used.
 
-Q3 shows what that costs. On Pitch Dark (`testdata/input/test_pitch_dark_ratio`), the engine's record for the first activation has its squeeze-in step on chord 243, at tick 128520. `refill_tick` hands the gauge tick 128400 instead, the end in force before that step. The gauge refills at a moment the record never named. The test types that moment in milliseconds, so it holds the gauge to the wrong place.
+Q3 shows what that costs. On Pitch Dark (`testdata/input/test_pitch_dark_ratio`), the engine's record for the first activation has its squeeze-in step on chord 243, at tick 128520. That function handed the gauge tick 128400 instead, the end in force before that step. The gauge refilled at a moment the record never named. The test typed that moment in milliseconds, so it held the gauge to the wrong place.
 
-The rewrite takes the expected side from the record. For each step in the activation's `sp_end_steps`, the gauge changes at the tick that step names, and it changes nowhere else. No millisecond and no bar reading is typed. The values 7000 ms and 0.875 do not survive. This rewrite fails on today's code, because the gauge still asks `refill_tick`; it is written together with the Preview fix, not before it. The finding against `refill_tick` is reported on its own line (derive-once, kind A), and the test rewrite does not close it.
+The rewrite takes the expected side from the record. For each step in the activation's `sp_end_steps`, the gauge changes at the tick that step names, and it changes nowhere else. No millisecond and no bar reading is typed. The values 7000 ms and 0.875 do not survive. This rewrite failed on the code of its day, because the gauge still asked the refill-tick function, so it was written together with the Preview fix, not before it. The finding against that function was reported on its own line (derive-once, kind A), and the test rewrite did not close it; removing the function did.
 
 ### B2. The same rule pinned as a raw number, twice more
 
@@ -53,7 +55,7 @@ The rewrite removes both lines. Line 483 of the first test already checks what t
                     CHECK(act.refill_tick(k) <= prev.end_tick);
 ```
 
-It fails Q8. For a squeeze-in step, `refill_tick` returns the smaller of the step's tick and `prev.end_tick`. So for the one case the comment is about, the line compares a value with something it was already cut down to. It cannot go red there. An earlier version of this page listed this line among the test's sound properties.
+It fails Q8. For a squeeze-in step, the refill-tick function returned the smaller of the step's tick and `prev.end_tick`. So for the one case the comment is about, the line compares a value with something it was already cut down to. It cannot go red there. An earlier version of this page listed this line among the test's sound properties.
 
 The rewrite states the behaviour on the record's own fields. For every step that is not a squeeze-in, the step's tick is at or before the end in force. For a squeeze-in step, the squeeze the record lists for it is the one that carries the gap, and the check says so by comparing the step with that squeeze.
 
@@ -85,7 +87,7 @@ The rewrite takes the squeeze-out from the record: where the activation has a `s
 
 It fails Q4: the check holds two raw ticks and the comment holds the rule. Q2 is not settled. The search stamps `bank_rise_ticks` (`src/search/engine.cpp` line 2015), so the field is the engine's. But the readers found in `src/` are the Preview and `Activation::sp_ready_tick`, and nothing found uses it to choose or score a path. Whether "the later of the previous deact node and that phrase" is a game fact or a drawing rule stamped by the search is open.
 
-This is a different rule from B1's. An earlier version of this page called the two "one rule stated twice" and asked the user what Clone Hero does. They have different owners (`refill_tick` and `bank_rise_ticks`), and B1's is not a Clone Hero question at all.
+This is a different rule from B1's. An earlier version of this page called the two "one rule stated twice" and asked the user what Clone Hero does. They had different owners (the refill-tick function, now removed, and `bank_rise_ticks`), and B1's was not a Clone Hero question at all.
 
 The verdict is investigate, on Q2 only. If the rule holds, the check is rewritten as the rule on named inputs: the first arrival is the first window's end, and the second is the fixture's fourth phrase.
 
