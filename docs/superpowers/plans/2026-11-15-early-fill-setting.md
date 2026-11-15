@@ -343,7 +343,7 @@ Calls: `hydra_stop` (never tried)
 | `CONTEXT.md`, the public pages and the scans say what the code does | T5 | T5 | docs-match-code test; single-owner scan; reviewer's style read |
 | Real chart examples come from `testdata/input`, never the whole library | What the user will see | LS1 | LS1's command lines and cap |
 | The panel change is seen in the real app before merge | LS3 to LS5 | LS5 | the capture shown to the user |
-| A new line in the batch confirm waits for the user's yes | Questions | question 2 | no diff to `batch_settings_summary` or `src/cli/batch.cpp` unless answered |
+| The batch confirm and `hydra_batch`'s header gain an `Early fill window` line (question 2: "Add a line") | Questions | question 2 | T2's diff to `batch_settings_summary` and `src/cli/batch.cpp` |
 
 ## Premise map
 

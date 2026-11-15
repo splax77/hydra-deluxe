@@ -197,12 +197,12 @@ scores are not achievable in game.
 _Avoid_: edition, uncapped, SP meter
 
 **Analysis settings**:
-The eight settings that make up a record's profile, shown together in the
+The nine settings that make up a record's profile, shown together in the
 analysis settings panel and applied to every song: difficulty, Pro Drums, 2x Bass and
 Note Shuffle (together the chart mode, read off the settings as a
 `ChartReading` by `Settings::reading` and spelled by `chartmode_key`),
-the SP cap, 1.0 fills (the fill spawn deadline),
-the score range, and the path limit.
+the SP cap, 1.0 fills (the fill spawn deadline), the early fill window
+(Early fill (E)), the score range, and the path limit.
 Changing one shows the library's records under the new combination, and
 analyzes the open song again under it (D90 item 1). Changing it back brings
 the library's old rows back with no batch. The backend limit is
@@ -215,8 +215,8 @@ confirmed both defaults (D48, Q33); `Settings` in src/app/config.h owns them.
 The score range starts at 4<!-- default: kDefaultDepthValue --> scores below
 the best. `kDefaultDepthValue` in src/search/pather.h owns that number, and
 the search and `Settings` both start from it (D54).
-`kAnalysisFields` in src/app/config.h lists the ten `Settings` fields behind
-the eight settings, each with the part of the profile it is filed
+`kAnalysisFields` in src/app/config.h lists the eleven `Settings` fields behind
+the nine settings, each with the part of the profile it is filed
 under. The panel's Reset (`Settings::with_analysis_defaults`) and the settings
 button's summary (`Settings::analysis_changes`) read that list, so a new
 analysis setting is one new row there (concept audit M13).
