@@ -11,8 +11,10 @@
 #endif
 #include <windows.h>
 
+#include <atomic>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <fstream>
 #include <memory>
 #include <optional>
@@ -40,9 +42,11 @@
 #include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "store/record_store.h"
+#include "store_file_fixtures.h"  // HeldSaveGroup
 #include "temp_util.h"
 #include "ui/app_state.h"
-#include "ui/library_jobs.h"  // set_view_analyzer_for_test
+#include "ui/library_jobs.h"  // set_view_analyzer_for_test, set_view_before_save_check_for_test
+#include "wait_util.h"
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/report_window.h"  // path_report_input
 
@@ -470,6 +474,188 @@ TEST_CASE("a click whose save fails shows the paths and says so") {
           "Analyzed, but saving failed. Hydra couldn't save to its database (hydra.db). Check "
           "that the disk isn't full and that no other copy of Hydra is running, then try "
           "again.");
+}
+
+// ---- the click's worker saves its own result ---------------------------------
+
+namespace {
+
+// Holds every click's job built from now on at its check just before the
+// save (set_view_before_save_check_for_test), until release() or kWaitCap, so
+// a test can act while the job waits there. Declare it AFTER the AppState:
+// its destructor lets every held job through, and the app's destructor joins
+// them. A job copies the seam when it is made, with the flags it shares.
+struct SaveGate {
+    std::shared_ptr<std::atomic<bool>> open = std::make_shared<std::atomic<bool>>(false);
+    std::shared_ptr<std::atomic<int>> reached = std::make_shared<std::atomic<int>>(0);
+    // After open and reached, which it copies.
+    const ScopedHook seam{hydra::ui::set_view_before_save_check_for_test,
+                          [open = open, reached = reached] {
+                              ++*reached;
+                              testwait::wait_until([&open] { return open->load(); },
+                                                   "the test to open the save gate");
+                          }};
+    ~SaveGate() { release(); }
+    void release() { open->store(true); }
+    void wait_reached() {
+        testwait::wait_until([this] { return reached->load() >= 1; },
+                             "the click's job to reach its save");
+    }
+};
+
+// Clicks `song`, runs `act` while its job waits at the check before its
+// save, then lets the job go on and runs frames until it is collected.
+void act_before_save(AppState& app, const ChartLibraryEntry& song,
+                     const std::function<void()>& act) {
+    SaveGate gate;
+    app.select(song, hydra::ui::SelectionSource::Click);
+    gate.wait_reached();
+    act();
+    gate.release();
+    settle(app);
+}
+
+// Waits, running no frame, until the click's job has finished, so the
+// window has not collected it yet.
+void wait_view_job_done_uncollected(const AppState& app) {
+    testwait::wait_until([&] { return app.view_job && app.view_job->finished(); },
+                         "the click's job to finish");
+}
+
+}  // namespace
+
+// The window's frame never waits for the click's save: the job waits behind
+// the batch's save group, and the panel stays Analyzing until it is done.
+TEST_CASE("a click's save does not stop the window while a save group is open") {
+    ScratchPaths paths("appstate_click_heldgroup");
+    const ChartLibraryEntry song = corpus_chart("click_heldgroup");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    hydra::test::HeldSaveGroup held(*app->store);
+    {
+        // The job passes the gate and goes on to its save, which waits for
+        // the held group.
+        SaveGate gate;
+        app->select(song, hydra::ui::SelectionSource::Click);
+        gate.wait_reached();
+    }
+
+    app->tick(0.0);
+
+    CHECK(held.held());  // the frame came back before the group was let go
+    CHECK(app->viewed.state == ViewedSong::State::Analyzing);
+    held.let_go();
+    settle(*app);
+    REQUIRE(app->viewed.ready());
+    // The row reads what a second app on the same file reads for it.
+    const std::unique_ptr<AppState> second = std::make_unique<AppState>(
+        Settings{}, std::make_unique<RecordStore>(paths.db));
+    CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
+    CHECK(row_of(*app, song.md5).best_label() == row_of(*second, song.md5).best_label());
+}
+
+// D87 item 3, on the job's thread: the row takes the new hash first, so
+// nothing is ever saved under a hash no library row has.
+TEST_CASE("a click's worker writes a changed chart's hash before it saves") {
+    ScratchPaths paths("appstate_click_hashfirst");
+    const ChartLibraryEntry scanned = corpus_chart("click_hashfirst");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    const Profile profile = app->settings.profile();
+    Sleep(20);
+    write_corpus_chart("click_hashfirst", /*extra_note=*/true);
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
+
+    {
+        SaveGate gate;
+        app->select(scanned, hydra::ui::SelectionSource::Click);
+        gate.wait_reached();
+        // At the check before the save: the row is under the new hash, and
+        // nothing is saved under it yet.
+        CHECK(app->store->list_chart_library_copies(new_md5).size() == 1);
+        CHECK(app->store->list_chart_library_copies(scanned.md5).empty());
+        CHECK(app->store->lookup_one(new_md5, profile).status == RecordStatus::NotAnalyzed);
+    }
+    settle(*app);
+
+    REQUIRE(app->viewed.ready());
+    CHECK(app->store->lookup_one(new_md5, profile).status == RecordStatus::Ready);
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == new_md5);  // the panel's entry is the new row
+    CHECK(row_of(*app, new_md5).status == RecordStatus::Ready);
+}
+
+TEST_CASE("a click cancelled before its save saves nothing") {
+    ScratchPaths paths("appstate_click_cancel_presave");
+    const ChartLibraryEntry song = corpus_chart("click_cancel_presave");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    const Profile profile = app->settings.profile();
+    const RecordStatus before = app->store->lookup_one(song.md5, profile).status;
+
+    act_before_save(*app, song, [&] { app->cancel_view(); });
+
+    CHECK(app->viewed.state == ViewedSong::State::Cancelled);
+    CHECK(app->store->lookup_one(song.md5, profile).status == before);
+    CHECK(hydra::test::record_rows_in(paths.db) == 0);
+}
+
+TEST_CASE("a click closed before its save saves nothing") {
+    ScratchPaths paths("appstate_click_close_presave");
+    const ChartLibraryEntry song = corpus_chart("click_close_presave");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    const Profile profile = app->settings.profile();
+    const RecordStatus before = app->store->lookup_one(song.md5, profile).status;
+
+    act_before_save(*app, song, [&] { app->close_details(); });
+
+    CHECK_FALSE(app->show_details);
+    CHECK(app->viewed.state == ViewedSong::State::None);
+    CHECK(app->store->lookup_one(song.md5, profile).status == before);
+    CHECK(hydra::test::record_rows_in(paths.db) == 0);
+}
+
+TEST_CASE("a click replaced before its save saves nothing") {
+    ScratchPaths paths("appstate_click_replace_presave");
+    const ChartLibraryEntry song = corpus_chart("click_replace_presave");
+    // Another hash, so the second song's save is not the first one's.
+    const ChartLibraryEntry next = corpus_chart("click_replace_presave_next", /*extra_note=*/true);
+    REQUIRE(next.md5 != song.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {song, next});
+    const Profile profile = app->settings.profile();
+    const RecordStatus before = app->store->lookup_one(song.md5, profile).status;
+
+    act_before_save(*app, song,
+                    [&] { app->select(next, hydra::ui::SelectionSource::Click); });
+
+    REQUIRE(app->viewed.ready());  // the panel shows the second song
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == next.md5);
+    CHECK(app->store->lookup_one(song.md5, profile).status == before);
+    CHECK(row_of(*app, song.md5).status == before);
+}
+
+// The panel drops a result the user let go, but the store holds what the job
+// saved, so the row says what the store says.
+TEST_CASE("a click whose job was let go after it wrote still gives the row the store's answer") {
+    ScratchPaths paths("appstate_click_letgo");
+    const ChartLibraryEntry song = corpus_chart("click_letgo");
+    const ChartLibraryEntry next = corpus_chart("click_letgo_next", /*extra_note=*/true);
+    REQUIRE(next.md5 != song.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {song, next});
+    const Profile profile = app->settings.profile();
+    app->select(song, hydra::ui::SelectionSource::Click);
+    wait_view_job_done_uncollected(*app);
+
+    // update_view_job's drop by generation.
+    SUBCASE("closed before a frame collects the job") { app->close_details(); }
+    // start_view's let-go of a finished job never collected.
+    SUBCASE("replaced before a frame collects the job") {
+        app->select(next, hydra::ui::SelectionSource::Click);
+    }
+    settle(*app);
+
+    const hydra::store::RecordLookup found = app->store->lookup_one(song.md5, profile);
+    CHECK(found.status == RecordStatus::Ready);  // the job saved it
+    CHECK(row_of(*app, song.md5).shows_same_as(found));
 }
 
 // ---- a failed click (the user's answers 1 and 6, 2026-10-15) ----------------
