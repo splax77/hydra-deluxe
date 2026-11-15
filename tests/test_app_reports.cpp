@@ -1007,6 +1007,39 @@ TEST_CASE("a path report reads one moment") {
     check_same_path_report(*app->path_report.result, *before);
 }
 
+TEST_CASE("a path report's separate store calls read one moment") {
+    ScratchPaths paths("appstate_pathcalls");
+    // A library with no stored result: the report has no rows, so after its
+    // lookup it asks the store a second, separate question (record_count) to
+    // say why. Only the one hold makes that answer agree with the lookup's.
+    const ChartLibraryEntry song = corpus_chart("pathcalls");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    const std::string md5 = app->library_row_at(0).entry.md5;
+    const hydra::store::Profile profile = app->settings.profile();
+    const std::thread::id draw = std::this_thread::get_id();
+    std::atomic<bool> saved{false};
+    // Inside the report's lookup (after its chart_index call, before its
+    // record_count call) the writer stores a result for the chart.
+    app->store->set_between_lookup_reads_for_test([&] {
+        if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
+        hydra::test::save_batch_record(*app->store, md5, profile);
+    });
+    app->request_path_report();
+    finish_path_report(*app);
+    app->store->set_between_lookup_reads_for_test({});
+
+    REQUIRE(saved.load());
+    REQUIRE(app->store->record_count() > 0);  // the save landed
+    // The report saw the store as it was at its first read: empty, so the
+    // sentence is the app's "nothing is analyzed yet". A report that asked
+    // record_count outside the hold would have seen the save and said
+    // "nothing under these settings" instead.
+    CHECK(app->path_report_build() == ReportBuild::Failed);
+    CHECK(app->path_report.message ==
+          hydra::app::plain_error(
+              hydra::KindedError(hydra::ErrorKind::NoRecords, "no records stored yet")));
+}
+
 TEST_CASE("a report whose connection cannot open fails with the store's sentence") {
     ScratchPaths paths("appstate_reportopenfail");
     const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
