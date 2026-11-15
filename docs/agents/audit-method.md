@@ -2,7 +2,7 @@
 
 An audit here means agents reading Hydra's code to find places where it breaks its own rules. Two parts that answer one question differently, a number nobody chose, and a display that guesses a fact the engine knows are typical finds. Each finding then has to leave the audit in a way the user can trust: it gets fixed, it goes to the user as a question, or a user ruling already covers it.
 
-This page is for the main session when it plans an audit, and for every brief it writes during one. Each rule below is here because an earlier audit broke it. "What went wrong before" at the end tells those stories.
+This page is for the main session when it plans an audit, and for every brief it writes during one. Each rule below is here because an earlier audit broke it. "What went wrong before" at the end tells those stories. An audit of the tests also asks every test the questions in `docs/agents/test-rubric.md`, and it checks each test's own account of what should happen against the engine's record before it judges how the test is written.
 
 The short version: past audits were good at finding problems and bad at closing them. Nearly every miss happened after a finding was written, when someone decided it needed no question. So most of this page is about that step.
 
