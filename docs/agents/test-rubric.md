@@ -40,7 +40,7 @@ Questions 1 to 3 judge the claim. Do them first, and do them before you read the
 
 Where the function sits does not settle this. The refill-tick function above sat in `src/core`, on the engine's own record type, and it was still a display rule, because only the Preview called it. Judge by the callers. Also search for the engine's answer to the same question before you call a function the owner (agent rule 15): the stored step's own tick already said where the squeeze-in is.
 
-**3. Does the owner's answer on a real chart agree with the claim?** Take one real chart where the case happens. Read what the engine recorded for it, chord by chord. Then say what the test's claim would put on that chart, and whether the two agree.
+**3. Does the claim hold on a real chart?** Take one real chart where the case happens. Put two things side by side: what the display shows there, and what the chart and the engine say there. The chart's side is its own data (notes, tempo map, sections, the song length in its metadata) and the engine's record (`sp_end_steps`, `squeezes`, `paid_by`, `ends_sp`, the replay's rows). Say whether the two agree. A display rule is never exempt: a number format, a clamp at the song's end or a box's text is still shown on a real chart, and the chart says what it should read. Agents cannot run Hydra, so an auditor names the chart and the screen, and the main session captures both sides.
 
 The engine's record is readable as text. `hydra_replay.exe dump` then `hydra_replay.exe schedule` print, for each activation, its `sp_end_steps` and `squeezes` with the chord and tick of each, and for each chord its `paid_by` and `ends_sp`. Agents may not run `hydra_replay` (agent rule 14), so an auditor asks the main session for the output and names the chart. Write the answer as two lines:
 
@@ -50,7 +50,17 @@ Claim:   the gauge refills at the end in force before it, tick 128400.
          They differ. The test pins the display's own rule.
 ```
 
-If they differ, the test's framing is the bug, and no amount of tidying its checks fixes it. If you have not seen the engine's record for a real chart, write "claim not checked". A test with an unchecked claim cannot get a verdict of keep.
+If they differ, the test's framing is the bug, and no amount of tidying its checks fixes it. If neither side has been read for a real chart, write "claim not checked". A test with an unchecked claim cannot get a verdict of keep.
+
+**The hard rule for a claim that differs from the record.** Write question 1's claim whole first, including what the test says the screen does at the moment it cares about. Then, for that moment, write the record's value beside it. When the two differ:
+
+- Questions 2 and 3 fail. Write that in both answers, with the record's file and line.
+- The verdict is never Keep. It is never a Rewrite that keeps the claim, under its own words or any other.
+- The verdict is Investigate when a decision or ruling backs the claim's side, because a decision against the record goes to the user. It is Rewrite when nothing backs it, and the rewrite takes its expected side from the record.
+- A production-code finding against the display's function goes on its own line.
+- Faulting the test's checks (questions 4 to 9) is extra. It never replaces this.
+
+The test does not have to look wrong for this rule to apply. A test whose author knew the screen differs from the record, and wrote it down as the expected behaviour, is the case this rule is for. "A filled-in record" below shows the rule applied, and "A record that misses the claim" after it shows the mistake it stops.
 
 A decision record does not answer this question. The squeeze-in claim cited one: D9 in `docs/audit/2026-10-03-fix-decisions.md` said the gauge refills at the old SP end, "matching the engine". The record on Pitch Dark showed it did not match. When a decision and the engine's record disagree, say so and send both to the user. Never settle it by citing the decision. D9 now carries the user's words that superseded it.
 
@@ -140,6 +150,31 @@ Finding:    Activation::refill_tick is a game rule only the Preview uses
             the rewrite), and a refill that leaves the old end (dropped on
             purpose).
 ```
+
+## A record that misses the claim
+
+This is the same test judged badly. Every line in it is true. It is still wrong, because it accepts the claim and faults only the checks.
+
+```
+sp meter curve: a late squeeze-in refills at the old SP end
+            (tests/test_sp_meter_curve.cpp:403)
+1 Claim:    When a phrase sits just past the SP end and the player squeezes
+            it in, the gauge refills at the old end, before the phrase.
+2 Owner:    Activation::refill_tick works out the refill tick. The gauge
+            reads it. Owner found.
+3 Real chart: claim not checked.
+4 Direct:   Lines 418-426 type nine gauge readings in ms, a raw result each.
+5 Reason:   7000 ms and 0.875 have their working only in the comment.
+Verdict:    Rewrite. Work each reading out from the fixture's named inputs,
+            so the check reads as the rule: the refill at the old end.
+```
+
+What it got wrong, line by line:
+
+- Question 2 named an owner and stopped. It never listed the callers. The only caller was the Preview, so the "owner" was a display rule. The filled-in record above found that in one grep.
+- Question 3 wrote "claim not checked" while a real chart for the case was there to read. Pitch Dark's record names the squeeze-in step at tick 128520, and the claim put the refill at 128400. Writing the two side by side was the whole job.
+- The verdict keeps the claim ("the refill at the old end") and only renames its numbers. The hard rule above forbids exactly that: the rewrite must take its expected side from the record.
+- No production-code finding. The display's own rule went unreported, so tidying the test would have left the bug in place.
 
 ## Named inputs
 
