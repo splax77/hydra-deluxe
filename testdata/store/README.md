@@ -147,7 +147,7 @@ All four files hold these same three rows.
 
 ## v2.12.1_library.db
 
-This file is what the v2.12.1 release's `hydra_batch` wrote. Its `charts` table has no `album` column and its records carry an older results stamp, so opening it in this build is the upgrade a v2.12.1 user's first launch makes. `tests/test_store_open.cpp` ("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") opens a copy of it the way the app does and checks that the file gains the column, keeps every record, and reads those records as Stale.
+This file is what the v2.12.1 release's `hydra_batch` wrote. Its `charts` table has no `album` column and its records carry an older results stamp, so opening it in this build is the upgrade a v2.12.1 user's first launch makes. `tests/test_store_open.cpp` ("a library file v2.12.1 wrote opens, gains the album column, and keeps its records") opens a copy of it the way the app does and checks that the file gains the column, keeps every record, and reads those records as Stale. Its `profiles` table also predates the early-fill window column, so the same open rebuilds that table to hold it. "The v2.12.1 file's profiles table is rebuilt with the early-fill window, keeping every row", in the same test file, checks that the profile row keeps its id and every other column, is filed under the default window (`Lens::efill_window_ms` in `src/store/record_store.h`), and still holds all three records.
 
 | File | Release | Commit | Bytes |
 |---|---|---|---|
@@ -171,7 +171,7 @@ To regenerate, compare by the facts below, not by file hash.
 
 Read from a copy of the checked-in file on 2026-10-25.
 
-The file holds one profile: chart mode "Expert Pro Drums, 2x Bass", `sp_cap` 4, `ms_enabled` 1, `ms_value` 10, `depth_mode` 0, `depth_value` 4, `legacy_fills` 0, and results stamp (`hyversion`) `2.8.0+efill85`. Today's stamp is `kResultsStamp` in `src/store/stored_versions.h`, which is why the records read Stale.
+The file holds one profile: chart mode "Expert Pro Drums, 2x Bass", `sp_cap` 4, `ms_enabled` 1, `ms_value` 10, `depth_mode` 0, `depth_value` 4, `legacy_fills` 0, and results stamp (`hyversion`) `2.8.0+efill85`. It has no early-fill window column. Today's stamp is `kResultsStamp` in `src/store/stored_versions.h`, which is why the records read Stale.
 
 It holds 3 records and 7 `record_paths` rows:
 

@@ -141,6 +141,56 @@ TEST_CASE("store: prepare_record refuses a profile the analysis did not run unde
                     std::invalid_argument);
 }
 
+TEST_CASE("store: prepare_record refuses a profile at another early-fill window") {
+    // A record searched at the default window, filed under a profile at the
+    // widest the setting allows.
+    const HydraRecord& analysis = fixture().record;
+    REQUIRE(analysis.early_fill_window_ms == kDefaultEarlyFillWindowMs);
+    Profile at_85 = at4();
+    at_85.lens.efill_window_ms = static_cast<int>(kHitWindowMs);
+    CHECK_THROWS_AS(prepare_record("h1", at_85, analysis), std::invalid_argument);
+    // And the other way: a record searched at 85 under the default profile.
+    HydraRecord searched_at_85 = at_cap(4);
+    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_85), std::invalid_argument);
+    // The matching pair files.
+    CHECK(prepare_record("h1", at_85, searched_at_85).profile.lens.efill_window_ms ==
+          static_cast<int>(kHitWindowMs));
+}
+
+TEST_CASE("store: one chart's results at two early-fill windows are two results") {
+    // Two profiles that differ only in the window. Each save keeps the other's
+    // record, and each lookup gets its own back.
+    const Profile at_default = at4();
+    Profile at_85 = at4();
+    at_85.lens.efill_window_ms = static_cast<int>(kHitWindowMs);
+    REQUIRE(at_default != at_85);
+    HydraRecord searched_at_85 = no_paths_at_cap(4);
+    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    const PreparedRecord saved_default = prepare_record("h1", at_default, at_cap(4));
+    const PreparedRecord saved_85 = prepare_record("h1", at_85, searched_at_85);
+    REQUIRE(saved_default.record != saved_85.record);
+
+    FileStore file;
+    {
+        RecordStore store(file.path);
+        store.save(saved_default);
+        store.save(saved_85);
+        const RecordLookup got_default = store.lookup_one("h1", at_default);
+        const RecordLookup got_85 = store.lookup_one("h1", at_85);
+        REQUIRE(got_default.status == RecordStatus::Ready);
+        REQUIRE(got_85.status == RecordStatus::Ready);
+        CHECK(got_default.record == saved_default.record);
+        CHECK(got_85.record == saved_85.record);
+        CHECK(store.record_count() == 2);
+    }
+    // Two profile rows, one per window, and a reopen reads both again.
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    RecordStore reopened(file.path);
+    CHECK(reopened.lookup_one("h1", at_default).record == saved_default.record);
+    CHECK(reopened.lookup_one("h1", at_85).record == saved_85.record);
+}
+
 TEST_CASE("store: every path of one analysis carries the same note count") {
     // The record keeps the note count once; this is why that loses nothing.
     int checked = 0;

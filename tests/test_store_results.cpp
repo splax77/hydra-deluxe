@@ -345,13 +345,17 @@ TEST_CASE("Profile compares on every part of the identity") {
     CHECK(CapQuery::at(4) != CapQuery::at(8));
     CHECK(CapQuery{} == CapQuery::at(kCloneHeroSpCap));
 
-    // Each of the lens's five fields is part of the identity...
+    // Each of the lens's six fields is part of the identity...
     CHECK(kLensA == Lens::from(10, 0, 20));
     CHECK(kLensA != Lens::from(11, 0, 20));
     CHECK(kLensA != Lens::from(10, 1, 20));
     CHECK(kLensA != Lens::from(10, 0, 21));
     CHECK(kLensA != Lens::from(std::nullopt, 0, 20));
     CHECK(kLensA != Lens::from(10, 0, 20, /*legacy_fills=*/true));
+    CHECK(kLensA != Lens::from(10, 0, 20, false, static_cast<int>(kHitWindowMs)));
+    // A lens left to its default names the setting's default window.
+    CHECK(Lens{}.efill_window_ms == static_cast<int>(kDefaultEarlyFillWindowMs));
+    CHECK(kLensA.efill_window_ms == static_cast<int>(kDefaultEarlyFillWindowMs));
 
     // ...except the ms value when the limit is off: an off limit stores 0.
     CHECK(Lens::from(std::nullopt, 0, 4).ms_value == 0);
