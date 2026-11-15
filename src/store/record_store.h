@@ -515,6 +515,9 @@ public:
         int offset, int limit, const RowsReadFn& on_row = {},
         LibraryOrder order = LibraryOrder::ByName) = 0;
     virtual std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) = 0;
+    virtual int64_t record_count() = 0;
+    virtual int64_t chart_library_count() = 0;
+    virtual ChartIndex chart_index() = 0;
 
 protected:
     StoreReads() = default;
@@ -548,15 +551,78 @@ public:
         int offset, int limit, const RowsReadFn& on_row = {},
         LibraryOrder order = LibraryOrder::ByName) override;
     std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
+    int64_t record_count() override;
+    int64_t chart_library_count() override;
+    ChartIndex chart_index() override;
     // Closes the connection; a later read opens it again.
     void close();
 
 private:
+    // Opens it at once, and gives its hold (OwnReader::Hold).
+    friend class OwnReader;
     RecordStore& store_;
     std::string path_;
     StoreConnection conn_;
     // Opens conn_ when it is closed. The caller holds conn_'s lock.
     void open_if_closed();
+    // Opens conn_ now, so an open that fails throws here. Takes conn_'s lock.
+    void open_now();
+    // Opens the read transaction a hold keeps, which every call made until
+    // end_hold joins; false when one is already open, so the caller owns
+    // nothing to end. Takes conn_'s lock.
+    bool begin_hold();
+    // Ends the read transaction begin_hold opened. Takes conn_'s lock.
+    void end_hold();
+};
+
+// A reader a caller owns (RecordStore::open_own_reader), for code that makes
+// several reads and wants them to see one moment of the file: a hold keeps
+// one read transaction open across them. For a store with a file it is a
+// StoreReader of its own, opened at once. For a store with none (":memory:")
+// it reads through the store, and its hold does nothing. The store must
+// outlive it, and it must outlive its holds.
+class OwnReader {
+public:
+    // While it lives, every call on its reader joins one read transaction, so
+    // every call sees the file as it was at the first read made under it. It
+    // must end before its reader goes.
+    class Hold {
+    public:
+        ~Hold();
+        Hold(const Hold&) = delete;
+        Hold& operator=(const Hold&) = delete;
+
+    private:
+        friend class OwnReader;
+        Hold(StoreReader* reader, bool owns) : reader_(reader), owns_(owns) {}
+        StoreReader* reader_;
+        // Whether this hold opened the read transaction, so it ends it.
+        bool owns_;
+    };
+
+    ~OwnReader();
+    OwnReader(const OwnReader&) = delete;
+    OwnReader& operator=(const OwnReader&) = delete;
+
+    // The reads: its own StoreReader, or the store itself for a store with
+    // no file, each answering unchanged.
+    StoreReads& reads() { return reads_; }
+
+    // Opens a hold (Hold). A hold opened inside another owns nothing, and the
+    // outer one decides when the moment ends.
+    [[nodiscard]] Hold hold();
+
+private:
+    // Only RecordStore::open_own_reader makes one.
+    friend class RecordStore;
+    // `path`: the store's file, or empty for a store with none.
+    OwnReader(RecordStore& store, const std::string& path);
+    // The reader's own connection; null for a store with no file.
+    std::unique_ptr<StoreReader> own_;
+    // What reads() hands out: own_, or the store itself.
+    StoreReads& reads_;
+    // Hold's end, which only OwnReader may ask of a StoreReader.
+    static void end_hold(StoreReader& reader);
 };
 
 class RecordStore : public StoreReads {
@@ -652,6 +718,9 @@ public:
     };
     // The connection's checkpoint threshold in pages, for the tests.
     int wal_autocheckpoint_for_test();
+    // Test seam: sets the writer's checkpoint threshold to `pages`, so a test
+    // under a BatchWrites guard can make a few saves cross it.
+    void set_wal_autocheckpoint_for_test(int pages);
     // The connection's journal_size_limit in bytes, for the tests.
     int64_t journal_size_limit_for_test();
 
@@ -678,6 +747,10 @@ public:
     // the writer's lock. A store with none (":memory:") cannot be opened
     // twice, so it hands back itself, and a read answers on its connection.
     StoreReads& reader();
+    // A reader of the caller's own (OwnReader), on a connection of its own
+    // opened now, so a failed open throws KindedError(DatabaseRead) from this
+    // call. Unlike reader(), it offers a hold. The store must outlive it.
+    std::unique_ptr<OwnReader> open_own_reader();
     // Test seam: the next open of any reader this store hands out fails, as
     // an open that fails does. It fires once.
     void fail_next_reader_open_for_test() { fail_next_reader_open_for_test_ = true; }
@@ -695,7 +768,7 @@ public:
 
     // How many real records the file holds, under any profile. A failure
     // record is not counted.
-    int64_t record_count();
+    int64_t record_count() override;
 
     // ---- the saved hardest figure (PathRow::hardest_ms) -----------------
     //
@@ -763,7 +836,7 @@ public:
     // order, from the calling thread only, while the other threads read; a
     // stop it asks for stops every thread. A connection that fails to open
     // fails the whole read with ErrorKind::DatabaseRead and returns no rows.
-    int64_t chart_library_count();
+    int64_t chart_library_count() override;
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
                                                       const RowsReadFn& on_row = {},
                                                       LibraryOrder order = LibraryOrder::ByName) override;
@@ -785,13 +858,17 @@ public:
 
     // The library's charts, their copies and naming copies (ChartIndex),
     // built from the library rows in the order the scan listed them.
-    ChartIndex chart_index();
+    ChartIndex chart_index() override;
 
 private:
     // Reads the rules fingerprint and the two reader seams.
     friend class StoreReader;
     // The connection every write and every RecordStore read goes through.
     StoreConnection writer_;
+    // The file other connections open beside the writer (shared_file_path in
+    // record_store.cpp); empty for a store with none. Set when the store
+    // opens, so a reader opened later never waits for the writer's lock.
+    std::string shared_file_;
     // What reader() hands out for a store with a file; null for one with none.
     // Made when the store opens; close() closes it before the writer.
     std::unique_ptr<StoreReader> reader_;
