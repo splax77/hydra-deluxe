@@ -510,6 +510,7 @@
 - 2026-11-15 5375d0bf Old worktrees and scratch folders (2026-11-15) | agents, transcripts | Ended with every worktree removed except the main checkout, and the old scratch folders cleared. [stale]
 - 2026-11-15 5caaef5d Test suite audit handoff (2026-11-15) | tests, agents, review, docs | Ended with the capture gaps closed and committed on the audit branch, and the find-rounds handoff written, but the find rounds not started.
 - 2026-11-15 a3ba79d1 Early fill reach and Slack handoff (2026-11-15) | activation, fill-rule, analysis-settings, tests, review | Ended with the Early fill window setting merged to main at 6c52c724 and the whole suite passing, 2,186 of 2,186 test cases. That merge is not pushed.
+- 2026-11-15 16892967 Test audit find rounds handoff (2026-11-15) | tests, agents, review, docs, hooks | The find and verify stage ended with all 92 slices audited and verified, and a handoff for the rest of the audit committed on the audit branch; nothing was merged to main.
 
 ## Proposed tags
 
