@@ -198,6 +198,9 @@ const std::vector<Key>& keys() {
         // allowed as a what-if (D51 Q16).
         number("sp_cap", &Settings::sp_cap, 1, kNoCeiling),
         on_off("legacy_fills", &Settings::legacy_fills),
+        // The hit window is the widest the early-fill window goes.
+        number("early_fill_window_ms", &Settings::early_fill_window_ms, 0,
+               static_cast<int>(kHitWindowMs)),
         on_off("auto_open_report", &Settings::auto_open_report),
         free_text("dm_last_user", &Settings::dm_last_user),
         word("skipped_update_version", &Settings::skipped_update_version),
@@ -407,6 +410,7 @@ AnalysisSettings Settings::to_analysis_settings() const {
     s.ms_filter = mslimit_enabled ? std::optional<double>(mslimit_value) : std::nullopt;
     s.sp_cap = sp_cap;
     s.legacy_fills = legacy_fills;
+    s.early_fill_window_ms = early_fill_window_ms;
     s.rules = rules;
     return s;
 }
@@ -426,7 +430,8 @@ store::Lens Settings::lens() const {
         mslimit_enabled ? std::optional<int>(mslimit_value) : std::nullopt,
         // The unit the search runs with (search_depth_mode), not the raw int,
         // so the lens stays canonical (concept audit M14).
-        search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills);
+        search_depth_mode() == DepthMode::Points ? 1 : 0, depth_value, legacy_fills,
+        early_fill_window_ms);
 }
 
 store::Profile Settings::profile() const {
@@ -461,6 +466,7 @@ SettingsText describe_settings(const AnalysisSettings& settings) {
     text.depth = score_range_text(settings.depth_mode, settings.depth_value);
     text.cap = bars_text(settings.sp_cap);
     text.timing = settings.ms_filter ? format_ms_whole(*settings.ms_filter) : std::string("off");
+    text.early_fill = format_ms_whole(settings.early_fill_window_ms);
     return text;
 }
 

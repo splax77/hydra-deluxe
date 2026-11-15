@@ -66,6 +66,7 @@ void check_same_settings(const Settings& r, const Settings& s) {
     CHECK(r.preview_volume == s.preview_volume);
     CHECK(r.sp_cap == s.sp_cap);
     CHECK(r.legacy_fills == s.legacy_fills);
+    CHECK(r.early_fill_window_ms == s.early_fill_window_ms);
     CHECK(r.auto_open_report == s.auto_open_report);
     CHECK(r.dm_last_user == s.dm_last_user);
 }
@@ -88,6 +89,7 @@ TEST_CASE("settings round-trip through an INI file") {
     s.preview_volume = 23;
     s.sp_cap = 16;
     s.legacy_fills = true;
+    s.early_fill_window_ms = 37;
     s.auto_open_report = true;
     s.dm_last_user = "123456789";
 
@@ -125,7 +127,8 @@ TEST_CASE("settings: load and save name the same keys") {
         "view_noteshuffle",
         "depth_value",     "depth_mode",           "mslimit_enabled",    "mslimit_value",
         "backendlimit_enabled", "backendlimit_value", "preview_volume",
-        "sp_cap",           "legacy_fills",         "auto_open_report",   "dm_last_user",
+        "sp_cap",           "legacy_fills",         "early_fill_window_ms",
+        "auto_open_report", "dm_last_user",
         "chartfolder"};
     CHECK(names == expected);
 }
@@ -243,6 +246,62 @@ TEST_CASE("a missing INI yields defaults") {
     CHECK(r.backendlimit_value == 50);
     CHECK(r.preview_volume == 40);
     CHECK_FALSE(r.legacy_fills);
+    CHECK(r.early_fill_window_ms == static_cast<int>(hydra::kDefaultEarlyFillWindowMs));
+}
+
+// The user's ruling: the early-fill window is a setting, default 60 ms, 0 to
+// 85 ms (docs/agents/rulings/code-and-engine.md, "early fill threshold").
+TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads 60") {
+    CHECK(hydra::kDefaultEarlyFillWindowMs == 60.0);
+    CHECK(Settings{}.early_fill_window_ms == 60);
+    // A file that sets other keys but not this one: the default.
+    CHECK(load_ini_text("efill_missing", "sp_cap=8\n").early_fill_window_ms == 60);
+    for (const int ms : {0, 37, 85}) {
+        CAPTURE(ms);
+        Settings s;
+        s.early_fill_window_ms = ms;
+        const std::string path = testtemp::temp_path("efill_roundtrip", ".ini");
+        REQUIRE(s.save_file(path));
+        const Settings r = Settings::load_file(path);
+        std::remove(path.c_str());
+        CHECK(r.early_fill_window_ms == ms);
+    }
+    CHECK(load_ini_text("efill_line", "early_fill_window_ms=72\n").early_fill_window_ms == 72);
+    // Text that is not a whole number refuses, as every number key does.
+    CHECK_THROWS_AS(load_ini_text("efill_text", "early_fill_window_ms=wide\n"),
+                    hydra::app::SettingsFileError);
+    CHECK_THROWS_AS(load_ini_text("efill_decimal", "early_fill_window_ms=60.5\n"),
+                    hydra::app::SettingsFileError);
+}
+
+// The window travels with the settings into the search and into the result's
+// key, and moves nothing else in the key.
+TEST_CASE("early_fill_window_ms reaches the search and the result's key together") {
+    namespace store = hydra::store;
+    Settings at60;
+    Settings at85;
+    at85.early_fill_window_ms = 85;
+    CHECK(at60.to_analysis_settings().early_fill_window_ms == 60.0);
+    CHECK(at85.to_analysis_settings().early_fill_window_ms == 85.0);
+    CHECK(at60.lens().efill_window_ms == 60);
+    CHECK(at85.lens().efill_window_ms == 85);
+
+    // The two profiles differ in the lens's window and nowhere else.
+    const store::Profile p60 = at60.profile();
+    const store::Profile p85 = at85.profile();
+    CHECK(p60 != p85);
+    CHECK(p60.chartmode == p85.chartmode);
+    CHECK(p60.cap == p85.cap);
+    CHECK(p60.lens != p85.lens);
+    store::Lens rest = p85.lens;
+    rest.efill_window_ms = p60.lens.efill_window_ms;
+    CHECK(rest == p60.lens);
+
+    // A batch files under the window it searches with.
+    const hydra::app::BatchRun run = at85.batch_run();
+    CHECK(run.settings.early_fill_window_ms == 85.0);
+    CHECK(run.profile.lens.efill_window_ms == 85);
+    CHECK(run.profile == p85);
 }
 
 // The app and the search start from one depth; this is the literal pin.
@@ -334,6 +393,11 @@ TEST_CASE("settings: a value outside its range loads at the nearest edge") {
     // The cap's floor is 1 bar, in the file as in the box.
     CHECK(load_ini_text("range10", "sp_cap=0\n").sp_cap == 1);
     CHECK(load_ini_text("range11", "sp_cap=-3\n").sp_cap == 1);
+    // The early-fill window is 0 up to the hit window.
+    CHECK(load_ini_text("range12", "early_fill_window_ms=200\n").early_fill_window_ms == 85);
+    CHECK(load_ini_text("range13", "early_fill_window_ms=-5\n").early_fill_window_ms == 0);
+    CHECK(load_ini_text("range14", "early_fill_window_ms=0\n").early_fill_window_ms == 0);
+    CHECK(load_ini_text("range15", "early_fill_window_ms=85\n").early_fill_window_ms == 85);
 }
 
 TEST_CASE("Settings::clamp is the one range every caller asks") {
@@ -346,6 +410,10 @@ TEST_CASE("Settings::clamp is the one range every caller asks") {
     CHECK(Settings::clamp(&Settings::preview_volume, 150) == 100);
     // The cap's floor is 1 bar (D51 Q16).
     CHECK(Settings::clamp(&Settings::sp_cap, 0) == 1);
+    // The early-fill window's edges are 0 and the hit window.
+    CHECK(Settings::clamp(&Settings::early_fill_window_ms, 200) == 85);
+    CHECK(Settings::clamp(&Settings::early_fill_window_ms, -5) == 0);
+    CHECK(Settings::clamp(&Settings::early_fill_window_ms, 42) == 42);
     // The volume percent as a gain.
     CHECK(Settings::volume_gain(40) == 0.4f);
     CHECK(Settings::volume_gain(150) == 1.0f);
@@ -915,6 +983,24 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(r.backendlimit_enabled);
     CHECK(r.auto_open_report);
     CHECK(r.dm_last_user == "1234");
+}
+
+// The settings button and the Reset tooltip name the early-fill window as
+// "Early fill window" and describe_settings' value, like Path limit.
+TEST_CASE("settings summary: the early-fill window, off its default") {
+    using hydra::ui::detail::reset_settings_tooltip;
+    using hydra::ui::detail::settings_button_label;
+    Settings s;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill == "60 ms");
+    CHECK(settings_button_label(s, false) == "Analysis settings: defaults");
+    s.early_fill_window_ms = 85;
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill == "85 ms");
+    CHECK(settings_button_label(s, false) == "Analysis settings: Early fill window 85 ms");
+    CHECK(reset_settings_tooltip(s, false) == "Resets: Early fill window 85 ms");
+    s.early_fill_window_ms = 0;
+    CHECK(settings_button_label(s, false) == "Analysis settings: Early fill window 0 ms");
+    CHECK(settings_at_defaults(s.with_analysis_defaults()));
+    CHECK(s.with_analysis_defaults().early_fill_window_ms == 60);
 }
 
 TEST_CASE("config: resource_dir is the resource folder beside the exe") {

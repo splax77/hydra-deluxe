@@ -96,6 +96,7 @@ std::string change_phrase(const app::Settings& s, const app::SettingsText& value
         return s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off";
     case AnalysisSetting::SpCap: return "SP cap " + values.cap;
     case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
+    case AnalysisSetting::EarlyFillWindow: return "Early fill window " + values.early_fill;
     case AnalysisSetting::ScoreRange: return "Score range " + values.depth;
     case AnalysisSetting::PathLimit: return "Path limit " + values.timing;
     }
