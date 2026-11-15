@@ -209,4 +209,12 @@ Round 14 ran as one workflow (wf_75371b8a-90a): auditors for B4 to B7 and verifi
 
 From round 15 the briefs' file lists are built from `coverage.md` by a script (each file's lines and unit count read from the file).
 
-Round 15 ran as one workflow: auditors for C1 to C4 and verifiers for B4 to B7, launched together.
+Round 15 ran as one workflow (wf_9c90cf68-ba4): auditors for C1 to C4 and verifiers for B4 to B7, launched together. About 10.5 minutes, 259 tool calls; every slice finished.
+
+- C1 (025e63ef, 833dd89b): 53 records. Keep 3, Rewrite 23, Remove 2, Investigate 25. `decode_audio`, `decode_stem` and `mix_stems` have no caller in `src/` or `tools/`. The window-tag colour test pins a tag that `ui-and-display.md` line 108 (Unconfirmed) quotes the user as not wanting.
+- C2 (four commits, last faa2c6c2): 59 records. Rewrite 17, Investigate 42. Two splits with the game, each backed by a decision: fill landing (D30) and `drums0dnoflip` (D19).
+- C3 (e9ea0c6c): 68 records. Keep 3, Rewrite 11, Remove 5, Investigate 49.
+- C4: 6 records. Keep 2, Rewrite 2, Remove 1, Investigate 1.
+- verify B4 and B5, verify B6 and B7 (8ee29920 and the commits before it): committed.
+
+Round 16 ran as one workflow: auditors for C5 to C8 and verifiers for C1 to C4, launched together.
