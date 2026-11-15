@@ -34,6 +34,7 @@
 #include "parse/song.h"
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
+#include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
 #include "store_fixtures.h"  // fixture, at_cap, at4, no_paths_at_cap
 #include "temp_util.h"
 #include "wait_util.h"  // wait_until, WaitTimeout
@@ -41,6 +42,8 @@
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::HeldSaveGroup;
+using hydra::test::StoreFile;
 using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::fixture;
@@ -62,14 +65,6 @@ std::vector<const HydraRecord*> corpus_analyses() {
     }
     return out;
 }
-
-// A file store in the temp folder, removed when the case ends.
-struct FileStore {
-    std::string path = testtemp::temp_path("store_records", ".db");
-    ~FileStore() {
-        for (const char* ext : {"", "-wal", "-shm"}) std::remove((path + ext).c_str());
-    }
-};
 
 // Whether two lookups gave the same answer, field by field: RecordLookup has
 // no operator==.
@@ -109,55 +104,6 @@ void check_reader_answers_as_store(RecordStore& store) {
     CHECK(reader.settled_song_ids(at4()) == store.settled_song_ids(at4()));
 }
 
-// A save group a helper thread opens on `store` and holds, so the store's
-// lock is taken on another thread, until the test lets go or kWaitCap passes.
-// The constructor returns once the group is open.
-class HeldSaveGroup {
-public:
-    explicit HeldSaveGroup(RecordStore& store)
-        : helper_([this, &store] {
-              try {
-                  store.begin_save_group();
-              } catch (...) {
-                  return;  // never held: the constructor's wait gives up
-              }
-              held_ = true;
-              try {
-                  testwait::wait_until([this] { return let_go_.load(); },
-                                       "the test to let go of the save group");
-              } catch (const testwait::WaitTimeout&) {
-              }
-              held_ = false;
-              try {
-                  store.commit_save_group();
-              } catch (...) {
-              }
-          }) {
-        try {
-            testwait::wait_until([this] { return held_.load(); }, "the helper's save group");
-        } catch (...) {
-            let_go();
-            throw;
-        }
-    }
-    ~HeldSaveGroup() { let_go(); }
-    HeldSaveGroup(const HeldSaveGroup&) = delete;
-    HeldSaveGroup& operator=(const HeldSaveGroup&) = delete;
-
-    // Whether the helper still holds the group.
-    bool held() const { return held_.load(); }
-    // Lets the group go and waits for the helper to commit it.
-    void let_go() {
-        let_go_ = true;
-        if (helper_.joinable()) helper_.join();
-    }
-
-private:
-    std::atomic<bool> held_{false};
-    std::atomic<bool> let_go_{false};
-    std::thread helper_;
-};
-
 // Whether `path` can be deleted now, which on Windows means no connection
 // holds it open.
 bool can_delete(const std::string& path) {
@@ -188,7 +134,7 @@ TEST_CASE("an in-memory store reads through itself") {
 // ---- the reader of a store with a file (StoreReader) ------------------------
 
 TEST_CASE("a reader's lookup does not wait while a save group is open") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     store.save(prepare_record("h1", at4(), fixture().record));
     const RecordLookup want = store.lookup_one("h1", at4());
@@ -202,7 +148,7 @@ TEST_CASE("a reader's lookup does not wait while a save group is open") {
 }
 
 TEST_CASE("a reader sees a save group's chart only once the group commits") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     const RecordLookup before = store.reader().lookup_one("h1", at4());
 
@@ -216,14 +162,14 @@ TEST_CASE("a reader sees a save group's chart only once the group commits") {
 }
 
 TEST_CASE("the file store's reader gives the writer's answer for every lookup") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     save_four_charts(store);
     check_reader_answers_as_store(store);
 }
 
 TEST_CASE("a store opened under other rules reads the same through its reader") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         save_four_charts(store);
@@ -233,7 +179,7 @@ TEST_CASE("a store opened under other rules reads the same through its reader") 
 }
 
 TEST_CASE("a reader's lookup reads one moment") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     const PreparedRecord first = prepare_record("h1", at4(), fixture().record);
     store.save(first);
@@ -260,7 +206,7 @@ TEST_CASE("a reader's lookup reads one moment") {
 }
 
 TEST_CASE("a reader holds nothing open between reads") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     const std::filesystem::path wal = std::filesystem::u8path(file.path + "-wal");
     {
@@ -276,7 +222,7 @@ TEST_CASE("a reader holds nothing open between reads") {
 }
 
 TEST_CASE("a reader that cannot open fails the read and the next read tries again") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     store.save(prepare_record("h1", at4(), fixture().record));
 
@@ -295,7 +241,7 @@ TEST_CASE("a reader that cannot open fails the read and the next read tries agai
 }
 
 TEST_CASE("closing the store closes its reader") {
-    FileStore file;
+    StoreFile file("store_records");
     RecordStore store(file.path);
     store.save(prepare_record("h1", at4(), fixture().record));
     store.reader().lookup_one("h1", at4());
@@ -398,7 +344,7 @@ TEST_CASE("store: a lookup after a second save reads the second record, not the 
 
 TEST_CASE("store: a save purges the chart's unreadable records in every mode, and the next open "
           "deletes their emptied profiles") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         // An old build's record in another mode, then a save in this one.
@@ -423,7 +369,7 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode, an
 
 TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the next open "
           "deletes it") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library({library_row("gone", "Gone"), library_row("kept", "Kept")});
@@ -452,7 +398,7 @@ TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the n
 
 TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
           "profiles, and a later open deletes them") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library({library_row("kept", "Kept")});
@@ -620,7 +566,7 @@ TEST_CASE("store: a failure under other rules reads Stale, and one a store with 
         store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
         CHECK(store.lookup_one("h1", at4()).status == RecordStatus::CantAnalyze);
     }
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path, core::RulesStamp{core::default_stamp().fixed + 1});
         store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
@@ -661,7 +607,7 @@ TEST_CASE("store: a real save replaces a failure, and a failure replaces a real 
 }
 
 TEST_CASE("store: a failure replaces the real record's path rows in the file") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(prepare_record("h1", at4(), fixture().record));
@@ -703,7 +649,7 @@ TEST_CASE("store: settled_song_ids lists exactly lookup's Ready and CantAnalyze 
 }
 
 TEST_CASE("store: a profile whose only record is a failure is kept") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         const std::vector<ChartLibraryEntry> library = {library_row("failed", "Failed"),
@@ -721,7 +667,7 @@ TEST_CASE("store: a profile whose only record is a failure is kept") {
 }
 
 TEST_CASE("store: a failure of a kind this build cannot name reads Stale for another build") {
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
@@ -816,7 +762,7 @@ TEST_CASE("store: path rows measured on the corpus") {
     // path rows (A), without them (B), and without the records too (C). The
     // vendored SQLite has no dbstat, so a size is a difference of files.
     // Nothing here is pinned but the read-back; the numbers are printed.
-    FileStore file;
+    StoreFile file("store_records");
     constexpr int kCopies = 10;
     int64_t records = 0, path_rows = 0;
     {
@@ -995,7 +941,7 @@ TEST_CASE("store: a record made under other rules reads Stale until the store ru
 
     // A record made under the default rules reads Stale to a store running
     // other rules, and Ready again once the rules match.
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(prepare_record("h", at4(), fixture().record));
@@ -1026,7 +972,7 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
     const core::Rules other = hydra::test::other_rules();
     const PreparedRecord foreign =
         prepare_record("h", at4(), hydra::test::other_rules_record(fixture().record));
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(foreign);

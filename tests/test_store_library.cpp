@@ -24,6 +24,7 @@
 #include "record_fixtures.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
+#include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
 #include "store_fixtures.h"  // at_cap, at4
 #include "temp_util.h"
 #include "wait_util.h"  // wait_until, WaitTimeout, kWaitCap
@@ -31,6 +32,8 @@
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::HeldSaveGroup;
+using hydra::test::StoreFile;
 using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::exec_on_file;
@@ -731,69 +734,6 @@ TEST_CASE("store: rows read by name compare byte for byte, and one name keeps sc
 
 namespace {
 
-// A library file in the temp folder, removed when the case ends. The same
-// shape as test_store_records.cpp's FileStore, which lives in that file alone.
-struct LibraryFile {
-    std::string path;
-    explicit LibraryFile(const char* name) : path(testtemp::temp_path(name, ".db")) {
-        remove_all();
-    }
-    ~LibraryFile() { remove_all(); }
-    void remove_all() const {
-        for (const char* ext : {"", "-wal", "-shm"}) std::remove((path + ext).c_str());
-    }
-};
-
-// A save group a helper thread opens on `store` and holds, so the store's
-// lock is taken on another thread, until the test lets go or kWaitCap
-// passes. The same shape as test_store_records.cpp's HeldSaveGroup, which
-// lives in that file alone. The constructor returns once the group is open.
-class HeldSaveGroup {
-public:
-    explicit HeldSaveGroup(RecordStore& store)
-        : helper_([this, &store] {
-              try {
-                  store.begin_save_group();
-              } catch (...) {
-                  return;  // never held: the constructor's wait gives up
-              }
-              held_ = true;
-              try {
-                  testwait::wait_until([this] { return let_go_.load(); },
-                                       "the test to let go of the save group");
-              } catch (const testwait::WaitTimeout&) {
-              }
-              held_ = false;
-              try {
-                  store.commit_save_group();
-              } catch (...) {
-              }
-          }) {
-        try {
-            testwait::wait_until([this] { return held_.load(); }, "the helper's save group");
-        } catch (...) {
-            let_go();
-            throw;
-        }
-    }
-    ~HeldSaveGroup() { let_go(); }
-    HeldSaveGroup(const HeldSaveGroup&) = delete;
-    HeldSaveGroup& operator=(const HeldSaveGroup&) = delete;
-
-    // Whether the helper still holds the group.
-    bool held() const { return held_.load(); }
-    // Lets the group go and waits for the helper to commit it.
-    void let_go() {
-        let_go_ = true;
-        if (helper_.joinable()) helper_.join();
-    }
-
-private:
-    std::atomic<bool> held_{false};
-    std::atomic<bool> let_go_{false};
-    std::thread helper_;
-};
-
 // Checks two reads of the chart list gave the same rows in the same order,
 // field for field.
 void check_same_list(const std::vector<ChartLibraryEntry>& got,
@@ -823,7 +763,7 @@ std::vector<ChartLibraryEntry> timed_library() {
 }  // namespace
 
 TEST_CASE("the reader lists a chart's copies as the writer does") {
-    LibraryFile file("reader_copies");
+    StoreFile file("reader_copies");
     RecordStore store(file.path);
     store.rebuild_chart_library(timed_library());
 
@@ -833,7 +773,7 @@ TEST_CASE("the reader lists a chart's copies as the writer does") {
 }
 
 TEST_CASE("the reader lists the library by name as the writer does") {
-    LibraryFile file("reader_by_name");
+    StoreFile file("reader_by_name");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library(timed_library());
@@ -863,7 +803,7 @@ TEST_CASE("the reader lists the library by name as the writer does") {
 }
 
 TEST_CASE("a reader's chart list does not wait while a save group is open") {
-    LibraryFile file("reader_list_no_wait");
+    StoreFile file("reader_list_no_wait");
     RecordStore store(file.path);
     store.rebuild_chart_library(timed_library());
     const std::vector<ChartLibraryEntry> want_list = store.list_chart_library(0, -1);
@@ -880,7 +820,7 @@ TEST_CASE("a reader's chart list does not wait while a save group is open") {
 }
 
 TEST_CASE("a reader sees a rescan once it is saved") {
-    LibraryFile file("reader_rescan");
+    StoreFile file("reader_rescan");
     RecordStore store(file.path);
     store.rebuild_chart_library(timed_library());
     const std::vector<ChartLibraryEntry> before = store.reader().list_chart_library(0, -1);
