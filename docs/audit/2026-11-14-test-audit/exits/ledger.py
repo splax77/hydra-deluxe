@@ -54,55 +54,112 @@ def clean(s):
     return re.sub(r'\s+', ' ', s.replace('\t', ' ')).strip()
 
 
+# A record's title line, when it is not a Markdown heading: "**BP-2 a session ...**"
+# (records/D15.md), "**2. test_summary_is_the_first_line** (155)" (records/D13.md).
+BOLD_START = re.compile(r'^\s*(?:- )?\*\*(?!Verdict)([^*]{6,}?)\*\*(.*)$')
+# A bold lead that is a question label inside a record ("**Read:**", "**Q4**"), not a title.
+BOLD_LABEL = re.compile(r'^(Q?\d+[a-z]?|[A-Za-z /]{1,20}):?$')
+
+
+# A numbered or bulleted list line that names a test: "1. `test_x` (`:179`) ... Verdict:
+# Keep" (records/D15.md line 296).
+LIST_START = re.compile(r'^\s*(?:- )?(?:\d+\.\s+)?(?:\*\*)?`?test_\w+|^\s*(?:- )?\d+\.\s+`')
+READ_LINE = re.compile(r'^\s*(?:Read:|1 Claim:)')
+
+
+def record_start(lines, k, in_fence, fence_first, open_record):
+    """The title text if lines[k] starts a record, else None. Five shapes start one:
+    a Markdown heading; a bold lead line; a list line that names a test; the first line
+    inside a code fence (records/A22.md, B6.md, T3.md); and a paragraph whose next line
+    is "Read:" or "1 Claim:" (records/A39.md line 29, C3.md line 667). The last three, and a bold lead,
+    may carry the record's own verdict on the same line (records/E3.md line 864).
+
+    Any other line with text before "Verdict:" is not a record: that text is the
+    record's own question lines (records/E1.md line 30, E4.md line 15, D15.md line 90),
+    so the verdict belongs to the record above it. For the same reason, while a record
+    title is open (it has no verdict yet) only a heading starts a new one:
+    a record's "Read:" line, its question lines and the tests it lists under question
+    10 are part of it (records/A10.md line 26 is the "Read:" line of the record at 24)."""
+    line = lines[k]
+    if in_fence:
+        # A heading record may hold its body in a fence (records/A37.md lines 20 to 36).
+        return clean(line) if fence_first and line.strip() and not open_record else None
+    m = HEADING.match(line)
+    if m:
+        return clean(m.group(2))
+    if open_record:
+        return None
+    m = BOLD_START.match(line)
+    if m and not BOLD_LABEL.match(m.group(1).strip()):
+        return clean(m.group(1) + m.group(2))
+    if LIST_START.match(line):
+        return clean(line).lstrip('- ')
+    prev = lines[k - 1].strip() if k else ''
+    nxt = lines[k + 1] if k + 1 < len(lines) else ''
+    if line.strip() and prev in ('', '---') and READ_LINE.match(nxt) and not VERDICT.search(line):
+        return clean(line)
+    return None
+
+
 def read_records():
+    """One row per record start that carries a verdict. Every verdict line belongs to
+    the record start above it; a second verdict line under one start is a re-judge and
+    is kept on the same row (its verdicts list, earliest first)."""
     rows, unread = [], []
     rec_dir = os.path.join(AUD, 'records')
     for name in sorted(os.listdir(rec_dir)):
         if not name.endswith('.md') or name in SUPERSEDED:
             continue
         lines = lines_of(os.path.join(rec_dir, name))
-        heading, hline, hverdicts = '', 0, []
-        file_rows = []
+        heading, hline, cur = '', 0, None
+        in_fence, fence_first = False, False
 
-        def close_heading():
-            if heading and not hverdicts and RECORDISH.match(heading):
-                unread.append((name, hline, heading))
+        def close(c):
+            if c and not c['verdicts'] and RECORDISH.match(c['record']):
+                unread.append((name, c['hline'], c['record']))
+            elif c and c['verdicts']:
+                rows.append(c)
 
         for i, line in enumerate(lines, 1):
-            m = HEADING.match(line)
-            if m:
-                close_heading()
-                heading, hline, hverdicts = clean(m.group(2)), i, []
+            if line.strip().startswith('```'):
+                in_fence, fence_first = not in_fence, not in_fence
+                continue
+            # A level 1 heading is the file's title ("# A39: tests/ui/..."), so it never
+            # holds a record open. Records do sit under level 2 (records/A15.md line 30).
+            open_record = bool(cur and not cur['verdicts'] and RECORDISH.match(cur['record'])
+                               and cur.get('level', 9) > 1)
+            title = record_start(lines, i - 1, in_fence, fence_first, open_record)
+            if in_fence and line.strip():
+                fence_first = False
+            if title is not None:
+                close(cur)
+                kind = 'fence' if in_fence else ('heading' if HEADING.match(line) else 'other')
+                if kind == 'heading':
+                    heading, hline = title, i
+                vat = VERDICT.search(line)
+                cur = {'file': name, 'hline': i, 'heading': heading,
+                       'record': clean(re.split(r'(?:\*\*)?Verdict:', title)[0])[:160],
+                       'kind': kind, 'verdicts': [], 'vlines': [],
+                       'level': len(HEADING.match(line).group(1)) if kind == 'heading' else 9}
+                if not vat:
+                    continue
+            if cur is None:
                 continue
             vs = VERDICT.findall(line)
-            if not vs and not hverdicts and RECORDISH.match(heading):
+            if not vs and not cur['verdicts'] and RECORDISH.match(cur['record']):
                 # records/E1.md writes "... Investigate (RC)." with no "Verdict:".
                 b = VERDICT_BARE.findall(line)
                 if b:
-                    file_rows.append({'file': name, 'line': i, 'heading': heading,
-                                      'record': heading, 'verdicts': b[-1:], 'bare': True})
-                    hverdicts.append(b[-1])
+                    cur['verdicts'].append(b[-1])
+                    cur['vlines'].append(i)
+                    cur['bare'] = True
                 continue
-            if not vs:
-                continue
-            before = clean(line[:VERDICT.search(line).start()]).lstrip('-* ').strip()
-            if before:
-                # The record sits on this line: "12. name: reasoned. Verdict: X".
-                file_rows.append({'file': name, 'line': i, 'heading': heading,
-                                  'record': before[:160], 'verdicts': vs})
-                hverdicts.append(vs[0])
-            elif hverdicts and file_rows and file_rows[-1]['heading'] == heading \
-                    and file_rows[-1]['record'] == heading:
-                # A second verdict line under the same heading: a re-judge. Keep both.
-                file_rows[-1]['verdicts'] += vs
-                file_rows[-1]['line2'] = i
-                hverdicts.append(vs[0])
-            else:
-                file_rows.append({'file': name, 'line': i, 'heading': heading,
-                                  'record': heading, 'verdicts': vs})
-                hverdicts.append(vs[0])
-        close_heading()
-        rows += file_rows
+            if vs:
+                cur['verdicts'] += vs
+                cur['vlines'] += [i] * len(vs)
+        close(cur)
+    for r in rows:
+        r['line'] = r['vlines'][0]
     return rows, unread
 
 
@@ -320,8 +377,9 @@ def main():
     for f in sorted({r['file'] for r in recs}):
         c = Counter(r['verdicts'][-1] for r in recs if r['file'] == f)
         bare = sum(1 for r in recs if r['file'] == f and r.get('bare'))
+        multi = sum(1 for r in recs if r['file'] == f and len(r['verdicts']) > 1)
         print(f'  {f:22} {c["Keep"]:4} {c["Investigate"]:4} {c["Rewrite"]:4} {c["Remove"]:4}'
-              + (f'  bare {bare}' if bare else ''))
+              + (f'  bare {bare}' if bare else '') + (f'  2+ verdicts {multi}' if multi else ''))
     print('count rows:', len(counts))
     print('\nper count file: table rows / faulty rows (after fixes)  vs  TOTALS s1 Read / Faulty')
     tot = totals_section1()

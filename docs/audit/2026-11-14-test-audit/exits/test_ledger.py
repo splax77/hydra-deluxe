@@ -39,6 +39,50 @@ class LedgerOnRealFiles(unittest.TestCase):
         rows = [r for r in self.recs if r['file'] == 'D8.md']
         self.assertEqual(sum(len(r['verdicts']) for r in rows), lines_with_verdict)
 
+    def test_every_verdict_line_in_every_record_file_lands_in_a_row(self):
+        # No verdict is dropped or counted twice, whatever shape its record has.
+        for name in sorted(os.listdir(os.path.join(AUD, 'records'))):
+            if not name.endswith('.md') or name in ledger.SUPERSEDED:
+                continue
+            text = ledger.lines_of(os.path.join(AUD, 'records', name))
+            found = sum(len(ledger.VERDICT.findall(ln)) for ln in text)
+            rows = [r for r in self.recs if r['file'] == name and not r.get('bare')]
+            self.assertEqual(sum(len(r['verdicts']) for r in rows), found, name)
+
+    def by_start(self, name, hline):
+        rows = [r for r in self.recs if r['file'] == name and r['hline'] == hline]
+        self.assertEqual(len(rows), 1, (name, hline))
+        return rows[0]
+
+    def test_a_question_line_with_a_verdict_is_not_its_own_record(self):
+        # records/D15.md: the bold title at line 88 (BP-8) owns the verdict on line 90,
+        # which starts "- 3: real pid liveness". Line 90 starts no row.
+        r = self.by_start('D15.md', 88)
+        self.assertTrue(r['record'].startswith('BP-8'))
+        self.assertEqual(r['vlines'], [90])
+        self.assertFalse([x for x in self.recs if x['file'] == 'D15.md' and x['hline'] == 90])
+
+    def test_records_written_as_bold_lines_are_one_row_each(self):
+        # records/E3.md lines 864 to 866: one bold test name per line, each with its verdict.
+        for ln in (864, 865, 866):
+            r = self.by_start('E3.md', ln)
+            self.assertEqual(r['vlines'], [ln])
+            self.assertTrue(r['record'].startswith('test_comment_'))
+
+    def test_a_record_read_line_does_not_steal_its_heading(self):
+        # records/A10.md: the heading at line 24 is the record; line 26 is its "Read:" line.
+        r = self.by_start('A10.md', 24)
+        self.assertTrue(r['record'].startswith('1. collect_dm_rows'))
+        self.assertFalse([x for x in self.recs if x['file'] == 'A10.md' and x['hline'] == 26])
+
+    def test_a_heading_record_with_a_fenced_body_keeps_its_verdict(self):
+        # records/A37.md: heading at line 20, body fenced from line 22, verdict on line 35.
+        self.assertEqual(self.by_start('A37.md', 20)['vlines'], [35])
+
+    def test_a_paragraph_record_followed_by_its_read_line(self):
+        # records/A39.md line 29 is a record title; its next line is "Read:".
+        self.assertTrue(self.by_start('A39.md', 29)['record'].startswith('test_cap_switch'))
+
     def test_count_rows_match_totals_where_totals_reports_no_gap(self):
         # TOTALS.md section 4 names the files with a gap; these four are not among them.
         tot = ledger.totals_section1()
