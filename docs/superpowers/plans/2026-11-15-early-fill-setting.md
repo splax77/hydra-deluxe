@@ -24,7 +24,7 @@ Nothing else moves. `kHitWindowMs` stays 85 and keeps its three other readers: t
 
 ## Owner map
 
-The scout's table, copied in unchanged. The scout's own file, with its Stops and search notes, is `docs/superpowers/plans/2026-11-15-early-fill-setting-owner-map.md`. Tasks below name rows by id (O1 to O19).
+The scout's table, copied in unchanged. The scout's own file, with its Stops and search notes, is `docs/superpowers/plans/2026-11-15-early-fill-setting-owner-map.md` (removed; `git show 89950507:docs/superpowers/plans/2026-11-15-early-fill-setting-owner-map.md`). Tasks below name rows by id (O1 to O19).
 
 | Question | Owner | Its own words | Status |
 |---|---|---|---|
@@ -370,7 +370,7 @@ Calls: `hydra_stop` (never tried)
 | P19: The stamp is `3.1.2+efillhitwindow`, compared as a whole string, and one bump covers a release | code | `src/store/stored_versions.h:42-55` | checked 2026-11-15 |
 | P20: `hydra_replay` starts from default settings and clamps its number flags through `Settings::clamp` | code | `tools/replay.cpp:189-234` | checked 2026-11-15 |
 | P21: `testdata/store/v2.12.1_library.db` holds one `profiles` row with the five lens columns, no `album` column, and classifies `LacksAlbumColumn` | code | `testdata/store/README.md` "Facts the test pins" (one profile, `ms_enabled` 1, `legacy_fills` 0, stamp `2.8.0+efill85`); `src/store/library_file.cpp:101-103` | checked 2026-11-15 |
-| P22: Some chart in `testdata/input` has an activation between 60 and 85 ms from a fill deadline | unchecked | no run exists yet | LS1; blocks nothing |
+| P22: Some chart in `testdata/input` has an activation between 60 and 85 ms from a fill deadline | unchecked | `testdata/input`: no run of `hydra_replay dump --efill` exists yet | LS1; blocks nothing |
 | P23: `hydra_replay dump` analyzes a chart and prints each path's notation (with its `E` marks) and the best path | code | `tools/replay.cpp:496-519` (`cmd_dump` runs `analyze_chart_file` under `settings_from`), `tools/replay_json.cpp:184` (`pathstring`) and `:199` (`bestpath`) | checked 2026-11-15 |
 | P24: The release notes already tell users their saved results read Stale in 3.1.2 | code | `docs/releases/release-next-notes.md:3` | checked 2026-11-15 |
 | P25: `CONTEXT.md` says the early-fill window is never a setting | code | `CONTEXT.md:610-620` | checked 2026-11-15 |
