@@ -104,6 +104,8 @@ When you learn a Clone Hero fact (a game address, field, rule or live result), i
 
 When something stops you, stop and report. Give the exact command and the exact error or hook message. Never wait on a prompt, never retry the same call hoping it passes, and never guess a way around a hook. A hook that blocks you wrongly gets fixed by the main session, not routed around.
 
+A result that contradicts the user's words, as your brief or a handoff quotes them, stops you too. Return a report, not a finished plan, change or review. Quote the words, name what contradicts them, and give the file and line. Never resolve it yourself, in either direction. `docs/agents/owner-map.md`, "The stops", is the one home of this rule.
+
 ## If you write code
 
 Before you commit, do the reviewer's first step yourself. List each question your change answers in plain words ("is this note inside the SP window"). For each one, grep for the inputs it reads, not just for similar names, and check nothing else already answers it. Call the owner if one exists. Search `src/core`, `src/app`, `src/ui` and `tools`, and count an answer hidden in text or in a sign as an owner. A planner does the same search before it writes a plan step, and a rule copied from a tool, a test or a comment is never a source (agent rule 15).
