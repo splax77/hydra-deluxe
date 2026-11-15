@@ -213,7 +213,7 @@ The verdict is rewrite, and G1 is that rewrite.
 
 ### G1. The combo multiplier steps up every ten notes and stops at x4
 
-This test was written for this page. It is in `tests/test_timing.cpp` on branch `claude/good-test-multiplier`, where it replaces "timing: to_multiplier thresholds" (B14). It passes on today's code (7 of 7 checks). With the bug "combo < 10" typed as "combo <= 10" planted in `to_multiplier`, it fails on `CHECK( to_multiplier(x2_from) == 2 )`, values `1 == 2`, which names the rule that broke. Its name has no commas, because doctest's `-tc` filter splits on them. It is on this page because its record below answers every question with no exception. If a later reader finds an answer in that record that is wrong, G1 comes off this page; it does not stay with a note.
+This test was written for this page. It is in `tests/test_timing.cpp` on main, where it replaced "timing: to_multiplier thresholds" (B14). It passes on today's code. Its one review added the check at combo 0, which the first draft had dropped. With the bug "combo < 10" typed as "combo <= 10" planted in `to_multiplier`, it fails on `CHECK( to_multiplier(x2_from) == 2 )`, values `1 == 2`, which names the rule that broke. Its name has no commas, because doctest's `-tc` filter splits on them. It is on this page because its record below answers every question with no exception. If a later reader finds an answer in that record that is wrong, G1 comes off this page; it does not stay with a note.
 
 ```cpp
 TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4") {
@@ -225,6 +225,8 @@ TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4
     const int x3_from = 20;
     const int x4_from = 30;
 
+    // SC-05: 1x runs from combo 0 up to the combo before x2_from.
+    CHECK(to_multiplier(0) == 1);
     CHECK(to_multiplier(x2_from - 1) == 1);
     CHECK(to_multiplier(x2_from) == 2);
     CHECK(to_multiplier(x3_from - 1) == 2);
@@ -243,7 +245,7 @@ The record, in the rubric's own shape:
 
 ```
 timing: the combo multiplier steps up every ten notes and stops at x4
-            (tests/test_timing.cpp, branch claude/good-test-multiplier)
+            (tests/test_timing.cpp)
 Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             :12-17); multiplier_step and crosses_multiplier_step (:19-27);
             category_scores (src/core/scoring.cpp:41-57);
@@ -275,9 +277,10 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             note 31 (chord 20) x4. No Star Power pays these chords.
             Claim: x2 from the 10th, x3 from the 20th, x4 from the 30th.
             They agree.
-4 Direct:   Seven checks. Six read "at this combo, this multiplier", each
+4 Direct:   Eight checks. The first reads "a combo of 0 pays x1", SC-05's
+            first combo. Six read "at this combo, this multiplier", each
             combo written as a step SC-05 names or as one below it. The
-            seventh reads "the longest combo still pays x4". With the two
+            last reads "the longest combo still pays x4". With the three
             comments covered, the constants' names still say what each
             number is.
 5 Reason:   10, 20, 30 and the multipliers 1 to 4: SC-05, "So 1x at 0 to
@@ -293,8 +296,10 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             wrong chord. Still possible: to_multiplier is three
             hand-typed comparisons. The old test's commit named no
             failure, so this one is named here (reasoned).
-8 Deleted:  Each a change to to_multiplier; the second is confirmed
+8 Deleted:  Each a change to to_multiplier; the (x2_from) == 2 line is confirmed
             (planted, built, red), the rest reasoned.
+            (0) == 1:           a combo of 0 sent to its own branch that
+                                returns 0, as if no note had been hit.
             (x2_from - 1) == 1: "combo < 10" typed as "combo < 9".
             (x2_from) == 2:     "combo < 10" typed as "combo <= 10" (confirmed).
             (x3_from - 1) == 2: "combo < 20" typed as "combo < 19".
