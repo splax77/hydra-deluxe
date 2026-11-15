@@ -381,7 +381,7 @@ Points raised, each in its records or verify file:
 
 ## The repeated-values pass and the capture list (session 63c70014, 2026-11-15)
 
-The handoff `docs/handoffs/2026-11-15-test-audit-capture-pass-handoff.md` was checked row by row; every claim held but one. The hook-call extractor reads Claude Code's session transcripts under `~/.claude/projects`, not the agents' state files (`C:\Users\Patrick\.claude\gates\tests\replay_extract.py:25`).
+The handoff `docs/handoffs/2026-11-15-test-audit-capture-pass-handoff.md` (removed; `git show 7ea131fa8d7b0ddd61af86a13ab7e4ca6e3ea34f:docs/handoffs/2026-11-15-test-audit-capture-pass-handoff.md`) was checked row by row; every claim held but one. The hook-call extractor reads Claude Code's session transcripts under `~/.claude/projects`, not the agents' state files (`C:\Users\Patrick\.claude\gates\tests\replay_extract.py:25`).
 
 The repeated-values pass is finished. RP2 sorted rows 70 to 138 (`repeats/RP2.md`, commit 29e5bd5b). One fresh verifier read each sorter's file against the code: `repeats/V-RP1.md` (13395dc0), `V-RP2.md` (18c16051) and `V-RP3.md` (c45bd92c). The main session spot-checked owner lines in each verifier file before using it. The agreed candidates are in `cross-findings.md`: X1 and X2 gained copies, and X3 to X8 are new. The same file lists what was disputed, what is not settled and the single-file pins. The verifiers set aside the made-up "3- 1 2" strings in `test_overlay_layout.cpp` as the test's own input. The user overruled that ("tests should test their intended behavior directly, not make up an arbitrary meaningless string"), so they stay in X1 and start X9. The brief's K3 definition now excludes made-up stand-ins for engine output. The K3 rows have not been re-read for X9.
 
@@ -398,3 +398,11 @@ The user asked for runs only for the clean Investigate records ("capture the rea
 R1 to R6 ran without errors. R8, the ref gate's replay of the real main moves, fails: today's gate refuses 65 of them, where the test allows one known exception. That is a finding for the re-judge, not a run error. Believer's path 4 needed a depth-4 dump. R2 added `--legacy-fills` beside the two windows.
 
 Not run: R4b to R4h, whose scripts are unwritten; R7 and R9, which serve no clean record. CLEAN.md leaves 171 records unplaced, 54 with no run, 16 with unavailable input and 1 that needs the user's library. No record has been re-judged against the outputs.
+
+## The screen captures and every clean record judged (session f9b4f64e, 2026-11-15)
+
+The session continued `docs/handoffs/2026-11-15-test-audit-capture-runs-handoff.md` (removed; `git show 7ea131fa8d7b0ddd61af86a13ab7e4ca6e3ea34f:docs/handoffs/2026-11-15-test-audit-capture-runs-handoff.md`). Its claims held, and the audit branch was fast-forwarded to it.
+
+The user said "Yes, run them". Scouts drafted the R4b to R4f screen scripts and the main session ran them, and a Paths tab run for A19 PL13 (commit f2bdc318). The user then said "so instead of figuring out how to capture those you took the lazy route and declared it impossible". The main session added the Dynamics tab at Hard and the running batch strip (commit 9dd8221d). A click's Cancel stayed out of reach after four tries. `capture/runs/index.md` has each run. The Path Builder runner cannot open a chart, so R4h's Path Builder records have no run.
+
+Three re-judges read the runs (`capture/rejudge/`). Most records came back not shown, because the runs had been planned by group, not by claim. The user said "just proceed without captures for the remaining and use your best judgement with static code analysis". Nine scouts judged every remaining clean record by reading (`capture/byreading/`, commit 7ea131fa). 34 rows are shown by a run, 333 hold by reading, 20 cannot be told, and none is contradicted. `capture/byreading/SUMMARY.md` lists the side notes that need an exit. No exit has been chosen.
