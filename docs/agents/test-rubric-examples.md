@@ -211,12 +211,12 @@ The verdict is rewrite, and G1 is that rewrite.
 
 ## A good example
 
-### G1. The combo multiplier steps up at combos 10, 20 and 30 and stops at x4
+### G1. The combo multiplier steps up every ten notes and stops at x4
 
-This test was written for this page. It is not in `tests/` at this page's commit. It belongs in `tests/test_timing.cpp`, where it replaces "timing: to_multiplier thresholds" (B14), and the file gains `#include <limits>`. It is on this page because its record below answers every question with no exception. If a later reader finds an answer in that record that is wrong, G1 comes off this page; it does not stay with a note.
+This test was written for this page. It is in `tests/test_timing.cpp` on branch `claude/good-test-multiplier`, where it replaces "timing: to_multiplier thresholds" (B14). It passes on today's code (7 of 7 checks). With the bug "combo < 10" typed as "combo <= 10" planted in `to_multiplier`, it fails on `CHECK( to_multiplier(x2_from) == 2 )`, values `1 == 2`, which names the rule that broke. Its name has no commas, because doctest's `-tc` filter splits on them. It is on this page because its record below answers every question with no exception. If a later reader finds an answer in that record that is wrong, G1 comes off this page; it does not stay with a note.
 
 ```cpp
-TEST_CASE("timing: the combo multiplier steps up at combos 10, 20 and 30 and stops at x4") {
+TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4") {
     using hydra::to_multiplier;
 
     // The combo at which each multiplier starts: SC-05 in
@@ -242,8 +242,8 @@ Every number in it is either typed in SC-05 (10, 20, 30 and the multipliers 1 to
 The record, in the rubric's own shape:
 
 ```
-timing: the combo multiplier steps up at combos 10, 20 and 30 and stops
-            at x4 (written for this page; for tests/test_timing.cpp)
+timing: the combo multiplier steps up every ten notes and stops at x4
+            (tests/test_timing.cpp, branch claude/good-test-multiplier)
 Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             :12-17); multiplier_step and crosses_multiplier_step (:19-27);
             category_scores (src/core/scoring.cpp:41-57);
@@ -293,9 +293,10 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             wrong chord. Still possible: to_multiplier is three
             hand-typed comparisons. The old test's commit named no
             failure, so this one is named here (reasoned).
-8 Deleted:  All reasoned, each a change to to_multiplier.
+8 Deleted:  Each a change to to_multiplier; the second is confirmed
+            (planted, built, red), the rest reasoned.
             (x2_from - 1) == 1: "combo < 10" typed as "combo < 9".
-            (x2_from) == 2:     "combo < 10" typed as "combo <= 10".
+            (x2_from) == 2:     "combo < 10" typed as "combo <= 10" (confirmed).
             (x3_from - 1) == 2: "combo < 20" typed as "combo < 19".
             (x3_from) == 3:     "combo < 20" typed as "combo <= 20".
             (x4_from - 1) == 3: "combo < 30" typed as "combo < 29".
