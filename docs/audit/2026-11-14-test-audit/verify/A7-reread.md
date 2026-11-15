@@ -2,7 +2,7 @@
 
 Verifier: agent afd9b69d406393613 (task T5-V-R3b). Read-only; nothing run. The round 2 verifier of A7 agreed with these records without reading their code line by line. I read the code behind each of the ten. Every mark is "by reading". Nothing is "proven by": no run of these tests exists in the records folders.
 
-Records re-read: 10 of 10 (`tests/test_app_reports.cpp` lines 344, 608, 631, 736, 761, 777; `tests/test_app_shell.cpp` lines 247, 286, 350, 408). Verdicts I agree with: 8. Verdicts I dispute: 1 (record 44, line 408). One more agrees on the verdict but one of its Q8 claims is wrong (record 35, line 247). Two of the six report records and none of the four shell records are wrong on the verdict; the errors found are all inside Q8 claims.
+Records re-read: 10 of 10 (`tests/test_app_reports.cpp` lines 344, 608, 631, 736, 761, 777; `tests/test_app_shell.cpp` lines 247, 286, 350, 408). Verdicts I agree with: 9. Verdicts I dispute: 1 (record 44, line 408). Of the nine I agree with, one has a wrong Q8 claim inside it (record 35, line 247), and one (record 17, line 608) has a missing check I name. The six report records hold line by line.
 
 Question 3 for all ten: the record says "claim not checked" because `records-screen/index.md` lists the path report window as not captured. I confirmed that line (`records-screen/index.md:66`: "the path report and the Path Builder" under "What is not captured"). The records name the capture needed. That rules Keep out; the verdicts are Investigate or Rewrite, which is right.
 
