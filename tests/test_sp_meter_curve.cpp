@@ -19,7 +19,9 @@
 #include "app/analysis.h"
 #include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
+#include "core/backend_value.h"  // core::after_sp_end
 #include "core/model.h"
+#include "core/replay.h"
 #include "core/squeeze_rating.h"
 #include "core/timing.h"  // sp_bars_to_measures
 #include "corpus_util.h"
@@ -47,6 +49,21 @@ void check_curve_well_formed(const SpMeterCurve& curve) {
         CHECK(s.start_bars <= static_cast<double>(curve.cap) + 1e-9);
         CHECK(s.end_bars <= static_cast<double>(curve.cap) + 1e-9);
     }
+}
+
+// The stored path of `rec` whose notation is `notation`, or null.
+const Path* path_named(const HydraRecord& rec, const std::string& notation) {
+    for (const Path* p : rec.all_paths())
+        if (p->pathstring() == notation) return p;
+    return nullptr;
+}
+
+// The record's early squeeze-out: the activation squeezed out a chord that
+// core::after_sp_end (the search's own SqueezeChoice::late question) says
+// is not after its stored end. Asked of the two stored ticks.
+bool early_sqout(const Activation& a) {
+    const std::optional<int64_t> d = a.deact_tick();
+    return d && a.sqout_tick && !core::after_sp_end(*a.sqout_tick, *d);
 }
 
 }  // namespace
@@ -754,4 +771,227 @@ TEST_CASE("sp meter readout: bars banked over the cap") {
     CHECK(sp_meter_readout(t.scene.sp_meter, 4000.0) == "0.5/4");
     // No curve at all (a chart with no Star Power): an empty gauge.
     CHECK(sp_meter_readout(SpMeterCurve{}, 0.0) == "0.0/4");
+}
+
+// The Preview against the engine's record, squeeze by squeeze, on every
+// stored path of every corpus chart. The expected side is always a stored
+// tick: sqout_tick, the stored end (deact_tick) or a stored step's tick.
+// Which side of the stored end a squeezed chord sits on is asked of those
+// stored ticks with core::after_sp_end, the function the search asks.
+//   An early squeeze-out (the chord is not after the stored end): the
+//   window, drawn and ghost, ends on the chord, and the squeezed-out bar
+//   arrives there, one whole bar on the gauge.
+//   A late squeeze-out: the window ends on the stored end, and the bar
+//   arrives on the chord.
+//   A squeeze-in step: the gauge's change sits on the step's stored tick.
+//   For a late one (the chord is after the end in force before it) the
+//   gauge is empty just before the chord and gains the bar on it.
+// Each of the four kinds must occur at least once, so a corpus that loses
+// one fails here instead of passing with nothing checked.
+TEST_CASE("Preview windows end on the squeezed chord on every corpus path") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int early_out = 0, late_out = 0, early_in = 0, late_in = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        auto ms_at = [&](int64_t tick) { return song.timecode(tick).ms(); };
+
+        for (const Path* p : rec.all_paths()) {
+            CAPTURE(p->pathstring());
+            // The same path as the ghost too: its ghost windows are checked
+            // against the same record.
+            const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules,
+                                                           std::nullopt, /*ghost_path=*/p);
+            const SpMeterCurve& c = scene.sp_meter;
+            const ActivationWalk acts = p->walk_activations();
+            REQUIRE(scene.activations.size() == acts.size());
+            REQUIRE(scene.ghost_windows.size() == acts.size());
+            for (size_t i = 0; i < acts.size(); ++i) {
+                CAPTURE(i);
+                const Activation& a = acts[i];
+                const PreviewActivation& pa = scene.activations[i];
+                const std::optional<int64_t> deact = a.deact_tick();
+                REQUIRE(deact.has_value());
+
+                // Where the record says this window's Star Power is over.
+                int64_t over_tick = *deact;
+                if (a.sqout_tick) {
+                    const int64_t chord = *a.sqout_tick;
+                    // The squeezed-out bar is the first the next window (or
+                    // the trailing bank) holds, and it arrives on the chord.
+                    const std::vector<int64_t>& next = i + 1 < acts.size()
+                                                           ? scene.activations[i + 1].bank_rise_ticks
+                                                           : scene.trailing_bank_ticks;
+                    REQUIRE_FALSE(next.empty());
+                    CHECK(next.front() == chord);
+                    if (early_sqout(a)) {
+                        ++early_out;
+                        over_tick = chord;
+                        // One whole bar lands on the chord, unless the next
+                        // activation spends it on that same note.
+                        const bool spent_there =
+                            i + 1 < acts.size() && acts[i + 1].timecode.ticks() == chord;
+                        if (!spent_there) {
+                            const double m = ms_at(chord);
+                            CHECK(sp_meter_bars_at(c, m) ==
+                                  doctest::Approx(
+                                      sp_meter_bars_at(c, std::nextafter(m, -1e300)) + 1.0));
+                        }
+                    } else {
+                        ++late_out;
+                    }
+                }
+                const std::optional<std::pair<double, double>> w = pa.sp_window();
+                REQUIRE(w.has_value());
+                CHECK(pa.sp_end_tick == over_tick);
+                // Both sides come from the song's one tick-to-ms map; the
+                // tight epsilon keeps a squeezed chord a few ticks before its
+                // stored end from passing as the end.
+                CHECK(w->second == doctest::Approx(ms_at(over_tick)).epsilon(1e-12));
+                CHECK(scene.ghost_windows[i].second ==
+                      doctest::Approx(ms_at(over_tick)).epsilon(1e-12));
+
+                // Each squeeze-in step, against the gauge's change.
+                REQUIRE(pa.sp_end_changes.size() == a.sp_end_steps.size());
+                for (size_t k = 1; k < a.sp_end_steps.size(); ++k) {
+                    const SpEndStep& step = a.sp_end_steps[k];
+                    if (!is_sqin_kind(step.kind)) continue;
+                    CAPTURE(step.tick);
+                    CHECK(pa.sp_end_changes[k].at_tick == step.tick);
+                    if (core::after_sp_end(step.tick, a.sp_end_steps[k - 1].end_tick)) {
+                        ++late_in;
+                        const double m = ms_at(step.tick);
+                        CHECK(sp_meter_bars_at(c, std::nextafter(m, -1e300)) < 1e-6);
+                        CHECK(sp_meter_bars_at(c, m) > 1e-6);
+                    } else {
+                        ++early_in;
+                    }
+                }
+            }
+        }
+    }
+    CHECK(early_out > 0);
+    CHECK(late_out > 0);
+    CHECK(late_in > 0);
+    CHECK(early_in > 0);
+}
+
+// Chord by chord, on every stored path of every corpus chart: for each
+// activation that squeezed out early (early_sqout, asked of the stored
+// ticks), the Preview has Star Power running on every chord from the
+// activation up to the squeezed-out chord, and not running on that chord or
+// any chord after it before the next activation. The record says Star Power
+// is over there: Activation::set_sqout drops every row past the chord as hit
+// after SP ended, and the replay pays them nothing from this window, which
+// the case checks too. The squeezed chord itself is the window's end, and
+// sp_running_at reads every window's end as not running.
+TEST_CASE("Preview lights each chord the record says is before the end") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    ReplayOptions opts;
+    opts.scores_only = true;
+    int lit = 0, unlit = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+
+        for (const Path* p : rec.all_paths()) {
+            CAPTURE(p->pathstring());
+            const ActivationWalk acts = p->walk_activations();
+            bool any = false;
+            for (size_t i = 0; i < acts.size(); ++i) any = any || early_sqout(acts[i]);
+            if (!any) continue;
+            const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            REQUIRE(scene.activations.size() == acts.size());
+            const PathReplay replay = replay_stored_path(song, *p, cfg.rules, opts);
+            for (size_t i = 0; i < acts.size(); ++i) {
+                const Activation& a = acts[i];
+                if (!early_sqout(a)) continue;
+                CAPTURE(i);
+                const PreviewActivation& pa = scene.activations[i];
+                const int64_t act_tick = a.timecode.ticks();
+                const int64_t chord_out = *a.sqout_tick;
+                const int64_t next_act = i + 1 < acts.size()
+                                             ? acts[i + 1].timecode.ticks()
+                                             : std::numeric_limits<int64_t>::max();
+                for (const ReplayChord& rc : replay.result.chords) {
+                    if (rc.tick < act_tick || rc.tick >= next_act) continue;
+                    CAPTURE(rc.tick);
+                    const double ms = song.timecode(rc.tick).ms();
+                    if (rc.tick < chord_out) {
+                        CHECK(pa.sp_running_at(ms));
+                        ++lit;
+                        continue;
+                    }
+                    CHECK_FALSE(pa.sp_running_at(ms));
+                    ++unlit;
+                    if (rc.tick > chord_out)
+                        for (const ReplayPayment& pay : rc.paid_by)
+                            CHECK(pay.act_tick != act_tick);
+                }
+            }
+        }
+    }
+    CHECK(lit > 0);
+    CHECK(unlit > 0);
+}
+
+// Numbers from the engine's record on two corpus charts, saved from the main
+// session's hydra_replay run on 2026-11-14 (PS0b). The user's words this
+// pins: "blight - starpower ends when the green cymbal + kick is squeezed
+// out, not when the measure ends" and "pitch dark - the red snare is where
+// the squeeze in happens, yet the bar refills one note before". Blight is
+// not in the corpus; its moments are read on screen instead (PS4).
+TEST_CASE("Blight, Pitch Dark and Burnout: literals") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+
+    SUBCASE("Burnout: the window ends on the squeezed-out chord, tick 70800") {
+        const std::string chart = corpus::chart_named("Green Day - Burnout");
+        REQUIRE_FALSE(chart.empty());
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        const Path* p = path_named(corpus::analyzed(chart, cfg), "3- 1 2");
+        REQUIRE(p != nullptr);
+        const Activation& a = p->walk_activations()[0];
+        // The record, as PS0b saved it: activation 59520, stored end 71040
+        // (48,783.075 ms), squeezed-out chord 70800 (48,620.0315 ms).
+        REQUIRE(a.timecode.ticks() == 59520);
+        REQUIRE(a.deact_tick() == std::optional<int64_t>(71040));
+        REQUIRE(a.sqout_tick == std::optional<int64_t>(70800));
+        REQUIRE(song.timecode(71040).ms() == doctest::Approx(48783.075).epsilon(1e-7));
+
+        const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+        REQUIRE_FALSE(scene.activations.empty());
+        const PreviewActivation& pa = scene.activations[0];
+        CHECK(pa.sp_end_tick == 70800);
+        REQUIRE(pa.sp_window().has_value());
+        CHECK(pa.sp_window()->second == doctest::Approx(48620.0315).epsilon(1e-7));
+    }
+
+    SUBCASE("Pitch Dark: the bar refills on the red snare, tick 128520") {
+        const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
+        REQUIRE_FALSE(chart.empty());
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        const Path* p = path_named(corpus::analyzed(chart, cfg), "3+ 2+ 1");
+        REQUIRE(p != nullptr);
+        const Activation& a = p->walk_activations()[0];
+        // The record, as PS0b saved it: the activation, a clamp, and the
+        // squeeze-in on chord 243, the red snare, at 100,975.37 ms.
+        REQUIRE((a.sp_end_steps ==
+                 std::vector<SpEndStep>{{109440, 124800, SpEndKind::Activation},
+                                        {113040, 128400, SpEndKind::Clamped},
+                                        {128520, 132240, SpEndKind::SqIn}}));
+        REQUIRE(song.timecode(128520).ms() == doctest::Approx(100975.37).epsilon(1e-7));
+
+        const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+        REQUIRE_FALSE(scene.activations.empty());
+        REQUIRE(scene.activations[0].sp_end_changes.size() == 3);
+        CHECK(scene.activations[0].sp_end_changes[2].at_tick == 128520);
+        // 45 ms before the snare the gauge is empty, waiting for it; 25 ms
+        // after it the bar is back.
+        CHECK(sp_meter_readout(scene.sp_meter, 100930.0) == "0.0/4");
+        CHECK(sp_meter_readout(scene.sp_meter, 101000.0) == "1.0/4");
+    }
 }
