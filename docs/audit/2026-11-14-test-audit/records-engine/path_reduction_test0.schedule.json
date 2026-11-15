@@ -3749,9 +3749,9 @@
   "window_back_ms": 85.0,
   "window_front_ms": 37.5
  },
- "hydra_replay_build": "Nov 15 2026 08:59:35",
+ "hydra_replay_build": "Nov 15 2026 09:58:31",
  "path_source": {
-  "file": "C:\\Users\\Patrick\\AppData\\Local\\Temp\\aud_path_reduction_test0.dump.json",
+  "file": "C:\\Users\\Patrick\\Downloads\\Hydra\\hydra-test\\worktrees\\test-audit-records\\docs\\audit\\2026-11-14-test-audit\\records-engine\\path_reduction_test0.dump.json",
   "index": 0
  },
  "presses": [

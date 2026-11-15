@@ -1,0 +1,45 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open I'm A Believer (The Monkees cover)
+wait-idle
+click **/Preview
+wait-idle
+type **/##scrub | 50.975341
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a1_start_50975.3ms.png | **/##highway_image
+type **/##scrub | 30.572539
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a1_sp_ready_30572.5ms.png | **/##highway_image
+type **/##scrub | 62.626303
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a1_end_minus_1ms_62626.3ms.png | **/##highway_image
+type **/##scrub | 62.627303
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a1_end_62627.3ms.png | **/##highway_image
+type **/##scrub | 100.515216
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a2_start_100515.2ms.png | **/##highway_image
+type **/##scrub | 83.038369
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a2_sp_ready_83038.4ms.png | **/##highway_image
+type **/##scrub | 109.255572
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a2_sqin1_end_109255.6ms.png | **/##highway_image
+type **/##scrub | 112.164598
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a2_end_minus_1ms_112164.6ms.png | **/##highway_image
+type **/##scrub | 112.165598
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a2_end_112165.6ms.png | **/##highway_image
+type **/##scrub | 141.322901
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a3_start_141322.9ms.png | **/##highway_image
+type **/##scrub | 135.491999
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a3_sp_ready_135492.0ms.png | **/##highway_image
+type **/##scrub | 147.149035
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a3_end_minus_1ms_147149.0ms.png | **/##highway_image
+type **/##scrub | 147.150035
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a3_end_147150.0ms.png | **/##highway_image
+type **/##scrub | 167.558351
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a4_start_167558.4ms.png | **/##highway_image
+type **/##scrub | 161.727057
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a4_sp_ready_161727.1ms.png | **/##highway_image
+type **/##scrub | 173.391196
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a4_end_minus_1ms_173391.2ms.png | **/##highway_image
+type **/##scrub | 173.392196
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_a4_end_173392.2ms.png | **/##highway_image
+type **/##scrub | 0.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_path0_song_start_0.0ms.png | **/##highway_image

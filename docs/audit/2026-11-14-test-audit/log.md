@@ -49,3 +49,18 @@ Score against the key: key count 6, found 6. Verdict: **pass**. Both tests whose
 T4: the agent finished its whole file well inside the warning, so the slice table stands.
 
 One thing to carry into the find rounds: most of its records still read "claim not checked" on question 3, because T1 saved only engine dumps, not what the screens show on those charts. Under the new question 3, the main session captures both sides, so the screen side is still to capture before the rounds.
+
+## 2026-11-15, the screen side
+
+First pass (commit 2232c1b9): Pitch Dark and I'm A Believer, the Paths and Stars tabs as text and a Preview screenshot at each activation's start. The four fixture charts were left out because the corpus library does not list them, and no screenshot sat at an SP end, a squeeze or an SP-ready moment. The main session proposed stopping there with a handoff. The user's words: "no. you dont get to stop and refuse to do the work. figure out how to get what you need and do it." (chat, not a filed ruling).
+
+What closed each gap:
+
+- **The four fixtures.** Each fixture's chart was copied byte for byte into `records-screen/fixture_songs/<name>/` beside a three-line `song.ini`, and `hydra_uitest --ini fixtures.ini` points the library there. A first pass in window mode (Hydra.exe on a scratch library) proved it; headless command files replaced it, because they can be rerun and they save the replies themselves.
+- **Exact moments.** `records-screen/moments.py` reads a schedule and writes playhead lines (`type **/##scrub | <seconds>`) and highway screenshots at each activation's start, SP-ready moment, squeeze ends, 1 ms before the SP end and the SP end. 102 screenshots in all.
+- **Believer's squeeze-out path.** Path 4 is the fourth score below the best, so "Score range 2 scores" does not list it. `corpus_depth4.ini` widens the range to 4, and the command file clicks `**/##path4`. The Preview then reads "Showing { 1 0- 1 }". Believer's path 0 was also scheduled (`records-engine/believer.schedule.json`) and captured at its moments.
+- **The early-fill case.** Beg (Evans Blue), from `testdata/input/common`, was dumped, scheduled and captured: its best path "1- 0 0 E0" ends with an E0 activation whose row reads "early fill 0.0 ms". It also has a second squeeze-out.
+
+Main moved during this work. Another session merged the hit-window change (0bfa2dce, from eef6b1d6: the E mark reads the 85 ms hit window on both sides; the 60 ms slack is gone) and filed two more rulings at c10c7f54 (an adjustable early-fill setting, default 60 ms, 0 to 85 ms). The engine records had come from a19b9cb2, and the first screen captures from programs built before that merge. So `hydra_replay` was rebuilt at 326cd4e0 (pass 36e1ec78, slot 2) and every chart re-dumped and re-scheduled: every dump came out the same, and every schedule changed only in its build stamp and source path. `hydra_uitest` was rebuilt at c10c7f54 (pass 6a816298, slot 1; `src/` the same as 326cd4e0) and every capture rerun: the five that had run before gave the same text. Two window sessions left records in `.git/realapp.jsonl` that name 326cd4e0, though the Hydra.exe they ran was built at 09:47, before the merge; all their captures were replaced by the headless runs.
+
+One correction to the engine index came out of the check: it said `flammarker_ingame`'s dump has no paths. It has one, "(No activations.)" at 155295.

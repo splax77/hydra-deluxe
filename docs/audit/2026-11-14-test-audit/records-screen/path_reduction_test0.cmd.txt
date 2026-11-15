@@ -1,0 +1,39 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open audit path_reduction_test0
+wait-idle
+click **/Expand all
+text
+click **/Stars
+text
+click **/Preview
+wait-idle
+type **/##scrub | 18.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a1_start_18000.0ms.png | **/##highway_image
+type **/##scrub | 3.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a1_sp_ready_3000.0ms.png | **/##highway_image
+type **/##scrub | 29.999000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a1_end_minus_1ms_29999.0ms.png | **/##highway_image
+type **/##scrub | 30.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a1_end_30000.0ms.png | **/##highway_image
+type **/##scrub | 38.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a2_start_38000.0ms.png | **/##highway_image
+type **/##scrub | 33.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a2_sp_ready_33000.0ms.png | **/##highway_image
+type **/##scrub | 45.999000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a2_end_minus_1ms_45999.0ms.png | **/##highway_image
+type **/##scrub | 46.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a2_end_46000.0ms.png | **/##highway_image
+type **/##scrub | 60.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a3_start_60000.0ms.png | **/##highway_image
+type **/##scrub | 48.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a3_sp_ready_48000.0ms.png | **/##highway_image
+type **/##scrub | 67.999000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a3_end_minus_1ms_67999.0ms.png | **/##highway_image
+type **/##scrub | 68.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_a3_end_68000.0ms.png | **/##highway_image
+type **/##scrub | 0.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/path_reduction_test0_song_start_0.0ms.png | **/##highway_image
