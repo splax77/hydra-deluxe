@@ -1,0 +1,1169 @@
+records_file	record_heading	prefilter
+A1.md	sample_path_rows (tests/report_samples.cpp:11-45)	q3-unchecked
+A1.md	sample_dm_rows (tests/report_samples.cpp:70-103)	q3-unchecked
+A10.md	1. collect_dm_rows joins scores to records and labels them (tests/test_dm_report.cpp:61)	q3-unchecked
+A10.md	2. collect_dm_rows: no percent off 100% speed; store identity fallback (tests/test_dm_report.cpp:102)	q3-unchecked
+A10.md	3. dmbot JSON parsers handle canned payloads (tests/test_dm_report.cpp:119)	q3-unchecked
+A10.md	4. collect_dm_rows answers above-optimal beside the status (tests/test_dm_report.cpp:171)	q3-unchecked
+A10.md	5. dm comparison: a score's search text is folded and tag-free (tests/test_dm_report.cpp:196)	q3-unchecked
+A10.md	6. generate_dm_report: tally and framing behind one seam (tests/test_dm_report.cpp:205)	q3-unchecked
+A10.md	7. generate_dm_report hands over its rows, subtitle, footer, player and mode (tests/test_dm_report.cpp:242)	q3-unchecked
+A10.md	8. dm_tiles: the tiles count only the scores shown (tests/test_dm_report.cpp:282)	q3-unchecked
+A10.md	9. status_token: each status's chip colour (tests/test_dm_report.cpp:331)	q3-unchecked
+A10.md	10. collect_dm_rows: the stored names go through display_title, display_artist and display_charter (tests/test_dm_report.cpp:345)	q3-unchecked
+A10.md	11. collect_dm_rows: a leaderboard row's DMBot names lose their Clone Hero tags (tests/test_dm_report.cpp:368)	q3-unchecked
+A10.md	12. collect_dm_rows: a leaderboard row with no charter shows the library's, else (unknown) (D266 item 2) (tests/test_dm_report.cpp:392)	q3-unchecked
+A10.md	14. dm comparison: the average tile reads a percent the way the cells do (tests/test_dm_report.cpp:451)	q3-unchecked
+A10.md	15. collect_dm_rows: the % of opt column sorts on the shown hundredths (tests/test_dm_report.cpp:471)	q3-unchecked
+A10.md	19. collect_dm_rows tells no current result from not in library (tests/test_dm_report.cpp:740)	q3-unchecked
+A10.md	20. collect_dm_rows: a Ready record with no paths reads "no paths" (tests/test_dm_report.cpp:777)	q3-unchecked
+A10.md	21. why_not_comparable names the missing Clone Hero rule (tests/test_dm_report.cpp:829)	q3-unchecked
+A10.md	22. why_not_comparable for settings asks about the Clone Hero cap profile (tests/test_dm_report.cpp:865)	q3-unchecked
+A10.md	23. clone_hero_cap_phrase and compare_tooltip name SP cap 4 (tests/test_dm_report.cpp:887)	q3-unchecked
+A10.md	24. why_not_comparable refuses Note Shuffle, and only Note Shuffle changes (tests/test_dm_report.cpp:895)	q3-unchecked
+A10.md	25. collect_dm_rows refuses a non-Expert chart mode with the toolbar's sentence (tests/test_dm_report.cpp:929)	q3-unchecked
+A10.md	26. collect_dm_rows refuses a chart mode it cannot read (tests/test_dm_report.cpp:948)	q3-unchecked
+A10.md	27. collect_dm_rows: a database with no chart library stops with the path report's sentence (tests/test_dm_report.cpp:959)	q3-unchecked
+A10.md	28. collect_dm_rows: a result whose chart the library doesn't list is left out (tests/test_dm_report.cpp:975)	q3-unchecked
+A10.md	29. collect_dm_rows reads the Clone Hero cap profile by name (tests/test_dm_report.cpp:994)	q3-unchecked
+A10.md	30. settings_change_touches: the comparison reads its chart mode and the lens, not the cap (tests/test_dm_report.cpp:1030)	q3-unchecked
+A11.md	1. docs match code: the User Guide's hydra_rules.ini sample is the defaults (tests/test_docs_match_code.cpp:411)	
+A11.md	2. docs match code: every marked default equals the code's value (tests/test_docs_match_code.cpp:468)	
+A11.md	3. docs match code: the marker check catches a wrong number and a wrong word (tests/test_docs_match_code.cpp:482)	q3-unchecked
+A11.md	5. docs match code: every backticked code name exists in src/, tools/ or tests/ (tests/test_docs_match_code.cpp:1036)	
+A12.md	1. a scrambled name on a Clone Hero page fails with its line (tests/test_docs_match_code.cpp:1109)	q3-unchecked
+A12.md	2. a page span is found by the table's cited column (tests/test_docs_match_code.cpp:1122)	q3-unchecked
+A12.md	3. what counts as a game fact on a Clone Hero page (tests/test_docs_match_code.cpp:1134)	q3-unchecked
+A12.md	4. which spans and which build a Clone Hero page line has (tests/test_docs_match_code.cpp:1156)	q3-unchecked
+A12.md	5. every game fact on a Clone Hero page has a home (tests/test_docs_match_code.cpp:1195)	
+A12.md	7. the scratch path check catches each path form and skips only the two folders (tests/test_docs_match_code.cpp:1273)	q3-unchecked
+A12.md	8. no permanent doc or code comment names a docs path that is not in the tree (tests/test_docs_match_code.cpp:1416)	
+A12.md	9. the docs path check reads each path form and skips the removed form (tests/test_docs_match_code.cpp:1447)	q3-unchecked
+A12.md	11. the premise map check catches each form and reads only the plans that count (tests/test_docs_match_code.cpp:1890)	q3-unchecked
+A12.md	12. every picture the public pages link is a shot the capture script takes, and the file exists (tests/test_docs_match_code.cpp:2032)	
+A12.md	13. the README's Stale sentence has no version list (tests/test_docs_match_code.cpp:2139)	q3-unchecked
+A12.md	14. code lexer: C++ and Python comments and string literals (tests/test_docs_match_code.cpp:2170)	q3-unchecked
+A13.md	1. search invariants hold across the corpus and config knobs (tests/test_engine_sweeps.cpp:74)	q3-unchecked
+A13.md	2. the engine's limit walk agrees with Activation::within_ms_limit (tests/test_engine_sweeps.cpp:147)	q3-unchecked
+A13.md	4. note total: the engine, the Song and the Dynamics tab agree on every corpus chart (tests/test_engine_sweeps.cpp:245)	q3-unchecked
+A13.md	5. the graph finds the chart's multiplier squeezes once, in chart order (tests/test_engine_sweeps.cpp:286)	q3-unchecked
+A13.md	6. legacy fill deadline analyzes a chart end to end (tests/test_engine_sweeps.cpp:325)	q3-unchecked
+A13.md	7. stored transfer scales match the display-layer recomputation (tests/test_engine_sweeps.cpp:410)	q3-unchecked
+A13.md	8. no activation keeps backends past its squeezed-out note (tests/test_engine_sweeps.cpp:480)	
+A13.md	9. search_allzero returns only all-0 paths inside the 0 ms limit (tests/test_engine_sweeps.cpp:517)	q3-unchecked
+A13.md	10. corpus: squeeze-ins at exactly 0 and what they change (tests/test_engine_sweeps.cpp:581)	q3-unchecked
+A13.md	11. score graph: the backend rows are sized once, one per chord (tests/test_engine_sweeps.cpp:670)	q3-unchecked
+A13.md	12. run_search: EngineOptions carries each knob to the engine (tests/test_engine_sweeps.cpp:695)	q3-unchecked
+A13.md	14. settings_key: the text for SearchSettings{} is pinned, and every field moves it (tests/test_engine_sweeps.cpp:745)	q3-unchecked
+A13.md	15. a 4-bar graph built at the song's phrase count stores the same paths (tests/test_engine_sweeps.cpp:770)	q3-unchecked
+A13.md	16. graph_build_cap: never taller than the song's phrases, never below one (tests/test_engine_sweeps.cpp:804)	q3-unchecked
+A13.md	17. fill deadline: CH 1.0 anchor value (tests/test_fill_deadline.cpp:43)	q3-unchecked
+A13.md	18. fill deadline: CH 1.0 lead over two fill lengths, one per tempo (tests/test_fill_deadline.cpp:53)	q3-unchecked
+A13.md	19. fill deadline: CH 1.0 pad stays fractional at odd resolutions (tests/test_fill_deadline.cpp:77)	q3-unchecked
+A13.md	20. fill deadline: CH 1.0 preroll clamps at 250 ms (tests/test_fill_deadline.cpp:92)	q3-unchecked
+A13.md	21. fill deadline: CH 1.0 preroll clamps at 10000 ms (tests/test_fill_deadline.cpp:103)	q3-unchecked
+A13.md	22. fill deadline: CH 1.1 is unchanged 4-beats-before math (tests/test_fill_deadline.cpp:114)	q3-unchecked
+A13.md	23. fill deadline: the two rules genuinely differ (tests/test_fill_deadline.cpp:146)	q3-unchecked
+A13.md	24. fill rule names: one long and one short name per rule, and no (legacy) (tests/test_fill_deadline.cpp:159)	q3-unchecked
+A13.md	25. fill rule descriptions: one sentence per rule (tests/test_fill_deadline.cpp:175)	q3-unchecked
+A14.md	How to read these records	q3-unchecked
+A14.md	1. collect_fill_rows: delta sign and status literals (tests/test_fill_report.cpp:117)	q3-unchecked
+A14.md	2. collect_fill_rows: 1.0 higher and same (tests/test_fill_report.cpp:142)	q3-unchecked
+A14.md	3. collect_fill_rows: a chart with a record under one rule only still gets a row (tests/test_fill_report.cpp:166)	q3-unchecked
+A14.md	4. collect_fill_rows: a stored failure is no record on its side (tests/test_fill_report.cpp:195)	q3-unchecked
+A14.md	5. collect_fill_rows: a 1.0 record with no score and no 1.1 record (tests/test_fill_report.cpp:215)	q3-unchecked
+A14.md	6. collect_fill_rows: a chart with records under both fill rules in one database gives one row, named from that database's library (tests/test_fill_report.cpp:232)	q3-unchecked
+A14.md	7. tally_fill_rows counts every status (tests/test_fill_report.cpp:261)	q3-unchecked
+A14.md	8. collect_fill_rows: copies come from the library (tests/test_fill_report.cpp:291)	q3-unchecked
+A14.md	9. collect_fill_rows counts each status through ChartIndex::count (tests/test_fill_report.cpp:339)	q3-unchecked
+A14.md	10. fill page: the tiles add up the copies tally_fill_rows adds up (tests/test_fill_report.cpp:369)	q3-unchecked
+A14.md	11. build_fill_html substitutes every placeholder (tests/test_fill_report.cpp:429)	q3-unchecked
+A14.md	12. build_fill_html: text columns sort on the windows' folded text (tests/test_fill_report.cpp:476)	q3-unchecked
+A14.md	13. build_fill_html: the count line's total is singular at one chart (tests/test_fill_report.cpp:499)	q3-unchecked
+A14.md	14. build_fill_html colours and sums the delta from the status (tests/test_fill_report.cpp:515)	q3-unchecked
+A14.md	15. report payload: the search field is folded and tag-free (tests/test_fill_report.cpp:533)	q3-unchecked
+A14.md	16. generate_fill_report: tally and framing behind one seam (tests/test_fill_report.cpp:544)	q3-unchecked
+A14.md	17. collect_fill_rows: the names go through display_title, display_artist and display_charter (tests/test_fill_report.cpp:585)	q3-unchecked
+A14.md	18. generate_fill_report: one chart reads "1 chart" in the subtitle (tests/test_fill_report.cpp:601)	q3-unchecked
+A14.md	19. collect_fill_rows: a record under both rules with a score under one is in both (tests/test_fill_report.cpp:611)	q3-unchecked
+A14.md	20. generate_fill_report: a score on one side only is counted, and the parts add up (tests/test_fill_report.cpp:646)	q3-unchecked
+A14.md	21. generate_fill_report: a database with no chart library stops with the path report's sentence (tests/test_fill_report.cpp:684)	q3-unchecked
+A14.md	22. collect_fill_rows: a result whose chart the library doesn't list is left out (tests/test_fill_report.cpp:697)	q3-unchecked
+A14.md	23. search: a later-ready path never knocks out one an upcoming fill still spawns for (tests/test_fills_and_skips.cpp:36)	q3-unchecked
+A14.md	24. Skipped fills: the 1.0 rule's offered fill is the one stored (tests/test_fills_and_skips.cpp:59)	q3-unchecked
+A14.md	25. Skipped fills: under the 1.1 rule a fill exactly at the reach edge is stored (tests/test_fills_and_skips.cpp:80)	q3-unchecked
+A14.md	26. search: a fill that needs a 70 ms early hit is taken as a required early fill (tests/test_fills_and_skips.cpp:145)	q3-unchecked
+A14.md	27. search: SP ready 70 ms before a fill's deadline still marks the activation E (tests/test_fills_and_skips.cpp:154)	
+A14.md	28. Skipped fills: every corpus root passes over real fills in order (tests/test_fills_and_skips.cpp:164)	
+A14.md	29. trailing fills: a corpus path lists the fills after its last activation that the meter allows (tests/test_fills_and_skips.cpp:234)	q3-unchecked
+A14.md	30. trailing fills: a path whose last window outlasts the chart lists none (tests/test_fills_and_skips.cpp:270)	q3-unchecked
+A14.md	31. trailing fills: a full pin of a corpus path agrees with the free search (tests/test_fills_and_skips.cpp:303)	q3-unchecked
+A14.md	32. trailing fills: the path with no activation lists every fill the meter allows (tests/test_fills_and_skips.cpp:322)	q3-unchecked
+A14.md	33. FittedTextCache: one fit per cell and width (tests/test_fitted_text_cache.cpp:28)	q3-unchecked
+A14.md	34. FittedTextCache: a new width fits the cell again (tests/test_fitted_text_cache.cpp:50)	q3-unchecked
+A14.md	35. FittedTextCache: new text in a cell fits it again (tests/test_fitted_text_cache.cpp:63)	q3-unchecked
+A14.md	36. FittedTextCache: a cleared cache fits every cell afresh (tests/test_fitted_text_cache.cpp:73)	q3-unchecked
+A14.md	37. FittedTextCache: Memory::reset drops the fits (tests/test_fitted_text_cache.cpp:86)	q3-unchecked
+A14.md	38. report Memory: a new result or any change of the search moves the table's reset key (tests/test_fitted_text_cache.cpp:98)	q3-unchecked
+A14.md	39. corpus cache: one parse and one analysis per chart and settings (tests/test_helpers.cpp:37)	
+A14.md	40. corpus cache: a failure is thrown again on every call (tests/test_helpers.cpp:67)	
+A14.md	42. scratch_settings: the GUI tests' settings are the app's defaults at depth 2 (tests/test_helpers.cpp:111)	
+A15.md	1. time_to_z: Onyx's linear time->depth map (tests/test_highway_draw.cpp:42)	q3-unchecked
+A15.md	2. far_time: now plus speed times secs_future (tests/test_highway_draw.cpp:53)	q3-unchecked
+A15.md	3. pad_x: the note area split into four lanes, left to right (tests/test_highway_draw.cpp:60)	
+A15.md	4. make_camera: Onyx's tilted view and right-handed projection (tests/test_highway_draw.cpp:77)	q3-unchecked
+A15.md	5. stretch_matrix and light_for (tests/test_highway_draw.cpp:100)	q3-unchecked
+A15.md	6. build_highway_draws: order and geometry for a frame (tests/test_highway_draw.cpp:141)	q3-unchecked
+A15.md	7. build_highway_draws: a Red gem just ahead fills Onyx's box (tests/test_highway_draw.cpp:256)	q3-unchecked
+A15.md	8. build_highway_draws: ghost shrinks 70% and overlays; accent overlays (tests/test_highway_draw.cpp:275)	q3-unchecked
+A15.md	9. build_highway_draws: a ghost kick keeps full width and overlays (tests/test_highway_draw.cpp:297)	q3-unchecked
+A15.md	10. build_highway_draws: hit flash and target glow after a note passes (tests/test_highway_draw.cpp:316)	q3-unchecked
+A15.md	11. build_highway_draws: a chord exactly on the playhead is lit (tests/test_highway_draw.cpp:362)	
+A15.md	12. build_highway_draws: energy gems inside an SP phrase, tinted floor in an active window (tests/test_highway_draw.cpp:388)	q3-unchecked
+A15.md	13. build_highway_draws: the taken fill lights its lane with the lit target (tests/test_highway_draw.cpp:423)	
+A15.md	22. build_highway_draws: an empty window still draws floor, railings and targets (tests/test_highway_draw.cpp:769)	
+A15.md	23. texture_file names every texture (tests/test_highway_draw.cpp:781)	q3-unchecked
+A15.md	30. build_highway_draws: nothing marks the SP end on the lanes (tests/test_highway_draw.cpp:1019)	
+A16.md	1. jobs: a scan that throws finishes with its error as a problem (tests/test_library_jobs.cpp:115)	q3-unchecked
+A16.md	2. jobs: the batch clock leaves paused time out (tests/test_library_jobs.cpp:130)	q3-unchecked
+A16.md	3. jobs: time left is the rate over the last 2W finished charts (tests/test_library_jobs.cpp:152)	q3-unchecked
+A16.md	4. jobs: time left shows nothing until 2W charts have finished, then shows (tests/test_library_jobs.cpp:177)	q3-unchecked
+A16.md	9. jobs: the snapshot names the chart being analyzed and freezes its clock at the end (tests/test_library_jobs.cpp:289)	q3-unchecked
+A16.md	10. jobs: the progress line's artist reads (unknown) when it is only tags (tests/test_library_jobs.cpp:314)	q3-unchecked
+A16.md	11. jobs: a failed chart reads in plain words and keeps the raw text (tests/test_library_jobs.cpp:331)	q3-unchecked
+A16.md	12. jobs: a batch that fails as a whole shows its error and counts no chart (tests/test_library_jobs.cpp:355)	
+A16.md	13. jobs: the snapshot's counts come from the batch in one piece (tests/test_library_jobs.cpp:373)	
+A16.md	16. jobs: a report job lists the records filed under its run (tests/test_library_jobs.cpp:467)	q3-unchecked
+A16.md	17. jobs: an empty report shows generate_report's reason, or the app's own (tests/test_library_jobs.cpp:478)	q3-unchecked
+A16.md	18. jobs: the startup open reads saved paths with its own words, then the library (tests/test_library_jobs.cpp:538)	q3-unchecked
+A16.md	23. jobs: a cancelled leaderboard fetch is not an error (tests/test_library_jobs.cpp:973)	q3-unchecked
+A16.md	24. jobs: a failed leaderboard fetch says what to do (tests/test_library_jobs.cpp:1014)	q3-unchecked
+A17.md	4. library query: a mixed ASCII and non-ASCII string folds to its pinned text (tests/test_library_query.cpp:83)	q3-unchecked
+A17.md	7. library query: only a real lead byte starts a kept character (tests/test_library_query.cpp:144)	q3-unchecked
+A17.md	11. library query: the report pages' fold table is the fold, one character at a time (tests/test_library_query.cpp:189)	q3-unchecked
+A17.md	27. library query: highlight spans cover the displayed bytes (tests/test_library_query.cpp:501)	
+A17.md	30. library query: every Search tips example parses into the key its entry names (tests/test_library_query.cpp:561)	
+A17.md	34. a chart folder past 260 characters scans, reads, and previews (tests/test_long_paths.cpp:124)	
+A17.md	38. shell_path gives the shell a short name for a long path (tests/test_long_paths.cpp:232)	
+A18.md	3. note value: one owner for base, cymbal and dynamic points (tests/test_model.cpp:68)	q3-unchecked
+A18.md	4. category_scores: the squeeze-out cut is basescore at each note's multiplier (tests/test_model.cpp:78)	
+A18.md	7. squeeze_difficulty and is_e0: one owner for the engine and the model (tests/test_model.cpp:145)	
+A18.md	13. multiplier_step: the multipliers at a chord's two ends (tests/test_model.cpp:250)	q3-unchecked
+A18.md	16. Activation::needs_timing: squeezes inside and slack fills need none (tests/test_model.cpp:334)	
+A18.md	41. MultSqueeze accepts exactly the 2- to 5-note chords that straddle a multiplier step (tests/test_model.cpp:983)	q3-unchecked
+A18.md	42. MultSqueeze::gain is the best order minus the worst order (tests/test_model.cpp:1020)	q3-unchecked
+A19.md	PL1. build_score_breakdown: exact lines, rounded like the report (tests/test_path_list.cpp:23)	
+A19.md	PL2. path buttons: each path's own hardest timing, warn past the difficult floor (tests/test_path_list.cpp:42)	q3-unchecked
+A19.md	PL4. build_path_list: score groups and the all-0 dedupe rule (tests/test_path_list.cpp:94)	q3-unchecked
+A19.md	PL6. path_identity: same path, rescored path, trimmed path (tests/test_path_list.cpp:169)	q3-unchecked
+A19.md	PL7. build_path_list: the dedupe and the overlay key read one identity (tests/test_path_list.cpp:197)	q3-unchecked
+A19.md	PL8. build_multsqueezes: one labeled entry per squeeze (tests/test_path_list.cpp:219)	q3-unchecked
+A19.md	PL9. PathsTabCache: views are built once and rebuilt only when their inputs move (tests/test_path_list.cpp:229)	q3-unchecked
+A19.md	PL10. path buttons: Burnout's list, in the mockup's groups (tests/test_path_list.cpp:268)	q3-unchecked
+A19.md	PL11. multiplier squeeze: Burnout's one squeeze and the fold's summary (tests/test_path_list.cpp:327)	q3-unchecked
+A19.md	PL14. PathsTabCache: folds reset for a new path, not for a display setting (tests/test_path_list.cpp:398)	q3-unchecked
+A19.md	PL15. path_item_id: the label, two hashes and the index (tests/test_path_list.cpp:433)	q3-unchecked
+A19.md	PB1. choices hint: a row is clicked, and a hover promises nothing (tests/test_pb_text.cpp:52)	q3-unchecked
+A19.md	PB2. candidate row: the clock, phrases, end and squeeze of a priced fill (tests/test_pb_text.cpp:56)	q3-unchecked
+A19.md	PB3. choice order: cheapest first, ties in chart order, pending last (tests/test_pb_text.cpp:112)	q3-unchecked
+A19.md	PB4. step short: start, end and phrases (tests/test_pb_text.cpp:131)	q3-unchecked
+A19.md	PB5. step short: the row carries the Paths tab's badge words (tests/test_pb_text.cpp:146)	q3-unchecked
+A19.md	PB6. end choice text: the end measure and the Paths tab's badge words (tests/test_pb_text.cpp:165)	q3-unchecked
+A19.md	PB7. fill refusal: the five kinds in fill_reason's order, and fill_reason's sentence for each (tests/test_pb_text.cpp:203)	q3-unchecked
+A19.md	PB8. fill card: an offered fill reads the heading, three rows and two grey lines (tests/test_pb_text.cpp:298)	q3-unchecked
+A19.md	PB9. fill card: a costless fill reads best and "This is the best choice now." (tests/test_pb_text.cpp:313)	q3-unchecked
+A19.md	PB10. fill card: taken, locked, refused and pending fills read the heading and their one line (tests/test_pb_text.cpp:326)	q3-unchecked
+A19.md	PC1. precheck self-test: the fixture's planted items, each check off, the sizes and the whole tree (tests/test_precheck.cpp:355)	q3-unchecked
+A2.md	1. display format: the average multiplier rounds the exact double (tests/test_activation_rows.cpp:60)	
+A2.md	2. display format: ms text is one decimal, a space and the unit (tests/test_activation_rows.cpp:68)	
+A2.md	4. build_activations: rows and backend rows line up (tests/test_activation_rows.cpp:118)	q3-unchecked
+A2.md	5. build_activations: the scale line shows the multipliers its rows read, early first (tests/test_activation_rows.cpp:142)	q3-unchecked
+A2.md	6. kTransferScaleHint explains the measure scaling (tests/test_activation_rows.cpp:301)	q3-unchecked
+A2.md	7. build_activations: overfill warning text (tests/test_activation_rows.cpp:310)	q3-unchecked
+A2.md	11. build_activations: plain rows past the leeway show 0 (tests/test_activation_rows.cpp:525)	
+A2.md	12. format_measure: one form for both tabs (tests/test_activation_rows.cpp:570)	q3-unchecked
+A2.md	13. activation rows: Burnout's three activations (tests/test_activation_rows.cpp:582)	q3-unchecked
+A2.md	15. activation badges: one per timing, the fill first, then each squeeze (tests/test_activation_rows.cpp:740)	
+A20.md	What every record below shares	q3-unchecked
+A20.md	1. build_preview_scene: notes carry lane and drum attributes (tests/test_preview_scene.cpp:37)	q3-unchecked
+A20.md	4. build_preview_scene: SP phrase, solo, and fill spans (tests/test_preview_scene.cpp:96)	q3-unchecked
+A20.md	6. build_preview_scene: a generated fill draws the half measure before its chord (tests/test_preview_scene.cpp:128)	q3-unchecked
+A20.md	8. build_preview_scene: each solo's notes for the solo box, path-free (tests/test_preview_scene.cpp:189)	q3-unchecked
+A20.md	9. build_preview_scene: drum lanes come from the song's drum lanes (tests/test_preview_scene.cpp:209)	q3-unchecked
+A20.md	16. build_beat_events: a 3/4 section changes the beat count per bar (tests/test_preview_scene.cpp:330)	q3-unchecked
+A20.md	19. build_preview_scene fills beats, tempos and resolution (tests/test_preview_scene.cpp:389)	q3-unchecked
+A20.md	22. parser keeps the SP-phrase start on the flagged note (tests/test_preview_scene.cpp:454)	
+A20.md	23. build_preview_scene: an analyzed chart's overlay matches its path (tests/test_preview_scene.cpp:475)	
+A20.md	24. base + overlay: equals build_preview_scene on the hand-built fixtures (tests/test_preview_scene.cpp:690)	q3-unchecked
+A20.md	25. base + overlay: equals build_preview_scene on every corpus chart and stored path (tests/test_preview_scene.cpp:744)	
+A20.md	26. path_overlay_key: no overlay, the same path, and a changed path (tests/test_preview_scene.cpp:778)	q3-unchecked
+A20.md	30. build_preview_scene: a corpus best path as the ghost lists its taken fills (tests/test_preview_scene.cpp:898)	
+A20.md	31. preview scene: fills after the last activation read Offered when the engine lists them, Hidden otherwise (tests/test_preview_scene.cpp:925)	
+A20.md	32. preview fills: every stored passed-over fill is a fill in the scene (tests/test_preview_scene.cpp:967)	
+A21.md	1. the Preview load builds the highway timeline on its worker (tests/test_preview_controller.cpp:170)	
+A21.md	2. the Preview load stops the beat lines at the song's length, not the audio's end (tests/test_preview_controller.cpp:190)	q3-unchecked
+A21.md	3. the Preview overlay job builds the highway timeline on its worker (tests/test_preview_controller.cpp:242)	
+A21.md	4. the Preview base job builds the path-free scene and timeline (tests/test_preview_controller.cpp:290)	q3-unchecked
+A21.md	7. a cancelled click job stops before counting (tests/test_preview_controller.cpp:360)	
+A21.md	13. scrub marks: the Preview's scrubber ends at the song's length (tests/test_preview_controller.cpp:498)	q3-unchecked
+A21.md	14. scrub marks: a stated length past the audio ends playback and the scrubber there (tests/test_preview_controller.cpp:514)	q3-unchecked
+A21.md	15. the Preview's playback, time box and scrubber all end at the song's length (tests/test_preview_controller.cpp:531)	q3-unchecked
+A21.md	18. set_ghost_path: the ghost's fills land on the scene, and clearing it empties them (tests/test_preview_controller.cpp:610)	q3-unchecked
+A21.md	22. a second mode change during a notes reload wins (tests/test_preview_controller.cpp:822)	q3-unchecked
+A21.md	26. the Preview volume is the settings owner's: default and clamp (tests/test_preview_controller.cpp:951)	q3-unchecked
+A21.md	27. the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song (tests/test_preview_controller.cpp:960)	q3-unchecked
+A22.md	Load progress (`tests/test_preview_load_progress.cpp`)	q3-unchecked
+A22.md	Renderer (`tests/test_preview_renderer.cpp`)	q3-unchecked
+A23.md	1. replay reproduces the engine's score for every corpus path (tests/test_replay.cpp:104)	
+A23.md	3. replay: a solo's bonus reaches the on-screen total on the section's last chord (tests/test_replay.cpp:179)	q3-unchecked
+A23.md	4. targeted search reproduces every corpus path (tests/test_replay.cpp:209)	
+A23.md	5. every tied variant stores what a search pricing it alone stores (tests/test_replay.cpp:311)	
+A23.md	6. targeted search rejects a tick that is not a fill (tests/test_replay.cpp:340)	
+A23.md	7. replay without Star Power scores no doubling at all (tests/test_replay.cpp:360)	
+A23.md	9. paid_by_sp: yes exactly when the row's SP value is above zero (tests/test_replay.cpp:407)	
+A23.md	14. windows read from a path JSON match the ones read from the record (tests/test_replay.cpp:550)	
+A23.md	16. paths_json writes every field the dump readers use (tests/test_replay.cpp:649)	
+A23.md	18. paths_json: a tempo marker on the activation tick gives the earlier segment's ratio (tests/test_replay.cpp:758)	q3-unchecked
+A23.md	19. paths_json: a change on the tick bounds neither of its steady spans (tests/test_replay.cpp:779)	q3-unchecked
+A23.md	20. paths_json: a time signature change between the ticks gives the measure ratio (tests/test_replay.cpp:798)	q3-unchecked
+A23.md	21. paths_json: a clamped end is anchored on its collecting note (tests/test_replay.cpp:820)	
+A24.md	1. paths_json writes the end ratio the search stored (tests/test_replay.cpp:835)	q3-unchecked
+A24.md	3. result block: an empty record writes a null score and an empty bestpath (tests/test_replay.cpp:871)	q3-unchecked
+A24.md	5. a window ending on a phrase note with no offset is flagged (tests/test_replay.cpp:917)	q3-unchecked
+A24.md	6. per-note sp points sum to the chord's sp points (tests/test_replay.cpp:994)	q3-unchecked
+A24.md	9. a typed squeeze-out on a chord the engine never squeezes out is refused (tests/test_replay.cpp:1110)	q3-unchecked
+A24.md	10. a typed squeeze-out offset halfway between two phrase chords is refused (tests/test_replay.cpp:1139)	q3-unchecked
+A24.md	11. a typed squeeze-out on a phrase banked before the activation is refused (tests/test_replay.cpp:1165)	
+A24.md	14. the squeeze-out warning quotes the whole drop under sqout_rule (tests/test_replay.cpp:1272)	q3-unchecked
+A24.md	16. offered_phrase: the newest step's phrase early, the first unsqueezed one late (tests/test_replay.cpp:1350)	q3-unchecked
+A24.md	17. sqout_chords: a window's newest phrase at or before D, or the first after D (tests/test_replay.cpp:1375)	q3-unchecked
+A24.md	18. category_scores reports the multiplier each note was paid at (tests/test_replay.cpp:1395)	
+A24.md	19. category_scores prices a dynamic cymbal's bonus at its own note (tests/test_replay.cpp:1420)	q3-unchecked
+A24.md	21. replay copies each note's dynamics bonus (tests/test_replay.cpp:1477)	
+A24.md	22. replay names each note's dynamic (tests/test_replay.cpp:1489)	
+A24.md	23. chord_score_table: literal rows on a hand-built chart (tests/test_replay.cpp:1517)	q3-unchecked
+A24.md	24. replay multipliers agree with the combo on every corpus chord (tests/test_replay.cpp:1595)	q3-unchecked
+A24.md	25. replay score fields: one list in schema order (tests/test_replay.cpp:1624)	
+A24.md	27. replay: scores_only leaves chord_code and notes empty and every score the same (tests/test_replay.cpp:1649)	
+A25.md	P2. the fill page carries the shared stylesheet and script (tests/test_report_page.cpp:82)	q3-unchecked
+A25.md	P3. path_tiles: the six sample rows (tests/test_report_page.cpp:130)	q3-unchecked
+A25.md	P4. path_tiles: the tiles count only the rows shown (tests/test_report_page.cpp:141)	q3-unchecked
+A25.md	P5. path_tiles: Charts shown adds each chart's copies once (tests/test_report_page.cpp:168)	q3-unchecked
+A25.md	P6. dm_tiles: the four sample scores (tests/test_report_page.cpp:181)	q3-unchecked
+A25.md	P7. page_template writes the windows' empty-state sentence into the script (tests/test_report_page.cpp:198)	q3-unchecked
+A25.md	P8. the fill page is a standards-mode document (tests/test_report_page.cpp:278)	q3-unchecked
+A25.md	P9. report colours meet WCAG contrast in both themes (tests/test_report_page.cpp:287)	q3-unchecked
+A25.md	R4. path report: a batch's records read back as a fresh analysis's rows (tests/test_report_rows.cpp:253)	
+A25.md	R6. all_paths lists paths best first on every corpus chart (tests/test_report_rows.cpp:376)	
+A25.md	R8. path report: the Charts shown tile counts what generate_report counts (tests/test_report_rows.cpp:430)	q3-unchecked
+A25.md	R9. generate_report hands over its rows, subtitle and footer (tests/test_report_rows.cpp:451)	q3-unchecked
+A25.md	R20. tier_for walks the timing_tiers table edge by edge (tests/test_report_rows.cpp:786)	q3-unchecked
+A25.md	R22. generate_report: one seam frames the report for every entry point (tests/test_report_rows.cpp:812)	q3-unchecked
+A26.md	RG1. run guard: an unquoted filter split at its dot is refused (tests/test_run_guard.cpp:15)	q3-unchecked
+A26.md	RG2. run guard: a filter given twice is refused, however many dashes or dt- prefix it has (tests/test_run_guard.cpp:25)	q3-unchecked
+A26.md	RG5. run guard: a real run whose include filter matched nothing is refused (tests/test_run_guard.cpp:55)	q3-unchecked
+A26.md	RU3. rules: every key in the file is read (tests/test_rules.cpp:85)	q3-unchecked
+A26.md	RU14. BackendSqueeze::summarystr: the tier edges for both row kinds (tests/test_rules.cpp:250)	q3-unchecked
+A26.md	RU15. rules: the leeway changes what the engine counts (tests/test_rules.cpp:269)	q3-unchecked
+A26.md	RU17. rules: max_tied_paths is one count per score, inside paths first (tests/test_rules.cpp:318)	q3-unchecked
+A26.md	RU18. rules: a path over the Path limit stays kept when it ties the optimal score (tests/test_rules.cpp:349)	q3-unchecked
+A26.md	RU19. rules: a path over the Path limit below the best score is dropped even as a tie (tests/test_rules.cpp:384)	q3-unchecked
+A26.md	RU25. rules: the default stamp is built once and matches a fresh record (tests/test_rules.cpp:487)	q3-unchecked
+A26.md	RU26. rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8 (tests/test_rules.cpp:496)	q3-unchecked
+A26.md	RV3. report view shares its result's rows instead of copying them (tests/test_report_view.cpp:241)	
+A26.md	RV7. report view sort: Timing sorts in ladder order, not by name (tests/test_report_view.cpp:329)	q3-unchecked
+A26.md	RV9. path report cells read as the page wrote them (tests/test_report_view.cpp:399)	q3-unchecked
+A26.md	RV10. path report: Timing choices and the keep-rule (tests/test_report_view.cpp:435)	q3-unchecked
+A26.md	RV12. dm comparison cells read as the page wrote them (tests/test_report_view.cpp:519)	q3-unchecked
+A26.md	RV13. dm comparison: Status choices, the keep-rule, sort and count line (tests/test_report_view.cpp:556)	q3-unchecked
+A27.md	SF1. a saved path with a squeeze-in on the SP end gets its figure back (tests/test_saved_figure_fill.cpp:93)	q3-unchecked
+A27.md	SF5. a chart whose replay throws keeps its rows empty, and the fill goes on (tests/test_saved_figure_fill.cpp:168)	q3-unchecked
+A27.md	SF6. the fill on several workers writes the same figures as on one (tests/test_saved_figure_fill.cpp:212)	
+A27.md	SF7. an inside-Star-Power squeeze-in fills a negative figure that shows as none (tests/test_saved_figure_fill.cpp:286)	q3-unchecked
+A27.md	SF8. the fill hands every row of one chart the same graph (tests/test_saved_figure_fill.cpp:308)	q3-unchecked
+A27.md	SF10. a row under an older stamp is left alone by the fill (tests/test_saved_figure_fill.cpp:371)	
+A27.md	SA1. map_song_stems maps a file, leaves a missing file empty and moves bytes in (tests/test_song_audio.cpp:59)	q3-unchecked
+A27.md	SA2. open_song_stems skips a stem that will not open and reports its progress (tests/test_song_audio.cpp:83)	q3-unchecked
+A27.md	SA3. mix_song_stems pads a negative offset in front (tests/test_song_audio.cpp:117)	q3-unchecked
+A27.md	ST1. search_target: a path missing a named activation is dropped, the rest kept (tests/test_search_target.cpp:104)	q3-unchecked
+A27.md	ST2. search_target: a variant that took every named activation outlives its dropped root (tests/test_search_target.cpp:141)	q3-unchecked
+A27.md	ST3. search_target: a kept root's tied variant that missed a named activation is dropped (tests/test_search_target.cpp:198)	q3-unchecked
+A27.md	ST5. search_target: every corpus path pinned in full comes back alone, the same (tests/test_search_target.cpp:274)	
+A27.md	ST7. search_target: activation pins return the tick search's paths and its failing tick (tests/test_search_target.cpp:345)	q3-unchecked
+A27.md	ST8. search_target: the binary search names the last or a middle window that breaks (tests/test_search_target.cpp:370)	q3-unchecked
+A27.md	ST9. free after: with nothing pinned the search is the plain search (tests/test_search_target.cpp:397)	
+A27.md	SI1. .mid: practice sections come from the first EVENTS track only, and the time box names the one in force (tests/test_song_input.cpp:34)	q3-unchecked
+A27.md	SI5. .chart: a modifier with no note under it is skipped (tests/test_song_input.cpp:111)	q3-unchecked
+A28.md	4. graph: every deactivation edge lists the chords squeeze_window_phrases names (tests/test_sp_end.cpp:179)	q3-unchecked
+A28.md	5. graph: a squeeze choice before or after the SP end, pinned (tests/test_sp_end.cpp:212)	
+A28.md	6. graph: the tick and ms tests of 'after the SP end' agree across a tempo change on the end (tests/test_sp_end.cpp:265)	q3-unchecked
+A28.md	7. SP cap overfill: where the end lands and which note clamped it (tests/test_sp_end.cpp:327)	
+A28.md	11. collected phrases: the corpus agrees with the squeezes and the SP end (tests/test_sp_end.cpp:445)	
+A28.md	12. SP end history: a late squeeze-in is a SqIn step on its phrase (tests/test_sp_end.cpp:475)	
+A28.md	13. SP end history: an early squeeze-in measures from the end before it (tests/test_sp_end.cpp:492)	
+A28.md	14. SP end history: a squeeze-out measures from the deact node (tests/test_sp_end.cpp:515)	
+A28.md	15. search: scales anchor on the collecting note and the SqIn's own end (tests/test_sp_end.cpp:543)	q3-unchecked
+A28.md	17. squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path (tests/test_sp_end.cpp:635)	
+A28.md	21. SP end history: every corpus activation is consistent (tests/test_sp_end.cpp:759)	
+A28.md	23. Bank: every corpus path banks in order (tests/test_sp_end.cpp:821)	
+A28.md	24. graph: a deactivation edge's rows are a range of the graph's rows (tests/test_sp_end.cpp:837)	
+A29.md	2. sp meter curve: the bank between windows is the record's, not a phrase count (tests/test_sp_meter_curve.cpp:85)	q3-unchecked
+A29.md	3. sp meter curve: a phrase collected mid-activation jumps the meter a bar (tests/test_sp_meter_curve.cpp:119)	q3-unchecked
+A29.md	4. sp meter curve: a squeezed-out phrase does not bank mid-drain (tests/test_sp_meter_curve.cpp:155)	q3-unchecked
+A29.md	5. sp meter curve: a full bank that collects a phrase and stores no row (tests/test_sp_meter_curve.cpp:186)	q3-unchecked
+A29.md	6. sp meter curve: two clamped collections refill twice and empty at the deact node (tests/test_sp_meter_curve.cpp:237)	q3-unchecked
+A29.md	7. sp meter curve: a bar that arrives on the activation note is spent there, not counted twice (tests/test_sp_meter_curve.cpp:274)	q3-unchecked
+A29.md	8. sp meter curve: the drain is linear in measures across a tempo change (tests/test_sp_meter_curve.cpp:303)	q3-unchecked
+A29.md	14. sp meter curve: a late squeeze-in refills on the squeezed chord (tests/test_sp_meter_curve.cpp:413)	q3-unchecked
+A29.md	21. sp meter curve: a meter change inside the window changes the drain rate (tests/test_sp_meter_curve.cpp:598)	q3-unchecked
+A29.md	22. sp meter curve: a stored SP end that drops a fraction of a tick (tests/test_sp_meter_curve.cpp:631)	q3-unchecked
+A29.md	23. sp meter curve: every corpus gauge starts at its spent bars and empties at its window's end (tests/test_sp_meter_curve.cpp:699)	
+A29.md	25. Preview windows end on the squeezed chord on every corpus path (tests/test_sp_meter_curve.cpp:784)	q3-unchecked
+A29.md	26. Preview lights each chord the record says is before the end (tests/test_sp_meter_curve.cpp:883)	q3-unchecked
+A3.md	2. activation badges: the row is difficult exactly when a badge is orange  (tests/test_activation_rows.cpp:854)	q3-unchecked
+A3.md	3. activation badges: the user's row agrees with the copied path  (tests/test_activation_rows.cpp:871)	q3-unchecked
+A3.md	6. longest_activation_badge: the widest wording with the window's figure  (tests/test_activation_rows.cpp:936)	
+A3.md	7. squeeze sentences: SqIn, SqOut, and what a squeeze-out costs  (tests/test_activation_rows.cpp:945)	q3-unchecked
+A3.md	8. squeeze sentences at the SP end: the squeeze-in earns, the squeeze-out earns  (tests/test_activation_rows.cpp:1025)	q3-unchecked
+A3.md	9. backend table: a counted row inside SP shows its early-scale eff. figure  (tests/test_activation_rows.cpp:1080)	q3-unchecked
+A3.md	10. build_activations: a near-1 multiplier prints its decimals and its row's figure  (tests/test_activation_rows.cpp:1096)	q3-unchecked
+A3.md	13. dynamic hit window: the label is one constant  (tests/test_activation_rows.cpp:1301)	
+A3.md	17. dynamic hit window: an early fill gets one window, required or optional  (tests/test_activation_rows.cpp:1393)	q3-unchecked
+A3.md	18. dynamic hit window: a squeeze in that needs no timing still gets its row  (tests/test_activation_rows.cpp:1436)	q3-unchecked
+A3.md	19. dynamic hit window: a row for every timing badge, edited figures too  (tests/test_activation_rows.cpp:1466)	q3-unchecked
+A3.md	21. dynamic hit window: the row sits alongside and changes no other field  (tests/test_activation_rows.cpp:1553)	q3-unchecked
+A3.md	22. dynamic hit window: every corpus row  (tests/test_activation_rows.cpp:1604)	
+A30.md	1. frontend_transfer_scales: measure-rate ratio, both directions (tests/test_squeeze_rating.cpp:28)	q3-unchecked
+A30.md	2. frontend_transfer_scales: each SqIn reads its own stored end (tests/test_squeeze_rating.cpp:87)	
+A30.md	3. frontend_transfer_scales: a clamp moves the front anchor (tests/test_squeeze_rating.cpp:122)	
+A30.md	4. step_transfer_scale: equals every stored scale on the squeeze corpus charts (tests/test_squeeze_rating.cpp:149)	q3-unchecked
+A30.md	6. frontend_transfer_scales: direction-dependent at boundaries (tests/test_squeeze_rating.cpp:240)	q3-unchecked
+A30.md	7. field fixture: What's My Age Again? (Sync Chart) SqOut (tests/test_squeeze_rating.cpp:300)	q3-unchecked
+A30.md	8. field fixture: Dumpweed SqOut end anchored on the deact node (tests/test_squeeze_rating.cpp:370)	q3-unchecked
+A30.md	9. difficulty is the raw gap, untouched by stored transfer scales (tests/test_squeeze_rating.cpp:447)	
+A30.md	11. rate_note: the side of the end picks the multiplier (tests/test_squeeze_rating.cpp:485)	q3-unchecked
+A30.md	12. rate_note: a figure whenever the multiplier is not 1, however close (tests/test_squeeze_rating.cpp:502)	
+A30.md	13. rate_activation: every row reads post, by its side of the end (tests/test_squeeze_rating.cpp:519)	q3-unchecked
+A30.md	14. rate_activation: the squeeze-out is rated once, as its row, at post (tests/test_squeeze_rating.cpp:557)	q3-unchecked
+A30.md	15. rate_activation: each SqIn reads its own stored scale (tests/test_squeeze_rating.cpp:597)	q3-unchecked
+A30.md	16. rate_activation: a SqIn reads its SqIn scale, by its side of the end (tests/test_squeeze_rating.cpp:623)	
+A30.md	17. rate_activation: a SqIn on the SP end is inside Star Power, so it reads its SqIn scale's early side (tests/test_squeeze_rating.cpp:651)	
+A30.md	21. timing_tiers: the ladder at the 85 ms hit window (tests/test_squeeze_rating.cpp:750)	q3-unchecked
+A30.md	22. display_backends: 500 ms window keeps everything the 500 ms search graph collects (tests/test_squeeze_rating.cpp:795)	
+A30.md	27. squeeze_budget_ms: identity scale is twice the hit window (tests/test_squeeze_rating.cpp:966)	q3-unchecked
+A30.md	28. beyond_edge_ms: pinned at the 85 ms hit window (tests/test_squeeze_rating.cpp:972)	q3-unchecked
+A31.md	SR2. StemReader: a seek lands on the same audio within tolerance (tests/test_stem_reader.cpp:253)	q3-unchecked
+A31.md	SR3. StemReader: seeking past the end reads nothing; seeking to 0 restarts (tests/test_stem_reader.cpp:280)	q3-unchecked
+A31.md	SR4. StemReader: an Opus seek mid-page matches the straight decode (tests/test_stem_reader.cpp:301)	q3-unchecked
+A31.md	SR5. StemReader: Opus header gain is applied (tests/test_stem_reader.cpp:318)	q3-unchecked
+A31.md	SR6. StemReader: a chained Opus file plays as one stream (tests/test_stem_reader.cpp:339)	q3-unchecked
+A31.md	SR7. StemReader: Opus end trimming stops at the last granule (tests/test_stem_reader.cpp:364)	q3-unchecked
+A31.md	SR9. StemReader: unrecognized bytes throw a decode_audio error (tests/test_stem_reader.cpp:403)	q3-unchecked
+A31.md	SR11. StemReader: an MP3 seek anywhere lands on the straight decode (tests/test_stem_reader.cpp:488)	q3-unchecked
+A31.md	SR12. StemReader: MP3 seeks through the seek points on a long stream (tests/test_stem_reader.cpp:496)	q3-unchecked
+A31.md	SR15. StemReader: a damaged Opus stem plays again after a seek to before the damage (tests/test_stem_reader.cpp:571)	q3-unchecked
+A31.md	ST4. the library table's md5 index exists (tests/test_store_library.cpp:144)	q3-unchecked
+A32.md	5. an open that cannot add the failure columns fails as DatabaseUpgrade and changes nothing (tests/test_store_open.cpp:285)	q3-unchecked
+A32.md	16. a database any release before 2.2.0 wrote is too old (tests/test_store_open.cpp:763)	
+A32.md	18. a library file v2.12.1 wrote opens, gains the album column, and keeps its records (tests/test_store_open.cpp:872)	q3-unchecked
+A32.md	20. a file store runs in WAL mode with an index on chart names (tests/test_store_open.cpp:915)	q3-unchecked
+A32.md	21. a save that fails leaves nothing behind and reads as a save error (tests/test_store_open.cpp:936)	q3-unchecked
+A32.md	25. every store read throws a database read error when its step fails (tests/test_store_open.cpp:1052)	
+A32.md	27. the batch guard sets the checkpoint threshold and truncates the log at the end (tests/test_store_open.cpp:1091)	
+A32.md	29. set_hardest writes one chart's rows together (tests/test_store_open.cpp:1185)	q3-unchecked
+A33.md	T3. store: a saved analysis reads back Ready with its paths in rank order (tests/test_store_records.cpp:110)	
+A33.md	T4. store: prepare_record refuses a profile the analysis did not run under (tests/test_store_records.cpp:131)	
+A33.md	T5. store: every path of one analysis carries the same note count (tests/test_store_records.cpp:144)	
+A33.md	T8. store: a save purges the chart's unreadable records in every mode, and the next open deletes their emptied profiles (tests/test_store_records.cpp:202)	
+A33.md	T9. store: a profile the scan's purge empties reads as nothing, and the next open deletes it (tests/test_store_records.cpp:227)	q3-unchecked
+A33.md	T10. store: an open while another connection holds the write lock keeps the empty profiles, and a later open deletes them (tests/test_store_records.cpp:256)	
+A33.md	T14. store: the remembered failures are exactly the four the chart's content causes (tests/test_store_records.cpp:344)	q3-unchecked
+A33.md	T15. store: a chart with no notes throws NoNotes, worded as its own sentence (tests/test_store_records.cpp:374)	q3-unchecked
+A33.md	T22. store: a profile whose only record is a failure is kept (tests/test_store_records.cpp:508)	
+A33.md	T26. store: a save inside a save group is one SAVEPOINT; a failed one undoes only its chart (tests/test_store_records.cpp:597)	
+A33.md	T27. store: path rows measured on the corpus (tests/test_store_records.cpp:616)	
+A33.md	T29. store: every accepted results stamp reads Ready, others Stale (tests/test_store_records.cpp:709)	q3-unchecked
+A34.md	R1 a saved record reads back whole across the corpus and config matrix (tests/test_store_results.cpp:103)	q3-unchecked
+A34.md	R15 ready_song_ids names exactly the charts a library page reads as Ready (tests/test_store_results.cpp:531)	q3-unchecked
+A34.md	R17 a saved record stores its best path's star count (tests/test_store_results.cpp:587)	
+A34.md	R19 lookup answers a whole library in chunks (tests/test_store_results.cpp:649)	
+A34.md	R21 a record counts every kept path once (tests/test_store_results.cpp:724)	q3-unchecked
+A34.md	T9 theme: report chip colours are the pages' and the dimmed grey (tests/test_theme.cpp:131)	q3-unchecked
+A35.md	1. tied variants: a variant folded mid-SP takes its leader's steps after the fold (tests/test_tied_variants.cpp:101)	q3-unchecked
+A35.md	2. tied variants: a variant folded mid-SP takes its leader's closing SqIn or SqOut (tests/test_tied_variants.cpp:134)	q3-unchecked
+A35.md	3. tied variants: a path that banked its leader's SqIn phrase folds into it only after SP (tests/test_tied_variants.cpp:193)	
+A35.md	4. tied variants: the banked-phrase charts analyze and every variant prices as alone (tests/test_tied_variants.cpp:229)	q3-unchecked
+A35.md	6. banked_phrase_in_reach banks exactly what activation_can_squeeze refuses (tests/test_tied_variants.cpp:296)	q3-unchecked
+A35.md	7. squeeze rule: twin SP ends a tick apart squeeze one phrase in once (tests/test_tied_variants.cpp:337)	q3-unchecked
+A35.md	9. tied variants: a variant that finished the song keeps its own bank (tests/test_tied_variants.cpp:399)	q3-unchecked
+A35.md	10. tied variants: a variant folded between windows keeps its own banked bars (tests/test_tied_variants.cpp:443)	q3-unchecked
+A35.md	11. tied variants: a variant's trailing fills are its own (tests/test_tied_variants.cpp:503)	q3-unchecked
+A35.md	12. tied variants: a variant folded between windows keeps its own early fill (tests/test_tied_variants.cpp:553)	q3-unchecked
+A35.md	13. tied variants: Don Broco - Actors at depth 40 shows each tied path's own bank (tests/test_tied_variants.cpp:596)	q3-unchecked
+A36.md	3. TrackStateOptions: equal when pro matches (tests/test_track_state.cpp:167)	q3-unchecked
+A36.md	4. build_track_state: gems, pro-off, and the phrase end note reads inside (tests/test_track_state.cpp:173)	q3-unchecked
+A36.md	5. build_track_state: active SP window ends exactly at the deact node (tests/test_track_state.cpp:218)	
+A36.md	7. build_track_state: taken, offered and hidden fills toggle different spans (tests/test_track_state.cpp:316)	q3-unchecked
+A36.md	9. build_track_state: beats land on instants; solo toggles (tests/test_track_state.cpp:415)	q3-unchecked
+A36.md	10. window: strict bounds, and a synthesized instant when empty (tests/test_track_state.cpp:439)	q3-unchecked
+A36.md	11. make_toggle_bounds: covers [near, far], merges equal neighbours (tests/test_track_state.cpp:476)	q3-unchecked
+A36.md	14. build_track_state: a chord one tick after a phrase ends is not SP (480 res, 300 BPM) (tests/test_track_state.cpp:600)	q3-unchecked
+A36.md	15. build_track_state: spans need the song timing (tests/test_track_state.cpp:623)	q3-unchecked
+A36.md	16. window: a view into the state, not a copy (tests/test_track_state.cpp:638)	q3-unchecked
+A36.md	17. build_track_state: the one-pass sweep on overlapping, touching, empty and backwards spans (tests/test_track_state.cpp:665)	q3-unchecked
+A36.md	20. synthesize at an instant's own time agrees with the sweep that filled it (tests/test_track_state.cpp:991)	q3-unchecked
+A36.md	22. rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths (tests/test_track_state.cpp:1026)	
+A37.md	8. user_messages: the set-aside notice names the file the store set aside (tests/test_user_messages.cpp:173)	q3-unchecked
+A37.md	17. the transport's host names come from the service (tests/test_user_messages.cpp:366)	q3-unchecked
+A37.md	15. file_byte_source reads at an offset past 4 GB (tests/test_winstr.cpp:253)	q3-unchecked
+A37.md	16. next_piece_read doubles and never wraps (tests/test_winstr.cpp:261)	q3-unchecked
+A37.md	20. utf8_argv reads this process's command line (tests/test_winstr.cpp:297)	
+A37.md	1. batch-strip-drift: test_batch_strip_drift (tests/ui/uitest_batch_reports.cpp:109)	q3-unchecked
+A37.md	2. settings-and-reports: test_settings_and_reports (tests/ui/uitest_batch_reports.cpp:158)	q3-unchecked
+A37.md	5. batch-confirm: test_batch_confirm (tests/ui/uitest_batch_reports.cpp:379)	q3-unchecked
+A37.md	8. batch-strip-workers: test_batch_strip_workers (tests/ui/uitest_batch_reports.cpp:455)	q3-unchecked
+A37.md	15. batch-chip-count: test_batch_chip_count (tests/ui/uitest_batch_reports.cpp:705)	q3-unchecked
+A4.md	1. discover_charts walks the corpus without throwing (tests/test_analysis.cpp:54)	
+A4.md	3. discover_charts output matches the checked-in scan snapshot (tests/test_analysis.cpp:89)	
+A4.md	4. rescan cache reproduces the scan without reading chart files (tests/test_analysis.cpp:122)	
+A4.md	5. run_batch saves a record with its top paths through the one save (tests/test_analysis.cpp:173)	
+A4.md	9. run_work_pool: a consumer that throws while workers wait for room (tests/test_analysis.cpp:270)	
+A4.md	14. run_batch: cancel stops running searches within seconds (tests/test_analysis.cpp:418)	
+A4.md	23. run_batch counts a failed save as a failed chart and goes on (tests/test_analysis.cpp:718)	
+A4.md	24. run_batch hands on_error the sentence its exception's kind names (tests/test_analysis.cpp:753)	
+A4.md	25. run_batch hands on_error no details line for a chart with no notes (tests/test_analysis.cpp:776)	
+A4.md	26. run_batch stores a chart with no notes, and the next batch skips it (tests/test_analysis.cpp:801)	
+A4.md	32. prepare_failed_chart: a remembered kind becomes a failure record, anything else nothing (tests/test_analysis.cpp:999)	
+A4.md	37. discover_charts: a blank or missing artist or charter reads the placeholder, fresh and from the rescan cache (tests/test_analysis.cpp:1136)	
+A4.md	44. run_batch: a failed group COMMIT saves each chart alone, and only a chart whose own save fails is failed (tests/test_analysis.cpp:1391)	
+A4.md	45. the scan's folder count is reported while the walk runs, from the calling thread (tests/test_analysis.cpp:1436)	
+A40.md	H22 state_text (`tests/ui/uitest_harness.cpp:458`)	q3-unchecked
+A41.md	4. test_note_shuffle_switch (tests/ui/uitest_library.cpp:202)	q3-unchecked
+A41.md	12. test_library_search (tests/ui/uitest_library.cpp:485)	q3-unchecked
+A42.md	7 test_old_library_set_aside (`tests/ui/uitest_library.cpp:1483`)	q3-unchecked
+A42.md	9 test_rescan_on_open_cancel (`tests/ui/uitest_library.cpp:1581`)	q3-unchecked
+A42.md	11 test_version_bar (`tests/ui/uitest_library.cpp:1745`)	q3-unchecked
+A43.md	L9 test_command_bare_ref_ambiguous (`tests/ui/uitest_live.cpp:537`, `command-bare-ref-ambiguous`)	q3-unchecked
+A44.md	1. paths-list: the path list (`test_paths_list`, tests/ui/uitest_paths.cpp:109)	q3-unchecked
+A44.md	2. paths-rows: the activation rows (`test_paths_rows`, tests/ui/uitest_paths.cpp:254)	q3-unchecked
+A44.md	3. paths-backend-timings (`test_paths_backend_timings`, tests/ui/uitest_paths.cpp:348)	q3-unchecked
+A44.md	4. paths-folds-copy (`test_paths_folds_copy`, tests/ui/uitest_paths.cpp:424)	q3-unchecked
+A44.md	5. paths-uncounted (`test_paths_uncounted`, tests/ui/uitest_paths.cpp:488)	q3-unchecked
+A44.md	8. paths-backend-fit (`test_paths_backend_fit`, tests/ui/uitest_paths.cpp:604)	q3-unchecked
+A44.md	9. paths-row-layout (`test_paths_row_layout`, tests/ui/uitest_paths.cpp:734)	q3-unchecked
+A44.md	10. paths-length-from-click (`test_paths_length_from_click`, tests/ui/uitest_paths.cpp:920)	q3-unchecked
+A44.md	11. paths-hit-window (`test_paths_hit_window`, tests/ui/uitest_paths.cpp:966)	q3-unchecked
+A44.md	12. paths-hit-window-narrow (`test_paths_hit_window_narrow`, tests/ui/uitest_paths.cpp:1015)	q3-unchecked
+A45.md	1. preview (tests/ui/uitest_preview.cpp:34, entry "preview")	q3-unchecked
+A45.md	5. preview-solo-box (:377)	q3-unchecked
+A45.md	6. preview-drain-box (:471)	q3-unchecked
+A45.md	11. preview-path-picker (:694)	q3-unchecked
+A45.md	12. preview-activation-jumps (:1025)	q3-unchecked
+A45.md	14. preview-overlay-steady (:986)	q3-unchecked
+A46.md	test_sort ("report-window-sort", tests/ui/uitest_report_windows.cpp:248)	q3-unchecked
+A46.md	test_filters ("report-window-filters", tests/ui/uitest_report_windows.cpp:276)	q3-unchecked
+A46.md	test_keys ("report-window-keys", tests/ui/uitest_report_windows.cpp:478)	q3-unchecked
+A46.md	test_hidden_new_result ("report-window-hidden-new-result", tests/ui/uitest_report_windows.cpp:574)	q3-unchecked
+A46.md	test_chip_outline ("report-window-chip-outline", tests/ui/uitest_report_windows.cpp:659)	q3-unchecked
+A46.md	test_column_widths ("report-window-column-widths", tests/ui/uitest_report_windows.cpp:673)	q3-unchecked
+A46.md	test_cells_left ("report-window-cells-left", tests/ui/uitest_report_windows.cpp:713)	q3-unchecked
+A47.md	test_cant_analyze_list (tests/ui/uitest_report_windows.cpp:1171)	q3-unchecked
+A47.md	test_fresh_state (tests/ui/uitest_report_windows.cpp:1498)	q3-unchecked
+A48.md	1. build-a-path-by-clicking (`test_build_a_path_by_clicking`, tests/pb_ui/pbtest_build.cpp:135)	q3-unchecked
+A48.md	2. build-a-path-on-a-long-song (`test_build_a_path_on_a_long_song`, tests/pb_ui/pbtest_build.cpp:334)	q3-unchecked
+A48.md	4. finish-for-me (`test_finish_for_me`, tests/pb_ui/pbtest_coach.cpp:76)	q3-unchecked
+A48.md	5. cant-activate-reason (`test_cant_activate_reason`, tests/pb_ui/pbtest_coach.cpp:119)	q3-unchecked
+A48.md	6. locked-fill-says-left-to-right (`test_locked_fill_says_left_to_right`, tests/pb_ui/pbtest_coach.cpp:141)	q3-unchecked
+A48.md	9. hover-moves-nothing (`test_hover_moves_nothing`, tests/pb_ui/pbtest_coach.cpp:360)	q3-unchecked
+A48.md	10. drag-moves-the-clock (`test_drag_moves_the_clock`, tests/pb_ui/pbtest_coach.cpp:405)	q3-unchecked
+A48.md	11. activations-row-never-drags (`test_activations_row_never_drags`, tests/pb_ui/pbtest_coach.cpp:463)	q3-unchecked
+A48.md	12. fill-click-moves-clock (`test_fill_click_moves_clock`, tests/pb_ui/pbtest_coach.cpp:485)	q3-unchecked
+A48.md	13. fill-card (`test_fill_card`, tests/pb_ui/pbtest_coach.cpp:517)	q3-unchecked
+A48.md	14. row-click-moves-clock (`test_row_click_moves_clock`, tests/pb_ui/pbtest_coach.cpp:545)	q3-unchecked
+A49.md	1. open-starts-empty (`test_open_starts_empty`, tests/pb_ui/pbtest_window.cpp:68)	q3-unchecked
+A49.md	2. head-row-wraps (`test_head_row_wraps`, tests/pb_ui/pbtest_window.cpp:237)	q3-unchecked
+A49.md	3. scroll-the-timeline (`test_scroll_the_timeline`, tests/pb_ui/pbtest_window.cpp:341)	q3-unchecked
+A49.md	4. drag-stays-in-the-window (`test_drag_stays_in_the_window`, tests/pb_ui/pbtest_window.cpp:410)	q3-unchecked
+A49.md	9. rules-reach-the-builder (`test_rules_reach_the_builder`, tests/pb_ui/pbtest_window.cpp:592)	q3-unchecked
+A49.md	12. single-owner rules hold across src/, tools/ and tests/ (TEST_CASE, tests/single_owner/scan.cpp:202)	
+A49.md	17. single-owner rules hold in the single files outside the walk (TEST_CASE, tests/single_owner/scan.cpp:414)	
+A49.md	19. single-owner: every row's owner is still where the row says (TEST_CASE, tests/single_owner/scan.cpp:478)	
+A5.md	20. the click's Dynamics count keeps the 2x kicks with 2x Bass off (tests/test_app_click.cpp:541)	q3-unchecked
+A5.md	25. the click reads a chart's stated length (tests/test_app_click.cpp:699)	q3-unchecked
+A5.md	26. a chart with no stated length and no audio reads its last note (tests/test_app_click.cpp:716)	q3-unchecked
+A6.md	2. set_search: a filter that does not parse leaves the query empty (tests/test_app_library.cpp:65)	q3-unchecked
+A6.md	5. refresh_library_row picks up one chart's new result (tests/test_app_library.cpp:130)	q3-unchecked
+A6.md	6. a batch refresh fills scores in where the rows sit; the batch's end sorts them (tests/test_app_library.cpp:238)	q3-unchecked
+A6.md	7. a batch whose last result was already read still sorts when it ends (tests/test_app_library.cpp:259)	q3-unchecked
+A6.md	8. a batch's end sorts once, and the next batch sorts when it ends (tests/test_app_library.cpp:269)	q3-unchecked
+A6.md	9. a batch dismissed before a tick saw it finish still sorts (tests/test_app_library.cpp:292)	q3-unchecked
+A6.md	10. a batch that fails as a whole sorts a held order when it ends (tests/test_app_library.cpp:303)	q3-unchecked
+A6.md	12. a settings change's re-read of the summaries sorts a held order at once (tests/test_app_library.cpp:334)	q3-unchecked
+A6.md	13. a reload comes up sorted under Best path (tests/test_app_library.cpp:345)	q3-unchecked
+A6.md	15. a scan cannot start during a batch, and the status line says so (tests/test_app_library.cpp:387)	q3-unchecked
+A6.md	19. any_job_running lists every background job (tests/test_app_library.cpp:472)	
+A6.md	21. the batch confirm counts the rows on screen when a search and a chip narrow them (tests/test_app_library.cpp:525)	q3-unchecked
+A6.md	24. the startup open runs on its own thread and tick collects the store and library (tests/test_app_library.cpp:606)	q3-unchecked
+A6.md	32. a cancelled scan on open leaves the library out of date; a finished one clears it (tests/test_app_library.cpp:854)	q3-unchecked
+A7.md	12. select_chart selects the first copy in the bar's mode (tests/test_app_reports.cpp:365)	q3-unchecked
+A7.md	23. the strip's report_started holds through a cancel, a refresh and a close (tests/test_app_reports.cpp:811)	q3-unchecked
+A7.md	24. app_shell: a saved window is reopened only where its title bar can be reached (tests/test_app_shell.cpp:71)	q3-unchecked
+A7.md	25. app_shell: the [Hydra][Window] text round-trips (tests/test_app_shell.cpp:83)	q3-unchecked
+A7.md	26. app_shell: a saved report bigger than the screen is fitted, frame included (tests/test_app_shell.cpp:131)	q3-unchecked
+A7.md	27. app_shell: a report opens maximized when the main window is maximized (tests/test_app_shell.cpp:143)	q3-unchecked
+A7.md	28. app_shell: a first open from a normal main window copies it and fits (tests/test_app_shell.cpp:160)	q3-unchecked
+A7.md	30. app_shell: a report saved maximized reopens maximized (tests/test_app_shell.cpp:184)	q3-unchecked
+A7.md	31. app_shell: a report saved maximized on a second monitor reopens maximized there (tests/test_app_shell.cpp:193)	q3-unchecked
+A7.md	32. app_shell: a report saved maximized on a monitor that is gone opens on the main window's (tests/test_app_shell.cpp:210)	q3-unchecked
+A7.md	33. app_shell: a first open with the main window maximized uses the main window's monitor (tests/test_app_shell.cpp:219)	q3-unchecked
+A7.md	34. app_shell: a saved report is fitted into the monitor holding its title bar (tests/test_app_shell.cpp:229)	q3-unchecked
+A7.md	38. app_shell: hydra_ui.ini keeps each report's placement in its own section (tests/test_app_shell.cpp:286)	q3-unchecked
+A7.md	40. app_shell: scaling always starts from the unscaled style (tests/test_app_shell.cpp:336)	q3-unchecked
+A7.md	41. app_shell: hydra_ui.ini remembers the window placement (tests/test_app_shell.cpp:350)	q3-unchecked
+A7.md	42. app_shell: the [Hydra][Layout] text round-trips and refuses junk (tests/test_app_shell.cpp:380)	q3-unchecked
+A7.md	44. app_shell: hydra_ui.ini remembers the library split, not the child's own width (tests/test_app_shell.cpp:408)	q3-unchecked
+A7.md	45. app_shell: set_ui_scale rescales sizes, fonts and px() together (tests/test_app_shell.cpp:437)	q3-unchecked
+A8.md	1. batch text: counts group thousands and pick the right noun (tests/test_batch_text.cpp:18)	q3-unchecked
+A8.md	3. batch text: durations read m:ss under an hour and h:mm:ss over it (tests/test_batch_text.cpp:36)	q3-unchecked
+A8.md	4. batch text: time left reads about m:ss left (tests/test_batch_text.cpp:44)	q3-unchecked
+A8.md	11. batch text: the 1.0 fills help text uses the shared fill-rule sentences (tests/test_batch_text.cpp:184)	q3-unchecked
+A8.md	14. best finish: with nothing pinned it is Hydra's best path on every corpus chart (tests/test_best_finish.cpp:48)	q3-unchecked
+A8.md	15. best finish: every window of a corpus best path pinned in full, with no free fill left, equals search_target and the replay (tests/test_best_finish.cpp:65)	q3-unchecked
+A8.md	16. best finish: pinning the best path's first window keeps the best total (tests/test_best_finish.cpp:93)	q3-unchecked
+A8.md	18. column_widths: a header wider than every cell sets the width (tests/test_column_widths.cpp:93)	q3-unchecked
+A8.md	19. column_widths: a chip's padding is added to its cells, not its header (tests/test_column_widths.cpp:102)	q3-unchecked
+A8.md	20. column_widths: header_width_of measures the header, width_of the cells (tests/test_column_widths.cpp:112)	q3-unchecked
+A8.md	22. column_widths: the Library's text columns split the room by their shares (tests/test_column_widths.cpp:141)	q3-unchecked
+A8.md	23. column_widths: hidden columns' shares go to the shown ones, lost pixels to the last (tests/test_column_widths.cpp:150)	q3-unchecked
+A8.md	24. column_widths: a text column whose split is below its header stops there (tests/test_column_widths.cpp:165)	q3-unchecked
+A8.md	25. column_widths: a number column takes its widest and the text columns split the rest (tests/test_column_widths.cpp:191)	q3-unchecked
+A8.md	26. column_widths: the text in a text column does not change the layout (tests/test_column_widths.cpp:202)	q3-unchecked
+A8.md	27. column_widths: a dragged text column keeps its width and the others re-split (tests/test_column_widths.cpp:217)	q3-unchecked
+A8.md	28. column_widths: a dragged number column never goes below its widest (tests/test_column_widths.cpp:247)	q3-unchecked
+A8.md	29. column_widths: when the headers don't fit, the inner width is their sum (tests/test_column_widths.cpp:264)	q3-unchecked
+A8.md	30. column_widths: a header drawn wider than its text (the sort arrow) lifts the floor (tests/test_column_widths.cpp:276)	q3-unchecked
+A8.md	31. column_widths: a column that never cuts is at least as wide as its drawn header (tests/test_column_widths.cpp:290)	q3-unchecked
+A8.md	33. column_widths: a table with no cut columns is as wide as its columns (tests/test_column_widths.cpp:334)	q3-unchecked
+A8.md	34. column_widths: a hidden column takes no room (tests/test_column_widths.cpp:346)	q3-unchecked
+A8.md	37. column_widths: a column list's shares sum to 100, or it has no text column (tests/test_column_widths.cpp:439)	q3-unchecked
+A9.md	1. settings round-trip through an INI file (tests/test_config.cpp:75)	q3-unchecked
+A9.md	2. settings: load and save name the same keys (tests/test_config.cpp:102)	q3-unchecked
+A9.md	3. the updater's settings round-trip and survive Reset to defaults (tests/test_config.cpp:136)	q3-unchecked
+A9.md	4. the 1.0 fills setting reaches the search and the result's key together (tests/test_config.cpp:169)	q3-unchecked
+A9.md	5. command-line settings take the fill rule from the flag, the rest from the INI (tests/test_config.cpp:184)	q3-unchecked
+A9.md	6. load_tool_settings gives the tools' settings, or exit code 2 for a refused file (tests/test_config.cpp:208)	q3-unchecked
+A9.md	7. a missing INI yields defaults (tests/test_config.cpp:232)	q3-unchecked
+A9.md	9. blank and comment lines load, and keys and values are trimmed (tests/test_config.cpp:255)	q3-unchecked
+A9.md	10. a bad line refuses (tests/test_config.cpp:271)	q3-unchecked
+A9.md	11. settings: a value outside its range loads at the nearest edge (tests/test_config.cpp:311)	q3-unchecked
+A9.md	12. Settings::clamp is the one range every caller asks (tests/test_config.cpp:339)	q3-unchecked
+A9.md	13. settings: a # after a value is a comment (tests/test_config.cpp:362)	q3-unchecked
+A9.md	16. chartmode_key: Note Shuffle off leaves every key as it was, on adds an ending (tests/test_config.cpp:428)	q3-unchecked
+A9.md	17. with_chartmode rebuilds the settings behind every key, shuffled or not (tests/test_config.cpp:447)	q3-unchecked
+A9.md	19. the default ChartReading is Expert, Pro Drums, 2x Bass, no Note Shuffle (tests/test_config.cpp:482)	q3-unchecked
+A9.md	22. view_difficulty matches any case and loads as the real name (tests/test_config.cpp:526)	q3-unchecked
+A9.md	23. profile carries the chartmode, the SP cap and the lens (tests/test_config.cpp:549)	q3-unchecked
+A9.md	24. profile moves with every key part (tests/test_config.cpp:602)	q3-unchecked
+A9.md	25. profile_at_clone_hero_cap differs from profile only in the cap (tests/test_config.cpp:613)	q3-unchecked
+A9.md	26. profile_with_fills differs from profile only in the fill rule (tests/test_config.cpp:629)	q3-unchecked
+A9.md	27. each retired settings key loads silently and is never written back (tests/test_config.cpp:649)	q3-unchecked
+A9.md	28. hit_window_ms in an older file is skipped, whatever it says, and dropped on save (tests/test_config.cpp:672)	q3-unchecked
+A9.md	30. legacy_fills_for reads fill_rule_for backwards (tests/test_config.cpp:703)	q3-unchecked
+A9.md	31. batch_run bundles one Settings' profile and search settings (tests/test_config.cpp:711)	q3-unchecked
+A9.md	32. sp_cap: 0 reads 1, auto and junk refuse, retired keys are skipped (tests/test_config.cpp:734)	q3-unchecked
+A9.md	33. to_analysis_settings maps the cap (tests/test_config.cpp:758)	q3-unchecked
+A9.md	35. save_file replaces the settings file through a temp and a rename (tests/test_config.cpp:797)	q3-unchecked
+A9.md	36. save_file writes CRLF line ends and no bare LF (tests/test_config.cpp:810)	q3-unchecked
+A9.md	37. save_file that cannot land keeps the old file whole and leaves no .tmp (tests/test_config.cpp:827)	q3-unchecked
+A9.md	39. settings reset: puts back each panel setting and keeps the rest (tests/test_config.cpp:875)	q3-unchecked
+A9.md	40. config: resource_dir is the resource folder beside the exe (tests/test_config.cpp:920)	q3-unchecked
+A9.md	41. config: describe_settings uses the app's words (tests/test_config.cpp:930)	q3-unchecked
+A9.md	42. version: the window title and taskbar id are the build's (tests/test_config.cpp:952)	q3-unchecked
+A9.md	43. s2 offspeed: one base speed, read everywhere (tests/test_dm_other_speed.cpp:27)	q3-unchecked
+A9.md	44. s2 offspeed: an off-speed score on a listed chart is 'other speed'; on an unlisted one, 'not in library' (tests/test_dm_other_speed.cpp:36)	q3-unchecked
+A9.md	45. s2 offspeed: the counts sentence names other speeds only when there are some (tests/test_dm_other_speed.cpp:76)	q3-unchecked
+A9.md	46. s2 offspeed: the subtitle counts every score; the Other speed tile counts 'other speed' (tests/test_dm_other_speed.cpp:92)	q3-unchecked
+B1.md	1. hydra_batch fills a new database under the rule it ran under (tests/test_cli.cpp:183)	
+B1.md	3. hydra_batch --legacy-fills writes the tool's own hydra.db under the 1.0 rule (tests/test_cli.cpp:241)	
+B1.md	4. hydra_batch refuses a library file too old to convert in one sentence (tests/test_cli.cpp:267)	
+B1.md	5. hydra_batch refuses an unknown option (tests/test_cli.cpp:284)	q3-unchecked
+B1.md	8. hydra_batch --whole-library refuses a chart folder that cannot be read (tests/test_cli.cpp:333)	
+B1.md	9. hydra_batch names a bad hydra_rules.ini and stops (tests/test_cli.cpp:377)	q3-unchecked
+B1.md	10. hydra_batch names a bad hydra_settings.ini and stops (tests/test_cli.cpp:395)	q3-unchecked
+B1.md	11. hydra_fillcompare names a bad hydra_settings.ini and stops (tests/test_cli.cpp:411)	q3-unchecked
+B1.md	12. hydra_batch writes a 1.0 run and a 1.1 run into one database (tests/test_cli.cpp:428)	
+B1.md	15. hydra_batch names the cap with the one count rule (tests/test_cli.cpp:510)	
+B1.md	16. hydra_fillcompare reads the tool's own hydra.db without --db (tests/test_cli.cpp:528)	
+B1.md	18. hydra_fillcompare compares both rules out of one database (tests/test_cli.cpp:580)	
+B1.md	20. hydra_replay score writes act_ms and deact_ms for each window (tests/test_cli.cpp:678)	q3-unchecked
+B1.md	23. dynamics_breakdown: played_total includes/excludes 2x kick (tests/test_dynamics_breakdown.cpp:128)	q3-unchecked
+B1.md	24. dynamics_breakdown: Alpha Wolf - Acid Romance (real chart) (tests/test_dynamics_breakdown.cpp:155)	
+B1.md	31. dynamics_breakdown: the header's 2x kick fact, empty with no 2x kicks (tests/test_dynamics_breakdown.cpp:292)	q3-unchecked
+B1.md	35. dynamics_breakdown: the fact dot is the separator's dot alone (tests/test_dynamics_breakdown.cpp:361)	q3-unchecked
+B1.md	39. dynamics_breakdown: row labels pro vs non-pro (tests/test_dynamics_breakdown.cpp:399)	q3-unchecked
+B1.md	41. dynamics_breakdown: every row's counts on The Decade Of Statues, pinned (tests/test_dynamics_breakdown.cpp:438)	
+B1.md	42. dynamics_breakdown: the rules never change a chart's Dynamics count (tests/test_dynamics_breakdown.cpp:473)	
+B1.md	43. fuzz regressions: every file under testdata/fuzz/<target> is rejected without crashing (tests/test_fuzz_regressions.cpp:46)	
+B1.md	44. fuzz seeds: write every target's seed folder when HYDRA_FUZZ_SEED_DIR is set (tests/test_fuzz_regressions.cpp:81)	
+B2.md	generated fills: a chord 241 ticks after the second measure line gets a fill (tests/test_generated_fills.cpp:62)	q3-unchecked
+B2.md	generated fills: a chord 242 ticks from its line gets none (tests/test_generated_fills.cpp:88)	q3-unchecked
+B2.md	generated fills: a chord exactly on the line has length 0 (tests/test_generated_fills.cpp:93)	q3-unchecked
+B2.md	generated fills: a chord just before its line has a negative length (tests/test_generated_fills.cpp:98)	q3-unchecked
+B2.md	generated fills: the nearer chord wins, and a tie goes to the later one (tests/test_generated_fills.cpp:119)	q3-unchecked
+B2.md	generated fills: after a fill the next candidate is 4 lines on (tests/test_generated_fills.cpp:125)	q3-unchecked
+B2.md	generated fills: a first chord in measure 3 still counts lines from the second (tests/test_generated_fills.cpp:138)	q3-unchecked
+B2.md	generated fills: a 4/4 to 7/8 change places fills on the restarted grid (tests/test_generated_fills.cpp:147)	q3-unchecked
+B2.md	generated fills: a chart with its own fills gets none generated (tests/test_generated_fills.cpp:170)	q3-unchecked
+B2.md	generated fills: every corpus chart's generated fills are pinned (tests/test_generated_fills.cpp:245)	q3-unchecked
+B2.md	midi: every corpus .mid reads with a sane structure (tests/test_midi.cpp:60)	
+B2.md	midi: with drum tracks on track 0 and track 1, track 1 is read (tests/test_midi.cpp:602)	q3-unchecked
+B2.md	midi: [section _endofsong] in lower case stays a section (tests/test_midi.cpp:697)	q3-unchecked
+B2.md	midi: [prc__ENDOFSONG] stays a section (tests/test_midi.cpp:707)	q3-unchecked
+B2.md	midi: the lean read keeps the end event (tests/test_midi.cpp:739)	q3-unchecked
+B2.md	pathstring read: every corpus best path round-trips (tests/test_pathstring_read.cpp:82)	
+B2.md	pathstring read: a token no fill can place is refused with its position (tests/test_pathstring_read.cpp:90)	q3-unchecked
+B2.md	pathstring read: every corpus path round-trips from Hydra's long Copy path text (tests/test_pathstring_read.cpp:126)	
+B2.md	pathstring read: a long-text window no fill can place is refused with its position (tests/test_pathstring_read.cpp:148)	q3-unchecked
+B2.md	pathstring read: the graph entry point reads the same path as the settings one (tests/test_pathstring_read.cpp:175)	
+B2.md	pathstring read: long text with the wrong number of sections is refused (tests/test_pathstring_read.cpp:212)	q3-unchecked
+B3.md	3. schedule: paid_by matches in_sp on every corpus path (tests/test_replay_schedule.cpp:208)	
+B3.md	4. schedule: declined chords are the skipped fill ticks (tests/test_replay_schedule.cpp:241)	
+B3.md	5. schedule: the window constants are written (tests/test_replay_schedule.cpp:267)	q3-unchecked
+B3.md	6. schedule: sides come from the whole chart (tests/test_replay_schedule.cpp:284)	
+B3.md	9. schedule: nothing under src/ reads the schedule (tests/test_replay_schedule.cpp:337)	
+B3.md	10. schedule: the equal-room split on Freak's clamped squeeze (tests/test_replay_schedule.cpp:419)	q3-unchecked
+B3.md	11. schedule: Freak 1144, Rescued 561 and 931, Ghost 756 (tests/test_replay_schedule.cpp:473)	q3-unchecked
+B3.md	12. schedule: a squeeze that needs no timing is pressed plain (tests/test_replay_schedule.cpp:501)	
+B3.md	13. schedule: a squeeze the game cannot make is not feasible (tests/test_replay_schedule.cpp:526)	q3-unchecked
+B3.md	14. schedule: the fallback block (tests/test_replay_schedule.cpp:548)	
+B3.md	15. schedule: last_send_ms is the side less one frame (tests/test_replay_schedule.cpp:607)	q3-unchecked
+B3.md	20. schedule: press groups (tests/test_replay_schedule.cpp:697)	
+B3.md	21. schedule: the planned end counts one frame (tests/test_replay_schedule.cpp:735)	
+B3.md	22. schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's (tests/test_replay_schedule.cpp:773)	q3-unchecked
+B3.md	24. schedule: song_length_ms is app::song_length_ms (tests/test_replay_schedule.cpp:822)	
+B4.md	schedule: sp_ready_tick is the second bank arrival (tests/test_replay_schedule.cpp:851)	q3-unchecked
+B4.md	schedule: first_note writes the same schedule as before (tests/test_replay_schedule.cpp:964)	q3-unchecked
+B4.md	schedule: hydra_replay_build is written (tests/test_replay_schedule.cpp:1005)	
+B4.md	schedule: one frame everywhere (tests/test_replay_schedule.cpp:1062)	q3-unchecked
+B4.md	schedule: every skip writes a refusal and a flag (tests/test_replay_schedule.cpp:1130)	q3-unchecked
+B4.md	schedule: a squeeze-out that is also a skipped fill (tests/test_replay_schedule.cpp:1272)	q3-unchecked
+B4.md	schedule: one decline rule (tests/test_replay_schedule.cpp:1345)	q3-unchecked
+B4.md	schedule: the first press group is the activation note (tests/test_replay_schedule.cpp:1378)	q3-unchecked
+B4.md	schedule: Pitch Dark prices each read at its own step's scale (tests/test_replay_schedule.cpp:1514)	q3-unchecked
+B4.md	schedule: Pitch Dark's read range is its read end's steady span (tests/test_replay_schedule.cpp:1621)	
+B4.md	schedule: read_at_own_ms runs the conversion backwards on its own side (tests/test_replay_schedule.cpp:1716)	q3-unchecked
+B5.md	Splits	q3-unchecked
+B6.md	Records	q3-unchecked
+B7.md	1. timing: corpus conversions are monotone and consistent (tests/test_timing.cpp:21)	
+B7.md	11. timing: ms_per_measure_at reads local measure durations (tests/test_timing.cpp:246)	q3-unchecked
+B7.md	13. timing: continuous helpers are exact, inverse, and monotone (tests/test_timing.cpp:284)	q3-unchecked
+B7.md	14. timing: the measure count runs on through a mid-measure meter change (D115) (tests/test_timing.cpp:336)	q3-unchecked
+B7.md	19. timing: one SP bar is two measures (tests/test_timing.cpp:414)	
+C1.md	activation row: the layout scales with the DPI (tests/test_activation_row_layout.cpp:92)	q3-unchecked
+C1.md	activation row: no badge leaves nothing to place and one line (tests/test_activation_row_layout.cpp:101)	q3-unchecked
+C1.md	activation row: one badge that fits sits where it always has (B1) (tests/test_activation_row_layout.cpp:108)	q3-unchecked
+C1.md	activation row: badges beside the bars never overlap them (B3) (tests/test_activation_row_layout.cpp:123)	q3-unchecked
+C1.md	activation row: a pill that just touches the bars drops under the measure (tests/test_activation_row_layout.cpp:135)	q3-unchecked
+C1.md	activation row: a short badge drops when the longest badge's pill would not fit (tests/test_activation_row_layout.cpp:147)	q3-unchecked
+C1.md	activation row: badges under the measure clear the bars by the row's top padding (tests/test_activation_row_layout.cpp:159)	q3-unchecked
+C1.md	activation row: no pill runs past the flush-right edge (tests/test_activation_row_layout.cpp:188)	q3-unchecked
+C1.md	activation row: pills never overlap, on one line or between lines (tests/test_activation_row_layout.cpp:209)	q3-unchecked
+C1.md	activation row: badges under the measure start at the measure (D257) (tests/test_activation_row_layout.cpp:234)	q3-unchecked
+C1.md	activation row: every row of a path puts its bars at the same x (tests/test_activation_row_layout.cpp:256)	q3-unchecked
+C1.md	badge pill: a row of the shortest badge and a row of the longest share one width (tests/test_badge_pill.cpp:60)	q3-unchecked
+C1.md	badge pill: a badge wider than the pill text width grows the pill (tests/test_badge_pill.cpp:80)	q3-unchecked
+C1.md	badge pill: text sits centred in its pill (tests/test_badge_pill.cpp:86)	q3-unchecked
+C1.md	badge pill: pills side by side match and keep one gap between them (tests/test_badge_pill.cpp:106)	q3-unchecked
+C1.md	commit_settings analyzes the open song again on an SP cap change (tests/test_app_settings.cpp:75)	
+C1.md	commit_settings analyzes again when the ms limit or the score range changes (tests/test_app_settings.cpp:90)	
+C1.md	a number setting edited outside its range lands on the edge the file loader uses (tests/test_app_settings.cpp:197)	
+C1.md	a settings change whose reads fail shows no other settings' record (tests/test_app_settings.cpp:227)	q3-unchecked
+C1.md	audio_sniff: the ID3v2 tag length counts the header, the size and the footer (tests/test_audio_decode.cpp:82)	q3-unchecked
+C1.md	decode_audio: Ogg-Opus output is pinned bit for bit (tests/test_audio_decode.cpp:165)	q3-unchecked
+C1.md	mix_stems resamples to the output rate and unifies channels (tests/test_audio_mixer.cpp:88)	q3-unchecked
+C1.md	read_frames while playing copies frames and advances the clock (tests/test_audio_player.cpp:63)	q3-unchecked
+C10.md	the shipped 3d-config.json loads to the Onyx values (tests/test_preview_config.cpp:78)	q3-unchecked
+C10.md	load_preview_config rejects malformed JSON (tests/test_preview_config.cpp:123)	q3-unchecked
+C10.md	a bad rules line refuses in the settings file's shapes (tests/test_rules_file.cpp:68)	q3-unchecked
+C10.md	section names: the generated table agrees with the TSV row for row (tests/test_section_names.cpp:15)	
+C10.md	a seek while playing brings the audio back after it ran out (tests/test_preview_transport.cpp:196)	q3-unchecked
+C11.md	sng: the note loader reads the chart through the shared reader (tests/test_sng.cpp:98)	q3-unchecked
+C11.md	sng: unmasking into the caller's buffer undoes the pinned stored bytes (tests/test_sng.cpp:111)	q3-unchecked
+C11.md	sng: the note loader reads the header and the notes, not the audio (tests/test_sng.cpp:166)	q3-unchecked
+C11.md	sng: a header longer than the first read still loads (tests/test_sng.cpp:181)	q3-unchecked
+C11.md	sng: a container parses the same from bytes as from its path (tests/test_sng.cpp:237)	q3-unchecked
+C11.md	sng: a chart's id is the MD5 of the notes file inside it (tests/test_sng.cpp:253)	q3-unchecked
+C11.md	song length: a stated length that ends before the last note is dropped (tests/test_song_length.cpp:127)	q3-unchecked
+C11.md	song length: the library keeps what the scan read, and an older scan's rows read none (tests/test_song_length.cpp:320)	q3-unchecked
+C11.md	song panel: tick runs the teardown once, on the closing edge (tests/test_song_panel_state.cpp:81)	q3-unchecked
+C11.md	SP end clamp: the squeeze-out edge expects extend_deacts' clamped end (tests/test_sp_end_clamp.cpp:97)	q3-unchecked
+C12.md	srb: a truncated file reads as an unreadable chart (tests/test_srb.cpp:130)	q3-unchecked
+C12.md	srb: a stream that makes bytes from no input is corrupt, not inflated to the cap (tests/test_srb.cpp:151)	
+C12.md	srb: the note loader reads the metadata and notes streams, not the rest (tests/test_srb.cpp:197)	q3-unchecked
+C12.md	srb: metadata parser reads the string table (tests/test_srb.cpp:254)	q3-unchecked
+C12.md	srb: metadata parser reads song_length_ms after the string table (tests/test_srb.cpp:295)	q3-unchecked
+C12.md	srb: discovery surfaces the embedded metadata (tests/test_srb.cpp:338)	q3-unchecked
+C12.md	scoring: one note's value at combos 0, 9 and 29, by category (tests/test_stars.cpp:42)	q3-unchecked
+C12.md	scoring: squeezing out any chord always costs points (tests/test_stars.cpp:98)	
+C12.md	scoring: combo_after is the combo plus the chord's notes (tests/test_stars.cpp:138)	q3-unchecked
+C12.md	scoring: solo_bonus is 100 per note in a solo, else 0 (tests/test_stars.cpp:160)	q3-unchecked
+C12.md	stars: with_solo is each cutoff plus the solo bonus (tests/test_stars.cpp:170)	
+C12.md	stars: score_without_solo is the total minus the solo bonus (tests/test_stars.cpp:190)	
+C12.md	stars: the table is the game's first seven multipliers (tests/test_stars.cpp:215)	
+C12.md	stars: whole-number products come out exact (tests/test_stars.cpp:221)	
+C12.md	stars: fractional products round up (tests/test_stars.cpp:226)	
+C12.md	stars: star_cutoffs reads the path's base score and solo bonus (tests/test_stars.cpp:245)	q3-unchecked
+C12.md	stars: avg_mult divides by the same base score (tests/test_stars.cpp:263)	q3-unchecked
+C12.md	stars: the base score is the sum of every note's basescore, on every path (tests/test_stars.cpp:274)	
+C12.md	stars: path_stars counts cutoffs reached without the solo bonus (tests/test_stars.cpp:326)	q3-unchecked
+C12.md	stars: Burnout's optimal path earns 7 stars (tests/test_stars.cpp:353)	q3-unchecked
+C13.md	text_decode: the Windows-1252 high block maps as the WHATWG table does (tests/test_text_decode.cpp:62)	q3-unchecked
+C13.md	text_role: baseline_shift sits a role's baseline on the default font's (tests/test_text_role.cpp:133)	q3-unchecked
+C13.md	timeline view: the window clamps to the song's ends (tests/test_timeline_view.cpp:27)	q3-unchecked
+C13.md	timeline view: a page, a wheel notch and a centre move by the mockup's shares (tests/test_timeline_view.cpp:52)	q3-unchecked
+C13.md	timeline view: the playhead turns a page past three quarters and before the window, and not between (tests/test_timeline_view.cpp:69)	q3-unchecked
+C13.md	timeline view: show moves only when the moment is outside (tests/test_timeline_view.cpp:78)	q3-unchecked
+C13.md	timeline view: ms_at runs fraction backwards (tests/test_timeline_view.cpp:94)	q3-unchecked
+C13.md	timeline view: the thumb's shares (tests/test_timeline_view.cpp:120)	q3-unchecked
+C13.md	update release: the v2.10.2 reply reads into the six fields (tests/test_update_release.cpp:106)	
+C13.md	update state: every start of the installed exe checks, and a copy never does (tests/test_update_state.cpp:162)	q3-unchecked
+C13.md	update state: a failed start-up check shows in the resting status with its plain_error (tests/test_update_state.cpp:291)	q3-unchecked
+C13.md	update state: Update downloads, checks and starts the installer; Hydra then waits (tests/test_update_state.cpp:381)	q3-unchecked
+C13.md	update state: Cancel during the download goes back to the offer and leaves no part-file (tests/test_update_state.cpp:455)	q3-unchecked
+C13.md	update state: the next start deletes the kept download folder (tests/test_update_state.cpp:523)	
+C14.md	How question 3 was done for this slice	q3-unchecked
+C2.md	chart index: count adds each id's copies once, however often it appears (tests/test_chart_index.cpp:56)	q3-unchecked
+C2.md	chart index: the store lists the library in scan order, not by name (tests/test_chart_index.cpp:66)	q3-unchecked
+C2.md	record row: the summary reads rank 1 and the record's own columns (tests/test_chart_index.cpp:121)	q3-unchecked
+C2.md	record row: two records are equal only when every column and path is (tests/test_chart_index.cpp:144)	q3-unchecked
+C2.md	group_thousands matches Python {:,} (tests/test_display_format.cpp:39)	
+C2.md	dynamics tag: the breakdown carries the tag's time and the count (tests/test_dynamics_tag.cpp:118)	q3-unchecked
+C2.md	dynamics tag: the Dynamics tab's Chart line (tests/test_dynamics_tag.cpp:131)	q3-unchecked
+C2.md	fast tempo: a phrase a SqIn spent banks no bar when SP ends before it (tests/test_fast_tempo.cpp:177)	q3-unchecked
+C2.md	fast tempo: a squeeze-out at an SP end gives back only the newest phrase (tests/test_fast_tempo.cpp:274)	q3-unchecked
+C2.md	fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 16224 (tests/test_fast_tempo.cpp:298)	q3-unchecked
+C2.md	fast tempo: fuzzed charts analyze and their variants price as alone (tests/test_fast_tempo.cpp:329)	q3-unchecked
+C2.md	fill landing: .chart window is trunc(res/32) + 1 ticks (tests/test_fill_landing.cpp:174)	q3-unchecked
+C2.md	fill landing: .mid window at resolution 480 is 16 ticks (the Thrice case) (tests/test_fill_landing.cpp:181)	q3-unchecked
+C2.md	fill landing: the extra tick applies on top of a user's slop of 0 (tests/test_fill_landing.cpp:187)	q3-unchecked
+C2.md	fill landing: a fill is placed even when the next fill starts before its end chord (.chart) (tests/test_fill_landing.cpp:197)	q3-unchecked
+C2.md	fill landing: a fill is placed even when the next fill starts before its end chord (.mid) (tests/test_fill_landing.cpp:216)	q3-unchecked
+C2.md	fill landing: an earlier chord before the fill start is no candidate (tests/test_fill_landing.cpp:241)	q3-unchecked
+C3.md	Records	q3-unchecked
+C3.md	File notes	q3-unchecked
+C3.md	File notes	q3-unchecked
+C4.md	5. layering: every src file is in one library (tests/test_layering.cpp:637)	
+C4.md	6. layering: every include stays inside its library's links (tests/test_layering.cpp:646)	q3-unchecked
+C5.md	1. library model: a row Stale from another Hydra version says so in its tooltip (tests/test_library_model.cpp:122)	q3-unchecked
+C5.md	2. library model: a row Stale from other rules names hydra_rules.ini in its tooltip (tests/test_library_model.cpp:134)	q3-unchecked
+C5.md	3. library model: a row Stale from both causes names both in its tooltip (tests/test_library_model.cpp:146)	q3-unchecked
+C5.md	40. library model: rows built on threads match the one-thread rows, in the same order (tests/test_library_model.cpp:856)	
+C5.md	41. library model: a library of 0, 1 or 3 charts loads, fewer than the threads (tests/test_library_model.cpp:885)	
+C5.md	44. library model: filtering 20,000 charts keeps the pinned row counts (tests/test_library_model.cpp:941)	q3-unchecked
+C5.md	45. library: the shown order does not depend on the order the rows were read (tests/test_library_read_order.cpp:36)	
+C5.md	50. the nearest-edge scroll passes ImGui these flags (tests/test_list_scroll.cpp:47)	q3-unchecked
+C5.md	51. live reply: a command that worked (tests/test_live_protocol.cpp:14)	q3-unchecked
+C5.md	52. live reply: the timeout reads back as the exact number (tests/test_live_protocol.cpp:20)	q3-unchecked
+C5.md	53. live reply: a failure with a quote, a backslash and a newline in it (tests/test_live_protocol.cpp:30)	q3-unchecked
+C5.md	54. live reply: a failure with no log lines (tests/test_live_protocol.cpp:36)	q3-unchecked
+C5.md	55. live reply: control characters are escaped, UTF-8 passes through (tests/test_live_protocol.cpp:42)	q3-unchecked
+C5.md	66. Note Shuffle: with Pro Drums off only the four toms are drawn (tests/test_note_shuffle.cpp:165)	q3-unchecked
+C5.md	70. Note Shuffle: the seven pads' lane bits, in the game's lane order (tests/test_note_shuffle.cpp:202)	
+C6.md	NW1  note window: the window formula and clamps are pinned (tests/test_note_window.cpp:72)	
+C6.md	NW2  note window: the formula constants live in one file (tests/test_note_window.cpp:92)	
+C6.md	NW3  note window: chord_times lists the song's chords (tests/test_note_window.cpp:112)	q3-unchecked
+C6.md	NW5  note window: the squeeze-out sums from the mockup (tests/test_note_window.cpp:140)	
+C6.md	NW7  note window: each squeeze reads its own side of its own scale (tests/test_note_window.cpp:161)	q3-unchecked
+C6.md	NW13  note window: squeeze_window_ends lists the anchor, then the squeezed note (tests/test_note_window.cpp:309)	
+C6.md	NW14  note window: the anchor's scale side follows its press (tests/test_note_window.cpp:342)	q3-unchecked
+C6.md	NW15  note window: the early fill end reads the SP-ready note (tests/test_note_window.cpp:375)	
+C6.md	OBJ2  load_obj sorts triangles far-first (ascending z sum) (tests/test_obj_loader.cpp:66)	q3-unchecked
+C6.md	OBJ5  load_obj rejects text with no faces and bad indices (tests/test_obj_loader.cpp:104)	q3-unchecked
+C6.md	OBJ8  the copied Onyx drum models load with their known extents (tests/test_obj_loader.cpp:162)	
+C6.md	OL2  track_rect: the clamped size, the aspect and the top row (tests/test_overlay_layout.cpp:30)	
+C6.md	OL3  highway_span_at: passes through the projected railing corners (tests/test_overlay_layout.cpp:55)	
+C6.md	OL4  highway_span_at: symmetric, and wider nearer the camera (tests/test_overlay_layout.cpp:77)	
+C6.md	OL9  overlay_scale: full size with room, floored when narrow, clear in between (tests/test_overlay_layout.cpp:154)	q3-unchecked
+C6.md	OL10  overlay_tops: score under time, next under drain or in its place (tests/test_overlay_layout.cpp:206)	
+C6.md	OL11  overlay_tops: the solo box from the middle row, under the next box's reserve (tests/test_overlay_layout.cpp:221)	q3-unchecked
+C6.md	OL12  overlay_scale: the solo box shrinks the boxes with the rest (tests/test_overlay_layout.cpp:240)	q3-unchecked
+C6.md	OL13  measure_text_box: the widest line and every line's height, with the inset all round (tests/test_overlay_layout.cpp:287)	
+C6.md	OL14  text_box_line_origins: the drain box's lines share one left x (tests/test_overlay_layout.cpp:307)	
+C6.md	OL15  wrap_words: one line when it fits, otherwise broken at spaces (tests/test_overlay_layout.cpp:323)	
+C6.md	OL17  right_room: from the highway's right edge to the box's, less the gap (tests/test_overlay_layout.cpp:363)	
+C6.md	OL18  wrap_right_box: one line a piece when it fits (tests/test_overlay_layout.cpp:403)	
+C6.md	OL19  wrap_right_box: off the lane at its lowest row, one scale for the whole path (tests/test_overlay_layout.cpp:422)	
+C6.md	PC1  cost list: the costs sum exactly to the gap (tests/test_path_costs.cpp:110)	q3-unchecked
+C6.md	PC2  cost list: no cost is below zero (tests/test_path_costs.cpp:130)	q3-unchecked
+C6.md	PC6  end costs: each end against the best of them, in the order given (tests/test_path_costs.cpp:195)	q3-unchecked
+C6.md	PC9  build ladder: stops at the first impossible prefix and names it (tests/test_path_costs.cpp:231)	q3-unchecked
+C7.md	1. coach rows: a two-click path fills the ladder, the rows, the ends and Finish the rest for me (tests/test_pb_coach.cpp:38)	q3-unchecked
+C7.md	4. coach rows: a window over the Path limit carries the tight-window note (tests/test_pb_coach.cpp:133)	q3-unchecked
+C7.md	5. coach rows: a squeeze with time to spare under a lower limit names the limit alone (tests/test_pb_coach.cpp:178)	q3-unchecked
+C7.md	6. coach click: a fill that rules out a later window is refused in the later-window sentence (tests/test_pb_coach.cpp:202)	q3-unchecked
+C7.md	7. coach end: choosing the last window's end pins it (tests/test_pb_coach.cpp:242)	q3-unchecked
+C7.md	9. coach end: an earlier window's endings are the same list (tests/test_pb_coach.cpp:299)	q3-unchecked
+C7.md	10. coach remove: removing a window drops it and every later one (tests/test_pb_coach.cpp:368)	q3-unchecked
+C7.md	11. coach remove: removing every window leaves the empty path (tests/test_pb_coach.cpp:397)	q3-unchecked
+C7.md	13. coach finish: Finish the rest for me makes BF(n)'s path the player's path as one edit (tests/test_pb_coach.cpp:439)	q3-unchecked
+C7.md	16. coach worker: a newer request supersedes the older (tests/test_pb_coach.cpp:516)	
+C7.md	17. candidate costs: the best next fill costs 0 and every other cost is BF(n) minus its best finish (tests/test_pb_coach.cpp:572)	q3-unchecked
+C7.md	18. candidate queue: it prices only the ticks it is given, in order (tests/test_pb_coach.cpp:619)	q3-unchecked
+C7.md	19. candidate queue: a newer request supersedes the older (tests/test_pb_coach.cpp:645)	
+C7.md	20. pb files: a saved path file opens back as the same path, as the player's (tests/test_pb_files.cpp:50)	
+C7.md	29. pb state: a newly opened chart has its empty path (tests/test_pb_state.cpp:47)	q3-unchecked
+C8.md	1.5 precheck definitions: a namespace head is found only within the look-back (tests/test_precheck_check1.cpp:183)	q3-unchecked
+C8.md	3.5 precheck check 3: a whole-tree run has no new numbers (tests/test_precheck_check3.cpp:154)	q3-unchecked
+C8.md	4.3 precheck: one cat-file process reads every file (tests/test_precheck_git.cpp:148)	q3-unchecked
+C8.md	4.5 precheck: the range size leaves out third_party and testdata (tests/test_precheck_git.cpp:192)	q3-unchecked
+C8.md	4.6 precheck: a quoted numstat path loses both quotes (tests/test_precheck_git.cpp:216)	q3-unchecked
+C8.md	4.8 precheck: --disable takes only check numbers 1 to the number of checks (tests/test_precheck_git.cpp:249)	q3-unchecked
+C8.md	4.9 precheck: the exe prints the size and the summary for a range (tests/test_precheck_git.cpp:263)	q3-unchecked
+C9.md	1.1 precheck pick: the three limits are the user's numbers (tests/test_precheck_pick.cpp:74)	
+C9.md	1.13 precheck pick (c): a key only a comment in a helper header names picks nothing (tests/test_precheck_pick.cpp:305)	q3-unchecked
+C9.md	1.15 precheck pick (e): a common caller key picks nothing; a common changed name runs everything (tests/test_precheck_pick.cpp:324)	q3-unchecked
+C9.md	1.16 precheck pick (f): more picked files than the size limit runs the whole suite (tests/test_precheck_pick.cpp:364)	q3-unchecked
+C9.md	5.1 precheck rows: the kinds and the notes on a range (tests/test_precheck_rows.cpp:145)	q3-unchecked
+C9.md	5.3 precheck rows: the whole tree counts every line and every entry as added (tests/test_precheck_rows.cpp:186)	q3-unchecked
+D1.md	test_the_game_exe_name_is_the_probe_process_name (test_bot_run.py:195)	
+D1.md	test_the_cap_prints_its_line_and_still_restores (test_bot_run.py:237)	
+D1.md	test_start_run_backs_up_launches_and_returns_before_any_sleep (test_bot_run.py:360)	
+D1.md	test_run_cap_is_the_song_plus_the_extra_minute (test_bot_run.py:382)	q3-unchecked
+D1.md	test_bot_run_cap_is_run_cap_s_of_hydras_end (test_bot_run.py:387)	q3-unchecked
+D1.md	test_the_game_gets_no_stdin_and_no_stdout_and_keeps_its_folder (test_bot_run.py:561)	
+D1.md	test_the_paused_start_passes_create_suspended_and_todays_startupinfo (test_bot_run.py:718)	
+D1.md	test_waiting_statuses_are_polled_every_half_second_until_patched (test_bot_run.py:748)	
+D1.md	test_a_status_that_stays_waiting_ends_at_the_patch_cap_from_the_resume (test_bot_run.py:835)	
+D1.md	test_the_real_attach_builds_a_live_agent_for_the_pid (test_bot_run.py:905)	
+D1.md	test_bot_run_never_opens_the_game_exe_for_writing (test_bot_run.py:939)	
+D1.md	test_refuses_a_folder_without_a_song_end_or_chart_or_song_ini (test_bot_run.py:1088)	
+D1.md	test_version_file_sits_in_the_real_game_folder (test_build_facts.py:91)	q3-unchecked
+D1.md	test_the_build_command_comes_from_package_json (test_build_stamp.py:129)	
+D1.md	test_each_build_script_writes_the_stamp_after_the_compile (test_build_stamp.py:135)	
+D1.md	test_real_dll_matches_the_committed_listing (test_chdis.py:134)	
+D1.md	test_the_target_run_passes_every_line_and_exits_0 (test_compare_scorestats.py:190)	
+D10.md	test_round_start_reads_off_0x2e0 (test_engine.py:163)	
+D10.md	test_precision_bit_is_0x1000 (test_engine.py:214)	
+D10.md	test_reads_every_expected_rva (test_engine.py:286)	
+D10.md	test_returns_a_value_for_every_name (test_engine.py:294)	q3-unchecked
+D10.md	test_reads_the_proven_clock_at_0x100 (test_engine.py:344)	
+D10.md	test_dyn_threshold_reads_u32_off_0x2c0 (test_engine.py:364)	
+D10.md	test_front_window_sits_eight_bytes_after_back (test_engine_finder.py:39)	
+D10.md	test_gives_up_after_the_cap_with_the_exact_message (test_engine_finder.py:129)	
+D10.md	test_hits_at_region_edges_are_counted_once (test_find_checksum.py:148)	q3-unchecked
+D10.md	test_an_unreadable_region_is_skipped (test_find_checksum.py:164)	
+D10.md	test_no_path_within_the_object_cap_says_not_found (test_find_checksum.py:192)	
+D10.md	test_no_path_still_exits_0_with_the_direct_hits_listed (test_find_checksum.py:204)	
+D10.md	test_a_hash_that_moves_between_passes_is_reported_moved (test_find_checksum.py:268)	
+D10.md	test_wait_until_fires_at_the_target_or_its_lead (test_hit_window_scripts.py:61)	
+D10.md	test_window_changed_uses_the_one_tolerance (test_hit_window_scripts.py:113)	
+D10.md	test_cap_verdict_passes_when_every_wide_run_reads_the_cap (test_hit_window_scripts.py:156)	
+D10.md	test_song_clock_fills_in_after_a_fresh_change (test_hit_window_scripts.py:194)	q3-unchecked
+D10.md	test_the_menu_key_table (test_input_driver.py:131)	
+D10.md	test_send_key_still_sends_a_virtual_key_event (test_input_driver.py:173)	
+D10.md	test_watch_columns (test_overlay_logs.py:23)	
+D10.md	test_the_saved_watch_logs_headers_read_as_watch_columns (test_overlay_logs.py:30)	
+D10.md	test_press_log_columns (test_overlay_logs.py:44)	
+D10.md	test_the_press_columns_before_the_in_game_columns (test_overlay_logs.py:54)	
+D10.md	test_the_press_columns_before_the_timing_columns (test_overlay_logs.py:64)	
+D10.md	test_the_press_columns_before_the_send_column (test_overlay_logs.py:71)	
+D10.md	test_the_press_columns_before_the_retime_column (test_overlay_logs.py:78)	
+D10.md	test_the_press_columns_before_the_wall_times (test_overlay_logs.py:85)	
+D11.md	2. test_freak_squeeze_out_press_is_the_files (:147)	
+D11.md	4. test_the_file_level_values_are_read (:172)	
+D11.md	5. test_press_plan_returns_the_presses_in_firing_order (:178)	
+D11.md	10. test_score_times_are_the_chords_index_and_ms (:236)	q3-unchecked
+D11.md	15. test_waiting_and_the_start_cursor_come_from_live (:267)	
+D11.md	17. test_one_row_per_press_with_the_press_log_columns (:341)	q3-unchecked
+D11.md	31. test_live_play_takes_no_press_and_passes_no_kit (:625)	
+D11.md	33. test_only_the_harness_calls_play_chords_with_a_kit (:666)	
+D11.md	42. test_a_key_press_adds_nothing (:857)	q3-unchecked
+D11.md	47. test_the_writer_builds_its_rows_through_press_log_writer (:962)	
+D11.md	52. test_a_row_costs_the_adding_thread_less_than_the_score_read_sleep (:1023)	
+D11.md	53. test_a_two_group_reply_gives_two_rows_with_their_own_frames_and_one_score (:1098)	q3-unchecked
+D11.md	55. test_the_mouths_fixture_sends_one_message_per_split_chord (:1124)	q3-unchecked
+D11.md	62. test_an_end_3_ms_later_moves_the_squeeze_presses_by_3 (:1223)	q3-unchecked
+D11.md	77. test_the_end_is_read_after_the_anchor_chord_not_only_the_activation (:1527)	
+D11.md	79. test_each_press_moves_by_its_own_end (:1549)	q3-unchecked
+D11.md	82. test_a_read_end_past_the_threshold_joins_the_inside_group (:1604)	q3-unchecked
+D11.md	88. test_pitch_dark_chord_644_moves_by_the_conversion (:1688)	
+D11.md	90. test_the_late_gem_joins_before_the_moved_own_end (:1720)	q3-unchecked
+D11.md	102. test_only_the_marked_rows_carry_it (:1868)	
+D11.md	113. test_the_start_line_counts_skipped_chords (:2111)	q3-unchecked
+D12.md	test_the_play_message_carries_the_schedule_and_every_number (test_play_in_game.py:107)	q3-unchecked
+D12.md	test_a_sent_row_and_a_dropped_row_fill_every_column_score_compare_reads (:124)	q3-unchecked
+D12.md	test_an_end_read_posts_one_retime_of_retime_from_ends_output (:155)	q3-unchecked
+D12.md	test_an_end_read_with_star_power_off_still_posts_a_retime (:198)	
+D12.md	test_each_agent_stop_reason_gives_its_stop_word (:273)	
+D12.md	test_a_split_chords_rows_match_play_chords_rows_but_the_timing_columns (:342)	
+D12.md	test_prep_inputs_runs_three_commands_and_dry_loads_the_schedule (:94)	
+D12.md	test_the_default_exe_is_this_checkouts_release_build (:164)	q3-unchecked
+D12.md	test_one_second_at_various_bpm (:50)	
+D12.md	test_rounds_to_nearest (:55)	
+D12.md	test_braces_balanced (:96)	
+D12.md	test_pairs_do_not_overlap (:122)	
+D12.md	test_probe_note_ticks_are_the_written_ticks (:149)	
+D12.md	test_chart_ticks_match_manifest_times (:38)	q3-unchecked
+D12.md	test_song_names_are_spelled_once (:95)	
+D12.md	test_exact_values_pass (:130)	
+D12.md	test_back_off_by_one_fails (:139)	
+D12.md	test_front_off_fails (:144)	
+D12.md	test_drifted_back_constant_raises (:173)	
+D12.md	test_read_only_asks_for_read_and_query_rights (test_process_readonly.py:30)	
+D12.md	test_full_open_keeps_the_four_rights (:33)	
+D12.md	test_derived_rules_come_from_the_per_side_constants (:39)	
+D12.md	test_normal_back_ms_is_derived_from_the_seconds_value (:52)	q3-unchecked
+D12.md	test_the_real_capped_run_reads_as_capped_not_unclamped (:60)	
+D12.md	test_a_reading_past_the_cap_is_no_clamp (:67)	
+D12.md	test_precision_mode_says_the_cap_is_unknown (:71)	
+D12.md	test_floor_runs_are_checked_against_the_measured_floor (:77)	
+D12.md	test_a_chord_passes_only_when_the_step_equals_hydras_points (:77)	
+D12.md	test_the_route_words_are_game_tools (:119)	
+D12.md	test_clock_line_wording (:153)	
+D12.md	test_median_and_percentiles (:159)	
+D12.md	test_the_retime_word_play_chart_writes_reads_back (:257)	
+D13.md	test_watch_checks.py	q3-unchecked
+D14.md	test_tables_print_in_the_fixed_order (:216)	
+D14.md	test_the_brief_names_the_three_inputs_and_the_labels (:170)	
+D15.md	BuildPassTool (real `build_slot.ps1` on a temp slot folder)	
+D2.md	test_the_line_lists_when_the_game_came_forward_since_the_start (line 112)	
+D2.md	test_field_with_a_metadata_offset_note_keeps_its_offset (line 192)	q3-unchecked
+D2.md	test_three_done_lines_and_a_crash_exit_count_as_good (line 294)	q3-unchecked
+D2.md	test_a_note_under_code_4045_is_looked_up_in_the_4045_table_not_the_6142_one (line 603)	q3-unchecked
+D2.md	test_map_rows_that_do_not_match_the_dump_are_errors (line 722)	q3-unchecked
+D2.md	test_a_4045_map_names_its_class_by_name (line 759)	q3-unchecked
+D2.md	test_a_4045_span_naming_a_mapped_property_gets_an_unlisted_row_and_a_warning (line 790)	q3-unchecked
+D2.md	test_attaches_to_the_game_by_process_name (line 300)	q3-unchecked
+D2.md	test_returns_true_at_once_when_the_event_is_set (line 364)	
+D2.md	test_wakes_when_the_event_is_set_during_the_wait (line 372)	
+D2.md	test_every_message_reaches_the_log_in_order_once (line 798)	
+D2.md	test_detach_waits_for_the_writer_and_says_so_when_the_cap_passes (line 821)	
+D2.md	test_summary_counts_a_clock_that_went_backwards (line 899)	q3-unchecked
+D2.md	test_the_command_line_refuses_a_zero_cap (line 965)	q3-unchecked
+D2.md	test_agent_calls_only_named_methods (line 1033)	
+D2.md	test_kit_load_map_passes_the_method_pointer (line 1079)	q3-unchecked
+D2.md	test_one_more_invoke_in_kit_ts_fails (line 1118)	
+D2.md	test_an_invoke_in_a_second_file_fails (line 1124)	
+D2.md	test_a_lookup_by_a_name_that_is_not_a_literal_fails (line 1135)	
+D2.md	test_a_native_function_fails (line 1140)	
+D2.md	test_kit_hooks_game_manager_update_once (line 1254)	q3-unchecked
+D2.md	test_kit_play_holds_no_number_of_its_own (line 1263)	
+D2.md	test_a_play_that_waits_fails (line 1282)	
+D2.md	test_a_stop_that_skips_unhook_fails (line 1292)	
+D2.md	test_only_gamemanager_ts_names_the_native_object_field (line 1319)	
+D2.md	test_the_state_agent_sends_the_destroyed_count_in_both_replies (line 1331)	q3-unchecked
+D2.md	test_the_check_catches_a_patch_outside_the_observer (line 1410)	
+D2.md	test_launch_ts_sends_an_error_key_only_for_a_fault (line 1456)	
+D2.md	test_build_scripts_end_by_themselves (line 1482)	
+D3.md	test_attach_before_the_delay_waits_the_rest_then_attaches (test_frida_tools.py:242)	q3-unchecked
+D3.md	test_a_stale_trace_agent_starts_no_trace (:353)	
+D3.md	test_the_threshold_line_names_the_value_and_the_offsets_constant (:430)	
+D3.md	test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision (:434)	
+D3.md	test_it_parses_with_one_table_per_enum_field (:552)	
+D3.md	PlayerScreenHookTest.test_the_hooked_method_is_the_player_screens_own (:651)	q3-unchecked
+D3.md	test_state_leaves_the_menu_block_to_ch_menu (:696)	
+D3.md	test_player_screen_on_the_instrument_page_with_drum_rows (:719)	
+D3.md	test_trace_start_refuses_with_no_live_game_manager (:856)	q3-unchecked
+D3.md	test_trace_start_takes_the_backup_just_before_it_hooks (:871)	
+D3.md	test_notes_from_since_are_lined_up (:954)	
+D3.md	test_both_hook_rvas_name_one_engine_method_each (RealFactsTest, :995)	
+D3.md	test_an_exit_between_calls_fails_the_next_call_the_same_way (:408)	
+D3.md	test_an_initialize_offering_2026_07_28_is_answered_as_a_handshake_connection (:557)	
+D3.md	test_a_call_in_flight_refuses_the_reload_and_is_named (:577)	
+D3.md	test_a_call_in_flight_through_ch_call_is_named_by_its_inner_tool (:594)	
+D3.md	test_a_worker_that_never_answers_the_check_is_left_running (:615)	
+D3.md	test_a_worker_dead_before_the_check_is_replaced_and_the_reply_says_so (:640)	
+D3.md	test_an_open_call_does_not_hold_the_exit_past_the_cap (:799)	
+D3.md	test_the_front_holds_no_reply_cut_and_no_process_group (:863)	
+D3.md	test_a_changed_key_is_deleted_imported_and_checked (:225)	
+D3.md	test_restore_all_puts_the_key_back (:268)	
+D3.md	test_the_song_ini_length_reader_is_gone (:404)	
+D4.md	test_a_quiet_machine_puts_the_report_before_the_launch_lines (test_game_tools.py:352)	
+D4.md	test_ch_start_has_no_argument_that_skips_the_check (test_game_tools.py:395)	q3-unchecked
+D4.md	test_ch_start_with_no_song_launches_launch_commands_no_song_line (test_game_tools.py:428)	
+D4.md	test_the_command_line_comes_from_launch_command_with_known_flags_only (test_game_tools.py:435)	
+D4.md	test_ch_stop_says_when_the_game_outlives_the_wait_and_still_restores (test_game_tools.py:491)	
+D4.md	test_ch_press_refuses_an_unknown_lane_with_the_list (test_game_tools.py:696)	
+D4.md	test_ch_key_refuses_an_unknown_key_with_the_list_and_sends_nothing (test_game_tools.py:770)	
+D4.md	test_run_cap_is_the_song_plus_the_extra_minute_else_240_s (test_game_tools.py:833)	q3-unchecked
+D4.md	test_the_schedules_run_cap_reads_its_song_end_and_refuses_null (test_game_tools.py:839)	q3-unchecked
+D4.md	test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play (test_game_tools.py:846)	q3-unchecked
+D4.md	test_a_second_ch_play_chart_is_refused_while_one_runs (test_game_tools.py:926)	
+D4.md	test_the_freak_reply_names_both_anchors_off_the_schedule (test_game_tools.py:1173)	q3-unchecked
+D4.md	test_the_mouths_reply_names_the_squeezes_and_the_declined_fills (test_game_tools.py:1178)	
+D4.md	test_the_bomber_reply_names_the_early_anchor (test_game_tools.py:1183)	
+D4.md	test_the_mouths_order_line_follows_the_anchor_lines (test_game_tools.py:1188)	q3-unchecked
+D4.md	test_the_bomber_order_line_follows_the_anchor_line (test_game_tools.py:1193)	
+D4.md	test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout (test_game_tools.py:1496)	q3-unchecked
+D4.md	test_the_rows_reach_the_file_in_order_and_only_once (test_game_tools.py:1536)	
+D4.md	test_a_run_reusing_a_log_name_starts_the_file_over (test_game_tools.py:1653)	
+D5.md	test_the_mouths_run_reply_names_its_squeezes_after_the_declined_line (1816)	q3-unchecked
+D5.md	test_the_freak_run_reply_names_its_anchors (1823)	
+D5.md	test_the_bomber_run_reply_names_its_early_anchor (1827)	
+D5.md	test_the_tools_take_schedule_json_and_no_dump_json (1951)	
+D5.md	test_game_tools_names_no_kit_press_source_and_no_timing (1990)	
+D5.md	test_a_human_launch_adds_the_launch_agent_to_the_builds_record (2108)	
+D5.md	test_run_chart_with_probes_says_the_probes_line_after_the_plays (2168)	
+D5.md	test_the_marker_sits_under_the_scratch_root_and_never_the_real_temp_folder (2470)	
+D5.md	test_a_song_with_no_length_never_takes_a_backup_or_a_marker (2574)	
+D5.md	test_an_ordinary_adopted_backup_is_restored_at_shutdown (2645)	
+D5.md	test_the_command_carries_this_worker_and_the_songs_run_cap (2937)	
+D5.md	test_a_run_with_no_song_gets_the_cap_with_no_folder (2948)	
+D5.md	test_the_planned_ends_are_the_schedules_on_each_chord_read_after (3247)	q3-unchecked
+D5.md	test_the_probe_moved_chords_reach_the_agent_as_play_entries_at_literal_times (3357)	
+D5.md	test_a_result_with_no_rows_of_its_own_counts_the_drop_as_logged (3436)	
+D5.md	test_the_same_block_on_the_player_thread_still_drops (3550)	
+D6.md	test_the_end_is_the_number_as_written (:123)	q3-unchecked
+D6.md	test_chart_song_length_ms_reads_the_dump_it_made (:144)	q3-unchecked
+D6.md	test_it_patches_the_game_assembly_module (:84)	
+D6.md	test_expect_is_mov_edx_1 (:97)	
+D6.md	test_the_loader_rva_has_a_method_row_in_the_facts_table (:122)	
+D6.md	test_the_listing_reads_mov_edx_1_at_the_patch_rva (:128)	
+D6.md	test_the_listing_opens_with_the_instructions_entry_expect_encodes (:132)	q3-unchecked
+D6.md	test_the_data_file_reads_as_a_patch (:238)	
+D6.md	test_a_clean_probe_prints_each_number_and_passes (:1067)	
+D7.md	test_the_parser_reads_the_captured_table (:184)	
+D7.md	test_the_filter_keeps_counts_for_the_whole_table (:237)	
+D7.md	test_an_empty_filter_parses_no_threads (:243)	
+D7.md	test_gains_and_a_vanished_process (:311)	q3-unchecked
+D7.md	test_until_the_pid_line_no_process_is_left_out_of_the_gains (:541)	
+D7.md	test_a_short_clock_read_leaves_the_column_empty (:583)  DEAD	
+D7.md	test_each_row_carries_the_pid_and_period_and_only_the_last_the_process_time (:644)	
+D7.md	test_a_table_that_outgrows_the_buffer_grows_it_and_keeps_it (:761)	
+D7.md	test_the_rate_defaults_to_the_one_constant (:819)	
+D7.md	test_run_cap_s_adds_the_extra (:825)	
+D7.md	test_it_imports_neither_the_game_tools_nor_the_watch (:845)	
+D7.md	test_a_one_second_run_on_this_process (:865)	
+D7.md	test_only_true_counts_as_active (:448)	
+D7.md	test_it_names_the_two_manual_pages_and_only_repo_files_that_exist (:491)	
+D8.md	test_the_start_sends_each_classes_skips_and_assembly (:234)	
+D8.md	test_the_start_refuses_without_the_builds_facts (:243)	
+D8.md	test_a_stale_agent_starts_no_watch (:261)	
+D8.md	test_listed_classes_send_their_rvas_and_by_name_classes_their_names (:341)	
+D8.md	test_shared_addresses_are_those_more_than_one_class_runs (:354)	
+D8.md	test_an_all_class_skips_its_shared_addresses_and_a_listed_one_does_not (:357)	
+D8.md	test_only_scene_manager_names_an_assembly (:366)	
+D8.md	test_only_scene_manager_is_a_scene_loader (:385)	
+D8.md	test_the_addresses_each_class_skips_in_this_build (:442)	
+D8.md	test_top_level_keys_and_version (test_mono_facts.py:92)	q3-unchecked
+D8.md	test_signatures_name_the_three_readable_classes_only (:145)	q3-unchecked
+D8.md	test_a_missing_assembly_is_named (:162)	
+D8.md	test_the_decided_numbers (:160)	
+D8.md	test_a_folder_stops_at_its_first_recent_file_and_is_still_recent (:327)	
+D8.md	test_the_command_line_is_the_fixed_contract (:122)	
+D8.md	test_build_server_registers_the_thirty_seven_tools (test_server.py:65)	
+D8.md	test_open_items_uses_public_checks (:121)	
+D8.md	test_a_long_reply_is_cut_at_a_line_with_the_clone_hero_closing_line (:150)	
+D8.md	test_ch_kit_press_says_what_value_does (:369)	
+D9.md	test_no_song_folder_takes_the_watcher_cap (test_sp_tools.py:290)	
+D9.md	test_ch_sp_prints_the_latest_read (test_sp_tools.py:324)	q3-unchecked
+D9.md	test_watch_for_run_stops_a_search_that_outlasts_its_cap_and_says_so (test_sp_tools.py:413)	
+D9.md	test_ch_sp_watch_status_lists_activations_and_rises (test_sp_tools.py:465)	q3-unchecked
+D9.md	test_the_real_ls_o2_gap_line (test_sp_tools.py:526)	
+D9.md	test_the_real_game_tools_holds_the_run_the_song_end_reads (test_sp_tools.py:631)	
+D9.md	test_a_gap_of_exactly_gap_ms_is_not_printed (test_sp_tools.py:655)	
+D9.md	test_ready_when_comes_from_the_schedule_and_whether_from_the_games_half (test_sp_tools.py:711)	q3-unchecked
+D9.md	test_run_cap_line_says_default_when_no_song_length (test_sp_tools.py:735)	
+D9.md	test_ch_sp_compare_on_mouths_reports_as_compare_does (test_sp_tools.py:766)	
+D9.md	test_the_song_cap_is_hydras_end_plus_the_margin (test_trace_hits.py:110)	
+D9.md	test_the_wall_cap_is_the_song_cap_plus_the_pause_room (test_trace_hits.py:113)	
+D9.md	test_count_mode_posts_the_settings_and_prints_the_table (test_trace_hits.py:171)	q3-unchecked
+D9.md	test_a_stale_agent_runs_nothing (test_trace_hits.py:318)	
+D9.md	test_only_gamemanager_ts_looks_up_the_game_manager (test_trace_hits.py:340)	
+D9.md	test_the_agent_gets_mains_args_mode_settings (test_trace_hits.py:458)	q3-unchecked
+D9.md	test_the_wall_cap_still_ends_a_run_nobody_stops (test_trace_hits.py:544)	
+D9.md	test_wall_stamp_is_to_the_millisecond (test_cheap_checks.py:102)	
+D9.md	test_prints_new_lines_whole_and_stops_at_the_cap (test_cheap_checks.py:109)	q3-unchecked
+D9.md	test_no_song_exits_2_with_the_finders_message (test_cheap_checks.py:255)	
+D9.md	test_five_cases_from_the_plan (test_early_fill_walk.py:57)	
+D9.md	test_each_phrase_holds_exactly_its_one_note (test_early_fill_walk.py:72)	
+D9.md	test_each_fill_ends_on_a_lone_kick (test_early_fill_walk.py:81)	
+D9.md	test_sp_ready_notes_are_a_second_from_both_neighbours (test_early_fill_walk.py:104)	
+D9.md	test_manifest_cases_match_the_chart (test_early_fill_walk.py:127)	
+D9.md	test_the_song_is_listed (test_early_fill_walk.py:149)	
+D9.md	test_a_plain_chord_of_a_real_schedule_is_pressed_at_its_lead (test_edge_probe.py:125)	q3-unchecked
+E1.md	test_planner_asks_for_the_premise_map (test_agent_files.py:44)	
+E1.md	test_reviewer_checks_the_premise_map (test_agent_files.py:47)	
+E1.md	test_finished_flag_written_when_no_record_exists (test_agent_stop.py:171)	
+E1.md	test_reviewer_commits_on_two_diverged_branches_record_the_handed_tip_with_a_problem (test_agent_stop.py:223)	
+E1.md	test_transcript_whose_first_user_record_is_not_the_brief_writes_nothing (test_agent_stop.py:343)	q3-unchecked
+E1.md	test_no_saved_handback_gives_no_verdict_even_with_one_in_the_transcript (test_agent_stop.py:384)	
+E1.md	test_recorded_verdict_logs_the_tip_and_the_fingerprinted_paths (test_agent_stop.py:442)	
+E1.md	test_no_verdict_logs_its_reason (test_agent_stop.py:454)	
+E1.md	test_unwritable_log_still_records_the_verdict_and_says_so (test_agent_stop.py:482)	
+E1.md	test_two_concurrent_writers_never_leave_a_torn_file (test_common.py:104)	
+E1.md	test_an_agents_call_is_refused_and_says_the_main_session_builds (test_percall_key.py:196)	
+E1.md	test_one_hook_after_a_tool_call (test_docs_numbers.py:151)	
+E1.md	test_readme_names_new_records (test_docs_numbers.py:170)	
+E1.md	test_the_refusal_names_the_write_tool_and_no_commit_route (test_bash_windows_rule.py:59)	
+E2.md	test_a_build_gets_the_first_call_notice_and_the_rewrite_in_one_answer (test_percall_rewrite.py:52)	q3-unchecked
+E2.md	test_a_call_past_the_budget_is_not_rewritten (test_percall_rewrite.py:77)	
+E2.md	test_a_build_with_nothing_else_to_say_gets_a_new_answer (test_percall_rewrite.py:114)	
+E2.md	test_the_rewrite_rides_beside_a_stall_notice (test_percall_rewrite.py:118)	
+E2.md	test_the_rewrite_sits_beside_stalls_crash_message (test_percall_rewrite.py:124)	
+E2.md	test_skip_does_not_push_the_next_send_back (test_posture.py:77)	
+E2.md	test_call_100_warns_once (test_progress.py:166)	
+E2.md	test_call_150_denies_read (test_progress.py:174)	
+E2.md	test_call_149_still_passes (test_progress.py:178)	
+E2.md	test_call_150_lets_report_git_and_status_through (test_progress.py:186)	q3-unchecked
+E2.md	test_minute_20_warns_once (test_progress.py:196)	
+E2.md	test_minute_19_is_silent (test_progress.py:205)	
+E2.md	test_minute_30_minus_a_second_passes (test_progress.py:211)	
+E2.md	test_minute_30_denies (test_progress.py:217)	
+E2.md	test_5_minutes_old_nags (test_progress.py:226)	
+E2.md	test_under_5_minutes_is_silent (test_progress.py:233)	
+E2.md	test_just_under_10_minutes_nags_but_passes (test_progress.py:238)	
+E2.md	test_10_minutes_old_denies (test_progress.py:251)	
+E2.md	test_no_status_file_counts_from_first_call (test_progress.py:258)	
+E2.md	test_status_helper_passes_when_overdue (test_progress.py:262)	
+E2.md	test_fresh_status_file_resets (test_progress.py:266)	
+E2.md	test_shell_call_runs_the_real_rewrite_without_crashing (test_progress.py:300)	
+E2.md	test_progress_deny_wins (test_progress.py:318)	
+E2.md	test_out_of_budget_subagent_keeps_its_allow (test_progress.py:566)	q3-unchecked
+E2.md	test_chained_status_call_past_budget_is_refused (test_progress.py:728)	q3-unchecked
+E2.md	test_plain_status_call_past_budget_passes (test_progress.py:732)	q3-unchecked
+E2.md	test_refusal_names_the_commit_and_review_route (test_publish.py:233)	
+E2.md	test_key_flag_is_gone_and_so_is_doc_key_ps1 (test_publish.py:240)	
+E3.md	File 1: test_refusals.py (88 lines, 5 cases)	q3-unchecked
+E4.md	ApprovalTests.test_pointer_whose_transcript_is_gone_refused (test_ruling_rules.py:267)	q3-unchecked
+E4.md	EmptyFleet.test_exactly_five_minutes_warns (test_stall.py:279)	
+E4.md	EmptyFleet.test_spell_starts_at_newest_agent_call (test_stall.py:284)	
+E4.md	EmptyFleet.test_open_journal_is_the_target (test_stall.py:290)	q3-unchecked
+E4.md	EmptyFleet.test_journal_from_an_earlier_run_does_not_count (test_stall.py:310)	
+E4.md	EmptyFleet.test_warns_once_per_quiet_spell (test_stall.py:321)	
+E4.md	EmptyFleet.test_new_launch_starts_a_new_spell (test_stall.py:331)	
+E4.md	EmptyFleet.test_fleet_paragraph_comes_before_stuck_agents (test_stall.py:338)	
+E4.md	EmptyFleet.test_launch_inside_the_scan_throttle_is_still_stamped (test_stall.py:344)	
+E4.md	Rewrite.test_tails_are_the_designed_text (test_shell_output.py:49)	
+E4.md	Rewrite.test_the_delete_rule_still_does_not_read_a_quoted_word (test_shell_output.py:99)	
+E4.md	Trim.test_a_result_of_exactly_the_cap_is_left_alone (test_shell_output.py:142)	
+E4.md	Trim.test_one_over_the_cap_shows_start_error_lines_end_and_path (test_shell_output.py:145)	
+E4.md	Trim.test_error_lines_show_in_a_trim_with_the_over_long_one_cut (test_shell_output.py:198)	
+E4.md	Trim.test_each_error_word_counts (test_shell_output.py:219)	
+E4.md	Trim.test_persisted_result_that_failed_reads_that_file_and_saves_nothing_new (test_shell_output.py:248)	
+E4.md	Trim.test_a_long_failed_result_saves_the_failed_line_first (test_shell_output.py:320)	
+E4.md	Trim.test_a_persisted_no_trim_failure_is_still_trimmed (test_shell_output.py:357)	
+E4.md	SavedPath.test_the_scratch_field_wins (test_shell_output.py:375)	
+E4.md	SavedPath.test_with_no_scratch_field_it_is_claude_codes_folder_for_the_transcript (test_shell_output.py:379)	
+E4.md	SavedPath.test_an_empty_scratch_field_counts_as_absent (test_shell_output.py:383)	
+E4.md	Check 'the note names the card-writer agent and never-run-check' (test_h53_session_cards_start.ps1:137)	
+E4.md	Check 'the note says the agents write to staging and check.py moves passing cards to the cards root' (test_h53_session_cards_start.ps1:139)	
+E4.md	Check 'the commit step stages by name, on main, with the three trailers, and needs no reviewer' (test_h53_session_cards_start.ps1:144)	q3-unchecked
+E4.md	Check 'the commit step confirms the branch and commits only docs/sessions' (test_h53_session_cards_start.ps1:145)	
+E4.md	Check 'the note says not to hold up the user''s request' (test_h53_session_cards_start.ps1:146)	
+E4.md	Check 'sessions waiting but no batch file gives a systemMessage' (test_h53_session_cards_start.ps1:195)	
+E4.md	Check 'and the hook returns long before the script would have' (test_h53_session_cards_start.ps1:212)	
+E4.md	Check 'and batch.py, with the budget spent, is not started and no note is given' (test_h53_session_cards_start.ps1:214)	
+E4.md	Check 'at the threshold: the reminder sentence, with the list path' (test_h53_session_cards_start.ps1:236)	
+E4.md	Check 'and the note names that folder and passes it to check, index and link_memory' (test_h53_session_cards_start.ps1:266)	
+E4.md	Check 'the main checkout is untouched' (test_h52_cleanup_sweep.ps1:180)	
+E4.md	Check 'the report names each removed worktree' (test_h52_cleanup_sweep.ps1:205)	
+E4.md	Check 'the report counts the scratch entries, folders and files together' (test_h52_cleanup_sweep.ps1:206)	
+E4.md	Check 'the report gives errors without PowerShell''s wrapper text' (test_h52_cleanup_sweep.ps1:208)	
+E4.md	Check 'and the report says why' (test_h52_cleanup_sweep.ps1:274)	
+E4.md	Check 'the background worker finished within 60 s and wrote its report' (test_h52_cleanup_sweep.ps1:291)	
+E4.md	Check 'the test''s writer finished within 120 s' (test_h52_cleanup_sweep.ps1:412)	
+E4.md	Check 'the report counts the pruned state records and log lines' (test_h52_cleanup_sweep.ps1:451)	
+E4.md	Check 'and names no failure' (test_h52_cleanup_sweep.ps1:452)	
+E4.md	Check 'and the report says which sessions still run could not be read' (test_h52_cleanup_sweep.ps1:470)	
+E4.md	Check 'a broken input helper gives a systemMessage' (test_h52_cleanup_sweep.ps1:479)	
