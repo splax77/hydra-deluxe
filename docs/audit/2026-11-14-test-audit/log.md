@@ -70,3 +70,16 @@ One correction to the engine index came out of the check: it said `flammarker_in
 Session 16892967 took over from the handoff. Every git claim in it was checked: main is still c10c7f54, `src/` is the same at 326cd4e0 and c10c7f54, and 0bfa2dce was not yet in the audit branch. Main was merged into the audit branch (515e05c1) before the briefs, so the auditors judge the tests main has.
 
 Briefs `briefs/T5-A1.md` to `T5-A4.md` are made from `briefs/T3.md`, with the screen records added to question 3. `tests/test_activation_rows.cpp` is cut at line 841, a `TEST_CASE` boundary near the plan's 847: A2 holds 15 test cases, A3 holds 22. `tests/report_samples.cpp` (A1) holds no `TEST_CASE`; it is sample data for four other test files, so A1 writes one record per helper function.
+
+Round 1 ran as one workflow (wf_58e275eb-941): four Sonnet scouts, launched together, about 8 minutes, 210 tool calls in all. Every slice finished; no test case was left unreached, so there is no re-send.
+
+- A1, `records/A1.md` (b1b524ad): 4 helper records. Rewrite 2, Investigate 2. Its auditor found that only `test_report_page.cpp` and `uitest_report_windows.cpp` call the helpers; the other two files use only `every_row` from `report_samples.h`.
+- A2, `records/A2.md` (014a1ece): 15 records. Rewrite 10, Investigate 5.
+- A3, `records/A3.md` (c67f9f19): 22 records. Keep 1, Rewrite 13, Remove 3, Investigate 5.
+- A4, `records/A4.md` (c5ad424a, 789b0fbb): 48 records. Keep 31, Rewrite 14, Remove 1, Investigate 2. `tests/test_analysis.cpp` is 1,544 lines on main now, not the 1,410 in `coverage.md`; it still holds 48 `TEST_CASE` lines.
+
+Two claims were checked by reading before round 2: `build_activations` takes its `HydraRecord` unnamed (`src/app/path_view.cpp` line 243, A2's production finding), and `docs/agents/rulings/ui-and-display.md` has `## Unconfirmed` at line 102, as A3 says of the Dynamic Hit Window lines it cites.
+
+Charts and screen moments the round asked for, for the one capture pass after the last find round: from A2, a nonzero early fill and an E1 path, a Paths tab with a Backend limit set (Believer path 4 at 50 ms, Pitch Dark activation 2 at 100 ms), Round and Round, Burnout, one chart's song length beside its timeline labels; from A3, Tapped Out, Burnout "3- 1 2", Focus, Epidermis, Get Ur Freak On, Weltseele, Sun of Nothing, Tapestry of the Starless Abstract, The Age of Betrayal and Round and Round, an orange badge, the copied-path text, and a chord line under Pro Drums on and off; from A1, a library with copies, the path report and comparison windows, and a leaderboard score above the engine's on a chart that is not yet a full combo.
+
+Round 2 ran as one workflow (wf_8b86557d-0af): auditors for A5 to A8 and verifiers for A1 to A4 (`briefs/T5-verify-R1a.md`, `T5-verify-R1b.md`), launched together.
