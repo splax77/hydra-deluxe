@@ -170,4 +170,14 @@ Round 10 ran as one workflow (wf_79987c72-c50): auditors for A37 to A40 and veri
 
 Round 11's split: `tests/ui/uitest_library.cpp` is cut at line 1069, a test-function boundary near the plan's 1034: A41 holds 18 test functions, A42 holds 12.
 
-Round 11 ran as one workflow: auditors for A41 to A44 and verifiers for A37 to A40, launched together.
+Round 11 ran as one workflow (wf_74d48d8a-2cc): auditors for A41 to A44 and verifiers for A37 to A40, launched together. About 4.5 minutes, 181 tool calls; every slice finished.
+
+- A41 (f6feba92): 18 records. Rewrite 2, Investigate 16.
+- A42 (02b05f5b): 12 records. Rewrite 3, Investigate 9. Record 12: line 1986 checks that "Narrow with" is not on screen, a string no file under `src/` holds, so it cannot fail.
+- A43 (956c5f26): 21 records (16 live tests, 5 functions of `uitest_main.cpp`). Keep 4, Rewrite 1, Investigate 16. Split: `src/ui/main.cpp:145-167` and `tests/ui/uitest_main.cpp` each parse `--db`, `--ini`, `--shots`, `--pipe` and `--keep-temp`.
+- A44 (ad9b293d): 12 records; the entry table and the 12 functions match. Rewrite 10, Investigate 2.
+- verify A37 and A38 (0d68f42e): A37 50 agreed, 7 disputed. verify A39 and A40 (3d5db91c): A39 21 agreed, 5 disputed, among them the three records A39's auditor flagged.
+
+Round 12's split: `tests/ui/uitest_report_windows.cpp` is cut at line 991, a test-function boundary near the plan's 830: A46 holds 13 test functions, A47 holds 11.
+
+Round 12 ran as one workflow: auditors for A45 to A48 and verifiers for A41 to A44, launched together.
