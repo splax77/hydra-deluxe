@@ -14,6 +14,8 @@ The audit judged each test case by `docs/agents/test-rubric.md`, and 421 records
 
 On fakes the user also said, in chat: "fake data will never appear in the real hydra and we should be testing the behavior of the real code". A fake of any kind is X9: a fake analyzer (even one that returns a real result), fake readers, fake workers, fake game memory, fake sessions, fake clocks, fake replies, hand-built library rows.
 
+**Hand-built input is not fake.** The user chose, in session 63c70014, that input a test builds and feeds to the real code is fine ("No, input is fine"). That covers a hand-built chart or MIDI file the real engine analyzes, a hand-written settings, ini, handoff or note file the real code reads, a throwaway git repo, and fuzz bytes. X9 is only three things. The first is a stand-in for the code's own output: hand-built Activations, summaries, records, or library rows the scan did not make. The second is a stand-in for outside data: hand-written replies, transcripts or game memory. The third is fake code: fake analyzers, readers, workers, rigs, clocks or sessions.
+
 **Which records.** The first round re-read the Keep records. A second round re-reads the Investigate records, whose fault is mostly "claim not checked". Your prompt says which verdict is yours. Read every record of that verdict in your files, and treat "Keep" below as that verdict. Skip `records/window-WN4.md`: WN4a, WN4b and WN4c supersede it.
 
 Read X9 to X12 in `docs/audit/2026-11-14-test-audit/cross-findings.md` for worked examples of each fault. Your job is to count how many Keep records hold one of them.
