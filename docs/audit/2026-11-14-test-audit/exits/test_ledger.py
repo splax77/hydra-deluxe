@@ -27,6 +27,7 @@ class LedgerOnRealFiles(unittest.TestCase):
         cls.counts, _ = ledger.read_counts()
         cls.left = ledger.apply_corrections(cls.counts, ledger.read_corrections())
         cls.settle = ledger.apply_answers(cls.counts)
+        ledger.join_counts(cls.counts, cls.recs)
 
     def test_superseded_wn4_is_not_read(self):
         self.assertFalse([r for r in self.recs if r['file'] == 'window-WN4.md'])
@@ -82,6 +83,50 @@ class LedgerOnRealFiles(unittest.TestCase):
     def test_a_paragraph_record_followed_by_its_read_line(self):
         # records/A39.md line 29 is a record title; its next line is "Read:".
         self.assertTrue(self.by_start('A39.md', 29)['record'].startswith('test_cap_switch'))
+
+    def joined(self, cf, line):
+        rows = [r for r in self.counts if r['cf'] == cf and r['line'] == line]
+        self.assertEqual(len(rows), 1, (cf, line))
+        return rows[0]
+
+    def test_join_by_test_line_in_parentheses(self):
+        # counts/T5-IR2.md line 94 "2653 worker exit leaves backup" is the record at
+        # records/D5.md line 471, "test_the_workers_exit_leaves_a_marker_backup_and_its_marker (2653)".
+        self.assertEqual(self.joined('T5-IR2', 94)['join'], 'records/D5.md:471')
+
+    def test_join_where_number_and_test_line_agree(self):
+        # counts/T5-IR7.md line 26 "D11 21 | TP:400" is records/D11.md line 315,
+        # "21. test_a_caller_given_cap_ends_the_run_there (:400)".
+        self.assertEqual(self.joined('T5-IR7', 26)['join'], 'records/D11.md:315')
+
+    def test_join_by_record_file_column(self):
+        # counts/T5-KR4.md line 20 "delta-DL1 | 430 | :430" is records/delta-DL1.md line 287,
+        # "430. a hold open at a batch's end loses nothing ...".
+        self.assertEqual(self.joined('T5-KR4', 20)['join'], 'records/delta-DL1.md:287')
+
+    def test_a_number_alone_does_not_join(self):
+        # counts/T5-IR15.md line 80 "A18-24 | :779": A18's record 24 cites test_model.cpp:689,
+        # and no A18 record title cites 779, so the row cannot be checked.
+        r = self.joined('T5-IR15', 80)
+        self.assertEqual(r['join'], '')
+        self.assertIn('record number', r['why'])
+
+    def test_a_row_with_no_record_file_is_unjoined(self):
+        # counts/T5-IR1.md line 20 names only a test, under "test_check_handoff.py (20 records)".
+        r = self.joined('T5-IR1', 20)
+        self.assertEqual(r['join'], '')
+        self.assertEqual(r['why'], 'names no record file')
+
+    def test_every_join_names_a_real_record_row_once_per_count_file(self):
+        ids = {f"records/{r['file']}:{r['hline']}" for r in self.recs}
+        seen = set()
+        for r in self.counts:
+            if r['join']:
+                self.assertIn(r['join'], ids)
+                self.assertNotIn((r['cf'], r['join']), seen)
+                seen.add((r['cf'], r['join']))
+            else:
+                self.assertTrue(r['why'])
 
     def test_count_rows_match_totals_where_totals_reports_no_gap(self):
         # TOTALS.md section 4 names the files with a gap; these four are not among them.

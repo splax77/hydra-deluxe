@@ -10,12 +10,12 @@ It reads only the audit folder. It writes two kinds of row into one file:
                after TOTALS.md section 3 and the user's answers 2 to 5 in the
                T8 plan (docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md).
 
-The script does not join the two kinds: the count files name records in more
-than ten different ways, and a join it cannot check would hide misses. It does
-not read verify/ or capture/byreading/ either; those columns are left for the
-scouts. It is not trusted to see everything: it prints each count file's row
-count beside TOTALS.md section 1, and lists every heading that looks like a
-record but has no verdict line it could read.
+Each count row gets the id of the one record row it belongs to (join_counts),
+or an empty join and a reason. It does not read verify/ or capture/byreading/
+yet. It is not trusted to see everything: it prints each count file's row
+count beside TOTALS.md section 1 and its joined and unjoined rows, and writes
+every record title with no verdict it could read and every unjoined count row
+to exits/not-in-ledger.md.
 
 Taken from repeats/repeats.py: nothing but the shape (plain regex over the
 files, a TSV with a header line, a short printout). repeats.py reads test
@@ -96,7 +96,8 @@ def record_start(lines, k, in_fence, fence_first, open_record):
         return clean(line).lstrip('- ')
     prev = lines[k - 1].strip() if k else ''
     nxt = lines[k + 1] if k + 1 < len(lines) else ''
-    if line.strip() and prev in ('', '---') and READ_LINE.match(nxt) and not VERDICT.search(line):
+    if line.strip() and prev in ('', '---') and READ_LINE.match(nxt) and not VERDICT.search(line) \
+            and not READ_LINE.match(line) and not re.match(r'^\s*(?:\d+|Q\d+)[ :]', line):
         return clean(line)
     return None
 
@@ -235,7 +236,8 @@ def read_counts():
                 test = rec
             rows.append({'cf': cf, 'line': i, 'section': section, 'rec': rec, 'num': num,
                          'test': test, 'faults_raw': faults, 'faults': marks(faults),
-                         'reason': reason, 'text': ' '.join(cells), 'fix': '', 'answer': ''})
+                         'reason': reason, 'text': ' '.join(cells), 'fix': '', 'answer': '',
+                         'header': header, 'cells': cells})
     return rows, notable
 
 
@@ -338,6 +340,166 @@ def apply_answers(rows):
     return settle
 
 
+FILE_TOKEN = re.compile(r'\b((?:delta-|window-)?[A-Z]{1,2}\d+[a-z]?(?:-C\d+(?:-fuzz)?)?)(?:\.md)?\b')
+SOURCE_FILE = re.compile(r'[\w./-]+\.(?:py|cpp|h|md|ps1|txt)')
+
+
+def record_files(tokens_text):
+    """Record files named in a text, by their id ("D10", "D8.md", "DL3", "WN4a")."""
+    rec_dir = os.path.join(AUD, 'records')
+    out = []
+    for t in FILE_TOKEN.findall(tokens_text):
+        for cand in (t, 'delta-' + t, 'window-' + t):
+            if os.path.isfile(os.path.join(rec_dir, cand + '.md')) and cand + '.md' not in SUPERSEDED:
+                if cand + '.md' not in out:
+                    out.append(cand + '.md')
+                break
+    return out
+
+
+def count_titles():
+    """Each count file's first heading, which names the record files it counts."""
+    out = {}
+    cdir = os.path.join(AUD, 'counts')
+    for name in os.listdir(cdir):
+        if name.startswith('T5-') and name.endswith('.md'):
+            for line in lines_of(os.path.join(cdir, name)):
+                m = HEADING.match(line)
+                if m:
+                    out[name[:-3]] = clean(m.group(2))
+                    break
+    return out
+
+
+def locators(r):
+    """What a count row says about its record, each read from a named cell:
+    test line, test name, record-file line, and record number (with how sure)."""
+    h, cells = r['header'], r['cells']
+    rec_i = next((k for k, x in enumerate(h) if x.startswith('rec') and 'file' not in x), None)
+    rec = cells[rec_i] if rec_i is not None and rec_i < len(cells) else r['rec']
+    rec_h = h[rec_i] if rec_i is not None else ''
+    test = r['test'] or ''
+    loc = {'T': None, 'name': None, 'L': None, 'N': None, 'N_sure': False}
+    m = re.search(r'\.md:(\d+)', rec)
+    if m or 'line' in rec_h and 'test' not in rec_h and ('.md' in rec_h or rec_h.startswith('d')):
+        # "D9.md:24" (T5-IR5) or the "record (d2.md line)" column (T5-IR3): a record-file line.
+        mm = m or re.match(r'^(\d+)\b', rec)
+        loc['L'] = int(mm.group(1)) if mm else None
+    elif re.match(r'^\d+\b', rec) and ('test line' in rec_h or 'tg line' in rec_h or 'file:line' in rec_h):
+        loc['T'] = int(re.match(r'^(\d+)', rec).group(1))       # T5-IR8, T5-IR2
+    t = re.search(r':\s*(\d+)', test) or re.search(r':\s*(\d+)', rec)
+    if t and loc['T'] is None:
+        loc['T'] = int(t.group(1))
+    words = SOURCE_FILE.sub('', test + ' ' + rec)
+    n = re.search(r'\btest_\w+', words) or re.search(r'\b[a-z][a-z0-9]*(?:_[a-z0-9]+){2,}\b', words)
+    if n:
+        loc['name'] = n.group(0)
+    m = re.match(r'^(?:delta-|window-)?[A-Z]{1,2}\d+[a-z]?\s*[- ]\s*(\d+(?:\.\d+)?)\b', rec)
+    if m:
+        loc['N'], loc['N_sure'] = m.group(1), True                 # "A41 1", "C9 1.2", "C5-4"
+    else:
+        for k, x in enumerate(h):
+            if x in ('no.', 'no', '#') or (x == 'record' and 'record file' in h):
+                if k < len(cells) and re.fullmatch(r'\d+(?:\.\d+)?', cells[k]):
+                    loc['N'], loc['N_sure'] = cells[k], x != '#'
+    return loc
+
+
+def name_hits(name, title):
+    if name in title or name.replace('test_', '', 1) in title:
+        return True
+    toks = [w for w in name.replace('test_', '', 1).split('_') if w]
+    if len(toks) < 3:
+        return False
+    rest = re.findall(r'[a-z0-9]+', title.lower())
+    it = iter(rest)
+    return all(any(w == x for x in it) for w in toks)     # words in order, others between
+
+
+def join_counts(counts, recs):
+    """Give each count row the id of the one record row it belongs to, or none.
+    A join holds when one locator finds exactly one record row and no other locator
+    finds a different one. Every row left out says why."""
+    titles = count_titles()
+    by_file = {}
+    for x in recs:
+        by_file.setdefault(x['file'], []).append(x)
+    for r in counts:
+        own = ' '.join(c for h, c in zip(r['header'], r['cells'])
+                       if ('rec' in h or 'file' in h) and 'test' not in h)
+        files = record_files(own) or record_files(r['section']) \
+            or record_files(titles.get(r['cf'], ''))
+        r['join'], r['why'] = '', ''
+        if not files:
+            r['why'] = 'names no record file'
+            continue
+        pool = [x for f in files for x in by_file.get(f, [])]
+        loc = locators(r)
+        sets = {}
+        if loc['T'] is not None:
+            pat = re.compile(r'(?::|\(|line |lines )\s*' + str(loc['T']) + r'(?!\d)')
+            sets['test line'] = [x for x in pool if pat.search(x['record'])]
+        if loc['name']:
+            sets['test name'] = [x for x in pool if name_hits(loc['name'], x['record'])]
+        if loc['L'] is not None:
+            sets['record line'] = [x for x in pool if x['hline'] == loc['L'] or loc['L'] in x['vlines']]
+        if loc['N'] is not None and len(files) == 1:
+            pat = re.compile(r'^(?:Record\s+)?[A-Z]{0,3}' + re.escape(loc['N']) + r'[.: )]')
+            sets['number'] = [x for x in pool if pat.match(x['record'])]
+        trusted = [k for k in sets if k != 'number' or loc['N_sure']]
+        uniq = {id(s[0]): s[0] for k, s in sets.items() if k in trusted and len(s) == 1}
+        if len(uniq) != 1:
+            r['why'] = ('locators disagree' if len(uniq) > 1 else
+                        'no locator finds one record (' + ', '.join(f'{k} {len(s)}' for k, s in sets.items())
+                        + ')' if sets else 'no locator in the row')
+            continue
+        hit = next(iter(uniq.values()))
+        by = [k for k, s in sets.items() if k in trusted and s == [hit]]
+        if by == ['number'] and 'test line' in sets and not sets['test line']:
+            # The row's test line is in no record title, so the number alone cannot be checked.
+            r['why'] = 'only the record number finds it; its test line is in no record title'
+            continue
+        clash = [k for k, s in sets.items() if s and hit not in s]
+        if clash:
+            r['why'] = 'locators disagree (' + ', '.join(clash) + ')'
+            continue
+        r['join'] = f"records/{hit['file']}:{hit['hline']}"
+    # Two rows of one count file on one record: neither is trusted.
+    seen = {}
+    for r in counts:
+        if r['join']:
+            seen.setdefault((r['cf'], r['join']), []).append(r)
+    for rs in seen.values():
+        if len(rs) > 1:
+            for r in rs:
+                r['why'] = 'shares its record with ' + ', '.join(str(o['line']) for o in rs if o is not r)
+                r['join'] = ''
+
+
+def write_not_in_ledger(path, unread, counts):
+    """List what the script could not read, by file and line, for the scouts to fill."""
+    unj = [r for r in counts if not r['join']]
+    out = ['# Records the ledger script could not read', '',
+           'ledger.py writes this file; do not edit it by hand. It lists two kinds of line, '
+           'grouped by file. A record title is a line that looks like a record but has no '
+           'verdict the script could read under it. A count row is a row of a recount table '
+           'that the script could not tie to exactly one record row; the reason says why. '
+           'Nothing here is judged. Scouts read each one and fill its ledger columns by hand.', '',
+           f'There are {len(unread)} record titles and {len(unj)} count rows.', '']
+    by = {}
+    for f, ln, h in unread:
+        by.setdefault('records/' + f, []).append(
+            f'- Line {ln} looks like a record titled "{h[:120]}", but the script found no verdict under it.')
+    for r in unj:
+        by.setdefault(f"counts/{r['cf']}.md", []).append(
+            f'- Line {r["line"]} is a count row for "{r["text"][:100]}". It is not joined: {r["why"]}.')
+    for f in sorted(by):
+        out += [f'## {f}', ''] + by[f] + ['']
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('\n'.join(out))
+    return sum(len(v) for v in by.values())
+
+
 def totals_section1():
     out = {}
     for line in lines_of(os.path.join(AUD, 'counts', 'TOTALS.md')):
@@ -352,9 +514,11 @@ def main():
     counts, notable = read_counts()
     left = apply_corrections(counts, read_corrections())
     settle = apply_answers(counts)
+    join_counts(counts, recs)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     cols = ['kind', 'file', 'line', 'heading_or_section', 'record', 'test', 'verdict', 'earlier_verdicts',
-            'faults_counter', 'faults', 'correction', 'answer', 't6', 't7_reopened', 'reason']
+            'faults_counter', 'faults', 'correction', 'answer', 't6', 't7_reopened', 'reason',
+            'id', 'joins_record']
     with open(OUT, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\t'.join(cols) + '\n')
         for r in recs:
@@ -362,12 +526,13 @@ def main():
             t6 = 't6' if (r['file'], (re.match(r'(\d+)', r['record']) or [None, ''])[1]) in T6 else ''
             fh.write('\t'.join(['record', 'records/' + r['file'], str(r['line']), r['heading'], r['record'],
                                 '', v[-1], ','.join(v[:-1]), '', '', '', '', t6,
-                                'yes' if r['file'] in T7_REOPENED else '', '']) + '\n')
+                                'yes' if r['file'] in T7_REOPENED else '', '',
+                                f"records/{r['file']}:{r['hline']}", '']) + '\n')
         for r in counts:
             fh.write('\t'.join(['count', 'counts/' + r['cf'] + '.md', str(r['line']), r['section'],
                                 (r['rec'] + ' ' + r['num']).strip(), r['test'], '', '',
                                 r['faults_raw'], ','.join(r['faults']) or 'none', r['fix'], r['answer'],
-                                '', '', r['reason'][:200]]) + '\n')
+                                '', '', r['reason'][:200], '', r['join']]) + '\n')
 
     from collections import Counter
     vc = Counter(r['verdicts'][-1] for r in recs)
@@ -389,6 +554,16 @@ def main():
         rd, fy = tot[cf]
         flag = '' if (len(rs), faulty) == (rd, fy) else '   MISMATCH'
         print(f'  {cf:8} {len(rs):4} / {faulty:4}   vs  {rd:4} / {fy:4}{flag}')
+    print('\nper count file: rows joined to one record row / unjoined')
+    for cf in sorted({r['cf'] for r in counts}):
+        rs = [r for r in counts if r['cf'] == cf]
+        j = sum(1 for r in rs if r['join'])
+        print(f'  {cf:8} {j:4} / {len(rs) - j:4}')
+    unj = [r for r in counts if not r['join']]
+    print(f'  all      {len(counts) - len(unj):4} / {len(unj):4}')
+    print('\nunjoined count rows, by file and line:', len(unj))
+    for r in unj:
+        print(f'  counts/{r["cf"]}.md:{r["line"]} {r["why"]} | {r["text"][:70]}')
     print('\ncorrections not applied (count of candidate rows):')
     for c, n in left:
         print(f'  {n} candidates: {c["line"]}')
@@ -401,7 +576,10 @@ def main():
     print('\nrows left for answer 4, main session to settle:', len(settle))
     for r in settle:
         print(f'  counts/{r["cf"]}.md:{r["line"]} {r["rec"]} [{",".join(r["faults"])}] {r["reason"][:90]}')
-    print('\nwrote', OUT)
+    nil = os.path.join(os.path.dirname(OUT), 'not-in-ledger.md')
+    print('\nnot-in-ledger.md lines (one per unread record title or unjoined count row):',
+          write_not_in_ledger(nil, unread, counts))
+    print('\nwrote', OUT, 'and', nil)
 
 
 if __name__ == '__main__':
