@@ -53,6 +53,8 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 - **2026-11-12** chose "Keep it, make it cheaper" to "Saved-path fill: on today's main it can never find a row to fill. Your "Bump the stamp" answer (Nov 8) marked every old result out of date, and any chart analysed by the new build is saved with its hardest figure already in place. Remove the fill, or keep it and make it cheaper?" (session c8b70230)
 - **2026-10-14** "make sure the question of "what is an old version and how do i handle it" is only derived once everywhere in the project." (session c0e1259d)
 - **2026-11-15** "so we should use the hit window. and stop inventing our own numbers." (session a3ba79d1)
+- **2026-11-15** "make the early fill threshold an adjustable setting pinned to one number in both directions" (session a3ba79d1)
+- **2026-11-15** "analysis settings panel, default 60ms, supports 0ms to 85ms" (session a3ba79d1)
 
 
 
