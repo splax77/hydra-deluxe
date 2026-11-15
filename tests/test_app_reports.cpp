@@ -903,6 +903,22 @@ void wait_path_report_job(AppState& app) {
     wait_until([&] { return app.report_job->finished(); }, "the path report's job to finish");
 }
 
+// Arms the store so that, between the two reads inside the first lookup a
+// thread other than this one makes (the report job's), the writer saves a
+// result for the app's first library chart, and sets `saved`. The draw
+// thread's own lookups pass by. The caller clears the seam afterwards and
+// declares `saved` before the AppState, so the job never outlives it.
+void save_during_report_lookup(AppState& app, std::atomic<bool>& saved) {
+    const std::string md5 = app.library_row_at(0).entry.md5;
+    const hydra::store::Profile profile = app.settings.profile();
+    const std::thread::id draw = std::this_thread::get_id();
+    hydra::store::RecordStore* store = app.store.get();
+    store->set_between_lookup_reads_for_test([md5, profile, draw, store, &saved] {
+        if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
+        hydra::test::save_batch_record(*store, md5, profile);
+    });
+}
+
 // What a reader of `store` that cannot open reads as: the store's own
 // failure, armed through its seam, worded by app::plain_error.
 std::string failed_open_sentence(hydra::store::RecordStore& store) {
@@ -989,12 +1005,8 @@ TEST_CASE("a path report reads one moment") {
     // reader saves: the draw thread's reads before the job starts pass by.
     const std::string md5 = app->library_row_at(0).entry.md5;
     const hydra::store::Profile profile = app->settings.profile();
-    const std::thread::id draw = std::this_thread::get_id();
     std::atomic<bool> saved{false};
-    app->store->set_between_lookup_reads_for_test([&] {
-        if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
-        hydra::test::save_batch_record(*app->store, md5, profile);
-    });
+    save_during_report_lookup(*app, saved);
     app->request_path_report();
     wait_path_report_job(*app);
     app->store->set_between_lookup_reads_for_test({});
@@ -1009,31 +1021,32 @@ TEST_CASE("a path report reads one moment") {
 
 TEST_CASE("a path report's separate store calls read one moment") {
     ScratchPaths paths("appstate_pathcalls");
-    // A library with no stored result: the report has no rows, so after its
-    // lookup it asks the store a second, separate question (record_count) to
-    // say why. Only the one hold makes that answer agree with the lookup's.
+    // Declared before the AppState, whose job's lookup sets it.
+    std::atomic<bool> saved{false};
+    // A library whose one chart has no stored result. A request would start
+    // a batch for it first, so the test lowers the threshold: the window
+    // asks, and its Cancel builds the report from what is stored, no batch.
     const ChartLibraryEntry song = corpus_chart("pathcalls");
     std::unique_ptr<AppState> app = app_with(paths, {song});
-    const std::string md5 = app->library_row_at(0).entry.md5;
-    const hydra::store::Profile profile = app->settings.profile();
-    const std::thread::id draw = std::this_thread::get_id();
-    std::atomic<bool> saved{false};
-    // Inside the report's lookup (after its chart_index call, before its
-    // record_count call) the writer stores a result for the chart.
-    app->store->set_between_lookup_reads_for_test([&] {
-        if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
-        hydra::test::save_batch_record(*app->store, md5, profile);
-    });
+    app->report_confirm_above = 0;
+    save_during_report_lookup(*app, saved);
     app->request_path_report();
-    finish_path_report(*app);
+    REQUIRE(app->path_report_awaits_confirm());
+    REQUIRE(app->batch_job == nullptr);
+    app->cancel_path_report();  // the window's Cancel: list what is stored
+    // The report reads chart_index, then lookup, inside which the writer
+    // saves a result. It finds no rows, so it then asks a separate question,
+    // record_count, to say why.
+    wait_path_report_job(*app);
     app->store->set_between_lookup_reads_for_test({});
+    finish_path_report(*app);
 
     REQUIRE(saved.load());
     REQUIRE(app->store->record_count() > 0);  // the save landed
-    // The report saw the store as it was at its first read: empty, so the
-    // sentence is the app's "nothing is analyzed yet". A report that asked
-    // record_count outside the hold would have seen the save and said
-    // "nothing under these settings" instead.
+    // Under the one hold every call reads the store as it was at chart_index:
+    // empty, so record_count says 0 and the sentence is the app's "nothing is
+    // analyzed yet". Without the hold, record_count reads on its own after the
+    // save, says 1, and the report says "nothing under these settings".
     CHECK(app->path_report_build() == ReportBuild::Failed);
     CHECK(app->path_report.message ==
           hydra::app::plain_error(
