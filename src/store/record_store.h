@@ -472,7 +472,50 @@ std::optional<PathRow> read_path_row(sqlite3_stmt* s, int idx, int rank);
 
 class ChartIndex;  // store/chart_index.h
 
-class RecordStore {
+// One connection to the store's file: its handle, the lock over its sqlite
+// calls, and its compiled statements. A read written over a connection
+// answers on any connection the store holds. RecordStore holds the writer's.
+struct StoreConnection {
+    sqlite3* db = nullptr;
+    // The rule: this lock covers sqlite calls and nothing else. A prepared
+    // statement is compiled, stepped, reset and finalized with the lock held,
+    // because all four are sqlite calls.
+    std::recursive_mutex mutex;
+    // Compiled statements kept for reuse, keyed by their SQL, so each
+    // statement is compiled once per connection. Used and reset under the
+    // lock; close() finalizes them before the connection closes.
+    std::unordered_map<std::string, sqlite3_stmt*> stmt_cache;
+
+    StoreConnection() = default;
+    StoreConnection(const StoreConnection&) = delete;
+    StoreConnection& operator=(const StoreConnection&) = delete;
+    // Finalizes the cached statements, then closes the handle. A statement
+    // still compiled keeps the connection from closing.
+    void close();
+};
+
+// The store's reads that code which only reads takes. RecordStore is one,
+// answering on its own connection; RecordStore::reader() hands out the one a
+// reading caller asks. Each method's rule is in RecordStore's comment of the
+// same name.
+class StoreReads {
+public:
+    virtual ~StoreReads() = default;
+    virtual std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
+                                             const Profile& want) = 0;
+    RecordLookup lookup_one(const std::string& song_id, const Profile& want) {
+        return lookup({song_id}, want).front();
+    }
+    virtual std::unordered_map<std::string, RecordStatus> settled_song_ids(
+        const Profile& want) = 0;
+
+protected:
+    StoreReads() = default;
+    StoreReads(const StoreReads&) = default;
+    StoreReads& operator=(const StoreReads&) = default;
+};
+
+class RecordStore : public StoreReads {
 public:
     // dbpath may be ":memory:" for an ephemeral store (used by tests).
     // old_files: what to do with a file too old to convert (OldFilePolicy,
@@ -581,11 +624,14 @@ public:
     // it) reads Stale for another build. Ids are sent in chunks under
     // SQLite's bound-value limit.
     std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
-                                     const Profile& want);
-    RecordLookup lookup_one(const std::string& song_id, const Profile& want);
+                                     const Profile& want) override;
+    // lookup_one (StoreReads): lookup of one chart.
     // Every chart lookup calls Ready or CantAnalyze under `want`, with that
     // status: the charts that have a current result, which a batch skips.
-    std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want);
+    std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
+    // The reads a caller that only reads goes through. For now every store
+    // hands back itself, so a read answers on the store's own connection.
+    StoreReads& reader() { return *this; }
     // Every chart lookup calls Ready under `want`.
     std::unordered_set<std::string> ready_song_ids(const Profile& want);
     // Every Ready record under `want`, paths included, best score first (a
@@ -688,7 +734,8 @@ public:
     ChartIndex chart_index();
 
 private:
-    sqlite3* db_ = nullptr;
+    // The connection every write and every RecordStore read goes through.
+    StoreConnection writer_;
     // The fingerprint of the rules this process runs under. A row stamped
     // with anything but `fixed` reads Stale. Computed once, when the store
     // opens.
@@ -701,10 +748,6 @@ private:
     // Tells progress_ the open is at `step`; throws KindedError(Cancelled)
     // when it asks to stop.
     void report(OpenStep step, int64_t rows_done = 0, int64_t rows_total = 0);
-    // The rule: this lock covers sqlite calls and nothing else. A prepared
-    // statement is compiled, stepped, reset and finalized with the lock held,
-    // because all four are sqlite calls.
-    std::recursive_mutex mutex_;
     // list_chart_library's threaded read of the file at `path`: `shares`
     // rowid ranges up to `max_rowid`, each on its own read-only connection,
     // joined in share order. Called with the lock held, so the store's own
@@ -715,10 +758,6 @@ private:
                                                                  const RowsReadFn& on_row);
     // What fail_chart_list_reader_open_for_test set; 0 when nothing is forced.
     int fail_chart_list_reader_open_for_test_ = 0;
-    // Compiled statements kept for reuse, keyed by their SQL, so the save
-    // path compiles each statement once per connection. Used and reset under
-    // the lock; close() finalizes them before the connection closes.
-    std::unordered_map<std::string, sqlite3_stmt*> stmt_cache_;
     // The save group's state (begin_save_group). Written only by the thread
     // that holds the group, which also holds the lock.
     bool group_open_ = false;
@@ -766,7 +805,7 @@ private:
     // KindedError(DatabaseUpgrade) with the file as it was. Only the scan's
     // stamp moves for the album (kChartMetaStamp); the results stamp does not.
     void add_album_column();
-    // Opens db_ on `dbpath`, creating the file if it is missing; throws
+    // Opens the writer's connection on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);
     // The frame of every save: takes the lock and runs `work`
@@ -781,10 +820,6 @@ private:
     // under. The caller holds the lock and an open transaction.
     void file_record(const Profile& profile, const std::string& hyversion, uint64_t rules_fp,
                      const RecordRow& record);
-    // Every chart with a record under `want`'s mode, cap and lens, any stamp
-    // or rules: what lookup is asked about to list the Ready ones. The
-    // caller holds the lock.
-    std::vector<std::string> candidate_song_ids(const Profile& want);
     // The ids of the profile rows a record is filed under, at `want`'s mode,
     // cap and lens, that rank_row reads as Ready. The caller holds the lock.
     std::vector<int64_t> ready_profile_ids(const Profile& want);

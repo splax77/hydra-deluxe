@@ -66,7 +66,46 @@ struct FileStore {
     }
 };
 
+// Whether two lookups gave the same answer, field by field: RecordLookup has
+// no operator==.
+bool same_answer(const RecordLookup& a, const RecordLookup& b) {
+    return a.status == b.status && a.stale_build == b.stale_build &&
+           a.stale_rules == b.stale_rules && a.record == b.record &&
+           a.failure_kind == b.failure_kind && a.failure_text == b.failure_text;
+}
+
 }  // namespace
+
+TEST_CASE("the store's reader answers every lookup as the store does") {
+    RecordStore store(":memory:");
+    store.save(prepare_record("ready", at4(), fixture().record));
+    store.save(failure_record("failed", at4(), ErrorKind::NoNotes, "No notes."));
+    store.save_under_build_for_test(prepare_record("build", at4(), fixture().record),
+                                    hydra::test::kOldBuildStamp);
+    const std::vector<std::string> ids = {"ready", "failed", "build", "never"};
+
+    StoreReads& reader = store.reader();
+    const std::vector<RecordLookup> by_store = store.lookup(ids, at4());
+    const std::vector<RecordLookup> by_reader = reader.lookup(ids, at4());
+    REQUIRE(by_reader.size() == by_store.size());
+    for (size_t i = 0; i < ids.size(); ++i) {
+        INFO(ids[i]);
+        CHECK(same_answer(by_reader[i], by_store[i]));
+        CHECK(same_answer(reader.lookup_one(ids[i], at4()), store.lookup_one(ids[i], at4())));
+    }
+    CHECK(reader.settled_song_ids(at4()) == store.settled_song_ids(at4()));
+}
+
+TEST_CASE("an in-memory store reads through itself") {
+    RecordStore store(":memory:");
+    CHECK(&store.reader() == static_cast<StoreReads*>(&store));
+
+    // Inside an open save group the reader sees what the store sees there.
+    store.begin_save_group();
+    store.save(prepare_record("h1", at4(), fixture().record));
+    CHECK(same_answer(store.reader().lookup_one("h1", at4()), store.lookup_one("h1", at4())));
+    store.commit_save_group();
+}
 
 TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order") {
     const HydraRecord& analysis = fixture().record;
