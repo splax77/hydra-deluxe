@@ -191,4 +191,12 @@ Round 12 ran as one workflow (wf_bdb96218-840): auditors for A45 to A48 and veri
 
 Round 13's split: `tests/test_replay_schedule.cpp` is cut at line 851, a `TEST_CASE` boundary near the plan's 865: B3 holds 24 test cases, B4 holds 16.
 
-Round 13 ran as one workflow: auditors for A49, B1, B2 and B3 and verifiers for A45 to A48, launched together.
+Round 13 ran as one workflow (wf_11a4346e-081): auditors for A49, B1, B2 and B3 and verifiers for A45 to A48, launched together. About 9 minutes, 254 tool calls; every slice finished.
+
+- A49 (f2e71327): 26 records. Keep 4, Rewrite 8, Investigate 14 (its auditor corrected its own count).
+- B1 (0bbae758): 44 records. Keep 1, Rewrite 22, Remove 2, Investigate 19. `tests/test_fuzz_regressions.cpp` line 57 checks `run_one(...) == 0`, and `run_one` returns 0 on every path that returns.
+- B2 (4a12b52f, 9aa11498, a2fac3e5): 66 records. Rewrite 21, Remove 2, Investigate 43.
+- B3 (0badf6cc): 24 records. Keep 2, Rewrite 14, Investigate 8.
+- verify A45 and A46 (3915242b): A45 13 agreed, 3 disputed (two Keeps among them). verify A47 (c0e25154) and A48 (52f944f9): A47 11 agreed; it found that the "Esc only hides" words exist, D271 item 7 at `fix-decisions.md:1233` ("Yes, both keep"), so the records' split lines on `test_open_path` and `test_reopen` are wrong.
+
+Round 14 ran as one workflow: auditors for B4 to B7 and verifiers for A49 to B3, launched together.
