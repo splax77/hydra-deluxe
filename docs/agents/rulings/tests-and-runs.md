@@ -5,6 +5,9 @@ Which tests run when, how big a run may be, and when the whole song library may 
 Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
 
 ## Confirmed
+- **2026-11-15** "tests should not be pinned to typed constants. they should be pinned to the behavior of the code." (session 63c70014)
+- **2026-11-15** "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong" (session 63c70014)
+- **2026-11-15** "tests should test their intended behavior directly, not make up an arbitrary meaningless string" (session 63c70014)
 - **2026-10-25** "i want to be able to give explicit approval for a full library run." (session dee9c61e)
 - **2026-10-24** "Fix the doc line, and also add the repo-wide tests (docs-vs-code, single-owner scan, precheck self-test) to every merge run." (session c965ee5e)
 - **2026-10-24** "this was supposed to be faster and now you're making it slower??? what the hell is happening here" (session 66725311)
