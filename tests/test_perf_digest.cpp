@@ -126,24 +126,24 @@ void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_
 // Each of the six digests below is pinned from one run.
 
 TEST_CASE("the corpus's prepared-row digest is pinned") {
-    check_engine_digest(pinned_settings("Expert", true, true), 0x83492ab9bd48d5c0ULL);
+    check_engine_digest(pinned_settings("Expert", true, true), 0xca0b6c9c664d9f63ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    check_engine_digest(pinned_settings("Hard", false, false), 0x94bb8e70a3540306ULL);
+    check_engine_digest(pinned_settings("Hard", false, false), 0x33d8af8fe630b3b7ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.legacy_fills = true;
-    check_engine_digest(s, 0x33e61fcedabd0cc2ULL);
+    check_engine_digest(s, 0x1fdd099740952788ULL);
 }
 
 TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and the ms limit off") {
     app::Settings s = pinned_settings("Expert", true, true);
     s.view_noteshuffle = true;
     s.mslimit_enabled = false;
-    check_engine_digest(s, 0x077d3a4cd00b3425ULL);
+    check_engine_digest(s, 0x75fcc8d443856343ULL);
 }
 
 TEST_CASE("the corpus's parse digest is pinned") {

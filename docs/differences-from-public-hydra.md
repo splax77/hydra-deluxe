@@ -27,7 +27,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 | Ghost and accent kicks | Scored as normal kicks | Scored double, like the pads |
 | Hit window | 70 ms | 85 ms |
 | Squeeze-in/out search window | 140 ms | 500 ms |
-| Early fill window | 70 ms | Up to 85 ms early to summon a fill; under 60 ms to spare still shows `E` |
+| Early fill window | 70 ms | 85 ms, the hit window, on both sides: up to 85 ms early to summon a fill, and under 85 ms to spare still shows `E` |
 | Rules you can change | None | `hydra_rules.ini` |
 | Analyzing many songs | `hydra_runfolder.py` script | In-app batch, plus `hydra_batch` |
 | Reports | JSON from the runfolder script | Path report and leaderboard comparison windows in the app |
@@ -88,7 +88,7 @@ This version's parser started as a port of public Hydra 1.x, checked chart by ch
 
 The hit window is a fixed 85 ms per side, which is Clone Hero's Pro Drums window. It is not a setting. It sets the `Rating` word on each backend row in the Paths tab, the squeeze budget in the tooltip of a backend row that shows an `eff.` figure, the path report's timing tiers, and how early you can hit to summon a fill. Only that last one steers the path search.
 
-The early fill window has two sides. Each is a fixed number in Hydra Deluxe, not a setting. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to 85 ms. The search keeps every activation that needs 85 ms or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than 60 ms to spare, the activation still shows `E` and an `early fill` badge with a figure below 0. Nothing on it needs timing.
+The early fill window has two sides, and both are the hit window, 85 ms. It is a fixed number in Hydra Deluxe, not a setting. The first side steers the path search. When your Star Power comes ready after a fill's deadline, you can still summon the fill by hitting the activation early, by up to 85 ms. The search keeps every activation that needs 85 ms or less and drops the rest. The second side only marks paths. When Star Power comes ready before the deadline with less than 85 ms to spare, the activation still shows `E` and an `early fill` badge with a figure below 0. Nothing on it needs timing.
 
 ## Things only this version can do
 

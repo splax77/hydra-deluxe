@@ -341,7 +341,7 @@
       "anchor": "skips",
       "must_match": [
         "const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;",
-        "return e_offset < kEarlyFillSlackMs && skips == 0;"
+        "return e_offset < kHitWindowMs && skips == 0;"
       ],
       "must_not_match": [
         "CHECK(act.skips() == 0);",
@@ -350,7 +350,7 @@
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "return e_offset < kEarlyFillSlackMs && skips == 0;",
+          "line_text": "return e_offset < kHitWindowMs && skips == 0;",
           "why": "is_e0, the owner"
         },
         {
@@ -438,35 +438,32 @@
       "note": "The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it."
     },
     {
-      "question": "Who reads the early-fill slack (how little time to spare still marks an activation E-critical)?",
+      "question": "Who compares an offset with the hit window on the early-fill window's white side (how little time to spare still marks an activation E-critical)?",
       "owner": "is_e0 in src/core/model.h",
       "owner_file": "src/core/model.h",
       "owner_symbol": "is_e0",
-      "date": "2026-10-15",
-      "decision": "D250 (the slack stays at D51 call 7's value)",
-      "added_by": "EF85",
-      "pattern": "\\bkEarlyFillSlackMs\\b",
-      "anchor": "kEarlyFillSlackMs",
+      "date": "2026-11-15",
+      "decision": "D344 (the early-fill window is the hit window on both sides)",
+      "added_by": "early-fill-hit-window",
+      "pattern": "[<>]=?\\s*(hydra::)?kHitWindowMs\\b",
+      "anchor": "kHitWindowMs",
       "must_match": [
-        "if (e_offset < kEarlyFillSlackMs) ok = true;",
-        "return d - hydra::kEarlyFillSlackMs;"
+        "if (e_offset < kHitWindowMs) ok = true;",
+        "return d >= hydra::kHitWindowMs;"
       ],
       "must_not_match": [
-        "if (is_e0(e_offset, 0)) ok = true;"
+        "if (is_e0(e_offset, 0)) ok = true;",
+        "if (e_offset < -kHitWindowMs) return false;",
+        "const double w = kHitWindowMs;"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "constexpr double kEarlyFillSlackMs = 60.0;",
-          "why": "the constant itself"
-        },
-        {
-          "file": "src/core/model.h",
-          "line_text": "return e_offset < kEarlyFillSlackMs && skips == 0;",
+          "line_text": "return e_offset < kHitWindowMs && skips == 0;",
           "why": "is_e0, the owner of the E0"
         }
       ],
-      "note": "The slack is its own number, separate from the reach in the row above."
+      "note": "The window has one width, kHitWindowMs, on both sides of the deadline. The row above flags the window added to or taken from an offset (the reach); this row flags an offset compared straight with it (the white side). Neither flags every read of the hit window, which the squeeze budgets and the report also read."
     },
     {
       "question": "Who writes an activation's sqout_tick?",

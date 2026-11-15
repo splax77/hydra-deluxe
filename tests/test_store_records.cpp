@@ -668,7 +668,7 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
 // Not analyzed.
 
 TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
-    // The stamp is not the app version (ADR 0018). Only "2.14.1+alltoms"
+    // The stamp is not the app version (ADR 0018). Only "3.1.2+efillhitwindow"
     // reads Ready. Results stamped "1.8.2" (every release from 1.8.4 to
     // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
     // earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
@@ -677,11 +677,13 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // the 85 ms early fill (D250), "2.8.0+efill85" predates 1.0 fills on
     // the shared grid, and "2.12.1+ch10grid" predates the coda skip of
     // written fills (FL-08), and "2.14.1+coda" predates the five-lane drum
-    // conversion (D337), and "2.14.1+fivelane" predates the all-toms step
-    // for a drum chart with neither track flag up, so they read Stale,
-    // through lookup and the skip list it backs (ready_song_ids).
-    CHECK(kResultsStamp.is_current("2.14.1+alltoms"));
-    CHECK(std::string(kResultsStamp.written) == "2.14.1+alltoms");
+    // conversion (D337), "2.14.1+fivelane" predates the all-toms step
+    // for a drum chart with neither track flag up, and "2.14.1+alltoms"
+    // predates the early-fill E mark reading the hit window (D344), so they
+    // read Stale, through lookup and the skip list it backs (ready_song_ids).
+    CHECK(kResultsStamp.is_current("3.1.2+efillhitwindow"));
+    CHECK(std::string(kResultsStamp.written) == "3.1.2+efillhitwindow");
+    CHECK_FALSE(kResultsStamp.is_current("2.14.1+alltoms"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+fivelane"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+coda"));
     CHECK_FALSE(kResultsStamp.is_current("2.12.1+ch10grid"));
@@ -700,7 +702,8 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
         const char* id;
         const char* stamp;
         RecordStatus want;
-    } cases[] = {{"a", "2.14.1+alltoms", RecordStatus::Ready},
+    } cases[] = {{"a", "3.1.2+efillhitwindow", RecordStatus::Ready},
+                 {"m", "2.14.1+alltoms", RecordStatus::Stale},
                  {"l", "2.14.1+fivelane", RecordStatus::Stale},
                  {"k", "2.14.1+coda", RecordStatus::Stale},
                  {"j", "2.12.1+ch10grid", RecordStatus::Stale},

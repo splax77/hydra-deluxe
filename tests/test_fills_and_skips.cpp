@@ -112,14 +112,10 @@ TEST_CASE("Skipped fills: under the 1.1 rule a fill exactly at the reach edge is
     CHECK(passed_over(edge + 1).empty());
 }
 
-// An orange early fill inside the reach (D250): SP comes ready 70 ms after
-// the fill's deadline, so the activation needs a 70 ms early hit. Same
-// fixture as above, but fill A at 9600 is the chart's only fill, so the best
-// path activates there or not at all. The search takes it, and the record
-// stores it as a required early fill (E0) of 70 ms
-// (Activation::e_difficulty, which the stored hardest_efill reads).
-TEST_CASE("search: a fill that needs a 70 ms early hit is taken as a required early fill") {
-    constexpr int64_t ready = 7270;
+// The edge fixture above with fill A at 9600 as the chart's only fill, and
+// the second phrase at `ready`. The best path activates at that fill or not
+// at all; this returns its one activation.
+static Activation lone_fill_activation(int64_t ready) {
     std::vector<test::FixtureNote> notes;
     for (int64_t t = 0; t <= 28800; t += 480) {
         test::FixtureNote n{t};
@@ -139,9 +135,28 @@ TEST_CASE("search: a fill that needs a 70 ms early hit is taken as a required ea
     REQUIRE(!paths.empty());
     CAPTURE(paths.front().pathstring());
     REQUIRE(test::act_ticks(paths.front()) == std::vector<int64_t>{9600});
-    const Activation& act = paths.front().activations.front();
+    return paths.front().activations.front();
+}
+
+// An orange early fill inside the reach (D250): SP comes ready 70 ms after
+// the fill's deadline, so the activation needs a 70 ms early hit. The search
+// takes it, and the record stores it as a required early fill (E0) of 70 ms
+// (Activation::e_difficulty, which the stored hardest_efill reads).
+TEST_CASE("search: a fill that needs a 70 ms early hit is taken as a required early fill") {
+    const Activation act = lone_fill_activation(7270);
     CHECK(act.is_E0());
     CHECK(act.e_difficulty() == std::optional<double>{70.0});
+}
+
+// The white side of the same window (D344): SP comes ready 70 ms before the
+// fill's deadline. That is under the hit window, kHitWindowMs, so the
+// activation is E-critical and its early fill is listed with 70 ms to spare.
+TEST_CASE("search: SP ready 70 ms before a fill's deadline still marks the activation E") {
+    const Activation act = lone_fill_activation(7130);
+    CHECK(act.e_offset == 70.0);
+    CHECK(act.is_e_critical());
+    CHECK(act.is_E0());
+    CHECK(act.e_difficulty() == std::optional<double>{early_fill_difficulty(70.0)});
 }
 
 // The lasting order checks, on root paths. A tied variant's list is checked

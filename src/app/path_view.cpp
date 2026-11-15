@@ -80,9 +80,9 @@ std::string longest_activation_badge() {
     // offset is one the engine kept inside within_squeeze_window, so a
     // squeeze's figure lies strictly between -kSqueezeWindowMs and
     // +kSqueezeWindowMs. An early fill is named only on an E-critical
-    // activation, so its figure is above minus kEarlyFillSlackMs (is_e0),
-    // and at most kHitWindowMs (fill_refuses): inside the squeeze window
-    // too. A squeeze that needs no timing (SPSqueeze::needs_no_timing) has a
+    // activation, so its figure is above minus kHitWindowMs (is_e0) and at
+    // most kHitWindowMs (fill_refuses). The hit window is narrower than the
+    // squeeze window, so that figure lies inside the squeeze window too. A squeeze that needs no timing (SPSqueeze::needs_no_timing) has a
     // figure below 0 (D80, D302), so the widest figure is the window's, minus
     // sign included.
     size_t longest = 0;

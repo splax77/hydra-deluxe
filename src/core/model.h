@@ -124,16 +124,16 @@ inline bool within_squeeze_window(double offset_from_sp_end_ms) {
     return std::fabs(offset_from_sp_end_ms) < kSqueezeWindowMs;
 }
 
-// The two sides of the early-fill (E) window, both measured on e_offset.
+// The early-fill (E) window is one window, the hit window kHitWindowMs, on
+// both sides of a fill's deadline, measured on e_offset (D344).
 //
-// The reach is the hit window, kHitWindowMs (D270 call 8): the latest Star
-// Power may come ready after a fill's deadline and still summon it with an
-// early hit. fill_refuses reads it, so it decides which activations the
-// search can find.
+// After the deadline it is the reach: the latest Star Power may come ready
+// and still summon the fill with an early hit. fill_refuses reads it, so it
+// decides which activations the search can find.
 //
-// The slack: Star Power ready less than this before a fill's deadline still
-// marks the activation E-critical. is_e0 reads it.
-constexpr double kEarlyFillSlackMs = 60.0;
+// Before the deadline it is how little time to spare still marks the
+// activation E-critical. is_e0 reads it. The early-fill rule below states
+// both sides.
 
 // ---- note value ----------------------------------------------------------
 // What one note is worth before any multiplier. ChordNote::basescore and
@@ -307,20 +307,20 @@ inline int64_t fill_start_tick(int64_t chord_tick, int64_t activation_length) {
 }
 
 // ---- the early-fill rule -------------------------------------------------
-// Clone Hero's early-fill rule and the E0, stated once around
-// kHitWindowMs (the reach) and kEarlyFillSlackMs. A fill spawns only when SP
-// was ready by the fill's deadline, or late by no more than the reach. The
+// Clone Hero's early-fill rule and the E0, stated once around one window,
+// kHitWindowMs, on both sides of the deadline. A fill spawns only when SP
+// was ready by the fill's deadline, or late by no more than the window. The
 // e_offset is how long before the deadline SP became ready (negative: after
 // it). The search's branch_activate and its group key (ready_class) ask
 // these; so do Activation's E tests.
 inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
-// The fill refuses to spawn: SP became ready later than the reach allows.
+// The fill refuses to spawn: SP became ready later than the window allows.
 inline bool fill_refuses(double e_offset) { return e_offset < -kHitWindowMs; }
 
-// E0: the early fill has less than the slack to spare and nothing was
-// skipped. is_e0(e_offset, 0) alone is "E-critical".
+// E0: SP came ready less than the window before the deadline, and nothing
+// was skipped. is_e0(e_offset, 0) alone is "E-critical".
 inline bool is_e0(double e_offset, int skips) {
-    return e_offset < kEarlyFillSlackMs && skips == 0;
+    return e_offset < kHitWindowMs && skips == 0;
 }
 
 // How hard an E0 activation's early fill is, in ms.
@@ -683,7 +683,7 @@ struct Activation {
 
     std::string notationstr() const;
     std::string notationstr_verbose() const;
-    bool is_e_critical() const;  // less than the slack to spare: is_e0(e_offset, 0)
+    bool is_e_critical() const;  // is_e0(e_offset, 0), skips aside
     bool is_E0() const;
     std::optional<double> e_difficulty(bool verbose = false) const;
 

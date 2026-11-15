@@ -241,12 +241,12 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); the edge 2026-11-11, 
 
 ### FL-24 The game's deadline is an exact tick compare; Hydra's early fill is its own model
 
-Rule: The game's deadline is an exact tick compare with no millisecond allowance. Hydra's early-fill reach, 85 ms on the orange side (Star Power ready after the deadline), and its 60 ms white slack are Hydra's own model of an early hit moving the Star Power ready moment.
+Rule: The game's deadline is an exact tick compare with no millisecond allowance. Hydra's early-fill window, the 85 ms hit window on both sides of the deadline (Star Power ready after it on the orange side, before it on the white side), is Hydra's own model of an early hit moving the Star Power ready moment.
 Label: Hydra assumes it, never checked
-Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` reads `kEarlyFillSlackMs = 60.0` (src/core/model.h lines 318, 322 and 136). The reach is `kHitWindowMs` (D270 item 8). Whether the game's own hit timing reaches that far is TM-27's question.
+Evidence: the game side has no millisecond term (`code/6142/fill_deadline_20DDB70.asm` lines 24 to 51). Hydra: `fill_refuses` refuses when the offset is below `-kHitWindowMs` and `is_e0` marks the E when it is below `kHitWindowMs` (src/core/model.h lines 318 and 322). The reach is `kHitWindowMs` (D270 item 8), and the white side is the same number (D344). Whether the game's own hit timing reaches that far is TM-27's question.
 Game code (6142): RVA `0x20DDB70`; the fill-end grant in FL-31.
 Hydra: `fill_refuses` and `is_e0` in src/core/model.h lines 318 and 322. The Paths tab's early fill row (Dynamic Hit Window) rests on the same model: `early_fill_window_end` in src/core/note_window.h takes the game's per-note side of the note that made Star Power ready (`Activation::sp_ready_tick`, TM-22) less the early fill figure (`early_fill_safe_ms`). The row prints that note's window and chord with no frontend or backend word (`role_word`). It is display only and shows on every early fill badge, required or optional, with time to spare or not.
-Ruling: D250: the user asked to "change the early fill search to allow orange timing up to 85ms", and on the charts that gained an E fill said "Keep them. The extra E fills in the notation are fine." D270 item 8 then made the reach the one hit window number.
+Ruling: D250: the user asked to "change the early fill search to allow orange timing up to 85ms", and on the charts that gained an E fill said "Keep them. The extra E fills in the notation are fine." D270 item 8 then made the reach the one hit window number. D344: on 2026-11-15 the user ruled "so we should use the hit window. and stop inventing our own numbers.", so the white side reads the hit window too.
 Found: 2026-10-15, session c35a4b7d.
 
 ### FL-25 The game did not offer an early fill on Trippin path 3

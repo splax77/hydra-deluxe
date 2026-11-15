@@ -661,10 +661,10 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
     // A fresh row shows what Path::difficulty() shows: the check that saving
     // the engine's figure changed nothing on screen.
     CHECK(shown_differs.size() == 0);
-    CHECK(saved_negative == 90);
+    CHECK(saved_negative == 102);
     CHECK(still_empty_with_sqin == 79);
-    CHECK(allzero_charts == 69);
-    CHECK(allzero_paths == 70);
+    CHECK(allzero_charts == 68);
+    CHECK(allzero_paths == 69);
 }
 
 TEST_CASE("score graph: the backend rows are sized once, one per chord") {

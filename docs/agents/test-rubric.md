@@ -138,7 +138,7 @@ Read:       lines 403-427; make_late_sqin_song and its comment
 8 Deleted:  421: the refill moving off the old end (reasoned). That is the
             behaviour question 3 shows to be wrong.
 9 Stand-in: None.
-10 Same rule: tests/test_sp_end.cpp:485 and tests/test_model.cpp:1175 pin
+10 Same rule: tests/test_sp_end.cpp:485 and tests/test_model.cpp:1176 pin
             the same rule. One verdict covers all three.
 11 Real:    Yes; Pitch Dark's first activation has the same case.
 Verdict:    Rewrite. For each step of each activation, the gauge changes at
