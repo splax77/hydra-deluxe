@@ -46,8 +46,8 @@ New views answer the questions the displays used to guess. `nominal_end()` is
 the end before any phrase. `squeeze_end_tick(k)` is the end squeeze k was
 measured from: for a SqIn, the end before its step; for the SqOut, the deact
 node. `end_anchor_tick(i)` is the note whose timing moves the end of step i.
-`refill_tick(i)` is where the gauge gains a step's bar. None of these is
-stored. Each is read from the one list.
+None of these is stored. Each is read from the one list. The gauge gains a
+step's bar at the step's stored tick.
 
 ## A list replaces the count it counts
 

@@ -21,6 +21,7 @@ These are your calls on findings from `2026-10-03-derivation-audit.md`, in the o
 **D8 (finding 97; step-1 plan Q3), 2026-10-03.** Kept out of the step-1 plan. It gets its own plan after a corpus count of affected variants.
 
 **D9 (finding 5; step-1 plan Q4), 2026-10-03.** On a late squeeze-in the Preview SP gauge refills at the old SP end, so it reads 0.875 at the phrase, matching the engine.
+Superseded on 2026-11-14 by the user's words: "the red snare is where the squeeze in happens, yet the bar refills one note before. the engine already knows this, the preview invents its own rule".
 
 **D10 (step-1 plan Q5-Q10), 2026-10-03.** All answered as the plan recommends. Q8 was confirmed first on FC video: in four activations across Divine Inner Tension and Desecration Day, the game's disc drops from x8 to x4 within two frames of Hydra's SP end and stays plain until the next chord.
 

@@ -46,7 +46,7 @@
       ],
       "must_not_match": [
         "if (std::optional<int64_t> d = a.deact_tick()) {",
-        "pa.sp_end_changes.push_back({a.refill_tick(k), a.sp_end_steps[k].end_tick});"
+        "const std::optional<int64_t> window_end = a.window_end_tick();"
       ],
       "scope": [
         "src",

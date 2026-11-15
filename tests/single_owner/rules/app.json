@@ -48,7 +48,7 @@
     },
     {
       "question": "Does the path gauge work out an SP fact itself?",
-      "owner": "the stored facts build_sp_meter_curve reads (bank_rise_ticks, sp_end_steps, refill_tick)",
+      "owner": "the stored facts build_sp_meter_curve reads (Path::bank_arrivals, sp_end_steps, Activation::window_end_tick)",
       "owner_file": "src/app/preview_view.cpp",
       "owner_symbol": "build_sp_meter_curve",
       "date": "2026-10-04",
@@ -62,14 +62,56 @@
         "if (s.kind == SpEndKind::SqIn) continue;"
       ],
       "must_not_match": [
-        "const int64_t at = act.refill_tick(k);"
+        "const int64_t t = act.sp_end_changes[k].at_tick;"
       ],
       "scope": [
         "src"
       ],
       "function_file": "src/app/preview_view.cpp",
       "function": "SpMeterCurve build_sp_meter_curve(",
-      "note": "The path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or the squeeze-in rule (that one lives in refill_tick). Scoped to that one function."
+      "note": "The path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or a squeeze rule (where a squeeze-in's bar arrives is the stored step's tick; a window's end is Activation::window_end_tick; a squeezed-out bar's arrival is Path::bank_arrivals). Scoped to that one function."
+    },
+    {
+      "question": "Where does a Preview window's Star Power end?",
+      "owner": "Activation::window_end_tick in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "window_end_tick",
+      "date": "2026-11-14",
+      "decision": "plan docs/superpowers/plans/2026-11-14-preview-draws-engine-sp.md, PS1 (the user's Blight line, 2026-11-14)",
+      "added_by": "PS1",
+      "pattern": "\\bdeact_tick\\(\\)|\\bsqout_tick\\b|after_sp_end\\(",
+      "scope": [
+        "src/app/preview_view.cpp"
+      ],
+      "must_match": [
+        "if (std::optional<int64_t> d = a.deact_tick()) {",
+        "if (a.sqout_tick && *a.sqout_tick < end) end = *a.sqout_tick;",
+        "if (!core::after_sp_end(*a.sqout_tick, *d)) end = *a.sqout_tick;"
+      ],
+      "must_not_match": [
+        "const std::optional<int64_t> window_end = a.window_end_tick();"
+      ],
+      "note": "The Preview's scene code builds every window's end from Activation::window_end_tick and nowhere else, so no screen reads the stored end or asks the squeeze-out's side of it again."
+    },
+    {
+      "question": "When does the Preview's drain box say Star Power empties?",
+      "owner": "PreviewActivation::sp_window in src/app/preview_view.h",
+      "owner_file": "src/app/preview_view.h",
+      "owner_symbol": "sp_window",
+      "date": "2026-11-14",
+      "decision": "plan docs/superpowers/plans/2026-11-14-preview-draws-engine-sp.md, PS1",
+      "added_by": "PS1",
+      "pattern": "sp_end_ms\\s*-",
+      "scope": [
+        "src/app/preview_view.cpp"
+      ],
+      "must_match": [
+        "(running->sp_end_ms - now) / 1000.0);"
+      ],
+      "must_not_match": [
+        "(running->sp_window()->second - now) / 1000.0);"
+      ],
+      "note": "The drain box's \"empties in X s\" reads the end of the running activation's sp_window(), the window every other Preview screen asks."
     },
     {
       "question": "Which fill rule does a command-line run use?",
