@@ -91,8 +91,13 @@ double activation_fill_deadline_ms(const SongTiming& timing,
 }
 
 ScoreGraph::ScoreGraph(const Song& song, std::optional<int> sp_meter_cap,
-                       FillDeadlineRule rule, const core::Rules& rules)
-    : song_(song), sp_meter_cap_(sp_meter_cap), rule_(rule), rules_(rules) {
+                       FillDeadlineRule rule, const core::Rules& rules,
+                       double early_fill_window_ms)
+    : song_(song),
+      sp_meter_cap_(sp_meter_cap),
+      rule_(rule),
+      rules_(rules),
+      early_fill_window_ms_(early_fill_window_ms) {
     start_ = new_node(song_.start_time(), false);
     base_track_head_ = start_;
     sp_track_head_ = new_node(song_.start_time(), true);

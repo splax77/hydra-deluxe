@@ -274,7 +274,7 @@ Found: 2026-09-25, session 28e6f29d; listed 2026-10-30, session b02ab3e6 (the re
 
 Rule: In normal mode the formula's input is held between 75 and 170 ms, so the whole window runs from 96.2932 to 171.4313 ms, and each side gets half: from 48.15 ms when both neighbours are close to 85.72 ms when both are far. A note whose neighbours are both 80 ms away gets 102.26 ms, 51.13 ms a side. Hydra judges every note at a fixed 85 ms a side, which is the game's back clamp for one half-gap, not its per-side window.
 Label: Proven in the game's code
-Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kHitWindowMs` (src/core/model.h line 105) is read by the badges, Ratings, timing tiers and the search (TM-29).
+Evidence: TM-19 to TM-21 by arithmetic. Hydra's side: `kHitWindowMs` (src/core/model.h line 105) is read by the squeeze badges, Ratings and timing tiers (TM-29).
 Game code (6142): RVAs `0x20F3A90`, `0x20F7210` and `0x20DDDA0`, the three listings above.
 Hydra: `kHitWindowMs` in src/core/model.h line 105 for judging; the game's per-side window is `window_side_ms` in src/core/note_window.h, shown only on the Paths tab's Dynamic Hit Window row.
 Ruling: open split: see questions page Q-32. D270 item 8 ("yes it should use one nuimbers eerywhere", and "Fixed 85, no setting (Recommended)") rules on Hydra's own two numbers, and D28 records the game's cap and floor with "Steps 4-6 are shelved". On 2026-11-12 (session 375e58cd) the user ruled "just show it alongside. try again with a maximum of 8 words for the new info.", so the Paths tab shows the game's window beside the 85 and nothing else moves, and "ok well i am ruling it now: hydra searching for squeezes up to 500 ms is an intentional deviation from the game, not a bug." Neither says whether the ratings, tiers or early fill reach should ever follow the game's window, so Q-32 stays open.
@@ -360,11 +360,11 @@ Hydra: no owner in `src/`; the tool names are `RVA_FORMULA_NORMAL` and `RVA_FORM
 Ruling: open split: see questions page Q-34
 Found: 2026-09-25, session 28e6f29d; line cites re-pinned 2026-11-08, session 77057df2 (docs-gaps search).
 
-### TM-29 Hydra uses one fixed 85 ms for badges, ratings, tiers and the search
+### TM-29 Hydra uses one fixed 85 ms for squeeze badges, ratings and tiers
 
-Rule: Hydra judges every note at a fixed 85 ms a side, and the badges, Rating words, the report's timing tiers and the early-fill reach all read that one constant.
+Rule: Hydra judges every note at a fixed 85 ms a side, and the squeeze badges, Rating words and the report's timing tiers all read that one constant. The early-fill window is a separate setting whose top edge is that constant (FL-24).
 Label: Hydra assumes it, never checked
-Evidence: `kHitWindowMs = 85.0` at src/core/model.h line 105; `fill_refuses` at line 318 reads it as the reach; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. The single `kHitWindowMs` is what D270 item 8 asked for.
+Evidence: `kHitWindowMs = 85.0` in src/core/model.h; `timing_tiers` and `squeeze_budget_ms` in src/core/squeeze_rating.cpp. `fill_refuses` and `is_e0` take the early-fill window as an argument instead (`Settings::early_fill_window_ms`, default `kDefaultEarlyFillWindowMs`). The single `kHitWindowMs` is what D270 item 8 asked for.
 Game code (6142): see TM-22.
 Hydra: `kHitWindowMs` in src/core/model.h line 105.
 Ruling: D270 item 8: the user asked "why are there two different numbers for hit window? who approved that? did you ever tell me you were using two different numbers?", then "yes it should use one nuimbers eerywhere", and chose "Fixed 85, no setting (Recommended)".

@@ -79,6 +79,7 @@ struct Args {
     std::optional<std::string> ms;
     std::optional<std::string> depth_mode;
     std::optional<int> depth;
+    std::optional<std::string> efill;
     std::optional<bool> prodrums;
     std::optional<bool> bass2x;
     std::optional<bool> noteshuffle;
@@ -100,12 +101,13 @@ void usage() {
         "                     [--path <dump-or-target.json>] [--index N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy]\n"
-        "  hydra_replay dump  --chart <file> [--cap N]\n"
+        "  hydra_replay dump  --chart <file> [--cap N] [--efill N]\n"
         "                     [--ms N|off] [--depth-mode scores|points] [--depth N]\n"
         "                     [--out <json>] [--pretty] [--legacy-fills]\n"
         "  hydra_replay target --chart <file> [--ticks \"t1,t2,...\"]\n"
         "                     [--acts \"actTick:deactTick[:sqoutMs],...\"]\n"
         "                     [--path <dump-or-target.json>] [--index N] [--cap N]\n"
+        "                     [--efill N]\n"
         "                     [--out <json>] [--pretty] [--prodrums 0|1] [--bass2x 0|1]\n"
         "                     [--difficulty expert|hard|medium|easy] [--legacy-fills]\n"
         "  hydra_replay schedule --chart <file> --path <dump-or-target.json> [--index N]\n"
@@ -151,6 +153,10 @@ void usage() {
         "--legacy-fills prices the chart under Clone Hero 1.0's fill deadline,\n"
         "which is what a 1.0 run was played under, the same as the app's\n"
         "\"1.0 fills\" setting.\n"
+        "--efill N prices the chart under an early fill window of N ms, the\n"
+        "same as the app's \"Early fill window\" setting; without it the run\n"
+        "uses that setting's default. A number outside the setting's range is\n"
+        "pulled to its nearest edge, as the app's box does.\n"
         "score, dump and target take --noteshuffle 0|1: price the chart as Clone\n"
         "Hero 1.1's Note Shuffle modifier rearranges it, the same as the app's\n"
         "\"Note Shuffle\" setting.\n"
@@ -220,6 +226,7 @@ app::Settings settings_from(const Args& a) {
 
     if (a.depth_mode) s.depth_mode = *a.depth_mode == "points" ? 1 : 0;
     if (a.depth) s.depth_value = *a.depth;
+    if (a.efill) s.early_fill_window_ms = setting_flag_number("--efill", *a.efill);
 
     // The 1.0 fill rule goes through Settings, so the search and the record
     // key carry it together, as the app's "1.0 fills" setting does.
@@ -228,7 +235,8 @@ app::Settings settings_from(const Args& a) {
     // Every number lands in its range the way the app's own settings do
     // (--depth -1 reads as 0, --ms 900 as 500). Settings::clamp owns the ranges.
     for (int Settings::* field : {&Settings::sp_cap, &Settings::mslimit_value,
-                                  &Settings::depth_mode, &Settings::depth_value})
+                                  &Settings::depth_mode, &Settings::depth_value,
+                                  &Settings::early_fill_window_ms})
         s.*field = Settings::clamp(field, s.*field);
     return s;
 }
@@ -831,6 +839,7 @@ int main() {
             else if (k == "--ms") a.ms = next();
             else if (k == "--depth-mode") a.depth_mode = next();
             else if (k == "--depth") a.depth = setting_flag_number(k, next());
+            else if (k == "--efill") a.efill = next();
             else if (k == "--acts") a.acts = next();
             else if (k == "--path") a.path = next();
             // Parsed strictly: std::atoi turns a typo into 0, which would

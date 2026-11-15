@@ -149,6 +149,7 @@ int batch_main() {
     std::printf("Squeeze win: %d ms\n", static_cast<int>(hydra::kSqueezeWindowMs));
     std::printf("Fills      : %s\n",
                 hydra::fill_rule_name(run_rule, hydra::FillRuleNameStyle::Long));
+    std::printf("Early fill : %s\n", described.early_fill.c_str());
     std::printf("Folders    : %zu\n", folders.size());
     for (const std::string& f : folders) std::printf("    %s\n", f.c_str());
 

@@ -50,6 +50,7 @@
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::exec_on_file;
 using hydra::test::no_paths_at_cap;
@@ -65,6 +66,14 @@ namespace {
 std::string file_bytes(const std::string& path) {
     std::ifstream in(std::filesystem::u8path(path), std::ios::binary);
     return std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+}
+
+// Whether the profiles table in the file at `path` has the early-fill window
+// column.
+bool profiles_have_early_fill(const std::string& path) {
+    return scalar_on_file(path, std::string("SELECT COUNT(*) FROM pragma_table_info('profiles')"
+                                            " WHERE name = '") +
+                                    kEarlyFillWindowColumn + "'") == 1;
 }
 
 // Removes the database at `path`, its side files and anything set aside
@@ -213,6 +222,19 @@ TEST_CASE("classify_library_file names each generation of library file") {
                 "CREATE TABLE records (song_id TEXT, profile_id INTEGER, pathcount INTEGER)");
         CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
     }
+    SUBCASE("LacksEarlyFillColumn: a profiles table without the early-fill window column") {
+        file_of("CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT, legacy_fills "
+                "INTEGER)");
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
+        file_of((std::string("CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT, ") +
+                 kEarlyFillWindowColumn + " INTEGER)")
+                    .c_str());
+        CHECK(classify_library_file(path) == LibraryFileKind::Current);
+        // The older generations are named first: they gain the column too.
+        file_of("CREATE TABLE charts (md5 TEXT);"
+                "CREATE TABLE profiles (id INTEGER PRIMARY KEY, chartmode TEXT)");
+        CHECK(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+    }
     SUBCASE("Convertible: the results table 2.2.0 to 2.7.0 wrote") {
         file_of(test::kV220ResultsTableSql);
         CHECK(classify_library_file(path) == LibraryFileKind::Convertible);
@@ -270,6 +292,7 @@ TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in plac
         CHECK(store.lookup_one("failed", profile).status == RecordStatus::CantAnalyze);
     }
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(profiles_have_early_fill(path));
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL"
                                " AND failure_text IS NULL") == 1);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
@@ -346,6 +369,7 @@ TEST_CASE("a file whose charts table has no album column opens and gains it in p
         CHECK(store.chart_index().naming("a")->album == "Album A");
     }
     CHECK(charts_have_album(path));
+    CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     // A second open finds a Current file and reads the album the scan wrote.
     {
@@ -371,6 +395,7 @@ TEST_CASE("a 2.8.0 file gains the failure columns and the album column in one op
     CHECK(charts_have_album(path));
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('records')"
                                " WHERE name IN ('failure_kind', 'failure_text')") == 2);
+    CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     remove_db(path);
 }
@@ -515,6 +540,7 @@ void check_converted_file(const std::string& path) {
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     CHECK(charts_have_album(path));
+    CHECK(profiles_have_early_fill(path));
     CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
     // The whole-file fill-rule label is gone; each record's profile names
     // its rule.
@@ -896,9 +922,168 @@ TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps
         CHECK(store.ready_records(batch_profile).empty());
     }
     CHECK(charts_have_album(path));
+    CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     // The open rewrote no record: every pinned row is still there.
     check_v2121_rows(path);
+    remove_db(path);
+}
+
+namespace {
+
+// Every profile row in the file at `path`, every column the older layout
+// held, id first, in id order: what the early-fill rebuild must keep.
+std::string older_profile_columns(const std::string& path) {
+    return text_on_file(path,
+                        "SELECT group_concat(row, ';') FROM (SELECT id || '|' || chartmode || '|' ||"
+                        " sp_cap || '|' || ms_enabled || '|' || ms_value || '|' || depth_mode ||"
+                        " '|' || depth_value || '|' || legacy_fills || '|' || hyversion || '|' ||"
+                        " hex(rules_fp) AS row FROM profiles ORDER BY id)");
+}
+
+// How many records in the file at `path` are filed under a profile row it
+// holds.
+int64_t records_under_profiles(const std::string& path) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM records r JOIN profiles p"
+                                " ON p.id = r.profile_id");
+}
+
+// How many profile rows in the file at `path` carry the default early-fill
+// window.
+int64_t profiles_at_default_window(const std::string& path) {
+    return scalar_on_file(path, std::string("SELECT COUNT(*) FROM profiles WHERE ") +
+                                    kEarlyFillWindowColumn + " = " +
+                                    std::to_string(Lens{}.efill_window_ms));
+}
+
+// The profiles table a build before results were saved per early-fill window
+// wrote: the same columns and key without the window. The file at `path`
+// keeps every row it held, id included.
+void drop_early_fill_column(const std::string& path) {
+    exec_on_file(path,
+                 "CREATE TABLE p5 (id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL,"
+                 " sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+                 " ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+                 " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,"
+                 " hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL,"
+                 " UNIQUE (chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
+                 " legacy_fills, hyversion, rules_fp));"
+                 "INSERT INTO p5 SELECT id, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+                 " depth_value, legacy_fills, hyversion, rules_fp FROM profiles;"
+                 "DROP TABLE profiles;"
+                 "ALTER TABLE p5 RENAME TO profiles;");
+}
+
+// A file at `path` this build wrote, with two records under two profiles
+// (4 and 8 bars, both at the default window), its profiles table then put
+// back to the layout before the early-fill window.
+void seed_without_early_fill(const std::string& path) {
+    remove_db(path);
+    {
+        RecordStore seed(path);
+        seed.save(prepare_record("a", at4(), at_cap(4)));
+        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}}, at_cap(8)));
+    }
+    drop_early_fill_column(path);
+}
+
+}  // namespace
+
+TEST_CASE("the v2.12.1 file's profiles table is rebuilt with the early-fill window, keeping "
+          "every row") {
+    const std::string path = copy_of_old_database("v2.12.1_library.db", "v2121_efill");
+    REQUIRE_FALSE(profiles_have_early_fill(path));
+    const std::string before = older_profile_columns(path);
+    REQUIRE_FALSE(before.empty());
+    REQUIRE(records_under_profiles(path) == 3);
+    { RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp()); }
+    REQUIRE(profiles_have_early_fill(path));
+    // Every row keeps its id and its other columns, and is filed under the
+    // default window, since no older file recorded one.
+    CHECK(older_profile_columns(path) == before);
+    CHECK(profiles_at_default_window(path) == 1);
+    CHECK(records_under_profiles(path) == 3);
+    // At the default window no old result vanishes: each reads Stale, the
+    // stamp's answer, not Not analyzed. One chart is enough to show the
+    // lookup reaches the rebuilt row; the earlier case reads all three.
+    const Profile batch_profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
+    const std::string song = kV2121Records[0].song_id;
+    {
+        RecordStore store(path);
+        CHECK(store.lookup_one(song, batch_profile).status == RecordStatus::Stale);
+        // At another window the chart has no result yet.
+        Profile at_85 = batch_profile;
+        at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
+        CHECK(store.lookup_one(song, at_85).status == RecordStatus::NotAnalyzed);
+
+        // Two profiles that differ only in the window can now both be saved.
+        HydraRecord searched_at_85 = at_cap(4);
+        searched_at_85.early_fill_window_ms = kHitWindowMs;
+        Profile mode_at_85 = at4();
+        mode_at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
+        store.save(prepare_record("h", at4(), at_cap(4)));
+        store.save(prepare_record("h", mode_at_85, searched_at_85));
+        CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("h", mode_at_85).status == RecordStatus::Ready);
+    }
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE chartmode = 'mode'") == 2);
+    remove_db(path);
+}
+
+TEST_CASE("a file whose profiles table lacks the early-fill window opens and gains it in "
+          "place") {
+    const std::string path = testtemp::temp_path("lacks_early_fill_column", ".db");
+    seed_without_early_fill(path);
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
+    const std::string before = older_profile_columns(path);
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 2);
+    const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
+    {
+        RecordStore store(path);
+        // Both records read as they did, each under its own profile.
+        CHECK(store.lookup_one("a", at4()).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("b", Profile{"mode", CapQuery::at(8), Lens{}}).status ==
+              RecordStatus::Ready);
+    }
+    CHECK(classify_library_file(path) == LibraryFileKind::Current);
+    CHECK(profiles_have_early_fill(path));
+    CHECK(older_profile_columns(path) == before);
+    CHECK(profiles_at_default_window(path) == 2);
+    CHECK(records_under_profiles(path) == 2);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
+    CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM sqlite_master WHERE name = '") +
+                                   kProfilesBeforeEarlyFillTable + "'") == 0);
+    remove_db(path);
+}
+
+TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgrade and changes "
+          "nothing") {
+    // A table already holds the name the rebuild renames the old profiles
+    // table to, so the rename fails inside the transaction.
+    const std::string path = testtemp::temp_path("efill_rebuild_blocked", ".db");
+    seed_without_early_fill(path);
+    exec_on_file(path, (std::string("CREATE TABLE ") + kProfilesBeforeEarlyFillTable + " (x)").c_str());
+    REQUIRE(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
+    const std::string profiles_before = older_profile_columns(path);
+    const std::string profiles_sql_before =
+        text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'");
+    const int64_t records_before = record_rows_in(path);
+    const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
+    try {
+        RecordStore store(path);
+        FAIL("the open rebuilt the profiles table with its temporary name taken");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
+    }
+    // The old table, every row and every record, as they were.
+    CHECK(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
+    CHECK_FALSE(profiles_have_early_fill(path));
+    CHECK(text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'") ==
+          profiles_sql_before);
+    CHECK(older_profile_columns(path) == profiles_before);
+    CHECK(record_rows_in(path) == records_before);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
+    CHECK(records_under_profiles(path) == records_before);
     remove_db(path);
 }
 

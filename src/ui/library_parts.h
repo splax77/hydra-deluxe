@@ -45,6 +45,12 @@ void render_settings_button(AppState& app, float room_after);
 // The help text beside the "1.0 fills" checkbox. Each rule's deadline is
 // fill_rule_description's sentence.
 std::string legacy_fills_help_text();
+// The early-fill window's name, as the panel row, the settings button's
+// phrase and the batch confirm's line all print it.
+inline constexpr const char* kEarlyFillWindowName = "Early fill window";
+// The help text beside the "Early fill window" box. Its top edge is the hit
+// window, as report::hit_window_text prints it.
+std::string early_fill_window_help_text();
 
 // library_table.cpp: the whole library pane (heading, search, chips, table).
 // Called every frame inside the "##library" child, even when the library is
@@ -66,6 +72,7 @@ struct BatchSettingsSummary {
     std::string difficulty;   // "Expert · Pro Drums · 2x Bass"
     std::string sp_cap;       // "4 bars (Clone Hero's rule)"
     std::string fills;        // "Clone Hero 1.1" or "Clone Hero 1.0"
+    std::string early_fill;   // "60 ms"
     std::string score_range;  // "2 scores" or "2,000 points"
     std::string path_limit;   // "10 ms" or "off"
 };

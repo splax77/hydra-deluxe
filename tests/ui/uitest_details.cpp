@@ -1307,6 +1307,8 @@ void test_settings_lock(ImGuiTestContext* ctx) {
         open_settings_panel(ctx);
         if (ctx->IsError()) return;
         IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+        IM_CHECK((ctx->ItemInfo("**/##earlyfillwindow").ItemFlags & ImGuiItemFlags_Disabled) ==
+                 0);
         IM_CHECK((ctx->ItemInfo("**/##prodrums").ItemFlags & ImGuiItemFlags_Disabled) == 0);
         IM_CHECK(!on_screen(h, "Stop the batch to change these."));
         IM_CHECK(!on_screen(h, "(locked)"));
@@ -1329,6 +1331,7 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     IM_CHECK((ctx->ItemInfo(settings_control(ctx, "##prodrums", "##difficulty")).ItemFlags &
               ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((ctx->ItemInfo("**/##earlyfillwindow").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##prodrums").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##noteshuffle").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     IM_CHECK((ctx->ItemInfo("**/##mslimit").ItemFlags & ImGuiItemFlags_Disabled) != 0);
@@ -1344,6 +1347,7 @@ void test_settings_lock(ImGuiTestContext* ctx) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK((ctx->ItemInfo("**/##spcap").ItemFlags & ImGuiItemFlags_Disabled) == 0);
+    IM_CHECK((ctx->ItemInfo("**/##earlyfillwindow").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     close_settings_panel(ctx);
 }
 

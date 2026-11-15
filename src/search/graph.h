@@ -192,13 +192,19 @@ public:
     // rule: which game version decides when a fill spawns (default Ch11).
     // rules: the user's rule choices; the graph prices squeeze-outs by
     // rules.sqout_rule and hands the rest to the engine through rules().
+    // early_fill_window_ms: the early-fill window the search runs under
+    // (SearchSettings::early_fill_window_ms). The graph does not read it; it
+    // carries it to every engine run on this graph (run_search).
     ScoreGraph(const Song& song, std::optional<int> sp_meter_cap,
                FillDeadlineRule rule = FillDeadlineRule::Ch11,
-               const core::Rules& rules = core::default_rules());
+               const core::Rules& rules = core::default_rules(),
+               double early_fill_window_ms = kDefaultEarlyFillWindowMs);
 
     ScoreGraphNode* start() const { return start_; }
     std::optional<int> sp_meter_cap() const { return sp_meter_cap_; }
     const core::Rules& rules() const { return rules_; }
+    // The early-fill window, in ms, every search on this graph runs under.
+    double early_fill_window_ms() const { return early_fill_window_ms_; }
     const SongTiming& timing() const { return song_.timing(); }
     // The chart's note total, Song::note_count. Every path covers the whole
     // chart, so the engine stores this one number on each.
@@ -268,6 +274,7 @@ private:
     std::optional<int> sp_meter_cap_;
     FillDeadlineRule rule_ = FillDeadlineRule::Ch11;
     core::Rules rules_;
+    double early_fill_window_ms_ = kDefaultEarlyFillWindowMs;
 
     // Stable-address storage for the graph. deque never invalidates element
     // references on push_back.
