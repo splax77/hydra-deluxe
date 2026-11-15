@@ -261,4 +261,12 @@ Round 20 ran as one workflow (wf_02f917d3-9ef): auditors for D6 to D9 and verifi
 - D9 (be02ac3c, 664c5015, c645f3b5): 160 records.
 - verify D2 and D3 (4e2e0c65): D2 140 agreed, 15 disputed. verify D4, D5 and the fuzz records (35a69db0): D4 86 agreed, 15 disputed.
 
-Round 21 ran as one workflow: auditors for D10 to D13 and verifiers for D6 to D9, launched together.
+Round 21 ran as one workflow (wf_b1327db0-d65): auditors for D10 to D13 and verifiers for D6 to D9, launched together. About 11 minutes, 335 tool calls; every find slice finished.
+
+- D10 (aed7b083, 1e73df19): 114 records. Keep 10, Rewrite 27, Remove 9, Investigate 68.
+- D11 (80d40a89, fa25bbc7): 119 records. Keep 10, Rewrite 21, Remove 10, Investigate 78. SPLIT-A: `play_chart.py:361-369` (`own_end_now_ms`) and `tools/replay_schedule.cpp:273-276` (`read_at_own_ms`) each hold the rule for where a press's own end sits once the game's read end is known.
+- D12 (085938ea): 122 records. Keep 40, Rewrite 32, Remove 3, Investigate 47.
+- D13 (8411db6c, 8801832f, d6f7ee02): 161 records.
+- verify D6 and D7 (e4e69121): partial, 96 of 334 records reached. verify D8 and D9 (103a52b4, be659b59): partial, D8 124 of 168 reached and D9 almost none. A D slice holds 114 to 168 records, so two slices are more than one verifier can read inside the caps. Each of D6 to D9 gets its one re-send (`briefs/T5-verify-resend.md`), and from round 22 each D slice gets a verifier of its own.
+
+Round 22 ran as two workflows launched together: one with auditors for D14, D15, A50 and D16 and one verifier each for D10 to D13 (`briefs/T5-verify-R21-D10.md` to `-D13.md`); one with the D6 to D9 re-sends.
