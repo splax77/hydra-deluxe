@@ -155,10 +155,14 @@ Display tests go first: every test that builds a scene, a report or a label. The
 
 For question 3 the main session prepares the engine's record for a handful of real charts before the auditors start, and gives each auditor the path. An auditor who needs another chart asks for it and writes "claim not checked" until it arrives.
 
-Two mechanical checks back the reading up. Only the main session can run them (agent rule 14), and neither replaces the reading.
+Four mechanical checks back the reading up. Only the main session can run the first two (agent rule 14), the last two are code changes with their own plan, and none replaces the reading.
 
 **Change the corpus and watch what turns red.** In a throwaway worktree, add one chart to `testdata/input` and run the tests, then remove one no test names and run them again. Every test that changes colour leans on which charts are in the corpus. A test that stays green is not proven independent.
 
 **Plant the bugs from question 8.** The main session plants a sample of the bugs the auditors named, builds once per batch, and records which tests went red. A wrong claim is reported, and the rest of that auditor's claims get a closer read.
+
+**Check every display against the engine, chord by chord, on every corpus chart.** A test that walks every chart in `testdata/input` and, at each chord, compares what a display draws (Star Power on or off, a refill, an end) with what the engine's record says for that chord. One such test would have caught the Preview drawing Pitch Dark's refill one note before the squeezed snare and Blight's Star Power running past the squeezed-out chord. No such test exists today (question 6). Writing it is a code change.
+
+**A standing scan for totals over the corpus.** A permanent check that fails a counter added to inside a loop over `corpus::chart_paths()` and compared with a literal other than 0 after it, so a new snapshot total fails before it merges. A row in `tests/single_owner/rules/` is one regular expression on one line (`flags_line` in `tests/single_owner/engine.h`) and cannot see the loop, so it lives as its own case beside them, the way `tests/single_owner/special.cpp` does. Writing it is a code change.
 
 Missing coverage is a separate pass after the audit: list the rules on the `docs/clone-hero/` pages and the filed rulings, and flag each one no test checks.

@@ -93,7 +93,7 @@ The user decided in D107 (`docs/audit/2026-10-03-fix-decisions.md`) that a chang
 2. **If there are no findings,** sign off (see "Output") and report. You are done.
 3. **Fix every finding,** in the branch's worktree, one finding per commit. For each one:
    - **Sweep the whole range for its question.** Do not stop at the copies you listed. Grep every file the range touches, and their callers, for the inputs the question reads: the fields, constants and units, not just the names. For a kind C finding, grep `tests/` for every other definition of the helper, by name and by its body.
-   - **Fold every copy into the owner.** Each copy calls the owner. A test calls production code or pins a literal from one run; it never computes an expected value.
+   - **Fold every copy into the owner.** Each copy calls the owner. A test calls production code and states the rule its answer must meet (`docs/agents/test-rubric.md`); it never computes an expected value and never pins a number copied from one run.
    - **Prove nothing is left.** Run the grep again. It must find only the owner, or only lines the scan already lists as known.
    - **For kind A, add the scan row** to the owner's area file under `tests/single_owner/rules/`, or give the one-sentence reason no text search can catch the copy (see "A kind A fix ends in a scan row").
    - **List the tests for that finding** in your report, with `-tc=` or `-sf=` filters, and the scan test `build-cpp\Release\hydra_tests.exe -tc="single-owner*"` if you added a row. They need a build, so the main session runs them after you sign off (agent rule 14). Pick them from what your brief names and from the `tests:` line that `build-cpp\Release\hydra_precheck.exe --repo <path> --tests main...<your last commit>` prints.
