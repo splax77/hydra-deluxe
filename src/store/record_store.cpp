@@ -1059,11 +1059,21 @@ int64_t RecordStore::journal_size_limit_for_test() {
     return step_row(s) ? sqlite3_column_int64(s, 0) : -1;
 }
 
-std::optional<std::string> RecordStore::meta_get(const std::string& key) {
-    Stmt s = prepare_read(writer_.db, "SELECT value FROM meta WHERE key=?");
+namespace {
+
+// RecordStore::meta_get, read on the connection `db`. Every connection's
+// meta read is this one. The caller holds that connection's lock.
+std::optional<std::string> meta_get_on(sqlite3* db, const std::string& key) {
+    Stmt s = prepare_read(db, "SELECT value FROM meta WHERE key=?");
     bind_text(s, 1, key);
     if (!step_row(s)) return std::nullopt;
     return column_text(s, 0);
+}
+
+}  // namespace
+
+std::optional<std::string> RecordStore::meta_get(const std::string& key) {
+    return meta_get_on(writer_.db, key);
 }
 
 void RecordStore::meta_set(const std::string& key, const std::string& value) {
@@ -1700,10 +1710,18 @@ ChartLibraryCache RecordStore::chart_library_cache() {
     return cache;
 }
 
-bool RecordStore::chart_meta_current() {
-    const std::optional<std::string> stamp = meta_get(kChartMetaKey);
+namespace {
+
+// RecordStore::chart_meta_current, read on the connection `db`. Every
+// connection's answer is this one. The caller holds that connection's lock.
+bool chart_meta_current_on(sqlite3* db) {
+    const std::optional<std::string> stamp = meta_get_on(db, kChartMetaKey);
     return stamp && kChartMetaStamp.is_current(std::atoi(stamp->c_str()));
 }
+
+}  // namespace
+
+bool RecordStore::chart_meta_current() { return chart_meta_current_on(writer_.db); }
 
 int64_t RecordStore::chart_library_count() {
     std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
@@ -1772,6 +1790,56 @@ private:
     bool owns_ = false;
 };
 
+// The threaded read a connection may hand the whole unsorted chart list to
+// (RecordStore::read_chart_library_on_threads); empty for a connection that
+// reads it alone.
+using ThreadedLibraryRead = std::function<std::vector<ChartLibraryEntry>(
+    const std::string& path, int64_t max_rowid, size_t shares, bool timing_read,
+    const RowsReadFn& on_row)>;
+
+// RecordStore::list_chart_library, read on `conn`. Every connection's chart
+// list is this one, the timing check included. The caller holds conn's lock.
+std::vector<ChartLibraryEntry> list_library_on(StoreConnection& conn, int offset, int limit,
+                                               const RowsReadFn& on_row, LibraryOrder order,
+                                               const ThreadedLibraryRead& threaded) {
+    const bool timing_read = chart_meta_current_on(conn.db);
+    // The whole library unsorted reads on threads, one connection each, split
+    // by rowid. It needs a file the other connections can open
+    // (shared_file_path), and no transaction open on this connection, whose
+    // writes the others would not see.
+    const std::string file = shared_file_path(conn.db);
+    if (threaded && order == LibraryOrder::Unsorted && offset == 0 && limit < 0 &&
+        !file.empty() && !transaction_open(conn.db)) {
+        int64_t max_rowid = 0;
+        {
+            Stmt s = prepare_read(conn.db, "SELECT max(rowid) FROM charts");
+            if (step_row(s)) max_rowid = sqlite3_column_int64(s, 0);
+        }
+        // One share per rowid at most, so no share is empty by its range.
+        const size_t shares =
+            max_rowid > 0 ? static_cast<size_t>(std::min<int64_t>(
+                                static_cast<int64_t>(kLibraryOpenThreads), max_rowid))
+                          : 1;
+        if (shares > 1) return threaded(file, max_rowid, shares, timing_read, on_row);
+    }
+    // Unsorted asks for no order, so SQLite reads the table without a sort.
+    const char* order_by = order == LibraryOrder::Unsorted ? "" : kByName;
+    Stmt s = prepare_read(conn.db,
+                          (library_entry_select() + order_by + " LIMIT ? OFFSET ?").c_str());
+    sqlite3_bind_int(s, 1, limit);
+    sqlite3_bind_int(s, 2, offset);
+    return read_library_entries(s, timing_read, on_row);
+}
+
+// RecordStore::list_chart_library_copies, read on `conn`. Every connection's
+// copies read is this one. The caller holds conn's lock.
+std::vector<ChartLibraryEntry> library_copies_on(StoreConnection& conn, const std::string& md5) {
+    const bool timing_read = chart_meta_current_on(conn.db);
+    Stmt s = prepare_read(conn.db, (library_entry_select() + " WHERE md5 = ?" + kByName).c_str());
+    bind_text(s, 1, md5);
+    return read_library_entries(s, timing_read);
+}
+
 }  // namespace
 
 // ---- StoreReader ------------------------------------------------------------
@@ -1809,6 +1877,22 @@ std::unordered_map<std::string, RecordStatus> StoreReader::settled_song_ids(cons
     const ReadTransaction one_moment(conn_.db);
     return settled_on(conn_, store_.rules_fingerprint_, want,
                       store_.between_lookup_reads_for_test_);
+}
+
+std::vector<ChartLibraryEntry> StoreReader::list_chart_library(int offset, int limit,
+                                                               const RowsReadFn& on_row,
+                                                               LibraryOrder order) {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+    const ReadTransaction one_moment(conn_.db);
+    return list_library_on(conn_, offset, limit, on_row, order, {});
+}
+
+std::vector<ChartLibraryEntry> StoreReader::list_chart_library_copies(const std::string& md5) {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+    const ReadTransaction one_moment(conn_.db);
+    return library_copies_on(conn_, md5);
 }
 
 std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
@@ -1953,45 +2037,18 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library(int offset, int l
                                                                const RowsReadFn& on_row,
                                                                LibraryOrder order) {
     std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
-
-    const bool timing_read = chart_meta_current();
-    // The whole library unsorted reads on threads, one connection each, split
-    // by rowid. It needs a file the other connections can open
-    // (shared_file_path), and no transaction open on this connection, whose
-    // writes the others would not see.
-    const std::string file = shared_file_path(writer_.db);
-    if (order == LibraryOrder::Unsorted && offset == 0 && limit < 0 && !file.empty() &&
-        !transaction_open(writer_.db)) {
-        int64_t max_rowid = 0;
-        {
-            Stmt s = prepare_read(writer_.db, "SELECT max(rowid) FROM charts");
-            if (step_row(s)) max_rowid = sqlite3_column_int64(s, 0);
-        }
-        // One share per rowid at most, so no share is empty by its range.
-        const size_t shares =
-            max_rowid > 0 ? static_cast<size_t>(std::min<int64_t>(
-                                static_cast<int64_t>(kLibraryOpenThreads), max_rowid))
-                          : 1;
-        if (shares > 1)
-            return read_chart_library_on_threads(file, max_rowid, shares, timing_read, on_row);
-    }
-    // Unsorted asks for no order, so SQLite reads the table without a sort.
-    const char* order_by = order == LibraryOrder::Unsorted ? "" : kByName;
-    Stmt s = prepare_read(
-        writer_.db, (library_entry_select() + order_by + " LIMIT ? OFFSET ?").c_str());
-    sqlite3_bind_int(s, 1, limit);
-    sqlite3_bind_int(s, 2, offset);
-    return read_library_entries(s, timing_read, on_row);
+    // The lock is held through the threaded read too, as it needs.
+    const ThreadedLibraryRead threaded = [this](const std::string& path, int64_t max_rowid,
+                                                size_t shares, bool timing_read,
+                                                const RowsReadFn& rows) {
+        return read_chart_library_on_threads(path, max_rowid, shares, timing_read, rows);
+    };
+    return list_library_on(writer_, offset, limit, on_row, order, threaded);
 }
 
 std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std::string& md5) {
     std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
-
-    const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(writer_.db,
-                          (library_entry_select() + " WHERE md5 = ?" + kByName).c_str());
-    bind_text(s, 1, md5);
-    return read_library_entries(s, timing_read);
+    return library_copies_on(writer_, md5);
 }
 
 ChartIndex RecordStore::chart_index() {

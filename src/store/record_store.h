@@ -511,6 +511,10 @@ public:
     }
     virtual std::unordered_map<std::string, RecordStatus> settled_song_ids(
         const Profile& want) = 0;
+    virtual std::vector<ChartLibraryEntry> list_chart_library(
+        int offset, int limit, const RowsReadFn& on_row = {},
+        LibraryOrder order = LibraryOrder::ByName) = 0;
+    virtual std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) = 0;
 
 protected:
     StoreReads() = default;
@@ -538,6 +542,12 @@ public:
     std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
                                      const Profile& want) override;
     std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
+    // The whole library unsorted is read on this one connection too, inside
+    // the call's one read transaction, never on threads.
+    std::vector<ChartLibraryEntry> list_chart_library(
+        int offset, int limit, const RowsReadFn& on_row = {},
+        LibraryOrder order = LibraryOrder::ByName) override;
+    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
     // Closes the connection; a later read opens it again.
     void close();
 
@@ -756,7 +766,7 @@ public:
     int64_t chart_library_count();
     std::vector<ChartLibraryEntry> list_chart_library(int offset, int limit,
                                                       const RowsReadFn& on_row = {},
-                                                      LibraryOrder order = LibraryOrder::ByName);
+                                                      LibraryOrder order = LibraryOrder::ByName) override;
     // Test seam: the next threaded chart list read fails to open its
     // `nth` reader connection (1 = the first), as an open that fails does.
     void fail_chart_list_reader_open_for_test(int nth) {
@@ -771,7 +781,7 @@ public:
     // the way list_chart_library reads them, in LibraryOrder::ByName. A click
     // on a library row picks its copy from these (ui::AppState::select), and
     // so does a chart whose every copy is hidden (ui::AppState::select_chart).
-    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5);
+    std::vector<ChartLibraryEntry> list_chart_library_copies(const std::string& md5) override;
 
     // The library's charts, their copies and naming copies (ChartIndex),
     // built from the library rows in the order the scan listed them.
