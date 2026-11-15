@@ -52,7 +52,7 @@ Merges and commits on `main` that touch code need a review from a fresh agent fi
 
 Only what outsiders read, and plans, get a review from a fresh agent, and each document gets it once. A document is reviewed as a committed file on a branch, the same way code is. Text goes to GitHub only through `C:\Users\Patrick\.claude\gates\publish.ps1`. The gated steps, how to send a document for review and the user's waiver are in `docs/agents/doc-review.md`, "What is gated".
 
-Every new plan carries a Premise map: one row per fact the plan stands on, each naming where it was read or marked `unchecked`, and every live step lists its tool calls. `docs/agents/premise-map.md` says the shape.
+Every new plan carries a Premise map: one row per fact the plan stands on, each naming where it was read or marked `unchecked`, and every live step lists its tool calls. `docs/agents/premise-map.md` says the shape. A plan that changes what Hydra decides or shows is built from an Owner map a scout writes first: each question in game words, beside the existing code that answers it. A row with no owner, or a result that contradicts the user's words, stops the work and goes to the user. `docs/agents/owner-map.md` says the shape and the stops.
 
 A finished plan or handoff leaves the repo in the same merge that finishes its work. The docs check (`hydra_tests.exe "-tc=docs match code*"`) proves nothing still points at it: a line that still names it must say how to read it now, as `<path>` (removed; `git show <commit>:<path>`).
 
