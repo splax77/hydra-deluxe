@@ -350,7 +350,7 @@ TEST_CASE("store: one chart's results at two early-fill windows are two results"
     const PreparedRecord saved_85 = prepare_record("h1", at_85, searched_at_85);
     REQUIRE(saved_default.record != saved_85.record);
 
-    FileStore file;
+    StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.save(saved_default);
