@@ -91,7 +91,7 @@ std::string beyond_edge_text() { return whole_ms_text(beyond_edge_ms()); }
 
 std::string hit_window_text() { return whole_ms_text(kHitWindowMs); }
 
-LibraryLookup library_lookup(store::RecordStore& store, const store::Profile& profile,
+LibraryLookup library_lookup(store::StoreReads& store, const store::Profile& profile,
                              const store::ChartIndex& library) {
     LibraryLookup out;
     const std::vector<std::string>& ids = library.song_ids();
@@ -192,22 +192,22 @@ std::string no_result_line(int64_t count) {
 }
 
 // Whether the store holds a record under any profile. The one place report.cpp
-// reads RecordStore::record_count().
-bool holds_results(store::RecordStore& store) { return store.record_count() > 0; }
+// reads StoreReads::record_count().
+bool holds_results(store::StoreReads& store) { return store.record_count() > 0; }
 
 // lacks_chart_library's rule, for generate_report, which has already asked
 // holds_results and passes its answer on.
-bool lacks_chart_library(store::RecordStore& store, bool any_results) {
+bool lacks_chart_library(store::StoreReads& store, bool any_results) {
     return any_results && store.chart_library_count() == 0;
 }
 
 }  // namespace
 
-bool lacks_chart_library(store::RecordStore& store) {
+bool lacks_chart_library(store::StoreReads& store) {
     return lacks_chart_library(store, holds_results(store));
 }
 
-CollectedRows collect_rows(store::RecordStore& store, const ReportOptions& options) {
+CollectedRows collect_rows(store::StoreReads& store, const ReportOptions& options) {
     // Fail loudly rather than list paths found under other settings.
     if (!options.run)
         throw std::invalid_argument("collect_rows: the report has no analysis settings");
@@ -275,7 +275,7 @@ std::string nothing_under_settings(const std::string& chartmode, int cap,
            "). Analyze with these settings, or change them.";
 }
 
-GeneratedReport generate_report(store::RecordStore& store, const ReportOptions& options) {
+GeneratedReport generate_report(store::StoreReads& store, const ReportOptions& options) {
     GeneratedReport out;
     CollectedRows collected = collect_rows(store, options);
     // Cancelled: nothing is built, and the caller that set the flag already

@@ -1,5 +1,6 @@
 #include "ui/dm_jobs.h"
 
+#include <memory>
 #include <stdexcept>
 #include <utility>
 
@@ -43,8 +44,15 @@ void DmReportJob::run() {
         if (is_cancelled()) return false;
         // Join, tally, and framing all live behind generate_dm_report; the
         // job only fetches and hands the result over.
-        app::dm_report::GeneratedDmReport report =
-            app::dm_report::generate_dm_report(store_, scores, profile_, username_);
+        // The store is read only from here, after the network wait, through a
+        // connection of the report's own under one hold, as ReportJob::run
+        // reads it.
+        app::dm_report::GeneratedDmReport report = [&] {
+            const std::unique_ptr<store::OwnReader> reader = store_.open_own_reader();
+            const store::OwnReader::Hold moment = reader->hold();
+            return app::dm_report::generate_dm_report(reader->reads(), scores, profile_,
+                                                      username_);
+        }();
         if (report.stats.total == 0)
             throw KindedError(ErrorKind::NoScores, "this user has no scores to compare");
 
