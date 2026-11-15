@@ -10,7 +10,11 @@ The audit judged each test case by `docs/agents/test-rubric.md`, and 421 records
 - "tests exist to verify the behavior of the code. a test citing something that isn't code is always wrong"
 - "tests should test their intended behavior directly, not make up an arbitrary meaningless string"
 
-On fakes the user added, in chat: "fake data will never appear in the real hydra and we should be testing the behavior of the real code".
+- "tests should never be based on anything fake. testing fake made up data is useless and says nothing about how the app behaves in a real situation"
+
+On fakes the user also said, in chat: "fake data will never appear in the real hydra and we should be testing the behavior of the real code". A fake of any kind is X9: a fake analyzer (even one that returns a real result), fake readers, fake workers, fake game memory, fake sessions, fake clocks, fake replies, hand-built library rows.
+
+**Which records.** The first round re-read the Keep records. A second round re-reads the Investigate records, whose fault is mostly "claim not checked". Your prompt says which verdict is yours. Read every record of that verdict in your files, and treat "Keep" below as that verdict. Skip `records/window-WN4.md`: WN4a, WN4b and WN4c supersede it.
 
 Read X9 to X12 in `docs/audit/2026-11-14-test-audit/cross-findings.md` for worked examples of each fault. Your job is to count how many Keep records hold one of them.
 
