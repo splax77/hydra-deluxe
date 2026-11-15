@@ -88,4 +88,16 @@ Round 2 finished in about 8.5 minutes, 306 tool calls in all; every slice finish
 
 The auditors answered question 3 two ways for a test that is not about a chart. A4, A5 and A6 wrote "not an engine claim" or "no chart fact is claimed" and gave Keep; A7 wrote "claim not checked" and gave no Keep. The rubric's verdict section rules Keep out unless the claim was checked on a real chart, and "not an engine claim" is no check, so the main session fixed one reading for the rest of the audit: a claim about files, folders, the store or the settings is checked on real input against an independent owner, and a claim about what a window shows is checked on a capture, or it is "claim not checked". The rule, with a bad and a good line, was added to the round 3 auditor briefs (A9 to A12) and the round 2 verifier briefs (A5 to A8). A4's Keeps that its verifier did not dispute go to one fresh agent under the same rule (`briefs/T5-recheck-A4-q3.md`, writing `verify/A4-q3.md`). A6's Keeps are covered by its verifier's brief.
 
-Round 3 ran as one workflow: auditors for A9 to A12, verifiers for A5 to A8, and the A4 recheck, launched together.
+Round 3 ran as one workflow (wf_2c1ce9d6-90a): auditors for A9 to A12, verifiers for A5 to A8, and the A4 recheck, launched together. About 7 minutes, 238 tool calls; every slice finished.
+
+- A9 (12346de6, 3e256e8f): 46 records. Rewrite 37, Remove 8, Investigate 1. No Keep: no settings claim was checked on a real settings file.
+- A10 (4e442a67, bd102e42): 30 records. Rewrite 26, Remove 1, Investigate 3.
+- A11 (2b319b44): 6 records. Rewrite 4, Investigate 2.
+- A12 (1f7505b4): 14 records. Keep 1, Rewrite 12, Investigate 1.
+- verify A5 and A6 (d995b2a4): disputes all 21 of A5's Keeps and 10 of A6's, every one on question 3; A6 record 30 also on question 5.
+- verify A7 and A8 (35157454): agrees with all 86 verdicts. It did not read the code of A7 records 11, 17, 18 to 21, 35, 38, 41 and 44 line by line; those go to round 3's verifier of A11 and A12 (`verify/A7-reread.md`).
+- recheck A4 (04f3537b, `verify/A4-q3.md`): of 25 undisputed Keeps, 11 stand (8, 10, 11, 13, 15, 33, 34, 36, 38, 39, 48) and 14 fall to "claim not checked". It asked whether the thread-pool tests count; the main session's reading is that a claim about threads, timing or a transport is checked on the real mechanism, so they stand. It also found test 2's reason wrong: `src/ui/app_state.cpp:596` allows a scan only when `chartfolders` is non-empty.
+
+Two reading rules were added for round 4 on: a claim about threads, timing or a transport is checked on the real mechanism (the real pool, the real clock, real WinHTTP against a loopback server), which checks behaviour but not a real server's reply; and a verifier reads the code behind every record, never agreeing from a verdict's shape. Round 1's verifier of A3 and A4 left A3 records 7, 9, 10, 11, 19, 21 and A4 records 12, 13, 15, 17 to 22, 34, 35, 38 to 40 not re-opened; they go to round 3's verifier of A9 and A10 (`verify/A3-A4-reread.md`).
+
+Round 4 ran as one workflow (wf_29e1beb8-eac): auditors for A13 to A16 and verifiers for A9 to A12, launched together.
