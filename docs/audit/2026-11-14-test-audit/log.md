@@ -253,4 +253,12 @@ Round 19 ran as one workflow (wf_6a59f866-770): auditors for D2 to D5, the fuzz 
 - verify C13 and C14 (a0d3c9be): C13 52 agreed, 2 disputed; the removed font-role plan (`git show 6804353f:docs/superpowers/plans/2026-10-22-font-role-single-owner.md`) gives the four sizes C13's auditor could not source.
 - verify C15 and D1 (71a5291f): its verifier also wrote the four fuzz records C15 lacked, in `verify/C15.md`; the fuzz auditor's file covers the same four, so T8 reads both.
 
-Round 20 ran as one workflow: auditors for D6 to D9 and verifiers for D2 to D5 and the fuzz records, launched together.
+Round 20 ran as one workflow (wf_02f917d3-9ef): auditors for D6 to D9 and verifiers for D2 to D5 and the fuzz records, launched together. About 10.5 minutes, 294 tool calls; every slice finished.
+
+- D6 (2f2920c5, bc7b760a): 168 records, about Keep 5, Rewrite 9, Remove 7, Investigate 147. Records past `test_kit_tools.py` line 697 are in a short form that takes most answers from shared blocks.
+- D7 (three commits, last 4b8f9a36): 166 records. Keep 32, Rewrite 14, Remove 12, Investigate 108. `test_a_short_clock_read_leaves_the_column_empty` is defined twice in one class (`test_machine_recorder.py` lines 583 and 682), so the first never runs.
+- D8 (last 0ef1400b): 168 records. Keep 91, Rewrite 19, Investigate 58.
+- D9 (be02ac3c, 664c5015, c645f3b5): 160 records.
+- verify D2 and D3 (4e2e0c65): D2 140 agreed, 15 disputed. verify D4, D5 and the fuzz records (35a69db0): D4 86 agreed, 15 disputed.
+
+Round 21 ran as one workflow: auditors for D10 to D13 and verifiers for D6 to D9, launched together.
