@@ -503,6 +503,10 @@
 - 2026-11-14 ca29fda5 Ruling gate plan handoff (2026-11-14) | hooks, agents, docs, planning, review | The session ended with the ruling-gate plan approved on its branch, with nothing built and nothing merged. [stale]
 - 2026-11-14 a9505e36 Starpower end clarity design (2026-11-14) | note-highway, sp-bar, active-sp-window, preview, planning | The session ended with a handoff for option B, committed on its own branch and not merged into main.
 - 2026-11-14 ae1c19f5 Sprint end option B handoff (2026-11-14) | active-sp-window, preview, release, hooks, review, clone-hero | Option B was merged into main, and Hydra Deluxe 3.1.0 was published on GitHub with a signed installer and its signature file. [write-back]
+- 2026-11-15 00f515c4 Three failed runs (2026-11-15) | tests, agents, review, planning, docs | The session ended with a rubric, one good example test and two handoffs, each on its own branch, with nothing merged.
+- 2026-11-15 99e8481e Preview draws engine handoff (2026-11-15) | preview, squeeze, active-sp-window, planning, agents, release | Ended with Hydra 3.1.1 published on GitHub, with the Preview fix in it, after the user approved the release.
+- 2026-11-15 8f4b57ab Analysis regression investigation (2026-11-15) | performance, library, tests, review, planning | The session ended with the slow save fixed and merged to main, two tests merged, and a window fix planned and handed off but not built.
+- 2026-11-15 5375d0bf Old worktrees and scratch folders (2026-11-15) | agents, transcripts | Ended with every worktree removed except the main checkout, and the old scratch folders cleared.
 
 ## Proposed tags
 
@@ -519,4 +523,6 @@
 - mimalloc (1)
 - remote-control (1)
 - repo-analysis (2)
+- scratch-folders (1)
 - ui (1)
+- worktrees (1)
