@@ -26,3 +26,14 @@ A verifier writes `verify/window-<group>.md` and does "The verifier's job" of th
 - Every C record answers questions 1 to 11 and names question 8's bug at a line, as `docs/agents/test-rubric.md` shows.
 - List every typed number on an assertion line that a run at 60 ms can move, with its line. The WN4 verifier's list is a start, not the whole.
 - Write status lines with the preamble's one call, from the PowerShell tool. If it is refused, say so in your report with the error text; do not write the status file another way.
+
+## WN7 and WN8, the last gaps
+
+The WN4b auditor found that `testdm::sample_chart()` (`tests/dm_fixture.h:46-52`) runs the search at the default window, and a wider grep found more files that reach the search through helpers the first groups did not list (`corpus::analyzed_by_ten_scores`, `open_burnout`, `open_and_wait`, `batch_run`, `run_batch`). Task ids T5-WN7, T5-WN8, and T5-V-WN7, T5-V-WN8 for their verifiers.
+
+| Group | Files | Writes |
+|---|---|---|
+| WN7 | `tests/test_path_list.cpp`, `tests/test_pb_files.cpp`, `tests/test_preview_boxes.cpp`, and every test case in `tests/test_app_library.cpp` that has no record in `records/delta-DL3.md` | `records/window-WN7.md` |
+| WN8 | `tests/test_dm_report.cpp`, `tests/test_dm_other_speed.cpp`, `tests/test_fill_report.cpp`, the `testdm::` cases of `tests/test_report_rows.cpp` (WN4c sorted that file without knowing `sample_chart` searches), and `tests/test_config.cpp`'s test cases that call `batch_run()` and have no record in `records/delta-DL4.md` | `records/window-WN8.md` |
+
+The points above bind these groups too.
