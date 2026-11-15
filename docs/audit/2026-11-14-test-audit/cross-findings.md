@@ -156,6 +156,16 @@ Many expected values name their source in a comment instead of in code: "From on
 
 Exit: not chosen.
 
+## The Keep recount
+
+Five counters re-read every record the audit called Keep, by the three filed rulings and X9 to X12 (`briefs/T5-keep-recount.md`, `counts/T5-KR1.md` to `T5-KR5.md`). They read 421 records, and 240 hold at least one fault: 59 of 91 (KR1), 68 of 97 (KR2), 54 of 84 (KR3), 34 of 66 (KR4) and 25 of 83 (KR5). Of the 240, the record itself already named the fault, wholly or partly, in at least 103. It was kept anyway, because the rubric had no question for it.
+
+The counters split on one case. KR4 counted hand-built library rows (`fake_charts`, `library_entry`, `timed_library`) as X9, and KR5 did not. The main session applied the user's words ("fake data will never appear in the real hydra") to both: a library row Hydra's scan did not make is made-up data. KR5's uncounted rows are listed in its file and still have to be added to its 25.
+
+A fake analyzer is X9 too, including one that returns a real corpus result. The user, in session 63c70014: "why do we have a fake analyzer? what the fuck is the point of a fake analyzer? who came up with this shit?" The seam is in the product: `BatchJob::set_analyzer_for_test` (`src/ui/library_jobs.h:285`) and `set_app_batch_analyzer_for_test` (`:419`). Sessions added them to get around timing races in the GUI batch tests. Commit e6d81592 (2026-09-27, session 159155c8) added the job seam, and a33c5d71 (2026-10-03, session dadb77f5) added the app-wide one, which "holds the batch open". `gated_scores` (`test_app_library.cpp:204`), which makes up a score of 1000 per chart in turn, followed on 2026-11-05 (e87fa19d, session 08dcb02a). No ruling of the user asked for any of them.
+
+The 1,970 Investigate records were not re-read. Most say only "claim not checked". The capture pass would move them to Keep, so the same faults would pass through unless they are re-read first.
+
 ## What the repeated-values pass left out of X3 to X12
 
 - **Disputed:** RP3-10 ("chart" and "charts" are arguments passed to the product's `counted()`, not copies of its output) and RP3-6's `kDot`.
