@@ -225,4 +225,12 @@ Round 16 ran as one workflow (wf_4a09b438-aa6): auditors for C5 to C8 and verifi
 - C8 (5c532bf5, b2966346, 5f930ea3): 28 records.
 - verify C1 to C4: C1 and C2 reached every record. C3's verifier did not open six kick2x records (test lines 24, 51, 65, 176, 195 and 213), which get the slice's one re-send.
 
-Round 17 ran as one workflow: auditors for C9 to C12, verifiers for C5 to C8 and the C3 re-send, launched together.
+Round 17 ran as one workflow (wf_c5a224d6-6f2): auditors for C9 to C12, verifiers for C5 to C8 and the C3 re-send, launched together. About 9 minutes, 351 tool calls; every find slice finished.
+
+- C9 (19419c63, fd564503): 71 records. Keep 1, Rewrite 6, Investigate 64. Split against D299 (`fix-decisions.md:1658`, the user's words that a test file counts for a changed name "only if it includes the header that declares it"): pick:136, pick:158 and pick:515 expect a test with no include to be picked.
+- C10 (361572d2, d78fde88): 48 records. Rewrite 5, Remove 1, Investigate 42.
+- C11 (83a33de, ac25bcd9, 71e0f20b): 42 records. Rewrite 10, Investigate 32.
+- C12: committed in parts (srb, stars, stream_mix, strutil).
+- verify C5 and C7 reached every record. C6's verifier did not open nine records (NW15, OBJ1, OBJ6, OL19, OL20 and others, listed in `verify/C6.md`), and C8's four; each gets the slice's one re-send. The C3 re-send (`verify/C3-resend.md`) checked all six and agreed with all six.
+
+Round 18 ran as one workflow: auditors for C13, C14, C15 and D1, verifiers for C9 to C12, and the C6 and C8 re-sends, launched together.
