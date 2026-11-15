@@ -514,6 +514,7 @@ private:
     ViewOutcome out_;
     app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
     std::function<void()> before_save_check_;  // the test seam's, copied at construction
+    std::function<void()> after_save_check_;   // the test seam's, copied at construction
 };
 
 // Test seam: when set, every click's job built from now on runs this analyzer
@@ -527,6 +528,12 @@ void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
 // a test can cancel, close or replace the click right there. An empty
 // function clears it. Only tests set it.
 void set_view_before_save_check_for_test(std::function<void()> hook);
+
+// Test seam: when set, every click's job built from now on calls this on its
+// own thread just after that last cancel check, before its save, so a test
+// can cancel, close or replace the click once the save can no longer be
+// stopped. An empty function clears it. Only tests set it.
+void set_view_after_save_check_for_test(std::function<void()> hook);
 
 // ---- ReportJob --------------------------------------------------------
 

@@ -619,6 +619,7 @@ void BatchJob::run() {
 namespace {
 app::ChartAnalyzer g_view_analyzer;
 std::function<void()> g_view_before_save_check;
+std::function<void()> g_view_after_save_check;
 
 // Whether a chart's stored answer already says what `fresh` would save, so a
 // click saves nothing (D87 item 2): the same Ready record, or the same stored
@@ -654,6 +655,10 @@ void set_view_before_save_check_for_test(std::function<void()> hook) {
     g_view_before_save_check = std::move(hook);
 }
 
+void set_view_after_save_check_for_test(std::function<void()> hook) {
+    g_view_after_save_check = std::move(hook);
+}
+
 ViewJob::ViewJob(store::ChartLibraryEntry song, store::Profile profile,
                  app::AnalysisSettings settings, bool analysis_off, int generation,
                  store::RecordStore& store)
@@ -664,7 +669,8 @@ ViewJob::ViewJob(store::ChartLibraryEntry song, store::Profile profile,
       generation_(generation),
       store_(store),
       analyze_(g_view_analyzer ? g_view_analyzer : app::ChartAnalyzer(app::analyze_chart_file)),
-      before_save_check_(g_view_before_save_check) {}
+      before_save_check_(g_view_before_save_check),
+      after_save_check_(g_view_after_save_check) {}
 
 void ViewJob::start() {
     // The thread constructor itself can throw (std::system_error when the OS
@@ -771,6 +777,9 @@ void ViewJob::write_results() {
     if (!prepared) return;
     if (before_save_check_) before_save_check_();
     throw_if_cancelled();
+    // A cancel from here on comes too late to stop the save; the window still
+    // follows it (AppState::take_view_outcome).
+    if (after_save_check_) after_save_check_();
     try {
         if (stored_says_same(store_.lookup_one(song_id, prepared->profile), prepared->record))
             return;  // nothing new to save

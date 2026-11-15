@@ -480,21 +480,27 @@ TEST_CASE("a click whose save fails shows the paths and says so") {
 
 namespace {
 
-// Holds every click's job built from now on at its check just before the
-// save (set_view_before_save_check_for_test), until release() or kWaitCap, so
-// a test can act while the job waits there. Declare it AFTER the AppState:
-// its destructor lets every held job through, and the app's destructor joins
-// them. A job copies the seam when it is made, with the flags it shares.
+// One of the click's two save seams: set_view_before_save_check_for_test
+// (just before the last cancel check) or set_view_after_save_check_for_test
+// (just after it, when the save can no longer be stopped).
+using ViewSaveSeam = void (*)(std::function<void()>);
+
+// Holds every click's job built from now on at one of its save seams, until
+// release() or kWaitCap, so a test can act while the job waits there.
+// Declare it AFTER the AppState: its destructor lets every held job through,
+// and the app's destructor joins them. A job copies the seam when it is
+// made, with the flags it shares.
 struct SaveGate {
+    explicit SaveGate(ViewSaveSeam set_seam = hydra::ui::set_view_before_save_check_for_test)
+        : seam(set_seam, [open = open, reached = reached] {
+              ++*reached;
+              testwait::wait_until([&open] { return open->load(); },
+                                   "the test to open the save gate");
+          }) {}
     std::shared_ptr<std::atomic<bool>> open = std::make_shared<std::atomic<bool>>(false);
     std::shared_ptr<std::atomic<int>> reached = std::make_shared<std::atomic<int>>(0);
     // After open and reached, which it copies.
-    const ScopedHook seam{hydra::ui::set_view_before_save_check_for_test,
-                          [open = open, reached = reached] {
-                              ++*reached;
-                              testwait::wait_until([&open] { return open->load(); },
-                                                   "the test to open the save gate");
-                          }};
+    const ScopedHook seam;
     ~SaveGate() { release(); }
     void release() { open->store(true); }
     void wait_reached() {
@@ -503,16 +509,30 @@ struct SaveGate {
     }
 };
 
-// Clicks `song`, runs `act` while its job waits at the check before its
-// save, then lets the job go on and runs frames until it is collected.
-void act_before_save(AppState& app, const ChartLibraryEntry& song,
-                     const std::function<void()>& act) {
-    SaveGate gate;
+// Clicks `song`, runs `act` while its job waits at `seam`, then lets the job
+// go on and runs frames until it is collected.
+void act_at_save_seam(ViewSaveSeam seam, AppState& app, const ChartLibraryEntry& song,
+                      const std::function<void()>& act) {
+    SaveGate gate(seam);
     app.select(song, hydra::ui::SelectionSource::Click);
     gate.wait_reached();
     act();
     gate.release();
     settle(app);
+}
+
+// `act` runs while the job waits at the check before its save, so a cancel
+// there stops the save.
+void act_before_save(AppState& app, const ChartLibraryEntry& song,
+                     const std::function<void()>& act) {
+    act_at_save_seam(hydra::ui::set_view_before_save_check_for_test, app, song, act);
+}
+
+// `act` runs once the job is past its last cancel check, so the save goes
+// through whatever `act` does.
+void act_during_save(AppState& app, const ChartLibraryEntry& song,
+                     const std::function<void()>& act) {
+    act_at_save_seam(hydra::ui::set_view_after_save_check_for_test, app, song, act);
 }
 
 // Waits, running no frame, until the click's job has finished, so the
@@ -656,6 +676,99 @@ TEST_CASE("a click whose job was let go after it wrote still gives the row the s
     const hydra::store::RecordLookup found = app->store->lookup_one(song.md5, profile);
     CHECK(found.status == RecordStatus::Ready);  // the job saved it
     CHECK(row_of(*app, song.md5).shows_same_as(found));
+}
+
+// ---- a click cancelled, closed or replaced during its save ------------------
+
+namespace {
+
+// The click's save went through, and chart `md5`'s row says what the store,
+// read now, says for it.
+void check_row_shows_saved(const AppState& app, const std::string& md5) {
+    const hydra::store::RecordLookup found = app.store->lookup_one(md5, app.settings.profile());
+    CHECK(found.status == RecordStatus::Ready);  // the job saved it
+    CHECK(row_of(app, md5).shows_same_as(found));
+}
+
+}  // namespace
+
+// A Cancel that comes after the job's last check is too late to stop the
+// save: the panel follows the click, and the row follows the store.
+TEST_CASE("a click cancelled during its save keeps the panel cancelled and gives the row the store's answer") {
+    ScratchPaths paths("appstate_click_cancel_insave");
+    const ChartLibraryEntry song = corpus_chart("click_cancel_insave");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+
+    act_during_save(*app, song, [&] { app->cancel_view(); });
+
+    CHECK(app->viewed.state == ViewedSong::State::Cancelled);
+    check_row_shows_saved(*app, song.md5);
+}
+
+TEST_CASE("a click closed during its save gives the row the store's answer") {
+    ScratchPaths paths("appstate_click_close_insave");
+    const ChartLibraryEntry song = corpus_chart("click_close_insave");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+
+    act_during_save(*app, song, [&] { app->close_details(); });
+
+    CHECK_FALSE(app->show_details);
+    CHECK(app->viewed.state == ViewedSong::State::None);
+    check_row_shows_saved(*app, song.md5);
+}
+
+TEST_CASE("a click replaced during its save gives the row the store's answer") {
+    ScratchPaths paths("appstate_click_replace_insave");
+    const ChartLibraryEntry song = corpus_chart("click_replace_insave");
+    // Another hash, so the second song's save is not the first one's.
+    const ChartLibraryEntry next = corpus_chart("click_replace_insave_next", /*extra_note=*/true);
+    REQUIRE(next.md5 != song.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {song, next});
+
+    act_during_save(*app, song,
+                    [&] { app->select(next, hydra::ui::SelectionSource::Click); });
+
+    REQUIRE(app->viewed.ready());  // the panel shows the second song
+    REQUIRE(app->selected.has_value());
+    CHECK(app->selected->md5 == next.md5);
+    check_row_shows_saved(*app, song.md5);
+}
+
+// D87 item 3: the new hash was written before the save, so a click dropped
+// after it still brings the library up to the store.
+TEST_CASE("a dropped click that wrote a new hash still reloads the library") {
+    ScratchPaths paths("appstate_click_rehash_insave");
+    const ChartLibraryEntry scanned = corpus_chart("click_rehash_insave");
+    std::unique_ptr<AppState> app = app_with(paths, {scanned});
+    Sleep(20);  // the mtime has to move for the fingerprint to see the edit
+    write_corpus_chart("click_rehash_insave", /*extra_note=*/true);
+    const std::string new_md5 = hydra::app::hash_chart_file(scanned.notespath);
+    REQUIRE(new_md5 != scanned.md5);
+
+    act_during_save(*app, scanned, [&] { app->close_details(); });
+
+    CHECK(app->viewed.state == ViewedSong::State::None);
+    REQUIRE(app->store->list_chart_library_copies(new_md5).size() == 1);
+    // row_of fails the test when no library row carries the new hash.
+    check_row_shows_saved(*app, new_md5);
+}
+
+// D115 question 4, for a click the user let go: its save changed what both
+// reports read, so both say the library changed.
+TEST_CASE("a dropped click's save marks both reports out of date") {
+    ScratchPaths paths("appstate_click_marks_insave");
+    const ChartLibraryEntry song = corpus_chart("click_marks_insave");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    app->path_report.result = std::make_shared<const hydra::app::report::GeneratedReport>();
+    app->dm_report.result = std::make_shared<const hydra::app::dm_report::GeneratedDmReport>();
+    REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
+    REQUIRE(app->dm_report.out_of_date == ReportOutOfDate::None);
+
+    act_during_save(*app, song, [&] { app->close_details(); });
+
+    CHECK(app->viewed.state == ViewedSong::State::None);
+    CHECK(app->path_report.out_of_date == ReportOutOfDate::Library);
+    CHECK(app->dm_report.out_of_date == ReportOutOfDate::Library);
 }
 
 // ---- a failed click (the user's answers 1 and 6, 2026-10-15) ----------------
