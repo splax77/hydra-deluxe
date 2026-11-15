@@ -2,7 +2,7 @@
 
 These are real tests from this repo, judged by the questions in `docs/agents/test-rubric.md`. "Q3" means question 3 on that page. Every quoted line was copied from the file at the commit that last changed this page; line numbers are from that commit and will drift. Where a neighbouring line was not read again for this page, the example says so.
 
-Twelve bad examples come first, then six good ones. The first five bad examples are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. Every good example has a weak spot, and each says so. No test found so far passes every question.
+Thirteen bad examples follow. The first five are the ones earlier audits missed: the test's own account of what should happen is the fault. Read those first. There is no good-examples list, because no test in this repo passes every question yet; the last section says what a good test looks like.
 
 ## Bad examples: the framing is the bug
 
@@ -101,7 +101,7 @@ The verdict is investigate, on Q2 only. If the rule holds, the check is rewritte
 
 It fails Q4 and Q5. The number is how many charts sat in `testdata/input` that day, and the totals after it are what the code printed over them. Deleting any of them hides "any change at all" (Q8), the mark of a snapshot.
 
-The rewrite keeps the test's one property (G2) and drops the totals. For the case the totals watched, it builds one small chart with a squeeze-in at exactly 0 and checks that chart's saved row shows 0.
+The rewrite keeps the test's one property (every saved row shows the timing the engine worked out) and drops the totals. For the case the totals watched, it builds one small chart with a squeeze-in at exactly 0 and checks that chart's saved row shows 0.
 
 ### B7. A GUI count of corpus charts
 
@@ -169,83 +169,28 @@ It fails Q5. The expected value comes out of Hydra: `tick_ms` (`tests/record_fix
 
 It fails Q4, Q5 and Q9. The comment above the test says "The three numbers are pinned from one run". And 622 belongs to whichever chart sorts first. The same comment states the rule: "one row per chart timestamp". The rewrite checks that against the song the test loaded.
 
-## Good examples
+### B13. A raw result whose meaning lives in a comment
 
-### G1. A display checked against the engine's record, item by item
-
-"preview fills: every stored passed-over fill is a fill in the scene", `tests/test_preview_scene.cpp` lines 978 to 985:
+"Skipped fills: under the 1.1 rule a fill exactly at the reach edge is stored", `tests/test_fills_and_skips.cpp` lines 108 to 112:
 
 ```cpp
-            for (const Activation& a : rec.paths[pi].walk_activations()) {
-                for (int64_t t : a.skipped_fill_ticks) {
-                    ++ticks_checked;
-                    if (fill_ends.count(t) == 0)
-                        MESSAGE(chart << " | root " << pi << " | activation "
-                                      << a.timecode.ticks() << " | stored fill tick " << t);
-                    CHECK(fill_ends.count(t) == 1);
-```
-
-It passes Q2, Q4 and Q6. The engine stamps which fills a path passed over. The test walks that list and requires the Preview's scene to hold each one. Nothing is typed, a new chart cannot break it, and a failure names the chart, the activation and the tick. It ends with `CHECK(ticks_checked > 0);`.
-
-It has two weak spots. Lines 972 and 974 are silent skips (B9). And it checks one direction only: every stored fill is in the scene, but not that the scene lights only those.
-
-No test was found that checks the Star Power gauge against the record chord by chord. The search was `tests/test_sp_meter_curve.cpp` and `tests/test_preview_scene.cpp`. The nearest is "build_preview_scene: an analyzed chart's overlay matches its path" (`tests/test_preview_scene.cpp` line 475), which checks `pa.sp_end_tick == *d` against the record's `deact_tick()` for each activation. That is one fact per activation, and it passes on Blight while the gauge still leaves the squeeze-out chord unmarked. A chord-by-chord gauge test would walk each activation's `sp_end_steps` and `sqout_tick` on corpus charts. It would require the gauge to change on each chord the record names, and on no other chord inside the window.
-
-### G2. A property over the corpus whose failure names the row
-
-"corpus: squeeze-ins at exactly 0 and what they change", `tests/test_engine_sweeps.cpp` line 648:
-
-```cpp
-            if (shown_timing(saved.hardest_ms) != path.difficulty())
-```
-
-It passes Q4 and Q6. Every saved row must show the timing the engine worked out. No number is typed. The lines after it collect each mismatch by chart and path, as an earlier version of this page quoted; they were not re-read. This line lives in the same test as B6.
-
-### G3. A hand-built chart whose check reads as the rule
-
-"SP past the last note: backends measured from the tracked SP end", `tests/test_sp_end.cpp` line 103:
-
-```cpp
-        CHECK(*b.offset_ms < 0.0);
-```
-
-It passes Q4. The check is the behaviour: a note before the SP end has a negative offset. No tick is typed as a result. The same test also holds B11.
-
-### G4. Calling the owner, item by item
-
-"graph: every deactivation edge lists the chords squeeze_window_phrases names", `tests/test_sp_end.cpp` line 194, with lines 202 to 203:
-
-```cpp
-                core::squeeze_window_phrases(song, end);
-```
-
-```cpp
-    CHECK(edges > 0);
-    CHECK(claimed > 0);
-```
-
-It passes Q2 as a wiring check. The graph is meant to use this owner, and the test checks the graph passes the owner's answer on. The last two lines are the floor done right: the loop ran. The owner has its own test, "squeeze_window_phrases: the phrase chords strictly inside the window, in chart order" (`tests/test_replay.cpp` line 1316). Its weak spot is a silent skip near the top of its corpus loop.
-
-### G5. A boundary case that needs no number
-
-The owner's test named in G4, `tests/test_replay.cpp` line 1330:
-
-```cpp
-    CHECK(core::squeeze_window_phrases(edge, edge.timecode(3072)).empty());
-```
-
-It passes Q8. A phrase exactly on the window's edge is not in the list, and an inclusive comparison turns the line red. Its weak spot is Q4: nothing in the line says the inputs sit exactly one window apart.
-
-### G6. A rule number typed on purpose
-
-"Skipped fills: under the 1.1 rule a fill exactly at the reach edge is stored", `tests/test_fills_and_skips.cpp` line 110:
-
-```cpp
+    // The deadline (7200 ms, checked above) plus the 85 ms hit window, pinned
+    // as a number so a changed window fails here instead of moving the edge.
     const int64_t edge = 7285;
+    CHECK((passed_over(edge) == std::vector<int64_t>{9600}));
+    CHECK(passed_over(edge + 1).empty());
 ```
 
-The comment above it, as an earlier version of this page quoted it, says the edge is the 7200 ms deadline plus the 85 ms hit window, typed so a changed window fails here. A rule number typed because the test is about that rule passes Q4 and Q5. Its weak spot is Q4 all the same: `7285` would say more written as the deadline plus the window. The lines around it and the Clone Hero page for the window were not re-read for this page.
+The test builds a chart at 125 BPM with 480 ticks a beat, so one tick is one millisecond. Fill A starts at tick 9120 and ends at 9600. Clone Hero's 1.1 deadline is four beats before a fill's start (FL-19 in `docs/clone-hero/04-fills.md`): 9120 minus 1920 is 7200. Hydra keeps a fill offered until Star Power comes ready up to 85 ms after that deadline (FL-23, Hydra's own reach, which the game does not have). So 7285 is "the fill's start, minus four beats, plus Hydra's 85 ms reach". None of that is in the check. It fails question 4: cover the comments and nobody can tell what 7285 is. The comment's reason for typing it ("so a changed window fails here") is real, but a named rule number does the same job.
+
+The rewrite names the inputs and the two rules: `fill_a_start`, `deadline = fill_a_start - 4 * beat`, and `reach = deadline + 85` with the 85 cited to FL-23. Then `passed_over(reach)` holds fill A and `passed_over(reach + 1)` is empty.
+
+## What a good test looks like
+
+No test in this repo passes every question yet. Earlier versions of this page listed "good examples" that each broke a question: a raw result such as 7285, a silent skip, a check in the same test as snapshot totals, or a display check that tested only one direction. They are gone, because a good list that holds bad tests teaches the wrong thing.
+
+A good test of a display, the case this page was rewritten for, would take every chart in `testdata/input` and skip none. At each chord it asks the engine's record what happens there: did Star Power pay this chord, is it the squeezed chord, does Star Power end or refill here. Then it requires the display to draw exactly that at that chord, and nothing of the kind at any other chord. It types no number but zero. A failure names the chart and the chord. Today it would fail on Pitch Dark, where the gauge refills one note before the squeezed snare, and on Blight, where Star Power is drawn running past the squeezed-out chord. The first test written to this shape becomes this page's first good example.
 
 ## What was removed from this page, and why
 
-An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment.
+An earlier version held three more examples. One judged `refill_tick(1) == 13440` as only a naming fault; it is now B2. One called the squeeze-in and squeeze-out rules a single rule; they are now B1 and B5. A third, a 4000 BPM fixture offered as a rule "no page states", was dropped because its claim was not checked against the engine's record. A hand-worked scoring example was dropped as a good example for the same reason: its checks hold raw results and its rule sits in a comment. The six good examples of the version after that were dropped too: each broke a question (7285 is now B13).
