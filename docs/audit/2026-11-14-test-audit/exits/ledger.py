@@ -45,6 +45,11 @@ T7_REOPENED = {'A3.md', 'A9.md', 'A30.md', 'C7.md', 'window-WN3.md', 'window-WN4
                'window-WN4b.md', 'window-WN8.md'}
 
 
+def lines_of(path):
+    with open(path, encoding='utf-8', errors='replace') as fh:
+        return fh.read().splitlines()
+
+
 def clean(s):
     return re.sub(r'\s+', ' ', s.replace('\t', ' ')).strip()
 
@@ -55,7 +60,7 @@ def read_records():
     for name in sorted(os.listdir(rec_dir)):
         if not name.endswith('.md') or name in SUPERSEDED:
             continue
-        lines = open(os.path.join(rec_dir, name), encoding='utf-8', errors='replace').read().splitlines()
+        lines = lines_of(os.path.join(rec_dir, name))
         heading, hline, hverdicts = '', 0, []
         file_rows = []
 
@@ -104,12 +109,15 @@ def read_records():
 def table_rows(path):
     """Yield (section, cells dict, raw line) for every data row of every table that
     has a faults column. IR8 writes rows as '- a | b | c' under a Format: line."""
-    lines = open(path, encoding='utf-8', errors='replace').read().splitlines()
+    lines = lines_of(path)
     section, header, bullet_hdr = '', None, None
     for i, line in enumerate(lines, 1):
         m = HEADING.match(line)
         if m:
-            section, header, bullet_hdr = clean(m.group(2)), None, None
+            section, header = clean(m.group(2)), None
+            if not section.startswith('Table'):
+                # IR8 gives its Format: line once, under the first "## Table:".
+                bullet_hdr = None
             continue
         s = line.strip()
         if s.lower().startswith('format:'):
@@ -179,7 +187,7 @@ CORR = re.compile(r'^- (T5-\w+), record (.*): (.+?) to (.+)$')
 
 def read_corrections():
     out, part = [], False
-    for line in open(os.path.join(AUD, 'counts', 'TOTALS.md'), encoding='utf-8').read().splitlines():
+    for line in lines_of(os.path.join(AUD, 'counts', 'TOTALS.md')):
         if line.startswith('## 3.'):
             part = True
             continue
@@ -275,7 +283,7 @@ def apply_answers(rows):
 
 def totals_section1():
     out = {}
-    for line in open(os.path.join(AUD, 'counts', 'TOTALS.md'), encoding='utf-8').read().splitlines():
+    for line in lines_of(os.path.join(AUD, 'counts', 'TOTALS.md')):
         m = re.match(r'^\| (T5-\w+) \| (\d+) \| (\d+)', line)
         if m:
             out[m.group(1)] = (int(m.group(2)), int(m.group(3)))
@@ -308,6 +316,12 @@ def main():
     vc = Counter(r['verdicts'][-1] for r in recs)
     print('record rows:', len(recs), dict(vc), '| re-judged (2+ verdicts):',
           sum(1 for r in recs if len(r['verdicts']) > 1))
+    print('\nper record file: rows by last verdict (Keep/Investigate/Rewrite/Remove), bare-form rows')
+    for f in sorted({r['file'] for r in recs}):
+        c = Counter(r['verdicts'][-1] for r in recs if r['file'] == f)
+        bare = sum(1 for r in recs if r['file'] == f and r.get('bare'))
+        print(f'  {f:22} {c["Keep"]:4} {c["Investigate"]:4} {c["Rewrite"]:4} {c["Remove"]:4}'
+              + (f'  bare {bare}' if bare else ''))
     print('count rows:', len(counts))
     print('\nper count file: table rows / faulty rows (after fixes)  vs  TOTALS s1 Read / Faulty')
     tot = totals_section1()
