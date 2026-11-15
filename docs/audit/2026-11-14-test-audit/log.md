@@ -199,4 +199,14 @@ Round 13 ran as one workflow (wf_11a4346e-081): auditors for A49, B1, B2 and B3 
 - B3 (0badf6cc): 24 records. Keep 2, Rewrite 14, Investigate 8.
 - verify A45 and A46 (3915242b): A45 13 agreed, 3 disputed (two Keeps among them). verify A47 (c0e25154) and A48 (52f944f9): A47 11 agreed; it found that the "Esc only hides" words exist, D271 item 7 at `fix-decisions.md:1233` ("Yes, both keep"), so the records' split lines on `test_open_path` and `test_reopen` are wrong.
 
-Round 14 ran as one workflow: auditors for B4 to B7 and verifiers for A49 to B3, launched together.
+Round 14 ran as one workflow (wf_75371b8a-90a): auditors for B4 to B7 and verifiers for A49 to B3, launched together. About 7 minutes, 259 tool calls; every slice finished.
+
+- B4 (a96e0928): 16 records. Rewrite 11, Investigate 5. Test 964's `WARN(late_rows > 0)` (line 1002) cannot fail.
+- B5 (c0480b0c): 9 records. Rewrite 7, Remove 1, Investigate 1. `rows_off_payment` (`tests/test_replay_windows.cpp:186`) is true by construction; `ReplayOptions::table` is set only by tests.
+- B6 (1742fa4e, 8c3acd19): 52 records. Rewrite 16, Investigate 36. Line 1385 compares against saved expected-output files, which the filed ruling at `code-and-engine.md:50` rules out.
+- B7 (57f88201): 21 records. Keep 1, Rewrite 5, Remove 1, Investigate 14.
+- verify A49 and B1 (17d7590b): A49 21 agreed, 5 disputed. verify B3 (a024cc44) and B2 (0b722b37): B3 20 agreed, 4 disputed.
+
+From round 15 the briefs' file lists are built from `coverage.md` by a script (each file's lines and unit count read from the file).
+
+Round 15 ran as one workflow: auditors for C1 to C4 and verifiers for B4 to B7, launched together.
