@@ -67,7 +67,7 @@ Each of these messages is written once in `src/` and typed again in three or mor
 - "cancelled", owner `src/core/error_kind.h:158` (RP3-7).
 - "sqlite exec failed: ...", owner `src/store/record_store.cpp:1058` (RP3-7).
 - "cannot open file: ", in 4 test files (RP2-6). This one has no single owner: `src/` types the phrase in at least six places (`src/audio/mapped_file.cpp:28,33,46,49`, `src/core/winstr.cpp:290`, `src/app/analysis.cpp:113`, `src/app/update_verify.cpp:54`), none a shared constant (V-RP2). So it is a split on the product side as well as a copy on the test side.
-- "/all-users", owner `src/net/dmbot_client.cpp:122` (RP3-7). The copies are fakes that answer that path. A renamed path would make them quietly return the wrong canned answer rather than fail. The answers themselves are written by hand: `canned_dm_users()` and `canned_dm_scores` in `ui/uitest_harness.cpp:200-206`, and `kDmUsersJson` and `kDmScoresJson` in `test_app_reports.cpp`. They stand in for the dmleaderboards reply the same way X9's made-up summaries stand in for the engine's, and no saved real reply exists on this machine (`capture/RUNS.md`).
+- "/all-users", owner `src/net/dmbot_client.cpp:122` (RP3-7). The copies are fakes that answer that path. A renamed path would make them quietly return the wrong canned answer rather than fail. The answers themselves are written by hand: `canned_dm_users()` and `canned_dm_scores` in `ui/uitest_harness.cpp:200-206`, and `kDmUsersJson` and `kDmScoresJson` in `test_app_reports.cpp`. They stand in for the dmleaderboards reply the same way X9's made-up summaries stand in for the engine's, and no saved real reply exists on this machine (`capture/RUNS.md`). The user, in session 63c70014: "fake data will never appear in the real hydra and we should be testing the behavior of the real code". So the hand-written replies are X9 too, with the typed DMBot payload in `test_dm_report.cpp:118-130` (marked unclear by V-X9-RP2).
 
 Exit: not chosen.
 
@@ -108,6 +108,8 @@ The repeated-values pass first sorted these as K3 ("the test's own input, typing
 - `test_path_list.cpp:434` feeds the same "(optimal)" label (V-RP2).
 - `test_library_model.cpp` builds made-up summaries such as `ready(378315,"3- 1 2",7,163.0)`, and `test_library_query.cpp` uses `analyzed(7, 163.0)`. Line 393 there carries the comment "Burnout's real 163.0 ms" (RP1-1, V-RP1).
 - `test_model.cpp:1286` builds `one_step(59520, 71040)`, reusing Burnout's activation numbers on a hand-built step (V-RP3-B).
+
+The same holds for outside data. A hand-written reply from a service Hydra talks to (dmleaderboards, GitHub) is a made-up stand-in too. The user: "fake data will never appear in the real hydra and we should be testing the behavior of the real code". The DMBot fakes are listed under X5.
 
 This list is not complete. The pass's K3 rows were never read for this question. The rows are in `RP1.md` to `RP3.md`: about 150 rows by the sorters' counts.
 
