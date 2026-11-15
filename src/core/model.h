@@ -100,9 +100,19 @@ inline bool past_difficult_floor(double ms) { return ms > kDifficultMs; }
 
 // The per-side hit window (the registrable Clone Hero Pro Drums window). One
 // fixed number for the search and the display alike: the squeeze budgets,
-// the Rating words, the report's timing tiers and the early-fill reach all
-// read it, and no setting changes it (D270 call 8).
+// the Rating words and the report's timing tiers read it, and no setting
+// changes it (D270 call 8). It is also the widest early-fill window the
+// setting allows.
 constexpr double kHitWindowMs = 85.0;
+
+// The early-fill window's default, in ms: the user's own number, "default
+// 60ms, supports 0ms to 85ms" (docs/agents/rulings/code-and-engine.md,
+// 2026-11-15). Every default of the setting (Settings, SearchSettings, the
+// search graph, Activation, HydraRecord) is this one constant.
+constexpr double kDefaultEarlyFillWindowMs = 60.0;
+
+// The most the Early fill window setting allows, in whole ms: the hit window.
+constexpr int kMaxEarlyFillWindowMs = static_cast<int>(kHitWindowMs);
 
 // The squeeze horizon in ms. The search graph only looks this far from the SP
 // end for a reachable squeeze, and backends within it of the deactivation are
@@ -124,8 +134,10 @@ inline bool within_squeeze_window(double offset_from_sp_end_ms) {
     return std::fabs(offset_from_sp_end_ms) < kSqueezeWindowMs;
 }
 
-// The early-fill (E) window is one window, the hit window kHitWindowMs, on
-// both sides of a fill's deadline, measured on e_offset (D344).
+// The early-fill (E) window is one window, the user's early-fill setting
+// (window_ms below), on both sides of a fill's deadline, measured on
+// e_offset. The search graph carries it (ScoreGraph::early_fill_window_ms)
+// and the engine writes it on each activation (Activation::e_window_ms).
 //
 // After the deadline it is the reach: the latest Star Power may come ready
 // and still summon the fill with an early hit. fill_refuses reads it, so it
@@ -133,7 +145,7 @@ inline bool within_squeeze_window(double offset_from_sp_end_ms) {
 //
 // Before the deadline it is how little time to spare still marks the
 // activation E-critical. is_e0 reads it. The early-fill rule below states
-// both sides.
+// both sides, so one number sets both.
 
 // ---- note value ----------------------------------------------------------
 // What one note is worth before any multiplier. ChordNote::basescore and
@@ -308,19 +320,20 @@ inline int64_t fill_start_tick(int64_t chord_tick, int64_t activation_length) {
 
 // ---- the early-fill rule -------------------------------------------------
 // Clone Hero's early-fill rule and the E0, stated once around one window,
-// kHitWindowMs, on both sides of the deadline. A fill spawns only when SP
-// was ready by the fill's deadline, or late by no more than the window. The
+// window_ms, on both sides of the deadline. A fill spawns only when SP was
+// ready by the fill's deadline, or late by no more than the window. The
 // e_offset is how long before the deadline SP became ready (negative: after
 // it). The search's branch_activate and its group key (ready_class) ask
-// these; so do Activation's E tests.
+// these; so do Activation's E tests. Every caller passes the window its
+// search ran under, so both sides read the same number.
 inline double fill_e_offset(double deadline_ms, double ready_ms) { return deadline_ms - ready_ms; }
 // The fill refuses to spawn: SP became ready later than the window allows.
-inline bool fill_refuses(double e_offset) { return e_offset < -kHitWindowMs; }
+inline bool fill_refuses(double e_offset, double window_ms) { return e_offset < -window_ms; }
 
 // E0: SP came ready less than the window before the deadline, and nothing
-// was skipped. is_e0(e_offset, 0) alone is "E-critical".
-inline bool is_e0(double e_offset, int skips) {
-    return e_offset < kHitWindowMs && skips == 0;
+// was skipped. is_e0(e_offset, 0, window_ms) alone is "E-critical".
+inline bool is_e0(double e_offset, int skips, double window_ms) {
+    return e_offset < window_ms && skips == 0;
 }
 
 // How hard an E0 activation's early fill is, in ms.
@@ -353,8 +366,9 @@ inline bool early_fill_needs_timing(double e_offset) {
 // Is an activation's early fill inside a ms limit? An optional fill is never
 // a limit's business, as in Activation::difficulty. The engine's limit checks
 // and Activation::within_ms_limit ask it.
-inline bool fill_within_limit(double e_offset, int skips, double limit_ms) {
-    return !is_e0(e_offset, skips) || timing_within_limit(early_fill_difficulty(e_offset), limit_ms);
+inline bool fill_within_limit(double e_offset, int skips, double limit_ms, double window_ms) {
+    return !is_e0(e_offset, skips, window_ms) ||
+           timing_within_limit(early_fill_difficulty(e_offset), limit_ms);
 }
 
 // Does an activation fit the all-0 rule (D102)? It passed over no fill, or
@@ -364,8 +378,8 @@ inline bool fill_within_limit(double e_offset, int skips, double limit_ms) {
 // activation's own (Activation::e_offset): with one fill passed over, it
 // was measured at that fill. Path::is_allzero and the all-0 pass's engine
 // rule both ask it.
-inline bool allzero_activation(double e_offset, int skips) {
-    return skips == 0 || (skips == 1 && is_e0(e_offset, 0));
+inline bool allzero_activation(double e_offset, int skips, double window_ms) {
+    return skips == 0 || (skips == 1 && is_e0(e_offset, 0, window_ms));
 }
 
 // How frontend (activation-hit) timing error transfers to the SP end. SP
@@ -586,6 +600,10 @@ struct Activation {
     std::vector<BackendSqueeze> backends;
     std::vector<SPSqueeze> sqinouts;
     double e_offset = 0.0;
+    // The early-fill window, in ms, the search that made this activation ran
+    // under (ScoreGraph::early_fill_window_ms). The E tests below read it, so
+    // a drawn activation keeps its own search's answer.
+    double e_window_ms = kDefaultEarlyFillWindowMs;
 
     // The deactivation node, the cap's clamp note and the collected phrases
     // are not fields: they are read from sp_end_steps, below.
@@ -683,7 +701,7 @@ struct Activation {
 
     std::string notationstr() const;
     std::string notationstr_verbose() const;
-    bool is_e_critical() const;  // is_e0(e_offset, 0), skips aside
+    bool is_e_critical() const;  // is_e0(e_offset, 0, e_window_ms), skips aside
     bool is_E0() const;
     std::optional<double> e_difficulty(bool verbose = false) const;
 
@@ -952,6 +970,11 @@ struct HydraRecord {
     // (store::Lens::legacy_fills), and prepare_record refuses a profile that
     // names the other rule.
     bool legacy_fills = false;
+    // The early-fill window, in ms, the search ran under
+    // (SearchSettings::early_fill_window_ms). analyze_chart sets it. A saved
+    // record's profile carries it (store::Lens::efill_window_ms), and
+    // prepare_record refuses a profile that names another window.
+    double early_fill_window_ms = kDefaultEarlyFillWindowMs;
     std::vector<Path> paths;
 
     // The chart's multiplier squeezes, in chart order. They depend on the
@@ -964,8 +987,9 @@ struct HydraRecord {
     // (search/pather.cpp, allzero_options), plus the tied variations an
     // early fill or a squeeze in/out produces. The main
     // search keeps paths by score band, not by shape, so this path is usually
-    // below the band and absent from `paths`. Empty when the search did not run
-    // or found nothing. Deliberately NOT part of all_paths(): the reports and
+    // below the band and absent from `paths`. Empty when the search did not run,
+    // found nothing, or was not needed because the best path is already all-0
+    // (attach_allzero in search/pather.cpp). Deliberately NOT part of all_paths(): the reports and
     // the summary columns must keep counting generated paths only.
     std::vector<Path> allzero_paths;
 

@@ -661,10 +661,10 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
     // A fresh row shows what Path::difficulty() shows: the check that saving
     // the engine's figure changed nothing on screen.
     CHECK(shown_differs.size() == 0);
-    CHECK(saved_negative == 102);
+    CHECK(saved_negative == 90);
     CHECK(still_empty_with_sqin == 79);
-    CHECK(allzero_charts == 68);
-    CHECK(allzero_paths == 69);
+    CHECK(allzero_charts == 69);
+    CHECK(allzero_paths == 70);
 }
 
 TEST_CASE("score graph: the backend rows are sized once, one per chord") {
@@ -745,17 +745,19 @@ TEST_CASE("allzero_options: no skips, a hard 0 ms limit, everything else default
 TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
     const SearchSettings plain{};
     const std::string key = corpus::settings_key(plain);
-    // The number is the default rules' fingerprint (test_rules.cpp pins it in
+    // The long number is the default rules' fingerprint (test_rules.cpp pins it in
     // hex).
-    CHECK(key == "4|0|4|none|0|12303881770575177486|");
+    // The 60 is the default early-fill window (kDefaultEarlyFillWindowMs).
+    CHECK(key == "4|0|4|none|0|60|12303881770575177486|");
 
-    std::vector<SearchSettings> changed(6, plain);
+    std::vector<SearchSettings> changed(7, plain);
     changed[0].sp_cap = 1;
     changed[1].depth_mode = DepthMode::Points;
     changed[2].depth_value = 5;
     changed[3].ms_filter = 10.0;
     changed[4].legacy_fills = true;
     changed[5].rules.max_tied_paths += 1;
+    changed[6].early_fill_window_ms = 85.0;
     for (size_t i = 0; i < changed.size(); ++i) {
         INFO("changed field " << i);
         CHECK(corpus::settings_key(changed[i]) != key);

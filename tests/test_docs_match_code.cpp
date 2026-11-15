@@ -325,9 +325,13 @@ const std::map<std::string, KnownDefault>& known_defaults() {
         out["Settings::mslimit_enabled"] = {true, s.mslimit_enabled ? 1.0 : 0.0};
         out["Settings::backendlimit_value"] = {false, static_cast<double>(s.backendlimit_value)};
         out["Settings::backendlimit_enabled"] = {true, s.backendlimit_enabled ? 1.0 : 0.0};
+        out["Settings::early_fill_window_ms"] = {false,
+                                                 static_cast<double>(s.early_fill_window_ms)};
         out["Rules::backend_leeway_ms"] = {false, r.backend_leeway_ms};
         out["kSqueezeWindowMs"] = {false, hydra::kSqueezeWindowMs};
         out["kHitWindowMs"] = {false, hydra::kHitWindowMs};
+        out["kDefaultEarlyFillWindowMs"] = {false,
+                                            static_cast<double>(hydra::kDefaultEarlyFillWindowMs)};
         out["kDefaultDepthValue"] = {false, static_cast<double>(hydra::kDefaultDepthValue)};
         out["kSpActivationBars"] = {false, static_cast<double>(hydra::kSpActivationBars)};
         // One marker per star, numbered from 1 as the docs number them: the

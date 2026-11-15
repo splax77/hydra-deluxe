@@ -180,6 +180,26 @@ TEST_CASE("batch text: the confirm's Fills line names the fill rule") {
     CHECK(batch_settings_summary(s).fills == "Clone Hero 1.0");
 }
 
+// The user's "Add a line" answer: the confirm lists the early-fill window,
+// worded like Path limit.
+TEST_CASE("batch text: the confirm's Early fill window line reads the window in ms") {
+    Settings s;
+    CHECK(batch_settings_summary(s).early_fill == "60 ms");
+    s.early_fill_window_ms = 85;
+    CHECK(batch_settings_summary(s).early_fill == "85 ms");
+}
+
+// The panel row's tooltip, each sentence a rule of the early-fill window
+// (fill_refuses and is_e0 in core/model.h).
+TEST_CASE("batch text: the Early fill window help text") {
+    CHECK(early_fill_window_help_text() ==
+          "How far from a fill's deadline your Star Power may come ready and still count as an "
+          "early fill. Ready up to this many ms after the deadline, you can still summon the fill "
+          "by hitting early; later than that, the fill never spawns. Ready less than this many ms "
+          "before the deadline, the activation is marked E. At 0 no activation is an early fill. "
+          "85 ms, the hit window, is the most it allows.");
+}
+
 // D74 item 4: the tooltip's deadline sentences are the ones the reports use.
 TEST_CASE("batch text: the 1.0 fills help text uses the shared fill-rule sentences") {
     CHECK(legacy_fills_help_text() ==

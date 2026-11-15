@@ -15,6 +15,7 @@
 #include "../testdata_dirs.h"  // root
 #include "../wait_util.h"       // kWaitCap
 #include "app/config.h"
+#include "app/report.h"  // hit_window_text
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
                                 // library_scan_blocked_notice
 #include "core/error_kind.h"
@@ -292,7 +293,7 @@ void test_engine_wildcard_patches(ImGuiTestContext* ctx) {
 }
 
 // "Reset to defaults" in the settings panel: greyed out at the defaults; after
-// two changes one click puts both back, saves the INI, keeps the folders, and
+// three changes one click puts all three back, saves the INI, keeps the folders, and
 // leaves the panel open with the button greyed again.
 void test_settings_reset(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -307,24 +308,79 @@ void test_settings_reset(ImGuiTestContext* ctx) {
     IM_CHECK(reset_off());
     ctx->ItemUncheck("**/##prodrums");
     ctx->ItemInputValue("**/##spcap", 5);
+    ctx->ItemInputValue("**/##earlyfillwindow", 85);
     IM_CHECK(wait_until(
         ctx,
-        [&] { return on_screen(h, "Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars"); },
+        [&] {
+            return on_screen(h, "Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars \xC2\xB7 "
+                                "Early fill window 85 ms");
+        },
         5));
     IM_CHECK(!reset_off());
 
     ctx->ItemClick("**/Reset to defaults");
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    const hydra::app::Settings defaults;
     IM_CHECK(h.app->settings.view_prodrums);
     IM_CHECK(h.app->settings.sp_cap == hydra::kCloneHeroSpCap);
+    IM_CHECK(h.app->settings.early_fill_window_ms == defaults.early_fill_window_ms);
     IM_CHECK(h.app->settings.chartfolders == folders);
     const hydra::app::Settings saved = hydra::app::Settings::load_file(h.ini_path);
     IM_CHECK(saved.view_prodrums);
     IM_CHECK(saved.sp_cap == hydra::kCloneHeroSpCap);
+    IM_CHECK(saved.early_fill_window_ms == defaults.early_fill_window_ms);
     ctx->Yield(2);
     IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
     IM_CHECK(reset_off());
     close_settings_panel(ctx);
+}
+
+// The panel's "Early fill window" row: its (?) shows the help text, whose top
+// edge is the hit window as the reports print it; the box moves the setting
+// and the button's label; a value outside the key table's range lands on its
+// nearest edge (Settings::clamp).
+void test_settings_early_fill(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app_at_default_settings(ctx, h);
+    const std::string help = hydra::ui::detail::early_fill_window_help_text();
+    IM_CHECK(help.find(hydra::app::report::hit_window_text() + " ms, the hit window") !=
+             std::string::npos);
+
+    ImGuiWindow* panel = open_settings_panel(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(on_screen(h, hydra::ui::detail::kEarlyFillWindowName));
+    const ImGuiTestItemInfo box = ctx->ItemInfo("**/##earlyfillwindow");
+    if (ctx->IsError()) return;
+    IM_CHECK((box.ItemFlags & ImGuiItemFlags_Disabled) == 0);
+
+    // The (?) has no ID to find it by. It sits on the box's line, after the
+    // row's name, which starts at the panel's left edge (begin_row; the form
+    // table has no outer padding).
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float marker_x = panel->ContentRegionRect.Min.x +
+                           ImGui::CalcTextSize(hydra::ui::detail::kEarlyFillWindowName).x +
+                           style.ItemInnerSpacing.x +
+                           ImGui::CalcTextSize("(?)").x * 0.5f;
+    ctx->MouseMoveToPos(ImVec2(marker_x, box.RectFull.GetCenter().y));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, help); }, 5));
+
+    ctx->ItemInputValue("**/##earlyfillwindow", 85);
+    IM_CHECK(wait_until(
+        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 85 ms"); }, 5));
+    IM_CHECK(h.app->settings.early_fill_window_ms == 85);
+
+    // Below the range first, so the value above it has something to move from.
+    ctx->ItemInputValue("**/##earlyfillwindow", -5);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == 0; }, 5));
+    IM_CHECK(wait_until(
+        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 0 ms"); }, 5));
+    ctx->ItemInputValue("**/##earlyfillwindow", 200);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == 85; }, 5));
+    IM_CHECK(wait_until(
+        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 85 ms"); }, 5));
+    close_settings_panel(ctx);
+    h.app->flush_settings();
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).early_fill_window_ms == 85);
 }
 
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
@@ -2038,6 +2094,7 @@ const std::vector<TestEntry>& library_tests() {
         {"settings-button", test_settings_button},
         {"engine-wildcard-patches", test_engine_wildcard_patches},
         {"settings-reset", test_settings_reset},
+        {"settings-early-fill", test_settings_early_fill},
         {"rules-error", test_rules_error},
         {"settings-error", test_settings_error},
         {"library-state-per-app", test_library_state_per_app},

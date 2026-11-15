@@ -131,9 +131,10 @@ CREATE TABLE profiles (
   id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL, sp_cap INTEGER NOT NULL,
   ms_enabled INTEGER NOT NULL, ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,
   depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,
+  efill_window_ms INTEGER NOT NULL,
   hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL,
   UNIQUE (chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,
-          hyversion, rules_fp));
+          efill_window_ms, hyversion, rules_fp));
 CREATE TABLE records (
   song_id TEXT NOT NULL, profile_id INTEGER NOT NULL, pathcount INTEGER NOT NULL,
   notecount INTEGER NOT NULL, PRIMARY KEY (song_id, profile_id)) WITHOUT ROWID;
@@ -145,8 +146,8 @@ CREATE TABLE record_paths (
 
 # Two profiles that differ only in the SP cap.
 PROFILES = [
-    ("drums", 4, 0, 0, 0, 0, 0, "2.8.0", b"\x01"),
-    ("drums", 8, 0, 0, 0, 0, 0, "2.8.0", b"\x01"),
+    ("drums", 4, 0, 0, 0, 0, 0, 60, "2.8.0", b"\x01"),
+    ("drums", 8, 0, 0, 0, 0, 0, 60, "2.8.0", b"\x01"),
 ]
 
 # (song_id, PROFILES index, pathcount, notecount, best path, its score)
@@ -167,7 +168,8 @@ def add_records(path, profile_order, score_aaaa_cap8=1100):
     for i in profile_order:
         cur = con.execute(
             "INSERT INTO profiles (chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-            " depth_value, legacy_fills, hyversion, rules_fp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " depth_value, legacy_fills, efill_window_ms, hyversion, rules_fp)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             PROFILES[i],
         )
         ids[i] = cur.lastrowid

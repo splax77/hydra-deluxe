@@ -1215,15 +1215,18 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
 namespace {
 
 // A corpus chart analyzed the way burnout() analyzes it
-// (song_details_fixtures.h), once per test run.
+// (song_details_fixtures.h), once per test run, with the early-fill window
+// at kHitWindowMs: the window these rows' paths and figures were pinned
+// under (Get Ur Freak On's E marks need it).
 const AnalysisResult& analyzed_like_the_gui(const std::string& name) {
     static std::map<std::string, AnalysisResult> cache;
     auto it = cache.find(name);
     if (it == cache.end()) {
         const std::string path = corpus::chart_named(name);
         if (path.empty()) throw std::runtime_error(name + " is not in testdata/input");
-        it = cache.emplace(name, analyze_chart_file(path, scratch_settings().to_analysis_settings()))
-                 .first;
+        AnalysisSettings settings = scratch_settings().to_analysis_settings();
+        settings.early_fill_window_ms = kHitWindowMs;
+        it = cache.emplace(name, analyze_chart_file(path, settings)).first;
     }
     return it->second;
 }

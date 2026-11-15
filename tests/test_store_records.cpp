@@ -588,6 +588,56 @@ TEST_CASE("store: prepare_record refuses a profile the analysis did not run unde
                     std::invalid_argument);
 }
 
+TEST_CASE("store: prepare_record refuses a profile at another early-fill window") {
+    // A record searched at the default window, filed under a profile at the
+    // widest the setting allows.
+    const HydraRecord& analysis = fixture().record;
+    REQUIRE(analysis.early_fill_window_ms == kDefaultEarlyFillWindowMs);
+    Profile at_85 = at4();
+    at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
+    CHECK_THROWS_AS(prepare_record("h1", at_85, analysis), std::invalid_argument);
+    // And the other way: a record searched at 85 under the default profile.
+    HydraRecord searched_at_85 = at_cap(4);
+    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_85), std::invalid_argument);
+    // The matching pair files.
+    CHECK(prepare_record("h1", at_85, searched_at_85).profile.lens.efill_window_ms ==
+          kMaxEarlyFillWindowMs);
+}
+
+TEST_CASE("store: one chart's results at two early-fill windows are two results") {
+    // Two profiles that differ only in the window. Each save keeps the other's
+    // record, and each lookup gets its own back.
+    const Profile at_default = at4();
+    Profile at_85 = at4();
+    at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
+    REQUIRE(at_default != at_85);
+    HydraRecord searched_at_85 = no_paths_at_cap(4);
+    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    const PreparedRecord saved_default = prepare_record("h1", at_default, at_cap(4));
+    const PreparedRecord saved_85 = prepare_record("h1", at_85, searched_at_85);
+    REQUIRE(saved_default.record != saved_85.record);
+
+    StoreFile file("store_records");
+    {
+        RecordStore store(file.path);
+        store.save(saved_default);
+        store.save(saved_85);
+        const RecordLookup got_default = store.lookup_one("h1", at_default);
+        const RecordLookup got_85 = store.lookup_one("h1", at_85);
+        REQUIRE(got_default.status == RecordStatus::Ready);
+        REQUIRE(got_85.status == RecordStatus::Ready);
+        CHECK(got_default.record == saved_default.record);
+        CHECK(got_85.record == saved_85.record);
+        CHECK(store.record_count() == 2);
+    }
+    // Two profile rows, one per window, and a reopen reads both again.
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    RecordStore reopened(file.path);
+    CHECK(reopened.lookup_one("h1", at_default).record == saved_default.record);
+    CHECK(reopened.lookup_one("h1", at_85).record == saved_85.record);
+}
+
 TEST_CASE("store: every path of one analysis carries the same note count") {
     // The record keeps the note count once; this is why that loses nothing.
     int checked = 0;
@@ -1154,7 +1204,7 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
 // Not analyzed.
 
 TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
-    // The stamp is not the app version (ADR 0018). Only "3.1.2+efillhitwindow"
+    // The stamp is not the app version (ADR 0018). Only "3.1.2+efillwindow"
     // reads Ready. Results stamped "1.8.2" (every release from 1.8.4 to
     // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
     // earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
@@ -1165,10 +1215,14 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
     // written fills (FL-08), and "2.14.1+coda" predates the five-lane drum
     // conversion (D337), "2.14.1+fivelane" predates the all-toms step
     // for a drum chart with neither track flag up, and "2.14.1+alltoms"
-    // predates the early-fill E mark reading the hit window (D344), so they
-    // read Stale, through lookup and the skip list it backs (ready_song_ids).
-    CHECK(kResultsStamp.is_current("3.1.2+efillhitwindow"));
-    CHECK(std::string(kResultsStamp.written) == "3.1.2+efillhitwindow");
+    // predates the early-fill E mark reading the hit window (D344), and
+    // "3.1.2+efillhitwindow" was analyzed at 85 ms on both sides, before the
+    // early-fill window became a setting saved per result (the user's answer
+    // "Mark them Stale"), so they read Stale, through lookup and the skip list
+    // it backs (ready_song_ids).
+    CHECK(kResultsStamp.is_current("3.1.2+efillwindow"));
+    CHECK(std::string(kResultsStamp.written) == "3.1.2+efillwindow");
+    CHECK_FALSE(kResultsStamp.is_current("3.1.2+efillhitwindow"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+alltoms"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+fivelane"));
     CHECK_FALSE(kResultsStamp.is_current("2.14.1+coda"));
@@ -1188,7 +1242,8 @@ TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
         const char* id;
         const char* stamp;
         RecordStatus want;
-    } cases[] = {{"a", "3.1.2+efillhitwindow", RecordStatus::Ready},
+    } cases[] = {{"a", "3.1.2+efillwindow", RecordStatus::Ready},
+                 {"n", "3.1.2+efillhitwindow", RecordStatus::Stale},
                  {"m", "2.14.1+alltoms", RecordStatus::Stale},
                  {"l", "2.14.1+fivelane", RecordStatus::Stale},
                  {"k", "2.14.1+coda", RecordStatus::Stale},

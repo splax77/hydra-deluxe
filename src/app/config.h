@@ -130,6 +130,7 @@ enum class AnalysisSetting {
     NoteShuffle,
     SpCap,
     Fills,
+    EarlyFillWindow,
     ScoreRange,
     PathLimit
 };
@@ -185,6 +186,13 @@ struct Settings {
     // A tool that takes its own kLegacyFillsFlag ignores it: see
     // load_for_command_line. (The path report follows it, docs/adr/0010.)
     bool legacy_fills = false;
+
+    // The early-fill window in whole ms, on both sides of a fill's deadline
+    // (the early-fill rule in core/model.h). Its default is
+    // kDefaultEarlyFillWindowMs and its range is the key table's in
+    // config.cpp. Part of a result's key, like the fill rule. INI line:
+    // early_fill_window_ms=60.
+    int early_fill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
 
     // Open the batch's path report window as soon as Hydra builds it. It
     // covers only the path report, not the leaderboard comparison (D103 item
@@ -300,7 +308,8 @@ struct Settings {
     store::CapQuery cap_query() const;
 
     // The rest of the settings a stored result is keyed by: the ms limit, the
-    // score range and the fill rule, in the store's canonical form.
+    // score range, the fill rule and the early-fill window, in the store's
+    // canonical form.
     store::Lens lens() const;
 
     // The profile a chart is analyzed and filed under with these settings:
@@ -345,13 +354,14 @@ struct AnalysisField {
 // Settings::analysis_changes read it, and the Reset test in
 // tests/test_config.cpp walks it, so a new analysis setting is a new row here
 // (concept audit M13). Nothing can notice a field left out of it.
-inline const std::array<AnalysisField, 10> kAnalysisFields{{
+inline const std::array<AnalysisField, 11> kAnalysisFields{{
     {&Settings::view_difficulty, AnalysisSetting::Difficulty, KeyPart::ChartMode},
     {&Settings::view_prodrums, AnalysisSetting::ProDrums, KeyPart::ChartMode},
     {&Settings::view_bass2x, AnalysisSetting::Bass2x, KeyPart::ChartMode},
     {&Settings::view_noteshuffle, AnalysisSetting::NoteShuffle, KeyPart::ChartMode},
     {&Settings::sp_cap, AnalysisSetting::SpCap, KeyPart::Cap},
     {&Settings::legacy_fills, AnalysisSetting::Fills, KeyPart::Lens},
+    {&Settings::early_fill_window_ms, AnalysisSetting::EarlyFillWindow, KeyPart::Lens},
     {&Settings::depth_value, AnalysisSetting::ScoreRange, KeyPart::Lens},
     {&Settings::depth_mode, AnalysisSetting::ScoreRange, KeyPart::Lens},
     {&Settings::mslimit_enabled, AnalysisSetting::PathLimit, KeyPart::Lens},
@@ -373,6 +383,7 @@ struct SettingsText {
     std::string depth;   // the score range: score_range_text
     std::string cap;     // the SP cap: bars_text
     std::string timing;  // the path limit: "10 ms", or "off"
+    std::string early_fill;  // the early-fill window: "60 ms"
 };
 SettingsText describe_settings(const AnalysisSettings& settings);
 

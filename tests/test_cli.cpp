@@ -192,6 +192,7 @@ TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
     CHECK(contains(r.output, "SP cap     : 4 bars"));
     CHECK(contains(r.output, "Path limit : 10 ms"));
     CHECK(contains(r.output, "Fills      : Clone Hero 1.1"));
+    CHECK(contains(r.output, "Early fill : 60 ms"));
     CHECK(contains(r.output, "Found 1 chart."));
     // Every number is the batch's progress, in library rows (D79); the
     // store's raw row count is not printed.
@@ -628,11 +629,11 @@ TEST_CASE("hydra_fillcompare compares both rules out of one database") {
                                "0 only under 1.0, 0 only under 1.1, 1 in both, not both scored"));
 }
 
-// D308 item 1: a typo in --ms or --depth stops the run with a line naming the
-// flag, where it would otherwise price the chart under a number nobody typed.
-// Each run names a real chart and a command, so a flag read loosely runs to the
-// end and exits 0.
-TEST_CASE("hydra_replay refuses --ms and --depth values that are not whole numbers") {
+// D308 item 1: a typo in --ms, --efill or --depth stops the run with a line
+// naming the flag, where it would otherwise price the chart under a number
+// nobody typed. Each run names a real chart and a command, so a flag read
+// loosely runs to the end and exits 0.
+TEST_CASE("hydra_replay refuses --ms, --efill and --depth values that are not whole numbers") {
     CliSandbox box("replay_flags");
     const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
     const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
@@ -644,6 +645,7 @@ TEST_CASE("hydra_replay refuses --ms and --depth values that are not whole numbe
         const char* line;
     } refused[] = {
         {"--ms", "abc", "--ms takes a whole number, not \"abc\""},
+        {"--efill", "abc", "--efill takes a whole number, not \"abc\""},
         {"--depth", "1x", "--depth takes a whole number, not \"1x\""},
         {"--depth", "99999999999", "--depth takes a whole number, not \"99999999999\""},
     };
@@ -661,7 +663,9 @@ TEST_CASE("hydra_replay refuses --ms and --depth values that are not whole numbe
     // past a setting's range is no typo: settings_from pulls it in.
     for (const std::vector<std::string>& flags :
          {std::vector<std::string>{"--ms", "10", "--depth", "1"},
-          std::vector<std::string>{"--ms", "off", "--depth", "-1"}}) {
+          std::vector<std::string>{"--ms", "off", "--depth", "-1"},
+          std::vector<std::string>{"--efill", "85"},
+          std::vector<std::string>{"--efill", "900"}}) {
         std::vector<std::string> args = {"dump", "--chart", chart, "--out", out};
         args.insert(args.end(), flags.begin(), flags.end());
         const RunResult r = run_exe(replay, args);
