@@ -849,7 +849,7 @@ uint64_t Engine::ready_class(const Path& p, uint64_t* passable) const {
     uint64_t refused = 0, over = 0, can_pass = 0;
     for (size_t k = (size_t)next_fill_[(size_t)p.node]; k < fill_deadline_.size(); ++k) {
         // Every deadline from here on is at least this one. When even this
-        // one leaves too much slack for an E0, none is an E0, and none
+        // one leaves too much time to spare for an E0, none is an E0, and none
         // refuses (is_e0 holds for every fill that refuses).
         if (!is_e0(fill_e_offset(fill_min_deadline_[k], p.sp_ready_ms), 0)) break;
         const double e_offset = fill_e_offset(fill_deadline_[k], p.sp_ready_ms);
