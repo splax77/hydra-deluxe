@@ -51,13 +51,6 @@ void check_curve_well_formed(const SpMeterCurve& curve) {
     }
 }
 
-// The stored path of `rec` whose notation is `notation`, or null.
-const Path* path_named(const HydraRecord& rec, const std::string& notation) {
-    for (const Path* p : rec.all_paths())
-        if (p->pathstring() == notation) return p;
-    return nullptr;
-}
-
 // The record's early squeeze-out: the activation squeezed out a chord that
 // core::after_sp_end (the search's own SqueezeChoice::late question) says
 // is not after its stored end. Asked of the two stored ticks.
@@ -952,7 +945,7 @@ TEST_CASE("Blight, Pitch Dark and Burnout: literals") {
         const std::string chart = corpus::chart_named("Green Day - Burnout");
         REQUIRE_FALSE(chart.empty());
         const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-        const Path* p = path_named(corpus::analyzed(chart, cfg), "3- 1 2");
+        const Path* p = test::path_named(corpus::analyzed(chart, cfg).all_paths(), "3- 1 2");
         REQUIRE(p != nullptr);
         const Activation& a = p->walk_activations()[0];
         // The record, as PS0b saved it: activation 59520, stored end 71040
@@ -974,7 +967,7 @@ TEST_CASE("Blight, Pitch Dark and Burnout: literals") {
         const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
         REQUIRE_FALSE(chart.empty());
         const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-        const Path* p = path_named(corpus::analyzed(chart, cfg), "3+ 2+ 1");
+        const Path* p = test::path_named(corpus::analyzed(chart, cfg).all_paths(), "3+ 2+ 1");
         REQUIRE(p != nullptr);
         const Activation& a = p->walk_activations()[0];
         // The record, as PS0b saved it: the activation, a clamp, and the
