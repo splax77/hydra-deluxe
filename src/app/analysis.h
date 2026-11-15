@@ -309,8 +309,8 @@ struct BatchPlan {
 // plan the run then takes.
 BatchPlan plan_batch(const std::vector<ScanItem>& items, const SettledCharts& already);
 
-// Progress, result and cancel hooks for run_batch. The three callbacks fire
-// on the calling thread only (never a worker), so they may touch UI state.
+// Progress, result and cancel hooks for run_batch. The callbacks fire on the
+// calling thread only (never a worker), so they may touch UI state.
 struct BatchCallbacks {
     // Fires once per library row, after that row is counted and before the
     // row's own on_error or on_result, so a caller numbering its lines reads
@@ -325,6 +325,12 @@ struct BatchCallbacks {
     // Fires after the record is written to the store, with the record it
     // wrote (the batch CLI prints score and best path off its rank-1 path).
     std::function<void(const ScanItem&, const store::PreparedRecord&)> on_result;
+    // A failed chart whose failure record was written to the store, with the
+    // record it wrote. Fires right after that row's on_error, once per row.
+    // Which failures have a record is prepare_failed_chart's answer, and a
+    // record whose save failed is dropped (WorkResult::row in analysis.cpp),
+    // so a chart this reaches is a stored failure.
+    std::function<void(const ScanItem&, const store::PreparedRecord&)> on_failure_saved;
     // Setting *cancel stops the run. No new chart starts, and a running search
     // stops at its next progress tick. A stopped chart is neither a result nor
     // a failure, and nothing more is written once the cancel is seen.
