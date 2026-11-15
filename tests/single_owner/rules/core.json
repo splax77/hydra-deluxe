@@ -341,21 +341,21 @@
       "anchor": "skips",
       "must_match": [
         "const bool can_be_e0 = has_ms_filter_ && p.currentskips == 0;",
-        "return e_offset < kHitWindowMs && skips == 0;"
+        "return e_offset < window_ms && skips == 0;"
       ],
       "must_not_match": [
         "CHECK(act.skips() == 0);",
-        "if (is_e0(e_offset, p.currentskips)) ++over;"
+        "if (is_e0(e_offset, p.currentskips, window_ms)) ++over;"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "return e_offset < kHitWindowMs && skips == 0;",
+          "line_text": "return e_offset < window_ms && skips == 0;",
           "why": "is_e0, the owner"
         },
         {
           "file": "src/core/model.h",
-          "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0));",
+          "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0, window_ms));",
           "why": "allzero_activation, the owner of the all-0 rule (D102), asks is_e0 for the E"
         }
       ]
@@ -375,13 +375,13 @@
         "return skips == 0 || skips == 1;"
       ],
       "must_not_match": [
-        "if (!allzero_activation(act.e_offset, act.skips())) return false;",
+        "if (!allzero_activation(act.e_offset, act.skips(), act.e_window_ms)) return false;",
         "if (theirs[i].skips() != mine[i].skips())"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0));",
+          "line_text": "return skips == 0 || (skips == 1 && is_e0(e_offset, 0, window_ms));",
           "why": "allzero_activation, the owner"
         }
       ]
@@ -410,60 +410,86 @@
     },
     {
       "question": "Who reads the early-fill reach (how late SP may be ready and a fill still spawn)?",
-      "owner": "fill_refuses in src/core/model.h",
+      "owner": "fill_refuses in src/core/model.h, with the early-fill window it is given",
       "owner_file": "src/core/model.h",
       "owner_symbol": "fill_refuses",
       "date": "2026-10-15",
-      "decision": "D250; D270 call 8",
-      "added_by": "EF85",
-      "pattern": "[-+]\\s*(hydra::)?kHitWindowMs\\b",
-      "anchor": "kHitWindowMs",
+      "decision": "D250; D270 call 8; the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md (the early-fill window is one adjustable setting)",
+      "added_by": "EF85; efill-t5",
+      "pattern": "[-+]\\s*(hydra::)?kHitWindowMs\\b|\\be_offset\\s*[<>]=?\\s*-",
       "must_match": [
         "if (e_offset < -kHitWindowMs) return false;",
         "return d - hydra::kHitWindowMs;",
-        "return ready_ms <= deadline_ms + kHitWindowMs;"
+        "return ready_ms <= deadline_ms + kHitWindowMs;",
+        "if (a.e_offset < -85.0) continue;",
+        "return e_offset <= -window_ms;"
       ],
       "must_not_match": [
-        "if (fill_refuses(e_offset)) return false;",
+        "if (fill_refuses(e_offset, window_ms)) return false;",
         "return budget_for_window(transfer_r, kHitWindowMs);",
-        "const double w = kHitWindowMs;"
+        "const double w = kHitWindowMs;",
+        "return e_offset < window_ms && skips == 0;"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "inline bool fill_refuses(double e_offset) { return e_offset < -kHitWindowMs; }",
+          "line_text": "inline bool fill_refuses(double e_offset, double window_ms) { return e_offset < -window_ms; }",
           "why": "fill_refuses, the owner of the refusal"
         }
       ],
-      "note": "The reach is the hit window, kHitWindowMs, which the squeeze budgets and the report also read, so the row flags the window added to or taken from a deadline or an offset, not every read of it."
+      "note": "The reach is the early-fill window fill_refuses is given (the Early fill window setting), never the hit window. The row flags an offset compared with a negated number anywhere but the owner, and kHitWindowMs added to or taken from a deadline or an offset, which would be a fixed reach again. The squeeze budgets and the report read kHitWindowMs as it is, so a bare read is not flagged."
     },
     {
-      "question": "Who compares an offset with the hit window on the early-fill window's white side (how little time to spare still marks an activation E-critical)?",
-      "owner": "is_e0 in src/core/model.h",
+      "question": "Who compares an offset with the early-fill window on its white side (how little time to spare still marks an activation E-critical)?",
+      "owner": "is_e0 in src/core/model.h, with the early-fill window it is given",
       "owner_file": "src/core/model.h",
       "owner_symbol": "is_e0",
       "date": "2026-11-15",
-      "decision": "D344 (the early-fill window is the hit window on both sides)",
-      "added_by": "early-fill-hit-window",
-      "pattern": "[<>]=?\\s*(hydra::)?kHitWindowMs\\b",
-      "anchor": "kHitWindowMs",
+      "decision": "D344; the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md (the early-fill window is one adjustable setting)",
+      "added_by": "early-fill-hit-window; efill-t5",
+      "pattern": "[<>]=?\\s*(hydra::)?kHitWindowMs\\b|\\be_offset\\s*[<>]=?\\s*[A-Za-z0-9_(]",
       "must_match": [
         "if (e_offset < kHitWindowMs) ok = true;",
-        "return d >= hydra::kHitWindowMs;"
+        "return d >= hydra::kHitWindowMs;",
+        "if (e_offset < window_ms) ok = true;",
+        "return a.e_offset <= 60.0;"
       ],
       "must_not_match": [
-        "if (is_e0(e_offset, 0)) ok = true;",
+        "if (is_e0(e_offset, 0, window_ms)) ok = true;",
         "if (e_offset < -kHitWindowMs) return false;",
+        "if (e_offset >= -window_ms) return true;",
         "const double w = kHitWindowMs;"
       ],
       "owner_lines": [
         {
           "file": "src/core/model.h",
-          "line_text": "return e_offset < kHitWindowMs && skips == 0;",
+          "line_text": "return e_offset < window_ms && skips == 0;",
           "why": "is_e0, the owner of the E0"
         }
       ],
-      "note": "The window has one width, kHitWindowMs, on both sides of the deadline. The row above flags the window added to or taken from an offset (the reach); this row flags an offset compared straight with it (the white side). Neither flags every read of the hit window, which the squeeze budgets and the report also read."
+      "note": "The window is one number on both sides of the deadline: the early-fill window fill_refuses and is_e0 are given, never the hit window. The row above flags the reach side; this row flags an offset compared straight with a number (the white side) anywhere but the owner, and any compare with kHitWindowMs, which would be a fixed window again. Neither flags a bare read of the hit window, which the squeeze budgets and the report make."
+    },
+    {
+      "question": "What is the early-fill window's default?",
+      "owner": "kDefaultEarlyFillWindowMs in src/core/model.h",
+      "owner_file": "src/core/model.h",
+      "owner_symbol": "kDefaultEarlyFillWindowMs",
+      "date": "2026-11-15",
+      "decision": "the user's ruling of 2026-11-15 in docs/agents/rulings/code-and-engine.md (\"analysis settings panel, default 60ms, supports 0ms to 85ms\")",
+      "added_by": "efill-t5",
+      "pattern": "\\b(early_fill_window_ms|e_window_ms|efill_window_ms)\\s*(=|\\{)\\s*[0-9]",
+      "anchor": "window_ms",
+      "must_match": [
+        "int early_fill_window_ms = 60;",
+        "double e_window_ms = 60.0;",
+        "double efill_window_ms{60.0};"
+      ],
+      "must_not_match": [
+        "double e_window_ms = kDefaultEarlyFillWindowMs;",
+        "int early_fill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);",
+        "record.early_fill_window_ms = settings.early_fill_window_ms;"
+      ],
+      "note": "A window field started from a typed number is a second default. Settings, SearchSettings, the ScoreGraph, Activation, HydraRecord and the store's Lens all start from the owner. Tests are left out: they set a window on purpose."
     },
     {
       "question": "Who writes an activation's sqout_tick?",
@@ -1873,7 +1899,13 @@
         "src",
         "tests"
       ],
-      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, and everything else reads kHitWindowMs as it is."
+      "exempt": [
+        {
+          "file": "src/app/config.cpp",
+          "why": "The settings key table writes the Early fill window box's top edge as a whole number from kHitWindowMs, the way kWindowMs is written from kSqueezeWindowMs: that answers the box's range, not what the hit window is (the user's rulings of 2026-11-15 in docs/agents/rulings/code-and-engine.md)."
+        }
+      ],
+      "note": "The hit window cut to a whole number by hand. The reports print it through report::hit_window_text, the settings key table cuts it once for the Early fill window box's range, and everything else reads kHitWindowMs as it is."
     },
     {
       "question": "What does squeezing out a row cost?",
