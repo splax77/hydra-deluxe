@@ -778,6 +778,19 @@ TEST_CASE("library model: set_summaries_for gives every row the answer set_summa
     CHECK(at_once.counts().cant_analyze == one_by_one.counts().cant_analyze);
 }
 
+TEST_CASE("library model: set_summaries_for applies a chart's later answer when it is listed twice") {
+    LibraryModel m = two_folders_and_two_more();
+    const Answers answers{{"same", ready(1000, "1", 3, 0.0)}, {"same", ready(2000, "2", 4, 0.0)}};
+    CHECK(m.set_summaries_for(answers) == 2);
+    size_t shown = 0;
+    for (const hydra::ui::LibraryRow& row : m.rows()) {
+        if (row.entry.md5 != "same") continue;
+        CHECK(row.shows_same_as(answers.back().second));
+        ++shown;
+    }
+    CHECK(shown == 2);
+}
+
 TEST_CASE("library model: set_summaries_for updates both rows of a chart in two folders") {
     LibraryModel m = two_folders_and_two_more();
     const Answers answers{{"same", ready(1000, "1", 3, 0.0)}};
