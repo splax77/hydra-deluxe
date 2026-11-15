@@ -1,0 +1,302 @@
+{
+ "chartmode": "Expert Pro Drums, 2x Bass",
+ "hydra_replay_build": "Nov 15 2026 08:59:35",
+ "hyhash": "1af3f0823ad2d4fb23a5af7be25d799c",
+ "paths": [
+  {
+   "activations": [
+    {
+     "act_tick": 6912,
+     "chord_code": "....n",
+     "deact_tick": 11520,
+     "end_anchor_tick": 6912,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 9984,
+     "skipped_fill_ticks": [
+      3072
+     ],
+     "skips": 1,
+     "sp_meter": 2,
+     "sp_ready_ms": 3000.0,
+     "sp_ready_tick": 1152,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    },
+    {
+     "act_tick": 14592,
+     "chord_code": "....n",
+     "deact_tick": 17664,
+     "end_anchor_tick": 14592,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 17664,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 33000.0,
+     "sp_ready_tick": 12672,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    },
+    {
+     "act_tick": 23040,
+     "chord_code": "....n",
+     "deact_tick": 26112,
+     "end_anchor_tick": 23040,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 26112,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 48000.0,
+     "sp_ready_tick": 18432,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    }
+   ],
+   "index": 0,
+   "pathstring": "1 0 0",
+   "score": {
+    "accent": 0,
+    "combo": 16950,
+    "ghost": 0,
+    "notes": 6600,
+    "solo": 0,
+    "sp": 21900
+   },
+   "total": 45450
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 3072,
+     "chord_code": "....n",
+     "deact_tick": 6144,
+     "end_anchor_tick": 3072,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 6144,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 3000.0,
+     "sp_ready_tick": 1152,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    },
+    {
+     "act_tick": 23040,
+     "chord_code": "....n",
+     "deact_tick": 29184,
+     "end_anchor_tick": 23040,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 29184,
+     "skipped_fill_ticks": [
+      14592
+     ],
+     "skips": 1,
+     "sp_meter": 4,
+     "sp_ready_ms": 32000.0,
+     "sp_ready_tick": 12288,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    }
+   ],
+   "index": 1,
+   "pathstring": "0 1",
+   "score": {
+    "accent": 0,
+    "combo": 16950,
+    "ghost": 0,
+    "notes": 6600,
+    "solo": 0,
+    "sp": 19600
+   },
+   "total": 43150
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 6912,
+     "chord_code": "....n",
+     "deact_tick": 11520,
+     "end_anchor_tick": 6912,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 9984,
+     "skipped_fill_ticks": [
+      3072
+     ],
+     "skips": 1,
+     "sp_meter": 2,
+     "sp_ready_ms": 3000.0,
+     "sp_ready_tick": 1152,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    },
+    {
+     "act_tick": 23040,
+     "chord_code": "....n",
+     "deact_tick": 29184,
+     "end_anchor_tick": 23040,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 29184,
+     "skipped_fill_ticks": [
+      14592
+     ],
+     "skips": 1,
+     "sp_meter": 4,
+     "sp_ready_ms": 33000.0,
+     "sp_ready_tick": 12672,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    }
+   ],
+   "index": 2,
+   "pathstring": "1 1",
+   "score": {
+    "accent": 0,
+    "combo": 16950,
+    "ghost": 0,
+    "notes": 6600,
+    "solo": 0,
+    "sp": 19500
+   },
+   "total": 43050
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 23040,
+     "chord_code": "....n",
+     "deact_tick": 29184,
+     "end_anchor_tick": 23040,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 29184,
+     "skipped_fill_ticks": [
+      3072,
+      6912,
+      14592
+     ],
+     "skips": 3,
+     "sp_meter": 4,
+     "sp_ready_ms": 3000.0,
+     "sp_ready_tick": 1152,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    }
+   ],
+   "index": 3,
+   "pathstring": "3",
+   "score": {
+    "accent": 0,
+    "combo": 16950,
+    "ghost": 0,
+    "notes": 6600,
+    "solo": 0,
+    "sp": 19200
+   },
+   "total": 42750
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 14592,
+     "chord_code": "....n",
+     "deact_tick": 23808,
+     "end_anchor_tick": 14592,
+     "end_scale_early": 1.0,
+     "end_scale_late": 1.0,
+     "from_record": true,
+     "nominal_deact_tick": 20736,
+     "skipped_fill_ticks": [
+      3072,
+      6912
+     ],
+     "skips": 2,
+     "sp_meter": 4,
+     "sp_ready_ms": 3000.0,
+     "sp_ready_tick": 1152,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": null,
+     "steady_ms_after_end": null,
+     "steady_ms_before_act": null,
+     "steady_ms_before_end": null
+    }
+   ],
+   "index": 4,
+   "pathstring": "2",
+   "score": {
+    "accent": 0,
+    "combo": 16950,
+    "ghost": 0,
+    "notes": 6600,
+    "solo": 0,
+    "sp": 8200
+   },
+   "total": 31750
+  }
+ ],
+ "result": {
+  "bestpath": "1 0 0",
+  "score": 45450
+ },
+ "song_length_ms": 68916.66666666667,
+ "source": "analyzed",
+ "sp_cap": 4
+}
