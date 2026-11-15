@@ -16,6 +16,16 @@ Why it is a bad test: the rubric's question 5 (an expected value with no named s
 
 The window change from 85 to 60 ms did not move Burnout's result. `records-engine/burnout.efill60.dump.json` and `burnout.efill85.dump.json` (`hydra_replay dump --cap 4 --ms 10 --depth 2`, the GUI tests' settings, built from main `5ec682c7`'s code) are identical apart from the window: "3- 1 2" 378315, "0 4 1" 378175, "2 1 2" 378075 at both. So the copies are not wrong today. The finding is the design: the day an engine change does move Burnout, every copy fails at once.
 
+The repeated-values pass (`repeats/`, session 63c70014) changes this list in three ways. First, `test_overlay_layout.cpp` is not a copy: every line there feeds a made-up "3- 1 2  (optimal)" string to the word-wrap and trim functions, so it is the test's own input (V-RP1, V-RP2). That leaves the path text copied in 9 files, not 10. `test_path_list.cpp:434` is the same kind of input. Second, `test_sp_meter_curve.cpp:948` uses "3- 1 2" only as a key to look up the engine's path, which is sound. Third, it adds more Burnout figures typed from the same run:
+- "0 4 1" and 378,175, the second path (RP2-1);
+- 364675 twice and the cost 13,640 at `test_pb_coach.cpp:66`, under the comment "From one run" (V-RP1);
+- the cost −140, in 3 files (RP2-1, confirmed by V-RP2);
+- the song-length clock 2:10.088, in 3 files (RP2-1, V-RP3);
+- the activation measures "m32.1.0" and "m58.1.0", "3 bars", and `kBurnoutSqOutRating` "Insane+ (eff. 163.5 ms)" (RP3-2). The owner of the measure text is `format_measure`, `src/core/timing.cpp:358` (V-RP3);
+- 71040, Burnout's first activation's stored end, with 70800 and 48783.075 ms, at `test_sp_meter_curve.cpp:954-956` (V-RP3-B).
+
+Every copy's `file:line` is in those candidates. Where a verifier removed or added copies, its V file holds the final list.
+
 The records that already see a copy (each judges only its own): `records/A2.md`, `A3.md`, `A19.md`, `A26.md`, `A33.md`, `A39.md`, `A44.md`, `A45.md`, `A48.md`, `A49.md`, `C5.md`, `C6.md`, `C7.md`, `C12.md`, `delta-DL4.md`, `window-WN2.md`, `window-WN4b.md`, `window-WN4c.md`, `window-WN5.md`, `window-WN6.md`, `window-WN7.md`, and their verify files. WN5, V-WN6 and V-WN7 name it as a split (one fact, several homes).
 
 Exit: not chosen. Only the main session picks it, in T8.
@@ -26,6 +36,73 @@ Exit: not chosen. Only the main session picks it, in T8.
 
 Why it is a bad test: which fills are offered is decided by the engine's early-fill rule (`fill_refuses`, `src/core/model.h:331`). The tests type its answer instead of asking the engine for the offered fills. A rule change that stops offering one of these fills makes every test that clicks it fail at the click, with no bug, and the failure names the click, not the rule. The ticks are Burnout's (`pbtest_harness.h:58`). Since Burnout's dump does not change between 60 and 85 ms (X1), and both ticks appear in it at both windows, the window change most likely left both fills offered. The dump does not list "offered fills" as such, so that last step is by reading, not proven.
 
+The repeated-values pass adds the same fill in other forms: its clock text "0:25.123" and the tick 21120, in the Path Builder tests (RP3-1, agreed by V-RP3). Their owners are the same early-fill rule and `clock_str`, `src/app/display_format.cpp:64`.
+
 The records that see it: `records/window-WN5.md`, `window-WN6.md`, `A48.md`, `A49.md`, and their verify files.
 
 Exit: not chosen. Only the main session picks it, in T8.
+
+## Findings from the repeated-values pass
+
+`repeats/repeats.py` listed every literal typed on a test assertion line or test constant in three or more test files: 207 rows in `repeats/repeats.tsv`. Three sorters sorted them (`RP1.md` to `RP3.md`), and one fresh verifier read each sorter's file against the code (`V-RP1.md` to `V-RP3.md`). Below are the candidates a verifier agreed with that X1 and X2 do not already hold. Each names its candidates. Every copy's `file:line` is in those candidates, and where a verifier changed the list, its V file holds the final one. As with X1, a change to the owner turns every copy red at once.
+
+## X3. Allister's offered fills are typed by hand in two tests
+
+Which fills the player is offered on Allister - Overrated is the engine's answer. Two tests type it: the list {55680, 71040, 90240, 105600, 120960, 136320, 151680, 167040} appears at `test_fills_and_skips.cpp:448` and `test_pb_text.cpp:118`. The comment on the second line says "the engine lists these fills", and its cost tiers and order are typed beside it (`:121`, `:126`). The owner is the same early-fill rule as X2 (`fill_refuses`, `src/core/model.h:331`), with the search's trailing fills. Same kind as X2, a different chart. Source: V-RP3-A.
+
+Exit: not chosen.
+
+## X4. The squeeze timing tiers, their names and edges, are typed in many tests
+
+The tier names ("Normal", "Extreme", "Insane", "Insane+", "Beyond", "Hard (uncounted)") and the edges at 85 ms and 170 ms are typed in about ten test files outside the tier table's own tests. Owners: `timing_tiers()`, `src/core/squeeze_rating.cpp:241-251`; `kHitWindowMs`, `src/core/model.h:106`; " (uncounted)", `src/core/model.cpp:354`; `kFormulaScale` and `kWindowBackMs`, `src/core/note_window.h`. Renaming a tier or moving an edge turns all of them red at once. `test_squeeze_rating.cpp` and `test_note_window.cpp` are the owner's own tests, so their lines pin the owner rather than copy it. Sources: RP1-4, RP2-2 and RP3-3, all agreed. V-RP2 removed `test_config.cpp:285,302` (the test sets its own early-fill window to 85, a different constant) and `test_report_view.cpp:339,342` (song names that equal tier names).
+
+Exit: not chosen.
+
+## X5. Product messages are typed in the tests that check them
+
+Each of these messages is written once in `src/` and typed again in three or more test files:
+- "No Expert Pro Drums notes in this chart." and its Hard form. Owner `no_notes_message`, `src/parse/song.cpp:572`. 7 files for the Expert form (RP1-2), 3 more for Hard (RP3-7).
+- "cancelled", owner `src/core/error_kind.h:158` (RP3-7).
+- "sqlite exec failed: ...", owner `src/store/record_store.cpp:1058` (RP3-7).
+- "cannot open file: ", in 4 test files (RP2-6). This one has no single owner: `src/` types the phrase in at least six places (`src/audio/mapped_file.cpp:28,33,46,49`, `src/core/winstr.cpp:290`, `src/app/analysis.cpp:113`, `src/app/update_verify.cpp:54`), none a shared constant (V-RP2). So it is a split on the product side as well as a copy on the test side.
+- "/all-users", owner `src/net/dmbot_client.cpp:122` (RP3-7). The copies are fakes that answer that path. A renamed path would make them quietly return the wrong canned answer rather than fail.
+
+Exit: not chosen.
+
+## X6. The unknown-title, artist and charter placeholders are typed in many tests
+
+"(unknown)" (owner `kUnknownTitle`, `src/parse/song.h:101`) is typed 20 times across 6 files (RP1-3). The unknown-artist and unknown-charter texts (owners `kUnknownArtist` and `kUnknownCharter`, `src/parse/song.h:142-143`) are typed in 3 files (RP3-4). Only `test_sng.cpp:294` reads them from the product's output; the other copies feed the string in and then check it. Sources: RP1-3 and RP3-4, both agreed.
+
+Exit: not chosen.
+
+## X7. Settings defaults and screen words are typed in the GUI tests
+
+These are constants or texts that `src/` owns, typed in three or more test files:
+- "Expert", the default difficulty (`difficulty_name`, `src/parse/song.cpp:553`; `Settings::view_difficulty`, `src/app/config.h:149`) (RP1-5).
+- "Expert Pro Drums, 2x Bass", the chart-mode key (`chartmode_key`, `src/app/config.cpp:331`). Only the three copies in `uitest_library.cpp` count. The four in `test_store_open.cpp` are the stored value in the old fixture databases (`testdata/store/README.md:77`), which `config.cpp` says must keep that spelling (RP2-3 as narrowed by V-RP2).
+- "Analysis settings: defaults" (built by `settings_button_label`, `src/ui/library_dialogs.cpp:132`, from "Analysis settings: " and `settings_changes_summary`), "Stop the batch to change these." (`kSettingsLockedText`, `src/ui/library_parts.h:97`), "10 ms" (`mslimit_value`, `src/app/config.h:165`), and "Burnout — Green Day" (`chart_title_line`, `src/pathbuilder/pb_state.cpp:43`) (RP3-5).
+- "SP drain (if activated)" (`src/app/preview_view.cpp:680`) and "early fill 0.0 ms" (`src/app/path_view.cpp:58`) (RP3-6). V-RP3 disputed RP3-6's third part: the separator `kDot` has no product constant to copy, because `src/app/display_format.h:13` is only a comment.
+- The widget labels "**/< Act##prevact" and "##timeline", which the GUI tests need in order to click (RP3-9, weak by both the sorter's and the verifier's reading).
+
+Exit: not chosen.
+
+## X8. Names and keys the product writes are typed in the tests
+
+- `max_tied_paths`, the rules key named in an error message (owner `src/core/rules.cpp:78`), typed in 4 files (RP2-4).
+- "activation", the pather's failure reason (owner `src/search/pather.cpp:366`), typed in 3 files (RP2-5).
+- " ENDOFSONG", a section-name rule (owner `src/parse/section_names.cpp:13`), typed in 3 files (RP3-8). V-RP3 notes that the product's string is "_ENDOFSONG", with an underscore. Nobody has checked which form reaches the tests' input.
+- The replay tool's output keys (`activations`, `deact_ms`, `act_tick`, `steady_ms_before_end`). The owners are in `tools/`, not `src/`: `tools/replay.cpp:484`, `tools/replay_json.cpp:187` and `tools/replay_schedule.cpp:1063`. They are read in 4 test files and in two Python tools (RP2-7, added by V-RP2).
+
+Exit: not chosen.
+
+## What the repeated-values pass left out of X3 to X8
+
+- **Disputed:** RP3-10 ("chart" and "charts" are arguments passed to the product's `counted()`, not copies of its output) and RP3-6's `kDot`.
+- **Not settled:** RP1-7, 48 kHz. Only `test_audio_decode.cpp:155` is clearly the product's rate (`kRate`, `src/audio/opus_reader.cpp:52`). Three places were not traced (V-RP1).
+- **Pins in one file only, not repeats.** Each sits in a single test file. They are listed so T8 sees them; whether such a pin is a fault is not decided here. RP1-6 lists six of them, among them `kReportConfirmAbove` 500, `kDefaultEarlyFillWindowMs` 60.0 and the source text of `kSqueezeWindowMs`. V-RP1 adds the backend cap 500 (`uitest_paths.cpp:408,410`) and `wal_autocheckpoint` 1000 (`test_store_open.cpp:1284,1292`; the owner is a bare literal at `src/store/record_store.cpp:1115`). V-RP2 adds four more:
+  - the MIDI message-length limit text (`test_midi.cpp:524`);
+  - the star cutoffs (`test_stars.cpp:222,259,341`);
+  - the Library column widths (`test_column_widths.cpp:146,214`);
+  - a default highway setting (`test_preview_config.cpp:62`).
+- **Engine answers on charts the tests built.** 12960 is the engine's squeezed-out chord on a hand-built chart (`test_sp_meter_curve.cpp:464`, `test_sp_end.cpp:220`). Allies' best-path ticks are typed as pins in `test_path_costs.cpp` only (V-RP3, rows 164 and 144). Neither is a repeat across files.
+- **Rows the verifiers did not re-open** are named in each V file. They stand on the sorter's reading.

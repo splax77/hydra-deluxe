@@ -377,3 +377,12 @@ Points raised, each in its records or verify file:
 - No test changes `early_fill_window_ms` alone through `settings_change_touches` (test_dm_report.cpp:1030).
 - Three settings sets answer "the first corpus chart's best path" in the replay files: `analysis_settings()`, `analyzed_by_ten_scores` and `scores_settings`.
 - The search's window has two homes in some tests: `ScoreGraph(song, cap)` takes the constructor default, while the records compared with it are searched at `cfg.early_fill_window_ms`. Both are 60 today.
+
+
+## The repeated-values pass and the capture list (session 63c70014, 2026-11-15)
+
+The handoff `docs/handoffs/2026-11-15-test-audit-capture-pass-handoff.md` was checked row by row; every claim held but one. The hook-call extractor reads Claude Code's session transcripts under `~/.claude/projects`, not the agents' state files (`C:\Users\Patrick\.claude\gates\tests\replay_extract.py:25`).
+
+The repeated-values pass is finished. RP2 sorted rows 70 to 138 (`repeats/RP2.md`, commit 29e5bd5b). One fresh verifier read each sorter's file against the code: `repeats/V-RP1.md` (13395dc0), `V-RP2.md` (18c16051) and `V-RP3.md` (c45bd92c). The main session spot-checked owner lines in each verifier file before using it. The agreed candidates are in `cross-findings.md`: X1 and X2 gained copies, and X3 to X8 are new. The same file lists what was disputed, what is not settled and the single-file pins. X1's path text is now in 9 files, not 10, because the copies in `test_overlay_layout.cpp` are the test's own wrap input.
+
+The capture scout wrote `capture/RUNS.md` (8e79b2ce): nine runs, R1 to R9, one per kind of claim, as the user chose ("One run per kind"). Its counts are estimates from the capture lists, not a fresh read of the records. About 1,700 records are served by a run, about 180 are already covered by the engine dumps, about 900 have no possible run (about 700 need the live game), and about 150 could not be placed. The main session confirmed that `hydra_replay dump` honours `--difficulty`, `--prodrums` and `--bass2x`, because `tools/replay.cpp` builds one set of settings from them for every command (line 869). No run has started.
