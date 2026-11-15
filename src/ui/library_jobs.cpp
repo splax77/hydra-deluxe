@@ -618,20 +618,53 @@ void BatchJob::run() {
 
 namespace {
 app::ChartAnalyzer g_view_analyzer;
+std::function<void()> g_view_before_save_check;
+
+// Whether a chart's stored answer already says what `fresh` would save, so a
+// click saves nothing (D87 item 2): the same Ready record, or the same stored
+// failure, kind and text.
+bool stored_says_same(const store::RecordLookup& found, const store::RecordRow& fresh) {
+    if (fresh.failure_kind)
+        return found.status == store::RecordStatus::CantAnalyze &&
+               found.failure_kind == fresh.failure_kind && found.failure_text == fresh.failure_text;
+    return found.status == store::RecordStatus::Ready && found.record == fresh;
+}
+
+// The record a click's failed analysis is stored as: app::prepare_failed_chart's
+// answer for what the analysis threw. Nothing when it threw nothing.
+std::optional<store::PreparedRecord> click_failure_record(const std::string& song_id,
+                                                          const store::Profile& profile,
+                                                          const std::exception_ptr& thrown) {
+    if (!thrown) return std::nullopt;
+    try {
+        std::rethrow_exception(thrown);
+    } catch (const std::exception& e) {
+        return app::prepare_failed_chart(song_id, profile, e);
+    } catch (...) {
+    }
+    return std::nullopt;
+}
 }  // namespace
 
 void set_view_analyzer_for_test(app::ChartAnalyzer analyze) {
     g_view_analyzer = std::move(analyze);
 }
 
+void set_view_before_save_check_for_test(std::function<void()> hook) {
+    g_view_before_save_check = std::move(hook);
+}
+
 ViewJob::ViewJob(store::ChartLibraryEntry song, store::Profile profile,
-                 app::AnalysisSettings settings, bool analysis_off, int generation)
+                 app::AnalysisSettings settings, bool analysis_off, int generation,
+                 store::RecordStore& store)
     : song_(std::move(song)),
       profile_(std::move(profile)),
       settings_(std::move(settings)),
       analysis_off_(analysis_off),
       generation_(generation),
-      analyze_(g_view_analyzer ? g_view_analyzer : app::ChartAnalyzer(app::analyze_chart_file)) {}
+      store_(store),
+      analyze_(g_view_analyzer ? g_view_analyzer : app::ChartAnalyzer(app::analyze_chart_file)),
+      before_save_check_(g_view_before_save_check) {}
 
 void ViewJob::start() {
     // The thread constructor itself can throw (std::system_error when the OS
@@ -695,6 +728,7 @@ void ViewJob::run() {
                 out_.dynamics_error = app::plain_error_detail(e);
                 out_.dynamics_message = app::plain_error(e);
             }
+            write_results();
             return true;
         } catch (const app::AnalysisCancelled&) {
             return false;  // no error text: a cancel is the user's own click
@@ -702,6 +736,49 @@ void ViewJob::run() {
             return false;
         }
     });
+}
+
+// The two writes run here, on the job's thread, so a batch's save group
+// makes this thread wait and not the window. A cancel seen just before
+// either write ends the job with nothing more written; a closed or replaced
+// click is cancelled too (AppState::close_details, AppState::start_view).
+void ViewJob::write_results() {
+    // Changed chart files: the library row takes the hash and fingerprint
+    // they give now, before anything is saved under them. An edited chart
+    // gets a new hash (D87 item 3); one only saved again keeps its hash and
+    // takes the new fingerprint (D96). A write that fails fails the job and
+    // saves nothing: a summary under a hash no library row has would be an
+    // orphan.
+    if (out_.files_changed) {
+        throw_if_cancelled();
+        store_.reidentify_chart(song_.notespath, out_.new_md5, out_.new_sig);
+        out_.wrote_hash = true;
+    }
+    if (analysis_off_) return;
+    const std::string& song_id = out_.stored_id(song_.md5);
+    // The record is built as the batch builds it, and a failure the store
+    // remembers is the chart's result, as a batch stores it.
+    std::optional<store::PreparedRecord> prepared;
+    try {
+        if (out_.analysis)
+            prepared = store::prepare_record(song_id, profile_, out_.analysis->record);
+        else
+            prepared = click_failure_record(song_id, profile_, out_.analysis_failure);
+    } catch (const std::exception& e) {
+        out_.save_error = app::plain_error(e);
+        return;
+    }
+    if (!prepared) return;
+    if (before_save_check_) before_save_check_();
+    throw_if_cancelled();
+    try {
+        if (stored_says_same(store_.lookup_one(song_id, prepared->profile), prepared->record))
+            return;  // nothing new to save
+        store_.save(*prepared);
+        out_.wrote_save = true;
+    } catch (const std::exception& e) {
+        out_.save_error = app::plain_error(e);
+    }
 }
 
 // ---- ReportJob --------------------------------------------------------

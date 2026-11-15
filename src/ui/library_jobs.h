@@ -448,20 +448,37 @@ struct ViewOutcome {
     std::optional<app::DynamicsBreakdown> dynamics;
     std::string dynamics_message;  // app::plain_error
     std::string dynamics_error;    // app::plain_error_detail
+    // What the job wrote to the store (ViewJob::write_results), so the window
+    // can bring its rows up to it whatever becomes of the result. These are
+    // set however the job ended, cancelled included.
+    bool wrote_hash = false;  // the library row took new_md5 and new_sig
+    bool wrote_save = false;  // the chart's record was saved
+    // app::plain_error of a save that failed; the result itself still shows.
+    std::string save_error;
+    // The id the chart's record is saved under: the new hash once the row
+    // took it, else the row's own (`row_md5`).
+    const std::string& stored_id(const std::string& row_md5) const {
+        return wrote_hash ? new_md5 : row_md5;
+    }
 };
 
 // The song panel's job: re-identifies an edited chart, runs the engine's
-// normal analysis and counts the Dynamics, all for one click. cancel()
-// interrupts the search at its next progress tick; the stretch before the
-// first tick (parse + graph build) can't be interrupted. The UI thread drops
-// a result whose generation is not the current click's.
+// normal analysis, counts the Dynamics, and then writes the click's two
+// store writes on its own thread (write_results), so the window keeps
+// drawing while a batch's save group holds the store. cancel() interrupts
+// the search at its next progress tick; the stretch before the first tick
+// (parse + graph build) can't be interrupted, and a cancel seen just before
+// either write stops the job with nothing more written. The UI thread drops
+// a result whose generation is not the current click's, and still follows
+// what the job wrote (AppState::take_view_outcome).
 class ViewJob : public ResultJobBase {
 public:
     // The song, its profile and the settings are snapshotted at start, so
     // the result is saved against the song and settings it ran for.
     // `analysis_off` (broken rules) skips the engine and keeps the count.
+    // `store` is the window's, and must outlive the job.
     ViewJob(store::ChartLibraryEntry song, store::Profile profile, app::AnalysisSettings settings,
-            bool analysis_off, int generation);
+            bool analysis_off, int generation, store::RecordStore& store);
     ~ViewJob() { shutdown(); }
 
     void start();
@@ -478,20 +495,25 @@ public:
     // report (i.e. show an indeterminate spinner until then).
     float progress() const { return progress_.load(std::memory_order_relaxed); }
 
-    // Valid once finished() && ok(); moves the outcome out (call once).
+    // Moves the outcome out (call once, once finished()). Its analysis is
+    // valid only when ok(); what it says the job wrote is valid always.
     ViewOutcome take_outcome() { return std::move(out_); }
 
 private:
     void run();
+    // The click's writes, after the analysis: the new hash, then the save.
+    void write_results();
 
     store::ChartLibraryEntry song_;
     store::Profile profile_;
     app::AnalysisSettings settings_;
     bool analysis_off_;
     int generation_;
+    store::RecordStore& store_;
     std::atomic<float> progress_{-1.0f};
     ViewOutcome out_;
     app::ChartAnalyzer analyze_;  // the test seam's, copied at construction
+    std::function<void()> before_save_check_;  // the test seam's, copied at construction
 };
 
 // Test seam: when set, every click's job built from now on runs this analyzer
@@ -499,6 +521,12 @@ private:
 // (Cancel, the progress box's delay, a burst of setting changes) instead of
 // racing a fast chart. An empty analyzer clears it. Only tests set it.
 void set_view_analyzer_for_test(app::ChartAnalyzer analyze);
+
+// Test seam: when set, every click's job built from now on calls this on its
+// own thread just before its last cancel check, the one before its save, so
+// a test can cancel, close or replace the click right there. An empty
+// function clears it. Only tests set it.
+void set_view_before_save_check_for_test(std::function<void()> hook);
 
 // ---- ReportJob --------------------------------------------------------
 
