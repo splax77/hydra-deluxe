@@ -4,6 +4,7 @@
 // SP cap mid-run would hide the result it had just made.
 
 #include "app/config.h"  // Settings::clamp, the one range each box asks
+#include "app/report.h"  // hit_window_text
 #include "core/model.h"
 #include "imgui.h"
 #include "imgui_internal.h"  // IsPopupOpen by id, SetKeyOwner
@@ -29,6 +30,15 @@ std::string legacy_fills_help_text() {
            fill_rule_description(FillDeadlineRule::Ch11) + " " +
            fill_rule_description(FillDeadlineRule::Ch10) + " Tick this only for runs played on " +
            old_rule + ".";
+}
+
+std::string early_fill_window_help_text() {
+    return "How far from a fill's deadline your Star Power may come ready and still count as "
+           "an early fill. Ready up to this many ms after the deadline, you can still summon the "
+           "fill by hitting early; later than that, the fill never spawns. Ready less than this "
+           "many ms before the deadline, the activation is marked E. At 0 no activation is an "
+           "early fill. " +
+           app::report::hit_window_text() + " ms, the hit window, is the most it allows.";
 }
 
 namespace {
@@ -118,8 +128,8 @@ void render_chart_group(AppState& app, bool locked) {
     ImGui::EndTable();
 }
 
-// The two Clone Hero rules a result is keyed by: the SP cap and when fills
-// spawn.
+// The Clone Hero rules a result is keyed by: the SP cap, when fills spawn
+// and the early-fill window.
 void render_rules_group(AppState& app, bool locked) {
     if (!begin_group("Clone Hero rules")) return;
     begin_row("SP cap", (std::to_string(kCloneHeroSpCap) +
@@ -142,6 +152,19 @@ void render_rules_group(AppState& app, bool locked) {
     begin_row("1.0 fills", legacy_fills_help_text().c_str());
     if (setting_checkbox("##legacyfills", &app.settings.legacy_fills, locked))
         app.commit_settings();
+
+    begin_row("Early fill window", early_fill_window_help_text().c_str());
+    ImGui::SetNextItemWidth(px(100));
+    begin_disabled_input(locked);
+    int window = app.settings.early_fill_window_ms;
+    if (ImGui::InputInt("##earlyfillwindow", &window)) {
+        app.settings.early_fill_window_ms =
+            app::Settings::clamp(&app::Settings::early_fill_window_ms, window);
+        app.edit_settings();
+    }
+    ImGui::SameLine();
+    ImGui::TextUnformatted("ms");
+    end_disabled_input(locked);
     ImGui::EndTable();
 }
 
@@ -194,7 +217,7 @@ void render_paths_group(AppState& app, bool locked) {
     ImGui::EndTable();
 }
 
-// "Reset to defaults": puts the panel's eight settings back in one change,
+// "Reset to defaults": puts the panel's nine settings back in one change,
 // so the open song re-analyzes once. Greyed out while locked or when there
 // is nothing to undo; the tooltip says which, or what the click undoes.
 void render_reset_button(AppState& app, bool locked) {
