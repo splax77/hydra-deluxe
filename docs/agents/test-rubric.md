@@ -143,7 +143,7 @@ Verdict:    Rewrite. Keep the properties. Replace 799 with: zero charts
 
 ## Running it as an audit
 
-An audit with this rubric is read-only. It changes no test and no code. Each verdict leaves by one of the four exits in `docs/agents/audit-method.md`, and a fresh agent checks every closure. That page's calibration stage applies too: before the auditors start, one agent gets a file whose bad tests are known, with no hint of what they are. `tests/test_sp_end.cpp` is such a file; the examples page lists what a sound audit finds in it. Do not show the calibration agent the examples page.
+An audit with this rubric is read-only. It changes no test and no code. Each verdict leaves by one of the four exits in `docs/agents/audit-method.md`, and a fresh agent checks every closure. That page's calibration stage applies too: before the auditors start, one agent gets a file whose bad tests are known, with no hint of what they are. Do not use `tests/test_sp_end.cpp`: this page and the examples page discuss its tests, so any agent that read them already knows the answers. Pick a file neither page quotes, and have the main session write its answer key before the calibration run.
 
 Files that loop over `testdata/input` and compare against literals go first. That is where snapshots live. Every other file still gets every question.
 

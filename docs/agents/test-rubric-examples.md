@@ -249,6 +249,6 @@ It passes Q2 in kind: 50 points a note and a doubled multiplier at combo 10 are 
 
 ## What a sound audit of tests/test_sp_end.cpp finds
 
-This list is for whoever grades a calibration run (the rubric's "Running it as an audit"). The calibration agent must not see it.
+This was the answer key for the first trial of the rubric. It cannot serve as a calibration file now that both pages discuss it; the rubric's "Running it as an audit" says how to pick one.
 
 The file has two loop floors (B3), a silent skip at the top of each corpus loop (B4), raw ticks as results across the hand-built cases (B5), one bar-arrival rule stated in two tests (B6), an expected value made by production code (B8), a number pinned from one run (B9), and a rule no page states (B10). A run that returns keep for any of those tests has missed something.
