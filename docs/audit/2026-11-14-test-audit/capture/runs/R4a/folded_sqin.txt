@@ -1,0 +1,106 @@
+> timeout 300
+> click Scan library
+> wait-text Continue
+> click **/Continue
+> wait-idle
+> open audit folded_sqin
+> wait-idle
+> click **/Expand all
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 4 charts
+{ audit folded_sqin } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| audit folded_sqin
+charted by audit | audit fixture | 6,950  2 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] audit folded_sqin
+audit fixture · charted by audit
+6,950
+2
+Optimal path · 5 stars
+/ Paths \
+Optimal
+> 6,950 1 path
+    2
+Within 2 scores
+> 6,750 2 paths
+    1+
+    0 E0
+> 6,150 1 path
+    0
+Activations 1 · no SP left over [ Collapse all ]
+m1 m43
+1 2 m19.1.0 4 bars
+Chord [Red snare] [ Show in Preview > ]
+> Backend timings · 6 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -480.0 | [ R   ] | 200 | Normal |
+| -360.0 | [ R   ] | 200 | Normal |
+| -310.0 | [ R   ] | 200 | Normal |
+| -231.9 | [ R   ] | 200 | Normal |
+| -153.8 | [ R   ] | 200 | Normal |
+| 2.5 | [ R   ] | 200 | Normal |
+[ Multiplier squeeze ] none [ Score breakdown ] [ Copy path ]
+None.
+Average Multiplier:  3.233x
+
+Notes:               2,150
+Combo Bonus:         3,600
+Star Power:          1,200
+Solo Bonus:          0
+Accent Notes:        0
+Ghost Notes:         0
+
+Total Score:         6,950
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/Stars
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 4 charts
+{ audit folded_sqin } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| audit folded_sqin
+charted by audit | audit fixture | 6,950  2 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] audit folded_sqin
+audit fixture · charted by audit
+6,950
+2
+Optimal path · 5 stars
+/ Paths \ / Preview \ / Dynamics \ / Stars \
+Base score: 2,150
+| Stars | Average Multiplier | Cutoff |
+| 1 | 0.1 | 215 |
+| 2 | 0.5 | 1,075 |
+| 3 | 1.0 | 2,150 |
+| 4 | 2.0 | 4,300 |
+| 5 | 2.8 | 6,020 |
+| 6 | 3.6 | 7,740 |
+| 7 | 4.4 | 9,460 |
+A star counts once your score, without the solo bonus, reaches its cutoff.
+> click **/Preview
+> wait-idle
+> type **/##scrub | 25.3300018
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_start_25330.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_start_25330.0ms.png
+> type **/##scrub | 6
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_sp_ready_6000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_sp_ready_6000.0ms.png
+> type **/##scrub | 25.809
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_end_minus_1ms_25809.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_end_minus_1ms_25809.0ms.png
+> type **/##scrub | 25.8100014
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_end_25810.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_end_25810.0ms.png
+> type **/##scrub | 0
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_song_start_0.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_song_start_0.0ms.png
+[PASS] hydra/script

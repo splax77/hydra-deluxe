@@ -1,0 +1,114 @@
+Database   : docs/audit/2026-11-14-test-audit/capture/runs/R5/hydra.db
+Chart mode : Expert Pro Drums, 2x Bass
+Score range: 4 scores
+SP cap     : 4 bars
+Path limit : 10 ms
+Squeeze win: 500 ms
+Fills      : Clone Hero 1.1
+Early fill : 60 ms
+Folders    : 1
+    C:\Users\Patrick\Downloads\Hydra\hydra-test\testdata\input
+
+Discovering charts...
+Found 98 charts.
+
+[1/98]    393,885  CHON - Pitch Dark                                    3+ 2+ 1                             
+[2/98]    618,425  Equipoise - Alchemic Web Of Deceit                   (No activations.)                   
+[3/98]    558,370  Xane60 - Godzilla (Eminem)                           (No activations.)                   
+[4/98]    903,195  Synovial - Neibolt                                   2 0 0 2 2 2 0                       
+[5/98]    549,810  Kinglet - Blister                                    (No activations.)                   
+[6/98]  1,235,885  Travis Orbin - Dr. Jackle/Dr. Jekyll [Miles Davis]   (No activations.)                   
+[7/98]    755,530  SoundHaven - Focus [Ariana Grande]                   0 3+ 0 0                            
+[8/98]    718,070  Venetian Snares - Epidermis                          0 1+ 0 2                            
+[9/98]    531,685  Eric Moore - Get Ur Freak On [Missy Elliot]          5- 2+ 2- 0 0                        
+[10/98]    687,100  Casiopea - Swallow                                   (No activations.)                   
+[11/98]    594,265  Hella - Hand That Rocks the Cradle                   7 4 2                               
+[12/98]    712,630  Interloper - Pathkeeper                              (No activations.)                   
+[13/98]    671,195  Victoria - Grow                                      7- 1 4                              
+[14/98]    663,135  RX Bandits - Bled to Be Free (The Operation)         2 1 0 5 1                           
+[15/98]  1,058,450  Between the Buried and Me - (b) The Decade of Statue 0 4 4 0 1 1                         
+[16/98]    694,985  HopH2O - I Am... All Of Me (Crush 40)                3 E0 3 2 E0                         
+[17/98]    343,585  Sufferer - Chair                                     (No activations.)                   
+[18/98]    830,560  Gavin Harrison - White Mist [The Pineapple Thief]    3 5+ 0 1                            
+[19/98]    692,550  Polyphia - 87                                        3 0+ 2                              
+[20/98]    865,395  The Agonist - Thank You, Pain                        2 0 0 2                             
+[21/98]    700,090  Chaotrope - Senescence (shortened)                   0 0 0+ 1 0 0+                       
+[22/98]    378,315  Green Day - Burnout                                  3- 1 2                              
+[23/98]    524,750  The All-American Rejects - Move Along                0 1 0 0                             
+[24/98]    732,860  Rush - YYZ                                           0 4 1 4                             
+[25/98]  1,146,055  The Faceless - The Spiraling Void                    0 0 1 3 4+ 1 2- 0 0                 
+[26/98]    865,320  Avenged Sevenfold - Unbound (The Wild Ride)          2 2+ 0+ 2                           
+[27/98]    510,070  Four Year Strong - Wasting Time (Eternal Summer)     3 E0- 0 0                           
+[28/98]    410,510  Jack Wall - Snakeskin Boots                          1 E2 3+                             
+[29/98]    315,350  Thornhill - Limbo                                    (No activations.)                   
+[30/98]    245,800  Dance Gavin Dance - Young Robot                      (No activations.)                   
+[31/98]    451,830  Mutemath - Allies                                    0- 1- 1 0                           
+[32/98]    342,250  Moonlight Haze - Lunaris                             (No activations.)                   
+[33/98]    367,290  A Day to Remember - City Of Ocala                    2 2 0                               
+[34/98]    565,850  Matt McGuire - Avalanche [Bring Me The Horizon]      0 0 2+ 4 0                          
+[35/98]    341,645  My Chemical Romance - To the End                     2 2 0                               
+[36/98]    423,230  Nothing - April Ha Ha                                0 2 1                               
+[37/98]    255,960  Don Broco - Actors                                   4 1                                 
+[38/98]    691,790  Protest the Hero - Limb From Limb                    0 2 1 0 E2 0 0                      
+[39/98]    267,180  Nickelback - How You Remind Me                       6 0                                 
+[40/98]    380,330  Dream Theater - Overture 1928                        (No activations.)                   
+[41/98]    298,195  Jason Paige - Pokemon Theme                          (No activations.)                   
+[42/98]    800,240  Yoink - Spirit Bomb                                  4 0 6                               
+[43/98]    768,490  SoundHaven - Snowball Earth [Indistinct]             (No activations.)                   
+[44/98]    770,090  Mahavishnu Orchestra - Awakening                     1 0 2 0 0                           
+[45/98]  1,257,810  Ne Obliviscaris - Tapestry of the Starless Abstract  1 0- 2- 0+ 1 0                      
+[46/98]  1,248,495  DOMi & JD Beck - Zildjian LIVE! Performance 2020     0 2+ 1+ 3 0                         
+[47/98]    820,950  Necrophagist - Stabwound                             2 0- E2+                            
+[48/98]    694,105  Car Bomb - The Sentinel                              0 0 2 E3                            
+[49/98]    809,500  Conquering Dystopia - Prelude to Obliteration        (No activations.)                   
+[50/98]  1,299,450  Pathfinder - When The Sunrise Breaks The Darkness    (No activations.)                   
+[51/98]    662,620  Xane60 & SoundHaven - Bug Thief [Iglooghost] (B&X)   3- 0 1- 2 1+ 1+ 0                   
+[52/98]    375,670  Lockslip - Bend                                      (No activations.)                   
+[53/98]  1,229,730  Senri Kawaguchi - Ladies Talk [Kiyo Sen] (Drumeo Per 0 1+ 0 0 0 0 0 0                    
+[54/98]    593,950  HopH2O - Nasty (Tinashe)                             0 3 2                               
+[55/98]    469,355  LethalLasagna - Levitating (feat. DaBaby) (Dua Lipa) (No activations.)                   
+[56/98]    655,190  black midi - Sugar/Tzu                               0 E3+ E5 E1                         
+[57/98]    742,985  Fallen Monarch - Blight                              (No activations.)                   
+[58/98]    528,610  TEXTURES - Laments Of An Icarus                      (No activations.)                   
+[59/98]    676,130  Sianvar - Omniphobia                                 (No activations.)                   
+[60/98]    938,190  Hannes Grossmann - Vacant Dreams                     1 0 4+ 2 1                          
+[61/98]    522,595  Satyr - Whelmed                                      (No activations.)                   
+[62/98]  1,174,640  Lightning Bolt - Dream Genie                         5 1 0 0 2 0 6 2 3                   
+[63/98]    504,415  Brandon Burkhalter - Someday                         1+ 1 0+ 2                           
+[64/98]  1,079,130  Meshuggah - Nostrum                                  0 2 1 0                             
+[65/98]    706,180  August Burns Red - White Washed                      0 1 3 0- 0                          
+[66/98]  1,022,800  Mike Orlando - Tapped Out                            1 0 E0 E1- 5 0                      
+[67/98]  1,015,340  Tesseract - Deception - Concealing Fate, Pt. 2       0 1 5 0 4                           
+[68/98]    614,195  sungazer - All These People                          1 1 0- 0+                           
+[69/98]    413,810  Haken - The Good Doctor                              (No activations.)                   
+[70/98]  1,150,660  Symphony X - Set the World on Fire                   0 1 1 1 1                           
+[71/98]    401,785  Dance Gavin Dance - Chocolate Jackalope              (No activations.)                   
+[72/98]    794,440  Phish - Llama                                        0 0 0 4 1                           
+[73/98]    530,275  Hail The Sun - Missed Injections                     3 0                                 
+[74/98]    558,135  A Lot Like Birds - Think Dirty out Loud              (No activations.)                   
+[75/98]    682,900  Foo Fighters - Everlong                              1 2 3+                              
+[76/98]    271,270  The Ghost Inside - Outlive                           (No activations.)                   
+[77/98]    286,435  Thrice - Deadbolt                                    0 2 0                               
+[78/98]    362,120  Neck Deep - Beautiful Madness                        2 1                                 
+[79/98]    382,865  CHON - Book (feat. Matt Garstka)                     0- 1+ 0+                            
+[80/98]    365,950  Good Tiger - Where Are the Birds                     (No activations.)                   
+[81/98]    277,190  Alpha Wolf - Acid Romance                            0 2 0 1                             
+[82/98]    544,080  Trivium - Feast of Fire                              1 1 E3 0 E1 E2                      
+[83/98]    909,850  Mastodon - Megalodon                                 0 3 1 0                             
+[84/98]    335,685  Mayday Parade - Jamie All Over                       0 0 2 0                             
+[85/98]    447,835  Karnivool - Themata                                  (No activations.)                   
+[86/98]    354,150  Nova Charisma - The Greater Cause                    1 3 0                               
+[87/98]    334,510  fanclubwallet - Band Like That                       1 4                                 
+[88/98]    379,655  Stone Temple Pilots - Trippin' on a Hole in a Paper  0 0 E2 E0                           
+[89/98]    420,570  Area 11 - Knightmare/Frame                           1 1 0 0                             
+[90/98]    287,170  Tigran Hamasyan - Entertain Me                       0 0 0 1                             
+[91/98]    480,165  1.O.M. - Apex                                        (No activations.)                   
+[92/98]    313,865  Hawthorne Heights - Saying Sorry                     0 1 2                               
+[93/98]    228,710  Allister - Overrated                                 1 2                                 
+[94/98]    337,470  Earth, Wind & Fire - September                       (No activations.)                   
+[95/98]    508,455  The Fall of Troy - Act One, Scene One                1 0+ 4 0 0                          
+[96/98]    354,615  Smash Mouth - I'm A Believer (The Monkees cover)     1 0+ 0 0                            
+[97/98]    328,150  Evans Blue - Beg                                     1- 0 0 E0                           
+[98/98]    352,470  Deftones - My Own Summer (Shove It)                  3 3 1                               
+
+98 analyzed · 0 failed · 0 skipped (already had a result) in 0.0s.

@@ -1,0 +1,41 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open I'm A Believer (The Monkees cover)
+wait-idle
+click **/##path4
+click **/Expand all
+text
+click **/Preview
+wait-idle
+text
+type **/##scrub | 50.9753418
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a1_start_50975.3ms.png | **/##highway_image
+type **/##scrub | 30.5725403
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a1_sp_ready_30572.5ms.png | **/##highway_image
+type **/##scrub | 62.6263046
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a1_end_minus_1ms_62626.3ms.png | **/##highway_image
+type **/##scrub | 62.6273041
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a1_end_62627.3ms.png | **/##highway_image
+type **/##scrub | 100.515221
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a2_start_100515.2ms.png | **/##highway_image
+type **/##scrub | 83.0383759
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a2_sp_ready_83038.4ms.png | **/##highway_image
+type **/##scrub | 109.255577
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a2_sqout1_end_109255.6ms.png | **/##highway_image
+type **/##scrub | 109.254578
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a2_end_minus_1ms_109254.6ms.png | **/##highway_image
+type **/##scrub | 109.255577
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a2_end_109255.6ms.png | **/##highway_image
+type **/##scrub | 155.898911
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a3_start_155898.9ms.png | **/##highway_image
+type **/##scrub | 122.377968
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a3_sp_ready_122378.0ms.png | **/##highway_image
+type **/##scrub | 170.473862
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a3_end_minus_1ms_170473.8ms.png | **/##highway_image
+type **/##scrub | 170.474854
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_a3_end_170474.8ms.png | **/##highway_image
+type **/##scrub | 0
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path4_song_start_0.0ms.png | **/##highway_image

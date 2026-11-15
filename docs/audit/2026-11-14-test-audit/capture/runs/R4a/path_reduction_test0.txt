@@ -1,0 +1,139 @@
+> timeout 300
+> click Scan library
+> wait-text Continue
+> click **/Continue
+> wait-idle
+> open audit path_reduction_test0
+> wait-idle
+> click **/Expand all
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 4 charts
+{ audit path_reduction_test0 } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| audit path_reduction_test0
+charted by audit | audit fixture | 45,450  1 0 0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] audit path_reduction_test0
+audit fixture · charted by audit
+45,450
+1 0 0
+Optimal path · 7 stars
+/ Paths \
+Optimal
+> 45,450 1 path
+    1 0 0
+Within 2 scores
+> 43,150 1 path
+    0 1
+> 43,050 1 path
+    1 1
+Best all-0 path
+26,950 · 0 0
+18,500 below optimal
+Activations 3 · no SP left over [ Collapse all ]
+m1 m35
+1 1 m10.1.0 2 bars
+Chord [Green tom] [ Show in Preview > ]
+> Backend timings · 0 notes near the SP end
+None.
+2 0 m20.1.0 2 bars
+Chord [Green tom] [ Show in Preview > ]
+> Backend timings · 0 notes near the SP end
+None.
+3 0 m31.1.0 2 bars
+Chord [Green tom] [ Show in Preview > ]
+> Backend timings · 5 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -416.7 | [ R   ] | 200 | Normal |
+| -333.3 | [ R   ] | 200 | Normal |
+| -250.0 | [ R   ] | 200 | Normal |
+| -166.7 | [ R   ] | 200 | Normal |
+| -83.3 | [ R   ] | 200 | Normal |
+[ Multiplier squeeze ] none [ Score breakdown ] [ Copy path ]
+None.
+Average Multiplier:  6.886x
+
+Notes:               6,600
+Combo Bonus:         16,950
+Star Power:          21,900
+Solo Bonus:          0
+Accent Notes:        0
+Ghost Notes:         0
+
+Total Score:         45,450
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/Stars
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 4 charts
+{ audit path_reduction_test0 } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| audit path_reduction_test0
+charted by audit | audit fixture | 45,450  1 0 0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] audit path_reduction_test0
+audit fixture · charted by audit
+45,450
+1 0 0
+Optimal path · 7 stars
+/ Paths \ / Preview \ / Dynamics \ / Stars \
+Base score: 6,600
+| Stars | Average Multiplier | Cutoff |
+| 1 | 0.1 | 660 |
+| 2 | 0.5 | 3,300 |
+| 3 | 1.0 | 6,600 |
+| 4 | 2.0 | 13,200 |
+| 5 | 2.8 | 18,480 |
+| 6 | 3.6 | 23,760 |
+| 7 | 4.4 | 29,040 |
+A star counts once your score, without the solo bonus, reaches its cutoff.
+> click **/Preview
+> wait-idle
+> type **/##scrub | 18
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_start_18000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_start_18000.0ms.png
+> type **/##scrub | 3
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_sp_ready_3000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_sp_ready_3000.0ms.png
+> type **/##scrub | 29.9990005
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_end_minus_1ms_29999.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_end_minus_1ms_29999.0ms.png
+> type **/##scrub | 30
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_end_30000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a1_end_30000.0ms.png
+> type **/##scrub | 38
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_start_38000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_start_38000.0ms.png
+> type **/##scrub | 33
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_sp_ready_33000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_sp_ready_33000.0ms.png
+> type **/##scrub | 45.9990005
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_end_minus_1ms_45999.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_end_minus_1ms_45999.0ms.png
+> type **/##scrub | 46
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_end_46000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a2_end_46000.0ms.png
+> type **/##scrub | 60
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_start_60000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_start_60000.0ms.png
+> type **/##scrub | 48
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_sp_ready_48000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_sp_ready_48000.0ms.png
+> type **/##scrub | 67.9990005
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_end_minus_1ms_67999.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_end_minus_1ms_67999.0ms.png
+> type **/##scrub | 68
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_end_68000.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_a3_end_68000.0ms.png
+> type **/##scrub | 0
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_song_start_0.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/path_reduction_test0_song_start_0.0ms.png
+[PASS] hydra/script
