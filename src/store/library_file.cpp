@@ -66,6 +66,12 @@ bool lacks_album(TableProbe& probe, const std::set<std::string>& tables) {
     return tables.count("charts") && !probe.has_column("charts", "album");
 }
 
+// Whether the profiles table is there without its early-fill window column.
+// Reads false when SQLite fails; the caller asks probe.failed().
+bool lacks_early_fill(TableProbe& probe, const std::set<std::string>& tables) {
+    return tables.count("profiles") && !probe.has_column("profiles", kEarlyFillWindowColumn);
+}
+
 // The layouts, oldest first. Each test reads only what a release wrote; the
 // releases themselves are in testdata/store/README.md.
 LibraryFileKind kind_of(TableProbe& probe) {
@@ -101,6 +107,11 @@ LibraryFileKind kind_of(TableProbe& probe) {
     const bool lacks_album_column = lacks_album(probe, tables);
     if (probe.failed()) return LibraryFileKind::Unreadable;
     if (lacks_album_column) return LibraryFileKind::LacksAlbumColumn;
+    // Results saved per early-fill window came after the album; a file a
+    // build before them wrote holds a profiles table without that column.
+    const bool lacks_early_fill_column = lacks_early_fill(probe, tables);
+    if (probe.failed()) return LibraryFileKind::Unreadable;
+    if (lacks_early_fill_column) return LibraryFileKind::LacksEarlyFillColumn;
     return LibraryFileKind::Current;
 }
 
@@ -111,6 +122,13 @@ bool charts_table_lacks_album(sqlite3* db) {
     const std::set<std::string> tables = probe.tables();
     if (probe.failed()) return true;
     return lacks_album(probe, tables) || probe.failed();
+}
+
+bool profiles_table_lacks_early_fill(sqlite3* db) {
+    TableProbe probe(db);
+    const std::set<std::string> tables = probe.tables();
+    if (probe.failed()) return true;
+    return lacks_early_fill(probe, tables) || probe.failed();
 }
 
 LibraryFileKind classify_library_file(const std::string& dbpath) {

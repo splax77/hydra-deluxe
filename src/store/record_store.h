@@ -2,7 +2,8 @@
 // chart library, one record per chart and profile, and `meta`.
 //
 //   * `profiles` — one row per set of settings a record is filed under: the
-//     chart mode, the SP cap, the Lens (ms limit, score range and fill rule),
+//     chart mode, the SP cap, the Lens (ms limit, score range, fill rule and
+//     early-fill window),
 //     the results stamp (stored_versions.h) and the hydra_rules.ini
 //     fingerprint. A record made under other rules or by another build sits
 //     under its own profile, beside this build's.
@@ -101,8 +102,9 @@ struct CapQuery {
 };
 
 // The rest of the settings a run happened under: the ms limit, the score
-// range and the fill rule. Two runs of the same chart at the same cap under
-// different lenses are two results, neither overwriting the other.
+// range, the fill rule and the early-fill window. Two runs of the same chart
+// at the same cap under different lenses are two results, neither
+// overwriting the other.
 //
 // Canonical form, so equal settings always compare equal: a disabled ms limit
 // stores value 0, because the engine ignores the number when the limit is off
@@ -118,16 +120,24 @@ struct Lens {
     // rule (FillDeadlineRule, core/song.h). Part of the key, so a chart's 1.0
     // and 1.1 results sit side by side; docs/adr/0010's notes say why.
     int legacy_fills = 0;
+    // The early-fill window the search ran under, in whole ms
+    // (HydraRecord::early_fill_window_ms). Part of the key, so a chart's
+    // results at two windows sit side by side. A row saved before the store
+    // kept it is filed under the default (add_early_fill_column).
+    int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs);
 
     // `ms` is Settings::mslimit_value when the limit is on, nullopt when off.
+    // `efill_window_ms` is the early-fill setting.
     static Lens from(std::optional<int> ms, int depth_mode, int depth_value,
-                     bool legacy_fills = false) {
+                     bool legacy_fills = false,
+                     int efill_window_ms = static_cast<int>(kDefaultEarlyFillWindowMs)) {
         Lens lens;
         lens.ms_enabled = ms ? 1 : 0;
         lens.ms_value = ms ? *ms : 0;
         lens.depth_mode = depth_mode;
         lens.depth_value = depth_value;
         lens.legacy_fills = legacy_fills ? 1 : 0;
+        lens.efill_window_ms = efill_window_ms;
         return lens;
     }
 
@@ -135,7 +145,7 @@ struct Lens {
     bool operator==(const Lens& other) const {
         return ms_enabled == other.ms_enabled && ms_value == other.ms_value &&
                depth_mode == other.depth_mode && depth_value == other.depth_value &&
-               legacy_fills == other.legacy_fills;
+               legacy_fills == other.legacy_fills && efill_window_ms == other.efill_window_ms;
     }
     bool operator!=(const Lens& other) const { return !(*this == other); }
 };
@@ -295,8 +305,9 @@ struct PreparedRecord {
 // std::invalid_argument if the analysis carries no sp_cap (every analyzer
 // result does), if the profile's cap isn't the cap it was analyzed at, if the
 // profile's lens has the ms limit on at a value it wasn't analyzed under (or
-// off when it was), or if the lens names the other fill rule: each mismatch
-// would file the analysis under settings it doesn't belong to.
+// off when it was), if the lens names the other fill rule, or if the lens's
+// early-fill window isn't the one it was analyzed under: each mismatch would
+// file the analysis under settings it doesn't belong to.
 PreparedRecord prepare_record(std::string song_id, const Profile& profile,
                               const HydraRecord& analysis);
 
@@ -395,6 +406,11 @@ inline constexpr int kBatchWalAutocheckpointPages = 10000;
 inline constexpr int kJournalSizeLimitBytes = 4194304;
 
 // ---- opening, and converting a Convertible file ----------------------------
+
+// The name an older file's profiles table goes by while
+// RecordStore::add_early_fill_column rebuilds it. Named here so a test can
+// leave a table of that name in the way and see the rebuild undone.
+inline constexpr const char* kProfilesBeforeEarlyFillTable = "profiles_before_efill";
 
 // What the store is doing while it opens, in the order the steps run. An open
 // of a file this build already wrote reports Opening alone.
@@ -770,8 +786,9 @@ private:
     // The constructor's work after the file opens: the journal settings, the
     // tables, and, by the file's kind (classify_library_file), the conversion
     // of a Convertible file, the failure columns a LacksFailureColumns file
-    // gains, and the album column every kind older than Current gains; last,
-    // the deletion of empty profiles (drop_empty_profiles). The constructor
+    // gains, and the album column and the profiles' early-fill window column
+    // every kind older than Current gains; last, the deletion of empty
+    // profiles (drop_empty_profiles). The constructor
     // turns any throw from it into a failed open.
     void set_up_schema(LibraryFileKind kind);
     void exec(const char* sql);
@@ -805,6 +822,17 @@ private:
     // KindedError(DatabaseUpgrade) with the file as it was. Only the scan's
     // stamp moves for the album (kChartMetaStamp); the results stamp does not.
     void add_album_column();
+    // Gives the profiles table its early-fill window column when it lacks one
+    // (profiles_table_lacks_early_fill), with the column in the table's
+    // UNIQUE key too, so two profiles that differ only in the window never
+    // collide. SQLite cannot add a column to a key in place, so the table is
+    // rebuilt: renamed to kProfilesBeforeEarlyFillTable, made again from the
+    // same SQL a new file uses, every row copied across with its id kept and
+    // the default window (Lens::efill_window_ms), and the old table dropped.
+    // records and record_paths name a profile by id, so they are untouched.
+    // One transaction; a failure throws KindedError(DatabaseUpgrade) with the
+    // file as it was.
+    void add_early_fill_column();
     // Opens the writer's connection on `dbpath`, creating the file if it is missing; throws
     // KindedError(DatabaseOpen) when SQLite refuses.
     void open_file(const std::string& dbpath);
