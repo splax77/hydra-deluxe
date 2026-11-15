@@ -164,7 +164,24 @@ The counters split on one case. KR4 counted hand-built library rows (`fake_chart
 
 A fake analyzer is X9 too, including one that returns a real corpus result. The user, in session 63c70014: "why do we have a fake analyzer? what the fuck is the point of a fake analyzer? who came up with this shit?" The seam is in the product: `BatchJob::set_analyzer_for_test` (`src/ui/library_jobs.h:285`) and `set_app_batch_analyzer_for_test` (`:419`). Sessions added them to get around timing races in the GUI batch tests. Commit e6d81592 (2026-09-27, session 159155c8) added the job seam, and a33c5d71 (2026-10-03, session dadb77f5) added the app-wide one, which "holds the batch open". `gated_scores` (`test_app_library.cpp:204`), which makes up a score of 1000 per chart in turn, followed on 2026-11-05 (e87fa19d, session 08dcb02a). No ruling of the user asked for any of them.
 
-The 1,970 Investigate records were not re-read. Most say only "claim not checked". The capture pass would move them to Keep, so the same faults would pass through unless they are re-read first.
+**Both rounds, totalled.** Twenty-one more counters then re-read every Investigate record (`counts/T5-IR1.md` to `T5-IR21.md`), by the four rulings filed in `docs/agents/rulings/tests-and-runs.md`. They also followed the user's later choice that hand-built input fed to the real code is not fake. A fresh tallier read all 26 files under that one reading and corrected 55 marks (`counts/TOTALS.md`):
+
+| Group | Records read | With a fault | X9 | X10 | X11 | X12 | Snapshot |
+|---|---|---|---|---|---|---|---|
+| Keep | 421 | 239 | 153 | 137 | 48 | 6 | 4 |
+| Investigate | 2,028 | 1,622 | 1,299 | 826 | 201 | 129 | 42 |
+| Both | 2,449 | 1,861 | 1,452 | 963 | 249 | 135 | 46 |
+
+So 76% of the records the audit had not marked Rewrite or Remove hold at least one fault the user has ruled on. Made-up input (X9) is the most common.
+
+The Investigate count is 2,028, not 1,970, because some verdicts sit inline on a check line. The tallier left about 40 records unsettled and lists them in `TOTALS.md`:
+- hand-written database files in an old layout;
+- a scanner that lives in its own test file;
+- hand-written hook payloads.
+
+They do not move the totals by more than about 2%.
+
+This changes what the capture pass is for. It was meant to check each "claim not checked" record against a real run, then move it to Keep. But 1,622 of those records stand on fakes, typed constants or echoes. A real run would confirm a claim that the test itself still does not check. Only the 406 Investigate records with no fault can be moved to Keep by a capture.
 
 ## What the repeated-values pass left out of X3 to X12
 
