@@ -1,0 +1,135 @@
+> timeout 300
+> click Scan library
+> wait-text Continue
+> click **/Continue
+> wait-idle
+> open Pitch Dark
+> wait-idle
+> click **/Expand all
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Pitch Dark } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Pitch Dark
+. | CHON
+CHON | 393,885  3+ 2+ 1 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Pitch Dark
+CHON · charted by Bloodline
+393,885
+3+ 2+ 1
+Optimal path · 7 stars
+/ Paths \
+Optimal
+> 393,885 1 path
+    3+ 2+ 1 94.3 ms
+Within 2 scores
+> 392,705 1 path
+    3- 0 1+ 1
+> 391,885 1 path
+    3- 0 1+ 0
+Best all-0 path
+362,945 · 0 0 0 0+ 0
+30,940 below optimal
+Activations 3 · no SP left over [ Collapse all ]
+m1 m146
+1 3+ m57.1.0 4 bars squeeze in 94.3 ms
+Chord [Kick - Yellow cymbal] [ Show in Preview > ]
+Hit the SP phrase's last note more than 94.3 ms early (eff. 93.7 ms) so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.
+--------------------------------
+Dynamic Hit Window: frontend 85.7 ms [  Y  ]
+backend 59.1 ms [ R   ] 51.5 ms safe
+Frontend timing scales x1.02 (early) / x1.02 (late) at the SP end; x1.01 (late) at the SqIn's SP end.
+SP overfilled at m58.4.240
+> Backend timings · 3 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -379.7 | [K Y  ] | 460 | Normal (eff. 376.2 ms) |
+| 189.9 | [  YB ] | 0 | Beyond (uncounted) (eff. 188.1 ms) |
+| 378.6 | [  YB ] | 0 | Beyond (uncounted) (eff. 375.0 ms) |
+2 2+ m93.1.0 4 bars squeeze in 33.3 ms
+Chord [Kick - Yellow cymbal] [ Show in Preview > ]
+Hit the SP phrase's last note more than 33.3 ms early (eff. 31.6 ms) so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.
+--------------------------------
+Dynamic Hit Window: frontend 57.0 ms [ R   ]
+backend 48.1 ms [ R   ] 77.8 ms safe
+Frontend timing scales x1.05 (early) / x1.05 (late) at the SP end; x1.11 (late) at the SqIn's SP end.
+SP overfilled at m94.4.360
+> Backend timings · 11 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -461.3 | [ R   ] | 200 | Normal (eff. 449.9 ms) |
+| -373.0 | [K  B ] | 460 | Normal (eff. 363.8 ms) |
+| -284.8 | [ R   ] | 200 | Normal (eff. 277.8 ms) |
+| -189.9 | [  Y  ] | 200 | Normal (eff. 185.2 ms) |
+| -94.9 | [K    ] | 200 | Normal (eff. 92.6 ms) |
+| 0.0 | [ R B ] | 460 | Normal (eff. 0.0 ms) |
+| 94.9 | [K    ] | 0 | Insane (uncounted) (eff. 92.6 ms) |
+| 190.5 | [ R   ] | 0 | Beyond (uncounted) (eff. 185.8 ms) |
+| 286.0 | [  Y  ] | 0 | Beyond (uncounted) (eff. 279.0 ms) |
+| 381.6 | [K  B ] | 0 | Beyond (uncounted) (eff. 372.1 ms) |
+| 477.1 | [ R   ] | 0 | Beyond (uncounted) (eff. 465.3 ms) |
+3 1 m123.1.0 2 bars
+Chord [Kick] [ Show in Preview > ]
+> Backend timings · 0 notes near the SP end
+None.
+[ Multiplier squeeze ] none [ Score breakdown ] [ Copy path ]
+None.
+Average Multiplier:  5.713x
+
+Notes:               63,725
+Combo Bonus:         187,740
+Star Power:          112,620
+Solo Bonus:          29,800
+Accent Notes:        0
+Ghost Notes:         0
+
+Total Score:         393,885
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/Stars
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Pitch Dark } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Pitch Dark
+. | CHON
+CHON | 393,885  3+ 2+ 1 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Pitch Dark
+CHON · charted by Bloodline
+393,885
+3+ 2+ 1
+Optimal path · 7 stars
+/ Paths \ / Preview \ / Dynamics \ / Stars \
+Base score: 63,725
+Solo bonus: 29,800 (not counted toward stars)
+| Stars | Average Multiplier | Cutoff | With full solo bonus |
+| 1 | 0.1 | 6,373 | 36,173 |
+| 2 | 0.5 | 31,863 | 61,663 |
+| 3 | 1.0 | 63,725 | 93,525 |
+| 4 | 2.0 | 127,450 | 157,250 |
+| 5 | 2.8 | 178,430 | 208,230 |
+| 6 | 3.6 | 229,410 | 259,210 |
+| 7 | 4.4 | 280,390 | 310,190 |
+A star counts once your score, without the solo bonus, reaches its cutoff.
+> click **/Preview
+> wait-idle
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_0_start.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_0_start.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_1_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_1_act.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_2_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_2_act.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_3_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_3_act.png
+[PASS] hydra/script
