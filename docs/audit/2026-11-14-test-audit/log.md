@@ -343,3 +343,37 @@ The sweep. `sweep/rewrites.tsv` listed 1,168 Rewrite records by heading, but mis
 - Q3 only, to move to Investigate in T8: 32. A9 has 12 (records 5, 9, 13, 16, 17, 22, 25, 27, 30, 35, 36, 37), A10 has 5 (3, 5, 19, 27, 28), A12 has 3 (2, 3, 14) and A14 has 12 (3, 4, 5, 6, 9, 21, 33, 34, 35, 36, 37, 38).
 - Unclear: A10 records 15 and 30. The A14 and A20 rows were prose sections, not records.
 - Every other Rewrite names a second fault. SW1 to SW4 judged mostly from the verdict line and the verify file, not from every answer.
+
+## The window round (session e633f7f6, 2026-11-15)
+
+At `c10c7f54` the early-fill rule was fixed at 85 ms (`fill_refuses(e_offset)` against `kHitWindowMs`). At `5ec682c7` it takes a window, and the search defaults to `kDefaultEarlyFillWindowMs = 60.0` (`src/core/model.h:112`; commits abb6b45d, e066919d, 0339e2a2). So every test that runs the search on default settings now runs at 60 ms, though its file did not change. The user chose to re-read them ("Yes, re-read them"). Briefs: `briefs/T5-window.md` and `T5-window-resend.md`. Each test case that reaches the search is sorted A (sets its window), B (the window cannot move what it asserts, with the reason in the code) or C (it can, and gets a full record). Every group had a fresh verifier.
+
+Workflows: wf_4635fb2c-8e4 (WN1 to WN5), wf_ba361e9e-6ca (WN4a to WN4c and WN6, re-sends), wf_372647fd-d09 (WN7, WN8). One launch, wujxsac1h, started the wrong groups and was stopped before it wrote anything.
+
+C records, with the verifier's result (counts from the agents' reports):
+
+- WN1, store, rules, search target (4093c2b6; verify 8922e5db): 13 C, Rewrite 10, Investigate 3. All agreed.
+- WN2, SP end, meter, stars, fast tempo (7b570e6e; verify 2ae1e4b8): 22 C, all agreed. `kTwoActivations` (test_sp_end_clamp.cpp) has a fill 75 ms early: E0 at 85, not at 60.
+- WN3, engine sweeps, fills, tied variants, path costs (b3af45f0; verify 44eb6b94): 15 C, Rewrite 12, Remove 2, Investigate 1. All agreed.
+- WN4 (7c07da7a; verify 1c7c6c0c) is superseded. Its auditor hit its caps on 470 cases, sorted by a token scan and wrote short C records with hedged verdicts. The re-sends below replace it.
+- WN4a, replay and preview (33345501; verify 1309cc07): 15 C, Rewrite 11, Investigate 4. All agreed. test_preview_controller.cpp:672 moves from Keep to Investigate.
+- WN4b, Path Builder coach and text, saved-figure fill (f97780c4; verify 909ac5b9): 30 C, Rewrite 26, Investigate 4. The verifier disputes the 4 Investigates (records 7, 26, 27, 31): each also types an engine value from one run, so it says Rewrite. The main session decides in T8.
+- WN4c, activation rows, click, reports, CLI, analysis, report rows, song parse, golden (2625d854; verify 4ab5fca9): 6 C, Rewrite 3, Investigate 3. All agreed. About 80 B rows were sorted by a scan, not a body read (listed at the file's head). The verifier's own scan found no search entry in them.
+- WN5, GUI details, preview, paths (157843f7; verify 3949d222): 17 C, Rewrite 15, Investigate 2. All agreed.
+- WN6, the GUI files no group had (ce7a7e34; verify 1351ed0b): 15 C, Rewrite 11, Investigate 4. All agreed.
+- WN7, path list, path files, preview boxes, app library (8588b505; verify 31c3607d): 5 C, Rewrite 4, Investigate 1. All agreed.
+- WN8, DM and fill reports, report rows, config batch runs (765bcaf9; verify 7a39fd92): 2 C, Rewrite 1, Investigate 1. All agreed.
+
+That is 140 C records in all. No C record is Keep. No engine record at 60 ms exists, and the seven in `records-engine/` are at 85, so every C record's question 3 names the `hydra_replay dump --efill 60` it needs. That list is the engine half of the capture pass.
+
+Points raised, each in its records or verify file:
+
+- Burnout's best path "3- 1 2" and score 378,315 are typed in at least eight files (test_activation_rows, test_path_list, test_stars, uitest_paths, uitest_details, uitest_preview, pbtest_build, pbtest_coach, pbtest_window, test_pb_text) with no single owner.
+- The Path Builder harness's fill ticks `kFirstFillTick` 36480 and `kSecondFillTick` 74880 (`tests/pb_ui/pbtest_harness.h:60-61`) were taken from a run at 85. If a fill is not offered at 60, every test that clicks it turns red with no bug.
+- Two windows run in one file: `analyzed_like_the_gui` and `digest_settings` pin 85, `burnout()` and the app default run 60.
+- `test_replay_schedule.cpp:355` pins `kHitWindowMs = 85.0` as "Hydra's own two numbers", beside the filed rulings at `code-and-engine.md` lines 55 to 57.
+- `test_preview_golden.cpp:304` draws a path searched at 60 over an Onyx screenshot. The filed ruling at `code-and-engine.md` line 50 ("we don't need golden anymore, remove it all") and ADR 0008 disagree on it.
+- `testdm::sample_chart()` (`tests/dm_fixture.h:46-52`) runs the search; WN4 had it as "no search".
+- No test changes `early_fill_window_ms` alone through `settings_change_touches` (test_dm_report.cpp:1030).
+- Three settings sets answer "the first corpus chart's best path" in the replay files: `analysis_settings()`, `analyzed_by_ten_scores` and `scores_settings`.
+- The search's window has two homes in some tests: `ScoreGraph(song, cap)` takes the constructor default, while the records compared with it are searched at `cfg.early_fill_window_ms`. Both are 60 today.
