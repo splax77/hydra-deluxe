@@ -1,0 +1,68 @@
+# R4e: the Dynamics tab. Default settings: Expert, Pro Drums on, 2x Bass on.
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+wait-idle
+timeout 120
+open Acid Romance
+wait-idle
+click **/##DetailsTabs/Dynamics
+wait 0.5
+# B1 22: per-row counts on a real chart. Expect Red snare 5/5/137/147, Yellow cymbal 0/3/88/91, Yellow tom 0/1/25/26, Blue cymbal 0/2/133/135, Blue tom 0/0/32/32, Green cymbal 0/1/60/61, Green tom 0/0/15/15, Kick 0/0/418/418, 2x kick 0/0/37/37.
+text
+screenshot dyn_acid_2xon.png
+# B1 27: every row's own note counts in its own row. All seven pad rows, Kick and 2x kick show their own counts, none empty or shifted onto another row.
+text | Red snare
+text | Yellow cymbal
+text | Yellow tom
+text | Blue cymbal
+text | Blue tom
+text | Green cymbal
+text | Green tom
+text | 2x kick
+# B1 36 and 37 with 2x Bass on: the 2x kick row counts (not faded, no "(not counted)"), All kicks = 418+37 = 455, the share line reads 37 of 455 (8%), Dynamic notes reads of 962.
+text | kick
+text | Dynamic notes
+text | counted
+# B1 36 and 37 with 2x Bass off.
+click **/###analysissettings
+wait 0.3
+click //$FOCUSED/**/##bass2x
+wait-idle
+key Escape
+wait 0.3
+click **/##DetailsTabs/Dynamics
+wait 0.5
+# Expect: row "2x kick (not counted)" faded; All kicks = 418; Kicks heading ends "not counted (2x Bass off)"; status line "not counted (2x Bass off)"; Dynamic notes reads of 925.
+text | kick
+text | Dynamic notes
+text | counted
+text
+screenshot dyn_acid_2xoff.png
+# 2x Bass back on, then Pro Drums off: the three cymbal rows disappear and the row names change to the non-pro labels.
+click **/###analysissettings
+wait 0.3
+click //$FOCUSED/**/##bass2x
+wait-idle
+click //$FOCUSED/**/##prodrums
+wait-idle
+key Escape
+wait 0.3
+click **/##DetailsTabs/Dynamics
+wait 0.5
+text
+screenshot dyn_acid_nopro.png
+# Restore Pro Drums.
+click **/###analysissettings
+wait 0.3
+click //$FOCUSED/**/##prodrums
+wait-idle
+key Escape
+wait 0.3
+# B1 22/36/37 on a second real chart (Expert, defaults): Pathfinder has 1,613 Expert 2x kicks, so the 2x kick row and the share line show big numbers.
+open When The Sunrise Breaks The Darkness
+wait-idle
+click **/##DetailsTabs/Dynamics
+wait 0.5
+text
+quit

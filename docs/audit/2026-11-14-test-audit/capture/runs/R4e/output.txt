@@ -1,0 +1,245 @@
+> click Scan library
+> wait-idle
+A dialog is open: "Scanning charts" (buttons: Continue). Close it first.
+> click //Scanning charts/Continue
+> wait-idle
+> timeout 120
+> open Acid Romance
+> wait-idle
+> click **/##DetailsTabs/Dynamics
+> wait 0.5
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Acid Romance } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Acid Romance
+common\IB24\T3 | Alpha Wolf | 277,190  0 2 0 1 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Acid Romance
+Alpha Wolf · charted by Bloodline
+277,190
+0 2 0 1
+Optimal path · 7 stars · 37 2x kicks (8%)
+/ Paths \ / Preview \ / Dynamics \
+--- Pads
+| Pad | Ghost | Accent | Normal | All |
+| Red snare | 5 | 5 | 137 | 147 |
+| Yellow cymbal | 0 | 3 | 88 | 91 |
+| Yellow tom | 0 | 1 | 25 | 26 |
+| Blue cymbal | 0 | 2 | 133 | 135 |
+| Blue tom | 0 | 0 | 32 | 32 |
+| Green cymbal | 0 | 1 | 60 | 61 |
+| Green tom | 0 | 0 | 15 | 15 |
+--- Kicks
+2x kicks: 37 of 455 kick notes (8%)
+| Pad | Ghost | Accent | Normal | All |
+| Kick | 0 | 0 | 418 | 418 |
+| 2x kick | 0 | 0 | 37 | 37 |
+| All kicks | 0 | 0 | 455 | 455 |
+--- Totals
+Ghosts: 5
+Accents: 12
+Dynamic notes: 17 of 962 (2%)
+--- Chart
+Dynamics enabled: yes
+2x kicks: 37 of 455 kick notes (8%)
+counted (2x Bass on)
+/ Stars \
+> screenshot dyn_acid_2xon.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4e\dyn_acid_2xon.png
+> text | Red snare
+| Red snare | 5 | 5 | 137 | 147 |
+> text | Yellow cymbal
+| Yellow cymbal | 0 | 3 | 88 | 91 |
+> text | Yellow tom
+| Yellow tom | 0 | 1 | 25 | 26 |
+> text | Blue cymbal
+| Blue cymbal | 0 | 2 | 133 | 135 |
+> text | Blue tom
+| Blue tom | 0 | 0 | 32 | 32 |
+> text | Green cymbal
+| Green cymbal | 0 | 1 | 60 | 61 |
+> text | Green tom
+| Green tom | 0 | 0 | 15 | 15 |
+> text | 2x kick
+Optimal path · 7 stars · 37 2x kicks (8%)
+2x kicks: 37 of 455 kick notes (8%)
+| 2x kick | 0 | 0 | 37 | 37 |
+2x kicks: 37 of 455 kick notes (8%)
+> text | kick
+Optimal path · 7 stars · 37 2x kicks (8%)
+2x kicks: 37 of 455 kick notes (8%)
+| 2x kick | 0 | 0 | 37 | 37 |
+| All kicks | 0 | 0 | 455 | 455 |
+2x kicks: 37 of 455 kick notes (8%)
+> text | Dynamic notes
+Dynamic notes: 17 of 962 (2%)
+> text | counted
+counted (2x Bass on)
+> click **/###analysissettings
+> wait 0.3
+> click //$FOCUSED/**/##bass2x
+> wait-idle
+> key Escape
+> wait 0.3
+> click **/##DetailsTabs/Dynamics
+> wait 0.5
+> text | kick
+Optimal path · 7 stars · 37 2x kicks (8%)
+2x kicks: 37 of 455 kick notes (8%) · not counted (2x Bass off)
+| 2x kick (not counted) | 0 | 0 | 37 | 37 |
+| All kicks | 0 | 0 | 418 | 418 |
+2x kicks: 37 of 455 kick notes (8%)
+> text | Dynamic notes
+Dynamic notes: 17 of 925 (2%)
+> text | counted
+2x kicks: 37 of 455 kick notes (8%) · not counted (2x Bass off)
+| 2x kick (not counted) | 0 | 0 | 37 | 37 |
+not counted (2x Bass off)
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: 2x Bass off · Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Acid Romance } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Acid Romance
+common\IB24\T3 | Alpha Wolf | 267,840  0 3+ 1 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Acid Romance
+Alpha Wolf · charted by Bloodline
+267,840
+0 3+ 1
+Optimal path · 7 stars · 37 2x kicks (8%)
+/ Paths \ / Preview \ / Dynamics \
+--- Pads
+| Pad | Ghost | Accent | Normal | All |
+| Red snare | 5 | 5 | 137 | 147 |
+| Yellow cymbal | 0 | 3 | 88 | 91 |
+| Yellow tom | 0 | 1 | 25 | 26 |
+| Blue cymbal | 0 | 2 | 133 | 135 |
+| Blue tom | 0 | 0 | 32 | 32 |
+| Green cymbal | 0 | 1 | 60 | 61 |
+| Green tom | 0 | 0 | 15 | 15 |
+--- Kicks
+2x kicks: 37 of 455 kick notes (8%) · not counted (2x Bass off)
+| Pad | Ghost | Accent | Normal | All |
+| Kick | 0 | 0 | 418 | 418 |
+| 2x kick (not counted) | 0 | 0 | 37 | 37 |
+| All kicks | 0 | 0 | 418 | 418 |
+--- Totals
+Ghosts: 5
+Accents: 12
+Dynamic notes: 17 of 925 (2%)
+--- Chart
+Dynamics enabled: yes
+2x kicks: 37 of 455 kick notes (8%)
+not counted (2x Bass off)
+/ Stars \
+> screenshot dyn_acid_2xoff.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4e\dyn_acid_2xoff.png
+> click **/###analysissettings
+> wait 0.3
+> click //$FOCUSED/**/##bass2x
+> wait-idle
+> click //$FOCUSED/**/##prodrums
+> wait-idle
+> key Escape
+> wait 0.3
+> click **/##DetailsTabs/Dynamics
+> wait 0.5
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Pro Drums off · Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Acid Romance } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Acid Romance
+common\IB24\T3 | Alpha Wolf | 254,150  0 2 0 1 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Acid Romance
+Alpha Wolf · charted by Bloodline
+254,150
+0 2 0 1
+Optimal path · 7 stars · 37 2x kicks (8%)
+/ Paths \ / Preview \ / Dynamics \
+--- Pads
+| Pad | Ghost | Accent | Normal | All |
+| Red | 5 | 5 | 137 | 147 |
+| Yellow | 0 | 4 | 113 | 117 |
+| Blue | 0 | 2 | 165 | 167 |
+| Green | 0 | 1 | 75 | 76 |
+--- Kicks
+2x kicks: 37 of 455 kick notes (8%)
+| Pad | Ghost | Accent | Normal | All |
+| Kick | 0 | 0 | 418 | 418 |
+| 2x kick | 0 | 0 | 37 | 37 |
+| All kicks | 0 | 0 | 455 | 455 |
+--- Totals
+Ghosts: 5
+Accents: 12
+Dynamic notes: 17 of 962 (2%)
+--- Chart
+Dynamics enabled: yes
+2x kicks: 37 of 455 kick notes (8%)
+counted (2x Bass on)
+/ Stars \
+> screenshot dyn_acid_nopro.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4e\dyn_acid_nopro.png
+> click **/###analysissettings
+> wait 0.3
+> click //$FOCUSED/**/##prodrums
+> wait-idle
+> key Escape
+> wait 0.3
+> open When The Sunrise Breaks The Darkness
+> wait-idle
+> click **/##DetailsTabs/Dynamics
+> wait 0.5
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ When The Sunrise Breaks The Darkness } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| When The Sunrise Breaks The Darkness
+common\IB24\T6 | Pathfinder | |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] When The Sunrise Breaks The Darkness
+Pathfinder · charted by Xane60
+1,299,450
+(No activations.)
+Optimal path · 6 stars · 1,613 2x kicks (47%)
+/ Paths \ / Preview \ / Dynamics \
+This chart has no ghost or accent notes.
+--- Pads
+| Pad | Ghost | Accent | Normal | All |
+| Red snare | 0 | 0 | 891 | 891 |
+| Yellow cymbal | 0 | 0 | 169 | 169 |
+| Yellow tom | 0 | 0 | 77 | 77 |
+| Blue cymbal | 0 | 0 | 1,117 | 1,117 |
+| Blue tom | 0 | 0 | 65 | 65 |
+| Green cymbal | 0 | 0 | 273 | 273 |
+| Green tom | 0 | 0 | 44 | 44 |
+--- Kicks
+2x kicks: 1,613 of 3,409 kick notes (47%)
+| Pad | Ghost | Accent | Normal | All |
+| Kick | 0 | 0 | 1,796 | 1,796 |
+| 2x kick | 0 | 0 | 1,613 | 1,613 |
+| All kicks | 0 | 0 | 3,409 | 3,409 |
+--- Totals
+Ghosts: 0
+Accents: 0
+Dynamic notes: 0 of 6,045 (0%)
+--- Chart
+Dynamics enabled: no (markings ignored by Clone Hero)
+2x kicks: 1,613 of 3,409 kick notes (47%)
+counted (2x Bass on)
+/ Stars \
+> quit
+[PASS] hydra/script

@@ -1,0 +1,897 @@
+> timeout 300
+> click Scan library
+> wait-idle
+A dialog is open: "Scanning charts" (buttons: Continue). Close it first.
+> click //Scanning charts/Continue
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=(none) panel_open=no viewed_record=no paths=0
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=none view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="" dm_users=0
+> text | charts
+Library 98 charts
+> rect Scan library
+"Scan library" id=0xA6E9877D rect=(150,58 81x24)
+> text | Not analyzed
+[ All (98) ] [ Not analyzed (98) ] [ Stale (0) ] [ Analyzed (0) ] [ Can't analyze (0) ]
+| (b) The Decade of Statues | | Colors | | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| 87 | Polyphia | Muse | Bloodline | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Acid Romance | Alpha Wolf | A Quiet Place To Die | Bloodline | common\IB24\T3 | Not analyzed |
+| Act One, Scene One | The Fall of Troy | Doppelgänger | highfine | common\IB24\T2 | Not analyzed |
+| Actors | Don Broco | Priorities | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Alchemic Web Of Deceit | Equipoise | Demiurgus | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| All These People | sungazer | Perihelion | Onyxite | common\IB24\T4 | Not analyzed |
+| Allies | Mutemath | Odd Soul | Jols | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Apex | 1.O.M. | | Moochalacho | common\IB24\T4 | Not analyzed |
+| April Ha Ha | Nothing | The Great Dismal | tomato | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Avalanche [Bring Me The Horizon] | Matt McGuire | | Bloodline | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Awakening | | The Inner Mounting Flame | Onyxite | common\IB24\T7 | Not analyzed |
+| Band Like That | fanclubwallet | | | common\IB24\T2 | Not analyzed |
+| Beautiful Madness | Neck Deep | The Peace and the Panic | Hoph2o | common\IB24\T3 | Not analyzed |
+| Beg | Evans Blue | | highfine | common\IB24\T1 | Not analyzed |
+| Bend | Lockslip | Lockslip | Dichotic | common\IB24\T6 | Not analyzed |
+| Bled to Be Free (The Operation) | RX Bandits | Mandala | GanonMetroid | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Blight | Fallen Monarch | Turmoil | RAT KING | common\IB24\T6 | Not analyzed |
+| Blister | Kinglet | Bouquet | Boo | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Book (feat. Matt Garstka) | CHON | Grow | Onyxite | common\IB24\T3 | Not analyzed |
+| Bug Thief [Iglooghost] (B&X) | | Neo Wax Bloom | Bloodline | common\IB24\T7 | Not analyzed |
+| Burnout | Green Day | Dookie | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Chair | Sufferer | Sufferer | Satan | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Chocolate Jackalope | | Mothership | Boo | common\IB24\T4 | Not analyzed |
+| City Of Ocala | A Day to Remember | Common Courtesy | Hoph2o | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Deadbolt | Thrice | The Illusion of Safety | Hoph2o | common\IB24\T3 | Not analyzed |
+| Deception - Concealing Fate, Pt. 2 | Tesseract | One | Bloodline | common\IB24\T4 | Not analyzed |
+| Dr. Jackle/Dr. Jekyll [Miles Davis] | Travis Orbin | | Bloodline | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Dream Genie | Lightning Bolt | Fantasy Empire | GanonMetroid | common\IB24\T6 | Not analyzed |
+| Entertain Me | Tigran Hamasyan | Mockroot | tomato | common\IB24\T1 | Not analyzed |
+| Epidermis | Venetian Snares | | mazegeek999 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Everlong | Foo Fighters | The Colour and the Shape | Hoph2o | common\IB24\T4 | Not analyzed |
+| Feast of Fire | Trivium | In the Court of the Dragon | Boo | common\IB24\T3 | Not analyzed |
+| Focus [Ariana Grande] | SoundHaven | | Bloodline | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Get Ur Freak On [Missy Elliot] | Eric Moore | | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Godzilla (Eminem) | Xane60 | Music To Be Murdered By | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Grow | Victoria | Modern Value | Bounty | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Hand That Rocks the Cradle | Hella | | GanonMetroid | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| How You Remind Me | Nickelback | Silver Side Up | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| I Am... All Of Me (Crush 40) | HopH2O | Remixes (2025) | Hoph2o | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| I'm A Believer (The Monkees cover) | Smash Mouth | Smash Mouth | highfine | common\IB24\T1 | Not analyzed |
+| Jamie All Over | Mayday Parade | A Lesson in Romantics | Hoph2o | common\IB24\T2 | Not analyzed |
+| Knightmare/Frame | Area 11 | All the Lights in the Sky | Hoph2o | common\IB24\T2 | Not analyzed |
+| Ladies Talk [Kiyo Sen] (Drumeo Performance) | Senri Kawaguchi | | Bloodline | common\IB24\T6 | Not analyzed |
+| Laments Of An Icarus | TEXTURES | Silhouettes | Benimaru | common\IB24\T5 | Not analyzed |
+| Levitating (feat. DaBaby) (Dua Lipa) (L) | LethalLasagna | | LethalLasagna | common\IB24\T6 | Not analyzed |
+| Limb From Limb | Protest the Hero | Fortress | Xane60 | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Limbo | Thornhill | Limbo (digital single) | Benimaru | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Llama | Phish | A Picture of Nectar | | common\IB24\T4 | Not analyzed |
+| Lunaris | Moonlight Haze | Lunaris | NerdyFoxTV | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Megalodon | Mastodon | Leviathan | MMSRhino | common\IB24\T5 | Not analyzed |
+| Missed Injections | Hail The Sun | Wake | Hoph2o | common\IB24\T4 | Not analyzed |
+| Move Along | | Move Along | Hoph2o | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| My Own Summer (Shove It) | Deftones | Around the Fur | highfine | common\IB24\T1 | Not analyzed |
+| Nasty (Tinashe) | HopH2O | Remixes (2024) | Hoph2o | common\IB24\T6 | Not analyzed |
+| Neibolt | Synovial | Metronome | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Nostrum | Meshuggah | | Bloodline | common\IB24\T5 | Not analyzed |
+| Omniphobia | Sianvar | Stay Lost | Boo | common\IB24\T5 | Not analyzed |
+| Outlive | The Ghost Inside | Get What You Give | Dichotic | common\IB24\T3 | Not analyzed |
+| Overrated | Allister | Last Stop Suburbia | Hoph2o | common\IB24\T1 | Not analyzed |
+| Overture 1928 | Dream Theater | | Grinnz | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Pathkeeper | Interloper | Search Party | Xane60 | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Pitch Dark | CHON | CHON | Bloodline | . | Not analyzed |
+| Pokemon Theme | Jason Paige | | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Prelude to Obliteration | | Conquering Dystopia | Confury | common\IB24\T7 | Not analyzed |
+| Saying Sorry | Hawthorne Heights | If Only You Were Lonely | Hoph2o | common\IB24\T1 | Not analyzed |
+| Senescence (shortened) | Chaotrope | single | Chaotrope | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| September | Earth, Wind & Fire | | Venxm | common\IB24\T1 | Not analyzed |
+| Set the World on Fire | Symphony X | Paradise Lost | Xane60 | common\IB24\T5 | Not analyzed |
+| Snakeskin Boots | Jack Wall | | highfine | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Snowball Earth [Indistinct] | SoundHaven | | Bloodline | common\IB24\T7 | Not analyzed |
+| Someday | | Flourish | Xane60 | common\IB24\T5 | Not analyzed |
+| Spirit Bomb | Yoink | | GanonMetroid | common\IB24\T7 | Not analyzed |
+| Stabwound | Necrophagist | Epitaph | Xane60 | common\IB24\T7 | Not analyzed |
+| Sugar/Tzu | black midi | Hellfire | | common\IB24\T6 | Not analyzed |
+| Swallow | Casiopea | Casiopea | Onyxite | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Tapestry of the Starless Abstract (Shortened) | Ne Obliviscaris | Portal of I | Bloodline | common\IB24\T7 | Not analyzed |
+| Tapped Out | Mike Orlando | Sonic Stomp II | | common\IB24\T5 | Not analyzed |
+| Thank You, Pain | The Agonist | | Xane60 | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| The Good Doctor | Haken | Vector | Boo | common\IB24\T4 | Not analyzed |
+| The Greater Cause | Nova Charisma | Exposition III | Hoph2o | common\IB24\T2 | Not analyzed |
+| The Sentinel | Car Bomb | w^w^^w^w | Bloodline | common\IB24\T7 | Not analyzed |
+| The Spiraling Void | The Faceless | In Becoming A Ghost | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Themata | Karnivool | Themata | Boo | common\IB24\T2 | Not analyzed |
+| Think Dirty out Loud | A Lot Like Birds | Conversation Piece | Satan | common\IB24\T4 | Not analyzed |
+| To the End | | | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Trippin' on a Hole in a Paper Heart | | | Advanst | common\IB24\T2 | Not analyzed |
+| Unbound (The Wild Ride) | Avenged Sevenfold | Avenged Sevenfold | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Vacant Dreams | | Apophenia | Inventor211 | common\IB24\T6 | Not analyzed |
+| Wasting Time (Eternal Summer) | Four Year Strong | | RAT KING | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Whelmed | Satyr | Totem | Bloodline | common\IB24\T5 | Not analyzed |
+| When The Sunrise Breaks The Darkness | Pathfinder | Fifth Element | Xane60 | common\IB24\T6 | Not analyzed |
+| Where Are the Birds | Good Tiger | A Head Full of Moonlight | Confury | common\IB24\T3 | Not analyzed |
+| White Mist [The Pineapple Thief] | Gavin Harrison | Dissolution | Bloodline | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| White Washed | August Burns Red | Constellations | Inventor211 | common\IB24\T5 | Not analyzed |
+| Young Robot | | Mothership | Boo | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| YYZ | Rush | Moving Pictures | | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Zildjian LIVE! Performance 2020 | DOMi & JD Beck | | Bloodline | common\IB24\T7 | Not analyzed |
+> rect Scan library
+"Scan library" id=0xA6E9877D rect=(150,58 81x24)
+> rect Analyze library...
+"Analyze library..." id=0x4AF77387 rect=(239,58 137x24)
+> screenshot btn.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\btn.png
+> screenshot btn_scan.png | Scan library
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\btn_scan.png
+> open Burnout
+> wait-idle
+> rect **/##search
+"##search" id=0xD6AD61FD rect=(8,108 419x24) inputable
+> screenshot selected_row.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\selected_row.png
+> text | Burnout
+{ Burnout } [ X ]
+| Burnout | Green Day
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Burnout
+> key Escape
+> wait 0.3
+> type **/##search | artist:Burnout
+> wait 0.6
+> text | Nothing matches
+Nothing matches.
+> text | charts
+Library 0 of 98 charts
+> type **/##search | title:Burnout
+> wait 0.6
+> text | Burnout
+{ title:Burnout }
+| Burnout | Green Day | Dookie | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | 378,315  3- 1 2 |
+> text | charts
+Library 1 of 98 charts
+> type **/##search | Burnout
+> wait 0.6
+> text | charts
+Library 1 of 98 charts
+> type **/##search | "Green Day"
+> wait 0.6
+> text | charts
+Library 1 of 98 charts
+> text | Burnout
+| Burnout | Green Day | Dookie | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | 378,315  3- 1 2 |
+> type **/##search | artist:"Green Day"
+> wait 0.6
+> text | charts
+Library 1 of 98 charts
+> type **/##search | title:"Green Day"
+> wait 0.6
+> text | Nothing matches
+Nothing matches.
+> type **/##search | album:Mothership
+> wait 0.6
+> text | charts
+Library 2 of 98 charts
+> text | Mothership
+{ album:Mothership }
+| Chocolate Jackalope | Dance Gavin Dance | Mothership | Boo | common\IB24\T4 | Not analyzed |
+| Young Robot | Dance Gavin Dance | Mothership | Boo | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+> type **/##search | artist:Mothership
+> wait 0.6
+> text | Nothing matches
+Nothing matches.
+> type **/##search | Mothership
+> wait 0.6
+> text | charts
+Library 2 of 98 charts
+> screenshot search_mothership.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\search_mothership.png
+> type **/##search | genre:rock
+> wait 0.6
+> text | Nothing matches
+Nothing matches.
+> text | charts
+Library 0 of 98 charts
+> type **/##search | artist:
+> wait 0.6
+> text | charts
+Library 98 charts
+> state
+state:
+  store=ready
+  charts=98 shown=98 search="artist:"
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="" dm_users=0
+> type **/##search |
+> wait 0.6
+> text | charts
+Library 98 charts
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="" dm_users=0
+> text | Not analyzed
+[ All (98) ] [ Not analyzed (97) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| (b) The Decade of Statues | | Colors | | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| 87 | Polyphia | Muse | Bloodline | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Acid Romance | Alpha Wolf | A Quiet Place To Die | Bloodline | common\IB24\T3 | Not analyzed |
+| Act One, Scene One | The Fall of Troy | Doppelgänger | highfine | common\IB24\T2 | Not analyzed |
+| Actors | Don Broco | Priorities | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Alchemic Web Of Deceit | Equipoise | Demiurgus | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| All These People | sungazer | Perihelion | Onyxite | common\IB24\T4 | Not analyzed |
+| Allies | Mutemath | Odd Soul | Jols | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Apex | 1.O.M. | | Moochalacho | common\IB24\T4 | Not analyzed |
+| April Ha Ha | Nothing | The Great Dismal | tomato | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Avalanche [Bring Me The Horizon] | Matt McGuire | | Bloodline | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Awakening | | The Inner Mounting Flame | Onyxite | common\IB24\T7 | Not analyzed |
+| Band Like That | fanclubwallet | | | common\IB24\T2 | Not analyzed |
+| Beautiful Madness | Neck Deep | The Peace and the Panic | Hoph2o | common\IB24\T3 | Not analyzed |
+| Beg | Evans Blue | | highfine | common\IB24\T1 | Not analyzed |
+| Bend | Lockslip | Lockslip | Dichotic | common\IB24\T6 | Not analyzed |
+| Bled to Be Free (The Operation) | RX Bandits | Mandala | GanonMetroid | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Blight | Fallen Monarch | Turmoil | RAT KING | common\IB24\T6 | Not analyzed |
+| Blister | Kinglet | Bouquet | Boo | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Book (feat. Matt Garstka) | CHON | Grow | Onyxite | common\IB24\T3 | Not analyzed |
+| Bug Thief [Iglooghost] (B&X) | | Neo Wax Bloom | Bloodline | common\IB24\T7 | Not analyzed |
+| Chair | Sufferer | Sufferer | Satan | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Chocolate Jackalope | | Mothership | Boo | common\IB24\T4 | Not analyzed |
+| City Of Ocala | A Day to Remember | Common Courtesy | Hoph2o | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Deadbolt | Thrice | The Illusion of Safety | Hoph2o | common\IB24\T3 | Not analyzed |
+| Deception - Concealing Fate, Pt. 2 | Tesseract | One | Bloodline | common\IB24\T4 | Not analyzed |
+| Dr. Jackle/Dr. Jekyll [Miles Davis] | Travis Orbin | | Bloodline | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Dream Genie | Lightning Bolt | Fantasy Empire | GanonMetroid | common\IB24\T6 | Not analyzed |
+| Entertain Me | Tigran Hamasyan | Mockroot | tomato | common\IB24\T1 | Not analyzed |
+| Epidermis | Venetian Snares | | mazegeek999 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Everlong | Foo Fighters | The Colour and the Shape | Hoph2o | common\IB24\T4 | Not analyzed |
+| Feast of Fire | Trivium | In the Court of the Dragon | Boo | common\IB24\T3 | Not analyzed |
+| Focus [Ariana Grande] | SoundHaven | | Bloodline | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Get Ur Freak On [Missy Elliot] | Eric Moore | | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Godzilla (Eminem) | Xane60 | Music To Be Murdered By | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Grow | Victoria | Modern Value | Bounty | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Hand That Rocks the Cradle | Hella | | GanonMetroid | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| How You Remind Me | Nickelback | Silver Side Up | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| I Am... All Of Me (Crush 40) | HopH2O | Remixes (2025) | Hoph2o | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| I'm A Believer (The Monkees cover) | Smash Mouth | Smash Mouth | highfine | common\IB24\T1 | Not analyzed |
+| Jamie All Over | Mayday Parade | A Lesson in Romantics | Hoph2o | common\IB24\T2 | Not analyzed |
+| Knightmare/Frame | Area 11 | All the Lights in the Sky | Hoph2o | common\IB24\T2 | Not analyzed |
+| Ladies Talk [Kiyo Sen] (Drumeo Performance) | Senri Kawaguchi | | Bloodline | common\IB24\T6 | Not analyzed |
+| Laments Of An Icarus | TEXTURES | Silhouettes | Benimaru | common\IB24\T5 | Not analyzed |
+| Levitating (feat. DaBaby) (Dua Lipa) (L) | LethalLasagna | | LethalLasagna | common\IB24\T6 | Not analyzed |
+| Limb From Limb | Protest the Hero | Fortress | Xane60 | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Limbo | Thornhill | Limbo (digital single) | Benimaru | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Llama | Phish | A Picture of Nectar | | common\IB24\T4 | Not analyzed |
+| Lunaris | Moonlight Haze | Lunaris | NerdyFoxTV | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Megalodon | Mastodon | Leviathan | MMSRhino | common\IB24\T5 | Not analyzed |
+| Missed Injections | Hail The Sun | Wake | Hoph2o | common\IB24\T4 | Not analyzed |
+| Move Along | | Move Along | Hoph2o | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| My Own Summer (Shove It) | Deftones | Around the Fur | highfine | common\IB24\T1 | Not analyzed |
+| Nasty (Tinashe) | HopH2O | Remixes (2024) | Hoph2o | common\IB24\T6 | Not analyzed |
+| Neibolt | Synovial | Metronome | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Nostrum | Meshuggah | | Bloodline | common\IB24\T5 | Not analyzed |
+| Omniphobia | Sianvar | Stay Lost | Boo | common\IB24\T5 | Not analyzed |
+| Outlive | The Ghost Inside | Get What You Give | Dichotic | common\IB24\T3 | Not analyzed |
+| Overrated | Allister | Last Stop Suburbia | Hoph2o | common\IB24\T1 | Not analyzed |
+| Overture 1928 | Dream Theater | | Grinnz | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Pathkeeper | Interloper | Search Party | Xane60 | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Pitch Dark | CHON | CHON | Bloodline | . | Not analyzed |
+| Pokemon Theme | Jason Paige | | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Prelude to Obliteration | | Conquering Dystopia | Confury | common\IB24\T7 | Not analyzed |
+| Saying Sorry | Hawthorne Heights | If Only You Were Lonely | Hoph2o | common\IB24\T1 | Not analyzed |
+| Senescence (shortened) | Chaotrope | single | Chaotrope | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| September | Earth, Wind & Fire | | Venxm | common\IB24\T1 | Not analyzed |
+| Set the World on Fire | Symphony X | Paradise Lost | Xane60 | common\IB24\T5 | Not analyzed |
+| Snakeskin Boots | Jack Wall | | highfine | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Snowball Earth [Indistinct] | SoundHaven | | Bloodline | common\IB24\T7 | Not analyzed |
+| Someday | | Flourish | Xane60 | common\IB24\T5 | Not analyzed |
+| Spirit Bomb | Yoink | | GanonMetroid | common\IB24\T7 | Not analyzed |
+| Stabwound | Necrophagist | Epitaph | Xane60 | common\IB24\T7 | Not analyzed |
+| Sugar/Tzu | black midi | Hellfire | | common\IB24\T6 | Not analyzed |
+| Swallow | Casiopea | Casiopea | Onyxite | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Tapestry of the Starless Abstract (Shortened) | Ne Obliviscaris | Portal of I | Bloodline | common\IB24\T7 | Not analyzed |
+| Tapped Out | Mike Orlando | Sonic Stomp II | | common\IB24\T5 | Not analyzed |
+| Thank You, Pain | The Agonist | | Xane60 | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| The Good Doctor | Haken | Vector | Boo | common\IB24\T4 | Not analyzed |
+| The Greater Cause | Nova Charisma | Exposition III | Hoph2o | common\IB24\T2 | Not analyzed |
+| The Sentinel | Car Bomb | w^w^^w^w | Bloodline | common\IB24\T7 | Not analyzed |
+| The Spiraling Void | The Faceless | In Becoming A Ghost | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Themata | Karnivool | Themata | Boo | common\IB24\T2 | Not analyzed |
+| Think Dirty out Loud | A Lot Like Birds | Conversation Piece | Satan | common\IB24\T4 | Not analyzed |
+| To the End | | | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Trippin' on a Hole in a Paper Heart | | | Advanst | common\IB24\T2 | Not analyzed |
+| Unbound (The Wild Ride) | Avenged Sevenfold | Avenged Sevenfold | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Vacant Dreams | | Apophenia | Inventor211 | common\IB24\T6 | Not analyzed |
+| Wasting Time (Eternal Summer) | Four Year Strong | | RAT KING | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Whelmed | Satyr | Totem | Bloodline | common\IB24\T5 | Not analyzed |
+| When The Sunrise Breaks The Darkness | Pathfinder | Fifth Element | Xane60 | common\IB24\T6 | Not analyzed |
+| Where Are the Birds | Good Tiger | A Head Full of Moonlight | Confury | common\IB24\T3 | Not analyzed |
+| White Mist [The Pineapple Thief] | Gavin Harrison | Dissolution | Bloodline | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| White Washed | August Burns Red | Constellations | Inventor211 | common\IB24\T5 | Not analyzed |
+| Young Robot | | Mothership | Boo | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| YYZ | Rush | Moving Pictures | | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Zildjian LIVE! Performance 2020 | DOMi & JD Beck | | Bloodline | common\IB24\T7 | Not analyzed |
+> text | -----
+(no line holding "-----")
+> dump Hydra | Title
+window "Hydra/##library_06E76512/##librarytable_6ACAF71F" id=0x30271400 pos=(8,190) size=(1264,602) child
+      "Title" id=0x0D873EC7 rect=(8,190 208x22)
+> click **/Title
+> wait 0.5
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "Zildjian LIVE! Performance 2020" - DOMi & JD Beck (Bloodline) md5=a31365f75e3fa79e650a2f5de06d5644 status=Not analyzed
+    row[1] "YYZ" - Rush (Harmonix, Onyxite) md5=1b1f76ed94d8e4399ae1fa8141ece3d1 status=Not analyzed
+    row[2] "Young Robot" - Dance Gavin Dance (Boo) md5=0d4fd734fe5f2bf6ff1fdbc4ff55be8f status=Not analyzed
+    row[3] "White Washed" - August Burns Red (Inventor211) md5=17d4b0f078a9888041e6a4dec6fef310 status=Not analyzed
+    row[4] "White Mist [The Pineapple Thief]" - Gavin Harrison (Bloodline) md5=ab90e0452763ccf87c21a7036aeac3cb status=Not analyzed
+    row[5] "Where Are the Birds" - Good Tiger (Confury) md5=a3b0c1f01db998c56954411c6482cb3a status=Not analyzed
+    row[6] "When The Sunrise Breaks The Darkness" - Pathfinder (Xane60) md5=2c1528407f8baef2a2b366c24dae9787 status=Not analyzed
+    row[7] "Whelmed" - Satyr (Bloodline) md5=3f66b7da024e177ae82dbf2e6d699e51 status=Not analyzed
+    row[8] "Wasting Time (Eternal Summer)" - Four Year Strong (RAT KING) md5=2a618f6a79ee652bc5e89acd8566c577 status=Not analyzed
+    row[9] "Vacant Dreams" - Hannes Grossmann (Inventor211) md5=a0e4b41fb62149375d8786f44e551acd status=Not analyzed
+    row[10] "Unbound (The Wild Ride)" - Avenged Sevenfold (Hoph2o) md5=25563f80c24065891f454e5f3169dcf2 status=Not analyzed
+    row[11] "Trippin' on a Hole in a Paper Heart" - Stone Temple Pilots (Advanst) md5=0b647b1570475f18d463466f2c4d72a7 status=Not analyzed
+    row[12] "To the End" - My Chemical Romance (Hoph2o) md5=fd9d049ced2b6d9dfe906c4c2edf0bfa status=Not analyzed
+    row[13] "Think Dirty out Loud" - A Lot Like Birds (Satan) md5=a80f00cffa9dfd684373aaba03e0f467 status=Not analyzed
+    row[14] "Themata" - Karnivool (Boo) md5=70a1f2881b867d8318e8cdef7b19dd88 status=Not analyzed
+    row[15] "The Spiraling Void" - The Faceless (Xane60) md5=1c1b22b33ca28b5f35914abd6eb45843 status=Not analyzed
+    row[16] "The Sentinel" - Car Bomb (Bloodline) md5=5873a332dece44b459684db47f1b2cfd status=Not analyzed
+    row[17] "The Greater Cause" - Nova Charisma (Hoph2o) md5=31f74c3a7bf4c57218891d10e33c26a7 status=Not analyzed
+    row[18] "The Good Doctor" - Haken (Boo) md5=999cc6a8e2b0b7fcfff9dc9da0cdd7af status=Not analyzed
+    row[19] "Thank You, Pain" - The Agonist (Xane60) md5=54dfa885eecf17bcb40dd9b6534f0ce6 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="" dm_users=0
+> text | Not analyzed
+[ All (98) ] [ Not analyzed (97) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Zildjian LIVE! Performance 2020 | DOMi & JD Beck | | Bloodline | common\IB24\T7 | Not analyzed |
+| YYZ | Rush | Moving Pictures | | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Young Robot | | Mothership | Boo | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| White Washed | August Burns Red | Constellations | Inventor211 | common\IB24\T5 | Not analyzed |
+| White Mist [The Pineapple Thief] | Gavin Harrison | Dissolution | Bloodline | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Where Are the Birds | Good Tiger | A Head Full of Moonlight | Confury | common\IB24\T3 | Not analyzed |
+| When The Sunrise Breaks The Darkness | Pathfinder | Fifth Element | Xane60 | common\IB24\T6 | Not analyzed |
+| Whelmed | Satyr | Totem | Bloodline | common\IB24\T5 | Not analyzed |
+| Wasting Time (Eternal Summer) | Four Year Strong | | RAT KING | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Vacant Dreams | | Apophenia | Inventor211 | common\IB24\T6 | Not analyzed |
+| Unbound (The Wild Ride) | Avenged Sevenfold | Avenged Sevenfold | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Trippin' on a Hole in a Paper Heart | | | Advanst | common\IB24\T2 | Not analyzed |
+| To the End | | | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Think Dirty out Loud | A Lot Like Birds | Conversation Piece | Satan | common\IB24\T4 | Not analyzed |
+| Themata | Karnivool | Themata | Boo | common\IB24\T2 | Not analyzed |
+| The Spiraling Void | The Faceless | In Becoming A Ghost | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| The Sentinel | Car Bomb | w^w^^w^w | Bloodline | common\IB24\T7 | Not analyzed |
+| The Greater Cause | Nova Charisma | Exposition III | Hoph2o | common\IB24\T2 | Not analyzed |
+| The Good Doctor | Haken | Vector | Boo | common\IB24\T4 | Not analyzed |
+| Thank You, Pain | The Agonist | | Xane60 | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Tapped Out | Mike Orlando | Sonic Stomp II | | common\IB24\T5 | Not analyzed |
+| Tapestry of the Starless Abstract (Shortened) | Ne Obliviscaris | Portal of I | Bloodline | common\IB24\T7 | Not analyzed |
+| Swallow | Casiopea | Casiopea | Onyxite | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Sugar/Tzu | black midi | Hellfire | | common\IB24\T6 | Not analyzed |
+| Stabwound | Necrophagist | Epitaph | Xane60 | common\IB24\T7 | Not analyzed |
+| Spirit Bomb | Yoink | | GanonMetroid | common\IB24\T7 | Not analyzed |
+| Someday | | Flourish | Xane60 | common\IB24\T5 | Not analyzed |
+| Snowball Earth [Indistinct] | SoundHaven | | Bloodline | common\IB24\T7 | Not analyzed |
+| Snakeskin Boots | Jack Wall | | highfine | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Set the World on Fire | Symphony X | Paradise Lost | Xane60 | common\IB24\T5 | Not analyzed |
+| September | Earth, Wind & Fire | | Venxm | common\IB24\T1 | Not analyzed |
+| Senescence (shortened) | Chaotrope | single | Chaotrope | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Saying Sorry | Hawthorne Heights | If Only You Were Lonely | Hoph2o | common\IB24\T1 | Not analyzed |
+| Prelude to Obliteration | | Conquering Dystopia | Confury | common\IB24\T7 | Not analyzed |
+| Pokemon Theme | Jason Paige | | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Pitch Dark | CHON | CHON | Bloodline | . | Not analyzed |
+| Pathkeeper | Interloper | Search Party | Xane60 | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Overture 1928 | Dream Theater | | Grinnz | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Overrated | Allister | Last Stop Suburbia | Hoph2o | common\IB24\T1 | Not analyzed |
+| Outlive | The Ghost Inside | Get What You Give | Dichotic | common\IB24\T3 | Not analyzed |
+| Omniphobia | Sianvar | Stay Lost | Boo | common\IB24\T5 | Not analyzed |
+| Nostrum | Meshuggah | | Bloodline | common\IB24\T5 | Not analyzed |
+| Neibolt | Synovial | Metronome | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Nasty (Tinashe) | HopH2O | Remixes (2024) | Hoph2o | common\IB24\T6 | Not analyzed |
+| My Own Summer (Shove It) | Deftones | Around the Fur | highfine | common\IB24\T1 | Not analyzed |
+| Move Along | | Move Along | Hoph2o | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Missed Injections | Hail The Sun | Wake | Hoph2o | common\IB24\T4 | Not analyzed |
+| Megalodon | Mastodon | Leviathan | MMSRhino | common\IB24\T5 | Not analyzed |
+| Lunaris | Moonlight Haze | Lunaris | NerdyFoxTV | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Llama | Phish | A Picture of Nectar | | common\IB24\T4 | Not analyzed |
+| Limbo | Thornhill | Limbo (digital single) | Benimaru | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Limb From Limb | Protest the Hero | Fortress | Xane60 | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Levitating (feat. DaBaby) (Dua Lipa) (L) | LethalLasagna | | LethalLasagna | common\IB24\T6 | Not analyzed |
+| Laments Of An Icarus | TEXTURES | Silhouettes | Benimaru | common\IB24\T5 | Not analyzed |
+| Ladies Talk [Kiyo Sen] (Drumeo Performance) | Senri Kawaguchi | | Bloodline | common\IB24\T6 | Not analyzed |
+| Knightmare/Frame | Area 11 | All the Lights in the Sky | Hoph2o | common\IB24\T2 | Not analyzed |
+| Jamie All Over | Mayday Parade | A Lesson in Romantics | Hoph2o | common\IB24\T2 | Not analyzed |
+| I'm A Believer (The Monkees cover) | Smash Mouth | Smash Mouth | highfine | common\IB24\T1 | Not analyzed |
+| I Am... All Of Me (Crush 40) | HopH2O | Remixes (2025) | Hoph2o | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| How You Remind Me | Nickelback | Silver Side Up | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Hand That Rocks the Cradle | Hella | | GanonMetroid | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Grow | Victoria | Modern Value | Bounty | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Godzilla (Eminem) | Xane60 | Music To Be Murdered By | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Get Ur Freak On [Missy Elliot] | Eric Moore | | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Focus [Ariana Grande] | SoundHaven | | Bloodline | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Feast of Fire | Trivium | In the Court of the Dragon | Boo | common\IB24\T3 | Not analyzed |
+| Everlong | Foo Fighters | The Colour and the Shape | Hoph2o | common\IB24\T4 | Not analyzed |
+| Epidermis | Venetian Snares | | mazegeek999 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Entertain Me | Tigran Hamasyan | Mockroot | tomato | common\IB24\T1 | Not analyzed |
+| Dream Genie | Lightning Bolt | Fantasy Empire | GanonMetroid | common\IB24\T6 | Not analyzed |
+| Dr. Jackle/Dr. Jekyll [Miles Davis] | Travis Orbin | | Bloodline | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Deception - Concealing Fate, Pt. 2 | Tesseract | One | Bloodline | common\IB24\T4 | Not analyzed |
+| Deadbolt | Thrice | The Illusion of Safety | Hoph2o | common\IB24\T3 | Not analyzed |
+| City Of Ocala | A Day to Remember | Common Courtesy | Hoph2o | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Chocolate Jackalope | | Mothership | Boo | common\IB24\T4 | Not analyzed |
+| Chair | Sufferer | Sufferer | Satan | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Bug Thief [Iglooghost] (B&X) | | Neo Wax Bloom | Bloodline | common\IB24\T7 | Not analyzed |
+| Book (feat. Matt Garstka) | CHON | Grow | Onyxite | common\IB24\T3 | Not analyzed |
+| Blister | Kinglet | Bouquet | Boo | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Blight | Fallen Monarch | Turmoil | RAT KING | common\IB24\T6 | Not analyzed |
+| Bled to Be Free (The Operation) | RX Bandits | Mandala | GanonMetroid | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Bend | Lockslip | Lockslip | Dichotic | common\IB24\T6 | Not analyzed |
+| Beg | Evans Blue | | highfine | common\IB24\T1 | Not analyzed |
+| Beautiful Madness | Neck Deep | The Peace and the Panic | Hoph2o | common\IB24\T3 | Not analyzed |
+| Band Like That | fanclubwallet | | | common\IB24\T2 | Not analyzed |
+| Awakening | | The Inner Mounting Flame | Onyxite | common\IB24\T7 | Not analyzed |
+| Avalanche [Bring Me The Horizon] | Matt McGuire | | Bloodline | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| April Ha Ha | Nothing | The Great Dismal | tomato | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Apex | 1.O.M. | | Moochalacho | common\IB24\T4 | Not analyzed |
+| Allies | Mutemath | Odd Soul | Jols | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| All These People | sungazer | Perihelion | Onyxite | common\IB24\T4 | Not analyzed |
+| Alchemic Web Of Deceit | Equipoise | Demiurgus | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Actors | Don Broco | Priorities | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Act One, Scene One | The Fall of Troy | Doppelgänger | highfine | common\IB24\T2 | Not analyzed |
+| Acid Romance | Alpha Wolf | A Quiet Place To Die | Bloodline | common\IB24\T3 | Not analyzed |
+| 87 | Polyphia | Muse | Bloodline | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| (b) The Decade of Statues | | Colors | | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+> click **/Title
+> wait 0.5
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="" dm_users=0
+> type **/##search | Burnout
+> wait 0.6
+> text | Analyze
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+> click Analyze shown (1)...
+> wait 0.5
+> text | Analyze library
+Analyze library
+> check //Analyze library/Also re-analyze charts that already have a result##redo
+> click //Analyze library/Start analyzing
+> wait-idle
+> click **/X##dismissdone
+> type **/##search |
+> wait 0.6
+> text | Analyze
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+[ All (98) ] [ Not analyzed (97) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="The path report is ready." dm_users=0
+> click **/Not analyzed (97)##chipnew
+> wait 0.6
+> text | of
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+Library 97 of 98 charts
+| (b) The Decade of Statues | | Colors | | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Act One, Scene One | The Fall of Troy | Doppelgänger | highfine | common\IB24\T2 | Not analyzed |
+| Deadbolt | Thrice | The Illusion of Safety | Hoph2o | common\IB24\T3 | Not analyzed |
+| Feast of Fire | Trivium | In the Court of the Dragon | Boo | common\IB24\T3 | Not analyzed |
+| Llama | Phish | A Picture of Nectar | | common\IB24\T4 | Not analyzed |
+| Tapestry of the Starless Abstract (Shortened) | Ne Obliviscaris | Portal of I | Bloodline | common\IB24\T7 | Not analyzed |
+| Where Are the Birds | Good Tiger | A Head Full of Moonlight | Confury | common\IB24\T3 | Not analyzed |
+> text | Analyze shown
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (97)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+> state
+state:
+  store=ready
+  charts=98 shown=97 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="The path report is ready." dm_users=0
+> click **/All (98)##chipall
+> wait 0.6
+> text | Analyze library
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+> text | charts
+Library 98 charts
+> click **/###analysissettings
+> wait 0.5
+> rect //$FOCUSED/**/##bass2x
+"##bass2x" id=0x357E5949 rect=(753,176 24x24) checked
+> rect **/##bass2x
+"##bass2x" id=0x357E5949 rect=(753,176 24x24) checked
+> rect //Hydra/**/###analysissettings
+"Analysis settings: Score range 2 scores###analysissettings" id=0xB7DC11A6 rect=(619,58 257x24)
+> key Escape
+> wait 0.3
+> rect **/Title
+"Title" id=0x0D873EC7 rect=(8,212 208x22)
+> rect **/Artist
+"Artist" id=0xCA490EC6 rect=(216,212 129x22)
+> rect **/Best path
+"Best path" id=0x66A9CE33 rect=(949,212 309x22)
+> text | Not analyzed
+[ All (98) ] [ Not analyzed (97) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| (b) The Decade of Statues | | Colors | | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| 87 | Polyphia | Muse | Bloodline | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Acid Romance | Alpha Wolf | A Quiet Place To Die | Bloodline | common\IB24\T3 | Not analyzed |
+| Act One, Scene One | The Fall of Troy | Doppelgänger | highfine | common\IB24\T2 | Not analyzed |
+| Actors | Don Broco | Priorities | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Alchemic Web Of Deceit | Equipoise | Demiurgus | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| All These People | sungazer | Perihelion | Onyxite | common\IB24\T4 | Not analyzed |
+| Allies | Mutemath | Odd Soul | Jols | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Apex | 1.O.M. | | Moochalacho | common\IB24\T4 | Not analyzed |
+| April Ha Ha | Nothing | The Great Dismal | tomato | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Avalanche [Bring Me The Horizon] | Matt McGuire | | Bloodline | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Awakening | | The Inner Mounting Flame | Onyxite | common\IB24\T7 | Not analyzed |
+| Band Like That | fanclubwallet | | | common\IB24\T2 | Not analyzed |
+| Beautiful Madness | Neck Deep | The Peace and the Panic | Hoph2o | common\IB24\T3 | Not analyzed |
+| Beg | Evans Blue | | highfine | common\IB24\T1 | Not analyzed |
+| Bend | Lockslip | Lockslip | Dichotic | common\IB24\T6 | Not analyzed |
+| Bled to Be Free (The Operation) | RX Bandits | Mandala | GanonMetroid | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Blight | Fallen Monarch | Turmoil | RAT KING | common\IB24\T6 | Not analyzed |
+| Blister | Kinglet | Bouquet | Boo | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Book (feat. Matt Garstka) | CHON | Grow | Onyxite | common\IB24\T3 | Not analyzed |
+| Bug Thief [Iglooghost] (B&X) | | Neo Wax Bloom | Bloodline | common\IB24\T7 | Not analyzed |
+| Chair | Sufferer | Sufferer | Satan | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Chocolate Jackalope | | Mothership | Boo | common\IB24\T4 | Not analyzed |
+| City Of Ocala | A Day to Remember | Common Courtesy | Hoph2o | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Deadbolt | Thrice | The Illusion of Safety | Hoph2o | common\IB24\T3 | Not analyzed |
+| Deception - Concealing Fate, Pt. 2 | Tesseract | One | Bloodline | common\IB24\T4 | Not analyzed |
+| Dr. Jackle/Dr. Jekyll [Miles Davis] | Travis Orbin | | Bloodline | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Dream Genie | Lightning Bolt | Fantasy Empire | GanonMetroid | common\IB24\T6 | Not analyzed |
+| Entertain Me | Tigran Hamasyan | Mockroot | tomato | common\IB24\T1 | Not analyzed |
+| Epidermis | Venetian Snares | | mazegeek999 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Everlong | Foo Fighters | The Colour and the Shape | Hoph2o | common\IB24\T4 | Not analyzed |
+| Feast of Fire | Trivium | In the Court of the Dragon | Boo | common\IB24\T3 | Not analyzed |
+| Focus [Ariana Grande] | SoundHaven | | Bloodline | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Get Ur Freak On [Missy Elliot] | Eric Moore | | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Godzilla (Eminem) | Xane60 | Music To Be Murdered By | Xane60 | common\Summer Blast _25 Setlist\Tier 8 | Not analyzed |
+| Grow | Victoria | Modern Value | Bounty | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Hand That Rocks the Cradle | Hella | | GanonMetroid | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| How You Remind Me | Nickelback | Silver Side Up | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| I Am... All Of Me (Crush 40) | HopH2O | Remixes (2025) | Hoph2o | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| I'm A Believer (The Monkees cover) | Smash Mouth | Smash Mouth | highfine | common\IB24\T1 | Not analyzed |
+| Jamie All Over | Mayday Parade | A Lesson in Romantics | Hoph2o | common\IB24\T2 | Not analyzed |
+| Knightmare/Frame | Area 11 | All the Lights in the Sky | Hoph2o | common\IB24\T2 | Not analyzed |
+| Ladies Talk [Kiyo Sen] (Drumeo Performance) | Senri Kawaguchi | | Bloodline | common\IB24\T6 | Not analyzed |
+| Laments Of An Icarus | TEXTURES | Silhouettes | Benimaru | common\IB24\T5 | Not analyzed |
+| Levitating (feat. DaBaby) (Dua Lipa) (L) | LethalLasagna | | LethalLasagna | common\IB24\T6 | Not analyzed |
+| Limb From Limb | Protest the Hero | Fortress | Xane60 | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Limbo | Thornhill | Limbo (digital single) | Benimaru | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Llama | Phish | A Picture of Nectar | | common\IB24\T4 | Not analyzed |
+| Lunaris | Moonlight Haze | Lunaris | NerdyFoxTV | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| Megalodon | Mastodon | Leviathan | MMSRhino | common\IB24\T5 | Not analyzed |
+| Missed Injections | Hail The Sun | Wake | Hoph2o | common\IB24\T4 | Not analyzed |
+| Move Along | | Move Along | Hoph2o | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| My Own Summer (Shove It) | Deftones | Around the Fur | highfine | common\IB24\T1 | Not analyzed |
+| Nasty (Tinashe) | HopH2O | Remixes (2024) | Hoph2o | common\IB24\T6 | Not analyzed |
+| Neibolt | Synovial | Metronome | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Nostrum | Meshuggah | | Bloodline | common\IB24\T5 | Not analyzed |
+| Omniphobia | Sianvar | Stay Lost | Boo | common\IB24\T5 | Not analyzed |
+| Outlive | The Ghost Inside | Get What You Give | Dichotic | common\IB24\T3 | Not analyzed |
+| Overrated | Allister | Last Stop Suburbia | Hoph2o | common\IB24\T1 | Not analyzed |
+| Overture 1928 | Dream Theater | | Grinnz | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Pathkeeper | Interloper | Search Party | Xane60 | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| Pitch Dark | CHON | CHON | Bloodline | . | Not analyzed |
+| Pokemon Theme | Jason Paige | | | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Prelude to Obliteration | | Conquering Dystopia | Confury | common\IB24\T7 | Not analyzed |
+| Saying Sorry | Hawthorne Heights | If Only You Were Lonely | Hoph2o | common\IB24\T1 | Not analyzed |
+| Senescence (shortened) | Chaotrope | single | Chaotrope | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| September | Earth, Wind & Fire | | Venxm | common\IB24\T1 | Not analyzed |
+| Set the World on Fire | Symphony X | Paradise Lost | Xane60 | common\IB24\T5 | Not analyzed |
+| Snakeskin Boots | Jack Wall | | highfine | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Snowball Earth [Indistinct] | SoundHaven | | Bloodline | common\IB24\T7 | Not analyzed |
+| Someday | | Flourish | Xane60 | common\IB24\T5 | Not analyzed |
+| Spirit Bomb | Yoink | | GanonMetroid | common\IB24\T7 | Not analyzed |
+| Stabwound | Necrophagist | Epitaph | Xane60 | common\IB24\T7 | Not analyzed |
+| Sugar/Tzu | black midi | Hellfire | | common\IB24\T6 | Not analyzed |
+| Swallow | Casiopea | Casiopea | Onyxite | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| Tapestry of the Starless Abstract (Shortened) | Ne Obliviscaris | Portal of I | Bloodline | common\IB24\T7 | Not analyzed |
+| Tapped Out | Mike Orlando | Sonic Stomp II | | common\IB24\T5 | Not analyzed |
+| Thank You, Pain | The Agonist | | Xane60 | common\Summer Blast _25 Setlist\Tier 6 | Not analyzed |
+| The Good Doctor | Haken | Vector | Boo | common\IB24\T4 | Not analyzed |
+| The Greater Cause | Nova Charisma | Exposition III | Hoph2o | common\IB24\T2 | Not analyzed |
+| The Sentinel | Car Bomb | w^w^^w^w | Bloodline | common\IB24\T7 | Not analyzed |
+| The Spiraling Void | The Faceless | In Becoming A Ghost | Xane60 | common\Summer Blast _25 Setlist\Tier 7 | Not analyzed |
+| Themata | Karnivool | Themata | Boo | common\IB24\T2 | Not analyzed |
+| Think Dirty out Loud | A Lot Like Birds | Conversation Piece | Satan | common\IB24\T4 | Not analyzed |
+| To the End | | | Hoph2o | common\Summer Blast _25 Setlist\Tier 1 | Not analyzed |
+| Trippin' on a Hole in a Paper Heart | | | Advanst | common\IB24\T2 | Not analyzed |
+| Unbound (The Wild Ride) | Avenged Sevenfold | Avenged Sevenfold | Hoph2o | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Vacant Dreams | | Apophenia | Inventor211 | common\IB24\T6 | Not analyzed |
+| Wasting Time (Eternal Summer) | Four Year Strong | | RAT KING | common\Summer Blast _25 Setlist\Tier 3 | Not analyzed |
+| Whelmed | Satyr | Totem | Bloodline | common\IB24\T5 | Not analyzed |
+| When The Sunrise Breaks The Darkness | Pathfinder | Fifth Element | Xane60 | common\IB24\T6 | Not analyzed |
+| Where Are the Birds | Good Tiger | A Head Full of Moonlight | Confury | common\IB24\T3 | Not analyzed |
+| White Mist [The Pineapple Thief] | Gavin Harrison | Dissolution | Bloodline | common\Summer Blast _25 Setlist\Tier 5 | Not analyzed |
+| White Washed | August Burns Red | Constellations | Inventor211 | common\IB24\T5 | Not analyzed |
+| Young Robot | | Mothership | Boo | common\Summer Blast _25 Setlist\Tier 2 | Not analyzed |
+| YYZ | Rush | Moving Pictures | | common\Summer Blast _25 Setlist\Tier 4 | Not analyzed |
+| Zildjian LIVE! Performance 2020 | DOMi & JD Beck | | Bloodline | common\IB24\T7 | Not analyzed |
+> screenshot widths_before.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\widths_before.png
+> click Analyze library...
+> wait 0.5
+> click //Analyze library/Start analyzing
+> wait-idle
+> click **/X##dismissdone
+> wait 0.5
+> rect **/Title
+"Title" id=0x0D873EC7 rect=(8,212 208x22)
+> rect **/Artist
+"Artist" id=0xCA490EC6 rect=(216,212 129x22)
+> rect **/Best path
+"Best path" id=0x66A9CE33 rect=(949,212 309x22)
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="The path report is ready." dm_users=0
+> screenshot widths_after_batch.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\widths_after_batch.png
+> click **/###analysissettings
+> wait 0.5
+> uncheck //$FOCUSED/**/##bass2x
+> wait 0.5
+> key Escape
+> wait-idle
+> wait 1
+> rect **/Title
+"Title" id=0x0D873EC7 rect=(8,190 208x22)
+> rect **/Artist
+"Artist" id=0xCA490EC6 rect=(216,190 129x22)
+> rect **/Best path
+"Best path" id=0x66A9CE33 rect=(949,190 309x22)
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Not analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Not analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Not analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Not analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Not analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Not analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Not analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Not analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Not analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Not analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Not analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Not analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Not analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Not analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Not analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Not analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Not analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Not analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Not analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Not analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 1x Bass" prodrums=yes bass2x=no depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="The path report is ready." dm_users=0
+> screenshot widths_after_bass_off.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4b\widths_after_bass_off.png
+> click **/###analysissettings
+> wait 0.5
+> check //$FOCUSED/**/##bass2x
+> wait 0.5
+> key Escape
+> wait-idle
+> wait 1
+> rect **/Title
+"Title" id=0x0D873EC7 rect=(8,190 208x22)
+> rect **/Artist
+"Artist" id=0xCA490EC6 rect=(216,190 129x22)
+> rect **/Best path
+"Best path" id=0x66A9CE33 rect=(949,190 309x22)
+> state
+state:
+  store=ready
+  charts=98 shown=98 search=""
+    row[0] "(b) The Decade of Statues" - Between the Buried and Me (Grinnz, Onyxite, RAT KING) md5=26586605ebcae0690481d3851347ebf6 status=Analyzed
+    row[1] "87" - Polyphia (Bloodline) md5=f63fc6909e179cb091cad08a227b7a53 status=Analyzed
+    row[2] "Acid Romance" - Alpha Wolf (Bloodline) md5=2cf4c2c577ff37d1bca65f6a3e936503 status=Analyzed
+    row[3] "Act One, Scene One" - The Fall of Troy (highfine) md5=50d29419b3b856af3d85a925802fad6b status=Analyzed
+    row[4] "Actors" - Don Broco (Hoph2o) md5=3a263ffaafd55ca18566b6ff54a92b6a status=Analyzed
+    row[5] "Alchemic Web Of Deceit" - Equipoise (Xane60) md5=9de2bc909352740316eee760b56c1c95 status=Analyzed
+    row[6] "All These People" - sungazer (Onyxite) md5=72cc3037f114c4090550349048c650a3 status=Analyzed
+    row[7] "Allies" - Mutemath (Jols) md5=db4db10f319e173004708156faf08243 status=Analyzed
+    row[8] "Apex" - 1.O.M. (Moochalacho) md5=7a1035f761fdcff2f74fa806d42ba206 status=Analyzed
+    row[9] "April Ha Ha" - Nothing (tomato) md5=e3871b7d460271775c180cb8df4a5602 status=Analyzed
+    row[10] "Avalanche [Bring Me The Horizon]" - Matt McGuire (Bloodline) md5=cf1a5854b55e75b3a64487d20757dea2 status=Analyzed
+    row[11] "Awakening" - Mahavishnu Orchestra (Onyxite) md5=edb00d0da74f5f716cd9628cea1bf36c status=Analyzed
+    row[12] "Band Like That" - fanclubwallet (Lowlander2, Nathan Resi) md5=91b28f29ac8589a21619d9ff45def097 status=Analyzed
+    row[13] "Beautiful Madness" - Neck Deep (Hoph2o) md5=b0e208a48eb154e6759c692dc048946b status=Analyzed
+    row[14] "Beg" - Evans Blue (highfine) md5=007ba02b9372ba3a642f0d7262de9a63 status=Analyzed
+    row[15] "Bend" - Lockslip (Dichotic) md5=4db5e7cef5030bdd373b1348737a1247 status=Analyzed
+    row[16] "Bled to Be Free (The Operation)" - RX Bandits (GanonMetroid) md5=8a627ea4716eeec64bfd1e970bbdd7ec status=Analyzed
+    row[17] "Blight" - Fallen Monarch (RAT KING) md5=86824ff31181150a500ea3a2701c8574 status=Analyzed
+    row[18] "Blister" - Kinglet (Boo) md5=821e80aa1eed86f5d657a1f2c846e37c status=Analyzed
+    row[19] "Book (feat. Matt Garstka)" - CHON (Onyxite) md5=eb9a1e7e9b064e8fe4d04d3e99803e46 status=Analyzed
+  selected=Burnout panel_open=no viewed_record=yes paths=3
+  best_path=3- 1 2
+  chartmode="Expert Pro Drums, 2x Bass" prodrums=yes bass2x=yes depth=2 auto_open_report=no
+  viewed=ready view_job=- view_pending=no
+  jobs: scan=- batch=- report=- dm_fetch=- dm_report=-
+  status="The path report is ready." dm_users=0
+> quit
+[PASS] hydra/script
