@@ -217,4 +217,12 @@ Round 15 ran as one workflow (wf_9c90cf68-ba4): auditors for C1 to C4 and verifi
 - C4: 6 records. Keep 2, Rewrite 2, Remove 1, Investigate 1.
 - verify B4 and B5, verify B6 and B7 (8ee29920 and the commits before it): committed.
 
-Round 16 ran as one workflow: auditors for C5 to C8 and verifiers for C1 to C4, launched together.
+Round 16 ran as one workflow (wf_4a09b438-aa6): auditors for C5 to C8 and verifiers for C1 to C4, launched together. About 11.5 minutes, 352 tool calls; every find slice finished.
+
+- C5 (1eb5c4e9, 584ec070): 71 records. Keep 4, Rewrite 15, Remove 3, Investigate 49.
+- C6 (8e3a4a0f): 55 records. Rewrite 28, Remove 3, Investigate 24. `tests/test_overlay_layout.cpp:396-399` measures the label "[Kick - YellowCym - GreenCym]"; the Preview now prints "[Kick - Yellow cymbal]" (`pitch_dark_preview_1_act.png`).
+- C7 (1ed607ec, f1967f60): 44 records. Keep 5, Rewrite 15, Investigate 24. All 8 `test_perf_digest.cpp` cases pin a hash of the whole corpus from one run; whether a hash is a saved expected output under the ruling at `code-and-engine.md:50` is a question for the user.
+- C8 (5c532bf5, b2966346, 5f930ea3): 28 records.
+- verify C1 to C4: C1 and C2 reached every record. C3's verifier did not open six kick2x records (test lines 24, 51, 65, 176, 195 and 213), which get the slice's one re-send.
+
+Round 17 ran as one workflow: auditors for C9 to C12, verifiers for C5 to C8 and the C3 re-send, launched together.

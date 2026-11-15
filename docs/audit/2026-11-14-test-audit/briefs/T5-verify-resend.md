@@ -4,7 +4,7 @@ Read `docs/agents/brief-preamble.md` first, in the worktree named below. Its rul
 
 ## Who and where
 
-- Task id: T5-V-RESEND-<slice>, where <slice> is the slice the launch prompt names (A26 or A27). Session id: 16892967-2cf8-4437-a7cd-e3dad250f621.
+- Task id: T5-V-RESEND-<slice>, where <slice> is the slice the launch prompt names (for example A26, A27 or C3). Session id: 16892967-2cf8-4437-a7cd-e3dad250f621.
 - Your worktree: `C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records`, branch `claude/test-audit-records`. Read code there. Do every git command there.
 - Your input: `docs/audit/2026-11-14-test-audit/records/<slice>.md` (the auditor's records) and `verify/<slice>.md` (a first verifier's partial check). The first verifier ran out of time; its section "Not reached" lists, by exact name, the records whose test code it did not open. You audited and verified none of them.
 - The one file you own and write: `docs/audit/2026-11-14-test-audit/verify/<slice>-resend.md`. Put your agent id on its first line. Commit it by name, with the trailers the preamble gives. Other agents commit on this branch at the same time: stage only your file by name, and if git reports an `index.lock`, wait a few seconds and retry. Commit after every few records. You change no test, no code and no other file.
