@@ -42,7 +42,7 @@ using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
 using hydra::store::RecordStatus;
 using hydra::store::RecordStore;
-using hydra::test::StoreLockHolder;
+using hydra::test::returns_while_held;
 using hydra::ui::AppState;
 using hydra::ui::GenerationWatcher;
 using hydra::ui::ViewedSong;
@@ -350,11 +350,7 @@ TEST_CASE("a tick during a batch does not wait for the store") {
     start_redo_batch(*app, gated_scores(gate));
     let_through(*app, *gate, 2);  // both charts' lookups are done
 
-    StoreLockHolder holder(*app->store);
-    app->tick_library(0.0);
-    const bool returned_while_held = !holder.let_go();
-    holder.release();
-    CHECK(returned_while_held);
+    CHECK(returns_while_held(*app->store, [&] { app->tick_library(0.0); }));
     CHECK(row_scores(*app, 0, "1,000"));
     CHECK(row_scores(*app, 1, "2,000"));
 }
@@ -1247,14 +1243,9 @@ TEST_CASE("opening a song does not wait for a save") {
     ScratchPaths paths("appstate_readeropen");
     std::unique_ptr<AppState> app = app_on(paths);
     const auto chart = row_of(*app, library_entry(5).md5).entry;
-    bool returned_while_held = false;
-    {
-        StoreLockHolder holder(*app->store);
+    CHECK(returns_while_held(*app->store, [&] {
         app->select(chart, hydra::ui::SelectionSource::Click);
-        returned_while_held = !holder.let_go();
-        holder.release();
-    }
-    CHECK(returned_while_held);
+    }));
     REQUIRE(app->selected.has_value());
     const std::vector<ChartLibraryEntry> copies =
         app->store->list_chart_library_copies(library_entry(5).md5);
@@ -1272,14 +1263,7 @@ TEST_CASE("select_chart on a hidden chart does not wait for a save") {
     std::unique_ptr<AppState> app = app_on(paths);
     app->set_search(library_entry(17).md5);
     REQUIRE(app->library_shown_count() == 1);
-    bool returned_while_held = false;
-    {
-        StoreLockHolder holder(*app->store);
-        app->select_chart(library_entry(5).md5);
-        returned_while_held = !holder.let_go();
-        holder.release();
-    }
-    CHECK(returned_while_held);
+    CHECK(returns_while_held(*app->store, [&] { app->select_chart(library_entry(5).md5); }));
     REQUIRE(app->selected.has_value());
     const std::vector<ChartLibraryEntry> copies =
         app->store->list_chart_library_copies(library_entry(5).md5);
@@ -1293,14 +1277,7 @@ TEST_CASE("select_chart on a hidden chart does not wait for a save") {
 TEST_CASE("opening the batch confirm does not wait for a save") {
     ScratchPaths paths("appstate_readerconfirm");
     std::unique_ptr<AppState> app = app_on(paths);
-    bool returned_while_held = false;
-    {
-        StoreLockHolder holder(*app->store);
-        app->open_batch_confirm();
-        returned_while_held = !holder.let_go();
-        holder.release();
-    }
-    CHECK(returned_while_held);
+    CHECK(returns_while_held(*app->store, [&] { app->open_batch_confirm(); }));
     REQUIRE(app->batch_confirm_pending);
 
     // The same questions from a second app on the same file, nothing held.
@@ -1319,14 +1296,7 @@ TEST_CASE("a settings change re-reads the rows without waiting for a save") {
     const std::string seeded = library_entry(0).md5;
     const RecordStatus seeded_before = row_of(*app, seeded).status;
     app->settings.sp_cap = kSeededCap + 1;
-    bool returned_while_held = false;
-    {
-        StoreLockHolder holder(*app->store);
-        app->refresh_library_summaries();
-        returned_while_held = !holder.let_go();
-        holder.release();
-    }
-    CHECK(returned_while_held);
+    CHECK(returns_while_held(*app->store, [&] { app->refresh_library_summaries(); }));
 
     // A second app opened under the changed settings reads every row itself.
     AppState second(app->settings, std::make_unique<RecordStore>(paths.db));
