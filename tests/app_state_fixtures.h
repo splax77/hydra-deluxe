@@ -201,15 +201,18 @@ inline void wait_batch_finished(hydra::ui::AppState& app) {
 }
 
 // Runs a Redo batch over the one chart `search` finds and waits for it to
-// end. The batch's own analysis fails on purpose, so it writes nothing: the
-// result the test stored behind the app's back is the one the batch
-// "stored". Redo, so the batch does not skip a chart with a result.
+// end. The batch's test analysis returns an empty result under the app's
+// profile, the record save_batch_record files, and the batch stores it
+// itself, so the window learns of it from the batch (BatchJob's tray). Redo,
+// so the batch does not skip a chart with a result.
 inline void run_redo_batch_over(hydra::ui::AppState& app, const std::string& search) {
     app.set_search(search);
     REQUIRE(app.library_shown_count() == 1);
-    start_redo_batch(app, [](const std::string&, const hydra::app::AnalysisSettings&,
-                             const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-        throw std::runtime_error("no chart file in this test");
+    const hydra::store::Profile profile = app.settings.profile();
+    start_redo_batch(app, [profile](const std::string&, const hydra::app::AnalysisSettings&,
+                                    const std::function<void(float)>&) {
+        return hydra::app::AnalysisResult{hydra::test::empty_analysis_under(profile),
+                                          hydra::Song(192)};
     });
     wait_batch_finished(app);
 }
