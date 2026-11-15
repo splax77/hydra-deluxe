@@ -200,19 +200,37 @@ inline void wait_batch_finished(hydra::ui::AppState& app) {
                          "the batch to finish");
 }
 
+// The analysis behind chart `md5`'s Ready record under `profile`, so a batch
+// can file the same record again. The store keeps rows, not analyses, so this
+// picks the analysis whose row is the stored one: the open panel's (a click
+// filed it) or an empty one (save_batch_record filed it). A chart with no
+// Ready record gets the empty one.
+inline hydra::HydraRecord stored_analysis_of(hydra::ui::AppState& app, const std::string& md5,
+                                             const hydra::store::Profile& profile) {
+    const hydra::HydraRecord empty = hydra::test::empty_analysis_under(profile);
+    const hydra::store::RecordLookup stored = app.store->lookup_one(md5, profile);
+    if (stored.status != hydra::store::RecordStatus::Ready) return empty;
+    const std::string& id = stored.record.song_id;
+    if (stored.record == hydra::store::record_of(id, empty)) return empty;
+    if (app.viewed.ready() && stored.record == hydra::store::record_of(id, *app.viewed.record))
+        return *app.viewed.record;
+    FAIL("chart " << md5 << "'s stored record is neither empty nor the open panel's");
+    throw std::logic_error("unreachable");
+}
+
 // Runs a Redo batch over the one chart `search` finds and waits for it to
-// end. The batch's test analysis returns an empty result under the app's
-// profile, the record save_batch_record files, and the batch stores it
-// itself, so the window learns of it from the batch (BatchJob's tray). Redo,
-// so the batch does not skip a chart with a result.
+// end. The batch's test analysis returns the analysis behind the chart's
+// stored record (stored_analysis_of), and the batch stores it itself, so the
+// window learns of it from the batch (BatchJob's tray). Redo, so the batch
+// does not skip a chart with a result.
 inline void run_redo_batch_over(hydra::ui::AppState& app, const std::string& search) {
     app.set_search(search);
     REQUIRE(app.library_shown_count() == 1);
-    const hydra::store::Profile profile = app.settings.profile();
-    start_redo_batch(app, [profile](const std::string&, const hydra::app::AnalysisSettings&,
-                                    const std::function<void(float)>&) {
-        return hydra::app::AnalysisResult{hydra::test::empty_analysis_under(profile),
-                                          hydra::Song(192)};
+    const hydra::HydraRecord analysis = stored_analysis_of(
+        app, app.library_row_at(0).entry.md5, app.settings.profile());
+    start_redo_batch(app, [analysis](const std::string&, const hydra::app::AnalysisSettings&,
+                                     const std::function<void(float)>&) {
+        return hydra::app::AnalysisResult{analysis, hydra::Song(192)};
     });
     wait_batch_finished(app);
 }
