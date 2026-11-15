@@ -250,6 +250,42 @@ TEST_CASE("closing the store closes its reader") {
     CHECK(can_delete(file.path));
 }
 
+TEST_CASE("the reader counts records and library charts as the writer does") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    // The library lists the four charts first, since a rescan deletes the
+    // results of charts it does not list.
+    std::vector<ChartLibraryEntry> library;
+    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
+    store.rebuild_chart_library(library);
+    save_four_charts(store);
+
+    // The writer's counts are the expected values; neither is zero, so a
+    // reader that read nothing would not pass.
+    const int64_t records = store.record_count();
+    const int64_t charts = store.chart_library_count();
+    REQUIRE(records > 0);
+    REQUIRE(charts > 0);
+    CHECK(store.reader().record_count() == records);
+    CHECK(store.reader().chart_library_count() == charts);
+}
+
+TEST_CASE("a reader's counts see a save only once it commits") {
+    StoreFile file("store_records");
+    RecordStore store(file.path);
+    store.save(prepare_record("h1", at4(), fixture().record));
+    const int64_t before = store.reader().record_count();
+
+    store.begin_save_group();
+    store.save(prepare_record("h2", at4(), fixture().record));
+    const int64_t during = store.reader().record_count();
+    store.commit_save_group();
+
+    CHECK(during == before);
+    REQUIRE(store.record_count() != before);
+    CHECK(store.reader().record_count() == store.record_count());
+}
+
 TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order") {
     const HydraRecord& analysis = fixture().record;
     RecordStore store(":memory:");

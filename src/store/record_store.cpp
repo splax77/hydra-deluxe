@@ -1498,12 +1498,22 @@ std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
     return out;
 }
 
-int64_t RecordStore::record_count() {
-    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
+namespace {
+
+// RecordStore::record_count, read on the connection `db`. Every connection's
+// count is this one. The caller holds that connection's lock.
+int64_t record_count_on(sqlite3* db) {
     // A failure record is the row whose failure_kind is set (failure_record).
-    Stmt s = prepare_read(writer_.db, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL");
+    Stmt s = prepare_read(db, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL");
     if (!step_row(s)) return 0;
     return sqlite3_column_int64(s, 0);
+}
+
+}  // namespace
+
+int64_t RecordStore::record_count() {
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
+    return record_count_on(writer_.db);
 }
 
 // ---- the saved hardest figure -------------------------------------------
@@ -1719,16 +1729,21 @@ bool chart_meta_current_on(sqlite3* db) {
     return stamp && kChartMetaStamp.is_current(std::atoi(stamp->c_str()));
 }
 
+// RecordStore::chart_library_count, read on the connection `db`. Every
+// connection's count is this one. The caller holds that connection's lock.
+int64_t chart_library_count_on(sqlite3* db) {
+    Stmt s = prepare_read(db, "SELECT COUNT(*) FROM charts");
+    if (!step_row(s)) return 0;
+    return sqlite3_column_int64(s, 0);
+}
+
 }  // namespace
 
 bool RecordStore::chart_meta_current() { return chart_meta_current_on(writer_.db); }
 
 int64_t RecordStore::chart_library_count() {
     std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
-
-    Stmt s = prepare_read(writer_.db, "SELECT COUNT(*) FROM charts");
-    if (!step_row(s)) return 0;
-    return sqlite3_column_int64(s, 0);
+    return chart_library_count_on(writer_.db);
 }
 
 bool RecordStore::chart_library_out_of_date() {
@@ -1840,6 +1855,17 @@ std::vector<ChartLibraryEntry> library_copies_on(StoreConnection& conn, const st
     return read_library_entries(s, timing_read);
 }
 
+// RecordStore::chart_index, read on the connection `db`. Every connection's
+// chart index is this one, the timing check included. The caller holds that
+// connection's lock.
+ChartIndex chart_index_on(sqlite3* db) {
+    // rebuild_chart_library inserts the rows in the scan's order, so rowid
+    // order is scan order.
+    const bool timing_read = chart_meta_current_on(db);
+    Stmt s = prepare_read(db, (library_entry_select() + " ORDER BY rowid").c_str());
+    return ChartIndex::from_rows(read_library_entries(s, timing_read));
+}
+
 }  // namespace
 
 // ---- StoreReader ------------------------------------------------------------
@@ -1893,6 +1919,27 @@ std::vector<ChartLibraryEntry> StoreReader::list_chart_library_copies(const std:
     open_if_closed();
     const ReadTransaction one_moment(conn_.db);
     return library_copies_on(conn_, md5);
+}
+
+int64_t StoreReader::record_count() {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+    const ReadTransaction one_moment(conn_.db);
+    return record_count_on(conn_.db);
+}
+
+int64_t StoreReader::chart_library_count() {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+    const ReadTransaction one_moment(conn_.db);
+    return chart_library_count_on(conn_.db);
+}
+
+ChartIndex StoreReader::chart_index() {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+    const ReadTransaction one_moment(conn_.db);
+    return chart_index_on(conn_.db);
 }
 
 std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
@@ -2053,12 +2100,7 @@ std::vector<ChartLibraryEntry> RecordStore::list_chart_library_copies(const std:
 
 ChartIndex RecordStore::chart_index() {
     std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
-
-    // rebuild_chart_library inserts the rows in the scan's order, so rowid
-    // order is scan order.
-    const bool timing_read = chart_meta_current();
-    Stmt s = prepare_read(writer_.db, (library_entry_select() + " ORDER BY rowid").c_str());
-    return ChartIndex::from_rows(read_library_entries(s, timing_read));
+    return chart_index_on(writer_.db);
 }
 
 }  // namespace hydra::store
