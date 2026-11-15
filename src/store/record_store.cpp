@@ -784,8 +784,8 @@ RecordStore::RecordStore(const std::string& dbpath, OldFilePolicy old_files,
     // keep their own kinds too.
     try {
         set_up_schema(kind);
-        const std::string file = shared_file_path(writer_.db);
-        if (!file.empty()) reader_ = std::make_unique<StoreReader>(*this, file);
+        shared_file_ = shared_file_path(writer_.db);
+        if (!shared_file_.empty()) reader_ = std::make_unique<StoreReader>(*this, shared_file_);
     } catch (const std::bad_alloc&) {
         close();
         throw;
@@ -1051,6 +1051,11 @@ int RecordStore::wal_autocheckpoint_for_test() {
     std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
     Stmt s = prepare_read(writer_.db, "PRAGMA wal_autocheckpoint");
     return step_row(s) ? sqlite3_column_int(s, 0) : -1;
+}
+
+void RecordStore::set_wal_autocheckpoint_for_test(int pages) {
+    std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
+    exec(("PRAGMA wal_autocheckpoint=" + std::to_string(pages)).c_str());
 }
 
 int64_t RecordStore::journal_size_limit_for_test() {
@@ -1469,6 +1474,10 @@ StoreReads& RecordStore::reader() {
     return *this;
 }
 
+std::unique_ptr<OwnReader> RecordStore::open_own_reader() {
+    return std::unique_ptr<OwnReader>(new OwnReader(*this, shared_file_));
+}
+
 std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
     // settled_song_ids' Ready charts, so both read one lookup.
     std::unordered_set<std::string> out;
@@ -1774,35 +1783,45 @@ ReaderDb open_reader(const std::string& path) {
     return owned;
 }
 
-// The read transaction a StoreReader's outermost call runs in: BEGIN when
-// none is open on the connection, and its end when the call returns or
-// throws. A call made inside one joins it. SQLite gives a read transaction
-// one moment of the file, and the end lets a checkpoint pass it.
+// Opens a read transaction on a StoreReader's connection `db` when none is
+// open there; false when one already is, so the caller owns nothing to end.
+// SQLite gives a read transaction one moment of the file. ReadTransaction
+// and OwnReader's hold both open theirs here.
+bool begin_read(sqlite3* db) {
+    if (transaction_open(db)) return false;
+    char* errmsg = nullptr;
+    if (sqlite3_exec(db, "BEGIN", nullptr, nullptr, &errmsg) != SQLITE_OK) {
+        std::string msg = errmsg ? errmsg : sqlite3_errmsg(db);
+        sqlite3_free(errmsg);
+        throw KindedError(ErrorKind::DatabaseRead, "starting a read failed: " + msg);
+    }
+    return true;
+}
+
+// Ends the read transaction begin_read opened, which lets a checkpoint pass
+// it. A read transaction wrote nothing, so its end loses nothing. Never
+// throws, since destructors call it.
+void end_read(sqlite3* db) {
+    if (transaction_open(db)) sqlite3_exec(db, "COMMIT", nullptr, nullptr, nullptr);
+    rollback_if_open(db);
+}
+
+// The read transaction a StoreReader's outermost call runs in, opened by
+// begin_read and ended when the call returns or throws. A call made inside
+// one joins it.
 class ReadTransaction {
 public:
-    explicit ReadTransaction(sqlite3* db) : db_(db) {
-        if (transaction_open(db_)) return;
-        char* errmsg = nullptr;
-        if (sqlite3_exec(db_, "BEGIN", nullptr, nullptr, &errmsg) != SQLITE_OK) {
-            std::string msg = errmsg ? errmsg : sqlite3_errmsg(db_);
-            sqlite3_free(errmsg);
-            throw KindedError(ErrorKind::DatabaseRead, "starting a read failed: " + msg);
-        }
-        owns_ = true;
-    }
+    explicit ReadTransaction(sqlite3* db) : db_(db), owns_(begin_read(db)) {}
     ~ReadTransaction() {
-        // A read transaction wrote nothing, so its end loses nothing. Nothing
-        // here throws out of a destructor.
-        if (!owns_) return;
-        if (transaction_open(db_)) sqlite3_exec(db_, "COMMIT", nullptr, nullptr, nullptr);
-        rollback_if_open(db_);
+        if (owns_) end_read(db_);
     }
     ReadTransaction(const ReadTransaction&) = delete;
     ReadTransaction& operator=(const ReadTransaction&) = delete;
 
 private:
     sqlite3* db_;
-    bool owns_ = false;
+    // Whether this call opened the transaction, so it ends it.
+    bool owns_;
 };
 
 // The threaded read a connection may hand the whole unsorted chart list to
@@ -1888,6 +1907,22 @@ void StoreReader::open_if_closed() {
     conn_.db = open_reader(forced ? path_ + "-not-there" : path_).release();
 }
 
+void StoreReader::open_now() {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+}
+
+bool StoreReader::begin_hold() {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    open_if_closed();
+    return begin_read(conn_.db);
+}
+
+void StoreReader::end_hold() {
+    std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
+    if (conn_.db) end_read(conn_.db);
+}
+
 std::vector<RecordLookup> StoreReader::lookup(const std::vector<std::string>& song_ids,
                                               const Profile& want) {
     std::lock_guard<std::recursive_mutex> lock(conn_.mutex);
@@ -1941,6 +1976,52 @@ ChartIndex StoreReader::chart_index() {
     const ReadTransaction one_moment(conn_.db);
     return chart_index_on(conn_.db);
 }
+
+// ---- OwnReader --------------------------------------------------------------
+
+OwnReader::OwnReader(RecordStore& store, const std::string& path)
+    : own_(path.empty() ? nullptr : std::make_unique<StoreReader>(store, path)),
+      reads_(own_ ? static_cast<StoreReads&>(*own_) : static_cast<StoreReads&>(store)) {
+    if (own_) own_->open_now();
+}
+
+OwnReader::~OwnReader() = default;
+
+OwnReader::Hold::~Hold() {
+    if (owns_) OwnReader::end_hold(*reader_);
+}
+
+void OwnReader::end_hold(StoreReader& reader) { reader.end_hold(); }
+
+OwnReader::Hold OwnReader::hold() {
+    const bool owns = own_ && own_->begin_hold();
+    return Hold(own_.get(), owns);
+}
+
+std::vector<RecordLookup> OwnReader::lookup(const std::vector<std::string>& song_ids,
+                                            const Profile& want) {
+    return reads_.lookup(song_ids, want);
+}
+
+std::unordered_map<std::string, RecordStatus> OwnReader::settled_song_ids(const Profile& want) {
+    return reads_.settled_song_ids(want);
+}
+
+std::vector<ChartLibraryEntry> OwnReader::list_chart_library(int offset, int limit,
+                                                             const RowsReadFn& on_row,
+                                                             LibraryOrder order) {
+    return reads_.list_chart_library(offset, limit, on_row, order);
+}
+
+std::vector<ChartLibraryEntry> OwnReader::list_chart_library_copies(const std::string& md5) {
+    return reads_.list_chart_library_copies(md5);
+}
+
+int64_t OwnReader::record_count() { return reads_.record_count(); }
+
+int64_t OwnReader::chart_library_count() { return reads_.chart_library_count(); }
+
+ChartIndex OwnReader::chart_index() { return reads_.chart_index(); }
 
 std::vector<ChartLibraryEntry> RecordStore::read_chart_library_on_threads(
     const std::string& path, int64_t max_rowid, size_t shares, bool timing_read,
