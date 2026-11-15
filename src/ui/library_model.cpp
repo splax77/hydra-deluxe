@@ -5,6 +5,7 @@
 #include <numeric>
 #include <string_view>
 #include <thread>
+#include <unordered_map>
 #include <utility>
 
 #include "core/model.h"  // group_thousands
@@ -279,9 +280,21 @@ size_t LibraryModel::set_summaries(const std::vector<store::RecordLookup>& looku
 }
 
 size_t LibraryModel::set_summary_for(const std::string& md5, const store::RecordLookup& lookup) {
+    return set_summaries_for({{md5, lookup}});
+}
+
+size_t LibraryModel::set_summaries_for(
+    const std::vector<std::pair<std::string, store::RecordLookup>>& answers) {
+    // One pass over the rows, however many charts the answers name. The views
+    // point into `answers`, which outlives this call's map.
+    std::unordered_map<std::string_view, const store::RecordLookup*> by_md5;
+    by_md5.reserve(answers.size());
+    for (const auto& [md5, lookup] : answers) by_md5.insert_or_assign(std::string_view(md5), &lookup);
     size_t changed = 0;
-    for (size_t i = 0; i < rows_.size(); ++i)
-        if (rows_[i].entry.md5 == md5 && apply_summary(rows_[i], lookup)) ++changed;
+    for (LibraryRow& row : rows_) {
+        const auto found = by_md5.find(row.entry.md5);
+        if (found != by_md5.end() && apply_summary(row, *found->second)) ++changed;
+    }
     if (changed > 0) summaries_changed();
     return changed;
 }

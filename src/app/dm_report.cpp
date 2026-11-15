@@ -73,7 +73,7 @@ std::string why_not_comparable(const Settings& settings) {
     return why_not_comparable_profile(settings.profile_at_clone_hero_cap());
 }
 
-std::vector<DmReportRow> collect_dm_rows(store::RecordStore& store,
+std::vector<DmReportRow> collect_dm_rows(store::StoreReads& store,
                                          const std::vector<net::DmScore>& scores,
                                          const store::Profile& profile) {
     // The Clone Hero rules come from why_not_comparable. A profile at another
@@ -226,7 +226,7 @@ std::string counts_phrase(const DmReportStats& stats) {
     return out;
 }
 
-GeneratedDmReport generate_dm_report(store::RecordStore& store,
+GeneratedDmReport generate_dm_report(store::StoreReads& store,
                                      const std::vector<net::DmScore>& scores,
                                      const store::Profile& profile,
                                      const std::string& username) {

@@ -773,7 +773,7 @@ void save_result(store::RecordStore& store, WorkResult& wr) {
 
 }  // namespace
 
-SettledCharts charts_with_result(store::RecordStore& store, const BatchRun& run, bool redo) {
+SettledCharts charts_with_result(store::StoreReads& store, const BatchRun& run, bool redo) {
     if (redo) return {};
     // RecordStore::settled_song_ids decides what "already has a result" means.
     return store.settled_song_ids(run.profile);

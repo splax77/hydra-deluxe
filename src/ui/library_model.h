@@ -17,6 +17,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "app/library_query.h"
@@ -158,8 +159,16 @@ public:
     size_t set_summaries(const std::vector<store::RecordLookup>& lookups);
     // One chart's new answer, applied to every row that lists it (a chart can
     // sit in two folders). Returns how many rows changed. The rows keep their
-    // order, as they do for set_summaries.
+    // order, as they do for set_summaries. A call to set_summaries_for with
+    // one answer.
     size_t set_summary_for(const std::string& md5, const store::RecordLookup& lookup);
+    // Many charts' new answers, each a chart hash and its lookup, applied to
+    // every row that lists that chart. The rows on screen and the counts are
+    // rebuilt once, and only when some row changed. Returns how many rows
+    // changed. When one chart is listed twice, its later answer is the one
+    // applied. The rows keep their order, as they do for set_summaries.
+    size_t set_summaries_for(
+        const std::vector<std::pair<std::string, store::RecordLookup>>& answers);
 
     // Changes when set_charts replaces the rows, and at no other time: a new
     // summary changes a row's text but not which rows there are. With

@@ -1869,7 +1869,7 @@
       "owner_lines": [
         {
           "file": "src/app/report.cpp",
-          "line_text": "bool holds_results(store::RecordStore& store) { return store.record_count() > 0; }",
+          "line_text": "bool holds_results(store::StoreReads& store) { return store.record_count() > 0; }",
           "why": "holds_results, the owner: it asks only whether the store is empty"
         }
       ],

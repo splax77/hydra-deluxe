@@ -42,31 +42,6 @@ StartupSettings load_startup_settings() {
     return start;
 }
 
-// Whether a chart's stored answer already says what `fresh` would save, so a
-// click saves nothing (D87 item 2): the same Ready record, or the same stored
-// failure, kind and text.
-bool stored_says_same(const store::RecordLookup& found, const store::RecordRow& fresh) {
-    if (fresh.failure_kind)
-        return found.status == store::RecordStatus::CantAnalyze &&
-               found.failure_kind == fresh.failure_kind && found.failure_text == fresh.failure_text;
-    return found.status == store::RecordStatus::Ready && found.record == fresh;
-}
-
-// The record a click's failed analysis is stored as: app::prepare_failed_chart's
-// answer for what the analysis threw. Nothing when it threw nothing.
-std::optional<store::PreparedRecord> click_failure_record(const std::string& song_id,
-                                                          const store::Profile& profile,
-                                                          const std::exception_ptr& thrown) {
-    if (!thrown) return std::nullopt;
-    try {
-        std::rethrow_exception(thrown);
-    } catch (const std::exception& e) {
-        return app::prepare_failed_chart(song_id, profile, e);
-    } catch (...) {
-    }
-    return std::nullopt;
-}
-
 }  // namespace
 
 AppState::AppState() : AppState(load_startup_settings()) {}
@@ -219,14 +194,15 @@ const LibraryChart* AppState::library_row_for(const std::string& key) const {
 std::optional<store::ChartLibraryEntry> AppState::read_entry(const std::string& key,
                                                              const std::string& md5) {
     std::vector<store::ChartLibraryEntry> copies;
-    if (!read_store([&] { copies = store->list_chart_library_copies(md5); })) return std::nullopt;
+    if (!read_store([&] { copies = store->reader().list_chart_library_copies(md5); }))
+        return std::nullopt;
     for (store::ChartLibraryEntry& copy : copies)
         if (row_key(copy) == key) return std::move(copy);
     return std::nullopt;
 }
 
 void AppState::read_summaries_in_place() {
-    read_store([&] { read_library_summaries(*store, settings, library); });
+    read_store([&] { read_library_summaries(store->reader(), settings, library); });
 }
 
 void AppState::refresh_library_summaries() {
@@ -237,7 +213,8 @@ void AppState::refresh_library_summaries() {
 bool AppState::refresh_library_row(const std::string& md5) {
     bool changed = false;
     read_store([&] {
-        changed = library.set_summary_for(md5, store->lookup_one(md5, settings.profile())) > 0;
+        changed =
+            library.set_summary_for(md5, store->reader().lookup_one(md5, settings.profile())) > 0;
     });
     return changed;
 }
@@ -255,7 +232,7 @@ std::vector<store::ChartLibraryEntry> AppState::library_matches() const {
     for (size_t k = 0; k < matched.size(); ++k)
         place.emplace(row_key(library.rows()[matched[k]].entry), k);
     std::vector<std::optional<store::ChartLibraryEntry>> found(matched.size());
-    for (store::ChartLibraryEntry& e : store->list_chart_library(0, -1)) {  // -1 = no limit
+    for (store::ChartLibraryEntry& e : store->reader().list_chart_library(0, -1)) {  // -1 = no limit
         const auto it = place.find(row_key(e));
         if (it != place.end()) found[it->second] = std::move(e);
     }
@@ -278,28 +255,42 @@ bool AppState::reload_after_scan() {
 
 void AppState::tick_library(double now) {
     reload_after_scan();
-    // A batch stores results on its own threads. Re-read the summaries at
-    // most once per kBatchRefreshSeconds, only when it stored something since
-    // the last read, and once more when it ends so the last results show.
-    // The rows hold their order through these reads.
+    // A batch stores results on its own threads and leaves the store's
+    // answer for each chart it saved in its tray (BatchJob::take_saved_rows),
+    // so a tick never reads the store and never waits on the batch's saves.
+    // The tray is emptied onto the rows at most once per
+    // kBatchRefreshSeconds, and on every tick once the batch has ended so the
+    // last answers show. The rows hold their order through this.
     bool batch_over = true;  // the finished strip's X can let the job go first
     if (batch_job) {
         const BatchJob::Snapshot snap = batch_job->snapshot();
         batch_over = snap.finished;
-        if (snap.completed != batch_seen_completed_ &&
-            (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds)) {
-            batch_seen_completed_ = snap.completed;
-            batch_refreshed_at_ = now;
-            // The open song's panel shows the engine's own result, which a
-            // batch under the same settings finds again, so only the rows are
-            // read (D87 item 1).
-            read_summaries_in_place();
+        // Taken after the snapshot: a finished snapshot means the tray
+        // already holds the run's last answers.
+        if (snap.finished || now - batch_refreshed_at_ >= kBatchRefreshSeconds) {
+            BatchJob::SavedRows saved = batch_job->take_saved_rows();
+            if (!saved.answers.empty() || !saved.problem.empty()) {
+                batch_refreshed_at_ = now;
+                // The open song's panel shows the engine's own result, which
+                // a batch under the same settings finds again, so only the
+                // rows take the answers (D87 item 1).
+                library.set_summaries_for(saved.answers);
+                // A lookup the batch could not make reads as any failed store
+                // read does (read_store).
+                if (!saved.problem.empty()) set_problem(saved.problem);
+            }
         }
+        // A run that failed as a whole reports none of the charts its open
+        // save group stored (run_batch), so their answers never reach the
+        // tray. Once, when it ends, every row is read again; the batch is
+        // over, so nothing holds the store. batch_end_sort_due_ is cleared
+        // below in this same tick, which keeps it to one read.
+        if (snap.finished && batch_end_sort_due_ && !snap.run_error.empty())
+            read_summaries_in_place();
     }
-    // The list sorts once when a batch ends, however it ended. This stands
-    // apart from the read above, which a batch whose last result was already
-    // read never reaches. It goes by the same snapshot as that read, so it
-    // can't run ahead of the last results.
+    // The list sorts once when a batch ends, however it ended. It goes by the
+    // same snapshot as the tray taken above, so it can't run ahead of the
+    // last answers.
     if (batch_over && batch_end_sort_due_) {
         batch_end_sort_due_ = false;
         library.sort_if_out_of_date();
@@ -368,8 +359,10 @@ void AppState::close_details() {
     // running behind a hidden panel.
     if (preview) preview->close();
     // A click's analysis that hasn't finished is cancelled, and its result,
-    // even one that finished this frame, is dropped by generation: nothing is
-    // saved for it (D87 item 11).
+    // even one that finished this frame, is dropped by generation (D87 item
+    // 11). The job writes nothing more once it sees the cancel at one of its
+    // checks before a write (ViewJob::write_results); a write it already made
+    // still reaches the row when the job is collected (take_view_outcome).
     if (view_job) view_job->cancel();
     view_pending = false;
     view_generation.bump();
@@ -390,8 +383,12 @@ void AppState::start_view() {
     view_requested_at_ = std::chrono::steady_clock::now();
     viewed = ViewedSong{};
     record_generation.bump();
-    // A finished job not yet collected is an older request's: let it go.
-    if (view_job && view_job->finished()) view_job.reset();
+    // A finished job not yet collected is an older request's: let it go,
+    // after the window follows what it wrote.
+    if (view_job && view_job->finished()) {
+        take_view_outcome(*view_job);
+        view_job.reset();
+    }
     if (view_job) view_job->cancel();
     view_pending = false;
     if (!selected) {
@@ -414,7 +411,7 @@ void AppState::start_view() {
 void AppState::launch_view_job() {
     view_job = std::make_unique<ViewJob>(*selected, settings.profile(),
                                          settings.to_analysis_settings(), analysis_blocked(),
-                                         view_generation.n);
+                                         view_generation.n, *store);
     view_job->start();
 }
 
@@ -459,6 +456,9 @@ bool AppState::view_progress_shown() const {
 void AppState::update_view_job() {
     if (!view_job || !view_job->finished()) return;
     const std::unique_ptr<ViewJob> job = std::move(view_job);
+    // Whatever happens to the result below, the rows follow what the job
+    // wrote first.
+    ViewOutcome out = take_view_outcome(*job);
     // The cancelled job has exited, so the latest request starts now.
     if (view_pending) {
         view_pending = false;
@@ -472,8 +472,9 @@ void AppState::update_view_job() {
     // The click's one exception to outcome()'s order: a run that finished
     // and was then cancelled is dropped, not shown. That Cancel is the
     // panel's Cancel button (closing the panel drops the run above, by
-    // generation), and nothing is saved for a song whose analysis the user
-    // stopped, as close_details says (D87 item 11).
+    // generation). A cancel the job saw before its save saved nothing
+    // (ViewJob::write_results); one that came after it is still dropped here,
+    // and the row already shows the save (D87 item 11).
     if (outcome == JobOutcome::Done && job->is_cancelled()) outcome = JobOutcome::Cancelled;
 
     ViewedSong v;
@@ -484,62 +485,28 @@ void AppState::update_view_job() {
         v.message = job->message();
         v.error = job->error();
     } else {
-        ViewOutcome out = job->take_outcome();
+        // A new hash the job could not write failed the job above, with
+        // nothing saved (ViewJob::write_results).
         v.dynamics = std::move(out.dynamics);
         v.dynamics_message = std::move(out.dynamics_message);
         v.dynamics_error = std::move(out.dynamics_error);
-        const store::Profile profile = job->profile();
-        std::string song_id = job->song().md5;
-        // Changed chart files: the library row takes the hash and fingerprint
-        // they give now, before anything is saved under them. An edited chart
-        // gets a new hash (D87 item 3); one only saved again keeps its hash
-        // and takes the new fingerprint (D96), when ViewJob::run finds that
-        // fingerprint worth saving. The library is read again either way,
-        // because the next row click looks its chart up by the row's hash.
-        if (out.files_changed) {
-            const std::string& path = job->song().notespath;
-            try {
-                store->reidentify_chart(path, out.new_md5, out.new_sig);
-            } catch (const std::exception& e) {
-                // Fail loudly and save nothing: a summary under a hash no
-                // library row has would be an orphan.
-                v = ViewedSong{};
-                v.state = ViewedSong::State::Failed;
-                v.message = app::plain_error(e);
-                v.error = app::plain_error_detail(e);
-                viewed = std::move(v);
-                view_reanalysis_ = false;
-                record_generation.bump();
-                return;
-            }
-            song_id = out.new_md5;
-            reload_library();  // the panel's entry follows its row (follow_selected_row)
-        }
+        const std::string& song_id = out.stored_id(job->song().md5);
         if (job->analysis_off()) {
             v.state = ViewedSong::State::AnalysisOff;
         } else if (!out.analysis) {
             v.state = ViewedSong::State::Failed;
             v.message = std::move(out.analysis_message);
             v.error = std::move(out.analysis_error);
-            // A failure the store remembers is the chart's result, as a
-            // batch stores it. The panel shows the failure either way.
-            try {
-                if (const std::optional<store::PreparedRecord> failure =
-                        click_failure_record(song_id, profile, out.analysis_failure))
-                    save_view_record(*failure);
-            } catch (const std::exception& e) {
-                set_problem(app::plain_error(e));
-            }
+            // The job stored a failure the store remembers; the panel shows
+            // the failure either way.
+            if (!out.save_error.empty()) set_problem(out.save_error);
         } else {
-            try {
-                v.summary = save_view_summary(song_id, profile, *out.analysis);
-            } catch (const std::exception& e) {
-                set_problem("Analyzed, but saving failed. " + app::plain_error(e));
-                // The engine's own summary, as a save would have shown it.
-                // record_of skips the profile check, so this shows the
-                // analysis even when the save refused it for not fitting.
-                v.summary = store::record_of(song_id, out.analysis->record).summary();
-            }
+            if (!out.save_error.empty())
+                set_problem("Analyzed, but saving failed. " + out.save_error);
+            // The engine's own summary, the one the job's save stored.
+            // record_of skips the profile check, so this shows the analysis
+            // even when the save refused it for not fitting.
+            v.summary = store::record_of(song_id, out.analysis->record).summary();
             v.state = ViewedSong::State::Ready;
             v.timing = out.analysis->song.timing();
             v.chords = hydra::chord_times(out.analysis->song);
@@ -552,23 +519,17 @@ void AppState::update_view_job() {
     record_generation.bump();
 }
 
-store::PathSummary AppState::save_view_summary(const std::string& song_id,
-                                               const store::Profile& profile,
-                                               const app::AnalysisResult& result) {
-    const store::PreparedRecord prepared = store::prepare_record(song_id, profile, result.record);
-    save_view_record(prepared);
-    return prepared.record.summary();
-}
-
-void AppState::save_view_record(const store::PreparedRecord& prepared) {
-    const std::string& song_id = prepared.record.song_id;
-    const store::RecordLookup found = store->lookup_one(song_id, prepared.profile);
-    if (stored_says_same(found, prepared.record)) return;  // nothing new to save
-    store->save(prepared);
-    refresh_library_row(song_id);  // its row's Best path cell and chip
-    // Both open reports now read an older library (D115 question 4). No
-    // batch finished, so the strip names no time.
-    mark_reports_out_of_date(ReportOutOfDate::Library, /*path=*/true, /*dm=*/true, std::nullopt);
+ViewOutcome AppState::take_view_outcome(ViewJob& job) {
+    ViewOutcome out = job.take_outcome();
+    if (out.wrote_hash) reload_library();  // the panel's entry follows its row (follow_selected_row)
+    if (out.wrote_save) {
+        refresh_library_row(out.stored_id(job.song().md5));  // its row's Best path cell and chip
+        // Both open reports now read an older library (D115 question 4). No
+        // batch finished, so the strip names no time.
+        mark_reports_out_of_date(ReportOutOfDate::Library, /*path=*/true, /*dm=*/true,
+                                 std::nullopt);
+    }
+    return out;
 }
 
 bool AppState::selected_file_ok(double now) {
@@ -649,7 +610,7 @@ void AppState::select_chart(const std::string& hyhash) {
     // pick"). The rows are not kept in that order, so the store lists
     // this chart's copies in it.
     std::vector<store::ChartLibraryEntry> copies;
-    if (!read_store([&] { copies = store->list_chart_library_copies(hyhash); })) return;
+    if (!read_store([&] { copies = store->reader().list_chart_library_copies(hyhash); })) return;
     for (const store::ChartLibraryEntry& copy : copies) {
         if (const LibraryChart* row = library_row_for(row_key(copy))) {
             select(*row, SelectionSource::Elsewhere);
@@ -703,8 +664,9 @@ bool AppState::plan_batches(const std::function<std::vector<app::ScanItem>()>& l
     const app::BatchRun run = settings.batch_run();
     return read_store([&] {
         const std::vector<app::ScanItem> items = list_items();
-        batch_plan = app::plan_batch(items, app::charts_with_result(*store, run, false));
-        batch_redo_plan = app::plan_batch(items, app::charts_with_result(*store, run, true));
+        batch_plan = app::plan_batch(items, app::charts_with_result(store->reader(), run, false));
+        batch_redo_plan =
+            app::plan_batch(items, app::charts_with_result(store->reader(), run, true));
     });
 }
 
@@ -740,7 +702,6 @@ void AppState::start_batch(bool redo) {
                                            settings.batch_run(), *store);
     close_batch_confirm();
     report_started = false;
-    batch_seen_completed_ = 0;
     batch_refreshed_at_ = -1.0;
     batch_end_sort_due_ = true;
     batch_finish_seen_ = false;
@@ -752,7 +713,8 @@ void AppState::update_background_jobs() {
     settle_report_wait();
     if (batch_job && !batch_finish_seen_ && batch_job->snapshot().finished) {
         batch_finish_seen_ = true;
-        // tick_library re-reads the summaries once the batch ends. Stopped
+        // tick_library puts the batch's last answers on their rows once it
+        // ends. Stopped
         // or not, the run stored results, so both reports in memory now
         // read an older library (D103). Their windows name this moment as
         // the batch's finish time (D103 item 21).
@@ -909,7 +871,7 @@ void AppState::request_path_report(PathReportCause cause) {
     // Every library row, planned as a batch plans it, so the run's counts
     // and the strip's are one plan's (D79).
     reload_after_scan();
-    if (!plan_batches([&] { return store->list_chart_library(0, -1); })) {  // -1 = no limit
+    if (!plan_batches([&] { return store->reader().list_chart_library(0, -1); })) {  // -1 = no limit
         // The database failed and the status line says so; the build reads
         // the store too and shows its own failure in the window.
         close_batch_confirm();

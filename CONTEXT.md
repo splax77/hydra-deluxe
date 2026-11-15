@@ -93,7 +93,7 @@ The search that computes a chart's analysis and saves it as a record. A click
 on a song analyzes it, and so does a batch, and both save through
 `prepare_record` and `RecordStore::save`. A click saves only when the stored
 record is missing, Stale or different from the fresh one
-(`AppState::save_view_summary`), and a click that saves marks both open
+(`ViewJob::write_results`), and a click that saves marks both open
 reports out of date, as a finished batch does (D115). Its progress bar moves in steps of at least half a percent of the chart
 (src/search/engine.cpp), and the main search owns the first 90% of the bar,
 the all-0 pass the rest (src/search/pather.cpp; D273).

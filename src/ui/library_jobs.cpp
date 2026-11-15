@@ -86,7 +86,10 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
                 return progress(Step::ReadingResults, rows_answered, charts_total);
             };
         }
-        read_library_summaries(store, settings, library, on_slice);
+        // The chart list above stays on the store's own connection, where its
+        // threaded read runs (RecordStore::list_chart_library). The results go
+        // through the store's reader, so they never wait for a save group.
+        read_library_summaries(store.reader(), settings, library, on_slice);
         library.sort_if_out_of_date();
     } catch (const Cancelled&) {
         throw;  // a stop, not a failed read
@@ -96,7 +99,7 @@ std::string read_library(store::RecordStore& store, const app::Settings& setting
     return "";
 }
 
-void read_library_summaries(store::RecordStore& store, const app::Settings& settings,
+void read_library_summaries(store::StoreReads& store, const app::Settings& settings,
                             LibraryModel& library, const RowsAnsweredFn& on_slice,
                             size_t slice_charts) {
     const std::vector<std::string> hashes = library.hashes();
@@ -486,6 +489,59 @@ BatchJob::Snapshot BatchJob::snapshot() const {
     return s;
 }
 
+BatchJob::SavedRows BatchJob::take_saved_rows() {
+    std::lock_guard<std::mutex> lock(mu_);
+    SavedRows taken = std::move(tray_);
+    tray_ = SavedRows{};
+    return taken;
+}
+
+int BatchJob::answered_count() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return answered_;
+}
+
+void BatchJob::note_saved(const std::string& md5) noexcept {
+    try {
+        // run_batch runs each chart once, so an answered chart's answer still
+        // stands when its second folder's row is reported.
+        if (answered_md5s_.count(md5) == 0 &&
+            std::find(waiting_.begin(), waiting_.end(), md5) == waiting_.end())
+            waiting_.push_back(md5);
+    } catch (...) {
+        // Out of memory noting it: the chart's row catches up at the next
+        // whole read, and the run goes on.
+    }
+    answer_waiting();
+}
+
+void BatchJob::answer_waiting() noexcept {
+    try {
+        if (waiting_.empty()) return;
+        if (lookup_hold_) lookup_hold_();
+        // mu_ stays free here, so a frame's snapshot never waits on the store.
+        std::vector<store::RecordLookup> found = store_.lookup(waiting_, run_.profile);
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            for (size_t i = 0; i < waiting_.size() && i < found.size(); ++i)
+                tray_.answers.emplace_back(waiting_[i], std::move(found[i]));
+            answered_ += static_cast<int>(waiting_.size());
+        }
+        answered_md5s_.insert(waiting_.begin(), waiting_.end());
+        waiting_.clear();
+    } catch (const std::exception& e) {
+        // The charts stay waiting; the window shows the sentence as it shows
+        // any failed store read.
+        try {
+            std::string sentence = app::plain_error(e);
+            std::lock_guard<std::mutex> lock(mu_);
+            tray_.problem = std::move(sentence);
+        } catch (...) {
+        }
+    } catch (...) {
+    }
+}
+
 void BatchJob::run() {
     for (size_t i = 0; i < plan_.todo.size(); ++i) by_path_.emplace(plan_.todo[i].notespath, i);
 
@@ -520,6 +576,14 @@ void BatchJob::run() {
         // Empty when the sentence already quotes it: the list draws nothing.
         snap_.failure_details.push_back(error.empty() ? std::string() : title + ": " + error);
     };
+    // A saved result and a saved failure both reach their row through the
+    // store's own answer; the record handed over is not read.
+    callbacks.on_result = [this](const app::ScanItem& item, const store::PreparedRecord&) {
+        note_saved(item.md5);
+    };
+    callbacks.on_failure_saved = [this](const app::ScanItem& item, const store::PreparedRecord&) {
+        note_saved(item.md5);
+    };
     callbacks.cancel = &cancel_;
     // The pause gate and the "now analyzing" line sit in front of the real
     // analyzer, so run_batch and its pool stay as they are.
@@ -535,13 +599,17 @@ void BatchJob::run() {
     // The plan was made before the job (D79), so run_batch reads nothing
     // from the store before its first chart. Whatever still throws out of it
     // ends the run as a whole.
+    // Charts whose lookup failed are asked about once more before the run
+    // ends, so a finished snapshot means the tray holds the last answers.
     try {
         app::run_batch(plan_, run_, store_, workers_, callbacks);
     } catch (const std::exception& e) {
+        answer_waiting();
         finish_failed(e, app::plain_error_detail(e));
         return;
     }
 
+    answer_waiting();
     std::lock_guard<std::mutex> lock(mu_);
     finish_locked();
 }
@@ -550,20 +618,59 @@ void BatchJob::run() {
 
 namespace {
 app::ChartAnalyzer g_view_analyzer;
+std::function<void()> g_view_before_save_check;
+std::function<void()> g_view_after_save_check;
+
+// Whether a chart's stored answer already says what `fresh` would save, so a
+// click saves nothing (D87 item 2): the same Ready record, or the same stored
+// failure, kind and text.
+bool stored_says_same(const store::RecordLookup& found, const store::RecordRow& fresh) {
+    if (fresh.failure_kind)
+        return found.status == store::RecordStatus::CantAnalyze &&
+               found.failure_kind == fresh.failure_kind && found.failure_text == fresh.failure_text;
+    return found.status == store::RecordStatus::Ready && found.record == fresh;
+}
+
+// The record a click's failed analysis is stored as: app::prepare_failed_chart's
+// answer for what the analysis threw. Nothing when it threw nothing.
+std::optional<store::PreparedRecord> click_failure_record(const std::string& song_id,
+                                                          const store::Profile& profile,
+                                                          const std::exception_ptr& thrown) {
+    if (!thrown) return std::nullopt;
+    try {
+        std::rethrow_exception(thrown);
+    } catch (const std::exception& e) {
+        return app::prepare_failed_chart(song_id, profile, e);
+    } catch (...) {
+    }
+    return std::nullopt;
+}
 }  // namespace
 
 void set_view_analyzer_for_test(app::ChartAnalyzer analyze) {
     g_view_analyzer = std::move(analyze);
 }
 
+void set_view_before_save_check_for_test(std::function<void()> hook) {
+    g_view_before_save_check = std::move(hook);
+}
+
+void set_view_after_save_check_for_test(std::function<void()> hook) {
+    g_view_after_save_check = std::move(hook);
+}
+
 ViewJob::ViewJob(store::ChartLibraryEntry song, store::Profile profile,
-                 app::AnalysisSettings settings, bool analysis_off, int generation)
+                 app::AnalysisSettings settings, bool analysis_off, int generation,
+                 store::RecordStore& store)
     : song_(std::move(song)),
       profile_(std::move(profile)),
       settings_(std::move(settings)),
       analysis_off_(analysis_off),
       generation_(generation),
-      analyze_(g_view_analyzer ? g_view_analyzer : app::ChartAnalyzer(app::analyze_chart_file)) {}
+      store_(store),
+      analyze_(g_view_analyzer ? g_view_analyzer : app::ChartAnalyzer(app::analyze_chart_file)),
+      before_save_check_(g_view_before_save_check),
+      after_save_check_(g_view_after_save_check) {}
 
 void ViewJob::start() {
     // The thread constructor itself can throw (std::system_error when the OS
@@ -627,6 +734,7 @@ void ViewJob::run() {
                 out_.dynamics_error = app::plain_error_detail(e);
                 out_.dynamics_message = app::plain_error(e);
             }
+            write_results();
             return true;
         } catch (const app::AnalysisCancelled&) {
             return false;  // no error text: a cancel is the user's own click
@@ -634,6 +742,52 @@ void ViewJob::run() {
             return false;
         }
     });
+}
+
+// The two writes run here, on the job's thread, so a batch's save group
+// makes this thread wait and not the window. A cancel seen just before
+// either write ends the job with nothing more written; a closed or replaced
+// click is cancelled too (AppState::close_details, AppState::start_view).
+void ViewJob::write_results() {
+    // Changed chart files: the library row takes the hash and fingerprint
+    // they give now, before anything is saved under them. An edited chart
+    // gets a new hash (D87 item 3); one only saved again keeps its hash and
+    // takes the new fingerprint (D96). A write that fails fails the job and
+    // saves nothing: a summary under a hash no library row has would be an
+    // orphan.
+    if (out_.files_changed) {
+        throw_if_cancelled();
+        store_.reidentify_chart(song_.notespath, out_.new_md5, out_.new_sig);
+        out_.wrote_hash = true;
+    }
+    if (analysis_off_) return;
+    const std::string& song_id = out_.stored_id(song_.md5);
+    // The record is built as the batch builds it, and a failure the store
+    // remembers is the chart's result, as a batch stores it.
+    std::optional<store::PreparedRecord> prepared;
+    try {
+        if (out_.analysis)
+            prepared = store::prepare_record(song_id, profile_, out_.analysis->record);
+        else
+            prepared = click_failure_record(song_id, profile_, out_.analysis_failure);
+    } catch (const std::exception& e) {
+        out_.save_error = app::plain_error(e);
+        return;
+    }
+    if (!prepared) return;
+    if (before_save_check_) before_save_check_();
+    throw_if_cancelled();
+    // A cancel from here on comes too late to stop the save; the window still
+    // follows it (AppState::take_view_outcome).
+    if (after_save_check_) after_save_check_();
+    try {
+        if (stored_says_same(store_.lookup_one(song_id, prepared->profile), prepared->record))
+            return;  // nothing new to save
+        store_.save(*prepared);
+        out_.wrote_save = true;
+    } catch (const std::exception& e) {
+        out_.save_error = app::plain_error(e);
+    }
 }
 
 // ---- ReportJob --------------------------------------------------------
@@ -662,7 +816,15 @@ void ReportJob::run() {
         options.cancel = &cancel_;
         options.run = run_;
         if (hold_) hold_();
-        app::report::GeneratedReport report = app::report::generate_report(store_, options);
+        app::report::GeneratedReport report = [&] {
+            // A connection of the report's own, so a batch's save group never
+            // makes it wait, and one hold, so every read sees the store at the
+            // same moment (store::OwnReader). Both end before the job finishes,
+            // so a finished or cancelled report holds no connection.
+            const std::unique_ptr<store::OwnReader> reader = store_.open_own_reader();
+            const store::OwnReader::Hold moment = reader->hold();
+            return app::report::generate_report(reader->reads(), options);
+        }();
         // Checked before the "no records" throw: a cancelled run has no rows
         // because it stopped, not because the store is empty, and the last
         // report in memory stays as it was.

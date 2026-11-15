@@ -7,24 +7,29 @@
 
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/dm_report.h"  // GeneratedDmReport
+#include "app/user_messages.h"  // plain_error
 #include "app_state_fixtures.h"
 #include "corpus_util.h"
+#include "display_fixtures.h"  // save_batch_record
 #include "library_fixtures.h"  // library_entry
 #include "net/dmbot_client.h"   // set_fetcher
 #include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "store/record_store.h"
+#include "store_file_fixtures.h"  // HeldSaveGroup
 #include "ui/app_state.h"
 #include "ui/report_window.h"  // path_report_input, dm_report_input
 #include "wait_util.h"
@@ -841,5 +846,266 @@ TEST_CASE("the strip's report_started holds through a cancel, a refresh and a cl
     app->batch_job.reset();  // the finished strip's X
     run_redo_batch_over(*app, title);
     CHECK_FALSE(app->report_started);  // the new run's report has not started
+}
+
+// ---- each report reads through a connection of its own --------------------
+
+namespace {
+
+using hydra::app::dm_report::GeneratedDmReport;
+using hydra::app::report::GeneratedReport;
+
+// The canned leaderboard of kDmUsersJson and kDmScoresJson, answered at once.
+hydra::net::Fetcher canned_dm_fetcher() {
+    return [](const std::string& url, const std::atomic<bool>*) -> std::string {
+        return url.find("/all-users") != std::string::npos ? kDmUsersJson : kDmScoresJson;
+    };
+}
+
+// Whether two path reports show the same page: every count, line and row the
+// window reads.
+void check_same_path_report(const GeneratedReport& got, const GeneratedReport& want) {
+    CHECK(got.subtitle == want.subtitle);
+    CHECK(got.footer == want.footer);
+    CHECK(got.songs == want.songs);
+    CHECK(got.rows == want.rows);
+    CHECK(got.library_charts == want.library_charts);
+    CHECK(got.cant_analyze_charts == want.cant_analyze_charts);
+    CHECK(got.no_result_charts == want.no_result_charts);
+    REQUIRE(got.paths.size() == want.paths.size());
+    for (size_t i = 0; i < got.paths.size(); ++i) {
+        CHECK(got.paths[i].song == want.paths[i].song);
+        CHECK(got.paths[i].rank == want.paths[i].rank);
+        CHECK(got.paths[i].path == want.paths[i].path);
+        CHECK(got.paths[i].score == want.paths[i].score);
+        CHECK(got.paths[i].copies == want.paths[i].copies);
+    }
+}
+
+// The same for two comparisons.
+void check_same_dm_report(const GeneratedDmReport& got, const GeneratedDmReport& want) {
+    CHECK(got.username == want.username);
+    CHECK(got.subtitle == want.subtitle);
+    CHECK(got.footer == want.footer);
+    CHECK(got.stats.total == want.stats.total);
+    REQUIRE(got.rows.size() == want.rows.size());
+    for (size_t i = 0; i < got.rows.size(); ++i) {
+        CHECK(got.rows[i].identifier == want.rows[i].identifier);
+        CHECK(got.rows[i].optimal == want.rows[i].optimal);
+        CHECK(got.rows[i].status == want.rows[i].status);
+    }
+}
+
+// Waits for the path report's job to finish without collecting it, so a test
+// can look at what else is still going on first.
+void wait_path_report_job(AppState& app) {
+    REQUIRE(app.report_job != nullptr);
+    wait_until([&] { return app.report_job->finished(); }, "the path report's job to finish");
+}
+
+// Arms the store so that, between the two reads inside the first lookup a
+// thread other than this one makes (the report job's), the writer saves a
+// result for the app's first library chart, and sets `saved`. The draw
+// thread's own lookups pass by. The caller clears the seam afterwards and
+// declares `saved` before the AppState, so the job never outlives it.
+void save_during_report_lookup(AppState& app, std::atomic<bool>& saved) {
+    const std::string md5 = app.library_row_at(0).entry.md5;
+    const hydra::store::Profile profile = app.settings.profile();
+    const std::thread::id draw = std::this_thread::get_id();
+    hydra::store::RecordStore* store = app.store.get();
+    store->set_between_lookup_reads_for_test([md5, profile, draw, store, &saved] {
+        if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
+        hydra::test::save_batch_record(*store, md5, profile);
+    });
+}
+
+// What a reader of `store` that cannot open reads as: the store's own
+// failure, armed through its seam, worded by app::plain_error.
+std::string failed_open_sentence(hydra::store::RecordStore& store) {
+    store.fail_next_reader_open_for_test();
+    try {
+        const std::unique_ptr<hydra::store::OwnReader> reader = store.open_own_reader();
+    } catch (const std::exception& e) {
+        return hydra::app::plain_error(e);
+    }
+    FAIL("the armed open did not fail");
+    return std::string();
+}
+
+// Saves one result under a batch's checkpoint guard and ends the guard. Its
+// truncating checkpoint empties the log only when no other connection holds a
+// read open (the store's "a reader holds nothing open between reads" test),
+// so an empty log after it means no report kept its connection or its hold.
+void check_log_empties(AppState& app, const ScratchPaths& paths) {
+    const std::filesystem::path wal = std::filesystem::u8path(paths.db + "-wal");
+    {
+        const hydra::store::RecordStore::BatchWrites batch(*app.store);
+        hydra::test::save_batch_record(*app.store, app.library_row_at(0).entry.md5,
+                                       app.settings.profile());
+        REQUIRE(std::filesystem::file_size(wal) > 0);
+    }
+    CHECK(std::filesystem::file_size(wal) == 0);
+}
+
+}  // namespace
+
+TEST_CASE("a path report builds while a save group is open") {
+    ScratchPaths paths("appstate_pathgroup");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathgroup");
+    app->request_path_report();
+    finish_path_report(*app);
+    const std::shared_ptr<const GeneratedReport> unheld = app->path_report.result;
+    REQUIRE(unheld != nullptr);
+
+    // After the app, so the helper lets go before the app goes.
+    hydra::test::HeldSaveGroup group(*app->store);
+    app->request_path_report();
+    wait_path_report_job(*app);
+    CHECK(group.held());  // it finished with the group still open
+    group.let_go();
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    REQUIRE(app->path_report.result != nullptr);
+    check_same_path_report(*app->path_report.result, *unheld);
+}
+
+TEST_CASE("a DM report builds while a save group is open") {
+    ScratchPaths paths("appstate_dmgroup");
+    // Before the app, which joins the fetch's thread.
+    const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
+    std::unique_ptr<AppState> app = app_on(paths);
+    app->start_dm_report("111", "alice");
+    finish_dm_report(*app);
+    const std::shared_ptr<const GeneratedDmReport> unheld = app->dm_report.result;
+    REQUIRE(unheld != nullptr);
+
+    hydra::test::HeldSaveGroup group(*app->store);
+    app->request_dm_report();
+    REQUIRE(app->dm_report_job != nullptr);
+    wait_until([&] { return app->dm_report_job->finished(); }, "the comparison's job to finish");
+    CHECK(group.held());
+    group.let_go();
+    app->update_background_jobs();
+    CHECK(app->dm_report_build() == ReportBuild::Ready);
+    REQUIRE(app->dm_report.result != nullptr);
+    check_same_dm_report(*app->dm_report.result, *unheld);
+}
+
+TEST_CASE("a path report reads one moment") {
+    ScratchPaths paths("appstate_pathmoment");
+    std::unique_ptr<AppState> app = app_with_result(paths, "pathmoment");
+    app->request_path_report();
+    finish_path_report(*app);
+    const std::shared_ptr<const GeneratedReport> before = app->path_report.result;
+    REQUIRE(before != nullptr);
+    REQUIRE_FALSE(before->paths.empty());
+
+    // Between the report's two reads inside lookup, the writer replaces the
+    // chart's record with one that kept no paths. Only the report job's own
+    // reader saves: the draw thread's reads before the job starts pass by.
+    const std::string md5 = app->library_row_at(0).entry.md5;
+    const hydra::store::Profile profile = app->settings.profile();
+    std::atomic<bool> saved{false};
+    save_during_report_lookup(*app, saved);
+    app->request_path_report();
+    wait_path_report_job(*app);
+    app->store->set_between_lookup_reads_for_test({});
+    finish_path_report(*app);
+
+    REQUIRE(saved.load());
+    REQUIRE(app->store->lookup_one(md5, profile).record.paths.empty());  // the save landed
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+    REQUIRE(app->path_report.result != nullptr);
+    check_same_path_report(*app->path_report.result, *before);
+}
+
+TEST_CASE("a path report's separate store calls read one moment") {
+    ScratchPaths paths("appstate_pathcalls");
+    // Declared before the AppState, whose job's lookup sets it.
+    std::atomic<bool> saved{false};
+    // A library whose one chart has no stored result. A request would start
+    // a batch for it first, so the test lowers the threshold: the window
+    // asks, and its Cancel builds the report from what is stored, no batch.
+    const ChartLibraryEntry song = corpus_chart("pathcalls");
+    std::unique_ptr<AppState> app = app_with(paths, {song});
+    app->report_confirm_above = 0;
+    save_during_report_lookup(*app, saved);
+    app->request_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    REQUIRE(app->batch_job == nullptr);
+    app->cancel_path_report();  // the window's Cancel: list what is stored
+    // The report reads chart_index, then lookup, inside which the writer
+    // saves a result. It finds no rows, so it then asks a separate question,
+    // record_count, to say why.
+    wait_path_report_job(*app);
+    app->store->set_between_lookup_reads_for_test({});
+    finish_path_report(*app);
+
+    REQUIRE(saved.load());
+    REQUIRE(app->store->record_count() > 0);  // the save landed
+    // Under the one hold every call reads the store as it was at chart_index:
+    // empty, so record_count says 0 and the sentence is the app's "nothing is
+    // analyzed yet". Without the hold, record_count reads on its own after the
+    // save, says 1, and the report says "nothing under these settings".
+    CHECK(app->path_report_build() == ReportBuild::Failed);
+    CHECK(app->path_report.message ==
+          hydra::app::plain_error(
+              hydra::KindedError(hydra::ErrorKind::NoRecords, "no records stored yet")));
+}
+
+TEST_CASE("a report whose connection cannot open fails with the store's sentence") {
+    ScratchPaths paths("appstate_reportopenfail");
+    const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
+    std::unique_ptr<AppState> app = app_with_result(paths, "reportopenfail");
+    // The window's own reader opens now, so the armed open below is a report's.
+    app->store->reader().chart_library_count();
+    const std::string sentence = failed_open_sentence(*app->store);
+    REQUIRE_FALSE(sentence.empty());
+
+    app->store->fail_next_reader_open_for_test();
+    app->request_path_report();
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Failed);
+    CHECK(app->path_report.message == sentence);
+    hydra::ui::path_report_input(*app).callbacks.try_again();
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+
+    app->store->fail_next_reader_open_for_test();
+    app->start_dm_report("111", "alice");
+    finish_dm_report(*app);
+    CHECK(app->dm_report_build() == ReportBuild::Failed);
+    CHECK(app->dm_report.message == sentence);
+    hydra::ui::dm_report_input(*app).callbacks.try_again();
+    finish_dm_report(*app);
+    CHECK(app->dm_report_build() == ReportBuild::Ready);
+}
+
+TEST_CASE("a finished report holds no connection") {
+    ScratchPaths paths("appstate_reportclosed");
+    const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
+    std::unique_ptr<AppState> app = app_with_result(paths, "reportclosed");
+    app->request_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report_build() == ReportBuild::Ready);
+    app->start_dm_report("111", "alice");
+    finish_dm_report(*app);
+    REQUIRE(app->dm_report_build() == ReportBuild::Ready);
+    check_log_empties(*app, paths);
+}
+
+TEST_CASE("a cancelled report closes its connection") {
+    ScratchPaths paths("appstate_reportcancelclosed");
+    std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_result(paths, "reportcancelclosed");
+    {
+        const ScopedHook hold(hydra::ui::set_report_hold_for_test, held_report(release));
+        app->request_path_report();
+    }
+    app->cancel_path_report();  // inside the hold seam, before the job reads
+    release = true;
+    finish_path_report(*app);
+    REQUIRE(app->path_report_build() == ReportBuild::Cancelled);
+    check_log_empties(*app, paths);
 }
 
