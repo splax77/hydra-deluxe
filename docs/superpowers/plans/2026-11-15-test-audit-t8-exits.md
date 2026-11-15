@@ -18,15 +18,17 @@ One more thing sits under all of them. The recount cleared 49 fault marks becaus
 
 ## T6 and T7 results
 
-The main session is running T6 and T7 now. Their results did not exist when this plan was written. The main session fills the two placeholders below before E1 starts, and changes nothing else in this section.
+T6 and T7 ran in session 7a62df56 on 2026-11-15, alongside the writing of this plan, and their results are filled in below.
 
 **T6** changes the corpus and reruns the suite. Each test that turns red becomes a finding with the words "leans on which charts are in the corpus". It gets a ledger row of its own kind (`t6`), tied to that test's record, and it leaves by exit 2 like any other fault. A test that stayed green is not proven independent, and no row says it is.
 
 **T7** plants one named bug per auditor. A claim that held changes that record's question 8 from "reasoned" to "confirmed", and changes no exit. A claim that did not hold (the test stayed green, or a different line went red) reopens every question 8 answer in that auditor's slice: one fresh Sonnet verifier re-reads them, as the approved plan says. Until that re-read is committed, no record in that slice leaves by exit 4.
 
-> **PLACEHOLDER T6 (main session fills):** tests red after a chart was added: `__`. Tests red after a chart was removed: `__`. File: `AUD/mechanical/corpus.md`.
->
-> **PLACEHOLDER T7 (main session fills):** auditors sampled: `__`. Claims that held: `__`. Claims that did not hold: `__`, in slices `__`. File: `AUD/mechanical/planted.md`.
+**T6 result** (`AUD/mechanical/corpus.md`, commit 6aa6d684). The baseline suite had 2,280 test cases and none failed. With a copy of one chart added, three tests went red: "discover_charts output matches the checked-in scan snapshot", "the scan's folder count is reported while the walk runs, from the calling thread" and "corpus: squeeze-ins at exactly 0 and what they change". With `test_path_reduction` removed instead, one went red: the folder-count test again. So T6 adds three `t6` rows. Each matches a record that already said Rewrite and already called its number a corpus count (`records/A4.md` records 3 and 45, `records/A13.md` record 10 with `records/delta-DL5.md` record 18). The run confirms those records' claim and adds no new kind of fault.
+
+**T7 result** (`AUD/mechanical/planted.md`, commit a4ad3306). There are 112 slice files, and 98 got a planted bug; the other 14 had no record naming an exact change, or were the calibration runs. Of the 98, 91 went red at a check the record names. Six stayed green with the bug on: A3, A9, A30, C7, WN3 and WN4a. In each of the six, the plant is the record's own change and the test cannot see it, so the auditor's claim did not hold. WN8 crashed before any check, because its plant had to differ from the record's words to compile, so its claim is unsettled. WN4b went red, but one line its record names (line 145) stayed green.
+
+So eight slices get the question 8 re-read: A3, A9, A30, C7, WN3, WN4a, WN4b and WN8. That is E0's second half.
 
 ## The numbers this plan rests on
 
@@ -41,9 +43,11 @@ Each figure names where it was read. None is worked out here.
 
 ### E0: Fill in T6 and T7, and read the audit's state again
 
-The main session fills the two placeholders above. It then confirms that `AUD/exits.md`, `AUD/closures.md` and `AUD/questions.md` do not exist and that the audit branch holds this plan's base commit.
+The main session confirms that `AUD/exits.md`, `AUD/closures.md` and `AUD/questions.md` do not exist and that the audit branch holds this plan's base commit and both result files.
 
-Acceptance: no `__` is left in "T6 and T7 results". `AUD/log.md` gains a line with both result files' commits.
+Then the T7 re-read runs, by the approved plan's own rule. One fresh Sonnet verifier per slice (eight in all, launched together) re-reads every question 8 answer in slices A3, A9, A30, C7, WN3, WN4a, WN4b and WN8. None of them audited, verified or planted in that slice. Each gets `AUD/mechanical/planted.md` for why its slice was reopened, and returns, per record, "holds", "does not hold" with the input that shows it, or "cannot tell" with the run that would settle it. It reads only; it builds and runs nothing. The cap is one slice file per verifier and 25 minutes; at the cap it writes what it has and marks the rest "not read", and the main session sends the rest to a fresh verifier once. Their files go to `AUD/mechanical/reread/<slice>.md`.
+
+Acceptance: `AUD/log.md` gains a line with both result files' commits. Each of the eight slices has a re-read file with a verdict for every record that has a question 8. No record in those slices leaves by exit 4 before its re-read is committed, and a "does not hold" becomes a note row in E5.
 
 ### E1: Build the ledger, one row per record
 
@@ -176,6 +180,7 @@ Acceptance: every exit 2 row's group has a draft in `AUD/questions.md` with all 
 | Work | Who | Model |
 |---|---|---|
 | This plan, then one fresh review of it | planner, reviewer | Fable, Sonnet |
+| The T7 question 8 re-read (E0) | eight read-only verifiers, one per slice | Sonnet |
 | `ledger.py` | one executor, one reviewer | Opus, Sonnet |
 | Ledger residue, labels, notes | read-only scouts | Sonnet |
 | Label verifiers | read-only scouts, never on their own file | Sonnet |
@@ -201,7 +206,7 @@ This plan has no live step. Nothing in it starts Clone Hero or Hydra, and the ru
 3. Seven tests in `tools/test_compare_db.py` (lines 205 to 299) feed the real compare tool database files written by hand in SQL, in a layout the file calls a stand-in for an older one. Are those files input, or a stand-in for Hydra's own stored rows?
 4. About 25 tests in the hooks repo's `test_review_dispatch.py` feed a hand-typed hook payload to the real hook, and others in `test_review_rules.py` feed hand-written verdict records. Is a hand-typed payload input, or a stand-in for what Claude Code really sends? This is the largest block.
 5. Tests at `tools/ch_mcp/tests/test_game_tools.py` 616 to 674 read hand-written stats and score JSON, and `test_fits_screen` reads hand-typed saved-window text. Input, or a stand-in for what the game and Hydra write?
-6. The size: one executor, about 36 label scouts, about 18 verifiers and up to 12 more scouts for residue and notes, plus about 13 hours of main-session reading at the caps. Is that approved?
+6. The size: one executor, eight re-read verifiers for the T7 slices, about 36 label scouts, about 18 verifiers and up to 12 more scouts for residue and notes, plus about 13 hours of main-session reading at the caps. Is that approved?
 
 ## Promise map
 
@@ -210,7 +215,7 @@ This plan has no live step. Nothing in it starts Clone Hero or Hydra, and the ru
 | Every record has a ledger row or is named as missing | E1 | E1 | rows plus `not-in-ledger.md` names equal the records in `AUD/records/` |
 | The ledger agrees with the recount's totals | E1 | E1 | per-file sums against `TOTALS.md` section 1; differences listed by record |
 | WN4 is not counted twice | E1 | E1 | no ledger row names `window-WN4.md` |
-| T6 reds are findings; a failed T7 claim reopens question 8 for that slice | T6 and T7 results | E0, E7 | no `__` left; each T6 test has a `t6` row; no exit 4 in a reopened slice before its re-read commit |
+| T6 reds are findings; a failed T7 claim reopens question 8 for that slice | T6 and T7 results | E0, E7 | each of the three T6 tests has a `t6` row; each of the eight reopened slices has a re-read file; no exit 4 in a reopened slice before its re-read commit |
 | The four unsettled blocks, and the unfiled choice, are asked first | What must be asked | E2, E7 | held rows have no exit in `exits.md` |
 | Tests that share one rule share one question | E3 | E3 | every faulty row has a key; `groups.md` lists each key's records |
 | No key is made up | E3 | E3 | each key in `keys.md` cites its line in `TOTALS.md`, `cross-findings.md` or the approved plan |
@@ -248,6 +253,6 @@ This plan has no live step. Nothing in it starts Clone Hero or Hydra, and the ru
 | P14: One recount counter read about 94 records. | code | `docs/audit/2026-11-14-test-audit/counts/TOTALS.md` section 1 (26 files, 2,449 read) | checked 2026-11-15; a labelling scout's pace is not measured, and E3's first round shows it |
 | P15: `window-WN4.md` is superseded by WN4a, WN4b and WN4c. | code | `docs/audit/2026-11-14-test-audit/log.md` line 358 | checked 2026-11-15 |
 | P16: The stand-in kinds are nine of the code's own output, seven of outside data and eight of fake code. | code | `docs/audit/2026-11-14-test-audit/counts/TOTALS.md` line 9 | checked 2026-11-15 |
-| P17: T6 and T7 had not produced results when this plan was written. | unchecked | `docs/audit/2026-11-14-test-audit/` (no `mechanical/` folder at commit `dfc7421e`) | E0 |
+| P17: T6 turned three tests red, each already a Rewrite record; T7 planted 98 bugs, 91 went red at a named check, six stayed green (A3, A9, A30, C7, WN3, WN4a), WN8 crashed, WN4b holds one green named line. | code | `docs/audit/2026-11-14-test-audit/mechanical/corpus.md` (commit 6aa6d684) and `docs/audit/2026-11-14-test-audit/mechanical/planted.md` (commit a4ad3306) | checked 2026-11-15 by the runs; for most of the 91, "named" compared the failing line with the picks scout's copy of the record's line, not a fresh read of each record |
 | P18: The handoff's Claims hold: no row is missing or changed. | code | `tools/check_handoff.py` run on `docs/handoffs/2026-11-15-test-audit-t8-exits-plan-handoff.md` (12 ok, 3 not on main, 1 not pushed, 10 manual) | checked 2026-11-15; of the manual rows, only the totals and the two missing state files were read against the files |
 | P19: The audit also holds records for the hook tests, slices E1 to E4, which the approved plan listed as out of scope. | code | `docs/audit/2026-11-14-test-audit/records/E1.md` to `E4.md`; `docs/audit/2026-11-14-test-audit/log.md` lines 301 to 308 | checked 2026-11-15, by file name and log lines; why they were added was not read |
