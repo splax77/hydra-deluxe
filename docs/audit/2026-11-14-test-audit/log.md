@@ -100,4 +100,15 @@ Round 3 ran as one workflow (wf_2c1ce9d6-90a): auditors for A9 to A12, verifiers
 
 Two reading rules were added for round 4 on: a claim about threads, timing or a transport is checked on the real mechanism (the real pool, the real clock, real WinHTTP against a loopback server), which checks behaviour but not a real server's reply; and a verifier reads the code behind every record, never agreeing from a verdict's shape. Round 1's verifier of A3 and A4 left A3 records 7, 9, 10, 11, 19, 21 and A4 records 12, 13, 15, 17 to 22, 34, 35, 38 to 40 not re-opened; they go to round 3's verifier of A9 and A10 (`verify/A3-A4-reread.md`).
 
-Round 4 ran as one workflow (wf_29e1beb8-eac): auditors for A13 to A16 and verifiers for A9 to A12, launched together.
+Round 4 ran as one workflow (wf_29e1beb8-eac): auditors for A13 to A16 and verifiers for A9 to A12, launched together. About 9 minutes, 328 tool calls; every slice finished.
+
+- A13 (f4f140f6): 25 records. Rewrite 23, Remove 2.
+- A14 (9abed756): 42 records. Keep 1, Rewrite 41. Most Rewrites are marked "input only": the test is sound and only its claim is unchecked.
+- A15 (fd53f717, a11daf91): 30 records. Keep 2, Rewrite 16, Remove 1, Investigate 11.
+- A16 (7e39f41b): 25 records. Keep 10, Rewrite 14, Investigate 1.
+- verify A9, A10 and the A3/A4 reread (7c66d86a): A9 42 agreed, 4 disputed in part (records 6, 14, 33, 34).
+- verify A11, A12 and the A7 reread: the reread found 9 of 10 A7 verdicts hold and disputes shell line 408 (line 417 cannot fail).
+
+A14's "input only" Rewrites show a third reading gap: a sound test whose only fault is an unchecked claim was being given Rewrite, which would put a test change to the user that nobody needs. From round 5 on, such a test is Investigate, marked "claim not checked only", with the capture it needs; Rewrite is for a fault in the test itself. Records from earlier rounds that gave Rewrite for that reason alone (A9 and A14 at least) are swept once after the last find round, before T8 picks exits.
+
+Round 5 ran as one workflow: auditors for A17 to A20 and verifiers for A13 to A16 (`briefs/T5-verify-R4a.md`, `T5-verify-R4b.md`), launched together.
