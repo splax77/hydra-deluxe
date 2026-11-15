@@ -30,7 +30,7 @@ Calling the owner is not a copy. "graph: every deactivation edge lists the chord
 
 A count on its own is weak even when its source is fine. "Three rows came back" passes with the wrong three rows. Check which items came back, or say why the count alone is the promise.
 
-A floor is different from a count. A sweep over `testdata/input` that checks every item would pass with zero items, so it often ends with a loose floor such as `acts > 1000` to prove the loop ran. A floor promises nothing about Hydra; it guards the test. It is fine when it sits far below the real number, so adding or removing a chart never trips it, and when a comment says it guards the loop. Approved floors are listed under D43 in `docs/audit/2026-10-03-fix-decisions.md`; a comment that cites D43 must match a floor listed there for that file.
+A floor is different from a count. A sweep over `testdata/input` that checks every item would pass with zero items, so it often ends with a loose floor such as `acts > 1000` to prove the loop ran. A floor promises nothing about Hydra; it guards the test. It is fine when it sits far below the real number, so adding or removing a chart never trips it, and when a comment says it guards the loop. Approved floors are listed under D43 in `docs/audit/2026-10-03-fix-decisions.md`; a comment that cites D43 must match a floor listed there. D43 names files as they were on 2026-10-04, so follow renames with `git log --follow` before calling a citation wrong (D43's test_search.cpp is today's `tests/test_sp_end.cpp`).
 
 When you cannot find where a value comes from, do not guess and do not assume the current code is right. The verdict is **investigate**.
 
