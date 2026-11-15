@@ -390,3 +390,11 @@ The capture scout wrote `capture/RUNS.md` (8e79b2ce): nine runs, R1 to R9, one p
 ## The recount by the user's test rulings (session 63c70014, 2026-11-15)
 
 The user filed four test rulings in `docs/agents/rulings/tests-and-runs.md` (commits d297e3cb and 47128398 on main). They chose that hand-built input fed to the real code is not fake ("No, input is fine"). The repeated-values pass gained findings X3 to X12 and a K3 re-read for X9 (`repeats/X9-*.md`, `repeats/V-X9-*.md`). Then 26 counters re-read every Keep and Investigate record by the rulings (`counts/`), and a fresh tallier totalled them (`counts/TOTALS.md`, commit 16cf8ed4). The result: 1,861 of 2,449 records hold a ruled fault, 239 of the 421 Keep records and 1,622 of the 2,028 Investigate records. The totals are in `cross-findings.md`, "The Keep recount". No exit has been chosen, and no capture run has started.
+
+## The capture runs for the clean records (session 63c70014, 2026-11-15)
+
+The user asked for runs only for the clean Investigate records ("capture the real ones then stop and create handoff"). `capture/CLEAN.md` (c68baa41) lists 397 of them, each with its run. The main session ran R1, R2, R3, R4a, R5, R6 and R8 on `testdata/input`, `testdata/store` and the real reflog. R1's dumps are in 7883080f; the rest are in 9649c468. `capture/runs/index.md` says what each run did and what came back.
+
+R1 to R6 ran without errors. R8, the ref gate's replay of the real main moves, fails: today's gate refuses 65 of them, where the test allows one known exception. That is a finding for the re-judge, not a run error. Believer's path 4 needed a depth-4 dump. R2 added `--legacy-fills` beside the two windows.
+
+Not run: R4b to R4h, whose scripts are unwritten; R7 and R9, which serve no clean record. CLEAN.md leaves 171 records unplaced, 54 with no run, 16 with unavailable input and 1 that needs the user's library. No record has been re-judged against the outputs.
