@@ -8,6 +8,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <string>
 #include <utility>
@@ -69,16 +70,24 @@ TEST_CASE("timing: corpus conversions are monotone and consistent") {
                                   << off_line_charts << " with a mid-measure meter change");
 }
 
-TEST_CASE("timing: to_multiplier thresholds") {
+TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4") {
     using hydra::to_multiplier;
-    CHECK(to_multiplier(0) == 1);
-    CHECK(to_multiplier(9) == 1);
-    CHECK(to_multiplier(10) == 2);
-    CHECK(to_multiplier(19) == 2);
-    CHECK(to_multiplier(20) == 3);
-    CHECK(to_multiplier(29) == 3);
-    CHECK(to_multiplier(30) == 4);
-    CHECK(to_multiplier(1000) == 4);
+
+    // The combo at which each multiplier starts: SC-05 in
+    // docs/clone-hero/06-scoring.md.
+    const int x2_from = 10;
+    const int x3_from = 20;
+    const int x4_from = 30;
+
+    CHECK(to_multiplier(x2_from - 1) == 1);
+    CHECK(to_multiplier(x2_from) == 2);
+    CHECK(to_multiplier(x3_from - 1) == 2);
+    CHECK(to_multiplier(x3_from) == 3);
+    CHECK(to_multiplier(x4_from - 1) == 3);
+    CHECK(to_multiplier(x4_from) == 4);
+
+    // x4 is the top, however long the combo runs.
+    CHECK(to_multiplier(std::numeric_limits<int>::max()) == 4);
 }
 
 TEST_CASE("timing: a map without a tick-0 entry throws") {
