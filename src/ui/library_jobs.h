@@ -23,6 +23,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -333,8 +334,42 @@ public:
     };
     Snapshot snapshot() const;
 
+    // The store's answers for the charts this run saved, waiting for the
+    // window to put them on their rows. Each answer is
+    // RecordStore::lookup's, asked on the batch's thread under the run's
+    // profile right after the chart's save group committed; the job decides
+    // no status itself. A chart in two folders has one answer.
+    struct SavedRows {
+        std::vector<std::pair<std::string, store::RecordLookup>> answers;  // md5, answer
+        // app::plain_error of the last lookup that failed since the last
+        // take; empty when none did. Its charts are asked about again with
+        // the next saved chart, and once more when the run ends.
+        std::string problem;
+    };
+    // Hands over what the tray holds and empties it. Never waits on the
+    // store: a lookup runs without the job's own lock.
+    SavedRows take_saved_rows();
+    // How many charts' answers the job has made so far, taken or not. A
+    // snapshot's `completed` can count a chart before its answer is made
+    // (run_batch's on_progress fires first), so tests wait on this instead.
+    // Reads only the job's own count.
+    int answered_count() const;
+
+    // Test seam: called on the batch thread just before each lookup, so a
+    // test can hold the batch there. Call before start().
+    void set_lookup_hold_for_test(std::function<void()> hold) { lookup_hold_ = std::move(hold); }
+
 private:
     void run();
+    // On the batch thread, from run_batch's on_result and on_failure_saved:
+    // `md5` was saved, so it waits for its answer unless it already has one.
+    // Then asks about everything waiting. Lets no exception out, because one
+    // out of a batch callback ends the whole run.
+    void note_saved(const std::string& md5) noexcept;
+    // On the batch thread: asks the store about every waiting chart in one
+    // lookup and moves the answers into the tray. A lookup that fails keeps
+    // them waiting and leaves its sentence in the tray. Lets no exception out.
+    void answer_waiting() noexcept;
     // Ends a run that failed as a whole, around its charts: the plain
     // sentence for `e` with `detail` under it in run_error, the clock
     // stopped. No count changes.
@@ -368,6 +403,15 @@ private:
     // its window; read by snapshot(). Its window follows workers_ (see
     // kTimeLeftWorkerRounds). Guarded by mu_.
     mutable app::TimeLeftClock time_left_;
+
+    // Saved charts still waiting for their answer, and the charts already
+    // answered this run. Only the batch thread (run_batch's callbacks, then
+    // run()) touches them, so they need no lock.
+    std::vector<std::string> waiting_;
+    std::unordered_set<std::string> answered_md5s_;
+    std::function<void()> lookup_hold_;  // set_lookup_hold_for_test
+    SavedRows tray_;    // guarded by mu_
+    int answered_ = 0;  // answers made so far (answered_count); guarded by mu_
 };
 
 // GUI-test seam: when set, every batch the app starts runs this analyzer on
