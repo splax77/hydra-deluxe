@@ -41,3 +41,11 @@ This code is about to change again. Main at c10c7f54 filed two rulings (session 
 Burnout (Green Day, `testdata/input/common/Summer Blast _25 Setlist/Tier 4/Green Day - Burnout/notes.mid`) is added at both windows, with the GUI tests' settings (`--cap 4 --ms 10 --depth 2`): `burnout.efill60.dump.json` and `burnout.efill85.dump.json`, identical apart from the stamp. Its best path is "3- 1 2" at 378315.
 
 A dump does not write the window it was made at. Neither `dump` nor `schedule` output names `--efill`; the schedule's `constants.window_back_ms` is the hit window (85), not the early-fill window. So the file name is the only record of which window a dump used.
+
+## Every corpus chart at 85 and 60 ms (capture pass, 2026-11-15)
+
+`window-sweep/sweep.tsv` holds the result of dumping each of the 116 `.chart` and `.mid` files under `testdata/input` at `--efill 85` and `--efill 60`, with two settings sets: the dump's defaults, and the GUI tests' settings (`--cap 4 --ms 10 --depth 2`). That is 232 pairs. The script is `window-sweep/window_sweep.ps1`. Every pair is identical apart from the `hydra_replay_build` stamp: no chart's kept paths, totals or notation move between the two windows under either settings set. A pair that differed would have its two dumps saved beside the table; none did.
+
+The window flag does take effect. Beg at `--efill 0` gives "1- 0 0 0" and "3 0- 0", without the E0 that 30, 60 and 85 all give, because at window 0 `is_e0` is a strict `<` (`src/core/model.h:335`) and Beg's E0 has an `e_offset` of 0.
+
+What this does not cover: other settings (legacy fills, other caps, the CH 1.0 rule, deeper score ranges), the schedule's fields for charts other than the eight above, which fills the Path Builder offers, and hand-built charts that live only inside test code. The sweep reads what `dump` writes and nothing more.
