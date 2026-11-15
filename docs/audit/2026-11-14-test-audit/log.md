@@ -128,4 +128,12 @@ Round 6 ran as one workflow (wf_c6addab9-6e9): auditors for A21 to A24 and verif
 - A24 (a3c7d531, 2ed115b9): 27 records. Rewrite 18, Remove 4, Investigate 5.
 - verify A17 and A18, verify A19 and A20: committed; the A19 verifier moved PB1 to Remove, PC2 and PC3 to Rewrite (each returns after a MESSAGE when its commit is missing), and PC5 to Keep.
 
-Round 7 ran as one workflow: auditors for A25 to A28 and verifiers for A21 to A24, launched together.
+Round 7 ran as one workflow (wf_b33dc705-fe4): auditors for A25 to A28 and verifiers for A21 to A24, launched together. About 9 minutes, 345 tool calls; every slice finished.
+
+- A25 (b5d3038c): 42 records. Keep 2, Rewrite 14, Remove 3, Investigate 23. Split: D103 item 22 (decisions line 549) says a chart-mode change "never marks" the path report out of date; `src/app/report.cpp:358-364` and test R29 say it does.
+- A26 (b1331ce5, 9877345f): 46 records. Keep 1, Rewrite 17, Remove 4, Investigate 24.
+- A27 (da0fb17a, e5153458, 234df5b3): 44 records. Keep 2, Rewrite 18, Investigate 24.
+- A28 (15e10100): 24 records. Rewrite 13, Remove 1, Investigate 10.
+- verify A21 and A22, verify A23 and A24 (4dfaeb38): committed. The A23 verifier finished record 2 from the existing Beg captures and moved it to Keep.
+
+Round 8 ran as one workflow: auditors for A29 to A32 and verifiers for A25 to A28, launched together.
