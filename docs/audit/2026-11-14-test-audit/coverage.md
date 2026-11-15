@@ -2,7 +2,14 @@
 
 Listed at main `a19b9cb2` from the root `CMakeLists.txt` (the `tests/test_*.cpp` glob at line 739, `tests/report_samples.cpp` and the `tests/single_owner` files at lines 742 to 746 and 926, the `tests/ui` files at lines 604 to 630 and `tests/ui/uitest_main.cpp` at line 796, the `tests/pb_ui` files at lines 712 to 717, the `tests/fuzz/fuzz_*.cpp` glob at line 963) and every `test_*.py`, `*_test.py` and `test_*.ps1` under `tools/` and `tests/`.
 
-Files listed: 241, in 248 rows, because seven files are cut into two parts and each part has its own row. Of the 241, 238 are in slices, one is the calibration file and two are the experiment scripts. Files with no slice: 0.
+Files listed: 263, in 270 rows, because seven files are cut into two parts and each part has its own row. Of the 263, 262 are in slices and one is the calibration file. Files with no slice: 0.
+
+The user was asked on 2026-11-15 whether the hook tests and the two experiment scripts could stay out, and answered "No, audit them too". So both are in:
+
+- The two experiment scripts are slice D16. Neither holds a `def test_`; each is one `main()` script that drives the real game, so each file is one record.
+- The hook tests are the 22 `test_*` files in `C:\Users\Patrick\.claude\gates\tests\`, read at that repo's main, commit `0586e15`. They are packed by the plan's Python rule (2,500 lines, eight files) into slices E1 to E4, Python files before PowerShell ones, in name order. A Python file's unit is one `def test_` function. A PowerShell file's unit is one `Check` or `Check-Decision` call, the two helpers in `tests\lib\harness.ps1` that each print one line. The folder's other files (`replay.py`, `replay_extract.py`, `shell_output_sizes.py`, `probe_results.md`, `reflog_moves.json` and `tests\lib`) are tools and helpers, not tests; an auditor opens them when a test it judges uses them. The hook tests test the hooks, not Hydra, so question 3 (the engine's record) does not apply to them, and an E auditor writes "not a Hydra claim" there.
+
+D16 joins round 22, which then holds four slices (D14, D15, A50 and D16). E1 to E4 are a new round 23. The audit is 92 slices over 23 rounds.
 
 `tests/test_store_query_plans.cpp` was added to main after the plan was written (commit 8486e93c), so it has the new slice A50, appended to the last round (round 22, now three slices). The plan's packing rule, re-run on main, would put it in A33 beside `tests/test_store_records.cpp`; T0 follows the plan's rule for a missing file and appends instead. Every other slice keeps the plan's files; only some line totals moved (A18 1273 to 1324, A19 1305 to 1312, A28 862 to 856, A29 729 to 990, A33 793 to 863, A48 1455 to 1460, D15 2293 to 2297), all under the caps.
 
@@ -257,6 +264,28 @@ The PowerShell helper is `Check` in all five scripts (`function Check(` in each)
 | `tools/test_mutation_probe.ps1` | 271 | D15 | 22 |
 | `tools/test_release_sign.ps1` | 124 | D15 | 22 |
 | `tests/test_store_query_plans.cpp` | 369 | A50 | 22 |
+| `tools/ch_probe/experiments/key_delivery_test.py` | 72 | D16 | 22 |
+| `tools/ch_probe/experiments/pad_flash_test.py` | 75 | D16 | 22 |
+| `C:\Users\Patrick\.claude\gates\tests\test_agent_files.py` | 58 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_agent_stop.py` | 493 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_bash_windows_rule.py` | 331 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_common.py` | 183 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_delete_rule.py` | 416 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_docs_numbers.py` | 200 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_media_rule.py` | 235 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_percall_key.py` | 222 | E1 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_percall_rewrite.py` | 162 | E2 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_posture.py` | 277 | E2 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_progress.py` | 771 | E2 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_publish.py` | 445 | E2 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_ref_judge.py` | 850 | E3 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_refusals.py` | 88 | E3 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_review_dispatch.py` | 363 | E3 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_review_rules.py` | 1017 | E3 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_ruling_rules.py` | 448 | E4 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_shell_output.py` | 422 | E4 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_stall.py` | 436 | E4 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_h52_cleanup_sweep.ps1` | 489 | E4 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_h53_session_cards_start.ps1` | 269 | E4 | 23 |
+| `C:\Users\Patrick\.claude\gates\tests\test_status_append.ps1` | 49 | E4 | 23 |
 | `tests/test_preview_scene.cpp` | 1005 | T3 |  |
-| `tools/ch_probe/experiments/key_delivery_test.py` | 72 | out of scope, pending the user's yes (question 2) |  |
-| `tools/ch_probe/experiments/pad_flash_test.py` | 75 | out of scope, pending the user's yes (question 2) |  |
