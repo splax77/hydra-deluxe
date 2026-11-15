@@ -486,6 +486,59 @@ BatchJob::Snapshot BatchJob::snapshot() const {
     return s;
 }
 
+BatchJob::SavedRows BatchJob::take_saved_rows() {
+    std::lock_guard<std::mutex> lock(mu_);
+    SavedRows taken = std::move(tray_);
+    tray_ = SavedRows{};
+    return taken;
+}
+
+int BatchJob::answered_count() const {
+    std::lock_guard<std::mutex> lock(mu_);
+    return answered_;
+}
+
+void BatchJob::note_saved(const std::string& md5) noexcept {
+    try {
+        // run_batch runs each chart once, so an answered chart's answer still
+        // stands when its second folder's row is reported.
+        if (answered_md5s_.count(md5) == 0 &&
+            std::find(waiting_.begin(), waiting_.end(), md5) == waiting_.end())
+            waiting_.push_back(md5);
+    } catch (...) {
+        // Out of memory noting it: the chart's row catches up at the next
+        // whole read, and the run goes on.
+    }
+    answer_waiting();
+}
+
+void BatchJob::answer_waiting() noexcept {
+    try {
+        if (waiting_.empty()) return;
+        if (lookup_hold_) lookup_hold_();
+        // mu_ stays free here, so a frame's snapshot never waits on the store.
+        std::vector<store::RecordLookup> found = store_.lookup(waiting_, run_.profile);
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            for (size_t i = 0; i < waiting_.size() && i < found.size(); ++i)
+                tray_.answers.emplace_back(waiting_[i], std::move(found[i]));
+            answered_ += static_cast<int>(waiting_.size());
+        }
+        answered_md5s_.insert(waiting_.begin(), waiting_.end());
+        waiting_.clear();
+    } catch (const std::exception& e) {
+        // The charts stay waiting; the window shows the sentence as it shows
+        // any failed store read.
+        try {
+            std::string sentence = app::plain_error(e);
+            std::lock_guard<std::mutex> lock(mu_);
+            tray_.problem = std::move(sentence);
+        } catch (...) {
+        }
+    } catch (...) {
+    }
+}
+
 void BatchJob::run() {
     for (size_t i = 0; i < plan_.todo.size(); ++i) by_path_.emplace(plan_.todo[i].notespath, i);
 
@@ -520,6 +573,14 @@ void BatchJob::run() {
         // Empty when the sentence already quotes it: the list draws nothing.
         snap_.failure_details.push_back(error.empty() ? std::string() : title + ": " + error);
     };
+    // A saved result and a saved failure both reach their row through the
+    // store's own answer; the record handed over is not read.
+    callbacks.on_result = [this](const app::ScanItem& item, const store::PreparedRecord&) {
+        note_saved(item.md5);
+    };
+    callbacks.on_failure_saved = [this](const app::ScanItem& item, const store::PreparedRecord&) {
+        note_saved(item.md5);
+    };
     callbacks.cancel = &cancel_;
     // The pause gate and the "now analyzing" line sit in front of the real
     // analyzer, so run_batch and its pool stay as they are.
@@ -535,13 +596,17 @@ void BatchJob::run() {
     // The plan was made before the job (D79), so run_batch reads nothing
     // from the store before its first chart. Whatever still throws out of it
     // ends the run as a whole.
+    // Charts whose lookup failed are asked about once more before the run
+    // ends, so a finished snapshot means the tray holds the last answers.
     try {
         app::run_batch(plan_, run_, store_, workers_, callbacks);
     } catch (const std::exception& e) {
+        answer_waiting();
         finish_failed(e, app::plain_error_detail(e));
         return;
     }
 
+    answer_waiting();
     std::lock_guard<std::mutex> lock(mu_);
     finish_locked();
 }
