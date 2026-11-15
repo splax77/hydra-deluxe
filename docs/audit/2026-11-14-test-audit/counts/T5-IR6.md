@@ -15,6 +15,15 @@ How I called the faults.
 
 "Named" says whether the record already said it in its own words. For X9 I count a record as naming it when it says the input is hand-built, fake or "not real input", which nearly all of them do under "claim not checked". No record called any of this a fault under the rulings.
 
+## Rerun under the user's later ruling on hand-built input
+
+The main session told me: input a test builds and feeds to the real code (a hand-built chart, a hand-written settings.ini or CMake file, a throwaway repo, fuzz bytes) is not fake. Only a stand-in for the code's own output, a stand-in for outside data, or fake code is X9. I went through every X9 mark again.
+- Cleared: C4 record 1 (hand-written CMake text read by the real reader). It is now none.
+- Kept, as fake code: every FakeLoop, fake clock, fake reader, FakeFile, FakeGame, FakeKit, FakeFrida and patched ctypes (RC :506 to :791 and :938, MT).
+- Kept, as stand-in for outside data: `fake_table` (a hand-built Windows process table, RC :323 to :401) and the hand-built `state()` game reads (MT).
+- Kept, as stand-in for the code's own output: the hand-built SampleRow and gains (RC :367, :384, :401) and the report tests' `Fixture` (RP). A `Fixture` is a recording written by the test in the shape the recorder writes, so I read it as a stand-in for the recorder's output. This is the one call that could go the other way: if the user counts a recording file the real report reads as input a test builds, the 56 RP X9 marks clear. The hand-written settings.ini in RP :527 and :532 is no longer a reason on its own; those two keep X9 only through their `Fixture`.
+- X10, X11 and X12 marks are not touched by this ruling.
+
 ## Table
 
 | Rec file | No | Test | Faults | Faulty checks | Reason | Named |
@@ -129,7 +138,7 @@ How I called the faults.
 | D7 MT | :558 object reads unproven | MT:558 | X10 | MT:559-561 | pins a flag typed in the data file | yes |
 | A9 | 29 whole-number key | tests/test_config.cpp:764 | none | | real parser, typed ini lines are input; the record's doubt is a decision, not one of the faults | |
 | A12 | 10 premise maps | tests/test_docs_match_code.cpp:1887 | none | | reads the real plans against the real shape page; the date constant's source is a card quote, in the code not in a check | |
-| C4 | 1 CMake reader, made-up file | tests/test_layering.cpp:547 | X9 | :548-585 (`kMadeUpCMake`) | hand-written CMake text, expected owners typed to match it; title says so | yes |
+| C4 | 1 CMake reader, made-up file | tests/test_layering.cpp:547 | none | | hand-written CMake text fed to the real reader is input a test builds, not a stand-in (cleared by the user's later ruling; first marked X9) | |
 | A16 | 22 startup read by part | tests/test_library_jobs.cpp:1274 | none | | no check exists; returns when the env var is unset; the comment cites "the plan's run count" for 5 but nothing checks it | |
 | D16 | key_delivery_test.py | tools/ch_probe/experiments/key_delivery_test.py:46 | none | | no assertions; a person reads Notepad | |
 | D16 | pad_flash_test.py | tools/ch_probe/experiments/pad_flash_test.py:49 | none | | no assertions; a person reads pad flashes | |
@@ -137,9 +146,9 @@ How I called the faults.
 ## Counts
 
 - Investigate records read: 114 (D7 108, A9 1, A12 1, C4 1, A16 1, D16 2).
-- Records with at least one fault: 109. None: 5 (A9 29, A12 10, A16 22, D16 two).
-- By fault, records: X9 100 (RC 22, RP 56, MT 21, C4 1); X10 41 (RC 6, RP 19, MT 16); X11 6 (RC 2, RP 2, MT 2); X12 4 (RC 3, MT 1); snapshot 0 separately (typed number tables are in X10).
-- Records whose fault the record already named in its own words: 107 of 109. The two that did not: RC :927 (a typed error sentence) and RP :120 (typed "ready" and "running"). For X10 and X11 on message text, most records named the fault only as "typed" or "a copy"; the RP and MT notice sentences were not named.
+- Records with at least one fault: 108. None: 6 (A9 29, A12 10, C4 1, A16 22, D16 two).
+- By fault, records: X9 99 (RC 22, RP 56, MT 21); X10 41 (RC 6, RP 19, MT 16); X11 6 (RC 2, RP 2, MT 2); X12 4 (RC 3, MT 1); snapshot 0 separately (typed number tables are in X10).
+- Records whose fault the record already named in its own words: 106 of 108. The two that did not: RC :927 (a typed error sentence) and RP :120 (typed "ready" and "running"). For X10 and X11 on message text, most records named the fault only as "typed" or "a copy"; the RP and MT notice sentences were not named.
 
 ## What I did not do
 
