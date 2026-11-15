@@ -500,8 +500,9 @@
 - 2026-11-14 7d28ae9a Meaning of 85 and 53 numbers (2026-11-14) | squeeze, hit-window, backend-squeeze, agents, release, hooks | The session ended with release 3.0.1 published on GitHub, and one docs commit left unpushed.
 - 2026-11-14 958b1d85 Fix corpus squeeze-in test after new corpus chart (2026-11-14) | tests, library, docs, review | The session ended with the corpus-count fix merged to main as 944e627a, and the test passing on main's own build.
 - 2026-11-14 04fbfbab Frontend/backend switched (2026-11-14) | backend-squeeze, frontend-squeeze, agents, review, docs, release | The session ended with the label fix merged on main and release 3.0.2 published on GitHub.
-- 2026-11-14 ca29fda5 Ruling gate plan handoff (2026-11-14) | hooks, agents, docs, planning, review | The session ended with the ruling-gate plan approved on its branch, with nothing built and nothing merged.
+- 2026-11-14 ca29fda5 Ruling gate plan handoff (2026-11-14) | hooks, agents, docs, planning, review | The session ended with the ruling-gate plan approved on its branch, with nothing built and nothing merged. [stale]
 - 2026-11-14 a9505e36 Starpower end clarity design (2026-11-14) | note-highway, sp-bar, active-sp-window, preview, planning | The session ended with a handoff for option B, committed on its own branch and not merged into main.
+- 2026-11-14 ae1c19f5 Sprint end option B handoff (2026-11-14) | active-sp-window, preview, release, hooks, review, clone-hero | Option B was merged into main, and Hydra Deluxe 3.1.0 was published on GitHub with a signed installer and its signature file. [write-back]
 
 ## Proposed tags
 
