@@ -26,9 +26,11 @@
 #ifndef HYDRA_STORE_RECORD_STORE_H
 #define HYDRA_STORE_RECORD_STORE_H
 
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
@@ -474,7 +476,8 @@ class ChartIndex;  // store/chart_index.h
 
 // One connection to the store's file: its handle, the lock over its sqlite
 // calls, and its compiled statements. A read written over a connection
-// answers on any connection the store holds. RecordStore holds the writer's.
+// answers on any connection the store holds. RecordStore holds the writer's,
+// and a StoreReader holds a read-only one.
 struct StoreConnection {
     sqlite3* db = nullptr;
     // The rule: this lock covers sqlite calls and nothing else. A prepared
@@ -513,6 +516,37 @@ protected:
     StoreReads() = default;
     StoreReads(const StoreReads&) = default;
     StoreReads& operator=(const StoreReads&) = default;
+};
+
+class RecordStore;
+
+// A read-only connection to a store's file, answering StoreReads with the
+// store's own rules fingerprint and the same code the store reads with.
+// RecordStore::reader() hands one out. It opens at its first read, through
+// open_reader in record_store.cpp, and a failed open is a failed read; the
+// next read tries again. Each outermost call runs in one read transaction, so
+// it sees one moment of the file, and nothing stays open between calls. The
+// store must outlive it.
+class StoreReader : public StoreReads {
+public:
+    // `path`: the store's file, as shared_file_path in record_store.cpp gives it.
+    StoreReader(RecordStore& store, std::string path);
+    ~StoreReader() override;
+    StoreReader(const StoreReader&) = delete;
+    StoreReader& operator=(const StoreReader&) = delete;
+
+    std::vector<RecordLookup> lookup(const std::vector<std::string>& song_ids,
+                                     const Profile& want) override;
+    std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
+    // Closes the connection; a later read opens it again.
+    void close();
+
+private:
+    RecordStore& store_;
+    std::string path_;
+    StoreConnection conn_;
+    // Opens conn_ when it is closed. The caller holds conn_'s lock.
+    void open_if_closed();
 };
 
 class RecordStore : public StoreReads {
@@ -629,9 +663,19 @@ public:
     // Every chart lookup calls Ready or CantAnalyze under `want`, with that
     // status: the charts that have a current result, which a batch skips.
     std::unordered_map<std::string, RecordStatus> settled_song_ids(const Profile& want) override;
-    // The reads a caller that only reads goes through. For now every store
-    // hands back itself, so a read answers on the store's own connection.
-    StoreReads& reader() { return *this; }
+    // The reads a caller that only reads goes through. A store with a file
+    // hands back its StoreReader, whose own connection and lock never wait for
+    // the writer's lock. A store with none (":memory:") cannot be opened
+    // twice, so it hands back itself, and a read answers on its connection.
+    StoreReads& reader();
+    // Test seam: the next open of any reader this store hands out fails, as
+    // an open that fails does. It fires once.
+    void fail_next_reader_open_for_test() { fail_next_reader_open_for_test_ = true; }
+    // Test seam: every reader this store hands out calls `fn` between
+    // lookup's two reads, so a test can save in between. Empty to stop.
+    void set_between_lookup_reads_for_test(std::function<void()> fn) {
+        between_lookup_reads_for_test_ = std::move(fn);
+    }
     // Every chart lookup calls Ready under `want`.
     std::unordered_set<std::string> ready_song_ids(const Profile& want);
     // Every Ready record under `want`, paths included, best score first (a
@@ -734,8 +778,17 @@ public:
     ChartIndex chart_index();
 
 private:
+    // Reads the rules fingerprint and the two reader seams.
+    friend class StoreReader;
     // The connection every write and every RecordStore read goes through.
     StoreConnection writer_;
+    // What reader() hands out for a store with a file; null for one with none.
+    // Made when the store opens; close() closes it before the writer.
+    std::unique_ptr<StoreReader> reader_;
+    // What fail_next_reader_open_for_test set; the open it fails clears it.
+    std::atomic<bool> fail_next_reader_open_for_test_{false};
+    // What set_between_lookup_reads_for_test set.
+    std::function<void()> between_lookup_reads_for_test_;
     // The fingerprint of the rules this process runs under. A row stamped
     // with anything but `fixed` reads Stale. Computed once, when the store
     // opens.
