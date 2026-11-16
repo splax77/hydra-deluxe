@@ -520,6 +520,7 @@
 - 2026-11-15 08c1b347 Claude handoff skill invocation issue (2026-11-15) | agents, docs, hooks | Ended with the /handoff fix committed on main as fdd23c64, after the user asked for the working-tree changes to be committed. [stale]
 - 2026-11-16 a1f405c7 Squeeze outside Hydra range (2026-11-16) | squeeze, optimal-path, path, agents | Ended with the question answered: squeezing out there is not optimal.
 - 2026-11-16 872cc6f3 Mutation tool runner handoff (2026-11-16) | tests, agents, review, planning, performance | Ended with a handoff at the user's request, after the runner fix and the report were merged on the integration branch and the docs work was stopped partway.
+- 2026-11-16 60c3a576 Mutation tool report handoff (2026-11-16) | tests, performance, agents, review, docs | The session ended with the mutation tool merged to main as 1acf6a8f, and a next-steps handoff written and committed on its own branch.
 
 ## Proposed tags
 
