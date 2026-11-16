@@ -2,9 +2,8 @@
 // a source file sits behind its own numbered switch, and the HYDRA_MUTANT
 // environment variable names the one switch that is on. With it unset every
 // switch is off, so one build holds every planted bug and each runs alone.
-// The plan was docs/superpowers/plans/2026-11-15-mutation-tool.md (removed;
-// `git show 5a0848fc:docs/superpowers/plans/2026-11-15-mutation-tool.md`),
-// "Where the switches live".
+// The plan has been removed; read its section "Where the switches live" with
+// `git show 5a0848fc:docs/superpowers/plans/2026-11-15-mutation-tool.md`.
 //
 // Each switch also notes that its line ran. The doctest listener in
 // tools/mutate/listener.cpp reads those notes, so the mapping run can say
