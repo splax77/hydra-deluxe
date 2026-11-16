@@ -38,6 +38,7 @@ using hydra::app::Settings;
 using hydra::store::ChartLibraryEntry;
 using hydra::ui::AppState;
 using testwait::wait_until;
+using testwait::wait_until_or_gone;
 
 // ---- the two reports in memory (D103) ---------------------------------------
 
@@ -582,9 +583,12 @@ TEST_CASE("opening the path report runs a batch over the charts with no result, 
     CHECK(app->path_report_batch() == app->batch_job.get());
     CHECK_FALSE(app->report_started);
 
-    // The window's numbers are the batch snapshot's, the strip's numbers.
-    wait_until([&] { return app->batch_job->snapshot().total == kUnanalyzed; },
-               "the batch's count");
+    // The window's numbers are the batch snapshot's, the strip's numbers. A
+    // batch that has finished counts no more charts, so the wait fails then.
+    wait_until_or_gone([&] { return app->batch_job->snapshot().total == kUnanalyzed; },
+                       [&] { return app->batch_job->snapshot().finished; }, "the batch's count",
+                       "the batch finished before its total reached the expected count, and a "
+                       "finished batch counts no more charts");
     hydra::ui::PathReportInput held = hydra::ui::path_report_input(*app);
     const hydra::ui::BatchJob::Snapshot s = app->batch_job->snapshot();
     REQUIRE(held.batch.has_value());
