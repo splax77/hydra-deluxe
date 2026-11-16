@@ -1,0 +1,3845 @@
+# Mutation run 20261116-123523: records and tests the ledger did not match
+
+ledger.py writes this file; do not edit it by hand. The rule that matches a record row to a test is in the plan, docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md, step E1c. Nothing here is judged, and no line here picks an exit.
+
+Mutation run evidence, with four limits: (1) the tool plants its own kinds of bug, not the change an auditor named, so caught nothing is not proof a test is empty; (2) the run went several bugs at once, so a timed-out bug lists its red tests but credits none of them as catches; (3) each verdict comes from one run of its bug; (4) the run held only the C++ tests in hydra_tests, so a test outside it has no evidence here, which is not the same as catching nothing. See docs/audit/2026-11-14-test-audit/mutation/README.md.
+
+There are 3620 record rows (3401 not in the run, 0 several, 219 none) and 203 run tests that no record row matched.
+
+## Record rows: not in the run (3401)
+
+- records/A1.md:17 "sample_path_rows (tests/report_samples.cpp:11-45)": its test file report_samples.cpp (from its title) is not one of the run's files.
+- records/A1.md:67 "sample_index (tests/report_samples.cpp:47-62)": its test file report_samples.cpp (from its title) is not one of the run's files.
+- records/A1.md:99 "counted_against (tests/report_samples.cpp:64-68)": its test file report_samples.cpp (from its title) is not one of the run's files.
+- records/A1.md:131 "sample_dm_rows (tests/report_samples.cpp:70-103)": its test file report_samples.cpp (from its title) is not one of the run's files.
+- records/A17.md:717 "40. tests/test_main.cpp, the whole file (the suite's `main`)": its test file test_main.cpp (from its title) is not one of the run's files.
+- records/A37.md:809 "1. batch-strip-drift: test_batch_strip_drift (tests/ui/uitest_batch_reports.cpp:109)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:827 "2. settings-and-reports: test_settings_and_reports (tests/ui/uitest_batch_reports.cpp:158)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:845 "3. dm-compare-flow: test_dm_compare_flow (tests/ui/uitest_batch_reports.cpp:204)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:863 "4. report-buttons: test_report_buttons (tests/ui/uitest_batch_reports.cpp:282)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:881 "5. batch-confirm: test_batch_confirm (tests/ui/uitest_batch_reports.cpp:379)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:899 "6. batch-confirm-note-shuffle: test_batch_confirm_note_shuffle (tests/ui/uitest_batch_reports.cpp:33": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:917 "7. batch-pause-stop: test_batch_pause_stop (tests/ui/uitest_batch_reports.cpp:418)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:936 "8. batch-strip-workers: test_batch_strip_workers (tests/ui/uitest_batch_reports.cpp:455)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:954 "9. batch-done-strip: test_batch_done_strip (tests/ui/uitest_batch_reports.cpp:530)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:972 "10. batch-open-failure: test_batch_open_failure (tests/ui/uitest_batch_reports.cpp:582)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:991 "11. status-line: test_status_line (tests/ui/uitest_batch_reports.cpp:599)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:1009 "12. analyze-db-fails: test_analyze_db_fails (tests/ui/uitest_batch_reports.cpp:625)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:1027 "13. compare-disabled: test_compare_disabled (tests/ui/uitest_batch_reports.cpp:650)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:1045 "14. dialog-keys: test_dialog_keys (tests/ui/uitest_batch_reports.cpp:677)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A37.md:1063 "15. batch-chip-count: test_batch_chip_count (tests/ui/uitest_batch_reports.cpp:705)": its test file uitest_batch_reports.cpp (from its title) is not one of the run's files.
+- records/A38.md:19 "window": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:26 "click": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:34 "check / uncheck": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:41 "type": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:48 "open": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:55 "key": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:62 "wait": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:69 "timeout": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:75 "wait-idle": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:82 "wait-text": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:88 "expect-text / expect-not-text": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:95 "text": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:101 "dump": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:108 "rect": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:114 "state": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:120 "screenshot": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:127 "reset": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:133 "quit": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:139 "unknown verb": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A38.md:146 "failure tail": its test file uitest_commands.cpp (from the heading "A38: tests/ui/uitest_commands.cpp (the command interpreter, no test case)") is not one of the run's files.
+- records/A39.md:9 "test_analyze: a click analyzes the song and shows its best path; the library row turns Ready; each S": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:29 "test_cap_switch: switching the SP cap back and forth never shows a stale record; while a cap's analy": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:49 "test_legacy_fills: ticking "1.0 fills" analyzes the open song again as a 1.0 result and saves it bes": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:69 "test_dynamics: the Dynamics tab on Acid Romance shows its kick and ghost counts, gold and orange col": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:89 "test_dynamics_reopen: the Dynamics count comes from the click, never the store; a reopen counts agai": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:109 "test_dynamics_hard: at Hard, the Dynamics tab counts Hard's own kicks; Expert's 2x kicks do not reac": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:129 "test_stars: the Stars tab shows nothing while the analysis runs; then the base score, the solo bonus": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:149 "test_details_close_teardown: hiding the details panel by any route tears the Preview down (no audio,": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:169 "test_panel_follows_rescan: a rescan that reads a changed song.ini changes the open panel's header to": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:189 "test_preview_load_bar: the Preview's loading bar shows one of four step names and never moves backwa": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:209 "test_panel_open_close: the panel docks beside the library and narrows it; the X and Escape both clos": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:229 "test_panel_split: the split beside the panel changes only when the library's edge is dragged; it sur": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:249 "test_panel_hide_library: "Hide library" gives the panel the whole width and flips to "Show library";": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:269 "test_open_in_path_builder_greyed: the "Open in Path Builder" button is greyed when the builder exe i": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:289 "test_open_in_path_builder_enabled: with the builder exe present the button is enabled, its hint says": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:309 "test_layout_sweep: on four charts with long titles, at the narrowest and widest panel, no window on ": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:329 "test_long_error_wraps: a long error message wraps inside the song panel instead of running past its ": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:349 "test_panel_prev_next: previous and next step through the library's rows and stop at the ends": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:369 "test_panel_headline: the panel's top on Burnout before and after analysis: artist and charter lines,": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:389 "test_panel_close_cancels: closing the panel mid-analysis cancels it, and nothing is saved for the so": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:409 "test_view_cancel_try_again: Cancel shows "Analysis cancelled." and "Try again" and saves nothing; Tr": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:429 "test_view_rules_broken: with a bad hydra_rules.ini, the click shows only the analysis-off sentence o": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:449 "test_no_analyze_button: the panel has no Analyze or Re-analyze button and no "Not analyzed yet." in ": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:469 "test_view_progress_delay: the progress box shows only once the click has run 0.15 s, so a quick char": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A39.md:489 "test_view_setting_burst: a burst of setting changes ends with one analysis of the final settings; th": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files; its title also holds the run test tests\test_app_settings.cpp:120 a burst of setting changes ends with one analysis of the final settings.
+- records/A39.md:509 "test_settings_lock: the settings lock while a batch runs and unlock when it stops; locked, the panel": its test file uitest_details.cpp (from the heading "A39: tests/ui/uitest_details.cpp, records (auditor a89e1c11cd4457803, T5-A39)") is not one of the run's files.
+- records/A40.md:13 "E1 capture_pixels (`tests/ui/uitest_engine.cpp:36`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:28 "E2 init_temp (`tests/ui/uitest_engine.cpp:75`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:39 "E3 init_engine (`tests/ui/uitest_engine.cpp:80`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:52 "E4 Engine::init_attached (`tests/ui/uitest_engine.cpp:100`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:65 "E5 register_test (`tests/ui/uitest_engine.cpp:110`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:76 "E6 Engine::print_results (`tests/ui/uitest_engine.cpp:116`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:89 "E7 Engine::running_test (`tests/ui/uitest_engine.cpp:136`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:99 "E8 Engine::init (`tests/ui/uitest_engine.cpp:141`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:113 "E9 Engine::frame, device-removed branch included (`tests/ui/uitest_engine.cpp:184`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:127 "E10 Engine::stop (`tests/ui/uitest_engine.cpp:215`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:137 "E11 Engine::shutdown (`tests/ui/uitest_engine.cpp:220`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:148 "E12 idle_frame (`tests/ui/uitest_engine.cpp:234`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:159 "E13 engine_stopping (`tests/ui/uitest_engine.cpp:241`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:170 "E14 clear_abort (`tests/ui/uitest_engine.cpp:249`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:180 "E15 wait_until (`tests/ui/uitest_engine.cpp:255`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:195 "E16 window_named (`tests/ui/uitest_engine.cpp:270`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:206 "E17 fully_shown (`tests/ui/uitest_engine.cpp:276`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:217 "E18 visible_text and on_screen (`tests/ui/uitest_engine.cpp:280` and `:291`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:231 "E19 gather_all and dump_window (`tests/ui/uitest_engine.cpp:301` and `:308`, file-internal)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:243 "E20 drawn_items_labelled (`tests/ui/uitest_engine.cpp:330`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:254 "E21 open_modal_note (`tests/ui/uitest_engine.cpp:341`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:264 "E22 lines_holding (`tests/ui/uitest_engine.cpp:372`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:274 "E23 item_line (`tests/ui/uitest_engine.cpp:390`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:284 "E24 widget_dump (`tests/ui/uitest_engine.cpp:405`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:295 "E25 screenshot (`tests/ui/uitest_engine.cpp:430`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:305 "E26 escape_ref (`tests/ui/uitest_engine.cpp:452`)": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:316 "E27 ArgReader: constructor, next, flag, value (`tests/ui/uitest_engine.cpp:461`, `:463`, `:467`, `:4": its test file uitest_engine.cpp (from its title) is not one of the run's files.
+- records/A40.md:330 "H1 init_scratch (`tests/ui/uitest_harness.cpp:47`, file-internal)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:341 "H2 library_unfiltered and library_row_title (`tests/ui/uitest_harness.cpp:64` and `:69`, file-intern": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:352 "H3 Harness::Harness (`tests/ui/uitest_harness.cpp:78`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:364 "H4 Harness::init_attached (`tests/ui/uitest_harness.cpp:101`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:372 "H5 selects (`tests/ui/uitest_harness.cpp:107`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:381 "H6 seed_problem (`tests/ui/uitest_harness.cpp:111`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:390 "H7 pipe_problem (`tests/ui/uitest_harness.cpp:118`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:398 "H8 Harness::queue (`tests/ui/uitest_harness.cpp:123`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:408 "H9 Harness::init (`tests/ui/uitest_harness.cpp:144`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:417 "H10 wait_for_gpu (`tests/ui/uitest_harness.cpp:157`, file-internal)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:426 "H11 Harness::stop (`tests/ui/uitest_harness.cpp:176`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:431 "H12 reset_app (`tests/ui/uitest_harness.cpp:182`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:445 "H13 store_open_failure (`tests/ui/uitest_harness.cpp:273`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:456 "H14 wait_store_drawing (`tests/ui/uitest_harness.cpp:286`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:465 "H15 reset_app_drawing (`tests/ui/uitest_harness.cpp:301`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:470 "H16 jobs_busy (`tests/ui/uitest_harness.cpp:306`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:476 "H17 BatchGate (`tests/ui/uitest_harness.cpp:316`, `:336`, `:338`, `:340`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:489 "H18 ViewGate (`tests/ui/uitest_harness.cpp:349`, `:368`, `:370`, `:372`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:495 "H19 OpenGate (`tests/ui/uitest_harness.cpp:385`, `:419`, `:421`, `:423`, `:425`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:504 "H20 count_on_screen (`tests/ui/uitest_harness.cpp:427`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:510 "H21 canned_dm_users, canned_dm_score, canned_dm_scores (`tests/ui/uitest_harness.cpp:434`, `:439`, `": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:521 "H22 state_text (`tests/ui/uitest_harness.cpp:458`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:536 "H23 drawn_font_size (`tests/ui/uitest_harness.cpp:505`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:542 "H24 scan_library (`tests/ui/uitest_harness.cpp:511`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:555 "H25 set_panel_ref (`tests/ui/uitest_harness.cpp:529`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:561 "H26 open_details and open_details_within (`tests/ui/uitest_harness.cpp:536` and `:550`, with `tabs_p": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:574 "H27 wait_tabs_placed (`tests/ui/uitest_harness.cpp:568`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:584 "H28 open_titled_reason and open_titled (`tests/ui/uitest_harness.cpp:574` and `:607`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:595 "H29 wait_song_analyzed (`tests/ui/uitest_harness.cpp:613`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:604 "H30 open_preview (`tests/ui/uitest_harness.cpp:624`)": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A40.md:613 "H31 open_settings_panel, settings_control, settings_combo_pick, close_settings_panel (`tests/ui/uite": its test file uitest_harness.cpp (from its title) is not one of the run's files.
+- records/A41.md:13 "1. test_scan (tests/ui/uitest_library.cpp:61)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:29 "2. test_library_twin_rows (tests/ui/uitest_library.cpp:79)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:45 "3. test_difficulty (tests/ui/uitest_library.cpp:130)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:61 "4. test_note_shuffle_switch (tests/ui/uitest_library.cpp:202)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:77 "5. test_settings_button (tests/ui/uitest_library.cpp:259)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:93 "6. test_engine_wildcard_patches (tests/ui/uitest_library.cpp:280)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:109 "7. test_settings_reset (tests/ui/uitest_library.cpp:297)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:125 "8. test_rules_error (tests/ui/uitest_library.cpp:333)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:141 "9. test_settings_error (tests/ui/uitest_library.cpp:363)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:157 "10. test_library_state_per_app (tests/ui/uitest_library.cpp:391)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:173 "11. test_view_settings (tests/ui/uitest_library.cpp:429)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:189 "12. test_library_search (tests/ui/uitest_library.cpp:485)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:205 "13. test_analyze_follows_chip (tests/ui/uitest_library.cpp:650)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:221 "14. test_library_cant_analyze (tests/ui/uitest_library.cpp:699)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:237 "15. test_library_sort_scroll (tests/ui/uitest_library.cpp:749)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:253 "16. test_library_layout (tests/ui/uitest_library.cpp:807)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:269 "17. test_library_column_widths (tests/ui/uitest_library.cpp:883)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A41.md:285 "18. test_library_widths_hold (tests/ui/uitest_library.cpp:959)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:11 "1 test_library_click_keeps_row_in_place (`tests/ui/uitest_library.cpp:1069`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:26 "2 test_library_next_scrolls_just_enough (`tests/ui/uitest_library.cpp:1133`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:41 "3 test_library_column_order (`tests/ui/uitest_library.cpp:1197`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:56 "4 test_library_columns_at_start (`tests/ui/uitest_library.cpp:1237`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:72 "5 test_startup_screen (`tests/ui/uitest_library.cpp:1357`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:87 "6 test_startup_library_read_bar (`tests/ui/uitest_library.cpp:1413`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:102 "7 test_old_library_set_aside (`tests/ui/uitest_library.cpp:1483`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:117 "8 test_rescan_on_open (`tests/ui/uitest_library.cpp:1551`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:132 "9 test_rescan_on_open_cancel (`tests/ui/uitest_library.cpp:1581`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:147 "10 test_scan_missing_folder (`tests/ui/uitest_library.cpp:1613`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:163 "11 test_version_bar (`tests/ui/uitest_library.cpp:1745`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A42.md:179 "12 test_library_search_tips (`tests/ui/uitest_library.cpp:1969`)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/A43.md:17 "L1 test_command_open (`tests/ui/uitest_live.cpp:376`, registered as `command-open`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:32 "L2 test_command_open_unknown (`tests/ui/uitest_live.cpp:388`, `command-open-unknown`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:47 "L3 test_command_row_click_refused (`tests/ui/uitest_live.cpp:401`, `command-row-click-refused`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:62 "L4 test_command_row_click_after_search (`tests/ui/uitest_live.cpp:416`, `command-row-click-after-sea": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:77 "L5 test_library_scroll_guard_absolute_ref (`tests/ui/uitest_live.cpp:434`, `library-scroll-guard-abs": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:92 "L6 test_library_scroll_guard_keys (`tests/ui/uitest_live.cpp:472`, `library-scroll-guard-keys`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:107 "L7 test_command_bare_ref_retried (`tests/ui/uitest_live.cpp:512`, `command-bare-ref-retried`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:122 "L8 test_command_bare_ref_missing (`tests/ui/uitest_live.cpp:522`, `command-bare-ref-missing`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:137 "L9 test_command_bare_ref_ambiguous (`tests/ui/uitest_live.cpp:537`, `command-bare-ref-ambiguous`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:153 "L10 test_command_modal_named (`tests/ui/uitest_live.cpp:554`, `command-modal-named`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:168 "L11 test_command_wait_text_reply (`tests/ui/uitest_live.cpp:603`, `command-wait-text-reply`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:183 "L12 test_live_reset_draws_while_opening (`tests/ui/uitest_live.cpp:634`, `live-reset-draws-while-ope": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:198 "L13 test_live_reset_open_outlasts_timeout (`tests/ui/uitest_live.cpp:649`, `live-reset-open-outlasts": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:213 "L14 test_live_reset_open_failed (`tests/ui/uitest_live.cpp:682`, `live-reset-open-failed`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:229 "L15 test_reset_app_blocks (`tests/ui/uitest_live.cpp:717`, `reset-app-blocks`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:245 "L16 test_live_start_gives_up_at_cap (`tests/ui/uitest_live.cpp:729`, `live-start-gives-up-at-cap`)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/A43.md:264 "M1 on_crash (`tests/ui/uitest_main.cpp:54`)": its test file uitest_main.cpp (from its title) is not one of the run's files.
+- records/A43.md:274 "M2 usage (`tests/ui/uitest_main.cpp:89`)": its test file uitest_main.cpp (from its title) is not one of the run's files.
+- records/A43.md:282 "M3 launch_child (`tests/ui/uitest_main.cpp:108`)": its test file uitest_main.cpp (from its title) is not one of the run's files.
+- records/A43.md:290 "M4 run_parallel (`tests/ui/uitest_main.cpp:132`)": its test file uitest_main.cpp (from its title) is not one of the run's files.
+- records/A43.md:302 "M5 main (`tests/ui/uitest_main.cpp:257`)": its test file uitest_main.cpp (from its title) is not one of the run's files.
+- records/A44.md:16 "1. paths-list: the path list (`test_paths_list`, tests/ui/uitest_paths.cpp:109)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:35 "2. paths-rows: the activation rows (`test_paths_rows`, tests/ui/uitest_paths.cpp:254)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:54 "3. paths-backend-timings (`test_paths_backend_timings`, tests/ui/uitest_paths.cpp:348)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:73 "4. paths-folds-copy (`test_paths_folds_copy`, tests/ui/uitest_paths.cpp:424)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:92 "5. paths-uncounted (`test_paths_uncounted`, tests/ui/uitest_paths.cpp:488)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:111 "6. paths-fit-narrow (`test_paths_fit_narrow`, tests/ui/uitest_paths.cpp:513)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:129 "7. paths-long-path (`test_paths_long_path`, tests/ui/uitest_paths.cpp:540)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:147 "8. paths-backend-fit (`test_paths_backend_fit`, tests/ui/uitest_paths.cpp:604)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:166 "9. paths-row-layout (`test_paths_row_layout`, tests/ui/uitest_paths.cpp:734)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:185 "10. paths-length-from-click (`test_paths_length_from_click`, tests/ui/uitest_paths.cpp:920)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:204 "11. paths-hit-window (`test_paths_hit_window`, tests/ui/uitest_paths.cpp:966)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A44.md:224 "12. paths-hit-window-narrow (`test_paths_hit_window_narrow`, tests/ui/uitest_paths.cpp:1015)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/A45.md:9 "1. preview (tests/ui/uitest_preview.cpp:34, entry "preview")": its test file uitest_preview.cpp (from its title) is not one of the run's files.
+- records/A45.md:25 "2. analyze-on-preview (:90)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:41 "3. preview-path-overlay (:151)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:57 "4. preview-controls (:228)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:73 "5. preview-solo-box (:377)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:89 "6. preview-drain-box (:471)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:105 "7. preview-overlay-fit (:534)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:121 "8. preview-buttons-keys (:564)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:137 "9. scrub-hold (:619)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:153 "10. layout-drift (:647)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:169 "11. preview-path-picker (:694)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:185 "12. preview-activation-jumps (:1025)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:202 "13. preview-error-wraps (:788)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:218 "14. preview-overlay-steady (:986)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:234 "15. preview-mode-reload (:849)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A45.md:250 "16. settings-change-holds-layout (:922)": its test file uitest_preview.cpp (from the heading "A45: tests/ui/uitest_preview.cpp (lines 1-1110), 16 test functions") is not one of the run's files.
+- records/A46.md:18 "test_sort ("report-window-sort", tests/ui/uitest_report_windows.cpp:248)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:35 "test_filters ("report-window-filters", tests/ui/uitest_report_windows.cpp:276)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:52 "test_states ("report-window-states", tests/ui/uitest_report_windows.cpp:306)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:68 "test_keys ("report-window-keys", tests/ui/uitest_report_windows.cpp:478)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:85 "test_close_button ("report-window-close-button", tests/ui/uitest_report_windows.cpp:523)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:101 "test_hidden_new_result ("report-window-hidden-new-result", tests/ui/uitest_report_windows.cpp:574)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:118 "test_both ("report-windows-both", tests/ui/uitest_report_windows.cpp:604)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:134 "test_chip_label ("report-window-chip-label", tests/ui/uitest_report_windows.cpp:621)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:150 "test_chip_outline ("report-window-chip-outline", tests/ui/uitest_report_windows.cpp:659)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:167 "test_column_widths ("report-window-column-widths", tests/ui/uitest_report_windows.cpp:673)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:185 "test_cells_left ("report-window-cells-left", tests/ui/uitest_report_windows.cpp:713)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:202 "test_header_narrow ("report-window-header-narrow", tests/ui/uitest_report_windows.cpp:752)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A46.md:218 "test_fits_screen ("report-window-fits-screen", tests/ui/uitest_report_windows.cpp:802)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:19 "test_open_asks (tests/ui/uitest_report_windows.cpp:991)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:35 "test_open_path (tests/ui/uitest_report_windows.cpp:1051)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:52 "test_open_analyzes (tests/ui/uitest_report_windows.cpp:1112)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:68 "test_cant_analyze_list (tests/ui/uitest_report_windows.cpp:1171)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:84 "test_dm_handover (tests/ui/uitest_report_windows.cpp:1206)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:100 "test_row_click (tests/ui/uitest_report_windows.cpp:1257)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:116 "test_reopen (tests/ui/uitest_report_windows.cpp:1345)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:133 "test_hidden_lets_go (tests/ui/uitest_report_windows.cpp:1373)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:149 "test_reopen_keeps_filters (tests/ui/uitest_report_windows.cpp:1419)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:165 "test_fresh_state (tests/ui/uitest_report_windows.cpp:1498)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A47.md:182 "test_out_of_date (tests/ui/uitest_report_windows.cpp:1548)": its test file uitest_report_windows.cpp (from its title) is not one of the run's files.
+- records/A48.md:19 "1. build-a-path-by-clicking (`test_build_a_path_by_clicking`, tests/pb_ui/pbtest_build.cpp:135)": its test file pbtest_build.cpp (from its title) is not one of the run's files.
+- records/A48.md:58 "2. build-a-path-on-a-long-song (`test_build_a_path_on_a_long_song`, tests/pb_ui/pbtest_build.cpp:334": its test file pbtest_build.cpp (from its title) is not one of the run's files.
+- records/A48.md:85 "3. follow-the-playhead (`test_follow_the_playhead`, tests/pb_ui/pbtest_build.cpp:460)": its test file pbtest_build.cpp (from its title) is not one of the run's files.
+- records/A48.md:107 "4. finish-for-me (`test_finish_for_me`, tests/pb_ui/pbtest_coach.cpp:76)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:130 "5. cant-activate-reason (`test_cant_activate_reason`, tests/pb_ui/pbtest_coach.cpp:119)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:151 "6. locked-fill-says-left-to-right (`test_locked_fill_says_left_to_right`, tests/pb_ui/pbtest_coach.c": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:172 "7. tight-window-note (`test_tight_window_note`, tests/pb_ui/pbtest_coach.cpp:168)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:195 "8. choose-an-ending (`test_choose_an_ending`, tests/pb_ui/pbtest_coach.cpp:220)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:222 "9. hover-moves-nothing (`test_hover_moves_nothing`, tests/pb_ui/pbtest_coach.cpp:360)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:243 "10. drag-moves-the-clock (`test_drag_moves_the_clock`, tests/pb_ui/pbtest_coach.cpp:405)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:264 "11. activations-row-never-drags (`test_activations_row_never_drags`, tests/pb_ui/pbtest_coach.cpp:46": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:284 "12. fill-click-moves-clock (`test_fill_click_moves_clock`, tests/pb_ui/pbtest_coach.cpp:485)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:304 "13. fill-card (`test_fill_card`, tests/pb_ui/pbtest_coach.cpp:517)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:323 "14. row-click-moves-clock (`test_row_click_moves_clock`, tests/pb_ui/pbtest_coach.cpp:545)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/A48.md:341 "15. paste-refused-keeps-path (`test_paste_refused_keeps_path`, tests/pb_ui/pbtest_files.cpp:26)": its test file pbtest_files.cpp (from its title) is not one of the run's files.
+- records/A49.md:18 "1. open-starts-empty (`test_open_starts_empty`, tests/pb_ui/pbtest_window.cpp:68)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:36 "2. head-row-wraps (`test_head_row_wraps`, tests/pb_ui/pbtest_window.cpp:237)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:53 "3. scroll-the-timeline (`test_scroll_the_timeline`, tests/pb_ui/pbtest_window.cpp:341)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:70 "4. drag-stays-in-the-window (`test_drag_stays_in_the_window`, tests/pb_ui/pbtest_window.cpp:410)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:87 "5. no-star-power (`test_no_star_power`, tests/pb_ui/pbtest_window.cpp:447)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:103 "6. file-open-error (`test_file_open_error`, tests/pb_ui/pbtest_window.cpp:467)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:119 "7. bad-settings-refused (`test_bad_settings_refused`, tests/pb_ui/pbtest_window.cpp:509)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:135 "8. bad-rules-refused (`test_bad_rules_refused`, tests/pb_ui/pbtest_window.cpp:546)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:151 "9. rules-reach-the-builder (`test_rules_reach_the_builder`, tests/pb_ui/pbtest_window.cpp:592)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/A49.md:420 "25. `usage` (tests/pb_ui/pbtest_main.cpp:25)": its test file pbtest_main.cpp (from its title) is not one of the run's files.
+- records/A49.md:426 "26. `main` (tests/pb_ui/pbtest_main.cpp:33)": its test file pbtest_main.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:25 "tests/fuzz/fuzz_chart.cpp (line 4, `LLVMFuzzerTestOneInput`)": its test file fuzz_chart.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:41 "tests/fuzz/fuzz_mid.cpp (line 4)": its test file fuzz_mid.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:57 "tests/fuzz/fuzz_sng.cpp (line 4)": its test file fuzz_sng.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:73 "tests/fuzz/fuzz_srb.cpp (line 4)": its test file fuzz_srb.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:89 "tests/fuzz/fuzz_audio.cpp (line 4)": its test file fuzz_audio.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:105 "tests/fuzz/fuzz_image.cpp (line 4)": its test file fuzz_image.cpp (from its title) is not one of the run's files.
+- records/C14-C15-fuzz.md:131 "load_tables (engine.cpp:270)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:143 "load_rules (engine.cpp:263) and rule_files (engine.cpp:253)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:155 "select_rule_files (engine.cpp:242)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:167 "parse_rule (engine.cpp:86), parse_rules_file (engine.cpp:140)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:180 "parse_baseline (engine.cpp:204)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:192 "parse_dates (engine.cpp:181)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:205 "iso_plus_days (engine.cpp:151)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:217 "today_iso (engine.cpp:165)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:229 "baseline_due (engine.cpp:175)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:241 "copy_entry_name (engine.cpp:195) and clone_entry_name (engine.cpp:199)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:253 "compile_rule (engine.cpp:277) and flags_line (engine.cpp:283)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:266 "lexer_language (engine.cpp:289) and skipped_comment_line (engine.cpp:295)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:278 "in_scope (engine.cpp:299)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:290 "walk_language (engine.cpp:308) and walk_reads_for (engine.cpp:320)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:302 "listed_lines (engine.cpp:327)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/C14-C15-fuzz.md:314 "start_scan (engine.cpp:340) and scan_file (engine.cpp:345)": its test file engine.cpp (from the heading "tests/single_owner/engine.cpp: the functions the scan tests call") is not one of the run's files.
+- records/D1.md:17 "test_the_command_line_has_song_and_player_only (test_bot_run.py:174)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:25 "test_a_relative_song_path_reaches_the_game_absolute (test_bot_run.py:181)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:33 "test_the_game_exe_name_is_the_probe_process_name (test_bot_run.py:195)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:41 "test_profile_appears_only_when_passed (test_bot_run.py:198)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:49 "test_poll_notices_the_change_copies_it_and_restores (test_bot_run.py:204)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:57 "test_the_exit_check_reports_a_game_that_stays (test_bot_run.py:221)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:65 "test_stop_closes_a_game_that_stays (test_bot_run.py:230)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:73 "test_the_cap_prints_its_line_and_still_restores (test_bot_run.py:237)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:82 "test_a_restore_failure_stops_the_run_with_its_name (test_bot_run.py:251)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:90 "test_a_restore_failure_on_the_cap_path_runs_no_exit_check (test_bot_run.py:263)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:98 "test_no_wait_starts_the_game_polls_nothing_restores_nothing (test_bot_run.py:275)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:106 "test_restore_command_line_leaves_settings_ini_changed (test_bot_run.py:297)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:114 "test_the_length_is_hydras_end_from_a_dump_of_the_folders_chart (test_bot_run.py:307)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:122 "test_no_length_anywhere_starts_nothing (test_bot_run.py:315)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:130 "test_a_folder_with_no_chart_starts_nothing (test_bot_run.py:324)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:137 "test_pro_drums_chart_with_a_drums_player_prints_a_note (test_bot_run.py:332)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:146 "test_start_run_backs_up_launches_and_returns_before_any_sleep (test_bot_run.py:360)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:154 "test_run_cap_is_the_song_plus_the_extra_minute (test_bot_run.py:382)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:162 "test_bot_run_cap_is_run_cap_s_of_hydras_end (test_bot_run.py:387)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:170 "test_start_run_takes_a_song_end_already_read_without_a_dump (test_bot_run.py:396)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:178 "test_start_run_with_no_song_launches_the_bare_exe_after_a_backup (test_bot_run.py:405)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:186 "test_wait_stats_on_a_no_song_run_says_so_without_sleeping (test_bot_run.py:415)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:194 "test_wait_stats_copies_a_changed_file_and_names_the_seconds (test_bot_run.py:422)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:202 "test_finish_run_with_stop_stops_the_game_and_leaves_every_file (test_bot_run.py:431)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:210 "test_finish_run_says_a_caller_given_stop_line_instead_of_the_flag_one (test_bot_run.py:442)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:218 "test_finish_run_reports_a_game_that_outlives_the_stop_and_still_restores (test_bot_run.py:449)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:226 "test_finish_run_with_a_failed_restore_names_it_and_returns_false (test_bot_run.py:465)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:235 "test_the_servers_env_backs_up_the_key_with_reg_exe (test_bot_run.py:492)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:243 "test_before_launch_runs_after_the_backup_and_before_the_launch (test_bot_run.py:495)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:251 "test_a_launch_that_raises_restores_the_key_and_leaves_what_before_launch_changed (test_bot_run.py:50": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:259 "test_the_key_is_backed_up_and_restored_with_the_envs_runner (test_bot_run.py:528)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:267 "test_a_registry_restore_failure_stops_like_a_file_one (test_bot_run.py:539)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:276 "test_the_game_gets_no_stdin_and_no_stdout_and_keeps_its_folder (test_bot_run.py:561)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:284 "test_the_game_opens_minimized_without_the_focus (test_bot_run.py:575)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:296 "test_the_caps_and_the_poll_are_the_users_answers (test_bot_run.py:713)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:303 "test_the_paused_start_passes_create_suspended_and_todays_startupinfo (test_bot_run.py:718)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:309 "test_the_order_is_start_attach_load_arm_resume_status (test_bot_run.py:732)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:315 "test_waiting_statuses_are_polled_every_half_second_until_patched (test_bot_run.py:748)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:321 "test_a_refused_status_kills_the_game_and_names_the_bytes (test_bot_run.py:756)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:327 "test_an_attach_that_never_returns_ends_at_its_cap_and_kills_the_game (test_bot_run.py:767)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:334 "test_an_attach_that_fails_kills_the_game (test_bot_run.py:783)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:340 "test_an_arm_reply_that_never_comes_ends_at_its_cap_without_a_resume (test_bot_run.py:791)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:346 "test_a_refused_arm_reply_kills_the_game_without_a_resume (test_bot_run.py:800)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:352 "test_an_idle_arm_reply_is_a_fault_that_kills_the_game_without_a_resume (test_bot_run.py:807)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:357 "test_a_patched_arm_reply_still_resumes_and_reads_the_status (test_bot_run.py:813)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:361 "test_an_idle_status_after_the_arm_is_a_fault_named_at_once (test_bot_run.py:819)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:366 "test_a_refusal_for_a_failed_read_back_carries_the_agents_reason (test_bot_run.py:826)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:371 "test_a_status_that_stays_waiting_ends_at_the_patch_cap_from_the_resume (test_bot_run.py:835)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:377 "test_the_spawn_form_takes_the_spawn_seam_and_resumes_through_the_device (test_bot_run.py:858)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:381 "test_a_bad_launch_form_or_a_missing_agent_starts_nothing (test_bot_run.py:865)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:386 "test_a_stale_stamp_refuses_naming_the_file_and_the_build_command (test_bot_run.py:876)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:393 "test_the_real_env_uses_the_real_seams_and_files (test_bot_run.py:898)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:398 "test_the_real_attach_builds_a_live_agent_for_the_pid (test_bot_run.py:905)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:403 "test_resume_main_thread_refuses_a_process_with_no_thread (test_bot_run.py:917)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:409 "test_the_toolhelp_and_thread_time_calls_find_this_processs_main_thread (test_bot_run.py:924)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:416 "test_a_spawned_games_process_handle_reports_a_running_process (test_bot_run.py:933)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:421 "test_bot_run_never_opens_the_game_exe_for_writing (test_bot_run.py:939)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:429 "test_the_three_words (test_bot_run.py:952)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:436 "test_ch_status_warns_when_the_loader_read_no (test_bot_run.py:961)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:440 "test_a_list_of_numbers_reads_like_the_same_hex_text (test_bot_run.py:975)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:447 "test_no_song_folder_is_refused_before_the_backup (test_bot_run.py:998)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:452 "test_the_backup_comes_before_the_paused_start_and_the_run_keeps_the_launch (test_bot_run.py:1009)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:458 "test_a_failed_human_launch_restores_the_backup (test_bot_run.py:1029)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:467 "test_copies_the_folder_and_writes_the_silent_ogg (test_bot_run.py:1057)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:471 "test_refuses_an_existing_folder (test_bot_run.py:1063)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:475 "test_a_failed_ogg_leaves_no_half_made_folder (test_bot_run.py:1073)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:479 "test_the_silent_audio_is_hydras_end_not_song_ini (test_bot_run.py:1083)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:483 "test_refuses_a_folder_without_a_song_end_or_chart_or_song_ini (test_bot_run.py:1088)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:487 "test_install_refuses_a_name_that_is_not_a_plain_folder_name (test_bot_run.py:1107)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:492 "test_install_refuses_a_name_as_a_refused_line (test_bot_run.py:1121)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:496 "test_install_copies_no_other_audio (test_bot_run.py:1129)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:501 "test_the_copys_title_gets_the_probe_prefix (test_bot_run.py:1147)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:506 "test_every_other_byte_of_the_song_ini_stays (test_bot_run.py:1155)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:511 "test_the_source_chart_is_never_touched (test_bot_run.py:1177)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:514 "test_a_title_with_the_prefix_is_not_doubled (test_bot_run.py:1182)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:517 "test_a_name_before_any_section_is_the_title (test_bot_run.py:1186)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:520 "test_every_name_line_is_marked (test_bot_run.py:1190)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:523 "test_no_name_key_gets_one_from_the_folder_name (test_bot_run.py:1197)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:526 "test_no_name_key_uses_the_installed_folders_name (test_bot_run.py:1201)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:529 "test_an_empty_name_counts_as_no_name (test_bot_run.py:1205)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:532 "test_a_new_name_line_uses_the_files_line_ending (test_bot_run.py:1209)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:535 "test_a_new_name_line_goes_in_the_song_section_when_there_is_one (test_bot_run.py:1214)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:538 "test_a_new_name_line_after_a_last_line_with_no_ending (test_bot_run.py:1220)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:541 "test_a_read_only_song_ini_is_marked_in_the_copy_and_stays_read_only_at_the_source (test_bot_run.py:1": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:545 "test_a_failed_title_leaves_no_half_made_folder (test_bot_run.py:1236)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:548 "test_a_song_ini_with_nowhere_for_a_title_is_refused_by_the_writer (test_bot_run.py:1242)": its test file test_bot_run.py (from its title) is not one of the run's files.
+- records/D1.md:557 "test_build_number_is_the_fourth_dotted_number (test_build_facts.py:67)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:562 "test_build_number_refuses_a_version_without_one (test_build_facts.py:72)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:566 "test_same_build_drops_one_leading_v (test_build_facts.py:79)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:569 "test_current_build_reads_the_version_as_written (test_build_facts.py:87)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:572 "test_version_file_sits_in_the_real_game_folder (test_build_facts.py:91)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:576 "test_load_facts_loads_a_matching_file (test_build_facts.py:95)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:579 "test_load_facts_refuses_a_build_with_no_folder (test_build_facts.py:103)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:582 "test_load_facts_refuses_facts_of_another_version (test_build_facts.py:114)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:585 "test_load_facts_refuses_facts_with_no_version (test_build_facts.py:124)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:588 "test_engine_class_gives_the_name_and_ctor_rva (test_build_facts.py:133)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:591 "test_method_name_by_rva_names_the_one_match (test_build_facts.py:137)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:594 "test_method_name_by_rva_refuses_no_match (test_build_facts.py:142)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:597 "test_method_name_by_rva_refuses_two_matches (test_build_facts.py:148)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:600 "test_method_name_by_rva_refuses_a_class_two_entries_carry (test_build_facts.py:154)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:603 "test_method_name_by_rva_refuses_a_class_none_carries (test_build_facts.py:160)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:606 "test_method_name_by_rva_refuses_a_base_class_method_as_zero_matches (test_build_facts.py:166)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:610 "test_load_facts_refuses_facts_that_are_not_json (test_build_facts.py:172)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:613 "test_load_facts_refuses_facts_that_are_not_an_object (test_build_facts.py:183)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:616 "test_a_missing_version_file_is_a_plain_refusal (test_build_facts.py:191)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:619 "test_a_version_file_with_no_text_version_is_a_plain_refusal (test_build_facts.py:201)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:622 "test_engine_class_refuses_facts_with_no_drums_engine (test_build_facts.py:213)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:625 "test_method_name_by_rva_refuses_facts_with_no_classes (test_build_facts.py:223)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:628 "test_all_refusals_share_one_base (test_build_facts.py:229)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:631 "test_real_6142_facts_give_the_probe_engine_ctor (test_build_facts.py:238)": its test file test_build_facts.py (from its title) is not one of the run's files.
+- records/D1.md:641 "test_a_fresh_build_passes (test_build_stamp.py:78)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:644 "test_the_stamp_holds_each_local_source_the_map_names (test_build_stamp.py:81)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:647 "test_an_edited_import_makes_the_stamp_stale (test_build_stamp.py:88)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:650 "test_an_edited_json_the_compile_read_makes_it_stale (test_build_stamp.py:95)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:653 "test_a_changed_package_json_makes_it_stale (test_build_stamp.py:99)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:656 "test_a_gone_source_makes_it_stale (test_build_stamp.py:105)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:659 "test_a_missing_stamp_refuses (test_build_stamp.py:109)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:662 "test_a_missing_js_refuses (test_build_stamp.py:115)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:665 "test_a_js_swapped_under_its_stamp_refuses (test_build_stamp.py:120)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:668 "test_a_broken_stamp_refuses (test_build_stamp.py:124)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:671 "test_the_build_command_comes_from_package_json (test_build_stamp.py:129)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:676 "test_each_build_script_writes_the_stamp_after_the_compile (test_build_stamp.py:135)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:682 "test_a_bundle_with_no_source_map_writes_no_stamp (test_build_stamp.py:144)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:685 "test_a_file_that_is_no_bundle_writes_no_stamp (test_build_stamp.py:151)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:688 "test_bundle_module_returns_the_script_asset (test_build_stamp.py:156)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:691 "test_builds_record_holds_each_stamp_and_the_replay_build (test_build_stamp.py:168)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:696 "test_a_schedule_with_no_build_says_so (test_build_stamp.py:177)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:699 "test_an_agent_with_no_stamp_says_why (test_build_stamp.py:184)": its test file test_build_stamp.py (from its title) is not one of the run's files.
+- records/D1.md:706 "test_rva2off_reads_each_section_of_the_table (test_chdis.py:82)": its test file test_chdis.py (from its title) is not one of the run's files.
+- records/D1.md:709 "test_rva2off_refuses_an_rva_with_no_file_bytes (test_chdis.py:91)": its test file test_chdis.py (from its title) is not one of the run's files.
+- records/D1.md:712 "test_dis_prints_the_listing_up_to_the_padding (test_chdis.py:97)": its test file test_chdis.py (from its title) is not one of the run's files.
+- records/D1.md:716 "test_dis_stops_at_maxbytes (test_chdis.py:111)": its test file test_chdis.py (from its title) is not one of the run's files.
+- records/D1.md:719 "test_a_missing_script_json_is_reported_by_its_path (test_chdis.py:118)": its test file test_chdis.py (from its title) is not one of the run's files.
+- records/D1.md:722 "test_real_dll_matches_the_committed_listing (test_chdis.py:134)": its test file test_chdis.py (from its title) is not one of the run's files.
+- records/D1.md:733 "test_a_moved_offset_is_reported (test_compare_dumps.py:68)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:736 "test_a_missing_class_is_listed_on_its_side (test_compare_dumps.py:76)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:739 "test_classes_match_by_namespace_and_name_not_by_file (test_compare_dumps.py:89)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:742 "test_a_null_offset_is_not_comparable_and_never_moved (test_compare_dumps.py:100)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:745 "test_a_class_printed_twice_in_a_file_is_not_compared (test_compare_dumps.py:107)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:748 "test_scrambled_field_names_turning_readable_are_counted (test_compare_dumps.py:119)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:751 "test_readable_names_turning_scrambled_are_counted_the_other_way (test_compare_dumps.py:150)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:754 "test_unchanged_member_names_list_no_class (test_compare_dumps.py:161)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:757 "test_kept_names_end_with_names_stable (test_compare_dumps.py:175)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:760 "test_a_renamed_class_ends_with_names_reshuffled (test_compare_dumps.py:184)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:763 "test_a_kept_name_with_another_shape_does_not_survive (test_compare_dumps.py:195)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:766 "test_field_offsets_and_rvas_are_not_part_of_the_shape (test_compare_dumps.py:204)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:769 "test_a_name_printed_twice_survives_when_every_copy_matches (test_compare_dumps.py:211)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:772 "test_prints_the_report_and_ends_with_the_verdict (test_compare_dumps.py:227)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:775 "test_a_missing_file_fails_loudly (test_compare_dumps.py:241)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:778 "test_a_file_without_classes_fails_loudly (test_compare_dumps.py:251)": its test file test_compare_dumps.py (from its title) is not one of the run's files.
+- records/D1.md:785 "test_matching_pair_prints_every_line (test_compare_scorestats.py:121)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:790 "test_compare_scorestats_fails_on_notes_hit_phrases_score_checksum_speed_or_modifiers (test_compare_s": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:795 "test_total_notes_equal_to_the_chord_count_fails (test_compare_scorestats.py:158)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:800 "test_no_run_settings_fails_on_one_line (test_compare_scorestats.py:163)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:803 "test_mismatch_is_flagged (test_compare_scorestats.py:172)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:806 "test_a_missing_player_is_refused (test_compare_scorestats.py:179)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:809 "test_a_stats_file_with_no_score_is_refused (test_compare_scorestats.py:184)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:812 "test_the_target_run_passes_every_line_and_exits_0 (test_compare_scorestats.py:190)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:817 "test_one_accent_short_fails_the_accent_line (test_compare_scorestats.py:203)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:820 "test_one_ghost_short_fails_the_accent_line (test_compare_scorestats.py:207)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D1.md:823 "test_a_ninth_activation_fails_the_activation_line (test_compare_scorestats.py:211)": its test file test_compare_scorestats.py (from its title) is not one of the run's files.
+- records/D10.md:42 "test_captures_rcx_as_object_ptr (test_engine.py:111)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:49 "test_breakpoint_set_at_resolved_ctor_address (test_engine.py:118)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:55 "test_run_not_needed_when_callback_fires_immediately (test_engine.py:124)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:61 "test_total_window_reads_off_0x20 (test_engine.py:151)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:68 "test_back_window_reads_off_0x30 (test_engine.py:155)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:74 "test_front_window_reads_off_0x38 (test_engine.py:159)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:80 "test_round_start_reads_off_0x2e0 (test_engine.py:163)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:86 "test_total_is_twice_back_at_construction (test_engine.py:169)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:92 "test_reads_before_capture_raise (test_engine.py:175)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:99 "test_note_count_reads_u32_off_0x8c (test_engine.py:182)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:105 "test_bit_clear_is_normal_mode (test_engine.py:199)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:112 "test_bit_set_is_precision_mode (test_engine.py:202)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:118 "test_only_the_precision_bit_matters (test_engine.py:205)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:124 "test_precision_bit_among_other_bits (test_engine.py:210)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:130 "test_precision_bit_is_0x1000 (test_engine.py:214)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:136 "test_is_precision_reads_the_one_bit (test_engine.py:218)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:142 "test_snapshot_reads_every_field_in_one_read (test_engine.py:235)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:149 "test_pressed_input_hit_means_the_score_rose (test_engine.py:258)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:157 "test_reads_every_expected_rva (test_engine.py:286)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:163 "test_returns_a_value_for_every_name (test_engine.py:294)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:170 "test_window_keys_carry_their_mode_prefix (test_engine.py:325)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:176 "test_constants_need_no_captured_object (test_engine.py:333)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:184 "test_reads_the_proven_clock_at_0x100 (test_engine.py:344)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:190 "test_no_placeholder_offset_is_left (test_engine.py:353)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:196 "test_score_reads_u32_off_0x94 (test_engine.py:358)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:202 "test_dyn_threshold_reads_u32_off_0x2c0 (test_engine.py:364)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:208 "test_use_object_takes_a_scanned_pointer_without_a_debugger (test_engine.py:371)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:216 "test_capture_without_a_debugger_raises (test_engine.py:379)": its test file test_engine.py (from its title) is not one of the run's files.
+- records/D10.md:239 "test_front_window_sits_eight_bytes_after_back (test_engine_finder.py:39)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:245 "test_each_match_backs_up_to_the_object_start (test_engine_finder.py:47)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:252 "test_picks_the_engine_whose_clock_moves (test_engine_finder.py:56)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:258 "test_gives_up_at_the_default_cap_with_the_exact_message (test_engine_finder.py:73)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:265 "test_keeps_waiting_until_a_clock_moves (test_engine_finder.py:90)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:271 "test_a_candidate_two_patterns_find_is_checked_once_in_scan_order (test_engine_finder.py:102)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:278 "test_gives_up_after_the_cap_with_the_exact_message (test_engine_finder.py:129)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:284 "test_default_cap_message_names_120_seconds (test_engine_finder.py:145)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:290 "test_returns_the_engine_found_inside_the_cap (test_engine_finder.py:159)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:296 "test_all_patterns_tries_the_precision_pair_both_ways (test_engine_finder.py:174)": its test file test_engine_finder.py (from its title) is not one of the run's files.
+- records/D10.md:320 "test_the_five_forms_of_the_known_hash (test_find_checksum.py:111)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:326 "test_lower_case_input_gives_the_same_forms (test_find_checksum.py:121)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:332 "test_a_string_that_is_not_a_hash_is_refused (test_find_checksum.py:124)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:338 "test_a_string_object_decodes_to_the_hash (test_find_checksum.py:131)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:345 "test_an_absurd_length_is_refused (test_find_checksum.py:135)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:351 "test_a_negative_length_is_refused (test_find_checksum.py:139)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:357 "test_fewer_characters_than_the_length_says_is_refused (test_find_checksum.py:143)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:363 "test_hits_at_region_edges_are_counted_once (test_find_checksum.py:148)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:371 "test_an_unreadable_region_is_skipped (test_find_checksum.py:164)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:378 "test_a_two_hop_path_prints_its_exact_offsets (test_find_checksum.py:177)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:385 "test_no_path_within_the_object_cap_says_not_found (test_find_checksum.py:192)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:391 "test_no_path_still_exits_0_with_the_direct_hits_listed (test_find_checksum.py:204)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:397 "test_a_pointer_to_the_song_entry_names_its_holder (test_find_checksum.py:220)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:404 "test_no_pointer_to_the_song_entry_says_so (test_find_checksum.py:240)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:410 "test_a_hash_that_moves_between_passes_is_reported_moved (test_find_checksum.py:268)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:416 "test_the_game_is_opened_read_only (test_find_checksum.py:293)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:423 "test_no_playing_song_exits_2_with_the_message (test_find_checksum.py:301)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:430 "test_the_three_states (test_find_checksum.py:324)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:436 "test_the_note_carries_both_clock_readings (test_find_checksum.py:333)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:442 "test_an_unreadable_clock_has_no_readings (test_find_checksum.py:339)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:448 "test_the_report_prints_the_readings_of_a_frozen_pass (test_find_checksum.py:343)": its test file test_find_checksum.py (from its title) is not one of the run's files.
+- records/D10.md:470 "test_decode_reads_each_field_at_its_offset (test_hit_window_scripts.py:38)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:476 "test_live_keeps_no_offsets_or_finder_of_its_own (test_hit_window_scripts.py:52)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:482 "test_wait_until_fires_at_the_target_or_its_lead (test_hit_window_scripts.py:61)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:489 "test_wait_until_stops_after_five_seconds_frozen (test_hit_window_scripts.py:83)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:496 "test_wait_until_stops_differently_on_a_jump_back (test_hit_window_scripts.py:99)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:503 "test_first_note_index_skips_notes_less_than_150ms_ahead (test_hit_window_scripts.py:109)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:510 "test_window_changed_uses_the_one_tolerance (test_hit_window_scripts.py:113)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:516 "test_old_diagnostics_are_gone (test_hit_window_scripts.py:118)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:522 "test_value_at_takes_the_last_change_at_or_before (test_hit_window_scripts.py:131)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:528 "test_block_spans_split_in_the_silence_and_cover_every_note (test_hit_window_scripts.py:136)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:535 "test_run_values_come_from_the_run_not_the_markers (test_hit_window_scripts.py:144)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:542 "test_cap_verdict_passes_when_every_wide_run_reads_the_cap (test_hit_window_scripts.py:156)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:548 "test_frozen_window_says_so (test_hit_window_scripts.py:168)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:554 "test_round_start_report_matches_changes_to_notes (test_hit_window_scripts.py:173)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:561 "test_round_start_report_says_when_the_changes_do_not_fit (test_hit_window_scripts.py:184)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:567 "test_song_clock_fills_in_after_a_fresh_change (test_hit_window_scripts.py:194)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:574 "test_song_clock_ignores_a_change_seen_late (test_hit_window_scripts.py:207)": its test file test_hit_window_scripts.py (from its title) is not one of the run's files.
+- records/D10.md:596 "test_defaults_are_present (test_input_driver.py:47)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:602 "test_set_binding_round_trips (test_input_driver.py:53)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:608 "test_set_binding_adds_new_lane (test_input_driver.py:58)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:614 "test_missing_lane_raises (test_input_driver.py:63)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:620 "test_constructor_copies_defaults (test_input_driver.py:68)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:626 "test_tap_sends_down_then_up (test_input_driver.py:77)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:632 "test_lanes_follow_the_bind_screen (test_input_driver.py:87)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:639 "test_lane_numbers_are_unchanged (test_input_driver.py:94)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:645 "test_every_lane_has_a_short_name (test_input_driver.py:98)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:651 "test_all_down_then_all_up (test_input_driver.py:106)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:658 "test_key_hold_is_the_recorded_value (test_input_driver.py:116)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:665 "test_unbound_lane_is_skipped (test_input_driver.py:120)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:672 "test_the_menu_key_table (test_input_driver.py:131)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:678 "test_the_menu_key_gap_is_the_ruled_value (test_input_driver.py:136)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:686 "test_press_key_sends_down_hold_then_up (test_input_driver.py:140)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:692 "test_type_text_sends_unicode_events_with_the_gap_between (test_input_driver.py:148)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:699 "test_type_text_sends_a_wide_character_as_its_two_halves (test_input_driver.py:165)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:706 "test_send_key_still_sends_a_virtual_key_event (test_input_driver.py:173)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:712 "test_find_game_window_asks_for_the_one_title (test_input_driver.py:186)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:719 "test_focus_window_skips_a_missing_window (test_input_driver.py:197)": its test file test_input_driver.py (from its title) is not one of the run's files.
+- records/D10.md:744 "test_plain_decimal (test_ocr.py:25)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:747 "test_negative_integer (test_ocr.py:28)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:750 "test_leading_plus_is_dropped (test_ocr.py:31)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:753 "test_junk_is_none (test_ocr.py:34)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:756 "test_empty_is_none (test_ocr.py:37)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:759 "test_number_without_unit_is_none (test_ocr.py:40)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:762 "test_zero (test_ocr.py:44)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:765 "test_unit_spacing_and_case (test_ocr.py:47)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:768 "test_extra_surrounding_text (test_ocr.py:52)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:771 "test_none_input_is_none (test_ocr.py:56)": its test file test_ocr.py (from its title) is not one of the run's files.
+- records/D10.md:790 "test_watch_columns (test_overlay_logs.py:23)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:796 "test_the_saved_watch_logs_headers_read_as_watch_columns (test_overlay_logs.py:30)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:803 "test_press_log_columns (test_overlay_logs.py:44)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:809 "test_the_press_columns_before_the_in_game_columns (test_overlay_logs.py:54)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:815 "test_the_press_columns_before_the_timing_columns (test_overlay_logs.py:64)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:821 "test_the_press_columns_before_the_send_column (test_overlay_logs.py:71)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:827 "test_the_press_columns_before_the_retime_column (test_overlay_logs.py:78)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D10.md:833 "test_the_press_columns_before_the_wall_times (test_overlay_logs.py:85)": its test file test_overlay_logs.py (from its title) is not one of the run's files.
+- records/D11.md:25 "1. test_load_schedule_gives_one_press_per_group (tools/ch_probe/tests/test_play_chart.py:126)": its test file test_play_chart.py (from its title) is not one of the run's files.
+- records/D11.md:40 "2. test_freak_squeeze_out_press_is_the_files (:147)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:55 "3. test_a_declined_chord_sends_its_kept_gems (:163)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:70 "4. test_the_file_level_values_are_read (:172)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:85 "5. test_press_plan_returns_the_presses_in_firing_order (:178)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:100 "6. test_a_refusal_in_the_file_stops_the_load_quoting_it (:184)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:115 "7. test_an_infeasible_squeeze_stops_the_load_naming_it (:191)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:130 "8. test_no_deleted_name_remains (:202)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:145 "9. test_no_timing_constant_is_defined_in_python (:228)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:161 "10. test_score_times_are_the_chords_index_and_ms (:236)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:176 "11. test_chord_codes_are_not_decoded_here (:241)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:191 "12. test_no_private_copies_are_left (:249)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:206 "13. test_lane_names_come_from_the_key_table (:259)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:221 "14. test_window_helper_comes_from_input_driver (:263)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:232 "15. test_waiting_and_the_start_cursor_come_from_live (:267)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:245 "16. test_songclock_lives_in_live (:272)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:255 "17. test_one_row_per_press_with_the_press_log_columns (:341)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:270 "18. test_run_cap_is_240_s (:381)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:285 "19. test_a_frozen_clock_ends_the_run (:384)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:300 "20. test_the_wall_cap_ends_the_run (:391)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:315 "21. test_a_caller_given_cap_ends_the_run_there (:400)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:328 "22. test_no_song_exits_2_with_the_finder_message (:462)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:342 "23. test_the_game_is_opened_read_only (:470)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:356 "24. test_on_press_sees_every_row_in_order (:491)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:369 "25. test_should_stop_after_the_second_chord_ends_the_run (:499)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:382 "26. test_a_stop_leaves_no_key_held_down (:507)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:397 "27. test_should_stop_false_changes_nothing (:531)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:409 "28. test_no_engine_returns_the_finder_message_and_closes_the_game (:549)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:421 "29. test_the_default_engine_search_prints_its_dots_to_out_only (:574)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:433 "30. test_the_cap_reaches_play_chords (:621)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:445 "31. test_live_play_takes_no_press_and_passes_no_kit (:625)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:459 "32. test_live_play_sends_each_chords_keys_through_the_driver (:645)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:472 "33. test_only_the_harness_calls_play_chords_with_a_kit (:666)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:486 "34. test_chords_carry_each_gems_dynamic_beside_its_lane (:754)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:498 "35. test_a_ghost_chart_reads_the_threshold_once_and_returns_it (:760)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:512 "36. test_a_ghost_chart_with_a_threshold_of_0_raises_naming_the_field (:769)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:524 "37. test_the_keys_route_reads_no_threshold_even_for_a_ghost_chart (:774)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:535 "38. test_a_chart_with_no_ghost_never_reads_the_threshold (:787)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:547 "39. test_each_chord_reaches_the_press_with_its_axes (:795)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:558 "40. test_a_ghost_or_accent_kick_gets_the_axis_a_pad_gets (:810)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:571 "41. test_a_dict_reply_rides_into_the_row (:835)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:584 "42. test_a_key_press_adds_nothing (:857)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:598 "43. test_the_columns_are_the_wall_times_around_the_press (:900)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:609 "44. test_the_columns_are_on_the_wall_clocks_scale (:906)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:623 "45. test_a_chord_that_sends_no_press_stamps_one_moment_twice (:912)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:634 "46. test_the_wall_clock_is_the_watchs_and_now_stays_the_timer (:922)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:647 "47. test_the_writer_builds_its_rows_through_press_log_writer (:962)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:660 "48. test_every_row_is_on_disk_before_the_writer_closes (:975)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:674 "49. test_a_start_writes_the_file_over_with_the_header (:990)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:685 "50. test_a_failed_write_is_kept_and_ends_the_writing (:997)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:698 "51. test_a_log_nowhere_writable_is_kept_as_the_error (:1016)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:709 "52. test_a_row_costs_the_adding_thread_less_than_the_score_read_sleep (:1023)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:723 "53. test_a_two_group_reply_gives_two_rows_with_their_own_frames_and_one_score (:1098)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:737 "54. test_a_chord_of_one_group_is_sent_with_no_then (:1116)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:748 "55. test_the_mouths_fixture_sends_one_message_per_split_chord (:1124)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:762 "56. test_a_later_group_with_no_first_press_is_a_bug_said_by_name (:1138)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:774 "57. test_a_rise_between_presses_is_the_later_rows_scored_between (:1172)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:786 "58. test_the_status_credits_the_pending_declined_chord (:1179)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:798 "59. test_a_rise_with_no_declined_chord_is_unexplained (:1185)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:809 "60. test_the_new_columns_reach_the_press_log (:1192)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:820 "61. test_the_presses_timed_from_a_read_are_the_files (:1214)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:834 "62. test_an_end_3_ms_later_moves_the_squeeze_presses_by_3 (:1223)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:848 "63. test_a_clear_active_byte_leaves_the_plan_and_says_so (:1248)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:862 "64. test_retime_from_end_moves_only_that_activations_presses (:1254)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:873 "65. test_the_end_in_song_seconds_while_active (:1285)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:886 "66. test_none_while_the_byte_is_clear (:1288)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:897 "67. test_live_play_hands_play_chords_the_engines_reader (:1291)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:908 "68. test_focuses_the_window_then_presses (:1327)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:919 "69. test_no_window_presses_without_focusing (:1333)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:930 "70. test_the_focus_comes_from_input_driver (:1337)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:940 "71. test_the_late_chord_is_dropped_and_the_next_is_sent (:1376)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:954 "72. test_the_counts_leave_the_drop_out (:1394)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:965 "73. test_the_printed_line_says_dropped (:1398)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:977 "74. test_read_at_the_last_send_is_sent (:1460)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:989 "75. test_read_0_01_ms_past_the_last_send_is_dropped (:1467)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1000 "76. test_a_split_chord_past_its_last_send_sends_nothing_and_drops_every_group (:1474)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1011 "77. test_the_end_is_read_after_the_anchor_chord_not_only_the_activation (:1527)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1025 "78. test_a_read_equal_to_aim_end_moves_nothing (:1544)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1036 "79. test_each_press_moves_by_its_own_end (:1549)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1050 "80. test_no_activation_read_leaves_the_plan (:1569)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1061 "81. test_a_read_end_later_than_planned_moves_the_late_gem_by_the_same_ms (:1597)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1073 "82. test_a_read_end_past_the_threshold_joins_the_inside_group (:1604)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1085 "83. test_a_read_end_exactly_at_the_threshold_keeps_the_late_press (:1621)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1097 "84. test_the_late_gem_goes_down_with_its_chords_last_inside_group (:1626)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1109 "85. test_a_squeeze_in_read_end_before_the_threshold_presses_plain (:1640)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1121 "86. test_a_press_past_last_send_is_dropped (:1654)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1133 "87. test_a_block_with_another_action_is_refused (:1663)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1144 "88. test_pitch_dark_chord_644_moves_by_the_conversion (:1688)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1158 "89. test_a_read_before_the_stored_end_takes_early_and_after_takes_late (:1711)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1171 "90. test_the_late_gem_joins_before_the_moved_own_end (:1720)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1183 "91. test_a_press_missing_a_field_is_refused (:1734)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1194 "92. test_the_word (:1757)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1207 "93. test_a_read_just_inside_moves_by_the_sum (:1760)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1218 "94. test_a_null_side_is_open (:1768)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1229 "95. test_a_press_with_no_fallback_stays_unmoved (:1778)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1240 "96. test_a_squeeze_in_outside_is_pressed_plain (:1786)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1251 "97. test_a_squeeze_outs_late_gem_outside_joins_its_group (:1793)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1262 "98. test_the_fields_are_read (:1822)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1274 "99. test_a_null_range_is_read_as_no_range (:1833)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1285 "100. test_each_missing_field_is_named (:1840)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1297 "101. test_a_null_number_and_a_one_sided_conversion_are_named (:1849)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1308 "102. test_only_the_marked_rows_carry_it (:1868)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1320 "103. test_the_words (:1876)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1332 "104. test_a_reply_without_groups_stops_the_run_at_that_chord (:1923)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1343 "105. test_a_reply_that_is_not_a_dict_or_lacks_down_up_stops_the_run (:1940)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1354 "106. test_a_keys_press_reply_is_not_read (:1964)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1365 "107. test_load_schedule_refuses_a_missing_key (:1979)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1376 "108. test_a_chord_with_no_notes_is_refused (:1997)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1387 "109. test_an_empty_chord_list_is_refused_in_ch_play_charts_words (:2002)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1398 "110. test_a_press_naming_a_missing_chord_or_gem_is_refused (:2006)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1409 "111. test_main_exits_nonzero_on_every_stop_but_the_song_end (:2043)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1424 "112. test_main_prints_the_notes_of_a_run_that_ends_done (:2082)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1435 "113. test_the_start_line_counts_skipped_chords (:2111)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1450 "114. test_a_clock_past_the_last_note_counts_every_chord (:2127)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1462 "115. test_fakes_send_the_real_reply_shape (:2155)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1475 "116. test_a_stall_in_each_step_shows_in_that_steps_column (:2239)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1487 "117. test_a_dropped_row_carries_its_wait_times (:2254)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1498 "118. test_only_the_first_row_of_a_split_chord_carries_the_times (:2282)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D11.md:1509 "119. test_the_timing_columns_reach_the_press_log_on_the_first_row_only (:2295)": its test file test_play_chart.py (from the heading "D11: tools/ch_probe/tests/test_play_chart.py (T5 find round 21)") is not one of the run's files.
+- records/D12.md:34 "test_the_play_message_carries_the_schedule_and_every_number (test_play_in_game.py:107)": its test file test_play_in_game.py (from its title) is not one of the run's files.
+- records/D12.md:41 "test_a_sent_row_and_a_dropped_row_fill_every_column_score_compare_reads (:124)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:47 "test_a_sent_row_carries_frame_gap_ms_and_a_missed_retime_carries_agent_note (:140)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:53 "test_an_end_read_posts_one_retime_of_retime_from_ends_output (:155)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:61 "test_a_later_group_in_a_retime_names_its_heads_seq (:181)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:67 "test_an_end_read_with_star_power_off_still_posts_a_retime (:198)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:73 "test_a_retime_refused_after_the_play_ended_keeps_every_row_and_the_stop_word (:212)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:80 "test_a_retime_refused_while_the_play_runs_stops_the_run_as_reply (:236)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:87 "test_a_retime_post_with_no_reply_stops_the_run_as_reply (:251)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:94 "test_an_unknown_seq_stops_the_run_as_reply (:265)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:101 "test_each_agent_stop_reason_gives_its_stop_word (:273)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:107 "test_a_jump_back_sends_the_plan_again_and_starts_the_counts_over (:283)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:114 "test_an_unknown_stop_reason_stops_the_run_as_reply (:293)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:121 "test_events_that_arrive_900_ms_late_still_give_every_row_in_order (:298)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:128 "test_a_stop_events_cause_and_lift_error_are_in_the_message (:316)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:135 "test_a_done_that_carries_a_cause_is_not_a_clean_done (:325)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:142 "test_an_error_the_agent_reports_stops_the_run_as_reply (:333)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:149 "test_a_split_chords_rows_match_play_chords_rows_but_the_timing_columns (:342)": its test file test_play_in_game.py (from the heading "File 1: tools/ch_probe/tests/test_play_in_game.py") is not one of the run's files.
+- records/D12.md:172 "test_the_defaults_are_profile_39s_cap_4_and_ms_10 (test_prep_inputs.py:88)": its test file test_prep_inputs.py (from its title) is not one of the run's files.
+- records/D12.md:179 "test_each_hydra_replay_call_is_capped_at_the_users_120_s (:91)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:186 "test_prep_inputs_runs_three_commands_and_dry_loads_the_schedule (:94)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:193 "test_file_names_puts_all_three_in_the_out_folder (:119)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:200 "test_a_refusal_is_printed_and_exits_1 (:125)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:207 "test_a_failing_schedule_command_exits_2_before_any_load (:132)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:215 "test_a_failing_exe_exits_2_with_its_error (:151)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:222 "test_a_missing_exe_exits_2_before_anything_runs (:158)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:229 "test_the_default_exe_is_this_checkouts_release_build (:164)": its test file test_prep_inputs.py (from the heading "File 2: tools/ch_probe/tests/test_prep_inputs.py") is not one of the run's files.
+- records/D12.md:252 "test_known_conversion_default (test_probe_chart.py:39)": its test file test_probe_chart.py (from its title) is not one of the run's files.
+- records/D12.md:258 "test_quarter_note_worth_of_ms (:44)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:266 "test_one_second_at_various_bpm (:50)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:272 "test_rounds_to_nearest (:55)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:278 "test_ticks_to_ms_inverts_ms_to_ticks (:59)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:284 "test_required_sections_in_order (:67)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:291 "test_resolution_and_tempo_written (:78)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:298 "test_chart_text_writes_the_sections_in_order_with_events (:84)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:305 "test_braces_balanced (:96)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:311 "test_two_notes_per_spacing (:102)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:318 "test_each_pair_is_the_right_delta_apart (:107)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:325 "test_pairs_do_not_overlap (:122)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:331 "test_ticks_are_strictly_increasing (:144)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:338 "test_probe_note_ticks_are_the_written_ticks (:149)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:344 "test_generate_writes_a_readable_chart (:159)": its test file test_probe_chart.py (from the heading "File 3: tools/ch_probe/tests/test_probe_chart.py") is not one of the run's files.
+- records/D12.md:367 "test_one_tick_is_one_ms (test_probe_songs.py:34)": its test file test_probe_songs.py (from its title) is not one of the run's files.
+- records/D12.md:374 "test_chart_ticks_match_manifest_times (:38)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:380 "test_song_folder_writer_writes_the_three_files (:56)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:387 "test_song_folder_writer_writes_no_audio_when_hydra_names_no_end (:76)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:394 "test_write_song_returns_hydras_end_and_writes_the_manifest (:85)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:401 "test_song_names_are_spelled_once (:95)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:407 "test_run_notes_have_the_same_gap_both_sides (:100)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:415 "test_uneven_middle_notes (:110)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:422 "test_blocks_are_separated_by_silence (:119)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:429 "test_edge_walk_is_isolated (:125)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:436 "test_window_map_and_edge_walk_charts_are_unchanged (:130)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:444 "test_window_map_and_edge_walk_manifests_have_no_cases (:146)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:450 "test_song_ini_has_no_delay (:151)": its test file test_probe_songs.py (from the heading "File 4: tools/ch_probe/tests/test_probe_songs.py") is not one of the run's files.
+- records/D12.md:473 "test_decode_double_known_pattern (test_process.py:34)": its test file test_process.py (from its title) is not one of the run's files.
+- records/D12.md:479 "test_decode_double_endianness (:39)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:486 "test_decode_double_wrong_length (:47)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:492 "test_decode_f32_known_pattern (:51)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:499 "test_decode_f32_wrong_length (:56)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:505 "test_decode_u32_known_pattern (:60)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:511 "test_decode_u32_wrong_length (:64)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:517 "test_decode_u64_known_pattern (:68)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:523 "test_decode_u64_wrong_length (:72)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:529 "test_resolve_adds_base (:80)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:535 "test_resolve_zero_rva (:84)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:541 "test_read_double_through_fake_memory (:92)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:547 "test_read_u32_through_fake_memory (:98)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:553 "test_read_const_double_resolves_then_reads (:104)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:559 "test_read_rejects_short_read (:110)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:565 "test_write_goes_through_writer (:119)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:571 "test_exact_values_pass (:130)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:577 "test_within_tolerance_passes (:134)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:583 "test_back_off_by_one_fails (:139)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:589 "test_front_off_fails (:144)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:595 "test_just_past_tolerance_fails (:148)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:601 "test_values_in_ms_are_refused (:153)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:607 "test_good_build_passes (:169)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:613 "test_drifted_back_constant_raises (:173)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:619 "test_drifted_front_constant_raises (:177)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:625 "test_process_is_a_process_handle (:186)": its test file test_process.py (from the heading "File 5: tools/ch_probe/tests/test_process.py") is not one of the run's files.
+- records/D12.md:644 "test_read_only_asks_for_read_and_query_rights (test_process_readonly.py:30)": its test file test_process_readonly.py (from its title) is not one of the run's files.
+- records/D12.md:650 "test_full_open_keeps_the_four_rights (:33)": its test file test_process_readonly.py (from the heading "File 6: tools/ch_probe/tests/test_process_readonly.py") is not one of the run's files.
+- records/D12.md:656 "test_write_raises (:49)": its test file test_process_readonly.py (from the heading "File 6: tools/ch_probe/tests/test_process_readonly.py") is not one of the run's files.
+- records/D12.md:663 "test_reads_work_normally (:55)": its test file test_process_readonly.py (from the heading "File 6: tools/ch_probe/tests/test_process_readonly.py") is not one of the run's files.
+- records/D12.md:682 "test_cap_and_floor_match_the_committed_measurement (test_s2_window_constants.py:35)": its test file test_s2_window_constants.py (from its title) is not one of the run's files.
+- records/D12.md:689 "test_derived_rules_come_from_the_per_side_constants (:39)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:695 "test_probe_chart_spacings_and_note_come_from_constants (:47)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:702 "test_normal_back_ms_is_derived_from_the_seconds_value (:52)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:708 "test_the_real_capped_run_reads_as_capped_not_unclamped (:60)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:714 "test_a_reading_past_the_cap_is_no_clamp (:67)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:720 "test_precision_mode_says_the_cap_is_unknown (:71)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:726 "test_floor_runs_are_checked_against_the_measured_floor (:77)": its test file test_s2_window_constants.py (from the heading "File 7: tools/ch_probe/tests/test_s2_window_constants.py") is not one of the run's files.
+- records/D12.md:748 "test_a_matching_log_passes (test_score_compare.py:70)": its test file test_score_compare.py (from its title) is not one of the run's files.
+- records/D12.md:755 "test_a_chord_passes_only_when_the_step_equals_hydras_points (:77)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:761 "test_a_lagged_read_fails (:91)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:768 "test_ghost_accent_forgiveness_applies_only_on_the_keys_route (:95)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:775 "test_a_split_chord_is_one_step (:102)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:782 "test_a_chord_with_no_row_fails (:109)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:788 "test_an_unknown_route_is_refused (:115)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:794 "test_the_route_words_are_game_tools (:119)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:800 "test_a_press_not_in_the_score_json_is_an_error (:123)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:806 "test_a_run_that_stopped_before_the_song_end_fails (:136)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:813 "test_clock_line_wording (:153)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:819 "test_median_and_percentiles (:159)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:825 "test_offsets_are_clock_minus_chart (:163)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:831 "test_one_press (:167)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:837 "test_reads_the_log_play_chart_writes (:172)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:843 "test_a_wrong_header_is_refused (:181)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:849 "test_a_six_column_log_loads_with_blank_kit_fields (:203)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:856 "test_a_ten_column_log_loads (:213)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:863 "test_a_twelve_column_log_loads_with_the_wall_times (:225)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:870 "test_a_fifteen_column_log_from_before_the_retime_column_loads (:238)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:877 "test_a_sixteen_column_log_keeps_the_retime_word (:248)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:884 "test_the_retime_word_play_chart_writes_reads_back (:257)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:890 "test_press_has_a_field_for_every_log_column_but_the_send_column (:267)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:896 "test_a_log_with_the_header_before_timing_still_loads (:273)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:903 "test_the_timing_columns_play_chart_writes_read_back (:283)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:909 "test_a_log_with_the_header_before_the_in_game_columns_still_loads (:294)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:916 "test_the_in_game_columns_play_in_game_writes_read_back (:308)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:922 "test_a_log_with_the_hit_column_still_loads (:319)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D12.md:928 "test_other_headers_are_refused (:326)": its test file test_score_compare.py (from the heading "File 8: tools/ch_probe/tests/test_score_compare.py") is not one of the run's files.
+- records/D13.md:37 "test_sp_compare.py": its test file test_sp_compare.py (from its title) is not one of the run's files.
+- records/D13.md:48 "2. test_summary_is_the_first_line (155). Read 155-160.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:55 "3. test_a_run_that_stopped_before_the_song_end_fails (163). Read 163-168; `score_compare.stop_check`": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:61 "4. test_a_run_with_no_stop_reason_fails (170). Read 170-173.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:66 "5. test_missing_rise_fails (177). Read 177-181; `_check_phrase_rises` 310-357.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:72 "6. test_flag_never_sets_fails (183). Read 183-189.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:77 "7. test_end_never_clears_fails (191). Read 191-197.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:82 "8. test_multiplier_that_stays_4_fails (199). Read 199-208.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:87 "9. test_star_power_over_before_hydras_end_fails_three_ways (210). Read 210-224.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:93 "10. test_zero_of_zero_fails (226). Read 226-233; `_check_multipliers` 549-606.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:99 "11. test_an_activation_on_at_row_0_is_reported (235). Read 235-243.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:104 "12. test_activation_one_fill_early_is_off_the_path (247). Read 247-263.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:110 "13. test_flag_a_ms_before_the_chord_lands_on_it (265). Read 265-272.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:115 "14. test_the_end_check_fails_when_the_last_paid_chord_is_not_hydras_deact_chord (304). Read 304-332,": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:122 "15. test_a_chord_pressed_exactly_at_the_end_is_inside (334). Read 334-350; `src/core/backend_value.h": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:130 "16. test_hydras_chord_is_the_last_in_sp_one_in_the_window (352). Read 352-368.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:136 "17. test_sp_max_is_checked_against_30_times_resolution (388). Read 388-395, 371-385; SP-11.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:144 "18. test_changing_sp_max_fails (397). Read 397-403.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:149 "19. test_sp_max_check_refuses_without_a_resolution (405). Read 405-407, 617-619.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:155 "20. test_the_hydra_full_meter_line_follows_question_4 (409). Read 409-417; D324 item 4.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:162 "21. test_ms_calls_s_to_ms (421). Read 421-424; `_ms` 202-203.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:168 "22. test_no_ready_copy_remains (426). Read 426-433; D323 item 1.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:175 "23. test_clamped_rise_passes (437). Read 437-442.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:180 "24. test_multiplier_one_chord_late_passes (444). Read 444-448.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:185 "25. test_last_chord_paid_in_star_power_before_it_ends_passes (477). Read 462-484.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:190 "26. test_last_chord_out_of_star_power_passes (487). Read 487-494.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:195 "27. test_last_chord_with_no_score_rise_is_read_on_the_final_row (496). Read 496-504.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:201 "28. test_a_log_without_the_clock_columns_loads_with_them_nan (508). Read 508-520; `load_watch_rows` ": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:208 "29. test_a_saved_log_with_the_older_hit_time_s_header_loads (522). Read 522-533.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:213 "30. test_a_log_lacking_another_column_is_still_refused (535). Read 535-541.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:219 "31. test_main_needs_the_schedule (563). Read 563-569, 651-676.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:224 "32. test_main_needs_the_resolution (571). Read 571-576.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:229 "33. test_main_reads_the_files_and_exits_0 (578). Read 578-584.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:234 "34. test_main_exits_1_on_a_fail (586). Read 586-591.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:239 "35. test_main_with_no_stop_fails (593). Read 593-598.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:244 "36. test_width_defaults_to_64_and_32_reads_the_u32_columns (600). Read 600-610.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:250 "37. test_missing_column_is_an_error (612). Read 612-618.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:255 "38. test_old_name_is_the_public_finder (639). Read 639-640; sp_compare.py:240-241.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:260 "39. test_column_names_follow_the_width (642). Read 642-645.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:265 "40. test_is_active_reads_the_flag_byte_only (647). Read 647-652.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:270 "41. test_a_flip_goes_to_its_own_chord_not_one_17_ms_after (654). Read 654-667; `_landed_chord` 376-3": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:275 "42. test_phrase_rises_gives_each_step_up (669). Read 669-675.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:280 "43. test_phrase_rises_on_three_sizes (677). Read 677-680.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:285 "44. test_flips_between_keeps_only_the_flip_inside (682). Read 682-688.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:290 "45. test_flips_between_includes_both_ends (690). Read 690-692.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:295 "46. test_mouths_740_reaches_its_late_kick_press (729). Read 729-734, 706-708, `press_reach` 93-103; ": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:302 "47. test_mouths_740_is_credited_at_its_second_press (736). Read 736-741.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:307 "48. test_bomber_147_reaches_its_solved_early_press (743). Read 743-755.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:312 "49. test_bomber_180_reaches_its_late_press (757). Read 757-765.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:317 "50. test_senri_with_no_squeeze_reaches_its_one_press (767). Read 767-773.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:323 "51. test_a_schedule_that_refuses_its_path_is_refused (775). Read 775-783.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:329 "52. test_two_gaps_give_the_count_the_longest_and_the_clocks_around_them (798). Read 798-805; `gap_su": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:334 "53. test_rows_with_no_gap_over_give_0 (807). Read 807-809. 1 Claim: rows all closer than 50 ms give ": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:336 "54. test_no_rows_and_one_row_give_0 (811). Read 811-814. 1 Claim: no rows or one row has no gap. 3 c": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:338 "55. test_a_gap_of_exactly_the_threshold_does_not_count (816). Read 816-818. 1 Claim: a gap exactly e": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:341 "56. test_the_boundary_holds_at_a_real_wall_time (820). Read 820-825. 1 Claim: a gap exactly at the t": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:343 "57. test_a_gap_whose_later_row_sits_exactly_at_the_song_end_counts (830). Read 830-834; D255. 1 Clai": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:345 "58. test_a_gap_whose_later_row_is_past_the_song_end_does_not_count (836). Read 836-839. 1 Claim: a g": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:347 "59. test_the_row_after_the_song_end_row_is_left_out (841). Read 841-846. 1 Claim: with a row at the ": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:349 "60. test_a_gap_with_both_rows_past_the_song_end_does_not_count (848). Read 848-851. 1 Claim: a gap w": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:351 "61. test_a_final_frozen_clock_row_is_left_out (853). Read 853-860. 1 Claim: a run that ended on a st": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:354 "62. test_with_no_song_end_every_row_counts (862). Read 862-866. 1 Claim: with no song end given, a f": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:356 "63. test_the_real_ls_o2_run_inside_its_song (874). Read 868-883; `testdata/ch_watch/ls-o2-run1-sp_wa": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:362 "64. test_the_real_ls_o2_run_with_no_song_end (885). Read 885-893.": its test file test_sp_compare.py (from the heading "test_sp_compare.py") is not one of the run's files.
+- records/D13.md:367 "test_sp_watch.py": its test file test_sp_watch.py (from its title) is not one of the run's files.
+- records/D13.md:376 "66. test_every_star_power_field_at_each_width (78). Read 78-90, `sp_block` 58-71, engine.py 114-140.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:383 "67. test_every_logged_column_but_the_wall_time_is_a_snapshot_field (92). Read 92-95.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:390 "68. test_the_watch_writes_the_half_column (97). Read 97-106.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:396 "69. test_the_walk_reads_the_three_clock_fields (141). Read 114-145; TM-47.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:402 "70. test_a_sample_costs_three_reads_past_the_engine_block (147). Read 147-151.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:408 "71. test_the_walk_writes_nothing (153). Read 153-156.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:413 "72. test_a_null_at_any_hop_leaves_the_columns_blank (163). Read 158-167.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:418 "73. test_a_failed_read_past_the_engine_leaves_the_columns_blank (169). Read 169-174.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:422 "74. test_a_failed_engine_read_still_raises (176). Read 176-180.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:426 "75. test_decoding_the_engine_block_alone_leaves_the_columns_blank (182). Read 182-184.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:430 "76. test_a_blank_clock_does_not_end_the_watch (186). Read 186-197.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:434 "77. test_the_three_reads_cost_under_a_tenth_of_the_poll (199). Read 199-212.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:441 "78. test_writes_a_row_only_when_a_logged_field_changes (235). Read 235-247; sp_watch.py 101-165.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:447 "79. test_a_frozen_clock_ends_the_run_with_a_final_row (249). Read 249-260.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:453 "80. test_a_clock_that_jumps_back_ends_the_run_with_a_final_row (262). Read 262-271.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:457 "81. test_the_wall_clock_cap_ends_a_run_whose_clock_keeps_moving (273). Read 273-282.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:463 "82. test_should_stop_ends_the_run_after_two_polls (284). Read 284-300.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:467 "83. test_poll_and_cap_literals (302). Read 302-304.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:471 "84. test_no_song_exits_2_with_the_finder_message (322). Read 322-340.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:477 "85. test_the_default_search_prints_its_dots_to_out_only (342). Read 342-350.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:481 "86. test_find_engine_live_sends_its_dots_to_the_out_it_is_given (352). Read 352-362.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:485 "87. test_opens_the_game_read_only (364). Read 364-372.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:492 "88. test_a_whole_run_writes_the_header_and_prints_the_summary (374). Read 374-397.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:497 "89. test_a_whole_run_logs_the_clock_columns_in_every_row (399). Read 399-413.": its test file test_sp_watch.py (from the heading "test_sp_watch.py") is not one of the run's files.
+- records/D13.md:501 "test_watch_checks.py": its test file test_watch_checks.py (from its title) is not one of the run's files.
+- records/D13.md:513 "91. test_a_value_11_ms_from_the_chord_does_not (47). Read 47-51.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:517 "92. test_a_value_exactly_10_ms_from_the_chord_counts (53). Read 53-57.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:521 "93. test_a_change_more_than_50_ms_from_the_chord_is_not_searched (59). Read 59-65.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:525 "94. test_two_close_chords_each_take_their_own_change (67). Read 67-73.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:529 "95. test_a_nan_value_held_before_the_hit_is_not_a_change (75). Read 75-81.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:533 "96. test_chords_outside_the_log_are_not_judged (83). Read 83-87.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:537 "97. test_a_2_s_wall_gap_with_a_held_clock_reports_the_span (91). Read 91-98; watch_checks.py 50-54, ": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:543 "98. test_a_field_that_moved_across_the_pause_fails (100). Read 100-106.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:547 "99. test_a_pause_into_the_final_row_says_so (108). Read 108-113.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:551 "100. test_a_nan_read_held_across_the_pause_is_not_a_move (115). Read 115-119.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:555 "101. test_a_wall_gap_where_the_clock_moved_is_not_a_pause (121). Read 121-124.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:559 "102. test_rows_load_with_64_bit_values_exact (141). Read 141-149; watch_checks.py 59-102.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:565 "103. test_a_log_written_before_the_half_column_loads_with_it_nan (151). Read 151-160.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:569 "104. test_a_log_without_the_clock_or_half_columns_loads (162). Read 162-167.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:573 "105. test_a_header_missing_only_part_of_a_group_is_refused (169). Read 169-173.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:578 "106. test_a_log_without_the_clock_columns_loads_with_them_nan (175). Read 175-182.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:582 "107. test_a_saved_log_with_the_older_hit_time_s_header_loads (184). Read 184-191.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:586 "108. test_a_wrong_header_is_refused (193). Read 193-196.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:590 "109. test_run_reads_both_files (198). Read 198-208.": its test file test_watch_checks.py (from the heading "test_watch_checks.py") is not one of the run's files.
+- records/D13.md:594 "test_stall_harness.py": its test file test_stall_harness.py (from its title) is not one of the run's files.
+- records/D13.md:606 "111. test_the_writer_sink_drops_nothing_under_a_forced_stall (90). Read 90-95; `_Sink` 508-542.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:613 "112. test_the_cap_ends_the_run_and_says_so (97). Read 97-105; `main` 891-922.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:618 "113. test_the_defaults_are_the_users_numbers (107). Read 107-117.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:623 "114. test_a_hunt_run_past_the_most_is_refused (119). Read 119-122; main 914-916.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:628 "115. test_a_clean_run_says_no_stall (124). Read 124-128.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:633 "116. test_a_missing_cdb_is_said_and_the_run_goes_on (130). Read 130-138; `_cdb_text` 268-284.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:638 "117. test_a_second_stall_in_one_run_starts_no_second_cdb (140). Read 140-164; Watchdog 204-285.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:643 "118. test_a_sleep_counts_only_past_what_it_asked (166). Read 166-179.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:648 "119. test_a_blocked_agent_log_write_does_not_stall_the_press (181). Read 181-212.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:653 "120. test_the_load_process_is_stopped_at_the_end (214). Read 214-242; `load_folders` 547-561.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:659 "121. test_the_step_names_are_the_timing_columns (244). Read 244-248.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:664 "122. test_a_900_ms_block_drops_nothing_when_the_game_times_the_presses (330). Read 330-344; helpers ": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:671 "123. test_the_same_900_ms_block_drops_chords_from_the_outside_loop (346). Read 346-349.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:675 "124. test_a_retime_900_ms_late_fires_no_press_twice_and_says_retime_missed (351). Read 351-368.": its test file test_stall_harness.py (from the heading "test_stall_harness.py") is not one of the run's files.
+- records/D13.md:680 "test_tick_rate_vs_hydra.py": its test file test_tick_rate_vs_hydra.py (from its title) is not one of the run's files.
+- records/D13.md:698 "A3 for money. The price table (agent_cost.py:36-46) says "Source: the `claude-api` skill. Dollars pe": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:704 "127. test_opus (101). Read 101-102. 1 Same claim for Opus: $6.10. 3, 4/8 as 126 (102, "6.1000").": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:706 "128. test_sonnet (104). Read 104-105. 1 Same for Sonnet: $3.15. 3, 4/8 as 126 (105, "3.1500").": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:708 "129. test_haiku_at_exactly_the_context_limit_keeps_the_short_price (107). Read 107-108; agent_cost.p": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:712 "130. test_haiku_one_token_over_the_context_limit_takes_the_long_price (110). Read 110-111. 1 Claim: ": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:714 "131. test_output_tokens_do_not_count_toward_haiku_context (113). Read 113-114. 1 Claim: output token": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:716 "132. test_five_minute_cache_write_is_1_25_times_input (116). Read 116-117. 1 Claim: 1,000 tokens wri": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:718 "133. test_one_hour_cache_write_is_2_times_input (119). Read 119-120. 1 Claim: 1,000 tokens written f": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:720 "134. test_both_cache_write_lengths_in_one_record (122). Read 122-123. 1 Claim: a record with both a ": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:722 "135. test_record_with_no_split_prices_at_the_five_minute_rate_and_is_counted (125). Read 125-132; ag": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:727 "136. test_a_clean_run_still_says_how_many_records_had_no_split (134). Read 134-136. 1 Claim: a run w": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:729 "137. test_one_agent_on_two_models_prices_each_request_by_its_own_model (138). Read 138-143. 1 Claim:": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:731 "138. test_last_usage_per_request_wins (146). Read 146-151; agent_cost.py 128-145. 1 Claim: when one ": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:733 "139. test_effort_values_are_listed (153). Read 153-155. 1 Claim: an agent's row lists every effort l": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:735 "140. test_an_assistant_record_with_no_effort_shows_in_the_list (157). Read 157-159. 1 Claim: a recor": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:737 "141. test_tool_use_blocks_are_counted_on_every_record (161). Read 161-163. 1 Claim: calls are the nu": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:739 "142. test_row_carries_type_and_first_timestamp (165). Read 165-171. 1 Claim: a row shows the agent's": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:741 "143. test_agent_without_meta_file_is_unknown_type (173). Read 173-175. 1 Claim: an agent with no met": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:744 "144. test_agents_nested_under_workflows_are_found (177). Read 177-179; agent_cost.py 156-160. 1 Clai": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:746 "145. test_a_half_written_last_line_is_skipped_and_counted (181). Read 181-185. 1 Claim: a last line ": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:748 "146. test_a_message_claude_code_wrote_itself_is_no_request (187). Read 187-194; agent_cost.py 131-13": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:750 "147. test_a_model_with_no_price_fails_loudly (196). Read 196-200; agent_cost.py 286-289. 1 Claim: a ": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:753 "148. test_no_filter_reads_the_whole_project (214). Read 203-216. 1 Claim: with no filter, every agen": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:755 "149. test_since_keeps_an_agent_by_its_first_timestamp_inclusive (217). Read 217-218. 1 Claim: `--sin": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:757 "150. test_since_takes_a_date_time (220). Read 220-221. 1 Claim: `--since` also accepts a full date a": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:759 "151. test_one_session (223). Read 223-224. 1 Claim: `--session S2` reports only that session's agent": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:761 "152. test_several_sessions_after_one_flag (226). Read 226-227. 1 Claim: `--session S1 S2` reports bo": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:763 "153. test_several_sessions_by_repeating_the_flag (229). Read 229-230. 1 Claim: `--session S1 --sessi": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:765 "154. test_one_agent (232). Read 232-233. 1 Claim: `--agent new` reports only that agent. 3 Claim not": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:767 "155. test_main_session_cost_is_printed_for_each_session (235). Read 235-238. 1 Claim: with `--sessio": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:769 "156. test_total_spend_sums_agents_and_main_sessions_over_every_session (240). Read 240-243. 1 Claim:": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:771 "157. test_since_counts_only_the_later_part_of_a_main_session (245). Read 245-247. 1 Claim: with `--s": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:773 "158. test_a_request_copied_into_a_second_session_counts_once_in_the_total (249). Read 249-253. 1 Cla": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:775 "159. test_no_main_session_line_without_session (255). Read 255-256. 1 Claim: with no `--session`, no": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:777 "160. test_a_session_with_no_transcript_is_an_error_not_zero_dollars (258). Read 258-261; agent_cost.": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D13.md:779 "161. test_summary_groups_by_type_and_effort (263). Read 263-267; agent_cost.py 200-211. 1 Claim: the": its test file test_agent_cost.py (from the heading "tools/test_agent_cost.py") is not one of the run's files.
+- records/D14.md:21 "test_existing_claims_listed (tools/test_check_handoff.py:94)": its test file test_check_handoff.py (from its title) is not one of the run's files.
+- records/D14.md:28 "test_missing_claims_fail (:105)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:33 "test_changed_since_date (:114)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:38 "test_unchanged_is_not_listed (:125)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:43 "test_prose_is_ignored (:132)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:48 "test_other_repo_root_on_line (:138)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:53 "test_date_sources (:150)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:59 "test_usage (:165)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:64 "test_doc_mention_is_not_a_function (:175)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:69 "test_qualified_function_found_where_written (:183)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:74 "test_path_matching_only_by_its_tail_is_missing (:191)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:80 "test_path_outside_the_repo_or_in_the_wrong_case_is_missing (:203)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:86 "test_qualified_method_needs_its_class_in_the_file (:210)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:91 "test_session_id_is_not_a_commit (:221)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:96 "test_claims_table_statuses (:234)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:101 "test_claims_table_only_rows (:260)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:106 "test_claims_exit_code (:268)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:111 "test_claims_rows_that_must_not_pass (:278)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:116 "test_claims_table_with_no_readable_row_fails (:297)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:121 "test_row_without_outer_pipes_is_read (:303)": its test file test_check_handoff.py (from the heading "File block H: tools/test_check_handoff.py (20 tests)") is not one of the run's files.
+- records/D14.md:133 "test_missing_path_reported (tools/test_check_pointers.py:76)": its test file test_check_pointers.py (from its title) is not one of the run's files.
+- records/D14.md:138 "test_hook_names (:83)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:143 "test_absolute_path (:91)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:148 "test_sessions_line_skipped (:99)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:153 "test_exit_code (:107)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:158 "test_session_start_output (:117)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:163 "test_wrong_case_is_broken (:139)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:169 "test_tail_match_is_never_found (:145)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:175 "test_docs_read_at_any_depth_and_archive_left_out (:156)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:180 "test_fenced_block_and_sibling_and_other_repo (:165)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:185 "test_not_file_names_are_ignored (:173)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:190 "test_shorthand_names_are_ignored (:181)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:195 "test_memory_note_shown_by_short_name (:191)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:200 "test_git_show_fallback_that_opens (:210)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:205 "test_git_show_fallback_that_does_not_open (:224)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:210 "test_git_show_fallback_in_hooks_repo (:235)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:215 "test_quoted_pointer_skipped_only_in_rulings (:244)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:220 "test_bad_argument (:261)": its test file test_check_pointers.py (from the heading "File block P: tools/test_check_pointers.py (18 tests)") is not one of the run's files.
+- records/D14.md:233 "test_result_id_order_alone_compares_clean (tools/test_compare_db.py:203)": its test file test_compare_db.py (from its title) is not one of the run's files.
+- records/D14.md:239 "test_tables_print_in_the_fixed_order (:216)": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:246 "test_one_changed_payload_byte_is_reported (:228)": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:251 "test_chart_scan_order_is_part_of_the_answer (:239)": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:256 "test_summary_only_old_layout_matches_new_layout (:256)": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:262 "test_summary_only_reports_one_changed_score (:273)": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:267 "test_profile_id_order_alone_compares_clean (:284, parametrized over [] and ["--summary-only"], two c": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:272 "test_one_changed_record_path_is_reported (:297)": its test file test_compare_db.py (from the heading "File block C: tools/test_compare_db.py (8 test functions, 9 cases; one is parame") is not one of the run's files.
+- records/D14.md:284 "test_a_hand_fix_of_one_of_three_faults_is_one_fixed_two_missed (tools/test_effort_test_faults.py:99)": its test file test_effort_test_faults.py (from its title) is not one of the run's files.
+- records/D14.md:289 "test_no_commits_and_an_empty_report_misses_all_three (:110)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:294 "test_every_fault_caught_passes_the_run (:113)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:299 "test_named_by_file_and_key_line (:119)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:304 "test_named_by_the_line_the_fault_has_at_the_tip (:124)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:309 "test_named_by_the_words_of_the_fault (:128)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:314 "test_named_by_the_planted_text (:132)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:319 "test_a_file_alone_does_not_name_a_fault (:136)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:324 "test_a_line_with_no_file_does_not_name_a_fault (:141)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:329 "test_a_paragraph_about_one_fault_does_not_name_another_in_the_same_file (:144)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:334 "test_a_longer_file_name_is_not_the_faults_file (:149)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:340 "test_a_number_inside_a_longer_number_is_not_the_line (:152)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:345 "test_fixed_wins_over_named (:156)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:350 "test_fixing_the_planted_copy_counts_when_the_same_text_stands_elsewhere (:160)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:355 "test_removing_the_faults_file_counts_as_fixed (:169)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:360 "test_an_edit_away_from_planted_lines_is_a_false_finding (:175)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:365 "test_neighbouring_changed_lines_are_one_false_finding (:181)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:370 "test_an_edit_on_a_reference_line_is_a_false_finding (:186)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:375 "test_an_edit_in_a_file_with_no_fault_is_a_false_finding (:190)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:380 "test_removing_a_whole_multi_line_fault_is_no_false_finding (:194)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:385 "test_a_line_added_beside_a_planted_line_is_no_false_finding (:199)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:390 "test_removed_lines_that_look_like_diff_headers_are_not_read_as_headers (:204)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:395 "test_a_planted_text_missing_at_the_tip_fails_loudly (:220)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:400 "test_an_empty_key_field_fails_loudly (:225)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:405 "test_a_tip_that_does_not_descend_from_the_key_fails_loudly (:230)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:410 "test_an_unknown_tip_fails_loudly (:233)": its test file test_effort_test_faults.py (from the heading "File block F: tools/test_effort_test_faults.py (26 tests)") is not one of the run's files.
+- records/D14.md:423 "test_path_and_quoted_line_pass (tools/test_effort_test_scout.py:45)": its test file test_effort_test_scout.py (from its title) is not one of the run's files.
+- records/D14.md:428 "test_an_absolute_windows_path_passes (:49)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:433 "test_a_wrong_path_fails (:53)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:438 "test_a_wrong_line_fails (:57)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:443 "test_a_longer_file_name_is_not_the_path (:60)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:449 "test_the_match_is_case_exact (:64)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:454 "test_each_answer_file_gets_a_line (:69)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:459 "test_an_unknown_question_fails_loudly (:74)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:464 "test_an_empty_key_fails_loudly (:79)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:469 "test_a_missing_answer_file_fails_loudly (:84)": its test file test_effort_test_scout.py (from the heading "File block S: tools/test_effort_test_scout.py (10 tests)") is not one of the run's files.
+- records/D14.md:481 "test_key_file_records_each_label_once (tools/test_effort_test_shuffle.py:85)": its test file test_effort_test_shuffle.py (from its title) is not one of the run's files.
+- records/D14.md:486 "test_each_labelled_file_holds_the_run_the_key_says (:95)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:491 "test_the_bundle_holds_only_the_labelled_files_and_no_run_name (:104)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:496 "test_a_run_name_is_replaced_by_that_runs_label (:112)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:501 "test_the_order_is_shuffled (:118)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:506 "test_a_count_other_than_six_is_refused (:128)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:511 "test_a_repeated_branch_is_refused (:132)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:516 "test_an_existing_key_is_never_overwritten (:135)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:521 "test_a_key_inside_the_bundle_is_refused (:142)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:526 "test_a_key_in_a_folder_beside_the_bundle_is_allowed (:145)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:531 "test_a_full_bundle_folder_is_refused (:150)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:536 "test_an_unknown_branch_writes_nothing (:156)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:541 "test_the_brief_holds_no_level_cost_or_agent_id (:164, class ScorerBriefTest)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:547 "test_the_brief_names_the_three_inputs_and_the_labels (:170)": its test file test_effort_test_shuffle.py (from the heading "File block X: tools/test_effort_test_shuffle.py (14 tests)") is not one of the run's files.
+- records/D14.md:559 "test_plan_acceptance_lists_first_and_third_only (tools/test_effort_test_taint.py:65)": its test file test_effort_test_taint.py (from its title) is not one of the run's files.
+- records/D14.md:564 "test_the_range_form_covers_only_the_runs_own_key (:76)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:569 "test_a_second_ref_beside_the_range_is_listed (:81)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:574 "test_every_spelling_of_main_is_listed (:84)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:579 "test_file_names_that_hold_main_are_not_listed (:89)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:584 "test_other_branches_are_listed_and_the_runs_own_is_not (:94)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:589 "test_a_longer_branch_with_the_runs_name_as_a_start_is_listed (:103)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:594 "test_dot_claude_folders_are_not_branches (:106)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:599 "test_paths_outside_the_worktree_in_every_spelling (:110)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:604 "test_a_sibling_worktree_is_outside (:117)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:609 "test_paths_inside_the_worktree_are_not_listed (:121)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:614 "test_a_reviewers_isolation_copy_counts_as_its_own (:125)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:619 "test_a_run_with_no_worktree_has_every_checkout_path_listed (:130)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:624 "test_relative_climbs_out_of_the_worktree_are_listed (:133)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:629 "test_a_climb_with_nothing_after_it_and_a_results_worktree_are_listed (:138)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:634 "test_home_spellings_of_the_checkout_are_outside (:144)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:639 "test_tool_calls_with_no_id_are_each_listed (:153)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:644 "test_git_all_forms_are_listed (:166)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:649 "test_each_merge_prefix_is_listed (:175)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:654 "test_text_a_call_writes_or_describes_is_not_read (:179)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:659 "test_a_write_outside_the_worktree_is_listed (:186)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:664 "test_other_tools_are_read_field_by_field (:189)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:669 "test_a_call_repeated_in_two_records_is_listed_once (:194)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:674 "test_an_unreadable_transcript_fails_loudly (:207)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D14.md:679 "test_a_broken_transcript_line_fails_loudly (:216)": its test file test_effort_test_taint.py (from the heading "File block T: tools/test_effort_test_taint.py (25 tests)") is not one of the run's files.
+- records/D15.md:39 "BP-1 three sessions get three passes, a fourth is refused (`tools/test_build_pass.ps1:110-119`)": its test file test_build_pass.ps1 (from its title) is not one of the run's files.
+- records/D15.md:51 "BP-2 a session cannot hold two passes (`:121-125`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:56 "BP-3 the reply names the pass's limit and the command to build with (`:127-130`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:66 "BP-4 unusable session ids are refused (`:132-137`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:71 "BP-5 many askers at once get no more than the rule allows (`:139-152`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:79 "BP-6 an old pass frees its slot and cannot be claimed (`:156-170`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:84 "BP-7 a session whose pass ran out can ask again (`:172-177`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:88 "BP-8 a dead owner frees the slot; a live one holds it (`:179-191`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:92 "BP-9 locks in the old two-line form (`:195-209`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:97 "BP-10 a lock of nonsense is cleared (`:211-217`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:101 "BP-11 under the gate, no pass stops before configure (`:221-226`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:106 "BP-12 a pass nobody issued (`:228-233`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:109 "BP-13 off the gate, builds as before (`:235-246`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:114 "BP-14 with a pass: claim before configure, low priority on the build line only, slot given back, pas": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:119 "BP-15 a Ninja preset has no low-priority switch (`:263-270`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:122 "BP-16 a failed build gives the slot back (`:272-278`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:125 "BP-17 one pass cannot run two builds (`:280-290`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:129 "BP-18 a long-lived shell that builds in process, passing and failing (`:292-313`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:133 "BP-19 `-Repo` takes exactly one slot (`:315-324`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:136 "BP-20 `-Repo` without a pass refuses (`:326-329`) 329: nonzero, "no build pass", no cmake line.": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:138 "BP-21 `-Repo` on an old release holds the slot and passes through its exit code (`:331-342`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:141 "BP-22 off the gate, `-Repo` needs no pass (`:344-349`) 348 exit 0, three lines all `locks=1`; 349 sl": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:143 "BP-23 `-DryRun` beside two passes takes slot 3 (`:353-357`) 357 text has "slot3.lock taken" and "rel": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:145 "BP-24 the plain route waits when all three are taken (`:359-370`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:149 "BP-25 `-Check` (the second lock) (`:374-390`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:153 "BP-26 `Directory.Build.targets` runs the check (`:392-397`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:160 "BP-27 an old script's lock is written empty, then filled (`:399-415`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:164 "BP-28 new_worktree builds nothing (`:417-433`)": its test file test_build_pass.ps1 (from the heading "tools/test_build_pass.ps1") is not one of the run's files.
+- records/D15.md:175 "CF-1 no record: nothing changes (`tools/test_ci_build_folder.ps1:73-80`)": its test file test_ci_build_folder.ps1 (from its title) is not one of the run's files.
+- records/D15.md:180 "CF-2 `-Record` writes HEAD's full id (`:82-84`) 84 the file equals `$c1`, taken from `git rev-parse ": its test file test_ci_build_folder.ps1 (from the heading "tools/test_ci_build_folder.ps1") is not one of the run's files.
+- records/D15.md:182 "CF-3 an ancestor record, one changed file (`:86-97`)": its test file test_ci_build_folder.ps1 (from the heading "tools/test_ci_build_folder.ps1") is not one of the run's files.
+- records/D15.md:186 "CF-4 a range that changes CMakeLists.txt deletes the folder (`:99-105`) 104 exit 0 and the folder go": its test file test_ci_build_folder.ps1 (from the heading "tools/test_ci_build_folder.ps1") is not one of the run's files.
+- records/D15.md:188 "CF-5 a record that is not an ancestor deletes the folder (`:107-116`) 115, 116 ("not an ancestor"). ": its test file test_ci_build_folder.ps1 (from the heading "tools/test_ci_build_folder.ps1") is not one of the run's files.
+- records/D15.md:190 "CF-6 a record naming a commit the clone lacks deletes the folder (`:118-123`) 122, 123 ("not in this": its test file test_ci_build_folder.ps1 (from the heading "tools/test_ci_build_folder.ps1") is not one of the run's files.
+- records/D15.md:200 "EG-1 a clean repository passes all four (`tools/test_effort_test_guard.ps1:85-86`) 6 checks via Chec": its test file test_effort_test_guard.ps1 (from its title) is not one of the run's files.
+- records/D15.md:202 "EG-2 the effort variable (`:88-93`) Check-Run with `effort` failing; 92 the failing line names "medi": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:204 "EG-3 version file: other version and none (`:95-101`) 98 Check-Run 'version' failing; 99 line names ": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:206 "EG-4 `-Record` writes the running version and the next run passes (`:103-108`) 105 Check-Run exit 0;": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:208 "EG-5 `-Record` with a missing folder fails and leaves it missing (`:110-113`) 112 Check-Run version ": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:210 "EG-6 a failing claude, or one that prints no version, never lands in the file (`:115-121`) 117, 119 ": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:212 "EG-7 the tools and results branches are not test branches (`:123-130`) 128 Check-Run all pass; 129 l": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:214 "EG-8 an unmerged test branch in the right place passes and is counted (`:132-138`) 136 Check-Run; 13": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:216 "EG-9 -Repo naming a linked worktree (`:140-141`) one Check-Run: finds the main checkout's folder fro": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:218 "EG-10 a merged test branch fails, deep names too (`:143-157`) 148 Check-Run branches failing; 150, 1": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:220 "EG-11 misplaced worktrees fail (`:159-171`) 168 Check-Run worktrees failing; 170 the line names both": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:222 "EG-12 a repository with no main fails rather than looking clean (`:173-178`) 178 Check-Run branches ": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:224 "EG-13 a folder that is no repository fails both git checks (`:180-181`) 181 Check-Run both git label": its test file test_effort_test_guard.ps1 (from the heading "tools/test_effort_test_guard.ps1") is not one of the run's files.
+- records/D15.md:236 "MP-1 the finder on a sample snippet, LF and CRLF (`tools/test_mutation_probe.ps1:43-111`)": its test file test_mutation_probe.ps1 (from its title) is not one of the run's files.
+- records/D15.md:246 "MP-2 `Select-Spread` (`:112-114`) 112 `Select-Spread 6 3` gives 1,3,5; 113 `4 10` gives 1,2,3,4; 114": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:248 "MP-3 refusals: the main checkout and a source that differs from git (`:205-211`) 207 exit 1 "is the ": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:250 "MP-4 a normal run (`:213-222`) 215 exit 0. 218 each edit's result equals `#1=killed #2=no build #3=k": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:253 "MP-5 `-Only` through `pwsh -File` hands "1,5" as one string (`:224-228`) 227 exit 0 and `#1=killed #": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:255 "MP-6 a run that breaks part way restores the file and gives the slot back (`:230-236`) 235 exit 1 an": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:257 "MP-7 under the gate with no pass, it stops before building (`:238-242`) 241 exit 1, "no build pass",": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:259 "MP-8 under the gate with a pass, one pass holds across all rebuilds (`:244-258`) 255 exit 0. 257 exa": its test file test_mutation_probe.ps1 (from the heading "tools/test_mutation_probe.ps1") is not one of the run's files.
+- records/D15.md:272 "RS-1 a fresh signature from release_sign with the test key verifies (`tools/test_release_sign.ps1:77": its test file test_release_sign.ps1 (from its title) is not one of the run's files.
+- records/D15.md:274 "RS-2 the committed signature is the right size and verifies (`:85-88`) 87 64 bytes; 88 verifies. The": its test file test_release_sign.ps1 (from the heading "tools/test_release_sign.ps1") is not one of the run's files.
+- records/D15.md:276 "RS-3 a changed signature does not verify (`:89-91`) 91 flip one bit, verification fails. Catches `Te": its test file test_release_sign.ps1 (from the heading "tools/test_release_sign.ps1") is not one of the run's files.
+- records/D15.md:278 "RS-4 a protected key outside the repo can be made and used (`:93-103`) 97 keygen exit 0 and the key ": its test file test_release_sign.ps1 (from the heading "tools/test_release_sign.ps1") is not one of the run's files.
+- records/D15.md:280 "RS-5 the keygen's refusals (`:105-112`) 107 refuses to overwrite a key (nonzero); 110 refuses a prot": its test file test_release_sign.ps1 (from the heading "tools/test_release_sign.ps1") is not one of the run's files.
+- records/D15.md:296 "1. `test_the_hello_line_gives_the_timeout_log_and_crash_dump` (`:179`) Claim: a start reads the hell": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:297 "2. `test_a_hello_line_without_a_timeout_ends_the_session` (`:191`) 195 message text, 196 session Non": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:298 "3. `test_a_hello_line_without_a_log_ends_the_session` (`:198`) same shape. 10: duplicate of 2 apart ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:299 "4. `test_the_line_goes_exactly_as_given_and_the_text_comes_back_as_given` (`:204`) three lines with ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:300 "5. `test_a_reply_that_is_not_an_object_is_reported` (`:210`) 214 not ok, 215 "not a JSON reply".": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:301 "6. `test_a_reply_without_a_timeout_is_reported` (`:217`) 221-223 not ok, text, and the old timeout k": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:302 "7. `test_line_break_is_refused_before_sending` (`:225`) 228 starts with "refused: one command is one": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:303 "8. `test_run_splits_a_script_on_line_breaks_only` (`:232`) 241 the sent list equals typed lines with": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:304 "9. `test_a_cut_reply_keeps_a_line_whole` (`:243`) 245-246 exact text with "200", "1 of 2 lines dropp": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:305 "10. `test_hanging_hydra_is_reported_and_killed` (`:250`) 257 "did not answer within 1 s" (the 1 is t": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:306 "11. `test_a_closed_channel_with_a_live_process_is_reported_as_killed` (`:264`) 270, 271, 272, 273.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:307 "12. `test_exiting_hydra_is_reported_with_code_log_tail_and_dump` (`:277`) 281-284 code 3 text, log t": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:308 "13. `test_long_reply_is_cut_at_the_cap` (`:286`) 289 length at most `REPLY_CAP_CHARS`; 293 the last ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:309 "14. `test_a_cut_reply_ends_with_the_given_hint` (`:296`) 298 exact text. Raw result as 9.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:310 "15. `test_one_long_line_is_cut_too` (`:300`) 302 at most 1000 characters; 303 ends with "1 of 1 line": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:311 "16. `test_missing_exe_says_to_ask_the_main_session` (`:305`) 308 the text names the target to ask fo": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:312 "17. `test_the_default_temp_root_is_the_claude_folder_in_the_temp_folder` (`:314`) 317: `temp_root ==": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:313 "18. `test_an_explicit_temp_root_wins` (`:319`) 322.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:314 "19. `test_a_headless_start_makes_a_temp_root_that_does_not_exist_yet` (`:324`) 328-332 including a `": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:315 "20. `test_a_window_start_makes_a_temp_root_that_does_not_exist_yet` (`:334`) 338-339.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:316 "21. `test_snapshot_copies_the_three_files_and_leaves_the_originals_alone` (`:346`) 352 copied names ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:317 "22. `test_snapshot_without_the_ini_files_says_what_was_absent` (`:362`) 367 and 368 "not present".": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:318 "23. `test_snapshot_holds_a_row_that_is_still_only_in_the_wal` (`:370`) 375 -wal exists; 377 the row ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:319 "24. `test_snapshot_while_the_database_is_open_leaves_no_wal_or_shm_in_the_copy` (`:386`) 393 the cop": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:320 "25. `test_snapshot_while_the_database_is_open_leaves_the_originals_alone` (`:397`) 406 originals (db": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:321 "26. `test_a_window_start_while_the_database_is_open_is_not_refused` (`:410`) 418-425.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:322 "27. `test_a_database_sqlite_cannot_read_refuses_the_snapshot_and_leaves_no_folder` (`:427`) 433 "ref": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:323 "28. `test_a_missing_database_refuses_the_snapshot` (`:437`) 441-443.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:324 "29. `test_a_crash_report_quotes_the_window_log_and_never_an_old_one` (`:445`) 452-458.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:325 "30. `test_window_command_line_never_names_the_library_folder` (`:460`) 464-478: flags present, pipe ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:326 "31. `test_keep_window_leaves_the_process_running` (`:480`) 486-489.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:327 "32. `test_window_stop_writes_realapp_record` (`:519`) 526 the record's keys equal seven names; 528 k": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:328 "33. `test_a_failed_screenshot_is_no_shot` (`:539`) 545.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:329 "34. `test_headless_writes_no_record` (`:547`) 550-551.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:330 "35. `test_dirty_tree_is_recorded` (`:553`) 559-560.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:331 "36. `test_an_untracked_file_makes_the_tree_dirty` (`:562`) 567.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:332 "37. `test_user_close_writes_record` (`:569`) 575-578.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:333 "38. `test_crash_writes_no_record` (`:580`) 584-586.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:334 "39. `test_a_killed_window_writes_no_record` (`:588`) 593-595.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:335 "40. `test_keep_window_writes_record` (`:597`) 601-605.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:336 "41. `test_a_new_start_writes_the_old_sessions_record` (`:607`) 611-612.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:337 "42. `test_helper_exit_writes_record` (`:614`) 618-619.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:338 "43. `test_helper_exit_after_a_crash_writes_no_record` (`:621`) 628.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:339 "44. `test_a_record_for_the_real_repo_is_refused` (`:630`) 632-633: the guard's own assertion raises.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:340 "45. `test_stop_reply_names_record` (`:635`) 639 exact reply text including the path built from `hm.R": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:341 "46. `test_no_repo_says_no_record_and_still_stops` (`:642`) 646-647.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:349 "47. `test_the_reply_is_a_pass_and_the_command_to_build_with` (`:664`) 666-667: the reply starts `pas": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:350 "48. `test_the_lock_holds_this_session_and_this_server` (`:669`) 671-673 the lock's first line is thi": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:351 "49. `test_a_second_ask_from_one_session_is_refused` (`:675`) 677 regex "no pass: this session alread": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:352 "50. `test_a_fourth_session_is_refused_and_told_who_holds_the_slots` (`:679`) 683-685. Same rule as B": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:353 "51. `test_no_session_id_refuses_and_hands_out_nothing` (`:687`) 691-692 for "" and " ": "no pass: CL": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:354 "52. `test_a_missing_variable_refuses_too` (`:694`) 697. Same wording copy as 51.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:355 "53. `test_no_pwsh_refuses_loudly` (`:699`) 701 "pwsh is not on this server's PATH" with `shutil.whic": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:356 "54. `test_a_stuck_script_refuses_loudly` (`:703`) 704-706 patches `subprocess.run` to raise TimeoutE": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:357 "55. `test_a_silent_failure_names_the_exit_code` (`:708`) 711 exact equality with the production text": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:361 "56. `test_the_sdk_client_lists_every_tool` (`:716`) 724 the server's tool names equal `TOOL_NAMES` (": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:362 "57. `test_open_song_sends_open_and_the_title` (`:726`) 731-734: the tool sends `open AC/DC #1`. Verb": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:368 "58. `test_the_real_hello_line` (`:785`) 788 hello keys equal six names; 789-797. Pinned reply shape;": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:369 "59. `test_a_held_open_keeps_drawing_and_the_hello_waits_for_the_library` (`:799`) 802 `hold_s = 2` f": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:370 "60. `test_a_hold_that_is_not_a_plain_number_ends_the_run_naming_it` (`:811`) 814-817.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:371 "61. `test_first_tool_call_starts_headless` (`:819`) 822-823.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:372 "62. `test_headless_session` (`:824`) 826 store ready; 827 `scan()`, which asserts `charts=98` (line ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:373 "63. `test_stop_exits_zero_and_deletes_the_scratch` (`:832`) 835-837.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:374 "64. `test_keep_keeps_the_scratch` (`:839`) 842-843.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:375 "65. `test_start_again_stops_the_old_session` (`:845`) 849-850.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:376 "66. `test_strict_numbers_are_refused_by_hydra` (`:854`) 857-860: three bad numbers each get the exac": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:377 "67. `test_the_wait_cap_and_the_timeout_every_reply_carries` (`:862`) 864-869 exact reply "wait 31 is": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:378 "68. `test_one_off_timeouts_are_judged_by_hydra_and_put_back` (`:871`) 873-886.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:379 "69. `test_a_long_timeout_is_put_back_exactly` (`:888`) 891-894 12.345678901 round trip: the comment ": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:380 "70. `test_text_and_dump_filters_are_hydras` (`:896`) 897-907: `scan()` (98 again), the Burnout row f": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:381 "71. `test_every_text_reply_ends_lines_in_a_bare_newline` (`:909`) 911-915. `scan()` 98.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:382 "72. `test_rect_on_a_missing_ref_fails` (`:917`) 919 exact reply.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:383 "73. `test_a_bare_bar_clears_the_field` (`:921`) 925-933 replies "Nothing matches.\n" and the no-matc": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:384 "74. `test_failure_carries_hydras_text_and_the_session_survives` (`:935`) 938-941. 752 `UNKNOWN_BUTTO": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:385 "75. `test_run_sends_every_line_and_stops_at_the_first_failure` (`:943`) 945-949: the stop line "stop": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:386 "76. `test_a_run_after_a_command_carries_one_line_number_the_helpers` (`:951`) 953-956.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:387 "77. `test_screenshot_is_saved_under_the_name_given` (`:958`) 962-964 the PNG signature (the 8-byte h": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:388 "78. `test_a_focused_wildcard_ref_finds_the_popups_checkbox` (`:969`) 971-973: exact reply with `id=0": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:389 "79. `test_a_failed_wildcard_check_leaves_wildcard_clicks_working` (`:975`) 977-980.": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:390 "80. `test_dump_shows_the_whole_label` (`:982`) 984-988 exact dump text with window id and size 1280x": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:391 "81. `test_a_popup_dump_lists_the_checkboxes_inside_its_tables` (`:990`) 993-996 exact popup id `##Po": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:392 "82. `test_closing_the_window_ends_hydra` (`:1025`, opens a window; skipped unless `HYDRA_LIVE_WINDOW": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:393 "83. `test_holding_esc_in_the_window_leaves_the_session_working` (`:1045`, same skip) 1048-1055. Real": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D15.md:394 "84. `test_window_session_on_a_seed_from_headless` (`:1059`, same skip) 1062-1075 including `charts=9": its test file test_hydra_ui_mcp.py (from the heading "tools/test_hydra_ui_mcp.py") is not one of the run's files.
+- records/D2.md:42 "test_the_poll_is_the_users_tenth_of_a_second (line 48)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:57 "test_counts_two_changes_to_the_game_and_none_for_other_windows (line 52)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:72 "test_other_windows_alone_count_nothing (line 59)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:87 "test_a_game_in_front_at_the_first_poll_counts (line 66)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:102 "test_a_game_window_found_one_poll_late_still_counts_once (line 71)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:117 "test_no_game_window_never_counts_an_empty_front (line 78)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:132 "test_nothing_counts_after_stop (line 84)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:147 "test_the_thread_polls_until_stop_and_the_line_says_the_count (line 92)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:162 "test_the_line_lists_when_the_game_came_forward_since_the_start (line 112)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:177 "test_the_line_has_no_times_while_the_game_never_came_forward (line 124)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:192 "test_a_poll_that_raises_ends_the_watch_and_the_line_says_why (line 130)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:207 "test_count_line_words (line 139)": its test file test_foreground.py (from the heading "test_foreground.py (tools/ch_mcp/tests/test_foreground.py)") is not one of the run's files.
+- records/D2.md:230 "test_game_manager_fields_come_out_with_their_offsets (line 139)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:242 "test_scrambled_class_is_flagged_scrambled (line 145)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:253 "test_constants_and_properties_are_not_fields (line 149)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:264 "test_static_field_is_marked_static (line 155)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:275 "test_methods_carry_rva_return_and_parameter_types (line 160)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:286 "test_method_with_no_code_keeps_minus_one (line 166)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:297 "test_generic_instance_lines_are_not_methods (line 170)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:308 "test_first_listed_type_is_the_base_unless_it_is_an_interface (line 174)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:319 "test_interface_listed_first_is_not_a_base (line 180)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:330 "test_empty_class_on_one_brace_line_closes (line 186)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:341 "test_field_with_a_metadata_offset_note_keeps_its_offset (line 192)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:352 "test_method_without_rva_line_fails_loudly (line 200)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:366 "test_ctor_rva_finds_the_one_engine_class (line 207)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:377 "test_ctor_rva_matching_no_class_refuses (line 215)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:388 "test_ctor_rva_matching_two_classes_refuses (line 219)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:399 "test_game_manager_signature_lists_readable_fields_only (line 223)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:410 "test_write_facts_puts_facts_json_beside_dump_cs (line 235)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:424 "test_output_folder_inside_the_repo_is_refused (line 280)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:436 "test_cap_reports_the_cap_line (line 288)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:448 "test_three_done_lines_and_a_crash_exit_count_as_good (line 294)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:459 "test_fewer_than_three_done_lines_fail_and_name_the_missing_stage (line 304)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:470 "test_missing_output_file_fails (line 312)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:484 "test_column_line_ends_with_cited (line 453)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:495 "test_cited_name_is_found (line 457)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:506 "test_cited_address_is_found_in_any_class (line 464)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:517 "test_missing_fact_is_an_error_naming_page_line_and_span (line 471)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:528 "test_shared_address_gives_one_row_per_method (line 479)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:540 "test_offset_of_the_engine_is_found_on_its_base_class (line 486)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:551 "test_constants_give_method_and_offset_rows_and_skip_data_addresses (line 492)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:562 "test_an_address_only_in_a_generic_instantiation_block_is_a_method_row (line 501)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:573 "test_instantiations_are_collected_only_when_asked_and_leave_the_classes_alone (line 510)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:584 "test_split_instance_uses_the_methods_own_name (line 523)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:595 "test_a_facts_json_has_no_instantiation_rows (line 529)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:606 "test_header_md5_comes_from_the_dll_bytes (line 538)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:617 "test_python_name_and_file_names_are_not_game_facts (line 543)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:629 "test_check_passes_on_a_fresh_table_and_fails_on_a_stale_one (line 557)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:640 "test_a_block_naming_another_build_is_left_to_that_build (line 570)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:651 "test_4045_facts_json_is_read_by_name_with_no_address (line 577)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:662 "test_a_file_under_code_and_a_build_takes_that_build_for_every_span (line 593)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:673 "test_a_note_under_code_4045_is_looked_up_in_the_4045_table_not_the_6142_one (line 603)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:687 "test_our_names_resolve_to_the_dumps_names_one_row_per_span (line 681)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:698 "test_a_namespaced_class_is_its_class_row_cited_as_written (line 696)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:709 "test_a_scrambled_span_is_an_error_naming_the_line_and_the_map (line 704)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:720 "test_an_uncited_row_is_a_warning_not_an_error (line 713)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:731 "test_map_rows_that_do_not_match_the_dump_are_errors (line 722)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:742 "test_check_exits_1_on_a_map_error (line 743)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:753 "test_a_bad_column_line_is_an_error (line 753)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:764 "test_a_4045_map_names_its_class_by_name (line 759)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:775 "test_a_4045_span_naming_a_mapped_property_gets_an_unlisted_row_and_a_warning (line 790)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:786 "test_a_6142_span_naming_a_member_the_dump_lacks_is_an_error_not_an_unlisted_row (line 818)": its test file test_dump_facts.py (from the heading "test_dump_facts.py (tools/ch_mcp/tests/test_dump_facts.py)") is not one of the run's files.
+- records/D2.md:805 "test_detaches_after_a_normal_end (line 256)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:817 "test_start_settings_ride_in_the_start_message (line 269)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:829 "test_detaches_after_the_cap (line 279)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:841 "test_detaches_after_a_thrown_error (line 288)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:853 "test_detaches_after_ctrl_c (line 294)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:864 "test_attaches_to_the_game_by_process_name (line 300)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:878 "test_an_agent_error_ends_the_run_and_is_kept (line 307)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:890 "test_a_script_exception_ends_the_run (line 315)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:902 "test_no_message_is_written_after_the_run_ends (line 322)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:914 "test_the_game_closing_ends_the_run (line 328)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:928 "test_a_detach_that_raises_is_reported_and_the_log_still_closes (line 345)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:942 "test_returns_true_at_once_when_the_event_is_set (line 364)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:954 "test_returns_false_when_the_cap_passes (line 369)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:966 "test_wakes_when_the_event_is_set_during_the_wait (line 372)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:980 "test_not_running_says_so_and_stops (line 379)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:992 "test_the_command_line_exits_1_when_not_running (line 386)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1003 "test_the_command_line_refuses_a_stale_or_missing_agent_before_attaching (line 396)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1017 "test_start_posts_a_read_and_returns_its_reply (line 505)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1029 "test_a_payload_with_no_id_goes_to_the_listener_and_the_log (line 517)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1041 "test_start_on_a_game_that_is_not_running_attaches_nothing (line 530)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1053 "test_start_with_no_first_reply_raises_on_the_cap_and_detaches_once (line 541)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1065 "test_start_whose_agent_fails_to_load_detaches_once (line 556)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1077 "test_start_detaches_on_ctrl_c (line 566)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1089 "test_read_returns_the_next_payload_and_the_log_holds_it (line 573)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1101 "test_no_live_game_manager_is_returned_as_data (line 582)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1113 "test_read_with_no_reply_names_the_cap (line 587)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1125 "test_a_late_reply_is_not_taken_by_the_next_read (line 595)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1137 "test_request_posts_any_message_with_an_id (line 605)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1149 "test_a_request_with_no_reply_names_its_type_and_the_cap (line 616)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1161 "test_a_request_that_brings_its_own_id_or_no_type_is_refused (line 624)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1173 "test_read_after_the_game_closes_names_the_reason (line 633)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1185 "test_a_detach_during_a_read_ends_that_read (line 647)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1197 "test_a_post_refused_by_a_dropped_session_fails_the_read (line 665)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1209 "test_an_agent_error_fails_the_read (line 678)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1221 "test_an_agent_error_carries_its_whole_reply (line 688)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1233 "test_a_failure_with_no_reply_carries_none (line 696)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1245 "test_a_script_exception_fails_the_read (line 699)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1257 "test_detach_twice_detaches_once_and_reports_the_second (line 707)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1269 "test_detach_after_the_game_closed_says_it_was_gone (line 719)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1281 "test_a_detach_that_raises_is_reported_and_the_log_closes (line 726)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1293 "test_a_pid_attaches_to_that_process (line 739)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1305 "test_no_pid_attaches_by_the_process_name (line 749)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1317 "test_a_pid_that_is_not_running_names_the_pid (line 754)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1329 "test_a_blocked_log_write_does_not_hold_up_the_reply (line 783)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1341 "test_every_message_reaches_the_log_in_order_once (line 798)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1353 "test_every_line_is_on_disk_before_detach (line 811)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1365 "test_detach_waits_for_the_writer_and_says_so_when_the_cap_passes (line 821)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1377 "test_a_failed_log_write_stops_the_log_and_not_the_reply (line 852)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1389 "test_a_message_after_the_log_closed_is_dropped (line 868)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1401 "test_read_before_start_says_nothing_is_attached (line 875)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1415 "test_summary_of_a_song_that_ends (line 886)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1427 "test_summary_counts_a_clock_that_went_backwards (line 899)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1439 "test_summary_with_an_error_and_no_samples (line 906)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1451 "test_the_command_line_prints_the_summary (line 919)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1463 "test_the_command_line_ends_at_the_cap_with_no_error (line 941)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1475 "test_the_command_line_refuses_a_zero_cap (line 965)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1489 "test_the_check_catches_every_pattern (line 976)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1501 "test_reads_and_comparisons_pass (line 985)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1513 "test_no_agent_reads_by_offset (line 1009)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1527 "test_agent_calls_only_named_methods (line 1033)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1539 "test_only_the_listed_agents_hold_a_list (line 1039)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1551 "test_a_method_outside_the_list_fails (line 1048)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1563 "test_a_name_on_another_files_list_fails (line 1054)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1575 "test_kit_calls_match_the_data_file (line 1061)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1587 "test_kit_loads_the_map_by_category_and_layout (line 1072)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1599 "test_kit_load_map_passes_the_method_pointer (line 1079)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1611 "test_a_kit_list_that_lacks_a_name_it_calls_fails (line 1097)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1623 "test_a_kit_list_name_the_data_file_lacks_fails (line 1104)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1635 "test_a_data_file_name_the_kit_list_lacks_fails (line 1111)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1647 "test_one_more_invoke_in_kit_ts_fails (line 1118)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1659 "test_an_invoke_in_a_second_file_fails (line 1124)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1671 "test_a_second_invoke_in_menu_ts_fails (line 1130)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1683 "test_a_lookup_by_a_name_that_is_not_a_literal_fails (line 1135)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1695 "test_a_native_function_fails (line 1140)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1707 "test_a_second_native_function_in_kit_ts_fails (line 1145)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1721 "test_kit_hooks_game_manager_update_once (line 1254)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1733 "test_kit_play_holds_no_number_of_its_own (line 1263)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1745 "test_a_number_of_its_own_fails (line 1275)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1757 "test_kit_play_replies_before_the_schedule_ends (line 1279)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1769 "test_a_play_that_waits_fails (line 1282)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1781 "test_every_play_stop_goes_through_unhook (line 1289)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1793 "test_a_stop_that_skips_unhook_fails (line 1292)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1807 "test_the_lookup_reads_the_native_object_field_by_name (line 1311)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1819 "test_only_gamemanager_ts_names_the_native_object_field (line 1319)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1831 "test_the_state_agent_sends_the_destroyed_count_in_both_replies (line 1331)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1845 "test_the_launch_files_are_scanned_with_the_other_agents (line 1390)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1857 "test_the_patch_runs_only_from_the_module_observer (line 1399)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1869 "test_neither_launch_file_holds_an_address (line 1404)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1881 "test_the_check_catches_a_patch_outside_the_observer (line 1410)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1895 "test_every_status_the_agent_builds_comes_back_whole (line 1440)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1907 "test_launch_ts_sends_an_error_key_only_for_a_fault (line 1456)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1919 "test_an_agent_fault_still_raises_with_its_text (line 1468)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D2.md:1933 "test_build_scripts_end_by_themselves (line 1482)": its test file test_frida_attach.py (from the heading "test_frida_attach.py (tools/ch_mcp/tests/test_frida_attach.py)") is not one of the run's files.
+- records/D3.md:30 "test_attach_before_the_delay_waits_the_rest_then_attaches (test_frida_tools.py:242)": its test file test_frida_tools.py (from its title) is not one of the run's files.
+- records/D3.md:39 "test_attach_after_the_delay_does_not_wait (:253)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:46 "test_an_unknown_build_is_refused_and_nothing_attaches (:260)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:53 "test_an_adopted_game_gets_its_backup_first (:272)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:59 "test_the_facts_load_once_per_build (:279)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:66 "test_an_attach_with_no_first_reply_names_its_cap (:286)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:72 "test_a_game_that_is_not_running_says_so (:292)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:78 "test_a_game_that_closes_after_the_attach_is_not_attached_with_frida_reason (:299)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:84 "test_is_attached_follows_the_attach_and_a_dropped_session (:306)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:91 "test_is_attached_is_false_after_a_detach (:314)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:98 "test_attaching_again_after_the_game_dropped_the_session_closes_the_old_log (:319)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:104 "test_a_missing_state_agent_says_how_to_build_it (:328)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:110 "test_a_stale_stamp_refuses_naming_the_file_and_the_build_command (:337)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:116 "test_a_stale_trace_agent_starts_no_trace (:353)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:122 "test_a_read_with_no_reply_names_its_cap (:384)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:128 "test_state_shows_the_destroyed_count_it_was_read_with (:389)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:134 "test_state_before_attach_says_not_attached (:396)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:140 "test_snapshot_with_no_play_session_says_the_score_is_not_read (:399)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:146 "test_snapshot_shows_the_score_after_the_last_press (:405)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:157 "test_the_flags_word_prints_in_hex_with_bit_0x10_set (:420)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:162 "test_bit_0x10_prints_clear_beside_the_precision_bit (:425)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:167 "test_the_threshold_line_names_the_value_and_the_offsets_constant (:430)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:172 "test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision (:434)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:177 "test_a_threshold_of_0_prints_it_and_says_no_ghost_value_is_possible (:438)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:182 "test_the_read_opens_the_game_read_only_checks_it_and_closes_it (:445)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:188 "test_a_game_not_playing_is_not_searched_and_the_line_says_why (:451)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:193 "test_a_game_that_will_not_open_says_so_and_the_reply_keeps_its_read (:464)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:198 "test_a_search_that_finds_no_engine_says_so_and_closes_the_game (:472)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:203 "test_the_search_runs_without_the_servers_lock (:481)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:214 "test_it_parses_with_one_table_per_enum_field (:552)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:219 "test_the_highlighted_row_keys_are_entries (:571)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:224 "test_each_name_sits_at_its_dump_line (:588)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:230 "test_each_enum_word_sits_in_its_enum (:624)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:235 "PlayerScreenHookTest.test_the_hooked_method_is_the_player_screens_own (:651)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:245 "test_menu_lines_print_the_block_as_sent (:670)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:250 "test_menu_lines_with_no_song_and_no_globals (:673)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:254 "test_menu_lines_print_the_agents_error (:680)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:257 "test_menu_lines_with_no_block (:684)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:260 "test_ch_menu_prints_the_lines_then_the_state_word (:688)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:263 "test_ch_menu_before_attach_says_not_attached (:693)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:266 "test_state_leaves_the_menu_block_to_ch_menu (:696)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:270 "test_read_state_returns_the_agents_dict (:702)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:273 "test_menu_lines_print_active_and_the_player_screen_words (:707)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:278 "test_player_screen_on_the_instrument_page_with_drum_rows (:719)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:283 "test_player_screen_page_the_enum_does_not_name (:730)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:286 "test_player_screen_with_null_row_arrays (:735)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:289 "test_player_screen_highlight_index_out_of_range (:743)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:293 "test_player_screen_with_an_unread_cursor (:752)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:296 "test_confirm_and_difficulty_take_the_cursor_alone (:761)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:302 "test_instrument_and_modifiers_add_the_scroll (:767)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:305 "test_an_unread_scroll_matters_only_where_the_scroll_is_added (:773)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:309 "test_the_ready_page_highlights_no_row (:779)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:312 "test_a_page_with_no_row_rule_or_no_read (:782)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:315 "test_every_page_word_has_a_row_rule (:787)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:321 "test_two_player_screens_get_a_line_pair_each (:791)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:324 "test_menu_lines_print_why_the_player_screen_was_not_read (:799)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:327 "test_menu_lines_print_a_field_read_that_is_not_a_known_number_as_sent (:805)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:333 "test_read_state_before_attach_raises_with_the_reason (:814)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:339 "test_not_running (:824)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:341 "test_not_attached (:827)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:343 "test_menu_for_found_false (:830)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:345 "test_menu_when_the_only_game_manager_was_destroyed (:833)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:347 "test_a_live_game_manager_beside_a_destroyed_one_keeps_its_state (:836)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:349 "test_loading (:839)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:351 "test_song_over (:842)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:353 "test_paused (:845)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:355 "test_playing (:848)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:357 "test_loaded_not_started (:851)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:363 "test_trace_start_refuses_with_no_live_game_manager (:856)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:368 "test_trace_start_before_attach_refuses (:864)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:371 "test_trace_start_takes_the_backup_just_before_it_hooks (:871)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:376 "test_a_refused_trace_start_takes_no_backup (:879)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:379 "test_trace_start_hooks_the_default_method_from_the_facts (:885)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:384 "test_trace_start_caps_at_hydras_end_of_the_folders_chart (:894)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:390 "test_a_folder_with_no_chart_starts_no_trace (:901)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:393 "test_a_failed_dump_starts_no_trace (:912)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:396 "test_the_dump_runs_outside_the_lock (:924)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:401 "test_with_dynamics_hooks_both_methods (:949)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:404 "test_notes_from_since_are_lined_up (:954)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:409 "test_trace_stop_stops_and_prints_the_ended_line (:966)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:412 "test_a_trace_that_does_not_stop_in_time_says_so (:973)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:415 "test_the_stop_hook_stops_the_trace_and_detaches_once (:981)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:420 "test_both_hook_rvas_name_one_engine_method_each (RealFactsTest, :995)": its test file test_frida_tools.py (from the heading "File 1: tools/ch_mcp/tests/test_frida_tools.py") is not one of the run's files.
+- records/D3.md:443 "test_tool_list_and_instructions_come_from_the_worker (test_front.py:300)": its test file test_front.py (from its title) is not one of the run's files.
+- records/D3.md:448 "test_a_call_comes_back_as_the_worker_sent_it (:322)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:453 "test_arguments_and_long_text_arrive_unchanged (:333)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:459 "test_is_error_stays_true (:344)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:464 "test_replies_find_their_calls_out_of_order (:351)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:469 "test_a_mute_worker_ends_at_the_cap_and_every_reply_says_so (:362)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:474 "test_a_worker_that_exits_at_start_names_its_exit_code (:379)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:477 "test_a_command_that_cannot_run_is_named (:386)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:480 "test_an_exit_mid_call_names_the_tool_and_code_and_a_new_worker_answers (:394)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:484 "test_an_exit_between_calls_fails_the_next_call_the_same_way (:408)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:490 "test_two_calls_open_at_a_death_start_one_new_worker (:420)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:495 "test_with_nothing_open_the_failed_reply_is_only_the_failure (:432)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:498 "test_the_new_workers_adoption_line_joins_the_failed_reply (:437)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:502 "test_a_failed_ask_of_the_new_worker_keeps_the_failed_calls_text (:445)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:505 "test_a_new_worker_that_dies_at_the_ask_keeps_the_failed_calls_text (:455)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:508 "test_a_new_worker_that_never_answers_the_ask_ends_at_the_cap (:463)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:511 "test_open_items_refuse_with_every_line_and_the_worker_stays (:478)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:515 "test_a_reload_reports_pids_times_and_the_tool_difference (:493)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:521 "test_equal_lists_send_nothing (:524)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:524 "test_a_connection_on_2026_07_28_says_not_declared_and_sends_nothing (:533)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:529 "test_equal_lists_on_2026_07_28_say_both_lines (:547)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:532 "test_an_initialize_offering_2026_07_28_is_answered_as_a_handshake_connection (:557)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:537 "test_the_protocol_version_is_printed_at_the_handshake (:570)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:540 "test_a_call_in_flight_refuses_the_reload_and_is_named (:577)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:546 "test_a_call_in_flight_through_ch_call_is_named_by_its_inner_tool (:594)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:550 "test_a_worker_slow_to_exit_is_terminated_at_the_cap_and_the_reply_says_so (:604)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:554 "test_a_worker_that_never_answers_the_check_is_left_running (:615)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:558 "test_a_failed_check_refuses (:631)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:561 "test_a_worker_dead_before_the_check_is_replaced_and_the_reply_says_so (:640)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:565 "test_a_new_worker_that_fails_to_start_is_reported_and_the_next_call_retries (:650)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:568 "test_changed_instructions_are_live_at_the_next_reconnect (:665)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:571 "test_the_new_workers_adoption_line_joins_the_reload_reply (:672)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:574 "test_a_call_after_a_reload_goes_to_the_new_worker_and_a_tool_is_read_from_it (:680)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:578 "test_it_forwards_and_returns_the_tools_reply (:692)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:581 "test_an_unknown_name_is_refused_with_the_list (:699)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:584 "test_ch_call_and_ch_reload_are_refused_inside_it (:709)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:587 "test_shapes_the_hook_cannot_read_reach_no_worker (:720)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:592 "test_args_has_no_default_in_the_schema (:739)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:595 "test_a_front_whose_first_start_failed_starts_a_worker_for_ch_call (:746)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:598 "test_lines_that_are_not_replies_are_skipped_and_the_call_still_answers (:760)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:602 "test_a_worker_that_closes_its_output_fails_the_open_call_and_is_replaced (:766)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:605 "test_a_quiet_worker_exits_with_the_front (:781)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:609 "test_a_slow_worker_is_terminated_at_the_cap_and_stderr_says_so (:790)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:612 "test_an_open_call_does_not_hold_the_exit_past_the_cap (:799)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:615 "test_exit_code_and_a_new_worker_pass_through_the_launcher (:814, PyLauncherTest)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:618 "test_a_reload_labels_the_launchers_pid_as_the_launchers (:820)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:621 "test_terminate_at_the_cap_reaches_the_python_behind_the_launcher (:828)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:624 "test_the_front_imports_only_the_mcp_package_and_the_standard_library (:854)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:630 "test_the_front_holds_no_reply_cut_and_no_process_group (:863)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:635 "test_the_caps_are_the_users_numbers (:867)": its test file test_front.py (from the heading "File 2: tools/ch_mcp/tests/test_front.py") is not one of the run's files.
+- records/D3.md:656 "test_backup_copies_no_file (test_game_files.py:108)": its test file test_game_files.py (from its title) is not one of the run's files.
+- records/D3.md:662 "test_restore_leaves_settings_ini_and_every_game_save_as_they_are (:117)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:667 "test_an_older_backup_that_names_files_leaves_every_one_alone (:130)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:672 "test_backup_refuses_an_existing_folder (:147)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:679 "test_the_key_is_rewireds_save_key (:199)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:684 "test_backup_exports_the_key_and_records_it (:203)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:689 "test_backup_with_no_runner_leaves_the_key_out (:212)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:692 "test_an_unchanged_key_is_only_exported_and_compared (:217)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:695 "test_a_changed_key_is_deleted_imported_and_checked (:225)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:700 "test_a_key_that_still_differs_after_the_import_raises (:241)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:703 "test_a_failing_reg_exe_raises_with_the_name (:250)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:706 "test_a_backup_with_the_key_and_no_runner_refuses (:257)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:709 "test_the_left_as_saved_lines_skip_the_registry_entry (:263)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:712 "test_restore_all_puts_the_key_back (:268)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:715 "test_restore_all_refuses_a_backup_with_the_key_when_given_no_runner (:274)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:718 "test_reg_exe_gets_the_users_30_second_cap (:281)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:723 "test_a_reg_exe_timeout_fails_the_backup_and_the_restore_by_name (:295)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:729 "test_the_run_line_is_pause_on_focus_lost_0_in_game (:322)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:732 "test_changes_exactly_the_line_in_the_game_section (:326)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:737 "test_keeps_the_lines_own_spacing_and_a_missing_last_newline (:333)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:740 "test_refuses_when_the_key_is_absent (:338)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:743 "test_refuses_when_the_key_sits_only_in_another_section (:346)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:746 "test_refuses_two_lines_for_the_key (:353)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:752 "test_reads_the_value_of_the_line_in_the_game_section (:369)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:755 "test_drops_the_spacing_and_the_line_ending (:374)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:758 "test_refuses_when_the_key_sits_only_in_another_section (:378)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:764 "test_reads_pro_drums_from_the_song_section (:396)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:769 "test_other_sections_do_not_count (:400)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D3.md:772 "test_the_song_ini_length_reader_is_gone (:404)": its test file test_game_files.py (from the heading "File 3: tools/ch_mcp/tests/test_game_files.py") is not one of the run's files.
+- records/D4.md:20 "test_session_dir_is_the_scratch_folder_the_backups_go_in (test_game_tools.py:327)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:28 "test_a_machine_that_is_not_quiet_refuses_with_no_folder_no_backup_no_launch (test_game_tools.py:338)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:36 "test_a_quiet_machine_puts_the_report_before_the_launch_lines (test_game_tools.py:352)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:44 "test_the_check_runs_once_and_waits_quiet_sample_s (test_game_tools.py:364)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:52 "test_an_open_run_is_stopped_first_so_the_game_is_not_read_as_load (test_game_tools.py:371)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:60 "test_a_refusal_with_no_need_of_the_machine_takes_no_sample (test_game_tools.py:388)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:68 "test_ch_start_has_no_argument_that_skips_the_check (test_game_tools.py:395)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:76 "test_ch_start_with_a_song_backs_up_before_the_launch_and_names_it_all (test_game_tools.py:401)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:84 "test_ch_start_with_no_song_launches_launch_commands_no_song_line (test_game_tools.py:428)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:92 "test_the_command_line_comes_from_launch_command_with_known_flags_only (test_game_tools.py:435)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:100 "test_a_second_ch_start_stops_and_restores_the_first_before_launching (test_game_tools.py:443)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:110 "test_ch_stop_stops_the_game_restores_the_key_and_leaves_every_file (test_game_tools.py:463)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:118 "test_ch_stop_runs_the_stop_hooks_first_in_order (test_game_tools.py:481)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:126 "test_ch_stop_says_when_the_game_outlives_the_wait_and_still_restores (test_game_tools.py:491)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:134 "test_a_failed_restore_names_it_and_the_folder_and_nothing_further_runs (test_game_tools.py:503)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:142 "test_shutdown_terminates_a_server_started_game_and_restores (test_game_tools.py:521)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:150 "test_shutdown_with_an_adopted_game_restores_only (test_game_tools.py:533)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:160 "test_ensure_backup_on_an_adopted_game_takes_one_backup (test_game_tools.py:554)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:168 "test_ensure_backup_takes_none_when_a_run_holds_one (test_game_tools.py:565)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:178 "test_install_cap_is_the_approved_sixty_seconds (test_game_tools.py:572)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:188 "test_ch_install_chart_that_outlasts_the_cap_says_so (test_game_tools.py:575)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:196 "test_ch_install_chart_names_the_chart_or_the_refusal (test_game_tools.py:589)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:206 "test_ch_wait_stats_copies_the_stats_and_ch_stats_reads_the_copy (test_game_tools.py:602)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:214 "test_ch_stats_prints_every_key_in_the_files_order (test_game_tools.py:616)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:222 "test_ch_compare_prints_compares_lines_then_the_verdict (test_game_tools.py:649)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:230 "test_ch_compare_without_the_run_settings_fails_on_the_settings_line (test_game_tools.py:659)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:238 "test_ch_compare_refuses_some_but_not_all_of_the_run_settings (test_game_tools.py:666)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:246 "test_ch_compare_takes_an_empty_modifier_list_as_given (test_game_tools.py:674)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:256 "test_ch_press_focuses_the_window_and_presses_the_bound_keys (test_game_tools.py:684)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:264 "test_ch_press_refuses_an_unknown_lane_with_the_list (test_game_tools.py:696)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:272 "test_ch_press_with_no_window_says_so (test_game_tools.py:704)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:280 "test_ch_key_backs_up_focuses_once_then_presses_and_types_in_order (test_game_tools.py:746)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:288 "test_ch_key_types_a_comma_inside_the_text (test_game_tools.py:765)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:296 "test_ch_key_refuses_an_unknown_key_with_the_list_and_sends_nothing (test_game_tools.py:770)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:304 "test_ch_key_checks_every_key_before_sending_any (test_game_tools.py:777)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:312 "test_ch_key_with_no_window_says_so (test_game_tools.py:782)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:320 "test_press_keys_takes_the_list_already_split (test_game_tools.py:788)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:328 "test_press_keys_says_sent_false_for_each_refusal (test_game_tools.py:796)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:336 "test_press_lanes_says_sent_false_for_each_refusal (test_game_tools.py:809)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:344 "test_press_lanes_says_sent_true_and_ch_press_prints_the_same_text (test_game_tools.py:818)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:352 "test_split_keys_keeps_the_text_whole (test_game_tools.py:826)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:360 "test_run_cap_is_the_song_plus_the_extra_minute_else_240_s (test_game_tools.py:833)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:371 "test_the_schedules_run_cap_reads_its_song_end_and_refuses_null (test_game_tools.py:839)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:380 "test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play (test_game_tools.py:846)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:389 "test_the_status_prints_the_threshold_the_player_read (test_game_tools.py:866)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:397 "test_the_status_prints_no_threshold_when_none_was_read (test_game_tools.py:875)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:405 "test_the_status_names_the_first_chord_pressed_from_the_oldest_row (test_game_tools.py:881)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:413 "test_the_status_names_the_first_chord_while_the_run_goes_on (test_game_tools.py:894)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:421 "test_the_status_says_when_no_chord_was_pressed (test_game_tools.py:903)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:431 "test_a_second_ch_play_chart_is_refused_while_one_runs (test_game_tools.py:926)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:439 "test_ch_play_stop_sets_the_flag_and_ch_play_status_reports_the_result (test_game_tools.py:939)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:447 "test_play_snapshot_is_none_with_no_play_session (test_game_tools.py:966)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:455 "test_a_run_with_no_engine_reports_the_finders_message (test_game_tools.py:971)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:463 "test_ch_stop_tells_a_running_play_session_to_stop (test_game_tools.py:981)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:473 "test_play_chart_on_the_kit_route_plays_in_game_on_the_kits_player (test_game_tools.py:1008)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:481 "test_no_route_picks_the_kit_once_it_is_set_up (test_game_tools.py:1019)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:489 "test_play_chart_on_the_keys_route_presses_keys_and_leaves_the_kit_alone (test_game_tools.py:1026)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:497 "test_no_route_is_refused_while_the_kit_is_not_set_up (test_game_tools.py:1038)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:505 "test_no_route_is_refused_with_no_kit_tools_and_presses_no_key (test_game_tools.py:1044)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:513 "test_route_keys_presses_keys_through_the_driver (test_game_tools.py:1051)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:521 "test_route_kit_without_a_kit_and_an_unknown_route_are_refused (test_game_tools.py:1059)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:531 "test_a_declined_chord_sends_its_kept_gems_and_the_reply_names_them (test_game_tools.py:1103)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:540 "test_a_declined_chord_that_keeps_no_gem_says_nothing_sent (test_game_tools.py:1112)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:548 "test_a_schedule_with_no_declined_chord_says_none (test_game_tools.py:1120)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:556 "test_decline_mode_and_dump_json_are_no_longer_arguments (test_game_tools.py:1130)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:566 "test_a_schedule_with_a_refusal_is_refused_in_its_words (test_game_tools.py:1142)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:574 "test_a_missing_schedule_is_refused (test_game_tools.py:1154)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:584 "test_the_freak_reply_names_both_anchors_off_the_schedule (test_game_tools.py:1173)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:596 "test_the_mouths_reply_names_the_squeezes_and_the_declined_fills (test_game_tools.py:1178)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:604 "test_the_bomber_reply_names_the_early_anchor (test_game_tools.py:1183)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:611 "test_the_mouths_order_line_follows_the_anchor_lines (test_game_tools.py:1188)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:620 "test_the_bomber_order_line_follows_the_anchor_line (test_game_tools.py:1193)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:626 "test_a_long_order_line_names_every_split_chord (test_game_tools.py:1198)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:634 "test_a_chart_with_no_split_chord_gives_no_order_line (test_game_tools.py:1218)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:642 "test_an_infeasible_squeeze_is_refused_naming_it (test_game_tools.py:1232)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:652 "test_the_status_says_presses_and_chords_when_a_chord_is_split (test_game_tools.py:1249)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:660 "test_the_status_of_a_chord_sent_as_one_message_is_no_clock_jump (test_game_tools.py:1264)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:669 "test_every_lane_has_a_word_in_the_reply (test_game_tools.py:1283)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:677 "test_the_status_counts_a_declined_chord_apart_from_the_misses (test_game_tools.py:1286)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:685 "test_the_running_status_does_not_count_a_declined_row_as_a_hit (test_game_tools.py:1302)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:693 "test_the_status_rows_show_the_kit_columns_only_when_rows_carry_them (test_game_tools.py:1319)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:701 "test_the_status_rows_show_the_timing_columns (test_game_tools.py:1336)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:711 "test_the_chain_runs_attach_setup_watch_play_in_that_order (test_game_tools.py:1463)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:719 "test_the_watch_gets_the_one_search_and_the_player_its_engine (test_game_tools.py:1470)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:727 "test_the_run_plays_on_the_player_setup_gave_and_has_no_driver (test_game_tools.py:1476)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:735 "test_the_watch_and_the_player_share_the_songs_run_cap (test_game_tools.py:1482)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:743 "test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout (test_game_tools.py:1496)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:751 "test_the_reply_has_a_line_per_part_and_names_the_first_press (test_game_tools.py:1502)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:761 "test_the_rows_reach_the_file_in_order_and_only_once (test_game_tools.py:1536)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:769 "test_no_file_call_runs_on_the_player_thread (test_game_tools.py:1548)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:777 "test_the_reply_names_the_press_file_under_the_session_folder (test_game_tools.py:1604)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:785 "test_each_run_of_a_session_gets_its_own_press_file (test_game_tools.py:1612)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:793 "test_the_status_names_the_file_first_while_running_and_after (test_game_tools.py:1621)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:802 "test_a_named_log_is_written_row_by_row_too (test_game_tools.py:1639)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:810 "test_a_run_reusing_a_log_name_starts_the_file_over (test_game_tools.py:1653)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:818 "test_a_run_with_no_press_leaves_a_file_with_the_header (test_game_tools.py:1666)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:826 "test_a_failed_write_goes_on_and_the_end_writes_every_row_once (test_game_tools.py:1673)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:834 "test_the_end_waits_for_the_writer_and_says_so_when_the_cap_passes (test_game_tools.py:1709)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:842 "test_a_log_nowhere_writable_is_said_and_the_run_keeps_its_rows (test_game_tools.py:1755)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:850 "test_with_no_log_the_status_opens_with_the_session_line (test_game_tools.py:1769)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D4.md:858 "test_a_later_first_press_is_named (test_game_tools.py:1775)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D5.md:18 "test_the_call_returns_at_the_first_press_while_the_run_goes_on (test_game_tools.py:1784)": its test file test_game_tools.py (from its title) is not one of the run's files.
+- records/D5.md:26 "test_a_decline_reaches_the_chords_and_the_reply_names_them (1799)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:34 "test_the_mouths_run_reply_names_its_squeezes_after_the_declined_line (1816)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:43 "test_the_freak_run_reply_names_its_anchors (1823)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:49 "test_the_bomber_run_reply_names_its_early_anchor (1827)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:55 "test_decline_mode_and_dump_json_are_not_run_arguments (1834)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:63 "test_a_schedule_it_cannot_read_stops_before_the_attach (1841)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:71 "test_a_failed_attach_stops_there_and_tears_nothing_down (1848)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:78 "test_a_failed_setup_stops_before_the_watch_and_the_reply_names_setup (1855)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:84 "test_a_failed_watch_tears_the_kit_down_and_starts_no_player (1863)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:91 "test_a_player_that_ends_with_no_press_tears_the_kit_down (1872)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:98 "test_a_player_that_ends_with_no_press_stops_the_watch_too (1883)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:105 "test_a_run_that_never_presses_ends_at_the_run_cap_and_says_so (1892)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:113 "test_the_search_timeout_names_the_engines_it_searched (1905)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:121 "test_a_player_that_raises_is_named_and_tears_the_kit_down (1916)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:128 "test_the_chain_is_refused_while_a_play_session_runs (1925)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:135 "test_the_chain_makes_no_call_into_the_quiet_check_and_no_sampler_wait (1942)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:142 "test_the_tools_take_schedule_json_and_no_dump_json (1951)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:151 "test_run_chart_plays_in_game_on_the_setups_kit_agent (1981)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:158 "test_game_tools_names_no_kit_press_source_and_no_timing (1990)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:166 "test_the_status_rows_show_frame_gap_ms_and_agent_note (1997)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:173 "test_run_chart_refuses_when_the_loaded_folder_is_not_the_schedules_chart (2021)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:180 "test_run_chart_refuses_when_no_song_is_loaded_or_the_read_fails (2032)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:186 "test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach (2043)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:192 "test_run_chart_refuses_a_schedule_with_no_chart_or_a_relative_one (2052)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:198 "test_path_index_must_match_path_source (2066)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:205 "test_builds_json_in_the_run_folder (2093)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:212 "test_a_human_launch_adds_the_launch_agent_to_the_builds_record (2108)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:218 "test_run_chart_presses_a_probe_chord_at_its_asked_lead_and_marks_its_row (2152)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:225 "test_run_chart_with_probes_says_the_probes_line_after_the_plays (2168)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:231 "test_run_chart_refuses_a_probe_chord_not_in_the_schedule_before_the_attach (2176)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:237 "test_run_chart_refuses_a_probe_on_a_chord_timed_from_a_star_power_end (2183)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:244 "test_run_chart_refuses_a_probes_file_load_probes_refuses (2193)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:250 "test_run_chart_with_no_probes_plays_the_schedules_own_presses (2202)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:257 "test_with_no_parts_handed_in_it_refuses_and_touches_nothing (2214)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:263 "test_foreground_line_is_the_watchs_line_or_none (2219)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:269 "test_ch_start_sets_the_line_after_the_backup_then_launches_then_watches (2242)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:276 "test_the_users_line_is_set_for_the_run_and_stays_after_ch_stop (2266)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:284 "test_a_settings_file_without_the_line_is_left_alone_and_named (2277)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:290 "test_ch_status_says_the_count_so_far_and_ch_stop_the_final_count (2286)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:297 "test_an_adopted_game_starts_no_watch (2300)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:303 "test_both_backups_carry_the_registry_key_with_the_envs_runner (2306)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:310 "test_human_with_no_song_folder_is_refused_naming_the_reason (2335)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:316 "test_human_takes_the_backup_before_the_paused_start (2344)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:322 "test_ch_status_prints_the_loader_line_all_three_ways (2361)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:329 "test_ch_status_prints_each_of_the_four_states (2380)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:335 "test_ch_status_names_a_status_that_fails (2402)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:341 "test_ch_stop_detaches_the_launch_agent_before_it_stops_the_game (2413)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:347 "test_a_failed_human_launch_says_so_and_restores_the_key (2423)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:359 "test_the_marker_sits_under_the_scratch_root_and_never_the_real_temp_folder (2470)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:365 "test_ch_start_names_the_pid_and_folder_and_ch_stop_deletes_the_marker (2473)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:371 "test_the_marker_is_there_before_the_settings_change_and_the_launch (2479)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:377 "test_a_human_start_has_its_marker_before_the_game_starts (2493)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:384 "test_ensure_backup_writes_the_marker_and_shutdown_deletes_it (2506)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:390 "test_a_failed_restore_keeps_the_marker_and_the_next_good_one_deletes_it (2512)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:396 "test_a_stop_that_raises_keeps_the_marker (2525)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:402 "test_a_second_ch_start_leaves_a_marker_naming_the_new_backup (2532)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:408 "test_a_marker_that_cannot_be_deleted_is_named_with_what_it_would_do (2539)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:414 "test_a_marker_that_cannot_be_written_is_said_and_the_run_goes_on (2548)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:420 "test_a_ch_start_that_fails_after_its_backup_leaves_no_marker (2558)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:426 "test_a_failed_human_launch_leaves_no_marker (2569)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:432 "test_a_song_with_no_length_never_takes_a_backup_or_a_marker (2574)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:438 "test_a_failed_start_whose_restore_fails_keeps_the_marker_for_ch_stop (2579)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:444 "test_an_older_marker_backup_that_names_the_games_files_leaves_them (2614)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:452 "test_a_restore_from_a_marker_keeps_a_score_file_changed_after_the_backup (2632)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:459 "test_a_live_runs_ch_stop_leaves_every_file (2638)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:465 "test_an_ordinary_adopted_backup_is_restored_at_shutdown (2645)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:471 "test_the_workers_exit_leaves_a_marker_backup_and_its_marker (2653)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:477 "test_the_next_worker_adopts_and_ch_stop_restores_and_deletes_the_marker (2667)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:484 "test_adopting_restores_nothing_until_ch_stop (2688)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:489 "test_an_adopted_backup_puts_the_registry_key_back (2695)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:495 "test_a_ch_start_on_a_marker_backup_refuses_naming_the_folder_and_its_age (2702)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:501 "test_an_adopted_restore_that_fails_keeps_the_marker_and_the_adoption (2716)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:507 "test_a_backup_that_vanishes_after_adoption_fails_the_stop_without_raising (2733)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:513 "test_a_folder_with_no_manifest_is_not_adopted_and_the_marker_stays (2741)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:519 "test_a_running_pid_is_not_adopted_and_the_line_gives_the_by_hand_restore (2752)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:525 "test_a_worker_that_adopted_nothing_never_deletes_anothers_marker (2763)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:531 "test_a_second_workers_run_leaves_the_first_workers_marker_alone (2771)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:537 "test_a_gone_folder_deletes_the_marker_and_ch_stop_has_nothing_to_restore (2783)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:543 "test_an_unreadable_marker_starts_the_worker_and_stays_byte_for_byte (2799)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:551 "test_a_folder_at_the_markers_path_starts_the_worker_and_stays (2822)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:557 "test_an_unreadable_marker_is_never_replaced_by_a_new_run (2829)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:563 "test_a_pid_test_that_raises_leaves_the_marker (2837)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:573 "test_ch_start_runs_the_check_the_folder_the_recorder_the_launch_then_the_pid (2900)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:579 "test_a_machine_that_is_not_quiet_starts_no_recorder (2927)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:585 "test_the_reply_names_the_recorder_and_the_worker_and_its_parent (2932)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:591 "test_the_command_carries_this_worker_and_the_songs_run_cap (2937)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:598 "test_a_run_with_no_song_gets_the_cap_with_no_folder (2948)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:604 "test_a_recorder_that_fails_to_start_is_one_line_and_the_run_opens (2953)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:610 "test_a_fake_recorder_whose_start_raises_still_lets_the_run_open (2962)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:616 "test_a_pid_line_that_cannot_be_written_is_one_line_and_the_run_opens (2972)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:622 "test_a_launch_that_fails_stops_the_recorder_before_ch_start_returns (2983)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:628 "test_a_second_ch_start_ends_the_first_recorder (2996)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:634 "test_the_engine_goes_out_after_the_watch_and_before_the_play (3005)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:640 "test_the_reply_holds_the_samples_line_after_the_watch_line (3015)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:646 "test_a_recorder_that_wrote_nothing_is_a_line_and_the_play_goes_on (3024)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:652 "test_a_recorder_that_never_started_is_a_line_and_the_play_goes_on (3032)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:658 "test_a_failed_engine_write_is_one_line_and_the_play_still_starts (3041)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:664 "test_ch_stop_and_shutdown_close_stdin_and_wait_the_cap (3054)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:671 "test_ch_stop_and_shutdown_terminate_one_that_does_not_exit_and_say_so (3068)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:677 "test_the_stop_ends_the_recorder_before_the_hooks_run (3082)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:683 "test_a_stop_that_raises_still_restores_the_key (3088)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:689 "test_open_lines_list_a_running_recorder_and_not_a_stopped_one (3099)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:695 "test_ch_status_prints_the_recorders_line (3105)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:701 "test_one_that_exited_by_itself_leaves_open_lines_and_is_said_once_more (3110)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:707 "test_a_stop_with_no_recorder_adds_no_line (3123)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:715 "test_this_process_runs (3129)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:723 "test_a_process_that_exited_does_not (3132)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:730 "test_a_pid_no_process_ever_held_does_not (3137)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:738 "test_a_terminated_process_runs_no_atexit_handler (3166)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:745 "test_a_normal_exit_runs_the_atexit_handler (3171)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:757 "test_the_anchor_line_reads_every_number_off_the_squeeze (3203)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:764 "test_a_late_anchor_names_the_squeeze_in_and_each_ratio_and_room (3209)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:771 "test_the_squeeze_line_times_a_press_from_its_own_end (3218)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:779 "test_a_squeeze_that_needs_no_timing_has_no_anchor_line (3242)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:786 "test_the_planned_ends_are_the_schedules_on_each_chord_read_after (3247)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:794 "test_the_end_line_sets_the_games_end_against_the_planned_one (3261)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:801 "test_rows_without_the_new_columns_give_no_lines (3271)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:807 "test_points_between_presses_go_to_the_declined_chord_before_them (3275)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:813 "test_a_split_declined_chord_waits_once (3286)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:819 "test_the_play_status_carries_the_end_and_between_lines (3295)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:826 "test_the_probe_presses_its_chord_at_its_lead_and_marks_only_that_row (3342)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:833 "test_the_probe_moved_chords_reach_the_agent_as_play_entries_at_literal_times (3357)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:840 "test_the_probe_writes_a_press_log_in_the_session_folder (3370)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:846 "test_a_probe_chord_not_in_the_file_is_refused_and_nothing_runs (3377)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:852 "test_the_probe_needs_the_kit (3384)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:858 "test_no_play_tool_takes_a_lead_argument (3390)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:869 "test_a_dropped_row_is_out_of_the_sent_counts_and_no_clock_jump (3424)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:875 "test_a_result_with_no_rows_of_its_own_counts_the_drop_as_logged (3436)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:881 "test_a_split_chord_dropped_is_named_once (3443)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:887 "test_no_dropped_row_says_none (3452)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:893 "test_the_dropped_line_from_rows (3457)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:903 "test_a_log_write_that_blocks_900_ms_drops_no_chord (3543)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D5.md:911 "test_the_same_block_on_the_player_thread_still_drops (3550)": its test file test_game_tools.py (from the heading "T5-D5 records: tools/ch_mcp/tests/test_game_tools.py lines 1780 to 3557") is not one of the run's files.
+- records/D6.md:23 "test_hydra_end_refuses_null_or_missing (tools/ch_mcp/tests/test_hydra_end.py:109)": its test file test_hydra_end.py (from its title) is not one of the run's files.
+- records/D6.md:38 "test_the_end_is_the_number_as_written (:123)": its test file test_hydra_end.py (from the heading "File test_hydra_end.py") is not one of the run's files.
+- records/D6.md:53 "test_make_dump_runs_prep_inputs_dump_command_with_the_default_exe (:128)": its test file test_hydra_end.py (from the heading "File test_hydra_end.py") is not one of the run's files.
+- records/D6.md:68 "test_chart_song_length_ms_reads_the_dump_it_made (:144)": its test file test_hydra_end.py (from the heading "File test_hydra_end.py") is not one of the run's files.
+- records/D6.md:83 "test_chart_song_length_ms_leaves_no_scratch_folder_behind (:162)": its test file test_hydra_end.py (from the heading "File test_hydra_end.py") is not one of the run's files.
+- records/D6.md:98 "test_a_failed_dump_is_no_song_end_with_hydra_replays_lines (:179)": its test file test_hydra_end.py (from the heading "File test_hydra_end.py") is not one of the run's files.
+- records/D6.md:113 "test_every_length_reader_calls_hydra_end (:185)": its test file test_hydra_end.py (from the heading "File test_hydra_end.py") is not one of the run's files.
+- records/D6.md:143 "test_the_file_parses_as_one_object (tools/ch_mcp/tests/test_launch_patch.py:81)": its test file test_launch_patch.py (from its title) is not one of the run's files.
+- records/D6.md:156 "test_it_patches_the_game_assembly_module (:84)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:169 "test_launch_and_defer_hold_values_the_launch_knows (:87)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:182 "test_the_addresses_are_the_loader_and_its_bot_write (:93)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:195 "test_expect_is_mov_edx_1 (:97)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:206 "test_write_is_mov_edx_0 (:100)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:218 "test_write_differs_from_expect_in_the_one_byte_at_plus_one (:103)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:230 "test_entry_expect_is_the_loaders_first_twelve_bytes (:110)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:242 "test_the_bytes_were_read_from_the_dll_the_facts_table_names (:118)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:254 "test_the_loader_rva_has_a_method_row_in_the_facts_table (:122)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:266 "test_the_listing_reads_mov_edx_1_at_the_patch_rva (:128)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:278 "test_the_listing_opens_with_the_instructions_entry_expect_encodes (:132)": its test file test_launch_patch.py (from the heading "File test_launch_patch.py") is not one of the run's files.
+- records/D6.md:304 "test_matching_bytes_write_once_then_hook (tools/ch_mcp/tests/test_launch_core.py:115)": its test file test_launch_core.py (from its title) is not one of the run's files.
+- records/D6.md:315 "test_a_differing_entry_writes_nothing_and_hooks_nothing (:135)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:325 "test_a_differing_patch_site_writes_nothing_and_hooks_nothing (:147)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:334 "test_a_short_read_is_a_difference (:157)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:344 "test_a_write_that_does_not_take_is_refused_and_not_hooked (:162)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:352 "test_a_failing_read_is_refused_with_its_error (:170)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:359 "test_no_status_carries_an_error_key (:177)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:370 "test_the_loader_runs_are_counted_and_the_first_reads_the_site (:194)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:379 "test_the_status_before_the_module_appears_is_waiting (:207)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:388 "test_a_missing_field_is_named (:213)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:399 "test_malformed_values_are_refused (:221)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:407 "test_a_write_of_another_length_is_refused (:228)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:414 "test_no_patch_object_is_refused (:234)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:422 "test_the_data_file_reads_as_a_patch (:238)": its test file test_launch_core.py (from the heading "File test_launch_core.py") is not one of the run's files.
+- records/D6.md:452 "test_the_users_answers_and_the_probe_values_are_pinned (tools/ch_mcp/tests/test_kit_tools.py:270)": its test file test_kit_tools.py (from its title) is not one of the run's files.
+- records/D6.md:465 "test_the_drum_maps_category_and_layout_are_pinned (:280)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:477 "test_the_setup_message_carries_the_maps_ids (:285)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:487 "test_every_element_is_an_axis_of_definition_1 (:290)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:500 "test_the_gates_id_and_the_placeholder_count_are_pinned (:302)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:511 "test_no_placeholder_tag_equals_or_starts_with_the_kits_tag (:307)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:522 "test_every_auto_player_lane_has_a_kit_element (:313)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:534 "test_items_take_the_kit_prefix_and_refuse_unknown_names (:318)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:545 "test_refused_without_ch_attach (:328)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:553 "test_refused_when_the_settings_line_is_1 (:333)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:561 "test_refused_when_the_settings_line_is_missing (:339)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:566 "test_a_stale_or_missing_kit_agent_is_refused_before_any_attach (:345)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:575 "test_backup_then_attach_then_setup_and_the_flags_are_printed (:359)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:584 "test_a_map_that_differs_is_refused_naming_the_element_and_torn_down (:380)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:592 "test_a_keyboard_left_on_is_refused_and_torn_down (:392)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:600 "test_a_mouse_left_on_is_refused_and_torn_down (:406)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:604 "test_both_left_on_name_both_in_one_refusal (:421)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:611 "test_a_reply_with_no_keyboard_or_mouse_read_back_is_refused (:428)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:618 "test_a_setup_reply_missing_mouse_now_is_refused_and_torn_down (:441)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:625 "test_a_disabled_map_or_a_missing_binding_is_a_difference (:453)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:632 "test_the_definition_1_map_passes_both_checks (:461)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:640 "test_the_ls_d2b_run1_map_is_refused_naming_kick_7_and_element_22 (:469)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:648 "test_a_button_binding_on_the_kick_is_refused_naming_button_and_definition_1 (:481)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:655 "test_every_element_is_type_checked_not_only_the_kick (:494)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:662 "test_a_binding_with_no_element_type_is_refused (:502)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:668 "test_an_element_bound_as_both_kinds_is_refused_as_a_button (:508)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:676 "test_a_setup_with_no_reply_ends_at_its_cap_and_tears_down (:515)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:685 "test_a_setup_that_passes_gives_the_game_player_and_the_reply (:525)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:693 "test_a_setup_that_is_refused_gives_no_player (:534)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:699 "test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_player (:539)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:705 "test_a_kit_already_set_up_gives_no_player_and_stays (:546)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:711 "test_the_kit_tools_lend_no_press_and_the_harness_press_stays (:553)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:723 "test_no_map_names_the_ids (:565)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:726 "test_a_map_at_layout_0_is_refused_naming_both (:571)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:729 "test_the_right_map_disabled_is_refused (:577)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:732 "test_two_enabled_maps_at_the_ids_are_refused (:583)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:735 "test_the_drum_map_passes (:590)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:738 "test_setup_on_system_with_no_map_is_refused_and_torn_down (:593)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:743 "test_no_player_sends_player1 (:613)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:746 "test_a_given_player_is_sent_as_is_and_named_first (:621)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:749 "test_a_name_no_player_has_is_printed_as_the_agents_refusal (:635)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:752 "test_a_faulted_setup_prints_the_fault_then_tears_down (:647)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:755 "test_a_fault_outside_every_module_prints_a_readable_line (:668)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:758 "test_an_error_with_no_fault_prints_no_fault_lines (:680)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:761 "test_a_refusal_before_the_attach_still_names_the_given_player (:689)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:770 "test_green_and_kick_send_elements_3_and_7_with_the_hold (:697)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:773 "test_a_given_hold_is_sent (:710)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:776 "test_a_reply_that_never_comes_ends_at_the_press_cap (:717)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:779 "test_refused_before_setup_and_while_a_play_session_runs (:724)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:784 "test_a_press_with_read_sends_the_names_and_prints_seen (:735)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:787 "test_read_takes_a_list_each_name_once_and_refuses_a_name_that_is_not_text (:751)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:790 "test_none_sends_the_constants_and_a_given_value_overrides_them (:760)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:793 "test_rewrite_and_on_main_take_only_true_or_false (:773)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:800 "test_an_accent_and_a_plain_gem_press_at_full_strength_for_any_threshold (:789)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:803 "test_a_plain_or_accent_gem_needs_no_threshold (:794)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:806 "test_a_ghost_makes_a_byte_of_the_threshold_minus_one (:798)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:809 "test_a_threshold_with_no_ghost_strength_is_refused_naming_the_field (:803)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:812 "test_a_word_hydra_replay_never_writes_is_refused (:810)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:817 "test_a_mixed_chord_carries_one_strength_per_lane_the_kick_included (:817)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:820 "test_a_red_ghost_and_a_kick_ghost_give_elements_0_and_7_at_the_ghost_value (:828)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:823 "test_a_kick_with_no_value_gives_element_7_at_the_plain_value (:835)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:826 "test_start_and_select_press_at_full_whatever_value_is_given (:840)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:829 "test_no_press_message_writes_true (:846)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:832 "test_a_press_with_no_values_presses_pads_as_plain_gems (:860)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:835 "test_a_list_of_values_of_another_length_is_an_error (:864)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:838 "test_two_groups_carry_then_with_after_ms_8 (:868)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:841 "test_a_bad_later_group_is_refused_before_anything_is_sent (:877)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:844 "test_the_kit_refuses_a_repeated_element (:885)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:847 "test_the_fakes_send_the_real_reply_shape (:901)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:850 "test_ch_kit_press_fails_on_a_reply_without_its_frames (:908)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:853 "test_the_kit_press_sends_a_split_chord_in_one_message (:913)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:856 "test_the_kit_press_sends_the_chords_axes (:921)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:859 "test_ch_kit_press_sends_a_given_value_to_the_pads_and_kick_and_full_to_start (:929)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:862 "test_a_value_at_either_end_is_sent (:937)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:865 "test_a_value_outside_0_to_1_is_refused_and_nothing_is_sent (:943)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:870 "test_a_watch_with_no_true_read_says_no_key_reached_a_player (:957)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:873 "test_a_true_read_is_a_failure_naming_the_frame_and_the_reader (:965)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:876 "test_refused_while_a_play_session_runs_before_setup_and_on_a_bad_length (:976)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:879 "test_a_watch_that_sampled_nothing_is_a_failure_not_a_pass (:988)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:882 "test_a_reply_with_listed_reads_fails_even_if_its_count_says_zero (:995)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:885 "test_a_watch_is_allowed_at_the_cap_and_refused_just_above_it (:1001)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:888 "test_a_watch_with_no_reply_ends_at_its_cap (:1014)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:895 "test_the_probe_cap_is_the_users_five_seconds (:1054)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:898 "test_the_probe_sends_frame_probe_with_the_engines_clock_address (:1058)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:901 "test_a_clean_probe_prints_each_number_and_passes (:1067)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:904 "test_the_whole_reply_is_saved_to_a_new_file_each_probe (:1087)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:907 "test_a_skipped_frame_fails_and_says_where (:1097)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:910 "test_any_frame_rate_passes (:1104)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:913 "test_a_read_back_that_never_reads_pressed_fails (:1112)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:916 "test_any_button_alone_does_not_pass_the_read_back (:1118)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:919 "test_a_hook_left_in_fails (:1124)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:922 "test_a_failure_fails_and_is_printed (:1130)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:925 "test_every_failed_part_is_named (:1136)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:928 "test_a_reply_with_no_rows_fails (:1144)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:931 "test_more_than_five_seconds_is_refused_before_anything_is_sent (:1151)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:934 "test_refused_before_setup_and_while_a_play_session_runs (:1164)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:937 "test_no_engine_found_is_said_and_nothing_is_sent (:1174)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:940 "test_a_probe_with_no_reply_ends_at_its_cap (:1186)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:945 "test_events_queue_in_the_order_the_agent_sent_them (:1213)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:948 "test_a_batch_with_an_error_queues_the_error_after_its_events (:1228)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:951 "test_post_waits_the_press_cap_and_close_stops_the_listener (:1237)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:954 "test_the_kit_tools_player_is_none_until_setup_and_then_listens (:1251)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:957 "test_the_kit_press_reply_rides_into_the_press_row_and_the_log (:1262)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:960 "test_a_faulted_kit_press_carries_the_fault_in_its_error (:1289)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:963 "test_a_kit_press_error_with_no_fault_is_raised_unchanged (:1302)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:966 "test_no_kit_press_before_setup (:1308)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:971 "test_the_frame_rate_comes_from_two_reads_one_second_apart (:1314)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:974 "test_no_agent_says_so_and_still_prints_the_foreground_line (:1333)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:977 "test_teardown_prints_each_check_and_detaches (:1342)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:980 "test_a_mismatch_is_printed_as_a_failure (:1357)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:983 "test_a_mouse_mismatch_is_printed_as_a_failure (:1366)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:986 "test_refused_while_a_play_session_runs_and_with_nothing_attached (:1376)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:989 "test_the_stop_hook_tears_down_then_detaches (:1382)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:994 "test_a_kit_at_id_6_passes_and_the_reply_names_all_seven_ids (:1396)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:997 "test_a_kit_at_any_other_id_is_refused_with_the_ids_and_torn_down (:1405)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1000 "test_a_reply_with_no_kit_id_is_refused_too (:1417)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1003 "test_the_id_refusal_says_a_new_launch_puts_the_kit_back_on_id_6 (:1425)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1006 "test_a_setup_on_a_kit_already_set_up_does_not_advise_a_teardown_and_setup (:1433)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1011 "test_the_kit_tests_run_the_built_file (:1600)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1014 "test_setup_makes_six_placeholders_then_the_kit_at_id_6 (:1649)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1017 "test_only_the_kit_is_handed_to_a_player (:1660)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1020 "test_teardown_destroys_all_seven_and_checks_each (:1664)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1023 "test_kit_gone_fails_when_a_placeholder_tag_remains (:1680)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1026 "test_kit_gone_fails_when_the_kit_remains (:1691)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1029 "test_a_setup_that_throws_after_the_third_placeholder_leaves_three_to_destroy (:1696)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1032 "test_a_setup_that_finds_the_kit_creates_nothing (:1705)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1035 "test_a_second_setup_in_one_agent_creates_nothing_and_teardown_destroys_seven (:1714)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1038 "test_a_setup_after_a_throw_keeps_the_placeholders_it_finds (:1722)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1041 "test_a_later_group_goes_down_at_or_after_its_gap_and_each_holds_its_own_frames (:1729)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1044 "test_a_press_with_no_later_groups_replies_with_no_groups (:1759)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1047 "test_a_later_group_without_a_gap_is_an_error (:1766)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1050 "test_a_teardown_with_no_setup_record_finds_the_controllers_by_tag (:1773)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1055 "test_the_pattern_catches_each_form (:1790)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1058 "test_no_literal_0_is_compared_with_the_kits_id (:1796)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D6.md:1061 "test_reads_the_game_sections_line (:1805)": its test file test_kit_tools.py (from the heading "File test_kit_tools.py") is not one of the run's files.
+- records/D7.md:39 "test_the_sample_is_the_table_that_was_captured (test_machine_recorder.py:161)": its test file test_machine_recorder.py (from its title) is not one of the run's files.
+- records/D7.md:48 "test_the_parser_reads_the_captured_table (:184)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:57 "test_the_parser_layout_is_windows_layout (:208)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:65 "test_an_offset_moved_by_4_reads_a_wrong_table (:214)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:72 "test_names_count_from_the_address_the_table_was_read_at (:229)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:80 "test_an_unnamed_process_reads_as_empty (:234)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:86 "test_the_filter_keeps_counts_for_the_whole_table (:237)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:92 "test_an_empty_filter_parses_no_threads (:243)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:98 "test_every_ready_state_counts_toward_the_run_queue (:248)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:106 "test_the_idle_process_adds_nothing_to_the_run_queue (:252)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:114 "test_each_ready_state_of_a_real_process_counts_beside_the_idle_process (:258)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:120 "test_no_test_builds_bytes_from_the_parser_offsets (:264)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:130 "test_the_fake_reads_back (:277)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:137 "test_the_next_entry_offset_finds_the_next_process (:290)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:146 "test_each_state_number (:304)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:155 "test_gains_and_a_vanished_process (:311)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:162 "test_a_process_first_seen_gains_nothing (:323)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:168 "test_a_thread_first_seen_gains_nothing (:329)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:174 "test_a_reused_pid_gains_nothing (:334)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:184 "test_the_columns_are_pinned_with_one_header_per_file (:367)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:190 "test_a_process_row_needs_a_gain_or_a_listed_pid (:384)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:195 "test_a_thread_row_needs_a_non_waiting_state_or_moved_switches (:401)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:200 "test_a_folder_with_a_recording_is_refused (:417)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:210 "test_stdin_lines_switch_the_threads_and_the_clock_on_at_their_samples (:506)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:215 "test_the_game_the_worker_and_the_recorder_always_get_rows (:531)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:220 "test_until_the_pid_line_no_process_is_left_out_of_the_gains (:541)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:225 "test_the_first_sample_lists_every_process_and_later_ones_keep_the_filter (:552)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:230 "test_the_before_stamp_is_the_samples_own_wall_stamp (:560)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:235 "test_a_short_clock_read_leaves_the_column_empty (:583) DEAD": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:241 "test_a_closed_stdin_stops_within_one_period (:590)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:246 "test_a_signalled_parent_handle_stops_within_one_period (:607)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:251 "test_the_cap_stops_it_and_the_last_row_names_it (:628)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:256 "test_seconds_stops_it_and_the_earlier_of_two_ends_is_named (:634)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:261 "test_the_first_end_to_arrive_is_kept (:638)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:267 "test_each_row_carries_the_pid_and_period_and_only_the_last_the_process_time (:644)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:272 "test_a_clock_read_that_raises_leaves_the_column_empty_and_goes_on (:653)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:277 "test_a_game_that_cannot_be_opened_leaves_the_column_empty_and_goes_on (:671)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:282 "test_a_short_clock_read_leaves_the_column_empty (:682) the one that runs": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:287 "test_a_late_sample_skips_ticks_and_does_not_burst (:690)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:293 "test_a_bad_stdin_line_is_ignored (:708)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:299 "test_stdin_bytes_and_text_both_read (:715)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:306 "test_each_samples_rows_are_on_disk_before_the_next_sample (:743)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:317 "test_a_table_that_outgrows_the_buffer_grows_it_and_keeps_it (:761)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:322 "test_another_failure_is_loud (:787)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:327 "test_a_table_past_the_ulong_limit_stops_the_growing (:791)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:336 "test_the_numbers_the_plan_fixes (:816)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:341 "test_the_rate_defaults_to_the_one_constant (:819)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:346 "test_cap_s_is_the_exact_cap (:822)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:350 "test_run_cap_s_adds_the_extra (:825)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:355 "test_two_caps_are_an_error (:828)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:358 "test_no_end_at_all_is_an_error (:833)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:361 "test_a_rate_of_zero_is_an_error (:838)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:366 "test_it_imports_neither_the_game_tools_nor_the_watch (:845)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:375 "test_a_one_second_run_on_this_process (:865)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:382 "test_a_closed_stdin_ends_the_real_process (:896)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:387 "test_a_cap_ends_the_real_process_with_its_stdin_still_open (:903)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:392 "test_a_dead_parent_ends_the_real_process (:915)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:397 "test_a_parent_that_cannot_be_opened_fails_loudly (:927)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:405 "test_a_nonfinite_clock_is_no_clock_and_a_negative_one_is_kept (:938)": its test file test_machine_recorder.py (from the heading "File 1: tools/ch_mcp/tests/test_machine_recorder.py") is not one of the run's files.
+- records/D7.md:431 "test_the_questions_numbers (test_machine_report.py:110)": its test file test_machine_report.py (from its title) is not one of the run's files.
+- records/D7.md:438 "test_the_watchs_gap_threshold_and_the_listed_names (:114)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:445 "test_the_recorders_files_and_words_are_the_ones_read (:120)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:455 "test_whole_recording (:144)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:460 "test_the_window_changes_the_shares (:151)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:465 "test_a_process_stamped_on_the_window_edge_is_inside (:159)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:470 "test_the_first_sample_ends_no_slice (:164)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:475 "test_always_listed_names_print_at_zero (:169)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:481 "test_a_listed_process_with_rows_but_no_cpu_keeps_its_pid (:175)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:486 "test_a_process_that_gained_nothing_and_is_not_listed_stays_out (:182)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:491 "test_a_window_with_no_slice_is_refused (:187)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:500 "test_three_ready_samples_are_one_stretch (:210)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:505 "test_one_ready_sample_counts_but_is_no_stretch (:216)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:510 "test_two_ready_samples_are_the_boundary (:220)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:515 "test_a_gap_in_the_samples_breaks_a_stretch (:230)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:521 "test_the_window_clips_a_stretch (:233)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:526 "test_a_row_is_read_by_its_word_and_never_its_state_number (:238)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:531 "test_worker_and_recorder_threads_print_too (:245)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:536 "test_a_pid_with_no_rows_in_the_window_says_so (:255)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:540 "test_one_pid_in_two_roles_prints_once (:258)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:548 "test_four_late_samples (:284)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:553 "test_a_window_counts_switches_from_its_own_first_sample (:291)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:557 "test_samples_exactly_twice_the_period_apart_carry_no_mark (:296)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:562 "test_samples_just_over_twice_the_period_apart_carry_the_mark (:301)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:566 "test_normal_wobble_under_twice_the_period_carries_no_mark (:305)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:570 "test_one_late_gap_among_on_time_ones_carries_the_mark (:309)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:574 "test_one_sample_prints_no_stretch_and_no_mark (:312)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:582 "test_six_pairs (:323)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:587 "test_a_calm_run_says_none_is_listed (:335)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:591 "test_the_late_sample_is_not_listed (:341)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:596 "test_six_pairs_lead (:345)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:601 "test_an_excess_of_exactly_the_limit_is_not_long (:350)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:605 "test_an_excess_just_over_the_limit_is_long (:354)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:608 "test_the_list_stops_at_ten_largest (:358)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:613 "test_steps_in_a_window_are_the_ones_ending_in_it (:367)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:617 "test_a_sample_with_no_clock_ends_the_run_of_pairs (:372)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:621 "test_no_clock (:382)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:624 "test_a_clock_with_no_stamps_is_refused (:388)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:632 "test_it_is_dropped_and_not_listed (:409)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:637 "test_the_neighbours_of_a_dropped_sample_pair_up (:418)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:641 "test_with_tight_stamps_the_same_rows_are_kept (:422)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:645 "test_stamps_exactly_one_period_apart_are_kept (:428)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:648 "test_stamps_just_over_one_period_apart_are_dropped (:432)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:651 "test_only_drops_in_the_window_are_counted (:436)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:657 "test_a_120_ms_gap (:442)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:661 "test_a_gap_of_exactly_gap_ms_is_not_over (:450)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:667 "test_share_and_bytes_against_the_files (:459)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:674 "test_counts_the_pids_thread_samples (:474)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:678 "test_none_is_refused_naming_the_pid (:483)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:684 "test_bytes_in_the_window (:504)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:688 "test_hard_faults_carry_the_mark (:510)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:697 "test_prints_the_two_lines (:527)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:702 "test_a_line_that_is_not_there_is_said (:532)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:705 "test_a_missing_file_is_said_and_the_report_goes_on (:537)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:712 "test_the_grandparent_is_the_front (:553)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:717 "test_a_front_with_no_cpu_rows_is_still_listed (:560)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:720 "test_a_launcher_with_no_row_says_the_front_is_not_known (:567)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:723 "test_a_worker_with_no_row_says_so (:573)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:726 "test_no_worker_prints_no_front (:577)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:731 "test_a_nameless_process_is_not_a_half_row (:599)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:736 "test_a_parent_with_a_row_only_in_sample_one_names_the_front (:604)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:742 "test_the_last_row_says_why_it_stopped (:618)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:745 "test_a_missing_last_row_is_said_and_is_no_failure (:623)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:748 "test_a_half_written_row_is_left_out_and_counted (:628)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:755 "test_a_missing_file_is_refused (:641)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:758 "test_a_missing_column_is_refused (:652)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:761 "test_one_sample_is_refused (:664)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:767 "test_runs_under_py_dash_i (:675)": its test file test_machine_report.py (from the heading "File 2: tools/ch_mcp/tests/test_machine_report.py") is not one of the run's files.
+- records/D7.md:790 "test_a_full_run_prints_one_line_per_step (test_menu_tools.py:196)": its test file test_menu_tools.py (from its title) is not one of the run's files.
+- records/D7.md:796 "test_the_checked_in_walk_reaches_song_loaded_pressing_only_kit_items (:210)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:801 "test_backup_comes_before_the_first_press (:226)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:806 "test_open_song_wrong_folder_is_a_refusal (:233)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:811 "test_open_song_checks_instrument_and_difficulty (:255)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:816 "test_open_song_plays_the_instrument_and_difficulty_asked_for (:273)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:820 "test_open_song_refuses_a_player_word_menu_fields_does_not_hold (:279)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:825 "test_open_song_refuses_a_walk_that_never_checked_the_player_screen (:288)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:830 "test_a_read_that_never_changes_stops_at_the_cap_naming_the_step (:299)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:836 "test_online_open_on_the_first_read_refuses_before_any_press (:310)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:841 "test_online_open_before_step_2_stops_there_with_the_earlier_press (:318)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:845 "test_an_error_entry_refuses_before_any_press (:338)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:848 "test_a_null_entry_is_not_a_refusal (:345)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:852 "test_a_failed_menu_block_refuses (:348)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:856 "test_a_search_that_needs_two_scrolls_presses_exactly_two (:357)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:861 "test_a_search_that_never_finds_the_target_stops_at_the_scroll_cap (:366)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:865 "test_unattached_refuses_before_any_press (:374)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:870 "test_no_kit_refuses_before_any_read (:382)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:875 "test_a_refused_kit_press_stops_at_once_naming_the_refusal (:388)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:880 "test_a_refused_scroll_press_in_the_search_stops_at_once (:399)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:884 "test_presses_after_the_first_wait_the_key_gap (:407)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:889 "test_same_folder_ignores_case_slashes_and_a_trailing_slash (:414)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:894 "test_same_folder_sees_a_junction_as_its_target (:419)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:900 "test_each_active_word_holds_when_its_menu_reads_active_true (:435)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:905 "test_one_active_instance_among_several_is_enough (:443)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:909 "test_only_true_counts_as_active (:448)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:914 "test_the_old_words_stay (:462)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:922 "test_the_three_numbers_are_ruling_3s (:471)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:926 "test_the_key_gap_is_input_drivers_not_defined_here (:476)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:935 "test_it_loads_and_starts_unverified (:488)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:940 "test_it_names_the_two_manual_pages_and_only_repo_files_that_exist (:491)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:945 "test_every_item_is_a_kit_item (:502)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:949 "test_the_item_check_refuses_what_a_step_may_not_list (:507)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:954 "test_a_lane_or_key_item_says_the_kit_route_presses_no_keys (:514)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:957 "test_a_file_with_a_lane_or_key_item_is_refused_whole (:518)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:960 "test_a_file_in_the_old_keys_shape_is_refused (:531)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:964 "test_a_refused_file_presses_nothing (:541)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:969 "test_the_object_reads_are_marked_unproven (:558)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D7.md:974 "test_it_ends_on_song_loaded (:563)": its test file test_menu_tools.py (from the heading "File 3: tools/ch_mcp/tests/test_menu_tools.py") is not one of the run's files.
+- records/D8.md:34 "test_the_start_refuses_when_nothing_is_attached (test_method_watch.py:165)": its test file test_method_watch.py (from its title) is not one of the run's files.
+- records/D8.md:40 "test_an_attach_lets_the_start_through (:171)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:47 "test_the_backup_comes_before_the_hooks (:175)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:53 "test_the_start_refuses_while_a_watch_runs (:181)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:59 "test_the_start_names_a_missing_class_and_rva (:188)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:66 "test_the_start_sends_the_candidate_classes_and_the_cap (:196)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:73 "test_classes_narrows_the_watch_and_an_unknown_name_is_refused (:205)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:79 "test_an_agent_error_ends_the_watch_and_says_why (:214)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:86 "test_the_start_names_each_address_it_skipped (:223)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:93 "test_the_start_sends_each_classes_skips_and_assembly (:234)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:100 "test_the_start_refuses_without_the_builds_facts (:243)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:106 "test_a_missing_agent_says_how_to_build_it (:253)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:112 "test_a_stale_agent_starts_no_watch (:261)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:119 "test_stop_with_no_watch (:273)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:126 "test_the_stop_lists_the_calls_in_order_and_names_the_one_before_the_load (:278)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:133 "test_a_load_that_calls_another_load_names_the_call_before_both (:295)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:140 "test_the_scene_loads_and_the_log_come_before_the_call_list (:305)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:147 "test_no_load_is_said (:319)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:153 "test_the_calls_log_holds_one_line_per_call (:324)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:160 "test_the_game_stop_ends_a_running_watch (:333)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:167 "test_listed_classes_send_their_rvas_and_by_name_classes_their_names (:341)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:174 "test_shared_addresses_are_those_more_than_one_class_runs (:354)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:180 "test_an_all_class_skips_its_shared_addresses_and_a_listed_one_does_not (:357)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:187 "test_only_scene_manager_names_an_assembly (:366)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:194 "test_an_all_class_the_facts_lack_is_refused (:371)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:200 "test_an_empty_assembly_is_refused (:377)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:206 "test_only_scene_manager_is_a_scene_loader (:385)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:213 "test_a_bad_hook_kind_is_refused (:388)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:219 "test_the_build_script_builds_the_agent_the_watch_runs (:396)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:226 "test_the_facts_describe_the_files_version (:422)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:234 "test_every_rva_is_a_method_of_its_class_with_its_name (:426)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:240 "test_every_name_is_a_method_of_its_class (:435)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:246 "test_the_addresses_each_class_skips_in_this_build (:442)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:253 "test_each_named_assembly_holds_its_class_in_the_dump (:453)": its test file test_method_watch.py (from the heading "File 1: tools/ch_mcp/tests/test_method_watch.py") is not one of the run's files.
+- records/D8.md:276 "test_top_level_keys_and_version (test_mono_facts.py:92)": its test file test_mono_facts.py (from its title) is not one of the run's files.
+- records/D8.md:282 "test_fields_have_no_offset_and_constants_are_left_out (:100)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:289 "test_methods_have_no_rva_and_keep_param_types (:109)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:296 "test_row_number_is_the_typedef_index (:120)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:303 "test_kinds_and_bases_follow_the_dump_cs_shape (:125)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:310 "test_readable_and_scrambled_names (:139)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:317 "test_signatures_name_the_three_readable_classes_only (:145)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:324 "test_a_missing_named_class_refuses (:155)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:330 "test_a_missing_assembly_is_named (:162)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:336 "test_the_managed_folder_must_be_one (:169)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:343 "test_the_reader_cap_stops_with_a_line (:176)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:351 "test_a_failed_reader_run_reports_its_error (:185)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:358 "test_the_real_reader_decodes_a_runtime_assembly (:193)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:366 "test_the_real_reader_writes_parameter_markers_the_way_dump_cs_does (:220)": its test file test_mono_facts.py (from the heading "File 2: tools/ch_mcp/tests/test_mono_facts.py") is not one of the run's files.
+- records/D8.md:391 "test_an_entry_fires_on_the_first_frame_at_or_past_at_ms_and_not_the_frame_before (test_press_schedul": its test file test_press_schedule.py (from its title) is not one of the run's files.
+- records/D8.md:397 "test_an_entry_past_last_send_ms_on_that_frame_is_dropped_and_nothing_is_written (:133)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:403 "test_a_later_group_fires_after_ms_after_its_heads_real_fire_clock (:148)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:409 "test_a_later_group_due_past_its_last_send_ms_still_goes_with_its_head (:161)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:416 "test_a_press_is_released_exactly_hold_frames_frames_after_its_down (:175)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:422 "test_a_held_pad_delays_its_next_press_to_the_frame_after_the_release (:194)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:428 "test_entries_inside_the_start_lead_are_skipped_and_counted (:205)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:434 "test_a_first_frame_that_skips_every_entry_stops_as_past_end (:218)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:440 "test_a_dropped_head_drops_its_later_group_on_the_same_frame (:224)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:446 "test_a_retime_replaces_only_entries_not_yet_fired (:233)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:452 "test_an_end_read_after_entry_with_no_retime_fires_at_its_planned_time_as_retime_missed (:249)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:458 "test_a_clock_that_jumps_back_releases_every_pad_and_reports_jumped_back (:291)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:464 "test_a_clock_that_stops_releases_every_pad_and_reports_frozen (:297)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:470 "test_stop_play_releases_every_pad_and_reports_stopped (:305)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:476 "test_the_cap_releases_every_pad_and_reports_cap (:311)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:482 "test_a_900_ms_frame_gap_drops_exactly_the_entries_past_last_send_ms_and_fires_the_rest (:318)": its test file test_press_schedule.py (from the heading "File 3: tools/ch_mcp/tests/test_press_schedule.py") is not one of the run's files.
+- records/D8.md:505 "test_a_quiet_machine_is_quiet_and_names_memory_power_and_no_compiler (test_quiet.py:66)": its test file test_quiet.py (from its title) is not one of the run's files.
+- records/D8.md:512 "test_a_compiler_stops_it_and_its_line_names_the_pid_and_the_worktree (:80)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:519 "test_every_listed_compiler_stops_it_whatever_its_case (:87)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:525 "test_the_servers_own_runtimes_and_near_names_are_not_compilers (:93)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:532 "test_msbuild_helpers_alone_are_quiet_and_one_line_gives_their_count (:98)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:540 "test_a_main_msbuild_beside_helpers_stops_it_and_only_the_main_one_is_a_compiler (:104)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:546 "test_the_helper_flag_counts_only_on_msbuild_and_only_as_a_whole_word (:112)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:552 "test_the_helper_flag_is_read_whatever_its_case_and_at_the_end_of_the_line (:120)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:558 "test_no_helpers_means_no_helper_line (:123)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:564 "test_cpu_exactly_at_the_threshold_is_quiet_and_one_above_is_not (:126)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:571 "test_cpu_just_above_the_threshold_prints_a_number_above_the_limit (:130)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:578 "test_a_folder_younger_than_the_limit_stops_it_and_its_line_names_it (:135)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:585 "test_a_folder_exactly_at_the_limit_is_quiet (:142)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:592 "test_a_folder_with_no_files_is_quiet (:145)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:598 "test_the_sampler_waits_quiet_sample_s_and_the_line_says_so (:148)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:605 "test_spotify_and_defender_are_reported_and_never_stop_it (:154)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:611 "test_the_decided_numbers (:160)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:618 "test_the_refusal_text_holds_the_lines_and_says_what_to_do (:167)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:625 "test_no_process_list_is_not_quiet_and_says_so (:178)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:631 "test_no_cpu_reading_is_not_quiet_and_says_so (:185)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:637 "test_a_scan_that_failed_whole_is_not_quiet_and_says_so (:190)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:643 "test_a_scan_with_an_unreadable_folder_is_not_quiet_and_names_it (:195)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:649 "test_a_scan_that_hit_its_cap_is_not_quiet_and_says_so_plainly (:201)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:655 "test_no_memory_or_power_reading_is_a_line_and_never_stops_it (:209)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:661 "test_a_worktree_anywhere_in_the_arguments_is_named_by_its_root (:218)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:668 "test_the_programs_own_path_is_not_the_folder (:221)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:674 "test_with_no_worktree_the_first_path_is_named (:225)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:680 "test_no_command_line_names_no_folder_and_the_line_says_so (:228)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:686 "test_the_age_is_the_newest_files_at_any_depth (:273)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:692 "test_only_the_named_sub_folder_of_each_worktree_is_read (:281)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:698 "test_a_worktree_with_no_such_sub_folder_is_skipped (:286)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:704 "test_the_home_folders_worktrees_are_not_read (:290)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:711 "test_the_main_checkouts_build_folder_is_read_first (:306)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:717 "test_a_recent_file_in_the_main_checkouts_build_folder_refuses (:313)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:723 "test_no_worktrees_folder_still_reads_the_main_checkout (:320)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:729 "test_a_missing_checkout_reads_nothing (:324)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:735 "test_a_folder_stops_at_its_first_recent_file_and_is_still_recent (:327)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:741 "test_a_scan_past_its_cap_stops_and_counts_the_unread_folders (:336)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:748 "test_a_scan_under_its_cap_reports_the_time_it_took (:343)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:754 "test_an_unreadable_folder_is_an_error_not_a_quiet_folder (:349)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:760 "test_a_sub_folder_that_vanishes_during_the_scan_is_no_error (:364)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:766 "test_the_process_list_reads_the_json_rows (:382)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:773 "test_the_power_scheme_is_the_name_in_brackets (:388)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:780 "test_a_command_that_fails_or_overruns_raises_oserror_naming_it (:392)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:786 "test_a_command_runs_with_no_window_so_it_cannot_take_the_focus (:404)": its test file test_quiet.py (from the heading "File 4: tools/ch_mcp/tests/test_quiet.py") is not one of the run's files.
+- records/D8.md:810 "test_the_exit_cap_is_the_users_two_seconds (test_recorder_link.py:119)": its test file test_recorder_link.py (from its title) is not one of the run's files.
+- records/D8.md:817 "test_the_command_line_is_the_fixed_contract (:122)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:823 "test_its_stdin_is_a_pipe_and_its_output_goes_to_a_log_in_the_folder (:130)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:830 "test_start_neither_sleeps_nor_waits_and_names_the_pid_and_folder (:138)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:836 "test_a_second_start_stops_the_first_and_takes_the_next_folder (:145)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:842 "test_a_folder_that_already_holds_a_recording_is_skipped (:155)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:848 "test_a_start_that_raises_says_so_in_line_and_samples_line (:160)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:854 "test_send_writes_one_flushed_line_and_never_waits (:169)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:861 "test_a_failed_write_is_a_line_not_an_exception (:176)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:867 "test_send_with_no_recorder_has_nothing_to_say (:183)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:873 "test_stop_closes_stdin_and_waits_the_cap (:186)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:880 "test_stop_terminates_one_that_does_not_exit_and_says_so (:195)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:887 "test_stop_says_when_terminate_does_not_end_it (:203)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:894 "test_stop_says_when_terminate_fails (:212)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:900 "test_a_close_that_blocks_does_not_hold_up_stop (:222)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:907 "test_one_that_exited_is_not_running_and_stop_says_so_and_a_second_stop_is_harmless (:235)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:913 "test_line_says_none_before_any_start_and_stop_has_nothing_to_stop (:249)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:920 "test_line_names_a_running_recorders_pid (:253)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:926 "test_samples_line_says_the_run_is_not_recorded_when_no_start_was_tried (:257)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:932 "test_samples_line_with_no_file_yet (:260)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:938 "test_samples_line_with_the_header_only_or_half_a_header (:265)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:944 "test_samples_line_counts_rows_and_reads_the_last_wall_time (:274)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:950 "test_samples_line_leaves_out_a_last_line_still_being_written (:280)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:956 "test_samples_line_reads_windows_line_ends (:286)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:962 "test_samples_line_says_when_a_row_has_no_wall_time (:292)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:968 "test_samples_line_on_one_that_exited_says_both (:297)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:974 "test_samples_line_after_the_stop_is_the_stop_line (:305)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:980 "test_a_real_child_gets_the_lines_and_exits_when_stdin_closes (:310)": its test file test_recorder_link.py (from the heading "File 5: tools/ch_mcp/tests/test_recorder_link.py") is not one of the run's files.
+- records/D8.md:1004 "test_build_server_registers_the_thirty_seven_tools (test_server.py:65)": its test file test_server.py (from its title) is not one of the run's files.
+- records/D8.md:1011 "test_ch_open_items_says_so_when_nothing_is_open (:73)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1017 "test_ch_open_items_names_the_run_with_its_backup_folder (:76)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1024 "test_ch_open_items_names_an_adopted_backup (:80)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1030 "test_the_front_reads_the_real_nothing_open_as_nothing_open (:92)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1036 "test_the_front_reads_the_real_adopted_backup_line_as_open (:95)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1042 "test_ch_open_items_lists_each_running_thing_on_its_own_line (:99)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1049 "test_ch_open_items_leaves_out_what_has_ended (:112)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1055 "test_open_items_uses_public_checks (:121)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1062 "test_each_public_check_answers_both_ways (:128)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1068 "test_a_long_reply_is_cut_at_a_line_with_the_clone_hero_closing_line (:150)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1074 "test_the_trace_texts_say_the_hook_fires_on_hits (:163)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1081 "test_the_kit_is_wired_into_the_menu_driver_and_the_auto_player (:175)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1088 "test_the_play_tools_take_schedule_json_and_no_dump_json (:191)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1095 "test_ch_edge_probe_passes_its_arguments_through (:213)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1101 "test_ch_run_chart_passes_its_arguments_through (:222)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1107 "test_a_leftover_timing_argument_is_dropped_without_a_word (:231)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1114 "test_ch_kit_frame_probe_passes_its_seconds_through (:249)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1120 "test_the_helper_hands_ch_run_chart_its_three_parts (:257)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1126 "test_the_kit_reads_the_pause_setting_in_the_env_documents_folder (:263)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1133 "test_ch_start_takes_human_and_passes_it_through (:277)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1139 "test_ch_play_chart_passes_its_arguments_through (:286)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1145 "test_ch_open_song_takes_the_player_and_passes_it_through (:298)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1151 "test_ch_sp_compare_passes_the_schedule_through_and_takes_no_dump (:309)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1157 "test_ch_compare_takes_the_run_settings_and_passes_them_through (:327)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1163 "test_ch_start_human_with_no_song_folder_is_refused_before_any_launch (:344)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1169 "test_ch_kit_setup_takes_player_and_passes_it_through (:349)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1175 "test_ch_kit_press_takes_value_and_passes_it_through (:358)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1181 "test_ch_kit_press_says_what_value_does (:369)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1187 "test_status_joins_the_game_and_the_frida_lines (:373)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D8.md:1194 "test_the_ch_entry_runs_the_front_and_the_worker_without_dash_i (:381)": its test file test_server.py (from the heading "File 6: tools/ch_mcp/tests/test_server.py") is not one of the run's files.
+- records/D9.md:24 "test_start_then_stop_ends_with_stopped_and_writes_the_csv (test_sp_tools.py:191)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:32 "test_the_backup_comes_before_the_game_is_opened (test_sp_tools.py:210)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:40 "test_a_second_start_while_running_is_refused (test_sp_tools.py:220)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:47 "test_the_stop_hook_stops_the_thread (test_sp_tools.py:237)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:54 "test_the_default_engine_search_writes_nothing_to_stdout (test_sp_tools.py:248)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:61 "test_a_finder_timeout_is_the_reason_in_the_status (test_sp_tools.py:257)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:68 "test_a_song_folder_takes_its_cap_from_the_game (test_sp_tools.py:273)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:75 "test_no_song_folder_takes_the_watcher_cap (test_sp_tools.py:290)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:81 "test_ch_sp_with_no_watch (test_sp_tools.py:302)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:85 "test_ch_sp_before_the_engine_is_found_says_so (test_sp_tools.py:306)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:89 "test_ch_sp_prints_the_latest_read (test_sp_tools.py:324)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:96 "test_sp_lines_below_the_ready_level_and_with_no_maximum (test_sp_tools.py:347)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:102 "test_ch_sp_between_reports_a_flip_inside_the_window (test_sp_tools.py:365)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:107 "test_the_status_activation_line_reads_end_time_at_the_flip (test_sp_tools.py:378)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:113 "test_watch_for_run_searches_with_the_given_search_and_returns_its_engine (test_sp_tools.py:390)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:118 "test_watch_for_run_says_why_when_no_engine_is_found (test_sp_tools.py:405)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:123 "test_watch_for_run_stops_a_search_that_outlasts_its_cap_and_says_so (test_sp_tools.py:413)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:129 "test_watch_for_run_says_why_when_the_game_cannot_be_opened (test_sp_tools.py:429)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:133 "test_watch_for_run_fails_when_the_csv_cannot_be_made_after_the_search (test_sp_tools.py:436)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:138 "test_watch_for_run_is_refused_while_a_watch_runs (test_sp_tools.py:445)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:144 "test_ch_sp_between_with_no_flip_says_so (test_sp_tools.py:453)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:148 "test_ch_sp_watch_status_lists_activations_and_rises (test_sp_tools.py:465)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:153 "test_the_gap_line_leaves_out_a_gap_past_the_song_end (test_sp_tools.py:504)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:160 "test_the_gap_line_leaves_out_a_final_frozen_clock_row (test_sp_tools.py:510)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:164 "test_an_unknown_song_length_is_said_on_the_gap_line (test_sp_tools.py:515)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:168 "test_an_unknown_song_length_is_said_when_no_gap_is_over (test_sp_tools.py:521)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:172 "test_the_real_ls_o2_gap_line (test_sp_tools.py:526)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:179 "test_the_song_end_comes_from_the_folder_the_watch_was_given (test_sp_tools.py:536)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:184 "test_a_folder_with_no_length_leaves_the_song_end_unknown (test_sp_tools.py:549)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:188 "test_with_no_folder_the_song_end_comes_from_the_open_run (test_sp_tools.py:561)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:192 "test_ch_run_charts_watch_takes_the_song_end_from_the_open_run (test_sp_tools.py:572)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:196 "test_ch_run_charts_watch_takes_the_song_end_it_was_given (test_sp_tools.py:584)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:200 "test_the_song_end_outlives_the_run (test_sp_tools.py:599)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:204 "test_a_menu_launch_leaves_the_song_end_unknown (test_sp_tools.py:611)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:208 "test_a_watch_with_no_open_run_leaves_the_song_end_unknown (test_sp_tools.py:622)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:212 "test_the_real_game_tools_holds_the_run_the_song_end_reads (test_sp_tools.py:631)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:218 "test_the_status_prints_two_gaps_with_the_clocks_around_them (test_sp_tools.py:640)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:222 "test_the_longest_gap_keeps_its_tenth_of_a_ms (test_sp_tools.py:646)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:226 "test_the_status_prints_0_when_no_gap_is_over (test_sp_tools.py:651)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:230 "test_a_gap_of_exactly_gap_ms_is_not_printed (test_sp_tools.py:655)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:235 "test_a_watch_with_no_rows_prints_0 (test_sp_tools.py:660)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:239 "test_since_ms_does_not_narrow_the_gap_line (test_sp_tools.py:663)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:243 "test_the_gap_line_comes_before_the_lists_a_cut_reply_can_lose (test_sp_tools.py:668)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:247 "test_ch_sp_compare_names_a_missing_file (test_sp_tools.py:674)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:251 "test_ch_sp_compare_refuses_without_a_resolution (test_sp_tools.py:679)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:255 "test_ch_sp_compare_refuses_while_a_play_runs (test_sp_tools.py:684)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:259 "test_ch_sp_compare_passes_the_last_plays_stop (test_sp_tools.py:691)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:266 "test_ch_sp_compare_prints_the_last_plays_stop_message (test_sp_tools.py:701)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:270 "test_ready_when_comes_from_the_schedule_and_whether_from_the_games_half (test_sp_tools.py:711)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:277 "test_run_cap_line_says_default_when_no_song_length (test_sp_tools.py:735)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:281 "test_ch_sp_compare_on_mouths_reports_as_compare_does (test_sp_tools.py:766)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:287 "test_ch_sp_compare_reads_the_mouths_schedule (test_sp_tools.py:775)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:293 "test_ch_sp_compare_refuses_a_schedule_that_refuses_its_path_naming_it (test_sp_tools.py:781)": its test file test_sp_tools.py (from its title) is not one of the run's files.
+- records/D9.md:306 "test_picks_the_exact_count_and_the_off_by_one (test_trace_hits.py:64)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:313 "test_no_match_gives_two_empty_lists (test_trace_hits.py:72)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:317 "test_each_call_gets_its_nearest_note_and_the_difference (test_trace_hits.py:79)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:323 "test_a_tie_goes_to_the_earlier_note (test_trace_hits.py:90)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:327 "test_the_85_ms_boundary_counts_and_just_past_it_does_not (test_trace_hits.py:94)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:335 "test_the_song_cap_is_hydras_end_plus_the_margin (test_trace_hits.py:110)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:342 "test_the_wall_cap_is_the_song_cap_plus_the_pause_room (test_trace_hits.py:113)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:346 "test_the_end_is_hydras_for_the_folders_chart (test_trace_hits.py:124)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:352 "test_a_folder_with_no_chart_is_refused_with_no_dump (test_trace_hits.py:132)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:356 "test_a_failed_dump_is_refused (test_trace_hits.py:141)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:361 "test_count_mode_posts_the_settings_and_prints_the_table (test_trace_hits.py:171)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:368 "test_args_mode_lines_calls_up_with_the_notes (test_trace_hits.py:204)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:374 "test_trace_args_report_prints_not_hooked (test_trace_hits.py:229)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:378 "test_notes_with_no_call_line (test_trace_hits.py:240)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:383 "test_empty_manifest_prints_one_line (test_trace_hits.py:257)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:387 "test_a_folder_with_no_chart_prints_one_line_and_traces_nothing (test_trace_hits.py:265)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:391 "test_a_trace_ended_by_the_runner_cap_exits_0_with_no_error (test_trace_hits.py:275)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:396 "test_an_agent_error_is_printed_and_exits_1 (test_trace_hits.py:296)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:400 "test_not_running_says_so_and_stops (test_trace_hits.py:305)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:404 "test_a_missing_agent_says_how_to_build_it (test_trace_hits.py:311)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:408 "test_a_stale_agent_runs_nothing (test_trace_hits.py:318)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:413 "test_the_modes_refuse_the_wrong_method_flags (test_trace_hits.py:327)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:417 "test_trace_ts_reads_by_name_only (test_trace_hits.py:336)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:423 "test_only_gamemanager_ts_looks_up_the_game_manager (test_trace_hits.py:340)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:428 "test_ended_line_names_the_song_cap (test_trace_hits.py:351)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:432 "test_the_end_reasons_are_the_runners (test_trace_hits.py:356)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:437 "test_the_two_engine_methods_are_the_studys_addresses (test_trace_hits.py:365)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:444 "test_the_default_hooks_only_the_score_method (test_trace_hits.py:369)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:448 "test_a_score_json_becomes_notes_in_the_manifest_shape (test_trace_hits.py:394)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:453 "test_the_manifest_wins_when_the_folder_has_one (test_trace_hits.py:400)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:457 "test_the_score_json_is_used_when_there_is_no_manifest (test_trace_hits.py:406)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:461 "test_no_source_names_both (test_trace_hits.py:411)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:465 "test_the_agent_gets_mains_args_mode_settings (test_trace_hits.py:458)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:471 "test_stop_ends_a_run_that_never_ends_and_detaches_once (test_trace_hits.py:470)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:476 "test_calls_grow_as_the_agent_sends_them (test_trace_hits.py:485)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:480 "test_lined_up_starts_at_since (test_trace_hits.py:498)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:485 "test_a_run_the_agent_ends_keeps_the_agents_end (test_trace_hits.py:511)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:489 "test_an_agent_end_that_lands_as_stop_is_seen_keeps_its_reason (test_trace_hits.py:520)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:494 "test_the_wall_cap_still_ends_a_run_nobody_stops (test_trace_hits.py:544)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:499 "test_not_running_is_the_end_and_its_line_is_kept (test_trace_hits.py:556)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:503 "test_a_runner_that_raises_ends_as_failed (test_trace_hits.py:563)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:507 "test_a_missing_agent_says_how_to_build_it (test_trace_hits.py:571)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:511 "test_a_session_needs_a_method (test_trace_hits.py:579)": its test file test_trace_hits.py (from its title) is not one of the run's files.
+- records/D9.md:522 "test_loading_song (test_cheap_checks.py:52)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:528 "test_countdown_start (test_cheap_checks.py:58)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:532 "test_countdown_end (test_cheap_checks.py:63)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:536 "test_seek (test_cheap_checks.py:68)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:540 "test_warning_line_is_not_an_event (test_cheap_checks.py:73)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:544 "test_picks_the_latest_write_not_the_latest_name (test_cheap_checks.py:79)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:549 "test_empty_folder_gives_none (test_cheap_checks.py:94)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:553 "test_wall_stamp_is_to_the_millisecond (test_cheap_checks.py:102)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:557 "test_caps_are_the_plans_literals (test_cheap_checks.py:105)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:562 "test_prints_new_lines_whole_and_stops_at_the_cap (test_cheap_checks.py:109)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:568 "test_style_constants_are_the_win32_values (test_cheap_checks.py:143)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:573 "test_size_and_lifetime_are_the_plans_literals (test_cheap_checks.py:150)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:577 "test_window_function_is_marked_live_only (test_cheap_checks.py:155)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:581 "test_report_prints_min_median_max_of_fixed_durations (test_cheap_checks.py:194)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:587 "test_two_addresses_print_the_disagreement_line (test_cheap_checks.py:208)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:591 "test_opens_read_only_and_reports_one_address (test_cheap_checks.py:239)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:596 "test_no_song_exits_2_with_the_finders_message (test_cheap_checks.py:255)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:600 "test_main_is_marked_live_only (test_cheap_checks.py:269)": its test file test_cheap_checks.py (from its title) is not one of the run's files.
+- records/D9.md:610 "test_arm_writes_int3_and_saves_original (test_debugger.py:51)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:614 "test_disarm_restores_original_byte (test_debugger.py:61)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:617 "test_rearm_after_disarm_saves_no_stale_byte (test_debugger.py:71)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:621 "test_arm_is_idempotent_and_preserves_original (test_debugger.py:84)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:625 "test_remove_restores_and_forgets (test_debugger.py:94)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:629 "test_armed_originals_lists_only_armed (test_debugger.py:104)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:633 "test_disarm_of_unarmed_is_a_safe_no_op (test_debugger.py:113)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:637 "test_masks_installed_cc_back_to_original (test_debugger.py:125)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:641 "test_ignores_breakpoints_outside_the_range (test_debugger.py:133)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:644 "test_no_breakpoints_returns_input (test_debugger.py:140)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:647 "test_decodes_known_double_from_low_eight_bytes (test_debugger.py:146)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:651 "test_decodes_the_normal_back_window (test_debugger.py:153)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:655 "test_short_buffer_raises (test_debugger.py:157)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:658 "test_rip_minus_one_points_at_the_breakpoint (test_debugger.py:163)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:663 "test_registers_are_plain_int_attributes (test_debugger.py:169)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:666 "test_xmm0_double_reads_the_formula_return (test_debugger.py:175)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:669 "test_debugger_constructs_without_attaching (test_debugger.py:186)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:674 "test_module_exports_the_expected_names (test_debugger.py:193)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:678 "test_attach_turns_kill_on_exit_off_right_after_attaching (test_debugger.py:253)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:683 "test_attach_detaches_if_kill_on_exit_cannot_be_turned_off (test_debugger.py:260)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:687 "test_memory_goes_through_process_bindings (test_debugger.py:267)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:692 "test_single_step_after_stop_does_not_rearm (test_debugger.py:306)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:697 "test_queued_hit_on_a_removed_breakpoint_rewinds_and_continues (test_debugger.py:314)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:701 "test_table_lists_every_registered_address (test_debugger.py:324)": its test file test_debugger.py (from its title) is not one of the run's files.
+- records/D9.md:714 "test_five_cases_from_the_plan (test_early_fill_walk.py:57)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:719 "test_every_note_is_a_lone_kick (test_early_fill_walk.py:65)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:724 "test_each_phrase_holds_exactly_its_one_note (test_early_fill_walk.py:72)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:729 "test_each_fill_ends_on_a_lone_kick (test_early_fill_walk.py:81)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:734 "test_case_fill_deadline_sits_the_case_distance_before_sp_ready (test_early_fill_walk.py:89)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:740 "test_case_distances_pinned (test_early_fill_walk.py:96)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:745 "test_sp_ready_notes_are_a_second_from_both_neighbours (test_early_fill_walk.py:104)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:751 "test_lead_in_and_rest_between_cases (test_early_fill_walk.py:113)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:756 "test_flush_fill_last_note_is_six_seconds_after_the_case_fill (test_early_fill_walk.py:121)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:760 "test_manifest_cases_match_the_chart (test_early_fill_walk.py:127)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:765 "test_manifest_first_case_pinned (test_early_fill_walk.py:141)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:770 "test_the_song_is_listed (test_early_fill_walk.py:149)": its test file test_early_fill_walk.py (from its title) is not one of the run's files.
+- records/D9.md:780 "test_the_probes_file_is_a_list_of_index_and_lead (test_edge_probe.py:85)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:784 "test_a_probes_file_that_is_not_a_list_of_probes_is_refused (test_edge_probe.py:90)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:788 "test_a_chord_named_twice_is_refused (test_edge_probe.py:97)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:792 "test_a_probe_chord_is_pressed_at_its_lead_and_no_other_press_moves (test_edge_probe.py:104)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:797 "test_a_probe_chord_not_in_the_score_file_is_refused (test_edge_probe.py:114)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:801 "test_a_squeeze_chord_timed_from_its_end_is_refused (test_edge_probe.py:118)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:806 "test_a_plain_chord_of_a_real_schedule_is_pressed_at_its_lead (test_edge_probe.py:125)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:812 "test_a_run_presses_the_probes_at_their_leads_and_marks_only_their_rows (test_edge_probe.py:138)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:818 "test_the_probe_row_lines_give_asked_and_pressed_leads_and_the_score_step (test_edge_probe.py:165)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/D9.md:823 "test_the_probes_line_names_each_probe_in_the_files_order (test_edge_probe.py:176)": its test file test_edge_probe.py (from its title) is not one of the run's files.
+- records/E1.md:22 "test_planner_asks_for_the_premise_map (test_agent_files.py:44)": its test file test_agent_files.py (from its title) is not one of the run's files.
+- records/E1.md:26 "test_reviewer_checks_the_premise_map (test_agent_files.py:47)": its test file test_agent_files.py (from its title) is not one of the run's files.
+- records/E1.md:29 "test_planner_asks_after_the_promise_map (test_agent_files.py:50)": its test file test_agent_files.py (from its title) is not one of the run's files.
+- records/E1.md:32 "test_reviewer_asks_after_the_promise_map (test_agent_files.py:53)": its test file test_agent_files.py (from its title) is not one of the run's files.
+- records/E1.md:41 "test_any_agent_stop_writes_finished_flag_and_keeps_the_record (test_agent_stop.py:164)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:44 "test_finished_flag_written_when_no_record_exists (test_agent_stop.py:171)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:47 "test_clean_without_a_key_line_signs_the_branch_tip_after_a_fix_commit (test_agent_stop.py:177)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:50 "test_no_signoff_line_records_clean_and_sets_verdict_problem (test_agent_stop.py:188)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:53 "test_blocked_records_blocked_for_the_tip_and_still_writes_the_documents (test_agent_stop.py:195)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:56 "test_old_style_key_and_path_lines_record_the_same_as_none (test_agent_stop.py:203)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:59 "test_branch_moved_off_the_handed_tip_records_the_handed_tip_with_a_problem (test_agent_stop.py:214)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:62 "test_reviewer_commits_on_two_diverged_branches_record_the_handed_tip_with_a_problem (test_agent_stop": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:65 "test_fork_left_on_the_handed_tip_still_signs_the_reviewer_fix (test_agent_stop.py:233)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:68 "test_fork_with_another_agents_commit_still_signs_the_reviewer_fix (test_agent_stop.py:240)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:71 "test_reviewer_with_no_fix_signs_the_handed_tip_while_a_fork_moved_ahead (test_agent_stop.py:249)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:74 "test_fork_that_merged_the_fix_and_moved_on_still_signs_the_reviewer_fix (test_agent_stop.py:257)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:77 "test_two_reviewer_fixes_sign_the_newest (test_agent_stop.py:269)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:80 "test_deleted_branch_records_the_handed_tip_with_a_problem (test_agent_stop.py:277)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:83 "test_changed_markdown_and_marker_are_fingerprinted_at_the_tip_and_other_files_not (test_agent_stop.p": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:86 "test_files_changed_on_main_after_the_branch_point_are_not_fingerprinted (test_agent_stop.py:294)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:89 "test_one_unreadable_blob_skips_only_that_file (test_agent_stop.py:302)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:92 "test_commit_record_is_written_before_the_document_step (test_agent_stop.py:316)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:95 "test_ref_gate_allows_main_to_move_to_the_tip_on_these_records_alone (test_agent_stop.py:327)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:98 "test_publish_gate_passes_the_note_on_these_records_alone (test_agent_stop.py:334)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:101 "test_transcript_whose_first_user_record_is_not_the_brief_writes_nothing (test_agent_stop.py:343)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:104 "test_two_handovers_with_the_same_brief_still_write_one_commit_verdict (test_agent_stop.py:353)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:107 "test_a_non_reviewer_with_a_signoff_line_and_a_handover_writes_no_verdict (test_agent_stop.py:359)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:110 "test_binding_uses_the_first_user_message_hash (test_agent_stop.py:365)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:113 "test_handback_saved_before_the_transcript_holds_it_records_the_verdict (test_agent_stop.py:371)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:116 "test_second_handback_overwrites_the_first (test_agent_stop.py:378)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:119 "test_no_saved_handback_gives_no_verdict_even_with_one_in_the_transcript (test_agent_stop.py:384)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:122 "test_second_stop_after_the_handback_clears_the_first_stops_problem (test_agent_stop.py:395)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:125 "test_second_stop_with_its_own_problem_replaces_the_first (test_agent_stop.py:407)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:128 "test_missing_transcript_gives_system_message_and_still_finishes (test_agent_stop.py:416)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:131 "test_non_reviewer_never_touches_reviews_file (test_agent_stop.py:424)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:134 "test_crash_through_the_runner_is_a_system_message (test_agent_stop.py:431)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:137 "test_recorded_verdict_logs_the_tip_and_the_fingerprinted_paths (test_agent_stop.py:442)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:140 "test_no_verdict_logs_its_reason (test_agent_stop.py:454)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:143 "test_missing_transcript_logs_that_it_does_not_exist (test_agent_stop.py:463)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:146 "test_non_reviewer_logs_not_a_reviewer (test_agent_stop.py:469)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:149 "test_crash_inside_verdict_logs_the_exception (test_agent_stop.py:474)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:152 "test_unwritable_log_still_records_the_verdict_and_says_so (test_agent_stop.py:482)": its test file test_agent_stop.py (from its title) is not one of the run's files.
+- records/E1.md:161 "test_deny (test_common.py:28)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:164 "test_context (test_common.py:34)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:167 "test_system_message (test_common.py:39)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:170 "test_body_gets_parsed_input_and_output_is_printed (test_common.py:44)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:173 "test_body_returning_none_prints_nothing (test_common.py:56)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:176 "test_crash_fails_closed_with_error_text (test_common.py:60)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:179 "test_crash_fails_loudly_with_system_message (test_common.py:69)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:182 "test_bad_json_fails_closed (test_common.py:78)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:185 "test_bad_utf8_fails_loudly (test_common.py:83)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:188 "test_unknown_mode_is_refused (test_common.py:88)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:191 "test_round_trip_and_creates_folders (test_common.py:94)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:194 "test_read_missing_gives_default (test_common.py:101)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:197 "test_two_concurrent_writers_never_leave_a_torn_file (test_common.py:104)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:200 "test_state_root_is_beside_the_module (test_common.py:133)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:203 "test_agent_record_round_trip (test_common.py:137)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:206 "test_agent_ids_cannot_escape_the_folder (test_common.py:143)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:209 "test_review_lines_round_trip_in_order (test_common.py:149)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:212 "test_review_line_kind_is_checked (test_common.py:158)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:215 "test_waiver_lines_round_trip (test_common.py:164)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:218 "test_reading_skips_a_torn_last_line (test_common.py:170)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:221 "test_missing_logs_read_empty (test_common.py:177)": its test file test_common.py (from its title) is not one of the run's files.
+- records/E1.md:232 "test_the_two_key_tools_are_named (test_percall_key.py:41)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:235 "test_play_chart_is_named_on_the_keys_route_only (test_percall_key.py:45)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:238 "test_other_tools_are_not_named (test_percall_key.py:51)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:241 "test_a_key_tool_is_named_whatever_args_holds (test_percall_key.py:58)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:244 "test_play_chart_is_named_on_the_keys_route_only (through ch_call) (test_percall_key.py:67)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:247 "test_play_chart_is_named_when_args_is_not_an_object (test_percall_key.py:74)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:250 "test_a_ch_call_to_ch_call_is_named_whatever_is_inside (test_percall_key.py:81)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:253 "test_a_forwarded_route_that_is_not_a_string_is_named (test_percall_key.py:88)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:256 "test_a_forwarded_route_string_is_still_judged_by_its_value (test_percall_key.py:95)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:259 "test_a_ch_call_whose_input_is_not_an_object_is_not_named (test_percall_key.py:100)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:262 "test_a_tool_that_presses_no_keys_is_not_named (test_percall_key.py:105)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:265 "test_no_tool_or_a_tool_that_is_not_a_string_is_not_named (test_percall_key.py:111)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:268 "test_a_ch_call_to_a_key_tool_is_refused_with_no_allow (test_percall_key.py:142)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:271 "test_a_ch_call_to_ch_call_is_refused_with_no_allow (test_percall_key.py:149)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:274 "test_a_ch_call_to_a_harmless_tool_passes (test_percall_key.py:154)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:277 "test_one_allow_passes_one_ch_call (test_percall_key.py:157)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:280 "test_an_agents_call_is_refused_and_says_the_main_session_builds (test_percall_key.py:196)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:283 "test_the_refusal_lands_in_the_refusal_log (test_percall_key.py:201)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:286 "test_a_main_session_call_passes_and_logs_nothing (test_percall_key.py:209)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:289 "test_an_agent_keeps_the_rest_of_the_hydra_server (test_percall_key.py:213)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:292 "test_shell_text_naming_the_tool_is_not_read (test_percall_key.py:216)": its test file test_percall_key.py (from its title) is not one of the run's files.
+- records/E1.md:301 "test_docs_exist (test_docs_numbers.py:71)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:304 "test_no_retired_words (test_docs_numbers.py:76)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:307 "test_review_docs_name_no_typed_key (test_docs_numbers.py:83)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:310 "test_no_agent_file_sets_a_turn_cap (test_docs_numbers.py:92)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:313 "test_every_call_count_is_a_budget_number (test_docs_numbers.py:102)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:316 "test_status_interval_is_the_nag_minutes (test_docs_numbers.py:108)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:319 "test_agent_rules_rule_7_quotes_the_budget (test_docs_numbers.py:114)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:322 "test_rulings_readme_holds_the_approval_step (test_docs_numbers.py:121)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:325 "test_rulings_readme_drops_the_old_filing_words (test_docs_numbers.py:125)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:328 "test_both_settings_allow_the_ruling_check (test_docs_numbers.py:129)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:331 "test_fragment_matches_settings (test_docs_numbers.py:136)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:334 "test_one_process_per_prompt (test_docs_numbers.py:143)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:337 "test_one_hook_after_a_tool_call (test_docs_numbers.py:151)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:340 "test_settings_raise_no_shell_output_limit (test_docs_numbers.py:162)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:343 "test_readme_names_no_old_hook_as_live (test_docs_numbers.py:166)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:346 "test_readme_names_new_records (test_docs_numbers.py:170)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:349 "test_preamble_quotes_the_budget (test_docs_numbers.py:176)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:352 "test_preamble_quotes_the_bash_limit (test_docs_numbers.py:186)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:355 "test_preamble_quotes_the_output_cap (test_docs_numbers.py:192)": its test file test_docs_numbers.py (from its title) is not one of the run's files.
+- records/E1.md:364 "test_length_boundary (test_bash_windows_rule.py:48)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:367 "test_the_limit_is_the_users_number (test_bash_windows_rule.py:52)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:370 "test_length_is_raw_len (test_bash_windows_rule.py:55)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:373 "test_the_refusal_names_the_write_tool_and_no_commit_route (test_bash_windows_rule.py:59)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:376 "test_a_commits_text_does_not_count (test_bash_windows_rule.py:69)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:379 "test_the_boundary_with_a_commit_in_the_command (test_bash_windows_rule.py:74)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:382 "test_each_commit_is_taken_out (test_bash_windows_rule.py:81)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:385 "test_a_long_heredoc_before_a_short_commit_is_refused (test_bash_windows_rule.py:84)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:388 "test_a_multi_line_quoted_message_is_commit_text (test_bash_windows_rule.py:88)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:391 "test_a_cat_heredoc_message_is_commit_text (test_bash_windows_rule.py:92)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:394 "test_an_operator_inside_the_messages_substitution_stays_in_it (test_bash_windows_rule.py:99)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:397 "test_a_heredoc_the_commit_opened_is_commit_text (test_bash_windows_rule.py:102)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:400 "test_first_word_forms_that_count (test_bash_windows_rule.py:106)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:403 "test_only_a_git_commit_piece_counts (test_bash_windows_rule.py:111)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:406 "test_the_other_parts_still_read_a_commits_text (test_bash_windows_rule.py:117)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:409 "test_refused_in_main_and_in_a_subagent (test_bash_windows_rule.py:133)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:412 "test_status_call_passes_through_percall (test_bash_windows_rule.py:139)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:415 "test_a_spent_agent_can_still_make_a_long_commit (test_bash_windows_rule.py:146)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:418 "test_powershell_tool_not_read (test_bash_windows_rule.py:156)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:421 "test_crash_denies (test_bash_windows_rule.py:161)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:424 "test_backslashes_single_heredoc_bare_refused (test_bash_windows_rule.py:173)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:427 "test_backslashes_double_pass (test_bash_windows_rule.py:178)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:430 "test_single_backslashes_pass (test_bash_windows_rule.py:181)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:433 "test_unclosed_quote_is_inside (test_bash_windows_rule.py:184)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:436 "test_heredoc_runs_to_its_end_word_and_no_further (test_bash_windows_rule.py:188)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:439 "test_two_heredocs_on_one_line (test_bash_windows_rule.py:193)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:442 "test_here_string_has_no_body (test_bash_windows_rule.py:196)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:445 "test_cmd_slash_refused_and_pathconv_passes (test_bash_windows_rule.py:201)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:448 "test_cmd_by_its_last_path_part (test_bash_windows_rule.py:206)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:451 "test_leading_assignment_is_not_the_command (test_bash_windows_rule.py:209)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:454 "test_cmd_must_pass_shapes (test_bash_windows_rule.py:212)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:457 "test_a_redirect_target_is_not_a_flag (test_bash_windows_rule.py:222)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:460 "test_a_later_single_slash_word_is_still_read (test_bash_windows_rule.py:226)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:463 "test_each_bare_operator_ends_a_piece (test_bash_windows_rule.py:229)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:466 "test_an_escaped_operator_ends_no_piece (test_bash_windows_rule.py:234)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:469 "test_pathconv_in_another_piece_does_not_count (test_bash_windows_rule.py:237)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:472 "test_ref_dotpath (test_bash_windows_rule.py:242)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:475 "test_trailing_backslash_quote (test_bash_windows_rule.py:253)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:478 "test_path_quote_must_pass_shapes (test_bash_windows_rule.py:260)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:481 "test_a_shift_is_not_a_heredoc (test_bash_windows_rule.py:270)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:484 "test_a_comment_holds_no_quote (test_bash_windows_rule.py:276)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:487 "test_ansi_c_quote_reads_an_escaped_quote (test_bash_windows_rule.py:282)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:490 "test_a_substitution_in_double_quotes_quotes_afresh (test_bash_windows_rule.py:286)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:493 "test_odd_commands_do_not_crash (test_bash_windows_rule.py:292)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:496 "test_every_refusal_has_instead (test_bash_windows_rule.py:299)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:499 "test_reasons_lists_every_part_that_hits (test_bash_windows_rule.py:309)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:502 "test_scanner_is_the_one_reader (test_bash_windows_rule.py:313)": its test file test_bash_windows_rule.py (from its title) is not one of the run's files.
+- records/E1.md:512 "test_rm_rf_literal_scratch_path (test_delete_rule.py:48)": its test file test_delete_rule.py (from its title) is not one of the run's files.
+- records/E1.md:514 "test_rm_r_quoted_scratch_path (:51)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:516 "test_rm_rf_posix_drive_form_of_scratch (:54)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:518 "test_remove_item_in_own_worktree (:57)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:520 "test_remove_item_literalpath_in_hydra_worktree (:60)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:522 "test_two_scratch_paths (:63)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:524 "test_backgrounded_literal_delete (:66)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:526 "test_case_slashes_and_trailing_separators (:69)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:528 "test_msys_form_of_a_worktree_folder_is_still_refused (:76)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:530 "test_plain_rm_without_flags (:81)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:532 "test_plain_remove_item_without_flags (:84)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:534 "test_no_delete_word_is_never_refused (:87)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:536 "test_no_delete_word_passes_even_without_scratch_or_worktree (:93)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:538 "test_other_tools_are_not_read (:96)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:540 "test_rm_inside_grep_pattern_without_flags (:99)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:542 "test_grep_for_a_find_delete_pattern (:102)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:544 "test_delete_word_not_in_command_position (:105)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:546 "test_rm_rf_inside_scratch (:109)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:548 "test_own_worktree_that_is_not_the_session_folder (:112)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:552 "test_plain_rm_rf_of_a_home_folder (:128)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:554 "test_plain_git_clean (:131)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:556 "test_variable_path (:134)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:558 "test_variable_inside_scratch_path (:139)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:560 "test_main_checkout_path_from_main_checkout (:142)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:562 "test_root_that_is_a_prefix_of_a_sibling (:145)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:564 "test_worktree_folder_or_worktrees_folder_itself (:150)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:566 "test_other_worktrees_folders_do_not_count (:158)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:568 "test_dotdot (:162)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:570 "test_wildcards (:166)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:572 "test_backtick_and_percent (:170)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:574 "test_relative_path (:174)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:576 "test_real_path_outside_roots (:178)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:578 "test_mixed_scratch_and_real (:183)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:580 "test_root_itself (:187)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:582 "test_flag_after_path_and_split_flags (:191)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:584 "test_force_without_recursive (:196)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:586 "test_unclosed_quote (:199)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:588 "test_path_with_a_space (:202)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:590 "test_no_path_at_all (:205)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:592 "test_extra_tokens_after_path (:209)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:594 "test_single_ampersand_needs_no_spaces (:214)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:596 "test_powershell_list_of_paths (:218)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:598 "test_braces (:221)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:600 "test_second_delete_in_chain (:225)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:602 "test_full_path_and_case (:229)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:604 "test_cmd_and_alias_forms (:234)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:606 "test_reason_names_the_scratch_folder_and_both_worktrees_folders (:242)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:608 "test_missing_scratchpad_dir_refuses_scratch_like_path (:250)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:614 "test_branch_delete_with_force_written_out (:269)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:616 "test_long_options_of_rm (:273)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:618 "test_harmless_git_passes (:280)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:624 "test_find_without_a_delete_passes (:305)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:630 "test_full_path_exe_and_chained_find (:321)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:632 "test_quoted_find_words_are_not_read (:326)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:634 "test_reason_names_the_scratch_folder_and_both_worktrees_folders (:330)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:638 "test_refused_in_every_subagent (:346)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:640 "test_switch_force (:355)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:642 "test_git_words_inside_a_message_are_not_read (:358)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:644 "test_global_options_that_take_a_separate_value (:361)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:646 "test_harmless_neighbours_pass (:366)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:650 "test_crash_in_check_denies (:388)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:652 "test_non_string_command_denies (:395)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:654 "test_body_wraps_refusal_and_allow (:401)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:656 "test_script_entry_point (:406)": its test file test_delete_rule.py (from the heading "test_delete_rule.py (Read: test 1-416; `delete_rule.py` outline only (greps of i") is not one of the run's files.
+- records/E1.md:665 "test_ytdlp_template_into_ytdl_is_free (test_media_rule.py:52)": its test file test_media_rule.py (from its title) is not one of the run's files.
+- records/E1.md:667 "test_cmd_variables_are_not_templates (:56)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:669 "test_a_quoted_path_with_a_space_asks_as_the_delete_rule_refuses_it (:60)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:671 "test_ytdlp_paths_folder_is_free (:63)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:673 "test_ytdlp_with_no_output_judges_the_current_folder (:67)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:675 "test_ffmpeg_into_ytdl_and_scratch_is_free (:71)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:677 "test_ffmpeg_output_elsewhere_asks (:76)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:679 "test_ytdlp_output_elsewhere_asks (:81)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:681 "test_no_scratchpad_dir_still_allows_ytdl (:84)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:683 "test_output_beside_an_input_outside_scratch_is_refused (:100)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:685 "test_output_inside_scratch_passes (:105)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:687 "test_ytdl_is_the_main_sessions_folder_only (:110)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:689 "test_worktree_is_not_a_media_root (:113)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:691 "test_unreadable_paths_count_as_outside (:117)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:693 "test_glued_option_values_are_judged (:125)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:695 "test_quoted_input_with_spaces_is_read_not_written (:130)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:697 "test_null_sinks_and_pipes_write_nothing (:133)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:699 "test_full_path_and_exe_spellings_are_ffmpeg (:139)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:701 "test_one_bad_segment_is_enough (:144)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:703 "test_commands_that_are_not_ffmpeg_or_ytdlp (:149)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:705 "test_probe_only_ffmpeg_writes_nothing (:156)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:707 "test_the_names_inside_quoted_text_are_not_commands (:163)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:709 "test_a_name_lookup_does_not_spill_into_the_next_command (:169)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:711 "test_an_operator_glued_to_the_output_is_not_part_of_it (:174)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:713 "test_an_unquoted_filter_is_not_an_output (:178)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:715 "test_an_output_after_a_quoted_filter_with_an_operator_is_still_judged (:181)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:717 "test_main_session_ffmpeg_elsewhere_asks (:198)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:719 "test_main_session_ytdl_passes (:203)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:721 "test_subagent_outside_scratch_is_denied (:207)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:723 "test_subagent_inside_scratch_passes (:213)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E1.md:725 "test_a_crash_in_the_rule_denies_in_both_sessions (:217)": its test file test_media_rule.py (from the heading "test_media_rule.py (Read: test 1-235; `media_rule.py` not read; `percall.py:115,") is not one of the run's files.
+- records/E2.md:18 "test_a_build_gets_the_first_call_notice_and_the_rewrite_in_one_answer (test_percall_rewrite.py:52)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:29 "test_a_refused_call_gets_the_deny_alone (test_percall_rewrite.py:61)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:38 "test_a_refused_delete_before_a_build_is_not_rewritten (test_percall_rewrite.py:66)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:47 "test_a_rule_refusing_after_the_budget_check_keeps_the_rewrite_out (test_percall_rewrite.py:72)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:56 "test_a_call_past_the_budget_is_not_rewritten (test_percall_rewrite.py:77)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:65 "test_git_status_is_not_rewritten (test_percall_rewrite.py:84)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:73 "test_the_status_call_is_not_rewritten (test_percall_rewrite.py:88)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:81 "test_a_crash_keeps_the_notice_adds_a_message_and_leaves_the_command (test_percall_rewrite.py:93)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:90 "test_a_crash_never_refuses_through_the_whole_hook (test_percall_rewrite.py:101)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:99 "test_a_build_with_nothing_else_to_say_gets_a_new_answer (test_percall_rewrite.py:114)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:108 "test_the_rewrite_rides_beside_a_stall_notice (test_percall_rewrite.py:118)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:116 "test_the_rewrite_sits_beside_stalls_crash_message (test_percall_rewrite.py:124)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:124 "test_a_media_rule_ask_is_not_rewritten (test_percall_rewrite.py:129)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:133 "test_a_refusal_is_not_rewritten (test_percall_rewrite.py:134)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:141 "test_git_status_answers_nothing (test_percall_rewrite.py:139)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:149 "test_a_crash_with_nothing_else_to_say_is_only_the_message (test_percall_rewrite.py:142)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:158 "test_a_crash_keeps_stalls_message_too (test_percall_rewrite.py:148)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:167 "test_a_tool_that_is_not_a_shell_never_reaches_the_rewrite (test_percall_rewrite.py:155)": its test file test_percall_rewrite.py (from its title) is not one of the run's files.
+- records/E2.md:186 "test_first_prompt_sends (test_posture.py:57)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:194 "test_recent_send_is_skipped (test_posture.py:61)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:202 "test_resend_after_interval (test_posture.py:67)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:211 "test_interval_boundary (test_posture.py:72)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:219 "test_skip_does_not_push_the_next_send_back (test_posture.py:77)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:227 "test_missing_file_is_loud (test_posture.py:82)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:235 "test_empty_file_is_loud (test_posture.py:90)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:243 "test_bad_state_is_replaced (test_posture.py:99)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:251 "test_compaction_sends_at_once (test_posture.py:108)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:259 "test_prompt_after_compaction_does_not_send_twice (test_posture.py:113)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:267 "test_compaction_with_no_state_sends (test_posture.py:119)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:274 "test_compaction_leaves_other_sessions (test_posture.py:123)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:282 "test_compaction_with_missing_file_is_loud (test_posture.py:128)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:289 "test_no_session_id_sends_and_writes_nothing (test_posture.py:133)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:304 "test_all_three_parts_run (test_posture.py:196)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:312 "test_resend_rule_still_holds (test_posture.py:205)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:319 "test_contexts_are_joined_whole (test_posture.py:209)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:327 "test_messages_are_kept_whole_and_named (test_posture.py:215)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:335 "test_posture_crash_leaves_the_other_two (test_posture.py:223)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:344 "test_percall_crash_is_logged_and_leaves_the_other_two (test_posture.py:232)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:353 "test_waiver_crash_leaves_the_other_two (test_posture.py:243)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:360 "test_part_that_cannot_import_leaves_the_other_two (test_posture.py:250)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:368 "test_unpaired_surrogate_in_the_prompt_stops_no_part (test_posture.py:258)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:377 "test_over_cap_context_is_said_out_loud (test_posture.py:264)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:386 "test_at_cap_context_says_nothing (test_posture.py:271)": its test file test_posture.py (from its title) is not one of the run's files.
+- records/E2.md:406 "test_first_call_gives_id_notice (test_progress.py:139)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:413 "test_second_call_is_silent (test_progress.py:147)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:419 "test_status_helper_is_not_counted (test_progress.py:153)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:426 "test_id_notice_waits_for_first_counted_call (test_progress.py:158)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:434 "test_call_100_warns_once (test_progress.py:166)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:442 "test_call_150_denies_read (test_progress.py:174)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:449 "test_call_149_still_passes (test_progress.py:178)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:454 "test_call_99_does_not_warn (test_progress.py:182)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:461 "test_call_150_lets_report_git_and_status_through (test_progress.py:186)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:470 "test_minute_20_warns_once (test_progress.py:196)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:476 "test_minute_19_is_silent (test_progress.py:205)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:481 "test_minute_30_minus_a_second_passes (test_progress.py:211)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:486 "test_minute_30_denies (test_progress.py:217)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:494 "test_5_minutes_old_nags (test_progress.py:226)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:500 "test_under_5_minutes_is_silent (test_progress.py:233)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:505 "test_just_under_10_minutes_nags_but_passes (test_progress.py:238)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:511 "test_nag_repeats_on_every_call (test_progress.py:245)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:517 "test_10_minutes_old_denies (test_progress.py:251)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:523 "test_no_status_file_counts_from_first_call (test_progress.py:258)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:528 "test_status_helper_passes_when_overdue (test_progress.py:262)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:534 "test_fresh_status_file_resets (test_progress.py:266)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:542 "test_main_session_goes_to_stall_and_is_never_counted (test_progress.py:275)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:549 "test_user_prompt_goes_to_stall (test_progress.py:282)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:556 "test_subagent_bash_runs_progress_then_delete_rule (test_progress.py:286)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:563 "test_shell_call_runs_the_real_rewrite_without_crashing (test_progress.py:300)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:571 "test_delete_rule_reason_becomes_deny (test_progress.py:306)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:578 "test_subagent_read_skips_delete_rule (test_progress.py:314)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:584 "test_progress_deny_wins (test_progress.py:318)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:592 "test_subagent_crash_denies (test_progress.py:341)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:598 "test_subagent_crash_lets_report_tool_through (test_progress.py:347)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:605 "test_main_session_crash_is_loud_not_a_deny (test_progress.py:354)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:611 "test_bad_session_id_denies (test_progress.py:362)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:619 "test_saved_past_the_call_budget_and_the_minutes_and_never_denied (test_progress.py:379)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:625 "test_second_handback_overwrites_the_first (test_progress.py:385)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:630 "test_handback_without_a_string_message_saves_nothing (test_progress.py:390)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:636 "test_failed_save_lets_the_handback_through_and_says_so (test_progress.py:394)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:644 "test_refused_with_no_allow (test_progress.py:413)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:651 "test_refused_in_a_subagent_with_no_allow (test_progress.py:418)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:656 "test_one_human_allow_passes_once (test_progress.py:423)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:663 "test_allow_spelling_case_and_one_trailing_mark (test_progress.py:431)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:671 "test_refused_for_sdk_or_peer_typed_allow (test_progress.py:437)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:678 "test_allow_from_another_session_does_not_count (test_progress.py:442)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:683 "test_subagent_uses_the_allow_after_delete_rule_passes (test_progress.py:446)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:690 "test_two_calls_racing_for_one_allow_only_one_passes (test_progress.py:456)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:696 "test_command_without_flag_passes (test_progress.py:468)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:704 "test_both_tools_refused_with_no_allow_in_main_and_subagent (test_progress.py:487)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:711 "test_the_two_tool_names (test_progress.py:498)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:718 "test_one_human_allow_passes_exactly_one_call (test_progress.py:501)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:725 "test_one_allow_passes_one_subagent_call (test_progress.py:509)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:731 "test_two_allows_pass_two_calls (test_progress.py:515)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:737 "test_other_tools_pass_untouched (test_progress.py:523)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:744 "test_refused_for_sdk_or_peer_typed_allow (test_progress.py:533)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:751 "test_recorded_text_that_is_not_the_allow_does_not_count (test_progress.py:539)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:756 "test_allow_spelling_case_and_one_trailing_mark (test_progress.py:543)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:763 "test_allow_from_another_session_does_not_count (test_progress.py:551)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:768 "test_library_and_key_allows_do_not_stand_in_for_each_other (test_progress.py:555)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:775 "test_out_of_budget_subagent_keeps_its_allow (test_progress.py:566)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:781 "test_a_crash_in_the_check_denies (test_progress.py:573)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:789 "test_the_route_that_counts (test_progress.py:606)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:794 "test_keys_route_refused_with_no_allow_in_main_and_subagent (test_progress.py:609)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:800 "test_one_allow_passes_exactly_one_keys_call (test_progress.py:620)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:806 "test_one_allow_passes_one_subagent_keys_call (test_progress.py:627)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:811 "test_the_allow_is_the_same_kind_as_the_key_tools (test_progress.py:633)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:817 "test_other_routes_and_no_route_pass_without_reading_the_transcript (test_progress.py:642)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:825 "test_keys_route_on_another_tool_passes (test_progress.py:651)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:831 "test_a_crash_in_the_check_denies (test_progress.py:659)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:839 "test_status_line_naming_xargs_rm_passes_percall_uncounted (test_progress.py:695)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:846 "test_chained_status_call_is_counted_and_refused (test_progress.py:702)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:852 "test_line_with_subexpression_or_backtick_is_not_a_status_call (test_progress.py:712)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:857 "test_shapes_that_run_a_second_command_are_not_status_calls (test_progress.py:716)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:865 "test_chained_status_call_past_budget_is_refused (test_progress.py:728)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:871 "test_plain_status_call_past_budget_passes (test_progress.py:732)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:880 "test_budget_numbers_are_defined_only_in_progress (test_progress.py:739)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:889 "test_progress_holds_the_numbers_in_one_block (test_progress.py:758)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:897 "test_progress_compiles_only_the_status_shape (test_progress.py:763)": its test file test_progress.py (from its title) is not one of the run's files.
+- records/E2.md:917 "test_21_lines_without_a_record_is_refused (test_publish.py:100)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:924 "test_20_lines_and_2000_characters_pass (test_publish.py:107)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:930 "test_2001_characters_are_refused (test_publish.py:112)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:936 "test_blank_lines_and_crlf_do_not_count (test_publish.py:116)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:943 "test_clean_record_passes_and_a_later_blocked_one_refuses (test_publish.py:119)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:949 "test_edited_plan_passes_when_its_file_was_signed_off (test_publish.py:127)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:956 "test_edited_artifact_page_passes_when_its_file_was_signed_off (test_publish.py:135)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:962 "test_path_match_ignores_case_and_slash_style (test_publish.py:144)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:968 "test_blocked_record_for_the_path_does_not_pass_it (test_publish.py:149)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:973 "test_blocked_after_clean_path_does_not_count (test_publish.py:154)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:979 "test_missing_page_outside_a_gated_repo_is_not_the_gates_business (test_publish.py:162)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:984 "test_typed_waiver_passes_and_an_untyped_one_does_not (test_publish.py:167)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:992 "test_derive_once_waiver_does_not_count (test_publish.py:176)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:997 "test_repo_without_marker_is_never_gated (test_publish.py:184)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1003 "test_artifact_publish_reads_file_path (test_publish.py:191)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1009 "test_hook_script_fails_closed_on_bad_input (test_publish.py:201)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1017 "test_repo_path_record_passes_a_plan_in_that_repo_only (test_publish.py:220)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1023 "test_full_path_record_still_passes (test_publish.py:228)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1029 "test_refusal_names_the_commit_and_review_route (test_publish.py:233)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1037 "test_key_flag_is_gone_and_so_is_doc_key_ps1 (test_publish.py:240)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1047 "test_refused_check_never_calls_gh (test_publish.py:286)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1054 "test_check_logs_refusal (test_publish.py:292)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1060 "test_passing_check_calls_gh (test_publish.py:304)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1067 "test_clean_record_in_the_copy_state_lets_a_pr_through (test_publish.py:310)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1072 "test_body_flags_in_extra_args_are_refused (test_publish.py:319)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1079 "test_other_ways_to_give_gh_text_are_refused (test_publish.py:325)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1085 "test_a_flag_shaped_target_is_refused_and_a_capital_B_is_not_a_body_flag (test_publish.py:331)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1092 "test_a_value_stuck_on_a_short_flag_is_not_read_as_flags (test_publish.py:339)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1098 "test_text_flags_behind_switches_in_one_word_are_refused (test_publish.py:349)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1104 "test_every_short_flag_letter_is_read_the_way_gh_reads_it (test_publish.py:358)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1111 "test_a_tag_with_plus_or_at_is_a_target (test_publish.py:371)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1117 "test_a_target_starting_with_a_dash_is_refused (test_publish.py:378)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1125 "test_issue_opens_with_title_and_body_file (test_publish.py:389)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1131 "test_issue_needs_a_title (test_publish.py:395)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1136 "test_long_unreviewed_issue_is_refused_and_a_signed_off_one_passes (test_publish.py:401)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1143 "test_release_edit_takes_notes_from_the_body_file (test_publish.py:413)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1148 "test_release_edit_passes_a_title_when_given (test_publish.py:419)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1153 "test_release_edit_needs_a_tag (test_publish.py:424)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1158 "test_long_unreviewed_release_notes_are_refused (test_publish.py:430)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E2.md:1164 "test_text_flags_are_refused_for_the_new_kinds (test_publish.py:436)": its test file test_publish.py (from its title) is not one of the run's files.
+- records/E3.md:33 "test_deny_writes_one_line (test_refusals.py:43)": its test file test_refusals.py (from its title) is not one of the run's files.
+- records/E3.md:40 "test_crash_deny_is_logged (test_refusals.py:52)": its test file test_refusals.py (from its title) is not one of the run's files.
+- records/E3.md:46 "test_ask_writes_line (test_refusals.py:60)": its test file test_refusals.py (from its title) is not one of the run's files.
+- records/E3.md:53 "test_allow_writes_nothing (test_refusals.py:69)": its test file test_refusals.py (from its title) is not one of the run's files.
+- records/E3.md:60 "test_log_failure_keeps_deny (test_refusals.py:75)": its test file test_refusals.py (from its title) is not one of the run's files.
+- records/E3.md:70 "test_isolated_reviewer_is_refused_and_told_to_name_the_branch_worktree (test_review_dispatch.py:76)": its test file test_review_dispatch.py (from its title) is not one of the run's files.
+- records/E3.md:77 "test_reviewer_without_isolation_still_writes_its_handover (:85)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:83 "test_isolation_on_another_agent_type_passes (:90)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:88 "test_branch_commit_writes_handover_with_tip_and_its_branches (:103)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:94 "test_prompt_hash_is_utf8_sha256_pinned (:116)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:101 "test_one_commit_in_upper_case_and_repeated_is_one_tip (:123)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:106 "test_doc_key_beside_the_commit_is_ignored_and_left_out_of_the_record (:128)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:111 "test_doc_key_alone_is_no_review_key (:135)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:116 "test_two_commits_are_refused_naming_both (:139)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:122 "test_key_on_main_is_refused (:147)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:127 "test_key_in_a_repo_with_no_local_main_is_refused_plainly (:150)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:132 "test_unknown_key_is_refused (:154)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:137 "test_no_key_is_refused_in_a_gated_repo (:161)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:143 "test_no_key_is_refused_in_a_doc_gated_repo (:165)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:148 "test_no_key_passes_with_no_record_in_a_repo_with_no_marker_on_main (:169)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:153 "test_no_key_passes_outside_a_repo_or_with_no_main (:175)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:158 "test_hex_runs_of_other_lengths_are_not_keys (:183)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:163 "test_non_reviewer_agent_writes_nothing_and_passes (:189)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:168 "test_workflow_call_is_not_matched (:194)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:173 "test_reviewer_dispatch_outside_a_repo_crashes_and_denies (:198)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:179 "test_script_fails_closed (:211)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:188 "test_key_only_in_other_repo_is_judged_at_its_named_root (:241)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:193 "test_document_key_beside_other_repo_commit_is_judged_at_its_named_root (:247)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:198 "test_key_known_at_cwd_stays_at_cwd_even_with_another_root_named (:251)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:203 "test_two_other_repos_named_keeps_cwd_and_refuses (:255)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:208 "test_other_repo_key_on_its_main_is_refused (:260)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:213 "test_named_subfolder_not_root_is_ignored (:264)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:218 "test_more_folders_than_the_cap_keeps_cwd (:270)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:224 "test_cap_exactly_reached_still_judges_at_other_root (:279)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:231 "test_derive_once_phrase_is_recorded_lowercased (:297)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:239 "test_doc_review_phrase_with_full_doc_key_is_recorded (:303)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:244 "test_library_allow_is_recorded (:308)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:251 "test_key_allow_is_recorded (:318)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:256 "test_phrase_inside_a_sentence_or_notification_is_ignored (:328)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:262 "test_missing_prompt_id_or_transcript_warns_and_records_nothing (:345)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:267 "test_script_fails_loudly (:353)": its test file test_review_dispatch.py (from the heading "File 2: test_review_dispatch.py (363 lines, 36 cases)") is not one of the run's files.
+- records/E3.md:279 "test_commit_without_trailers_is_refused_with_the_commit_form (:136)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:286 "test_commit_with_trailers_passes (:147)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:291 "test_a_commit_origin_already_has_passes (:153)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:298 "test_merge_with_git_default_message_passes (:170)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:304 "test_revert_without_trailers_is_refused (:184)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:309 "test_outside_claude_code_nothing_is_gated (:194)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:318 "test_non_fast_forward_move_of_main_is_refused (:201)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:323 "test_non_fast_forward_move_of_packed_main_is_refused (:210)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:329 "test_non_fast_forward_move_of_an_origin_tracked_branch_is_refused (:221)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:335 "test_non_fast_forward_move_of_a_local_only_branch_passes (:232)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:340 "test_deleting_main_is_refused (:239)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:345 "test_deleting_packed_main_is_refused (:248)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:350 "test_pack_refs_traffic_passes (:258)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:356 "test_turning_a_branch_into_a_symbolic_ref_is_refused (:268)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:361 "test_non_fast_forward_push_is_refused (:274)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:366 "test_fast_forward_push_of_a_branch_passes (:285)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:371 "test_deleting_main_on_the_remote_is_refused (:293)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:378 "test_main_move_with_rules_present_and_allowing_passes (:303)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:384 "test_main_move_with_rules_present_and_refusing_is_refused (:311)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:389 "test_main_move_with_rules_missing_is_refused (:320)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:395 "test_other_branches_do_not_need_review_rules (:329)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:400 "test_push_of_local_main_is_not_judged_again_by_review_rules (:335)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:406 "test_push_to_main_of_a_commit_local_main_lacks_asks_review_rules (:349)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:411 "test_non_fast_forward_push_of_local_main_is_refused (:362)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:418 "test_missing_judge_refuses (:377)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:423 "test_crashing_judge_refuses (:385)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:428 "test_judge_that_prints_something_else_refuses (:393)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:433 "test_judge_that_hangs_is_stopped_without_a_verdict (:401)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:440 "test_a_line_git_would_never_send_refuses (:412)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:446 "test_python_missing_refuses (:418)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:451 "test_judge_path_with_a_space_still_works (:431)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:456 "test_judge_exception_inside_the_rules_refuses_with_the_reason (:442)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:465 "test_refused_fast_forward_merge_leaves_the_checkout_as_it_was (:498)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:471 "test_refused_no_ff_merge_leaves_the_checkout_as_it_was (:503)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:476 "test_allowed_fast_forward_merge_still_works (:510)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:481 "test_allowed_no_ff_merge_still_works (:518)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:486 "test_refused_commit_on_main_keeps_the_staged_work (:527)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:491 "test_hand_edited_merge_is_left_for_the_user (:538)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:496 "test_refused_move_from_a_worktree_on_another_branch_touches_nothing (:552)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:502 "test_refused_update_ref_in_the_main_checkout_touches_nothing (:562)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:507 "test_refused_mixed_reset_to_a_commit_other_refs_hold_keeps_the_user_files (:571)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:512 "test_restore_failure_still_refuses_and_says_so (:580)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:521 "test_selftest_reports_allow_and_deny (:611)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:526 "test_installer_writes_both_shims_with_real_paths (:616)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:532 "test_installer_refuses_when_selftest_fails (:626)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:537 "test_installer_refuses_when_core_hooks_path_is_set (:637)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:542 "test_installer_refuses_a_foreign_hook_and_writes_neither (:645)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:547 "test_installer_overwrites_its_own_and_the_old_shim (:654)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:556 "test_unapproved_line_on_a_side_branch_is_refused_naming_line_test_and_check (:746)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:561 "test_unapproved_line_committed_on_main_is_refused (:754)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:565 "test_merge_to_main_of_a_branch_holding_an_unapproved_line_is_refused (:761)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:569 "test_approved_line_passes_on_a_side_branch_then_merges_from_another_session_by_pointer (:771)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:574 "test_a_commit_that_only_removes_lines_or_adds_the_headings_passes (:786)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:578 "test_a_commit_touching_no_rulings_file_never_loads_the_check (:795)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:583 "test_a_crashing_ruling_rules_refuses_a_ruling_line (:806)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:587 "test_missing_ruling_rules_refuses_a_ruling_line (:814)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:593 "test_refusal_logged (:832)": its test file test_ref_judge.py (from the heading "File 3: test_ref_judge.py (850 lines, 57 cases)") is not one of the run's files.
+- records/E3.md:605 "test_fast_forward_to_clean_key_passes (:100)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:609 "test_unreviewed_tip_refused_naming_key_and_phrase (:106)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:614 "test_blocked_verdict_does_not_count (:114)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:619 "test_cause_no_verdict_at_all (:129)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:625 "test_cause_blocked_verdict (:134)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:628 "test_cause_commits_after_the_reviewed_one (:140)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:633 "test_cause_merge_that_differs_from_a_clean_merge (:149)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:638 "test_cause_names_a_waiver_the_user_did_not_type (:164)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:643 "test_cause_blocked_commit_earlier_on_the_branch (:174)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:647 "test_cause_merge_of_a_branch_with_unreviewed_commits_is_commits_after (:182)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:652 "test_two_causes_are_joined_without_changing_a_path (:195)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:657 "test_clean_merge_of_old_main_and_clean_key_passes (:203)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:662 "test_catch_up_merge_on_branch_carries_the_review (:213)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:666 "test_merge_with_conflict_resolution_refused (:224)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:671 "test_merge_with_extra_edit_refused (:239)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:677 "test_ci_setup_is_code (:252)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:681 "test_change_outside_code_paths_needs_no_code_review (:256)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:684 "test_marker_gate_lines_name_the_code_paths (:260)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:689 "test_derive_once_marker_change_needs_review (:269)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:692 "test_bad_gate_line_raises (:273)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:698 "test_same_tip_passes (:279)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:701 "test_new_branch_old_zero_judges_the_whole_tree (:282)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:708 "test_public_doc_without_record_refused (:295)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:713 "test_public_doc_with_exact_record_passes (:303)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:717 "test_same_path_with_earlier_clean_record_passes (:308)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:724 "test_internal_doc_is_not_gated (:313)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:728 "test_marker_change_always_needs_its_own_record (:317)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:733 "test_marker_deletion_refused (:324)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:737 "test_doc_key_drops_bom_and_crlf (:328)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:745 "test_doc_key_matches_the_publish_gate_vector (:331)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:753 "test_repo_without_markers_passes_everything (:341)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:759 "test_human_typed_waiver_counts (:358)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:763 "test_sdk_waiver_does_not_count (:364)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:768 "test_waiver_of_another_kind_does_not_count (:370)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:772 "test_clean_merge_of_old_main_and_waived_tip_passes (:376)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:776 "test_merge_with_unwaived_untyped_tip_refused (:386)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:780 "test_doc_waiver_counts_for_the_doc (:395)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:788 "test_ui_change_needs_realapp_record (:425)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:793 "test_realapp_record_in_range_allows (:433)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:797 "test_record_before_a_later_non_ui_commit_allows (:439)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:801 "test_later_ui_commit_is_not_covered (:446)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:805 "test_record_on_the_branch_covers_the_merge (:453)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:809 "test_realapp_record_outside_range_refused (:461)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:813 "test_dirty_realapp_record_refused (:466)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:817 "test_unused_window_refused (:471)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:821 "test_malformed_records_count_for_nothing (:476)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:827 "test_created_main_needs_a_record_on_its_history (:485)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:831 "test_realapp_waiver (:494)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:836 "test_clean_merge_of_old_main_and_waived_tip_passes (:503, class RealApp)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:840 "test_ui_path_outside_the_marker_code_paths_needs_no_record (:512)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:844 "test_waiver_hook_records_the_phrase (:519)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:851 "test_non_ui_change_skips_realapp (:524)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:856 "test_deleting_a_ui_file_counts (:532)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:864 "test_comment_only_ui_change_needs_no_record (:558) 1 A new header comment, blank lines and a comment": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:865 "test_comment_edit_on_a_code_line_needs_no_record (:564) 1 Rewording a trailing comment. 4/8 a :566 N": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:866 "test_comment_edit_on_an_include_line_needs_no_record (:568) 1 A trailing comment on #include changes": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:867 "test_adding_a_trailing_comment_needs_no_record (:573) 1 4/8 a :575 None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:868 "test_removing_a_trailing_comment_needs_no_record (:577) 4/8 a :579 None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:869 "test_trailing_comment_on_a_last_line_with_no_line_end_needs_no_record (:581) 1 Adding a comment at t": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:870 "test_removing_two_trailing_comments_needs_no_record (:585) 1 A block and a line comment removed from": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:871 "test_shifting_the_blanks_before_a_trailing_comment_needs_no_record (:589) 1 Blanks before a trailing": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:872 "test_comment_edit_inside_a_code_line_needs_no_record (:594) 1 A block comment between tokens grows b": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:873 "test_trailing_comment_edit_in_a_crlf_file_needs_no_record (:599) 1 A trailing comment edit in a CRLF": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:874 "test_block_comment_across_a_line_end_does_not_end_a_directive (:604) 1 A new block comment that join": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:875 "test_comment_between_tokens_stands_for_a_space (:609) 1 `#define F/* c */(x) x` differs from `F(x)` ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:876 "test_blanks_inside_a_string_count (:614) 4/8 a :616 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:877 "test_macro_taking_in_the_next_line_counts (:618) 4/8 a :620 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:878 "test_code_moved_onto_a_directive_line_counts (:622) 4/8 a :624 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:879 "test_trailing_blanks_inside_a_raw_string_count (:626) 4/8 a :629 not None (raw string kept whole, :3": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:880 "test_blank_line_inside_a_raw_string_counts (:631) 4/8 a :634 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:881 "test_trailing_blanks_on_a_code_line_count (:636) 4/8 a :638 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:882 "test_crlf_to_lf_counts (:640) 4/8 a :643 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:883 "test_lf_to_crlf_counts (:645) 4/8 a :648 not None. 10 Mirror of :640; each direction reaches the sam": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:884 "test_line_end_change_behind_a_trailing_comment_counts (:650) 4/8 a :652 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:885 "test_line_end_change_on_a_joined_line_counts (:654) 4/8 a :656 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:886 "test_joining_two_halves_of_a_word_counts (:658) 4/8 a :660 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:887 "test_join_inside_a_raw_string_counts (:662) 4/8 a :665 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:888 "test_join_does_not_close_a_raw_string (:667) 4/8 a :671 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:889 "test_comment_marks_in_an_include_name_are_code (:673) 4/8 a :675 not None (`_LOOSE_INCLUDE` :40).": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:890 "test_comment_marks_in_an_include_name_behind_a_comment_are_code (:677) 4/8 a :679 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:891 "test_comment_marks_in_an_include_name_behind_a_comment_across_lines_are_code (:681) 4/8 a :683 not N": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:892 "test_lone_carriage_return_in_a_comment_counts (:685) 1 4/8 a :688 not None (`_LONE_CR` :43; comment ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:893 "test_comment_edit_after_an_include_name_needs_no_record (:690) 4/8 a :692 None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:894 "test_bytes_that_are_not_utf8_count (:694) 1 Two different invalid-UTF-8 bytes do not read as the sam": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:895 "test_block_comment_edit_needs_no_record (:704) 4/8 a :706 None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:896 "test_one_code_line_among_comments_counts (:708) 4/8 a :711 reason holds "1 file(s) under src/ui".": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:897 "test_removed_code_line_counts (:713) 4/8 a :715 reason holds "waive real-app <new[:10]>".": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:898 "test_whitespace_change_on_a_code_line_counts (:717) 4/8 a :719 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:899 "test_commenting_out_code_counts (:721) 4/8 a :723 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:900 "test_comment_marks_inside_a_string_are_code (:725) 4/8 a :727 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:901 "test_comment_line_inside_a_joined_macro_counts (:731) 4/8 a :734 not None (comment ends the macro, p": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:902 "test_blank_line_inside_a_joined_macro_counts (:736) 4/8 a :738 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:903 "test_comment_line_after_a_joined_macro_needs_no_record (:740) 4/8 a :742 None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:904 "test_comment_ending_in_a_backslash_swallows_the_next_line (:744) 4/8 a :747 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:905 "test_backslash_and_blank_at_a_line_end_counts (:748) 1 4/8 a :751 not None (`_LOOSE_SPLICE` :46; com": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:906 "test_char_literal_after_a_keyword_hides_no_comment_mark (:753) 4/8 a :757 not None (`return'/*'` is ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:907 "test_digit_separator_is_not_a_character_literal (:759) 4/8 a :762 None (`1'000'000`, :309 digit rule": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:908 "test_digit_separator_edit_counts (:764) 4/8 a :767 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:909 "test_raw_string_with_comment_marks_is_code (:769) 4/8 a :772 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:910 "test_line_comment_marks_inside_a_block_comment_are_comment (:774) 4/8 a :777 None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:911 "test_block_comment_start_inside_a_line_comment_hides_nothing (:779) 4/8 a :782 not None.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:912 "test_a_failing_git_is_not_swallowed (:784) 1 If git fails inside the comment check, the error reache": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:913 "test_later_root_commit_with_ui_files_voids_the_record (:795) 1 A commit with no parent that adds UI ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:914 "test_new_ui_file_of_comments_counts (:807) 4/8 a :811 reason holds "waive real-app <tip>" (a new fil": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:915 "test_non_c_ui_file_counts_even_for_comment_lines (:813) 4/8 a :818 not None (`_C_SOURCE` :33).": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:916 "test_comment_only_commit_after_the_check_is_covered (:820) 1 A comment-only commit after the check k": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:917 "test_realapp_and_review_problems_both_named (:827) 1 When both reviews are missing, both phrases app": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:925 "test_accepts_the_phrase_alone (LibraryAllow, :840) 1 The library phrase alone, any case, with blanks": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:926 "test_refuses_anything_more_or_less (LibraryAllow, :845) 1 Anything else (more words, "..", doubled b": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:927 "test_the_phrase (KeyAllow, :853) 1 The key phrase is "allow key run". 4/8 a :854 `KEY_ALLOW_TEXT == ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:928 "test_accepts_the_phrase_alone (KeyAllow, :856) 1 Same for key phrase. 4/8 a :859 four subTests.": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:929 "test_refuses_anything_more_or_less (KeyAllow, :861) 1 Same refusals plus "allow library run". 4/8 a ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:930 "test_the_library_phrase_and_the_key_phrase_are_distinct (KeyAllow, :867) 1 The key phrase does not u": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:938 "test_human_record_gives_its_text (:881) 1 A user record typed by the human gives its whole text. 4/8": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:939 "test_text_blocks_are_joined (:884) 1 A prompt held as text blocks is joined. 4/8 a :886 "ab".": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:940 "test_non_text_block_never_counts (:888) 1 A prompt with an image block is not a typed prompt. 4/8 a ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:941 "test_each_disqualifier (:892) 1 Six kinds of record never count: turnOrigin "sdk", isMeta, isSidecha": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:942 "test_missing_file_or_id_gives_none (:898) 1 No file or empty id gives None. 4/8 a :899 missing file ": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:943 "test_broken_line_is_skipped (:902) 1 A corrupt line in the transcript is skipped and the good record": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E3.md:947 "test_every_historical_main_move_allows (:982)": its test file test_review_rules.py (from the heading "File 4: test_review_rules.py (1,017 lines, 120 cases)") is not one of the run's files.
+- records/E4.md:11 "ShapeTests.test_so_after_quote_refused (test_ruling_rules.py:130)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:14 "ShapeTests.test_context_refused (test_ruling_rules.py:133)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:17 "ShapeTests.test_as_the_note_records_it_refused (test_ruling_rules.py:136)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:20 "ShapeTests.test_two_quotes_refused (test_ruling_rules.py:139)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:23 "ShapeTests.test_reading_between_two_real_quotes_refused (test_ruling_rules.py:145)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:26 "ShapeTests.test_quote_holding_the_users_own_quote_marks_passes (test_ruling_rules.py:150)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:29 "ShapeTests.test_chose_whose_question_holds_quote_marks_passes (test_ruling_rules.py:159)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:32 "ShapeTests.test_no_session_refused (test_ruling_rules.py:168)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:35 "ShapeTests.test_prose_line_refused (test_ruling_rules.py:171)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:38 "ShapeTests.test_good_line_parses (test_ruling_rules.py:174)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:41 "WordsTests.test_one_letter_off_refused (test_ruling_rules.py:181)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:44 "WordsTests.test_different_spacing_passes (test_ruling_rules.py:186)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:47 "WordsTests.test_quote_only_in_assistant_refused (test_ruling_rules.py:197)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:50 "WordsTests.test_quote_only_in_tool_result_refused (test_ruling_rules.py:200)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:53 "WordsTests.test_quote_only_in_compaction_summary_refused (test_ruling_rules.py:203)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:56 "WordsTests.test_quote_only_in_system_reminder_refused (test_ruling_rules.py:206)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:59 "WordsTests.test_chose_line_passes_only_for_the_chosen_label (test_ruling_rules.py:209)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:62 "ApprovalTests.test_file_it_on_the_whole_line_passes (test_ruling_rules.py:222)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:65 "ApprovalTests.test_do_not_file_refused (test_ruling_rules.py:226)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:68 "ApprovalTests.test_typed_other_answer_refused (test_ruling_rules.py:230)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:71 "ApprovalTests.test_question_holding_a_different_line_refused (test_ruling_rules.py:234)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:74 "ApprovalTests.test_no_answer_refused (test_ruling_rules.py:239)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:77 "ApprovalTests.test_approval_for_another_file_refused (test_ruling_rules.py:243)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:80 "ApprovalTests.test_approval_only_in_a_subagents_transcript_refused (test_ruling_rules.py:247)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:83 "ApprovalTests.test_pointer_lets_a_second_session_pass (test_ruling_rules.py:253)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:86 "ApprovalTests.test_pointer_with_no_matching_answer_refused (test_ruling_rules.py:259)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:89 "ApprovalTests.test_pointer_whose_transcript_is_gone_refused (test_ruling_rules.py:267)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:92 "CardTests.test_quote_in_card_passes_when_transcript_gone (test_ruling_rules.py:283)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:95 "CardTests.test_quote_not_in_card_refused_when_transcript_gone (test_ruling_rules.py:286)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:98 "NewHeadingCardTests.test_quote_in_card_passes_when_transcript_gone (test_ruling_rules.py:291, inheri": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:101 "NewHeadingCardTests.test_quote_not_in_card_refused_when_transcript_gone (test_ruling_rules.py:291, i": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:104 "FreeLineTests.test_removed_blank_and_headings_pass_with_no_reader (test_ruling_rules.py:297)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:107 "FreeLineTests.test_readme_judges_only_ruling_shaped_lines (test_ruling_rules.py:302)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:110 "FreeLineTests.test_new_topic_file_may_add_one_title (test_ruling_rules.py:308)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:113 "FreeLineTests.test_new_topic_file_second_title_refused (test_ruling_rules.py:313)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:116 "FreeLineTests.test_title_added_to_an_existing_file_refused (test_ruling_rules.py:319)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:119 "FreeLineTests.test_sentence_under_title_refused_in_new_and_old_files (test_ruling_rules.py:322)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:122 "FreeLineTests.test_files_outside_the_folder_are_not_judged (test_ruling_rules.py:326)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:125 "CrashTests.test_exception_inside_the_check_is_a_refusal (test_ruling_rules.py:331)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:128 "BackfillTests.test_backfill_valid_passes (test_ruling_rules.py:350)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:131 "BackfillTests.test_backfill_of_words_typed_on_or_after_the_install_day_refused (test_ruling_rules.py": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:134 "BackfillTests.test_heading_removed_or_moved_so_old_lines_sit_confirmed_refused (test_ruling_rules.py": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:137 "BackfillTests.test_backfill_dated_on_install_day_or_later_refused (test_ruling_rules.py:373)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:140 "BackfillTests.test_backfill_without_a_deleted_unconfirmed_line_refused (test_ruling_rules.py:378)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:143 "BackfillTests.test_backfill_deleting_a_confirmed_line_refused (test_ruling_rules.py:385)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:146 "BackfillTests.test_backfill_failing_words_test_refused (test_ruling_rules.py:392)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:149 "MoveTests.test_judge_move_reads_the_range_from_git (test_ruling_rules.py:412)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:152 "CheckModeTests.test_check_prints_the_question (test_ruling_rules.py:428)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:155 "CheckModeTests.test_check_fails_a_bad_line (test_ruling_rules.py:437)": its test file test_ruling_rules.py (from its title) is not one of the run's files.
+- records/E4.md:164 "StalledAgents.test_stale_agent_reported_once_and_not_again (test_stall.py:62)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:167 "StalledAgents.test_exactly_ten_minutes_is_not_yet_stale (test_stall.py:68)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:170 "StalledAgents.test_finished_agent_never_reported (test_stall.py:72)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:173 "StalledAgents.test_agent_that_moves_again_and_stalls_again_is_reported_again (test_stall.py:77)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:176 "StalledAgents.test_other_sessions_agents_ignored (test_stall.py:84)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:179 "StalledAgents.test_subagent_input_does_nothing (test_stall.py:88)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:182 "ScanPacing.test_scan_runs_at_most_once_per_minute (test_stall.py:94)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:185 "ScanPacing.test_clock_moved_back_scans_again (test_stall.py:104)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:188 "StatusRelay.test_new_lines_relayed_once (test_stall.py:112)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:191 "StatusRelay.test_at_most_twelve_lines_then_the_rest (test_stall.py:123)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:194 "StatusRelay.test_finished_agent_lines_still_relayed (test_stall.py:136)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:197 "StatusRelay.test_other_sessions_status_not_relayed (test_stall.py:141)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:200 "VerdictProblemRelay.test_problem_relayed_once_with_agent_id_and_text (test_stall.py:155)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:203 "VerdictProblemRelay.test_record_without_the_field_relays_nothing (test_stall.py:165)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:206 "VerdictProblemRelay.test_problem_rides_with_status_lines (test_stall.py:169)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:209 "VerdictProblemRelay.test_empty_or_non_text_problem_relays_nothing (test_stall.py:177)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:212 "ContextWarning.test_warns_once_per_bucket_above_500k (test_stall.py:196)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:215 "ContextWarning.test_exactly_500k_warns_and_below_does_not (test_stall.py:205)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:218 "ContextWarning.test_reads_last_assistant_usage_only (test_stall.py:211)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:221 "ContextWarning.test_usage_outside_the_tail_is_not_read (test_stall.py:216)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:224 "ContextWarning.test_missing_transcript_is_quiet (test_stall.py:220)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:227 "ContextWarning.test_unreadable_transcript_is_quiet (test_stall.py:223)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:230 "ContextWarning.test_bucket_edge (test_stall.py:227)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:233 "EmptyFleet.test_no_workflow_no_warning (test_stall.py:265)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:236 "EmptyFleet.test_agent_wrote_four_minutes_ago_no_warning (test_stall.py:270)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:239 "EmptyFleet.test_just_under_five_minutes_is_quiet (test_stall.py:275)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:242 "EmptyFleet.test_exactly_five_minutes_warns (test_stall.py:279)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:245 "EmptyFleet.test_spell_starts_at_newest_agent_call (test_stall.py:284)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:248 "EmptyFleet.test_open_journal_is_the_target (test_stall.py:290)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:251 "EmptyFleet.test_journal_with_no_agent_started_is_open (test_stall.py:295)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:254 "EmptyFleet.test_finished_workflow_no_warning (test_stall.py:300)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:257 "EmptyFleet.test_journal_written_just_before_the_launch_counts (test_stall.py:305)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:260 "EmptyFleet.test_journal_from_an_earlier_run_does_not_count (test_stall.py:310)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:263 "EmptyFleet.test_newest_journal_is_read (test_stall.py:315)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:266 "EmptyFleet.test_warns_once_per_quiet_spell (test_stall.py:321)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:269 "EmptyFleet.test_new_launch_starts_a_new_spell (test_stall.py:331)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:272 "EmptyFleet.test_fleet_paragraph_comes_before_stuck_agents (test_stall.py:338)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:275 "EmptyFleet.test_launch_inside_the_scan_throttle_is_still_stamped (test_stall.py:344)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:278 "EmptyFleet.test_corrupt_launch_record_fails_loudly (test_stall.py:349)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:281 "EmptyFleet.test_subagent_workflow_call_is_not_a_launch (test_stall.py:356)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:284 "EmptyFleet.test_no_transcript_path_no_warning (test_stall.py:360)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:287 "EmptyFleet.test_unreadable_journal_fails_loudly (test_stall.py:365)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:290 "Paths.test_unsafe_session_id_is_refused (test_stall.py:376)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:293 "EventName.test_output_names_the_input_event (test_stall.py:381)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:296 "Posture.test_prints_the_file (test_stall.py:410)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:299 "Posture.test_missing_file_warns (test_stall.py:418)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:302 "Posture.test_empty_file_warns (test_stall.py:424)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:305 "Posture.test_default_path_is_beside_the_gates_folder (test_stall.py:430)": its test file test_stall.py (from its title) is not one of the run's files.
+- records/E4.md:314 "Rewrite.test_tails_are_the_designed_text (test_shell_output.py:49)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:317 "Rewrite.test_build_script_gets_the_tail (test_shell_output.py:52)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:320 "Rewrite.test_python_test_launcher_gets_the_tail (test_shell_output.py:56)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:323 "Rewrite.test_a_build_word_in_a_later_piece_rewrites_the_whole_command (test_shell_output.py:60)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:326 "Rewrite.test_a_build_pass_before_the_build_still_counts (test_shell_output.py:64)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:329 "Rewrite.test_a_path_and_exe_are_read_as_the_command_word (test_shell_output.py:68)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:332 "Rewrite.test_the_commands_as_the_docs_write_them_get_the_tail (test_shell_output.py:72)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:335 "Rewrite.test_a_quoted_path_with_a_space_counts (test_shell_output.py:89)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:338 "Rewrite.test_a_quoted_path_to_anything_else_is_left_alone (test_shell_output.py:93)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:341 "Rewrite.test_the_delete_rule_still_does_not_read_a_quoted_word (test_shell_output.py:99)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:344 "Rewrite.test_other_input_fields_stay (test_shell_output.py:102)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:347 "Rewrite.test_background_call_is_left_alone (test_shell_output.py:106)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:350 "Rewrite.test_status_call_is_left_alone (test_shell_output.py:109)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:353 "Rewrite.test_a_command_already_ending_in_the_tail_is_left_alone (test_shell_output.py:114)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:356 "Rewrite.test_other_commands_are_left_alone (test_shell_output.py:117)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:359 "Rewrite.test_other_tools_are_left_alone (test_shell_output.py:121)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:362 "Rewrite.test_never_answers_with_a_permission_decision (test_shell_output.py:124)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:365 "Trim.test_short_passing_result_is_left_alone (test_shell_output.py:138)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:368 "Trim.test_a_result_of_exactly_the_cap_is_left_alone (test_shell_output.py:142)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:371 "Trim.test_one_over_the_cap_shows_start_error_lines_end_and_path (test_shell_output.py:145)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:374 "Trim.test_stderr_counts_toward_the_text_and_is_saved_after_stdout (test_shell_output.py:157)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:377 "Trim.test_error_lines_stop_at_the_limit_and_any_case_counts (test_shell_output.py:165)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:380 "Trim.test_the_error_budget_is_what_the_start_and_end_leave_under_the_cap (test_shell_output.py:171)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:383 "Trim.test_error_lines_stay_whole_until_the_next_would_pass_the_budget (test_shell_output.py:174)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:386 "Trim.test_a_line_that_fits_alone_is_never_cut (test_shell_output.py:178)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:389 "Trim.test_a_line_exactly_filling_the_budget_stays_whole (test_shell_output.py:182)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:392 "Trim.test_one_character_more_and_the_line_is_cut_to_fit (test_shell_output.py:186)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:395 "Trim.test_an_over_long_line_is_cut_to_the_room_left_and_ends_the_block (test_shell_output.py:189)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:398 "Trim.test_a_full_budget_has_no_room_for_a_cut_line (test_shell_output.py:194)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:401 "Trim.test_error_lines_show_in_a_trim_with_the_over_long_one_cut (test_shell_output.py:198)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:404 "Trim.test_a_passing_trim_that_saves_nothing_is_dropped_with_its_file (test_shell_output.py:205)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:407 "Trim.test_a_failing_trim_that_saves_nothing_keeps_the_banner_and_the_text (test_shell_output.py:209)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:410 "Trim.test_a_zero_marker_on_a_trim_that_saves_nothing_still_goes (test_shell_output.py:214)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:413 "Trim.test_each_error_word_counts (test_shell_output.py:219)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:416 "Trim.test_persisted_keys_are_dropped_from_a_trim (test_shell_output.py:224)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:419 "Trim.test_persisted_result_that_passed_keeps_claude_codes_notice (test_shell_output.py:234)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:422 "Trim.test_persisted_result_with_a_zero_marker_keeps_claude_codes_notice (test_shell_output.py:241)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:425 "Trim.test_persisted_result_that_failed_reads_that_file_and_saves_nothing_new (test_shell_output.py:2": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:428 "Trim.test_a_marker_the_command_only_printed_is_plain_output (test_shell_output.py:260)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:431 "Trim.test_a_marker_is_read_only_when_the_command_ends_with_its_own_tools_tail (test_shell_output.py:": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:434 "Trim.test_a_long_marker_only_result_is_trimmed_with_its_line_kept (test_shell_output.py:277)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:437 "Trim.test_a_persisted_marker_the_command_only_printed_keeps_claude_codes_notice (test_shell_output.p": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:440 "Trim.test_marker_with_a_failing_code_shows_the_failed_line_first (test_shell_output.py:290)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:443 "Trim.test_marker_with_code_zero_is_removed_and_nothing_else_changes (test_shell_output.py:295)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:446 "Trim.test_a_marker_before_stderr_is_found_and_stderr_is_kept_once (test_shell_output.py:299)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:449 "Trim.test_a_marker_on_the_end_of_an_unfinished_line_keeps_that_line (test_shell_output.py:304)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:452 "Trim.test_a_marker_with_a_carriage_return_is_read (test_shell_output.py:308)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:455 "Trim.test_a_negative_exit_code_is_read (test_shell_output.py:312)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:458 "Trim.test_the_last_marker_wins_and_all_are_removed (test_shell_output.py:316)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:461 "Trim.test_a_long_failed_result_saves_the_failed_line_first (test_shell_output.py:320)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:464 "Trim.test_a_long_git_diff_is_left_alone (test_shell_output.py:328)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:467 "Trim.test_a_long_git_diff_or_show_behind_gits_own_options_is_left_alone (test_shell_output.py:333)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:470 "Trim.test_other_git_commands_behind_gits_options_are_trimmed (test_shell_output.py:343)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:473 "Trim.test_no_trim_reads_only_the_first_piece (test_shell_output.py:349)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:476 "Trim.test_a_long_no_trim_command_still_loses_its_marker (test_shell_output.py:353)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:479 "Trim.test_a_persisted_no_trim_failure_is_still_trimmed (test_shell_output.py:357)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:482 "Trim.test_an_image_result_is_left_alone (test_shell_output.py:365)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:485 "Trim.test_another_tool_is_left_alone (test_shell_output.py:370)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:488 "SavedPath.test_the_scratch_field_wins (test_shell_output.py:375)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:491 "SavedPath.test_with_no_scratch_field_it_is_claude_codes_folder_for_the_transcript (test_shell_output": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:494 "SavedPath.test_an_empty_scratch_field_counts_as_absent (test_shell_output.py:383)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:497 "SavedPath.test_with_neither_there_is_no_home_for_the_file (test_shell_output.py:387)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:500 "Hook.test_a_trim_is_answered_as_updated_tool_output (test_shell_output.py:402)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:503 "Hook.test_a_result_left_alone_prints_nothing (test_shell_output.py:407)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:506 "Hook.test_a_crash_prints_a_system_message_and_no_updated_output (test_shell_output.py:410)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:509 "Hook.test_an_unreadable_saved_file_is_a_crash_not_a_changed_result (test_shell_output.py:416)": its test file test_shell_output.py (from its title) is not one of the run's files.
+- records/E4.md:519 "Check 'a full .md path works and exits 0' (test_status_append.ps1:25)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:522 "Check 'the output names the file written' (test_status_append.ps1:26)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:525 "Check 'the folder was made and holds the line' (test_status_append.ps1:27)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:528 "Check 'a second call appends' (test_status_append.ps1:32)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:531 "Check 'arguments after the target join into one line' (test_status_append.ps1:37)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:534 "Check 'no message writes a placeholder line' (test_status_append.ps1:42)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:537 "Check 'no target exits 1 and says so' (test_status_append.ps1:46)": its test file test_status_append.ps1 (from its title) is not one of the run's files.
+- records/E4.md:546 "Check 'another project''s session gets {}' (test_h53_session_cards_start.ps1:110)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:549 "Check 'and exits 0' (test_h53_session_cards_start.ps1:111)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:552 "Check 'and runs none of the card scripts' (test_h53_session_cards_start.ps1:112)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:555 "Check 'and writes no claim' (test_h53_session_cards_start.ps1:113)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:558 "Check 'a folder whose name only starts like the repo is out of scope' (test_h53_session_cards_start.": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:561 "Check 'with no session waiting the repo''s session gets {}' (test_h53_session_cards_start.ps1:120)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:564 "Check 'the scripts run in order: prepass, batch, prune_list' (test_h53_session_cards_start.ps1:121)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:567 "Check 'with no session waiting no claim is written' (test_h53_session_cards_start.ps1:122)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:570 "Check 'without -DataDir no script is passed --out' (test_h53_session_cards_start.ps1:123)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:573 "Check 'a worktree session with sessions waiting gets the card note' (test_h53_session_cards_start.ps": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:576 "Check 'the note is SessionStart additionalContext' (test_h53_session_cards_start.ps1:132)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:579 "Check 'the note says nothing to the user (no systemMessage)' (test_h53_session_cards_start.ps1:133)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:582 "Check 'the note lists the batch files in wave and batch order' (test_h53_session_cards_start.ps1:135": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:585 "Check 'the note gives the batches folder in full, and the writer brief from the tools folder' (test_": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:588 "Check 'the note names the card-writer agent and never-run-check' (test_h53_session_cards_start.ps1:1": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:591 "Check 'the note says the agents write to staging and check.py moves passing cards to the cards root'": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:594 "Check 'the note gives check, index, link_memory in that order, each by its full path' (test_h53_sess": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:597 "Check 'after link_memory the note gives the docs check in the main checkout, then the listing and th": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:600 "Check 'the commit step stages by name, on main, with the three trailers, and needs no reviewer' (tes": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:603 "Check 'the commit step confirms the branch and commits only docs/sessions' (test_h53_session_cards_s": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:606 "Check 'the note says not to hold up the user''s request' (test_h53_session_cards_start.ps1:146)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:609 "Check 'without -DataDir or -CardsDir the note''s commands carry no --out or --cards-root' (test_h53_": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:612 "Check 'the claim names this session' (test_h53_session_cards_start.ps1:150)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:615 "Check 'another session within the claim window gets no card note' (test_h53_session_cards_start.ps1:": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:618 "Check 'and the claim still names the first session' (test_h53_session_cards_start.ps1:156)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:621 "Check 'and it leaves prepass and batch alone (only prune_list runs)' (test_h53_session_cards_start.p": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:624 "Check 'a claim file held open by another process gives no note and runs no batch' (test_h53_session_": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:627 "Check 'and the claim still names the first session afterwards' (test_h53_session_cards_start.ps1:164": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:630 "Check 'the claiming session gets the note again when it resumes' (test_h53_session_cards_start.ps1:1": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:633 "Check 'a claim three hours old does not hold the note back' (test_h53_session_cards_start.ps1:172)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:636 "Check 'and the claim now names the new session' (test_h53_session_cards_start.ps1:173)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:639 "Check 'a claim dated in the future does not hold the note back' (test_h53_session_cards_start.ps1:17": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:642 "Check 'a failing prepass gives a systemMessage naming it and its error' (test_h53_session_cards_star": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:645 "Check 'and exits 0' (test_h53_session_cards_start.ps1:184)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:648 "Check 'and the batch still runs and the note is still given' (test_h53_session_cards_start.ps1:185)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:651 "Check 'a failing batch gives a systemMessage naming it, and no note' (test_h53_session_cards_start.p": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:654 "Check 'and exits 0' (test_h53_session_cards_start.ps1:190)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:657 "Check 'and prune_list still runs' (test_h53_session_cards_start.ps1:191)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:660 "Check 'sessions waiting but no batch file gives a systemMessage' (test_h53_session_cards_start.ps1:1": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:663 "Check 'non-ASCII error text is escaped in the output and read back whole' (test_h53_session_cards_st": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:666 "Check 'a prepass past the budget is stopped and named in a systemMessage' (test_h53_session_cards_st": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:669 "Check 'and the hook returns long before the script would have' (test_h53_session_cards_start.ps1:212": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:672 "Check 'and exits 0' (test_h53_session_cards_start.ps1:213)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:675 "Check 'and batch.py, with the budget spent, is not started and no note is given' (test_h53_session_c": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:678 "Check 'and the stopped script''s process is gone' (test_h53_session_cards_start.ps1:218)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:681 "Check 'a broken common.py gives a systemMessage naming it' (test_h53_session_cards_start.ps1:225)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:684 "Check 'and exits 0' (test_h53_session_cards_start.ps1:226)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:687 "Check 'just under the threshold: no reminder' (test_h53_session_cards_start.ps1:232)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:690 "Check 'at the threshold: the reminder sentence, with the list path' (test_h53_session_cards_start.ps": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:693 "Check 'the reminder blocks nothing (no decision)' (test_h53_session_cards_start.ps1:237)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:696 "Check 'above the threshold within a day: no second reminder' (test_h53_session_cards_start.ps1:240)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:699 "Check 'a day later: the reminder again, with the new size' (test_h53_session_cards_start.ps1:243)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:702 "Check 'with -DataDir the scripts run on that folder' (test_h53_session_cards_start.ps1:253)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:705 "Check 'and the note points there, with --out on each command' (test_h53_session_cards_start.ps1:254)": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:708 "Check 'with -CardsDir prune_list gets --cards-root and prepass and batch do not' (test_h53_session_c": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:711 "Check 'and the note names that folder and passes it to check, index and link_memory' (test_h53_sessi": its test file test_h53_session_cards_start.ps1 (from its title) is not one of the run's files.
+- records/E4.md:720 "Check 'the test could make the worktree junction' (test_h52_cleanup_sweep.ps1:90)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:723 "Check 'the test could make junctions' (test_h52_cleanup_sweep.ps1:151)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:726 "Check 'a run with no earlier report prints an empty JSON object' (test_h52_cleanup_sweep.ps1:167)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:729 "Check 'the hook exits 0' (test_h52_cleanup_sweep.ps1:168)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:732 "Check 'merged, clean and idle: removed' (test_h52_cleanup_sweep.ps1:170)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:735 "Check 'merged, clean and idle with an ignored build folder: removed' (test_h52_cleanup_sweep.ps1:171": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:738 "Check 'a worktree under the hook repo''s worktrees folder: removed' (test_h52_cleanup_sweep.ps1:172)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:741 "Check ('kept: ' + $n) for unmerged, untracked, modified, recent, locked, cwd, outside, link (test_h5": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:744 "Check 'nothing behind the worktree''s junction is deleted' (test_h52_cleanup_sweep.ps1:176)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:747 "Check ('the sweep leaves the index of a kept worktree alone: ' + $n) (test_h52_cleanup_sweep.ps1:178": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:750 "Check 'the main checkout is untouched' (test_h52_cleanup_sweep.ps1:180)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:753 "Check 'worktrees with a missing folder keep their git records (no prune)' (test_h52_cleanup_sweep.ps": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:756 "Check 'the branch of a removed worktree still exists' (test_h52_cleanup_sweep.ps1:184)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:759 "Check 'git no longer lists the removed worktrees' (test_h52_cleanup_sweep.ps1:186)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:762 "Check 'a stale top-level folder (with a read-only file) is deleted' (test_h52_cleanup_sweep.ps1:188)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:765 "Check 'a fresh top-level folder loses its stale child' (test_h52_cleanup_sweep.ps1:189)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:768 "Check 'and keeps its fresh child' (test_h52_cleanup_sweep.ps1:190)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:771 "Check 'the current session''s folder survives at the top, though stale' (test_h52_cleanup_sweep.ps1:": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:774 "Check 'a stale folder holding the current session''s folder survives' (test_h52_cleanup_sweep.ps1:19": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:777 "Check 'that folder''s other stale child still goes' (test_h52_cleanup_sweep.ps1:193)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:780 "Check 'a stale loose file at the top is deleted' (test_h52_cleanup_sweep.ps1:194)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:783 "Check 'a stale file held open stays, and did not stop the rest' (test_h52_cleanup_sweep.ps1:195)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:786 "Check 'a stale folder holding a junction is left alone' (test_h52_cleanup_sweep.ps1:197)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:789 "Check 'a top-level junction is not deleted' (test_h52_cleanup_sweep.ps1:198)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:792 "Check 'nothing behind a junction is deleted' (test_h52_cleanup_sweep.ps1:199)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:795 "Check 'the report names each removed worktree' (test_h52_cleanup_sweep.ps1:205)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:798 "Check 'the report counts the scratch entries, folders and files together' (test_h52_cleanup_sweep.ps": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:801 "Check 'the report names the stuck file and the folder with a link' (test_h52_cleanup_sweep.ps1:207)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:804 "Check 'the report gives errors without PowerShell''s wrapper text' (test_h52_cleanup_sweep.ps1:208)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:807 "Check 'the report names no kept worktree (its own checks kept them, not git''s refusal)' (test_h52_c": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:810 "Check 'the next run prints the last report as a systemMessage' (test_h52_cleanup_sweep.ps1:222)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:813 "Check 'the report file is gone once printed' (test_h52_cleanup_sweep.ps1:223)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:816 "Check 'a sweep started under an hour ago holds back the next one (worktree)' (test_h52_cleanup_sweep": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:819 "Check 'a sweep started under an hour ago holds back the next one (scratch)' (test_h52_cleanup_sweep.": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:822 "Check 'the message blocks nothing (no decision, no hookSpecificOutput)' (test_h52_cleanup_sweep.ps1:": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:825 "Check 'a report is printed only once' (test_h52_cleanup_sweep.ps1:229)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:828 "Check 'an old start marker lets the sweep run again' (test_h52_cleanup_sweep.ps1:235)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:831 "Check 'a repo with no local main branch is left alone' (test_h52_cleanup_sweep.ps1:244)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:834 "Check 'the test could put a junction on the sweep folder' (test_h52_cleanup_sweep.ps1:258)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:837 "Check 'a worktree reached through a junction is not removed' (test_h52_cleanup_sweep.ps1:261)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:840 "Check 'with no session id no scratch entry is deleted' (test_h52_cleanup_sweep.ps1:273)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:843 "Check 'and the report says why' (test_h52_cleanup_sweep.ps1:274)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:846 "Check 'part 1 returns {} at once and leaves no process holding its output' (test_h52_cleanup_sweep.p": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:849 "Check 'the background worker finished within 60 s and wrote its report' (test_h52_cleanup_sweep.ps1:": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:852 "Check 'the background worker deleted the stale scratch folder' (test_h52_cleanup_sweep.ps1:292)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:855 "Check 'the test''s writer was still writing when the sweep ended, so the two overlapped' (test_h52_c": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:858 "Check 'the test''s writer finished within 120 s' (test_h52_cleanup_sweep.ps1:412)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:861 "Check 'the sweep with state to prune exits 0' (test_h52_cleanup_sweep.ps1:413)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:864 "Check 'a session whose transcript was written lately keeps its stale scratch folder' (test_h52_clean": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:867 "Check 'a session the registry names, with its process alive, keeps its stale scratch folder' (test_h": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:870 "Check 'a registry record whose process is gone does not keep it' (test_h52_cleanup_sweep.ps1:417)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:873 "Check 'a registry record whose start time does not match (a reused pid) does not keep it' (test_h52_": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:876 "Check 'a session whose transcript is old loses its stale scratch folder' (test_h52_cleanup_sweep.ps1": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:879 "Check 'a stale project folder holding a running session''s folder stays' (test_h52_cleanup_sweep.ps1": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:882 "Check 'and its other stale folder goes' (test_h52_cleanup_sweep.ps1:421)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:885 "Check 'an old status file goes' (test_h52_cleanup_sweep.ps1:423)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:888 "Check 'a new status file stays' (test_h52_cleanup_sweep.ps1:424)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:891 "Check 'an ended session''s old agents folder goes' (test_h52_cleanup_sweep.ps1:425)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:894 "Check 'a running session''s old agents folder stays' (test_h52_cleanup_sweep.ps1:426)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:897 "Check 'a fresh agents folder stays' (test_h52_cleanup_sweep.ps1:427)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:900 "Check 'an ended session''s old stall records go' (test_h52_cleanup_sweep.ps1:428)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:903 "Check 'a running session''s old stall record stays' (test_h52_cleanup_sweep.ps1:429)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:906 "Check 'an old posture record goes, a new one stays' (test_h52_cleanup_sweep.ps1:430)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:909 "Check 'a subfolder the prune does not name is left alone' (test_h52_cleanup_sweep.ps1:431)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:912 "Check 'refusals.jsonl loses its line older than 30 days' (test_h52_cleanup_sweep.ps1:434)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:915 "Check 'and keeps the newer, undated and unreadable lines, in order' (test_h52_cleanup_sweep.ps1:435)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:918 "Check 'every line written during the sweep is still there' (test_h52_cleanup_sweep.ps1:437)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:921 "Check 'and none is there twice' (test_h52_cleanup_sweep.ps1:439)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:924 "Check 'agent_stop.jsonl keeps only its line from the last 30 days' (test_h52_cleanup_sweep.ps1:441)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:927 "Check 'reviews.jsonl keeps each key''s last verdict however old (keys compared exactly), recent hand": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:930 "Check 'waivers.jsonl is never cut' (test_h52_cleanup_sweep.ps1:445)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:933 "Check 'the prune leaves no temp file behind' (test_h52_cleanup_sweep.ps1:447)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:936 "Check 'the report counts the pruned state records and log lines' (test_h52_cleanup_sweep.ps1:451)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:939 "Check 'and names no failure' (test_h52_cleanup_sweep.ps1:452)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:942 "Check 'a sweep that cannot tell which sessions run exits 0' (test_h52_cleanup_sweep.ps1:464)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:945 "Check 'and removes no stale scratch folder' (test_h52_cleanup_sweep.ps1:465)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:948 "Check 'and no old state record' (test_h52_cleanup_sweep.ps1:466)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:951 "Check 'and the report says which sessions still run could not be read' (test_h52_cleanup_sweep.ps1:4": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:954 "Check 'a broken input helper gives a systemMessage' (test_h52_cleanup_sweep.ps1:479)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:957 "Check 'and exits 0' (test_h52_cleanup_sweep.ps1:480)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/E4.md:960 "Check 'and starts no sweep' (test_h52_cleanup_sweep.ps1:481)": its test file test_h52_cleanup_sweep.ps1 (from its title) is not one of the run's files.
+- records/delta-DL2.md:327 "18. StoreFile (tests/store_file_fixtures.h:22)": its test file store_file_fixtures.h (from its title) is not one of the run's files.
+- records/delta-DL2.md:344 "19. HeldSaveGroup (tests/store_file_fixtures.h:38)": its test file store_file_fixtures.h (from its title) is not one of the run's files.
+- records/delta-DL2.md:361 "20. StoreLockHolder (tests/store_lock_holder.h:18)": its test file store_lock_holder.h (from its title) is not one of the run's files.
+- records/delta-DL2.md:380 "21. returns_while_held (tests/store_lock_holder.h:61)": its test file store_lock_holder.h (from its title) is not one of the run's files.
+- records/delta-DL5.md:316 "21. test_settings_lock (tests/ui/uitest_details.cpp:1289)": its test file uitest_details.cpp (from its title) is not one of the run's files.
+- records/delta-DL5.md:322 "22. test_settings_reset (tests/ui/uitest_library.cpp:298)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/delta-DL5.md:328 "23. test_settings_early_fill (tests/ui/uitest_library.cpp:342)": its test file uitest_library.cpp (from its title) is not one of the run's files.
+- records/delta-DL5.md:347 "24. test_command_bare_ref_ambiguous (tests/ui/uitest_live.cpp:537)": its test file uitest_live.cpp (from its title) is not one of the run's files.
+- records/delta-DL5b.md:198 "9. tools/test_compare_db.py::test_profile_id_order_alone_compares_clean (:286)": its test file test_compare_db.py (from its title) is not one of the run's files.
+- records/delta-DL5b.md:217 "10. tools/test_compare_db.py::test_one_changed_record_path_is_reported (:299)": its test file test_compare_db.py (from its title) is not one of the run's files.
+- records/window-WN5.md:152 "1. test_panel_headline (tests/ui/uitest_details.cpp:1019)": its test file uitest_details.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:170 "2. test_preview_path_overlay (tests/ui/uitest_preview.cpp:151)": its test file uitest_preview.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:187 "3. test_preview_drain_box (tests/ui/uitest_preview.cpp:471)": its test file uitest_preview.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:204 "4. test_preview_path_picker (tests/ui/uitest_preview.cpp:694)": its test file uitest_preview.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:221 "5. test_preview_overlay_steady (tests/ui/uitest_preview.cpp:986)": its test file uitest_preview.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:238 "6. test_preview_activation_jumps (tests/ui/uitest_preview.cpp:1025)": its test file uitest_preview.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:255 "7. test_paths_list (tests/ui/uitest_paths.cpp:109)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:272 "8. test_paths_rows (tests/ui/uitest_paths.cpp:254)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:289 "9. test_paths_backend_timings (tests/ui/uitest_paths.cpp:348)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:306 "10. test_paths_folds_copy (tests/ui/uitest_paths.cpp:424)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:323 "11. test_paths_uncounted (tests/ui/uitest_paths.cpp:488)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:340 "12. test_paths_fit_narrow (tests/ui/uitest_paths.cpp:513)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:352 "13. test_paths_backend_fit (tests/ui/uitest_paths.cpp:604)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:369 "14. test_paths_row_layout (tests/ui/uitest_paths.cpp:734)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:381 "15. test_paths_length_from_click (tests/ui/uitest_paths.cpp:920)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:398 "16. test_paths_hit_window (tests/ui/uitest_paths.cpp:966)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN5.md:415 "17. test_paths_hit_window_narrow (tests/ui/uitest_paths.cpp:1015)": its test file uitest_paths.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:76 "1. build-a-path-by-clicking (`tests/pb_ui/pbtest_build.cpp:135`)": its test file pbtest_build.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:92 "2. build-a-path-on-a-long-song (`pbtest_build.cpp:334`)": its test file pbtest_build.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:108 "3. finish-for-me (`pbtest_coach.cpp:76`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:124 "4. locked-fill-says-left-to-right (`pbtest_coach.cpp:141`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:140 "5. tight-window-note (`pbtest_coach.cpp:168`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:156 "6. choose-an-ending (`pbtest_coach.cpp:220`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:172 "7. hover-moves-nothing (`pbtest_coach.cpp:360`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:188 "8. fill-click-moves-clock (`pbtest_coach.cpp:485`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:204 "9. fill-card (`pbtest_coach.cpp:517`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:220 "10. row-click-moves-clock (`pbtest_coach.cpp:545`)": its test file pbtest_coach.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:236 "11. open-starts-empty (`pbtest_window.cpp:68`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:252 "12. scroll-the-timeline (`pbtest_window.cpp:341`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:268 "13. bad-settings-refused (`pbtest_window.cpp:509`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:284 "14. bad-rules-refused (`pbtest_window.cpp:546`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+- records/window-WN6.md:300 "15. rules-reach-the-builder (`pbtest_window.cpp:592`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
+
+## Record rows: several (0)
+
+
+## Record rows: none (219)
+
+- records/A12.md:13 "1. a scrambled name on a Clone Hero page fails with its line (tests/test_docs_match_code.cpp:1109)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:32 "2. a page span is found by the table's cited column (tests/test_docs_match_code.cpp:1122)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:49 "3. what counts as a game fact on a Clone Hero page (tests/test_docs_match_code.cpp:1134)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:68 "4. which spans and which build a Clone Hero page line has (tests/test_docs_match_code.cpp:1156)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:87 "5. every game fact on a Clone Hero page has a home (tests/test_docs_match_code.cpp:1195)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:105 "6. no committed doc names a path into a scratch folder (tests/test_docs_match_code.cpp:1266)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:122 "7. the scratch path check catches each path form and skips only the two folders (tests/test_docs_mat": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:139 "8. no permanent doc or code comment names a docs path that is not in the tree (tests/test_docs_match": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:156 "9. the docs path check reads each path form and skips the removed form (tests/test_docs_match_code.c": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:173 "10. every plan that counts holds a Premise map in the shape (tests/test_docs_match_code.cpp:1883)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:191 "11. the premise map check catches each form and reads only the plans that count (tests/test_docs_mat": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:208 "12. every picture the public pages link is a shot the capture script takes, and the file exists (tes": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:226 "13. the README's Stale sentence has no version list (tests/test_docs_match_code.cpp:2139)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A14.md:459 "26. search: a fill that needs a 70 ms early hit is taken as a required early fill (tests/test_fills_": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A14.md:476 "27. search: SP ready 70 ms before a fill's deadline still marks the activation E (tests/test_fills_a": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A32.md:28 "1. a database from Hydra 1.6 or older is too old (tests/test_store_open.cpp:132)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A32.md:273 "16. a database any release before 2.2.0 wrote is too old (tests/test_store_open.cpp:763)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A32.md:508 "30. the hardest-figure marker is per profile (tests/test_store_open.cpp:1205)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B1.md:316 "19. hydra_replay refuses --ms and --depth values that are not whole numbers (tests/test_cli.cpp:635)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:23 "Read: lines 62-73 and the helper song_with_chords (29-46); S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:41 "Read: lines 75-86; S-G; place_fills_ch10 (src/core/song.cpp:131-171, kCh10FillLengthMeasures :127).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:55 "Read: lines 88-91; S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:71 "Read: lines 93-96; S-G; FL-16.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:84 "Read: lines 98-103; S-G; FL-16 (D115 item 4, cited in the comment, was not opened: item text not fou": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:96 "Read: lines 105-117; activation_fill_deadline_ms Ch10 branch (src/search/graph.cpp:73-90); S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:109 "Read: lines 119-123; place_fills_ch11 (src/core/song.cpp:196-215); FL-15.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:122 "Read: lines 125-130; place_fills_ch11 (src/core/song.cpp:229); rules fill_cooldown_measures (src/cor": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:134 "Read: lines 132-136; place_fills_ch11 (line = 1 start at src/core/song.cpp:201); FL-13.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:147 "Read: lines 138-145; S-G; FL-17.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:159 "Read: lines 147-153; song_with_chords' apply_timesig use (29-37); FL-26 title only (04-fills.md:264,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:171 "Read: lines 155-161; S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:180 "Read: lines 163-168; place_fills_ch10 line 167 (grid.length_at(span_at(chord))); S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:189 "Read: lines 170-185; check_activations (src/core/song.cpp:108-120); FL-27 title, FL-35 rule (04-fill": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:201 "Read: lines 187-281; kFillPins (203-235).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:227 "Read: lines 60-85; S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:243 "Read: lines 87-98; midi.cpp:387-391; core/winstr.h not opened (read_file_bytes' message is only quot": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:256 "Read: lines 100-116; walk_track (midi.cpp:205-266); S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:269 "Read: lines 118-138; walk_track lines 222-225; S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:280 "Read: lines 140-153; TrackNamePick (midi.cpp:274-292).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:293 "Read: lines 155-163; TrackNamePick; CR-16.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:303 "Read: lines 165-175; midi.cpp:269-273 comment.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:313 "Read: lines 177-189.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:325 "Read: lines 191-197.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:335 "Read: lines 199-214; is_drums_track_name (midi.cpp:447); CR-13; midi.h:98-109 comment.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:348 "Read: lines 216-250; drums_track (midi.cpp:490-494); CR-14.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:359 "Read: lines 252-259.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:371 "Read: lines 261-276; walk_track lines 233-249.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:381 "Read: lines 278-300; meta_message (midi.cpp:107-144); S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:393 "Read: lines 302-316; meta_message uses decode_chart_text (midi.cpp:131, 138); decode_chart_text itse": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:405 "Read: lines 318-356; text_meta and name_meta (midi.cpp:32-52).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:418 "Read: lines 358-362; walk_chunks line 154-156.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:429 "Read: lines 364-372; walk_chunks 161-167.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:440 "Read: lines 374-385; read_varlen (midi.cpp:72-83).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:451 "Read: lines 387-410; read_message_length (midi.cpp:85-98).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:463 "Read: lines 412-463; MidiFile::lean (midi.cpp:399-445); midi.h:166-190 by grep.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:475 "Read: lines 465-472; two_drum_tracks (221-226), drum_velocity (230-236).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:486 "Read: lines 474-501; MidiFile::lean reserve (midi.cpp:423).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:499 "Read: lines 503-530; walk_track throw (midi.cpp:92-98); scan_track (329-353).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:511 "Read: lines 532-542; is_midi_header (midi.cpp:357-359); callers song.cpp:2414 and midi.cpp:154.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:522 "Read: lines 544-559; walk_chunks 195.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:532 "Read: lines 561-575; walk_chunks 174-178.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:542 "Read: lines 577-600; drums_track (midi.cpp:490-494, kFirstInstrumentTrack); CR-15; D253 item 1 only ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:553 "Read: lines 602-614.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:565 "Read: lines 616-645; events_track (midi.cpp:496-500); CR-19; D253 item 2 as CR-19 quotes it.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:577 "Read: lines 647-662; CR-19.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:587 "Read: lines 664-688; CR-24; section_names.cpp not read (the page quotes lines 19-27).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:598 "Read: lines 690-695; CR-24 ("holds _ENDOFSONG anywhere").": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:608 "Read: lines 697-705; CR-24 (the case-sensitive search, string_contains_197F670.md cited).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:620 "Read: lines 707-713; CR-24 ("[prc" has no veto).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:631 "Read: lines 715-737; song.cpp:1322-1331 (is_end_event use) and :41-46 by grep; CR-38, CR-39.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:644 "Read: lines 739-763.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:656 "Read: lines 765-798; last_note_end_tick (midi.cpp:465-488), scan_track (343-351); CR-43.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:669 "Read: lines 800-859; last_note_end_tick (midi.cpp:465-488); is_gem_pitch and is_low_vocal_pitch (mid": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:684 "Read: lines 861-907; midi_lane_lowest_difficulty and midi_lane_shows_at (src/parse/song.cpp:835-850)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:696 "Read: lines 909-926; lane_mid (868-884); song.cpp:824-828, 143-175 by reading; NL-53, NL-55 by title": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:719 "Read: lines 24-57, 81-85; S-P.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:734 "Read: lines 59-77, 87-95; read_short 97-117.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:748 "Read: lines 97-111; app/user_messages.cpp:198 by grep only.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:760 "Read: lines 113-122; read_short 103.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:771 "Read: lines 124-130; read_long and windows_section (pathstring_read.cpp:119-172).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:783 "Read: lines 132-143.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:794 "Read: lines 145-169; read_long 146-172.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:804 "Read: lines 171-198; pathstring_read.cpp:176-179.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:817 "Read: lines 200-208; pathstring_read.cpp:176-179.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B2.md:829 "Read: lines 210-218; windows_section (pathstring_read.cpp:123-140).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:38 "Read: lines 851-903; helpers 45-56, 89-102; Activation::sp_ready_tick (src/core/model.cpp:702-706); ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:56 "Read: lines 905-937; overfill() and presses_of (386-415); rules_with (814, signature only); sqout_la": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:73 "Read: lines 939-962; overfill (402-415); squeeze_out_inside_groups (tools/replay_schedule.h:185-187)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:90 "Read: lines 964-1003; overfill, presses_of, within_cent (383-415); S-O, S-R, S-L, S-H. Adding commit": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:108 "Read: lines 1005-1014; replay_build (tools/replay_schedule.cpp:477); tools/ch_mcp/build_stamp.py:43,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:126 "Read: lines 1062-1096, helpers 1022-1058; last_send_ms, press_room_ms, sqout_fallback_after_ms, sqin": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:144 "Read: lines 1098-1128; pad_row (1048-1058); far_press_refusal (replay_schedule.cpp:351-383, .h:209-2": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:162 "Read: lines 1130-1270; overfill (402-415); refusal_says, has_press (1029-1044); S-O, S-R, S-L, S-H. ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:180 "Read: lines 1272-1343; kept_gems (tools/replay_schedule.cpp:116-123); Chord::activation_note (via D3": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:198 "Read: lines 1345-1376; kept_colours (58-74); kept_gems (replay_schedule.cpp:116-123); D318 Q3 (fix-d": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:216 "Read: lines 1378-1425; overfill; press_groups (replay_schedule.h:171-177); D318 Q3 and Q4 (fix-decis": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:234 "Read: lines 1514-1619; helpers 1433-1476; pitch_dark_ratio.schedule.json (script reads of activation": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:252 "Read: lines 1621-1649; pitch_dark_ratio.schedule.json press 644; SteadySpans and anchor_lead_ms (rep": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:270 "Read: lines 1651-1678; hand_built_squeeze_in (758-769); anchor_lead_ms (replay_schedule.cpp:246-263)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:287 "Read: lines 1680-1714; three_step_overfill (1485-1510); end_conversion (replay_schedule.cpp:267-269)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/B4.md:305 "Read: lines 1716-1731; read_at_own_ms (replay_schedule.cpp:273-276), the comment on 271-272; EndLink": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:22 "Read: lines 1-100 of the test; activation_row_layout.h:1-116; paths_tab.cpp:270-320,575-590;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:53 "Read: lines 83-90; layout header lines 59-60; shared facts. Adding commit not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:79 "Read: lines 92-99; layout header lines 52-112. Adding commit 6d2b1a56 (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:104 "Read: lines 101-106; layout lines 69-77, 110. Adding commit not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:127 "Read: lines 108-121; layout lines 78-111; the plan named in the file header": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:158 "Read: lines 123-133; layout lines 85-110. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:186 "Read: lines 135-145; layout lines 84-86. Adding commit 3f46aa2a (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:214 "Read: lines 147-157; layout lines 70-72,85; D262 (opened, line 1155 quoted in shared": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:246 "Read: lines 159-186; layout lines 66,103-108. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:273 "Read: lines 188-207; layout lines 81-100. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:293 "Read: lines 209-232; layout lines 74-108. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:315 "Read: lines 234-254; layout lines 89-108; D257 (opened). Adding commit 16944a4d.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:338 "Read: lines 256-261; layout lines 59-60; paths_tab.cpp:580-582.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:367 "Read: lines 1-165 of the test; badge_pill.h:20-74; layout :70-72; D262 (opened).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:392 "Read: lines 80-84; layout :70-72.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:414 "Read: lines 86-104; badge_pill.h:56-59.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:435 "Read: lines 106-117; layout :78-83.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:456 "Read: lines 119-130; layout :89-108.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:475 "Read: lines 144-153; badge_pill.h:76-121; the mockup's rules (git show 45dd7799:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:511 "Read: lines 155-165; layout :78-83; badge_pill.h:51-54.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:539 "Read: lines 49-73; shared facts; fixtures lines 55-150 of app_state_fixtures.h. Adding": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:573 "Read: lines 75-88; shared facts.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:598 "Read: lines 90-114; shared facts.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:623 "Read: lines 116-172; shared facts; D90 item 2.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:653 "Read: lines 174-192; app_state.cpp:1096-1110.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:676 "Read: lines 194-223; config.cpp:189-193; D51 call 14 and 16 (fix-decisions.md:190,192).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:706 "Read: lines 225-241; D73 items 1 and 3 (fix-decisions.md:360-366); app_state.cpp:1120-.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:742 "Read: lines 46-66; audio_sniff.cpp not read beyond the signature lines above;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:764 "Read: lines 68-80; audio_util.h:42-47 (id3_tag: a 10-byte header and 20 bytes body,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:785 "Read: lines 82-91; audio_util.h:42-47; audio_sniff.cpp:38 (signature).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:806 "Read: lines 93-105; testaudio::pcm16_wav not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:830 "Read: lines 107-115; audio_util.h:131-143 (estimate_freq_hz: zero crossings of the": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:856 "Read: lines 117-125; as :107.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:874 "Read: lines 127-149; decode.cpp:47-50.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:895 "Read: lines 151-159; opus_reader.cpp not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:914 "Read: lines 161-179; commit b868de9c body (read): "The Opus decoder reuses one": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:944 "Read: lines 1-46; D297 item 7 header (fix-decisions.md:1619 and the item line quoted": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:977 "Read: lines 55-67; mixer.h lines not opened; shared facts. Adding commit ba0885a0.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1000 "Read: lines 69-79; mixer.cpp:10-32 not opened beyond the signature.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1019 "Read: lines 81-86.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1038 "Read: lines 88-104; synth_tone lines 31-42.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1060 "Read: lines 106-117; same_bits lines 44-51.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1086 "Read: lines 18-27; make_ramp (audio_util.h:92-102).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1105 "Read: lines 29-40; frames.h:1-26.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1126 "Read: lines 42-52.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1141 "Read: lines 54-61.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1160 "Read: lines 63-74.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1181 "Read: lines 76-89.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1201 "Read: lines 91-117; commit 15f2e917 body (read): "The clock still advances by the full": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1225 "Read: lines 119-129; player.cpp:30.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1245 "Read: lines 131-142.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1269 "Read: lines 144-160; player.h:57; player.cpp:62-63; config.cpp:317.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C1.md:1295 "Read: lines 1-57; CMakeLists.txt:69-88 (the /PDBALTPATH line); commit 37f5384f": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:13 "Read: lines 1-98 (helpers check_color, check_light, check_is_onyx at 19-74);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:77 "Read: lines 100-121; preview_config.cpp:50-66 (need, key_path), :103-157;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:113 "Read: lines 123-125; preview_config.cpp:93-99; adding commit ba0885a0": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:141 "Read: lines 127-132; parse_hex_color (preview_config.cpp:15-37);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:172 "Read: lines 134-141; preview_config.cpp:148-151; preview_panel.cpp:237-238": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:204 "Read: lines 1-36; rules_file.cpp:19-100 (kRetiredRulesKeys 23-29); callers": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:245 "Read: lines 38-40; rules_file.cpp:91-96; D270 item 4 ("refuse anything": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:269 "Read: lines 42-63; rules_file.cpp:36-41 (check_min) and :57-72; core": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:311 "Read: lines 65-93; rules_file.cpp:83-96, 33; ini_errors.h: not read;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:351 "Read: lines 1-41; section_names.h:16-41; section_names.cpp:1-54; the TSV": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:391 "Read: lines 43-48; section_display_name (section_names.cpp:35-52); TSV rows": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:423 "Read: lines 50-58; section_names.cpp:35-52; CR-28 (the fallback": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:449 "Read: lines 60-72; section_names.cpp:19-33; CR-28, CR-29 (open split, "see": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:477 "Read: lines 74-88; section_names.cpp:10-27; CR-24 (01-reading-a-chart.md:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:511 "Read: lines 79-86; is_container (src/parse/chart_files.cpp:25); caller in": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:539 "Read: lines 88-111; preview_source.cpp:142-156; audio_sniff.h:40-60 (the": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:575 "Read: lines 113-120; preview_source.cpp:149-152; callers: preview_source.cpp:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:598 "Read: lines 122-138; preview_source.cpp:158-174; caller: preview_source.cpp:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:623 "Read: lines 140-168; extract_sng_audio (preview_source.cpp:178-181) and": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:651 "Read: lines 170-192; preview_source.cpp:196-290 (grep view only), srb.h:14": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:676 "Read: lines 194-208; preview_source.cpp:224 (looks_like_audio use);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:696 "Read: lines 210-228; preview_source.cpp:376-385 (region seen by grep:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:723 "Read: lines 230-242; preview_source.cpp:323-385 (grep view); corpus::": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:747 "Read: lines 244-274; multidiff chart helper: not read (its chord counts": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:777 "Read: lines 276-295; read_ini_delay_ms (preview_source.cpp:363 caller;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:804 "Read: lines 297-307; preview_source.cpp:300-316; callers in src/:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:838 "Read: lines 309-316; preview_source.cpp:355-370 (region); adding commit not": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:860 "Read: lines 318-330; sng_delay_ms (preview_source.cpp:178-185 region);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:883 "Read: lines 332-352; preview_source.cpp:355-370; TM-03; adding commit not": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:907 "Read: lines 354-359; preview_source.cpp:367-369 (comment: a .srb's metadata": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:927 "Read: lines 361-436 (CountingReader 395-403); resolve_preview_source_reading": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:954 "Read: lines 438-468; read_preview_container, resolve_preview_song,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:984 "Read: lines 361-392 (song_text) and 470-526; loaders load_songbytes_mid,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1022 "Read: lines 34-53; transport code above; adding commit 1da4638e ("Preview": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1045 "Read: lines 55-75; preview_transport.cpp:11-30, 64-77 (length_ms,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1070 "Read: lines 77-108; set_song_length_ms (preview_transport.cpp:64-70);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1092 "Read: lines 110-126; D255 answer 5 (decision log line 1186 mentions D255": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1114 "Read: lines 128-140; D255 comment.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1135 "Read: lines 142-168; play/pause/toggle (preview_transport.cpp:32-55).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1154 "Read: lines 170-189; tick (preview_transport.cpp:79-86).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1174 "Read: lines 191-215; seek_ms (preview_transport.cpp:48-62); adding commit": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1199 "Read: lines 217-228; seek_ms (preview_transport.cpp:48-52); adding commit": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1219 "Read: lines 230-251; read_frames (preview_transport.cpp:104-107); make_ramp.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1241 "Read: lines 253-273; set_gain/load (preview_transport.cpp:11-18, 88-94);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1262 "Read: lines 275-288; audio_ms_of_chart_ms (preview_source.h:118); TM-05": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1287 "Read: lines 290-303; scrub_thumb_ms (preview_view.cpp:772-775); seek_ms.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1311 "Read: lines 305-310; length_ms.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/C10.md:1330 "Read: lines 312-318; load/seek_ms.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/D16.md:17 "key_delivery_test.py (tools/ch_probe/experiments/key_delivery_test.py, `main` at line 46, whole file": names no test file and no test name the run holds.
+- records/D16.md:51 "pad_flash_test.py (tools/ch_probe/experiments/pad_flash_test.py, `main` at line 49, whole file lines": names no test file and no test name the run holds.
+- records/window-WN1.md:200 "W3. Delta round: window, replaces A26 RU17 (max_tied_paths is one count per score, inside paths firs": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:216 "W4. Delta round: window, replaces A26 RU18 (a path over the Path limit stays kept when it ties the o": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:232 "W5. Delta round: window, replaces A26 RU19 (a path over the Path limit below the best score is dropp": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:292 "W6. Delta round: window, replaces A16 record 19 (a fill that fails still opens the library) (tests/t": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:331 "W7. Delta round: window, replaces A27 ST1 (a path missing a named activation is dropped) (tests/test": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:347 "W8. Delta round: window, replaces A27 ST2 (a variant that took every named activation outlives its d": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:363 "W9. Delta round: window, replaces A27 ST3 (a kept root's tied variant that missed a named activation": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:379 "W10. Delta round: window, replaces A27 ST6 (a full pin no path realizes names its window and why) (t": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:395 "W11. Delta round: window, replaces A27 ST7 (activation pins return the tick search's paths and its f": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:411 "W12. Delta round: window, replaces A27 ST8 (the binary search names the last or a middle window that": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN1.md:427 "W13. Delta round: window, replaces A27 ST10 (fills past the last pin branch, fills before it follow ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN2.md:260 "11. best finish: every window of a corpus best path pinned in full ... equals search_target and the ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN3.md:326 "Delta round: window, replaces C6.md record PC8. The old verdict (Remove: line 224 cannot fail while ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/window-WN8.md:145 "Delta round: window, replaces records/A10.md record 1": names no test file and no test name the run holds.
+- records/window-WN8.md:198 "Delta round: window, replaces records/A25.md record R7": names no test file and no test name the run holds.
+
+## Run tests no record row matched, under "Tests that caught no bug" in tests.txt (54)
+
+- tests\test_preview_transport.cpp:112 playback stops at the song's length even when the audio runs longer
+- tests\test_preview_transport.cpp:293 scrubber: a song length past the audio ends playback there
+- tests\test_preview_transport.cpp:230 read_frames serves audio while playing and silence while paused
+- tests\test_audio_player.cpp:63 read_frames while playing copies frames and advances the clock
+- tests\test_audio_player.cpp:108 read_frames counts only the frames a short source really gave
+- tests\test_audio_mixer.cpp:55 mix_stems sums same-format stems and zero-extends the shorter
+- tests\test_preview_transport.cpp:306 scrubber: with no audio the end is still the song's length
+- tests\test_audio_player.cpp:54 read_frames while paused writes silence and does not advance
+- tests\test_replay_schedule.cpp:1098 schedule: far press follows TM-50
+- tests\test_audio_player.cpp:119 seek clamps to the valid range in both frames and ms
+- tests\test_replay_schedule.cpp:1062 schedule: one frame everywhere
+- tests\test_activation_row_layout.cpp:101 activation row: no badge leaves nothing to place and one line
+- tests\test_activation_row_layout.cpp:108 activation row: one badge that fits sits where it always has (B1)
+- tests\test_activation_row_layout.cpp:123 activation row: badges beside the bars never overlap them (B3)
+- tests\test_activation_row_layout.cpp:135 activation row: a pill that just touches the bars drops under the measure
+- tests\test_activation_row_layout.cpp:147 activation row: a short badge drops when the longest badge's pill would not fit
+- tests\test_activation_row_layout.cpp:159 activation row: badges under the measure clear the bars by the row's top padding
+- tests\test_activation_row_layout.cpp:188 activation row: no pill runs past the flush-right edge
+- tests\test_activation_row_layout.cpp:209 activation row: pills never overlap, on one line or between lines
+- tests\test_activation_row_layout.cpp:234 activation row: badges under the measure start at the measure (D257)
+- tests\test_activation_row_layout.cpp:256 activation row: every row of a path puts its bars at the same x
+- tests\test_activation_row_layout.cpp:83 activation row: an 11-character measure pushes the bars past it
+- tests\test_activation_row_layout.cpp:92 activation row: the layout scales with the DPI
+- tests\test_audio_player.cpp:18 Playhead starts paused at the start with the mix's format
+- tests\test_badge_pill.cpp:106 badge pill: pills side by side match and keep one gap between them
+- tests\test_badge_pill.cpp:119 badge pill: stacked pills share both edges
+- tests\test_badge_pill.cpp:155 badge pill: one badge alone sits flush right
+- tests\test_badge_pill.cpp:60 badge pill: a row of the shortest badge and a row of the longest share one width
+- tests\test_badge_pill.cpp:80 badge pill: a badge wider than the pill text width grows the pill
+- tests\test_badge_pill.cpp:86 badge pill: text sits centred in its pill
+- tests\test_docs_match_code.cpp:1113 docs match code: a scrambled name on a Clone Hero page fails with its line
+- tests\test_docs_match_code.cpp:1126 docs match code: a page span is found by the table's cited column
+- tests\test_docs_match_code.cpp:1138 docs match code: what counts as a game fact on a Clone Hero page
+- tests\test_docs_match_code.cpp:1160 docs match code: which spans and which build a Clone Hero page line has
+- tests\test_docs_match_code.cpp:1199 docs match code: every game fact on a Clone Hero page has a home
+- tests\test_docs_match_code.cpp:1887 docs match code: every plan that counts holds a Premise map in the shape
+- tests\test_docs_match_code.cpp:1894 docs match code: the premise map check catches each form and reads only the plans that count
+- tests\test_docs_match_code.cpp:2037 docs match code: every picture the public pages link is a shot the capture script takes, and the file exists
+- tests\record_fixtures.h:567 fixtures: a path with zero base score
+- tests\test_replay_schedule.cpp:1651 schedule: a lead that moves the read end past a tempo change is refused naming its span
+- tests\test_audio_mixer.cpp:81 mix_stems of no stems is empty at the requested format
+- tests\test_audio_player.cpp:134 frames_of_ms and ms_of_frames: pinned at 48000 and 44100
+- tests\test_audio_player.cpp:32 ms_of_frames and frames_of_ms convert at the sample rate
+- tests\test_badge_pill.cpp:144 window tag: safe and short take the mockup's colours
+- tests\test_build_flags.cpp:51 a Release exe stores its .pdb's bare file name
+- tests\test_docs_match_code.cpp:1270 docs match code: no committed doc names a path into a scratch folder
+- tests\test_docs_match_code.cpp:1277 docs match code: the scratch path check catches each path form and skips only the two folders
+- tests\test_docs_match_code.cpp:1420 docs match code: no permanent doc or code comment names a docs path that is not in the tree
+- tests\test_docs_match_code.cpp:1451 docs match code: the docs path check reads each path form and skips the removed form
+- tests\test_docs_match_code.cpp:2143 docs match code: the README's Stale sentence has no version list
+- tests\test_preview_config.cpp:123 load_preview_config rejects malformed JSON
+- tests\test_preview_source.cpp:297 preview_audio_offset_ms combines delay and Offset
+- tests\test_replay_schedule.cpp:1716 schedule: read_at_own_ms runs the conversion backwards on its own side
+- tests\test_section_names.cpp:15 section names: the generated table agrees with the TSV row for row
+
+## Run tests no record row matched, under "Tests that caught at least one bug" in tests.txt (149)
+
+- tests\test_preview_transport.cpp:80 set_song_length_ms moves the end and pulls the clock back to it
+- tests\test_preview_transport.cpp:217 seek clamps to [0, length]
+- tests\test_preview_transport.cpp:253 gain set before load applies to the next playhead
+- tests\test_audio_player.cpp:76 read_frames past the end zero-fills, auto-pauses, clamps position
+- tests\test_preview_transport.cpp:55 the transport's end is the song's length; unload clears it
+- tests\test_midi.cpp:358 midi: non-MIDI input is rejected
+- tests\test_section_names.cpp:50 section names: an unlisted marker shows its name with spaces for underscores
+- tests\test_audio_player.cpp:42 play, pause, and toggle drive the playhead state
+- tests\test_activation_row_layout.cpp:76 activation row: a short measure keeps the bars at kRowMinBarsX
+- tests\test_preview_transport.cpp:196 a seek while playing brings the audio back after it ran out
+- tests\test_preview_transport.cpp:170 tick pauses at the end and pins the time
+- tests\test_audio_player.cpp:144 Playhead applies the output gain to served frames
+- tests\test_audio_mixer.cpp:88 mix_stems resamples to the output rate and unifies channels
+- tests\test_preview_transport.cpp:142 play seeks the playhead to the clock and both run
+- tests\test_preview_transport.cpp:275 an audio offset seeks the playhead ahead of the clock
+- tests\test_preview_transport.cpp:312 load with no audio offset seeks to the asked position
+- tests\test_section_names.cpp:43 section names: a listed marker shows Clone Hero's words
+- tests\test_pathstring_read.cpp:212 pathstring read: long text with the wrong number of sections is refused
+- tests\test_generated_fills.cpp:88 generated fills: a chord 242 ticks from its line gets none
+- tests\test_generated_fills.cpp:170 generated fills: a chart with its own fills gets none generated
+- tests\test_rules_file.cpp:38 a key that is neither live nor retired still stops the rules file
+- tests\test_audio_mixer.cpp:106 mix_stems adds hand-built stems bit for bit; a zero-channel stem adds nothing
+- tests\test_audio_device.cpp:19 PreviewAudioDevice opens and starts the default output device
+- tests\test_section_names.cpp:60 section names: only the two prefixes mark a section
+- tests\test_audio_mixer.cpp:69 stem_converter_config: same rate and channels is a passthrough, anything else converts
+- tests\test_generated_fills.cpp:119 generated fills: the nearer chord wins, and a tie goes to the later one
+- tests\test_generated_fills.cpp:125 generated fills: after a fill the next candidate is 4 lines on
+- tests\test_generated_fills.cpp:132 generated fills: the first line is never a candidate
+- tests\test_rules_file.cpp:27 each retired rules key loads silently, whatever it says
+- tests\test_midi.cpp:364 midi: SMPTE division is rejected
+- tests\test_midi.cpp:544 midi: a file with no track chunk is refused by both readers
+- tests\test_section_names.cpp:77 section names: the .mid reader drops a section body holding _ENDOFSONG
+- tests\test_preview_transport.cpp:130 with no song length the clock runs free past the audio's end
+- tests\test_midi.cpp:561 midi: a track header cut short by the end of the file ends the chunk walk
+- tests\test_generated_fills.cpp:93 generated fills: a chord exactly on the line has length 0
+- tests\record_fixtures.h:553 fixtures: a record with a tied top-score variant
+- tests\test_preview_source.cpp:79 is_container: a .sng or .srb is a container, a loose notes file is not
+- tests\test_generated_fills.cpp:245 generated fills: every corpus chart's generated fills are pinned
+- tests\test_store_open.cpp:1391 the hardest-figure marker is per profile: unset at first, set for one profile after it is recorded, still unset for another, and it survives a reopen
+- tests\test_generated_fills.cpp:147 generated fills: a 4/4 to 7/8 change places fills on the restarted grid
+- tests\test_generated_fills.cpp:163 generated fills: a 1.0 fill whose chord sits on a meter change takes the new meter
+- tests\test_generated_fills.cpp:138 generated fills: a first chord in measure 3 still counts lines from the second
+- tests\test_generated_fills.cpp:105 generated fills: the 1.0 deadline of a 0 or negative length is the line minus 250 ms
+- tests\test_generated_fills.cpp:62 generated fills: a chord 241 ticks after the second measure line gets a fill
+- tests\test_preview_source.cpp:318 sng_delay_ms reads the delay key in any case
+- tests\test_audio_decode.cpp:93 decode_audio: PCM16 WAV decodes to matching float samples
+- tests\test_midi.cpp:89 midi: from_file on a missing path fails with the file owner's error
+- tests\test_pathstring_read.cpp:99 pathstring read: every refusal is ErrorKind::PathTextRefused
+- tests\test_pathstring_read.cpp:115 pathstring read: "(No activations.)" gives a path with no activations
+- tests\test_midi.cpp:503 midi: the lean reader refuses a file where the full reader does
+- tests\test_generated_fills.cpp:155 generated fills: Clone Hero 1.0 mode reads the same restarted grid
+- tests\display_fixtures.h:155 fixtures: audio runs 5 s past the last note
+- tests\test_preview_config.cpp:134 load_preview_config reads the time box size and margin
+- tests\test_midi.cpp:387 midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does
+- tests\test_preview_source.cpp:113 is_song_stem: an audio file that is not a standalone preview clip
+- tests\test_preview_source.cpp:276 read_ini_delay_ms reads song.ini delay in milliseconds
+- tests\test_preview_config.cpp:100 load_preview_config refuses a missing key and names it
+- tests\test_generated_fills.cpp:98 generated fills: a chord just before its line has a negative length
+- tests\test_preview_transport.cpp:34 an unloaded transport plays and scrubs with no audio
+- tests\test_audio_decode.cpp:107 decode_audio: MP3 fixture decodes to the 220 Hz sine
+- tests\test_midi.cpp:465 midi: the lean reader keeps the notes of the first drum track by either name
+- tests\test_generated_fills.cpp:75 generated fills: Clone Hero 1.0 mode gives half-measure fills, 1.1 line-start fills
+- tests\test_rules_file.cpp:68 a bad rules line refuses in the settings file's shapes
+- tests\test_midi.cpp:532 midi: is_midi_header reads the first four bytes only
+- tests\test_midi.cpp:374 midi: a five-byte delta accumulates past 32 bits, as mido does
+- tests\test_rules_file.cpp:44 the rules file refuses below each of its five floors and reads the floor itself
+- tests\test_midi.cpp:100 midi: running status and zero-velocity note_on
+- tests\test_audio_decode.cpp:82 audio_sniff: the ID3v2 tag length counts the header, the size and the footer
+- tests\test_replay_schedule.cpp:1005 schedule: hydra_replay_build is written
+- tests\test_midi.cpp:177 midi: the first of two recognized track_names wins
+- tests\test_midi.cpp:240 midi: of two drum tracks, the first in file order is the drum track
+- tests\test_midi.cpp:140 midi: a recognized track_name is not displaced by a later name
+- tests\test_preview_source.cpp:122 find_loose_audio: stems beside the notes, preview and art excluded
+- tests\test_audio_decode.cpp:68 sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp3
+- tests\test_replay_schedule.cpp:1345 schedule: one decline rule
+- tests\test_store_open.cpp:142 a database from Hydra 1.6 or older is too old: refused, or set aside for a fresh library
+- tests\test_store_open.cpp:790 a database any release before 2.2.0 wrote is too old: refused, or set aside for a fresh library
+- tests\test_midi.cpp:201 midi: a track named by either drum name, in any case, is the drum track
+- tests\test_midi.cpp:252 midi: a drum track name wins over an earlier unrecognized one in any case
+- tests\test_midi.cpp:157 midi: a recognized track_name wins over an earlier unrecognized one
+- tests\test_midi.cpp:168 midi: a recognized track_name after tick 0 still wins
+- tests\test_midi.cpp:278 midi: track_name is not exposed as text
+- tests\test_preview_config.cpp:127 parse_hex_color follows Onyx stackColor
+- tests\test_app_settings.cpp:227 a settings change whose reads fail shows no other settings' record
+- tests\test_midi.cpp:191 midi: a track with no recognized track_name keeps its first name
+- tests\test_audio_decode.cpp:46 sniff_format classifies audio containers by their magic bytes
+- tests\test_audio_decode.cpp:117 decode_audio: OGG Vorbis fixture decodes to the 220 Hz sine
+- tests\test_replay_schedule.cpp:905 schedule: the late press holds sqout_late_notes
+- tests\test_replay_schedule.cpp:939 schedule: a whole_chord chord with no inside group has an empty inside list and an empty join_gems
+- tests\test_midi.cpp:118 midi: running status survives a meta event
+- tests\test_midi.cpp:261 midi: sysex and skipped metas do not lose time
+- tests\test_preview_source.cpp:88 is_audio_filename / looks_like_audio recognize the formats
+- tests\test_preview_config.cpp:78 the shipped 3d-config.json loads to the Onyx values
+- tests\test_pathstring_read.cpp:135 pathstring read: long text with no activations gives a path with no activations
+- tests\test_replay_schedule.cpp:1272 schedule: a squeeze-out that is also a skipped fill
+- tests\test_replay_schedule.cpp:1680 schedule: a tempo change on an end splits the conversion's sides
+- tests\test_midi.cpp:474 midi: the lean reader sizes each track's messages once
+- tests\display_fixtures.h:191 fixtures: a title made only of tags
+- tests\test_midi.cpp:60 midi: every corpus .mid reads with a sane structure
+- tests\test_midi.cpp:318 midi: each string meta gets its type, mido name and attribute
+- tests\test_audio_decode.cpp:127 decode_stem: a file-path stem and a bytes stem decode identically
+- tests\test_midi.cpp:591 midi: a drum track on track 0 is not the drum track, so the chart has no notes
+- tests\display_fixtures.h:169 fixtures: a Stale record for each cause
+- tests\display_fixtures.h:161 fixtures: a batch record saved for one chart
+- tests\test_midi.cpp:302 midi: each text event is decoded on its own, UTF-8 first, else Windows-1252
+- tests\test_midi.cpp:432 midi: the lean reader keeps only what each track's role reads, at the same ticks
+- tests\test_midi.cpp:697 midi: [section _endofsong] in lower case stays a section
+- tests\test_midi.cpp:602 midi: with drum tracks on track 0 and track 1, track 1 is read
+- tests\test_app_settings.cpp:197 a number setting edited outside its range lands on the edge the file loader uses
+- tests\test_midi.cpp:707 midi: [prc__ENDOFSONG] stays a section
+- tests\test_midi.cpp:682 midi: [section _ENDOFSONG] is not a section
+- tests\test_midi.cpp:690 midi: a section text holding _ENDOFSONG in its middle is not a section
+- tests\test_preview_source.cpp:194 extract_srb_audio: a stream with an audio magic but no codec is not a stem
+- tests\test_midi.cpp:647 midi: of two events tracks, only the first one's sections count
+- tests\test_midi.cpp:739 midi: the lean read keeps the end event
+- tests\test_midi.cpp:616 midi: the events track is named events in any case, and track 0 can be it
+- tests\test_midi.cpp:717 midi: [end] on the events track is the end event, first one wins
+- tests\test_midi.cpp:767 midi: a bass sustain past the last drum note is the last note end; BEAT, VENUE and EVENTS don't count
+- tests\test_midi.cpp:892 mid: a lane's velocity picks the lowest difficulty that shows it
+- tests\test_pathstring_read.cpp:203 pathstring read: the graph entry point refuses a token no fill can place
+- tests\test_midi.cpp:909 mid: 126 is a single lane and 127 a double, note-on to note-off
+- tests\test_midi.cpp:800 midi: the last note end reads each instrument once, from track 1, by instrument name
+- tests\test_audio_decode.cpp:151 decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz
+- tests\test_app_settings.cpp:177 number boxes apply at once but write the INI only on flush
+- tests\test_pathstring_read.cpp:90 pathstring read: a token no fill can place is refused with its position
+- tests\test_replay_schedule.cpp:964 schedule: first_note writes the same schedule as before
+- tests\test_audio_decode.cpp:165 decode_audio: Ogg-Opus output is pinned bit for bit
+- tests\test_replay_schedule.cpp:851 schedule: sp_ready_tick is the second bank arrival
+- tests\test_pathstring_read.cpp:148 pathstring read: a long-text window no fill can place is refused with its position
+- tests\test_replay_schedule.cpp:1378 schedule: the first press group is the activation note
+- tests\test_replay_schedule.cpp:1130 schedule: every skip writes a refusal and a flag
+- tests\test_preview_source.cpp:354 resolve_preview_source: a .srb uses its chart's Offset
+- tests\test_preview_source.cpp:309 resolve_preview_source reads delay from a song.ini in any case
+- tests\test_preview_source.cpp:230 resolve_preview_source: a loose chart parses and finds its audio
+- tests\test_preview_source.cpp:170 extract_srb_audio: trailing audio streams inflate; art is skipped
+- tests\test_preview_source.cpp:211 resolve_preview_source: a .srb with no extractable audio falls back to a loose file beside it
+- tests\test_pathstring_read.cpp:82 pathstring read: every corpus best path round-trips
+- tests\test_pathstring_read.cpp:175 pathstring read: the graph entry point reads the same path as the settings one
+- tests\test_pathstring_read.cpp:126 pathstring read: every corpus path round-trips from Hydra's long Copy path text
+- tests\test_preview_source.cpp:244 containers pass the difficulty through to the chart inside
+- tests\test_preview_source.cpp:332 resolve_preview_source: a .sng's metadata delay replaces the chart Offset
+- tests\test_app_settings.cpp:120 a burst of setting changes ends with one analysis of the final settings
+- tests\test_preview_source.cpp:140 extract_sng_audio: audio entries come back XOR-demasked
+- tests\test_app_settings.cpp:75 commit_settings analyzes the open song again on an SP cap change
+- tests\test_preview_source.cpp:407 resolve_preview_source reads a .sng or .srb from disk once
+- tests\test_preview_source.cpp:439 the song and stem halves share one container read and match the whole
+- tests\test_app_settings.cpp:90 commit_settings analyzes again when the ms limit or the score range changes
+- tests\test_app_settings.cpp:49 commit_settings analyzes the open song again when the chart mode changes
+- tests\test_preview_source.cpp:470 container charts give the same Song, stems and offset as the chart inside

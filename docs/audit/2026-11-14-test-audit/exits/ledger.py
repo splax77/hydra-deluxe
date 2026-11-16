@@ -19,6 +19,17 @@ count beside TOTALS.md section 1 and its joined and unjoined rows, and writes
 every record title with no verdict it could read and every unjoined count row
 to exits/not-in-ledger.md.
 
+Each record row also carries the mutation run's evidence for its test, in the
+mut_ columns (plan step E1c, task M3). The run's files in mutation/ are read
+only through mutation_evidence.read_evidence(). tests.txt (report.py's) owns
+each test's caught count; tools/mutate/first_use.py owns placing a record that
+gives a line and no test name. This script writes those records to
+mutation/line-records.txt and reads first_use.py's table back from
+mutation/line-records.md when it exists. No mut_ column picks an exit. Every
+record row that is not matched to one test, and every run test no record
+matched, is written to mutation/mutation-unmatched.md. The script prints each
+record row whose mut_ columns differ from the ledger it replaces.
+
 Taken from repeats/repeats.py: nothing but the shape (plain regex over the
 files, a TSV with a header line, a short printout). repeats.py reads test
 source, not record files, so there was no record reader to reuse.
@@ -28,6 +39,9 @@ import re
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
+import mutation_evidence  # noqa: E402  M1's reader; the run's files are read through it only
+
 AUD = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(HERE)
 OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(AUD, 'exits', 'ledger.tsv')
 
@@ -114,7 +128,7 @@ def read_records():
         if not name.endswith('.md') or name in SUPERSEDED:
             continue
         lines = lines_of(os.path.join(rec_dir, name))
-        heading, hline, cur = '', 0, None
+        heading, hline, cur, stack = '', 0, None, {}
         in_fence, fence_first = False, False
 
         def close(c):
@@ -137,13 +151,19 @@ def read_records():
             if title is not None:
                 close(cur)
                 kind = 'fence' if in_fence else ('heading' if HEADING.match(line) else 'other')
+                level = len(HEADING.match(line).group(1)) if kind == 'heading' else 9
+                # The headings above this record, innermost first; the mutation join
+                # reads a test file from them when the title names none.
+                above = [(k, stack[k]) for k in sorted(stack, reverse=True) if k < level]
                 if kind == 'heading':
                     heading, hline = title, i
+                    stack = {k: v for k, v in stack.items() if k < level}
+                    stack[level] = title
                 vat = VERDICT.search(line)
+                full = clean(re.split(r'(?:\*\*)?Verdict:', title)[0])
                 cur = {'file': name, 'hline': i, 'heading': heading,
-                       'record': clean(re.split(r'(?:\*\*)?Verdict:', title)[0])[:160],
-                       'kind': kind, 'verdicts': [], 'vlines': [],
-                       'level': len(HEADING.match(line).group(1)) if kind == 'heading' else 9}
+                       'record': full[:160], 'title': full, 'above': above,
+                       'kind': kind, 'verdicts': [], 'vlines': [], 'level': level}
                 if not vat:
                     continue
             if cur is None:
@@ -527,6 +547,301 @@ def second_verdicts(recs):
     return rows
 
 
+# The mutation run's evidence on each record row (plan step E1c, task M3).
+MUT_COLS = ['mut_match', 'mut_test', 'mut_caught', 'mut_reaches', 'mut_caught_none', 'mut_caught_shared',
+            'mut_running_at_limit', 'mut_red_in_timed_out', 'mut_crashed_running', 'mut_run', 'mut_limits']
+# The columns that hold one test's evidence; empty unless the row is matched to one test.
+MUT_EVIDENCE = MUT_COLS[1:9]
+MATCHED = ('name', 'line', 'line, file changed since')
+LINE_RECORDS_TXT = 'line-records.txt'
+LINE_RECORDS_MD = 'line-records.md'
+# Optional: test files that changed between the audit's reading and the run's build,
+# one path per line, written by the main session at task M4 (plan P29).
+CHANGED_SINCE = 'changed-since.txt'
+UNMATCHED = 'mutation-unmatched.md'
+OUTSIDE = 'outside every test case'      # first_use.py's words for a line in no test
+
+FILE_WORD = re.compile(r'[\w./\\-]+\.(?:cpp|hpp|h|py|ps1)\b')
+# first_use.py's table row: slice | record line | file:line | test | reaches | caught | exact.
+PLACED_ROW = re.compile(r'^\| (\S+) \| (\d+) \| (\S+):(\d+) \| (.*) \|\s*\d*\s*\|[^|]*\|[^|]*\|$')
+
+
+def run_index(ev):
+    """The run's tests as tests.txt writes them, each split into file, line and name."""
+    tests = {}
+    for key, t in ev['tests'].items():
+        loc, name = key.split(' ', 1)
+        f, ln = loc.rsplit(':', 1)
+        tests[key] = dict(t, key=key, file=f.replace('\\', '/'), line=int(ln), name=name)
+    return tests
+
+
+def per_test_counts(ev, tests):
+    """Per test: catches through shared state, timed-out bugs it was running in or red in,
+    and crashed bugs it was running in. Each is a count of the entries the run's files
+    list for that test, nothing more."""
+    from collections import Counter
+    out = {
+        'shared': Counter(c['test'] for c in ev['summary']['caught_through_shared_state']),
+        'crashed': Counter(c['test'] for c in ev['summary']['bug_runs_crashed']),
+        'running': Counter(b['running_at_limit'] for b in ev['timed_out'] if b['running_at_limit']),
+        'red': Counter(x for b in ev['timed_out'] for x in set(b['red_in_file'])),
+    }
+    for what, c in out.items():
+        stray = [k for k in c if k not in tests]
+        if stray:
+            raise mutation_evidence.EvidenceError(
+                f'ledger: the run\'s {what} list names tests tests.txt does not hold: {stray[:5]}')
+    return out
+
+
+def test_files(text, by_base):
+    """Test files a text names, as {base name: the run's path, or None when the run did not
+    hold it}. A file counts when the run held it, or when its name or folder marks it as
+    a test; a source file a title mentions in passing does not."""
+    out = {}
+    for w in FILE_WORD.findall(text):
+        w = w.replace('\\', '/').strip('`./')
+        base = os.path.basename(w)
+        if base in by_base:
+            out.setdefault(base, by_base[base])
+        elif base.startswith(('test_', 'uitest_', 'pbtest_')) or '/tests/' in '/' + w or base == 'conftest.py':
+            out.setdefault(base, None)
+    return out
+
+
+def title_lines(title, base):
+    """The test-file lines a title gives: 'file:N', '(:N)' and '(N)', with both ends of
+    'N-M' or 'N to M'. Only when it gives none of those, the first 'line N' or 'lines N-M':
+    a "Read:" title names the test's lines first and other files' lines after them
+    (records/C1.md line 104)."""
+    rng = r'(\d+)(?:\s*(?:-|–|to)\s*(\d+))?'
+    pats = [re.escape(base) + r'`?:' + rng, r'(?<![\w.])\(`?:' + rng, r'\((\d+)\)']
+    found = set()
+    for p in pats:
+        for m in re.finditer(p, title):
+            found.update(int(g) for g in m.groups() if g)
+    if not found:
+        m = re.search(r'\blines? ' + rng, title)
+        if m:
+            found.update(int(g) for g in m.groups() if g)
+    return sorted(found)
+
+
+def read_placed(aud):
+    """first_use.py's table for line-records.txt, as {(slice, record line, file, line):
+    test name or OUTSIDE}; None when the table has not been written."""
+    path = os.path.join(aud, 'mutation', LINE_RECORDS_MD)
+    if not os.path.exists(path):
+        return None
+    out = {}
+    for ln in lines_of(path):
+        m = PLACED_ROW.match(ln)
+        if m and m.group(1) != 'Slice':
+            out[(m.group(1), int(m.group(2)), m.group(3), int(m.group(4)))] = m.group(5)
+    return out
+
+
+def read_changed(aud):
+    path = os.path.join(aud, 'mutation', CHANGED_SINCE)
+    if not os.path.exists(path):
+        return set()
+    return {ln.strip().replace('\\', '/') for ln in lines_of(path) if ln.strip() and not ln.startswith('#')}
+
+
+def slice_of(r):
+    return r['file'][:-3]
+
+
+def match_record(r, tests, by_base, names):
+    """How one record row meets the run: (match, test key or None, reason, candidates,
+    line entries). The rule is the plan's E1c, "How a record is matched to a test".
+
+    A record that is a line under its own heading (records/window-WN3.md line 54, under
+    "Record 1. <test> (<file>:<line>)") is titled by that heading, so when its own line
+    names no test and no line, the heading just above it is read the same way."""
+    res = match_text(r, r['title'], 'its title', r['above'], tests, by_base, names)
+    if res[0] == 'none' and 'no test name' in res[2] and r['kind'] != 'heading' \
+            and r['above'] and r['above'][0][0] >= 2:
+        alt = match_text(r, r['above'][0][1], f'the heading "{r["above"][0][1][:80]}"', r['above'][1:],
+                         tests, by_base, names)
+        if alt[0] != 'none':
+            return alt
+    return res
+
+
+def match_text(r, title, where, above, tests, by_base, names):
+    fs, src = test_files(title, by_base), where
+    if not fs:
+        for _, h in above:
+            fs = test_files(h, by_base)
+            if fs:
+                src = f'the heading "{h[:80]}"'
+                break
+    run_fs = {p for p in fs.values() if p}
+    hits = [t for t in names if t['name'] in title]
+    if fs and not run_fs:
+        why = f'its test file {", ".join(sorted(fs))} (from {src}) is not one of the run\'s files'
+        if hits:
+            why += '; its title also holds the run test ' + ', '.join(t['key'] for t in hits[:3])
+        return 'not in the run', None, why, [], []
+    if run_fs:
+        inside = [t for t in hits if t['file'] in run_fs]
+        if hits and not inside:
+            return ('none', None, f'its title holds the run test {", ".join(t["key"] for t in hits[:3])}, '
+                    f'which is not in its test file {", ".join(sorted(fs))} (from {src})', [], [])
+        hits = inside
+    # A name inside a longer name that also sits in the title is that longer name's.
+    hits = [t for t in hits if not any(u is not t and t['name'] in u['name'] for u in hits)]
+    if len(hits) == 1:
+        return 'name', hits[0]['key'], '', [], []
+    if hits:
+        return 'several', None, 'its title holds more than one test name', [t['key'] for t in hits], []
+    if not fs:
+        return 'none', None, 'names no test file and no test name the run holds', [], []
+    if len(fs) > 1:
+        return ('none', None, f'names no test name the run holds and several test files '
+                f'({", ".join(sorted(fs))}, from {src})', [], [])
+    f = next(iter(run_fs))
+    lines = title_lines(title, os.path.basename(f))
+    if not lines:
+        return 'none', None, f'names {f} (from {src}) but no test name and no line', [], []
+    return 'line', None, '', [], [(slice_of(r), r['hline'], f, ln, src) for ln in lines]
+
+
+def place_lines(entries, placed, tests, changed):
+    """The match for a record whose lines first_use.py placed: (match, key, reason, candidates)."""
+    if placed is None:
+        return ('none', None, 'its line is not placed yet: mutation/line-records.md does not exist '
+                '(task M4 runs first_use.py on line-records.txt)', [])
+    got = []
+    for s, md, f, ln, _ in entries:
+        p = placed.get((s, md, f, ln))
+        if p is None:
+            return 'none', None, f'mutation/line-records.md has no placement for {f}:{ln}', []
+        got.append((ln, p))
+    found = sorted({p for _, p in got})
+    if found == [OUTSIDE]:
+        return 'none', None, 'its line sits outside every test case (first_use.py)', []
+    if len(found) > 1:
+        return ('several', None, 'its lines fall in more than one test',
+                [f'{entries[0][2]}:{ln} {p}' for ln, p in got])
+    by_name = [t for t in tests.values() if t['name'] == found[0] and t['file'] == entries[0][2]]
+    if len(by_name) != 1:
+        return 'none', None, f'first_use.py placed it on "{found[0]}", which tests.txt does not hold', []
+    match = 'line, file changed since' if entries[0][2] in changed else 'line'
+    return match, by_name[0]['key'], '', []
+
+
+def mutation_columns(recs, ev, placed, changed):
+    """Fills r['mut'] (one value per MUT_COLS name) and r['mut_why'], r['mut_cands'] on
+    every record row. Returns the line entries for line-records.txt."""
+    tests = run_index(ev)
+    by_base = {os.path.basename(t['file']): t['file'] for t in tests.values()}
+    names = sorted(tests.values(), key=lambda t: -len(t['name']))
+    counts = per_test_counts(ev, tests)
+    all_entries = []
+    for r in recs:
+        match, key, why, cands, entries = match_record(r, tests, by_base, names)
+        if entries:
+            all_entries += entries
+            match, key, why, cands = place_lines(entries, placed, tests, changed)
+        mut = {c: '' for c in MUT_COLS}
+        mut['mut_match'], mut['mut_run'], mut['mut_limits'] = match, ev['run'], mutation_evidence.LIMITS
+        if key:
+            t = tests[key]
+            mut.update(mut_test=key, mut_caught=str(t['caught']), mut_reaches=str(t['reaches']),
+                       mut_caught_none='yes' if t['caught_none'] else 'no',
+                       mut_caught_shared=str(counts['shared'][key]),
+                       mut_running_at_limit=str(counts['running'][key]),
+                       mut_red_in_timed_out=str(counts['red'][key]),
+                       mut_crashed_running=str(counts['crashed'][key]))
+        r['mut'], r['mut_why'], r['mut_cands'] = mut, why, cands
+    return all_entries
+
+
+def write_line_records(path, entries):
+    """The records that give a line and no test name, in tools/mutate/first_use_lines.txt's columns."""
+    out = ['# T8 M3 line records: each ledger record row whose title gives a test file the run held',
+           '# and a line, but no test name. Written by exits/ledger.py; do not edit by hand.',
+           '# A title giving several lines, or a range, has one entry per line (both ends of a range).',
+           '# Columns (tab-separated): record file, record line, test file, test line, where the file came from.',
+           '']
+    out += ['\t'.join([s, str(md), f, str(ln), src.replace('\t', ' ')]) for s, md, f, ln, src in entries]
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('\n'.join(out) + '\n')
+
+
+def unmatched_tests(recs, ev):
+    tests = run_index(ev)
+    named = {r['mut']['mut_test'] for r in recs if r['mut']['mut_test']}
+    return [k for k in tests if k not in named]
+
+
+def write_unmatched(path, recs, ev):
+    """Every record row not matched to one test, by record id with its reason, and every
+    run test no record row matched, by name."""
+    left = unmatched_tests(recs, ev)
+    tests = run_index(ev)
+    kinds = ['not in the run', 'several', 'none']
+    rows = {k: [r for r in recs if r['mut']['mut_match'] == k] for k in kinds}
+    out = [f'# Mutation run {ev["run"]}: records and tests the ledger did not match', '',
+           'ledger.py writes this file; do not edit it by hand. The rule that matches a record row to a '
+           'test is in the plan, docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md, step E1c. '
+           'Nothing here is judged, and no line here picks an exit.', '',
+           mutation_evidence.LIMITS, '',
+           f'There are {sum(len(v) for v in rows.values())} record rows ('
+           + ', '.join(f'{len(rows[k])} {k}' for k in kinds)
+           + f') and {len(left)} run tests that no record row matched.', '']
+    for k in kinds:
+        out += [f'## Record rows: {k} ({len(rows[k])})', '']
+        for r in rows[k]:
+            line = f'- records/{r["file"]}:{r["hline"]} "{r["record"][:100]}": {r["mut_why"]}.'
+            if r['mut_cands']:
+                line += ' Candidates: ' + '; '.join(r['mut_cands']) + '.'
+            out.append(line)
+        out.append('')
+    none_title = mutation_evidence.TESTS_NONE_TITLE
+    for title, want in ((none_title, True), (mutation_evidence.TESTS_SOME_TITLE, False)):
+        ks = [k for k in left if tests[k]['caught_none'] == want]
+        out += [f'## Run tests no record row matched, under "{title}" in tests.txt ({len(ks)})', '']
+        out += [f'- {k}' for k in ks] + ['']
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('\n'.join(out))
+    return left
+
+
+def read_old_mut(path):
+    """The mut_ columns of the record rows of the ledger about to be replaced, by row id."""
+    if not os.path.exists(path):
+        return {}
+    lines = lines_of(path)
+    head = lines[0].split('\t') if lines else []
+    if 'mut_match' not in head:
+        return {}
+    ix = {c: head.index(c) for c in MUT_COLS if c in head}
+    out = {}
+    for ln in lines[1:]:
+        cells = ln.split('\t')
+        if cells[0] == 'record':
+            out[cells[head.index('id')]] = {c: cells[i] if i < len(cells) else '' for c, i in ix.items()}
+    return out
+
+
+def mut_changes(old, recs):
+    """Row ids whose mut_ columns differ from the old ledger's, with the columns that differ."""
+    if not old:
+        return []
+    out = []
+    for r in recs:
+        rid = f"records/{r['file']}:{r['hline']}"
+        was = old.get(rid)
+        diff = [c for c in MUT_COLS if was is None or was.get(c, '') != r['mut'][c]]
+        if diff:
+            out.append((rid, diff, was, r['mut']))
+    return out
+
+
 def write_not_in_ledger(path, unread, counts):
     """List what the script could not read, by file and line, for the scouts to fill."""
     unj = [r for r in counts if not r['join']]
@@ -581,10 +896,17 @@ def main():
     settle = apply_answers(counts)
     join_counts(counts, recs)
     seconds = second_verdicts(recs)
+    try:
+        ev = mutation_evidence.read_evidence(AUD)
+        entries = mutation_columns(recs, ev, read_placed(AUD), read_changed(AUD))
+    except mutation_evidence.EvidenceError as e:
+        print(e, file=sys.stderr)
+        sys.exit(1)
+    old_mut = read_old_mut(OUT)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     cols = ['kind', 'file', 'line', 'heading_or_section', 'record', 'test', 'verdict', 'earlier_verdicts',
             'faults_counter', 'faults', 'correction', 'answer', 't6', 't7_reopened', 'reason',
-            'id', 'joins_record', 'verifier_verdict_if_different', 'byreading_verdict']
+            'id', 'joins_record', 'verifier_verdict_if_different', 'byreading_verdict'] + MUT_COLS
     with open(OUT, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\t'.join(cols) + '\n')
         for r in recs:
@@ -594,12 +916,19 @@ def main():
                                 '', v[-1], ','.join(v[:-1]), '', '', '', '', t6,
                                 'yes' if r['file'] in T7_REOPENED else '', '',
                                 f"records/{r['file']}:{r['hline']}", '',
-                                ','.join(r.get('verifier', [])), ','.join(r.get('byreading', []))]) + '\n')
+                                ','.join(r.get('verifier', [])), ','.join(r.get('byreading', []))]
+                               + [r['mut'][c] for c in MUT_COLS]) + '\n')
         for r in counts:
+            # A count row reaches its record's mut_ columns through joins_record; it has none of its own.
             fh.write('\t'.join(['count', 'counts/' + r['cf'] + '.md', str(r['line']), r['section'],
                                 (r['rec'] + ' ' + r['num']).strip(), r['test'], '', '',
                                 r['faults_raw'], ','.join(r['faults']) or 'none', r['fix'], r['answer'],
-                                '', '', r['reason'][:200], '', r['join'], '', '']) + '\n')
+                                '', '', r['reason'][:200], '', r['join'], '', '']
+                               + [''] * len(MUT_COLS)) + '\n')
+    mdir = os.path.join(AUD, 'mutation')
+    write_line_records(os.path.join(mdir, LINE_RECORDS_TXT), entries)
+    unm_path = os.path.join(mdir, UNMATCHED)
+    no_record = write_unmatched(unm_path, recs, ev)
 
     from collections import Counter
     vc = Counter(r['verdicts'][-1] for r in recs)
@@ -659,7 +988,24 @@ def main():
     nil = os.path.join(os.path.dirname(OUT), 'not-in-ledger.md')
     print('\nnot-in-ledger.md lines (one per unread record title or unjoined count row):',
           write_not_in_ledger(nil, unread, counts))
-    print('\nwrote', OUT, 'and', nil)
+    mc = Counter(r['mut']['mut_match'] for r in recs)
+    print(f'\nmutation run {ev["run"]}: record rows by mut_match:', dict(mc), '| total', sum(mc.values()))
+    nir = [r for r in recs if r['mut']['mut_match'] == 'not in the run']
+    py = sum(1 for r in nir if '.py' in r['mut_why'].split(' (from ')[0])
+    print(f'  not in the run: {py} name a Python file, {len(nir) - py} another file')
+    print('  line records written to', os.path.join(mdir, LINE_RECORDS_TXT), ':', len(entries), 'entries from',
+          len({(e[0], e[1]) for e in entries}), 'record rows;', LINE_RECORDS_MD,
+          'read' if read_placed(AUD) is not None else 'not there yet')
+    named = Counter(r['mut']['mut_test'] for r in recs if r['mut']['mut_test'])
+    print(f'  run tests: {len(run_index(ev))}; matched by a record row {len(named)}, by two or more '
+          f'{sum(1 for n in named.values() if n > 1)}; no record row {len(no_record)}')
+    ch = mut_changes(old_mut, recs)
+    print('\nrecord rows whose mut_ columns changed since the last ledger:',
+          len(ch) if old_mut else 'none to compare (the last ledger had no mut_ columns)')
+    for rid, diff, was, now in ch:
+        print(f'  {rid}: ' + '; '.join(f'{c} {(was or {}).get(c, "")!r} to {now[c]!r}'
+                                        for c in diff if c != 'mut_limits'))
+    print('\nwrote', OUT, ',', nil, 'and', unm_path)
 
 
 if __name__ == '__main__':

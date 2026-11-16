@@ -5,13 +5,17 @@ Every expected value below is read from the file it names, not typed from memory
 """
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.argv = sys.argv[:1]
 import ledger  # noqa: E402
+import mutation_evidence  # noqa: E402
 
 AUD = os.path.dirname(HERE)
 
@@ -178,6 +182,196 @@ class LedgerOnRealFiles(unittest.TestCase):
         self.assertTrue(any(r['text'].startswith('616 ') for r in rows))
         for r in rows:
             self.assertIn('X9', r['faults'])
+
+
+MATCH_VALUES = ('name', 'line', 'line, file changed since', 'not in the run', 'none', 'several')
+# The E1 ledger, before the mut_ columns: the commit the plan's task M4 names for it.
+E1_COMMIT = '891ab424'
+LEDGER_IN_REPO = 'docs/audit/2026-11-14-test-audit/exits/ledger.tsv'
+
+
+def git_show(spec):
+    root = os.path.dirname(os.path.dirname(os.path.dirname(AUD)))
+    return subprocess.run(['git', 'show', spec], cwd=root, capture_output=True, check=True,
+                          encoding='utf-8').stdout
+
+
+class MutationColumnsOnRealFiles(unittest.TestCase):
+    """Plan step E1c, task M3's acceptance, on the real records and the copied run files."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.recs, _ = ledger.read_records()
+        cls.ev = mutation_evidence.read_evidence(AUD)
+        cls.placed = ledger.read_placed(AUD)
+        cls.entries = ledger.mutation_columns(cls.recs, cls.ev, cls.placed, ledger.read_changed(AUD))
+        cls.tmp = tempfile.mkdtemp()
+        path = os.path.join(cls.tmp, ledger.UNMATCHED)
+        cls.left = ledger.write_unmatched(path, cls.recs, cls.ev)
+        with open(path, encoding='utf-8') as fh:
+            cls.unmatched = fh.read()
+        cls.ledger_lines = ledger.lines_of(os.path.join(AUD, 'exits', 'ledger.tsv'))
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tmp)
+
+    def matched(self):
+        return [r for r in self.recs if r['mut']['mut_match'] in ledger.MATCHED]
+
+    def test_every_record_row_has_one_match_and_every_unmatched_row_is_listed(self):
+        from collections import Counter
+        c = Counter(r['mut']['mut_match'] for r in self.recs)
+        self.assertLessEqual(set(c), set(MATCH_VALUES))
+        self.assertEqual(sum(c.values()), len(self.recs))
+        for r in self.recs:
+            if r['mut']['mut_match'] not in ledger.MATCHED:
+                self.assertIn(f'- records/{r["file"]}:{r["hline"]} ', self.unmatched, r['title'][:80])
+                self.assertTrue(r['mut_why'])
+
+    def test_every_run_test_no_record_names_is_listed(self):
+        named = {r['mut']['mut_test'] for r in self.matched()}
+        for k in self.ev['tests']:
+            if k not in named:
+                self.assertIn(f'\n- {k}\n', self.unmatched)
+        self.assertEqual(len(self.left), sum(1 for k in self.ev['tests'] if k not in named))
+
+    def test_the_committed_unmatched_list_and_ledger_are_current(self):
+        with open(os.path.join(AUD, 'mutation', ledger.UNMATCHED), encoding='utf-8') as fh:
+            self.assertEqual(fh.read(), self.unmatched)
+        old = ledger.read_old_mut(os.path.join(AUD, 'exits', 'ledger.tsv'))
+        self.assertEqual(ledger.mut_changes(old, self.recs), [])
+
+    def test_matched_rows_carry_their_tests_counts(self):
+        self.assertTrue(self.matched())
+        for r in self.matched():
+            t = self.ev['tests'][r['mut']['mut_test']]
+            self.assertEqual(r['mut']['mut_caught'], str(t['caught']))
+            self.assertEqual(r['mut']['mut_reaches'], str(t['reaches']))
+            self.assertEqual(r['mut']['mut_caught_none'], 'yes' if t['caught_none'] else 'no')
+
+    def test_caught_none_tests_marked_plus_unmatched_come_to_the_reports_count(self):
+        yes = {r['mut']['mut_test'] for r in self.matched() if r['mut']['mut_caught_none'] == 'yes'}
+        left_none = [k for k in self.left if self.ev['tests'][k]['caught_none']]
+        self.assertEqual(len(yes) + len(left_none), self.ev['report']['tests_caught_none'])
+
+    def test_rows_not_matched_to_one_test_hold_no_evidence(self):
+        for r in self.recs:
+            if r['mut']['mut_match'] not in ledger.MATCHED:
+                for c in ledger.MUT_EVIDENCE:
+                    self.assertEqual(r['mut'][c], '', (r['file'], r['hline'], c))
+
+    def test_every_row_with_a_test_holds_the_limits_sentence(self):
+        for r in self.matched():
+            self.assertTrue(r['mut']['mut_test'])
+            self.assertEqual(r['mut']['mut_limits'], mutation_evidence.LIMITS)
+            self.assertEqual(r['mut']['mut_run'], self.ev['run'])
+        for n in ('(1)', '(2)', '(3)', '(4)'):
+            self.assertIn(n, mutation_evidence.LIMITS)
+
+    def test_running_at_limit_over_all_tests_comes_to_the_blocks_that_name_one(self):
+        per = {r['mut']['mut_test']: int(r['mut']['mut_running_at_limit']) for r in self.matched()}
+        counts = ledger.per_test_counts(self.ev, ledger.run_index(self.ev))
+        total = sum(per.values()) + sum(counts['running'][k] for k in self.left)
+        self.assertEqual(total, sum(1 for b in self.ev['timed_out'] if b['running_at_limit']))
+
+    def test_no_timed_out_bug_is_credited_as_a_catch(self):
+        timed_out = {b['number'] for b in self.ev['timed_out']}
+        for k, t in self.ev['tests'].items():
+            self.assertFalse(timed_out & set(t['bugs']), k)
+
+    def test_a_changed_timed_out_file_changes_exactly_its_tests_rows(self):
+        # Move one block's running test to another test, in a copy of mutation/.
+        src = os.path.join(AUD, 'mutation')
+        aud2 = os.path.join(self.tmp, 'aud')
+        os.makedirs(os.path.join(aud2, 'mutation'))
+        for name in mutation_evidence.WHOLE:
+            shutil.copyfile(os.path.join(src, name), os.path.join(aud2, 'mutation', name))
+        block = next(b for b in self.ev['timed_out'] if b['running_at_limit']
+                     and any(r['mut']['mut_test'] == b['running_at_limit'] for r in self.matched()))
+        was = block['running_at_limit']
+        other = next(r['mut']['mut_test'] for r in self.matched() if r['mut']['mut_test'] != was)
+        with open(os.path.join(src, mutation_evidence.TIMED_OUT_FILE), 'rb') as fh:
+            raw = fh.read().decode('utf-8')
+        head = block['header']
+        at = raw.index(head + '\n') if head + '\n' in raw else raw.index(head + '\r\n')
+        end = raw.index('running at the time limit: ' + was, at)
+        raw = raw[:end] + raw[end:].replace(was, other, 1)
+        with open(os.path.join(aud2, 'mutation', mutation_evidence.TIMED_OUT_FILE), 'wb') as fh:
+            fh.write(raw.encode('utf-8'))
+        ev2 = mutation_evidence.read_evidence(aud2)
+        recs2, _ = ledger.read_records()
+        ledger.mutation_columns(recs2, ev2, self.placed, ledger.read_changed(AUD))
+        old = {f"records/{r['file']}:{r['hline']}": r['mut'] for r in self.recs}
+        changed = ledger.mut_changes(old, recs2)
+        want = {f"records/{r['file']}:{r['hline']}" for r in self.recs if r['mut']['mut_test'] in (was, other)}
+        self.assertEqual({c[0] for c in changed}, want)
+        for _, diff, _, _ in changed:
+            self.assertEqual(diff, ['mut_running_at_limit'])
+
+    def test_count_rows_hold_no_mut_value_of_their_own(self):
+        head = self.ledger_lines[0].split('\t')
+        ix = [head.index(c) for c in ledger.MUT_COLS]
+        kinds = set()
+        for ln in self.ledger_lines[1:]:
+            cells = ln.split('\t')
+            kinds.add(cells[0])
+            if cells[0] != 'record':
+                self.assertEqual([cells[i] for i in ix], [''] * len(ix), ln[:80])
+        self.assertEqual(kinds, {'record', 'count'})
+
+    def test_the_e1_columns_and_rows_are_unchanged(self):
+        before = git_show(f'{E1_COMMIT}:{LEDGER_IN_REPO}').splitlines()
+        self.assertEqual(len(before), len(self.ledger_lines))
+        width = len(before[0].split('\t'))
+        for b, n in zip(before, self.ledger_lines):
+            self.assertEqual(n.split('\t')[:width], b.split('\t'))
+
+    def test_line_records_go_out_in_first_use_columns(self):
+        path = os.path.join(AUD, 'mutation', ledger.LINE_RECORDS_TXT)
+        rows = [ln.split('\t') for ln in ledger.lines_of(path) if ln and not ln.startswith('#')]
+        self.assertEqual(rows, [[s, str(md), f, str(ln), src] for s, md, f, ln, src in self.entries])
+        for row in rows:
+            self.assertTrue(row[3].isdigit())          # first_use.py reads the fourth column as the line
+        self.assertNotIn('not placed', ''.join(ledger.lines_of(path)).lower())   # its section switch
+
+    def test_first_use_tables_rows_are_read(self):
+        # F1's table, written by first_use.py (merge 1acf6a8f), in the shape line-records.md takes.
+        table = git_show('1acf6a8f:tools/mutate/first_use_table.md').splitlines()
+        rows = [ln for ln in table if ln.startswith('| ') and not ln.startswith('| Slice')]
+        self.assertTrue(rows)
+        os.makedirs(os.path.join(self.tmp, 'placed', 'mutation'))
+        with open(os.path.join(self.tmp, 'placed', 'mutation', ledger.LINE_RECORDS_MD), 'w', encoding='utf-8') as fh:
+            fh.write('\n'.join(table) + '\n')
+        placed = ledger.read_placed(os.path.join(self.tmp, 'placed'))
+        for ln in rows:
+            self.assertTrue(ledger.PLACED_ROW.match(ln), ln)
+            cells = [c.strip() for c in ln.strip('|').split('|')]
+            f, n = cells[2].rsplit(':', 1)
+            self.assertEqual(placed[(cells[0], int(cells[1]), f, int(n))], cells[3])
+
+    def test_a_placed_line_matches_one_test_or_says_why_not(self):
+        rec_entries = {}
+        for e in self.entries:
+            rec_entries.setdefault((e[0], e[1]), []).append(e)
+        es = next(v for v in rec_entries.values() if len(v) == 1)
+        f = es[0][2]
+        in_file = [t for t in ledger.run_index(self.ev).values() if t['file'] == f]
+        key = lambda e: (e[0], e[1], e[2], e[3])
+        tests = ledger.run_index(self.ev)
+        one = ledger.place_lines(es, {key(es[0]): in_file[0]['name']}, tests, set())
+        self.assertEqual(one[:2], ('line', in_file[0]['key']))
+        self.assertEqual(ledger.place_lines(es, {key(es[0]): in_file[0]['name']}, tests, {f})[0],
+                         'line, file changed since')
+        self.assertEqual(ledger.place_lines(es, {key(es[0]): ledger.OUTSIDE}, tests, set())[0], 'none')
+        self.assertEqual(ledger.place_lines(es, {}, tests, set())[0], 'none')
+        self.assertEqual(ledger.place_lines(es, None, tests, set())[0], 'none')
+        two = next(v for v in rec_entries.values() if len(v) == 2)
+        f2 = [t for t in tests.values() if t['file'] == two[0][2]]
+        if len(f2) > 1:
+            got = ledger.place_lines(two, {key(two[0]): f2[0]['name'], key(two[1]): f2[1]['name']}, tests, set())
+            self.assertEqual(got[0], 'several')
+            self.assertEqual(len(got[3]), 2)
 
 
 if __name__ == '__main__':
