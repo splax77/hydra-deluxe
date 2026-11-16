@@ -685,10 +685,10 @@ Timed-out bugs count as caught but are listed apart. Crashed bugs are ones
 where the test program crashed; the line names the test that was running.
 Incomplete runs are runs whose files were missing, cut short or did not
 agree with the exit code; they are not counted either way. Caught bugs are
-the ones a test went red on. After those come the bugs no test reaches, the bugs that were
-reached but never run because the run stopped first, the red tests with no
-cause the run shows, the tests red with no bug in the mapping run, and the
-skipped spots with their reasons.
+the ones a test went red on. After those come the bugs no test reaches,
+the bugs that were reached but never run because the run stopped first,
+the red tests with no cause the run shows, the tests red with no bug in the
+mapping run, and the skipped spots with their reasons.
 
 A red test with no cause the run shows is an error, not a catch. It means a
 test failed in a bug's run although nothing in that process ran the bug
