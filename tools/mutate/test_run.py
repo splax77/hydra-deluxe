@@ -121,6 +121,53 @@ class DoctestCaughtCrash(unittest.TestCase):
                 self.assertEqual(r["crash"]["test"], run.test_id("second", FILE, 20))
 
 
+class LockedFile(unittest.TestCase):
+    """A run's file that Windows will not open yet, as when a scanner holds it."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.out = Path(self.dir.name) / "7.out"
+        self.log = Path(self.dir.name) / "7.log"
+        self.out.write_text(_passed("first", 10, SWITCH), encoding="utf-8")
+        self.log.write_text("", encoding="utf-8")
+        self.real_read_bytes = Path.read_bytes
+        self.real_wait = run.LOCKED_FILE_WAIT_SECONDS
+        run.LOCKED_FILE_WAIT_SECONDS = 0.5
+
+    def tearDown(self):
+        Path.read_bytes = self.real_read_bytes
+        run.LOCKED_FILE_WAIT_SECONDS = self.real_wait
+        self.dir.cleanup()
+
+    def _lock(self, path, times):
+        left = {"n": times}
+        real = self.real_read_bytes
+
+        def read_bytes(p):
+            if p == path and left["n"] != 0:
+                left["n"] -= 1
+                raise PermissionError(13, "Permission denied", str(p))
+            return real(p)
+        Path.read_bytes = read_bytes
+
+    def test_a_file_locked_for_a_moment_is_read(self):
+        self._lock(self.out, 2)
+        self.assertEqual(run.read_run_file(self.out), self.out.read_bytes())
+
+    def test_a_file_that_stays_locked_makes_the_bug_incomplete(self):
+        self._lock(self.out, -1)
+        m = _map()
+        r = run.result_from_files(SWITCH, m, run.files_for(SWITCH, m), self.out, self.log, 0, 0.5, False)
+        self.assertEqual(r["state"], "incomplete")
+        self.assertIn("stayed locked", " ".join(r["why"]))
+
+    def test_a_locked_log_makes_the_bug_incomplete(self):
+        self._lock(self.log, -1)
+        m = _map()
+        r = run.result_from_files(SWITCH, m, run.files_for(SWITCH, m), self.out, self.log, 0, 0.5, False)
+        self.assertEqual(r["state"], "incomplete")
+
+
 class ProcessEndedCrash(unittest.TestCase):
     def test_the_test_the_process_died_inside_caught_the_bug(self):
         # A fast fail: Windows ends the process with STATUS_STACK_BUFFER_OVERRUN
@@ -182,6 +229,68 @@ class SurvivedBug(unittest.TestCase):
         self.assertAlmostEqual(bug["time_limit_seconds"], 5.875)
         self.assertEqual(summary["time_limit"], {"rule": run.TIME_LIMIT_RULE, "lowest_seconds": 5.875,
                                                  "highest_seconds": 5.875})
+
+
+class Resume(unittest.TestCase):
+    """--resume runs only the bugs a stopped run left with no json."""
+
+    def setUp(self):
+        self.calls = []
+        self.tmp = tempfile.TemporaryDirectory()
+        self.build = Path(self.tmp.name) / "build"
+        (self.build / "Release").mkdir(parents=True)
+        mutants = self.build / "mutants.json"
+        mutants.write_text(json.dumps(LISTING), encoding="utf-8")
+        self.exe = self.build / "Release" / "hydra_tests.exe"
+        self.exe.write_bytes(b"")
+        later = mutants.stat().st_mtime + 10
+        os.utime(self.exe, (later, later))
+        self.out = Path(self.tmp.name) / "out"
+        self.real = run.run_tests
+        run.run_tests = self._fake
+        args = argparse.Namespace(build=self.build, processes=1, out=self.out, map_only=False)
+        self.assertEqual(run._run(args), 0)
+        # The build is older than the run, as it is for a real stopped run.
+        os.utime(self.out / "map.out", (later + 10, later + 10))
+        self.calls.clear()
+
+    def tearDown(self):
+        run.run_tests = self.real
+        self.tmp.cleanup()
+
+    def _fake(self, exe, args, out_file, log_file, cwd, mutant, timeout, err_file=None):
+        self.calls.append({"args": args, "mutant": mutant, "timeout": timeout})
+        out_file.write_bytes(MAP_TEXT.encode("utf-8"))
+        log_file.write_bytes(MAP_LOG.encode("utf-8") if mutant is None else b"")
+        return run.EXIT_PASSED, 1.0, False
+
+    def _resume(self):
+        return run.main(["--build", str(self.build), "--processes", "1", "--resume", str(self.out)])
+
+    def test_a_bug_with_no_json_is_run_again_with_its_old_limit(self):
+        (self.out / "bugs" / f"{SWITCH}.json").unlink()
+        self.assertEqual(self._resume(), 0)
+        self.assertEqual([c["mutant"] for c in self.calls], [SWITCH])
+        self.assertAlmostEqual(self.calls[0]["timeout"], 5.875)
+        bug = json.loads((self.out / "bugs" / f"{SWITCH}.json").read_text(encoding="utf-8"))
+        self.assertEqual(bug["state"], "survived")
+        summary = json.loads((self.out / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["resumed_bug_runs"], 1)
+        self.assertEqual(summary["bug_runs_by_state"], {"survived": 1})
+
+    def test_a_finished_run_runs_nothing_and_no_mapping_run(self):
+        self.assertEqual(self._resume(), 0)
+        self.assertEqual(self.calls, [])
+        summary = json.loads((self.out / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["resumed_bug_runs"], 0)
+        self.assertEqual(summary["bug_runs_by_state"], {"survived": 1})
+
+    def test_a_build_newer_than_the_run_stops_the_resume(self):
+        (self.out / "bugs" / f"{SWITCH}.json").unlink()
+        newer = (self.out / "map.out").stat().st_mtime + 10
+        os.utime(self.exe, (newer, newer))
+        self.assertEqual(self._resume(), 1)
+        self.assertEqual(self.calls, [])
 
 
 def _map_of(*tests):

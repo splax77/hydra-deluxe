@@ -643,6 +643,20 @@ py -I tools/mutate/run.py --rescore build-mutation\runs\<run>
 It takes no other flag but `--build`. The `rescore` function in `run.py`
 says what it reads and what it rewrites.
 
+To finish a run that stopped part way, give `--resume` its folder:
+
+```
+py -I tools/mutate/run.py --resume build-mutation\runs\<run>
+```
+
+It runs only the reached bugs that have no result json yet, with the
+folder's own mapping run, so each gets the files and the time limit it would
+have had. It takes `--build` and `--processes`, and stops if
+`hydra_tests.exe` was built after the run's mapping run. It writes `summary.json` from every bug json; the wall time
+and process count in it are the resumed part's, and `resumed_bug_runs` says
+how many bugs it ran. The `resume`
+function in `run.py` says the rest.
+
 Last, write the report from the run folder:
 
 ```
@@ -683,8 +697,9 @@ the bugs in lists, one bug per line with its file, line and change. The
 lists are these. Survivors are bugs some test reaches that no test caught.
 Timed-out bugs count as caught but are listed apart. Crashed bugs are ones
 where the test program crashed; the line names the test that was running.
-Incomplete runs are runs whose files were missing, cut short or did not
-agree with the exit code; they are not counted either way. Caught bugs are
+Incomplete runs are runs whose files were missing, cut short, stayed locked
+by Windows for 10 s after the run, or did not agree with the exit code; they
+are not counted either way. Caught bugs are
 the ones a test went red on. After those come the bugs no test reaches,
 the bugs that were reached but never run because the run stopped first,
 the red tests with no cause the run shows, the tests red with no bug in the
