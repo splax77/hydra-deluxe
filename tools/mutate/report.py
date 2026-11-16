@@ -64,8 +64,8 @@ OPENING = [
     "Each verdict comes from one run of its bug, so it reads \"caught in its run\" or \"survived its run\". "
     "A bug in threaded code, or one that reads past the end of memory, may land either way in another run.",
     "No tool can say whether a survivor is an equivalent bug, one that changes nothing a user could see.",
-    "A bug the tests found by crashing the test program counts as found, but no test is credited with "
-    "catching it; the test that was running is named on the bug's line.",
+    "A bug the tests found by crashing the test program counts as found; the test that was running is "
+    "named on the bug's line, and is credited as a catch only if run.py's sort_red_tests sorted it so.",
     "A test that went red in the mapping run, with every switch off, is red with no bug and is left out "
     "of every bug.",
 ]
@@ -86,8 +86,8 @@ def catches(bug: dict) -> list[dict]:
 
     These are the red tests bug_result sorted as catches, and no others. A
     crash makes its bug found (bug_result's state, which summarize counts)
-    but credits no test: the test that was running is named on the bug's
-    crash line. Red tests with no cause the run shows are errors, not
+    and the test that was running is a catch only when sort_red_tests
+    sorted it as one; this reads that list. Red tests with no cause the run shows are errors, not
     catches; a timed-out or incomplete run sorts none.
     """
     out: list[dict] = []
