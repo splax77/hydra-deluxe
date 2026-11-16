@@ -64,6 +64,8 @@ OPENING = [
     "Each verdict comes from one run of its bug, so it reads \"caught in its run\" or \"survived its run\". "
     "A bug in threaded code, or one that reads past the end of memory, may land either way in another run.",
     "No tool can say whether a survivor is an equivalent bug, one that changes nothing a user could see.",
+    "A bug the tests found by crashing the test program counts as found, but no test is credited with "
+    "catching it; the test that was running is named on the bug's line.",
     "A test that went red in the mapping run, with every switch off, is red with no bug and is left out "
     "of every bug.",
 ]
@@ -72,8 +74,7 @@ OPENING = [
 # How bugs.txt names each kind of catch, before the test's name.
 HOW_RED = "red"
 HOW_SHARED = "red through state an earlier test left"
-HOW_CRASHED = "crashed while it ran"
-CATCH_HOWS = (HOW_RED, HOW_SHARED, HOW_CRASHED)
+CATCH_HOWS = (HOW_RED, HOW_SHARED)
 
 
 class ReportError(RuntimeError):
@@ -83,9 +84,11 @@ class ReportError(RuntimeError):
 def catches(bug: dict) -> list[dict]:
     """The tests a bug's json credits with catching it, each once, and how.
 
-    These are the red tests bug_result sorted as catches, and the test that
-    was running when the run crashed. Red tests with no cause the run shows
-    are errors, not catches; a timed-out or incomplete run sorts none.
+    These are the red tests bug_result sorted as catches, and no others. A
+    crash makes its bug found (bug_result's state, which summarize counts)
+    but credits no test: the test that was running is named on the bug's
+    crash line. Red tests with no cause the run shows are errors, not
+    catches; a timed-out or incomplete run sorts none.
     """
     out: list[dict] = []
     seen: set[str] = set()
@@ -99,8 +102,6 @@ def catches(bug: dict) -> list[dict]:
         add(c["test"], HOW_RED, c["checks"], c["exceptions"])
     for t in bug["caught_through_shared_state"]:
         add(t, HOW_SHARED)
-    if bug["crash"] is not None:
-        add(bug["crash"]["test"], HOW_CRASHED)
     return out
 
 

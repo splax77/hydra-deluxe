@@ -157,6 +157,11 @@ class RealRun(unittest.TestCase):
         totals = [int(_TOTAL.match(l).group(1)) for l in self.report.splitlines() if _TOTAL.match(l)]
         self.assertEqual(len(totals), 1)
         self.assertEqual(sum(per_bug.values()), totals[0])
+        # bug_result owns who caught a bug: the total is its two lists, and a
+        # crashed run's running test is not a catch the report adds.
+        own = sum(len({c["test"] for c in b["caught_by"]} | set(b["caught_through_shared_state"]))
+                  for b in self.bugs.values())
+        self.assertEqual(own, totals[0])
         self.assertEqual(sum(self.rows.values()), totals[0])
         # The same pairs, not only the same sum: each test's catches are the
         # bugs whose block names it as a catch.
