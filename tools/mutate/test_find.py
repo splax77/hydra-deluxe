@@ -31,6 +31,7 @@ _BINARY = r"(?:==|!=|<=|>=|<|>|&&|\|\|)"
 # finder about that token. None: no search can find a real line (said why).
 SEARCHES = {
     "preprocessor": re.compile(r"(?m)^[ \t]*#[ \t]*(?:el)?if\b[^\n]*?(?P<tok>" + _BINARY + r") "),
+    "operator_name": re.compile(r"\boperator ?(?P<tok>==|!=|<=|>=|<|>|!)\s*\("),
     "template_bracket": re.compile(r"\w(?P<tok><)\w"),
     "unspaced_and_or": re.compile(r"\w(?P<tok>&&) \w"),
     "brace": re.compile(r"(?P<tok>!)\w+\(\[&\]\s*\{"),
