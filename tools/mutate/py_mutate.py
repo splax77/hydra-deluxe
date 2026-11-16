@@ -9,7 +9,7 @@ modules holding a test that reaches it are run. The real folder is only
 read, never written.
 
     py -I tools/mutate/py_mutate.py --target C:/Users/Patrick/.claude/gates --out <run folder>
-    py -I tools/mutate/py_mutate.py --target tools --mutate agent_cost.py --tests test_agent_cost.py
+    py -I tools/mutate/py_mutate.py --target tools --out <run folder> --mutate agent_cost.py --tests test_agent_cost
 
 A wrapped spot reads `((changed) if _hm_switch(17) else (original))`. Python's
 own parser (`ast`) finds the spots, so comments and strings never match. The
