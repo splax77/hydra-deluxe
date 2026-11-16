@@ -4,7 +4,7 @@ ledger.py writes this file; do not edit it by hand. The rule that matches a reco
 
 Mutation run evidence, with four limits: (1) the tool plants its own kinds of bug, not the change an auditor named, so caught nothing is not proof a test is empty; (2) the run went several bugs at once, so a timed-out bug lists its red tests but credits none of them as catches; (3) each verdict comes from one run of its bug; (4) the run held only the C++ tests in hydra_tests, so a test outside it has no evidence here, which is not the same as catching nothing. See docs/audit/2026-11-14-test-audit/mutation/README.md.
 
-There are 3620 record rows (3401 not in the run, 0 several, 219 none) and 203 run tests that no record row matched.
+There are 3465 record rows (3401 not in the run, 48 several, 16 none) and 65 run tests that no record row matched.
 
 ## Record rows: not in the run (3401)
 
@@ -3410,436 +3410,143 @@ There are 3620 record rows (3401 not in the run, 0 several, 219 none) and 203 ru
 - records/window-WN6.md:284 "14. bad-rules-refused (`pbtest_window.cpp:546`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
 - records/window-WN6.md:300 "15. rules-reach-the-builder (`pbtest_window.cpp:592`)": its test file pbtest_window.cpp (from its title) is not one of the run's files.
 
-## Record rows: several (0)
+## Record rows: several (48)
 
+- records/B2.md:201 "Read: lines 187-281; kFillPins (203-235).": its lines fall in more than one test. Candidates: tests/test_generated_fills.cpp:187 generated fills: a chart with its own fills gets none generated; tests/test_generated_fills.cpp:281 generated fills: every corpus chart's generated fills are pinned.
+- records/B2.md:243 "Read: lines 87-98; midi.cpp:387-391; core/winstr.h not opened (read_file_bytes' message is only quot": its lines fall in more than one test. Candidates: tests/test_midi.cpp:87 midi: every corpus .mid reads with a sane structure; tests/test_midi.cpp:98 midi: from_file on a missing path fails with the file owner's error.
+- records/B2.md:293 "Read: lines 155-163; TrackNamePick; CR-16.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:155 midi: a recognized track_name is not displaced by a later name; tests/test_midi.cpp:163 midi: a recognized track_name wins over an earlier unrecognized one.
+- records/B2.md:303 "Read: lines 165-175; midi.cpp:269-273 comment.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:165 midi: a recognized track_name wins over an earlier unrecognized one; tests/test_midi.cpp:175 midi: a recognized track_name after tick 0 still wins.
+- records/B2.md:335 "Read: lines 199-214; is_drums_track_name (midi.cpp:447); CR-13; midi.h:98-109 comment.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:199 midi: a track with no recognized track_name keeps its first name; tests/test_midi.cpp:214 midi: a track named by either drum name, in any case, is the drum track.
+- records/B2.md:348 "Read: lines 216-250; drums_track (midi.cpp:490-494); CR-14.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:216 outside every test case; tests/test_midi.cpp:250 midi: of two drum tracks, the first in file order is the drum track.
+- records/B2.md:463 "Read: lines 412-463; MidiFile::lean (midi.cpp:399-445); midi.h:166-190 by grep.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:412 midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does; tests/test_midi.cpp:463 midi: the lean reader keeps only what each track's role reads, at the same ticks.
+- records/B2.md:542 "Read: lines 577-600; drums_track (midi.cpp:490-494, kFirstInstrumentTrack); CR-15; D253 item 1 only ": its lines fall in more than one test. Candidates: tests/test_midi.cpp:577 midi: a track header cut short by the end of the file ends the chunk walk; tests/test_midi.cpp:600 midi: a drum track on track 0 is not the drum track, so the chart has no notes.
+- records/B2.md:587 "Read: lines 664-688; CR-24; section_names.cpp not read (the page quotes lines 19-27).": its lines fall in more than one test. Candidates: tests/test_midi.cpp:664 midi: of two events tracks, only the first one's sections count; tests/test_midi.cpp:688 midi: [section _ENDOFSONG] is not a section.
+- records/B2.md:631 "Read: lines 715-737; song.cpp:1322-1331 (is_end_event use) and :41-46 by grep; CR-38, CR-39.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:715 midi: [prc__ENDOFSONG] stays a section; tests/test_midi.cpp:737 midi: [end] on the events track is the end event, first one wins.
+- records/B2.md:656 "Read: lines 765-798; last_note_end_tick (midi.cpp:465-488), scan_track (343-351); CR-43.": its lines fall in more than one test. Candidates: tests/test_midi.cpp:765 midi: the lean read keeps the end event; tests/test_midi.cpp:798 midi: a bass sustain past the last drum note is the last note end; BEAT, VENUE and EVENTS don't count.
+- records/B2.md:684 "Read: lines 861-907; midi_lane_lowest_difficulty and midi_lane_shows_at (src/parse/song.cpp:835-850)": its lines fall in more than one test. Candidates: tests/test_midi.cpp:861 midi: the last note end reads each instrument once, from track 1, by instrument name; tests/test_midi.cpp:907 mid: a lane's velocity picks the lowest difficulty that shows it.
+- records/B2.md:748 "Read: lines 97-111; app/user_messages.cpp:198 by grep only.": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:97 pathstring read: a token no fill can place is refused with its position; tests/test_pathstring_read.cpp:111 pathstring read: every refusal is ErrorKind::PathTextRefused.
+- records/B2.md:760 "Read: lines 113-122; read_short 103.": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:113 pathstring read: every refusal is ErrorKind::PathTextRefused; tests/test_pathstring_read.cpp:122 pathstring read: "(No activations.)" gives a path with no activations.
+- records/B2.md:771 "Read: lines 124-130; read_long and windows_section (pathstring_read.cpp:119-172).": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:124 pathstring read: "(No activations.)" gives a path with no activations; tests/test_pathstring_read.cpp:130 pathstring read: every corpus path round-trips from Hydra's long Copy path text.
+- records/B2.md:783 "Read: lines 132-143.": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:132 pathstring read: every corpus path round-trips from Hydra's long Copy path text; tests/test_pathstring_read.cpp:143 pathstring read: long text with no activations gives a path with no activations.
+- records/B2.md:794 "Read: lines 145-169; read_long 146-172.": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:145 pathstring read: long text with no activations gives a path with no activations; tests/test_pathstring_read.cpp:169 pathstring read: a long-text window no fill can place is refused with its position.
+- records/B2.md:804 "Read: lines 171-198; pathstring_read.cpp:176-179.": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:171 pathstring read: a long-text window no fill can place is refused with its position; tests/test_pathstring_read.cpp:198 pathstring read: the graph entry point reads the same path as the settings one.
+- records/B2.md:817 "Read: lines 200-208; pathstring_read.cpp:176-179.": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:200 pathstring read: the graph entry point reads the same path as the settings one; tests/test_pathstring_read.cpp:208 pathstring read: the graph entry point refuses a token no fill can place.
+- records/B2.md:829 "Read: lines 210-218; windows_section (pathstring_read.cpp:123-140).": its lines fall in more than one test. Candidates: tests/test_pathstring_read.cpp:210 pathstring read: the graph entry point refuses a token no fill can place; tests/test_pathstring_read.cpp:218 pathstring read: long text with the wrong number of sections is refused.
+- records/B4.md:38 "Read: lines 851-903; helpers 45-56, 89-102; Activation::sp_ready_tick (src/core/model.cpp:702-706); ": its lines fall in more than one test. Candidates: tests/test_replay.cpp:851 paths_json writes the end ratio the search stored; tests/test_replay.cpp:903 paths_json prints the stored passed-over fills, not a guess.
+- records/C1.md:22 "Read: lines 1-100 of the test; activation_row_layout.h:1-116; paths_tab.cpp:270-320,575-590;": its lines fall in more than one test. Candidates: tests/test_activation_row_layout.cpp:1 outside every test case; tests/test_activation_row_layout.cpp:100 activation row: the layout scales with the DPI.
+- records/C1.md:367 "Read: lines 1-165 of the test; badge_pill.h:20-74; layout :70-72; D262 (opened).": its lines fall in more than one test. Candidates: tests/test_badge_pill.cpp:1 outside every test case; tests/test_badge_pill.cpp:165 badge pill: one badge alone sits flush right.
+- records/C1.md:623 "Read: lines 116-172; shared facts; D90 item 2.": its lines fall in more than one test. Candidates: tests/test_app_settings.cpp:116 commit_settings analyzes again when the ms limit or the score range changes; tests/test_app_settings.cpp:172 a burst of setting changes ends with one analysis of the final settings.
+- records/C1.md:653 "Read: lines 174-192; app_state.cpp:1096-1110.": its lines fall in more than one test. Candidates: tests/test_app_settings.cpp:174 a burst of setting changes ends with one analysis of the final settings; tests/test_app_settings.cpp:192 number boxes apply at once but write the INI only on flush.
+- records/C1.md:676 "Read: lines 194-223; config.cpp:189-193; D51 call 14 and 16 (fix-decisions.md:190,192).": its lines fall in more than one test. Candidates: tests/test_app_settings.cpp:194 number boxes apply at once but write the INI only on flush; tests/test_app_settings.cpp:223 a number setting edited outside its range lands on the edge the file loader uses.
+- records/C1.md:706 "Read: lines 225-241; D73 items 1 and 3 (fix-decisions.md:360-366); app_state.cpp:1120-.": its lines fall in more than one test. Candidates: tests/test_app_settings.cpp:225 a number setting edited outside its range lands on the edge the file loader uses; tests/test_app_settings.cpp:241 a settings change whose reads fail shows no other settings' record.
+- records/C1.md:914 "Read: lines 161-179; commit b868de9c body (read): "The Opus decoder reuses one": its lines fall in more than one test. Candidates: tests/test_audio_decode.cpp:161 decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz; tests/test_audio_decode.cpp:179 decode_audio: Ogg-Opus output is pinned bit for bit.
+- records/C1.md:944 "Read: lines 1-46; D297 item 7 header (fix-decisions.md:1619 and the item line quoted": its lines fall in more than one test. Candidates: tests/test_audio_device.cpp:1 outside every test case; tests/test_audio_device.cpp:46 PreviewAudioDevice opens and starts the default output device.
+- records/C1.md:1105 "Read: lines 29-40; frames.h:1-26.": its lines fall in more than one test. Candidates: tests/test_audio_player.cpp:29 Playhead starts paused at the start with the mix's format; tests/test_audio_player.cpp:40 ms_of_frames and frames_of_ms convert at the sample rate.
+- records/C1.md:1201 "Read: lines 91-117; commit 15f2e917 body (read): "The clock still advances by the full": its lines fall in more than one test. Candidates: tests/test_audio_player.cpp:91 outside every test case; tests/test_audio_player.cpp:117 read_frames counts only the frames a short source really gave.
+- records/C1.md:1245 "Read: lines 131-142.": its lines fall in more than one test. Candidates: tests/test_audio_player.cpp:131 seek clamps to the valid range in both frames and ms; tests/test_audio_player.cpp:142 frames_of_ms and ms_of_frames: pinned at 48000 and 44100.
+- records/C1.md:1295 "Read: lines 1-57; CMakeLists.txt:69-88 (the /PDBALTPATH line); commit 37f5384f": its lines fall in more than one test. Candidates: tests/test_build_flags.cpp:1 outside every test case; tests/test_build_flags.cpp:57 a Release exe stores its .pdb's bare file name.
+- records/C10.md:13 "Read: lines 1-98 (helpers check_color, check_light, check_is_onyx at 19-74);": its lines fall in more than one test. Candidates: tests/test_preview_config.cpp:1 outside every test case; tests/test_preview_config.cpp:98 the shipped 3d-config.json loads to the Onyx values.
+- records/C10.md:204 "Read: lines 1-36; rules_file.cpp:19-100 (kRetiredRulesKeys 23-29); callers": its lines fall in more than one test. Candidates: tests/test_rules_file.cpp:1 outside every test case; tests/test_rules_file.cpp:36 each retired rules key loads silently, whatever it says.
+- records/C10.md:269 "Read: lines 42-63; rules_file.cpp:36-41 (check_min) and :57-72; core": its lines fall in more than one test. Candidates: tests/test_rules_file.cpp:42 a key that is neither live nor retired still stops the rules file; tests/test_rules_file.cpp:63 the rules file refuses below each of its five floors and reads the floor itself.
+- records/C10.md:311 "Read: lines 65-93; rules_file.cpp:83-96, 33; ini_errors.h: not read;": its lines fall in more than one test. Candidates: tests/test_rules_file.cpp:65 the rules file refuses below each of its five floors and reads the floor itself; tests/test_rules_file.cpp:93 a bad rules line refuses in the settings file's shapes.
+- records/C10.md:351 "Read: lines 1-41; section_names.h:16-41; section_names.cpp:1-54; the TSV": its lines fall in more than one test. Candidates: tests/test_section_names.cpp:1 outside every test case; tests/test_section_names.cpp:41 section names: the generated table agrees with the TSV row for row.
+- records/C10.md:477 "Read: lines 74-88; section_names.cpp:10-27; CR-24 (01-reading-a-chart.md:": its lines fall in more than one test. Candidates: tests/test_section_names.cpp:74 section names: only the two prefixes mark a section; tests/test_section_names.cpp:88 section names: the .mid reader drops a section body holding _ENDOFSONG.
+- records/C10.md:696 "Read: lines 210-228; preview_source.cpp:376-385 (region seen by grep:": its lines fall in more than one test. Candidates: tests/test_preview_source.cpp:210 extract_srb_audio: a stream with an audio magic but no codec is not a stem; tests/test_preview_source.cpp:228 resolve_preview_source: a .srb with no extractable audio falls back to a loose file beside it.
+- records/C10.md:927 "Read: lines 361-436 (CountingReader 395-403); resolve_preview_source_reading": its lines fall in more than one test. Candidates: tests/test_preview_source.cpp:361 outside every test case; tests/test_preview_source.cpp:436 resolve_preview_source reads a .sng or .srb from disk once.
+- records/C10.md:954 "Read: lines 438-468; read_preview_container, resolve_preview_song,": its lines fall in more than one test. Candidates: tests/test_preview_source.cpp:438 resolve_preview_source reads a .sng or .srb from disk once; tests/test_preview_source.cpp:468 the song and stem halves share one container read and match the whole.
+- records/C10.md:1070 "Read: lines 77-108; set_song_length_ms (preview_transport.cpp:64-70);": its lines fall in more than one test. Candidates: tests/test_preview_transport.cpp:77 the transport's end is the song's length; unload clears it; tests/test_preview_transport.cpp:108 set_song_length_ms moves the end and pulls the clock back to it.
+- records/C10.md:1092 "Read: lines 110-126; D255 answer 5 (decision log line 1186 mentions D255": its lines fall in more than one test. Candidates: tests/test_preview_transport.cpp:110 set_song_length_ms moves the end and pulls the clock back to it; tests/test_preview_transport.cpp:126 playback stops at the song's length even when the audio runs longer.
+- records/C10.md:1114 "Read: lines 128-140; D255 comment.": its lines fall in more than one test. Candidates: tests/test_preview_transport.cpp:128 playback stops at the song's length even when the audio runs longer; tests/test_preview_transport.cpp:140 with no song length the clock runs free past the audio's end.
+- records/C10.md:1174 "Read: lines 191-215; seek_ms (preview_transport.cpp:48-62); adding commit": its lines fall in more than one test. Candidates: tests/test_preview_transport.cpp:191 tick pauses at the end and pins the time; tests/test_preview_transport.cpp:215 a seek while playing brings the audio back after it ran out.
+- records/C10.md:1287 "Read: lines 290-303; scrub_thumb_ms (preview_view.cpp:772-775); seek_ms.": its lines fall in more than one test. Candidates: tests/test_preview_transport.cpp:290 an audio offset seeks the playhead ahead of the clock; tests/test_preview_transport.cpp:303 scrubber: a song length past the audio ends playback there.
+- records/C10.md:1311 "Read: lines 305-310; length_ms.": its lines fall in more than one test. Candidates: tests/test_preview_transport.cpp:305 scrubber: a song length past the audio ends playback there; tests/test_preview_transport.cpp:310 scrubber: with no audio the end is still the song's length.
 
-## Record rows: none (219)
+## Record rows: none (16)
 
-- records/A12.md:13 "1. a scrambled name on a Clone Hero page fails with its line (tests/test_docs_match_code.cpp:1109)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:32 "2. a page span is found by the table's cited column (tests/test_docs_match_code.cpp:1122)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:49 "3. what counts as a game fact on a Clone Hero page (tests/test_docs_match_code.cpp:1134)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:68 "4. which spans and which build a Clone Hero page line has (tests/test_docs_match_code.cpp:1156)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:87 "5. every game fact on a Clone Hero page has a home (tests/test_docs_match_code.cpp:1195)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:105 "6. no committed doc names a path into a scratch folder (tests/test_docs_match_code.cpp:1266)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:122 "7. the scratch path check catches each path form and skips only the two folders (tests/test_docs_mat": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:139 "8. no permanent doc or code comment names a docs path that is not in the tree (tests/test_docs_match": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:156 "9. the docs path check reads each path form and skips the removed form (tests/test_docs_match_code.c": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:173 "10. every plan that counts holds a Premise map in the shape (tests/test_docs_match_code.cpp:1883)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:191 "11. the premise map check catches each form and reads only the plans that count (tests/test_docs_mat": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:208 "12. every picture the public pages link is a shot the capture script takes, and the file exists (tes": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A12.md:226 "13. the README's Stale sentence has no version list (tests/test_docs_match_code.cpp:2139)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A14.md:459 "26. search: a fill that needs a 70 ms early hit is taken as a required early fill (tests/test_fills_": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A14.md:476 "27. search: SP ready 70 ms before a fill's deadline still marks the activation E (tests/test_fills_a": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A32.md:28 "1. a database from Hydra 1.6 or older is too old (tests/test_store_open.cpp:132)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A32.md:273 "16. a database any release before 2.2.0 wrote is too old (tests/test_store_open.cpp:763)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/A32.md:508 "30. the hardest-figure marker is per profile (tests/test_store_open.cpp:1205)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B1.md:316 "19. hydra_replay refuses --ms and --depth values that are not whole numbers (tests/test_cli.cpp:635)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:23 "Read: lines 62-73 and the helper song_with_chords (29-46); S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:41 "Read: lines 75-86; S-G; place_fills_ch10 (src/core/song.cpp:131-171, kCh10FillLengthMeasures :127).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:55 "Read: lines 88-91; S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:71 "Read: lines 93-96; S-G; FL-16.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:84 "Read: lines 98-103; S-G; FL-16 (D115 item 4, cited in the comment, was not opened: item text not fou": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:96 "Read: lines 105-117; activation_fill_deadline_ms Ch10 branch (src/search/graph.cpp:73-90); S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:109 "Read: lines 119-123; place_fills_ch11 (src/core/song.cpp:196-215); FL-15.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:122 "Read: lines 125-130; place_fills_ch11 (src/core/song.cpp:229); rules fill_cooldown_measures (src/cor": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:134 "Read: lines 132-136; place_fills_ch11 (line = 1 start at src/core/song.cpp:201); FL-13.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:147 "Read: lines 138-145; S-G; FL-17.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:159 "Read: lines 147-153; song_with_chords' apply_timesig use (29-37); FL-26 title only (04-fills.md:264,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:171 "Read: lines 155-161; S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:180 "Read: lines 163-168; place_fills_ch10 line 167 (grid.length_at(span_at(chord))); S-G.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:189 "Read: lines 170-185; check_activations (src/core/song.cpp:108-120); FL-27 title, FL-35 rule (04-fill": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:201 "Read: lines 187-281; kFillPins (203-235).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:227 "Read: lines 60-85; S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:243 "Read: lines 87-98; midi.cpp:387-391; core/winstr.h not opened (read_file_bytes' message is only quot": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:256 "Read: lines 100-116; walk_track (midi.cpp:205-266); S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:269 "Read: lines 118-138; walk_track lines 222-225; S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:280 "Read: lines 140-153; TrackNamePick (midi.cpp:274-292).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:293 "Read: lines 155-163; TrackNamePick; CR-16.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:303 "Read: lines 165-175; midi.cpp:269-273 comment.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:313 "Read: lines 177-189.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:325 "Read: lines 191-197.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:335 "Read: lines 199-214; is_drums_track_name (midi.cpp:447); CR-13; midi.h:98-109 comment.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:348 "Read: lines 216-250; drums_track (midi.cpp:490-494); CR-14.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:359 "Read: lines 252-259.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:371 "Read: lines 261-276; walk_track lines 233-249.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:381 "Read: lines 278-300; meta_message (midi.cpp:107-144); S-M.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:393 "Read: lines 302-316; meta_message uses decode_chart_text (midi.cpp:131, 138); decode_chart_text itse": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:405 "Read: lines 318-356; text_meta and name_meta (midi.cpp:32-52).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:418 "Read: lines 358-362; walk_chunks line 154-156.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:429 "Read: lines 364-372; walk_chunks 161-167.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:440 "Read: lines 374-385; read_varlen (midi.cpp:72-83).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:451 "Read: lines 387-410; read_message_length (midi.cpp:85-98).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:463 "Read: lines 412-463; MidiFile::lean (midi.cpp:399-445); midi.h:166-190 by grep.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:475 "Read: lines 465-472; two_drum_tracks (221-226), drum_velocity (230-236).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:486 "Read: lines 474-501; MidiFile::lean reserve (midi.cpp:423).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:499 "Read: lines 503-530; walk_track throw (midi.cpp:92-98); scan_track (329-353).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:511 "Read: lines 532-542; is_midi_header (midi.cpp:357-359); callers song.cpp:2414 and midi.cpp:154.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:522 "Read: lines 544-559; walk_chunks 195.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:532 "Read: lines 561-575; walk_chunks 174-178.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:542 "Read: lines 577-600; drums_track (midi.cpp:490-494, kFirstInstrumentTrack); CR-15; D253 item 1 only ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:553 "Read: lines 602-614.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:565 "Read: lines 616-645; events_track (midi.cpp:496-500); CR-19; D253 item 2 as CR-19 quotes it.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:577 "Read: lines 647-662; CR-19.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:587 "Read: lines 664-688; CR-24; section_names.cpp not read (the page quotes lines 19-27).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:598 "Read: lines 690-695; CR-24 ("holds _ENDOFSONG anywhere").": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:608 "Read: lines 697-705; CR-24 (the case-sensitive search, string_contains_197F670.md cited).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:620 "Read: lines 707-713; CR-24 ("[prc" has no veto).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:631 "Read: lines 715-737; song.cpp:1322-1331 (is_end_event use) and :41-46 by grep; CR-38, CR-39.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:644 "Read: lines 739-763.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:656 "Read: lines 765-798; last_note_end_tick (midi.cpp:465-488), scan_track (343-351); CR-43.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:669 "Read: lines 800-859; last_note_end_tick (midi.cpp:465-488); is_gem_pitch and is_low_vocal_pitch (mid": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:684 "Read: lines 861-907; midi_lane_lowest_difficulty and midi_lane_shows_at (src/parse/song.cpp:835-850)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:696 "Read: lines 909-926; lane_mid (868-884); song.cpp:824-828, 143-175 by reading; NL-53, NL-55 by title": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:719 "Read: lines 24-57, 81-85; S-P.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:734 "Read: lines 59-77, 87-95; read_short 97-117.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:748 "Read: lines 97-111; app/user_messages.cpp:198 by grep only.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:760 "Read: lines 113-122; read_short 103.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:771 "Read: lines 124-130; read_long and windows_section (pathstring_read.cpp:119-172).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:783 "Read: lines 132-143.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:794 "Read: lines 145-169; read_long 146-172.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:804 "Read: lines 171-198; pathstring_read.cpp:176-179.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:817 "Read: lines 200-208; pathstring_read.cpp:176-179.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B2.md:829 "Read: lines 210-218; windows_section (pathstring_read.cpp:123-140).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:38 "Read: lines 851-903; helpers 45-56, 89-102; Activation::sp_ready_tick (src/core/model.cpp:702-706); ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:56 "Read: lines 905-937; overfill() and presses_of (386-415); rules_with (814, signature only); sqout_la": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:73 "Read: lines 939-962; overfill (402-415); squeeze_out_inside_groups (tools/replay_schedule.h:185-187)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:90 "Read: lines 964-1003; overfill, presses_of, within_cent (383-415); S-O, S-R, S-L, S-H. Adding commit": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:108 "Read: lines 1005-1014; replay_build (tools/replay_schedule.cpp:477); tools/ch_mcp/build_stamp.py:43,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:126 "Read: lines 1062-1096, helpers 1022-1058; last_send_ms, press_room_ms, sqout_fallback_after_ms, sqin": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:144 "Read: lines 1098-1128; pad_row (1048-1058); far_press_refusal (replay_schedule.cpp:351-383, .h:209-2": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:162 "Read: lines 1130-1270; overfill (402-415); refusal_says, has_press (1029-1044); S-O, S-R, S-L, S-H. ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:180 "Read: lines 1272-1343; kept_gems (tools/replay_schedule.cpp:116-123); Chord::activation_note (via D3": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:198 "Read: lines 1345-1376; kept_colours (58-74); kept_gems (replay_schedule.cpp:116-123); D318 Q3 (fix-d": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:216 "Read: lines 1378-1425; overfill; press_groups (replay_schedule.h:171-177); D318 Q3 and Q4 (fix-decis": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:234 "Read: lines 1514-1619; helpers 1433-1476; pitch_dark_ratio.schedule.json (script reads of activation": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:252 "Read: lines 1621-1649; pitch_dark_ratio.schedule.json press 644; SteadySpans and anchor_lead_ms (rep": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:270 "Read: lines 1651-1678; hand_built_squeeze_in (758-769); anchor_lead_ms (replay_schedule.cpp:246-263)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:287 "Read: lines 1680-1714; three_step_overfill (1485-1510); end_conversion (replay_schedule.cpp:267-269)": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/B4.md:305 "Read: lines 1716-1731; read_at_own_ms (replay_schedule.cpp:273-276), the comment on 271-272; EndLink": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:22 "Read: lines 1-100 of the test; activation_row_layout.h:1-116; paths_tab.cpp:270-320,575-590;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:53 "Read: lines 83-90; layout header lines 59-60; shared facts. Adding commit not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:79 "Read: lines 92-99; layout header lines 52-112. Adding commit 6d2b1a56 (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:104 "Read: lines 101-106; layout lines 69-77, 110. Adding commit not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:127 "Read: lines 108-121; layout lines 78-111; the plan named in the file header": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:158 "Read: lines 123-133; layout lines 85-110. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:186 "Read: lines 135-145; layout lines 84-86. Adding commit 3f46aa2a (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:214 "Read: lines 147-157; layout lines 70-72,85; D262 (opened, line 1155 quoted in shared": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:246 "Read: lines 159-186; layout lines 66,103-108. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:273 "Read: lines 188-207; layout lines 81-100. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:293 "Read: lines 209-232; layout lines 74-108. Adding commit 16944a4d (subject).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:315 "Read: lines 234-254; layout lines 89-108; D257 (opened). Adding commit 16944a4d.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:338 "Read: lines 256-261; layout lines 59-60; paths_tab.cpp:580-582.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:367 "Read: lines 1-165 of the test; badge_pill.h:20-74; layout :70-72; D262 (opened).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:392 "Read: lines 80-84; layout :70-72.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:414 "Read: lines 86-104; badge_pill.h:56-59.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:435 "Read: lines 106-117; layout :78-83.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:456 "Read: lines 119-130; layout :89-108.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:475 "Read: lines 144-153; badge_pill.h:76-121; the mockup's rules (git show 45dd7799:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:511 "Read: lines 155-165; layout :78-83; badge_pill.h:51-54.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:539 "Read: lines 49-73; shared facts; fixtures lines 55-150 of app_state_fixtures.h. Adding": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:573 "Read: lines 75-88; shared facts.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:598 "Read: lines 90-114; shared facts.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:623 "Read: lines 116-172; shared facts; D90 item 2.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:653 "Read: lines 174-192; app_state.cpp:1096-1110.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:676 "Read: lines 194-223; config.cpp:189-193; D51 call 14 and 16 (fix-decisions.md:190,192).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:706 "Read: lines 225-241; D73 items 1 and 3 (fix-decisions.md:360-366); app_state.cpp:1120-.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:742 "Read: lines 46-66; audio_sniff.cpp not read beyond the signature lines above;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:764 "Read: lines 68-80; audio_util.h:42-47 (id3_tag: a 10-byte header and 20 bytes body,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:785 "Read: lines 82-91; audio_util.h:42-47; audio_sniff.cpp:38 (signature).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:806 "Read: lines 93-105; testaudio::pcm16_wav not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:830 "Read: lines 107-115; audio_util.h:131-143 (estimate_freq_hz: zero crossings of the": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:856 "Read: lines 117-125; as :107.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:874 "Read: lines 127-149; decode.cpp:47-50.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:895 "Read: lines 151-159; opus_reader.cpp not read.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:914 "Read: lines 161-179; commit b868de9c body (read): "The Opus decoder reuses one": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:944 "Read: lines 1-46; D297 item 7 header (fix-decisions.md:1619 and the item line quoted": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:977 "Read: lines 55-67; mixer.h lines not opened; shared facts. Adding commit ba0885a0.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1000 "Read: lines 69-79; mixer.cpp:10-32 not opened beyond the signature.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1019 "Read: lines 81-86.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1038 "Read: lines 88-104; synth_tone lines 31-42.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1060 "Read: lines 106-117; same_bits lines 44-51.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1086 "Read: lines 18-27; make_ramp (audio_util.h:92-102).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1105 "Read: lines 29-40; frames.h:1-26.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1126 "Read: lines 42-52.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1141 "Read: lines 54-61.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1160 "Read: lines 63-74.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1181 "Read: lines 76-89.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1201 "Read: lines 91-117; commit 15f2e917 body (read): "The clock still advances by the full": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1225 "Read: lines 119-129; player.cpp:30.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1245 "Read: lines 131-142.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1269 "Read: lines 144-160; player.h:57; player.cpp:62-63; config.cpp:317.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C1.md:1295 "Read: lines 1-57; CMakeLists.txt:69-88 (the /PDBALTPATH line); commit 37f5384f": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:13 "Read: lines 1-98 (helpers check_color, check_light, check_is_onyx at 19-74);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:77 "Read: lines 100-121; preview_config.cpp:50-66 (need, key_path), :103-157;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:113 "Read: lines 123-125; preview_config.cpp:93-99; adding commit ba0885a0": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:141 "Read: lines 127-132; parse_hex_color (preview_config.cpp:15-37);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:172 "Read: lines 134-141; preview_config.cpp:148-151; preview_panel.cpp:237-238": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:204 "Read: lines 1-36; rules_file.cpp:19-100 (kRetiredRulesKeys 23-29); callers": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:245 "Read: lines 38-40; rules_file.cpp:91-96; D270 item 4 ("refuse anything": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:269 "Read: lines 42-63; rules_file.cpp:36-41 (check_min) and :57-72; core": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:311 "Read: lines 65-93; rules_file.cpp:83-96, 33; ini_errors.h: not read;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:351 "Read: lines 1-41; section_names.h:16-41; section_names.cpp:1-54; the TSV": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:391 "Read: lines 43-48; section_display_name (section_names.cpp:35-52); TSV rows": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:423 "Read: lines 50-58; section_names.cpp:35-52; CR-28 (the fallback": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:449 "Read: lines 60-72; section_names.cpp:19-33; CR-28, CR-29 (open split, "see": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:477 "Read: lines 74-88; section_names.cpp:10-27; CR-24 (01-reading-a-chart.md:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:511 "Read: lines 79-86; is_container (src/parse/chart_files.cpp:25); caller in": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:539 "Read: lines 88-111; preview_source.cpp:142-156; audio_sniff.h:40-60 (the": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:575 "Read: lines 113-120; preview_source.cpp:149-152; callers: preview_source.cpp:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:598 "Read: lines 122-138; preview_source.cpp:158-174; caller: preview_source.cpp:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:623 "Read: lines 140-168; extract_sng_audio (preview_source.cpp:178-181) and": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:651 "Read: lines 170-192; preview_source.cpp:196-290 (grep view only), srb.h:14": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:676 "Read: lines 194-208; preview_source.cpp:224 (looks_like_audio use);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:696 "Read: lines 210-228; preview_source.cpp:376-385 (region seen by grep:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:723 "Read: lines 230-242; preview_source.cpp:323-385 (grep view); corpus::": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:747 "Read: lines 244-274; multidiff chart helper: not read (its chord counts": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:777 "Read: lines 276-295; read_ini_delay_ms (preview_source.cpp:363 caller;": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:804 "Read: lines 297-307; preview_source.cpp:300-316; callers in src/:": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:838 "Read: lines 309-316; preview_source.cpp:355-370 (region); adding commit not": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:860 "Read: lines 318-330; sng_delay_ms (preview_source.cpp:178-185 region);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:883 "Read: lines 332-352; preview_source.cpp:355-370; TM-03; adding commit not": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:907 "Read: lines 354-359; preview_source.cpp:367-369 (comment: a .srb's metadata": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:927 "Read: lines 361-436 (CountingReader 395-403); resolve_preview_source_reading": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:954 "Read: lines 438-468; read_preview_container, resolve_preview_song,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:984 "Read: lines 361-392 (song_text) and 470-526; loaders load_songbytes_mid,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1022 "Read: lines 34-53; transport code above; adding commit 1da4638e ("Preview": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1045 "Read: lines 55-75; preview_transport.cpp:11-30, 64-77 (length_ms,": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1070 "Read: lines 77-108; set_song_length_ms (preview_transport.cpp:64-70);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1092 "Read: lines 110-126; D255 answer 5 (decision log line 1186 mentions D255": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1114 "Read: lines 128-140; D255 comment.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1135 "Read: lines 142-168; play/pause/toggle (preview_transport.cpp:32-55).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1154 "Read: lines 170-189; tick (preview_transport.cpp:79-86).": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1174 "Read: lines 191-215; seek_ms (preview_transport.cpp:48-62); adding commit": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1199 "Read: lines 217-228; seek_ms (preview_transport.cpp:48-52); adding commit": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1219 "Read: lines 230-251; read_frames (preview_transport.cpp:104-107); make_ramp.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1241 "Read: lines 253-273; set_gain/load (preview_transport.cpp:11-18, 88-94);": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1262 "Read: lines 275-288; audio_ms_of_chart_ms (preview_source.h:118); TM-05": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1287 "Read: lines 290-303; scrub_thumb_ms (preview_view.cpp:772-775); seek_ms.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1311 "Read: lines 305-310; length_ms.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/C10.md:1330 "Read: lines 312-318; load/seek_ms.": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
+- records/A12.md:105 "6. no committed doc names a path into a scratch folder (tests/test_docs_match_code.cpp:1266)": its line sits outside every test case (first_use.py).
+- records/A12.md:139 "8. no permanent doc or code comment names a docs path that is not in the tree (tests/test_docs_match": its line sits outside every test case (first_use.py).
+- records/A12.md:173 "10. every plan that counts holds a Premise map in the shape (tests/test_docs_match_code.cpp:1883)": its line sits outside every test case (first_use.py).
+- records/A12.md:208 "12. every picture the public pages link is a shot the capture script takes, and the file exists (tes": its line sits outside every test case (first_use.py).
+- records/A14.md:459 "26. search: a fill that needs a 70 ms early hit is taken as a required early fill (tests/test_fills_": its line sits outside every test case (first_use.py).
+- records/A14.md:476 "27. search: SP ready 70 ms before a fill's deadline still marks the activation E (tests/test_fills_a": its line sits outside every test case (first_use.py).
+- records/A32.md:28 "1. a database from Hydra 1.6 or older is too old (tests/test_store_open.cpp:132)": its line sits outside every test case (first_use.py).
+- records/A32.md:273 "16. a database any release before 2.2.0 wrote is too old (tests/test_store_open.cpp:763)": its line sits outside every test case (first_use.py).
+- records/A32.md:508 "30. the hardest-figure marker is per profile (tests/test_store_open.cpp:1205)": its line sits outside every test case (first_use.py).
+- records/B2.md:719 "Read: lines 24-57, 81-85; S-P.": its line sits outside every test case (first_use.py).
+- records/B2.md:734 "Read: lines 59-77, 87-95; read_short 97-117.": its line sits outside every test case (first_use.py).
+- records/C10.md:984 "Read: lines 361-392 (song_text) and 470-526; loaders load_songbytes_mid,": its line sits outside every test case (first_use.py).
 - records/D16.md:17 "key_delivery_test.py (tools/ch_probe/experiments/key_delivery_test.py, `main` at line 46, whole file": names no test file and no test name the run holds.
 - records/D16.md:51 "pad_flash_test.py (tools/ch_probe/experiments/pad_flash_test.py, `main` at line 49, whole file lines": names no test file and no test name the run holds.
-- records/window-WN1.md:200 "W3. Delta round: window, replaces A26 RU17 (max_tied_paths is one count per score, inside paths firs": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:216 "W4. Delta round: window, replaces A26 RU18 (a path over the Path limit stays kept when it ties the o": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:232 "W5. Delta round: window, replaces A26 RU19 (a path over the Path limit below the best score is dropp": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:292 "W6. Delta round: window, replaces A16 record 19 (a fill that fails still opens the library) (tests/t": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:331 "W7. Delta round: window, replaces A27 ST1 (a path missing a named activation is dropped) (tests/test": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:347 "W8. Delta round: window, replaces A27 ST2 (a variant that took every named activation outlives its d": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:363 "W9. Delta round: window, replaces A27 ST3 (a kept root's tied variant that missed a named activation": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:379 "W10. Delta round: window, replaces A27 ST6 (a full pin no path realizes names its window and why) (t": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:395 "W11. Delta round: window, replaces A27 ST7 (activation pins return the tick search's paths and its f": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:411 "W12. Delta round: window, replaces A27 ST8 (the binary search names the last or a middle window that": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN1.md:427 "W13. Delta round: window, replaces A27 ST10 (fills past the last pin branch, fills before it follow ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN2.md:260 "11. best finish: every window of a corpus best path pinned in full ... equals search_target and the ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
-- records/window-WN3.md:326 "Delta round: window, replaces C6.md record PC8. The old verdict (Remove: line 224 cannot fail while ": its line is not placed yet: mutation/line-records.md does not exist (task M4 runs first_use.py on line-records.txt).
 - records/window-WN8.md:145 "Delta round: window, replaces records/A10.md record 1": names no test file and no test name the run holds.
 - records/window-WN8.md:198 "Delta round: window, replaces records/A25.md record R7": names no test file and no test name the run holds.
 
-## Run tests no record row matched, under "Tests that caught no bug" in tests.txt (54)
+## Run tests no record row matched, under "Tests that caught no bug" in tests.txt (15)
 
 - tests\test_preview_transport.cpp:112 playback stops at the song's length even when the audio runs longer
 - tests\test_preview_transport.cpp:293 scrubber: a song length past the audio ends playback there
-- tests\test_preview_transport.cpp:230 read_frames serves audio while playing and silence while paused
-- tests\test_audio_player.cpp:63 read_frames while playing copies frames and advances the clock
 - tests\test_audio_player.cpp:108 read_frames counts only the frames a short source really gave
-- tests\test_audio_mixer.cpp:55 mix_stems sums same-format stems and zero-extends the shorter
 - tests\test_preview_transport.cpp:306 scrubber: with no audio the end is still the song's length
-- tests\test_audio_player.cpp:54 read_frames while paused writes silence and does not advance
-- tests\test_replay_schedule.cpp:1098 schedule: far press follows TM-50
-- tests\test_audio_player.cpp:119 seek clamps to the valid range in both frames and ms
-- tests\test_replay_schedule.cpp:1062 schedule: one frame everywhere
-- tests\test_activation_row_layout.cpp:101 activation row: no badge leaves nothing to place and one line
-- tests\test_activation_row_layout.cpp:108 activation row: one badge that fits sits where it always has (B1)
-- tests\test_activation_row_layout.cpp:123 activation row: badges beside the bars never overlap them (B3)
-- tests\test_activation_row_layout.cpp:135 activation row: a pill that just touches the bars drops under the measure
-- tests\test_activation_row_layout.cpp:147 activation row: a short badge drops when the longest badge's pill would not fit
-- tests\test_activation_row_layout.cpp:159 activation row: badges under the measure clear the bars by the row's top padding
-- tests\test_activation_row_layout.cpp:188 activation row: no pill runs past the flush-right edge
-- tests\test_activation_row_layout.cpp:209 activation row: pills never overlap, on one line or between lines
-- tests\test_activation_row_layout.cpp:234 activation row: badges under the measure start at the measure (D257)
-- tests\test_activation_row_layout.cpp:256 activation row: every row of a path puts its bars at the same x
-- tests\test_activation_row_layout.cpp:83 activation row: an 11-character measure pushes the bars past it
-- tests\test_activation_row_layout.cpp:92 activation row: the layout scales with the DPI
-- tests\test_audio_player.cpp:18 Playhead starts paused at the start with the mix's format
-- tests\test_badge_pill.cpp:106 badge pill: pills side by side match and keep one gap between them
-- tests\test_badge_pill.cpp:119 badge pill: stacked pills share both edges
-- tests\test_badge_pill.cpp:155 badge pill: one badge alone sits flush right
 - tests\test_badge_pill.cpp:60 badge pill: a row of the shortest badge and a row of the longest share one width
-- tests\test_badge_pill.cpp:80 badge pill: a badge wider than the pill text width grows the pill
-- tests\test_badge_pill.cpp:86 badge pill: text sits centred in its pill
-- tests\test_docs_match_code.cpp:1113 docs match code: a scrambled name on a Clone Hero page fails with its line
-- tests\test_docs_match_code.cpp:1126 docs match code: a page span is found by the table's cited column
-- tests\test_docs_match_code.cpp:1138 docs match code: what counts as a game fact on a Clone Hero page
-- tests\test_docs_match_code.cpp:1160 docs match code: which spans and which build a Clone Hero page line has
 - tests\test_docs_match_code.cpp:1199 docs match code: every game fact on a Clone Hero page has a home
-- tests\test_docs_match_code.cpp:1887 docs match code: every plan that counts holds a Premise map in the shape
 - tests\test_docs_match_code.cpp:1894 docs match code: the premise map check catches each form and reads only the plans that count
-- tests\test_docs_match_code.cpp:2037 docs match code: every picture the public pages link is a shot the capture script takes, and the file exists
 - tests\record_fixtures.h:567 fixtures: a path with zero base score
-- tests\test_replay_schedule.cpp:1651 schedule: a lead that moves the read end past a tempo change is refused naming its span
-- tests\test_audio_mixer.cpp:81 mix_stems of no stems is empty at the requested format
 - tests\test_audio_player.cpp:134 frames_of_ms and ms_of_frames: pinned at 48000 and 44100
 - tests\test_audio_player.cpp:32 ms_of_frames and frames_of_ms convert at the sample rate
-- tests\test_badge_pill.cpp:144 window tag: safe and short take the mockup's colours
 - tests\test_build_flags.cpp:51 a Release exe stores its .pdb's bare file name
-- tests\test_docs_match_code.cpp:1270 docs match code: no committed doc names a path into a scratch folder
 - tests\test_docs_match_code.cpp:1277 docs match code: the scratch path check catches each path form and skips only the two folders
-- tests\test_docs_match_code.cpp:1420 docs match code: no permanent doc or code comment names a docs path that is not in the tree
 - tests\test_docs_match_code.cpp:1451 docs match code: the docs path check reads each path form and skips the removed form
 - tests\test_docs_match_code.cpp:2143 docs match code: the README's Stale sentence has no version list
-- tests\test_preview_config.cpp:123 load_preview_config rejects malformed JSON
-- tests\test_preview_source.cpp:297 preview_audio_offset_ms combines delay and Offset
-- tests\test_replay_schedule.cpp:1716 schedule: read_at_own_ms runs the conversion backwards on its own side
 - tests\test_section_names.cpp:15 section names: the generated table agrees with the TSV row for row
 
-## Run tests no record row matched, under "Tests that caught at least one bug" in tests.txt (149)
+## Run tests no record row matched, under "Tests that caught at least one bug" in tests.txt (50)
 
 - tests\test_preview_transport.cpp:80 set_song_length_ms moves the end and pulls the clock back to it
-- tests\test_preview_transport.cpp:217 seek clamps to [0, length]
-- tests\test_preview_transport.cpp:253 gain set before load applies to the next playhead
-- tests\test_audio_player.cpp:76 read_frames past the end zero-fills, auto-pauses, clamps position
-- tests\test_preview_transport.cpp:55 the transport's end is the song's length; unload clears it
-- tests\test_midi.cpp:358 midi: non-MIDI input is rejected
-- tests\test_section_names.cpp:50 section names: an unlisted marker shows its name with spaces for underscores
-- tests\test_audio_player.cpp:42 play, pause, and toggle drive the playhead state
 - tests\test_activation_row_layout.cpp:76 activation row: a short measure keeps the bars at kRowMinBarsX
 - tests\test_preview_transport.cpp:196 a seek while playing brings the audio back after it ran out
-- tests\test_preview_transport.cpp:170 tick pauses at the end and pins the time
-- tests\test_audio_player.cpp:144 Playhead applies the output gain to served frames
-- tests\test_audio_mixer.cpp:88 mix_stems resamples to the output rate and unifies channels
-- tests\test_preview_transport.cpp:142 play seeks the playhead to the clock and both run
-- tests\test_preview_transport.cpp:275 an audio offset seeks the playhead ahead of the clock
-- tests\test_preview_transport.cpp:312 load with no audio offset seeks to the asked position
-- tests\test_section_names.cpp:43 section names: a listed marker shows Clone Hero's words
 - tests\test_pathstring_read.cpp:212 pathstring read: long text with the wrong number of sections is refused
-- tests\test_generated_fills.cpp:88 generated fills: a chord 242 ticks from its line gets none
-- tests\test_generated_fills.cpp:170 generated fills: a chart with its own fills gets none generated
-- tests\test_rules_file.cpp:38 a key that is neither live nor retired still stops the rules file
-- tests\test_audio_mixer.cpp:106 mix_stems adds hand-built stems bit for bit; a zero-channel stem adds nothing
 - tests\test_audio_device.cpp:19 PreviewAudioDevice opens and starts the default output device
-- tests\test_section_names.cpp:60 section names: only the two prefixes mark a section
-- tests\test_audio_mixer.cpp:69 stem_converter_config: same rate and channels is a passthrough, anything else converts
-- tests\test_generated_fills.cpp:119 generated fills: the nearer chord wins, and a tie goes to the later one
-- tests\test_generated_fills.cpp:125 generated fills: after a fill the next candidate is 4 lines on
-- tests\test_generated_fills.cpp:132 generated fills: the first line is never a candidate
 - tests\test_rules_file.cpp:27 each retired rules key loads silently, whatever it says
-- tests\test_midi.cpp:364 midi: SMPTE division is rejected
-- tests\test_midi.cpp:544 midi: a file with no track chunk is refused by both readers
 - tests\test_section_names.cpp:77 section names: the .mid reader drops a section body holding _ENDOFSONG
 - tests\test_preview_transport.cpp:130 with no song length the clock runs free past the audio's end
-- tests\test_midi.cpp:561 midi: a track header cut short by the end of the file ends the chunk walk
-- tests\test_generated_fills.cpp:93 generated fills: a chord exactly on the line has length 0
 - tests\record_fixtures.h:553 fixtures: a record with a tied top-score variant
-- tests\test_preview_source.cpp:79 is_container: a .sng or .srb is a container, a loose notes file is not
 - tests\test_generated_fills.cpp:245 generated fills: every corpus chart's generated fills are pinned
 - tests\test_store_open.cpp:1391 the hardest-figure marker is per profile: unset at first, set for one profile after it is recorded, still unset for another, and it survives a reopen
-- tests\test_generated_fills.cpp:147 generated fills: a 4/4 to 7/8 change places fills on the restarted grid
-- tests\test_generated_fills.cpp:163 generated fills: a 1.0 fill whose chord sits on a meter change takes the new meter
-- tests\test_generated_fills.cpp:138 generated fills: a first chord in measure 3 still counts lines from the second
-- tests\test_generated_fills.cpp:105 generated fills: the 1.0 deadline of a 0 or negative length is the line minus 250 ms
-- tests\test_generated_fills.cpp:62 generated fills: a chord 241 ticks after the second measure line gets a fill
-- tests\test_preview_source.cpp:318 sng_delay_ms reads the delay key in any case
-- tests\test_audio_decode.cpp:93 decode_audio: PCM16 WAV decodes to matching float samples
 - tests\test_midi.cpp:89 midi: from_file on a missing path fails with the file owner's error
 - tests\test_pathstring_read.cpp:99 pathstring read: every refusal is ErrorKind::PathTextRefused
 - tests\test_pathstring_read.cpp:115 pathstring read: "(No activations.)" gives a path with no activations
-- tests\test_midi.cpp:503 midi: the lean reader refuses a file where the full reader does
-- tests\test_generated_fills.cpp:155 generated fills: Clone Hero 1.0 mode reads the same restarted grid
 - tests\display_fixtures.h:155 fixtures: audio runs 5 s past the last note
-- tests\test_preview_config.cpp:134 load_preview_config reads the time box size and margin
-- tests\test_midi.cpp:387 midi: a message longer than mido's 1,000,000-byte cap refuses the file, as mido does
-- tests\test_preview_source.cpp:113 is_song_stem: an audio file that is not a standalone preview clip
-- tests\test_preview_source.cpp:276 read_ini_delay_ms reads song.ini delay in milliseconds
-- tests\test_preview_config.cpp:100 load_preview_config refuses a missing key and names it
-- tests\test_generated_fills.cpp:98 generated fills: a chord just before its line has a negative length
-- tests\test_preview_transport.cpp:34 an unloaded transport plays and scrubs with no audio
-- tests\test_audio_decode.cpp:107 decode_audio: MP3 fixture decodes to the 220 Hz sine
-- tests\test_midi.cpp:465 midi: the lean reader keeps the notes of the first drum track by either name
-- tests\test_generated_fills.cpp:75 generated fills: Clone Hero 1.0 mode gives half-measure fills, 1.1 line-start fills
 - tests\test_rules_file.cpp:68 a bad rules line refuses in the settings file's shapes
-- tests\test_midi.cpp:532 midi: is_midi_header reads the first four bytes only
-- tests\test_midi.cpp:374 midi: a five-byte delta accumulates past 32 bits, as mido does
 - tests\test_rules_file.cpp:44 the rules file refuses below each of its five floors and reads the floor itself
-- tests\test_midi.cpp:100 midi: running status and zero-velocity note_on
-- tests\test_audio_decode.cpp:82 audio_sniff: the ID3v2 tag length counts the header, the size and the footer
-- tests\test_replay_schedule.cpp:1005 schedule: hydra_replay_build is written
-- tests\test_midi.cpp:177 midi: the first of two recognized track_names wins
 - tests\test_midi.cpp:240 midi: of two drum tracks, the first in file order is the drum track
-- tests\test_midi.cpp:140 midi: a recognized track_name is not displaced by a later name
-- tests\test_preview_source.cpp:122 find_loose_audio: stems beside the notes, preview and art excluded
-- tests\test_audio_decode.cpp:68 sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp3
-- tests\test_replay_schedule.cpp:1345 schedule: one decline rule
 - tests\test_store_open.cpp:142 a database from Hydra 1.6 or older is too old: refused, or set aside for a fresh library
 - tests\test_store_open.cpp:790 a database any release before 2.2.0 wrote is too old: refused, or set aside for a fresh library
 - tests\test_midi.cpp:201 midi: a track named by either drum name, in any case, is the drum track
-- tests\test_midi.cpp:252 midi: a drum track name wins over an earlier unrecognized one in any case
 - tests\test_midi.cpp:157 midi: a recognized track_name wins over an earlier unrecognized one
 - tests\test_midi.cpp:168 midi: a recognized track_name after tick 0 still wins
-- tests\test_midi.cpp:278 midi: track_name is not exposed as text
-- tests\test_preview_config.cpp:127 parse_hex_color follows Onyx stackColor
 - tests\test_app_settings.cpp:227 a settings change whose reads fail shows no other settings' record
-- tests\test_midi.cpp:191 midi: a track with no recognized track_name keeps its first name
-- tests\test_audio_decode.cpp:46 sniff_format classifies audio containers by their magic bytes
-- tests\test_audio_decode.cpp:117 decode_audio: OGG Vorbis fixture decodes to the 220 Hz sine
-- tests\test_replay_schedule.cpp:905 schedule: the late press holds sqout_late_notes
-- tests\test_replay_schedule.cpp:939 schedule: a whole_chord chord with no inside group has an empty inside list and an empty join_gems
-- tests\test_midi.cpp:118 midi: running status survives a meta event
-- tests\test_midi.cpp:261 midi: sysex and skipped metas do not lose time
-- tests\test_preview_source.cpp:88 is_audio_filename / looks_like_audio recognize the formats
 - tests\test_preview_config.cpp:78 the shipped 3d-config.json loads to the Onyx values
 - tests\test_pathstring_read.cpp:135 pathstring read: long text with no activations gives a path with no activations
-- tests\test_replay_schedule.cpp:1272 schedule: a squeeze-out that is also a skipped fill
-- tests\test_replay_schedule.cpp:1680 schedule: a tempo change on an end splits the conversion's sides
-- tests\test_midi.cpp:474 midi: the lean reader sizes each track's messages once
 - tests\display_fixtures.h:191 fixtures: a title made only of tags
-- tests\test_midi.cpp:60 midi: every corpus .mid reads with a sane structure
-- tests\test_midi.cpp:318 midi: each string meta gets its type, mido name and attribute
-- tests\test_audio_decode.cpp:127 decode_stem: a file-path stem and a bytes stem decode identically
 - tests\test_midi.cpp:591 midi: a drum track on track 0 is not the drum track, so the chart has no notes
 - tests\display_fixtures.h:169 fixtures: a Stale record for each cause
 - tests\display_fixtures.h:161 fixtures: a batch record saved for one chart
-- tests\test_midi.cpp:302 midi: each text event is decoded on its own, UTF-8 first, else Windows-1252
 - tests\test_midi.cpp:432 midi: the lean reader keeps only what each track's role reads, at the same ticks
-- tests\test_midi.cpp:697 midi: [section _endofsong] in lower case stays a section
-- tests\test_midi.cpp:602 midi: with drum tracks on track 0 and track 1, track 1 is read
 - tests\test_app_settings.cpp:197 a number setting edited outside its range lands on the edge the file loader uses
-- tests\test_midi.cpp:707 midi: [prc__ENDOFSONG] stays a section
 - tests\test_midi.cpp:682 midi: [section _ENDOFSONG] is not a section
-- tests\test_midi.cpp:690 midi: a section text holding _ENDOFSONG in its middle is not a section
-- tests\test_preview_source.cpp:194 extract_srb_audio: a stream with an audio magic but no codec is not a stem
-- tests\test_midi.cpp:647 midi: of two events tracks, only the first one's sections count
-- tests\test_midi.cpp:739 midi: the lean read keeps the end event
-- tests\test_midi.cpp:616 midi: the events track is named events in any case, and track 0 can be it
 - tests\test_midi.cpp:717 midi: [end] on the events track is the end event, first one wins
 - tests\test_midi.cpp:767 midi: a bass sustain past the last drum note is the last note end; BEAT, VENUE and EVENTS don't count
 - tests\test_midi.cpp:892 mid: a lane's velocity picks the lowest difficulty that shows it
 - tests\test_pathstring_read.cpp:203 pathstring read: the graph entry point refuses a token no fill can place
-- tests\test_midi.cpp:909 mid: 126 is a single lane and 127 a double, note-on to note-off
-- tests\test_midi.cpp:800 midi: the last note end reads each instrument once, from track 1, by instrument name
-- tests\test_audio_decode.cpp:151 decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz
 - tests\test_app_settings.cpp:177 number boxes apply at once but write the INI only on flush
 - tests\test_pathstring_read.cpp:90 pathstring read: a token no fill can place is refused with its position
-- tests\test_replay_schedule.cpp:964 schedule: first_note writes the same schedule as before
 - tests\test_audio_decode.cpp:165 decode_audio: Ogg-Opus output is pinned bit for bit
 - tests\test_replay_schedule.cpp:851 schedule: sp_ready_tick is the second bank arrival
 - tests\test_pathstring_read.cpp:148 pathstring read: a long-text window no fill can place is refused with its position
-- tests\test_replay_schedule.cpp:1378 schedule: the first press group is the activation note
-- tests\test_replay_schedule.cpp:1130 schedule: every skip writes a refusal and a flag
-- tests\test_preview_source.cpp:354 resolve_preview_source: a .srb uses its chart's Offset
-- tests\test_preview_source.cpp:309 resolve_preview_source reads delay from a song.ini in any case
-- tests\test_preview_source.cpp:230 resolve_preview_source: a loose chart parses and finds its audio
-- tests\test_preview_source.cpp:170 extract_srb_audio: trailing audio streams inflate; art is skipped
 - tests\test_preview_source.cpp:211 resolve_preview_source: a .srb with no extractable audio falls back to a loose file beside it
 - tests\test_pathstring_read.cpp:82 pathstring read: every corpus best path round-trips
 - tests\test_pathstring_read.cpp:175 pathstring read: the graph entry point reads the same path as the settings one
 - tests\test_pathstring_read.cpp:126 pathstring read: every corpus path round-trips from Hydra's long Copy path text
-- tests\test_preview_source.cpp:244 containers pass the difficulty through to the chart inside
-- tests\test_preview_source.cpp:332 resolve_preview_source: a .sng's metadata delay replaces the chart Offset
 - tests\test_app_settings.cpp:120 a burst of setting changes ends with one analysis of the final settings
-- tests\test_preview_source.cpp:140 extract_sng_audio: audio entries come back XOR-demasked
-- tests\test_app_settings.cpp:75 commit_settings analyzes the open song again on an SP cap change
 - tests\test_preview_source.cpp:407 resolve_preview_source reads a .sng or .srb from disk once
 - tests\test_preview_source.cpp:439 the song and stem halves share one container read and match the whole
-- tests\test_app_settings.cpp:90 commit_settings analyzes again when the ms limit or the score range changes
-- tests\test_app_settings.cpp:49 commit_settings analyzes the open song again when the chart mode changes
 - tests\test_preview_source.cpp:470 container charts give the same Song, stems and offset as the chart inside
