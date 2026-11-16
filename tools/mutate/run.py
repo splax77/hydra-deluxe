@@ -18,11 +18,15 @@ with the mutation preset. This script then drives that one build:
    any test begins, so its run takes every test file. --processes runs that
    many side by side; the default is the machine's physical core count, read
    at run time. Each run has the time limit test_timeout_seconds gives.
+3. The whole-suite runs. A bug that survived its filtered run runs once more
+   on every test file, one run at a time (needs_whole_suite says why), and
+   that run's verdict is the bug's.
 
-What counts is only doctest's own verdict, read from the listener's file. A
-test that goes red on a bug the map says it does not reach is an error, not
-a catch. A run whose file is missing, cut short, or does not agree with its
-exit code is listed as incomplete and never counted.
+What counts is only doctest's own verdict, read from the listener's file,
+and the evidence of a crash in the files and the exit code (find_crash).
+sort_red_tests says which red tests are catches and which are errors. A run
+whose file is missing, cut short, or does not agree with its exit code, and
+that is no proven crash, is listed as incomplete and never counted.
 
 The runner never builds and never reads compiler output. A missing build,
 or one older than its mutants.json, stops it with a message.
@@ -36,7 +40,9 @@ What it writes, in the run folder (default <build>/runs/<date-time>):
                           the run's seconds and exit code
     red_with_no_bug.txt   the tests that failed in the mapping run
     bugs/<n>.out, .log    each bug run's listener file and console output
-    bugs/<n>.json         each bug run's result (bug_result says the fields)
+    bugs/<n>.whole.out, .whole.log
+                          the same for a bug's whole-suite run
+    bugs/<n>.json         each bug's result (bug_result says the fields)
     summary.json          the counts, all from the runs above
 """
 
@@ -138,15 +144,19 @@ def parse_listener(text: str) -> dict:
     Returns {"tests": {id: {"name", "file", "line", "verdict", "switches"}},
     "order": [id, ...], "checks": {id: [[file, line], ...]},
     "exceptions": {id: [message, ...]}, "outside": {when: [switch, ...]},
-    "unended": [id, ...], "partial_line": bool}. "unended" holds each test
-    that started and has no test record: the one running when the process
-    died. "partial_line" is true when the file ends part way through a line.
+    "outside_at": [[tests ended before it, [switch, ...]], ...],
+    "unended": [id, ...], "running_at_end": id or None, "partial_line": bool}.
+    "unended" holds each test that started and has no test record: the one
+    running when the process died. "running_at_end" is the test whose start
+    is the file's last test record, or None when the last one ended.
+    "partial_line" is true when the file ends part way through a line.
     """
     tests: dict[str, dict] = {}
     order: list[str] = []
     checks: dict[str, list] = {}
     exceptions: dict[str, list] = {}
     outside: dict[str, list] = {}
+    outside_at: list[list] = []
     started: dict[str, bool] = {}
     current: Optional[str] = None
     partial = bool(text) and not text.endswith("\n")
@@ -184,8 +194,10 @@ def parse_listener(text: str) -> dict:
             exceptions.setdefault(current, []).append(rest[1])
         elif kind == "outside":
             outside.setdefault(rest[0], []).extend(_switches(rest[1]))
+            outside_at.append([len(order), _switches(rest[1])])
     return {"tests": tests, "order": order, "checks": checks, "exceptions": exceptions,
-            "outside": outside, "unended": sorted(started), "partial_line": partial}
+            "outside": outside, "outside_at": outside_at, "unended": sorted(started),
+            "running_at_end": current, "partial_line": partial}
 
 
 def read_listener(path: Path) -> Optional[dict]:
@@ -193,6 +205,13 @@ def read_listener(path: Path) -> Optional[dict]:
     if not path.is_file():
         return None
     return parse_listener(path.read_bytes().decode("utf-8", errors="replace"))
+
+
+def read_log(path: Path) -> Optional[str]:
+    """A run's console output, or None when the file is missing."""
+    if not path.is_file():
+        return None
+    return path.read_bytes().decode("utf-8", errors="replace")
 
 
 # ------------------------------------------------------------------ the map
@@ -268,31 +287,141 @@ def expected_tests(files: Optional[list[str]], m: dict) -> list[str]:
 # ------------------------------------------------------------------ one bug's verdict
 
 
-def bug_result(n: int, m: dict, files: Optional[list[str]], parsed: Optional[dict], exit_code: Optional[int],
-               seconds: float, timed_out: bool) -> dict:
-    """One bug run's result, from its parsed file and how its process ended.
+# doctest's console reporter writes this before the message of an exception
+# it reports as a crash (is_crash, in ConsoleReporter::test_case_exception in
+# third_party/doctest/doctest.h), and never for an exception a test threw.
+DOCTEST_CRASH_TAG = "test case CRASHED: "
 
-    "state" is one of: "timed_out" (stopped at the time limit), "incomplete"
-    (not counted; "why" says what was wrong), "caught" (a test that reaches
-    the bug went red) or "survived". "caught_by" lists each red test that
-    reaches the bug, with its failed check lines and exception messages.
-    "red_not_reaching" lists each red test the map says does not reach it:
-    an error, never a catch. Tests red with no bug are left out of both.
+# An NTSTATUS whose two top bits are set has error severity (Microsoft's
+# NTSTATUS documentation, [MS-ERREF] 2.3). A process an unhandled exception
+# or a fast fail ends exits with such a code, for example 0xC0000005 or
+# 0xC0000409.
+NTSTATUS_ERROR = 0xC0000000
+# STATUS_CONTROL_C_EXIT: the process was stopped with Ctrl+C, so it did not
+# crash.
+NTSTATUS_CONTROL_C_EXIT = 0xC000013A
+
+
+def _doctest_crash_messages(log_text: Optional[str]) -> list[str]:
+    """The messages doctest reported as a crash in a run's console output."""
+    if not log_text:
+        return []
+    return [line.split(DOCTEST_CRASH_TAG, 1)[1].strip() for line in log_text.splitlines()
+            if DOCTEST_CRASH_TAG in line]
+
+
+def find_crash(parsed: Optional[dict], exit_code: Optional[int], log_text: Optional[str],
+               expected: list[str]) -> Optional[dict]:
+    """The crash a run's files and exit code prove, or None.
+
+    Two kinds count, each only on its own evidence. doctest catches an
+    access violation, an abort or a terminate (FatalConditionHandler in
+    doctest.h): it reports the running test as failed with the crash message,
+    writes its console line with DOCTEST_CRASH_TAG and exits with
+    EXIT_FAILURE. So that crash needs exit code 1, the console line, and the
+    file's last test failed with that same message. Windows ends a crash
+    doctest cannot catch, such as a fast fail, with an error NTSTATUS; that
+    crash needs such an exit code and a file whose last record is the start
+    of the test that was running. Both need a whole file whose tests are the
+    run's expected tests in order, up to the crashed one: anything else is a
+    file cut short or a run that went wrong some other way.
+    """
+    if parsed is None or parsed["partial_line"]:
+        return None
+    order = parsed["order"]
+    if exit_code == EXIT_FAILED and not parsed["unended"] and order:
+        last = order[-1]
+        messages = _doctest_crash_messages(log_text)
+        thrown = parsed["exceptions"].get(last, [])
+        said = [msg for msg in messages if msg in thrown]
+        if parsed["tests"][last]["verdict"] == "failed" and said and order == expected[:len(order)]:
+            return {"test": last, "how": "doctest caught it: " + said[0]}
+        return None
+    if (isinstance(exit_code, int) and exit_code & NTSTATUS_ERROR == NTSTATUS_ERROR
+            and exit_code != NTSTATUS_CONTROL_C_EXIT):
+        running = parsed["running_at_end"]
+        if running is not None and parsed["unended"] == [running] and order + [running] == \
+                expected[:len(order) + 1]:
+            return {"test": running, "how": f"the process ended with exit code 0x{exit_code:08X}"}
+    return None
+
+
+def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
+    """Each red test of one run, sorted by what the run's own file shows.
+
+    "caught_by": the map says the test reaches the bug, the switch was noted
+    outside any test in the mapping run, or the test noted the switch in this
+    run itself. "caught_through_shared_state": the test did not reach the
+    bug, but an earlier test in the same process did, or the switch was noted
+    between tests before it, so the bug's effect could reach it through
+    anything the process keeps between tests (tests/corpus_util.h, "cached
+    corpus work", keeps each corpus chart's parse and analysis for the whole
+    run). "red_unexplained": neither; nothing in this process ran the bug
+    before or during the test, so its failure has no cause this run shows,
+    and it is an error. Tests red with no bug are left out of all three.
+    """
+    reachers = set(m["reach"].get(n, []))
+    via_outside = n in m["outside"]
+    skip = set(m["red_with_no_bug"])
+    noted_before = {at for at, ns in parsed["outside_at"] if n in ns}
+    out = {"caught_by": [], "caught_through_shared_state": [], "red_unexplained": []}
+    reached_earlier = False
+    for i, tid in enumerate(parsed["order"]):
+        test = parsed["tests"][tid]
+        reached_earlier = reached_earlier or i in noted_before
+        if test["verdict"] == "failed" and tid not in skip:
+            if tid in reachers or via_outside or n in test["switches"]:
+                out["caught_by"].append({"test": tid, "checks": parsed["checks"].get(tid, []),
+                                         "exceptions": parsed["exceptions"].get(tid, [])})
+            elif reached_earlier:
+                out["caught_through_shared_state"].append(tid)
+            else:
+                out["red_unexplained"].append(tid)
+        reached_earlier = reached_earlier or n in test["switches"]
+    return out
+
+
+def bug_result(n: int, m: dict, files: Optional[list[str]], parsed: Optional[dict], exit_code: Optional[int],
+               seconds: float, timed_out: bool, log_text: Optional[str] = None,
+               parse_error: Optional[str] = None) -> dict:
+    """One bug run's result, from its parsed file, its console output and how its process ended.
+
+    "state" is one of: "timed_out" (stopped at the time limit; D82 item 3
+    counts it as found), "crashed" (the test program crashed: found; "crash"
+    names the test that was running and how the crash shows), "incomplete"
+    (not counted; "why" says what was wrong), "caught" (a test went red that
+    the bug can explain) or "survived". sort_red_tests says the three lists
+    of red tests; a crashed run keeps those recorded before the crash, and a
+    timed-out one lists its red tests in "red_in_file". "parse_error" is
+    read_listener's refusal of the file, when it refused it.
     """
     out = {"number": n, "files": files, "exit_code": exit_code, "seconds": round(seconds, 3),
-           "timed_out": timed_out, "state": None, "why": [], "caught_by": [], "red_not_reaching": []}
+           "timed_out": timed_out, "state": None, "why": [], "crash": None, "caught_by": [],
+           "caught_through_shared_state": [], "red_unexplained": []}
     if timed_out:
         out["state"] = "timed_out"
+        if parsed is not None:
+            out["red_in_file"] = [t for t in parsed["order"] if parsed["tests"][t]["verdict"] == "failed"]
+            out["running_at_limit"] = parsed["running_at_end"]
         return out
+    expected = expected_tests(files, m)
+    if parse_error is None:
+        crash = find_crash(parsed, exit_code, log_text, expected)
+        if crash is not None:
+            out["state"] = "crashed"
+            out["crash"] = crash
+            out.update(sort_red_tests(n, m, parsed))
+            return out
     why = []
-    if parsed is None:
+    if parse_error is not None:
+        why.append(parse_error)
+    elif parsed is None:
         why.append("the run wrote no result file")
     else:
         if parsed["partial_line"]:
             why.append("the result file ends part way through a line")
         if parsed["unended"]:
             why.append("tests started and never ended: " + ", ".join(parsed["unended"]))
-        expected = expected_tests(files, m)
         missing = [t for t in expected if t not in parsed["tests"]]
         expected_set = set(expected)
         extra = [t for t in parsed["order"] if t not in expected_set]
@@ -312,18 +441,9 @@ def bug_result(n: int, m: dict, files: Optional[list[str]], parsed: Optional[dic
         if parsed is not None:
             out["red_in_file"] = [t for t in parsed["order"] if parsed["tests"][t]["verdict"] == "failed"]
         return out
-    reachers = set(m["reach"].get(n, []))
-    via_outside = n in m["outside"]
-    skip = set(m["red_with_no_bug"])
-    for tid in parsed["order"]:
-        if parsed["tests"][tid]["verdict"] != "failed" or tid in skip:
-            continue
-        if tid in reachers or via_outside:
-            out["caught_by"].append({"test": tid, "checks": parsed["checks"].get(tid, []),
-                                     "exceptions": parsed["exceptions"].get(tid, [])})
-        else:
-            out["red_not_reaching"].append(tid)
-    out["state"] = "caught" if out["caught_by"] else "survived"
+    out.update(sort_red_tests(n, m, parsed))
+    found = out["caught_by"] or out["caught_through_shared_state"]
+    out["state"] = "caught" if found else "survived"
     return out
 
 
@@ -375,12 +495,52 @@ def run_tests(exe: Path, args: list[str], out_file: Path, log_file: Path, cwd: P
     return code, time.perf_counter() - t0, timed_out
 
 
+def result_from_files(n: int, m: dict, files: Optional[list[str]], out_file: Path, log_file: Path,
+                      exit_code: Optional[int], seconds: float, timed_out: bool) -> dict:
+    """bug_result on a run's two files; a listener file run.py cannot read makes the run incomplete."""
+    try:
+        parsed, parse_error = read_listener(out_file), None
+    except RunError as e:
+        parsed, parse_error = None, str(e)
+    return bug_result(n, m, files, parsed, exit_code, seconds, timed_out, read_log(log_file), parse_error)
+
+
 def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, limit: float) -> dict:
+    """The bug's run on the test files that hold a reaching test (files_for)."""
     files = files_for(n, m)
-    out_file = bugs_dir / f"{n}.out"
-    code, seconds, timed_out = run_tests(exe, filter_arg(files), out_file, bugs_dir / f"{n}.log", cwd, n, limit)
-    result = bug_result(n, m, files, read_listener(out_file), code, seconds, timed_out)
+    out_file, log_file = bugs_dir / f"{n}.out", bugs_dir / f"{n}.log"
+    code, seconds, timed_out = run_tests(exe, filter_arg(files), out_file, log_file, cwd, n, limit)
+    result = result_from_files(n, m, files, out_file, log_file, code, seconds, timed_out)
     result["time_limit_seconds"] = round(limit, 3)
+    result["verdict_from"] = "filtered run" if files is not None else "whole suite"
+    (bugs_dir / f"{n}.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    return result
+
+
+def needs_whole_suite(result: dict) -> bool:
+    """Whether a bug's verdict waits for a run of every test file.
+
+    A run on the reaching tests' files leaves out tests in other files that
+    see the bug only through what the process keeps between tests
+    (sort_red_tests), so a bug none of them caught is not yet survived. A
+    run that already took every test file needs no second one.
+    """
+    return result["state"] == "survived" and result["files"] is not None
+
+
+def confirm_bug(first: dict, m: dict, exe: Path, bugs_dir: Path, cwd: Path, limit: float) -> dict:
+    """A survived bug's second run, on every test file; its verdict is the bug's.
+
+    The filtered run's result is kept under "filtered_run". The second run's
+    files are <n>.whole.out and <n>.whole.log.
+    """
+    n = first["number"]
+    out_file, log_file = bugs_dir / f"{n}.whole.out", bugs_dir / f"{n}.whole.log"
+    code, seconds, timed_out = run_tests(exe, [], out_file, log_file, cwd, n, limit)
+    result = result_from_files(n, m, None, out_file, log_file, code, seconds, timed_out)
+    result["time_limit_seconds"] = round(limit, 3)
+    result["verdict_from"] = "whole-suite run after a survived filtered run"
+    result["filtered_run"] = first
     (bugs_dir / f"{n}.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     return result
 
@@ -421,11 +581,22 @@ def summarize(listing: dict, m: dict, map_seconds: float, map_exit: int, process
         "processes": processes,
         "bug_runs": len(results),
         "bug_runs_by_state": states,
+        # Caught, crashed and timed out each mean the tests found the bug
+        # (D82 item 3 for timed out); bug_result says each state.
+        "bugs_found": sum(1 for r in results if r["state"] in ("caught", "crashed", "timed_out")),
+        "bug_runs_crashed": [dict(r["crash"], number=r["number"]) for r in results if r["state"] == "crashed"],
         "bug_runs_incomplete": [r["number"] for r in results if r["state"] == "incomplete"],
         "bug_runs_timed_out": [r["number"] for r in results if r["state"] == "timed_out"],
-        "errors_red_not_reaching": [{"number": r["number"], "test": t} for r in results
-                                    for t in r["red_not_reaching"]],
-        "bug_run_seconds_total": round(sum(r["seconds"] for r in results), 3),
+        "bugs_caught_only_through_shared_state": [r["number"] for r in results if r["state"] == "caught"
+                                                  and not r["caught_by"]],
+        "verdicts_from_whole_suite_run": [{"number": r["number"], "state": r["state"]} for r in results
+                                          if "filtered_run" in r],
+        "caught_through_shared_state": [{"number": r["number"], "test": t} for r in results
+                                        for t in r["caught_through_shared_state"]],
+        "errors_red_unexplained": [{"number": r["number"], "test": t} for r in results
+                                   for t in r["red_unexplained"]],
+        "bug_run_seconds_total": round(sum(r["seconds"] + r.get("filtered_run", {}).get("seconds", 0.0)
+                                           for r in results), 3),
         "bug_phase_wall_seconds": round(wall_seconds, 3),
     }
 
@@ -494,6 +665,11 @@ def _run(a) -> int:
     results: list[dict] = []
     wall = 0.0
     if not a.map_only:
+        # The mapping run is the whole suite untouched, so this is D82's
+        # limit for a whole-suite run. A filtered run's untouched time is
+        # not measured (the listener writes no test times); the whole suite's
+        # time is the most it can be, so a filtered run is never stopped
+        # sooner than D82 would stop it.
         limit = test_timeout_seconds(map_seconds)
         bugs_dir = run_dir / "bugs"
         bugs_dir.mkdir()
@@ -503,12 +679,22 @@ def _run(a) -> int:
             futures = [pool.submit(run_bug, n, m, exe, bugs_dir, cwd, limit) for n in reached]
             for f in concurrent.futures.as_completed(futures):
                 results.append(f.result())
+        # Each whole-suite run goes alone, like the mapping run its time
+        # limit is measured from, so runs side by side cannot slow it past
+        # the limit.
+        survivors = [r for r in results if needs_whole_suite(r)]
+        if survivors:
+            print(f"run.py: {len(survivors)} survived bugs run again on every test file, one at a time, "
+                  f"time limit {limit:.1f} s each")
+        confirmed = {r["number"]: confirm_bug(r, m, exe, bugs_dir, cwd, limit) for r in survivors}
+        results = [confirmed.get(r["number"], r) for r in results]
         wall = time.perf_counter() - t0
         results.sort(key=lambda r: r["number"])
     summary = summarize(listing, m, map_seconds, map_exit, processes, results, wall)
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
     print(f"run.py: {json.dumps(summary['bug_runs_by_state'])}; "
-          f"{len(summary['errors_red_not_reaching'])} red on a bug they do not reach; results in {run_dir}")
+          f"{len(summary['caught_through_shared_state'])} red through shared state; "
+          f"{len(summary['errors_red_unexplained'])} red with no cause the run shows; results in {run_dir}")
     return 0
 
 
