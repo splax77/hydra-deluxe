@@ -175,10 +175,15 @@ struct ViewLatch {
         }};
     ~ViewLatch() { release(); }
     void release() { open->store(true); }
-    // Waits until `n` jobs have reached the latch.
-    void wait_entered(int n) {
-        testwait::wait_until([&] { return entered->load() >= n; },
-                             std::to_string(n) + " jobs to reach the latch");
+    // Waits until `n` jobs have reached the latch. It fails at once when
+    // `app` has no song job running: only a frame (tick) starts the next
+    // one, and no frame runs during this wait.
+    void wait_entered(const hydra::ui::AppState& app, int n) {
+        testwait::wait_until_or_gone(
+            [&] { return entered->load() >= n; },
+            [&] { return !app.view_job || app.view_job->finished(); },
+            std::to_string(n) + " jobs to reach the latch",
+            "the song's job finished, or none was started, before it reached the latch");
     }
 };
 
