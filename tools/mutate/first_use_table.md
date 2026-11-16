@@ -1,6 +1,12 @@
 # F1: the 62 disputed rows against the full mutation run 20261116-123523
 
-The tool plants its own kinds of bug, not the change a row names. So a row whose test caught nothing is "not shown to fail by this run", and that is all it says. No row holds an agent's verdict. "This line failed" counts the bugs in which the check on that exact line was one of the test's failed checks. A named line that holds no check of its own (a comment, a closing brace, or a message string inside a check) can never match, so it reads none whatever happened.
+The tool plants its own kinds of bug. It does not plant the change a row names. So a row whose test caught nothing is "not shown to fail by this run". That is all it says. No row holds an agent's verdict.
+
+One re-read row can name several lines, so the table has one line per named line (75 lines from 61 rows). The 62nd row names no line and is listed at the end.
+
+"Bugs it reaches" is how many planted bugs sit in code that test runs. "Bugs it caught" is how many of those made the test fail. "This line failed in" counts the bugs where the check on that exact line was one of the failed checks. A line with no check of its own (a comment, a closing brace, or a message string inside a check) can never match, so it reads none.
+
+"Outside every test case" means the line sits in a helper function, not in a test. No test is named for it. The table still says whether a check on that line failed.
 
 | Slice | Re-read line | Test line | Test | Bugs it reaches | Bugs it caught | This line failed in |
 |---|---|---|---|---|---|---|
