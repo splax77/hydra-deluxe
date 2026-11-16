@@ -13,8 +13,9 @@ read, never written.
 
 A wrapped spot reads `((changed) if _hm_switch(17) else (original))`. Python's
 own parser (`ast`) finds the spots, so comments and strings never match. The
-bug kinds are find.py's KINDS, read through AST_TOKEN and SPELLING below. A spot the rewriter cannot place safely is skipped
-and listed with one of SKIP_REASONS, never guessed.
+bug kinds are find.py's KINDS, read through AST_TOKEN and SPELLING below. A
+spot the rewriter cannot place safely is skipped and listed with one of
+SKIP_REASONS, never guessed.
 
 What a test "caught" is decided only by unittest's own result for it in the
 run with that one switch on.
