@@ -7,18 +7,21 @@ with the mutation preset. This script then drives that one build:
     py -I tools/mutate/run.py [--build build-mutation] [--processes N] [--out <run folder>]
 
 1. The mapping run. hydra_tests.exe runs once with HYDRA_MUTANT unset, so
-   every switch is off, and with HYDRA_MUTANT_OUT naming a result file. The
-   listener (listener.cpp, whose header is the file format's one home) writes
-   which switches each test reached. A test that fails here is "red with no
-   bug": its verdict is left out of every bug run.
+   every switch is off, with HYDRA_MUTANT_OUT naming a result file, and
+   with doctest's --duration=true, so its console output gives each test's
+   own time (parse_durations). The listener (listener.cpp, whose header is
+   the file format's one home) writes which switches each test reached. A
+   test that fails here is "red with no bug": its verdict is left out of
+   every bug run.
 2. The bug runs. For each switch at least one test reaches, a fresh
    hydra_tests.exe starts with HYDRA_MUTANT=<switch> and a doctest source-file
    filter naming only the test files that hold a reaching test (filter_arg).
    A switch noted outside any test, such as in static start-up, is set before
    any test begins, so its run takes every test file. --processes runs that
    many side by side; the default is the machine's physical core count, read
-   at run time. Each run has the time limit test_timeout_seconds gives, and
-   its verdict is the bug's: a bug no test caught in it is survived.
+   at run time. Each run has the time limit test_timeout_seconds gives for
+   its own clean time (clean_seconds), and its verdict is the bug's: a bug
+   no test caught in it is survived.
 
 What counts is only doctest's own verdict, read from the listener's file,
 and the evidence of a crash in the files and the exit code (find_crash).
@@ -37,10 +40,12 @@ or one older than its mutants.json, stops it with a message.
 What it writes, in the run folder (default <build>/runs/<date-time>):
 
     map.out               the mapping run's listener file
-    map.log               its console output
-    map.json              the parsed map: each test, its verdict, the switches
-                          it reached, the switches noted outside any test,
-                          the run's seconds and exit code
+    map.log               its console output, stdout only
+    map.err               its stderr
+    map.json              the parsed map: each test, its verdict, its own
+                          seconds, the switches it reached, the switches
+                          noted outside any test, the run's seconds and
+                          exit code
     red_with_no_bug.txt   the tests that failed in the mapping run
     bugs/<n>.out, .log    each bug run's listener file and console output
     bugs/<n>.json         each bug's result (bug_result says the fields)
@@ -54,6 +59,7 @@ import concurrent.futures
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -80,13 +86,18 @@ class RunError(RuntimeError):
 def test_timeout_seconds(baseline_seconds: float) -> float:
     """How long a run with one switch on may take before it counts as stuck.
 
-    The user's decision is D82 item 3 in docs/audit/2026-10-03-fix-decisions.md:
-    PIT's documented defaults (timeoutFactor, timeoutConst;
-    pitest.org/quickstart/commandline), the JVM mutation tool's answer to the
-    same question. `baseline_seconds` is how long the same tests took with
-    every switch off. tools/mutate/py_mutate.py calls this too.
+    The rule is the run's own clean time plus 5 seconds. The user chose it
+    in session 60c3a576 ("own time plus 5s"), for this tool in place of the
+    PIT formula of D82 item 3 (docs/audit/2026-10-03-fix-decisions.md).
+    `baseline_seconds` is how long the same tests took with every switch
+    off; clean_seconds says how run.py adds it up. tools/mutate/py_mutate.py
+    calls this too, with its own clean time of the modules a bug run loads.
     """
-    return baseline_seconds * 1.25 + 4.0
+    return baseline_seconds + 5.0
+
+
+# The summary's words for the rule test_timeout_seconds applies.
+TIME_LIMIT_RULE = "each bug run's clean time (clean_seconds) plus 5 s (test_timeout_seconds)"
 
 
 # ------------------------------------------------------------------ mutants.json
@@ -283,6 +294,91 @@ def expected_tests(files: Optional[list[str]], m: dict) -> list[str]:
         return list(m["order"])
     wanted = set(files)
     return [tid for tid in m["order"] if m["tests"][tid]["file"] in wanted]
+
+
+# ------------------------------------------------------------------ test times
+
+
+# The mapping run's doctest argument that prints each test's own time.
+DURATION_ARG = "--duration=true"
+
+# With --duration, doctest's console reporter ends each test with a header
+# (its file and line, then "TEST CASE:  <name>") and "<seconds> s: <name>"
+# (logTestStart and test_case_end in ConsoleReporter, in
+# third_party/doctest/doctest.h). A failing test's header comes earlier, at
+# its first failure, with the test's own lines after it.
+_DURATION_HEADER = re.compile(r"^(.+)\((\d+)\):$")
+_DURATION_TIME = re.compile(r"^(\d+\.\d+) s: (.*)$")
+
+
+def parse_durations(log_text: str, m: dict) -> dict[str, float]:
+    """Each test's own seconds from a --duration run's console output, by test_id.
+
+    A time line names its test, and that name picks the test from the
+    listener's tests in the map `m`. The nearest header before the time line
+    is read only when two tests share the name, to tell them apart. So a
+    test's own output that breaks into a header does not lose its time.
+    Stops, naming the line, when a time line's name picks no test, or picks
+    two that the header does not tell apart, and when a test has two times:
+    a time is then never guessed.
+    """
+    by_name: dict[str, list[str]] = {}
+    for tid in m["order"]:
+        by_name.setdefault(m["tests"][tid]["name"], []).append(tid)
+    out: dict[str, float] = {}
+    header: Optional[tuple[str, int]] = None
+    for raw in log_text.splitlines():
+        found = _DURATION_HEADER.match(raw)
+        if found:
+            header = (found.group(1), int(found.group(2)))
+            continue
+        timed = _DURATION_TIME.match(raw)
+        if not timed:
+            continue
+        name = timed.group(2)
+        named = by_name.get(name, [])
+        if not named:
+            raise RunError(f"run.py: the test time {raw!r} in the console output names no test the listener "
+                           "recorded")
+        if len(named) > 1:
+            told = [tid for tid in named if header is not None and tid == test_id(name, header[0], header[1])]
+            if len(told) != 1:
+                raise RunError(f"run.py: the test time {raw!r} in the console output names {len(named)} tests, "
+                               "and no header just before it says which")
+            named = told
+        tid = named[0]
+        if tid in out:
+            raise RunError(f"run.py: the console output gives test {tid} two times")
+        out[tid] = float(timed.group(1))
+        # A header belongs to one test's time; the next time needs its own.
+        header = None
+    return out
+
+
+def add_test_seconds(m: dict, durations: dict[str, float]) -> None:
+    """Puts each mapping-run test's own seconds in the map as its "seconds".
+
+    `durations` is parse_durations of the map. Stops when a test the
+    listener recorded has no time, so no clean time is ever a guess.
+    """
+    missing = [tid for tid in m["order"] if tid not in durations]
+    if missing:
+        raise RunError(f"run.py: the mapping run's console output gives no time for {len(missing)} tests, "
+                       f"first {missing[0]}")
+    for tid in m["order"]:
+        m["tests"][tid]["seconds"] = durations[tid]
+
+
+def clean_seconds(files: Optional[list[str]], m: dict, map_seconds: float) -> float:
+    """How long a run on these test files took with every switch off.
+
+    It is the sum of the mapping run's own times for the tests in these
+    files (add_test_seconds). A run of every file is the whole mapping run,
+    so its clean time is that run's seconds.
+    """
+    if files is None:
+        return map_seconds
+    return sum(m["tests"][tid]["seconds"] for tid in expected_tests(files, m))
 
 
 # ------------------------------------------------------------------ one bug's verdict
@@ -498,8 +594,14 @@ def _kill_tree(p: subprocess.Popen) -> None:
 
 
 def run_tests(exe: Path, args: list[str], out_file: Path, log_file: Path, cwd: Path,
-              mutant: Optional[int], timeout: Optional[float]) -> tuple[Optional[int], float, bool]:
-    """One fresh hydra_tests.exe. Returns (exit code, seconds, timed out)."""
+              mutant: Optional[int], timeout: Optional[float],
+              err_file: Optional[Path] = None) -> tuple[Optional[int], float, bool]:
+    """One fresh hydra_tests.exe. Returns (exit code, seconds, timed out).
+
+    Its stderr goes to `err_file` when one is given, and into the log with
+    its stdout when not. Stdout is buffered and stderr is not, so in one
+    file a stderr write can land part way through any stdout line.
+    """
     env = dict(os.environ)
     env.pop("HYDRA_MUTANT", None)
     if mutant is not None:
@@ -510,8 +612,9 @@ def run_tests(exe: Path, args: list[str], out_file: Path, log_file: Path, cwd: P
         raise RunError(f"run.py: the command line for {out_file.name} is longer than Windows takes")
     out_file.unlink(missing_ok=True)
     t0 = time.perf_counter()
-    with open(log_file, "wb") as log:
-        p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=str(cwd))
+    with open(log_file, "wb") as log, open(err_file or os.devnull, "wb") as err:
+        stderr = err if err_file is not None else subprocess.STDOUT
+        p = subprocess.Popen(cmd, stdout=log, stderr=stderr, env=env, cwd=str(cwd))
         try:
             code = p.wait(timeout=timeout)
             timed_out = False
@@ -532,12 +635,18 @@ def result_from_files(n: int, m: dict, files: Optional[list[str]], out_file: Pat
     return bug_result(n, m, files, parsed, exit_code, seconds, timed_out, read_log(log_file), parse_error)
 
 
-def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, limit: float) -> dict:
-    """The bug's run on the test files that hold a reaching test (files_for)."""
+def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, clean: float) -> dict:
+    """The bug's run on the test files that hold a reaching test (files_for).
+
+    `clean` is those files' clean time (clean_seconds); the run's limit is
+    test_timeout_seconds of it.
+    """
     files = files_for(n, m)
+    limit = test_timeout_seconds(clean)
     out_file, log_file = bugs_dir / f"{n}.out", bugs_dir / f"{n}.log"
     code, seconds, timed_out = run_tests(exe, filter_arg(files), out_file, log_file, cwd, n, limit)
     result = result_from_files(n, m, files, out_file, log_file, code, seconds, timed_out)
+    result["clean_seconds"] = round(clean, 3)
     result["time_limit_seconds"] = round(limit, 3)
     (bugs_dir / f"{n}.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     return result
@@ -557,9 +666,19 @@ def check_build(build: Path, mutants_path: Path) -> Path:
     return exe
 
 
+def time_limit_record(limits: list[float]) -> dict:
+    """The summary's account of the bug runs' time limits: the rule and the lowest and highest limit given."""
+    return {"rule": TIME_LIMIT_RULE,
+            "lowest_seconds": round(min(limits), 3) if limits else None,
+            "highest_seconds": round(max(limits), 3) if limits else None}
+
+
 def summarize(listing: dict, m: dict, map_seconds: float, map_exit: int, processes: int,
-              results: list[dict], wall_seconds: float) -> dict:
-    """The counts of one run, every one read from the runs' results."""
+              results: list[dict], wall_seconds: float, time_limit: dict) -> dict:
+    """The counts of one run, every one read from the runs' results.
+
+    `time_limit` is the run's account of its limits (time_limit_record).
+    """
     listed = [x["number"] for x in listing["mutants"]]
     reached = reached_switches(m)
     states: dict[str, int] = {}
@@ -575,7 +694,7 @@ def summarize(listing: dict, m: dict, map_seconds: float, map_exit: int, process
         "red_with_no_bug": len(m["red_with_no_bug"]),
         "mapping_run_seconds": round(map_seconds, 3),
         "mapping_run_exit_code": map_exit,
-        "time_limit_seconds": round(test_timeout_seconds(map_seconds), 3),
+        "time_limit": time_limit,
         "processes": processes,
         "bug_runs": len(results),
         "bug_runs_by_state": states,
@@ -604,11 +723,12 @@ def rescore(run_dir: Path, listing: dict) -> list[dict]:
     Each bugs/<n>.json is rewritten by result_from_files, given that run's
     .out and .log and the exit code, seconds and timed-out flag its old json
     stored, which are the facts the process gave and no file holds. The time
-    limit it was run with is kept. A bug whose stored test files are not the
-    ones files_for names now stops the re-score, because its run did not run
-    what the current rules would. summary.json, which only a finished run
-    has, is written again from the new results, keeping the process count
-    and wall time the run measured. Returns the new results by number.
+    limit it was run with, and the clean time that limit came from, are
+    kept, so the map needs no test times here. A bug whose stored test files
+    are not the ones files_for names now stops the re-score, because its run
+    did not run what the current rules would. summary.json, which only a finished run
+    has, is written again from the new results, keeping the process count,
+    wall time and time limits the run had. Returns the new results by number.
     """
     parsed = read_listener(run_dir / "map.out")
     if parsed is None:
@@ -631,15 +751,21 @@ def rescore(run_dir: Path, listing: dict) -> list[dict]:
         n = old["number"]
         r = result_from_files(n, m, old["files"], bugs_dir / f"{n}.out", bugs_dir / f"{n}.log",
                               old["exit_code"], old["seconds"], old["timed_out"])
-        if "time_limit_seconds" in old:
-            r["time_limit_seconds"] = old["time_limit_seconds"]
+        for kept in ("clean_seconds", "time_limit_seconds"):
+            if kept in old:
+                r[kept] = old[kept]
         (bugs_dir / f"{n}.json").write_text(json.dumps(r, indent=1) + "\n", encoding="utf-8")
         results.append(r)
     summary_path = run_dir / "summary.json"
     if summary_path.is_file():
         old_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        time_limit = old_summary.get("time_limit")
+        if time_limit is None:
+            # A summary with no time_limit record holds the one limit every
+            # bug run of it had.
+            time_limit = {"every_bug_run_seconds": old_summary.get("time_limit_seconds")}
         summary = summarize(listing, m, old_summary["mapping_run_seconds"], old_summary["mapping_run_exit_code"],
-                            old_summary["processes"], results, old_summary["bug_phase_wall_seconds"])
+                            old_summary["processes"], results, old_summary["bug_phase_wall_seconds"], time_limit)
         summary_path.write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
     return results
 
@@ -691,7 +817,11 @@ def _run(a) -> int:
 
     print(f"run.py: mapping run of {exe}, every switch off")
     map_out = run_dir / "map.out"
-    map_exit, map_seconds, _ = run_tests(exe, [], map_out, run_dir / "map.log", cwd, None, None)
+    map_log = run_dir / "map.log"
+    # The tests' stderr writes go to their own file, so they never break
+    # into the lines parse_durations reads.
+    map_exit, map_seconds, _ = run_tests(exe, [DURATION_ARG], map_out, map_log, cwd, None, None,
+                                         run_dir / "map.err")
     parsed = read_listener(map_out)
     if parsed is None:
         raise RunError(f"run.py: the mapping run wrote no result file; see {run_dir / 'map.log'}")
@@ -702,6 +832,7 @@ def _run(a) -> int:
     if map_exit not in (EXIT_PASSED, EXIT_FAILED) or (map_exit == EXIT_FAILED) != any_red:
         raise RunError(f"run.py: the mapping run ended with exit code {map_exit}, which does not match its "
                        f"{len(m['red_with_no_bug'])} failed tests; see {run_dir / 'map.log'}")
+    add_test_seconds(m, parse_durations(read_log(map_log) or "", m))
     (run_dir / "map.json").write_text(json.dumps({
         "seconds": round(map_seconds, 3), "exit_code": map_exit,
         "tests": [dict(m["tests"][t], id=t) for t in m["order"]],
@@ -719,24 +850,23 @@ def _run(a) -> int:
 
     results: list[dict] = []
     wall = 0.0
+    limits: list[float] = []
     if not a.map_only:
-        # The mapping run is the whole suite untouched, so this is D82's
-        # limit for a whole-suite run. A filtered run's untouched time is
-        # not measured (the listener writes no test times); the whole suite's
-        # time is the most it can be, so a run is never stopped sooner than
-        # D82 would stop it.
-        limit = test_timeout_seconds(map_seconds)
+        cleans = {n: clean_seconds(files_for(n, m), m, map_seconds) for n in reached}
+        limits = [test_timeout_seconds(c) for c in cleans.values()]
         bugs_dir = run_dir / "bugs"
         bugs_dir.mkdir()
-        print(f"run.py: {len(reached)} bug runs, {processes} side by side, time limit {limit:.1f} s each")
+        span = f"{min(limits):.1f} to {max(limits):.1f} s" if limits else "none"
+        print(f"run.py: {len(reached)} bug runs, {processes} side by side, time limits {span} "
+              "(each run's clean time plus 5 s)")
         t0 = time.perf_counter()
         with concurrent.futures.ThreadPoolExecutor(max_workers=processes) as pool:
-            futures = [pool.submit(run_bug, n, m, exe, bugs_dir, cwd, limit) for n in reached]
+            futures = [pool.submit(run_bug, n, m, exe, bugs_dir, cwd, cleans[n]) for n in reached]
             for f in concurrent.futures.as_completed(futures):
                 results.append(f.result())
         wall = time.perf_counter() - t0
         results.sort(key=lambda r: r["number"])
-    summary = summarize(listing, m, map_seconds, map_exit, processes, results, wall)
+    summary = summarize(listing, m, map_seconds, map_exit, processes, results, wall, time_limit_record(limits))
     (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
     print(f"run.py: {json.dumps(summary['bug_runs_by_state'])}; "
           f"{len(summary['caught_through_shared_state'])} red through shared state; "

@@ -714,9 +714,15 @@ memory, may land either way in another run, because the result then depends
 on thread timing or on what memory held.
 
 A run that passes its time limit is stopped and counts as caught. The limit
-is `test_timeout_seconds` in `run.py`, the user's decision D82 item 3 in
-`docs/audit/2026-10-03-fix-decisions.md`. `run.py` gives it the mapping
-run's time. The Python half calls the same function with the time its
+is the run's own clean time plus 5 seconds, the rule the user chose ("own
+time plus 5s"). Its one home is `test_timeout_seconds` in `run.py`. A bug
+run's clean time is how long the tests it runs took with every bug off.
+The mapping run runs with doctest's `--duration=true`, so its console
+output gives each test's own time, and `clean_seconds` adds up the times of
+the tests in the bug's files. A bug that runs every file uses the whole
+mapping run's time. Each bug's json holds its `clean_seconds` and
+`time_limit_seconds`, and `summary.json` gives the rule and the lowest and
+highest limit. The Python half calls the same function with the time its
 chosen test modules took in its own mapping run.
 
 A crash counts as caught too. `find_crash` in `run.py` says what proves a

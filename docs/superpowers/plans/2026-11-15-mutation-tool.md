@@ -20,7 +20,7 @@ This plan changes nothing Hydra decides or shows. The normal build never carries
 
 Agent rule 15 asks for the existing owner first. I searched `tools`, `src`, `tests`, `docs` and `CMakeLists.txt` for `mutation`, `mutant`, `codelex`, `code-mask`, `lexer_language` and `t7_bug`. Five pieces exist.
 
-The first is `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`). It already owns the list of bug kinds (`Find-MutationCandidates`), the rule that edits go only into code, and the time limit for a stuck run (`Get-TestTimeoutMs`, the user's decision D82 item 3). It plants one bug, rebuilds, tests, restores, and repeats. The new tool takes over its list of kinds and its time limit, so each rule keeps one home. Task M8 removes the probe, if the user agrees (question 1).
+The first is `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`). It already owns the list of bug kinds (`Find-MutationCandidates`), the rule that edits go only into code, and the time limit for a stuck run (`Get-TestTimeoutMs`, the user's decision D82 item 3). It plants one bug, rebuilds, tests, restores, and repeats. The new tool takes over its list of kinds and its time limit, so each rule keeps one home. The time limit's rule is now the user's own for this tool: a bug run's own clean time plus 5 seconds (the answers of session 60c3a576). Task M8 removes the probe, if the user agrees (question 1).
 
 The second is the repo's one lexer, codelex, in `tests/code_lexer.h`. A lexer splits a file into code, comments and strings. `hydra_precheck --code-mask <file>` prints a file with everything that is not code blanked out, same length, same line numbers. The probe already calls it. The new tool calls it the same way, for C++ and for Python files. It does not write a second lexer.
 
@@ -46,7 +46,7 @@ Prior art, from the research report (`reports/Mutation testing tools for Hydra.m
 
 **Step 5: the mapping run.** The suite runs once with every switch off. Each switch, when its line executes, notes its number. The doctest listener writes, for each test, the numbers noted while it ran. That gives the map: which test reaches which bug. A test that fails in this run is listed as "red with no bug" and takes no further part; the two text-reading tests T7 hit cannot fail here, because the rewritten files are copies (see below).
 
-**Step 6: one bug at a time.** For each bug at least one test reaches, the tool starts a fresh `hydra_tests.exe` with `HYDRA_MUTANT=<number>` and a doctest source-file filter naming the test files that hold a reaching test. Several such processes run side by side. The listener writes each test's pass or fail and each failed check's file and line. A run that outlives the time limit is stopped and recorded as "timed out", using the probe's existing rule.
+**Step 6: one bug at a time.** For each bug at least one test reaches, the tool starts a fresh `hydra_tests.exe` with `HYDRA_MUTANT=<number>` and a doctest source-file filter naming the test files that hold a reaching test. Several such processes run side by side. The listener writes each test's pass or fail and each failed check's file and line. A run that outlives its time limit is stopped and recorded as "timed out". The limit is that run's own clean time plus 5 seconds. Its clean time is the sum of the mapping run's own times for the tests in the files it runs, which doctest's `--duration=true` prints in the mapping run's console output; a run of every file uses the whole mapping run's time.
 
 **Step 7: the report.** Written as text files in the run's folder. Per bug: file, line, the change in words, and every test that went red, with the check lines that failed. Per test: how many bugs it reaches and how many it caught, with the tests that caught none listed first. Three more lists: bugs no test reaches, bugs reached but caught by nobody (survivors), and spots skipped with reasons. Timed-out bugs are counted as caught but listed apart, as the probe does today.
 
@@ -87,7 +87,7 @@ Acceptance criteria. For real files from `src/`: taking the "off" side of every 
 
 ### M3: the runner (Python, no build needed to write; main session runs it)
 
-Owned files: `tools/mutate/run.py`. `run.py` drives steps 4 to 6: reads compiler errors and drops spots, starts the mapping run, starts one process per bug with the source-file filter (`--processes N` sets how many run side by side), applies the time limit, and collects the listener's result files. `--one-process` is the LS4 comparison. The time limit moves here from `mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) with its D82 comment, so it has one home once M8 lands. It has no unit test of its own, because every part of it needs a real build and real result files; LS3 is its test.
+Owned files: `tools/mutate/run.py`. `run.py` drives steps 4 to 6: reads compiler errors and drops spots, starts the mapping run, starts one process per bug with the source-file filter (`--processes N` sets how many run side by side), applies the time limit, and collects the listener's result files. `--one-process` is the LS4 comparison. The time limit moves here from `mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`), so it has one home once M8 lands; `test_timeout_seconds` holds it, with the rule the user chose in session 60c3a576. `test_run.py` tests the parts that need no build (the time sums, the limit, the re-score); LS3 is the test of the whole.
 
 Acceptance criteria. The runner never rebuilds between bugs; its only build-related act is to print which spots it dropped. It refuses to start bug runs when the mapping run had a test fail that is not on the "red with no bug" list it just wrote. It reports as an error, not a catch, any test that went red on a bug the map says it does not reach. A fourth compile round exits with a message and no report.
 
@@ -213,6 +213,10 @@ Three answers change the live steps.
 
 2. The plan builds once. But if the compiler refuses a few of the planted bugs, the tool drops those and rebuilds only the changed files, up to three repeat builds in all. You said "one build per test is a massive waste of time. if we're doing this it's one build and run to test everything". Do you allow up to three repeat builds? If you say no, the first build that fails stops the plan, I report which planted bugs the compiler refused, and you decide.
 
+### The answers (session 60c3a576, 2026-11-16)
+
+One answer changes the time limit. Each bug runs only its own test files, which take 3 to 30 seconds clean, but every bug run had the whole suite's limit of about 130 seconds. Asked what a bug run's limit should be, the user answered "own time plus 5s". So a bug run may take the clean time of the tests it runs, plus 5 seconds, and then counts as timed out. The mapping run records each test's own time for this.
+
 ## Promise map
 
 | Promise | Plan section | Task | The check that proves it |
@@ -230,7 +234,7 @@ Three answers change the live steps.
 | A test red with no bug takes no further part | Step 5; M3 | M3 | Runner refuses to start bug runs on an unlisted red test |
 | The report lists per bug and per test, zero-catch tests first, plus unreached, survivors, skipped, timed out | Step 7; M3b | M3b | `test_report.py` on LS3's real results; counts agree |
 | The report states its own limits | Step 7 | M3b | `test_report.py` checks the opening lines are present |
-| A stuck run is stopped by the existing D82 limit | Step 6; M3 | M3 | Reviewer reads that the rule moved, not copied; M8 removes the old home |
+| A stuck run is stopped at its own clean time plus 5 s | Step 6; M3 | M3 | Reviewer reads that the rule has one home, `test_timeout_seconds`; `test_run.py` checks the sum and the limit; M8 removed the old home |
 | The tool's own tests use real code, no fakes, no typed counts | M1, M2, M3b, M6 | M1, M2, M3b, M6 | Reviewer reads each test file against the rulings in P11 |
 | The Python half never edits the real folders | M6 | M6 | Modification-time test |
 | The Python half uses the same kinds, mapping run and per-bug runs | M6 | M6, LS5 | M6's `ast` round trip; LS5's result folder |
@@ -250,7 +254,7 @@ Three answers change the live steps.
 | P1: The user wants one build and one run, not a build per bug. | ruling | The user's message as quoted in the brief, `mutation-plan-brief.md` line 12 | checked 2026-11-15; the reviewer's brief confirms the quotes are the user's own words typed in this session |
 | P2: An existing probe plants one bug at a time and rebuilds per bug. | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 319 to 336 | checked 2026-11-15 |
 | P3: The probe owns a list of bug kinds: comparison flips, `&&` to `\|\|`, `+ 1`, returned bool. | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 122 to 145 | checked 2026-11-15 |
-| P4: The probe's time limit is baseline times 1.25 plus 4 s, decision D82 item 3. | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 176 to 183; `docs/audit/2026-10-03-fix-decisions.md` line 413 | checked 2026-11-15 |
+| P4: The probe's time limit was baseline times 1.25 plus 4 s, decision D82 item 3. For this tool the user replaced it with "own time plus 5s" (session 60c3a576). | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 176 to 183; `docs/audit/2026-10-03-fix-decisions.md` line 413 | checked 2026-11-15 |
 | P5: `hydra_precheck --code-mask <file>` blanks comments and strings, keeps length, and reads C++ and Python. | code | `tools/precheck/main.cpp` lines 7 and 92; `tools/precheck/code_mask.h` lines 1 to 20 | checked 2026-11-15 |
 | P6: The repo's lexer is codelex in `tests/code_lexer.h`, with Cpp and Python among its languages. | code | `tests/code_lexer.h` lines 19 to 22 | checked 2026-11-15 |
 | P7: T7 put every plant behind one environment variable in one build, written as `t7_bug(id) ? bug : original`. | code | `git show claude/test-audit-t7:src/core/t7_bug.h`; `git grep t7_bug claude/test-audit-t7` (for example `src/app/analysis.cpp` line 778) | checked 2026-11-15 |
