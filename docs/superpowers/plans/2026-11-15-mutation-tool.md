@@ -217,6 +217,8 @@ Three answers change the live steps.
 
 One answer changes the time limit. Each bug runs only its own test files, which take 3 to 30 seconds clean, but every bug run had the whole suite's limit of about 130 seconds. Asked what a bug run's limit should be, the user answered "own time plus 5s". So a bug run may take the clean time of the tests it runs, plus 5 seconds, and then counts as timed out. The mapping run records each test's own time for this.
 
+A second answer keeps the runs side by side. The clean times are measured with one process alone, and on the 81 bugs of `src/app/analysis.cpp` and `src/app/allocator.cpp` the bug runs that finished took a median 14% and at most 62% longer with 8 side by side (6% and 30% with 4). Bug 14 is caught in 31.9 s alone but timed out at its limit of about 34 s with 4 or 8 side by side, so a long run can pass its limit only because of the load, and a survivor can be counted as caught that way. Asked how full runs should handle this, the user chose "Keep 8, accept it". The default stays one process per physical core, 8 on this machine, and `docs/development.md` says the limit.
+
 ## Promise map
 
 | Promise | Plan section | Task | The check that proves it |
