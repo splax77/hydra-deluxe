@@ -5,7 +5,8 @@
 The rewriter runs on the repo's own sources, never on made-up snippets, and
 writes into a temporary folder. Each test checks a property every copy must
 hold: every switch off reads back as the original byte for byte, one switch on
-reads back as the original with only that spot's change, no copy lands in
+reads back as the original with only that spot's change (for a compare spot,
+the helper call on its two operands), no copy lands in
 src/, and the switch numbers are unique and the same on a second run. The
 copies are read back through hydra_precheck's code mask, so the main
 checkout's hydra_precheck.exe (find.py's default_precheck) must exist;
@@ -69,7 +70,29 @@ class RewriteSrc(unittest.TestCase):
                 self.assertTrue(spot.expr_start <= spot.offset < spot.offset + spot.length <= spot.expr_end)
                 original = (REPO / m["file"]).read_bytes().decode("utf-8")
                 on = rewrite.take_sides(pieces[m["file"]], m["number"])
-                self.assertEqual(on, original[:spot.offset] + spot.replacement + original[spot.offset + spot.length:])
+                if spot.kind != "compare":
+                    self.assertEqual(on, original[:spot.offset] + spot.replacement + original[spot.offset + spot.length:])
+                    continue
+                # A compare spot: the two operands, untouched, handed to the
+                # helper for the flipped operator; the rest byte for byte.
+                self.assertTrue(spot.expr_start <= spot.lhs_start < spot.lhs_end <= spot.offset)
+                self.assertTrue(spot.offset + spot.length <= spot.rhs_start < spot.rhs_end <= spot.expr_end)
+                head, tail = original[:spot.lhs_start], original[spot.rhs_end:]
+                self.assertTrue(on.startswith(head) and on.endswith(tail))
+                call = on[len(head):len(on) - len(tail)]
+                lhs = original[spot.lhs_start:spot.lhs_end]
+                rhs = original[spot.rhs_start:spot.rhs_end]
+                self.assertEqual(call, f"::hydra_mutant::{rewrite.HELPERS[spot.replacement]}<{m['number']}>"
+                                       f"(({lhs}), ({rhs}))")
+
+    def test_every_helper_is_defined_in_the_switch_header(self):
+        header = (REPO / "tools" / "mutate" / "hydra_mutant.h").read_text(encoding="utf-8")
+        self.assertEqual(sorted(rewrite.HELPERS), sorted(find.KINDS["compare"]["swap"].values()))
+        for op, name in rewrite.HELPERS.items():
+            with self.subTest(op=op):
+                self.assertRegex(header, r"\bbool " + name + r"\(const A& a, const B& b\)")
+        used = {m["kind"] for m in self.listing["mutants"]}
+        self.assertIn("compare", used, "no compare spot under src/ became a switch")
 
     def test_no_copy_lands_in_src(self):
         for rel in self.listing["copies"]:

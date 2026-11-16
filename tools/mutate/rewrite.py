@@ -31,6 +31,12 @@ innermost first. The "on" side of a switch is always the original expression
 with that switch's one change and nothing else; the "off" side holds the
 wrappers inside it. So with every switch off the copy reads exactly as the
 original, and with one switch on it differs only by that switch's change.
+
+A compare spot's change is written as a call to a helper in hydra_mutant.h
+on the spot's two operands (changed_span says the exact text), not as the
+flipped operator itself: a type may define == and no !=, and the flipped
+operator would then not build. Every other kind's change is its token's
+replacement.
 After writing each copy the tool reads it back through the same code mask and
 checks both of those, byte for byte; a copy that fails stops the run.
 
@@ -108,8 +114,32 @@ def _crossing(spots: list[find.Spot]) -> set[int]:
     return bad
 
 
-def _changed(text: str, start: int, end: int, s: find.Spot) -> str:
-    return text[start:s.offset] + s.replacement + text[s.offset + s.length:end]
+# The helper in hydra_mutant.h that each compare replacement is written as.
+# A type may define == but not !=, or < but not >=, so writing the flipped
+# operator itself could fail to build; each helper uses the real operator when
+# the operands have it and builds the same meaning from one they do have.
+HELPERS = {"==": "eq", "!=": "ne", "<": "lt", "<=": "le", ">": "gt", ">=": "ge"}
+assert set(HELPERS) == set(find.KINDS["compare"]["swap"].values()), "a compare replacement has no helper"
+
+
+def changed_span(text: str, n: int, s: find.Spot) -> tuple[int, int, str]:
+    """(start, end, new text): what switch n, on, writes in place of text[start:end].
+
+    A compare spot becomes a call to its helper on its two operands, with the
+    switch number as the helper's template argument, so a type with no usable
+    operator fails to build naming the switch. Every other spot is its token's
+    replacement."""
+    if s.kind != "compare":
+        return s.offset, s.offset + s.length, s.replacement
+    helper = HELPERS[s.replacement]
+    lhs = text[s.lhs_start:s.lhs_end]
+    rhs = text[s.rhs_start:s.rhs_end]
+    return s.lhs_start, s.rhs_end, f"::hydra_mutant::{helper}<{n}>(({lhs}), ({rhs}))"
+
+
+def _changed(text: str, start: int, end: int, n: int, s: find.Spot) -> str:
+    a, b, new = changed_span(text, n, s)
+    return text[start:a] + new + text[b:end]
 
 
 def wrap_text(text: str, numbered: list[tuple[int, find.Spot]]) -> str:
@@ -120,6 +150,11 @@ def wrap_text(text: str, numbered: list[tuple[int, find.Spot]]) -> str:
             raise RewriteError(f"rewrite.py: spot {s.number} on line {s.line} lies outside its own expression")
         if text[s.offset:s.offset + s.length] != s.original:
             raise RewriteError(f"rewrite.py: spot {s.number} on line {s.line} does not match the file's text")
+        if s.kind == "compare" and (None in (s.lhs_start, s.lhs_end, s.rhs_start, s.rhs_end) or not (
+                                        s.expr_start <= s.lhs_start < s.lhs_end <= s.offset
+                                        and s.offset + s.length <= s.rhs_start < s.rhs_end <= s.expr_end)):
+            raise RewriteError(f"rewrite.py: compare spot {s.number} on line {s.line} has no operands "
+                               "inside its expression")
         by_interval.setdefault((s.expr_start, s.expr_end), []).append((n, s))
     intervals = sorted(by_interval, key=lambda iv: (iv[0], -iv[1]))
 
@@ -138,7 +173,7 @@ def wrap_text(text: str, numbered: list[tuple[int, find.Spot]]) -> str:
     def wrap(iv: tuple[int, int]) -> str:
         inner = render(iv[0], iv[1], iv)
         for n, s in sorted(by_interval[iv], key=lambda p: p[0]):
-            inner = f"{MACRO}({n}, ({inner}), ({_changed(text, iv[0], iv[1], s)}))"
+            inner = f"{MACRO}({n}, ({inner}), ({_changed(text, iv[0], iv[1], n, s)}))"
         return inner
 
     return render(0, len(text), None)
@@ -377,7 +412,7 @@ def check_copy(copy_path: Path, original: str, numbered: list[tuple[int, find.Sp
     if found != sorted(n for n, _ in numbered):
         raise RewriteError(f"rewrite.py: {copy_path} holds switches {found}, not the ones it was written with")
     for n, s in numbered:
-        if take_sides(pieces, n) != original[:s.offset] + s.replacement + original[s.offset + s.length:]:
+        if take_sides(pieces, n) != _changed(original, 0, len(original), n, s):
             raise RewriteError(f"rewrite.py: {copy_path} with switch {n} on differs from its one change")
     return pieces
 

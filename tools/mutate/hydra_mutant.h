@@ -21,6 +21,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include "../../tests/env_util.h"
@@ -103,6 +105,129 @@ inline bool is_on() {
     note_reached<N>();
     return active_switch() == N;
 }
+
+// The compare helpers. The rewriter (rewrite.py, changed_span) writes a
+// flipped comparison as a call to one of these on its two operands, with the
+// switch number as N, because a type may define == and no !=, or < and no >=,
+// and the flipped operator itself would then not build. Each helper uses the
+// real operator when the operands have it, and otherwise builds the same
+// meaning from the operator they do have. With neither, the static_assert
+// stops the build; the error names the helper and N, the switch.
+//
+// The operands come by const reference: a bit-field binds to one through a
+// temporary, and no operand is copied or changed.
+
+#define HYDRA_MUTANT_HAS_OP(name, op)                                                        \
+    template <class A, class B, class = void>                                                \
+    struct name : std::false_type {};                                                        \
+    template <class A, class B>                                                              \
+    struct name<A, B, std::void_t<decltype(std::declval<const A&>() op std::declval<const B&>())>> \
+        : std::true_type {};
+HYDRA_MUTANT_HAS_OP(has_eq, ==)
+HYDRA_MUTANT_HAS_OP(has_ne, !=)
+HYDRA_MUTANT_HAS_OP(has_lt, <)
+HYDRA_MUTANT_HAS_OP(has_le, <=)
+HYDRA_MUTANT_HAS_OP(has_gt, >)
+HYDRA_MUTANT_HAS_OP(has_ge, >=)
+#undef HYDRA_MUTANT_HAS_OP
+
+// False for every N, but only once the helper is instantiated, so the
+// static_assert fires for the one switch whose operands have no operator.
+template <long N, class... T>
+inline constexpr bool no_operator_for_switch = false;
+
+// The original comparison compiled with no warning, but inside a helper a
+// literal operand is no longer a constant, so MSVC can warn about a signed
+// and unsigned mix (C4018, C4389) or a bool and int mix (C4805) that the
+// original, with the same meaning, did not. /WX would turn those into errors.
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4018 4389 4805)
+#endif
+
+template <long N, class A, class B>
+inline bool eq(const A& a, const B& b) {
+    if constexpr (has_eq<A, B>::value) {
+        return a == b;
+    } else if constexpr (has_ne<A, B>::value) {
+        return !(a != b);
+    } else {
+        static_assert(no_operator_for_switch<N, A, B>, "hydra_mutant::eq<N>: the operands of switch N have neither == nor !=");
+        (void)a, (void)b;
+        return false;
+    }
+}
+
+template <long N, class A, class B>
+inline bool ne(const A& a, const B& b) {
+    if constexpr (has_ne<A, B>::value) {
+        return a != b;
+    } else if constexpr (has_eq<A, B>::value) {
+        return !(a == b);
+    } else {
+        static_assert(no_operator_for_switch<N, A, B>, "hydra_mutant::ne<N>: the operands of switch N have neither != nor ==");
+        (void)a, (void)b;
+        return false;
+    }
+}
+
+template <long N, class A, class B>
+inline bool lt(const A& a, const B& b) {
+    if constexpr (has_lt<A, B>::value) {
+        return a < b;
+    } else if constexpr (has_gt<B, A>::value) {
+        return b > a;
+    } else if constexpr (has_ge<A, B>::value) {
+        return !(a >= b);
+    } else {
+        static_assert(no_operator_for_switch<N, A, B>, "hydra_mutant::lt<N>: the operands of switch N have none of a < b, b > a, a >= b");
+        (void)a, (void)b;
+        return false;
+    }
+}
+
+template <long N, class A, class B>
+inline bool le(const A& a, const B& b) {
+    if constexpr (has_le<A, B>::value) {
+        return a <= b;
+    } else if constexpr (has_lt<B, A>::value) {
+        return !(b < a);
+    } else {
+        static_assert(no_operator_for_switch<N, A, B>, "hydra_mutant::le<N>: the operands of switch N have neither a <= b nor b < a");
+        (void)a, (void)b;
+        return false;
+    }
+}
+
+template <long N, class A, class B>
+inline bool gt(const A& a, const B& b) {
+    if constexpr (has_gt<A, B>::value) {
+        return a > b;
+    } else if constexpr (has_lt<B, A>::value) {
+        return b < a;
+    } else {
+        static_assert(no_operator_for_switch<N, A, B>, "hydra_mutant::gt<N>: the operands of switch N have neither a > b nor b < a");
+        (void)a, (void)b;
+        return false;
+    }
+}
+
+template <long N, class A, class B>
+inline bool ge(const A& a, const B& b) {
+    if constexpr (has_ge<A, B>::value) {
+        return a >= b;
+    } else if constexpr (has_lt<A, B>::value) {
+        return !(a < b);
+    } else {
+        static_assert(no_operator_for_switch<N, A, B>, "hydra_mutant::ge<N>: the operands of switch N have neither a >= b nor a < b");
+        (void)a, (void)b;
+        return false;
+    }
+}
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 }  // namespace hydra_mutant
 
