@@ -93,7 +93,9 @@ Acceptance criteria. The runner never rebuilds between bugs; its only build-rela
 
 ### M3b: the report
 
-Owned files: `tools/mutate/report.py`, `tools/mutate/test_report.py`. `report.py` turns the collected result files into the report of step 7. Tests the executor may run: `py -I -m unittest tools/mutate/test_report.py`. That test needs real result files, so it waits for LS3's result folder. Waits for: LS3b.
+Owned files: `tools/mutate/report.py`, `tools/mutate/test_report.py`. `report.py` turns the collected result files into the report of step 7. Tests the executor may run: `py -I -m unittest tools/mutate/test_report.py`. That test needs real result files, so it waits for LS3's result folder.
+
+Waits for: LS0, LS1, LS2, LS3b.
 
 Acceptance criteria. The report test reads LS3's real result folder and checks: every red test in the result files appears under its bug; every test with zero catches is in the zero list; the per-test and per-bug counts add up to the same total (the user's rule that two counts on a screen must agree).
 
@@ -129,7 +131,11 @@ Acceptance criteria. `git grep mutation_probe` finds only lines that say how to 
 
 ### F1: first use, the 62 disputed rows
 
-Run by the main session after the live steps pass. Waits for: LS3b, M3b. The eight re-read files (`A3.md`, `A30.md`, `A9.md`, `C7.md`, `WN3.md`, `WN4a.md`, `WN4b.md`, `WN8.md` under `docs/audit/2026-11-14-test-audit/mechanical/reread/` on branch `claude/test-audit-t8-questions-handoff`) hold 62 rows whose verdict cell starts "does not hold" or "DNH" or contains "cannot tell" (premise P16 gives the count per file). Each row names a test file and a line, not a test name. An executor copies, row by row, the file and line into `tools/mutate/first_use_lines.txt` (the file comes from the line cell, or from the slice file's opening sentence when the cell holds a bare line). That is copying, not judging. The runner turns each line into a test mechanically: the test is the doctest test case in that file whose registered line is the nearest one at or before the named line, read from doctest's own registration. It refuses the list if any line has no such test. The code under test is then chosen by the run, not by anyone: it is every source file holding a spot that one of those tests reaches in a mapping run.
+Run by the main session after the live steps pass.
+
+Waits for: LS0, LS1, LS2, LS3b, M3b.
+
+The eight re-read files (`A3.md`, `A30.md`, `A9.md`, `C7.md`, `WN3.md`, `WN4a.md`, `WN4b.md`, `WN8.md` under `docs/audit/2026-11-14-test-audit/mechanical/reread/` on branch `claude/test-audit-t8-questions-handoff`) hold 62 rows whose verdict cell starts "does not hold" or "DNH" or contains "cannot tell" (premise P16 gives the count per file). Each row names a test file and a line, not a test name. An executor copies, row by row, the file and line into `tools/mutate/first_use_lines.txt` (the file comes from the line cell, or from the slice file's opening sentence when the cell holds a bare line). That is copying, not judging. The runner turns each line into a test mechanically: the test is the doctest test case in that file whose registered line is the nearest one at or before the named line, read from doctest's own registration. It refuses the list if any line has no such test. The code under test is then chosen by the run, not by anyone: it is every source file holding a spot that one of those tests reaches in a mapping run.
 
 Acceptance criteria. The output is the tool's report, unedited, plus one table: each disputed row, its test, the bugs that test caught, and the failed check lines. No row holds an agent's verdict. The tool plants its own kinds of bug, not the change a row names, so a row whose test caught nothing is marked "not shown to fail by this run" and goes to the user as it stands; the table says this in its opening line.
 
