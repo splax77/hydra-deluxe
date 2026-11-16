@@ -48,6 +48,10 @@ SEARCHES = {
     "const_init": re.compile(r"\bconst\b[^;=(){}]*= [^;{}]*? (?P<tok>==|!=|&&|\|\|) "),
     "bit_field": re.compile(r"(?m)^[ \t]*[\w:]+ \w+ : \w+ (?P<tok>\+) 1;"),
     "no_bound": None,  # every statement in a file that compiles ends in ; or a bracket
+    # A comparison whose right side starts with a cast of an address, `(T)&x`.
+    "operand_unknown": re.compile(r"(?P<tok>==|!=|<=|>=|<|>) \(\w+\)&\w"),
+    # A second equality right after a first, as in `a == b != c`.
+    "chained_compare": re.compile(r"[\w)\]] (?:==|!=) [\w.]+ (?P<tok>==|!=) "),
 }
 
 
@@ -107,6 +111,34 @@ class FinderOnRealFiles(unittest.TestCase):
                 elif ch in pairs:
                     self.assertTrue(stack and stack.pop() == pairs[ch], f"{where}: unbalanced [{expr}]")
             self.assertEqual(stack, [], f"{where}: unbalanced [{expr}]")
+
+    def test_planted_compare_operands_are_balanced_and_inside_the_expression(self):
+        pairs = {")": "(", "]": "["}
+        planted = 0
+        for p, text, mask, s in self.each_spot():
+            where = f"{p.name}:{s.line} spot {s.number}"
+            bounds = (s.lhs_start, s.lhs_end, s.rhs_start, s.rhs_end)
+            if s.skip is not None or s.kind != "compare":
+                self.assertEqual(bounds, (None,) * 4, f"{where}: operand bounds on a spot that is no planted compare")
+                continue
+            planted += 1
+            self.assertTrue(s.expr_start <= s.lhs_start < s.lhs_end <= s.offset, where)
+            self.assertTrue(s.offset + s.length <= s.rhs_start < s.rhs_end <= s.expr_end, where)
+            self.assertEqual(mask[s.lhs_end:s.offset].strip(), "", f"{where}: code between the left side and the operator")
+            self.assertEqual(mask[s.offset + s.length:s.rhs_start].strip(), "",
+                             f"{where}: code between the operator and the right side")
+            for a, b in ((s.lhs_start, s.lhs_end), (s.rhs_start, s.rhs_end)):
+                side = mask[a:b]
+                self.assertTrue(side.strip(), f"{where}: an empty side")
+                self.assertEqual(side, side.strip(), f"{where}: a side starts or ends in blank space")
+                stack = []
+                for ch in side:
+                    if ch in "([{":
+                        stack.append(ch)
+                    elif ch in pairs:
+                        self.assertTrue(stack and stack.pop() == pairs[ch], f"{where}: unbalanced side [{side}]")
+                self.assertEqual(stack, [], f"{where}: unbalanced side [{side}]")
+        self.assertGreater(planted, 0, "no compare spot under src/ was planted")
 
     def test_no_planted_spot_touches_a_preprocessor_line(self):
         for p, (text, mask, spots) in self.files.items():

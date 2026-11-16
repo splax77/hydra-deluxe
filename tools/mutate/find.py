@@ -49,6 +49,14 @@ it. Each spot is an object with these keys:
                 inside [expr_start, expr_end). null when skipped.
     expr_end    end offset (exclusive) of that expression. null when skipped.
                 The expression never starts or ends in whitespace.
+    lhs_start   for a planted compare spot, the bounds of its two operands:
+    lhs_end     [lhs_start, lhs_end) is the left one and [rhs_start, rhs_end)
+    rhs_start   the right one, found by walking out from the operator by C++
+    rhs_end     precedence (_File.operands). Both lie inside the expression
+                and never start or end in whitespace. null for every other
+                spot. The rewriter writes a compare spot's change as a call to
+                a helper in hydra_mutant.h on these two operands, because a
+                type may define == but not != (or < but not >=).
     skip        null for a planted spot, otherwise a key of SKIP_REASONS.
 
 find_spots(path) returns the same spots as Spot objects for Python callers;
@@ -116,6 +124,8 @@ SKIP_REASONS = {
     "const_init": "in the initializer of a const, which may be used as a constant",
     "bit_field": "in a bit-field width, which needs a constant",
     "no_bound": "the walk reached the start or end of the file without a bound",
+    "operand_unknown": "a comparison's side holds a token the operand walk cannot place, or comes out empty",
+    "chained_compare": "a comparison of the same level sits to its left, so its left side is itself a comparison",
 }
 
 CPP_SUFFIXES = {".cpp", ".cc", ".cxx", ".h", ".hpp", ".hh", ".hxx", ".inl"}
@@ -146,6 +156,33 @@ _OPERATOR_KIND = {tok: kind for kind in ("compare", "and_or", "drop_not") for to
 # Words that may sit right before `name[` without making it a declaration.
 _NOT_A_TYPE = {"return", "throw", "co_return", "co_yield", "else", "do", "delete", "new", "case"}
 
+# The operand walk (_File.operands). C++ precedence, from tightest down, is
+# the standard's [expr] grammar: postfix and unary, .* ->*, * / %, + -,
+# << >>, <=>, then < <= > >=, then == !=, then & ^ | && || ?: and the
+# assignments and comma. Each token met at bracket depth 0 is put in one of
+# these groups; a token in none of them skips the spot, never a guess.
+_EQUALITY = {"==", "!="}
+_RELATIONAL = {"<", "<=", ">", ">="}
+# Looser than every comparison, so a side ends there. `&` is not here: it is
+# binary and looser, or unary and part of the side (_File.amp_is_binary).
+_LOOSER = {"&&", "||", "^", "|", "?", ":", ",", ";"} | _ASSIGN
+# Tighter than every comparison, so part of a side. The quotes are what the
+# code mask leaves of a string or character literal.
+_TIGHTER_PUNCT = {".", "->", "::", "+", "-", "*", "/", "%", "<<", ">>", "<=>", "!", "~",
+                  "++", "--", ".*", "->*", '"', "'"}
+# Words that cannot sit inside a comparison's side in code that compiles as
+# an expression; meeting one means the walk has left the expression.
+_NOT_IN_OPERAND = {"else", "do", "if", "while", "for", "switch", "case", "default", "goto", "break",
+                   "continue", "typedef", "using", "namespace", "template", "typename", "class",
+                   "struct", "union", "enum", "public", "private", "protected", "operator", "auto",
+                   "const", "volatile", "static", "extern", "inline", "constexpr", "consteval",
+                   "constinit", "mutable", "register", "thread_local", "friend", "virtual",
+                   "explicit", "asm", "concept", "requires", "static_assert"}
+# Words that end an operand, as a name or literal does; any other word before
+# `&` makes it unary.
+_KEYWORD_BEFORE_UNARY = _STOP_WORDS | _NOT_IN_OPERAND | {"new", "delete", "sizeof", "alignof",
+                                                         "co_await", "noexcept", "decltype"}
+
 
 @dataclass
 class Spot:
@@ -160,6 +197,10 @@ class Spot:
     expr_start: Optional[int]
     expr_end: Optional[int]
     skip: Optional[str]
+    lhs_start: Optional[int] = None
+    lhs_end: Optional[int] = None
+    rhs_start: Optional[int] = None
+    rhs_end: Optional[int] = None
 
     def as_json(self) -> dict:
         return asdict(self)
@@ -316,6 +357,84 @@ class _File:
             j += 1
         return None, "no_bound"
 
+    # -- the operand walk, for compare spots ----------------------------------
+
+    def amp_is_binary(self, j: int) -> Optional[bool]:
+        """Whether the `&` at index j is binary (True) or unary (False); None when neither is sure."""
+        prev = self.toks[j - 1] if j > 0 else None
+        if prev is not None and prev.text in ('"', "'", "++", "--"):
+            return None  # a literal's quote or a postfix step may end an operand or not
+        ends_operand = prev is not None and (
+            (prev.kind == "word" and prev.text not in _KEYWORD_BEFORE_UNARY)
+            or prev.kind == "num" or prev.text in (")", "]"))
+        if not ends_operand:
+            return False
+        if _spaced(self.mask, self.toks[j]):
+            return True
+        return None  # `x&y` or `(T)&x`: binary and a cast look alike
+
+    def _side_token(self, j: int, op: str, left: bool) -> str:
+        """For the token at index j, at bracket depth 0 beside the comparison op:
+        "in" (part of the side), "stop" (binds looser, so the side ends before it),
+        "chained" (the same level, met on the left) or "unknown"."""
+        t = self.toks[j]
+        x = t.text
+        if t.kind == "num":
+            return "in"
+        if t.kind == "word":
+            if x in _STOP_WORDS:
+                return "stop"
+            return "unknown" if x in _NOT_IN_OPERAND else "in"
+        if x in _LOOSER:
+            return "stop"
+        if x == "&":
+            binary = self.amp_is_binary(j)
+            return "unknown" if binary is None else ("stop" if binary else "in")
+        if x in _EQUALITY or x in _RELATIONAL:
+            if (x in _EQUALITY) != (op in _EQUALITY):
+                # Relational binds tighter than equality.
+                return "in" if x in _RELATIONAL else "stop"
+            # The same level groups left to right: on the right the side ends
+            # here, on the left the whole comparison before it would be the side.
+            return "chained" if left else "stop"
+        if x in _TIGHTER_PUNCT:
+            return "in"
+        return "unknown"
+
+    def operands(self, i: int, first: int, last: int):
+        """The two operands of the comparison at token i, inside the expression
+        [first, last], as ((lhs first, lhs last), (rhs first, rhs last)) token
+        indices; or (None, skip reason)."""
+        op = self.toks[i].text
+        sides = []
+        for left in (True, False):
+            depth = 0
+            step = -1 if left else 1
+            opens, closes = (("(", "["), (")", "]")) if not left else ((")", "]"), ("(", "["))
+            j = i + step
+            while first <= j <= last:
+                x = self.toks[j].text
+                if x in ("{", "}"):
+                    return None, "brace"
+                if x in opens:
+                    depth += 1
+                elif x in closes:
+                    if depth == 0:
+                        break
+                    depth -= 1
+                elif depth == 0:
+                    c = self._side_token(j, op, left)
+                    if c == "stop":
+                        break
+                    if c != "in":
+                        return None, "chained_compare" if c == "chained" else "operand_unknown"
+                j += step
+            side = (j + 1, i - 1) if left else (i + 1, j - 1)
+            if side[0] > side[1]:
+                return None, "operand_unknown"
+            sides.append(side)
+        return (sides[0], sides[1]), None
+
     # -- the context checks -----------------------------------------------
 
     def statement_start(self, i: int) -> int:
@@ -458,9 +577,17 @@ def spots_in(text: str, mask: str) -> list[Spot]:
             reason = "no_bound"  # the spot itself would be the bound; never happens for a matched kind
         if reason is None:
             reason = f.context_skip(i, first)
+        sides = None
+        if reason is None and kind == "compare":
+            sides, reason = f.operands(i, first, last)
         original = text[t.start:t.end]
         replacement = KINDS[kind]["swap"][t.text]
         planted = reason is None
+        bounds = {}
+        if planted and sides is not None:
+            (l0, l1), (r0, r1) = sides
+            bounds = dict(lhs_start=f.toks[l0].start, lhs_end=f.toks[l1].end,
+                          rhs_start=f.toks[r0].start, rhs_end=f.toks[r1].end)
         spots.append(Spot(
             number=len(spots) + 1,
             line=_line_of(text, t.start),
@@ -473,6 +600,7 @@ def spots_in(text: str, mask: str) -> list[Spot]:
             expr_start=f.toks[first].start if planted else None,
             expr_end=f.toks[last].end if planted else None,
             skip=reason,
+            **bounds,
         ))
     return spots
 
