@@ -724,9 +724,9 @@ def rescore(run_dir: Path, listing: dict) -> list[dict]:
     .out and .log and the exit code, seconds and timed-out flag its old json
     stored, which are the facts the process gave and no file holds. The time
     limit it was run with, and the clean time that limit came from, are
-    kept, so the map needs no test times here. A bug whose stored test files are not the
-    ones files_for names now stops the re-score, because its run did not run
-    what the current rules would. summary.json, which only a finished run
+    kept, so the map needs no test times here. A bug whose stored test files
+    are not the ones files_for names now stops the re-score, because its run
+    did not run what the current rules would. summary.json, which only a finished run
     has, is written again from the new results, keeping the process count,
     wall time and time limits the run had. Returns the new results by number.
     """
