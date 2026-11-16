@@ -193,6 +193,10 @@ These need the user's yes to stay out.
 ## Questions
 
 1. May task M8 delete `tools/mutation_probe.ps1` and its self-test? It is the one-build-per-bug tool, built under your decision D82. The new tool replaces what it does. If you say no, it stays and reads its rules from the new tool.
+### The answers (session 88ea48bb, 2026-11-15)
+
+The user answered in question boxes: the plan, "Yes, go ahead"; question 2, "Stop on first fail", so there are no top-up rounds and the first failed build stops the plan; leaving out the UI tests, "Leave them out"; question 1, after asking what the old probe was, when it was made, who made it and how it was presented, "yes delete". So M8 runs, and it also removes the probe's self-test step from `.github/workflows/ci.yml` and the probe mention in `tools/test_build_pass.ps1`.
+
 2. The plan builds once. But if the compiler refuses a few of the planted bugs, the tool drops those and rebuilds only the changed files, up to three repeat builds in all. You said "one build per test is a massive waste of time. if we're doing this it's one build and run to test everything". Do you allow up to three repeat builds? If you say no, the first build that fails stops the plan, I report which planted bugs the compiler refused, and you decide.
 
 ## Promise map
