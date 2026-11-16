@@ -86,7 +86,7 @@ Those four files hold every fact this step needs, and nothing has to be worked o
 
 **Which existing code this extends** (agent rule 15). The join extends `AUD/exits/ledger.py`, because that script already owns the question "which record is which row". The counts are read from `tests.txt`, which `report.py` wrote; `report.py` owns "how many bugs did this test catch", and nothing here counts catches again. F1's lookup, `tools/mutate/first_use.py` on main, is called unchanged for one narrow job: placing a record that gives a line number but no test name. It owns the rule for that (the test whose registered line is nearest at or before the line). So the join needs both, each for its own question.
 
-One column of F1's table is not used. `first_use.py` counts a test's catches from the direct catches only. `tests.txt` also counts catches through shared state. The two disagree for 229 of the 2,231 tests (P27). The join takes the count from `tests.txt` and reads only the test's name and line from F1's output. The disagreement itself is a side note with a row of its own in E5.
+One column of F1's table is not used. `first_use.py` counts a test's catches from the direct catches only. `tests.txt` also counts catches through shared state. The two disagree for 229 of the 2,231 tests (P27). The join takes the count from `tests.txt` and reads only the test's name and line from F1's output. Both numbers are on every matched row: `mut_caught` is `tests.txt`'s, `mut_caught_shared` is the part that came through shared state, and the direct count is the first minus the second. Which of the two a later question may call "caught" is question 7, not a row in E5. Until the user answers, every place that shows a catch count shows both.
 
 **The new columns.** Each `kind=record` row gains these. Count rows and T6 rows reach them through the join E1 built, and get no copy.
 
@@ -107,7 +107,7 @@ No column adds, averages or scores anything. Each number is one the run's files 
 
 **How a record is matched to a test.** Test names in the run are unique (P28), so the name comes first.
 
-- `name`: the record's title holds one test's full name. Where two names both sit in the title, the longer one wins. Where the record names a test file, the test must be in that file.
+- `name`: the record's title holds one test's full name. Where two names both sit in the title, the longer one wins; where the two are the same length, the row is `several`. Where the record names a test file, the test must be in that file; a name found only in another file makes the row `none`, and the reason says so.
 - `line`: the title holds no test name, but names a file the run held and one line. `first_use.py` places it, and the row says `line`. A record in a test file that changed between the audit and the run says `line, file changed since` (P29).
 - `not in the run`: the record's test file is not one of the run's 146 files. The evidence columns stay empty.
 - `several`: the record covers more than one test in the run, such as a record written for a range of lines. Nothing is summed. The evidence columns stay empty and the candidates are listed.
@@ -144,7 +144,7 @@ Acceptance: `AUD/mutation/` holds the four files and the README, and the README'
 
 Waits for: M1.
 
-The main session confirms the copied files are byte-for-byte the run's (a hash of each of the three whole files against RUN). It then confirms two quotes this step leans on, which no card or ruling file holds yet (P33, P35): that the user wants "a run, not an agent's reading" to say whether a test can fail, and that the user refused a new full run. It writes both, with the card that holds them, into `AUD/log.md`. If either cannot be found in the user's own words, it stops and asks.
+The main session confirms the copied files are byte-for-byte the run's (a hash of each of the three whole files against RUN). It then confirms the one user line this step leans on: "you can redo the ones that didnt run", on `docs/sessions/2026-11-16-60c3a576.md` line 32 (18:56 UTC), which the card notes as rejecting a full restart after the run's crash (P33). That line is about that crash and that run. It is not a rule against any later mutation run, and the plan does not use it as one: T8 starts no run because the join only reads files that already exist. The handoff's goal line, "a run, not an agent's reading", is the handoff's own paraphrase and no user quote (P35); this plan names it only as the goal the handoff states. M2 writes the card line into `AUD/log.md`. If the card line is not there as quoted, it stops and asks.
 
 Commands: `Get-FileHash` on the six files (never tried on these files).
 
@@ -206,7 +206,7 @@ Acceptance: `AUD/questions.md` holds the five questions and the user's words for
 
 Waits for: E1 and E1c (M4).
 
-A scout sees each record's `mut_` columns with their limits sentence. They are facts beside the record. No key is made from them, and a scout's label never rests on them alone.
+A scout sees each record's `mut_` columns with their limits sentence, and both catch counts until question 7 is answered. They are facts beside the record. No key is made from them, and a scout's label never rests on them alone.
 
 Rubric question 10 says one rule gets one verdict, and every test resting on it points at that verdict. Here the shared rule is a pair: which of the user's rulings the test breaks, and what the test fakes, pins, echoes or cites. Two tests that both feed a fake analyzer share a question. A test that feeds a fake analyzer and a test that pins a tier name do not.
 
@@ -252,7 +252,7 @@ The other side notes were found by a case-blind search of AUD for "side note". I
 
 E1's script therefore also pulls every such block into `AUD/exits/notes.tsv`, with its file and line. Sonnet scouts, four to a round, read each record and verify file for notes the script's patterns missed, and mark each note: already a ledger fault of that record, a split, a production-code finding, or something else. The cap is one pass over the files and one re-send. Files not reached are listed by name.
 
-E1c adds two sources. Each test in `mutation-unmatched.md` that the run saw and no record names is a row, because it is a test the audit has no record for. The disagreement between `first_use.py`'s catch count and `tests.txt`'s (P27) is a row too, as a finding about the tool.
+E1c adds two sources. Each test in `mutation-unmatched.md` that the run saw and no record names is a row, because it is a test the audit has no record for. The disagreement between `first_use.py`'s catch count and `tests.txt`'s (P27) is not a row here. It goes to the user as question 7.
 
 A side note that repeats a fault its record already carries points at that record's row. Every other note, every split and every production-code finding is a row of its own, and by the approved plan it is exit 2.
 
@@ -341,7 +341,7 @@ This plan has no live step. Nothing in it starts Clone Hero or Hydra, and the ru
 - Adding X9 to X12 to `docs/agents/test-rubric.md`. The handoff suggests asking after T8.
 - A new mutation run, whole or part. If the hanging-test fixes need bugs run again, that plan asks the user.
 - The missing-coverage pass itself. E1c only files the survivors list for it.
-- Any change to `tools/mutate`. The catch-count disagreement (P27) gets a row in E5 and no fix here.
+- Any change to `tools/mutate`. The catch-count disagreement (P27) is question 7 and gets no fix here.
 - The 764 bugs no test reaches. They stay in the copied `report.txt` and get no list of their own.
 - The B6 scout's rule slip (it ran Python tests its brief did not name). It gets a row in E5, and changing a brief or a hook is not part of this plan.
 
@@ -353,6 +353,20 @@ This plan has no live step. Nothing in it starts Clone Hero or Hydra, and the ru
 4. About 25 tests in the hooks repo's `test_review_dispatch.py` feed a hand-typed hook payload to the real hook, and others in `test_review_rules.py` feed hand-written verdict records. Is a hand-typed payload input, or a stand-in for what Claude Code really sends? This is the largest block.
 5. Tests at `tools/ch_mcp/tests/test_game_tools.py` 616 to 674 read hand-written stats and score JSON, and `test_fits_screen` reads hand-typed saved-window text. Input, or a stand-in for what the game and Hydra write?
 6. The size: one executor, eight re-read verifiers for the T7 slices, about 36 label scouts, about 18 verifiers and up to 12 more scouts for residue and notes, plus about 13 hours of main-session reading at the caps. Is that approved?
+7. (New, unanswered; added 2026-11-16 with E1c.) Two counts of how many planted bugs a test caught disagree for 229 of the 2,231 tests. Which should a later question call "caught"?
+
+   What each count reads. `tests.txt`, written by `report.py`, counts every bug where the test went red, including bugs the test does not reach and caught only through state an earlier test left. The run's own file says so: "A test can catch a bug it does not reach, through state an earlier test left." `first_use.py`, the lookup behind the 62 disputed rows of F1, counts only the direct catches (`caught_by` in each bug's json). For every test, `tests.txt` equals direct plus shared (checked over the run's bug jsons, 0 exceptions). The two agree for 2,002 tests and differ for 229.
+
+   One test from each end. `test_report_page.cpp:287 report colours meet WCAG contrast in both themes`: `tests.txt` says it caught 1 bug and reaches 0; the direct count is 0, so by F1's count it caught nothing. The other end, `test_engine_sweeps.cpp:581 corpus: squeeze-ins at exactly 0 and what they change`: `tests.txt` says 263 caught (reaches 56); the direct count is 34. Six tests change from "caught nothing" to "caught something": 483 tests have a direct count of 0, and 477 have a `tests.txt` count of 0.
+
+   The options.
+   - A. The `tests.txt` count, with shared-state catches included. It is what the run's own report states.
+   - B. The direct count only. A catch is then a bug the test reaches and fails on.
+   - C. Show both on every row, as the plan does for now, and call neither "caught" in a question.
+
+   Recommendation: A for the headline number, with the shared part printed beside it, which is what the plan's columns already do. Reason: it is the number the report and the 477 list use, so no two files give two totals. The case against it: a shared-state catch may mean the test failed because an earlier test broke the state, not because the test checks the planted code, so it can credit a test for a failure it does not own. 263 caught against 56 reached for one test shows how far that count can run from the direct one. B avoids that and costs 6 tests their only catch.
+
+   Nothing in this plan waits on the answer for its work; the answer decides only which number the E3 labels, E7 reading list and E8 drafts name "caught". The main session asks it before E3 starts.
 
 ### The answers (session 88ea48bb, 2026-11-15)
 
@@ -399,7 +413,8 @@ The user answered all six in question boxes. Their words are quoted as typed or 
 | A scout never fills a run number or an exit | M5; E3 | M5 | scout files hold only `mut_match` and `mut_test` |
 | The join can be rerun from newer files with no mutation run | E1c, "If the hanging-test fixes change the time-outs" | M3 | `ledger.py` reads only AUD; a test swaps in a changed `timed-out-bugs.txt` and the script prints the rows that changed |
 | No mutation run starts under this plan | Who does what; Out of scope | M2, M4 | the two `Commands:` lines hold no `run.py` call |
-| The user's two quoted wishes are confirmed in their own words before the join runs | M2 | M2 | `log.md` line with each quote and its card, or the main session stops and asks |
+| The one user line the plan cites about the run is quoted from its card, with its context, and no handoff paraphrase is passed off as the user's words | M2 | M2 | `log.md` line with the card line 32 quote and its context, or the main session stops and asks |
+| The two catch counts that disagree for 229 tests are asked about whole, and both are shown until the user answers | E1c, "Which existing code this extends"; question 7 | M3, E8 | `mut_caught` and `mut_caught_shared` are both on every matched row; question 7 is in the Questions section before E3 runs |
 | The main session opens every exit 4 row the run casts doubt on | E7 | E7 | `log.md` names each such row and the date it was opened |
 | No test and no code changes | The short version | E7 | the branch's diff holds only files under AUD and this plan |
 | No live step | The live steps | none needed | no `### LS` heading exists in this plan |
@@ -440,9 +455,9 @@ The user answered all six in question boxes. Their words are quoted as typed or 
 | P30: A rough search matched 2,235 of 5,858 record rows to one test (2,225 by name, 10 by line), found about 2,544 Python records, 361 naming a C++ file outside the run, 21 near a line and 697 with neither; 2,029 of 2,231 tests had a record, 201 had several, and 423 of the 477 had one. | code | `docs/audit/2026-11-14-test-audit/exits/ledger.tsv` at 891ab424 against the run's `tests.txt`, by `scratchpad/t8-join-plan/measure.py` | checked 2026-11-16, as a rough count only |
 | P31: The 691 survivors sit in 74 source files. | code | the run's `report.txt` lines 20 to 712 | checked 2026-11-16 |
 | P32: The approved plan says missing coverage is a separate pass after the audit and "is not part of this plan". | code | `docs/superpowers/plans/2026-11-14-test-suite-audit.md` lines 343 to 345 on main | checked 2026-11-16 |
-| P33: The user refused a new full mutation run ("start the full run? absolutely not."). | unchecked | the planner's brief reports it; a search of `docs/sessions/` and `docs/agents/rulings/` found no such line | M2 |
+| P33: After the run's crash the user said "you can redo the ones that didnt run"; the card notes it as rejecting a full restart after the crash. It is about that crash, not a rule against later runs. | code | `docs/sessions/2026-11-16-60c3a576.md` line 32 on main, under "The user's words" (a card quote, not a filed ruling) | checked 2026-11-16; the words "start the full run? absolutely not." are in no card and are not used |
 | P34: `run.py --rescore` keeps each bug's stored timed-out flag, so it cannot change a time-out count. | code | `tools/mutate/run.py` lines 746 to 760 on main | checked 2026-11-16 |
-| P35: The user wants "a run, not an agent's reading" to say whether a test can fail. | unchecked | the planner's brief reports it; a search of `docs/sessions/` and `docs/agents/rulings/` found no such line | M2 |
+| P35: The mutation handoff states its goal as "The user wants a run, not an agent's reading, to say whether a test can fail." That is the handoff's paraphrase, not a user quote. | code | `docs/handoffs/2026-11-16-mutation-tool-next-steps-handoff.md` line 7, in the mutation-tool-next-steps-handoff worktree | checked 2026-11-16 as a handoff's words; no user line holds it, and the plan uses it only as the stated goal |
 | P36: The real match counts, once `ledger.py` does the matching by the rule in E1c. | unchecked | `scratchpad/t8-join-plan/measure.py` is a rough search, not the rule | M4 |
 | P37: `first_use.py` takes a lines file, a run folder and an output path, needs the run's `map.json` and bug jsons, and has run on this run folder. | code | `tools/mutate/first_use.py` lines 1 to 33 and `tools/mutate/first_use_table.md` on main | checked 2026-11-16 |
 | P38: `tools/mutate` is not on the T8 branch, so `first_use.py` runs from the main checkout. | code | `git ls-tree 891ab424 tools/mutate` (empty) | checked 2026-11-16 |
