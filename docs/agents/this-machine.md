@@ -16,6 +16,8 @@ The repo is `splax77/hydra-deluxe`. Text never goes to GitHub through a hand-typ
 
 How a release is built, signed and uploaded is in `docs/development.md`, in its "Every release" sections. A release's tag and title are both `v` plus the version, such as `v3.0.0`, and it carries two files: the installer and its `.sig` signature. The version number is set in one place, the project line of `CMakeLists.txt`, which reads VERSION 3.1.1 today.
 
+The hooks folder is `C:\Users\Patrick\.claude\gates`, outside this checkout, inside the git repo at `C:\Users\Patrick\.claude`. The Python half of the mutation tool takes it as its `--target` (`docs/development.md`, "Mutation testing").
+
 ## Ghidra and REA
 
 Ghidra 12.1.3 is at `C:\Users\Patrick\Downloads\ghidra_12.1.3_PUBLIC_20260817\ghidra_12.1.3_PUBLIC`. Its headless runner is `C:\Users\Patrick\Downloads\ghidra_12.1.3_PUBLIC_20260817\ghidra_12.1.3_PUBLIC\support\analyzeHeadless.bat`. Java for it is Eclipse Temurin JDK 25 (25.0.4.1), at `C:\Program Files\Eclipse Adoptium\jdk-25.0.4.101-hotspot\bin\java.exe`. No GHIDRA_INSTALL_DIR variable is set for the machine or the user.
