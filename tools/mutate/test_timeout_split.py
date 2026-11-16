@@ -171,9 +171,16 @@ class Split(unittest.TestCase):
         self.assertIn("settle", helpers[self.ids["reaches a wait through a header helper"]])
         self.assertIn("wait_reached", helpers[self.ids["reaches a wait through a struct method"]])
 
-    def test_the_real_wait_home_gives_its_three_waits(self):
+    def test_the_real_wait_home_gives_its_waits(self):
         src = timeout_split.Sources(REPO)
-        self.assertEqual(src.waits, {"wait_until", "poll_until_idle", "tick_until_thrown"})
+        self.assertTrue({"wait_until", "poll_until_idle", "tick_until_thrown"} <= src.waits)
+        self.assertNotIn("give_up", src.waits)
+
+    def test_a_loop_that_sleeps_nowhere_known_fails_loudly(self):
+        (self.repo / "tests" / "wait_util.h").write_text(
+            WAIT_UTIL + "inline void spin(Pred p) { while (!p()) { other_pause(); } }\n", encoding="utf-8")
+        with self.assertRaises(timeout_split.SplitError):
+            timeout_split.Sources(self.repo)
 
 
 if __name__ == "__main__":

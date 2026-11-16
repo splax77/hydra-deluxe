@@ -55,7 +55,8 @@ DEF = re.compile(r"(?<![\w.>])(\w+)\s*\([^;{}()]*(?:\([^()]*\)[^;{}()]*)*\)\s*(?
 NOT_FUNCTIONS = {"if", "for", "while", "switch", "catch", "return", "sizeof", "TEST_CASE", "SUBCASE", "CHECK",
                  "REQUIRE"}
 # A wait in WAIT_HOME is a function that sleeps between its tries.
-SLEEPS = re.compile(r"\bsleep_for\s*\(")
+SLEEPS = re.compile(r"\b(?:sleep_for|sleep_until|yield)\s*\(")
+LOOPS = re.compile(r"\b(?:for|while)\s*\(")
 
 GROUPS = ("red_already", "fast", "slow", "between")
 GROUP_WORDS = {
@@ -176,7 +177,13 @@ def wait_names(src: Sources) -> set[str]:
         raise SplitError(f"timeout_split.py: no functions read from {src.repo / WAIT_HOME}")
     sleepers = {n for n, bs in defs.items() if any(SLEEPS.search(b) for b in bs)}
     bodies = {n: [(WAIT_HOME, b) for b in bs] for n, bs in defs.items()}
-    return sleepers | set(reaching(bodies, sleepers))
+    waits = sleepers | set(reaching(bodies, sleepers))
+    # A looping function that is no wait waits some way SLEEPS does not know: fail rather than miss it.
+    odd = sorted(n for n, bs in defs.items() if n not in waits and any(LOOPS.search(b) for b in bs))
+    if odd:
+        raise SplitError(f"timeout_split.py: {WAIT_HOME} has looping functions that sleep nowhere the script "
+                         f"reads: {', '.join(odd)}")
+    return waits
 
 
 def read_map_tests(run_dir: Path) -> dict[str, dict]:
