@@ -20,7 +20,7 @@ Type the line out in full. Write the time yourself (`10:46`), never `$(Get-Date 
 
 When your last line is 5 minutes old, the hook reminds you. When it is 10 minutes old, the hook refuses your calls until you write one. Two kinds of call still pass then: a command that starts with `git`, and your final report. So an agent that forgot its status line can still commit and hand back.
 
-The main session does not take your lines on trust. Under each agent's lines, the stall hook (`stall.py` in the gates folder) adds an evidence line the agent did not write. It holds three facts. The first is your call count: in all, between your last two status lines, and since the last one. The second is the names of your last five tool calls, read from your transcript (five is `TOOL_TAIL` in `stall.py`). The third is how many commits since your first call carry your `Agent:` trailer, with the newest one's subject. The main session checks each line against that evidence, and opens your transcript when they disagree. So write what you actually did.
+The main session does not take your lines on trust. Under each agent's lines, the stall hook (`stall.py` in the gates folder) adds an evidence line the agent did not write. It holds three facts. The first is your call count: in all, between your last two status lines, and since the last one. The second is the names of your last five tool calls, read from your transcript (five is TOOL_TAIL in `stall.py`). The third is how many commits since your first call carry your `Agent:` trailer, with the newest one's subject. The main session checks each line against that evidence, and opens your transcript when they disagree. So write what you actually did.
 
 ## Reading files
 
