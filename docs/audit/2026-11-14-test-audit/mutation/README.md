@@ -10,7 +10,7 @@ These files come from the run folder `worktrees/mutation-tool/build-mutation/run
 | `tests.txt` | 598964 | copied whole: each test's caught and reaches counts, the tests that caught none first |
 | `summary.json` | 794167 | copied whole: the run's counts, its crashes and its catches through shared state |
 | `timed-out-bugs.txt` | 1493262 | the 636 timed-out bugs' blocks of the run's bugs.txt, byte for byte |
-| `survivors-by-file.md` | 46613 | written here: report.txt's survivors grouped by source file |
+| `survivors-by-file.md` | 47681 | written here: report.txt's survivors grouped by source file |
 
 The rest of bugs.txt is not kept. It repeats what tests.txt lists per test. The bugs folder and map.json are too big to keep.
 

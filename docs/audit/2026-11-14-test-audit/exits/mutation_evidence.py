@@ -279,8 +279,10 @@ def survivors_page(report):
 
 
 def _write(path, text):
-    with open(path, 'wb') as f:
-        f.write(text.encode('utf-8'))
+    # The platform's line ends, as report.py writes the run's files, so the
+    # sizes the README states hold for a checkout on the machine that wrote them.
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(text)
 
 
 def readme_text(report, source, sizes, timed_out, procs):
