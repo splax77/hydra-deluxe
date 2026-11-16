@@ -41,6 +41,11 @@ REGISTER_LISTENER("passing_filters", 0, PassingFiltersListener);
 
 }  // namespace
 
+#ifdef HYDRA_MUTATION
+// The mutation build's listener; see the file for what it writes.
+#include "../tools/mutate/listener.cpp"
+#endif
+
 int main(int argc, char** argv) {
     const std::vector<std::string> args(argv + (argc > 0 ? 1 : 0), argv + argc);
     if (const std::optional<std::string> why = run_guard::refuse_arguments(args)) {
