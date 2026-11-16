@@ -9,16 +9,25 @@
 // tools/mutate/listener.cpp reads those notes, so the mapping run can say
 // which test reaches which switch.
 //
+// With every switch off a copy must behave exactly as its original, and some
+// tests count heap allocations while they run. So once static start-up is
+// over, nothing a switch does allocates or takes a lock: the variable is read
+// before main, and each note is a few atomic operations on storage that
+// exists from the start.
+//
 // Only the mutation build includes this header; the normal build never does.
+// The rewriter (rewrite.py, include_at) writes the include line into each copy,
+// after the copy's own leading #define, #undef and #pragma lines, which the
+// C runtime's headers read when they are first included.
 
 #ifndef HYDRA_TOOLS_MUTATE_HYDRA_MUTANT_H
 #define HYDRA_TOOLS_MUTATE_HYDRA_MUTANT_H
 
+#include <algorithm>
 #include <atomic>
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -46,56 +55,76 @@ inline long read_active_switch() {
     return n;
 }
 
-// Read once, on first use. A function-local static is initialised the first
-// time any switch runs, so a switch met during static start-up in another file
-// still sees the variable.
+// Read once. A function-local static is set up the first time any switch
+// runs, so a switch met during static start-up in another file still sees
+// the variable. Reading it allocates (read_env returns a std::string), so the
+// listener (listener.cpp, read_at_start) makes that first time come before
+// main, and no test is ever the first to read it.
 inline long active_switch() {
     static const long active = read_active_switch();
     return active;
 }
 
-// The reach notes. The listener starts a new period at each test, and a switch
-// notes its number once per period. A period of 0 is never current, so every
-// switch notes itself the first time it runs.
-struct ReachLog {
-    std::mutex mutex;
-    std::atomic<unsigned> period{1};
-    std::vector<long> reached;  // switch numbers noted in the current period
+// The reach notes. The listener starts a new period at each test's start and
+// end, and a switch notes itself once per period. Period 0 is never current,
+// so every switch notes itself the first time it runs.
+//
+// Each switch has one Reach of its own, a template variable that needs no
+// constructor at run time, so it exists before any code runs. The first note
+// links it onto reach_list with a compare-and-swap, which needs neither a
+// lock nor the heap; the listener walks that list.
+struct Reach {
+    std::atomic<unsigned> period{0};            // the period it last noted itself in
+    std::atomic<unsigned long long> order{0};   // note_clock when it did, for the listener's order
+    std::atomic<bool> linked{false};
+    long number = 0;                            // set before it is linked, never after
+    Reach* next = nullptr;                      // likewise
 };
 
-inline ReachLog& reach_log() {
-    static ReachLog log;
-    return log;
-}
+inline std::atomic<unsigned> current_period{1};
+inline std::atomic<unsigned long long> note_clock{0};
+inline std::atomic<Reach*> reach_list{nullptr};
 
-// The period in which switch N last noted itself. One variable per switch,
-// so the common case (already noted this period) costs one atomic load and
-// takes no lock.
 template <long N>
-inline std::atomic<unsigned> noted_in_period{0};
+inline Reach reach_of{};
 
 template <long N>
 inline void note_reached() {
-    ReachLog& log = reach_log();
-    const unsigned now = log.period.load(std::memory_order_acquire);
-    if (noted_in_period<N>.load(std::memory_order_relaxed) == now) return;
-    std::lock_guard<std::mutex> lock(log.mutex);
-    // The period may have moved, or another thread noted N, while this one
-    // waited for the lock; both are read again under it.
-    const unsigned current = log.period.load(std::memory_order_relaxed);
-    if (noted_in_period<N>.load(std::memory_order_relaxed) == current) return;
-    noted_in_period<N>.store(current, std::memory_order_relaxed);
-    log.reached.push_back(N);
+    Reach& r = reach_of<N>;
+    for (;;) {
+        const unsigned now = current_period.load(std::memory_order_acquire);
+        unsigned was = r.period.load(std::memory_order_relaxed);
+        if (was == now) return;
+        if (!r.period.compare_exchange_strong(was, now, std::memory_order_acq_rel)) continue;
+        r.order.store(note_clock.fetch_add(1, std::memory_order_relaxed), std::memory_order_relaxed);
+        if (!r.linked.exchange(true, std::memory_order_acq_rel)) {
+            r.number = N;
+            Reach* head = reach_list.load(std::memory_order_relaxed);
+            do {
+                r.next = head;
+            } while (!reach_list.compare_exchange_weak(head, &r, std::memory_order_release,
+                                                       std::memory_order_relaxed));
+        }
+        // The listener may have started a new period while this note was
+        // made; if so the note belongs to the new one, so it is made again.
+        if (current_period.load(std::memory_order_acquire) == now) return;
+    }
 }
 
-// Hands back the numbers noted since the last call and starts a new period.
-// The listener calls it at each test's start and end.
+// Hands back the numbers noted in the period that is ending, in the order
+// they were first noted, and starts a new period. The listener calls it at
+// each test's start and end, never inside a test, so it may allocate.
 inline std::vector<long> take_reached() {
-    ReachLog& log = reach_log();
-    std::lock_guard<std::mutex> lock(log.mutex);
+    const unsigned ended = current_period.fetch_add(1, std::memory_order_acq_rel);
+    std::vector<std::pair<unsigned long long, long>> noted;
+    for (Reach* r = reach_list.load(std::memory_order_acquire); r != nullptr; r = r->next) {
+        if (r->period.load(std::memory_order_acquire) == ended)
+            noted.emplace_back(r->order.load(std::memory_order_relaxed), r->number);
+    }
+    std::sort(noted.begin(), noted.end());
     std::vector<long> out;
-    out.swap(log.reached);
-    log.period.fetch_add(1, std::memory_order_acq_rel);
+    out.reserve(noted.size());
+    for (const auto& n : noted) out.push_back(n.second);
     return out;
 }
 

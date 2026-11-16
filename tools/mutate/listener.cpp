@@ -39,6 +39,11 @@
 
 namespace hydra_mutant_listener {
 
+// Reads HYDRA_MUTANT during static start-up. Its first read allocates, and a
+// test that counts heap allocations must see none from a switch, so the read
+// is made here, in a file the test program always links, before main.
+const long read_at_start = hydra_mutant::active_switch();
+
 inline std::string escape_field(const std::string& text) {
     std::string out;
     out.reserve(text.size());

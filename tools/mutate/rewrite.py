@@ -6,10 +6,12 @@ spot sits behind its own numbered switch:
 
     HYDRA_MUT(17, (<original expression>), (<expression with the one change>))
 
-The macro lives in hydra_mutant.h, which the mutation build force-includes
-into every copy, so a copy gets no include line. Each side is passed in round
-brackets, because the preprocessor splits macro arguments at any comma that
-is not inside round brackets.
+The macro lives in hydra_mutant.h. Each copy gets one added line that
+includes it, just before the file's first #include (include_at says where
+and why there), so the copy's own leading #define, #undef and #pragma lines
+still come first. Each side is passed in round brackets, because the
+preprocessor splits macro arguments at any comma that is not inside round
+brackets.
 
     py -I tools/mutate/rewrite.py src/core/stars.cpp [more files...]
     py -I tools/mutate/rewrite.py --out <folder> --root <repo> --precheck <exe> <files>
@@ -29,8 +31,9 @@ Nested spots. When several spots share one expression, or one spot's
 expression holds another's, each spot wraps the whole of its expression once,
 innermost first. The "on" side of a switch is always the original expression
 with that switch's one change and nothing else; the "off" side holds the
-wrappers inside it. So with every switch off the copy reads exactly as the
-original, and with one switch on it differs only by that switch's change.
+wrappers inside it. So with every switch off the copy, less its added
+include line, reads exactly as the original, and with one switch on it
+differs only by that switch's change.
 
 A compare spot's change is written as a call to a helper in hydra_mutant.h
 on the spot's two operands (changed_span says the exact text), not as the
@@ -41,9 +44,10 @@ After writing each copy the tool reads it back through the same code mask and
 checks both of those, byte for byte; a copy that fails stops the run.
 
 Skipped spots. A spot the finder skipped keeps its reason. The rewriter adds
-two reasons of its own (REWRITE_SKIP_REASONS): a spot in a file the mutation
-build takes no copy of (a header, for one), and two spots whose expressions
-cross, which no wrapping can hold both of. Both are listed, never planted.
+reasons of its own (REWRITE_SKIP_REASONS): a spot in a file the mutation
+build takes no copy of (a header, for one), two spots whose expressions
+cross, which no wrapping can hold both of, and spots where the include line
+has no sure place. All are listed, never planted.
 
 mutants.json (FORMAT 1):
 
@@ -88,10 +92,20 @@ COPY_SUFFIXES = {".c", ".cpp"}
 REWRITE_SKIP_REASONS = {
     "not_copied": "in a file the mutation build takes no copy of (it takes only .c and .cpp sources)",
     "crossing": "its expression crosses another spot's expression, so no wrapping holds both",
+    "no_include": "in a file with no #include line, so the tool has no place to include the switches",
+    "include_in_if": "in a file whose first #include sits inside an #if block, so no place to include "
+                     "the switches is sure to be compiled",
+    "before_include": "it comes before the file's first #include, where the switches are not yet included",
 }
 assert not set(REWRITE_SKIP_REASONS) & set(find.SKIP_REASONS), "a reason key has two meanings"
 
 MACRO = "HYDRA_MUT"
+
+# The one line the rewriter adds to a copy. The HYDRA_MUTATION block of
+# CMakeLists.txt puts tools/mutate on each copy's include path.
+INCLUDE_TEXT = '#include "hydra_mutant.h"'
+_INCLUDE_LINE = re.compile(r"(?m)^" + re.escape(INCLUDE_TEXT) + r"\r?\n")
+_DIRECTIVE = re.compile(r"[ \t]*#[ \t]*([A-Za-z_]\w*)")
 
 
 class RewriteError(RuntimeError):
@@ -179,6 +193,48 @@ def wrap_text(text: str, numbered: list[tuple[int, find.Spot]]) -> str:
     return render(0, len(text), None)
 
 
+# -- the include line ---------------------------------------------------------
+
+
+def include_at(text: str, mask: str) -> tuple[Optional[int], Optional[str]]:
+    """(offset, None): where the include line goes, the start of the file's first
+    #include line; or (None, reason) when the file gets no copy.
+
+    The line goes there, not at the top, because the C runtime reads macros such
+    as _CRT_SECURE_NO_WARNINGS when its headers are first included, and the
+    switch header includes some: the file's own leading #define, #undef and
+    #pragma lines must come first. A first #include inside an #if block may not
+    be compiled, so such a file, and a file with no #include, is skipped
+    rather than guessed at. The directives are read through the code mask, so
+    one inside a comment or a string does not count."""
+    depth = 0
+    for m in find._PREPROCESSOR.finditer(mask):
+        d = _DIRECTIVE.match(mask, m.start())
+        name = d.group(1) if d else ""
+        if name in ("if", "ifdef", "ifndef"):
+            depth += 1
+        elif name == "endif":
+            depth -= 1
+        elif name == "include":
+            return (m.start(), None) if depth == 0 else (None, "include_in_if")
+    return None, "no_include"
+
+
+def include_line(text: str, at: int) -> str:
+    """The added line, ended the way the line it goes before is ended."""
+    end = text.find("\n", at)
+    return INCLUDE_TEXT + ("\r\n" if end > 0 and text[end - 1] == "\r" else "\n")
+
+
+def split_copy(copy: str, mask: str) -> tuple[int, int]:
+    """(offset, length) of the one include line the rewriter added to a copy."""
+    found = [m for m in _INCLUDE_LINE.finditer(copy) if mask[m.start()] == "#"]
+    if len(found) != 1:
+        raise RewriteError(f"rewrite.py: a copy holds {len(found)} '{INCLUDE_TEXT}' lines, not the one "
+                           "the tool adds")
+    return found[0].start(), found[0].end() - found[0].start()
+
+
 # -- reading a copy back ----------------------------------------------------
 
 
@@ -233,6 +289,16 @@ def parse_copy(copy: str, mask: str, a: int = 0, b: Optional[int] = None) -> lis
         pos = on_close + 2
     out.append(copy[pos:b])
     return out
+
+
+def read_copy(copy_path: Path, precheck: Path) -> tuple[list, int, int]:
+    """(pieces, offset, length): a written copy read back as parse_copy's pieces of
+    the copy with its added include line left out, and where that line was. The
+    pieces' offsets are offsets in the copy without the line."""
+    copy = read_text(copy_path)
+    mask = find.code_mask(copy_path, precheck)
+    at, length = split_copy(copy, mask)
+    return parse_copy(copy[:at] + copy[at + length:], mask[:at] + mask[at + length:]), at, length
 
 
 def take_sides(pieces: list, on: Optional[int] = None) -> str:
@@ -347,10 +413,22 @@ def rewrite(files, out: Path, root: Path, precheck: Optional[Path] = None) -> di
         spots = find.find_spots(src, precheck)
         planted = [s for s in spots if s.skip is None]
         reasons: dict[int, str] = {s.number: s.skip for s in spots if s.skip is not None}
+        at: Optional[int] = None
         if src.suffix.lower() not in COPY_SUFFIXES:
             for s in planted:
                 reasons[s.number] = "not_copied"
             planted = []
+        elif planted:
+            at, whole_file = include_at(text, find.code_mask(src, precheck))
+            if _INCLUDE_LINE.search(text):
+                raise RewriteError(f"rewrite.py: {src} already holds a '{INCLUDE_TEXT}' line, so its copy "
+                                   "could not be read back")
+            for s in planted:
+                if whole_file is not None:
+                    reasons[s.number] = whole_file
+                elif s.expr_start < at:
+                    reasons[s.number] = "before_include"
+            planted = [s for s in planted if s.number not in reasons]
         for k in _crossing(planted):
             reasons[k] = "crossing"
         planted = [s for s in planted if s.number not in reasons]
@@ -367,16 +445,22 @@ def rewrite(files, out: Path, root: Path, precheck: Optional[Path] = None) -> di
         copy_path = mutated / rel
         if copy_path.resolve() == src.resolve():
             raise RewriteError(f"rewrite.py: the copy of {rel} would overwrite it")
-        copy = wrap_text(text, numbered)
+        # Every spot lies after the include line's place, so wrapping leaves
+        # the text before it as it was and the line goes in at the same offset.
+        wrapped = wrap_text(text, numbered)
+        added = include_line(text, at)
+        copy = wrapped[:at] + added + wrapped[at:]
         # Listed before it is written, so a run that stops part way still
         # names every copy it left, and the next run can clear them.
         copies.append(rel)
         write_text(listing_path, json.dumps({"format": FORMAT, "complete": False, "copies": copies}) + "\n")
         write_text(copy_path, copy)
-        pieces = check_copy(copy_path, text, numbered, precheck)
+        pieces = check_copy(copy_path, text, numbered, precheck, at)
         spans = {w.number: (w.start, w.end) for w in wrappers(pieces)}
         for num, s in numbered:
-            a, b = spans[num]
+            # The pieces' offsets leave the added line out; in the copy each
+            # wrapper sits that line's length further on.
+            a, b = (o + len(added) for o in spans[num])
             mutants.append({"number": num, "file": rel, "copy": rel,
                             "line": s.line, "copy_lines": [copy.count("\n", 0, a) + 1, copy.count("\n", 0, b) + 1],
                             "kind": s.kind, "change": s.change, "spot": s.number})
@@ -401,11 +485,14 @@ def rewrite(files, out: Path, root: Path, precheck: Optional[Path] = None) -> di
     return listing
 
 
-def check_copy(copy_path: Path, original: str, numbered: list[tuple[int, find.Spot]], precheck: Path) -> list:
-    """Read a written copy back and stop unless every switch off gives the original
-    and each switch on alone gives the original with that one change."""
-    copy = read_text(copy_path)
-    pieces = parse_copy(copy, find.code_mask(copy_path, precheck))
+def check_copy(copy_path: Path, original: str, numbered: list[tuple[int, find.Spot]], precheck: Path,
+               at: int) -> list:
+    """Read a written copy back and stop unless it holds its one include line at
+    `at`, every switch off gives the original, and each switch on alone gives
+    the original with that one change."""
+    pieces, found_at, _ = read_copy(copy_path, precheck)
+    if found_at != at:
+        raise RewriteError(f"rewrite.py: {copy_path} holds its include line at offset {found_at}, not {at}")
     if take_sides(pieces) != original:
         raise RewriteError(f"rewrite.py: {copy_path} with every switch off is not the original")
     found = sorted(w.number for w in wrappers(pieces))
@@ -441,7 +528,8 @@ def main(argv=None) -> int:
           f"{Path(out).resolve() / 'mutated'}; {len(listing['skipped'])} spots skipped")
     for reason in sorted(counts):
         print(f"  skipped, {reason}: {counts[reason]}")
-    print("Every copy reads back as its original with every switch off, and as one change with one on.")
+    print("Every copy, less its include line, reads back as its original with every switch off, "
+          "and as one change with one on.")
     return 0
 
 

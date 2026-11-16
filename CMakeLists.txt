@@ -991,10 +991,11 @@ endforeach()
 # chosen source files into build-mutation\mutated\, each at the path its
 # original has in the repo, and this build compiles each copy in place of its
 # original. A file with no copy compiles from its usual place. The switches the
-# copies use come from tools/mutate/hydra_mutant.h, which is force-included
-# into the copies only, so the tool never has to add an include line to them.
-# The copies' own folder holds none of the original's neighbours, so each copy
-# also gets its original's folder on its include path, ahead of the target's.
+# copies use come from tools/mutate/hydra_mutant.h, which each copy includes
+# by name on a line the tool adds (tools/mutate/rewrite.py says where), so
+# tools/mutate goes on each copy's include path. The copies' own folder holds
+# none of the original's neighbours, so each copy also gets its original's
+# folder on its include path.
 # Only static libraries' .c and .cpp sources are swapped; a copy that swaps
 # nothing stops the configure, so no planted bug is dropped unseen.
 # This block reads every library's source list, so it sits after the last
@@ -1041,9 +1042,8 @@ if(HYDRA_MUTATION)
                     set(hydra_keep "${hydra_mutated_dir}/${hydra_rel}")
                     get_filename_component(hydra_original_dir "${hydra_abs}" DIRECTORY)
                     set_property(SOURCE "${hydra_keep}" APPEND PROPERTY
-                                 INCLUDE_DIRECTORIES "${hydra_original_dir}")
-                    set_property(SOURCE "${hydra_keep}" APPEND PROPERTY
-                                 COMPILE_OPTIONS "/FI${CMAKE_SOURCE_DIR}/tools/mutate/hydra_mutant.h")
+                                 INCLUDE_DIRECTORIES "${hydra_original_dir}"
+                                                     "${CMAKE_SOURCE_DIR}/tools/mutate")
                     list(APPEND hydra_mutated_used "${hydra_rel}")
                     set(hydra_swapped ON)
                 endif()

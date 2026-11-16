@@ -4,7 +4,9 @@
 
 The rewriter runs on the repo's own sources, never on made-up snippets, and
 writes into a temporary folder. Each test checks a property every copy must
-hold: every switch off reads back as the original byte for byte, one switch on
+hold: every switch off reads back as the original byte for byte once the one
+added include line is left out, that line comes after everything the original
+has before its first #include, one switch on
 reads back as the original with only that spot's change (for a compare spot,
 the helper call on its two operands), no copy lands in
 src/, and the switch numbers are unique and the same on a second run. The
@@ -50,8 +52,39 @@ class RewriteSrc(unittest.TestCase):
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
     def pieces(self, rel):
-        copy = self.out / "mutated" / rel
-        return rewrite.parse_copy(rewrite.read_text(copy), find.code_mask(copy, find.default_precheck()))
+        return rewrite.read_copy(self.out / "mutated" / rel, find.default_precheck())[0]
+
+    def test_the_include_line_comes_after_the_files_leading_lines(self):
+        # The C runtime reads macros such as _CRT_SECURE_NO_WARNINGS when its
+        # headers are first included, so everything the original has before
+        # its first #include must come before the added line, and nothing
+        # else may.
+        for rel in self.listing["copies"]:
+            with self.subTest(file=rel):
+                original = (REPO / rel).read_bytes().decode("utf-8")
+                copy = self.out / "mutated" / rel
+                text = rewrite.read_text(copy)
+                _, at, length = rewrite.read_copy(copy, find.default_precheck())
+                self.assertEqual(text[:at], original[:at])
+                self.assertEqual(text[at:at + length].rstrip("\r\n"), rewrite.INCLUDE_TEXT)
+                mask = find.code_mask(REPO / rel, find.default_precheck())
+                self.assertEqual(rewrite.include_at(original, mask), (at, None))
+                self.assertRegex(original[at:], r"^[ \t]*#[ \t]*include\b")
+                self.assertNotRegex(mask[:at], r"(?m)^[ \t]*#[ \t]*include\b")
+        # The file the first switched build failed on: its #define must come first.
+        self.assertIn("src/core/winstr.cpp", self.listing["copies"])
+        winstr = rewrite.read_text(self.out / "mutated" / "src" / "core" / "winstr.cpp")
+        self.assertLess(winstr.index("#define _CRT_SECURE_NO_WARNINGS"), winstr.index(rewrite.INCLUDE_TEXT))
+
+    def test_a_file_skipped_for_its_include_skips_every_spot(self):
+        whole = {"no_include", "include_in_if"}
+        for s in self.listing["skipped"]:
+            if s["reason"] in whole:
+                self.assertNotIn(s["file"], self.listing["copies"])
+                planted = [p for p in self.spots[s["file"]] if p.skip is None]
+                for p in planted:
+                    self.assertIn(p.number, [k["spot"] for k in self.listing["skipped"]
+                                             if k["file"] == s["file"] and k["reason"] == s["reason"]])
 
     def test_every_switch_off_gives_the_original_bytes(self):
         self.assertTrue(self.listing["copies"], "no file under src/ got a copy")
