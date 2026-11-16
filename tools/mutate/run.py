@@ -216,14 +216,37 @@ def read_listener(path: Path) -> Optional[dict]:
     """parse_listener on a file, or None when the file is missing."""
     if not path.is_file():
         return None
-    return parse_listener(path.read_bytes().decode("utf-8", errors="replace"))
+    return parse_listener(read_run_file(path).decode("utf-8", errors="replace"))
+
+
+# How long a run's file may stay locked before run.py gives up on it.
+LOCKED_FILE_WAIT_SECONDS = 10.0
+
+
+def read_run_file(path: Path) -> bytes:
+    """A file a test process wrote, read once Windows lets it be opened.
+
+    Right after a process writes a file, another program, such as a virus
+    scanner, can hold it open for a moment, and Windows then refuses to open
+    it. The read is tried again until LOCKED_FILE_WAIT_SECONDS have passed.
+    A file still locked then raises RunError, which makes a bug run
+    incomplete (result_from_files) and stops the mapping run.
+    """
+    deadline = time.monotonic() + LOCKED_FILE_WAIT_SECONDS
+    while True:
+        try:
+            return path.read_bytes()
+        except PermissionError as e:
+            if time.monotonic() >= deadline:
+                raise RunError(f"run.py: {path} stayed locked for {LOCKED_FILE_WAIT_SECONDS:.0f} s: {e}") from e
+            time.sleep(0.25)
 
 
 def read_log(path: Path) -> Optional[str]:
     """A run's console output, or None when the file is missing."""
     if not path.is_file():
         return None
-    return path.read_bytes().decode("utf-8", errors="replace")
+    return read_run_file(path).decode("utf-8", errors="replace")
 
 
 # ------------------------------------------------------------------ the map
@@ -632,7 +655,12 @@ def result_from_files(n: int, m: dict, files: Optional[list[str]], out_file: Pat
         parsed, parse_error = read_listener(out_file), None
     except RunError as e:
         parsed, parse_error = None, str(e)
-    return bug_result(n, m, files, parsed, exit_code, seconds, timed_out, read_log(log_file), parse_error)
+    try:
+        log = read_log(log_file)
+    except RunError as e:
+        log = None
+        parse_error = parse_error or str(e)
+    return bug_result(n, m, files, parsed, exit_code, seconds, timed_out, log, parse_error)
 
 
 def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, clean: float) -> dict:

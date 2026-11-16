@@ -121,6 +121,53 @@ class DoctestCaughtCrash(unittest.TestCase):
                 self.assertEqual(r["crash"]["test"], run.test_id("second", FILE, 20))
 
 
+class LockedFile(unittest.TestCase):
+    """A run's file that Windows will not open yet, as when a scanner holds it."""
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.out = Path(self.dir.name) / "7.out"
+        self.log = Path(self.dir.name) / "7.log"
+        self.out.write_text(_passed("first", 10, SWITCH), encoding="utf-8")
+        self.log.write_text("", encoding="utf-8")
+        self.real_read_bytes = Path.read_bytes
+        self.real_wait = run.LOCKED_FILE_WAIT_SECONDS
+        run.LOCKED_FILE_WAIT_SECONDS = 0.5
+
+    def tearDown(self):
+        Path.read_bytes = self.real_read_bytes
+        run.LOCKED_FILE_WAIT_SECONDS = self.real_wait
+        self.dir.cleanup()
+
+    def _lock(self, path, times):
+        left = {"n": times}
+        real = self.real_read_bytes
+
+        def read_bytes(p):
+            if p == path and left["n"] != 0:
+                left["n"] -= 1
+                raise PermissionError(13, "Permission denied", str(p))
+            return real(p)
+        Path.read_bytes = read_bytes
+
+    def test_a_file_locked_for_a_moment_is_read(self):
+        self._lock(self.out, 2)
+        self.assertEqual(run.read_run_file(self.out), self.out.read_bytes())
+
+    def test_a_file_that_stays_locked_makes_the_bug_incomplete(self):
+        self._lock(self.out, -1)
+        m = _map()
+        r = run.result_from_files(SWITCH, m, run.files_for(SWITCH, m), self.out, self.log, 0, 0.5, False)
+        self.assertEqual(r["state"], "incomplete")
+        self.assertIn("stayed locked", " ".join(r["why"]))
+
+    def test_a_locked_log_makes_the_bug_incomplete(self):
+        self._lock(self.log, -1)
+        m = _map()
+        r = run.result_from_files(SWITCH, m, run.files_for(SWITCH, m), self.out, self.log, 0, 0.5, False)
+        self.assertEqual(r["state"], "incomplete")
+
+
 class ProcessEndedCrash(unittest.TestCase):
     def test_the_test_the_process_died_inside_caught_the_bug(self):
         # A fast fail: Windows ends the process with STATUS_STACK_BUFFER_OVERRUN
