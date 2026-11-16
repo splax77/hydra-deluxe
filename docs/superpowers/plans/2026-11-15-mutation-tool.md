@@ -203,6 +203,14 @@ These need the user's yes to stay out.
 
 The user answered in question boxes: the plan, "Yes, go ahead"; question 2, "Stop on first fail", so there are no top-up rounds and the first failed build stops the plan; leaving out the UI tests, "Leave them out"; question 1, after asking what the old probe was, when it was made, who made it and how it was presented, "yes delete". So M8 runs, and it also removes the probe's self-test step from `.github/workflows/ci.yml` and the probe mention in `tools/test_build_pass.ps1`.
 
+### The answers (session 872cc6f3, 2026-11-16)
+
+Three answers change the live steps.
+
+1. A survivor is not run again. The user answered "Yes, drop it" to dropping the whole-suite confirmation run, so a bug's verdict comes from its own filtered run alone.
+2. There is no LS3b and no rerun of the sample. The user answered "Yes, re-score": the fixed runner scores last session's two one-at-a-time runs again from their files. That re-scoring found the two runs disagree on bugs 7, 37 and 38. Bug 7 makes `relpath` read past the end of a string, and bugs 37 and 38 change how the folder walk's threads share folders, so whether a test catches them depends on memory contents or thread timing.
+3. Stop rule 4 becomes a line in the report, not a stop. Asked how the tool treats a bug that can be caught only by luck, the user chose "One run, say so". Each verdict says it comes from one run ("caught in its run", "survived its run"), and the report says that a bug in threaded code or in a read past the end of memory may land either way.
+
 2. The plan builds once. But if the compiler refuses a few of the planted bugs, the tool drops those and rebuilds only the changed files, up to three repeat builds in all. You said "one build per test is a massive waste of time. if we're doing this it's one build and run to test everything". Do you allow up to three repeat builds? If you say no, the first build that fails stops the plan, I report which planted bugs the compiler refused, and you decide.
 
 ## Promise map
