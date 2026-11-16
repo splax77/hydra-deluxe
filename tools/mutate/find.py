@@ -100,6 +100,7 @@ KINDS = {
 # Why a spot was skipped, one table. Every skipped spot carries one key.
 SKIP_REASONS = {
     "preprocessor": "on a preprocessor line, or its expression spans one",
+    "operator_name": "the name of an overloaded operator, as in operator==",
     "template_bracket": "a < or > without a space on both sides, likely a template bracket",
     "unspaced_and_or": "&& or || without a space on both sides, likely a reference declarator",
     "brace": "a brace inside or right beside the expression (a lambda or a braced initializer)",
@@ -140,6 +141,8 @@ _STATEMENT_KEYWORDS = ("template", "constexpr", "consteval", "static_assert", "r
 # Keywords whose presence in the head of an enclosing brace block means the
 # whole block may need constants.
 _BLOCK_KEYWORDS = ("template", "constexpr", "consteval", "enum")
+# The kind each matched token belongs to when it is an operator's own name.
+_OPERATOR_KIND = {tok: kind for kind in ("compare", "and_or", "drop_not") for tok in KINDS[kind]["swap"]}
 # Words that may sit right before `name[` without making it a declaration.
 _NOT_A_TYPE = {"return", "throw", "co_return", "co_yield", "else", "do", "delete", "new", "case"}
 
@@ -414,8 +417,12 @@ class _File:
         """(token index, kind, unspaced skip reason or None) for each token a kind matches."""
         toks = self.toks
         for i, t in enumerate(toks):
-            if t.kind == "punct" and t.text in KINDS["compare"]["swap"]:
-                yield i, "compare", None if _spaced(self.mask, t) else "template_bracket"
+            named = i > 0 and toks[i - 1].text == "operator"
+            if t.kind == "punct" and named and t.text in _OPERATOR_KIND:
+                yield i, _OPERATOR_KIND[t.text], "operator_name"
+            elif t.kind == "punct" and t.text in KINDS["compare"]["swap"]:
+                angle = t.text in _ANGLE
+                yield i, "compare", "template_bracket" if angle and not _spaced(self.mask, t) else None
             elif t.kind == "punct" and t.text in KINDS["and_or"]["swap"]:
                 yield i, "and_or", None if _spaced(self.mask, t) else "unspaced_and_or"
             elif t.kind == "punct" and t.text == "!":
