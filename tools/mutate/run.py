@@ -366,7 +366,7 @@ def find_crash(parsed: Optional[dict], exit_code: Optional[int], log_text: Optio
     return None
 
 
-def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
+def sort_red_tests(n: int, m: dict, parsed: dict, crashed: Optional[str] = None) -> dict:
     """Each red test of one run, sorted by what the run's own file shows.
 
     "caught_by": the map says the test reaches the bug, the switch was noted
@@ -379,6 +379,10 @@ def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
     run). "red_unexplained": neither; nothing in this process ran the bug
     before or during the test, so its failure has no cause this run shows,
     and it is an error. Tests red with no bug are left out of all three.
+
+    "crashed" names a test the process died inside, which wrote no ending of
+    its own (find_crash's second kind); it is sorted as a red test after the
+    file's last one.
     """
     reachers = set(m["reach"].get(n, []))
     via_outside = n in m["outside"]
@@ -386,8 +390,11 @@ def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
     noted_before = {at for at, ns in parsed["outside_at"] if n in ns}
     out = {"caught_by": [], "caught_through_shared_state": [], "red_unexplained": []}
     reached_earlier = False
-    for i, tid in enumerate(parsed["order"]):
-        test = parsed["tests"][tid]
+    order = list(parsed["order"])
+    if crashed is not None and crashed not in parsed["tests"]:
+        order.append(crashed)
+    for i, tid in enumerate(order):
+        test = parsed["tests"].get(tid, {"verdict": "failed", "switches": []})
         reached_earlier = reached_earlier or i in noted_before
         if test["verdict"] == "failed" and tid not in skip:
             if tid in reachers or via_outside or n in test["switches"]:
@@ -430,7 +437,7 @@ def bug_result(n: int, m: dict, files: Optional[list[str]], parsed: Optional[dic
         if crash is not None:
             out["state"] = "crashed"
             out["crash"] = crash
-            out.update(sort_red_tests(n, m, parsed))
+            out.update(sort_red_tests(n, m, parsed, crashed=crash["test"]))
             return out
     why = []
     if parse_error is not None:

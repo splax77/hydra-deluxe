@@ -90,6 +90,19 @@ class DoctestCaughtCrash(unittest.TestCase):
                 self.assertEqual(r["crash"]["test"], run.test_id("second", FILE, 20))
 
 
+class ProcessEndedCrash(unittest.TestCase):
+    def test_the_test_the_process_died_inside_caught_the_bug(self):
+        # A fast fail: Windows ends the process with STATUS_STACK_BUFFER_OVERRUN
+        # while "second" runs, so its record is a start with no ending.
+        status_stack_buffer_overrun = 0xC0000409
+        text = _passed("first", 10, SWITCH) + _line("start", "second", FILE, 20)
+        r = _result(text, status_stack_buffer_overrun, "")
+        second = run.test_id("second", FILE, 20)
+        self.assertEqual(r["state"], "crashed")
+        self.assertEqual(r["crash"]["test"], second)
+        self.assertEqual([c["test"] for c in r["caught_by"]], [second])
+
+
 class SurvivedBug(unittest.TestCase):
     def test_a_survived_bug_runs_once(self):
         calls = []
