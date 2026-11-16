@@ -17,10 +17,8 @@ with the mutation preset. This script then drives that one build:
    A switch noted outside any test, such as in static start-up, is set before
    any test begins, so its run takes every test file. --processes runs that
    many side by side; the default is the machine's physical core count, read
-   at run time. Each run has the time limit test_timeout_seconds gives.
-3. The whole-suite runs. A bug that survived its filtered run runs once more
-   on every test file, one run at a time (needs_whole_suite says why), and
-   that run's verdict is the bug's.
+   at run time. Each run has the time limit test_timeout_seconds gives, and
+   its verdict is the bug's: a bug no test caught in it is survived.
 
 What counts is only doctest's own verdict, read from the listener's file,
 and the evidence of a crash in the files and the exit code (find_crash).
@@ -40,8 +38,6 @@ What it writes, in the run folder (default <build>/runs/<date-time>):
                           the run's seconds and exit code
     red_with_no_bug.txt   the tests that failed in the mapping run
     bugs/<n>.out, .log    each bug run's listener file and console output
-    bugs/<n>.whole.out, .whole.log
-                          the same for a bug's whole-suite run
     bugs/<n>.json         each bug's result (bug_result says the fields)
     summary.json          the counts, all from the runs above
 """
@@ -301,6 +297,21 @@ NTSTATUS_ERROR = 0xC0000000
 # crash.
 NTSTATUS_CONTROL_C_EXIT = 0xC000013A
 
+# The exit code of an abort that no handler stops: abort calls _exit(3) when
+# Windows error reporting is off (Microsoft's abort documentation, Remarks),
+# and doctest turns it off (_set_abort_behavior in FatalConditionHandler, in
+# third_party/doctest/doctest.h). The C runtime sets SIGABRT back to its
+# default before it calls doctest's handler (Microsoft's signal
+# documentation, Remarks), so an abort that comes while the handler is still
+# on its way to exit(EXIT_FAILURE), from another thread or from the
+# shutdown that exit runs, ends the process with this code after doctest has
+# already reported the crash. Only doctest's SIGABRT handler runs with
+# SIGABRT at its default, so only its message goes with this code.
+EXIT_ABORT = 3
+# The message doctest's SIGABRT handler reports (the std::signal call in
+# FatalConditionHandler, third_party/doctest/doctest.h).
+DOCTEST_SIGABRT_MESSAGE = "SIGABRT - Abort (abnormal termination) signal"
+
 
 def _doctest_crash_messages(log_text: Optional[str]) -> list[str]:
     """The messages doctest reported as a crash in a run's console output."""
@@ -318,8 +329,11 @@ def find_crash(parsed: Optional[dict], exit_code: Optional[int], log_text: Optio
     access violation, an abort or a terminate (FatalConditionHandler in
     doctest.h): it reports the running test as failed with the crash message,
     writes its console line with DOCTEST_CRASH_TAG and exits with
-    EXIT_FAILURE. So that crash needs exit code 1, the console line, and the
-    file's last test failed with that same message. Windows ends a crash
+    EXIT_FAILURE, or, for an abort only, with EXIT_ABORT when a second abort
+    overtakes that exit (EXIT_ABORT says how). So that crash needs the exit
+    code that goes with its message, the console line, and the file's last
+    test failed with that same message; EXIT_ABORT with no console line is
+    no crash. Windows ends a crash
     doctest cannot catch, such as a fast fail, with an error NTSTATUS; that
     crash needs such an exit code and a file whose last record is the start
     of the test that was running. Both need a whole file whose tests are the
@@ -329,11 +343,12 @@ def find_crash(parsed: Optional[dict], exit_code: Optional[int], log_text: Optio
     if parsed is None or parsed["partial_line"]:
         return None
     order = parsed["order"]
-    if exit_code == EXIT_FAILED and not parsed["unended"] and order:
+    if exit_code in (EXIT_FAILED, EXIT_ABORT) and not parsed["unended"] and order:
         last = order[-1]
         messages = _doctest_crash_messages(log_text)
         thrown = parsed["exceptions"].get(last, [])
-        said = [msg for msg in messages if msg in thrown]
+        said = [msg for msg in messages if msg in thrown
+                and (exit_code == EXIT_FAILED or msg == DOCTEST_SIGABRT_MESSAGE)]
         if parsed["tests"][last]["verdict"] == "failed" and said and order == expected[:len(order)]:
             return {"test": last, "how": "doctest caught it: " + said[0]}
         return None
@@ -512,35 +527,6 @@ def run_bug(n: int, m: dict, exe: Path, bugs_dir: Path, cwd: Path, limit: float)
     code, seconds, timed_out = run_tests(exe, filter_arg(files), out_file, log_file, cwd, n, limit)
     result = result_from_files(n, m, files, out_file, log_file, code, seconds, timed_out)
     result["time_limit_seconds"] = round(limit, 3)
-    result["verdict_from"] = "filtered run" if files is not None else "whole suite"
-    (bugs_dir / f"{n}.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
-    return result
-
-
-def needs_whole_suite(result: dict) -> bool:
-    """Whether a bug's verdict waits for a run of every test file.
-
-    A run on the reaching tests' files leaves out tests in other files that
-    see the bug only through what the process keeps between tests
-    (sort_red_tests), so a bug none of them caught is not yet survived. A
-    run that already took every test file needs no second one.
-    """
-    return result["state"] == "survived" and result["files"] is not None
-
-
-def confirm_bug(first: dict, m: dict, exe: Path, bugs_dir: Path, cwd: Path, limit: float) -> dict:
-    """A survived bug's second run, on every test file; its verdict is the bug's.
-
-    The filtered run's result is kept under "filtered_run". The second run's
-    files are <n>.whole.out and <n>.whole.log.
-    """
-    n = first["number"]
-    out_file, log_file = bugs_dir / f"{n}.whole.out", bugs_dir / f"{n}.whole.log"
-    code, seconds, timed_out = run_tests(exe, [], out_file, log_file, cwd, n, limit)
-    result = result_from_files(n, m, None, out_file, log_file, code, seconds, timed_out)
-    result["time_limit_seconds"] = round(limit, 3)
-    result["verdict_from"] = "whole-suite run after a survived filtered run"
-    result["filtered_run"] = first
     (bugs_dir / f"{n}.json").write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
     return result
 
@@ -589,14 +575,11 @@ def summarize(listing: dict, m: dict, map_seconds: float, map_exit: int, process
         "bug_runs_timed_out": [r["number"] for r in results if r["state"] == "timed_out"],
         "bugs_caught_only_through_shared_state": [r["number"] for r in results if r["state"] == "caught"
                                                   and not r["caught_by"]],
-        "verdicts_from_whole_suite_run": [{"number": r["number"], "state": r["state"]} for r in results
-                                          if "filtered_run" in r],
         "caught_through_shared_state": [{"number": r["number"], "test": t} for r in results
                                         for t in r["caught_through_shared_state"]],
         "errors_red_unexplained": [{"number": r["number"], "test": t} for r in results
                                    for t in r["red_unexplained"]],
-        "bug_run_seconds_total": round(sum(r["seconds"] + r.get("filtered_run", {}).get("seconds", 0.0)
-                                           for r in results), 3),
+        "bug_run_seconds_total": round(sum(r["seconds"] for r in results), 3),
         "bug_phase_wall_seconds": round(wall_seconds, 3),
     }
 
@@ -668,8 +651,8 @@ def _run(a) -> int:
         # The mapping run is the whole suite untouched, so this is D82's
         # limit for a whole-suite run. A filtered run's untouched time is
         # not measured (the listener writes no test times); the whole suite's
-        # time is the most it can be, so a filtered run is never stopped
-        # sooner than D82 would stop it.
+        # time is the most it can be, so a run is never stopped sooner than
+        # D82 would stop it.
         limit = test_timeout_seconds(map_seconds)
         bugs_dir = run_dir / "bugs"
         bugs_dir.mkdir()
@@ -679,15 +662,6 @@ def _run(a) -> int:
             futures = [pool.submit(run_bug, n, m, exe, bugs_dir, cwd, limit) for n in reached]
             for f in concurrent.futures.as_completed(futures):
                 results.append(f.result())
-        # Each whole-suite run goes alone, like the mapping run its time
-        # limit is measured from, so runs side by side cannot slow it past
-        # the limit.
-        survivors = [r for r in results if needs_whole_suite(r)]
-        if survivors:
-            print(f"run.py: {len(survivors)} survived bugs run again on every test file, one at a time, "
-                  f"time limit {limit:.1f} s each")
-        confirmed = {r["number"]: confirm_bug(r, m, exe, bugs_dir, cwd, limit) for r in survivors}
-        results = [confirmed.get(r["number"], r) for r in results]
         wall = time.perf_counter() - t0
         results.sort(key=lambda r: r["number"])
     summary = summarize(listing, m, map_seconds, map_exit, processes, results, wall)
