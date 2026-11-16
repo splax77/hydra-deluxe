@@ -1066,11 +1066,10 @@ if(HYDRA_MUTATION)
                             "replace no .c or .cpp source of any library, so their "
                             "planted bugs would never be built: ${hydra_mutated_unused}")
     endif()
-    # The test exe registers the listener (tests/test_main.cpp, inside its
-    # HYDRA_MUTATION block) and reads the switches' reach notes through it.
-    target_sources(hydra_tests PRIVATE tools/mutate/listener.cpp)
+    # tests/test_main.cpp brings in the listener inside its HYDRA_MUTATION
+    # block, so the listener is not a source of its own here.
     target_include_directories(hydra_tests PRIVATE tools/mutate)
-    set_property(SOURCE tests/test_main.cpp tools/mutate/listener.cpp APPEND PROPERTY
+    set_property(SOURCE tests/test_main.cpp APPEND PROPERTY
                  COMPILE_DEFINITIONS HYDRA_MUTATION)
 endif()
 
