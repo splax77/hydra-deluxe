@@ -368,6 +368,8 @@ This plan has no live step. Nothing in it starts Clone Hero or Hydra, and the ru
 
    Nothing in this plan waits on the answer for its work; the answer decides only which number the E3 labels, E7 reading list and E8 drafts name "caught". The main session asks it before E3 starts.
 
+   Answered (session 899dc0dd, 2026-11-16): "Count 1; fix F1 (Recommended)". The one "caught" count is `tests.txt`'s, which is `mut_caught`; `mut_caught_shared` stays beside it. The main session traced why the map misses these catches before asking: answers worked out once and kept (`report_css()` in `src/app/html_page.cpp` line 304; the corpus cache in `tests/corpus_util.h`), and tools the CLI tests start as child programs (`tests/test_cli.cpp` line 78). `first_use.py` is changed on main, in its own task and review, to read `report.py`'s count instead of recounting. The user then chose "Start both (Recommended)", which approves E1c.
+
 ### The answers (session 88ea48bb, 2026-11-15)
 
 The user answered all six in question boxes. Their words are quoted as typed or chosen.
