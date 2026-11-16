@@ -121,9 +121,9 @@ After both merge, the main session reads the file times of the next group of bui
 | Premise | Kind | Source | Status |
 |---|---|---|---|
 | P1: `build_cpp.ps1` asks for no slot. | code | `build_cpp.ps1:88` to `build_cpp.ps1:102` | checked 2026-11-07 |
-| P2: Only two scripts ask for a slot, and `tools/compare_db.py` only tells a person to use the wrapper. | code | `tools/new_worktree.ps1:47`, `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`):314`, `tools/compare_db.py:41` | checked 2026-11-07, `git grep` of the scripts |
+| P2: Only two scripts ask for a slot, and `tools/compare_db.py` only tells a person to use the wrapper. | code | `tools/new_worktree.ps1:47`, `tools/mutation_probe.ps1:314` (removed; `git show ed0aa857:tools/mutation_probe.ps1`), `tools/compare_db.py:41` | checked 2026-11-07, `git grep` of the scripts |
 | P3: The slot limit is three, recorded in D49. | code | `tools/build_slot.ps1:35`, `docs/audit/2026-10-03-fix-decisions.md:150` | checked 2026-11-07 |
-| P4: The installer and the mutation probe build through `build_cpp.ps1`, and CI does too. | code | `installer/build_installer.ps1:54`, `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`):235`, `.github/workflows/ci.yml:85` | checked 2026-11-07 |
+| P4: The installer and the mutation probe build through `build_cpp.ps1`, and CI does too. | code | `installer/build_installer.ps1:54`, `tools/mutation_probe.ps1:235` (removed; `git show ed0aa857:tools/mutation_probe.ps1`), `.github/workflows/ci.yml:85` | checked 2026-11-07 |
 | P5: A dead owner's slot frees itself today. | code | `tools/build_slot.ps1:47` to `tools/build_slot.ps1:50` | checked 2026-11-07 |
 | P6: In a subagent `percall.py` routes to `_subagent`, and hook input carries `agent_id` and the tool's name. | code | `C:\Users\Patrick\.claude\gates\percall.py:95`, `C:\Users\Patrick\.claude\gates\README.md` "What the probes found" | checked 2026-11-07 |
 | P7: The git ref gate acts only when `CLAUDECODE` is 1. | code | `C:\Users\Patrick\.claude\gates\README.md` "Making a change live" | checked 2026-11-07 |
