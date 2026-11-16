@@ -231,6 +231,68 @@ class SurvivedBug(unittest.TestCase):
                                                  "highest_seconds": 5.875})
 
 
+class Resume(unittest.TestCase):
+    """--resume runs only the bugs a stopped run left with no json."""
+
+    def setUp(self):
+        self.calls = []
+        self.tmp = tempfile.TemporaryDirectory()
+        self.build = Path(self.tmp.name) / "build"
+        (self.build / "Release").mkdir(parents=True)
+        mutants = self.build / "mutants.json"
+        mutants.write_text(json.dumps(LISTING), encoding="utf-8")
+        self.exe = self.build / "Release" / "hydra_tests.exe"
+        self.exe.write_bytes(b"")
+        later = mutants.stat().st_mtime + 10
+        os.utime(self.exe, (later, later))
+        self.out = Path(self.tmp.name) / "out"
+        self.real = run.run_tests
+        run.run_tests = self._fake
+        args = argparse.Namespace(build=self.build, processes=1, out=self.out, map_only=False)
+        self.assertEqual(run._run(args), 0)
+        # The build is older than the run, as it is for a real stopped run.
+        os.utime(self.out / "map.out", (later + 10, later + 10))
+        self.calls.clear()
+
+    def tearDown(self):
+        run.run_tests = self.real
+        self.tmp.cleanup()
+
+    def _fake(self, exe, args, out_file, log_file, cwd, mutant, timeout, err_file=None):
+        self.calls.append({"args": args, "mutant": mutant, "timeout": timeout})
+        out_file.write_bytes(MAP_TEXT.encode("utf-8"))
+        log_file.write_bytes(MAP_LOG.encode("utf-8") if mutant is None else b"")
+        return run.EXIT_PASSED, 1.0, False
+
+    def _resume(self):
+        return run.main(["--build", str(self.build), "--processes", "1", "--resume", str(self.out)])
+
+    def test_a_bug_with_no_json_is_run_again_with_its_old_limit(self):
+        (self.out / "bugs" / f"{SWITCH}.json").unlink()
+        self.assertEqual(self._resume(), 0)
+        self.assertEqual([c["mutant"] for c in self.calls], [SWITCH])
+        self.assertAlmostEqual(self.calls[0]["timeout"], 5.875)
+        bug = json.loads((self.out / "bugs" / f"{SWITCH}.json").read_text(encoding="utf-8"))
+        self.assertEqual(bug["state"], "survived")
+        summary = json.loads((self.out / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["resumed_bug_runs"], 1)
+        self.assertEqual(summary["bug_runs_by_state"], {"survived": 1})
+
+    def test_a_finished_run_runs_nothing_and_no_mapping_run(self):
+        self.assertEqual(self._resume(), 0)
+        self.assertEqual(self.calls, [])
+        summary = json.loads((self.out / "summary.json").read_text(encoding="utf-8"))
+        self.assertEqual(summary["resumed_bug_runs"], 0)
+        self.assertEqual(summary["bug_runs_by_state"], {"survived": 1})
+
+    def test_a_build_newer_than_the_run_stops_the_resume(self):
+        (self.out / "bugs" / f"{SWITCH}.json").unlink()
+        newer = (self.out / "map.out").stat().st_mtime + 10
+        os.utime(self.exe, (newer, newer))
+        self.assertEqual(self._resume(), 1)
+        self.assertEqual(self.calls, [])
+
+
 def _map_of(*tests):
     """A map of passing tests, each given as (name, file, line).
 

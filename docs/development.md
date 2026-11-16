@@ -643,6 +643,18 @@ py -I tools/mutate/run.py --rescore build-mutation\runs\<run>
 It takes no other flag but `--build`. The `rescore` function in `run.py`
 says what it reads and what it rewrites.
 
+To finish a run that stopped part way, give `--resume` its folder:
+
+```
+py -I tools/mutate/run.py --resume build-mutation\runs\<run>
+```
+
+It runs only the reached bugs that have no result json yet, with the
+folder's own mapping run, so each gets the files and the time limit it would
+have had. It takes `--build` and `--processes`, and stops if
+`hydra_tests.exe` was built after the run's mapping run. The `resume`
+function in `run.py` says the rest.
+
 Last, write the report from the run folder:
 
 ```

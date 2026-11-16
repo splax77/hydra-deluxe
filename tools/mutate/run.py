@@ -798,6 +798,59 @@ def rescore(run_dir: Path, listing: dict) -> list[dict]:
     return results
 
 
+def resume(run_dir: Path, build: Path, listing: dict, exe: Path, processes: int) -> list[dict]:
+    """Finish a stopped run: run only the reached bugs that have no bugs/<n>.json yet.
+
+    The run folder's own mapping run is used again, never run anew: the map
+    comes from its map.out and each test's time from its map.json, so every
+    bug gets the same files and the same limit the stopped run would have
+    given it. A bug json is written only when its run ends, so a bug the stop
+    cut short has none and is run again from the start. The build must be
+    the one the run was started with: a hydra_tests.exe newer than the run's
+    map.out stops the resume. A kept bug whose files are not the ones
+    files_for names now stops it too, as in rescore. summary.json is written
+    from every bug json, old and new; its wall time is the resumed part's.
+    Returns every result by number.
+    """
+    map_out, map_json = run_dir / "map.out", run_dir / "map.json"
+    if not map_out.is_file() or not map_json.is_file():
+        raise RunError(f"run.py: {run_dir} has no map.out and map.json; it is not a run folder")
+    if exe.stat().st_mtime > map_out.stat().st_mtime:
+        raise RunError(f"run.py: {exe} was built after {run_dir}'s mapping run; its results would not match")
+    m = build_map(read_listener(map_out), listing)
+    stored = json.loads(map_json.read_text(encoding="utf-8"))
+    durations = {t["id"]: t["seconds"] for t in stored["tests"] if "seconds" in t}
+    add_test_seconds(m, durations)
+    map_seconds, map_exit = stored["seconds"], stored["exit_code"]
+    bugs_dir = run_dir / "bugs"
+    bugs_dir.mkdir(exist_ok=True)
+    kept = {}
+    for path in bugs_dir.glob("*.json"):
+        old = json.loads(path.read_text(encoding="utf-8"))
+        if path.stem != str(old["number"]):
+            raise RunError(f"run.py: {path} holds bug {old['number']}")
+        if files_for(old["number"], m) != old["files"]:
+            raise RunError(f"run.py: bug {old['number']} was run on {old['files']}, but the map now gives "
+                           f"{files_for(old['number'], m)}; the run cannot be finished")
+        kept[old["number"]] = old
+    left = [n for n in reached_switches(m) if n not in kept]
+    cleans = {n: clean_seconds(files_for(n, m), m, map_seconds) for n in reached_switches(m)}
+    limits = [test_timeout_seconds(c) for c in cleans.values()]
+    print(f"run.py: resuming {run_dir}: {len(kept)} bug runs kept, {len(left)} to run, {processes} side by side")
+    results = list(kept.values())
+    t0 = time.perf_counter()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=processes) as pool:
+        futures = [pool.submit(run_bug, n, m, exe, bugs_dir, build.parent, cleans[n]) for n in left]
+        for f in concurrent.futures.as_completed(futures):
+            results.append(f.result())
+    wall = time.perf_counter() - t0
+    results.sort(key=lambda r: r["number"])
+    summary = summarize(listing, m, map_seconds, map_exit, processes, results, wall, time_limit_record(limits))
+    summary["resumed_bug_runs"] = len(left)
+    (run_dir / "summary.json").write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
+    return results
+
+
 def main(argv=None) -> int:
     root = Path(__file__).resolve().parents[2]
     ap = argparse.ArgumentParser(description="Run the mutation build: one mapping run, then one process per bug.")
@@ -812,8 +865,26 @@ def main(argv=None) -> int:
     ap.add_argument("--rescore", type=Path, default=None, metavar="RUN_FOLDER",
                     help="score a finished or stopped run folder again from its files, with the mutants.json "
                          "in --build; starts no process (rescore says how)")
+    ap.add_argument("--resume", type=Path, default=None, metavar="RUN_FOLDER",
+                    help="finish a stopped run folder: run only the bugs with no result yet, with its own "
+                         "mapping run (resume says how)")
     a = ap.parse_args(argv)
     try:
+        if a.resume is not None:
+            if a.out is not None or a.map_only or a.rescore is not None:
+                raise RunError("run.py: --resume takes only --build and --processes")
+            build = a.build.resolve()
+            listing = read_mutants(build / "mutants.json")
+            exe = check_build(build, build / "mutants.json")
+            if a.processes is not None and a.processes < 1:
+                raise RunError("run.py: --processes must be 1 or more")
+            results = resume(a.resume.resolve(), build, listing, exe,
+                             a.processes if a.processes is not None else physical_cores())
+            states: dict[str, int] = {}
+            for r in results:
+                states[r["state"]] = states.get(r["state"], 0) + 1
+            print(f"run.py: {len(results)} bug runs in {a.resume}: {json.dumps(states)}")
+            return 0
         if a.rescore is not None:
             if a.out is not None or a.map_only or a.processes is not None:
                 raise RunError("run.py: --rescore takes only --build")
