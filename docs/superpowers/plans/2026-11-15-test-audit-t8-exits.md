@@ -107,7 +107,7 @@ No column adds, averages or scores anything. Each number is one the run's files 
 
 **How a record is matched to a test.** Test names in the run are unique (P28), so the name comes first.
 
-- `name`: the record's title holds one test's full name. Where two names both sit in the title, the longer one wins; where the two are the same length, the row is `several`. Where the record names a test file, the test must be in that file; a name found only in another file makes the row `none`, and the reason says so.
+- `name`: the record's title holds one test's full name. Where two names both sit in the title and one is a piece of the other (a short name inside a longer one), the longer one wins. Where two different names both sit in the title and neither is a piece of the other, the record covers two tests and the row is `several`; no longer-name rule picks between them. Where the record names a test file, the test must be in that file; a name found only in another file makes the row `none`, and the reason says so.
 - `line`: the title holds no test name, but names a file the run held and one line. `first_use.py` places it, and the row says `line`. A record in a test file that changed between the audit and the run says `line, file changed since` (P29).
 - `not in the run`: the record's test file is not one of the run's 146 files. The evidence columns stay empty.
 - `several`: the record covers more than one test in the run, such as a record written for a range of lines. Nothing is summed. The evidence columns stay empty and the candidates are listed.
@@ -115,7 +115,7 @@ No column adds, averages or scores anything. Each number is one the run's files 
 
 One test can have several records, because later rounds re-judged some tests. Each of those records gets the test's numbers; that is not a mismatch.
 
-Nothing drops silently. Every row that is not `name` or `line` is written to `AUD/exits/mutation-unmatched.md`, by record id, with its reason and, for `several`, its candidates. The same file lists every test in `tests.txt` that no record matched, by name. A first measurement for this plan, with a rough search, found the sizes below (P30). They are a guide to the work, not a target.
+Nothing drops silently. Every row that is not `name` or `line` is written to `AUD/mutation/mutation-unmatched.md`, beside the run's other files, by record id, with its reason and, for `several`, its candidates. The same file lists every test in `tests.txt` that no record matched, by name. A first measurement for this plan, with a rough search, found the sizes below (P30). They are a guide to the work, not a target.
 
 - Of 5,858 record rows, 2,235 matched one test: 2,225 by name and 10 by an exact line. That is 38 in 100.
 - About 2,544 looked like Python tests and 361 named a C++ file the run did not hold. Both are `not in the run`.
