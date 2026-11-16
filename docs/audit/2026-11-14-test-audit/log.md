@@ -409,3 +409,9 @@ Three re-judges read the runs (`capture/rejudge/`). Most records came back not s
 ## T8 E0: the question 8 re-read (session 88ea48bb, 2026-11-15)
 
 The user answered the T8 plan's six questions (the plan's "The answers") and chose "Smaller first": only E0 and E1 run before a report. T6's result is `mechanical/corpus.md` (commit 6aa6d684) and T7's is `mechanical/planted.md` (commit a4ad3306). By T7's rule, one fresh Sonnet verifier per slice re-read every question 8 answer in A3, A9, A30, C7, WN3, WN4a, WN4b and WN8, by reading only. Their files are `mechanical/reread/<slice>.md`. Each slice counts in its own unit (some count table rows, some count lines), so the counts are not summed. Does not hold: A3 6, A9 7, A30 10, C7 7, WN3 4, WN4a 3, WN4b 12, WN8 1. Cannot tell: A3 2, A9 1, A30 0, C7 1, WN3 1, WN4a 2, WN4b 4, WN8 1. None is "not read". The code they read is newer than some records: the audit started at a19b9cb2, and some test and engine files changed after it, so the verifiers matched lines by content. No exit has been chosen.
+
+## T8 E1c M2: the copied run evidence and the user's line (session 899dc0dd, 2026-11-16)
+
+The main session hashed the three whole files M1 copied into `mutation/` against run 20261116-123523's own (SHA-256, Get-FileHash). All three match. report.txt 6EA698BF03C16B0972145B4BFBCFB206A10E75CB8595FF6696E5A6F66F22EF5F, tests.txt 9FF8026B2F97D8502891FB1060AE582EBE06A995D0BF14A5F2968F0286E6E50E, summary.json AF05F4CBC1369EB7D9F1D4C4F75C6E024985E13CF472EDE66BCDEBD8EF6BC618.
+
+The one user line E1c leans on is on `docs/sessions/2026-11-16-60c3a576.md` line 32: "you can redo the ones that didnt run" (18:56 UTC), which the card notes as rejecting a full restart after the run's crash. It is about that crash and that run, not a rule against later runs. The user answered the T8 plan's question 7 in this session: "Count 1; fix F1 (Recommended)".
