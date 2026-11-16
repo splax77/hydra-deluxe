@@ -1,5 +1,5 @@
 # F1 first-use lines: the 62 disputed rows of the eight re-read files
-# (docs/audit/2026-11-14-test-audit/mechanical/reread/{A3,A9,A30,C7,WN3,WN4a,WN4b,WN8}.md on branch claude/test-audit-t8-questions-handoff).
+# (`git show 891ab424:docs/audit/2026-11-14-test-audit/mechanical/reread/{A3,A9,A30,C7,WN3,WN4a,WN4b,WN8}.md`, on branch claude/test-audit-t8-questions-handoff).
 # A row is disputed when its Verdict cell starts "does not hold" or "DNH" or contains "cannot tell".
 # Copied, not judged. The line is the first, unbracketed number in the row's line cell (the checkout's line).
 # A cell naming several lines or a range gives one entry per line, all with the same md line.
