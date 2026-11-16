@@ -685,7 +685,7 @@ Timed-out bugs count as caught but are listed apart. Crashed bugs are ones
 where the test program crashed; the line names the test that was running.
 Incomplete runs are runs whose files were missing, cut short or did not
 agree with the exit code; they are not counted either way. Caught bugs are
-the rest. After those come the bugs no test reaches, the bugs that were
+the ones a test went red on. After those come the bugs no test reaches, the bugs that were
 reached but never run because the run stopped first, the red tests with no
 cause the run shows, the tests red with no bug in the mapping run, and the
 skipped spots with their reasons.
@@ -715,8 +715,9 @@ on thread timing or on what memory held.
 
 A run that passes its time limit is stopped and counts as caught. The limit
 is `test_timeout_seconds` in `run.py`, the user's decision D82 item 3 in
-`docs/audit/2026-10-03-fix-decisions.md`. It is taken on the mapping run's
-time, and the Python half calls the same function.
+`docs/audit/2026-10-03-fix-decisions.md`. `run.py` gives it the mapping
+run's time. The Python half calls the same function with the time its
+chosen test modules took in its own mapping run.
 
 A crash counts as caught too. `find_crash` in `run.py` says what proves a
 crash. The test the program died in is sorted by `sort_red_tests` like any
