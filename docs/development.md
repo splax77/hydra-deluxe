@@ -652,7 +652,9 @@ py -I tools/mutate/run.py --resume build-mutation\runs\<run>
 It runs only the reached bugs that have no result json yet, with the
 folder's own mapping run, so each gets the files and the time limit it would
 have had. It takes `--build` and `--processes`, and stops if
-`hydra_tests.exe` was built after the run's mapping run. The `resume`
+`hydra_tests.exe` was built after the run's mapping run. It writes `summary.json` from every bug json; the wall time
+and process count in it are the resumed part's, and `resumed_bug_runs` says
+how many bugs it ran. The `resume`
 function in `run.py` says the rest.
 
 Last, write the report from the run folder:

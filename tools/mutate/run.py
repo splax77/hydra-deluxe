@@ -809,7 +809,8 @@ def resume(run_dir: Path, build: Path, listing: dict, exe: Path, processes: int)
     the one the run was started with: a hydra_tests.exe newer than the run's
     map.out stops the resume. A kept bug whose files are not the ones
     files_for names now stops it too, as in rescore. summary.json is written
-    from every bug json, old and new; its wall time is the resumed part's.
+    from every bug json, old and new; its bug_phase_wall_seconds and processes
+    are the resumed part's, and resumed_bug_runs counts the bugs it ran.
     Returns every result by number.
     """
     map_out, map_json = run_dir / "map.out", run_dir / "map.json"
@@ -817,7 +818,10 @@ def resume(run_dir: Path, build: Path, listing: dict, exe: Path, processes: int)
         raise RunError(f"run.py: {run_dir} has no map.out and map.json; it is not a run folder")
     if exe.stat().st_mtime > map_out.stat().st_mtime:
         raise RunError(f"run.py: {exe} was built after {run_dir}'s mapping run; its results would not match")
-    m = build_map(read_listener(map_out), listing)
+    parsed = read_listener(map_out)
+    if parsed is None:
+        raise RunError(f"run.py: {map_out} holds no result; {run_dir} is not a run folder")
+    m = build_map(parsed, listing)
     stored = json.loads(map_json.read_text(encoding="utf-8"))
     durations = {t["id"]: t["seconds"] for t in stored["tests"] if "seconds" in t}
     add_test_seconds(m, durations)
@@ -826,7 +830,10 @@ def resume(run_dir: Path, build: Path, listing: dict, exe: Path, processes: int)
     bugs_dir.mkdir(exist_ok=True)
     kept = {}
     for path in bugs_dir.glob("*.json"):
-        old = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+        except ValueError as e:
+            raise RunError(f"run.py: {path} is not readable json ({e}); delete it to run that bug again") from e
         if path.stem != str(old["number"]):
             raise RunError(f"run.py: {path} holds bug {old['number']}")
         if files_for(old["number"], m) != old["files"]:
