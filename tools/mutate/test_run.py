@@ -90,6 +90,19 @@ class DoctestCaughtCrash(unittest.TestCase):
                 self.assertEqual(r["crash"]["test"], run.test_id("second", FILE, 20))
 
 
+class ProcessEndedCrash(unittest.TestCase):
+    def test_the_test_the_process_died_inside_caught_the_bug(self):
+        # A fast fail: Windows ends the process with STATUS_STACK_BUFFER_OVERRUN
+        # while "second" runs, so its record is a start with no ending.
+        status_stack_buffer_overrun = 0xC0000409
+        text = _passed("first", 10, SWITCH) + _line("start", "second", FILE, 20)
+        r = _result(text, status_stack_buffer_overrun, "")
+        second = run.test_id("second", FILE, 20)
+        self.assertEqual(r["state"], "crashed")
+        self.assertEqual(r["crash"]["test"], second)
+        self.assertEqual([c["test"] for c in r["caught_by"]], [second])
+
+
 class SurvivedBug(unittest.TestCase):
     def test_a_survived_bug_runs_once(self):
         calls = []
@@ -127,6 +140,44 @@ class SurvivedBug(unittest.TestCase):
         self.assertEqual(len(bug_calls), 1)
         self.assertEqual(bug_calls[0]["args"], run.filter_arg(run.files_for(SWITCH, _map())))
         self.assertEqual(len(calls), 2)
+
+
+class Rescore(unittest.TestCase):
+    def test_rescore_rewrites_a_stale_verdict_and_starts_no_process(self):
+        def no_process(*a, **k):
+            raise AssertionError("rescore started a process")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            run_dir = Path(tmp) / "run"
+            bugs = run_dir / "bugs"
+            bugs.mkdir(parents=True)
+            (run_dir / "map.out").write_bytes(MAP_TEXT.encode("utf-8"))
+            (bugs / f"{SWITCH}.out").write_bytes(_crash_run(SIGABRT).encode("utf-8"))
+            (bugs / f"{SWITCH}.log").write_bytes(_crash_log(SIGABRT).encode("utf-8"))
+            # What an older run.py left: the process facts, and a verdict the
+            # current rules do not give these files.
+            old = {"number": SWITCH, "files": run.files_for(SWITCH, _map()), "exit_code": run.EXIT_ABORT,
+                   "seconds": 0.5, "timed_out": False, "state": "incomplete", "why": ["old rule"],
+                   "time_limit_seconds": 9.0, "verdict_from": "filtered run"}
+            (bugs / f"{SWITCH}.json").write_text(json.dumps(old), encoding="utf-8")
+            saved = (run.run_tests, run.subprocess.Popen, run.subprocess.run)
+            run.run_tests = run.subprocess.Popen = run.subprocess.run = no_process
+            try:
+                results = run.rescore(run_dir, LISTING)
+            finally:
+                run.run_tests, run.subprocess.Popen, run.subprocess.run = saved
+            written = json.loads((bugs / f"{SWITCH}.json").read_text(encoding="utf-8"))
+
+        expected = run.result_from_files(SWITCH, _map(), old["files"], Path("unused.out"), Path("unused.log"),
+                                         run.EXIT_ABORT, 0.5, False)
+        self.assertEqual(written["state"], "crashed")
+        self.assertEqual(written["crash"]["test"], run.test_id("second", FILE, 20))
+        self.assertEqual(written["time_limit_seconds"], 9.0)
+        self.assertNotIn("verdict_from", written)
+        self.assertEqual(results, [written])
+        # The same call with no files is what the stored facts alone give,
+        # so the new verdict came from the run's files.
+        self.assertEqual(expected["state"], "incomplete")
 
 
 if __name__ == "__main__":

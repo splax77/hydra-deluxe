@@ -26,6 +26,11 @@ sort_red_tests says which red tests are catches and which are errors. A run
 whose file is missing, cut short, or does not agree with its exit code, and
 that is no proven crash, is listed as incomplete and never counted.
 
+    py -I tools/mutate/run.py --rescore <run folder> [--build build-mutation]
+
+scores a run folder again from its files with the current rules and starts
+no process (rescore says what it reads and rewrites).
+
 The runner never builds and never reads compiler output. A missing build,
 or one older than its mutants.json, stops it with a message.
 
@@ -361,7 +366,7 @@ def find_crash(parsed: Optional[dict], exit_code: Optional[int], log_text: Optio
     return None
 
 
-def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
+def sort_red_tests(n: int, m: dict, parsed: dict, crashed: Optional[str] = None) -> dict:
     """Each red test of one run, sorted by what the run's own file shows.
 
     "caught_by": the map says the test reaches the bug, the switch was noted
@@ -374,6 +379,10 @@ def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
     run). "red_unexplained": neither; nothing in this process ran the bug
     before or during the test, so its failure has no cause this run shows,
     and it is an error. Tests red with no bug are left out of all three.
+
+    "crashed" names a test the process died inside, which wrote no ending of
+    its own (find_crash's second kind); it is sorted as a red test after the
+    file's last one.
     """
     reachers = set(m["reach"].get(n, []))
     via_outside = n in m["outside"]
@@ -381,8 +390,11 @@ def sort_red_tests(n: int, m: dict, parsed: dict) -> dict:
     noted_before = {at for at, ns in parsed["outside_at"] if n in ns}
     out = {"caught_by": [], "caught_through_shared_state": [], "red_unexplained": []}
     reached_earlier = False
-    for i, tid in enumerate(parsed["order"]):
-        test = parsed["tests"][tid]
+    order = list(parsed["order"])
+    if crashed is not None and crashed not in parsed["tests"]:
+        order.append(crashed)
+    for i, tid in enumerate(order):
+        test = parsed["tests"].get(tid, {"verdict": "failed", "switches": []})
         reached_earlier = reached_earlier or i in noted_before
         if test["verdict"] == "failed" and tid not in skip:
             if tid in reachers or via_outside or n in test["switches"]:
@@ -425,7 +437,7 @@ def bug_result(n: int, m: dict, files: Optional[list[str]], parsed: Optional[dic
         if crash is not None:
             out["state"] = "crashed"
             out["crash"] = crash
-            out.update(sort_red_tests(n, m, parsed))
+            out.update(sort_red_tests(n, m, parsed, crashed=crash["test"]))
             return out
     why = []
     if parse_error is not None:
@@ -584,6 +596,54 @@ def summarize(listing: dict, m: dict, map_seconds: float, map_exit: int, process
     }
 
 
+def rescore(run_dir: Path, listing: dict) -> list[dict]:
+    """Score a run folder again with this run.py, from the files the run left.
+
+    A run scored by an older run.py is brought up to the current rules this
+    way without running anything again. The map is read again from map.out.
+    Each bugs/<n>.json is rewritten by result_from_files, given that run's
+    .out and .log and the exit code, seconds and timed-out flag its old json
+    stored, which are the facts the process gave and no file holds. The time
+    limit it was run with is kept. A bug whose stored test files are not the
+    ones files_for names now stops the re-score, because its run did not run
+    what the current rules would. summary.json, which only a finished run
+    has, is written again from the new results, keeping the process count
+    and wall time the run measured. Returns the new results by number.
+    """
+    parsed = read_listener(run_dir / "map.out")
+    if parsed is None:
+        raise RunError(f"run.py: no {run_dir / 'map.out'}; {run_dir} is not a run folder")
+    m = build_map(parsed, listing)
+    bugs_dir = run_dir / "bugs"
+    olds = []
+    for path in bugs_dir.glob("*.json"):
+        old = json.loads(path.read_text(encoding="utf-8"))
+        if path.stem != str(old["number"]):
+            raise RunError(f"run.py: {path} holds bug {old['number']}")
+        files = files_for(old["number"], m)
+        if files != old["files"]:
+            raise RunError(f"run.py: bug {old['number']} was run on {old['files']}, but the map now gives "
+                           f"{files}; its run cannot be scored again")
+        olds.append(old)
+    olds.sort(key=lambda o: o["number"])
+    results = []
+    for old in olds:
+        n = old["number"]
+        r = result_from_files(n, m, old["files"], bugs_dir / f"{n}.out", bugs_dir / f"{n}.log",
+                              old["exit_code"], old["seconds"], old["timed_out"])
+        if "time_limit_seconds" in old:
+            r["time_limit_seconds"] = old["time_limit_seconds"]
+        (bugs_dir / f"{n}.json").write_text(json.dumps(r, indent=1) + "\n", encoding="utf-8")
+        results.append(r)
+    summary_path = run_dir / "summary.json"
+    if summary_path.is_file():
+        old_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        summary = summarize(listing, m, old_summary["mapping_run_seconds"], old_summary["mapping_run_exit_code"],
+                            old_summary["processes"], results, old_summary["bug_phase_wall_seconds"])
+        summary_path.write_text(json.dumps(summary, indent=1) + "\n", encoding="utf-8")
+    return results
+
+
 def main(argv=None) -> int:
     root = Path(__file__).resolve().parents[2]
     ap = argparse.ArgumentParser(description="Run the mutation build: one mapping run, then one process per bug.")
@@ -595,8 +655,20 @@ def main(argv=None) -> int:
     ap.add_argument("--out", type=Path, default=None,
                     help="the run folder, which must not exist yet (default: <build>/runs/<date-time>)")
     ap.add_argument("--map-only", action="store_true", help="stop after the mapping run")
+    ap.add_argument("--rescore", type=Path, default=None, metavar="RUN_FOLDER",
+                    help="score a finished or stopped run folder again from its files, with the mutants.json "
+                         "in --build; starts no process (rescore says how)")
     a = ap.parse_args(argv)
     try:
+        if a.rescore is not None:
+            if a.out is not None or a.map_only or a.processes is not None:
+                raise RunError("run.py: --rescore takes only --build")
+            results = rescore(a.rescore.resolve(), read_mutants(a.build.resolve() / "mutants.json"))
+            states: dict[str, int] = {}
+            for r in results:
+                states[r["state"]] = states.get(r["state"], 0) + 1
+            print(f"run.py: re-scored {len(results)} bug runs in {a.rescore}: {json.dumps(states)}")
+            return 0
         return _run(a)
     except RunError as e:
         print(e, file=sys.stderr)
