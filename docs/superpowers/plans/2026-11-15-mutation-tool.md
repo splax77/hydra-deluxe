@@ -4,7 +4,7 @@ Date: 2026-11-15. Session 88ea48bb. Status: waiting for the user's yes. Nothing 
 
 ## The short version
 
-A mutation tool plants small bugs in the real code and runs the tests. A test that goes red on a planted bug has shown it can fail. Hydra already has such a tool, `tools/mutation_probe.ps1`, but it rebuilds once per bug. The user ruled that out: "one build per test is a massive waste of time. if we're doing this it's one build and run to test everything".
+A mutation tool plants small bugs in the real code and runs the tests. A test that goes red on a planted bug has shown it can fail. Hydra already has such a tool, `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`), but it rebuilds once per bug. The user ruled that out: "one build per test is a massive waste of time. if we're doing this it's one build and run to test everything".
 
 The new tool, `hydra_mutate`, writes every bug into the code at once. Each bug sits behind its own numbered switch, and all switches are off unless one is named. So there is one build. One run with every switch off records which test reaches which bug spot. Then each bug is switched on alone, and only the test files that reach it are run. No rebuild happens between bugs.
 
@@ -20,7 +20,7 @@ This plan changes nothing Hydra decides or shows. The normal build never carries
 
 Agent rule 15 asks for the existing owner first. I searched `tools`, `src`, `tests`, `docs` and `CMakeLists.txt` for `mutation`, `mutant`, `codelex`, `code-mask`, `lexer_language` and `t7_bug`. Five pieces exist.
 
-The first is `tools/mutation_probe.ps1`. It already owns the list of bug kinds (`Find-MutationCandidates`), the rule that edits go only into code, and the time limit for a stuck run (`Get-TestTimeoutMs`, the user's decision D82 item 3). It plants one bug, rebuilds, tests, restores, and repeats. The new tool takes over its list of kinds and its time limit, so each rule keeps one home. Task M8 removes the probe, if the user agrees (question 1).
+The first is `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`). It already owns the list of bug kinds (`Find-MutationCandidates`), the rule that edits go only into code, and the time limit for a stuck run (`Get-TestTimeoutMs`, the user's decision D82 item 3). It plants one bug, rebuilds, tests, restores, and repeats. The new tool takes over its list of kinds and its time limit, so each rule keeps one home. Task M8 removes the probe, if the user agrees (question 1).
 
 The second is the repo's one lexer, codelex, in `tests/code_lexer.h`. A lexer splits a file into code, comments and strings. `hydra_precheck --code-mask <file>` prints a file with everything that is not code blanked out, same length, same line numbers. The probe already calls it. The new tool calls it the same way, for C++ and for Python files. It does not write a second lexer.
 
@@ -87,7 +87,7 @@ Acceptance criteria. For real files from `src/`: taking the "off" side of every 
 
 ### M3: the runner (Python, no build needed to write; main session runs it)
 
-Owned files: `tools/mutate/run.py`. `run.py` drives steps 4 to 6: reads compiler errors and drops spots, starts the mapping run, starts one process per bug with the source-file filter (`--processes N` sets how many run side by side), applies the time limit, and collects the listener's result files. `--one-process` is the LS4 comparison. The time limit moves here from `mutation_probe.ps1` with its D82 comment, so it has one home once M8 lands. It has no unit test of its own, because every part of it needs a real build and real result files; LS3 is its test.
+Owned files: `tools/mutate/run.py`. `run.py` drives steps 4 to 6: reads compiler errors and drops spots, starts the mapping run, starts one process per bug with the source-file filter (`--processes N` sets how many run side by side), applies the time limit, and collects the listener's result files. `--one-process` is the LS4 comparison. The time limit moves here from `mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) with its D82 comment, so it has one home once M8 lands. It has no unit test of its own, because every part of it needs a real build and real result files; LS3 is its test.
 
 Acceptance criteria. The runner never rebuilds between bugs; its only build-related act is to print which spots it dropped. It refuses to start bug runs when the mapping run had a test fail that is not on the "red with no bug" list it just wrote. It reports as an error, not a catch, any test that went red on a bug the map says it does not reach. A fourth compile round exits with a message and no report.
 
@@ -240,9 +240,9 @@ The user answered in question boxes: the plan, "Yes, go ahead"; question 2, "Sto
 | Premise | Kind | Source | Status |
 |---|---|---|---|
 | P1: The user wants one build and one run, not a build per bug. | ruling | The user's message as quoted in the brief, `mutation-plan-brief.md` line 12 | checked 2026-11-15; the reviewer's brief confirms the quotes are the user's own words typed in this session |
-| P2: An existing probe plants one bug at a time and rebuilds per bug. | code | `tools/mutation_probe.ps1` lines 319 to 336 | checked 2026-11-15 |
-| P3: The probe owns a list of bug kinds: comparison flips, `&&` to `\|\|`, `+ 1`, returned bool. | code | `tools/mutation_probe.ps1` lines 122 to 145 | checked 2026-11-15 |
-| P4: The probe's time limit is baseline times 1.25 plus 4 s, decision D82 item 3. | code | `tools/mutation_probe.ps1` lines 176 to 183; `docs/audit/2026-10-03-fix-decisions.md` line 413 | checked 2026-11-15 |
+| P2: An existing probe plants one bug at a time and rebuilds per bug. | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 319 to 336 | checked 2026-11-15 |
+| P3: The probe owns a list of bug kinds: comparison flips, `&&` to `\|\|`, `+ 1`, returned bool. | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 122 to 145 | checked 2026-11-15 |
+| P4: The probe's time limit is baseline times 1.25 plus 4 s, decision D82 item 3. | code | `tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) lines 176 to 183; `docs/audit/2026-10-03-fix-decisions.md` line 413 | checked 2026-11-15 |
 | P5: `hydra_precheck --code-mask <file>` blanks comments and strings, keeps length, and reads C++ and Python. | code | `tools/precheck/main.cpp` lines 7 and 92; `tools/precheck/code_mask.h` lines 1 to 20 | checked 2026-11-15 |
 | P6: The repo's lexer is codelex in `tests/code_lexer.h`, with Cpp and Python among its languages. | code | `tests/code_lexer.h` lines 19 to 22 | checked 2026-11-15 |
 | P7: T7 put every plant behind one environment variable in one build, written as `t7_bug(id) ? bug : original`. | code | `git show claude/test-audit-t7:src/core/t7_bug.h`; `git grep t7_bug claude/test-audit-t7` (for example `src/app/analysis.cpp` line 778) | checked 2026-11-15 |

@@ -112,9 +112,10 @@ def test_timeout_seconds(baseline_seconds):
     """How long a run with one switch on may take before it counts as stuck.
 
     The user's decision D82 item 3 (docs/audit/2026-10-03-fix-decisions.md);
-    its home is Get-TestTimeoutMs in tools/mutation_probe.ps1 until the
-    plan's task M3 moves it to tools/mutate/run.py. This is a second copy
-    until then: M3 must make this function call run.py's and delete it here.
+    its old home, Get-TestTimeoutMs in tools/mutation_probe.ps1 (removed;
+    `git show ed0aa857:tools/mutation_probe.ps1`), is gone. The plan's task
+    M3 moves it to tools/mutate/run.py: M3 must make this function call
+    run.py's and delete it here.
     """
     return baseline_seconds * 1.25 + 4.0
 
