@@ -513,10 +513,13 @@
 - 2026-11-15 a3ba79d1 Early fill reach and Slack handoff (2026-11-15) | activation, fill-rule, analysis-settings, tests, review | Ended with the Early fill window setting merged to main at 6c52c724 and the whole suite passing, 2,186 of 2,186 test cases. That merge is not pushed. [stale]
 - 2026-11-15 16892967 Test audit find rounds handoff (2026-11-15) | tests, agents, review, docs, hooks | The find and verify stage ended with all 92 slices audited and verified, and a handoff for the rest of the audit committed on the audit branch; nothing was merged to main.
 - 2026-11-15 e633f7f6 Test audit records handoff (2026-11-15) | tests, agents, review, docs, planning, early-fill-e | The session ended with a handoff at 20:18 UTC: the capture pass was stopped partway and saved to a handoff branch for the next session.
-- 2026-11-15 63c70014 Test audit capture handoff (2026-11-15) | tests, agents, docs, review | Ended on the user's stop-and-handoff request: the ready capture runs were done, a handoff was written on its own branch, and the session stopped.
-- 2026-11-15 f9b4f64e Test audit capture runs handoff (2026-11-15) | tests, agents, docs, review | Ended on the user's request for a handoff: every clean record was judged, and a handoff for the T8 exit plan was written on its own branch.
-- 2026-11-15 7a62df56 Test audit T8 exits plan handoff (2026-11-15) | tests, agents, planning, review | Ended on the user's request for a handoff: the T8 exits plan was written, reviewed and signed off on its own branch, and a handoff was written on another branch with the plan's questions to ask the user first.
-- 2026-11-15 08c1b347 Claude handoff skill invocation issue (2026-11-15) | agents, docs, hooks | Ended with the /handoff fix committed on main as fdd23c64, after the user asked for the working-tree changes to be committed.
+- 2026-11-15 63c70014 Test audit capture handoff (2026-11-15) | tests, agents, docs, review | Ended on the user's stop-and-handoff request: the ready capture runs were done, a handoff was written on its own branch, and the session stopped. [stale]
+- 2026-11-15 f9b4f64e Test audit capture runs handoff (2026-11-15) | tests, agents, docs, review | Ended on the user's request for a handoff: every clean record was judged, and a handoff for the T8 exit plan was written on its own branch. [stale]
+- 2026-11-15 7a62df56 Test audit T8 exits plan handoff (2026-11-15) | tests, agents, planning, review | Ended on the user's request for a handoff: the T8 exits plan was written, reviewed and signed off on its own branch, and a handoff was written on another branch with the plan's questions to ask the user first. [stale]
+- 2026-11-15 88ea48bb Test audit T8 questions handoff (2026-11-15) | tests, agents, planning, review, ci | Ended with a handoff at the user's request, with the audit answers recorded and one ruling filed, and the mutation tool partly built.
+- 2026-11-15 08c1b347 Claude handoff skill invocation issue (2026-11-15) | agents, docs, hooks | Ended with the /handoff fix committed on main as fdd23c64, after the user asked for the working-tree changes to be committed. [stale]
+- 2026-11-16 a1f405c7 Squeeze outside Hydra range (2026-11-16) | squeeze, optimal-path, path, agents | Ended with the question answered: squeezing out there is not optimal.
+- 2026-11-16 872cc6f3 Mutation tool runner handoff (2026-11-16) | tests, agents, review, planning, performance | Ended with a handoff at the user's request, after the runner fix and the report were merged on the integration branch and the docs work was stopped partway.
 
 ## Proposed tags
 
@@ -531,6 +534,7 @@
 - derive-once (1)
 - login (1)
 - mimalloc (1)
+- mutation-testing (1)
 - remote-control (1)
 - repo-analysis (2)
 - scratch-folders (1)
