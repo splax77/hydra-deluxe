@@ -572,8 +572,161 @@ name in an exe's main file, which picks the tests that name that exe's
 ## Mutation testing
 
 A mutation tool plants small deliberate bugs in the real code and checks
-that a test notices each one. Hydra's lives in `tools/mutate`, and this
-section will say how to run it once the tool is finished.
+that a test notices each one. Hydra's lives in `tools/mutate`. It plants
+every bug at once, each behind its own numbered switch, so one build holds
+them all. A switch is off unless the `HYDRA_MUTANT` environment variable
+names its number. Only doctest's own verdict, or a crash the run's files
+prove, says whether the tests caught a bug; nobody judges a result by
+reading it.
+
+### Running it
+
+Every step below is the main session's, because two of them build or run
+`hydra_tests` (agent rule 14). Run them from the root of the checkout that
+holds the tool.
+
+First, write the switched copies. `rewrite.py` reads the source files you
+name and writes a copy of each into `build-mutation\mutated\`, with every
+planted bug behind its switch. It also writes `mutants.json`, the list of
+switches, and `skipped.txt`, the spots it would not touch and why. The
+originals in `src\` are never written.
+
+```
+py -I tools/mutate/rewrite.py src/core/stars.cpp [more files...]
+```
+
+It finds the spots through `find.py`, which asks `hydra_precheck --code-mask`
+which characters are code, so the main checkout's `hydra_precheck` must be
+built. The kinds of bug are `KINDS` in `find.py`. The reasons a spot is
+skipped are `SKIP_REASONS` there and `REWRITE_SKIP_REASONS` in `rewrite.py`.
+`--out`, `--root` and `--precheck` change the folders; `--help` says each
+default.
+
+Second, build once with the `mutation` preset, through a build pass:
+
+```
+$env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Preset mutation -Target hydra_tests
+```
+
+That builds into `build-mutation\`. The `HYDRA_MUTATION` block in
+`CMakeLists.txt` compiles each copy in place of its original, and
+`tests/test_main.cpp` adds the listener (`tools/mutate/listener.cpp`), which
+writes what each test did to the file `HYDRA_MUTANT_OUT` names. Nothing drops
+a bug the compiler refuses. If this build fails, stop and take the failed
+lines to the user.
+
+Third, the mapping run and the bug runs. One command does both:
+
+```
+py -I tools/mutate/run.py
+py -I tools/mutate/run.py --processes 4
+```
+
+The mapping run starts `hydra_tests.exe` once with every switch off. It
+records which test reaches which switch. A test that fails in it is "red
+with no bug" and is left out of every bug's verdict. Then each reached
+switch gets its own fresh `hydra_tests.exe`, with that one switch on and only
+the test files that hold a reaching test (`files_for` and `filter_arg` in
+`run.py` say which). `--processes` sets how many run side by side; with no
+number it reads the machine's physical core count. `--map-only` stops after
+the mapping run. `--out` names the run folder, which must not exist yet; the
+default is a new dated folder under `build-mutation\runs\`. `run.py` never
+builds. It stops if `hydra_tests.exe` is older than `mutants.json`.
+
+To score an old run folder again with the current rules, without running
+anything, give `--rescore` the folder:
+
+```
+py -I tools/mutate/run.py --rescore build-mutation\runs\<run>
+```
+
+It takes no other flag but `--build`. The `rescore` function in `run.py`
+says what it reads and what it rewrites.
+
+Last, write the report from the run folder:
+
+```
+py -I tools/mutate/report.py build-mutation\runs\<run>
+```
+
+It finds `mutants.json` two folders above the run folder, which is where
+`run.py`'s default folder puts it. Give `--mutants` if the run went elsewhere,
+and `--out` to write the report somewhere other than the run folder. The
+report never works out a verdict. Each bug's verdict is the one `run.py`
+stored, and `bug_result` in `run.py` is the one place that decides it. If the
+report refuses a bug's state, score the run again with `--rescore` first.
+
+The Python half, `py_mutate.py`, does the same for a folder of Python code,
+such as `tools` or the hooks folder (its path is in
+`docs/agents/this-machine.md`). It needs no build. It copies the folder into
+the run folder and rewrites only the copy, so the real folder is only read.
+It runs the folder's own unittest files against the copy: one mapping run,
+then one fresh process per reached bug.
+
+```
+py -I tools/mutate/py_mutate.py --target tools --out <run folder> --mutate check_handoff.py --tests test_check_handoff
+```
+
+`--target` and `--out` are required. `--mutate` names only some `.py` files,
+`--tests` names only some test modules, `--processes` sets how many run side
+by side (one unless you say), and `--map-only` stops after the mapping run.
+It writes its own report, `summary.txt`, in the run folder; `report.py`
+reads only the C++ runs.
+
+### What the report says
+
+`report.py` writes three files, and every count in them comes from one
+result, so they cannot disagree.
+
+`report.txt` opens with the report's limits. Then it gives the counts, then
+the bugs in lists, one bug per line with its file, line and change. The
+lists are these. Survivors are bugs some test reaches that no test caught.
+Timed-out bugs count as caught but are listed apart. Crashed bugs are ones
+where the test program crashed; the line names the test that was running.
+Incomplete runs are runs whose files were missing, cut short or did not
+agree with the exit code; they are not counted either way. Caught bugs are
+the rest. After those come the bugs no test reaches, the bugs that were
+reached but never run because the run stopped first, the red tests with no
+cause the run shows, the tests red with no bug in the mapping run, and the
+skipped spots with their reasons.
+
+A red test with no cause the run shows is an error, not a catch. It means a
+test failed in a bug's run although nothing in that process ran the bug
+before or during it.
+
+`bugs.txt` has one entry per bug run. It gives the verdict, the seconds the
+run took, and every test that caught the bug, with the check lines that
+failed. A test can catch a bug it does not reach itself, "through state an
+earlier test left". That happens when an earlier test in the same process
+ran the bug and left something behind that the later test reads, such as the
+corpus cache in `tests/corpus_util.h`. `sort_red_tests` in `run.py` decides
+which kind of catch each red test is.
+
+`tests.txt` has one line per test: how many bugs it caught and how many it
+reaches. The tests that caught no bug come first.
+
+### Its limits
+
+Each verdict comes from one run of its bug. So the report says "caught in
+its run" or "survived its run" (`STATE_WORDS` in `report.py`). A survivor is
+not run again. A bug in threaded code, or one that reads past the end of
+memory, may land either way in another run, because the result then depends
+on thread timing or on what memory held.
+
+A run that passes its time limit is stopped and counts as caught. The limit
+is `test_timeout_seconds` in `run.py`, the user's decision D82 item 3 in
+`docs/audit/2026-10-03-fix-decisions.md`. It is taken on the mapping run's
+time, and the Python half calls the same function.
+
+A crash counts as caught too. `find_crash` in `run.py` says what proves a
+crash. The test the program died in is sorted by `sort_red_tests` like any
+other red test, so it is credited the same way a test that failed would be.
+
+A test that caught nothing has shown no way to fail against these bugs.
+That is a question to look at, not proof the test is empty. A check that
+sits after an earlier failing `REQUIRE` in the same test may never have run.
+And no tool can say whether a survivor is an equivalent bug, one that changes
+nothing a user could see.
 
 ## Fuzzing the file parsers
 
