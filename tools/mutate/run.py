@@ -40,7 +40,8 @@ or one older than its mutants.json, stops it with a message.
 What it writes, in the run folder (default <build>/runs/<date-time>):
 
     map.out               the mapping run's listener file
-    map.log               its console output
+    map.log               its console output, stdout only
+    map.err               its stderr
     map.json              the parsed map: each test, its verdict, its own
                           seconds, the switches it reached, the switches
                           noted outside any test, the run's seconds and
@@ -301,64 +302,69 @@ def expected_tests(files: Optional[list[str]], m: dict) -> list[str]:
 # The mapping run's doctest argument that prints each test's own time.
 DURATION_ARG = "--duration=true"
 
-# With --duration, doctest's console reporter starts each test with its file
-# and line, then "TEST CASE:  <name>", and ends it with "<seconds> s: <name>"
+# With --duration, doctest's console reporter ends each test with a header
+# (its file and line, then "TEST CASE:  <name>") and "<seconds> s: <name>"
 # (logTestStart and test_case_end in ConsoleReporter, in
-# third_party/doctest/doctest.h). A failing test's own lines come between.
+# third_party/doctest/doctest.h). A failing test's header comes earlier, at
+# its first failure, with the test's own lines after it.
 _DURATION_HEADER = re.compile(r"^(.+)\((\d+)\):$")
-_DURATION_NAME = re.compile(r"^TEST CASE:  (.*)$")
 _DURATION_TIME = re.compile(r"^(\d+\.\d+) s: (.*)$")
 
 
-def parse_durations(log_text: str) -> dict[str, float]:
+def parse_durations(log_text: str, m: dict) -> dict[str, float]:
     """Each test's own seconds from a --duration run's console output, by test_id.
 
-    Stops when a time line has no test header before it, when its name is
-    not the header's, or when a test has two times: the output is then not
-    in the shape run.py reads.
+    A time line names its test, and that name picks the test from the
+    listener's tests in the map `m`. The nearest header before the time line
+    is read only when two tests share the name, to tell them apart. So a
+    test's own output that breaks into a header does not lose its time.
+    Stops, naming the line, when a time line's name picks no test, or picks
+    two that the header does not tell apart, and when a test has two times:
+    a time is then never guessed.
     """
+    by_name: dict[str, list[str]] = {}
+    for tid in m["order"]:
+        by_name.setdefault(m["tests"][tid]["name"], []).append(tid)
     out: dict[str, float] = {}
-    file: Optional[str] = None
-    line = 0
-    name: Optional[str] = None
+    header: Optional[tuple[str, int]] = None
     for raw in log_text.splitlines():
-        header = _DURATION_HEADER.match(raw)
-        if header:
-            file, line, name = header.group(1), int(header.group(2)), None
-            continue
-        named = _DURATION_NAME.match(raw)
-        if named and file is not None and name is None:
-            name = named.group(1)
+        found = _DURATION_HEADER.match(raw)
+        if found:
+            header = (found.group(1), int(found.group(2)))
             continue
         timed = _DURATION_TIME.match(raw)
         if not timed:
             continue
-        if file is None or name is None:
-            raise RunError(f"run.py: a test time with no test header before it in the console output: {raw!r}")
-        if timed.group(2) != name:
-            raise RunError(f"run.py: the test time {raw!r} names another test than its header, {name!r}")
-        tid = test_id(name, file, line)
+        name = timed.group(2)
+        named = by_name.get(name, [])
+        if not named:
+            raise RunError(f"run.py: the test time {raw!r} in the console output names no test the listener "
+                           "recorded")
+        if len(named) > 1:
+            told = [tid for tid in named if header is not None and tid == test_id(name, header[0], header[1])]
+            if len(told) != 1:
+                raise RunError(f"run.py: the test time {raw!r} in the console output names {len(named)} tests, "
+                               "and no header just before it says which")
+            named = told
+        tid = named[0]
         if tid in out:
             raise RunError(f"run.py: the console output gives test {tid} two times")
         out[tid] = float(timed.group(1))
-        file, name = None, None
+        # A header belongs to one test's time; the next time needs its own.
+        header = None
     return out
 
 
 def add_test_seconds(m: dict, durations: dict[str, float]) -> None:
     """Puts each mapping-run test's own seconds in the map as its "seconds".
 
-    Stops when a test the listener recorded has no time, or a time names a
-    test the listener did not record, so no clean time is ever a guess.
+    `durations` is parse_durations of the map. Stops when a test the
+    listener recorded has no time, so no clean time is ever a guess.
     """
     missing = [tid for tid in m["order"] if tid not in durations]
     if missing:
         raise RunError(f"run.py: the mapping run's console output gives no time for {len(missing)} tests, "
                        f"first {missing[0]}")
-    extra = sorted(set(durations) - set(m["tests"]))
-    if extra:
-        raise RunError(f"run.py: the mapping run's console output times {len(extra)} tests the listener did "
-                       f"not record, first {extra[0]}")
     for tid in m["order"]:
         m["tests"][tid]["seconds"] = durations[tid]
 
@@ -588,8 +594,14 @@ def _kill_tree(p: subprocess.Popen) -> None:
 
 
 def run_tests(exe: Path, args: list[str], out_file: Path, log_file: Path, cwd: Path,
-              mutant: Optional[int], timeout: Optional[float]) -> tuple[Optional[int], float, bool]:
-    """One fresh hydra_tests.exe. Returns (exit code, seconds, timed out)."""
+              mutant: Optional[int], timeout: Optional[float],
+              err_file: Optional[Path] = None) -> tuple[Optional[int], float, bool]:
+    """One fresh hydra_tests.exe. Returns (exit code, seconds, timed out).
+
+    Its stderr goes to `err_file` when one is given, and into the log with
+    its stdout when not. Stdout is buffered and stderr is not, so in one
+    file a stderr write can land part way through any stdout line.
+    """
     env = dict(os.environ)
     env.pop("HYDRA_MUTANT", None)
     if mutant is not None:
@@ -600,8 +612,9 @@ def run_tests(exe: Path, args: list[str], out_file: Path, log_file: Path, cwd: P
         raise RunError(f"run.py: the command line for {out_file.name} is longer than Windows takes")
     out_file.unlink(missing_ok=True)
     t0 = time.perf_counter()
-    with open(log_file, "wb") as log:
-        p = subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, env=env, cwd=str(cwd))
+    with open(log_file, "wb") as log, open(err_file or os.devnull, "wb") as err:
+        stderr = err if err_file is not None else subprocess.STDOUT
+        p = subprocess.Popen(cmd, stdout=log, stderr=stderr, env=env, cwd=str(cwd))
         try:
             code = p.wait(timeout=timeout)
             timed_out = False
@@ -805,7 +818,10 @@ def _run(a) -> int:
     print(f"run.py: mapping run of {exe}, every switch off")
     map_out = run_dir / "map.out"
     map_log = run_dir / "map.log"
-    map_exit, map_seconds, _ = run_tests(exe, [DURATION_ARG], map_out, map_log, cwd, None, None)
+    # The tests' stderr writes go to their own file, so they never break
+    # into the lines parse_durations reads.
+    map_exit, map_seconds, _ = run_tests(exe, [DURATION_ARG], map_out, map_log, cwd, None, None,
+                                         run_dir / "map.err")
     parsed = read_listener(map_out)
     if parsed is None:
         raise RunError(f"run.py: the mapping run wrote no result file; see {run_dir / 'map.log'}")
@@ -816,7 +832,7 @@ def _run(a) -> int:
     if map_exit not in (EXIT_PASSED, EXIT_FAILED) or (map_exit == EXIT_FAILED) != any_red:
         raise RunError(f"run.py: the mapping run ended with exit code {map_exit}, which does not match its "
                        f"{len(m['red_with_no_bug'])} failed tests; see {run_dir / 'map.log'}")
-    add_test_seconds(m, parse_durations(read_log(map_log) or ""))
+    add_test_seconds(m, parse_durations(read_log(map_log) or "", m))
     (run_dir / "map.json").write_text(json.dumps({
         "seconds": round(map_seconds, 3), "exit_code": map_exit,
         "tests": [dict(m["tests"][t], id=t) for t in m["order"]],

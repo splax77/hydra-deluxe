@@ -138,8 +138,8 @@ class SurvivedBug(unittest.TestCase):
     def test_a_survived_bug_runs_once(self):
         calls = []
 
-        def fake_run_tests(exe, args, out_file, log_file, cwd, mutant, timeout):
-            calls.append({"args": args, "mutant": mutant, "timeout": timeout})
+        def fake_run_tests(exe, args, out_file, log_file, cwd, mutant, timeout, err_file=None):
+            calls.append({"args": args, "mutant": mutant, "timeout": timeout, "err_file": err_file})
             # Every run, mapping run and bug run alike, passes every test.
             out_file.write_bytes(MAP_TEXT.encode("utf-8"))
             log_file.write_bytes(MAP_LOG.encode("utf-8") if mutant is None else b"")
@@ -173,6 +173,8 @@ class SurvivedBug(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         map_calls = [c for c in calls if c["mutant"] is None]
         self.assertEqual(map_calls[0]["args"], [run.DURATION_ARG])
+        # The mapping run's stderr stays out of the log its times are read from.
+        self.assertEqual(map_calls[0]["err_file"], out / "map.err")
         # The switch's file holds all three tests, so its clean time is
         # their three times, and its limit 5 s more.
         self.assertAlmostEqual(bug["clean_seconds"], 0.5 + 0.25 + 0.125)
@@ -182,26 +184,102 @@ class SurvivedBug(unittest.TestCase):
                                                  "highest_seconds": 5.875})
 
 
+def _map_of(*tests):
+    """A map of passing tests, each given as (name, file, line).
+
+    The listener's file doubles each backslash (listener.cpp, escape_field).
+    """
+    tests = [(n, f.replace("\\", "\\\\"), ln) for n, f, ln in tests]
+    text = "".join(_line("start", n, f, ln) + _line("test", n, f, ln, "passed", "") for n, f, ln in tests)
+    return run.build_map(run.parse_listener(text), LISTING)
+
+
+ROWS = "tests\\test_activation_rows.cpp"
+WIDTHS = "tests\\test_column_widths.cpp"
+MESSAGES = "tests\\test_user_messages.cpp"
+PUT_BACK = "column_widths: a width ImGui changed by itself is put back"
+INFINITE_TEMPO = "user_messages: an infinite .mid tempo says so"
+
+# Lines copied from a mapping run's map.log, when stderr went into the same
+# file. A stderr write from hydra_settings.ini code broke into the header's
+# TEST CASE line; the time line after it is whole.
+REAL_BROKEN_HEADER_LOG = (
+    "===============================================================================\r\n"
+    f"{WIDTHS}(423):\r\n"
+    "TEST CASE:  column_widths: a width ImGui changed by itself is put bachydra_settings.ini has an error:\r\n"
+    "C:\\Users\\Patrick\\AppData\\Local\\Temp\\hydra_test_tool_settings_40328.ini: sp_cap = \"abc\" is not a "
+    "whole number\r\n"
+    "hydra_settings.ini has an error:\r\n"
+    "C:\\Users\\Patrick\\AppData\\Local\\Temp\\hydra_test_tool_settings_40328.ini: sp_cap = \"abc\" is not a "
+    "whole number\r\n"
+    "k\r\n"
+    "\r\n"
+    f"0.001673 s: {PUT_BACK}\r\n"
+    "===============================================================================\r\n")
+
+# From the same map.log: a stderr write broke into the time line itself.
+REAL_BROKEN_TIME_LOG = (
+    "===============================================================================\r\n"
+    f"{MESSAGES}(112):\r\n"
+    f"TEST CASE:  {INFINITE_TEMPO}\r\n"
+    "\r\n"
+    "0.000087Hydra couldn't read its database (hydra.db). Check that no other copy of Hydra is running, then "
+    "try again.\r\n"
+    "\r\n"
+    "x\r\n"
+    f" s: {INFINITE_TEMPO}\r\n"
+    "===============================================================================\r\n")
+
+
 class TestTimes(unittest.TestCase):
     def test_a_real_duration_log_parses(self):
-        times = run.parse_durations(REAL_DURATION_LOG)
-        file = "tests\\test_activation_rows.cpp"
-        self.assertEqual(times, {
-            run.test_id("display format: the average multiplier rounds the exact double", file, 60): 0.000062,
-            run.test_id("build_activations: rows and backend rows line up", file, 118): 0.007121,
+        display = "display format: the average multiplier rounds the exact double"
+        rows = "build_activations: rows and backend rows line up"
+        m = _map_of((display, ROWS, 60), (rows, ROWS, 118))
+        self.assertEqual(run.parse_durations(REAL_DURATION_LOG, m), {
+            run.test_id(display, ROWS, 60): 0.000062,
+            run.test_id(rows, ROWS, 118): 0.007121,
         })
 
-    def test_a_time_with_no_header_stops(self):
-        with self.assertRaises(run.RunError):
-            run.parse_durations("0.000062 s: first\n")
+    def test_a_real_broken_header_still_gives_its_test_a_time(self):
+        m = _map_of((PUT_BACK, WIDTHS, 423))
+        self.assertEqual(run.parse_durations(REAL_BROKEN_HEADER_LOG, m), {run.test_id(PUT_BACK, WIDTHS, 423): 0.001673})
 
-    def test_a_time_naming_another_test_stops(self):
+    def test_a_real_broken_time_line_stops_naming_its_test(self):
+        # Its time is never guessed: the test has no time, and add_test_seconds names it.
+        m = _map_of((INFINITE_TEMPO, MESSAGES, 112))
+        with self.assertRaises(run.RunError) as caught:
+            run.add_test_seconds(m, run.parse_durations(REAL_BROKEN_TIME_LOG, m))
+        self.assertIn(run.test_id(INFINITE_TEMPO, MESSAGES, 112), str(caught.exception))
+
+    def test_a_time_needs_no_header_when_its_name_is_one_tests(self):
+        self.assertEqual(run.parse_durations("0.5 s: first\n", _map()), {run.test_id("first", FILE, 10): 0.5})
+
+    def test_a_shared_name_takes_the_test_its_header_names(self):
+        m = _map_of(("same", FILE, 10), ("same", FILE, 20))
+        times = run.parse_durations(_timed(FILE, 20, "same", 0.5) + _timed(FILE, 10, "same", 0.25), m)
+        self.assertEqual(times, {run.test_id("same", FILE, 20): 0.5, run.test_id("same", FILE, 10): 0.25})
+
+    def test_a_shared_name_with_no_header_stops_naming_the_line(self):
+        m = _map_of(("same", FILE, 10), ("same", FILE, 20))
+        for log in ("0.5 s: same\n", _timed(FILE, 30, "same", 0.5), _timed(FILE, 10, "same", 0.25) + "0.5 s: same\n"):
+            with self.subTest(log=log):
+                with self.assertRaises(run.RunError) as caught:
+                    run.parse_durations(log, m)
+                self.assertIn("s: same", str(caught.exception))
+
+    def test_a_time_naming_no_recorded_test_stops_naming_the_line(self):
+        with self.assertRaises(run.RunError) as caught:
+            run.parse_durations(MAP_LOG + _timed(FILE, 40, "fourth", 0.1), _map())
+        self.assertIn("0.100000 s: fourth", str(caught.exception))
+
+    def test_a_test_timed_twice_stops(self):
         with self.assertRaises(run.RunError):
-            run.parse_durations(f"{FILE}(10):\nTEST CASE:  first\n\n0.5 s: second\n")
+            run.parse_durations(MAP_LOG + _timed(FILE, 10, "first", 0.1), _map())
 
     def test_the_clean_time_sums_the_files_tests(self):
         m = _map()
-        run.add_test_seconds(m, run.parse_durations(MAP_LOG))
+        run.add_test_seconds(m, run.parse_durations(MAP_LOG, m))
         self.assertAlmostEqual(run.clean_seconds([FILE], m, 99.0), 0.875)
         self.assertEqual(run.clean_seconds(["tests/other.cpp"], m, 99.0), 0)
         # A run of every file is the whole mapping run.
@@ -211,13 +289,8 @@ class TestTimes(unittest.TestCase):
         m = _map()
         log = _timed(FILE, 10, "first", 0.5) + _timed(FILE, 30, "third", 0.125)
         with self.assertRaises(run.RunError) as caught:
-            run.add_test_seconds(m, run.parse_durations(log))
+            run.add_test_seconds(m, run.parse_durations(log, m))
         self.assertIn(run.test_id("second", FILE, 20), str(caught.exception))
-
-    def test_a_time_for_a_test_the_listener_did_not_record_stops(self):
-        m = _map()
-        with self.assertRaises(run.RunError):
-            run.add_test_seconds(m, run.parse_durations(MAP_LOG + _timed(FILE, 40, "fourth", 0.1)))
 
     def test_the_limit_is_the_clean_time_plus_five_seconds(self):
         self.assertEqual(run.test_timeout_seconds(0.0), 5.0)
