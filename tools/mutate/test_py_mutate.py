@@ -8,15 +8,18 @@ fixture or count is typed here.
 
 import ast
 import json
+import keyword
 import os
 import shutil
 import sys
 import tempfile
+import token
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
+import find  # noqa: E402
 import py_mutate as pm  # noqa: E402
 
 TOOLS = os.path.dirname(HERE)
@@ -33,6 +36,21 @@ def _py_mtimes(folder):
                 p = os.path.join(root, n)
                 out[p] = os.stat(p).st_mtime_ns
     return out
+
+
+class KindsComeFromFind(unittest.TestCase):
+    def test_every_find_token_has_an_ast_class_and_a_python_spelling(self):
+        # A new kind or token in find.py's KINDS fails here until py_mutate
+        # says where Python holds it and how Python spells it.
+        # Newer Pythons list `!` as a token only for f-string conversions.
+        python_text = (set(keyword.kwlist) | set(token.EXACT_TOKEN_TYPES) | {""}) - {"!"}
+        self.assertEqual(set(pm.AST_TOKEN), set(find.KINDS))
+        for kind, row in find.KINDS.items():
+            self.assertEqual(sorted(pm.AST_TOKEN[kind].values()), sorted(row["swap"]), kind)
+            for was, now in row["swap"].items():
+                with self.subTest(kind=kind, token=was):
+                    self.assertIn(pm.spell(was), python_text)
+                    self.assertIn(pm.spell(now), python_text)
 
 
 class RewriteOnRealFolders(unittest.TestCase):
@@ -78,8 +96,10 @@ class RewriteOnRealFolders(unittest.TestCase):
                                         pm._read(os.path.join(copy, m["file"])))
                 original, rewritten = texts[m["file"]]
                 with self.subTest(file=m["file"], number=m["number"]):
-                    rows = list(pm.KINDS[m["kind"]].values())
-                    self.assertIn((m["was"], m["now"]), rows)
+                    swap = find.KINDS[m["kind"]]["swap"]
+                    spelled = {pm.spell(t): pm.spell(r) for t, r in swap.items()}
+                    self.assertIn(m["was"], spelled)
+                    self.assertEqual(spelled[m["was"]], m["now"])
                     self.assertEqual(original[m["at"]:m["at"] + len(m["was"])], m["was"])
                     self.assertTrue(m["lo"] <= m["at"] and m["at"] + len(m["was"]) <= m["hi"])
                     one_edit = original[:m["at"]] + m["now"] + original[m["at"] + len(m["was"]):]

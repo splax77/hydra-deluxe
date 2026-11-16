@@ -9,12 +9,13 @@ modules holding a test that reaches it are run. The real folder is only
 read, never written.
 
     py -I tools/mutate/py_mutate.py --target C:/Users/Patrick/.claude/gates --out <run folder>
-    py -I tools/mutate/py_mutate.py --target tools --mutate agent_cost.py --tests test_agent_cost.py
+    py -I tools/mutate/py_mutate.py --target tools --out <run folder> --mutate agent_cost.py --tests test_agent_cost
 
 A wrapped spot reads `((changed) if _hm_switch(17) else (original))`. Python's
 own parser (`ast`) finds the spots, so comments and strings never match. The
-bug kinds are KINDS below. A spot the rewriter cannot place safely is skipped
-and listed with one of SKIP_REASONS, never guessed.
+bug kinds are find.py's KINDS, read through AST_TOKEN and SPELLING below. A
+spot the rewriter cannot place safely is skipped and listed with one of
+SKIP_REASONS, never guessed.
 
 What a test "caught" is decided only by unittest's own result for it in the
 run with that one switch on.
@@ -36,26 +37,6 @@ import sys
 import time
 import traceback
 import unittest
-
-# The kinds of bug, as Python syntax. Each row: the AST class the spot is,
-# the operator or constant it holds, the text that is there, the text it
-# becomes. They are the plan's step 1 list for C++
-# (docs/superpowers/plans/2026-11-15-mutation-tool.md), said in Python's
-# spelling: `&&`/`||` are `and`/`or`, `!` is `not`, true/false are True/False.
-# This table is a second copy, kept only until tools/mutate/find.py (task M1)
-# is merged: the plan makes find.py's kinds table the one home. Task M3 or M8
-# must then make this module read its kinds from find.py and delete this table.
-KINDS = {
-    "comparison": {
-        ast.Lt: ("<", "<="), ast.LtE: ("<=", "<"),
-        ast.Gt: (">", ">="), ast.GtE: (">=", ">"),
-        ast.Eq: ("==", "!="), ast.NotEq: ("!=", "=="),
-    },
-    "and-or": {ast.And: ("and", "or"), ast.Or: ("or", "and")},
-    "drop-not": {ast.Not: ("not", "")},
-    "return-bool": {True: ("True", "False"), False: ("False", "True")},
-    "plus-one": {ast.Add: ("+", "-")},
-}
 
 SKIP_REASONS = {
     "fstring": "inside an f-string or t-string, whose inner positions are not plain source",
@@ -109,19 +90,55 @@ def is_test_file(name):
     return fnmatch.fnmatch(name, test_file_pattern())
 
 
-def _load_runner():
-    """tools/mutate/run.py, the home of the time limit, loaded under a name no
-    target folder's own modules can share, so a test in the copy that imports
-    a module named `run` never gets this one."""
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run.py")
-    spec = importlib.util.spec_from_file_location("hydra_mutate_run", path)
+def _load_sibling(file_name, module_name):
+    """A module beside this one, loaded under a name no target folder's own
+    modules can share, so a test in the copy that imports a module named
+    `run` or `find` never gets this one."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), file_name)
+    spec = importlib.util.spec_from_file_location(module_name, path)
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-_runner = _load_runner()
+# run.py is the home of the time limit.
+_runner = _load_sibling("run.py", "hydra_mutate_run")
+
+# find.py's KINDS is the one home of the bug kinds: their names, and the C++
+# token each one changes into which. This module adds only Python's view of
+# those tokens, in AST_TOKEN and SPELLING below.
+KINDS = _load_sibling("find.py", "hydra_mutate_find").KINDS
+
+# For each kind, the AST class (or, for return_bool, the constant) that holds
+# each of find.py's tokens in Python.
+AST_TOKEN = {
+    "compare": {ast.Lt: "<", ast.LtE: "<=", ast.Gt: ">", ast.GtE: ">=",
+                ast.Eq: "==", ast.NotEq: "!="},
+    "and_or": {ast.And: "&&", ast.Or: "||"},
+    "drop_not": {ast.Not: "!"},
+    "plus_one": {ast.Add: "+"},
+    "return_bool": {True: "true", False: "false"},
+}
+
+# Python's text for a find.py token that Python spells differently; a token
+# spelled the same in both has no entry. find.py writes `(bool)` for a dropped
+# `!` only so the C++ expression keeps its type; Python needs no such cast, so
+# a dropped `not` leaves nothing.
+SPELLING = {"&&": "and", "||": "or", "!": "not", "(bool)": "",
+            "true": "True", "false": "False"}
+
+
+def spell(token):
+    """Python's text for one of find.py's tokens."""
+    return SPELLING.get(token, token)
+
+
+def python_swap(kind, key):
+    """(was, now): the Python text of a spot of `kind` whose AST class or
+    constant is `key`, and the text it becomes, both from find.py's swap."""
+    token = AST_TOKEN[kind][key]
+    return spell(token), spell(KINDS[kind]["swap"][token])
 
 
 # ------------------------------------------------------------------ finding
@@ -208,9 +225,9 @@ def find_spots(text):
     spots = []
 
     def add(kind, node, at_lo, at_hi, table_key):
-        was, now = KINDS[kind][table_key]
+        was, now = python_swap(kind, table_key)
         lo, hi = src.span(node)
-        at = _find_token(src, at_lo, at_hi, was) if kind != "return-bool" else lo
+        at = _find_token(src, at_lo, at_hi, was) if kind != "return_bool" else lo
         skip = _skip_reason(node, up)
         if skip is None and at is None:
             skip = "token"
@@ -221,21 +238,21 @@ def find_spots(text):
         if isinstance(node, ast.Compare):
             left = node.left
             for op, right in zip(node.ops, node.comparators):
-                if type(op) in KINDS["comparison"]:
-                    add("comparison", node, src.span(left)[1], src.span(right)[0], type(op))
+                if type(op) in AST_TOKEN["compare"]:
+                    add("compare", node, src.span(left)[1], src.span(right)[0], type(op))
                 left = right
         elif isinstance(node, ast.BoolOp):
             for a, b in zip(node.values, node.values[1:]):
-                add("and-or", node, src.span(a)[1], src.span(b)[0], type(node.op))
+                add("and_or", node, src.span(a)[1], src.span(b)[0], type(node.op))
         elif isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
-            add("drop-not", node, src.span(node)[0], src.span(node.operand)[0], ast.Not)
+            add("drop_not", node, src.span(node)[0], src.span(node.operand)[0], ast.Not)
         elif isinstance(node, ast.BinOp) and isinstance(node.op, ast.Add) \
                 and isinstance(node.right, ast.Constant) and type(node.right.value) is int \
                 and node.right.value == 1:
-            add("plus-one", node, src.span(node.left)[1], src.span(node.right)[0], ast.Add)
+            add("plus_one", node, src.span(node.left)[1], src.span(node.right)[0], ast.Add)
         elif isinstance(node, ast.Return) and isinstance(node.value, ast.Constant) \
                 and type(node.value.value) is bool:
-            add("return-bool", node.value, 0, 0, node.value.value)
+            add("return_bool", node.value, 0, 0, node.value.value)
     spots.sort(key=lambda s: (s["lo"], -s["hi"], s["at"] if s["at"] is not None else -1))
     return spots
 
