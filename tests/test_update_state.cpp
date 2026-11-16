@@ -145,6 +145,24 @@ void settle_check(AppState& app) {
     tick_until(app, [&] { return !app.update_check_running(); }, "the update check to finish");
 }
 
+// Ticks the app until `done`, for a step that only the running download job
+// reaches: its own body, or the tick that collects it
+// (AppState::collect_update_download). Once that job has ended, the step can
+// no longer come, so the wait fails at once instead of at the cap. The tick
+// sits inside `done`, so the second ask that wait_until_or_gone makes after
+// `gone` also collects a job that finished between two ticks.
+void tick_until_download_step(AppState& app, const std::function<bool()>& done,
+                              const std::string& what) {
+    testwait::wait_until_or_gone(
+        [&] {
+            app.tick(0.0);
+            return done();
+        },
+        [&] { return !app.update_download_job || app.update_download_job->finished(); }, what,
+        "the download job has ended, and nothing else moves the update on, so it can no "
+        "longer happen");
+}
+
 // The offer of the canned v9.9.9, from the start-up check.
 std::unique_ptr<AppState> offered_app(UpdateWorld& w) {
     std::unique_ptr<AppState> app = w.app();
@@ -228,7 +246,7 @@ TEST_CASE("a newer release is offered; Later keeps an Update button and writes n
     app->update_now();
     CHECK(app->update.phase == Phase::Downloading);
     CHECK(app->update.text == "Downloading Hydra Deluxe 9.9.9...");
-    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the installer to start");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Launching; }, "the installer to start");
     CHECK(w.canned.launched == hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe"));
 }
 
@@ -384,7 +402,7 @@ TEST_CASE("Update downloads, checks and starts the installer; Hydra then waits")
     app->update_now();
     CHECK(app->update.phase == Phase::Downloading);
     CHECK(app->update.text == "Downloading Hydra Deluxe 9.9.9...");
-    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the installer to start");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Launching; }, "the installer to start");
     CHECK(app->update.text == "Starting the installer...");
     CHECK(w.canned.launched == hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe"));
     CHECK(w.canned.log == hydra::join_folder(w.folder, "setup.log"));
@@ -404,7 +422,7 @@ TEST_CASE("an installer that ends while Hydra runs leaves decision 10's state an
     w.canned.launch = [ended] { return hydra::ui::InstallerEnded([ended] { return ended->load(); }); };
     std::unique_ptr<AppState> app = offered_app(w);
     app->update_now();
-    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the installer to start");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Launching; }, "the installer to start");
     ended->store(true);  // the UAC prompt was declined, so Setup exits
     app->tick(0.0);
     CHECK(app->update.phase == Phase::Declined);
@@ -415,7 +433,7 @@ TEST_CASE("an installer that ends while Hydra runs leaves decision 10's state an
     // Update again starts the kept file, checked again, not downloaded again.
     ended->store(false);
     app->update_now();
-    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the second start");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Launching; }, "the second start");
     CHECK(w.canned.downloads == 1);
 }
 
@@ -425,7 +443,7 @@ TEST_CASE("an installer that can't start leaves decision 10's state with Windows
     w.canned.launch = [why]() -> hydra::ui::InstallerEnded { throw why; };
     std::unique_ptr<AppState> app = offered_app(w);
     app->update_now();
-    tick_until(*app, [&] { return app->update.phase == Phase::Declined; }, "the start to fail");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Declined; }, "the start to fail");
     CHECK(app->update.text == "The installer didn't start, so Hydra wasn't updated.");
     CHECK(app->update.detail == "Access is denied.");
     REQUIRE(app->update.release.has_value());
@@ -435,7 +453,7 @@ TEST_CASE("an installer that can't start leaves decision 10's state with Windows
     // The three buttons are back: Update starts the kept file again.
     w.canned.launch = [] { return hydra::ui::InstallerEnded([] { return false; }); };
     app->update_now();
-    tick_until(*app, [&] { return app->update.phase == Phase::Launching; }, "the second start");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Launching; }, "the second start");
     CHECK(app->update.detail.empty());
     CHECK(w.canned.downloads == 1);
 }
@@ -445,7 +463,7 @@ TEST_CASE("a download whose signature doesn't verify is refused and deleted") {
     w.canned.sig[10] = static_cast<char>(w.canned.sig[10] ^ 0x01);
     std::unique_ptr<AppState> app = offered_app(w);
     app->update_now();
-    tick_until(*app, [&] { return app->update.phase == Phase::Failed; }, "the refusal");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Failed; }, "the refusal");
     CHECK(app->update.text == hydra::app::kUpdateUnverifiedSentence);
     CHECK_FALSE(app->update.detail.empty());
     CHECK(w.canned.launched.empty());
@@ -474,14 +492,14 @@ TEST_CASE("Cancel during the download goes back to the offer and leaves no part-
     };
     std::unique_ptr<AppState> app = offered_app(w);
     app->update_now();
-    tick_until(*app, [&] { return started.load(); }, "the download to start");
+    tick_until_download_step(*app,[&] { return started.load(); }, "the download to start");
     const std::string installer = hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe");
     CHECK(exists(installer + ".part"));
     CHECK(app->update_received() == 100);
     CHECK(app->update_megabytes_text() == "0.0 of 0.0 MB");
 
     app->cancel_update();
-    tick_until(*app, [&] { return app->update.phase == Phase::Offered; }, "the offer to come back");
+    tick_until_download_step(*app,[&] { return app->update.phase == Phase::Offered; }, "the offer to come back");
     CHECK(app->update.text == "Hydra Deluxe 9.9.9 is available.");
     CHECK_FALSE(exists(installer + ".part"));
     CHECK_FALSE(exists(installer));
