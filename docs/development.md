@@ -725,6 +725,19 @@ mapping run's time. Each bug's json holds its `clean_seconds` and
 highest limit. The Python half calls the same function with the time its
 chosen test modules took in its own mapping run.
 
+The clean times come from the mapping run, one process alone, but bug runs
+go side by side, and a test runs slower when others share the machine. On
+the 81 bugs of `src/app/analysis.cpp` and `src/app/allocator.cpp`, runs
+that finished took a median 14% and at most 62% longer than their clean
+time with 8 side by side, and 6% and 30% with 4. The slowdown grows with a
+run's length and the 5 seconds do not, so a run with long test files can
+pass its limit only because of the load. Bug 14 did: caught in 31.9 s
+alone, against a limit of about 34 s, it timed out at 34.6 s with 8 side
+by side and at 34.0 s with 4. A survivor with long test files can be
+counted as caught the same way. The user chose to keep the default width
+and accept this ("Keep 8, accept it"); `--processes 1` is the run with no
+such slowdown.
+
 A crash counts as caught too. `find_crash` in `run.py` says what proves a
 crash. The test the program died in is sorted by `sort_red_tests` like any
 other red test, so it is credited the same way a test that failed would be.
