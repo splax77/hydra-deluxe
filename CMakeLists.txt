@@ -985,6 +985,95 @@ foreach(hydra_exe Hydra HydraPathBuilder hydra_batch hydra_fillcompare
     target_sources(${hydra_exe} PRIVATE src/app/long_paths.manifest)
 endforeach()
 
+# ---- the mutation build (HYDRA_MUTATION only) ------------------------------
+# A test-only build for the mutation tool in tools/mutate, in build-mutation\
+# via the mutation preset. It never ships. The tool writes rewritten copies of
+# chosen source files into build-mutation\mutated\, each at the path its
+# original has in the repo, and this build compiles each copy in place of its
+# original. A file with no copy compiles from its usual place. The switches the
+# copies use come from tools/mutate/hydra_mutant.h, which is force-included
+# into the copies only, so the tool never has to add an include line to them.
+# The copies' own folder holds none of the original's neighbours, so each copy
+# also gets its original's folder on its include path, ahead of the target's.
+# Only static libraries' .c and .cpp sources are swapped; a copy that swaps
+# nothing stops the configure, so no planted bug is dropped unseen.
+# This block reads every library's source list, so it sits after the last
+# library; the mimalloc section must still come last.
+option(HYDRA_MUTATION "Planted-bug test build for tools/mutate (the mutation preset turns it on; never ships)" OFF)
+if(HYDRA_MUTATION)
+    if(HYDRA_LTCG)
+        message(FATAL_ERROR "HYDRA_MUTATION cannot be combined with HYDRA_LTCG: the "
+                            "mutation build is a test build and never ships. Use the "
+                            "mutation preset, which leaves link-time optimization off.")
+    endif()
+    set(hydra_mutated_dir "${CMAKE_BINARY_DIR}/mutated")
+    message(STATUS "Mutation build: on, copies under ${hydra_mutated_dir} replace their originals")
+    # CONFIGURE_DEPENDS: a copy added or removed later makes the next build
+    # configure again, so the swapped source lists follow the copies. Headers
+    # are globbed too, only so that a header copy stops the configure below
+    # instead of being left out; the tool's other files there are not code.
+    file(GLOB_RECURSE hydra_mutated_copies CONFIGURE_DEPENDS
+         "${hydra_mutated_dir}/*.c" "${hydra_mutated_dir}/*.cpp"
+         "${hydra_mutated_dir}/*.h" "${hydra_mutated_dir}/*.hpp")
+    set(hydra_mutated_rels "")
+    foreach(hydra_copy IN LISTS hydra_mutated_copies)
+        file(RELATIVE_PATH hydra_rel "${hydra_mutated_dir}" "${hydra_copy}")
+        list(APPEND hydra_mutated_rels "${hydra_rel}")
+    endforeach()
+    set(hydra_mutated_used "")
+    get_property(hydra_mutation_targets DIRECTORY "${CMAKE_SOURCE_DIR}"
+                 PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(hydra_target IN LISTS hydra_mutation_targets)
+        get_target_property(hydra_type ${hydra_target} TYPE)
+        if(NOT hydra_type STREQUAL "STATIC_LIBRARY")
+            continue()
+        endif()
+        get_target_property(hydra_sources ${hydra_target} SOURCES)
+        set(hydra_new_sources "")
+        set(hydra_swapped OFF)
+        foreach(hydra_source IN LISTS hydra_sources)
+            set(hydra_keep "${hydra_source}")
+            if(NOT hydra_source MATCHES "^\\$<" AND hydra_source MATCHES "\\.(c|cpp)$")
+                cmake_path(ABSOLUTE_PATH hydra_source BASE_DIRECTORY "${CMAKE_SOURCE_DIR}"
+                           NORMALIZE OUTPUT_VARIABLE hydra_abs)
+                file(RELATIVE_PATH hydra_rel "${CMAKE_SOURCE_DIR}" "${hydra_abs}")
+                if(hydra_rel IN_LIST hydra_mutated_rels)
+                    set(hydra_keep "${hydra_mutated_dir}/${hydra_rel}")
+                    get_filename_component(hydra_original_dir "${hydra_abs}" DIRECTORY)
+                    set_property(SOURCE "${hydra_keep}" APPEND PROPERTY
+                                 INCLUDE_DIRECTORIES "${hydra_original_dir}")
+                    set_property(SOURCE "${hydra_keep}" APPEND PROPERTY
+                                 COMPILE_OPTIONS "/FI${CMAKE_SOURCE_DIR}/tools/mutate/hydra_mutant.h")
+                    list(APPEND hydra_mutated_used "${hydra_rel}")
+                    set(hydra_swapped ON)
+                endif()
+            endif()
+            list(APPEND hydra_new_sources "${hydra_keep}")
+        endforeach()
+        if(hydra_swapped)
+            set_property(TARGET ${hydra_target} PROPERTY SOURCES ${hydra_new_sources})
+        endif()
+    endforeach()
+    set(hydra_mutated_unused "")
+    foreach(hydra_rel IN LISTS hydra_mutated_rels)
+        if(NOT hydra_rel IN_LIST hydra_mutated_used)
+            list(APPEND hydra_mutated_unused "${hydra_rel}")
+        endif()
+    endforeach()
+    if(hydra_mutated_unused)
+        list(JOIN hydra_mutated_unused ", " hydra_mutated_unused)
+        message(FATAL_ERROR "Mutation build: these copies under ${hydra_mutated_dir} "
+                            "replace no .c or .cpp source of any library, so their "
+                            "planted bugs would never be built: ${hydra_mutated_unused}")
+    endif()
+    # The test exe registers the listener (tests/test_main.cpp, inside its
+    # HYDRA_MUTATION block) and reads the switches' reach notes through it.
+    target_sources(hydra_tests PRIVATE tools/mutate/listener.cpp)
+    target_include_directories(hydra_tests PRIVATE tools/mutate)
+    set_property(SOURCE tests/test_main.cpp tools/mutate/listener.cpp APPEND PROPERTY
+                 COMPILE_DEFINITIONS HYDRA_MUTATION)
+endif()
+
 # ---- mimalloc, for every executable (D88) ---------------------------------
 # The one place that decides which exes run on mimalloc and how they load it.
 # It takes every executable defined in this file, so the tests, the GUI test

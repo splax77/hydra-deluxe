@@ -47,6 +47,7 @@ build-asan-ninja/
 build-coverage/
 build-coverage-ninja/
 build-fuzz/
+build-mutation/
 
 # Python bytecode (tools/ch_probe and friends)
 __pycache__/
