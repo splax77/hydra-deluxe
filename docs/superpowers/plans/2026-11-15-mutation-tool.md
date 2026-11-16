@@ -1,0 +1,231 @@
+# A small mutation tool for Hydra: one build, every planted bug
+
+Date: 2026-11-15. Session 88ea48bb. Status: waiting for the user's yes. Nothing here is built yet.
+
+## The short version
+
+A mutation tool plants small bugs in the real code and runs the tests. A test that goes red on a planted bug has shown it can fail. Hydra already has such a tool, `tools/mutation_probe.ps1`, but it rebuilds once per bug. The user ruled that out: "one build per test is a massive waste of time. if we're doing this it's one build and run to test everything".
+
+The new tool, `hydra_mutate`, writes every bug into the code at once. Each bug sits behind its own numbered switch, and all switches are off unless one is named. So there is one build. One run with every switch off records which test reaches which bug spot. Then each bug is switched on alone, and only the test files that reach it are run. No rebuild happens between bugs.
+
+No agent picks a bug and no agent judges a result. A fixed list of text rules picks the spots. A test counts as "caught the bug" only when doctest itself reports it failed. This is the point of the tool: the user asked "how can I trust any of these answers?" about agents reading tests, and a run is the answer.
+
+The work is eight small code tasks, then four timed runs by the main session on a small sample, then the first real use on the audit's 62 disputed lines. The sample runs can stop the plan; "What stops the plan" says on what.
+
+This plan changes nothing Hydra decides or shows. The normal build never carries a switch. So no Owner map applies (`docs/agents/owner-map.md` covers only plans that change what Hydra decides or shows).
+
+## What exists already, and what is reused
+
+Agent rule 15 asks for the existing owner first. I searched `tools`, `src`, `tests`, `docs` and `CMakeLists.txt` for `mutation`, `mutant`, `codelex`, `code-mask`, `lexer_language` and `t7_bug`. Five pieces exist.
+
+The first is `tools/mutation_probe.ps1`. It already owns the list of bug kinds (`Find-MutationCandidates`), the rule that edits go only into code, and the time limit for a stuck run (`Get-TestTimeoutMs`, the user's decision D82 item 3). It plants one bug, rebuilds, tests, restores, and repeats. The new tool takes over its list of kinds and its time limit, so each rule keeps one home. Task M8 removes the probe, if the user agrees (question 1).
+
+The second is the repo's one lexer, codelex, in `tests/code_lexer.h`. A lexer splits a file into code, comments and strings. `hydra_precheck --code-mask <file>` prints a file with everything that is not code blanked out, same length, same line numbers. The probe already calls it. The new tool calls it the same way, for C++ and for Python files. It does not write a second lexer.
+
+The third is how T7 did this by hand. On branch `claude/test-audit-t7`, a header `src/core/t7_bug.h` reads one environment variable, and each plant is written `t7_bug("A4") ? <bug> : <original>`. One build held every plant. That is the same shape this plan uses, and T7 showed it builds with MSVC and that tests pass with every switch off. T7 also showed two traps, which this plan handles. Plants in `src/` made two text-reading tests fail (the single-owner scan and the layering check). And three plants could not sit behind a runtime switch, because the compiler needed a constant there.
+
+The fourth is doctest, the test framework (`third_party/doctest/doctest.h`, version 2.4.11). It lets a program register a listener that is told when each test starts, ends, and when a check fails. `tests/test_main.cpp` already has its own `main`, so the mutation build can add a listener there.
+
+The fifth is the build path: `build_cpp.ps1` takes `-Preset` and `-Target`, `CMakePresets.json` already holds test-only presets (asan, coverage, fuzz), and `CMakeLists.txt` already has options of the form "never ships" (`HYDRA_COVERAGE`, `HYDRA_ASAN`, `HYDRA_FUZZ`).
+
+I found no existing code that records which test reaches which line at run time. The search was for `test_case_start`, `REGISTER_LISTENER` and `IReporter` under `tests/` and `tools/`; `HYDRA_COVERAGE` exists but produces a whole-run report, not a per-test one.
+
+Prior art, from the research report (`reports/Mutation testing tools for Hydra.md`). Compiling all bugs in once behind switches is called "mutant schemata". Dredd does it with one environment variable naming the live bug, and dextool and Mull's new rewriter do it too; none documents Windows or MSVC, which is why Hydra writes its own. Vercammen et al. 2022 measured schemata plus "run only the tests that reach the bug" at 2x to 30x faster than rebuilding, and found the limits this plan also has: templates and constant expressions cannot be switched at run time, and a dense switched build can itself run slower (0.81x in one project). Google's "arid node" idea is to not plant bugs in lines where a survivor would tell nobody anything, such as logging. This plan does not copy that, because choosing such lines is a judgment; see "Out of scope".
+
+## What the tool does, step by step
+
+**Step 1: find the spots.** The tool reads each chosen source file through `hydra_precheck --code-mask`, so comments and strings can never match. It then applies a fixed list of kinds. Four come from the brief: flip a comparison (`<` and `<=`, `>` and `>=`, `==` and `!=`), swap `&&` and `||`, drop a `!`, and flip a returned `true` or `false`. One more comes from the existing probe's list: a binary `+ 1` becomes `- 1`. The reason to keep it is that off-by-one is the bug T7's auditors named most, and the probe already makes it; it costs no new rule.
+
+**Step 2: wrap each spot.** A spot is wrapped as `HYDRA_MUT(17, <original text>, <text with the one change>)`. The macro reads "if switch 17 is on, use the changed text, otherwise the original". The tool does not parse C++. Instead it wraps the whole smallest expression the lexer can bound: the text between the nearest enclosing bracket pair, comma, semicolon, `return` or assignment `=`. Because that text is a complete expression, putting it inside a bracketed choice cannot change what binds to what. The original text is copied byte for byte into the "off" side.
+
+**Step 3: skip what cannot be bounded, and list it.** A spot is skipped, never guessed, when the bounding walk meets anything it cannot classify. That means: a preprocessor line or macro body; a `<` or `>` with no space on both sides (a likely template bracket; this is the probe's existing rule); a lambda or a brace inside the expression; and any expression that follows `template`, `constexpr`, `consteval`, `static_assert`, `case`, `requires`, `noexcept`, `enum`, or sits in an array size. Every skipped spot goes into `skipped.txt` with its file, line and the reason.
+
+**Step 4: build once.** The main session builds `hydra_tests` with the new `mutation` preset. If the compiler rejects a wrapped spot, the tool reads the compiler's own error lines, drops every spot on those lines, lists them as "skipped: did not compile", and the main session rebuilds only the changed files. This is the one honest exception to "one build": a few top-up rebuilds while the tool learns which spots MSVC refuses. It is capped at three rounds. A fourth is a stop.
+
+**Step 5: the mapping run.** The suite runs once with every switch off. Each switch, when its line executes, notes its number. The doctest listener writes, for each test, the numbers noted while it ran. That gives the map: which test reaches which bug. A test that fails in this run is listed as "red with no bug" and takes no further part; the two text-reading tests T7 hit cannot fail here, because the rewritten files are copies (see below).
+
+**Step 6: one bug at a time.** For each bug at least one test reaches, the tool starts a fresh `hydra_tests.exe` with `HYDRA_MUTANT=<number>` and a doctest source-file filter naming the test files that hold a reaching test. Several such processes run side by side. The listener writes each test's pass or fail and each failed check's file and line. A run that outlives the time limit is stopped and recorded as "timed out", using the probe's existing rule.
+
+**Step 7: the report.** Written as text files in the run's folder. Per bug: file, line, the change in words, and every test that went red, with the check lines that failed. Per test: how many bugs it reaches and how many it caught, with the tests that caught none listed first. Three more lists: bugs no test reaches, bugs reached but caught by nobody (survivors), and spots skipped with reasons. Timed-out bugs are counted as caught but listed apart, as the probe does today.
+
+The report states its own limit in its first lines. A test that caught nothing has shown no way to fail against these bugs; that is a question to look at, not proof the test is empty. And a check that sits after an earlier failing `REQUIRE` in the same test may never have run.
+
+## Where the switches live
+
+The switch header is `tools/mutate/hydra_mutant.h`. It is not under `src/`, so the layering check and the single-owner scan never see it. It holds the `HYDRA_MUT` macro, one `inline` integer read once from the `HYDRA_MUTANT` environment variable (the way `t7_bug.h` does), and the "reached" notes. C++17 allows an `inline` variable in a header, and Hydra builds as C++17.
+
+The rewritten sources are copies. `hydra_mutate` writes them into `build-cpp-mutation/src/...`, never into `src/`. A new CMake option, `HYDRA_MUTATION` (off by default, marked "never ships" like `HYDRA_COVERAGE`), makes the libraries compile the copy of a file when one exists, adds `tools/mutate` to the include path, and defines `HYDRA_MUTATION` for `tests/test_main.cpp` so it registers the listener. A new `mutation` preset turns the option on and uses its own build folder. With the option off, nothing in the build changes: no include path, no define, no macro. The option refuses to configure together with the `ship` preset's `HYDRA_LTCG`.
+
+## What stops the plan
+
+The sample is the code first use needs anyway: the source files reached by the disputed tests (task F1 names them mechanically). The main session measures, in the live steps below, and stops and reports to the user if any of these is true.
+
+1. The switched build fails after three top-up rounds (LS1).
+2. With every switch off, a test fails that passes in the normal build (LS2). That would mean a wrap changed behaviour, which breaks the tool's base promise.
+3. The projected time for the first use is not shorter than doing it the rejected way. The projection is: measured seconds per bug in LS3, times the number of reached bugs, divided by the number of side-by-side processes. The rejected way is: one measured warm rebuild of `hydra_tests` per bug, from LS1's top-up timing. If the new tool does not beat a rebuild per bug, it has no reason to exist.
+4. Two runs of the same sample disagree on any verdict (LS3). A tool whose answers move cannot settle a dispute.
+
+No absolute hour limit is set here, because none has a source. The main session shows the user the projected hours for the first use, and for a whole-codebase run, before either starts (agent rule 3).
+
+## The tasks
+
+Each task is one executor in its own worktree, then one fresh reviewer, then merge (`docs/agents/derive-once-review.md`). Executors never build and never run `hydra_tests.exe`. M1, M2, M4, M5 and M6 can run in parallel. M3 needs M1 and M2. M7 needs M3 and M5. M8 is last.
+
+### M1: the spot finder (Python, no build needed)
+
+Owned files: `tools/mutate/find.py`, `tools/mutate/test_find.py`. The finder takes a source path, calls `hydra_precheck.exe --code-mask` from the main checkout, and returns numbered spots: offset, length, kind, the enclosing expression's bounds, or a skip reason. The kinds are one table in this file. Tests the executor may run: `py -I -m unittest tools/mutate/test_find.py`.
+
+Acceptance criteria. The tests run the finder on real Hydra files from `src/`, not on made-up snippets (the user's ruling: "tests should never be based on anything fake"). They check properties the code must hold, not typed counts: every spot's offset lies in code according to the mask; every spot's enclosing expression has balanced brackets; no spot lies on a preprocessor line; every skipped spot carries a reason from the finder's own reason table; and the same file read twice gives the same numbered list. One test per skip rule finds a real line in `src/` that the rule skips by searching for it, and fails if the finder returns a spot there.
+
+### M2: the rewriter (Python, no build needed)
+
+Owned files: `tools/mutate/rewrite.py`, `tools/mutate/test_rewrite.py`. It takes the finder's spots and writes the wrapped copy and a `mutants.json` (number, file, line, kind, change in words). Nested and overlapping spots in one expression are handled by wrapping the outer expression once per spot, innermost first. Tests the executor may run: `py -I -m unittest tools/mutate/test_rewrite.py`.
+
+Acceptance criteria. For real files from `src/`: taking the "off" side of every `HYDRA_MUT` in the copy gives back the original file byte for byte. Taking the "on" side of exactly one switch gives a file that differs from the original only inside that spot's bounds, and by exactly the kind's change. The copy is never written under `src/`; the test fails if the output path is inside the source tree. Numbers are unique and stable across two runs.
+
+### M3: the runner (Python, no build needed to write; main session runs it)
+
+Owned files: `tools/mutate/run.py`, `tools/mutate/report.py`, `tools/mutate/test_report.py`. `run.py` drives steps 4 to 7: reads compiler errors and drops spots, starts the mapping run, starts one process per bug with the source-file filter, applies the time limit, and collects the listener's result files. The time limit moves here from `mutation_probe.ps1` with its D82 comment, so it has one home once M8 lands. `report.py` turns the collected results into the report. Tests the executor may run: `py -I -m unittest tools/mutate/test_report.py`. That test needs real result files, so it waits for LS3's result folder. Waits for: LS3.
+
+Acceptance criteria. The runner never rebuilds between bugs; its only build-related act is to print which spots it dropped. It refuses to start bug runs when the mapping run had a test fail that is not on the "red with no bug" list it just wrote. It reports as an error, not a catch, any test that went red on a bug the map says it does not reach. A fourth compile round exits with a message and no report. The report test reads LS3's real result folder and checks: every red test in the result files appears under its bug; every test with zero catches is in the zero list; the per-test and per-bug counts add up to the same total (the user's rule that two counts on a screen must agree).
+
+### M4: the build option and preset
+
+Owned files: `CMakeLists.txt` (the `HYDRA_MUTATION` block only), `CMakePresets.json` (the `mutation` preset only). Tests: none an executor can run; the main session proves it in LS1.
+
+Acceptance criteria. With the option off, the configure output and the list of compiled sources are the same as today; the reviewer checks by reading that every added line sits inside `if(HYDRA_MUTATION)`. With it on, a file with a copy under the mutation folder is compiled from the copy and a file without one from `src/`. Configuring with both `HYDRA_MUTATION` and `HYDRA_LTCG` fails with a message. Before writing, the executor reads how `build_cpp.ps1` maps a preset to a build folder and follows it (premise P14).
+
+### M5: the switch header and the listener
+
+Owned files: `tools/mutate/hydra_mutant.h`, `tools/mutate/listener.cpp`, `tests/test_main.cpp` (one `#ifdef HYDRA_MUTATION` block). The header is described above. The listener writes one line per test (name, file, line, passed or failed, the switch numbers reached) and one line per failed check, to the file named by `HYDRA_MUTANT_OUT`. Tests: none an executor can run; LS2 proves it.
+
+Acceptance criteria. With `HYDRA_MUTANT` unset, `HYDRA_MUT(n, a, b)` evaluates `a` and only `a`. With it set to n, it evaluates `b` and only `b`, and every other switch evaluates its `a`. Without `HYDRA_MUTATION` defined, `tests/test_main.cpp` compiles to exactly what it does today; the reviewer checks every added line is inside the `#ifdef`. Reach notes made while no test is running (static start-up) are written under the name "before any test".
+
+### M6: the Python half
+
+Owned files: `tools/mutate/py_mutate.py`, `tools/mutate/test_py_mutate.py`. It does the same job for Python with Python's own `ast` module (the parser Python ships): the same kinds, each rewritten as `(changed if switch(n) else original)`. It copies the target folder (`tools/`, or the hooks repo `C:\Users\Patrick\.claude\gates`) into the run folder, rewrites the copy, and runs the folder's own unittest files against the copy, with the same mapping run and the same one-bug-per-process runs. The real folders are never edited. Tests the executor may run: `py -I -m unittest tools/mutate/test_py_mutate.py`.
+
+Acceptance criteria. For real files from `tools/`: the rewritten module with every switch off produces the same `ast` as the original once the wrappers' "off" sides are taken. The test fails if any file under the real `tools/` or the gates folder has a changed modification time after a rewrite. A test file that imports its target by absolute path, and so never reaches the copy, shows up as "reaches no bug" in the map rather than as a pass; the acceptance test finds one real case if one exists and otherwise says none was found.
+
+### M7: the docs
+
+Owned files: `docs/development.md` (the mutation section), `docs/agents/this-machine.md` (one line, if a path is new). Says how the main session runs the tool, what the report's lists mean, and its limits. Needs M3 and M5 merged. Tests: the main session runs `hydra_tests.exe "-tc=docs match code*"`.
+
+Acceptance criteria. Every command and file name in the section exists in the merged code. The docs check passes.
+
+### M8: retire the old probe (only if question 1 is a yes)
+
+Owned files: `tools/mutation_probe.ps1`, `tools/test_mutation_probe.ps1` (both removed), `docs/development.md` (the three probe mentions). The probe's finder and time limit already moved in M1 and M3, so after M8 each rule has one home. If the answer is no, this task is dropped and the probe is changed instead to read its kinds and time limit from `tools/mutate`, so there are still not two copies.
+
+Acceptance criteria. `git grep mutation_probe` finds only lines that say how to read it now, in the form the docs check asks for. The docs check passes.
+
+### F1: first use, the 62 disputed lines
+
+Run by the main session after the live steps pass. Waits for: LS3. An executor first lists the test names in the eight re-read files (`A3.md`, `A30.md`, `A9.md`, `C7.md`, `WN3.md`, `WN4a.md`, `WN4b.md`, `WN8.md` under `docs/audit/2026-11-14-test-audit/mechanical/reread/` on branch `claude/test-audit-t8-questions-handoff`), copying names only, into `tools/mutate/first_use_tests.txt`. That is copying, not judging: the runner refuses the list unless every name matches exactly one test in doctest's own listing. The code under test is then chosen by the run, not by anyone: it is every source file holding a spot that one of those tests reaches in a mapping run. This task also settles premise P16.
+
+Acceptance criteria. The output is the tool's report, unedited, plus one table: each disputed line, its test, the bugs that test caught, and the failed check lines. No row holds an agent's verdict. A line whose test caught nothing is marked "not shown to fail by this run" and goes to the user as it stands.
+
+## The live steps
+
+These are runs only the main session makes, each through a pass from `hydra_build_pass` where it builds. Each step holds one new piece, so a failure names it.
+
+### LS1: build the sample with every switch in
+
+The main session runs the finder and rewriter on the sample files, then builds `hydra_tests` with the `mutation` preset. It records the build time, each top-up round and its time, and the count of spots dropped. Stop rule 1 applies. Settles P17.
+
+Calls: `py -I tools/mutate/rewrite.py` (seen: M2's own tests), `build_cpp.ps1 -Preset mutation -Target hydra_tests` (never tried)
+
+### LS2: the mapping run, every switch off
+
+Runs the switched `hydra_tests.exe` once with `HYDRA_MUTANT` unset and the listener on. Records the run time beside the normal build's time for the same tests. Stop rule 2 applies. Settles P18.
+
+Calls: `build_cpp.ps1 -Preset mutation -Target hydra_tests` (seen: LS1's passing run), `hydra_tests.exe` with `HYDRA_MUTANT_OUT` set (never tried)
+
+### LS3: one bug per fresh process, side by side
+
+Runs `run.py` on the sample twice, at 1 process and at 4 processes side by side. Records seconds per bug and compares every verdict between the two runs. Stop rules 3 and 4 apply. Settles P19.
+
+Calls: `hydra_tests.exe` with `HYDRA_MUTANT_OUT` set (seen: LS2's passing run), `py -I tools/mutate/run.py` (never tried)
+
+### LS4: many bugs inside one process, as a comparison
+
+The brief asks to measure this before choosing. A small switch in `run.py` runs the same sample with one long-lived process that changes the live bug between tests. If every verdict matches LS3 and it is faster, the main session reports both numbers to the user. The default stays a fresh process per bug unless the verdicts match exactly. Settles P20.
+
+Calls: `py -I tools/mutate/run.py` (seen: LS3's passing run), `py -I tools/mutate/run.py --one-process` (never tried)
+
+### LS5: the Python half on one hooks module
+
+Runs `py_mutate.py` on one module of the gates folder and its own test file, chosen as the first in name order so nobody picks it. Records seconds per bug. Settles P21.
+
+Calls: `py -I tools/mutate/py_mutate.py` (never tried)
+
+## Out of scope
+
+These need the user's yes to stay out.
+
+- The UI tests (`hydra_uitest`). They drive a window and the research report marks them the likeliest to be flaky. First version covers `hydra_tests` and the Python suites.
+- A whole-codebase run. The brief puts it after the first use, with its own go.
+- Skipping "uninteresting" lines such as logging (Google's arid nodes). Choosing them is a judgment, and the brief keeps judgment out of which bugs are planted.
+- Deciding whether a survivor is an "equivalent" bug, one that changes nothing a user could see. No tool can decide that; the report lists survivors and says so.
+- Templates, `constexpr` code, macros and anything else in the skip list. They are listed, not planted.
+- Running on CI.
+
+## Questions
+
+1. May task M8 delete `tools/mutation_probe.ps1` and its self-test? It is the one-build-per-bug tool, built under your decision D82. The new tool replaces what it does. If you say no, it stays and reads its rules from the new tool.
+
+## Promise map
+
+| Promise | Plan section | Task | The check that proves it |
+|---|---|---|---|
+| One build holds every bug; no rebuild between bugs | Short version; step 4; M3 | M3, LS3 | LS3's log shows one build and N bug runs; M3's reviewer reads that `run.py` holds no build call |
+| Top-up rebuilds are capped at three rounds | Step 4; stop rule 1 | M3, LS1 | M3: a fourth round exits with no report; LS1 records each round |
+| With every switch off the code behaves as today | Short version; M2; M5 | M2, M5, LS2 | M2's byte-for-byte round trip on real files; LS2 fails on any test that passes in the normal build |
+| The normal build never carries a switch | Where the switches live; M4; M5 | M4, M5 | Reviewer reads that every added line is inside `if(HYDRA_MUTATION)` or `#ifdef HYDRA_MUTATION`; the LTCG refusal in M4 |
+| Rewritten files are copies, never under `src/` | Where the switches live; M2 | M2 | M2's test fails on an output path inside the source tree |
+| No agent picks a bug | Short version; step 1; F1 | M1, F1 | M1: kinds are one table, same list on two reads; F1: sample files come from the mapping run |
+| No agent judges a verdict | Short version; step 6; F1 | M5, F1 | Verdicts are the listener's lines from doctest; F1's table holds no agent column |
+| A spot that cannot be bounded is skipped and listed, never guessed | Step 3; M1 | M1 | One test per skip rule on a real line; every skip carries a reason |
+| Bugs go only into code, never comments or strings | Step 1; M1 | M1 | Every spot offset lies in code by the mask |
+| Only the tests that reach a bug are run for it | Step 6; M3 | M3, LS3 | LS3's logs show the filter per bug; a red test that does not reach its bug is an error |
+| A test red with no bug takes no further part | Step 5; M3 | M3 | Runner refuses to start bug runs on an unlisted red test |
+| The report lists per bug and per test, zero-catch tests first, plus unreached, survivors, skipped, timed out | Step 7; M3 | M3 | `test_report.py` on LS3's real results; counts agree |
+| The report states its own limits | Step 7 | M3 | `test_report.py` checks the opening lines are present |
+| A stuck run is stopped by the existing D82 limit | Step 6; M3 | M3 | Reviewer reads that the rule moved, not copied; M8 removes the old home |
+| The tool's own tests use real code, no fakes, no typed counts | M1, M2, M3, M6 | M1, M2, M3, M6 | Reviewer reads each test file against the rulings in P11 |
+| The Python half never edits the real folders | M6 | M6 | Modification-time test |
+| The Python half uses the same kinds, mapping run and per-bug runs | M6 | M6, LS5 | M6's `ast` round trip; LS5's result folder |
+| Executors never build; the main session builds one at a time | The tasks; live steps | all | Each task names the tests an executor may run; builds appear only in LS steps |
+| The plan stops on the four stop rules | What stops the plan | LS1, LS2, LS3 | Each step names its rule and its record |
+| The user sees projected hours before any wider run | What stops the plan | F1 | The main session's go request quotes LS3's numbers |
+| Fresh process per bug stays the default unless one-process verdicts match exactly | LS4 | LS4 | LS4 compares every verdict |
+| Each rule keeps one home (kinds, time limit) | What exists already; M8 | M1, M3, M8 | `git grep` for the kinds table and the time rule finds one home after M8 |
+| First-use test names are copied, not judged | F1 | F1 | Runner refuses a name that does not match exactly one doctest test |
+| Docs name only what exists | M7 | M7 | The docs check |
+
+## Premise map
+
+| Premise | Kind | Source | Status |
+|---|---|---|---|
+| P1: The user wants one build and one run, not a build per bug. | ruling | The user's message as quoted in the brief, `mutation-plan-brief.md` line 12 | checked 2026-11-15, main session to confirm the quote in the reviewer's brief |
+| P2: An existing probe plants one bug at a time and rebuilds per bug. | code | `tools/mutation_probe.ps1` lines 319 to 336 | checked 2026-11-15 |
+| P3: The probe owns a list of bug kinds: comparison flips, `&&` to `\|\|`, `+ 1`, returned bool. | code | `tools/mutation_probe.ps1` lines 122 to 145 | checked 2026-11-15 |
+| P4: The probe's time limit is baseline times 1.25 plus 4 s, decision D82 item 3. | code | `tools/mutation_probe.ps1` lines 176 to 183; `docs/audit/2026-10-03-fix-decisions.md` line 413 | checked 2026-11-15 |
+| P5: `hydra_precheck --code-mask <file>` blanks comments and strings, keeps length, and reads C++ and Python. | code | `tools/precheck/main.cpp` lines 7 and 92; `tools/precheck/code_mask.h` lines 1 to 20 | checked 2026-11-15 |
+| P6: The repo's lexer is codelex in `tests/code_lexer.h`, with Cpp and Python among its languages. | code | `tests/code_lexer.h` lines 19 to 22 | checked 2026-11-15 |
+| P7: T7 put every plant behind one environment variable in one build, written as `t7_bug(id) ? bug : original`. | code | `git show claude/test-audit-t7:src/core/t7_bug.h`; `git grep t7_bug claude/test-audit-t7` (for example `src/app/analysis.cpp` line 778) | checked 2026-11-15 |
+| P8: In T7, plants in `src/` made two text-reading tests fail, and three plants needed a compile-time constant. | code | `git show claude/test-audit-records:docs/audit/2026-11-14-test-audit/mechanical/planted.md`, "How it ran" | unchecked: this file reports a run; M2 (copies outside `src/`) and M1 (skip list) are built so neither can recur, and LS2 checks it |
+| P9: doctest 2.4.11 has a listener interface with test start and failed-check callbacks, and a source-file filter. | code | `third_party/doctest/doctest.h` lines 2064, 2079, 2951, 6614; `third_party/doctest/VERSION.txt` | checked 2026-11-15 |
+| P10: `tests/test_main.cpp` defines its own `main` for doctest. | code | `tests/test_main.cpp` lines 4 and 44 | checked 2026-11-15 |
+| P11: The user's test rulings: no fakes, no typed constants, test the behaviour directly, use the test corpus. | ruling | `docs/agents/rulings/tests-and-runs.md`, `## Confirmed`, the five lines dated 2026-11-15 | checked 2026-11-15 |
+| P12: Hydra builds as C++17, so an `inline` variable in a header is allowed. | code | `CMakeLists.txt` line 30 | checked 2026-11-15 |
+| P13: `CMakeLists.txt` already has test-only options and `CMakePresets.json` test-only presets. | code | `CMakeLists.txt` lines 95, 108, 133; `CMakePresets.json` preset names `asan`, `coverage`, `fuzz` | checked 2026-11-15 |
+| P14: `build_cpp.ps1` takes `-Preset`, and a new preset gets its own build folder. | unchecked | `build_cpp.ps1` line 34 shows the parameter only; the folder mapping was not read | M4 |
+| P15: Agents never build or run `hydra_tests.exe`; they may run `hydra_precheck.exe` from main. | code | `docs/agents/brief-preamble.md`, "Tests" and "Builds" | checked 2026-11-15 |
+| P16: The re-read files hold 62 disputed lines, each naming a test. | unchecked | `git ls-tree claude/test-audit-t8-questions-handoff docs/audit/2026-11-14-test-audit/mechanical/reread/` shows the eight files; their lines were not read | F1 |
+| P17: MSVC builds the wrapped copies, and the wrap text rules bound real Hydra expressions. | unchecked | `tools/mutate/rewrite.py` does not exist yet | LS1, blocks M3, F1 |
+| P18: The switched build with every switch off passes the same tests as the normal build, at a usable speed. | unchecked | `reports/Mutation testing tools for Hydra.md` reports Vercammen's 0.81x case only | LS2, blocks M3, F1 |
+| P19: Several `hydra_tests.exe` processes can run side by side without changing each other's results. | unchecked | searched `tests/test_main.cpp` for a lock or shared file and read only lines 40 to 75 | LS3, blocks M3, F1 |
+| P20: Hydra keeps state between tests, so many bugs in one process may give different verdicts. | unchecked | `mutation-plan-brief.md` line 23 states it; no code was read for it | LS4, blocks nothing |
+| P21: The Python tests of `tools/` and the gates folder run against a copied folder. | unchecked | `reports/Mutation testing tools for Hydra.md` says collection is unverified | LS5, blocks nothing |
+| P22: Schemata with test selection ran 2x to 30x faster than rebuilding, and cannot switch templates or constant expressions. | unchecked | `reports/Mutation testing tools for Hydra.md` cites Vercammen et al. 2022; the paper was not opened | LS3, blocks nothing (the plan's own stop rule 3 measures it on Hydra) |
