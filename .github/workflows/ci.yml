@@ -79,7 +79,7 @@ jobs:
 
       # The same script and preset developers use; warnings fail the build.
       # Building hydra_tests also builds hydra_precheck.exe, which its tests
-      # and the mutation probe self-test run. hydra_uitest is built here too,
+      # run. hydra_uitest is built here too,
       # so the saved folder holds everything the GUI tests need next time.
       - name: Build hydra_tests and hydra_uitest
         run: .\build_cpp.ps1 -Target hydra_tests,hydra_uitest
@@ -123,9 +123,6 @@ jobs:
       # The slices of tests/shards.txt, side by side.
       - name: Run hydra_tests
         run: ctest --test-dir build-cpp -C Release -j 4 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
-
-      - name: Run the mutation probe self-test
-        run: pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
       - name: Run the build pass self-test
         run: pwsh -NoProfile -File tools/test_build_pass.ps1

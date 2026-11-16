@@ -126,8 +126,8 @@ the environment:
 $env:HYDRA_BUILD_PASS='<pass>'; .\build_cpp.ps1 -Target hydra_tests
 ```
 
-Any other target or preset goes the same way, and so do
-`installer\build_installer.ps1` and `tools\mutation_probe.ps1`. A session holds
+Any other target or preset goes the same way, and so does
+`installer\build_installer.ps1`. A session holds
 one pass at a time. `build_cpp.ps1` claims the slot, builds, and gives the slot
 back whether the build passed or failed. Without a pass it stops before
 configure. A pass nobody claims runs out, and a slot whose owner died frees
@@ -290,16 +290,13 @@ The Python and PowerShell tools have their own tests. Run them from the
 repository root:
 
     py -m pytest tools/ch_probe/tests tools/test_compare_db.py tools/test_hydra_ui_mcp.py -q
-    pwsh -NoProfile -File tools/test_mutation_probe.ps1
 
 The pytest runs need no C++ build. The MCP test also needs
 `py -m pip install mcp`, and its real-exe cases skip until
 `hydra_uitest.exe` is built. The `tool-tests` job in
 `.github/workflows/ci.yml` runs the pytest paths and the two other PowerShell
 self-tests (`tools/test_ci_build_folder.ps1`, `tools/test_release_sign.ps1`);
-it is the owner of that list. The mutation probe's self-test needs a
-built `hydra_precheck.exe` (`.\build_cpp.ps1 -Target hydra_precheck`),
-because the probe masks comments and strings with it. The derive-once
+it is the owner of that list. The derive-once
 precheck's own self-test runs inside `hydra_tests`:
 
     build-cpp\Release\hydra_tests.exe "-sf=*test_precheck*"
@@ -572,28 +569,11 @@ file counts for a name only if it includes the declaring header, except for a
 name in an exe's main file, which picks the tests that name that exe's
 `HYDRA_<TARGET>_EXE` constant.
 
-## Mutation probe
+## Mutation testing
 
-A passing test only helps if it would fail when the code breaks. The
-mutation probe checks that. It plants one small deliberate bug at a time in
-one source file, such as flipping `<` to `<=` or dropping a `+ 1`. After
-each one it rebuilds `hydra_tests`, runs only the tests you name, and puts
-the file back. A bug that makes a test fail is "killed". A bug no test
-notices is a "survivor": a spot where a test is missing or too loose.
-
-    pwsh -NoProfile -File tools\mutation_probe.ps1 -Source src\core\replay.cpp -Filter sf=*test_replay* -Max 20
-
-The report gives the score (killed out of the edits that compiled) and each
-survivor's line and edit, so a person can write a test for it. The script
-edits source, so it refuses the main checkout; run it in a task worktree
-made with `tools\new_worktree.ps1`. It rebuilds, so the main session runs it,
-and it holds one pass for the whole run (see "Building under Claude Code").
-Each edit costs a warm rebuild and a test run, so twenty edits
-take a few minutes. The script's header lists its options and the kinds of edit it
-makes; `tools\test_mutation_probe.ps1` is its self-test.
-
-Run it before a release, on the scoring and path code. It is not meant for
-every merge: it is slow, and a survivor is a prompt to look, not a failure.
+A mutation tool plants small deliberate bugs in the real code and checks
+that a test notices each one. Hydra's lives in `tools/mutate`, and this
+section will say how to run it once the tool is finished.
 
 ## Fuzzing the file parsers
 
@@ -701,9 +681,8 @@ cold one, but it does not fail. In the same way, the fuzz jobs in
 the first fetch fails (run 42656444749 lost both fuzz jobs to one dropped
 connection).
 
-Another job, `tool-tests`, runs the tool tests above with no C++ build. The main
-job runs the mutation probe's self-test after it builds `hydra_tests`, because
-that self-test needs `hydra_precheck.exe`. The main job and the coverage job
+Another job, `tool-tests`, runs the tool tests above with no C++ build.
+The main job and the coverage job
 check out the whole history, because the precheck self-test in `hydra_tests` checks two real
 commit ranges and skips them in a shallow clone.
 
