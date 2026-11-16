@@ -162,7 +162,7 @@ This is the rubric's second mechanical check. Each record's question 8 names a b
 
 The sample is one named bug from each auditor, so every auditor's reasoning is tested once. If an auditor's claim is wrong (the test stayed green, or a different line went red), the claim is reported, and a verifier re-reads every question 8 answer in that auditor's slice. That closer read is the rubric's own rule.
 
-`tools/mutation_probe.ps1` exists and plants flipped comparisons on its own. It is not used here, because this check tests the bugs the auditors named, not bugs a tool picks.
+`tools/mutation_probe.ps1` (removed; `git show ed0aa857:tools/mutation_probe.ps1`) exists and plants flipped comparisons on its own. It is not used here, because this check tests the bugs the auditors named, not bugs a tool picks.
 
 Acceptance: `mechanical/planted.md` has one row per auditor: the bug, the tests run, red or green, and the line that failed. Records whose claim was confirmed change "reasoned" to "confirmed".
 
@@ -322,7 +322,7 @@ Rounds run four slices at a time in table order: 22 rounds for 86 slices, the la
 | D12 | 1567 | `tools/ch_probe/tests/test_play_in_game.py`, `tools/ch_probe/tests/test_prep_inputs.py`, `tools/ch_probe/tests/test_probe_chart.py`, `tools/ch_probe/tests/test_probe_songs.py`, `tools/ch_probe/tests/test_process.py`, `tools/ch_probe/tests/test_process_readonly.py`, `tools/ch_probe/tests/test_s2_window_constants.py`, `tools/ch_probe/tests/test_score_compare.py` |
 | D13 | 2236 | `tools/ch_probe/tests/test_sp_compare.py`, `tools/ch_probe/tests/test_sp_watch.py`, `tools/ch_probe/tests/test_stall_harness.py`, `tools/ch_probe/tests/test_tick_rate_vs_hydra.py`, `tools/ch_probe/tests/test_watch_checks.py`, `tools/test_agent_cost.py` |
 | D14 | 1626 | `tools/test_check_handoff.py`, `tools/test_check_pointers.py`, `tools/test_compare_db.py`, `tools/test_effort_test_faults.py`, `tools/test_effort_test_scout.py`, `tools/test_effort_test_shuffle.py`, `tools/test_effort_test_taint.py` |
-| D15 | 2293 | `tools/test_hydra_ui_mcp.py`, `tools/test_build_pass.ps1`, `tools/test_ci_build_folder.ps1`, `tools/test_effort_test_guard.ps1`, `tools/test_mutation_probe.ps1`, `tools/test_release_sign.ps1` |
+| D15 | 2293 | `tools/test_hydra_ui_mcp.py`, `tools/test_build_pass.ps1`, `tools/test_ci_build_folder.ps1`, `tools/test_effort_test_guard.ps1`, `tools/test_mutation_probe.ps1` (removed; `git show ed0aa857:tools/test_mutation_probe.ps1`), `tools/test_release_sign.ps1` |
 
 ## The handoff's open points
 
