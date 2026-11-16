@@ -25,6 +25,7 @@ import ast
 import bisect
 import concurrent.futures
 import fnmatch
+import importlib.util
 import inspect
 import json
 import os
@@ -108,15 +109,19 @@ def is_test_file(name):
     return fnmatch.fnmatch(name, test_file_pattern())
 
 
-def test_timeout_seconds(baseline_seconds):
-    """How long a run with one switch on may take before it counts as stuck.
+def _load_runner():
+    """tools/mutate/run.py, the home of the time limit, loaded under a name no
+    target folder's own modules can share, so a test in the copy that imports
+    a module named `run` never gets this one."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "run.py")
+    spec = importlib.util.spec_from_file_location("hydra_mutate_run", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
-    The user's decision D82 item 3 (docs/audit/2026-10-03-fix-decisions.md);
-    its home is Get-TestTimeoutMs in tools/mutation_probe.ps1 until the
-    plan's task M3 moves it to tools/mutate/run.py. This is a second copy
-    until then: M3 must make this function call run.py's and delete it here.
-    """
-    return baseline_seconds * 1.25 + 4.0
+
+_runner = _load_runner()
 
 
 # ------------------------------------------------------------------ finding
@@ -556,7 +561,7 @@ def run_bug(run_dir, copy_dir, n, tests, reach, edge, red, load_seconds):
     mods = modules_for(n, tests, reach, edge)
     baseline = load_seconds + sum(x["seconds"] for x in tests if x["module"] in mods)
     out = os.path.join(run_dir, "bugs", "%d.jsonl" % n)
-    lines, seconds, timed_out = run_child(copy_dir, out, n, mods, test_timeout_seconds(baseline))
+    lines, seconds, timed_out = run_child(copy_dir, out, n, mods, _runner.test_timeout_seconds(baseline))
     reachers = {t for t, s in reach.items() if n in s}
     reds = [x for x in lines if x.get("status") in ("failed", "error") and x["test"] not in red]
     caught = [x for x in reds if x["test"] in reachers or any(n in s for s in edge.values())]
