@@ -503,9 +503,14 @@ struct SaveGate {
     const ScopedHook seam;
     ~SaveGate() { release(); }
     void release() { open->store(true); }
-    void wait_reached() {
-        testwait::wait_until([this] { return reached->load() >= 1; },
-                             "the click's job to reach its save");
+    // Fails at once when `app` has no click's job running: only a frame
+    // (tick) starts the next one, and no frame runs during this wait.
+    void wait_reached(const AppState& app) {
+        testwait::wait_until_or_gone(
+            [this] { return reached->load() >= 1; },
+            [&app] { return !app.view_job || app.view_job->finished(); },
+            "the click's job to reach its save",
+            "the click's job finished, or none was started, before it reached its save");
     }
 };
 
@@ -515,7 +520,7 @@ void act_at_save_seam(ViewSaveSeam seam, AppState& app, const ChartLibraryEntry&
                       const std::function<void()>& act) {
     SaveGate gate(seam);
     app.select(song, hydra::ui::SelectionSource::Click);
-    gate.wait_reached();
+    gate.wait_reached(app);
     act();
     gate.release();
     settle(app);
@@ -556,7 +561,7 @@ TEST_CASE("a click's save does not stop the window while a save group is open") 
         // the held group.
         SaveGate gate;
         app->select(song, hydra::ui::SelectionSource::Click);
-        gate.wait_reached();
+        gate.wait_reached(*app);
     }
 
     app->tick(0.0);
@@ -588,7 +593,7 @@ TEST_CASE("a click's worker writes a changed chart's hash before it saves") {
     {
         SaveGate gate;
         app->select(scanned, hydra::ui::SelectionSource::Click);
-        gate.wait_reached();
+        gate.wait_reached(*app);
         // At the check before the save: the row is under the new hash, and
         // nothing is saved under it yet.
         CHECK(app->store->list_chart_library_copies(new_md5).size() == 1);

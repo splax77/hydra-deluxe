@@ -131,7 +131,7 @@ TEST_CASE("a burst of setting changes ends with one analysis of the final settin
     app->edit_settings();
     REQUIRE(app->view_job != nullptr);
     const int first_generation = app->view_job->generation();
-    latch.wait_entered(1);  // the first job is inside its analysis now
+    latch.wait_entered(*app, 1);  // the first job is inside its analysis now
     for (int cap = first_cap + 1; cap <= last_cap; ++cap) {
         app->settings.sp_cap = cap;
         app->edit_settings();
