@@ -41,6 +41,9 @@ import unittest
 # becomes. They are the plan's step 1 list for C++
 # (docs/superpowers/plans/2026-11-15-mutation-tool.md), said in Python's
 # spelling: `&&`/`||` are `and`/`or`, `!` is `not`, true/false are True/False.
+# This table is a second copy, kept only until tools/mutate/find.py (task M1)
+# is merged: the plan makes find.py's kinds table the one home. Task M3 or M8
+# must then make this module read its kinds from find.py and delete this table.
 KINDS = {
     "comparison": {
         ast.Lt: ("<", "<="), ast.LtE: ("<=", "<"),
@@ -110,7 +113,8 @@ def test_timeout_seconds(baseline_seconds):
 
     The user's decision D82 item 3 (docs/audit/2026-10-03-fix-decisions.md);
     its home is Get-TestTimeoutMs in tools/mutation_probe.ps1 until the
-    plan's task M3 moves it to tools/mutate/run.py.
+    plan's task M3 moves it to tools/mutate/run.py. This is a second copy
+    until then: M3 must make this function call run.py's and delete it here.
     """
     return baseline_seconds * 1.25 + 4.0
 
