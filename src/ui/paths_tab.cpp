@@ -524,11 +524,13 @@ void render_activation_body(size_t i, const app::ActivationRowView& a, app::Path
 
     if (!a.early_fill.empty()) early_fill_box(a);
     for (size_t k = 0; k < a.squeeze_sentences.size(); ++k) squeeze_box(a, k);
-    if (!a.scale_warning.empty()) {
-        // Orange when the scale moves a figure on screen, gray otherwise.
+    // The SqIn's scale line, then the SP end's. Orange when the scale moves a
+    // figure on screen, gray otherwise.
+    for (const std::string* line : {&a.sqin_scale_warning, &a.scale_warning}) {
+        if (line->empty()) continue;
         ImGui::PushStyleColor(ImGuiCol_Text, warn_or_dim(a.scale_warn));
         ImGui::PushTextWrapPos(0.0f);
-        ImGui::TextUnformatted(a.scale_warning.c_str());
+        ImGui::TextUnformatted(line->c_str());
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
         overflow_tooltip(app::kTransferScaleHint);

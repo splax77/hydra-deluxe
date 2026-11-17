@@ -96,7 +96,6 @@ std::string longest_activation_badge() {
 
 std::vector<TextLine> squeeze_sentences(const Activation& act,
                                         const BackendRating* squeezed_out,
-                                        double leeway_ms,
                                         const std::vector<std::optional<double>>& note_effective_ms) {
     std::vector<TextLine> out;
     for (size_t i = 0; i < act.sqinouts.size(); ++i) {
@@ -117,32 +116,12 @@ std::vector<TextLine> squeeze_sentences(const Activation& act,
                 squeezed_out ? "the " + squeezed_out->row.chord.notationstr() + " note"
                              : std::string("the SP phrase's last note");
             text = "Hit " + note + " " + when + " so it lands after Star Power ends.";
-            if (squeezed_out) {
-                // What the squeeze-out costs: core::sqout_cost, which the
-                // table's "(-N)" reads too. A counted row's cost is never 0
-                // (test_stars.cpp, "squeezing out any chord always costs
-                // points").
-                const BackendSqueeze& row = squeezed_out->row;
-                const double off = row.offset();
-                if (core::counted_without_squeeze(off, leeway_ms)) {
-                    const int lost = core::sqout_cost(off, row.sp_points, row.sqout_sp_points, leeway_ms);
-                    text += " It scores " + std::to_string(lost) +
-                            " fewer points, and its SP phrase banks for later.";
-                } else {
-                    text += " It costs no points, because Hydra's score never counted that "
-                            "note under Star Power, and its SP phrase banks for later.";
-                }
-            } else {
-                text += " Its SP phrase banks for later.";
-            }
         } else {
             // A SqIn has no backend row to carry its eff. figure (a SqOut's
             // sits on its squeezed-out row), so the sentence carries it.
             if (i < note_effective_ms.size() && note_effective_ms[i])
                 when += eff_suffix(*note_effective_ms[i]);
-            text = "Hit the SP phrase's last note " + when +
-                   " so it lands before Star Power ends. The phrase then counts while Star "
-                   "Power runs, which makes Star Power last longer.";
+            text = "Hit the SP phrase's last note " + when + " so it lands before Star Power ends.";
         }
         out.push_back({std::move(text), sq.is_difficult()});
     }
@@ -282,11 +261,11 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
 
         ActivationRating rate = rate_activation(act, rules.backend_leeway_ms);
 
-        // The line names the sides the activation's rows and squeezes read
-        // (rate_activation records them), when they aren't 1, early first:
-        // at the SP end, then at the SqIn's end when that prints differently.
-        // It is orange when one of them governs a row or SqIn on this
-        // activation.
+        // The lines name the sides the activation's rows and squeezes read
+        // (rate_activation records them), when they aren't 1, early first.
+        // The SqIn's end gets its own line, shown first, when it prints
+        // differently from the SP end's. Both lines are orange when one of
+        // the scales governs a row or SqIn on this activation.
         auto sides = [](const TransferScale& s, const SidesRead& read) {
             std::string out;
             if (read.early && is_scaled(s.early)) out = format_scale(s.early) + " (early)";
@@ -304,7 +283,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         } else {
             const std::string post_part = sides(rate.scales->post, rate.post_read);
             // Each SqIn's scale, when it prints differently from the SP
-            // end's. When every SqIn prints alike, one clause covers them:
+            // end's, on the SqIn line. When every SqIn prints alike, one clause covers them:
             // "the SqIn's SP end" for a single SqIn, "each SqIn's SP end" for
             // two or more (D16). When they differ, each gets its own clause,
             // numbered by its place among the SqIns (Q5).
@@ -317,8 +296,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 sqin_parts.push_back(sides(s, *read++));
                 sqins_alike = sqins_alike && sqin_parts.back() == sqin_parts.front();
             }
+            if (!post_part.empty())
+                av.scale_warning = "Frontend timing scales " + post_part + " at the SP end.";
             std::string clauses;
-            if (!post_part.empty()) clauses = post_part + " at the SP end";
             for (size_t i = 0; i < sqin_parts.size(); ++i) {
                 const std::string& part = sqin_parts[i];
                 if (part.empty() || part == post_part) continue;
@@ -330,7 +310,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
                 }
                 clauses += part + " at SqIn " + std::to_string(i + 1) + "'s SP end";
             }
-            if (!clauses.empty()) av.scale_warning = "Frontend timing scales " + clauses + ".";
+            if (!clauses.empty()) av.sqin_scale_warning = "Frontend timing scales " + clauses + ".";
             av.scale_warn = rate.scale_governs;
         }
 
@@ -350,8 +330,7 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
         const BackendRating* squeezed_out = nullptr;
         for (const BackendRating& br : rate.backends)
             if (br.squeezed_out) squeezed_out = &br;
-        av.squeeze_sentences = squeeze_sentences(act, squeezed_out, rules.backend_leeway_ms,
-                                                 rate.note_effective_ms);
+        av.squeeze_sentences = squeeze_sentences(act, squeezed_out, rate.note_effective_ms);
         av.squeeze_windows.resize(act.sqinouts.size());
         if (chords) {
             for (size_t k = 0; k < act.sqinouts.size(); ++k)
