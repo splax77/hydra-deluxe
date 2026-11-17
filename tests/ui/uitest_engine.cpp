@@ -31,21 +31,31 @@ namespace uitest {
 
 namespace {
 
-// The engine's screen-capture callback: copy the requested rect of the
-// offscreen render target (R8G8B8A8) to CPU memory.
-bool capture_pixels(ImGuiID /*viewport_id*/, int x, int y, int w, int h, unsigned int* pixels,
-                    void* user) {
-    auto& hz = *static_cast<Engine*>(user);
-    // Headless: the offscreen target. Attached: the swapchain's back buffer.
+// The texture a capture reads: headless, the offscreen target; attached,
+// the swapchain's back buffer. Attached, it also sets width and height to
+// the back buffer's size, which follows the real window. Null when the
+// back buffer can't be had.
+Microsoft::WRL::ComPtr<ID3D11Texture2D> capture_source(Engine& hz) {
     Microsoft::WRL::ComPtr<ID3D11Texture2D> source = hz.rt;
     if (hz.attached) {
+        source.Reset();
         if (!hz.swapchain || FAILED(hz.swapchain->GetBuffer(0, IID_PPV_ARGS(&source))))
-            return false;
+            return nullptr;
         D3D11_TEXTURE2D_DESC sd;
         source->GetDesc(&sd);
         hz.width = (int)sd.Width;
         hz.height = (int)sd.Height;
     }
+    return source;
+}
+
+// The engine's screen-capture callback: copy the requested rect of the
+// capture source (R8G8B8A8) to CPU memory.
+bool capture_pixels(ImGuiID /*viewport_id*/, int x, int y, int w, int h, unsigned int* pixels,
+                    void* user) {
+    auto& hz = *static_cast<Engine*>(user);
+    Microsoft::WRL::ComPtr<ID3D11Texture2D> source = capture_source(hz);
+    if (!source) return false;
     D3D11_TEXTURE2D_DESC d;
     source->GetDesc(&d);
     d.Usage = D3D11_USAGE_STAGING;
@@ -435,6 +445,10 @@ bool screenshot(ImGuiTestContext* ctx, const std::string& file, std::string* sav
     ImGuiCaptureArgs* args = ctx->CaptureArgs;
     ImStrncpy(args->InOutputFile, path.c_str(), IM_ARRAYSIZE(args->InOutputFile));
     args->InCaptureWindows.clear();
+    // The frame's size comes from the capture source, read here, before the
+    // rect is set: attached, the real window's size may differ from the
+    // headless default and change between shots.
+    if (!capture_source(e)) return false;
     ImRect rect(0, 0, (float)e.width, (float)e.height);
     if (crop) {
         rect.ClipWithFull(*crop);
