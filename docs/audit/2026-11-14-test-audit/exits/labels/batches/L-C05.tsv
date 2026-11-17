@@ -1,0 +1,77 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+count	counts/T5-IR14.md:16	records/D6.md:23	test_hydra_end.py:109 refuses_null_or_missing	X9,X10	hand-written dump text files; expected phrases are typed message text	not in the run
+count	counts/T5-IR14.md:17	records/D6.md:53	test_hydra_end.py:128 make_dump_runs_prep_inputs	X9	run_replay is mocked; the expected value is dump_command's own output on typed paths	not in the run
+count	counts/T5-IR14.md:18	records/D6.md:83	test_hydra_end.py:162 leaves_no_scratch_folder	X9	FakeDumps (:37-73) writes the dump the code under test reads	not in the run
+count	counts/T5-IR14.md:19	records/D6.md:98	test_hydra_end.py:179 failed_dump_is_no_song_end	X9,X10	the failure text is the fake's own string, then required back	not in the run
+count	counts/T5-IR14.md:20	records/D6.md:113	test_hydra_end.py:185 every_length_reader_calls_hydra_end	X10	greps source text for typed names and a typed file list instead of running anything	not in the run
+count	counts/T5-IR14.md:21	records/D6.md:206	test_launch_patch.py:100 write_is_mov_edx_0	X10,X12	json value equals a typed byte string; the comment cites a listing	not in the run
+count	counts/T5-IR14.md:22	records/D6.md:242	test_launch_patch.py:118 bytes_read_from_the_dll	X10,snapshot	pinned md5 line	not in the run
+count	counts/T5-IR14.md:23	records/D6.md:304	test_launch_core.py:115 matching_bytes_write_once_then_hook	X9,X10	fake memory and hand-built PATCH with typed bytes and RVAs; typed statuses	not in the run
+count	counts/T5-IR14.md:24	records/D6.md:315	test_launch_core.py:135 differing_entry	X9,X10	same fake memory; typed reason text	not in the run
+count	counts/T5-IR14.md:25	records/D6.md:325	test_launch_core.py:147 differing_patch_site	X9,X10	same	not in the run
+count	counts/T5-IR14.md:26	records/D6.md:334	test_launch_core.py:157 short_read	X9	typed short byte list in fake memory	not in the run
+count	counts/T5-IR14.md:27	records/D6.md:344	test_launch_core.py:162 write_that_does_not_take	X9	fake write that does not stick	not in the run
+count	counts/T5-IR14.md:28	records/D6.md:352	test_launch_core.py:170 failing_read	X9,X11	"the fake throws ""read refused"", the test requires it back"	not in the run
+count	counts/T5-IR14.md:29	records/D6.md:359	test_launch_core.py:177 no_status_carries_an_error_key	X9,X10	fake memory; the key names are typed	not in the run
+count	counts/T5-IR14.md:30	records/D6.md:370	test_launch_core.py:194 loader_runs_counted	X9	fake hook and memory	not in the run
+count	counts/T5-IR14.md:31	records/D6.md:379	test_launch_core.py:207 status_before_module_is_waiting	X10	whole typed status dict	not in the run
+count	counts/T5-IR14.md:32	records/D6.md:388	test_launch_core.py:213 missing_field_is_named	X10	typed field list (the hand-built patch is input the real reader reads, not X9)	not in the run
+count	counts/T5-IR14.md:36	records/D6.md:452	test_kit_tools.py:270 users_answers_and_probe_values_pinned	X10,X12	"eight constants pinned to typed values; cites ""the user's answers"""	not in the run
+count	counts/T5-IR14.md:37	records/D6.md:477	test_kit_tools.py:285 setup_message_carries_ids	X10,X11	a typed message equals the module's own constants	not in the run
+count	counts/T5-IR14.md:38	records/D6.md:487	test_kit_tools.py:290 every_element_is_an_axis	X10	typed copies of the element and binding tables	not in the run
+count	counts/T5-IR14.md:39	records/D6.md:500	test_kit_tools.py:302 gates_id_and_placeholder_count	X10,X12	pinned numbers; cites an asm listing line	not in the run
+count	counts/T5-IR14.md:40	records/D6.md:522	test_kit_tools.py:313 every_lane_has_a_kit_element	X10	typed lane to id table	not in the run
+count	counts/T5-IR14.md:41	records/D6.md:534	test_kit_tools.py:318 items_take_the_prefix	X10	typed message start	not in the run
+count	counts/T5-IR14.md:42	records/D6.md:545	test_kit_tools.py:328 refused_without_ch_attach	X9	FakeFridaTools(attached=False)	not in the run
+count	counts/T5-IR14.md:43	records/D6.md:553	test_kit_tools.py:333 settings_line_is_1	X9,X10	fake settings reader; typed sentence	not in the run
+count	counts/T5-IR14.md:44	records/D6.md:561	test_kit_tools.py:339 settings_line_missing	X9,X10	fake reader raises; typed sentence start	not in the run
+count	counts/T5-IR14.md:45	records/D6.md:566	test_kit_tools.py:345 stale_or_missing_kit_agent	X9,X10	make_built_agent stand-in; typed sentence	not in the run
+count	counts/T5-IR14.md:46	records/D6.md:575	test_kit_tools.py:359 backup_attach_setup_flags_printed	X9,X10	hand-written replies; typed printed lines	not in the run
+count	counts/T5-IR14.md:47	records/D6.md:584	test_kit_tools.py:380 map_that_differs	X9,X10	hand-edited binding; typed lines	not in the run
+count	counts/T5-IR14.md:48	records/D6.md:592	test_kit_tools.py:392 keyboard_left_on	X9,X10	hand-edited reply; typed sentence	not in the run
+count	counts/T5-IR14.md:49	records/D6.md:600	test_kit_tools.py:406 mouse_left_on	X9,X10	same	not in the run
+count	counts/T5-IR14.md:50	records/D6.md:604	test_kit_tools.py:421 both_left_on	X9,X10	same	not in the run
+count	counts/T5-IR14.md:51	records/D6.md:611	test_kit_tools.py:428 no_keyboard_or_mouse_read_back	X9,X10	reply with fields deleted	not in the run
+count	counts/T5-IR14.md:52	records/D6.md:618	test_kit_tools.py:441 reply_missing_mouse_now	X9,X10	same	not in the run
+count	counts/T5-IR14.md:53	records/D6.md:625	test_kit_tools.py:453 disabled_map_or_missing_binding	X9,X10	hand-built map; typed problem text	not in the run
+count	counts/T5-IR14.md:54	records/D6.md:632	test_kit_tools.py:461 definition_1_map_passes	X9,X10	hand-built map; typed id list	not in the run
+count	counts/T5-IR14.md:55	records/D6.md:640	test_kit_tools.py:469 ls_d2b_run1_map_is_refused	X9,X10,X12	"OLD_BINDINGS typed from ""a run""; typed messages"	not in the run
+count	counts/T5-IR14.md:56	records/D6.md:648	test_kit_tools.py:481 button_binding_on_the_kick	X9,X10	hand-edited binding; typed sentence	not in the run
+count	counts/T5-IR14.md:57	records/D6.md:655	test_kit_tools.py:494 every_element_is_type_checked	X9,X10	same	not in the run
+count	counts/T5-IR14.md:58	records/D6.md:662	test_kit_tools.py:502 binding_with_no_element_type	X9,X10	same	not in the run
+count	counts/T5-IR14.md:59	records/D6.md:668	test_kit_tools.py:508 element_bound_as_both_kinds	X9,X10	same	not in the run
+count	counts/T5-IR14.md:60	records/D6.md:676	test_kit_tools.py:515 setup_with_no_reply_ends_at_cap	X9,X10	fake clock, no reply; typed sentence with the cap	not in the run
+count	counts/T5-IR14.md:61	records/D6.md:685	test_kit_tools.py:525 setup_that_passes_gives_player	X9	hand-written replies	not in the run
+count	counts/T5-IR14.md:62	records/D6.md:693	test_kit_tools.py:534 setup_that_is_refused_gives_no_player	X9	fake FridaTools	not in the run
+count	counts/T5-IR14.md:63	records/D6.md:699	test_kit_tools.py:539 setup_on_the_wrong_id	X9,X10	reply with kit_id=7; typed text	not in the run
+count	counts/T5-IR14.md:64	records/D6.md:705	test_kit_tools.py:546 kit_already_set_up	X9	hand-written replies	not in the run
+count	counts/T5-IR14.md:65	records/D6.md:711	test_kit_tools.py:553 kit_tools_lend_no_press	X12	comment cites a removed plan and D342; the check is `hasattr`, a code-shape check	not in the run
+count	counts/T5-IR14.md:74	records/A26.md:111	test_rules.cpp:67	X10	the six defaults pinned to typed numbers	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR14.md:79	records/A26.md:218	test_rules.cpp:159	X10	chord the test builds, but 50 and 100 are typed note values	caught 1, reaches 12, shared 0, caught-nothing no
+count	counts/T5-IR14.md:80	records/A26.md:233	test_rules.cpp:175	X9,X10	"hand-built BackendSqueeze row; typed words ""Hard (uncounted)"", ""Normal"""	caught 4, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR14.md:81	records/A26.md:248	test_rules.cpp:185	X10	`REQUIRE(lw == 3.0)` pins the leeway; hand-picked offsets, typed answers and word	caught 3, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR14.md:82	records/A26.md:263	test_rules.cpp:212	X9,X10	hand-built row, typed tier word	caught 3, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR14.md:83	records/A26.md:278	test_rules.cpp:223	X9,X10	same	caught 4, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR14.md:84	records/A26.md:293	test_rules.cpp:235	X9,X10	same	caught 4, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR14.md:87	records/A26.md:459	test_rules.cpp:470	X10,X12,snapshot	"two fingerprints pinned; comment says ""Pinned from one run"""	caught 0, reaches 2, shared 0, caught-nothing yes
+count	counts/T5-IR14.md:88	records/A26.md:510	test_report_view.cpp:183	X9	hand-built report rows with made-up song, artist and path text	caught 11, reaches 38, shared 0, caught-nothing no
+count	counts/T5-IR14.md:89	records/A26.md:525	test_report_view.cpp:213	X9,X10	four made-up rows; typed count lines	caught 17, reaches 33, shared 0, caught-nothing no
+count	counts/T5-IR14.md:90	records/A26.md:571	test_report_view.cpp:272	X9,X10	made-up row; typed nouns	caught 6, reaches 26, shared 0, caught-nothing no
+count	counts/T5-IR14.md:91	records/A26.md:586	test_report_view.cpp:281	X9	four made-up rows, answers typed from them	caught 9, reaches 37, shared 0, caught-nothing no
+count	counts/T5-IR14.md:92	records/A26.md:617	test_report_view.cpp:348	X10,X12	"titles and definitions typed word for word; comment cites ""the page"" and user-chosen wording"	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR14.md:93	records/A26.md:663	test_report_view.cpp:471	X10,X12	same	caught 2, reaches 2, shared 0, caught-nothing no
+count	counts/T5-IR14.md:94	records/A26.md:710	test_report_view.cpp:599	X9	"made-up path string ""3- 1 2 E3+ 0 0 4+"" feeds the width measure"	caught 7, reaches 29, shared 0, caught-nothing no
+count	counts/T5-IR14.md:100	records/A10.md:328	test_dm_report.cpp:666	X9,X10	"a loopback server that stalls stands in for the real service; ""cancelled"" and 500 ms typed"	caught 11, reaches 16, shared 0, caught-nothing no
+count	counts/T5-IR14.md:101	records/A10.md:349	test_dm_report.cpp:683	X9,X10,X11	hand-written stalled replies; `received == 7` is the typed body start's length	caught 20, reaches 29, shared 0, caught-nothing no
+count	counts/T5-IR14.md:102	records/A10.md:370	test_dm_report.cpp:714	X9,X10,X11	"made-up 5000-user body and made-up 404; ids and ""HTTP 404"" typed"	caught 23, reaches 33, shared 0, caught-nothing no
+count	counts/T5-IR14.md:103	records/window-WN1.md:292	test_library_jobs.cpp:937	X9,X10	hand-built old-build library and injected disk failure; expected sentence built from a made-up error	caught 112, reaches 911, shared 1, caught-nothing no
+count	counts/T5-IR14.md:104	records/window-WN1.md:379	test_search_target.cpp:299	X10,X12,snapshot	"path text, ticks and reason words typed from ""D45's chart""; pins edited by hand"	caught 109, reaches 550, shared 0, caught-nothing no
+count	counts/T5-IR14.md:107	records/window-WN4a.md:279	test_replay.cpp:611	X9,snapshot	"hand-written old dump; ""0++"" and tick 17360 typed from a run"	caught 86, reaches 570, shared 0, caught-nothing no
+count	counts/T5-IR14.md:108	records/window-WN4a.md:317	test_replay.cpp:888	snapshot	19200 typed from a run (28800 pin typed)	caught 18, reaches 265, shared 0, caught-nothing no
+count	counts/T5-IR14.md:109	records/window-WN4a.md:374	test_preview_scene.cpp:289	snapshot	"28800 and 19200 typed from one run; ""Finding 52"" cited"	caught 15, reaches 316, shared 0, caught-nothing no
+count	counts/T5-IR14.md:110	records/window-WN4a.md:469	test_preview_controller.cpp:672	X9	hand-built library entry with a made-up md5	caught 53, reaches 868, shared 6, caught-nothing no
+count	counts/T5-IR14.md:111	records/window-WN4a.md:488	test_preview_controller.cpp:869	X9	same	caught 89, reaches 842, shared 8, caught-nothing no
+count	counts/T5-IR14.md:112	records/A48.md:85	pbtest_build.cpp:460	X10	"typed readouts ""0:00 – 3:00 of 5:59"" and ""2:59 – 5:59 of 5:59"""	not in the run
+count	counts/T5-IR14.md:113	records/A48.md:172	pbtest_coach.cpp:168	X10,X12,snapshot	From one run in the comment; typed text, ms and ticks	not in the run
+count	counts/T5-IR14.md:114	records/A48.md:195	pbtest_coach.cpp:220	X10,X12,snapshot	From one run twice; typed ticks, rows and scores	not in the run
+count	counts/T5-IR14.md:115	records/A48.md:341	pbtest_files.cpp:26	X10,X12	"pasted ""99"" is input, not X9; refusal sentences typed; comment cites ""the user's own words (PB-4)"", which the record says sits under Unconfirmed"	not in the run

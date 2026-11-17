@@ -1,0 +1,102 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+count	counts/T5-IR20.md:13	records/A49.md:151	tests/single_owner/scan.cpp:592-603	X9,X10	"hand-written entry ""made-up entry""; whole message texts and the typed ""14 days"""	not in the run
+count	counts/T5-IR20.md:14	(not joined)	scan.cpp:585-590	X9,X10	"hand-built KnownClone with ""x = 1;""; whole message typed"	no joined record
+count	counts/T5-IR20.md:16	(not joined)	scan.cpp:260-281, 351-373	X9,X10	made-up file `kMadeUpFile`, made-up row; messages typed	no joined record
+count	counts/T5-IR20.md:17	(not joined)	tests/pb_ui/pbtest_window.cpp:474-476	X10	"error sentence and ""cannot open file: "" typed out"	no joined record
+count	counts/T5-IR20.md:18	(not joined)	pbtest_window.cpp:517-518	X10	"hand-written ""sp_cap=banana"" file; detail text typed"	no joined record
+count	counts/T5-IR20.md:19	(not joined)	pbtest_window.cpp:553-554	X10	same	no joined record
+count	counts/T5-IR20.md:20	(not joined)	scan.cpp:156-167	X9	"hand-built listed lines ""Q?"", ""x();"""	no joined record
+count	counts/T5-IR20.md:21	(not joined)	scan.cpp:260-281	X9,X10	made-up row and file; whole messages	no joined record
+count	counts/T5-IR20.md:22	records/A49.md:254	scan.cpp:351-373	X9	made-up row and file	caught 2, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR20.md:24	records/A49.md:303	scan.cpp:431-476	X9,X10	made-up row, hand-written ps1/yml; messages typed	caught 2, reaches 5, shared 0, caught-nothing no
+count	counts/T5-IR20.md:25	records/A49.md:336	scan.cpp:489-535	X9,X10	made-up row; whole error texts and JSON	caught 6, reaches 12, shared 0, caught-nothing no
+count	counts/T5-IR20.md:26	records/A49.md:352	scan.cpp:538-561	X10	made-up rule files written to a temp folder; message typed	caught 0, reaches 1, shared 0, caught-nothing yes
+count	counts/T5-IR20.md:27	records/A49.md:384	scan.cpp:579-603	X9,X10	made-up entry; messages; typed 14	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR20.md:28	records/A49.md:400	scan.cpp:606-625	X9,X10	made-up row and examples; messages	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR20.md:29	records/A6.md:19	tests/test_app_library.cpp:49 (by title)	X9	"hand-built rows md5 ""hash017"" (`library_entry`, tests/library_fixtures.h:33)"	caught 35, reaches 232, shared 0, caught-nothing no
+count	counts/T5-IR20.md:30	records/A6.md:58	by title	X9,X12	hand-built row and hand-written batch record; cites a ruling	caught 39, reaches 313, shared 0, caught-nothing no
+count	counts/T5-IR20.md:31	records/A6.md:79	by title	X9	hand-written result for a real chart	caught 114, reaches 973, shared 11, caught-nothing no
+count	counts/T5-IR20.md:32	(not joined)	:544	X9,X12	"save_scored(3, 5000) on hand-built rows; ""The user's wording"" comment"	no joined record
+count	counts/T5-IR20.md:33	records/A6.md:247	:594 region	X9	hand-built rows	caught 14, reaches 191, shared 1, caught-nothing no
+count	counts/T5-IR20.md:34	(not joined)	:683	X9	hand-built rows	no joined record
+count	counts/T5-IR20.md:35	(not joined)	:723	X9	hand-built rows and records	no joined record
+count	counts/T5-IR20.md:36	(not joined)	:915	X9	seeded library, tables dropped	no joined record
+count	counts/T5-IR20.md:37	(not joined)	:1120	X9	seeded hand-built rows	no joined record
+count	counts/T5-IR20.md:38	(not joined)	:1149	X9	seeded hand-built rows	no joined record
+count	counts/T5-IR20.md:39	(not joined)	:1181	X10	"label text ""Opening your library..."" typed"	no joined record
+count	counts/T5-IR20.md:40	(not joined)	:1203	X9	seeded hand-built rows	no joined record
+count	counts/T5-IR20.md:41	(not joined)	:1220	X9	seeded hand-built rows	no joined record
+count	counts/T5-IR20.md:42	records/A15.md:251	tests/test_highway_draw.cpp:468	X9	hand-built PreviewScene, fills, PreviewActivation	caught 21, reaches 107, shared 0, caught-nothing no
+count	counts/T5-IR20.md:43	records/A15.md:268	:511	X9	hand-built scene	caught 18, reaches 95, shared 0, caught-nothing no
+count	counts/T5-IR20.md:44	records/A15.md:285	:530	X9	hand-built scene	caught 12, reaches 73, shared 0, caught-nothing no
+count	counts/T5-IR20.md:45	records/A15.md:302	:561	X9	hand-built scene	caught 20, reaches 87, shared 0, caught-nothing no
+count	counts/T5-IR20.md:46	records/A15.md:319	:602	X9,X12	hand-built scene; order cited to Onyx, not code	caught 15, reaches 92, shared 0, caught-nothing no
+count	counts/T5-IR20.md:47	records/A15.md:353	:686	X9	hand-built scene	caught 20, reaches 97, shared 0, caught-nothing no
+count	counts/T5-IR20.md:48	records/A15.md:370	:725	X9	hand-built scene	caught 23, reaches 97, shared 0, caught-nothing no
+count	counts/T5-IR20.md:49	records/A15.md:421	:787	X9	hand-built scene	caught 18, reaches 87, shared 0, caught-nothing no
+count	counts/T5-IR20.md:50	records/A15.md:473	:928	X9	hand-built scene	caught 13, reaches 99, shared 0, caught-nothing no
+count	counts/T5-IR20.md:51	records/A15.md:490	:958	X9	hand-built scene	caught 14, reaches 103, shared 0, caught-nothing no
+count	counts/T5-IR20.md:52	records/A15.md:507	:1003	X9	hand-built scene	caught 10, reaches 81, shared 0, caught-nothing no
+count	counts/T5-IR21.md:10	(not joined)	uitest_library.cpp:80	X9,X11	library rows hand-built and saved; titles typed and read back	no joined record
+count	counts/T5-IR21.md:11	(not joined)	uitest_library.cpp:131	X10	"typed key strings ""Hard Pro Drums, 2x Bass"""	no joined record
+count	counts/T5-IR21.md:12	(not joined)	uitest_library.cpp:260	X10	typed button label text	no joined record
+count	counts/T5-IR21.md:14	(not joined)	uitest_library.cpp:298	X10	"typed summary label with ""5 bars"", ""85 ms"""	no joined record
+count	counts/T5-IR21.md:15	(not joined)	uitest_library.cpp:389	X10	"typed message ""analysis is off"" and key name; the bad rules file is real input"	no joined record
+count	counts/T5-IR21.md:16	(not joined)	uitest_library.cpp:419	X10	"typed `view_prodrums = ""yes""`; the sentence itself is read by name"	no joined record
+count	counts/T5-IR21.md:17	(not joined)	uitest_library.cpp:447	X9	"canned dmleaderboards reply with ""alice"""	no joined record
+count	counts/T5-IR21.md:18	(not joined)	uitest_library.cpp:485	X10	"typed ""Pro Drums"", ""no result yet"", ""Manage folders... (1)"""	no joined record
+count	counts/T5-IR21.md:20	(not joined)	uitest_library.cpp:755	X9	a failure record saved by hand for one chart; no real chart failed	no joined record
+count	counts/T5-IR21.md:22	(not joined)	uitest_library.cpp:863	X10,X12	"typed ""000000""; comment cites ""one measured run ... audit finding 112"""	no joined record
+count	counts/T5-IR21.md:23	(not joined)	uitest_library.cpp:939	X10	typed header names; widths come from place_columns, which is fine	no joined record
+count	counts/T5-IR21.md:27	records/delta-DL1.md:175	test_store_records.cpp:260	X9	library_row hand-built rows	caught 5, reaches 76, shared 0, caught-nothing no
+count	counts/T5-IR21.md:28	records/delta-DL1.md:207	test_store_records.cpp:334	X9	library_row hand-built rows	caught 4, reaches 111, shared 0, caught-nothing no
+count	counts/T5-IR21.md:31	records/delta-DL1.md:367	test_store_records.cpp:591	X9	at_cap(4) HydraRecord hand-built, window field set by hand	caught 0, reaches 23, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:32	records/delta-DL1.md:383	test_store_records.cpp:608	X9	no_paths_at_cap hand-built record	caught 4, reaches 106, shared 0, caught-nothing no
+count	counts/T5-IR21.md:35	records/delta-DL2.md:150	test_store_open.cpp:992	X9	hand-built at_cap record saved; the old file itself is a saved real file	caught 10, reaches 108, shared 2, caught-nothing no
+count	counts/T5-IR21.md:36	records/delta-DL2.md:168	test_store_open.cpp:1033	X9	hand-built records seeded	caught 8, reaches 107, shared 2, caught-nothing no
+count	counts/T5-IR21.md:37	records/delta-DL2.md:205	test_store_library.cpp:766	X9	timed_library hand-built rows	caught 2, reaches 48, shared 0, caught-nothing no
+count	counts/T5-IR21.md:38	records/delta-DL2.md:222	test_store_library.cpp:776	X9	same rows	caught 5, reaches 66, shared 0, caught-nothing no
+count	counts/T5-IR21.md:39	records/delta-DL2.md:257	test_store_library.cpp:823	X9	same rows	caught 2, reaches 58, shared 0, caught-nothing no
+count	counts/T5-IR21.md:40	records/delta-DL2.md:274	test_store_library.cpp:860	X9	same rows	caught 7, reaches 59, shared 0, caught-nothing no
+count	counts/T5-IR21.md:41	records/delta-DL2.md:308	test_store_library.cpp:905	X9	same rows	caught 3, reaches 63, shared 0, caught-nothing no
+count	counts/T5-IR21.md:42	records/delta-DL4.md:197	test_library_model.cpp:794	X9	hand-built RecordLookup answers (ready())	caught 11, reaches 59, shared 0, caught-nothing no
+count	counts/T5-IR21.md:43	records/delta-DL4.md:230	test_library_model.cpp:829	X9	hand-built answers and sample() rows	caught 12, reaches 113, shared 0, caught-nothing no
+count	counts/T5-IR21.md:44	records/delta-DL4.md:270	test_model.cpp:171	X9	hand-built Activation and Path	caught 0, reaches 3, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:45	records/delta-DL4.md:321	test_model.cpp:255	X9	hand-built Activation (the first half calls the functions directly)	caught 0, reaches 1, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:47	records/delta-DL4.md:354	test_model.cpp:654	X9,X10	"hand-built Activation; typed ""E2"", ""E2+-"""	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:48	records/delta-DL4.md:425	test_config.cpp:254	X10,X12	typed 60 as the default; comment cites the user's ruling file	caught 16, reaches 40, shared 0, caught-nothing no
+count	counts/T5-IR21.md:49	records/delta-DL4.md:442	test_config.cpp:279	X10,X11	typed 60/85; 85 set then read back	caught 0, reaches 10, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:50	records/delta-DL4.md:490	test_config.cpp:990	X10	typed label and tooltip text	caught 4, reaches 20, shared 0, caught-nothing no
+count	counts/T5-IR21.md:51	records/delta-DL5.md:105	test_batch_text.cpp:185	X10	"typed ""60 ms"", ""85 ms"""	caught 0, reaches 16, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:52	records/delta-DL5.md:166	test_cli.cpp:636	X10	typed refusal lines	caught 107, reaches 1, shared 54, caught-nothing no
+count	counts/T5-IR21.md:53	(not joined)	uitest_library.cpp:343	X10	typed label text	no joined record
+count	counts/T5-IR21.md:54	records/delta-DL5b.md:24	test_activation_rows.cpp:1308	snapshot,X10	typed figures and words from one run on Tapped Out	caught 173, reaches 725, shared 13, caught-nothing no
+count	counts/T5-IR21.md:57	records/delta-DL5b.md:267	test_perf_digest.cpp:128	snapshot,X12	"digest literal ""from one run""; header cites a plan"	caught 267, reaches 1023, shared 0, caught-nothing no
+count	counts/T5-IR21.md:58	records/delta-DL5b.md:288	test_perf_digest.cpp:132	snapshot,X12	same	caught 245, reaches 1036, shared 0, caught-nothing no
+count	counts/T5-IR21.md:59	records/delta-DL5b.md:308	test_perf_digest.cpp:136	snapshot,X12	same	caught 268, reaches 1017, shared 0, caught-nothing no
+count	counts/T5-IR21.md:60	records/delta-DL5b.md:328	test_perf_digest.cpp:142	snapshot,X12	same	caught 272, reaches 1031, shared 0, caught-nothing no
+count	counts/T5-IR21.md:61	records/delta-DL5b.md:348	test_perf_digest.cpp:149	snapshot,X12	same	caught 207, reaches 639, shared 0, caught-nothing no
+count	counts/T5-IR21.md:62	records/delta-DL5b.md:368	test_perf_digest.cpp:154	snapshot,X12	same	caught 181, reaches 630, shared 0, caught-nothing no
+count	counts/T5-IR21.md:63	records/delta-DL5b.md:388	test_perf_digest.cpp:160	snapshot,X12	same, plus typed count 68	caught 181, reaches 630, shared 0, caught-nothing no
+count	counts/T5-IR21.md:64	records/delta-DL5b.md:408	test_perf_digest.cpp:164	snapshot,X12	same	caught 180, reaches 630, shared 0, caught-nothing no
+count	counts/T5-IR21.md:65	records/B3.md:27	test_replay_schedule.cpp:153	X9,X11	hand-built Activation and ratios typed in then read back	caught 5, reaches 50, shared 0, caught-nothing no
+count	counts/T5-IR21.md:66	records/B3.md:107	test_replay_schedule.cpp:317	X10	typed message text	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:67	records/B3.md:123	test_replay_schedule.cpp:325	X10	typed message text	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:68	records/B3.md:251	test_replay_schedule.cpp:620	X9,X10	hand-built SqueezeGeometry; typed text	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:69	records/B3.md:267	test_replay_schedule.cpp:636	X9,X10,X12	"hand-built geometry; text; comment cites ""Freak 387"""	caught 0, reaches 1, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:70	records/B3.md:283	test_replay_schedule.cpp:653	X9,X10,X12	"hand-built PadChords; text; comment cites ""TM-50's run"""	caught 0, reaches 4, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:71	records/B3.md:299	test_replay_schedule.cpp:679	X10	typed message text; inputs are plain arguments	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:72	records/A30.md:100	test_squeeze_rating.cpp:224	X9	hand-built SongTiming with a 0 and negative BPM	caught 0, reaches 13, shared 0, caught-nothing yes
+count	counts/T5-IR21.md:73	records/A30.md:353	test_squeeze_rating.cpp:709	X9	hand-built Activation	caught 3, reaches 7, shared 0, caught-nothing no
+count	counts/T5-IR21.md:74	records/A30.md:424	test_squeeze_rating.cpp:839	X9	hand-built Activations	caught 5, reaches 14, shared 0, caught-nothing no
+count	counts/T5-IR21.md:75	records/A30.md:441	test_squeeze_rating.cpp:875	X9	hand-built BackendRating	caught 4, reaches 4, shared 0, caught-nothing no
+count	counts/T5-IR21.md:76	records/A30.md:458	test_squeeze_rating.cpp:897	X9,X10,X12	"hand-built Activation; typed words; comment cites D274 and ""the user's rule"""	caught 9, reaches 17, shared 0, caught-nothing no
+count	counts/T5-IR21.md:77	records/A30.md:476	test_squeeze_rating.cpp:939	X9,X10	hand-built Activation; typed words	caught 9, reaches 16, shared 0, caught-nothing no
+count	counts/T5-IR21.md:78	records/A30.md:529	test_squeeze_rating.cpp:976	X9	hand-built Activation	caught 2, reaches 9, shared 0, caught-nothing no
+count	counts/T5-IR21.md:81	records/A45.md:57	uitest_preview.cpp:228	X10	typed 5000 ms jump and 10 ms step	not in the run
+count	counts/T5-IR21.md:83	records/A45.md:202	uitest_preview.cpp:788	X10	"typed ""Preview failed:""; the zero-resolution chart is real input"	not in the run
+count	counts/T5-IR21.md:86	records/T3.md:274	test_preview_boxes.cpp:332	X9,X10	"hand-built Path and activation; typed box text ""x4 . combo 13"""	caught 27, reaches 143, shared 0, caught-nothing no
+count	counts/T5-IR21.md:87	records/T3.md:328	test_preview_boxes.cpp:401	X9,X12	"hand-built Path; comment cites ""User decision D11"""	caught 22, reaches 143, shared 0, caught-nothing no
+count	counts/T5-IR21.md:88	records/T3.md:576	test_preview_boxes.cpp:677	X9,X10	"hand-built Path; typed ""full meter """	caught 4, reaches 99, shared 0, caught-nothing no
+count	counts/T5-IR21.md:89	records/T3.md:649	test_preview_boxes.cpp:753	X10	"typed ""Perfect Solo!"", ""50%"", ""2 / 4 notes"""	caught 11, reaches 58, shared 0, caught-nothing no
+count	counts/T5-IR21.md:90	records/T3.md:890	test_preview_boxes.cpp:929	X9,X10	hand-built Path; typed header and 0.5 ms edge	caught 7, reaches 129, shared 0, caught-nothing no

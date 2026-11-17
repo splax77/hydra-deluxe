@@ -1,0 +1,120 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+count	counts/T5-KR3.md:13	records/D9.md:138	test_sp_tools.py:445 watch_for_run_is_refused_while_a_watch_runs	X9	a scripted fake game feeds the watch (snap_at)	not in the run
+count	counts/T5-KR3.md:14	records/D9.md:247	test_sp_tools.py:674 ch_sp_compare_names_a_missing_file	X10	"typed reply prefix ""compare failed: FileNotFoundError"""	not in the run
+count	counts/T5-KR3.md:15	records/D9.md:352	test_trace_hits.py:132 folder_with_no_chart_is_refused_with_no_dump	X10	whole refusal sentence typed	not in the run
+count	counts/T5-KR3.md:16	records/D9.md:387	test_trace_hits.py:265 no_chart_prints_one_line	X10	whole line typed	not in the run
+count	counts/T5-KR3.md:17	records/D9.md:404	test_trace_hits.py:311 missing_agent_says_how_to_build_it	X10	"typed ""not found; "" text"	not in the run
+count	counts/T5-KR3.md:19	records/D9.md:453	test_trace_hits.py:400 manifest_wins	X11	notes typed in, same notes required back	not in the run
+count	counts/T5-KR3.md:20	records/D9.md:457	test_trace_hits.py:406 score_json_is_used	X9,X11	hand-written score chords, same times required back	not in the run
+count	counts/T5-KR3.md:21	records/D9.md:461	test_trace_hits.py:411 no_source_names_both	X10	two full error sentences typed	not in the run
+count	counts/T5-KR3.md:22	records/D9.md:471	test_trace_hits.py:470 stop_ends_a_run_that_never_ends	X9,X10	"fake frida session with an invented agent message; typed ""ended: not yet..."""	not in the run
+count	counts/T5-KR3.md:23	records/D9.md:476	test_trace_hits.py:485 calls_grow_as_the_agent_sends_them	X9,X11	invented hit calls sent in, required back unchanged	not in the run
+count	counts/T5-KR3.md:24	records/D9.md:480	test_trace_hits.py:498 lined_up_starts_at_since	X9	invented hit calls from a fake session	not in the run
+count	counts/T5-KR3.md:25	records/D9.md:485	test_trace_hits.py:511 run_the_agent_ends_keeps_the_agents_end	X9,X10	"fake agent messages; typed ""ended: done (agent: song over)"""	not in the run
+count	counts/T5-KR3.md:26	records/D9.md:489	test_trace_hits.py:520 agent_end_that_lands_as_stop	X9,X10	fake session; typed end line	not in the run
+count	counts/T5-KR3.md:27	records/D9.md:503	test_trace_hits.py:563 runner_that_raises_ends_as_failed	X9,X11	"invented RuntimeError(""script broke"") required back as text"	not in the run
+count	counts/T5-KR3.md:28	records/D9.md:507	test_trace_hits.py:571 missing_agent_says_how_to_build_it (session)	X10	"typed ""not found; "" prefix"	not in the run
+count	counts/T5-KR3.md:31	records/D9.md:780	test_edge_probe.py:85 probes_file_is_a_list_of_index_and_lead	X11	typed 88.72 / -82 required back as Probe values	not in the run
+count	counts/T5-KR3.md:33	records/D9.md:788	test_edge_probe.py:97 chord_named_twice_is_refused	X10	typed message regex	not in the run
+count	counts/T5-KR3.md:39	records/D2.md:424	test_dump_facts.py:280 output_folder_inside_the_repo_is_refused	X10	typed message words	not in the run
+count	counts/T5-KR3.md:41	records/D2.md:1329	test_frida_attach.py:783 blocked_log_write_does_not_hold_up_the_reply	X9,X11	"invented agent replies; {""pressed"": True} required back"	not in the run
+count	counts/T5-KR3.md:42	records/D2.md:1353	test_frida_attach.py:811 every_line_is_on_disk_before_detach	X9,X11	invented messages written and required back unchanged	not in the run
+count	counts/T5-KR3.md:43	records/D2.md:1489	test_frida_attach.py:976 check_catches_every_pattern	X9	hand-typed source line to the scanner	not in the run
+count	counts/T5-KR3.md:44	records/D2.md:1501	test_frida_attach.py:985 reads_and_comparisons_pass	X9	hand-typed source lines	not in the run
+count	counts/T5-KR3.md:46	records/D2.md:1539	test_frida_attach.py:1039 only_the_listed_agents_hold_a_list	X9,X10	hand-written text; typed finding sentence	not in the run
+count	counts/T5-KR3.md:47	records/D2.md:1551	test_frida_attach.py:1048 method_outside_the_list_fails	X9,X10	same	not in the run
+count	counts/T5-KR3.md:48	records/D2.md:1563	test_frida_attach.py:1054 name_on_another_files_list_fails	X9,X10	same	not in the run
+count	counts/T5-KR3.md:49	records/D2.md:1623	test_frida_attach.py:1104 kit_list_name_the_data_file_lacks_fails	X9,X10	hand-built data and kit text; typed sentence	not in the run
+count	counts/T5-KR3.md:50	records/D2.md:1635	test_frida_attach.py:1111 data_file_name_the_kit_list_lacks_fails	X9,X10	same	not in the run
+count	counts/T5-KR3.md:51	records/D2.md:1707	test_frida_attach.py:1145 second_native_function_in_kit_ts_fails	X10	"typed message tail "": calls a game function: """	not in the run
+count	counts/T5-KR3.md:52	records/D2.md:1745	test_frida_attach.py:1275 a_number_of_its_own_fails	X9,X10	hand-typed block; typed finding text	not in the run
+count	counts/T5-KR3.md:60	(not joined)	test_sp_compare.py:405 sp_max_check_refuses_without_a_resolution	X9,X10	hand-built rows (build_rows); typed error text	no joined record
+count	counts/T5-KR3.md:64	(not joined)	test_sp_watch.py:364 opens_the_game_read_only	X9	fake process and fake engine search	no joined record
+count	counts/T5-KR3.md:66	(not joined)	test_stall_harness.py:90 writer_sink_drops_nothing	X10	"typed report text ""dropped 0 chords in all"", ""press-1.csv (4 rows)"""	no joined record
+count	counts/T5-KR3.md:67	(not joined)	test_stall_harness.py:97 cap_ends_the_run_and_says_so	X10	"typed ""cap reached"" and report line"	no joined record
+count	counts/T5-KR3.md:70	(not joined)	test_stall_harness.py:130 missing_cdb_is_said	X10,X11	"the ""WinDbg is not installed"" text is typed in the test's stand-in and required back"	no joined record
+count	counts/T5-KR3.md:71	(not joined)	test_stall_harness.py:140 second_stall_starts_no_second_cdb	X9,X10,X11	"fake launcher returns ""fake cdb stacks"", required back; typed ""most recent call first"""	no joined record
+count	counts/T5-KR3.md:73	(not joined)	test_agent_cost.py:173 agent_without_meta_file_is_unknown_type	X9,X10	"hand-written transcript line; typed ""unknown"""	no joined record
+count	counts/T5-KR3.md:74	(not joined)	test_agent_cost.py:196 model_with_no_price_fails_loudly	X9	invented model name and transcript	no joined record
+count	counts/T5-KR3.md:80	records/D3.md:59	test_frida_tools.py:279 facts_load_once_per_build	X9	fake game replies [STATE, STATE]	not in the run
+count	counts/T5-KR3.md:81	records/D3.md:203	test_frida_tools.py:481 search_runs_without_the_servers_lock	X9	invented engine returned by a fake finder	not in the run
+count	counts/T5-KR3.md:83	records/D3.md:443	test_front.py:300 tool_list_and_instructions_come_from_the_worker	X9,X10,X11	fake worker; typed instructions and tool names required back	not in the run
+count	counts/T5-KR3.md:84	records/D3.md:448	test_front.py:322 call_comes_back_as_the_worker_sent_it	X9	fake worker	not in the run
+count	counts/T5-KR3.md:85	records/D3.md:464	test_front.py:351 replies_find_their_calls_out_of_order	X9,X11	"fake worker replies ""slept 1.5"" required back"	not in the run
+count	counts/T5-KR3.md:86	records/D3.md:469	test_front.py:362 mute_worker_ends_at_the_cap	X9,X10	fake mute worker; typed cap sentences	not in the run
+count	counts/T5-KR3.md:87	records/D3.md:490	test_front.py:420 two_calls_open_at_a_death	X9,X10	"fake dying worker; typed ""exited with code 7"""	not in the run
+count	counts/T5-KR3.md:88	records/D3.md:515	test_front.py:493 reload_reports_pids_times_and_tool_difference	X9,X10	fake worker settings; typed report lines	not in the run
+count	counts/T5-KR3.md:89	records/D3.md:524	test_front.py:533 connection_on_2026_07_28	X9,X10	fake worker; typed envelope and sentences	not in the run
+count	counts/T5-KR3.md:90	records/D3.md:587	test_front.py:720 shapes_the_hook_cannot_read	X9,X10	"fake worker; typed ""refused: ch_call's"""	not in the run
+count	counts/T5-KR3.md:98	records/D10.md:176	test_engine.py:333 constants_need_no_captured_object	X9	fake process memory holding every constant	not in the run
+count	counts/T5-KR3.md:99	records/D10.md:208	test_engine.py:371 use_object_takes_a_scanned_pointer	X9,X11	fake process; 1.25 typed in, required back	not in the run
+count	counts/T5-KR3.md:103	records/D10.md:645	test_input_driver.py:98 every_lane_has_a_short_name	X10	"typed label ""Kick"""	not in the run
+count	counts/T5-KR3.md:106	records/D10.md:719	test_input_driver.py:197 focus_window_skips_a_missing_window	X11	typed handle 0x1234 required back	not in the run
+count	counts/T5-KR3.md:113	(not joined)	test_play_chart.py:163 declined_chord_sends_its_kept_gems	snapshot	chord 51 lanes and kept gems pinned from one fixture, no rule given	no joined record
+count	counts/T5-KR3.md:117	(not joined)	test_play_chart.py:975 every_row_is_on_disk_before_the_writer_closes	X9,snapshot	"fake game, fake clock; row indexes ""38"",""41"",""45"" pinned from the fixture"	no joined record
+count	counts/T5-KR3.md:121	(not joined)	test_play_chart.py:1544 read_equal_to_aim_end_moves_nothing	X9	made-up end reads fed to a fake game	no joined record
+count	counts/T5-KR4.md:11	records/delta-DL1.md:110	:188	X9	"the second record's path text ""second"" is typed in"	caught 3, reaches 101, shared 0, caught-nothing no
+count	counts/T5-KR4.md:12	records/delta-DL1.md:127	:215	X9	"hand-built failure record ""No notes."""	caught 4, reaches 107, shared 0, caught-nothing no
+count	counts/T5-KR4.md:20	records/delta-DL1.md:287	:430	X9	hand-built failure record	caught 8, reaches 105, shared 0, caught-nothing no
+count	counts/T5-KR4.md:23	records/delta-DL4.md:21	test_library_jobs.cpp:464	X9	fake_charts rows and a fake analyzer (the result it returns is a real corpus analysis)	caught 25, reaches 725, shared 1, caught-nothing no
+count	counts/T5-KR4.md:24	records/delta-DL4.md:38	:481	X9	same	caught 23, reaches 725, shared 1, caught-nothing no
+count	counts/T5-KR4.md:25	records/delta-DL4.md:54	:498	X9	same	caught 25, reaches 725, shared 1, caught-nothing no
+count	counts/T5-KR4.md:26	records/delta-DL4.md:70	:524	X9	"fake analyzer throws made-up errors (""cannot open file: x"")"	caught 7, reaches 119, shared 0, caught-nothing no
+count	counts/T5-KR4.md:27	records/delta-DL4.md:87	:560	X9	"fake rows, fake analyzer; typed ids ""fake0"""	caught 24, reaches 725, shared 1, caught-nothing no
+count	counts/T5-KR4.md:28	records/delta-DL4.md:121	:622	X9	fake rows, fake analyzer	caught 23, reaches 727, shared 1, caught-nothing no
+count	counts/T5-KR4.md:29	records/delta-DL2.md:239	test_store_library.cpp:806	X9	hand-built timed_library rows	caught 2, reaches 59, shared 0, caught-nothing no
+count	counts/T5-KR4.md:30	records/delta-DL2.md:291	:886	X9	same	caught 3, reaches 53, shared 0, caught-nothing no
+count	counts/T5-KR4.md:34	records/delta-DL3.md:352	test_app_library.cpp:1242	X9	library_entry(5) rows are hand-built	caught 15, reaches 203, shared 0, caught-nothing no
+count	counts/T5-KR4.md:35	records/delta-DL3.md:368	:1261	X9	same	caught 35, reaches 244, shared 0, caught-nothing no
+count	counts/T5-KR4.md:36	records/delta-DL3.md:555	test_app_reports.cpp:1084	X9	canned_dm_fetcher is a hand-written dmleaderboards reply	caught 109, reaches 989, shared 0, caught-nothing no
+count	counts/T5-KR4.md:37	records/D4.md:574	tools/ch_mcp/tests/test_game_tools.py:1154	X10	"expects typed message ""could not read ...: FileNotFoundError"""	not in the run
+count	counts/T5-KR4.md:39	records/D4.md:769	:1548	X9	hand-written ROWS and a fake live_play	not in the run
+count	counts/T5-KR4.md:40	records/D4.md:802	:1639	X9	same	not in the run
+count	counts/T5-KR4.md:41	records/D4.md:818	:1666	X9	fake live_play and RunResult	not in the run
+count	counts/T5-KR4.md:42	records/D4.md:834	:1709	X9	fake writer, hand-written rows	not in the run
+count	counts/T5-KR4.md:43	records/D4.md:842	:1755	X9	hand-written ROWS, fake live_play	not in the run
+count	counts/T5-KR4.md:44	records/D1.md:403	tools/ch_mcp/tests/test_bot_run.py:917	X10	"typed message text ""has no thread to resume"""	not in the run
+count	counts/T5-KR4.md:47	records/D1.md:541	:1224	X9,X10	"made-up song.ini bytes and a fake ogg writer; typed ""Hydra Probe - "" prefix in the expected value"	not in the run
+count	counts/T5-KR4.md:49	(not joined)	test_compare_scorestats.py:211	X9	hand-built _target_stats	no joined record
+count	counts/T5-KR4.md:50	records/D5.md:63	test_game_tools.py:1841	X9,X10	fake chain rig; typed message	not in the run
+count	counts/T5-KR4.md:51	records/D5.md:105	:1892	X9,X10	"fake live_play; typed sentence ""no press inside the run cap of 0.05 s..."""	not in the run
+count	counts/T5-KR4.md:55	records/D6.md:465	test_kit_tools.py:280	X10,X12	"typed 1 and 2, comment cites ""Page 07, IN-76"""	not in the run
+count	counts/T5-KR4.md:57	(not joined)	:263 / :253	X10	hand-planted rules folder; typed error text	no joined record
+count	counts/T5-KR4.md:59	(not joined)	:86 / :140	X10	hand-written JSON rows; typed error text	no joined record
+count	counts/T5-KR4.md:61	(not joined)	:308 / :320	X10	expected answers are typed folder and extension choices	no joined record
+count	counts/T5-KR4.md:62	(not joined)	:327	X9	built from a made-up row	no joined record
+count	counts/T5-KR4.md:70	records/C9.md:1048	test_preview_clock.cpp:35	X11	seek_ms(30000) required back as 30000, with a typed fake time source	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-KR4.md:71	records/B3.md:11	test_replay_schedule.cpp:106	X9,X10	"hand-built Activation with typed sp_end_steps; typed label ""clamped"""	caught 6, reaches 50, shared 0, caught-nothing no
+count	counts/T5-KR4.md:72	records/B3.md:363	:793	X9,X11,X12	"typed scale 1.0044/0.9970 ""from the plan's figures"", returned unchanged"	caught 0, reaches 1, shared 0, caught-nothing yes
+count	counts/T5-KR4.md:74	records/B7.md:33	test_timing.cpp:73	X10,X12	typed tier edges 10/20/30, cites SC-05 doc page	caught 0, reaches 3, shared 0, caught-nothing yes
+count	counts/T5-KR5.md:23	(not joined)	:348	X10	"`error() == ""cancelled""` is the typed cancel text"	no joined record
+count	counts/T5-KR5.md:28	(not joined)	:672	X9	real chart and path; wrong md5 is a probe	no joined record
+count	counts/T5-KR5.md:31	(not joined)	:895	X9	real scan, real store, fingerprint decides the hash	no joined record
+count	counts/T5-KR5.md:33	(not joined)	:992	X10	`on.fills == FillDeadlineRule::Ch10` states the setting-to-rule table back	no joined record
+count	counts/T5-KR5.md:39	(not joined)	:193	X9	`fake_charts` rows and `released_in_turn`, an analyzer that only throws	no joined record
+count	counts/T5-KR5.md:40	(not joined)	:215	X9	same fake charts and fake analyzer	no joined record
+count	counts/T5-KR5.md:41	(not joined)	:243	X9	same, `gated_failure` analyzer	no joined record
+count	counts/T5-KR5.md:42	(not joined)	:271	X9	same	no joined record
+count	counts/T5-KR5.md:46	(not joined)	:1000	X9	"`library_row(""a"",""A"")...` hand-built chart rows stand for a library (three of four stops)"	no joined record
+count	counts/T5-KR5.md:47	(not joined)	:1108	X9	hand-built `library_row`s, `save_batch_record`, `empty_analysis_under` stale records; typed progress lists follow the typed slice sizes	no joined record
+count	counts/T5-KR5.md:48	(not joined)	:1349	X11	"`error() == ""boom""` after `fail(runtime_error(""boom""))`, the typed text read back"	no joined record
+count	counts/T5-KR5.md:56	(not joined)	:778	X9	"analyzer that throws ""no chart file in this test"" for every chart stands in for the real analysis"	no joined record
+count	counts/T5-KR5.md:70	(not joined)	store_library:70	X11	builds the entry from seven typed strings and requires each back	no joined record
+count	counts/T5-KR5.md:85	(not joined)	:723	X10,X12	"`journal_size_limit == 4194304`, a typed constant, from the ""value D93 chose"""	no joined record
+count	counts/T5-KR5.md:86	(not joined)	:1094	X10	SQLite compile option `ENABLE_FTS5 == 0`: a build flag typed	no joined record
+count	counts/T5-KR5.md:87	(not joined)	:1165	X10	"`e.what() == ""sqlite exec failed: database is locked""`, typed message"	no joined record
+count	counts/T5-KR5.md:89	(not joined)	:1269	X10	two compile options typed	no joined record
+count	counts/T5-KR5.md:100	records/A49.md:237	scan.cpp:283	X10	the typed problem and error sentences	caught 0, reaches 3, shared 0, caught-nothing yes
+count	counts/T5-KR5.md:108	records/A45.md:121	:564	X10	"jump of 15000 and 10010 follow the typed ""5 s"" and ""10 ms"" button labels"	not in the run
+count	counts/T5-KR5.md:116	records/A15.md:438	test_highway_draw.cpp:871	X9	`activation_until` hand-builds a PreviewActivation and the scene's notes (a made-up Activation)	caught 23, reaches 99, shared 4, caught-nothing no
+count	counts/T5-KR5.md:117	records/A15.md:456	:914	X9	hand-built scene notes	caught 9, reaches 81, shared 0, caught-nothing no
+count	counts/T5-KR5.md:120	(not joined)	test_store_records.cpp:963	X9		no joined record
+count	counts/T5-KR5.md:121	(not joined)	:1023	X9	the unknown kind 'LaterKind' is a probe (borderline)	no joined record
+count	counts/T5-KR5.md:122	records/A30.md:189	test_squeeze_rating.cpp:462	X10	`kScaleIdentityTolerance == 1e-3` and `kScaleIdentityDigits == 3` typed; the typed edges 1.0009 etc. follow the same typed D256 thousandth; the Tapestry/D256 comment is also a cited source (X12)	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-KR5.md:123	records/A30.md:335	:681	X9	`Activation`, `SPSqueeze`, `BackendSqueeze` hand-built and rated	caught 4, reaches 9, shared 0, caught-nothing no
+count	counts/T5-KR5.md:126	records/A25.md:260	test_report_rows.cpp:235	X9		caught 27, reaches 938, shared 0, caught-nothing no
+count	counts/T5-KR5.md:127	records/A25.md:632	:919	X9		caught 23, reaches 668, shared 0, caught-nothing no
+count	counts/T5-KR5.md:145	records/A3.md:84	test_activation_rows.cpp:925	X10	"expects the typed labels ""m2"", ""m2.1.0"", ""m1"", ""m1.1.0"""	caught 0, reaches 12, shared 0, caught-nothing yes
+count	counts/T5-KR5.md:146	records/A26.md:556	test_report_view.cpp:254	X9,X10	"hand-built `path_row` report rows; typed ""2 of 3 paths"""	caught 6, reaches 29, shared 0, caught-nothing no
+count	counts/T5-KR5.md:147	records/A19.md:487	test_precheck.cpp:495	X10	"expects the typed text ""not a git repository: ..."""	caught 0, reaches 1, shared 0, caught-nothing yes
+count	counts/T5-KR5.md:148	records/A14.md:729	test_helpers.cpp:85	X10	"typed prefix `""hydra_test_probe_""`"	caught 2, reaches 16, shared 0, caught-nothing no

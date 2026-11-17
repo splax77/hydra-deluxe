@@ -1,0 +1,96 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+record	records/D12.md:34	records/D12.md:34	test_the_play_message_carries_the_schedule_and_every_number (test_play_in_game.py:107)	Rewrite		not in the run
+record	records/D12.md:41	records/D12.md:41	test_a_sent_row_and_a_dropped_row_fill_every_column_score_compare_reads (:124)	Rewrite		not in the run
+record	records/D12.md:53	records/D12.md:53	test_an_end_read_posts_one_retime_of_retime_from_ends_output (:155)	Rewrite		not in the run
+record	records/D12.md:67	records/D12.md:67	test_an_end_read_with_star_power_off_still_posts_a_retime (:198)	Rewrite		not in the run
+record	records/D12.md:101	records/D12.md:101	test_each_agent_stop_reason_gives_its_stop_word (:273)	Rewrite		not in the run
+record	records/D12.md:149	records/D12.md:149	test_a_split_chords_rows_match_play_chords_rows_but_the_timing_columns (:342)	Rewrite		not in the run
+record	records/D12.md:186	records/D12.md:186	test_prep_inputs_runs_three_commands_and_dry_loads_the_schedule (:94)	Rewrite		not in the run
+record	records/D12.md:229	records/D12.md:229	test_the_default_exe_is_this_checkouts_release_build (:164)	Rewrite		not in the run
+record	records/D12.md:252	records/D12.md:252	test_known_conversion_default (test_probe_chart.py:39)	Remove		not in the run
+record	records/D12.md:266	records/D12.md:266	test_one_second_at_various_bpm (:50)	Rewrite		not in the run
+record	records/D12.md:272	records/D12.md:272	test_rounds_to_nearest (:55)	Rewrite		not in the run
+record	records/D12.md:305	records/D12.md:305	test_braces_balanced (:96)	Rewrite		not in the run
+record	records/D12.md:325	records/D12.md:325	test_pairs_do_not_overlap (:122)	Rewrite		not in the run
+record	records/D12.md:338	records/D12.md:338	test_probe_note_ticks_are_the_written_ticks (:149)	Rewrite		not in the run
+record	records/D12.md:374	records/D12.md:374	test_chart_ticks_match_manifest_times (:38)	Rewrite		not in the run
+record	records/D12.md:401	records/D12.md:401	test_song_names_are_spelled_once (:95)	Rewrite		not in the run
+record	records/D12.md:473	records/D12.md:473	test_decode_double_known_pattern (test_process.py:34)	Remove		not in the run
+record	records/D12.md:571	records/D12.md:571	test_exact_values_pass (:130)	Rewrite		not in the run
+record	records/D12.md:583	records/D12.md:583	test_back_off_by_one_fails (:139)	Rewrite		not in the run
+record	records/D12.md:589	records/D12.md:589	test_front_off_fails (:144)	Rewrite		not in the run
+record	records/D12.md:613	records/D12.md:613	test_drifted_back_constant_raises (:173)	Rewrite		not in the run
+record	records/D12.md:644	records/D12.md:644	test_read_only_asks_for_read_and_query_rights (test_process_readonly.py:30)	Rewrite		not in the run
+record	records/D12.md:650	records/D12.md:650	test_full_open_keeps_the_four_rights (:33)	Rewrite		not in the run
+record	records/D12.md:663	records/D12.md:663	test_reads_work_normally (:55)	Remove		not in the run
+record	records/D12.md:689	records/D12.md:689	test_derived_rules_come_from_the_per_side_constants (:39)	Rewrite		not in the run
+record	records/D12.md:702	records/D12.md:702	test_normal_back_ms_is_derived_from_the_seconds_value (:52)	Rewrite		not in the run
+record	records/D12.md:708	records/D12.md:708	test_the_real_capped_run_reads_as_capped_not_unclamped (:60)	Rewrite		not in the run
+record	records/D12.md:714	records/D12.md:714	test_a_reading_past_the_cap_is_no_clamp (:67)	Rewrite		not in the run
+record	records/D12.md:720	records/D12.md:720	test_precision_mode_says_the_cap_is_unknown (:71)	Rewrite		not in the run
+record	records/D12.md:726	records/D12.md:726	test_floor_runs_are_checked_against_the_measured_floor (:77)	Rewrite		not in the run
+record	records/D12.md:755	records/D12.md:755	test_a_chord_passes_only_when_the_step_equals_hydras_points (:77)	Rewrite		not in the run
+record	records/D12.md:794	records/D12.md:794	test_the_route_words_are_game_tools (:119)	Rewrite		not in the run
+record	records/D12.md:813	records/D12.md:813	test_clock_line_wording (:153)	Rewrite		not in the run
+record	records/D12.md:819	records/D12.md:819	test_median_and_percentiles (:159)	Rewrite		not in the run
+record	records/D12.md:884	records/D12.md:884	test_the_retime_word_play_chart_writes_reads_back (:257)	Rewrite		not in the run
+record	records/D13.md:155	records/D13.md:155	20. test_the_hydra_full_meter_line_follows_question_4 (409). Read 409-417; D324 item 4.	Rewrite		not in the run
+record	records/D13.md:162	records/D13.md:162	21. test_ms_calls_s_to_ms (421). Read 421-424; `_ms` 202-203.	Remove		not in the run
+record	records/D13.md:168	records/D13.md:168	22. test_no_ready_copy_remains (426). Read 426-433; D323 item 1.	Rewrite		not in the run
+record	records/D13.md:250	records/D13.md:250	37. test_missing_column_is_an_error (612). Read 612-618.	Remove		not in the run
+record	records/D13.md:255	records/D13.md:255	38. test_old_name_is_the_public_finder (639). Read 639-640; sp_compare.py:240-241.	Remove		not in the run
+record	records/D13.md:260	records/D13.md:260	39. test_column_names_follow_the_width (642). Read 642-645.	Rewrite		not in the run
+record	records/D13.md:295	records/D13.md:295	46. test_mouths_740_reaches_its_late_kick_press (729). Read 729-734, 706-708, `press_reach` 93-103; the fixture `mouths_refine_schedule.json` not opened (only t	Rewrite		not in the run
+record	records/D13.md:307	records/D13.md:307	48. test_bomber_147_reaches_its_solved_early_press (743). Read 743-755.	Rewrite		not in the run
+record	records/D13.md:312	records/D13.md:312	49. test_bomber_180_reaches_its_late_press (757). Read 757-765.	Rewrite		not in the run
+record	records/D13.md:317	records/D13.md:317	50. test_senri_with_no_squeeze_reaches_its_one_press (767). Read 767-773.	Rewrite		not in the run
+record	records/D13.md:338	records/D13.md:338	55. test_a_gap_of_exactly_the_threshold_does_not_count (816). Read 816-818. 1 Claim: a gap exactly equal to the threshold (50 ms) is not a gap. 3 claim not chec	Remove		not in the run
+record	records/D13.md:356	records/D13.md:356	63. test_the_real_ls_o2_run_inside_its_song (874). Read 868-883; `testdata/ch_watch/ls-o2-run1-sp_watch-1.csv` header only by the loader; contents not opened.	Rewrite		not in the run
+record	records/D13.md:362	records/D13.md:362	64. test_the_real_ls_o2_run_with_no_song_end (885). Read 885-893.	Rewrite		not in the run
+record	records/D13.md:367	records/D13.md:367	test_sp_watch.py	Remove		not in the run
+record	records/D13.md:376	records/D13.md:376	66. test_every_star_power_field_at_each_width (78). Read 78-90, `sp_block` 58-71, engine.py 114-140.	Rewrite		not in the run
+record	records/D13.md:402	records/D13.md:402	70. test_a_sample_costs_three_reads_past_the_engine_block (147). Read 147-151.	Rewrite		not in the run
+record	records/D13.md:441	records/D13.md:441	78. test_writes_a_row_only_when_a_logged_field_changes (235). Read 235-247; sp_watch.py 101-165.	Rewrite		not in the run
+record	records/D13.md:457	records/D13.md:457	81. test_the_wall_clock_cap_ends_a_run_whose_clock_keeps_moving (273). Read 273-282.	Rewrite		not in the run
+record	records/D13.md:463	records/D13.md:463	82. test_should_stop_ends_the_run_after_two_polls (284). Read 284-300.	Rewrite		not in the run
+record	records/D13.md:467	records/D13.md:467	83. test_poll_and_cap_literals (302). Read 302-304.	Remove		not in the run
+record	records/D13.md:477	records/D13.md:477	85. test_the_default_search_prints_its_dots_to_out_only (342). Read 342-350.	Rewrite		not in the run
+record	records/D13.md:481	records/D13.md:481	86. test_find_engine_live_sends_its_dots_to_the_out_it_is_given (352). Read 352-362.	Rewrite		not in the run
+record	records/D13.md:492	records/D13.md:492	88. test_a_whole_run_writes_the_header_and_prints_the_summary (374). Read 374-397.	Rewrite		not in the run
+record	records/D13.md:501	records/D13.md:501	test_watch_checks.py	Rewrite		not in the run
+record	records/D13.md:513	records/D13.md:513	91. test_a_value_11_ms_from_the_chord_does_not (47). Read 47-51.	Rewrite		not in the run
+record	records/D13.md:517	records/D13.md:517	92. test_a_value_exactly_10_ms_from_the_chord_counts (53). Read 53-57.	Rewrite		not in the run
+record	records/D13.md:521	records/D13.md:521	93. test_a_change_more_than_50_ms_from_the_chord_is_not_searched (59). Read 59-65.	Rewrite		not in the run
+record	records/D13.md:525	records/D13.md:525	94. test_two_close_chords_each_take_their_own_change (67). Read 67-73.	Rewrite		not in the run
+record	records/D13.md:529	records/D13.md:529	95. test_a_nan_value_held_before_the_hit_is_not_a_change (75). Read 75-81.	Rewrite		not in the run
+record	records/D13.md:533	records/D13.md:533	96. test_chords_outside_the_log_are_not_judged (83). Read 83-87.	Rewrite		not in the run
+record	records/D13.md:586	records/D13.md:586	108. test_a_wrong_header_is_refused (193). Read 193-196.	Remove		not in the run
+record	records/D13.md:590	records/D13.md:590	109. test_run_reads_both_files (198). Read 198-208.	Rewrite		not in the run
+record	records/D13.md:628	records/D13.md:628	115. test_a_clean_run_says_no_stall (124). Read 124-128.	Rewrite		not in the run
+record	records/D13.md:653	records/D13.md:653	120. test_the_load_process_is_stopped_at_the_end (214). Read 214-242; `load_folders` 547-561.	Rewrite		not in the run
+record	records/D13.md:659	records/D13.md:659	121. test_the_step_names_are_the_timing_columns (244). Read 244-248.	Rewrite		not in the run
+record	records/D13.md:779	records/D13.md:779	161. test_summary_groups_by_type_and_effort (263). Read 263-267; agent_cost.py 200-211. 1 Claim: the summary line for executors at high effort shows 2 agents, m	Rewrite		not in the run
+record	records/D14.md:239	records/D14.md:239	test_tables_print_in_the_fixed_order (:216)	Rewrite		not in the run
+record	records/D14.md:547	records/D14.md:547	test_the_brief_names_the_three_inputs_and_the_labels (:170)	Rewrite		not in the run
+record	records/D15.md:56	records/D15.md:56	BP-3 the reply names the pass's limit and the command to build with (`:127-130`)	Rewrite		not in the run
+record	records/D15.md:109	records/D15.md:109	BP-13 off the gate, builds as before (`:235-246`)	Rewrite		not in the run
+record	records/D15.md:114	records/D15.md:114	BP-14 with a pass: claim before configure, low priority on the build line only, slot given back, pass spent (`:248-261`)	Rewrite		not in the run
+record	records/D15.md:119	records/D15.md:119	BP-15 a Ninja preset has no low-priority switch (`:263-270`)	Rewrite		not in the run
+record	records/D15.md:182	records/D15.md:182	CF-3 an ancestor record, one changed file (`:86-97`)	Rewrite		not in the run
+record	records/D15.md:246	records/D15.md:246	MP-2 `Select-Spread` (`:112-114`) 112 `Select-Spread 6 3` gives 1,3,5; 113 `4 10` gives 1,2,3,4; 114 `0 5` is empty. The typed answers (1,3,5) are raw results: 	Rewrite		not in the run
+record	records/D15.md:250	records/D15.md:250	MP-4 a normal run (`:213-222`) 215 exit 0. 218 each edit's result equals `#1=killed #2=no build #3=killed #4=killed #5=survived #6=survived`: the fake build and	Rewrite		not in the run
+record	records/D15.md:259	records/D15.md:259	MP-8 under the gate with a pass, one pass holds across all rebuilds (`:244-258`) 255 exit 0. 257 exactly eight builds each seeing one lock and gated, with an em	Rewrite		not in the run
+record	records/D15.md:280	records/D15.md:280	RS-5 the keygen's refusals (`:105-112`) 107 refuses to overwrite a key (nonzero); 110 refuses a protected key inside the repo and writes nothing there; 112 `-Te	Rewrite		not in the run
+record	records/D15.md:304	records/D15.md:304	"9. `test_a_cut_reply_keeps_a_line_whole` (`:243`) 245-246 exact text with ""200"", ""1 of 2 lines dropped"". Raw result of `cap_reply`, working in the code."	Rewrite		not in the run
+record	records/D15.md:308	records/D15.md:308	"13. `test_long_reply_is_cut_at_the_cap` (`:286`) 289 length at most `REPLY_CAP_CHARS`; 293 the last line has typed ""12,000"" and `1000 - kept` of ""1000 lines"" (t"	Rewrite		not in the run
+record	records/D15.md:309	records/D15.md:309	14. `test_a_cut_reply_ends_with_the_given_hint` (`:296`) 298 exact text. Raw result as 9.	Rewrite		not in the run
+record	records/D15.md:349	records/D15.md:349	47. `test_the_reply_is_a_pass_and_the_command_to_build_with` (`:664`) 666-667: the reply starts `pass: <word>` and contains `$env:HYDRA_BUILD_PASS='<token>'; .\	Rewrite		not in the run
+record	records/D15.md:353	records/D15.md:353	"51. `test_no_session_id_refuses_and_hands_out_nothing` (`:687`) 691-692 for """" and "" "": ""no pass: CLAUDE_CODE_SESSION_ID is not set"", no lock. Typed name copies"	Rewrite		not in the run
+record	records/D15.md:354	records/D15.md:354	52. `test_a_missing_variable_refuses_too` (`:694`) 697. Same wording copy as 51.	Rewrite		not in the run
+record	records/D15.md:372	records/D15.md:372	62. `test_headless_session` (`:824`) 826 store ready; 827 `scan()`, which asserts `charts=98` (line 774); 828 reset ok; 829 `charts=0`; 830 stop text. Snapshot:	Rewrite		not in the run
+record	records/D15.md:377	records/D15.md:377	"67. `test_the_wait_cap_and_the_timeout_every_reply_carries` (`:862`) 864-869 exact reply ""wait 31 is longer than the 30 s timeout in force..."". The 31 and 30 ar"	Rewrite		not in the run
+record	records/D15.md:380	records/D15.md:380	70. `test_text_and_dump_filters_are_hydras` (`:896`) 897-907: `scan()` (98 again), the Burnout row from Hydra's text, a typed dump with ids `id=0xBAEC0FDA`, `re	Rewrite		not in the run
+record	records/D15.md:388	records/D15.md:388	78. `test_a_focused_wildcard_ref_finds_the_popups_checkbox` (`:969`) 971-973: exact reply with `id=0x357E5949 rect=(723,176 24x24) checked`: a raw pinned result	Rewrite		not in the run
+record	records/D15.md:390	records/D15.md:390	80. `test_dump_shows_the_whole_label` (`:982`) 984-988 exact dump text with window id and size 1280x800. Raw pinned result.	Rewrite		not in the run
+record	records/D15.md:391	records/D15.md:391	81. `test_a_popup_dump_lists_the_checkboxes_inside_its_tables` (`:990`) 993-996 exact popup id `##Popup_2cd77690`. Raw pinned result.	Rewrite		not in the run
+record	records/D15.md:394	records/D15.md:394	84. `test_window_session_on_a_seed_from_headless` (`:1059`, same skip) 1062-1075 including `charts=98` at 1070.	Rewrite		not in the run

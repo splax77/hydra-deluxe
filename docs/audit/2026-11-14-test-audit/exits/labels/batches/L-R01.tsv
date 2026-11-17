@@ -1,0 +1,71 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+record	records/A1.md:17	records/A1.md:17	sample_path_rows (tests/report_samples.cpp:11-45)	Rewrite		not in the run
+record	records/A1.md:131	records/A1.md:131	sample_dm_rows (tests/report_samples.cpp:70-103)	Rewrite		not in the run
+record	records/A10.md:24	records/A10.md:24	1. collect_dm_rows joins scores to records and labels them (tests/test_dm_report.cpp:61)	Rewrite		caught 24, reaches 138, shared 0, caught-nothing no
+record	records/A10.md:49	records/A10.md:49	2. collect_dm_rows: no percent off 100% speed; store identity fallback (tests/test_dm_report.cpp:102)	Rewrite		caught 16, reaches 137, shared 0, caught-nothing no
+record	records/A10.md:68	records/A10.md:68	3. dmbot JSON parsers handle canned payloads (tests/test_dm_report.cpp:119)	Rewrite		caught 18, reaches 27, shared 0, caught-nothing no
+record	records/A10.md:88	records/A10.md:88	4. collect_dm_rows answers above-optimal beside the status (tests/test_dm_report.cpp:171)	Rewrite		caught 20, reaches 137, shared 0, caught-nothing no
+record	records/A10.md:108	records/A10.md:108	5. dm comparison: a score's search text is folded and tag-free (tests/test_dm_report.cpp:196)	Rewrite		caught 18, reaches 45, shared 0, caught-nothing no
+record	records/A10.md:126	records/A10.md:126	6. generate_dm_report: tally and framing behind one seam (tests/test_dm_report.cpp:205)	Rewrite		caught 24, reaches 145, shared 0, caught-nothing no
+record	records/A10.md:147	records/A10.md:147	7. generate_dm_report hands over its rows, subtitle, footer, player and mode (tests/test_dm_report.cpp:242)	Rewrite		caught 25, reaches 145, shared 0, caught-nothing no
+record	records/A10.md:170	records/A10.md:170	8. dm_tiles: the tiles count only the scores shown (tests/test_dm_report.cpp:282)	Rewrite		caught 10, reaches 12, shared 0, caught-nothing no
+record	records/A10.md:192	records/A10.md:192	9. status_token: each status's chip colour (tests/test_dm_report.cpp:331)	Rewrite		caught 9, reaches 9, shared 0, caught-nothing no
+record	records/A10.md:211	records/A10.md:211	10. collect_dm_rows: the stored names go through display_title, display_artist and display_charter (tests/test_dm_report.cpp:345)	Rewrite		caught 31, reaches 173, shared 0, caught-nothing no
+record	records/A10.md:231	records/A10.md:231	11. collect_dm_rows: a leaderboard row's DMBot names lose their Clone Hero tags (tests/test_dm_report.cpp:368)	Rewrite		caught 31, reaches 164, shared 0, caught-nothing no
+record	records/A10.md:249	records/A10.md:249	12. collect_dm_rows: a leaderboard row with no charter shows the library's, else (unknown) (D266 item 2) (tests/test_dm_report.cpp:392)	Rewrite		caught 17, reaches 138, shared 0, caught-nothing no
+record	records/A10.md:269	records/A10.md:269	13. dm comparison: a percent rounds once (tests/test_dm_report.cpp:433)	Remove		caught 2, reaches 6, shared 0, caught-nothing no
+record	records/A10.md:287	records/A10.md:287	14. dm comparison: the average tile reads a percent the way the cells do (tests/test_dm_report.cpp:451)	Rewrite		caught 2, reaches 14, shared 0, caught-nothing no
+record	records/A10.md:308	records/A10.md:308	15. collect_dm_rows: the % of opt column sorts on the shown hundredths (tests/test_dm_report.cpp:471)	Rewrite		caught 19, reaches 142, shared 0, caught-nothing no
+record	records/A10.md:391	records/A10.md:391	19. collect_dm_rows tells no current result from not in library (tests/test_dm_report.cpp:740)	Rewrite		caught 22, reaches 139, shared 0, caught-nothing no
+record	records/A10.md:411	records/A10.md:411	"20. collect_dm_rows: a Ready record with no paths reads ""no paths"" (tests/test_dm_report.cpp:777)"	Rewrite		caught 27, reaches 152, shared 0, caught-nothing no
+record	records/A10.md:434	records/A10.md:434	21. why_not_comparable names the missing Clone Hero rule (tests/test_dm_report.cpp:829)	Rewrite		caught 10, reaches 82, shared 0, caught-nothing no
+record	records/A10.md:458	records/A10.md:458	22. why_not_comparable for settings asks about the Clone Hero cap profile (tests/test_dm_report.cpp:865)	Rewrite		caught 8, reaches 17, shared 0, caught-nothing no
+record	records/A10.md:478	records/A10.md:478	23. clone_hero_cap_phrase and compare_tooltip name SP cap 4 (tests/test_dm_report.cpp:887)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A10.md:497	records/A10.md:497	24. why_not_comparable refuses Note Shuffle, and only Note Shuffle changes (tests/test_dm_report.cpp:895)	Rewrite		caught 13, reaches 137, shared 0, caught-nothing no
+record	records/A10.md:520	records/A10.md:520	25. collect_dm_rows refuses a non-Expert chart mode with the toolbar's sentence (tests/test_dm_report.cpp:929)	Rewrite		caught 8, reaches 82, shared 0, caught-nothing no
+record	records/A10.md:540	records/A10.md:540	26. collect_dm_rows refuses a chart mode it cannot read (tests/test_dm_report.cpp:948)	Rewrite		caught 6, reaches 77, shared 0, caught-nothing no
+record	records/A10.md:558	records/A10.md:558	27. collect_dm_rows: a database with no chart library stops with the path report's sentence (tests/test_dm_report.cpp:959)	Rewrite		caught 7, reaches 72, shared 0, caught-nothing no
+record	records/A10.md:578	records/A10.md:578	28. collect_dm_rows: a result whose chart the library doesn't list is left out (tests/test_dm_report.cpp:975)	Rewrite		caught 21, reaches 138, shared 0, caught-nothing no
+record	records/A10.md:597	records/A10.md:597	29. collect_dm_rows reads the Clone Hero cap profile by name (tests/test_dm_report.cpp:994)	Rewrite		caught 21, reaches 148, shared 0, caught-nothing no
+record	records/A10.md:617	records/A10.md:617	30. settings_change_touches: the comparison reads its chart mode and the lens, not the cap (tests/test_dm_report.cpp:1030)	Rewrite		caught 1, reaches 12, shared 0, caught-nothing no
+record	records/A11.md:11	records/A11.md:11	1. docs match code: the User Guide's hydra_rules.ini sample is the defaults (tests/test_docs_match_code.cpp:411)	Rewrite		caught 9, reaches 30, shared 0, caught-nothing no
+record	records/A11.md:34	records/A11.md:34	2. docs match code: every marked default equals the code's value (tests/test_docs_match_code.cpp:468)	Rewrite		caught 1, reaches 5, shared 0, caught-nothing no
+record	records/A11.md:57	records/A11.md:57	3. docs match code: the marker check catches a wrong number and a wrong word (tests/test_docs_match_code.cpp:482)	Rewrite		caught 1, reaches 3, shared 0, caught-nothing no
+record	records/A11.md:100	records/A11.md:100	5. docs match code: every backticked code name exists in src/, tools/ or tests/ (tests/test_docs_match_code.cpp:1036)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:13	records/A12.md:13	1. a scrambled name on a Clone Hero page fails with its line (tests/test_docs_match_code.cpp:1109)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:32	records/A12.md:32	2. a page span is found by the table's cited column (tests/test_docs_match_code.cpp:1122)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:49	records/A12.md:49	3. what counts as a game fact on a Clone Hero page (tests/test_docs_match_code.cpp:1134)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:68	records/A12.md:68	4. which spans and which build a Clone Hero page line has (tests/test_docs_match_code.cpp:1156)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:87	records/A12.md:87	5. every game fact on a Clone Hero page has a home (tests/test_docs_match_code.cpp:1195)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:122	records/A12.md:122	7. the scratch path check catches each path form and skips only the two folders (tests/test_docs_match_code.cpp:1273)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A12.md:139	records/A12.md:139	8. no permanent doc or code comment names a docs path that is not in the tree (tests/test_docs_match_code.cpp:1416)	Rewrite		none
+record	records/A12.md:156	records/A12.md:156	9. the docs path check reads each path form and skips the removed form (tests/test_docs_match_code.cpp:1447)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A12.md:191	records/A12.md:191	11. the premise map check catches each form and reads only the plans that count (tests/test_docs_match_code.cpp:1890)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:208	records/A12.md:208	12. every picture the public pages link is a shot the capture script takes, and the file exists (tests/test_docs_match_code.cpp:2032)	Rewrite		none
+record	records/A12.md:226	records/A12.md:226	13. the README's Stale sentence has no version list (tests/test_docs_match_code.cpp:2139)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A12.md:243	records/A12.md:243	14. code lexer: C++ and Python comments and string literals (tests/test_docs_match_code.cpp:2170)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A13.md:15	records/A13.md:15	1. search invariants hold across the corpus and config knobs (tests/test_engine_sweeps.cpp:74)	Rewrite		caught 131, reaches 370, shared 74, caught-nothing no
+record	records/A13.md:63	records/A13.md:63	2. the engine's limit walk agrees with Activation::within_ms_limit (tests/test_engine_sweeps.cpp:147)	Rewrite		caught 150, reaches 8, shared 128, caught-nothing no
+record	records/A13.md:105	records/A13.md:105	3. note total: every path of How You Remind Me stores the Song's note count (tests/test_engine_sweeps.cpp:228)	Remove		caught 94, reaches 654, shared 0, caught-nothing no
+record	records/A13.md:143	records/A13.md:143	4. note total: the engine, the Song and the Dynamics tab agree on every corpus chart (tests/test_engine_sweeps.cpp:245)	Rewrite		caught 130, reaches 934, shared 0, caught-nothing no
+record	records/A13.md:183	records/A13.md:183	5. the graph finds the chart's multiplier squeezes once, in chart order (tests/test_engine_sweeps.cpp:286)	Rewrite		caught 101, reaches 72, shared 74, caught-nothing no
+record	records/A13.md:222	records/A13.md:222	6. legacy fill deadline analyzes a chart end to end (tests/test_engine_sweeps.cpp:325)	Rewrite		caught 92, reaches 293, shared 71, caught-nothing no
+record	records/A13.md:261	records/A13.md:261	7. stored transfer scales match the display-layer recomputation (tests/test_engine_sweeps.cpp:410)	Rewrite		caught 124, reaches 350, shared 74, caught-nothing no
+record	records/A13.md:304	records/A13.md:304	8. no activation keeps backends past its squeezed-out note (tests/test_engine_sweeps.cpp:480)	Rewrite		caught 113, reaches 6, shared 105, caught-nothing no
+record	records/A13.md:344	records/A13.md:344	9. search_allzero returns only all-0 paths inside the 0 ms limit (tests/test_engine_sweeps.cpp:517)	Rewrite		caught 162, reaches 366, shared 93, caught-nothing no
+record	records/A13.md:387	records/A13.md:387	10. corpus: squeeze-ins at exactly 0 and what they change (tests/test_engine_sweeps.cpp:581)	Rewrite		caught 263, reaches 56, shared 229, caught-nothing no
+record	records/A13.md:427	records/A13.md:427	11. score graph: the backend rows are sized once, one per chord (tests/test_engine_sweeps.cpp:670)	Rewrite		caught 83, reaches 59, shared 74, caught-nothing no
+record	records/A13.md:464	records/A13.md:464	12. run_search: EngineOptions carries each knob to the engine (tests/test_engine_sweeps.cpp:695)	Rewrite		caught 26, reaches 251, shared 0, caught-nothing no
+record	records/A13.md:502	records/A13.md:502	13. allzero_options: no skips, a hard 0 ms limit, everything else default (tests/test_engine_sweeps.cpp:729)	Remove		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A13.md:541	records/A13.md:541	14. settings_key: the text for SearchSettings{} is pinned, and every field moves it (tests/test_engine_sweeps.cpp:745)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A13.md:578	records/A13.md:578	15. a 4-bar graph built at the song's phrase count stores the same paths (tests/test_engine_sweeps.cpp:770)	Rewrite		caught 86, reaches 814, shared 0, caught-nothing no
+record	records/A13.md:614	records/A13.md:614	16. graph_build_cap: never taller than the song's phrases, never below one (tests/test_engine_sweeps.cpp:804)	Rewrite		caught 0, reaches 1, shared 0, caught-nothing yes
+record	records/A13.md:660	records/A13.md:660	17. fill deadline: CH 1.0 anchor value (tests/test_fill_deadline.cpp:43)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:693	records/A13.md:693	18. fill deadline: CH 1.0 lead over two fill lengths, one per tempo (tests/test_fill_deadline.cpp:53)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:726	records/A13.md:726	19. fill deadline: CH 1.0 pad stays fractional at odd resolutions (tests/test_fill_deadline.cpp:77)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:760	records/A13.md:760	20. fill deadline: CH 1.0 preroll clamps at 250 ms (tests/test_fill_deadline.cpp:92)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:794	records/A13.md:794	21. fill deadline: CH 1.0 preroll clamps at 10000 ms (tests/test_fill_deadline.cpp:103)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:828	records/A13.md:828	22. fill deadline: CH 1.1 is unchanged 4-beats-before math (tests/test_fill_deadline.cpp:114)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:861	records/A13.md:861	23. fill deadline: the two rules genuinely differ (tests/test_fill_deadline.cpp:146)	Rewrite		caught 1, reaches 11, shared 0, caught-nothing no
+record	records/A13.md:895	records/A13.md:895	24. fill rule names: one long and one short name per rule, and no (legacy) (tests/test_fill_deadline.cpp:159)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A13.md:930	records/A13.md:930	25. fill rule descriptions: one sentence per rule (tests/test_fill_deadline.cpp:175)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
