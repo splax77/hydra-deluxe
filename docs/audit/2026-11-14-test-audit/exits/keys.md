@@ -128,4 +128,4 @@ The six rows take these keys: `counts/T5-IR10.md:59` O-toolout; `records/D1.md:6
 
 A row gets every key that fits. A row with two faults gets two keys and sits in two questions. For each key, a scout marks the plainest row in its batch and the one that fits least well, so the question can show both ends. A row no key fits gets "no key" with the reason in one sentence.
 
-The count is 48 keys: 11 F, 7 O, 9 C, 11 P, the three above, and 7 K. The plan's stop line is 80.
+The first list held 48 keys: 11 F, 7 O, 9 C, 11 P, the three above, and 7 K. Revision 1 brought it to 53. The plan's stop line is 80.
