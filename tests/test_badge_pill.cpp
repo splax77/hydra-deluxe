@@ -1,7 +1,8 @@
 // The badge pill's size and text place (ui/badge_pill.h) as the
 // activation-row layout uses them (ui/activation_row_layout.h): every pill on
 // every row is sized for the longest badge, side by side and stacked, and its
-// text sits centred in it (D262). Also the Dynamic Hit Window tag's colours.
+// text sits centred in it (D262). Also the one shared pill width
+// (shared_pill_width) and the Dynamic Hit Window tag's text colours.
 //
 // Widths are in the GUI harness's mono font, 9.6 px a character, on a 16 px
 // text line, as in test_activation_row_layout.cpp.
@@ -141,15 +142,21 @@ void check_rgb(const ImVec4& c, int r, int g, int b) {
 
 }  // namespace
 
-TEST_CASE("window tag: safe and short take the mockup's colours") {
-    // The four values of the approved mockup's .dhw .spare rules
-    // (docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)).
-    const hydra::ui::WindowTagColors safe = hydra::ui::window_tag_colors(false);
-    check_rgb(safe.ink, 0xf2, 0xc3, 0x00);
-    check_rgb(safe.fill, 0x2a, 0x24, 0x10);
-    const hydra::ui::WindowTagColors short_tag = hydra::ui::window_tag_colors(true);
-    check_rgb(short_tag.ink, 0xff, 0x7f, 0x00);
-    check_rgb(short_tag.fill, 0x2e, 0x1a, 0x08);
+TEST_CASE("window tag: safe and short take the mockup's text colours") {
+    // The approved mockup's .dhw .spare ink values
+    // (docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)):
+    // #f2c300 for safe, #ff7f00 for short. The pill around the text is every badge's.
+    check_rgb(hydra::ui::window_tag_ink(false), 0xf2, 0xc3, 0x00);
+    check_rgb(hydra::ui::window_tag_ink(true), 0xff, 0x7f, 0x00);
+}
+
+TEST_CASE("badge pill: the shared width grows only for a longer text") {
+    // Literals: 201.6 px is the 21-character longest badge in the mono font,
+    // and a pill is 8 px wider each side at scale 1, 16 px at scale 2.
+    CHECK(hydra::ui::shared_pill_width(201.6f, mono(13), 1.0f) == doctest::Approx(217.6f));
+    CHECK(hydra::ui::shared_pill_width(201.6f, 201.6f, 1.0f) == doctest::Approx(217.6f));
+    CHECK(hydra::ui::shared_pill_width(201.6f, mono(24), 1.0f) == doctest::Approx(246.4f));
+    CHECK(hydra::ui::shared_pill_width(403.2f, mono(13) * 2.0f, 2.0f) == doctest::Approx(435.2f));
 }
 
 TEST_CASE("badge pill: one badge alone sits flush right") {

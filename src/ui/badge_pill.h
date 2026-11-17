@@ -1,15 +1,16 @@
-// The badge pill: the rounded box a timing badge sits in on a Paths-tab
-// activation row. This header owns its look (fill, border, corner radius,
-// padding), its size (its text width plus the padding, at a text width the
-// caller gives so every pill is one width, D262) and where the text sits in
-// it (centred). draw_badge is the one function that draws a badge: the pill,
-// then its text. The rectangle and centring arithmetic is pure, so
-// tests/test_badge_pill.cpp checks it without a frame. activation_row_layout.h
-// decides where the pills go. The header also owns the Dynamic Hit Window
-// row's tag (draw_window_tag), a smaller outlined cousin of the pill.
+// The badge pill: the rounded box a badge sits in, on a Paths-tab activation
+// row and as the tag of a Dynamic Hit Window row. This header owns its look
+// (fill, border, corner radius, padding), its size (shared_pill_width, one
+// width for every pill, D262) and where the text sits in it (centred).
+// draw_badge is the one function that draws a badge: the pill, then its text.
+// The rectangle and centring arithmetic is pure, so tests/test_badge_pill.cpp
+// checks it without a frame. activation_row_layout.h decides where an
+// activation row's pills go.
 
 #ifndef HYDRA_UI_BADGE_PILL_H
 #define HYDRA_UI_BADGE_PILL_H
+
+#include <algorithm>
 
 #include "imgui.h"
 #include "ui/text_role.h"
@@ -46,6 +47,15 @@ inline float pill_width(float text_w, float scale) {
     return text_w + 2.0f * kRowBadgePad * scale;
 }
 
+// The one width every badge pill is drawn at (D262): sized for text
+// `pill_text_w` wide (the caller measures app::longest_activation_badge),
+// grown to `text_w` when a badge's own text is wider, so a pill is never
+// narrower than its text; `scale` is px(1).
+inline float shared_pill_width(float pill_text_w, float text_w, float scale) {
+    // (std::max): windows.h's max macro reaches the GUI tests that include this.
+    return pill_width((std::max)(pill_text_w, text_w), scale);
+}
+
 // The pill whose left edge is `pill_x`, `pill_w` wide, around one text line
 // `line` tall whose top is `text_y`.
 inline PillRect pill_rect(float pill_x, float text_y, float pill_w, float line, float scale) {
@@ -73,51 +83,15 @@ inline void draw_badge(ImDrawList* dl, float pill_x, float text_y, float pill_w,
     ImGui::TextColored(color, "%s", text);
 }
 
-// ---- the Dynamic Hit Window tag ---------------------------------------------
-//
-// The outlined tag at the right end of a Dynamic Hit Window row ("5.4 ms
-// safe", "65.9 ms short"). Its look is the mockup the user approved,
+// The text colour of a Dynamic Hit Window row's tag ("5.4 ms safe", "65.9 ms
+// short"), which is a badge drawn by draw_badge: the mockup's yellow when the
+// tag is safe, the theme's warning orange (kWarningColor) when it is short.
+// Whether a tag is short is app::WindowRowView's. The yellow is the mockup the
+// user approved,
 // docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)
-// (the .dhw .spare rules). Whether a tag is short is app::WindowRowView's.
-
-// Unscaled (multiply by px(1)), from the mockup.
-inline constexpr float kWindowTagPad = 7.0f;     // the padding each side of the tag's text
-inline constexpr float kWindowTagRadius = 3.0f;  // the tag's corner radius
-inline constexpr float kWindowTagOutline = 1.0f; // the outline's thickness
-
-// A tag's two colours: `ink` for its text and its outline, `fill` behind them.
-struct WindowTagColors {
-    ImVec4 ink;
-    ImVec4 fill;
-};
-
-// The tag's colours. Safe is the mockup's yellow on dark gold; short is the
-// theme's warning orange (kWarningColor, the mockup's #ff7f00) on dark brown.
-inline WindowTagColors window_tag_colors(bool is_short) {
-    if (is_short) return {kWarningColor, pill_vec4(PillRgb{46, 26, 8})};
-    return {pill_vec4(PillRgb{242, 195, 0}), pill_vec4(PillRgb{42, 36, 16})};
-}
-
-// The width of a tag around text `text_w` wide; `scale` is px(1).
-inline float window_tag_width(float text_w, float scale) {
-    return text_w + 2.0f * kWindowTagPad * scale;
-}
-
-// Draw one tag on `dl` with its left edge at `pos` (screen space, the top of
-// its text line): the fill, the outline, then `text` in the Figure role. The
-// caller has placed the cursor there and sized the room with
-// window_tag_width; the text is the item the tag submits.
-inline void draw_window_tag(ImDrawList* dl, const ImVec2& pos, const char* text, bool is_short,
-                            float scale) {
-    ScopedFont font(TextRole::Figure);
-    const WindowTagColors c = window_tag_colors(is_short);
-    const ImVec2 hi(pos.x + window_tag_width(ImGui::CalcTextSize(text).x, scale),
-                    pos.y + ImGui::GetTextLineHeight());
-    dl->AddRectFilled(pos, hi, ImGui::GetColorU32(c.fill), kWindowTagRadius * scale);
-    dl->AddRect(pos, hi, ImGui::GetColorU32(c.ink), kWindowTagRadius * scale, 0,
-                kWindowTagOutline * scale);
-    ImGui::SetCursorScreenPos(ImVec2(pos.x + kWindowTagPad * scale, pos.y));
-    ImGui::TextColored(c.ink, "%s", text);
+// (the .dhw .spare rules).
+inline ImVec4 window_tag_ink(bool is_short) {
+    return is_short ? kWarningColor : pill_vec4(PillRgb{242, 195, 0});
 }
 
 }  // namespace hydra::ui
