@@ -529,6 +529,23 @@ class NotesOnRealFiles(unittest.TestCase):
         self.assertEqual(got, [('side note', 2, 'R1', 1, 'Side note: one two three'),
                                ('split', 6, 'R1', 1, 'Split: a b')])
 
+    def test_a_note_written_as_a_heading_takes_its_body_to_the_next_heading(self):
+        lines = ['## R1', '', '## Side notes', '', 'a', '', 'b', '## R2', 'c']
+        got = ledger.note_blocks(lines)
+        self.assertEqual(got, [('side note', 3, 'R1', 1, '## Side notes a b')])
+
+    def test_production_finding_without_the_word_code_is_a_hit(self):
+        pat = dict(ledger.NOTE_KINDS)['production-code finding']
+        for text in ('Production finding: none.', '## Production findings and splits',
+                     'Finding (production, own line): no caller', 'Production-code finding: x',
+                     'Finding (production code): none.'):
+            self.assertTrue(pat.search(text), text)
+        self.assertFalse(pat.search('Finding: none against src.'))
+        r = self.at('production-code finding', 'records/A1.md', 59)
+        self.assertEqual(r['kind'], 'production-code finding')
+        self.assertTrue([x for x in self.rows if x['kind'] == 'production-code finding'
+                         and x['text'].startswith('Production finding:')])
+
     def test_every_hit_line_in_the_note_folders_has_a_row(self):
         hits = 0
         for rel in ledger.note_files(AUD):

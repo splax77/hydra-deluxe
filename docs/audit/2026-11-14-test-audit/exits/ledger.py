@@ -978,9 +978,12 @@ NOTE_KINDS = [
     # A line that starts "split", after list, bold, heading or number marks.
     ('split', re.compile(r'^[\s>#*_-]*(?:\d+\.\s*)?[\s*_]*split', re.I)),
     # The plan's phrase is "production-code finding". Its records also write
-    # "Production code finding" and "Finding (production code)", so a line holding
-    # both words in either order counts; the printout also gives the plan phrase alone.
-    ('production-code finding', re.compile(r'production[- ]code.*finding|finding.*production[- ]code', re.I)),
+    # "Production code finding", "Finding (production code)", "Production finding" and
+    # "Finding (production, ...)", so a line holding "production code" and "finding" in
+    # either order counts, as does "production finding(s)" and "finding (production";
+    # the printout also gives the plan phrase alone.
+    ('production-code finding', re.compile(r'production[- ]code.*finding|finding.*production[- ]code'
+                                           r'|production[- ]findings?|findings? \(production', re.I)),
 ]
 PLAN_PHRASE = re.compile(r'production-code finding', re.I)
 PLAN_FILES = {('records', 'side note'): 97, ('verify', 'side note'): 35, ('capture/byreading', 'side note'): 10,
@@ -1009,7 +1012,9 @@ def note_files(aud):
 def note_blocks(lines):
     """(kind, line number, nearest heading above or '', heading's line or 0, block text)
     for each hit line. A block is the hit line and the lines after it up to the next
-    blank line or heading. Lines inside a code fence are never headings."""
+    blank line or heading. A hit line that is itself a heading ("## Side notes") holds
+    its notes in the lines below it, so its block runs on to the next heading, blank
+    lines left out. Lines inside a code fence are never headings."""
     heads, fence = [], False
     for line in lines:
         if line.strip().startswith('```'):
@@ -1021,9 +1026,10 @@ def note_blocks(lines):
             if pat.search(line):
                 block = [line]
                 for nxt, is_head in zip(lines[i + 1:], heads[i + 1:]):
-                    if not nxt.strip() or is_head:
+                    if is_head or (not nxt.strip() and not heads[i]):
                         break
-                    block.append(nxt)
+                    if nxt.strip():
+                        block.append(nxt)
                 out.append((kind, i + 1, last, last_line, clean(' '.join(block))))
         if heads[i]:
             last, last_line = clean(HEADING.match(line).group(2)), i + 1
