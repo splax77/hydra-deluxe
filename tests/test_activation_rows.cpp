@@ -198,24 +198,25 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     CHECK(av.scale_warn);
 
     // A SqIn is judged at its own stored end, the end before its phrase
-    // extended SP. With post at identity, the line names only the SqIn's end.
+    // extended SP. With post at identity, only the SqIn's line shows.
     Activation sqin = base;
     sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     test::set_transfer(sqin, TransferScale{1.0, 0.5}, TransferScale{});
     av = row_of(sqin);
-    CHECK(av.scale_warning == "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
+    CHECK(av.sqin_scale_warning == "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
+    CHECK(av.scale_warning.empty());
     CHECK(av.scale_warn);
 
-    // Both ends with different scales: the SP end first, then the SqIn's.
+    // Both ends with different scales: each end gets its own line.
     // One row on each side of the SP end reads both of its sides.
     Activation both = base;
     both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     test::set_transfer(both, TransferScale{1.0, 0.5}, TransferScale{1.25, 0.8});
     both.backends.push_back(inside_row);
     both.backends.push_back(row);
-    CHECK(row_of(both).scale_warning ==
-          "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end; "
-          "x0.50 (late) at the SqIn's SP end.");
+    av = row_of(both);
+    CHECK(av.sqin_scale_warning == "Frontend timing scales x0.50 (late) at the SqIn's SP end.");
+    CHECK(av.scale_warning == "Frontend timing scales x1.25 (early) / x0.80 (late) at the SP end.");
 
     // Two SqIns that share one scale read as one clause, but it says "each"
     // so it doesn't read as a single SqIn (D16).
@@ -223,7 +224,7 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
     shared.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
     test::set_transfer(shared, TransferScale{1.0, 0.5}, TransferScale{});
-    CHECK(row_of(shared).scale_warning ==
+    CHECK(row_of(shared).sqin_scale_warning ==
           "Frontend timing scales x0.50 (late) at each SqIn's SP end.");
 
     // The same with the SP end scaled too, read by a row inside SP: the
@@ -233,9 +234,9 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     shared_both.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 30.0});
     test::set_transfer(shared_both, TransferScale{1.0, 0.5}, TransferScale{1.25, 1.0});
     shared_both.backends.push_back(inside_row);
-    CHECK(row_of(shared_both).scale_warning ==
-          "Frontend timing scales x1.25 (early) at the SP end; "
-          "x0.50 (late) at each SqIn's SP end.");
+    av = row_of(shared_both);
+    CHECK(av.sqin_scale_warning == "Frontend timing scales x0.50 (late) at each SqIn's SP end.");
+    CHECK(av.scale_warning == "Frontend timing scales x1.25 (early) at the SP end.");
 
     // Two SqIns with different scales: one numbered clause per SqIn (Q5).
     Activation two = base;
@@ -243,7 +244,7 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
     two.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -30.0});
     test::set_sqin_transfers(two, {TransferScale{0.97, 1.0}, TransferScale{0.95, 1.0}},
                              TransferScale{});
-    CHECK(row_of(two).scale_warning ==
+    CHECK(row_of(two).sqin_scale_warning ==
           "Frontend timing scales x0.97 (early) at SqIn 1's SP end; "
           "x0.95 (early) at SqIn 2's SP end.");
 
@@ -257,9 +258,18 @@ TEST_CASE("build_activations: the scale line shows the multipliers its rows read
                              {TransferScale{1.25, 1.0}, TransferScale{0.95, 1.0}},
                              TransferScale{1.25, 1.0});
     one_differs.backends.push_back(inside_row);
-    CHECK(row_of(one_differs).scale_warning ==
-          "Frontend timing scales x1.25 (early) at the SP end; "
-          "x0.95 (early) at SqIn 2's SP end.");
+    av = row_of(one_differs);
+    CHECK(av.sqin_scale_warning == "Frontend timing scales x0.95 (early) at SqIn 2's SP end.");
+    CHECK(av.scale_warning == "Frontend timing scales x1.25 (early) at the SP end.");
+
+    // A SqIn whose scale prints like the SP end's, alone: no SqIn line.
+    Activation alike = base;
+    alike.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -50.0});
+    test::set_transfer(alike, TransferScale{1.25, 1.0}, TransferScale{1.25, 1.0});
+    alike.backends.push_back(inside_row);
+    av = row_of(alike);
+    CHECK(av.sqin_scale_warning.empty());
+    CHECK(av.scale_warning == "Frontend timing scales x1.25 (early) at the SP end.");
 
     // The shape of Extremophile Elite act 1: both sides scaled, but both
     // rows sit inside SP, so they read only the early side. The late side is
@@ -605,7 +615,7 @@ TEST_CASE("activation rows: Burnout's three activations") {
     REQUIRE(a1.squeeze_sentences.size() == 1);
     CHECK(a1.squeeze_sentences[0].text ==
           "Hit the [  Y  ] note more than 163.0 ms late so it lands after Star Power "
-          "ends. It scores 260 fewer points, and its SP phrase banks for later.");
+          "ends.");
     CHECK(a1.squeeze_sentences[0].warn);
     CHECK(a1.backends_label == "3 notes near the SP end");
 
@@ -942,7 +952,7 @@ TEST_CASE("longest_activation_badge: the widest wording with the window's figure
         for (const ActivationBadge& b : activation_badges(act)) CHECK(longest.size() >= b.text.size());
 }
 
-TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
+TEST_CASE("squeeze sentences: SqIn and SqOut are one sentence each") {
     HydraRecord rec;
     auto sentence_of = [&rec](const Activation& act) {
         Path p;
@@ -961,8 +971,7 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     TextLine s = sentence_of(sqin);
     CHECK(s.text ==
           "Hit the SP phrase's last note more than 50.0 ms early so it lands before Star "
-          "Power ends. The phrase then counts while Star Power runs, which makes Star "
-          "Power last longer.");
+          "Power ends.");
     CHECK(s.warn);
 
     Activation easy_in = base;
@@ -982,15 +991,15 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     CHECK(s.text.rfind("Hit the SP phrase's last note no more than 400.0 ms late "
                        "(eff. 307.7 ms) so it lands before Star Power ends.", 0) == 0);
 
-    // A SqOut with no stored squeezed-out row names no chord and no cost.
+    // A SqOut with no stored squeezed-out row names no chord.
     Activation bare_out = base;
     bare_out.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 60.0});
     CHECK(sentence_of(bare_out).text ==
           "Hit the SP phrase's last note no more than 60.0 ms early so it lands after "
-          "Star Power ends. Its SP phrase banks for later.");
+          "Star Power ends.");
 
     // The Round and Round fixture: an R+Y phrase chord squeezed out 480 ms past
-    // the SP end. The engine never counted it, so it costs nothing.
+    // the SP end. The sentence names its chord and says nothing of its cost.
     Activation far = base;
     BackendSqueeze row;
     row.timecode = Timecode::raw(3256);
@@ -1005,18 +1014,17 @@ TEST_CASE("squeeze sentences: SqIn, SqOut, and what a squeeze-out costs") {
     s = sentence_of(far);
     CHECK(s.text ==
           "Hit the [ RY  ] note no more than 480.0 ms early so it lands after Star Power "
-          "ends. It costs no points, because Hydra's score never counted that note under "
-          "Star Power, and its SP phrase banks for later.");
+          "ends.");
     CHECK_FALSE(s.warn);
 
-    // The same chord 5 ms inside SP really costs 460 - 260 = 200.
+    // The same chord 5 ms inside SP costs points, which the backend table
+    // shows; the sentence still stops after its one sentence.
     Activation near = far;
     near.backends[0].offset_ms = -5.0;
     near.sqinouts[0].offset_ms = -5.0;
     s = sentence_of(near);
     CHECK(s.text ==
-          "Hit the [ RY  ] note more than 5.0 ms late so it lands after Star Power ends. "
-          "It scores 200 fewer points, and its SP phrase banks for later.");
+          "Hit the [ RY  ] note more than 5.0 ms late so it lands after Star Power ends.");
     CHECK(s.warn);
 }
 
@@ -1046,7 +1054,7 @@ TEST_CASE("squeeze sentences at the SP end: the squeeze-in earns, the squeeze-ou
     // The squeeze-out on the same note is still to earn too.
     CHECK(sentence_at(SqueezeKind::SqOut, 0.0) ==
           "Hit the SP phrase's last note more than 0.0 ms late so it lands after Star Power "
-          "ends. Its SP phrase banks for later.");
+          "ends.");
     // Just before the end: the squeeze-in needs no timing.
     CHECK(sentence_at(SqueezeKind::SqIn, -0.001).rfind(
               "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + before, 0) == 0);
@@ -1283,6 +1291,7 @@ void check_same_but_windows(const ActivationRowView& a, const ActivationRowView&
         CHECK(a.squeeze_sentences[i].text == b.squeeze_sentences[i].text);
         CHECK(a.squeeze_sentences[i].warn == b.squeeze_sentences[i].warn);
     }
+    CHECK(a.sqin_scale_warning == b.sqin_scale_warning);
     CHECK(a.scale_warning == b.scale_warning);
     CHECK(a.scale_warn == b.scale_warn);
     CHECK(a.overfill_warning == b.overfill_warning);

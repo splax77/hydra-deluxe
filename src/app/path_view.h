@@ -116,8 +116,13 @@ struct ActivationRowView {
     // The early fill line's warning border: the early fill entry of
     // Activation::badge_timings is difficult. False when the line is empty.
     bool early_fill_warn = false;
-    std::string scale_warning;  // the transfer-scale line; empty when the scales are known and no side a row or squeeze reads is scaled
-    bool scale_warn = false;    // orange: a shown scale moves a squeeze or backend figure
+    // The transfer-scale lines. sqin_scale_warning names the SqIns' SP ends
+    // and shows first; it is empty when no SqIn's scale prints differently
+    // from the SP end's. scale_warning names the SP end; it is empty when the
+    // scales are known and no side a row or squeeze reads there is scaled.
+    std::string sqin_scale_warning;
+    std::string scale_warning;
+    bool scale_warn = false;    // orange, both lines: a shown scale moves a squeeze or backend figure
     std::string overfill_warning;  // cap-clamped anchor prose; empty when not clamped
     // "3 notes near the SP end": every stored row, with the hidden part after
     // it when the backend limit hides some. Written by build_activations.
@@ -174,13 +179,11 @@ std::string longest_activation_badge();
 // One plain sentence per SqIn/SqOut of `act`, in its order, warn-coloured when
 // that squeeze is difficult. `squeezed_out` is the backend row the rating
 // flagged as the squeezed-out note (nullptr when the record names none); it
-// supplies the SqOut's chord and what the squeeze-out costs.
-// `leeway_ms` is Rules::backend_leeway_ms. `note_effective_ms` is
+// supplies the SqOut's chord. `note_effective_ms` is
 // ActivationRating::note_effective_ms: a SqIn's sentence prints its figure as
 // "(eff. N ms)" after the timing; a SqOut's figure is on its backend row.
 std::vector<TextLine> squeeze_sentences(const Activation& act,
                                         const BackendRating* squeezed_out,
-                                        double leeway_ms,
                                         const std::vector<std::optional<double>>& note_effective_ms);
 
 // The hover hint shown next to a scale warning.
