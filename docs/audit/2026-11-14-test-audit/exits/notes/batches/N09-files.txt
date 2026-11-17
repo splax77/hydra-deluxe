@@ -1,0 +1,13 @@
+verify/delta-DL4.md
+verify/delta-DL5.md
+verify/window-WN1.md
+verify/window-WN2.md
+verify/window-WN3.md
+verify/window-WN4.md
+verify/window-WN4a.md
+verify/window-WN4b.md
+verify/window-WN4c.md
+verify/window-WN5.md
+verify/window-WN6.md
+verify/window-WN7.md
+verify/window-WN8.md
