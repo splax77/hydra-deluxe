@@ -10,6 +10,13 @@ It reads only the audit folder. It writes two kinds of row into one file:
                after TOTALS.md section 3 and the user's answers 2 to 5 in the
                T8 plan (docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md).
 
+Answer 4's rows are settled from the main session's exits/answer4.tsv
+(settle_answer4); the script stops with an error when that file and the ledger
+disagree. The held column marks a row whose answer is still to settle.
+
+It also writes exits/notes.tsv (plan step E5): every side-note, split and
+production-code block in the audit's notes folders (read_notes), unjudged.
+
 Each count row gets the id of the one record row it belongs to (join_counts),
 or an empty join and a reason. The by-reading and verifier verdicts reach
 record rows through the same join (second_verdicts); the verifier reader knows
@@ -360,6 +367,79 @@ def apply_answers(rows):
             if ('D4' in r['section'] and n and 616 <= int(n.group(1)) <= 674) or 'test_fits_screen' in t:
                 r['answer'] = 'answer 5 (keeps X9)'
     return settle
+
+
+TO_SETTLE = 'to settle'
+ANSWER4_FILE = 'answer4.tsv'
+ANSWER4_DONE = 'answer 4 (X9 removed: payload is input)'
+
+
+class LedgerError(Exception):
+    """A settle file that does not fit the ledger. main() prints it and exits 1."""
+
+
+def read_answer4(path):
+    """The main session's answer-4 rows, as dicts keyed by answer4.tsv's header."""
+    lines = [ln for ln in lines_of(path) if ln.strip()]
+    if not lines:
+        raise LedgerError(f'{path} is empty')
+    head = lines[0].split('\t')
+    want = ['file', 'line', 'record', 'faults_before', 'faults_after', 'why']
+    if head != want:
+        raise LedgerError(f'{path}: header is {head}, expected {want}')
+    out = []
+    for n, ln in enumerate(lines[1:], 2):
+        cells = ln.split('\t')
+        if len(cells) != len(want) or not cells[1].isdigit():
+            raise LedgerError(f'{path} line {n} is not a settle row: {ln[:100]}')
+        out.append(dict(zip(want, cells), at=n))
+    return out
+
+
+def faults_text(faults):
+    return ','.join(faults) or 'none'
+
+
+def settle_answer4(rows, path=None):
+    """Settle the rows apply_answers() left for answer 4 from the main session's file
+    (exits/answer4.tsv). Each settle row must match one count row by file and line,
+    and that row's faults must be its faults_before. Any row still to settle after the
+    file is read is an error too. Returns [(row, faults before)] for the rows changed."""
+    path = path or os.path.join(AUD, 'exits', ANSWER4_FILE)
+    by_key = {}
+    for r in rows:
+        by_key.setdefault(('counts/' + r['cf'] + '.md', r['line']), []).append(r)
+    changed, seen = [], set()
+    for s in read_answer4(path):
+        key = (s['file'], int(s['line']))
+        where = f'{path} line {s["at"]} ({s["file"]}:{s["line"]} {s["record"]})'
+        if key in seen:
+            raise LedgerError(f'{where} settles a row an earlier line already settled')
+        seen.add(key)
+        hit = by_key.get(key, [])
+        if len(hit) != 1:
+            raise LedgerError(f'{where} matches {len(hit)} ledger rows, not one')
+        r = hit[0]
+        if faults_text(r['faults']) != s['faults_before']:
+            raise LedgerError(f'{where}: its faults_before is {s["faults_before"]}, '
+                              f'but the ledger row\'s faults are {faults_text(r["faults"])}')
+        if TO_SETTLE not in r['answer']:
+            raise LedgerError(f'{where} names a row that is not waiting for answer 4 '
+                              f'(its answer is "{r["answer"]}")')
+        before = list(r['faults'])
+        r['faults'] = [] if s['faults_after'] == 'none' else s['faults_after'].split(',')
+        r['answer'] = ANSWER4_DONE
+        changed.append((r, before))
+    left = [r for r in rows if TO_SETTLE in r['answer']]
+    if left:
+        raise LedgerError(f'{len(left)} rows wait for answer 4 and {path} has no line for them: '
+                          + '; '.join(f'counts/{r["cf"]}.md:{r["line"]} {r["rec"]}' for r in left))
+    return changed
+
+
+def held(r):
+    """'yes' while a row's answer is still for the main session to settle."""
+    return 'yes' if TO_SETTLE in r['answer'] else ''
 
 
 FILE_TOKEN = re.compile(r'\b((?:delta-|window-)?[A-Z]{1,2}\d+[a-z]?(?:-C\d+(?:-fuzz)?)?)(?:\.md)?\b')
@@ -889,11 +969,138 @@ def totals_section1():
     return out
 
 
+# Plan step E5: the side notes, splits and production-code findings, pulled out as
+# blocks with no judgment. The folders and the plan's rough file counts (E5's second
+# paragraph) are printed beside what this reader finds.
+NOTE_DIRS = ['records', 'verify', 'capture', 'sweep', 'counts']   # capture/ with all its subfolders
+NOTE_KINDS = [
+    ('side note', re.compile(r'side note', re.I)),
+    # A line that starts "split", after list, bold, heading or number marks.
+    ('split', re.compile(r'^[\s>#*_-]*(?:\d+\.\s*)?[\s*_]*split', re.I)),
+    # The plan's phrase is "production-code finding". Its records also write
+    # "Production code finding", "Finding (production code)", "Production finding" and
+    # "Finding (production, ...)", so a line holding "production code" and "finding" in
+    # either order counts, as does "production finding(s)" and "finding (production";
+    # the printout also gives the plan phrase alone.
+    ('production-code finding', re.compile(r'production[- ]code.*finding|finding.*production[- ]code'
+                                           r'|production[- ]findings?|findings? \(production', re.I)),
+]
+PLAN_PHRASE = re.compile(r'production-code finding', re.I)
+PLAN_FILES = {('records', 'side note'): 97, ('verify', 'side note'): 35, ('capture/byreading', 'side note'): 10,
+              ('capture/rejudge', 'side note'): 3, ('sweep', 'side note'): 3, ('counts', 'side note'): 1,
+              ('records', 'split'): 86, ('verify', 'split'): 116, ('records', 'production-code finding'): 53}
+NOTE_COLS = ['kind', 'file', 'line', 'record_heading', 'ledger_id', 'text']
+
+
+def note_files(aud):
+    """Every .md file under the note folders, AUD-relative with forward slashes."""
+    out = []
+    for d in NOTE_DIRS:
+        top = os.path.join(aud, d)
+        if not os.path.isdir(top):
+            continue
+        for root, dirs, files in os.walk(top):
+            if d != 'capture':
+                dirs[:] = []
+            dirs.sort()
+            for f in sorted(files):
+                if f.endswith('.md'):
+                    out.append(os.path.relpath(os.path.join(root, f), aud).replace('\\', '/'))
+    return out
+
+
+def note_blocks(lines):
+    """(kind, line number, nearest heading above or '', heading's line or 0, block text)
+    for each hit line. A block is the hit line and the lines after it up to the next
+    blank line or heading. A hit line that is itself a heading ("## Side notes") holds
+    its notes in the lines below it, so its block runs on to the next heading, blank
+    lines left out. Lines inside a code fence are never headings."""
+    heads, fence = [], False
+    for line in lines:
+        if line.strip().startswith('```'):
+            fence = not fence
+        heads.append(not fence and bool(HEADING.match(line)))
+    out, last, last_line = [], '', 0
+    for i, line in enumerate(lines):
+        for kind, pat in NOTE_KINDS:
+            if pat.search(line):
+                block = [line]
+                for nxt, is_head in zip(lines[i + 1:], heads[i + 1:]):
+                    if is_head or (not nxt.strip() and not heads[i]):
+                        break
+                    if nxt.strip():
+                        block.append(nxt)
+                out.append((kind, i + 1, last, last_line, clean(' '.join(block))))
+        if heads[i]:
+            last, last_line = clean(HEADING.match(line).group(2)), i + 1
+    return out
+
+
+def read_notes(aud, recs):
+    """One row per block in every note file. A block under a records/ heading gets the
+    ledger id of the record row that starts at that heading, or else of the one record
+    row of that file under that heading; none when neither finds exactly one."""
+    by_start = {(r['file'], r['hline']): r for r in recs}
+    by_head = {}
+    for r in recs:
+        by_head.setdefault((r['file'], r['heading']), []).append(r)
+    rows, hits = [], {}
+    for rel in note_files(aud):
+        lines = lines_of(os.path.join(aud, rel))
+        name = rel.split('/', 1)[1] if rel.startswith('records/') and rel.count('/') == 1 else None
+        for kind, ln, head, hline, text in note_blocks(lines):
+            rid = ''
+            if name and head:
+                r = by_start.get((name, hline))
+                cands = [r] if r else by_head.get((name, head), [])
+                if len(cands) == 1:
+                    rid = f"records/{cands[0]['file']}:{cands[0]['hline']}"
+            rows.append({'kind': kind, 'file': rel, 'line': ln, 'record_heading': head,
+                         'ledger_id': rid, 'text': text})
+        hits[rel] = any(PLAN_PHRASE.search(x) for x in lines)
+    return rows, hits
+
+
+def note_folder(rel):
+    parts = rel.split('/')
+    return '/'.join(parts[:2]) if parts[0] == 'capture' and len(parts) > 2 else parts[0]
+
+
+def write_notes(path, rows):
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('\t'.join(NOTE_COLS) + '\n')
+        for r in rows:
+            fh.write('\t'.join(str(r[c]).replace('\t', ' ') for c in NOTE_COLS) + '\n')
+
+
+def print_notes(rows, phrase_hits):
+    print('\nnotes.tsv (plan step E5): per folder and kind, files hit / blocks, beside the plan\'s file count')
+    folders = sorted({note_folder(r['file']) for r in rows} | {f for f, _ in PLAN_FILES})
+    for f in folders:
+        for kind, _ in NOTE_KINDS:
+            rs = [r for r in rows if note_folder(r['file']) == f and r['kind'] == kind]
+            nf = len({r['file'] for r in rs})
+            plan = PLAN_FILES.get((f, kind))
+            if not rs and plan is None:
+                continue
+            say = '' if plan is None else f'   plan {plan:4}' + ('' if plan == nf else f'   DIFFERS by {nf - plan:+}')
+            print(f'  {f:20} {kind:24} {nf:4} / {len(rs):5}{say}')
+    for f in ('records', 'verify'):
+        n = sum(1 for rel, hit in phrase_hits.items() if hit and note_folder(rel) == f)
+        print(f'  {f}: files holding the plan\'s exact phrase "production-code finding": {n}')
+    print(f'  all blocks: {len(rows)}; with a ledger id: {sum(1 for r in rows if r["ledger_id"])}')
+
+
 def main():
     recs, unread = read_records()
     counts, notable = read_counts()
     left = apply_corrections(counts, read_corrections())
     settle = apply_answers(counts)
+    try:
+        settled = settle_answer4(counts)
+    except LedgerError as e:
+        print('ledger: answer 4:', e, file=sys.stderr)
+        sys.exit(1)
     join_counts(counts, recs)
     seconds = second_verdicts(recs)
     try:
@@ -905,7 +1112,7 @@ def main():
     old_mut = read_old_mut(OUT)
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     cols = ['kind', 'file', 'line', 'heading_or_section', 'record', 'test', 'verdict', 'earlier_verdicts',
-            'faults_counter', 'faults', 'correction', 'answer', 't6', 't7_reopened', 'reason',
+            'faults_counter', 'faults', 'correction', 'answer', 'held', 't6', 't7_reopened', 'reason',
             'id', 'joins_record', 'verifier_verdict_if_different', 'byreading_verdict'] + MUT_COLS
     with open(OUT, 'w', encoding='utf-8', newline='\n') as fh:
         fh.write('\t'.join(cols) + '\n')
@@ -913,7 +1120,7 @@ def main():
             v = r['verdicts']
             t6 = 't6' if (r['file'], (re.match(r'(\d+)', r['record']) or [None, ''])[1]) in T6 else ''
             fh.write('\t'.join(['record', 'records/' + r['file'], str(r['line']), r['heading'], r['record'],
-                                '', v[-1], ','.join(v[:-1]), '', '', '', '', t6,
+                                '', v[-1], ','.join(v[:-1]), '', '', '', '', '', t6,
                                 'yes' if r['file'] in T7_REOPENED else '', '',
                                 f"records/{r['file']}:{r['hline']}", '',
                                 ','.join(r.get('verifier', [])), ','.join(r.get('byreading', []))]
@@ -922,7 +1129,7 @@ def main():
             # A count row reaches its record's mut_ columns through joins_record; it has none of its own.
             fh.write('\t'.join(['count', 'counts/' + r['cf'] + '.md', str(r['line']), r['section'],
                                 (r['rec'] + ' ' + r['num']).strip(), r['test'], '', '',
-                                r['faults_raw'], ','.join(r['faults']) or 'none', r['fix'], r['answer'],
+                                r['faults_raw'], faults_text(r['faults']), r['fix'], r['answer'], held(r),
                                 '', '', r['reason'][:200], '', r['join'], '', '']
                                + [''] * len(MUT_COLS)) + '\n')
     mdir = os.path.join(AUD, 'mutation')
@@ -982,9 +1189,16 @@ def main():
     print('\ntables skipped:', len(notable))
     for cf, ln, why in notable:
         print(f'  {cf}:{ln} {why}')
-    print('\nrows left for answer 4, main session to settle:', len(settle))
-    for r in settle:
-        print(f'  counts/{r["cf"]}.md:{r["line"]} {r["rec"]} [{",".join(r["faults"])}] {r["reason"][:90]}')
+    gone = sum(1 for r, before in settled if not r['faults'])
+    print(f'\nanswer 4 changed {len(settled)} rows of the {len(settle)} it held ({ANSWER4_FILE}): '
+          f'{gone} go from faulty to none, {len(settled) - gone} keep another fault; '
+          f'rows still held: {sum(1 for r in counts if held(r))}')
+    for r, before in settled:
+        print(f'  counts/{r["cf"]}.md:{r["line"]} {r["rec"]} [{faults_text(before)}] to [{faults_text(r["faults"])}]')
+    notes, phrase_hits = read_notes(AUD, recs)
+    notes_path = os.path.join(os.path.dirname(OUT), 'notes.tsv')
+    write_notes(notes_path, notes)
+    print_notes(notes, phrase_hits)
     nil = os.path.join(os.path.dirname(OUT), 'not-in-ledger.md')
     print('\nnot-in-ledger.md lines (one per unread record title or unjoined count row):',
           write_not_in_ledger(nil, unread, counts))
@@ -1005,7 +1219,7 @@ def main():
     for rid, diff, was, now in ch:
         print(f'  {rid}: ' + '; '.join(f'{c} {(was or {}).get(c, "")!r} to {now[c]!r}'
                                         for c in diff if c != 'mut_limits'))
-    print('\nwrote', OUT, ',', nil, 'and', unm_path)
+    print('\nwrote', OUT, ',', nil, ',', notes_path, 'and', unm_path)
 
 
 if __name__ == '__main__':

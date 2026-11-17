@@ -31,6 +31,8 @@ class LedgerOnRealFiles(unittest.TestCase):
         cls.counts, _ = ledger.read_counts()
         cls.left = ledger.apply_corrections(cls.counts, ledger.read_corrections())
         cls.settle = ledger.apply_answers(cls.counts)
+        cls.held_before = {id(r): list(r['faults']) for r in cls.settle}
+        cls.settled = ledger.settle_answer4(cls.counts)
         ledger.join_counts(cls.counts, cls.recs)
 
     def test_superseded_wn4_is_not_read(self):
@@ -144,11 +146,14 @@ class LedgerOnRealFiles(unittest.TestCase):
 
     def test_count_rows_match_totals_where_totals_reports_no_gap(self):
         # TOTALS.md section 4 names the files with a gap; these four are not among them.
+        # TOTALS is from before answer 4, so the rows answer4.tsv takes to none are added back.
         tot = ledger.totals_section1()
+        cleared = sum(1 for s in ledger.read_answer4(ANSWER4) if s['faults_after'] == 'none')
         for cf in ('T5-KR1', 'T5-IR4', 'T5-IR10', 'T5-IR21'):
             rows = [r for r in self.counts if r['cf'] == cf]
+            back = cleared if cf == 'T5-IR4' else 0
             self.assertEqual(len(rows), tot[cf][0], cf)
-            self.assertEqual(sum(1 for r in rows if r['faults']), tot[cf][1], cf)
+            self.assertEqual(sum(1 for r in rows if r['faults']) + back, tot[cf][1], cf)
 
     def test_a_totals_removal_is_applied(self):
         # TOTALS.md section 3: "T5-KR2, record 2 test_review_dispatch.py:211: X9 to none".
@@ -169,12 +174,88 @@ class LedgerOnRealFiles(unittest.TestCase):
         self.assertIn('X9', rows[0]['faults'])
         self.assertEqual(rows[0]['answer'], 'answer 3')
 
-    def test_answer_4_rows_keep_x9_and_wait_for_the_main_session(self):
+    def test_answer_4_held_ir4_rd_rows_with_x9_until_settled(self):
         self.assertTrue(self.settle)
         for r in self.settle:
             self.assertEqual(r['cf'], 'T5-IR4')
-            self.assertIn('X9', r['faults'])
+            self.assertIn('X9', self.held_before[id(r)])
             self.assertTrue(r['rec'].startswith('RD') or r['text'].startswith('RD'))
+
+    def test_answer_4_rows_carry_the_settled_faults_and_are_not_held(self):
+        settles = ledger.read_answer4(ANSWER4)
+        self.assertEqual(len(settles), len(self.settle))
+        self.assertEqual({id(r) for r, _ in self.settled}, {id(r) for r in self.settle})
+        for s in settles:
+            r = self.joined('T5-IR4', int(s['line']))
+            self.assertEqual(s['file'], 'counts/T5-IR4.md')
+            self.assertEqual(ledger.faults_text(self.held_before[id(r)]), s['faults_before'])
+            self.assertEqual(ledger.faults_text(r['faults']), s['faults_after'])
+            self.assertEqual(r['answer'], ledger.ANSWER4_DONE)
+            self.assertEqual(ledger.held(r), '')
+        self.assertFalse([r for r in self.counts if ledger.held(r)])
+
+
+ANSWER4 = os.path.join(AUD, 'exits', ledger.ANSWER4_FILE)
+
+
+class Answer4SettleChecks(unittest.TestCase):
+    """A settle file that does not fit the ledger stops the script, naming the row."""
+
+    def setUp(self):
+        self.counts, _ = ledger.read_counts()
+        ledger.apply_corrections(self.counts, ledger.read_corrections())
+        ledger.apply_answers(self.counts)
+        self.lines = ledger.lines_of(ANSWER4)
+        self.tmp = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp)
+
+    def settle_with(self, lines):
+        path = os.path.join(self.tmp, 'answer4.tsv')
+        with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write('\n'.join(lines) + '\n')
+        return ledger.settle_answer4(self.counts, path)
+
+    def edit_first(self, k, value):
+        cells = self.lines[1].split('\t')
+        cells[k] = value
+        return [self.lines[0], '\t'.join(cells)] + self.lines[2:], cells
+
+    def test_the_real_file_settles(self):
+        self.assertEqual(len(self.settle_with(self.lines)), len(self.lines) - 1)
+
+    def test_a_row_matching_no_ledger_row_fails(self):
+        lines, cells = self.edit_first(1, '99999')
+        with self.assertRaisesRegex(ledger.LedgerError, r'counts/T5-IR4\.md:99999 .*matches 0 ledger rows'):
+            self.settle_with(lines)
+
+    def test_a_row_whose_faults_before_differ_fails(self):
+        lines, cells = self.edit_first(3, 'X12')
+        with self.assertRaisesRegex(ledger.LedgerError, re.escape(f'{cells[0]}:{cells[1]} ') + r'.*faults_before is X12'):
+            self.settle_with(lines)
+
+    def test_a_held_row_with_no_settle_line_fails(self):
+        cells = self.lines[-1].split('\t')
+        with self.assertRaisesRegex(ledger.LedgerError, r'^1 rows wait for answer 4 .*' + re.escape(f'{cells[0]}:{cells[1]} ')):
+            self.settle_with(self.lines[:-1])
+        self.assertTrue([r for r in self.counts if ledger.held(r)])
+
+    def test_the_script_exits_non_zero_on_a_bad_settle_file(self):
+        # A copy of the folders the script reads before it settles answer 4, with one
+        # settle row broken. The script must stop before it writes the ledger.
+        aud2 = os.path.join(self.tmp, 'aud')
+        for d in ('records', 'counts'):
+            shutil.copytree(os.path.join(AUD, d), os.path.join(aud2, d))
+        os.makedirs(os.path.join(aud2, 'exits'))
+        lines, _ = self.edit_first(1, '99999')
+        with open(os.path.join(aud2, 'exits', ledger.ANSWER4_FILE), 'w', encoding='utf-8', newline='\n') as fh:
+            fh.write('\n'.join(lines) + '\n')
+        p = subprocess.run([sys.executable, '-I', os.path.join(HERE, 'ledger.py'), aud2,
+                            os.path.join(aud2, 'exits', 'ledger.tsv')], capture_output=True, encoding='utf-8')
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn('counts/T5-IR4.md:99999', p.stderr)
+        self.assertFalse(os.path.exists(os.path.join(aud2, 'exits', 'ledger.tsv')))
 
     def test_answer_5_rows_keep_x9(self):
         rows = [r for r in self.counts if r['answer'].startswith('answer 5')]
@@ -321,11 +402,36 @@ class MutationColumnsOnRealFiles(unittest.TestCase):
         self.assertEqual(kinds, {'record', 'count'})
 
     def test_the_e1_columns_and_rows_are_unchanged(self):
+        # Two later steps are allowed for: the held column (E2), read past by name, and
+        # answer 4's rows, whose faults and answer come from answer4.tsv.
         before = git_show(f'{E1_COMMIT}:{LEDGER_IN_REPO}').splitlines()
         self.assertEqual(len(before), len(self.ledger_lines))
-        width = len(before[0].split('\t'))
+        head_b = before[0].split('\t')
+        head_n = self.ledger_lines[0].split('\t')
+        keep = [head_n.index(c) for c in head_b]
+        settled = {(s['file'], s['line']): s for s in ledger.read_answer4(ANSWER4)}
+        changed = 0
         for b, n in zip(before, self.ledger_lines):
-            self.assertEqual(n.split('\t')[:width], b.split('\t'))
+            bc, nc = b.split('\t'), n.split('\t')
+            got = [nc[i] for i in keep]
+            s = settled.get((bc[1], bc[2]))
+            if s:
+                changed += 1
+                self.assertEqual(bc[head_b.index('faults')], s['faults_before'])
+                self.assertEqual(got[head_b.index('faults')], s['faults_after'])
+                self.assertEqual(got[head_b.index('answer')], ledger.ANSWER4_DONE)
+                for c in ('faults', 'answer'):
+                    got[head_b.index(c)] = bc[head_b.index(c)]
+            self.assertEqual(got, bc)
+        self.assertEqual(changed, len(settled))
+
+    def test_every_ledger_row_has_a_held_column_right_after_answer_and_none_is_held(self):
+        head = self.ledger_lines[0].split('\t')
+        self.assertEqual(head.index('held'), head.index('answer') + 1)
+        for ln in self.ledger_lines[1:]:
+            cells = ln.split('\t')
+            self.assertEqual(len(cells), len(head), ln[:80])
+            self.assertEqual(cells[head.index('held')], '', ln[:80])
 
     def test_line_records_go_out_in_first_use_columns(self):
         path = os.path.join(AUD, 'mutation', ledger.LINE_RECORDS_TXT)
@@ -372,6 +478,91 @@ class MutationColumnsOnRealFiles(unittest.TestCase):
             got = ledger.place_lines(two, {key(two[0]): f2[0]['name'], key(two[1]): f2[1]['name']}, tests, set())
             self.assertEqual(got[0], 'several')
             self.assertEqual(len(got[3]), 2)
+
+
+class NotesOnRealFiles(unittest.TestCase):
+    """Plan step E5: notes.tsv holds every side-note, split and production-code block."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.recs, _ = ledger.read_records()
+        cls.rows, _ = ledger.read_notes(AUD, cls.recs)
+        cls.committed = ledger.lines_of(os.path.join(AUD, 'exits', 'notes.tsv'))
+
+    def at(self, kind, rel, line):
+        rows = [r for r in self.rows if r['kind'] == kind and r['file'] == rel and r['line'] == line]
+        self.assertEqual(len(rows), 1, (kind, rel, line))
+        return rows[0]
+
+    def source_line(self, rel, line):
+        return ledger.lines_of(os.path.join(AUD, rel))[line - 1]
+
+    def test_a_side_note_has_a_row_under_its_record(self):
+        # records/A10.md line 66: "Splits: none. Side notes: the name has a semicolon, no comma.",
+        # in record 2, whose heading is line 49.
+        r = self.at('side note', 'records/A10.md', 66)
+        self.assertEqual(r['text'], ledger.clean(self.source_line('records/A10.md', 66)))
+        self.assertTrue(r['record_heading'].startswith('2. collect_dm_rows'))
+        self.assertEqual(r['ledger_id'], 'records/A10.md:49')
+
+    def test_a_split_has_a_row(self):
+        # records/A1.md line 61: "Split: the sample row's `acts`, `skip` and `sqin` disagree ...".
+        r = self.at('split', 'records/A1.md', 61)
+        self.assertTrue(r['text'].startswith('Split: the sample row'))
+
+    def test_a_production_code_finding_has_a_row(self):
+        # records/A1.md line 59: "Finding (production code): none. ...", a heading form the
+        # plan's phrase alone would miss.
+        r = self.at('production-code finding', 'records/A1.md', 59)
+        self.assertTrue(r['text'].startswith('Finding (production code): none.'))
+
+    def test_a_block_stops_at_the_blank_line(self):
+        # records/A1.md line 60 is blank, so line 59's block does not reach line 61's split.
+        self.assertEqual(self.source_line('records/A1.md', 60).strip(), '')
+        r = self.at('production-code finding', 'records/A1.md', 59)
+        self.assertEqual(r['text'], ledger.clean(self.source_line('records/A1.md', 59)))
+        self.assertNotIn('Split:', r['text'])
+
+    def test_a_block_runs_on_to_the_blank_line_or_heading(self):
+        lines = ['## R1', 'Side note: one', 'two\tthree', '', 'four', 'Split: a', 'b', '### R2', 'c']
+        got = ledger.note_blocks(lines)
+        self.assertEqual(got, [('side note', 2, 'R1', 1, 'Side note: one two three'),
+                               ('split', 6, 'R1', 1, 'Split: a b')])
+
+    def test_a_note_written_as_a_heading_takes_its_body_to_the_next_heading(self):
+        lines = ['## R1', '', '## Side notes', '', 'a', '', 'b', '## R2', 'c']
+        got = ledger.note_blocks(lines)
+        self.assertEqual(got, [('side note', 3, 'R1', 1, '## Side notes a b')])
+
+    def test_production_finding_without_the_word_code_is_a_hit(self):
+        pat = dict(ledger.NOTE_KINDS)['production-code finding']
+        for text in ('Production finding: none.', '## Production findings and splits',
+                     'Finding (production, own line): no caller', 'Production-code finding: x',
+                     'Finding (production code): none.'):
+            self.assertTrue(pat.search(text), text)
+        self.assertFalse(pat.search('Finding: none against src.'))
+        r = self.at('production-code finding', 'records/A1.md', 59)
+        self.assertEqual(r['kind'], 'production-code finding')
+        self.assertTrue([x for x in self.rows if x['kind'] == 'production-code finding'
+                         and x['text'].startswith('Production finding:')])
+
+    def test_every_hit_line_in_the_note_folders_has_a_row(self):
+        hits = 0
+        for rel in ledger.note_files(AUD):
+            for n, ln in enumerate(ledger.lines_of(os.path.join(AUD, rel)), 1):
+                for kind, pat in ledger.NOTE_KINDS:
+                    if pat.search(ln):
+                        hits += 1
+                        self.at(kind, rel, n)
+        self.assertEqual(hits, len(self.rows))
+
+    def test_capture_subfolders_are_read(self):
+        self.assertTrue([r for r in self.rows if r['file'].startswith('capture/byreading/')])
+        self.assertTrue([r for r in self.rows if r['file'].startswith('capture/rejudge/')])
+
+    def test_the_committed_notes_file_is_current(self):
+        self.assertEqual(self.committed[0].split('\t'), ledger.NOTE_COLS)
+        self.assertEqual(self.committed[1:], ['\t'.join(str(r[c]) for c in ledger.NOTE_COLS) for r in self.rows])
 
 
 if __name__ == '__main__':
