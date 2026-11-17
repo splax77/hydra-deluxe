@@ -8,6 +8,12 @@ The audit's agents wrote side notes, splits and production-code findings into th
 
 `marks.tsv` holds one line per pulled note with its final mark, the batch that made it, and the scout's one-sentence reason. `new-rows.tsv` holds the notes the scouts found that the script missed. `merge_marks.py` builds both, and it fails if any scout's table does not equal its batch.
 
+`extra-rows.tsv` holds 82 rows the plan asks for that the note pull does not make one by one, built by `extra_rows.py`. Seventeen are the tests and records `capture/byreading/SUMMARY.md` names under "Side notes that need an exit in T8" and "Rule slip"; `notes.tsv` holds that section only as two block rows. Sixty-five are run tests that no record names, from `mutation/mutation-unmatched.md` (plan step E1c). All 82 are marked `finding`.
+
+`files-read.md` lists, by name, the 61 files a scout read whole and the 188 it did not reach.
+
+Every one of the 241 files that the plan's searches hit ("side note", a line starting "split", "production-code finding") has at least one row in `notes.tsv`, checked by script.
+
 | Mark | Pulled notes | New rows |
 |---|---|---|
 | finding | 634 | 191 |
@@ -25,4 +31,4 @@ So every note not marked from its file went to a second round (`remark/R01` to `
 
 ## What this does not cover
 
-The second job of E5 was to find notes the script missed, by reading every file whole. The user chose the cheaper route (session f3bbb32b), which re-marks the pulled notes and does not re-read the files. So the search for missed notes stands only where a first-round scout read a file whole: all 13 of N09's files, 34 of N07's 41, and a few files in N01 to N06. In the other files, a note written in a shape the script does not know may still be unread. The 244 new rows come from those whole reads and from the first round's searches, so they are not a complete list.
+The second job of E5 was to find notes the script missed, by reading every file whole. The user chose the cheaper route (session f3bbb32b), which re-marks the pulled notes and does not re-read the files. So the search for missed notes stands only where a first-round scout read a file whole: the 61 files under "Read whole" in `files-read.md`. In the 188 files under "Not reached", a note written in a shape the script does not know may still be unread. The 244 new rows come from those whole reads and from the first round's searches, so they are not a complete list.
