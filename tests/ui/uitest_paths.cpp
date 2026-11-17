@@ -483,7 +483,7 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
 }
 
 // A squeezed-out row the engine never counted: the table says "(uncounted)"
-// and the sentence says it costs nothing. The chart was found by searching the
+// and the squeeze sentence stops at its one sentence. The chart was found by searching the
 // corpus under the GUI tests' settings for such a row.
 void test_paths_uncounted(ImGuiTestContext* ctx) {
     static const char* kTitle = "Tapestry of the Starless Abstract (Shortened)";
@@ -501,8 +501,9 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     IM_CHECK(rows > 0);
     // Every opened row shows its backend table with no further click.
     IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
-    IM_CHECK(on_screen(h, "It costs no points, because Hydra's score never counted that "
-                          "note under Star Power"));
+    IM_CHECK(on_screen(h, "so it lands after Star Power ends."));
+    IM_CHECK(!on_screen(h, "costs no points"));
+    IM_CHECK(!on_screen(h, "banks for later"));
 }
 
 // At the panel's narrowest the Paths tab still fits: with every row, every
