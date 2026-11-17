@@ -78,7 +78,7 @@ A test types the code's answer, or a constant the code owns, instead of checking
 | P-pbticks | the Path Builder's fill ticks and their clock text | cross-findings X2 |
 | P-allister | Allister's offered fills | cross-findings X3 |
 | P-tiers | the squeeze timing tiers, their names and edges | cross-findings X4 |
-| P-message | a product message | cross-findings X5 |
+| P-message | a message the code under test prints: Hydra's own in `src/`, or a tool's or hook's (widened in revision 1, below) | cross-findings X5 and X10 |
 | P-placeholder | the unknown title, artist or charter text | cross-findings X6 |
 | P-setting | a settings default or a screen word | cross-findings X7 |
 | P-name | a name or key the product writes | cross-findings X8 |
@@ -107,6 +107,22 @@ A Rewrite or Remove record was judged by the rubric, before the user's test ruli
 | K-selfmade | a value checked against the function that made it, or made by production code | 5, 9 |
 | K-comment | a raw result whose meaning lives in a comment | 4 |
 | K-unreachable | a scenario no real chart can reach | 11 |
+
+## Revision 1, after the first round (2026-11-16)
+
+The first round labelled four batches (L-C01, L-C14, L-R01 and L-R12), 323 rows in all. Six rows got `no key`. Each named a fault the list lacked, so the keys below were added from them. This is the one revision the plan allows. After it, a `no key` row is a question of its own.
+
+| Key | What the test does | Ruling | Where it came from |
+|---|---|---|---|
+| O-toolout | feeds hand-typed output of an outside program, such as `git diff` lines, in place of running it (a stand-in for outside data) | R-fake | `counts/T5-IR10.md` line 59, labelled in L-C01; TOTALS line 9's class "outside data" |
+| K-duplicate | repeats another test's check, so the record says Remove | rubric; no filed ruling | `records/D1.md:606` and `records/D10.md:470`, labelled in L-R12 |
+| K-namebody | its name promises a check its body never makes | rubric question 1 | `records/D10.md:385`, labelled in L-R12; `capture/byreading/SUMMARY.md`, "A title that promises what the code does not do" |
+| K-partial | claims "every" case and checks a hand-picked list of them | rubric question 1 | `records/A10.md:617`, labelled in L-R01 |
+| K-nocode | checks no Hydra behaviour: only helpers in the test file, a language's or Windows' own behaviour, or a function's signature or source text | rubric question 2 | `records/D11.md:445`, labelled in L-R12; SUMMARY, "Tests that check no Hydra code" |
+
+One key's meaning is widened. All four scouts used P-message for the text a tool or hook prints, such as a refusal or a usage line, as well as for Hydra's own messages in `src/`. The question is the same for both: the test types the message instead of checking when it is shown and what it names (cross-findings X10, "For a message, the behaviour is when it is shown and what it names"). So P-message now covers a message any code under test prints. The row names the owner, so the question can show both kinds.
+
+The six rows take these keys: `counts/T5-IR10.md:59` O-toolout; `records/D1.md:606` and `records/D10.md:470` K-duplicate; `records/D10.md:385` K-namebody; `records/A10.md:617` K-partial; `records/D11.md:445` K-nocode. The count is now 53 keys.
 
 ## How a scout uses this list
 
