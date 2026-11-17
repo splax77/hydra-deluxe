@@ -519,8 +519,12 @@
 - 2026-11-15 88ea48bb Test audit T8 questions handoff (2026-11-15) | tests, agents, planning, review, ci | Ended with a handoff at the user's request, with the audit answers recorded and one ruling filed, and the mutation tool partly built.
 - 2026-11-15 08c1b347 Claude handoff skill invocation issue (2026-11-15) | agents, docs, hooks | Ended with the /handoff fix committed on main as fdd23c64, after the user asked for the working-tree changes to be committed. [stale]
 - 2026-11-16 a1f405c7 Squeeze outside Hydra range (2026-11-16) | squeeze, optimal-path, path, agents | Ended with the question answered: squeezing out there is not optimal.
-- 2026-11-16 872cc6f3 Mutation tool runner handoff (2026-11-16) | tests, agents, review, planning, performance | Ended with a handoff at the user's request, after the runner fix and the report were merged on the integration branch and the docs work was stopped partway.
-- 2026-11-16 60c3a576 Mutation tool report handoff (2026-11-16) | tests, performance, agents, review, docs | The session ended with the mutation tool merged to main as 1acf6a8f, and a next-steps handoff written and committed on its own branch.
+- 2026-11-16 872cc6f3 Mutation tool runner handoff (2026-11-16) | tests, agents, review, planning, performance | Ended with a handoff at the user's request, after the runner fix and the report were merged on the integration branch and the docs work was stopped partway. [stale]
+- 2026-11-16 60c3a576 Mutation tool report handoff (2026-11-16) | tests, performance, agents, review, docs | The session ended with the mutation tool merged to main as 1acf6a8f, and a next-steps handoff written and committed on its own branch. [stale]
+- 2026-11-16 899dc0dd Mutation tool next steps handoff (2026-11-16) | tests, planning, review, agents | The session ended after both reviewed plans were carried out: the hanging-test fixes went to main, and the audit's run evidence was joined onto the audit branch, with nothing pushed.
+- 2026-11-16 806af65c Dynamic hit window formula (2026-11-16) | clone-hero, hit-window, docs | The session ended with the formulas written out and the user's questions answered, and no file was changed or committed. [write-back]
+- 2026-11-17 cc5420d3 Squeeze badge and scaling UI changes (2026-11-17) | squeeze, sqin-sqout, tests, review | The session ended with the squeeze text change and the screenshot fix both merged into main, and nothing pushed.
+- 2026-11-17 f3bbb32b Test audit T8 E2 E6 handoff (2026-11-17) | tests, agents, review, docs | Steps E2 to E6 finished and were committed on the audit branch, and E7 was not started; it waits for the user's go-ahead.
 
 ## Proposed tags
 
