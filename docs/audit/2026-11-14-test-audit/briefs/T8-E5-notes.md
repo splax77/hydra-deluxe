@@ -21,7 +21,7 @@ The audit's agents wrote side notes, splits and production-code findings into th
 - `finding`: any other problem with a test, a record, a doc or a citation that is not the record's verdict (a stale line, a wrong citation, a name that disagrees with the body, a missing test).
 - `empty`: not a finding at all: a heading with no body, a note that says "none", or a duplicate row of the same note (name the row it duplicates).
 
-**Find what the script missed.** Read every file in your `-files.txt` list once, whole or by range. Look for any side note, split, production-code finding, open point or "not checked" item written in a shape the script did not catch: a different heading, a bullet under "Notes", a sentence inside a verdict. Each one you find becomes a new row. Rows already in your batch need no new row.
+**Find what the script missed.** Read every file in your `-files.txt` list once, whole or by range, with the Read tool. A search for note shapes by script is what the ledger script already did, so a file you only searched is `not reached`. Keep any scratch scripts in your own folder, not a shared one. Look for any side note, split, production-code finding, open point or "not checked" item written in a shape the script did not catch: a different heading, a bullet under "Notes", a sentence inside a verdict. Each one you find becomes a new row. Rows already in your batch need no new row.
 
 ## What you write
 
