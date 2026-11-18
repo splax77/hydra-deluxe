@@ -61,7 +61,7 @@ Every exit 2 row names a question group. Rows in one group share one question.
 
 The plan's count (line 303) adds the ledger's rows, the rows of `cross-rows.md`, the non-duplicate rows of `notes.tsv`, the T6 rows and `not-in-ledger.md`. Three readings keep each row from being counted twice:
 
-- **Notes:** the "non-duplicate" notes are the ones not marked `empty` and not marked `repeat`. An `empty` note is not a finding, and a `repeat` note is its record's row. The new rows and the extra rows count the same way.
+- **Notes:** the "non-duplicate" notes are the ones not marked `empty`, and not marked `repeat` with a `ledger_id` that names a ledger row. An `empty` note is not a finding, and such a `repeat` note is its record's row. A `repeat` note that names no ledger row counts as a row of its own (`no rule`, rule N1). The new rows and the extra rows count the same way.
 - **T6:** the four T6 rows are already ledger records (`t6` = `t6`), so they are counted once, as ledger rows.
 - **`not-in-ledger.md`:** its 586 count rows are already ledger count rows, so only its 208 record titles add rows.
 

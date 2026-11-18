@@ -11,7 +11,7 @@ There are two parts. Part 1 is the main session's rows: one per finding and one 
 The route says which exit a row can take. It is not the exit; E7 picks that from the rule table.
 
 - **2** (a question to the user). Every split, dispute and open point. A split could leave by exit 3 only with a quote from a `## Confirmed` line that names both of its sides. None of the rulings in `docs/agents/rulings/tests-and-runs.md` names both sides of any split below, so none is routed to 3. An open point needs a read or a run that nobody has done, so it cannot close either.
-- **closure?** (a closure candidate). A row where a verifier called something sound, or set copies aside. It leaves by exit 4 only if the main session writes one sentence at E7 saying what each side answers, and a fresh agent agrees at T9. "Sound", "set aside", "kept" and "weak" are the verifier's words, not evidence. Without the sentence, it is exit 2.
+- **closure?** (a closure candidate). A row where a verifier called something sound, or set copies aside. It leaves by exit 4 only if the main session writes one sentence at E7 saying what each side answers, and a fresh agent agrees at T9. "Sound", "set aside", "kept" and "weak" are the verifier's words, not evidence. Without the sentence, it is `no rule`, which becomes a question (`rules.md`, rule Xc).
 - **prod** (a production-code finding). The fault is in `src/` or `tools/`, not in a test. It is exit 2, and its question shows every screen that reads the value (agent rule 11).
 
 ## Part 1: the findings, and the items the plan names
