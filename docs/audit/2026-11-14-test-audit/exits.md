@@ -7,7 +7,7 @@ Signature: not signed. The main session signs by writing its session id, the dat
 ## Counts
 
     ledger rows: 8255; by exit: 2 7370, 4 702, no rule 183
-    rows outside the ledger: 2373; by exit: 2 1452, not a row 631, no rule 290
+    rows outside the ledger: 2373; by exit: 2 1452, 4 4, not a row 631, no rule 286
     by rule (row kind, rule, exit, rows):
       count C1 exit 2: 1877
       count C2 exit 2: 240
@@ -21,7 +21,8 @@ Signature: not signed. The main session signs by writing its session id, the dat
       outside N4 exit 2: 907
       outside R7 exit no rule: 51
       outside X2 exit 2: 140
-      outside Xc exit no rule: 31
+      outside Xc exit 4: 4
+      outside Xc exit no rule: 27
       outside Xp exit 2: 4
       record R1a exit 2: 1681
       record R1b exit 2: 1290
@@ -1439,6 +1440,17 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | counts/T5-KR5.md:142 | 4 | C2 | joins records/A50.md:11, which takes rule R3 | name | tests\test_store_query_plans.cpp:300 store query plans: a chart's save reads records and record_paths only by key | 0 | 69 | yes | 0 | 0 | 0 | 0 |
 | counts/T5-KR5.md:143 | 4 | C2 | joins records/A50.md:31, which takes rule R3 | name | tests\test_store_query_plans.cpp:323 store query plans: a chart's save does the same work however many records the store holds | 0 | 69 | yes | 0 | 0 | 0 | 0 |
 | counts/T5-KR5.md:144 | 4 | C2 | joins records/A47.md:133, which takes rule R3 | not in the run |  |  |  |  |  |  |  |  |
+| X1.c | 4 | Xc | closure, rules.md line 72: At `test_sp_meter_curve.cpp:948` the literal "3- 1 2" only picks which of the engine's own paths the test reads, and a renamed or missing path fails loudly at line 949, so the name answers "which path" and the engine's activation answers everything the test checks. |  |  |  |  |  |  |  |  |  |
+| C9 | 4 | Xc | closure, rules.md line 73: The same test as X1.c (`test_sp_meter_curve.cpp:948`): "3- 1 2" is only the lookup key into the engine's paths, and a missing path fails at line 949 rather than passing. |  |  |  |  |  |  |  |  |  |
+
+### T9-089
+
+Mutation run evidence, with four limits: (1) the tool plants its own kinds of bug, not the change an auditor named, so caught nothing is not proof a test is empty; (2) the run went several bugs at once, so a timed-out bug lists its red tests but credits none of them as catches; (3) each verdict comes from one run of its bug; (4) the run held only the C++ tests in hydra_tests, so a test outside it has no evidence here, which is not the same as catching nothing. See docs/audit/2026-11-14-test-audit/mutation/README.md.
+
+| Row | Exit | Rule | Evidence | mut_match | mut_test | mut_caught | mut_reaches | mut_caught_none | mut_caught_shared | mut_running_at_limit | mut_red_in_timed_out | mut_crashed_running |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| C48 | 4 | Xc | closure, rules.md line 74: At `test_pb_coach.cpp:108` the expected text is built by the production `impossible_window_text`, so the only typed part is the reason word "activation", which is the engine's own reason (`src/search/pather.cpp:366`), and a change to it fails here loudly. |  |  |  |  |  |  |  |  |  |
+| C94 | 4 | Xc | closure, rules.md line 75: At `test_user_messages.cpp:121-122` the same string as input and expected output is the claim itself (an already-plain message passes through `plain_error` unchanged), and line 124 then runs the real `NoNotesError`. |  |  |  |  |  |  |  |  |  |
 
 ## Ledger rows
 
@@ -11697,7 +11709,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | X1 | cross-rows.md | 2 | X2 | X1 | cross-rows.md line 21, a finding routed 2 |
 | X1.a | cross-rows.md | 2 | X2 | X1 | cross-rows.md line 22, a split routed 2 |
 | X1.b | cross-rows.md | 2 | X2 | X1 | cross-rows.md line 23, a dispute routed 2 |
-| X1.c | cross-rows.md | no rule | Xc | - | cross-rows.md line 24, a closure candidate with no sentence under "Closures" in rules.md |
+| X1.c | cross-rows.md | 4 | Xc | - | closure, rules.md line 72: At `test_sp_meter_curve.cpp:948` the literal "3- 1 2" only picks which of the engine's own paths the test reads, and a renamed or missing path fails loudly at line 949, so the name answers "which path" and the engine's activation answers everything the test checks. |
 | X2 | cross-rows.md | 2 | X2 | X2 | cross-rows.md line 25, a finding routed 2 |
 | X2.a | cross-rows.md | 2 | X2 | X2 | cross-rows.md line 26, a open routed 2 |
 | X3 | cross-rows.md | 2 | X2 | X3 | cross-rows.md line 27, a finding routed 2 |
@@ -11760,7 +11772,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | LO.e | cross-rows.md | 2 | X2 | Left out | cross-rows.md line 84, a open routed 2 |
 | C7 | cross-rows.md | 2 | X2 | X1 | cross-rows.md line 94, a dispute routed 2 |
 | C8 | cross-rows.md | 2 | X2 | X1 | cross-rows.md line 95, a dispute routed 2 |
-| C9 | cross-rows.md | no rule | Xc | - | cross-rows.md line 96, a closure candidate with no sentence under "Closures" in rules.md |
+| C9 | cross-rows.md | 4 | Xc | - | closure, rules.md line 73: The same test as X1.c (`test_sp_meter_curve.cpp:948`): "3- 1 2" is only the lookup key into the engine's paths, and a missing path fails at line 949 rather than passing. |
 | C10 | cross-rows.md | 2 | X2 | X1 | cross-rows.md line 97, a dispute routed 2 |
 | C11 | cross-rows.md | no rule | Xc | - | cross-rows.md line 98, a closure candidate with no sentence under "Closures" in rules.md |
 | C12 | cross-rows.md | no rule | Xc | - | cross-rows.md line 99, a closure candidate with no sentence under "Closures" in rules.md |
@@ -11799,7 +11811,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | C45 | cross-rows.md | 2 | X2 | X2 | cross-rows.md line 132, a split routed 2 |
 | C46 | cross-rows.md | 2 | X2 | X2 | cross-rows.md line 133, a open routed 2 |
 | C47 | cross-rows.md | 2 | X2 | X2 | cross-rows.md line 134, a dispute routed 2 |
-| C48 | cross-rows.md | no rule | Xc | - | cross-rows.md line 135, a closure candidate with no sentence under "Closures" in rules.md |
+| C48 | cross-rows.md | 4 | Xc | - | closure, rules.md line 74: At `test_pb_coach.cpp:108` the expected text is built by the production `impossible_window_text`, so the only typed part is the reason word "activation", which is the engine's own reason (`src/search/pather.cpp:366`), and a change to it fails here loudly. |
 | C49 | cross-rows.md | 2 | X2 | X3 | cross-rows.md line 136, a split routed 2 |
 | C50 | cross-rows.md | 2 | X2 | X3 | cross-rows.md line 137, a dispute routed 2 |
 | C51 | cross-rows.md | 2 | X2 | X4 | cross-rows.md line 138, a dispute routed 2 |
@@ -11845,7 +11857,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | C91 | cross-rows.md | 2 | X2 | X10 | cross-rows.md line 178, a open routed 2 |
 | C92 | cross-rows.md | no rule | Xc | - | cross-rows.md line 179, a closure candidate with no sentence under "Closures" in rules.md |
 | C93 | cross-rows.md | 2 | X2 | X11 | cross-rows.md line 180, a open routed 2 |
-| C94 | cross-rows.md | no rule | Xc | - | cross-rows.md line 181, a closure candidate with no sentence under "Closures" in rules.md |
+| C94 | cross-rows.md | 4 | Xc | - | closure, rules.md line 75: At `test_user_messages.cpp:121-122` the same string as input and expected output is the claim itself (an already-plain message passes through `plain_error` unchanged), and line 124 then runs the real `NoNotesError`. |
 | C95 | cross-rows.md | 2 | X2 | X12 | cross-rows.md line 182, a open routed 2 |
 | C96 | cross-rows.md | 2 | X2 | X12 | cross-rows.md line 183, a dispute routed 2 |
 | C97 | cross-rows.md | 2 | X2 | X12 | cross-rows.md line 184, a open routed 2 |

@@ -67,7 +67,12 @@ The plan's count (line 303) adds the ledger's rows, the rows of `cross-rows.md`,
 
 ## Closures
 
-The main session writes one line here for each `cross-rows.md` row it closes at exit 4: the row, and one sentence saying why it is not a problem. None is written yet.
+The main session writes one line here for each `cross-rows.md` row it closes at exit 4: the row, and one sentence saying why it is not a problem. Each was written after reading the test at the lines named, on 2026-11-18, session 98fa2925-a91a-4a7a-b151-88fd62c7df0d. The other `closure?` rows have no line here and stay `no rule`, because they are bundles of many tests or their own text names a fault.
+
+- X1.c: At `test_sp_meter_curve.cpp:948` the literal "3- 1 2" only picks which of the engine's own paths the test reads, and a renamed or missing path fails loudly at line 949, so the name answers "which path" and the engine's activation answers everything the test checks.
+- C9: The same test as X1.c (`test_sp_meter_curve.cpp:948`): "3- 1 2" is only the lookup key into the engine's paths, and a missing path fails at line 949 rather than passing.
+- C48: At `test_pb_coach.cpp:108` the expected text is built by the production `impossible_window_text`, so the only typed part is the reason word "activation", which is the engine's own reason (`src/search/pather.cpp:366`), and a change to it fails here loudly.
+- C94: At `test_user_messages.cpp:121-122` the same string as input and expected output is the claim itself (an already-plain message passes through `plain_error` unchanged), and line 124 then runs the real `NoNotesError`.
 
 ## Exit 3 quotes
 
