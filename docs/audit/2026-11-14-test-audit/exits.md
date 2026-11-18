@@ -7,7 +7,7 @@ Signature: not signed. The main session signs by writing its session id, the dat
 ## Counts
 
     ledger rows: 8255; by exit: 2 7370, 4 702, no rule 183
-    rows outside the ledger: 2373; by exit: 2 1452, not a row 682, no rule 239
+    rows outside the ledger: 2373; by exit: 2 1452, not a row 631, no rule 290
     by rule (row kind, rule, exit, rows):
       count C1 exit 2: 1877
       count C2 exit 2: 240
@@ -15,10 +15,11 @@ Signature: not signed. The main session signs by writing its session id, the dat
       count R7 exit no rule: 183
       outside L1 exit no rule: 208
       outside N0 exit not a row: 594
-      outside N1 exit not a row: 88
+      outside N1 exit not a row: 37
       outside N2 exit 2: 261
       outside N3 exit 2: 140
       outside N4 exit 2: 907
+      outside R7 exit no rule: 51
       outside X2 exit 2: 140
       outside Xc exit no rule: 31
       outside Xp exit 2: 4
@@ -117,7 +118,7 @@ Signature: not signed. The main session signs by writing its session id, the dat
       X11: 2
       X6: 2
 
-Rows for the acceptance count (ledger rows, and outside rows that are rows of their own): 9946.
+Rows for the acceptance count (ledger rows, and outside rows that are rows of their own): 9997.
 
 ## The rows for T9: exit 1, 3 and 4, in groups of 8
 
@@ -9708,29 +9709,29 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:4 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/B2-verdicts.md:57 marked finding |
 | notes/marks.tsv:5 | notes/marks.tsv | 2 | N3 | N-prod | capture/byreading/B3-verdicts.md:54 marked prod |
 | notes/marks.tsv:6 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/B4-verdicts.md:51 marked finding |
-| notes/marks.tsv:7 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B5-verdicts.md:9 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:8 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B5-verdicts.md:12 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:9 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B5-verdicts.md:20 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:10 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B5-verdicts.md:31 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:11 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B5-verdicts.md:34 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:7 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:8 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:9 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:10 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:11 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:12 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/B5-verdicts.md:44 marked finding |
-| notes/marks.tsv:13 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B6-verdicts.md:12 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:14 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B6-verdicts.md:26 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:15 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B6-verdicts.md:50 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:13 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:14 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:15 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:16 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/B6-verdicts.md:54 marked finding |
-| notes/marks.tsv:17 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B8-verdicts.md:13 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:17 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:18 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/B8-verdicts.md:43 marked finding |
-| notes/marks.tsv:19 | notes/marks.tsv | not a row | N1 | - | capture/byreading/B9-verdicts.md:27 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:19 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:20 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/B9-verdicts.md:43 marked finding |
 | notes/marks.tsv:21 | notes/marks.tsv | not a row | N0 | - | capture/byreading/SUMMARY.md:5 marked empty: not a finding |
 | notes/marks.tsv:22 | notes/marks.tsv | 2 | N4 | N-finding | capture/byreading/SUMMARY.md:31 marked finding |
 | notes/marks.tsv:23 | notes/marks.tsv | not a row | N0 | - | capture/byreading/SUMMARY.md:33 marked empty: not a finding |
-| notes/marks.tsv:24 | notes/marks.tsv | not a row | N1 | - | capture/rejudge/J1-engine.md:10 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:25 | notes/marks.tsv | not a row | N1 | - | capture/rejudge/J1-engine.md:43 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:24 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:25 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:26 | notes/marks.tsv | 2 | N4 | N-finding | capture/rejudge/J1-engine.md:54 marked finding |
 | notes/marks.tsv:27 | notes/marks.tsv | 2 | N4 | N-finding | capture/rejudge/J2-R4a.md:28 marked finding |
 | notes/marks.tsv:28 | notes/marks.tsv | 2 | N4 | N-finding | capture/rejudge/J4-store-hooks.md:42 marked finding |
-| notes/marks.tsv:29 | notes/marks.tsv | not a row | N1 | - | counts/T5-IR18.md:37 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:29 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:30 | notes/marks.tsv | not a row | N0 | - | records/A1.md:59 marked empty: not a finding |
 | notes/marks.tsv:31 | notes/marks.tsv | not a row | N1 | - | records/A1.md:61 repeats its record's row records/A1.md:17 |
 | notes/marks.tsv:32 | notes/marks.tsv | not a row | N0 | - | records/A1.md:63 marked empty: not a finding |
@@ -9841,10 +9842,10 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:137 | notes/marks.tsv | 2 | N4 | N-finding | records/A15.md:180 marked finding |
 | notes/marks.tsv:138 | notes/marks.tsv | 2 | N2 | N-split | records/A15.md:454 marked split |
 | notes/marks.tsv:139 | notes/marks.tsv | 2 | N4 | N-finding | records/A15.md:543 marked finding |
-| notes/marks.tsv:140 | notes/marks.tsv | not a row | N1 | - | records/A16.md:23 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:140 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:141 | notes/marks.tsv | not a row | N0 | - | records/A16.md:23 marked empty: not a finding |
-| notes/marks.tsv:142 | notes/marks.tsv | not a row | N1 | - | records/A16.md:25 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:143 | notes/marks.tsv | not a row | N1 | - | records/A16.md:26 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:142 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:143 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:144 | notes/marks.tsv | not a row | N0 | - | records/A16.md:27 marked empty: not a finding |
 | notes/marks.tsv:145 | notes/marks.tsv | not a row | N1 | - | records/A16.md:47 repeats its record's row records/A16.md:31 |
 | notes/marks.tsv:146 | notes/marks.tsv | not a row | N0 | - | records/A16.md:263 marked empty: not a finding |
@@ -9859,7 +9860,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:155 | notes/marks.tsv | 2 | N3 | N-prod | records/A18.md:24 marked prod |
 | notes/marks.tsv:156 | notes/marks.tsv | not a row | N0 | - | records/A18.md:24 marked empty: not a finding |
 | notes/marks.tsv:157 | notes/marks.tsv | 2 | N2 | N-split | records/A18.md:28 marked split |
-| notes/marks.tsv:158 | notes/marks.tsv | not a row | N1 | - | records/A18.md:29 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:158 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:159 | notes/marks.tsv | 2 | N4 | N-finding | records/A18.md:49 marked finding |
 | notes/marks.tsv:160 | notes/marks.tsv | not a row | N0 | - | records/A18.md:100 marked empty: not a finding |
 | notes/marks.tsv:161 | notes/marks.tsv | 2 | N4 | N-finding | records/A18.md:133 marked finding |
@@ -10103,9 +10104,9 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:399 | notes/marks.tsv | not a row | N0 | - | records/A34.md:530 marked empty: not a finding |
 | notes/marks.tsv:400 | notes/marks.tsv | not a row | N0 | - | records/A34.md:546 marked empty: not a finding |
 | notes/marks.tsv:401 | notes/marks.tsv | not a row | N0 | - | records/A34.md:562 marked empty: not a finding |
-| notes/marks.tsv:402 | notes/marks.tsv | not a row | N1 | - | records/A34.md:573 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:402 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:403 | notes/marks.tsv | not a row | N0 | - | records/A34.md:574 marked empty: not a finding |
-| notes/marks.tsv:404 | notes/marks.tsv | not a row | N1 | - | records/A34.md:575 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:404 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:405 | notes/marks.tsv | not a row | N0 | - | records/A35.md:29 marked empty: not a finding |
 | notes/marks.tsv:406 | notes/marks.tsv | not a row | N0 | - | records/A35.md:47 marked empty: not a finding |
 | notes/marks.tsv:407 | notes/marks.tsv | 2 | N4 | N-finding | records/A35.md:56 marked finding |
@@ -10125,7 +10126,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:421 | notes/marks.tsv | not a row | N0 | - | records/A35.md:246 marked empty: not a finding |
 | notes/marks.tsv:422 | notes/marks.tsv | 2 | N2 | N-split | records/A35.md:247 marked split |
 | notes/marks.tsv:423 | notes/marks.tsv | 2 | N4 | N-finding | records/A35.md:248 marked finding |
-| notes/marks.tsv:424 | notes/marks.tsv | not a row | N1 | - | records/A35.md:250 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:424 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:425 | notes/marks.tsv | 2 | N4 | N-finding | records/A35.md:252 marked finding |
 | notes/marks.tsv:426 | notes/marks.tsv | 2 | N4 | N-finding | records/A36.md:175 marked finding |
 | notes/marks.tsv:427 | notes/marks.tsv | 2 | N2 | N-split | records/A36.md:281 marked split |
@@ -10205,8 +10206,8 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:501 | notes/marks.tsv | 2 | N3 | N-prod | records/A4.md:724 marked prod |
 | notes/marks.tsv:502 | notes/marks.tsv | not a row | N0 | - | records/A4.md:794 marked empty: not a finding |
 | notes/marks.tsv:503 | notes/marks.tsv | not a row | N0 | - | records/A4.md:796 marked empty: not a finding |
-| notes/marks.tsv:504 | notes/marks.tsv | not a row | N1 | - | records/A4.md:797 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:505 | notes/marks.tsv | not a row | N1 | - | records/A4.md:797 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:504 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:505 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:506 | notes/marks.tsv | 2 | N4 | N-finding | records/A40.md:361 marked finding |
 | notes/marks.tsv:507 | notes/marks.tsv | 2 | N4 | N-finding | records/A40.md:441 marked finding |
 | notes/marks.tsv:508 | notes/marks.tsv | 2 | N4 | N-finding | records/A40.md:485 marked finding |
@@ -10664,7 +10665,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:960 | notes/marks.tsv | 2 | N4 | N-finding | records/C6.md:1483 marked finding |
 | notes/marks.tsv:961 | notes/marks.tsv | not a row | N1 | - | records/C7.md:36 repeats its record's row records/C7.md:20 |
 | notes/marks.tsv:962 | notes/marks.tsv | not a row | N1 | - | records/C7.md:86 repeats its record's row records/C7.md:70 |
-| notes/marks.tsv:963 | notes/marks.tsv | not a row | N1 | - | records/C7.md:551 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:963 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:964 | notes/marks.tsv | 2 | N4 | N-finding | records/C8.md:17 marked finding |
 | notes/marks.tsv:965 | notes/marks.tsv | 2 | N4 | N-finding | records/C8.md:40 marked finding |
 | notes/marks.tsv:966 | notes/marks.tsv | 2 | N4 | N-finding | records/C8.md:57 marked finding |
@@ -10884,7 +10885,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1180 | notes/marks.tsv | 2 | N4 | N-finding | records/delta-DL1.md:412 marked finding |
 | notes/marks.tsv:1181 | notes/marks.tsv | 2 | N4 | N-finding | records/delta-DL1.md:416 marked finding |
 | notes/marks.tsv:1182 | notes/marks.tsv | 2 | N4 | N-finding | records/delta-DL1.md:451 marked finding |
-| notes/marks.tsv:1183 | notes/marks.tsv | not a row | N1 | - | records/delta-DL2.md:19 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1183 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1184 | notes/marks.tsv | 2 | N4 | N-finding | records/delta-DL2.md:39 marked finding |
 | notes/marks.tsv:1185 | notes/marks.tsv | 2 | N4 | N-finding | records/delta-DL2.md:148 marked finding |
 | notes/marks.tsv:1186 | notes/marks.tsv | 2 | N4 | N-finding | records/delta-DL2.md:166 marked finding |
@@ -10968,7 +10969,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1264 | notes/marks.tsv | 2 | N2 | N-split | records/window-WN5.md:442 marked split |
 | notes/marks.tsv:1265 | notes/marks.tsv | 2 | N2 | N-split | records/window-WN8.md:252 marked split |
 | notes/marks.tsv:1266 | notes/marks.tsv | 2 | N4 | N-finding | sweep/SW1.md:137 marked finding |
-| notes/marks.tsv:1267 | notes/marks.tsv | not a row | N1 | - | sweep/SW1.md:295 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1267 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1268 | notes/marks.tsv | 2 | N4 | N-finding | sweep/SW2.md:350 marked finding |
 | notes/marks.tsv:1269 | notes/marks.tsv | not a row | N0 | - | sweep/SW3.md:92 marked empty: not a finding |
 | notes/marks.tsv:1270 | notes/marks.tsv | not a row | N0 | - | sweep/SW3.md:166 marked empty: not a finding |
@@ -10991,7 +10992,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1287 | notes/marks.tsv | not a row | N0 | - | verify/A1.md:61 marked empty: not a finding |
 | notes/marks.tsv:1288 | notes/marks.tsv | 2 | N2 | N-split | verify/A1.md:76 marked split |
 | notes/marks.tsv:1289 | notes/marks.tsv | 2 | N2 | N-split | verify/A11.md:23 marked split |
-| notes/marks.tsv:1290 | notes/marks.tsv | not a row | N1 | - | verify/A11.md:33 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1290 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1291 | notes/marks.tsv | not a row | N0 | - | verify/A11.md:45 marked empty: not a finding |
 | notes/marks.tsv:1292 | notes/marks.tsv | 2 | N2 | N-split | verify/A11.md:65 marked split |
 | notes/marks.tsv:1293 | notes/marks.tsv | 2 | N4 | N-finding | verify/A11.md:73 marked finding |
@@ -11006,7 +11007,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1302 | notes/marks.tsv | not a row | N0 | - | verify/A12.md:87 marked empty: not a finding |
 | notes/marks.tsv:1303 | notes/marks.tsv | not a row | N0 | - | verify/A12.md:93 marked empty: not a finding |
 | notes/marks.tsv:1304 | notes/marks.tsv | 2 | N2 | N-split | verify/A12.md:101 marked split |
-| notes/marks.tsv:1305 | notes/marks.tsv | not a row | N1 | - | verify/A12.md:109 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1305 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1306 | notes/marks.tsv | 2 | N2 | N-split | verify/A12.md:117 marked split |
 | notes/marks.tsv:1307 | notes/marks.tsv | 2 | N4 | N-finding | verify/A12.md:125 marked finding |
 | notes/marks.tsv:1308 | notes/marks.tsv | 2 | N3 | N-prod | verify/A12.md:133 marked prod |
@@ -11075,17 +11076,17 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1371 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:67 marked empty: not a finding |
 | notes/marks.tsv:1372 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:71 marked empty: not a finding |
 | notes/marks.tsv:1373 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:75 marked empty: not a finding |
-| notes/marks.tsv:1374 | notes/marks.tsv | not a row | N1 | - | verify/A24.md:79 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1374 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1375 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:83 marked empty: not a finding |
 | notes/marks.tsv:1376 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:87 marked empty: not a finding |
 | notes/marks.tsv:1377 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:91 marked empty: not a finding |
 | notes/marks.tsv:1378 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:95 marked empty: not a finding |
-| notes/marks.tsv:1379 | notes/marks.tsv | not a row | N1 | - | verify/A24.md:99 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1379 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1380 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:103 marked empty: not a finding |
-| notes/marks.tsv:1381 | notes/marks.tsv | not a row | N1 | - | verify/A24.md:106 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:1382 | notes/marks.tsv | not a row | N1 | - | verify/A24.md:107 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:1383 | notes/marks.tsv | not a row | N1 | - | verify/A24.md:110 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:1384 | notes/marks.tsv | not a row | N1 | - | verify/A24.md:111 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1381 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:1382 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:1383 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:1384 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1385 | notes/marks.tsv | not a row | N0 | - | verify/A24.md:115 marked empty: not a finding |
 | notes/marks.tsv:1386 | notes/marks.tsv | 2 | N2 | N-split | verify/A25.md:19 marked split |
 | notes/marks.tsv:1387 | notes/marks.tsv | 2 | N3 | N-prod | verify/A25.md:92 marked prod |
@@ -11203,7 +11204,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1499 | notes/marks.tsv | 2 | N4 | N-finding | verify/A6.md:59 marked finding |
 | notes/marks.tsv:1500 | notes/marks.tsv | not a row | N0 | - | verify/A7-reread.md:89 marked empty: not a finding |
 | notes/marks.tsv:1501 | notes/marks.tsv | 2 | N2 | N-split | verify/A7.md:86 marked split |
-| notes/marks.tsv:1502 | notes/marks.tsv | not a row | N1 | - | verify/A7.md:93 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1502 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1503 | notes/marks.tsv | 2 | N3 | N-prod | verify/A8.md:27 marked prod |
 | notes/marks.tsv:1504 | notes/marks.tsv | not a row | N0 | - | verify/A8.md:28 marked empty: not a finding |
 | notes/marks.tsv:1505 | notes/marks.tsv | 2 | N4 | N-finding | verify/A8.md:60 marked finding |
@@ -11211,7 +11212,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1507 | notes/marks.tsv | 2 | N3 | N-prod | verify/A8.md:70 marked prod |
 | notes/marks.tsv:1508 | notes/marks.tsv | 2 | N4 | N-finding | verify/A8.md:74 marked finding |
 | notes/marks.tsv:1509 | notes/marks.tsv | 2 | N4 | N-finding | verify/A9.md:11 marked finding |
-| notes/marks.tsv:1510 | notes/marks.tsv | not a row | N1 | - | verify/A9.md:54 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1510 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1511 | notes/marks.tsv | 2 | N4 | N-finding | verify/B1.md:39 marked finding |
 | notes/marks.tsv:1512 | notes/marks.tsv | 2 | N2 | N-split | verify/B1.md:145 marked split |
 | notes/marks.tsv:1513 | notes/marks.tsv | 2 | N4 | N-finding | verify/B1.md:153 marked finding |
@@ -11276,7 +11277,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1572 | notes/marks.tsv | 2 | N2 | N-split | verify/C6.md:58 marked split |
 | notes/marks.tsv:1573 | notes/marks.tsv | 2 | N2 | N-split | verify/C7.md:20 marked split |
 | notes/marks.tsv:1574 | notes/marks.tsv | 2 | N4 | N-finding | verify/C8-resend.md:33 marked finding |
-| notes/marks.tsv:1575 | notes/marks.tsv | not a row | N1 | - | verify/C8.md:27 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1575 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1576 | notes/marks.tsv | 2 | N2 | N-split | verify/C8.md:30 marked split |
 | notes/marks.tsv:1577 | notes/marks.tsv | 2 | N3 | N-prod | verify/C8.md:66 marked prod |
 | notes/marks.tsv:1578 | notes/marks.tsv | 2 | N3 | N-prod | verify/C8.md:71 marked prod |
@@ -11304,14 +11305,14 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1600 | notes/marks.tsv | 2 | N2 | N-split | verify/D13.md:38 marked split |
 | notes/marks.tsv:1601 | notes/marks.tsv | 2 | N4 | N-finding | verify/D13.md:39 marked finding |
 | notes/marks.tsv:1602 | notes/marks.tsv | 2 | N4 | N-finding | verify/D13.md:40 marked finding |
-| notes/marks.tsv:1603 | notes/marks.tsv | not a row | N1 | - | verify/D13.md:135 repeats its record's row (the note names no ledger_id) |
-| notes/marks.tsv:1604 | notes/marks.tsv | not a row | N1 | - | verify/D14.md:16 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1603 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
+| notes/marks.tsv:1604 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1605 | notes/marks.tsv | 2 | N2 | N-split | verify/D14.md:23 marked split |
 | notes/marks.tsv:1606 | notes/marks.tsv | 2 | N2 | N-split | verify/D15.md:13 marked split |
 | notes/marks.tsv:1607 | notes/marks.tsv | 2 | N2 | N-split | verify/D15.md:15 marked split |
 | notes/marks.tsv:1608 | notes/marks.tsv | 2 | N4 | N-finding | verify/D16.md:25 marked finding |
 | notes/marks.tsv:1609 | notes/marks.tsv | 2 | N4 | N-finding | verify/D2.md:31 marked finding |
-| notes/marks.tsv:1610 | notes/marks.tsv | not a row | N1 | - | verify/D2.md:88 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1610 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1611 | notes/marks.tsv | 2 | N2 | N-split | verify/D2.md:185 marked split |
 | notes/marks.tsv:1612 | notes/marks.tsv | 2 | N3 | N-prod | verify/D2.md:192 marked prod |
 | notes/marks.tsv:1613 | notes/marks.tsv | 2 | N2 | N-split | verify/D3.md:188 marked split |
@@ -11339,7 +11340,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/marks.tsv:1635 | notes/marks.tsv | 2 | N4 | N-finding | verify/E4a.md:25 marked finding |
 | notes/marks.tsv:1636 | notes/marks.tsv | 2 | N4 | N-finding | verify/E4a.md:51 marked finding |
 | notes/marks.tsv:1637 | notes/marks.tsv | 2 | N4 | N-finding | verify/E4a.md:64 marked finding |
-| notes/marks.tsv:1638 | notes/marks.tsv | not a row | N1 | - | verify/E4a.md:82 repeats its record's row (the note names no ledger_id) |
+| notes/marks.tsv:1638 | notes/marks.tsv | no rule | R7 | - | no rule takes this row |
 | notes/marks.tsv:1639 | notes/marks.tsv | 2 | N2 | N-split | verify/E4a.md:92 marked split |
 | notes/marks.tsv:1640 | notes/marks.tsv | 2 | N3 | N-prod | verify/E4b.md:20 marked prod |
 | notes/marks.tsv:1641 | notes/marks.tsv | 2 | N2 | N-split | verify/E4b.md:28 marked split |
@@ -11391,18 +11392,18 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/new-rows.tsv:23 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A2.md:221 marked finding |
 | notes/new-rows.tsv:24 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A21.md:28 marked finding |
 | notes/new-rows.tsv:25 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A21.md:45 marked finding |
-| notes/new-rows.tsv:26 | notes/new-rows.tsv | not a row | N1 | - | records/A22.md:840 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:26 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:27 | notes/new-rows.tsv | 2 | N3 | N-prod | records/A24.md:481 marked prod |
-| notes/new-rows.tsv:28 | notes/new-rows.tsv | not a row | N1 | - | records/A24.md:540 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:28 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:29 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A24.md:545 marked finding |
 | notes/new-rows.tsv:30 | notes/new-rows.tsv | 2 | N3 | N-prod | records/A26.md:43 marked prod |
 | notes/new-rows.tsv:31 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A26.md:159 marked finding |
 | notes/new-rows.tsv:32 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A26.md:216 marked finding |
 | notes/new-rows.tsv:33 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A26.md:322 marked finding |
-| notes/new-rows.tsv:34 | notes/new-rows.tsv | not a row | N1 | - | records/A27.md:13 repeats its record's row (the note names no ledger_id) |
-| notes/new-rows.tsv:35 | notes/new-rows.tsv | not a row | N1 | - | records/A29.md:64 repeats its record's row (the note names no ledger_id) |
-| notes/new-rows.tsv:36 | notes/new-rows.tsv | not a row | N1 | - | records/A29.md:119 repeats its record's row (the note names no ledger_id) |
-| notes/new-rows.tsv:37 | notes/new-rows.tsv | not a row | N1 | - | records/A3.md:250 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:34 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
+| notes/new-rows.tsv:35 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
+| notes/new-rows.tsv:36 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
+| notes/new-rows.tsv:37 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:38 | notes/new-rows.tsv | 2 | N3 | N-prod | records/A31.md:15 marked prod |
 | notes/new-rows.tsv:39 | notes/new-rows.tsv | 2 | N3 | N-prod | records/A31.md:136 marked prod |
 | notes/new-rows.tsv:40 | notes/new-rows.tsv | 2 | N3 | N-prod | records/A31.md:263 marked prod |
@@ -11419,13 +11420,13 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/new-rows.tsv:51 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A43.md:219 marked finding |
 | notes/new-rows.tsv:52 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A46.md:183 marked finding |
 | notes/new-rows.tsv:53 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A47.md:180 marked finding |
-| notes/new-rows.tsv:54 | notes/new-rows.tsv | not a row | N1 | - | records/A35.md:78 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:54 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:55 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A35.md:95 marked finding |
 | notes/new-rows.tsv:56 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A35.md:176 marked finding |
 | notes/new-rows.tsv:57 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A47.md:26 marked finding |
 | notes/new-rows.tsv:58 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A47.md:46 marked finding |
 | notes/new-rows.tsv:59 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A47.md:63 marked finding |
-| notes/new-rows.tsv:60 | notes/new-rows.tsv | not a row | N1 | - | records/A47.md:75 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:60 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:61 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A47.md:163 marked finding |
 | notes/new-rows.tsv:62 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A49.md:431 marked finding |
 | notes/new-rows.tsv:63 | notes/new-rows.tsv | 2 | N4 | N-finding | records/A7.md:239 marked finding |
@@ -11441,9 +11442,9 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/new-rows.tsv:73 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C14-C15-fuzz.md:103 marked finding |
 | notes/new-rows.tsv:74 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C14-C15-fuzz.md:190 marked finding |
 | notes/new-rows.tsv:75 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C14-C15-fuzz.md:312 marked finding |
-| notes/new-rows.tsv:76 | notes/new-rows.tsv | not a row | N1 | - | records/B5.md:481 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:76 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:77 | notes/new-rows.tsv | 2 | N3 | N-prod | records/B2.md:412 marked prod |
-| notes/new-rows.tsv:78 | notes/new-rows.tsv | not a row | N1 | - | records/C14.md:130 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:78 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:79 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C14.md:170 marked finding |
 | notes/new-rows.tsv:80 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C14.md:432 marked finding |
 | notes/new-rows.tsv:81 | notes/new-rows.tsv | 2 | N3 | N-prod | records/C14.md:586 marked prod |
@@ -11462,7 +11463,7 @@ Mutation run evidence, with four limits: (1) the tool plants its own kinds of bu
 | notes/new-rows.tsv:94 | notes/new-rows.tsv | 2 | N2 | N-split | records/C8.md:527 marked split |
 | notes/new-rows.tsv:95 | notes/new-rows.tsv | 2 | N3 | N-prod | records/C8.md:529 marked prod |
 | notes/new-rows.tsv:96 | notes/new-rows.tsv | 2 | N3 | N-prod | records/C8.md:533 marked prod |
-| notes/new-rows.tsv:97 | notes/new-rows.tsv | not a row | N1 | - | records/C8.md:535 repeats its record's row (the note names no ledger_id) |
+| notes/new-rows.tsv:97 | notes/new-rows.tsv | no rule | R7 | - | no rule takes this row |
 | notes/new-rows.tsv:98 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C8.md:536 marked finding |
 | notes/new-rows.tsv:99 | notes/new-rows.tsv | 2 | N4 | N-finding | records/C9.md:672 marked finding |
 | notes/new-rows.tsv:100 | notes/new-rows.tsv | 2 | N3 | N-prod | records/D10.md:14 marked prod |

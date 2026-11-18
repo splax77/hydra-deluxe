@@ -1475,8 +1475,8 @@ def _n0(r, x):
 def _n1(r, x):
     if _note(r, NOTE_SOURCES[:2], 'repeat'):
         to = r.get('ledger_id', '')
-        return {'groups': [], 'points_at': to,
-                'evidence': f'{r["where"]} repeats its record\'s row ' + (to or '(the note names no ledger_id)')}
+        if to in x.by_id:
+            return {'groups': [], 'points_at': to, 'evidence': f'{r["where"]} repeats its record\'s row {to}'}
     return None
 
 

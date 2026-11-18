@@ -48,7 +48,7 @@ Every exit 2 row names a question group. Rows in one group share one question.
 | Rule | Takes | Exit | Group | Required by |
 |---|---|---|---|---|
 | N0 | a note marked `empty` in `notes/marks.tsv` or `notes/new-rows.tsv` | not a row | none | not a finding (`notes/README.md`); counted and listed, but given no exit |
-| N1 | a note marked `repeat` | not a row of its own | points at its record's row (`ledger_id`) | plan line 257 |
+| N1 | a note marked `repeat` whose `ledger_id` names a ledger row | not a row of its own | points at its record's row (`ledger_id`) | plan line 257 |
 | N2 | a note, a new row or an extra row (`notes/extra-rows.tsv`) marked `split` | 2 | `N-split` | plan line 257; audit-method "a split goes to the user" |
 | N3 | marked `prod` | 2 | `N-prod` | plan line 257 |
 | N4 | marked `finding` | 2 | `N-finding` | plan line 257 |

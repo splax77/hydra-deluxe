@@ -695,6 +695,38 @@ class ExitRulesOnBuiltInput(unittest.TestCase):
         self.assertEqual(ds['notes/marks.tsv:2']['exit'], ledger.NOT_A_ROW)
         self.assertEqual((ds['notes/marks.tsv:3']['exit'], ds['notes/marks.tsv:3']['groups']), ('2', ['N-split']))
 
+    def test_a_repeat_note_is_a_row_of_its_record_only_when_it_names_a_ledger_row(self):
+        r = self.rec('records/A.md', 5, 'Rewrite')
+        rows = [{'id': 'notes/marks.tsv:2', 'source': 'notes/marks.tsv', 'where': 'a', 'mark': 'repeat',
+                 'ledger_id': r['id']},
+                {'id': 'notes/marks.tsv:3', 'source': 'notes/marks.tsv', 'where': 'b', 'mark': 'repeat',
+                 'ledger_id': ''},
+                {'id': 'notes/new-rows.tsv:2', 'source': 'notes/new-rows.tsv', 'where': 'c', 'mark': 'repeat',
+                 'ledger_id': 'records/A.md:99'}]
+        ds = self.run_rules([r], labels=self.label(r['id'], 'C-stub'), outside=rows)
+        self.assertEqual((ds['notes/marks.tsv:2']['exit'], ds['notes/marks.tsv:2']['points_at']),
+                         (ledger.NOT_A_ROW, r['id']))
+        for nid in ('notes/marks.tsv:3', 'notes/new-rows.tsv:2'):
+            self.assertEqual((ds[nid]['exit'], ds[nid]['rule']), (ledger.NO_RULE, 'R7'))
+
+    def test_an_exit_3_ruling_outside_confirmed_is_refused(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(tmp, 'docs'))
+            with open(os.path.join(tmp, 'docs', 'r.md'), 'w', encoding='utf-8') as fh:
+                fh.write('# R\n\n## Unconfirmed\n\n- words\n\n## Confirmed\n\n- user words\n')
+            r = self.rec('records/A.md', 5, 'Rewrite')
+            lab = self.label(r['id'], 'C-stub')
+            ledger.apply_exits(ledger.parse_rules(self.rules_text(
+                quotes='- records/A.md:5\n  - quote: q\n  - ruling: docs/r.md:9\n  - sides: a | b')),
+                [r], lab, {}, [], repo=tmp)
+            with self.assertRaisesRegex(ledger.RulesError, 'Confirmed'):
+                ledger.apply_exits(ledger.parse_rules(self.rules_text(
+                    quotes='- records/A.md:5\n  - quote: q\n  - ruling: docs/r.md:5\n  - sides: a | b')),
+                    [r], lab, {}, [], repo=tmp)
+        finally:
+            shutil.rmtree(tmp)
+
     def test_an_outside_row_no_rule_takes_is_no_rule(self):
         row = {'id': 'notes/marks.tsv:2', 'source': 'notes/marks.tsv', 'where': 'records/A.md:3', 'mark': 'not read'}
         d = self.run_rules([], outside=[row])['notes/marks.tsv:2']
