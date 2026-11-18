@@ -524,7 +524,7 @@
 - 2026-11-16 899dc0dd Mutation tool next steps handoff (2026-11-16) | tests, planning, review, agents | The session ended after both reviewed plans were carried out: the hanging-test fixes went to main, and the audit's run evidence was joined onto the audit branch, with nothing pushed.
 - 2026-11-16 806af65c Dynamic hit window formula (2026-11-16) | clone-hero, hit-window, docs | The session ended with the formulas written out and the user's questions answered, and no file was changed or committed. [write-back]
 - 2026-11-17 cc5420d3 Squeeze badge and scaling UI changes (2026-11-17) | squeeze, sqin-sqout, tests, review | The session ended with the squeeze text change and the screenshot fix both merged into main, and nothing pushed.
-- 2026-11-17 f3bbb32b Test audit T8 E2 E6 handoff (2026-11-17) | tests, agents, review, docs | Steps E2 to E6 finished and were committed on the audit branch, and E7 was not started; it waits for the user's go-ahead.
+- 2026-11-17 f3bbb32b Test audit T8 E2 E6 handoff (2026-11-17) | tests, agents, review, docs | Steps E2 to E6 finished on the audit branch; in E7 the Investigate records got question groups and the exit rules were written, and the rules code was left for the next session.
 
 ## Proposed tags
 
