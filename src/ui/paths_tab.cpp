@@ -87,6 +87,12 @@ float width_in(TextRole role, const std::string& text) {
     return text_size(role, text.c_str()).x;
 }
 
+// The text width every badge pill is sized for (D262; shared_pill_width in
+// badge_pill.h): the longest badge an activation row can show.
+float badge_pill_text_w() {
+    return width_in(TextRole::Figure, app::longest_activation_badge());
+}
+
 // One path: a full-width Selectable with the id ##path<i>, the title over it
 // (gold for an optimal path), the path's own hardest timing right after the
 // title, and the detail line under the title. A title longer than the list is
@@ -361,11 +367,14 @@ void window_row(const app::WindowRowView& w) {
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());
     }
-    const float tag_w = window_tag_width(ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
+    // The tag is a badge: the same pill width as every activation badge.
+    const float tag_w =
+        shared_pill_width(badge_pill_text_w(), ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
     if (fits_on_line(tag_w, gap)) ImGui::SameLine(0.0f, gap);
     place_control_at_right_edge(tag_w);
-    draw_window_tag(ImGui::GetWindowDrawList(), ImGui::GetCursorScreenPos(), w.tag.c_str(),
-                    w.is_short, px(1.0f));
+    const ImVec2 pos = ImGui::GetCursorScreenPos();
+    draw_badge(ImGui::GetWindowDrawList(), pos.x, pos.y, tag_w, w.tag.c_str(),
+               window_tag_ink(w.is_short), px(1.0f));
 }
 
 // One timing in its warm box, in the badge pill's colours (badge_pill.h): a
@@ -586,8 +595,7 @@ void render_activations(const app::ActivationsView& view, app::PathsTabUi& ui) {
     float widest_measure = 0.0f;
     for (const app::ActivationRowView& a : view.acts)
         widest_measure = std::max(widest_measure, width_in(TextRole::Figure, a.measure));
-    // Every badge pill is sized for the longest badge (D262).
-    const float pill_text_w = width_in(TextRole::Figure, app::longest_activation_badge());
+    const float pill_text_w = badge_pill_text_w();
     for (size_t i = 0; i < view.acts.size(); ++i) {
         const app::ActivationRowView& a = view.acts[i];
         render_activation_row(i, a, ui, widest_measure, pill_text_w);
