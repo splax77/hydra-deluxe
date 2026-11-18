@@ -55,6 +55,8 @@ void check_word_agrees_with_badge(Activation act) {
         if (core::paid_by_sp_walk(off)) {
             const bool past_first_tier = word.rfind(first_tier, 0) != 0;
             CHECK(sqout->is_difficult() == past_first_tier);
+        } else if (core::counted_without_squeeze(off, core::default_rules().backend_leeway_ms)) {
+            CHECK(word.rfind(first_tier, 0) == 0);
         } else {
             CHECK(word.rfind(tier_for(off, timing_tiers()).first, 0) == 0);
         }

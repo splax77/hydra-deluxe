@@ -239,15 +239,17 @@ TEST_CASE("BackendSqueeze::summarystr: one rule for the squeezed-out and the pla
 }
 
 // Finding 33, D48 Q6: a row the engine does not count says so, squeezed out
-// or not, under the same test (counted_without_squeeze). The leeway decides
-// only the tag on a squeezed-out row, never its word.
+// or not, under the same test (counted_without_squeeze). Within the leeway
+// past the end, a squeezed-out row needs nothing, as a plain row does.
 TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
     BackendSqueeze b;
     b.offset_ms = 50.0;
     CHECK(b.summarystr(true, std::nullopt) == "Extreme (uncounted)");
     b.offset_ms = 4.0;
     CHECK(b.summarystr(true, std::nullopt) == "Hard (uncounted)");
-    CHECK(b.summarystr(true, std::nullopt, 5.0) == "Hard");
+    CHECK(b.summarystr(true, std::nullopt, 5.0) == "Normal");
+    b.offset_ms = 2.5;
+    CHECK(b.summarystr(true, std::nullopt) == "Normal");
     b.offset_ms = -5.0;
     CHECK(b.summarystr(true, std::nullopt) == "Hard");
 }

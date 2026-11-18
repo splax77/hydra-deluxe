@@ -290,16 +290,17 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
 // that end, on whichever side core::paid_by_sp_walk puts it. Inside SP that is
 // its SqOut's squeeze_difficulty, the late hit that pushes it out; at 0 that
 // is still a timing to hit (timing_needs_hitting, D302). Past the end it is
-// its offset, the early hit that would pull it back in, the same figure an
-// uncounted plain row needs. A plain row the engine counts
+// what a plain row there needs: nothing within the leeway, else its offset,
+// the early hit that would pull it back in. A plain row the engine counts
 // (core::counted_without_squeeze) needs nothing, and only there does 0 mean
 // nothing; one it does not count needs its offset, the early hit that would
 // win it. The leeway only decides which of those two a plain row is. The
 // badges and the search read SPSqueeze::needs_no_timing, not this.
 inline double backend_row_timing(double offset_ms, bool squeezed_out, double leeway_ms) {
     if (squeezed_out)
-        return core::paid_by_sp_walk(offset_ms) ? squeeze_difficulty(/*is_sqin=*/false, offset_ms)
-                                                : offset_ms;
+        return core::paid_by_sp_walk(offset_ms)
+                   ? squeeze_difficulty(/*is_sqin=*/false, offset_ms)
+                   : core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;
     return core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;
 }
 
