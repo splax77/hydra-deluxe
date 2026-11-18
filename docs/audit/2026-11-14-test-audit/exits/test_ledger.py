@@ -565,5 +565,184 @@ class NotesOnRealFiles(unittest.TestCase):
         self.assertEqual(self.committed[1:], ['\t'.join(str(r[c]) for c in ledger.NOTE_COLS) for r in self.rows])
 
 
+class ExitRulesOnBuiltInput(unittest.TestCase):
+    """Plan step E7: ledger.py reads the rule tables of a rules.md and applies them. Every
+    rules.md here is built in the test; the real one is never edited."""
+
+    # Exit cells for the built tables. A rule not named here gives exit 2.
+    EXITS = {'R6': 'none', 'R3': '4', 'R7': '`no rule`', 'C2': "its record's exit", 'N0': 'not a row',
+             'N1': 'not a row of its own', 'Xc': '4 only with a Closures sentence; otherwise `no rule`',
+             'L1': '`no rule`'}
+
+    def rules_text(self, ledger_order=None, extra='', closures='', quotes='', takes=None):
+        order = ledger_order or list(ledger.LEDGER_RULES)
+        takes = takes or {}
+
+        def table(ids):
+            out = ['| Rule | Takes | Exit | Group | Required by |', '|---|---|---|---|---|']
+            for i in ids:
+                out.append(f'| {i} | {takes.get(i, "rows")} | {self.EXITS.get(i, "2")} | g | test |')
+            return out
+        lines = ['# rules', '', f'## {ledger.LEDGER_SECTION}', ''] + table(order) + [extra, '',
+                 f'## {ledger.OUTSIDE_SECTION}', ''] + table(list(ledger.OUTSIDE_RULES)) + [
+                 '', '## Closures', '', 'The main session writes one line here.', closures, '',
+                 '## Exit 3 quotes', '', 'The main session pastes one block here.', quotes, '']
+        return '\n'.join(lines).split('\n')
+
+    COLS = ['kind', 'file', 'line', 'record', 'verdict', 'faults', 'held', 't7_reopened', 'id',
+            'joins_record', 'verifier_verdict_if_different', 'byreading_verdict']
+
+    def rec(self, file, line, verdict, **kw):
+        r = dict({c: '' for c in self.COLS}, kind='record', file=file, line=str(line), verdict=verdict,
+                 id=f'{file}:{line}')
+        r.update(kw)
+        return r
+
+    def count(self, file, line, faults, joins=''):
+        return dict({c: '' for c in self.COLS}, kind='count', file=file, line=str(line), faults=faults,
+                    joins_record=joins)
+
+    def label(self, row, keys='', no_key=''):
+        return {row: {'row': row, 'keys': keys, 'no_key': no_key}}
+
+    def run_rules(self, rows, labels=None, inv=None, outside=(), **text):
+        rules = ledger.parse_rules(self.rules_text(**text))
+        led, out = ledger.apply_exits(rules, rows, labels or {}, inv or {}, list(outside))
+        return {d['id']: d for d in led + out}
+
+    def test_a_rewrite_record_takes_exit_2_in_the_group_of_its_key(self):
+        r = self.rec('records/A.md', 5, 'Rewrite')
+        d = self.run_rules([r], labels=self.label(r['id'], 'C-stub'))[r['id']]
+        self.assertEqual((d['exit'], d['rule'], d['groups']), ('2', 'R1a', ['C-stub']))
+
+    def test_a_label_that_says_no_key_is_a_group_of_its_own(self):
+        r = self.rec('records/A.md', 5, 'Remove')
+        d = self.run_rules([r], labels=self.label(r['id'], '', 'yes'))[r['id']]
+        self.assertEqual(d['groups'], ['NK:records/A.md:5'])
+
+    def test_the_first_rule_in_table_order_decides(self):
+        # A Rewrite record the verifier disagrees with: R4 and R1a both take it.
+        r = self.rec('records/A.md', 5, 'Rewrite', verifier_verdict_if_different='Keep')
+        lab = self.label(r['id'], 'C-stub')
+        order = list(ledger.LEDGER_RULES)
+        self.assertLess(order.index('R4'), order.index('R1a'))
+        self.assertEqual(self.run_rules([r], labels=lab)[r['id']]['rule'], 'R4')
+        order.remove('R1a')
+        order.insert(order.index('R4'), 'R1a')
+        self.assertEqual(self.run_rules([r], labels=lab, ledger_order=order)[r['id']]['rule'], 'R1a')
+
+    def test_a_held_row_gets_no_exit(self):
+        r = self.rec('records/A.md', 5, 'Rewrite', held='yes')
+        d = self.run_rules([r], labels=self.label(r['id'], 'C-stub'))[r['id']]
+        self.assertEqual((d['exit'], d['rule'], d['groups']), ('none', 'R6', []))
+
+    def test_a_clean_keep_record_and_its_clean_count_row_take_exit_4(self):
+        r = self.rec('records/A.md', 5, 'Keep')
+        c = self.count('counts/T5-KR1.md', 9, 'none', r['id'])
+        ds = self.run_rules([r, c])
+        self.assertEqual((ds[r['id']]['exit'], ds[r['id']]['rule']), ('4', 'R3'))
+        self.assertEqual((ds['counts/T5-KR1.md:9']['exit'], ds['counts/T5-KR1.md:9']['rule']), ('4', 'C2'))
+
+    def test_a_faulty_count_row_sends_its_keep_record_to_its_keys(self):
+        r = self.rec('records/A.md', 5, 'Keep')
+        c = self.count('counts/T5-KR1.md', 9, 'X9', r['id'])
+        ds = self.run_rules([r, c], labels=self.label('counts/T5-KR1.md:9', 'P-message'))
+        self.assertEqual((ds[r['id']]['exit'], ds[r['id']]['rule'], ds[r['id']]['groups']),
+                         ('2', 'R2', ['P-message']))
+        self.assertEqual(ds['counts/T5-KR1.md:9']['rule'], 'C1')
+
+    def test_a_clean_count_row_that_joins_no_record_is_no_rule(self):
+        c = self.count('counts/T5-KR1.md', 9, 'none')
+        d = self.run_rules([c])['counts/T5-KR1.md:9']
+        self.assertEqual((d['exit'], d['rule']), (ledger.NO_RULE, 'R7'))
+
+    def test_a_same_as_record_takes_its_targets_group(self):
+        target = self.rec('records/D.md', 90, 'Investigate', record='test_a (:98)')
+        ptr = self.rec('records/D.md', 120, 'Investigate', record='test_b (:112)')
+        inv = {target['id']: {'group': 'I-split', 'how': 'read', 'verdict': 'Verdict: Investigate.'},
+               ptr['id']: {'group': 'I-pointer', 'how': 'read', 'verdict': 'Verdict: Investigate: same as :98.'}}
+        d = self.run_rules([target, ptr], inv=inv)[ptr['id']]
+        self.assertEqual((d['rule'], d['groups'], d['points_at']), ('R1p', ['I-split'], target['id']))
+
+    def test_a_same_as_record_with_no_target_is_its_own_group(self):
+        ptr = self.rec('records/D.md', 120, 'Investigate', record='test_b (:112)')
+        inv = {ptr['id']: {'group': 'I-pointer', 'how': 'read', 'verdict': 'same as :98.'}}
+        self.assertEqual(self.run_rules([ptr], inv=inv)[ptr['id']]['groups'], ['NK:records/D.md:120'])
+
+    def cross(self, route):
+        return {'id': 'X1.c', 'source': 'cross-rows.md', 'where': 'cross-rows.md line 24', 'route': route,
+                'finding': 'X1', 'kind': 'sound'}
+
+    def test_a_closure_row_is_no_rule_until_closures_holds_its_sentence(self):
+        d = self.run_rules([], outside=[self.cross('closure?')])['X1.c']
+        self.assertEqual((d['exit'], d['rule']), (ledger.NO_RULE, 'Xc'))
+        d = self.run_rules([], outside=[self.cross('closure?')],
+                           closures='- X1.c: the key only looks up the engine\'s own path.')['X1.c']
+        self.assertEqual((d['exit'], d['rule']), ('4', 'Xc'))
+
+    def test_a_closure_line_for_a_row_not_routed_closure_is_refused(self):
+        with self.assertRaises(ledger.RulesError):
+            self.run_rules([], outside=[self.cross('2')], closures='- X1.c: a sentence.')
+
+    def test_a_cross_row_routed_2_takes_its_finding_as_its_group(self):
+        d = self.run_rules([], outside=[self.cross('2')])['X1.c']
+        self.assertEqual((d['exit'], d['groups']), ('2', ['X1']))
+
+    def test_a_note_marked_empty_is_not_a_row_and_a_split_note_is_a_question(self):
+        rows = [{'id': 'notes/marks.tsv:2', 'source': 'notes/marks.tsv', 'where': 'records/A.md:3', 'mark': 'empty'},
+                {'id': 'notes/marks.tsv:3', 'source': 'notes/marks.tsv', 'where': 'records/A.md:4', 'mark': 'split'}]
+        ds = self.run_rules([], outside=rows)
+        self.assertEqual(ds['notes/marks.tsv:2']['exit'], ledger.NOT_A_ROW)
+        self.assertEqual((ds['notes/marks.tsv:3']['exit'], ds['notes/marks.tsv:3']['groups']), ('2', ['N-split']))
+
+    def test_an_outside_row_no_rule_takes_is_no_rule(self):
+        row = {'id': 'notes/marks.tsv:2', 'source': 'notes/marks.tsv', 'where': 'records/A.md:3', 'mark': 'not read'}
+        d = self.run_rules([], outside=[row])['notes/marks.tsv:2']
+        self.assertEqual((d['exit'], d['rule']), (ledger.NO_RULE, 'R7'))
+
+    def test_a_rule_id_the_code_does_not_know_is_refused(self):
+        with self.assertRaisesRegex(ledger.RulesError, 'R99'):
+            ledger.parse_rules(self.rules_text(ledger_order=list(ledger.LEDGER_RULES) + ['R99']))
+
+    def test_a_rule_the_code_knows_and_the_table_lacks_is_refused(self):
+        order = [r for r in ledger.LEDGER_RULES if r != 'R5']
+        with self.assertRaisesRegex(ledger.RulesError, 'R5'):
+            ledger.parse_rules(self.rules_text(ledger_order=order))
+
+    def test_a_rule_naming_a_mut_column_may_only_give_exit_2(self):
+        ok = self.rules_text(takes={'R1a': 'a Rewrite record with `mut_caught_none` yes'})
+        ledger.parse_rules(ok)
+        bad = self.rules_text(takes={'R3': 'a clean Keep record whose `mut_caught` is above zero'})
+        with self.assertRaisesRegex(ledger.RulesError, r'line \d+: rule R3 names a mut_ column'):
+            ledger.parse_rules(bad)
+
+    def test_a_mut_rule_giving_exit_4_writes_no_exits_file(self):
+        tmp = tempfile.mkdtemp()
+        try:
+            os.makedirs(os.path.join(tmp, 'exits'))
+            text = self.rules_text(takes={'R3': 'a clean Keep record whose `mut_caught` is above zero'})
+            with open(os.path.join(tmp, 'exits', ledger.RULES_FILE), 'w', encoding='utf-8') as fh:
+                fh.write('\n'.join(text))
+            with self.assertRaises(SystemExit) as stop:
+                ledger.exits_main(tmp)
+            self.assertEqual(stop.exception.code, 1)
+            self.assertFalse(os.path.exists(os.path.join(tmp, ledger.EXITS_FILE)))
+        finally:
+            shutil.rmtree(tmp)
+
+    def test_an_exit_3_block_without_its_sides_is_refused(self):
+        r = self.rec('records/A.md', 5, 'Rewrite')
+        with self.assertRaisesRegex(ledger.RulesError, 'sides'):
+            self.run_rules([r], labels=self.label(r['id'], 'C-stub'),
+                           quotes='- records/A.md:5\n  - quote: the words\n  - ruling: docs/x.md:4')
+
+    def test_an_exit_3_block_closes_a_question_row(self):
+        r = self.rec('records/A.md', 5, 'Rewrite')
+        d = self.run_rules([r], labels=self.label(r['id'], 'C-stub'),
+                           quotes='- records/A.md:5\n  - quote: the words\n  - ruling: docs/x.md:4\n'
+                                  '  - sides: one side | the other')[r['id']]
+        self.assertEqual((d['exit'], d['groups']), ('3', []))
+
+
 if __name__ == '__main__':
     unittest.main()

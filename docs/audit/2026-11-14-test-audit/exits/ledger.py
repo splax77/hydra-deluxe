@@ -2,6 +2,12 @@
 
 Usage: python -I ledger.py [AUD folder] [out.tsv]
 Both default to this script's parent folder and exits/ledger.tsv in it.
+       python -I ledger.py --exits [AUD folder]
+applies exits/rules.md to the written ledger and the rows outside it and writes
+exits.md (plan step E7, exits_main). rules.md owns the rules; this script owns only
+the condition each rule id stands for (LEDGER_RULES, OUTSIDE_RULES). The shapes it
+reads under rules.md's "Closures" and "Exit 3 quotes" are in parse_closures and
+parse_quotes.
 
 It reads only the audit folder. It writes two kinds of row into one file:
 
@@ -49,8 +55,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import mutation_evidence  # noqa: E402  M1's reader; the run's files are read through it only
 
-AUD = sys.argv[1] if len(sys.argv) > 1 else os.path.dirname(HERE)
-OUT = sys.argv[2] if len(sys.argv) > 2 else os.path.join(AUD, 'exits', 'ledger.tsv')
+# "ledger.py --exits [AUD]" applies exits/rules.md to the ledger that is already written
+# (plan step E7, exits_main); without --exits the script builds the ledger.
+EXITS_MODE = len(sys.argv) > 1 and sys.argv[1] == '--exits'
+ARGS = sys.argv[2:] if EXITS_MODE else sys.argv[1:]
+AUD = ARGS[0] if ARGS else os.path.dirname(HERE)
+OUT = ARGS[1] if len(ARGS) > 1 else os.path.join(AUD, 'exits', 'ledger.tsv')
 
 VERDICT = re.compile(r'(?:\*\*)?Verdict:(?:\*\*)?\s*(?:\*\*)?\s*(Keep|Investigate|Rewrite|Remove)\b')
 VERDICT_BARE = re.compile(r'\b(Keep|Investigate|Rewrite|Remove) \([A-Z]{1,4}\)\.')
@@ -193,10 +203,11 @@ def read_records():
     return rows, unread
 
 
-def table_rows(path):
-    """Yield (section, cells dict, raw line) for every data row of every table that
-    has a faults column. IR8 writes rows as '- a | b | c' under a Format: line."""
-    lines = lines_of(path)
+def table_rows(path, lines=None):
+    """Yield (section, header, cells, line number, raw line) for every data row of every
+    table in a file (or in the lines given). IR8 writes rows as '- a | b | c' under a
+    Format: line."""
+    lines = lines_of(path) if lines is None else lines
     section, header, bullet_hdr = '', None, None
     for i, line in enumerate(lines, 1):
         m = HEADING.match(line)
@@ -518,6 +529,12 @@ def name_hits(name, title):
     return all(any(w == x for x in it) for w in toks)     # words in order, others between
 
 
+def test_line_in_title(n):
+    """A record title that cites test line n. The count-row join and rule R1p's "same as"
+    target both find a record by the test line its title cites."""
+    return re.compile(r'(?::|\(|line |lines )\s*' + str(n) + r'(?!\d)')
+
+
 def join_counts(counts, recs):
     """Give each count row the id of the one record row it belongs to, or none.
     A join holds when one locator finds exactly one record row and no other locator
@@ -539,7 +556,7 @@ def join_counts(counts, recs):
         loc = locators(r)
         sets = {}
         if loc['T'] is not None:
-            pat = re.compile(r'(?::|\(|line |lines )\s*' + str(loc['T']) + r'(?!\d)')
+            pat = test_line_in_title(loc['T'])
             sets['test line'] = [x for x in pool if pat.search(x['record'])]
         if loc['name']:
             sets['test name'] = [x for x in pool if name_hits(loc['name'], x['record'])]
@@ -899,12 +916,19 @@ def read_old_mut(path):
     head = lines[0].split('\t') if lines else []
     if 'mut_match' not in head:
         return {}
-    ix = {c: head.index(c) for c in MUT_COLS if c in head}
-    out = {}
+    return {r['id']: {c: r.get(c, '') for c in MUT_COLS if c in head}
+            for r in read_ledger_tsv(path) if r['kind'] == 'record'}
+
+
+def read_ledger_tsv(path):
+    """The rows of a ledger.tsv this script wrote, as dicts keyed by its header. Its cells
+    are joined by tabs with no quoting, so a quote mark in a cell is text."""
+    lines = lines_of(path)
+    head = lines[0].split('\t')
+    out = []
     for ln in lines[1:]:
         cells = ln.split('\t')
-        if cells[0] == 'record':
-            out[cells[head.index('id')]] = {c: cells[i] if i < len(cells) else '' for c, i in ix.items()}
+        out.append({c: cells[i] if i < len(cells) else '' for i, c in enumerate(head)})
     return out
 
 
@@ -1091,6 +1115,615 @@ def print_notes(rows, phrase_hits):
     print(f'  all blocks: {len(rows)}; with a ledger id: {sum(1 for r in rows if r["ledger_id"])}')
 
 
+# Plan step E7: exits/rules.md applied to every row. rules.md is the one home of the rules:
+# this code reads its two tables in their order and knows only how to test each rule id's
+# "Takes" text against a row (LEDGER_RULES, OUTSIDE_RULES).
+RULES_FILE = 'rules.md'
+EXITS_FILE = 'exits.md'
+LEDGER_SECTION = 'The rules for ledger rows'
+OUTSIDE_SECTION = 'The rules for rows outside the ledger'
+CLOSURES_SECTION = 'Closures'
+QUOTES_SECTION = 'Exit 3 quotes'
+NO_RULE = 'no rule'
+NOT_A_ROW = 'not a row'
+FALLBACK = 'R7'      # rules.md's opening paragraph: a row no rule takes is `no rule` (rule R7)
+T9_GROUP = 8         # plan step E8: T9 takes the exit 1, 3 and 4 rows in groups of about eight
+NOTE_SOURCES = ('notes/marks.tsv', 'notes/new-rows.tsv', 'notes/extra-rows.tsv')
+
+
+class RulesError(Exception):
+    """A rule table, closure or quote that cannot be applied. exits_main prints it and
+    writes no exits.md."""
+
+
+def sections_of(lines):
+    """{level 2 heading: [(line number, line), ...]} for the lines under each."""
+    out, cur = {}, None
+    for i, ln in enumerate(lines, 1):
+        m = re.match(r'^## (.*)$', ln)
+        if m:
+            cur = clean(m.group(1))
+            out[cur] = []
+        elif cur is not None:
+            out[cur].append((i, ln))
+    return out
+
+
+def exit_value(cell):
+    """A rule's Exit cell as one value, or None when the cell says how to work the exit out."""
+    c = clean(cell.replace('`', ''))
+    if c in ('1', '2', '3', '4', 'none', NO_RULE):
+        return c
+    if c.startswith(NOT_A_ROW):
+        return NOT_A_ROW
+    return None
+
+
+def parse_rules(lines, path=RULES_FILE):
+    """rules.md as {'ledger': [rule], 'outside': [rule], 'closures': {row: sentence},
+    'quotes': {row: quote}}, each rule {'id', 'exit_cell', 'exit', 'line'} in table order.
+    Refuses a rule line that names a mut_ column and gives exit 1, 3 or 4 (plan step E7,
+    "Run evidence is never an exit by itself"), and a rule id the code does not know or
+    a known id the table lacks."""
+    secs = sections_of(lines)
+    out = {}
+    for key, title, known in (('ledger', LEDGER_SECTION, LEDGER_RULES), ('outside', OUTSIDE_SECTION, OUTSIDE_RULES)):
+        if title not in secs:
+            raise RulesError(f'{path} has no "## {title}" section')
+        body = secs[title]
+        rules = []
+        for _, header, cells, i, raw in table_rows(path, [ln for _, ln in body]):
+            n = body[i - 1][0]
+            if 'rule' not in header or 'exit' not in header:
+                raise RulesError(f'{path} line {n}: the table under "{title}" has no Rule or Exit column')
+            rid = cells[header.index('rule')]
+            cell = cells[header.index('exit')] if header.index('exit') < len(cells) else ''
+            if 'mut_' in raw and re.search(r'(?<![\w.])[134](?![\w.])', cell):
+                raise RulesError(f'{path} line {n}: rule {rid} names a mut_ column and gives exit "{cell}". '
+                                 'Run evidence closes nothing, so a rule naming a mut_ column may only '
+                                 'send rows to exit 2 (plan step E7).')
+            if any(r['id'] == rid for r in rules):
+                raise RulesError(f'{path} line {n}: rule {rid} appears twice')
+            rules.append({'id': rid, 'exit_cell': cell, 'exit': exit_value(cell), 'line': n})
+        ids = [r['id'] for r in rules]
+        unknown = [r for r in ids if r not in known]
+        missing = [r for r in known if r not in ids]
+        if unknown:
+            raise RulesError(f'{path}, "{title}": ledger.py has no condition for rule {", ".join(unknown)}')
+        if missing:
+            raise RulesError(f'{path}, "{title}": ledger.py knows rule {", ".join(missing)}, '
+                             'which the table does not hold')
+        out[key] = rules
+    for title in (CLOSURES_SECTION, QUOTES_SECTION):
+        if title not in secs:
+            raise RulesError(f'{path} has no "## {title}" section')
+    out['closures'] = parse_closures(secs[CLOSURES_SECTION], path)
+    out['quotes'] = parse_quotes(secs[QUOTES_SECTION], path)
+    return out
+
+
+def parse_closures(body, path):
+    """One closure per list line, "- <row>: <one sentence>". Other lines are the section's prose."""
+    out = {}
+    for n, ln in body:
+        if not ln.startswith('- '):
+            continue
+        m = re.match(r'^- `([^`]+)`:\s*(.+)$', ln) or re.match(r'^- ([^\s:]+):\s*(.+)$', ln)
+        if not m or not m.group(2).strip():
+            raise RulesError(f'{path} line {n}: a closure is "- <row>: <sentence>", not "{ln[:80]}"')
+        if m.group(1) in out:
+            raise RulesError(f'{path} line {n}: row {m.group(1)} is closed twice')
+        out[m.group(1)] = {'sentence': m.group(2).strip(), 'line': n}
+    return out
+
+
+def parse_quotes(body, path):
+    """One block per row closed at exit 3: a list line "- <row>", then the indented lines
+    "- quote: <the user's words>", "- ruling: <file>:<line>" and "- sides: <one> | <other>"."""
+    out, cur = {}, None
+
+    def done(c):
+        if c is None:
+            return
+        lack = [k for k in ('quote', 'ruling', 'sides') if not c.get(k)]
+        if lack:
+            raise RulesError(f'{path} line {c["line"]}: the exit 3 block for {c["row"]} has no {", ".join(lack)}')
+        m = re.match(r'^`?(.+?):(\d+)`?$', c['ruling'])
+        if not m:
+            raise RulesError(f'{path} line {c["line"]}: the ruling of {c["row"]} is not <file>:<line>')
+        c['ruling_file'], c['ruling_line'] = m.group(1), int(m.group(2))
+        sides = [s.strip() for s in c['sides'].split(' | ')]
+        if len(sides) != 2 or not all(sides):
+            raise RulesError(f'{path} line {c["line"]}: the sides of {c["row"]} are not two, split by " | "')
+        c['sides'] = sides
+        if c['row'] in out:
+            raise RulesError(f'{path} line {c["line"]}: row {c["row"]} has two exit 3 blocks')
+        out[c['row']] = c
+
+    for n, ln in body:
+        m = re.match(r'^\s+- (quote|ruling|sides):\s*(.*)$', ln)
+        if m and cur is not None:
+            cur[m.group(1)] = m.group(2).strip()
+            continue
+        if ln.startswith('- '):
+            done(cur)
+            cur = {'row': ln[2:].strip().strip('`'), 'line': n}
+        elif m:
+            raise RulesError(f'{path} line {n}: a quote line with no "- <row>" line above it')
+    done(cur)
+    return out
+
+
+def row_id(r):
+    """A ledger row's id: a record's own id, or a count row's file and line (as labels.tsv names it)."""
+    return r['id'] if r['kind'] == 'record' else f"{r['file']}:{r['line']}"
+
+
+def faulty(r):
+    return r['kind'] == 'count' and r['faults'] not in ('', 'none')
+
+
+BR_GROUPS = {'SHOWN BY RUN': 'BR-shown', 'HOLDS BY READING': 'BR-holds', 'CANNOT TELL': 'BR-cannot'}
+
+
+class Decider:
+    """Applies one rules.md table to rows. A rule's condition is LEDGER_RULES[id] or
+    OUTSIDE_RULES[id]: it returns None when the rule does not take the row, else
+    {'groups', 'evidence'} and, for a rule whose Exit cell says how to work the exit
+    out, 'exit'."""
+
+    def __init__(self, rules, ledger, labels, inv, closures):
+        self.rules, self.labels, self.inv, self.closures = rules, labels, inv, closures
+        self.by_id = {row_id(r): r for r in ledger}
+        self.faulty_of, self.by_file = {}, {}
+        for r in ledger:
+            if faulty(r) and r['joins_record']:
+                self.faulty_of.setdefault(r['joins_record'], []).append(row_id(r))
+            if r['kind'] == 'record':
+                self.by_file.setdefault(r['file'], []).append(r)
+        self.done, self.busy = {}, set()
+
+    def label_groups(self, rid):
+        lab = self.labels.get(rid)
+        if lab is None:
+            raise RulesError(f'{rid} has no line in labels/labels.tsv, so its keys are not known')
+        keys = [k for k in lab['keys'].split(', ') if k]
+        if lab['no_key'] or not keys:
+            keys.append('NK:' + rid)
+        return keys
+
+    def count_groups(self, rid):
+        out = []
+        for c in self.faulty_of.get(rid, []):
+            for g in self.label_groups(c):
+                if g not in out:
+                    out.append(g)
+        return out
+
+    def is_clean(self, r):
+        return not self.faulty_of.get(row_id(r))
+
+    def decide(self, rid):
+        if rid in self.done:
+            return self.done[rid]
+        if rid in self.busy:
+            return None                       # a pointer loop; R1p gives the row its own NK group
+        if rid not in self.by_id:
+            raise RulesError(f'{rid} is named by a ledger row but is not a ledger row')
+        self.busy.add(rid)
+        d = apply_table(self.rules, LEDGER_RULES, self.by_id[rid], self)
+        self.busy.discard(rid)
+        d['id'] = rid
+        self.done[rid] = d
+        return d
+
+
+def apply_table(rules, conds, row, x):
+    """The first rule of the table that takes the row decides it; R7 when none does."""
+    for rule in rules:
+        got = conds[rule['id']](row, x)
+        if got is None:
+            continue
+        ex = got.get('exit')
+        if rule['exit'] is None and ex is None:
+            raise RulesError(f'{RULES_FILE} line {rule["line"]}: rule {rule["id"]}\'s exit "{rule["exit_cell"]}" '
+                             'is not one value, and ledger.py has no way to work it out')
+        if rule['exit'] is not None and ex is not None:
+            raise RulesError(f'{RULES_FILE} line {rule["line"]}: rule {rule["id"]} gives exit {rule["exit"]}, '
+                             'but ledger.py works this rule\'s exit out')
+        return {'exit': rule['exit'] if ex is None else ex, 'rule': rule['id'], 'groups': got['groups'],
+                'evidence': got['evidence'], 'points_at': got.get('points_at', ''), 'via': got.get('via')}
+    return {'exit': NO_RULE, 'rule': FALLBACK, 'groups': [], 'evidence': 'no rule takes this row',
+            'points_at': '', 'via': None}
+
+
+def _is_record(r, *verdicts):
+    return r['kind'] == 'record' and r['verdict'] in verdicts
+
+
+def _r6(r, x):
+    return {'groups': [], 'evidence': f'held: {r["held"]}'} if r['held'] else None
+
+
+def _r4(r, x):
+    if r['kind'] == 'record' and r['verifier_verdict_if_different']:
+        return {'groups': ['D-disagree'],
+                'evidence': f'auditor {r["verdict"]}, verifier {r["verifier_verdict_if_different"]}'}
+    return None
+
+
+def _r1a(r, x):
+    if _is_record(r, 'Rewrite', 'Remove'):
+        return {'groups': x.label_groups(row_id(r)), 'evidence': f'{r["verdict"]} record'}
+    return None
+
+
+def _faulty_record(r, x, verdict):
+    if _is_record(r, verdict) and not x.is_clean(r):
+        cs = x.faulty_of[row_id(r)]
+        return {'groups': x.count_groups(row_id(r)),
+                'evidence': f'{verdict} record; faulty count rows: {", ".join(cs)}'}
+    return None
+
+
+def _r1b(r, x):
+    return _faulty_record(r, x, 'Investigate')
+
+
+def _clean_investigate(r, x):
+    return _is_record(r, 'Investigate') and x.is_clean(r)
+
+
+def _r5(r, x):
+    if not (_clean_investigate(r, x) and r['byreading_verdict']):
+        return None
+    groups = []
+    for v in r['byreading_verdict'].split(','):
+        if v not in BR_GROUPS:
+            raise RulesError(f'{row_id(r)}: rule R5 takes its by-reading verdict "{v}", '
+                             'but rules.md names no group for it')
+        groups.append(BR_GROUPS[v])
+    return {'groups': groups, 'evidence': f'by-reading verdict {r["byreading_verdict"]}'}
+
+
+def _inv_group(r, x, rule):
+    g = x.inv.get(row_id(r))
+    if g is None:
+        raise RulesError(f'{row_id(r)}: rule {rule} takes it, but investigate-groups.tsv has no line for it')
+    return g
+
+
+POINTER = re.compile(r'same as :?(\d+)')
+
+
+def _r1p(r, x):
+    if not (_clean_investigate(r, x) and not r['byreading_verdict']):
+        return None
+    g = _inv_group(r, x, 'R1p')
+    if g['group'] != 'I-pointer':
+        return None
+    rid = row_id(r)
+    m = POINTER.search(g['verdict'])
+    hits = []
+    if m:
+        pat = test_line_in_title(m.group(1))
+        hits = [y for y in x.by_file.get(r['file'], []) if y is not r and pat.search(y['record'])]
+    if len(hits) != 1:
+        return {'groups': ['NK:' + rid], 'evidence': f'verdict "{g["verdict"][:60]}" names no one target '
+                f'record ({len(hits)} found)'}
+    tid = row_id(hits[0])
+    t = x.decide(tid)
+    groups = list(t['groups']) if t and t['groups'] else ['NK:' + rid]
+    return {'groups': groups, 'evidence': f'verdict "{g["verdict"][:60]}"; target {tid}', 'points_at': tid}
+
+
+def _r1c(r, x):
+    if _clean_investigate(r, x) and not r['byreading_verdict']:
+        g = _inv_group(r, x, 'R1c')
+        return {'groups': [g['group']], 'evidence': f'investigate-groups.tsv, {g["how"]}'}
+    return None
+
+
+def _r2(r, x):
+    return _faulty_record(r, x, 'Keep')
+
+
+def _r3t(r, x):
+    if _is_record(r, 'Keep') and r['t7_reopened'] == 'yes':
+        return {'groups': ['K-reopened'], 'evidence': 't7_reopened yes'}
+    return None
+
+
+def _r3(r, x):
+    if _is_record(r, 'Keep') and x.is_clean(r) and not r['verifier_verdict_if_different']:
+        return {'groups': [], 'evidence': f'the record, {r["file"]}:{r["line"]}'}
+    return None
+
+
+def _c1(r, x):
+    if faulty(r):
+        return {'groups': x.label_groups(row_id(r)), 'evidence': f'faults {r["faults"]}'}
+    return None
+
+
+def _c2(r, x):
+    if r['kind'] == 'count' and not faulty(r) and r['joins_record']:
+        d = x.decide(r['joins_record'])
+        return {'groups': list(d['groups']), 'exit': d['exit'], 'via': d['rule'],
+                'evidence': f'joins {r["joins_record"]}, which takes rule {d["rule"]}', 'points_at': r['joins_record']}
+    return None
+
+
+def _r7(r, x):
+    return {'groups': [], 'evidence': 'no rule above takes this row'}
+
+
+LEDGER_RULES = {'R6': _r6, 'R4': _r4, 'R1a': _r1a, 'R1b': _r1b, 'R5': _r5, 'R1p': _r1p, 'R1c': _r1c,
+                'R2': _r2, 'R3t': _r3t, 'R3': _r3, 'C1': _c1, 'C2': _c2, 'R7': _r7}
+
+
+def _note(r, sources, mark):
+    return r['source'] in sources and r.get('mark') == mark
+
+
+def _n0(r, x):
+    if _note(r, NOTE_SOURCES[:2], 'empty'):
+        return {'groups': [], 'evidence': f'{r["where"]} marked empty: not a finding'}
+    return None
+
+
+def _n1(r, x):
+    if _note(r, NOTE_SOURCES[:2], 'repeat'):
+        to = r.get('ledger_id', '')
+        return {'groups': [], 'points_at': to,
+                'evidence': f'{r["where"]} repeats its record\'s row ' + (to or '(the note names no ledger_id)')}
+    return None
+
+
+def _marked(mark, group):
+    def cond(r, x):
+        if _note(r, NOTE_SOURCES, mark):
+            return {'groups': [group], 'evidence': f'{r["where"]} marked {mark}'}
+        return None
+    return cond
+
+
+def _x2(r, x):
+    if r['source'] == 'cross-rows.md' and r['route'] == '2':
+        return {'groups': [r['finding']], 'evidence': f'{r["where"]}, a {r["kind"]} routed 2'}
+    return None
+
+
+def _xp(r, x):
+    if r['source'] == 'cross-rows.md' and r['route'] == 'prod':
+        return {'groups': ['N-prod'], 'evidence': f'{r["where"]}, routed prod'}
+    return None
+
+
+def _xc(r, x):
+    if r['source'] == 'cross-rows.md' and r['route'] == 'closure?':
+        c = x.closures.get(r['id'])
+        if c:
+            return {'groups': [], 'exit': '4', 'evidence': f'closure, {RULES_FILE} line {c["line"]}: {c["sentence"]}'}
+        return {'groups': [], 'exit': NO_RULE, 'evidence': f'{r["where"]}, a closure candidate with no '
+                f'sentence under "Closures" in {RULES_FILE}'}
+    return None
+
+
+def _l1(r, x):
+    if r['source'] == 'not-in-ledger.md':
+        return {'groups': [], 'evidence': f'{r["where"]}: a record title with no verdict the script could read'}
+    return None
+
+
+OUTSIDE_RULES = {'N0': _n0, 'N1': _n1, 'N2': _marked('split', 'N-split'), 'N3': _marked('prod', 'N-prod'),
+                 'N4': _marked('finding', 'N-finding'), 'X2': _x2, 'Xp': _xp, 'Xc': _xc, 'L1': _l1}
+
+
+def confirmed_line(repo, path, line):
+    """True when line `line` of `path` (repo-relative) sits under a "## Confirmed" heading."""
+    full = os.path.join(repo, path)
+    if not os.path.isfile(full):
+        return False
+    lines = lines_of(full)
+    if not 1 <= line <= len(lines):
+        return False
+    for ln in reversed(lines[:line]):
+        if ln.startswith('## '):
+            return clean(ln[3:]) == 'Confirmed'
+    return False
+
+
+def apply_exits(rules, ledger, labels, inv, outside, open_ids=(), repo=None):
+    """Every ledger row's and every outside row's exit, as two lists of decisions in row
+    order. Raises RulesError on a row the rules cannot decide as written, and on a result
+    the plan's E7 acceptance forbids."""
+    x = Decider(rules['ledger'], ledger, labels, inv, rules['closures'])
+    led = [x.decide(row_id(r)) for r in ledger]
+    for r, d in zip(ledger, led):
+        d['kind'] = r['kind']
+    out = []
+    for r in outside:
+        d = apply_table(rules['outside'], OUTSIDE_RULES, r, x)
+        d['id'], d['kind'] = r['id'], r['source']
+        out.append(d)
+    by_id = {d['id']: d for d in led + out}
+    cross = {r['id']: r for r in outside if r['source'] == 'cross-rows.md'}
+    for rid, c in rules['closures'].items():
+        if rid not in cross or cross[rid]['route'] != 'closure?':
+            raise RulesError(f'{RULES_FILE} line {c["line"]}: the closure names {rid}, '
+                             'which is not a cross-rows.md row routed closure?')
+    for rid, q in rules['quotes'].items():
+        d = by_id.get(rid)
+        if d is None:
+            raise RulesError(f'{RULES_FILE} line {q["line"]}: the exit 3 block names {rid}, which is no row')
+        if d['exit'] not in ('2', NO_RULE):
+            raise RulesError(f'{RULES_FILE} line {q["line"]}: the exit 3 block names {rid}, whose rule '
+                             f'{d["rule"]} gives exit {d["exit"]}; only a question can close by a quote')
+        if repo is not None and not confirmed_line(repo, q['ruling_file'], q['ruling_line']):
+            raise RulesError(f'{RULES_FILE} line {q["line"]}: {q["ruling"]} is not a line under "## Confirmed"')
+        d.update(exit='3', rule='exit 3 quote', groups=[], evidence=f'"{q["quote"]}" ({q["ruling"]}); sides: '
+                 f'{q["sides"][0]} | {q["sides"][1]}')
+    for d in led + out:
+        if not d['exit']:
+            raise RulesError(f'{d["id"]} has no exit')
+        if d['exit'] == '2' and not d['groups']:
+            raise RulesError(f'{d["id"]} takes exit 2 by rule {d["rule"]} and names no question group')
+        if d['exit'] == '1':
+            raise RulesError(f'{d["id"]} takes exit 1 by rule {d["rule"]}, but {RULES_FILE} names no commit '
+                             'that removed a problem')
+        if d['exit'] == '4' and not (d['rule'] in ('R3', 'Xc') or (d['rule'] == 'C2' and d['via'] == 'R3')):
+            raise RulesError(f'{d["id"]} takes exit 4 by rule {d["rule"]}; an exit 4 row is rule R3 '
+                             'or a closure with its sentence (plan step E7)')
+    for r, d in zip(ledger, led):
+        cannot = r['kind'] == 'record' and ('CANNOT TELL' in r['byreading_verdict'] or r['id'] in open_ids)
+        if cannot and d['exit'] in ('1', '3', '4'):
+            raise RulesError(f'{d["id"]} is a cannot-tell record and takes exit {d["exit"]}; '
+                             'it may take exit 2 only (plan step E6)')
+    return led, out
+
+
+def read_tsv(path):
+    """A TSV the csv module wrote (the notes, labels and investigate groups files)."""
+    import csv
+    csv.field_size_limit(10 ** 9)
+    with open(path, encoding='utf-8', newline='') as fh:
+        return list(csv.DictReader(fh, delimiter='\t'))
+
+
+def read_outside(aud):
+    """The rows outside the ledger, each {'id', 'source', 'where', ...}: the notes, new rows
+    and extra rows (one per TSV line), the cross-rows.md rows of both parts, and the
+    record titles of not-in-ledger.md."""
+    E = os.path.join(aud, 'exits')
+    out = []
+    for src, where_col in zip(NOTE_SOURCES, ('note', 'file_line', 'where')):
+        for n, r in enumerate(read_tsv(os.path.join(E, src)), 2):
+            out.append(dict(r, id=f'{src}:{n}', source=src, where=r[where_col]))
+    path = os.path.join(E, 'cross-rows.md')
+    for section, header, cells, i, raw in table_rows(path):
+        if not section.startswith(('Part 1', 'Part 2')):
+            continue
+        if 'route' not in header or 'finding' not in header:
+            raise RulesError(f'cross-rows.md line {i}: a table with no Route or Finding column')
+        get = lambda h: cells[header.index(h)] if header.index(h) < len(cells) else ''  # noqa: E731
+        out.append({'id': cells[0], 'source': 'cross-rows.md', 'where': f'cross-rows.md line {i}',
+                    'route': get('route'), 'finding': get('finding'), 'kind': get('kind')})
+    head = ''
+    for i, ln in enumerate(lines_of(os.path.join(E, 'not-in-ledger.md')), 1):
+        if ln.startswith('## '):
+            head = ln[3:].strip()
+        m = re.match(r'^- Line (\d+) looks like a record titled', ln)
+        if m:
+            out.append({'id': f'{head}:{m.group(1)}', 'source': 'not-in-ledger.md',
+                        'where': f'not-in-ledger.md line {i}'})
+    return out
+
+
+def read_open_ids(aud):
+    """The cannot-tell records of exits/open.md (plan step E6), by ledger id."""
+    path = os.path.join(aud, 'exits', 'open.md')
+    return {m.group(1) for ln in lines_of(path) for m in [re.match(r'^\| `(records/[^`]+)`', ln)] if m}
+
+
+def cell(s):
+    return str(s).replace('|', '\\|').replace('\n', ' ')
+
+
+def exit_counts(ds):
+    from collections import Counter
+    return Counter(d['exit'] for d in ds)
+
+
+EXIT_ORDER = ['1', '2', '3', '4', 'none', NOT_A_ROW, NO_RULE]
+
+
+def counts_text(led, out):
+    """The count lines exits.md and the printout share: rows per exit, per rule and per group."""
+    from collections import Counter
+    lines = []
+    for name, ds in (('ledger rows', led), ('rows outside the ledger', out)):
+        c = exit_counts(ds)
+        lines.append(f'{name}: {len(ds)}; by exit: ' + ', '.join(f'{k} {c[k]}' for k in EXIT_ORDER if c[k]))
+    rules = Counter((d['kind'] if d['kind'] in ('record', 'count') else 'outside', d['rule'], d['exit'])
+                    for d in led + out)
+    lines.append('by rule (row kind, rule, exit, rows):')
+    lines += [f'  {k} {r} exit {e}: {n}' for (k, r, e), n in sorted(rules.items())]
+    groups = Counter(g for d in led + out for g in d['groups'])
+    nk = sum(n for g, n in groups.items() if g.startswith('NK:'))
+    lines.append(f'by group ({len(groups)} groups; {sum(1 for g in groups if g.startswith("NK:"))} of them '
+                 f'are NK groups of one row, {nk} rows in all, not listed one by one):')
+    lines += [f'  {g}: {n}' for g, n in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))
+              if not g.startswith('NK:')]
+    return lines
+
+
+def write_exits(path, led, out, ledger):
+    """exits.md: the counts, the T9 rows in groups of about eight with their mut_ columns,
+    then every ledger row and every outside row."""
+    by_id = {row_id(r): r for r in ledger}
+    acc = len(led) + sum(1 for d in out if d['exit'] != NOT_A_ROW)
+    t = ['# The exits: one row per finding', '',
+         'T8 step E7 (`docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md`). `ledger.py --exits` writes '
+         'this file from `exits/rules.md`; do not edit it by hand. Each row\'s exit comes from the first rule '
+         'line in `rules.md` that takes it.', '',
+         'Signature: not signed. The main session signs by writing its session id, the date and the count of '
+         'rows per exit here, after it has read what plan step E7 lists.', '',
+         '## Counts', '']
+    t += ['    ' + ln for ln in counts_text(led, out)]
+    t += ['', f'Rows for the acceptance count (ledger rows, and outside rows that are rows of their own): {acc}.',
+          '', f'## The rows for T9: exit 1, 3 and 4, in groups of {T9_GROUP}', '']
+    t9 = [d for d in led + out if d['exit'] in ('1', '3', '4')]
+    cols = ['mut_match'] + MUT_EVIDENCE
+    for k in range(0, len(t9), T9_GROUP):
+        t += [f'### T9-{k // T9_GROUP + 1:03}', '', mutation_evidence.LIMITS, '',
+              '| Row | Exit | Rule | Evidence | ' + ' | '.join(cols) + ' |',
+              '|' + '---|' * (4 + len(cols))]
+        for d in t9[k:k + T9_GROUP]:
+            r = by_id.get(d['id'])
+            if r is not None and r['kind'] == 'count':
+                r = by_id.get(r['joins_record'])
+            mut = [r.get(c, '') if r else '' for c in cols]
+            t.append('| ' + ' | '.join(cell(v) for v in [d['id'], d['exit'], d['rule'], d['evidence']] + mut) + ' |')
+        t.append('')
+    for title, ds in (('Ledger rows', led), ('Rows outside the ledger', out)):
+        t += [f'## {title}', '', '| Row | Kind | Exit | Rule | Group | Evidence |', '|---|---|---|---|---|---|']
+        for d in ds:
+            ev = d['evidence'] + (f' (points at {d["points_at"]})' if d['points_at'] and d['points_at'] not in
+                                  d['evidence'] else '')
+            t.append('| ' + ' | '.join(cell(v) for v in [d['id'], d['kind'], d['exit'], d['rule'],
+                                                         ', '.join(d['groups']) or '-', ev]) + ' |')
+        t.append('')
+    with open(path, 'w', encoding='utf-8', newline='\n') as fh:
+        fh.write('\n'.join(t))
+    return acc
+
+
+def exits_main(aud):
+    E = os.path.join(aud, 'exits')
+    try:
+        rules = parse_rules(lines_of(os.path.join(E, RULES_FILE)), 'exits/' + RULES_FILE)
+        ledger = read_ledger_tsv(os.path.join(E, 'ledger.tsv'))
+        labels = {r['row']: r for r in read_tsv(os.path.join(E, 'labels', 'labels.tsv'))}
+        inv = {r['id']: r for r in read_tsv(os.path.join(E, 'investigate-groups.tsv'))}
+        outside = read_outside(aud)
+        repo = os.path.normpath(os.path.join(aud, '..', '..', '..'))
+        led, out = apply_exits(rules, ledger, labels, inv, outside, read_open_ids(aud), repo)
+    except RulesError as e:
+        print('ledger --exits:', e, file=sys.stderr)
+        print('ledger --exits: exits.md not written', file=sys.stderr)
+        sys.exit(1)
+    path = os.path.join(aud, EXITS_FILE)
+    acc = write_exits(path, led, out, ledger)
+    for ln in counts_text(led, out):
+        print(ln)
+    from collections import Counter
+    print('outside rows by source and exit:',
+          dict(Counter((d['kind'], d['exit']) for d in out)))
+    print(f'rows for the acceptance count: {acc}')
+    print('wrote', path)
+
+
 def main():
     recs, unread = read_records()
     counts, notable = read_counts()
@@ -1223,4 +1856,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    exits_main(AUD) if EXITS_MODE else main()

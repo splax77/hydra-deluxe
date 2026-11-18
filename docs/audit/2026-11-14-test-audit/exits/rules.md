@@ -34,6 +34,7 @@ Every exit 2 row names a question group. Rows in one group share one question.
 | R1a | a Rewrite or Remove record | 2 | its keys, or `NK:<row>` | plan line 275 |
 | R1b | an Investigate record with a faulty count row | 2 | its count rows' keys | plan line 275 |
 | R5 | a clean Investigate record with a by-reading verdict | 2 | `BR-shown`, `BR-holds` or `BR-cannot` | plan line 279 |
+| R1p | a clean Investigate record with no by-reading verdict whose group in `investigate-groups.tsv` is `I-pointer` | 2 | the group its target record gets (the record in the same file whose title holds the line the verdict names); `NK:<row>` if no target is found | tightens plan line 275: a "same as" verdict is its target's question |
 | R1c | a clean Investigate record with no by-reading verdict | 2 | its group in `investigate-groups.tsv` | plan line 275 |
 | R2 | a Keep record with a faulty count row | 2 | its count rows' keys | plan line 276 |
 | R3t | a Keep record with `t7_reopened` = `yes` | 2 | `K-reopened` | tightens plan line 277: a record reopened at T7 is not settled |
