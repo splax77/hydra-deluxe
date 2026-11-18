@@ -181,8 +181,8 @@ TEST_CASE("rules: the leeway decides whether a plain backend row is counted") {
 }
 
 // D269: the timing the player needs for each row. The SP end is one point
-// (call 4), so a squeezed-out row needs its distance from that end on either
-// side, and the leeway changes nothing about it.
+// (call 4). Inside SP a squeezed-out row needs its distance from that end;
+// past the end it needs what a plain row there needs.
 TEST_CASE("backend_row_timing: the timing the player needs for each row") {
     const double lw = core::default_rules().backend_leeway_ms;
     REQUIRE(lw == 3.0);
@@ -200,14 +200,26 @@ TEST_CASE("backend_row_timing: the timing the player needs for each row") {
     // On the end it needs a 0 ms hit, printed as +0.0, never -0.0.
     CHECK(backend_row_timing(0.0, true, lw) == 0.0);
     CHECK_FALSE(std::signbit(backend_row_timing(0.0, true, lw)));
-    // Past the end it needs its offset, the early hit that would pull it
-    // back into SP: the same figure an uncounted plain row needs.
-    for (double off : {2.0, 3.0, 50.0, 478.7}) {
+    // Past the end but within the leeway it needs nothing, as a counted plain
+    // row does.
+    for (double off : {2.0, 2.999}) {
+        CAPTURE(off);
+        CHECK(backend_row_timing(off, true, lw) == 0.0);
+        CHECK(backend_row_timing(off, true, lw) == backend_row_timing(off, false, lw));
+    }
+    // At or past the leeway it needs its offset, the early hit that would
+    // pull it back into SP: the same figure an uncounted plain row needs.
+    for (double off : {3.0, 50.0, 478.7}) {
         CAPTURE(off);
         CHECK(backend_row_timing(off, true, lw) == off);
+        CHECK(backend_row_timing(off, true, lw) == backend_row_timing(off, false, lw));
+    }
+    // Every past-end row follows the plain rule whatever the leeway.
+    for (double off : {2.0, 3.0, 50.0, 478.7}) {
+        CAPTURE(off);
         CHECK(backend_row_timing(off, true, 0.0) == backend_row_timing(off, false, 0.0));
     }
-    // At +2 ms the squeezed-out row needs 2 ms, which is still Normal, and
+    // At +2 ms the squeezed-out row needs nothing, so it reads Normal, and
     // the engine still counts the chord, so the word carries no tag.
     CHECK(core::counted_without_squeeze(2.0, lw));
     BackendSqueeze b;
