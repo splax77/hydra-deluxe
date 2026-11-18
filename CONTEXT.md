@@ -763,7 +763,9 @@ src/core/squeeze_rating.cpp works out the scales and effective ms
 (uncounted)" and so on) is `BackendSqueeze::summarystr`'s, in
 src/core/model.cpp, one rule for every row (D269). The figure banded is the
 row's needed timing, `backend_row_timing` (src/core/model.h): a squeezed-out
-row needs its SqOut's `squeeze_difficulty`, a plain row the engine counts
+row needs its distance from the SP end on either side (inside SP, its SqOut's
+`squeeze_difficulty`; past the end, its offset, so a squeezed-out row past the
+end needs a timing even though its SqOut needs none), a plain row the engine counts
 (`counted_without_squeeze`) needs nothing, and an uncounted plain row needs
 its offset. A row that needs nothing reads Normal whatever its scale; any
 other row with an eff. figure is banded on that figure (D276 item 2). The

@@ -6,6 +6,7 @@
 
 #include "doctest.h"
 
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -180,8 +181,8 @@ TEST_CASE("rules: the leeway decides whether a plain backend row is counted") {
 }
 
 // D269: the timing the player needs for each row. The SP end is one point
-// (call 4), so a squeezed-out row needs nothing at or past it, even while
-// the leeway still has the engine count the chord.
+// (call 4), so a squeezed-out row needs its distance from that end on either
+// side, and the leeway changes nothing about it.
 TEST_CASE("backend_row_timing: the timing the player needs for each row") {
     const double lw = core::default_rules().backend_leeway_ms;
     REQUIRE(lw == 3.0);
@@ -193,15 +194,21 @@ TEST_CASE("backend_row_timing: the timing the player needs for each row") {
     // A plain row it does not count needs its offset early.
     CHECK(backend_row_timing(3.0, false, lw) == 3.0);
     CHECK(backend_row_timing(50.0, false, lw) == 50.0);
-    // The squeezed-out row needs its SqOut's late hit.
+    // Inside SP the squeezed-out row needs its SqOut's late hit.
     CHECK(backend_row_timing(-163.0, true, lw) == 163.0);
     CHECK(backend_row_timing(-5.0, true, lw) == 5.0);
-    for (double off : {0.0, 2.0, 50.0}) {
+    // On the end it needs a 0 ms hit, printed as +0.0, never -0.0.
+    CHECK(backend_row_timing(0.0, true, lw) == 0.0);
+    CHECK_FALSE(std::signbit(backend_row_timing(0.0, true, lw)));
+    // Past the end it needs its offset, the early hit that would pull it
+    // back into SP: the same figure an uncounted plain row needs.
+    for (double off : {2.0, 3.0, 50.0, 478.7}) {
         CAPTURE(off);
-        CHECK(backend_row_timing(off, true, lw) <= 0.0);
+        CHECK(backend_row_timing(off, true, lw) == off);
+        CHECK(backend_row_timing(off, true, 0.0) == backend_row_timing(off, false, 0.0));
     }
-    // At +2 ms the squeezed-out row needs nothing, yet the engine still
-    // counts the chord, so the squeeze-out still costs points.
+    // At +2 ms the squeezed-out row needs 2 ms, which is still Normal, and
+    // the engine still counts the chord, so the word carries no tag.
     CHECK(core::counted_without_squeeze(2.0, lw));
     BackendSqueeze b;
     b.offset_ms = 2.0;
@@ -219,26 +226,28 @@ TEST_CASE("BackendSqueeze::summarystr: every counted plain row reads Normal") {
 }
 
 // D269 call 1: one rule for every row, so a squeezed-out row and a plain row
-// at the same offset differ only by what each needs.
+// at the same offset differ only by what each needs. Inside SP only the
+// squeezed-out row needs a timing; past the leeway both need the same one.
 TEST_CASE("BackendSqueeze::summarystr: one rule for the squeezed-out and the plain row") {
     BackendSqueeze b;
     b.offset_ms = -50.0;
     CHECK(b.summarystr(true, std::nullopt) == "Extreme");
     CHECK(b.summarystr(false, std::nullopt) == "Normal");
     b.offset_ms = 150.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Normal (uncounted)");
+    CHECK(b.summarystr(true, std::nullopt) == "Insane+ (uncounted)");
     CHECK(b.summarystr(false, std::nullopt) == "Insane+ (uncounted)");
 }
 
 // Finding 33, D48 Q6: a row the engine does not count says so, squeezed out
-// or not, under the same test (counted_without_squeeze).
+// or not, under the same test (counted_without_squeeze). The leeway decides
+// only the tag on a squeezed-out row, never its word.
 TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
     BackendSqueeze b;
     b.offset_ms = 50.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Normal (uncounted)");
+    CHECK(b.summarystr(true, std::nullopt) == "Extreme (uncounted)");
     b.offset_ms = 4.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Normal (uncounted)");
-    CHECK(b.summarystr(true, std::nullopt, 5.0) == "Normal");
+    CHECK(b.summarystr(true, std::nullopt) == "Hard (uncounted)");
+    CHECK(b.summarystr(true, std::nullopt, 5.0) == "Hard");
     b.offset_ms = -5.0;
     CHECK(b.summarystr(true, std::nullopt) == "Hard");
 }
