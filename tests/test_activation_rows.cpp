@@ -31,10 +31,12 @@ using song_details::kDot;
 
 namespace {
 
-// D269: the squeezed-out row's word is past the first tier exactly when its
-// badge is orange (SPSqueeze::is_difficult). The scale is reset to x1.00
-// first, so the raw and the eff. figure are one figure; the badge reads raw
-// ms (D269 call 5).
+// D269: inside SP or on the end, the squeezed-out row's word is past the
+// first tier exactly when its badge is orange (SPSqueeze::is_difficult). Past
+// the end the badge needs no timing, while the word is banded on the row's
+// distance from the SP end, so there the word is that offset's tier. The
+// scale is reset to x1.00 first, so the raw and the eff. figure are one
+// figure; the badge reads raw ms (D269 call 5).
 void check_word_agrees_with_badge(Activation act) {
     test::set_transfer(act, TransferScale{});
     const SPSqueeze* sqout = nullptr;
@@ -49,8 +51,15 @@ void check_word_agrees_with_badge(Activation act) {
         CHECK_FALSE(br.note.effective_ms.has_value());
         const std::string word = br.row.summarystr(true, br.note.effective_ms);
         CAPTURE(word);
-        const bool past_first_tier = word.rfind(first_tier, 0) != 0;
-        CHECK(sqout->is_difficult() == past_first_tier);
+        const double off = br.row.offset();
+        if (core::paid_by_sp_walk(off)) {
+            const bool past_first_tier = word.rfind(first_tier, 0) != 0;
+            CHECK(sqout->is_difficult() == past_first_tier);
+        } else if (core::counted_without_squeeze(off, core::default_rules().backend_leeway_ms)) {
+            CHECK(word.rfind(first_tier, 0) == 0);
+        } else {
+            CHECK(word.rfind(tier_for(off, timing_tiers()).first, 0) == 0);
+        }
     }
     CHECK(rows == 1);
 }
@@ -509,7 +518,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
     CHECK(v.acts[0].backends[0].rating ==
-          "Normal (uncounted) <-- squeezed out");
+          "Beyond (uncounted) <-- squeezed out");
     CHECK_FALSE(v.acts[0].backends[0].warn);
     check_word_agrees_with_badge(far);
 
