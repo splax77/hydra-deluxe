@@ -26,6 +26,7 @@
 #include "core/replay.h"
 #include "core/squeeze_rating.h"
 #include "core/stars.h"
+#include "core/strutil.h"  // ends_with
 #include "core/timing.h"  // sp_bars_to_measures
 #include "analyzed_chart.h"
 #include "corpus_util.h"
@@ -125,17 +126,13 @@ std::string grid_label(int measure, int beat, int64_t ticks_in) {
            std::to_string(ticks_in);
 }
 
-bool ends_with(const std::string& s, const std::string& tail) {
-    return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0;
-}
-
 // The signature as the time box's tempo line ends with it.
 std::string sig_text(const std::pair<int, int>& sig) {
     return std::to_string(sig.first) + "/" + std::to_string(sig.second);
 }
 
 // The drawn measure lines of a scene, in order.
-std::vector<PreviewBeat> measure_lines(const PreviewScene& scene) {
+std::vector<PreviewBeat> drawn_measure_lines(const PreviewScene& scene) {
     std::vector<PreviewBeat> lines;
     for (const PreviewBeat& b : scene.beats)
         if (b.kind == PreviewBeatKind::MeasureLine) lines.push_back(b);
@@ -233,7 +230,7 @@ TEST_CASE("build_time_box: the end measure runs past the last beat line") {
     const Song& song = corpus_song("Deftones - My Own Summer");
     const PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.timing.has_value());
-    const std::vector<PreviewBeat> lines = measure_lines(scene);
+    const std::vector<PreviewBeat> lines = drawn_measure_lines(scene);
     REQUIRE_FALSE(lines.empty());
     const PreviewBeat& last = lines.back();
 
@@ -287,7 +284,7 @@ TEST_CASE("build_time_box: a mid-measure meter change restarts the grid") {
 
     // The lines: the first 4/4 measure, the cut-short second, then 3/4 from
     // the change.
-    const std::vector<PreviewBeat> lines = measure_lines(scene);
+    const std::vector<PreviewBeat> lines = drawn_measure_lines(scene);
     REQUIRE(lines.size() >= 4);
     CHECK(lines[0].tick == 0);
     CHECK(lines[1].tick == 4 * beat);
