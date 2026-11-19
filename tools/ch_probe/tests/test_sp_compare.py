@@ -133,25 +133,6 @@ def run(rows, **kwargs):
     return sp_compare.compare(rows, SCORE, **kwargs)
 
 
-MATCHING_REPORT = """\
-Summary: 12 PASS, 0 FAIL
-Star Power comparison: 451 watcher rows, 8 chords, 1 path activations, width 64
-PASS run end: the run reached the song's end
-PASS phrase rise after chord 0 (tick 0, 1000.0 ms): +1440 (0 -> 1440) at 1010.0 ms, full
-PASS phrase rise after chord 2 (tick 384, 2000.0 ms): +1440 (1440 -> 2880) at 2010.0 ms, full
-PASS phrase rise after chord 5 (tick 960, 3500.0 ms): +1440 (0 -> 1440) at 3510.0 ms, full, during Star Power
-Full rises: all 1440 ticks; sp_max / 4 = 1440
-PASS sp_max 5760; the game's full meter 5760 (resolution 192 x 30); sp_bar_ticks 14400
-Activation 1 at clock 3010.0 ms:
-PASS   activation 1 multiplier doubles: 4 -> 8 at 3010.0 ms
-PASS   activation 1 end time ahead of the clock: end 4100.0 ms, clock 3010.0 ms
-PASS   activation 1 flag clears at Hydra's end: Hydra 4000.0 ms, flag 0 at 4100.0 ms
-PASS   activation 1 multiplier halves at the end: 8 -> 4 at 4100.0 ms
-PASS   activation 1 on the path's chord: chord 4 (tick 768, 3000.0 ms)
-PASS   activation 1 end chord: game end 4100.0 ms, the game's last chord inside: chord 6 (tick 1152, 4000.0 ms); Hydra's deactivation: chord 6 (tick 1152, 4000.0 ms), difference +100.0 ms
-PASS multiplier at each chord: 8 of 8 chords match (one chord of lag allowed)"""
-
-
 # --- Two real runs of one corpus chart -----------------------------------------
 #
 # Both runs had the auto-player play path 0 of CHON - Pitch Dark (B), whose
@@ -664,39 +645,80 @@ class FilesTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     self._main([csv_path, json_path, "--stop", "done"])
 
-    def test_main_reads_the_files_and_exits_0(self):
+    @staticmethod
+    def _real_main(csv_path, args, lead_ms=0.0):
+        """main on a real Pitch Dark watch piece, with path 0's hydra_replay
+        score held to the piece's span (_within) and its schedule; its exit
+        code, its printed text, and compare's own report on the same inputs
+        (stop and width read from `args` as main reads them)."""
+        score, reach = _path_files()
+        rows = sp_compare.load_watch_rows(csv_path)
+        piece = _within(score, rows, lead_ms)
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        out = io.StringIO()
         with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows())
-            code, text = self._main([csv_path, json_path, "--resolution", "192",
-                                     "--sp-bar-ticks", "14400", "--stop", "done"])
-        self.assertEqual(code, 0)
-        self.assertEqual(text, MATCHING_REPORT + "\n")
+            json_path = os.path.join(folder, "score.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(piece, f)
+            with contextlib.redirect_stdout(out):
+                code = sp_compare.main(
+                    [csv_path, json_path, "--resolution", str(resolution),
+                     "--schedule", _replay_file("test_pitch_dark_ratio-schedule.json")]
+                    + args)
+        return code, out.getvalue(), rows, piece, resolution, reach
+
+    @staticmethod
+    def _sp_bar_ticks():
+        """sp_bar_ticks from the game's scorestats.json after pitch-dark-run1
+        (copied from hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1), a run
+        of the same chart as the act3 piece."""
+        path = os.path.join(_RUNS_DIR, "pitch-dark-run1",
+                            "scorestats-CHON_-_Pitch_Dark_B-20261112-230618.json")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)["players"][0]["sp_bar_ticks"]
+
+    def test_main_reads_the_files_and_exits_0(self):
+        ticks = self._sp_bar_ticks()
+        code, text, rows, piece, resolution, reach = self._real_main(
+            _ACT3_CSV, ["--sp-bar-ticks", str(ticks), "--stop", play_chart.STOP_DONE])
+        report = sp_compare.compare(rows, piece, resolution=resolution, sp_bar_ticks=ticks,
+                                    reach=reach, stop=play_chart.STOP_DONE)
+        self.assertEqual(report.fails, 0, report.text())
+        self.assertEqual(code, 0, text)
+        self.assertEqual(text, report.text() + "\n")
+        sp_max = _starting(report, "PASS sp_max ")
+        self.assertEqual(len(sp_max), 1, report.text())
+        self.assertTrue(sp_max[0].endswith(f"; sp_bar_ticks {ticks}"), sp_max[0])
 
     def test_main_exits_1_on_a_fail(self):
-        with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows(rise_skip={2}))
-            code, _ = self._main([csv_path, json_path, "--resolution", "192",
-                                  "--stop", "done"])
-        self.assertEqual(code, 1)
+        # pitch-dark-run1's third activation is off the path (see
+        # RealRunTest); the chords reach back as far as a flip may land.
+        code, text, *_ = self._real_main(_OFF_PATH_CSV, ["--stop", play_chart.STOP_DONE],
+                                         sp_compare.LANDING_WINDOW_MS)
+        self.assertEqual(code, 1, text)
+        self.assertIn("\nFAIL   activation 1 not on the path's chord: game tick ", text)
 
     def test_main_with_no_stop_fails(self):
-        with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows())
-            code, text = self._main([csv_path, json_path, "--resolution", "192"])
-        self.assertEqual(code, 1)
-        self.assertIn("FAIL run end: the run's stop reason was not given\n", text)
+        code, text, *_ = self._real_main(_ACT3_CSV, [])
+        self.assertEqual(code, 1, text)
+        ok, line = stop_check(None)
+        self.assertFalse(ok)
+        self.assertIn("\n" + line + "\n", text)
+        # The act3 piece passes every other check, so the stop is the one fail.
+        self.assertEqual(text.count("\nFAIL "), 1, text)
 
-    def test_width_defaults_to_64_and_32_reads_the_u32_columns(self):
-        with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows(u64_scale=2))
-            _, text64 = self._main([csv_path, json_path, "--resolution", "192",
-                                    "--stop", "done"])
-            _, text32 = self._main([csv_path, json_path, "--resolution", "192",
-                                    "--stop", "done", "--width", "32"])
-        self.assertIn("FAIL sp_max 11520; the game's full meter 5760 "
-                      "(resolution 192 x 30)\n", text64)
-        self.assertIn("PASS sp_max 5760; the game's full meter 5760 "
-                      "(resolution 192 x 30)\n", text32)
+    def test_width_defaults_to_its_owner_and_32_reads_the_same_real_meter(self):
+        # Every recorded watch log under hydra-data/ch-mcp-runs holds equal
+        # u32 and u64 amount and maximum columns, so both widths give one
+        # verdict on a real log; only the header names the width.
+        code64, text64, *_ = self._real_main(_ACT3_CSV, ["--stop", play_chart.STOP_DONE])
+        code32, text32, *_ = self._real_main(_ACT3_CSV, ["--stop", play_chart.STOP_DONE,
+                                                         "--width", "32"])
+        self.assertEqual((code64, code32), (0, 0), text64 + text32)
+        lines64, lines32 = text64.splitlines(), text32.splitlines()
+        self.assertTrue(lines64[1].endswith(f", width {sp_compare.DEFAULT_WIDTH}"), lines64[1])
+        self.assertTrue(lines32[1].endswith(", width 32"), lines32[1])
+        self.assertEqual(lines64[2:], lines32[2:])
 
     def test_missing_column_is_an_error(self):
         with tempfile.TemporaryDirectory() as folder:
