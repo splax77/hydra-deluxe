@@ -1,0 +1,4 @@
+index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,end_read_ms,probe,retimed,wait_read_max_ms,wait_oversleep_max_ms,press_took_ms,reply_check_took_ms,end_read_took_ms,score_read_took_ms,prev_handoff_took_ms,frame_gap_ms,agent_note
+0,33746.56,33744.67682346585,0,180,sent,11670,11672,1794527009974,1794527009980,1794527009.974,1794527009.98,0,,,,,,,,,,,3,
+1,35748.049499999994,35748.677204566775,180,295,sent,12331,12333,1794527011978,1794527011984,1794527011.978,1794527011.984,0,,,,,,,,,,,3,
+2,36195.4765,36194.40290049533,295,445,sent,12478,12480,1794527012424,1794527012430,1794527012.424,1794527012.43,0,,,,,,,,,,,4,

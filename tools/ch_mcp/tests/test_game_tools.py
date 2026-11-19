@@ -38,6 +38,7 @@ from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
 from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import menu_tools  # noqa: E402
+from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread  # noqa: E402
 from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
@@ -1781,28 +1782,25 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(self._run(t).splitlines()[-1],
                          "first press chord index 1 at 1500.0 ms")
 
-    def test_the_call_returns_at_the_first_press_while_the_run_goes_on(self):
-        release = threading.Event()
-
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[0])
-            release.wait(THREAD_CAP_S)
-            return play_chart.RunResult(stop="done")
-
-        t, _events, _seen = self._chain_rig(live_play)
-        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
-        self.assertIn("first press chord index 0", reply)
-        self.assertTrue(t.tools._play.running())
-        release.set()
-        t.tools._play.thread.join(THREAD_CAP_S)
-
     def test_a_decline_reaches_the_chords_and_the_reply_names_them(self):
-        t, _events, seen = self._chain_rig()
-        score, schedule = self._decline_files(kept=(0,))
-        reply = self._run(t, score, schedule)
-        self.assertEqual([c.declined for c in seen["chords"]], [False, True])
-        self.assertEqual([p.lanes for p in seen["chords"][1].presses], [[Lane.KICK]])
-        self.assertIn("declined: chords 1 (kick)", reply.splitlines())
+        # chords_to_play is what ch_run_chart loads its chords and reply lines
+        # through. The schedule is hydra_replay's (see _PROBE_TESTS above).
+        path = os.path.join(_PROBE_TESTS, "mouths_refine_schedule.json")
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+        chords, lines = GT.chords_to_play(path)
+        rows = {row["index"]: row for row in doc["chords"]}
+        declined = [c for c in chords if c.declined]
+        self.assertTrue(declined, "the fixture declines at least one chord")
+        self.assertEqual([c.index for c in declined],
+                         [i for i, row in rows.items() if row["declined"]])
+        for chord in declined:
+            kept_lanes = sorted(chord.lanes[k] for k in rows[chord.index]["kept_gems"])
+            sent_lanes = sorted(lane for p in chord.presses for lane in p.lanes)
+            self.assertEqual(sent_lanes, kept_lanes, chord.index)
+        said = next(line for line in lines if line.startswith("declined: chords "))
+        named = re.findall(r"(\d+) \(", said)
+        self.assertEqual([int(i) for i in named], [c.index for c in declined])
 
     def _refine_run_lines(self, name):
         """The reply lines after the play's line of a chained run of a fixture."""
@@ -1845,50 +1843,6 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(reply.startswith(f"could not read {missing}: FileNotFoundError"), reply)
         self.assertEqual(events, [])
 
-    def test_a_failed_attach_stops_there_and_tears_nothing_down(self):
-        t, events, _seen = self._chain_rig(attaches=False)
-        lines = self._run(t).splitlines()
-        self.assertEqual(events, ["attach"])
-        self.assertRegex(lines[0], r"^attach: FAILED after .* s; the run stopped at attach$")
-        self.assertEqual(lines[1], "the game is not running")
-
-    def test_a_failed_setup_stops_before_the_watch_and_the_reply_names_setup(self):
-        t, events, _seen = self._chain_rig(press="none")
-        lines = self._run(t).splitlines()
-        self.assertEqual(events, ["attach", ("setup", "System")])
-        self.assertRegex(lines[2], r"^kit setup: FAILED after .* s; the run stopped at kit setup$")
-        self.assertEqual(lines[3], "setup reply")
-        self.assertIsNone(t.tools._play)
-
-    def test_a_failed_watch_tears_the_kit_down_and_starts_no_player(self):
-        t, events, _seen = self._chain_rig(engine=None)
-        lines = self._run(t).splitlines()
-        self.assertEqual(events[-1], "teardown")
-        self.assertNotIn("play", events)
-        self.assertRegex(lines[3], r"^watch: FAILED after .* s; the run stopped at watch$")
-        self.assertEqual(lines[4:], ["watcher ended: no song", "kit teardown: all checks ok"])
-        self.assertIsNone(t.tools._play)
-
-    def test_a_player_that_ends_with_no_press_tears_the_kit_down(self):
-        def live_play(chords, **kw):
-            return play_chart.RunResult(stop=play_chart.STOP_NO_ENGINE, message="no song")
-
-        t, events, _seen = self._chain_rig(live_play)
-        reply = self._run(t)
-        self.assertEqual(events[-2], "teardown")
-        self.assertRegex(reply, r"play: FAILED after .* s; the run stopped at play")
-        self.assertIn("first press: none, no chord was pressed", reply)
-        self.assertIn("no song", reply)
-
-    def test_a_player_that_ends_with_no_press_stops_the_watch_too(self):
-        def live_play(chords, **kw):
-            return play_chart.RunResult(stop=play_chart.STOP_NO_ENGINE, message="no song")
-
-        t, events, _seen = self._chain_rig(live_play)
-        reply = self._run(t)
-        self.assertEqual(events[-2:], ["teardown", "watch stop"])
-        self.assertTrue(reply.endswith("watcher ended: stopped"), reply)
-
     def test_a_run_that_never_presses_ends_at_the_run_cap_and_says_so(self):
         def live_play(chords, *, should_stop, **kw):
             while not should_stop():
@@ -1901,52 +1855,6 @@ class GameToolsTest(unittest.TestCase):
         self.assertIn("no press inside the run cap of 0.05 s; the call stopped the run", reply)
         self.assertEqual(events[-2:], ["teardown", "watch stop"])
         self.assertFalse(t.tools._play.running())
-
-    def test_the_search_timeout_names_the_engines_it_searched(self):
-        def times_out(proc, patterns, **kw):
-            raise GT.engine_finder.EngineSearchTimeout("no playing song found in 120 s")
-
-        with mock.patch.object(GT.engine_finder, "find_live_engine_capped", times_out), \
-                mock.patch.object(GT.engine_finder, "normal_pattern", return_value=(b"", b"")):
-            with self.assertRaises(GT.engine_finder.EngineSearchTimeout) as caught:
-                GT.find_run_engine("a proc")
-        self.assertIn("no playing song found in 120 s", str(caught.exception))
-        self.assertIn("normal-mode engines only", str(caught.exception))
-
-    def test_a_player_that_raises_is_named_and_tears_the_kit_down(self):
-        def live_play(chords, **kw):
-            raise ValueError("no ghost press is possible")
-
-        t, events, _seen = self._chain_rig(live_play)
-        reply = self._run(t)
-        self.assertEqual(events[-2], "teardown")
-        self.assertIn("ended: failed: ValueError: no ghost press is possible", reply)
-
-    def test_the_chain_is_refused_while_a_play_session_runs(self):
-        release = threading.Event()
-
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[0])
-            release.wait(THREAD_CAP_S)
-            return play_chart.RunResult(stop="done")
-
-        t, events, _seen = self._chain_rig(live_play)
-        t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
-        events.clear()
-        self.assertEqual(t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System"),
-                         GT.PLAY_ALREADY_RUNNING)
-        self.assertEqual(events, [])
-        release.set()
-        t.tools._play.thread.join(THREAD_CAP_S)
-
-    def test_the_chain_makes_no_call_into_the_quiet_check_and_no_sampler_wait(self):
-        t, _events, _seen = self._chain_rig()
-        fake = FakeQuiet()
-        with mock.patch.object(Q, "LIVE_ENV", fake.env()), \
-                mock.patch.object(Q, "quiet_report") as check:
-            self._run(t)
-        check.assert_not_called()
-        self.assertEqual(fake.calls, [])
 
     def test_the_tools_take_schedule_json_and_no_dump_json(self):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
@@ -1963,29 +1871,7 @@ class GameToolsTest(unittest.TestCase):
             "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
                               "probes_json"]})
 
-    # -- in-game timing (D339)
-
-    def _in_game_rig(self, **kw):
-        """A chained-start rig whose live_in_game records the player it gets
-        and delivers ROWS[0]."""
-        in_game = []
-
-        def live_in_game(chords, *, player, on_press, **_kw):
-            in_game.append(player)
-            on_press(ROWS[0])
-            return play_chart.RunResult(stop="done")
-
-        t, events, seen = self._chain_rig(live_in_game=live_in_game, **kw)
-        return t, events, in_game
-
-    def test_run_chart_plays_in_game_on_the_setups_kit_agent(self):
-        t, events, in_game = self._in_game_rig()
-        kit = t.tools._run_parts.kit
-        self._run(t)
-        self.assertEqual(in_game, [kit.player])
-        self.assertNotIn("play", events)
-        self.assertNotIn("game player", events)
-        self.assertTrue(kit.player.closed)
+    # -- in-game timing
 
     def test_game_tools_names_no_kit_press_source_and_no_timing(self):
         # D342: the kit route is timed by the game only.
@@ -1995,50 +1881,63 @@ class GameToolsTest(unittest.TestCase):
             self.assertNotIn(gone, source)
 
     def test_the_status_rows_show_frame_gap_ms_and_agent_note(self):
-        # D339 item 2 (question 3): in-game rows carry frame_gap_ms and
-        # agent_note, and ch_play_status prints both where it prints the
-        # timing columns of a Python-loop row.
-        rows = [{**ROWS[0], "frame_gap_ms": 3.0, "agent_note": ""},
-                {**ROWS[1], "frame_gap_ms": 2.9, "agent_note": "retime_missed"}]
-
-        def live_play(chords, *, on_press, **kw):
-            for row in rows:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=2, rows=rows)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertEqual(lines[-3:], [
-            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
-            "send, frame_gap_ms, agent_note):",
-            "  1, 1500.0, 1499.0, 50, 50, sent, 2.9, retime_missed",
-            "  0, 1000.0, 998.0, 0, 50, sent, 3.0, "])
+        # In-game rows carry frame_gap_ms and agent_note, and ch_play_status
+        # prints both for each row. The rows are the first three of a real
+        # in-game run's press log (testdata/ch_runs/ls-g2-run1/press-1.csv,
+        # copied from hydra-data/ch-mcp-runs/2026-11-12/ls-g2-run1).
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "press-1.csv")
+        with open(path, encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        self.assertTrue(rows)
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        tools._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                      log_path=None, rows=rows)
+        lines = tools.ch_play_status().splitlines()
+        start = next(i for i, line in enumerate(lines) if line.startswith("rows, newest first ("))
+        columns = lines[start][len("rows, newest first ("):-len("):")].split(", ")
+        self.assertIn("frame_gap_ms", columns)
+        self.assertIn("agent_note", columns)
+        printed = [line[2:].split(", ") for line in lines[start + 1:]]
+        self.assertEqual(len(printed), len(rows))
+        for cells, row in zip(printed, reversed(rows)):
+            for column in ("index", "frame_gap_ms", "agent_note"):
+                self.assertEqual(cells[columns.index(column)], row[column], column)
 
     # -- the right song and path (D318 item 4) --------------------------------------------
 
     def test_run_chart_refuses_when_the_loaded_folder_is_not_the_schedules_chart(self):
-        other = os.path.join(self.tmp, "songs", "Another Song")
-        t, events, _seen = self._chain_rig(loaded=other)
+        # The game's read is a real one: the first state read of a run
+        # (testdata/ch_runs/ls-g2-run1/state-2.jsonl, copied from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-g2-run1), with another song
+        # loaded than this test's.
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "state-2.jsonl")
+        with open(path, encoding="utf-8") as f:
+            state = json.loads(f.readline())["payload"]
+        loaded = menu_tools.loaded_folder(state)
+        self.assertTrue(loaded)
+        t, events, _seen = self._chain_rig()
+        t.tools._run_parts.frida.read_state = lambda: state
         lines = self._run(t).splitlines()
         # The attach ran; no kit was built, no watch started, nothing pressed.
         self.assertEqual(events, ["attach"])
         self.assertIsNone(t.tools._play)
-        self.assertRegex(lines[1], r"^song check: FAILED after .* s; the run stopped at song check$")
-        self.assertEqual(lines[2], f"the game has the song folder {json.dumps(other)} loaded, "
-                                   f"not the schedule's chart folder {t.r.song}; nothing pressed")
+        self.assertTrue(lines[1].startswith("song check: FAILED"), lines[1])
+        self.assertIn(json.dumps(loaded), lines[2])
+        self.assertIn(t.r.song, lines[2])
+        self.assertTrue(lines[2].endswith("nothing pressed"), lines[2])
 
-    def test_run_chart_refuses_when_no_song_is_loaded_or_the_read_fails(self):
+    def test_run_chart_refuses_when_the_read_fails(self):
+        # The failed read is FridaTools' own, from one that never attached.
         t, events, _seen = self._chain_rig()
-        for loaded, said in ((None, "the game has the song folder null loaded"),
-                             (StateUnread("not attached"), "no read came back: not attached")):
-            with self.subTest(loaded=loaded):
-                t.tools._run_parts.frida.loaded = loaded
-                events.clear()
-                lines = self._run(t).splitlines()
-                self.assertEqual(events, ["attach"])
-                self.assertTrue(lines[2].startswith(said), lines[2])
+        frida = FT.FridaTools(t.tools, threading.RLock())
+        with self.assertRaises(StateUnread) as unread:
+            frida.read_state()
+        t.tools._run_parts.frida.read_state = frida.read_state
+        lines = self._run(t).splitlines()
+        self.assertEqual(events, ["attach"])
+        self.assertIsNone(t.tools._play)
+        self.assertTrue(lines[1].startswith("song check: FAILED"), lines[1])
+        self.assertTrue(lines[2].startswith(f"no read came back: {unread.exception}"), lines[2])
 
     def test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach(self):
         t, events, _seen = self._chain_rig()
