@@ -1785,22 +1785,34 @@ class ReadRangeTest(unittest.TestCase):
                 self.assertEqual(kept.retimed, play_chart.RETIMED_RANGE)
 
     def test_a_squeeze_in_outside_is_pressed_plain(self):
-        # The threshold is far below the read, so only the range sends it plain.
-        press = self._press(fallback={"action": "plain", "if_end_before_ms": 900.0,
-                                      "aim_ms": -2.0, "retimed": play_chart.RETIMED_PLAIN})
-        (plain,) = play_chart.retime_from_end([press], 4, self.RANGE[1] + 0.01)
-        self.assertEqual((plain.aim_ms, plain.retimed), (-2.0, play_chart.RETIMED_RANGE))
+        # The Mouths fixture's squeeze-in, read just past its range's high
+        # side. The read is past the block's threshold too, so the threshold
+        # alone would leave it timed from the end: only the range sends it
+        # plain, at the block's aim.
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        press = _press_of(chords, 431, "squeeze_in")
+        block = press.fallback
+        read_ms = press.read_range_ms[1] + 0.01
+        self.assertEqual(block["action"], "plain")
+        self.assertGreater(read_ms, block["if_end_before_ms"])
+        (plain,) = play_chart.retime_from_end([press], press.end_read_after, read_ms)
+        self.assertEqual((plain.aim_ms, plain.retimed), (block["aim_ms"], play_chart.RETIMED_RANGE))
 
     def test_a_squeeze_outs_late_gem_outside_joins_its_group(self):
-        # The threshold is far above the read, so only the range joins it.
-        group = self._press(aim_ms=-15.0, lanes=(Lane.RED,))
-        late = self._press(aim_ms=20.0, lanes=(Lane.BLUE,),
-                           fallback={"action": "join_group", "if_end_after_ms": 5000.0,
-                                     "before_end_ms": 15.0, "join_gems": [0],
-                                     "retimed": play_chart.RETIMED_INSIDE})
-        (joined,) = play_chart.retime_from_end([group, late], 4, self.RANGE[0] - 0.01,
-                                               {5: [Lane.RED, Lane.BLUE]})
-        self.assertEqual(joined.lanes, [Lane.RED, Lane.BLUE])
+        # The Mouths fixture's squeeze-out at chord 740, read just below its
+        # range's low side. The read is below the late gem's threshold, so
+        # the threshold alone would leave the gem late: only the range joins
+        # it to its group, at the group's time.
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        group = _press_of(chords, 740, "squeeze_out_inside")
+        late = _press_of(chords, 740, "squeeze_out_late")
+        self.assertEqual(late.fallback["action"], "join_group")
+        read_ms = late.read_range_ms[0] - 0.01
+        self.assertLess(read_ms, late.fallback["if_end_after_ms"])
+        lanes = {c.index: c.lanes for c in chords}
+        (joined,) = play_chart.retime_from_end([group, late], late.end_read_after, read_ms,
+                                               lanes)
+        self.assertEqual(sorted(joined.lanes), sorted(group.lanes + late.lanes))
         self.assertEqual(joined.at_ms, group.at_ms)
         self.assertEqual(joined.retimed, play_chart.RETIMED_RANGE)
 
@@ -1821,15 +1833,36 @@ class EndFieldsLoadTest(unittest.TestCase):
         return doc
 
     def test_the_fields_are_read(self):
-        chords = _write_and_load(self._doc(), play_chart.load_schedule).chords
-        press = next(p for c in chords for p in c.presses if p.index == 41)
-        self.assertEqual((press.own_end_ms, press.read_stored_end_ms, press.own_stored_end_ms,
-                          press.conversion, press.read_range_ms),
-                         (13010.0, 12990.0, 13005.0, {"early": 0.5, "late": 2.0},
-                          (12900.0, 13100.0)))
-        # A press with no end_read_after carries none of them.
-        plain = next(p for c in chords for p in c.presses if p.index == 38)
-        self.assertIsNone(plain.own_end_ms)
+        # The Mouths fixture's press at chord 465 has a different conversion
+        # on each side. What the run does with the loaded fields: a read at
+        # the file's stored read end puts the press's own end at the file's
+        # stored own end, a read either side of it moves the own end at that
+        # side's ratio, and a read past the range moves nothing.
+        raw = next(e for e in _read_json(_MOUTHS_SCHEDULE)["presses"] if e["chord"] == 465)
+        self.assertNotEqual(raw["conversion"]["early"], raw["conversion"]["late"])
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        press = _press_of(chords, 465)
+        after = press.end_read_after
+
+        def own_end_after(read_ms):
+            (moved,) = play_chart.retime_from_end([press], after, read_ms)
+            self.assertIsNone(moved.retimed)
+            self.assertAlmostEqual(moved.at_ms - press.at_ms,
+                                   moved.own_end_ms - raw["own_end_ms"], delta=1e-9)
+            return moved.own_end_ms
+
+        stored = raw["read_stored_end_ms"]
+        self.assertAlmostEqual(own_end_after(stored), raw["own_stored_end_ms"], delta=1e-9)
+        for side, step_ms in (("early", -10.0), ("late", 10.0)):
+            with self.subTest(side):
+                moved_ms = own_end_after(stored + step_ms) - raw["own_stored_end_ms"]
+                self.assertAlmostEqual(moved_ms, raw["conversion"][side] * step_ms, delta=1e-9)
+        (kept,) = play_chart.retime_from_end([press], after, raw["read_range_ms"][1] + 0.01)
+        self.assertEqual((kept.at_ms, kept.retimed), (press.at_ms, play_chart.RETIMED_RANGE))
+        # A press with no end_read_after is never moved by a read.
+        plain = next(p for c in chords for p in c.presses if p.end_read_after is None)
+        (unmoved,) = play_chart.retime_from_end([plain], after, stored + 10.0)
+        self.assertEqual(unmoved, plain)
 
     def test_a_null_range_is_read_as_no_range(self):
         doc = self._doc()
@@ -1838,28 +1871,40 @@ class EndFieldsLoadTest(unittest.TestCase):
         press = next(p for c in chords for p in c.presses if p.index == 41)
         self.assertIsNone(press.read_range_ms)
 
+    def _refused(self, edit):
+        """The refusal of the Mouths fixture with `edit(entry)` applied to
+        its press at chord 465, an end-timed press, and that press's entry
+        number in `presses`. The intact fixture loads."""
+        play_chart.load_schedule(_MOUTHS_SCHEDULE)
+        doc = _read_json(_MOUTHS_SCHEDULE)
+        k = next(k for k, e in enumerate(doc["presses"]) if e["chord"] == 465)
+        self.assertIsNotNone(doc["presses"][k]["end_read_after"])
+        edit(doc["presses"][k])
+        with self.assertRaises(ValueError) as caught:
+            _write_and_load(doc, play_chart.load_schedule)
+        return str(caught.exception), k
+
+    def assert_names(self, message, k, key):
+        # The refusal names the press's entry and the field, so the reader
+        # knows which value the file lacks.
+        self.assertRegex(message, rf"\bentry {k}\b")
+        self.assertIn(f"`{key}`", message)
+
     def test_each_missing_field_is_named(self):
         for key in play_chart.END_FIELDS:
             with self.subTest(key):
-                doc = self._doc()
-                del doc["presses"][1][key]
-                with self.assertRaises(ValueError) as caught:
-                    _write_and_load(doc, play_chart.load_schedule)
-                self.assertIn(f"entry 1 of `presses` has no `{key}`", str(caught.exception))
+                message, k = self._refused(lambda entry: entry.pop(key))
+                self.assert_names(message, k, key)
 
     def test_a_null_number_and_a_one_sided_conversion_are_named(self):
-        for key in ("own_end_ms", "read_stored_end_ms", "own_stored_end_ms", "conversion"):
+        # read_range_ms is the one field a null is allowed in.
+        for key in (name for name in play_chart.END_FIELDS if name != "read_range_ms"):
             with self.subTest(key):
-                doc = self._doc()
-                doc["presses"][1][key] = None
-                with self.assertRaises(ValueError) as caught:
-                    _write_and_load(doc, play_chart.load_schedule)
-                self.assertIn(f"null `{key}`", str(caught.exception))
-        doc = self._doc()
-        del doc["presses"][1]["conversion"]["late"]
-        with self.assertRaises(ValueError) as caught:
-            _write_and_load(doc, play_chart.load_schedule)
-        self.assertIn("has no `late`", str(caught.exception))
+                message, k = self._refused(lambda entry: entry.update({key: None}))
+                self.assert_names(message, k, key)
+                self.assertRegex(message, r"\bnull\b")
+        message, k = self._refused(lambda entry: entry["conversion"].pop("late"))
+        self.assert_names(message, k, "late")
 
 
 class RetimedColumnTest(unittest.TestCase):
