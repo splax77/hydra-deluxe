@@ -133,12 +133,12 @@ TEST_CASE("set_search narrows the library and the match count") {
     const size_t all = app->library_shown_count();
     size_t pick = all;
     for (size_t i = all; i-- > 0;)
-        if (plain_title(app->library_row_at(i).entry.title)) {
+        if (plain_title(app->library_row_at(i).title)) {
             pick = i;
             break;
         }
     REQUIRE_MESSAGE(pick < all, "no corpus chart has a title of plain words");
-    const ChartLibraryEntry wanted = app->library_row_at(pick).entry;
+    const hydra::ui::LibraryRow wanted = app->library_row_at(pick);
 
     app->set_search("\"" + wanted.title + "\"");
     CHECK(app->library.searching());
@@ -146,7 +146,7 @@ TEST_CASE("set_search narrows the library and the match count") {
     CHECK(found < all);
     CHECK(app->library.counts().all == found);
     CHECK(app->library_matches().size() == found);
-    CHECK(place_of(shown_notespaths(*app), wanted.notespath) < found);
+    CHECK(place_of(shown_notespaths(*app), wanted.entry.notespath) < found);
     app->set_search("");
     CHECK_FALSE(app->library.searching());
     CHECK(app->library_shown_count() == all);
