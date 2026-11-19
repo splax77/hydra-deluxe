@@ -361,6 +361,11 @@
           "file": "tests/test_preview_boxes.cpp",
           "line_text": "CHECK(ends_with(build_time_box(scene, scene.beats[j].ms, len).position, \".2.0\"));",
           "why": "checks the time box's position text ends on the beat, not a file format"
+        },
+        {
+          "file": "tests/test_model.cpp",
+          "line_text": "REQUIRE(ends_with(n, tail));",
+          "why": "checks that an activation's notation ends with its skip count and squeeze symbols, not a file format"
         }
       ],
       "scope": [
