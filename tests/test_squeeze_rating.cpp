@@ -388,9 +388,11 @@ TEST_CASE("frontend_transfer_scales: a SqOut whose activation and SP end both si
     SPSqueeze sqout{SqueezeKind::SqOut, -gap};
     const double r = scales->post.early;
     CHECK(sqout.difficulty() == doctest::Approx(gap).epsilon(1e-12));
-    CHECK(squeeze_budget_ms(r) == doctest::Approx(kHitWindowMs + r * kHitWindowMs).epsilon(1e-12));
+    const double nominal_budget = 2.0 * kHitWindowMs;     // two full windows
+    const double budget_at_r = kHitWindowMs + r * kHitWindowMs;
+    CHECK(squeeze_budget_ms(r) == doctest::Approx(budget_at_r).epsilon(1e-12));
     CHECK(effective_backend_ms(sqout.difficulty(), r) ==
-          doctest::Approx(gap * nominal_budget_ms() / squeeze_budget_ms(r)).epsilon(1e-12));
+          doctest::Approx(gap * nominal_budget / budget_at_r).epsilon(1e-12));
     // An early scale under 1 shrinks the budget, so the figure is harder
     // than the raw gap.
     CHECK(effective_backend_ms(sqout.difficulty(), r) > gap);
