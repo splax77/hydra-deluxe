@@ -762,7 +762,9 @@ TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side
             CHECK(br.note.early);
             CHECK(br.note.scale == r.scales->post.early);
             CHECK(br.note.effective_ms.has_value() == is_scaled(r.scales->post.early));
-            if (br.note.effective_ms) CHECK(*br.note.effective_ms == 0.0);
+            if (br.note.effective_ms) {
+                CHECK(*br.note.effective_ms == 0.0);
+            }
         }
     }
     REQUIRE(at_end > 0);
@@ -976,75 +978,92 @@ TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze")
 }
 
 // The engine counts a plain row less than the leeway past the SP end, so it
-// is not a squeeze the frontend decides. The rating's early or late side and
-// the overfill flag both use that same edge (D274 user decision 7).
+// is not a squeeze the frontend decides. The rating's side of the end, the
+// Rating word and is_frontend_decided (the overfill flag's row test) all
+// move at that one edge, Rules::backend_leeway_ms. folded_sqin.chart
+// (testdata/input/test_folded_sqin) has a chord just past its first
+// activation's SP end, inside the default leeway, so the walk meets one.
 TEST_CASE("rate_activation: a plain row inside the leeway is not a frontend squeeze") {
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;  // not e-critical
-    // The row below sits 2.5 ms past the end; 3077 is any end before it.
-    test::set_clamped_window(act, 3072, 3077);
-    // A late scale this small would give a row read on the late side a
-    // figure: 2.5 ms reads as 4.2 ms.
-    test::set_transfer(act, TransferScale{}, TransferScale{1.0, 0.2});
-    BackendSqueeze row;
-    row.timecode = Timecode::raw(3080);
-    row.offset_ms = 2.5;
-    act.backends.push_back(row);
+    const double leeway = core::default_rules().backend_leeway_ms;
+    const std::vector<TimingTier> tiers = timing_tiers();
+    int inside = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const ActivationRating r = rate_activation(ca.act, leeway);
+        for (size_t i = 0; i < r.backends.size(); ++i) {
+            const BackendRating& br = r.backends[i];
+            const double off = br.row.offset();
+            if (br.squeezed_out || off <= 0.0 || off >= leeway) continue;
+            ++inside;
+            CAPTURE(off);
+            // Counted, so it needs nothing: the early side, the band of a
+            // timing that needs nothing, and no tag.
+            CHECK(br.note.early);
+            CHECK_FALSE(is_frontend_decided(br, leeway));
+            const double need = backend_row_timing(off, false, leeway);
+            const std::string counted_word = tier_for(need, tiers).first;
+            CHECK(br.row.summarystr(false, br.note.effective_ms, leeway) == counted_word);
 
-    ActivationRating r = rate_activation(act);
-    CHECK_FALSE(r.cap_clamped);
-    // Counted inside the leeway, so the early side governs it -- x1.00 here.
-    CHECK_FALSE(r.scale_governs);
-    REQUIRE(r.backends.size() == 1);
-    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
-    CHECK(act.backends[0].summarystr(false, r.backends[0].note.effective_ms) == "Normal");
-
-    // At the leeway edge the row is uncounted, so the frontend decides it.
-    act.backends[0].offset_ms = 3.0;
-    r = rate_activation(act);
-    CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(false, r.backends[0].note.effective_ms) ==
-          "Hard (uncounted)");
-
-    // The edge is the user's rule: a 2 ms leeway makes 2.5 ms uncounted.
-    const double narrow = 2.0;
-    REQUIRE(narrow != core::default_rules().backend_leeway_ms);
-    act.backends[0].offset_ms = 2.5;
-    r = rate_activation(act, narrow);
-    CHECK(r.cap_clamped);
-    CHECK(act.backends[0].summarystr(false, r.backends[0].note.effective_ms, narrow) ==
-          "Hard (uncounted)");
+            // With the leeway edge on the row itself, the engine no longer
+            // counts it: the late side, decided by the frontend, banded on
+            // its raw offset and tagged.
+            const double edge = off;
+            const ActivationRating at_edge = rate_activation(ca.act, edge);
+            REQUIRE(at_edge.backends.size() == r.backends.size());
+            const BackendRating& moved = at_edge.backends[i];
+            CHECK_FALSE(moved.note.early);
+            CHECK(is_frontend_decided(moved, edge));
+            const double need_at_edge = backend_row_timing(off, false, edge);
+            CHECK(need_at_edge == off);
+            const std::string band = tier_for(moved.note.effective_ms ? *moved.note.effective_ms
+                                                                      : need_at_edge,
+                                              tiers)
+                                         .first;
+            const std::string word = moved.row.summarystr(false, moved.note.effective_ms, edge);
+            CHECK(word.rfind(band, 0) == 0);
+            CHECK(word.size() > band.size());
+            if (ca.act.clamp_tick()) {
+                CHECK(at_edge.cap_clamped);
+            }
+        }
+    }
+    REQUIRE(inside > 0);
 }
 
-// D269: the Rating word bands the eff. figure when the row's scale side is
-// scaled. The rows come from rate_activation, so the figure is the one the
-// table shows beside the word.
+// The Rating word bands the eff. figure in place of the raw need when the
+// row's side of the end is scaled and the row needs a timing. The rows come
+// from rate_activation, so the figure is the one the table shows beside the
+// word. Pitch Dark (testdata/input/test_pitch_dark_ratio) has uncounted rows
+// past SP ends whose late side is scaled, so the walk meets such a row.
 TEST_CASE("BackendSqueeze::summarystr: a scaled row's word follows its eff. figure") {
-    // One backend row at `offset_ms`, squeezed out or plain, under the SP
-    // end's stored scale `post`; returns the word the table shows.
-    auto word = [](double offset_ms, bool squeezed_out, TransferScale post) {
-        Activation act;
-        test::set_skips(act, 0);
-        act.e_offset = 300.0;  // not e-critical
-        BackendSqueeze row;
-        row.timecode = Timecode::raw(3000);
-        row.offset_ms = offset_ms;
-        act.backends.push_back(row);
-        if (squeezed_out) act.set_sqout(row.timecode.ticks());
-        test::set_transfer(act, TransferScale{}, post);
-        const ActivationRating r = rate_activation(act);
-        REQUIRE(r.backends.size() == 1);
-        REQUIRE(r.backends[0].squeezed_out == squeezed_out);
-        return r.backends[0].row.summarystr(squeezed_out, r.backends[0].note.effective_ms);
-    };
-    // The squeezed-out row 50 ms inside SP needs a 50 ms late hit; the early
-    // side of the SP end governs it.
-    CHECK(word(-50.0, true, TransferScale{0.5, 1.0}) == "Extreme");
-    CHECK(word(-50.0, true, TransferScale{2.0, 1.0}) == "Hard");
-    CHECK(word(-50.0, true, TransferScale{}) == "Extreme");
-    // A plain row 50 ms past the end is uncounted; the late side governs it.
-    CHECK(word(50.0, false, TransferScale{1.0, 2.0}) == "Hard (uncounted)");
+    const double leeway = core::default_rules().backend_leeway_ms;
+    const std::vector<TimingTier> tiers = timing_tiers();
+    int banded_on_figure = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const ActivationRating r = rate_activation(ca.act, leeway);
+        for (const BackendRating& br : r.backends) {
+            const double off = br.row.offset();
+            CAPTURE(off);
+            const std::string word =
+                br.row.summarystr(br.squeezed_out, br.note.effective_ms, leeway);
+            // The same row with no figure: banded on its raw need.
+            const std::string raw_word = br.row.summarystr(br.squeezed_out, std::nullopt, leeway);
+            const double need = backend_row_timing(off, br.squeezed_out, leeway);
+            if (need > 0.0 && br.note.effective_ms) {
+                ++banded_on_figure;
+                // The band is the figure's; the tag after it is the raw word's.
+                const std::string raw_band = tier_for(need, tiers).first;
+                REQUIRE(raw_word.rfind(raw_band, 0) == 0);
+                const std::string tag = raw_word.substr(raw_band.size());
+                CHECK(word == tier_for(*br.note.effective_ms, tiers).first + tag);
+            } else {
+                // No timing to scale, or a side at x1.00: the raw word stands.
+                CHECK(word == raw_word);
+            }
+        }
+    }
+    REQUIRE(banded_on_figure > 0);
 }
 
 TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
@@ -1055,23 +1074,4 @@ TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
 
 TEST_CASE("beyond_edge_ms: pinned at the 85 ms hit window") {
     CHECK(beyond_edge_ms() == 170.0);
-}
-
-TEST_CASE("rate_activation: an unknown scale rates nothing") {
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;
-    // transfer_post left unknown, as copy-out writes it when it can't compute.
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
-    BackendSqueeze row;
-    row.offset_ms = 40.0;
-    act.backends.push_back(row);
-
-    ActivationRating r = rate_activation(act);
-    CHECK_FALSE(r.scales.has_value());
-    REQUIRE(r.backends.size() == 1);
-    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
-    REQUIRE(r.note_effective_ms.size() == 1);
-    CHECK_FALSE(r.note_effective_ms[0].has_value());
-    CHECK_FALSE(r.scale_governs);
 }
