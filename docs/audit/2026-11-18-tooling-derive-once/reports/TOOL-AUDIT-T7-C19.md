@@ -1,0 +1,6 @@
+### L-F27-29
+**Verdict:** PASS (category P)
+**Homes read:** tools/compare_db.py:125-146 (TABLES lists results, paths, path_refs, songmeta, dynamics, charts, meta, profiles, records, record_paths; SUMMARY_TABLES; OWN_IDS; REFERENCES); src/store/record_store.cpp:271,280,289 (CREATE TABLE profiles, records, record_paths), :852,865 (charts, meta); src/store/library_file.cpp:85-95 (reads legacy `results` with columns stars, legacy_fills, rules_fp; "older than results"); docs/agents/this-machine.md:85 (names the five current tables, points to record_store.cpp as the one place columns are defined).
+**Why:** The two lists answer different questions: compare_db.py lists every table any stored layout had (so it can compare old files); this-machine.md and record_store.cpp list the tables created today. The five current names in compare_db.py's TABLES match this-machine.md and record_store.cpp exactly; the extra five are legacy layouts, which library_file.cpp confirms exist. Searched src for CREATE TABLE: only the five found, so no disagreement and no value to choose. Replacing copies with a pointer changes no behaviour. Caveat: no src owner exists for the legacy table names, so a pointer could cover only the five current ones.
+
+Ids not reached: none.
