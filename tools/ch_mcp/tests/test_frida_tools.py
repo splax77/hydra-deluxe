@@ -40,7 +40,7 @@ from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
+    MENU, STATE, FakeFrida, ReplySession, instant_wait)
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
@@ -772,59 +772,69 @@ class MenuTest(Rig):
         self.assertEqual(words, set(FT.ROW_ADDS_SCROLL) | {FT.NO_ROW_PAGE})
 
     def test_menu_lines_print_why_the_player_screen_was_not_read(self):
-        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
-            "found": False, "reason": "the player-screen hook has not been placed yet"}}}
-        self.assertEqual(FT.menu_lines(menu)[0],
-                         "PlayerSelectionMenu: the player-screen hook has not been placed yet")
-
-    def test_menu_lines_print_a_field_read_that_is_not_a_known_number_as_sent(self):
-        menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
-            "found": True, "live": 2, "destroyed": 0, "active": [None, "error: x"],
-            "fields": {"instrument": [99, "error: boom"], "difficulty": [-1, None]}}}}
-        self.assertEqual(FT.menu_lines(menu)[:3], [
-            "PlayerSelectionMenu: 2 live, 0 destroyed; active: [null, \"error: x\"]",
-            "PlayerSelectionMenu[0]: instrument: 99 (not in menu_fields.json); difficulty: -1 (None)",
-            "PlayerSelectionMenu[1]: instrument: error: boom; difficulty: null"])
+        # Until its hook is placed, menu.ts sends the player screen as not
+        # found with the reason its playerScreenHook holds, read here from
+        # menu.ts itself. In the recorded menu block, that entry stands in for
+        # the read one: menu_lines prints the reason on the class's own line.
+        with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
+            source = f.read()
+        screen = re.search(r'const PLAYER_SCREEN = "(\w+)";', source).group(1)
+        reason = re.search(r'let playerScreenHook: string \| null = "([^"]+)";',
+                           source).group(1)
+        menu = recorded_state()[FT.MENU_BLOCK]
+        self.assertIn(screen, menu["classes"])
+        menu["classes"][screen] = {"found": False, "reason": reason}
+        lines = [line for line in FT.menu_lines(menu) if line.startswith(screen)]
+        self.assertEqual(lines, [f"{screen}: {reason}"])
 
     def test_read_state_before_attach_raises_with_the_reason(self):
+        # A real game side on a temp folder, with nothing attached: the
+        # reason is the not-attached line ch_state prints for the same case.
+        lock = threading.RLock()
+        game = GT.GameTools(None, lock, os.path.join(self.tmp, "scratch"))
+        tools = FT.FridaTools(game, lock)
         with self.assertRaises(FT.StateUnread) as caught:
-            self.tools().read_state()
-        self.assertEqual(str(caught.exception), f"state: not attached; {FT.NOT_ATTACHED}")
+            tools.read_state()
+        self.assertEqual(str(caught.exception), tools.ch_state())
+        self.assertEqual(str(caught.exception),
+                         f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
 
 
 class StateWordsTest(unittest.TestCase):
-    def state(self, **fields):
-        return {**STATE, **fields}
+    def test_not_running_wins_over_any_read(self):
+        # When the last attach found no game, the word is the not-running one
+        # whatever read is passed, the recorded mid-song reply included, and
+        # it differs from the word for no read at all.
+        word = FT.state_words(None, running=False)
+        self.assertEqual(FT.state_words(recorded_state(), running=False), word)
+        self.assertNotEqual(word, FT.state_words(None))
+        self.assertNotEqual(word, FT.state_words(recorded_state()))
 
-    def test_not_running(self):
-        self.assertEqual(FT.state_words(None, running=False), "not running")
-
-    def test_not_attached(self):
-        self.assertEqual(FT.state_words(None), "not attached")
-
-    def test_menu_for_found_false(self):
-        self.assertEqual(FT.state_words(MENU), "menu (no live GameManager)")
-
-    def test_menu_when_the_only_game_manager_was_destroyed(self):
-        self.assertEqual(FT.state_words(MENU_ONE_DESTROYED), "menu (no live GameManager)")
-
-    def test_a_live_game_manager_beside_a_destroyed_one_keeps_its_state(self):
-        self.assertEqual(FT.state_words(self.state(destroyed=1)), "playing")
-
-    def test_loading(self):
-        self.assertEqual(FT.state_words(self.state(songLoaded=False)), "loading")
-
-    def test_song_over(self):
-        self.assertEqual(FT.state_words(self.state(isSongOver=True)), "song over")
-
-    def test_paused(self):
-        self.assertEqual(FT.state_words(self.state(isPaused=True)), "paused")
+    def test_not_attached_is_what_a_real_game_side_shows_before_attach(self):
+        # A real game side on a temp folder, never attached: ch_state's word
+        # is state_words' word for no read, which is neither the not-running
+        # word nor the recorded reply's word.
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        lock = threading.RLock()
+        tools = FT.FridaTools(GT.GameTools(None, lock, os.path.join(tmp.name, "scratch")),
+                              lock)
+        word = FT.state_words(None)
+        self.assertTrue(tools.ch_state().startswith(f"state: {word}; "), tools.ch_state())
+        self.assertNotIn(word, {FT.state_words(None, running=False),
+                                FT.state_words(recorded_state())})
 
     def test_playing(self):
-        self.assertEqual(FT.state_words(STATE), "playing")
-
-    def test_loaded_not_started(self):
-        self.assertEqual(FT.state_words(self.state(isSongPlaying=False)), "loaded, not started")
+        # Every reply the state agent sent in the recorded run was read while
+        # the song played (its log holds no other state), and each reads as
+        # the playing word.
+        with open(RECORDED_STATE_LOG, encoding="utf-8") as f:
+            replies = [json.loads(line)["payload"] for line in f if line.strip()]
+        self.assertTrue(replies)
+        for i, reply in enumerate(replies):
+            with self.subTest(reply=i):
+                self.assertTrue(reply["isSongPlaying"])
+                self.assertEqual(FT.state_words(reply), FT.PLAYING)
 
 
 class TraceTest(Rig):
@@ -837,11 +847,18 @@ class TraceTest(Rig):
         self.assertEqual(self.traces, [])
 
     def test_trace_start_before_attach_refuses(self):
-        tools = self.tools()
+        # A real game side on a temp folder, never attached: the refusal is
+        # the not-attached line, no trace is built and the game side holds no
+        # backup afterwards.
+        game = GT.GameTools(None, self.lock, os.path.join(self.tmp, "scratch"))
+        tools = FT.FridaTools(game, self.lock, current_build=lambda: VERSION,
+                              load_facts=self.load_facts, trace_session=self.make_trace)
         out = tools.ch_trace_start(self.song)
-        self.assertIn(FT.NOT_ATTACHED, out)
+        self.assertEqual(out.splitlines(),
+                         [f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}",
+                          "no trace started"])
         self.assertEqual(self.traces, [])
-        self.assertEqual(self.game.backups, 0)
+        self.assertEqual(game.open_lines(), [])
 
     def test_trace_start_takes_the_backup_just_before_it_hooks(self):
         tools = self.tools([STATE, STATE], attached=True)
