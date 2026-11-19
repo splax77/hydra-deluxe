@@ -2219,6 +2219,11 @@ class RunWithoutFocusTest(unittest.TestCase):
 # its idle, waiting and two patched replies, the second after the game's
 # command-line loader ran once. The waiting reply that lists the modules is
 # left out.
+# Sample 615 of the process list a machine recorder took in ls-g3-run1, while
+# a build was linking (link.exe). Copied from hydra-data/ch-mcp-runs/
+# 2026-11-12/ls-g3-run1/machine-1/processes.csv, header and that sample only.
+BUILD_PROCESSES = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1",
+                               "machine-1-processes-sample-615.csv")
 D2A_LAUNCH_LOG = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-11-06-ls-d2a-run1",
                               "launch-20261106-194201.jsonl")
 
@@ -2291,6 +2296,24 @@ sys.stdin.read()
 """
 
 
+def real_game_paths(tmp: str) -> tuple[str, str]:
+    """A game exe under `tmp` that is not there, and a documents folder under
+    `tmp`, made."""
+    documents = os.path.join(tmp, "real documents")
+    os.makedirs(documents, exist_ok=True)
+    return os.path.join(tmp, "no game.exe"), documents
+
+
+def real_game_tools(tmp: str, scratch_root: str) -> GT.GameTools:
+    """A GameTools on a real Env on real_game_paths(tmp), with `scratch_root`
+    as its temp root. It has no registry runner, so its backups are the code's
+    own temp-folder form, and its real recorder and real pid test. Nothing it
+    does can start the game."""
+    exe, documents = real_game_paths(tmp)
+    return GT.GameTools(B.Env(exe=exe, documents_dir=documents, run_reg=None),
+                        threading.RLock(), scratch_root)
+
+
 class MarkerTest(unittest.TestCase):
     """The open-run marker: a killed worker's way to put its backup back."""
 
@@ -2312,20 +2335,11 @@ class MarkerTest(unittest.TestCase):
         self.assertEqual(self.t.tools._marker_path(), self.path)
 
     def real_tools(self) -> GT.GameTools:
-        """A GameTools on a real Env whose scratch root is this test's marker
-        folder. It has no registry runner, so its backups are the code's own
-        temp-folder form, and a game exe that is not there. ensure_backup and
-        shutdown never start the game."""
-        exe, documents = self.real_paths()
-        return GT.GameTools(B.Env(exe=exe, documents_dir=documents, run_reg=None),
-                            threading.RLock(), self.t.scratch_root)
+        """real_game_tools on this test's marker folder."""
+        return real_game_tools(self.tmp, self.t.scratch_root)
 
     def real_paths(self) -> tuple[str, str]:
-        """The game exe that is not there and the documents folder real_tools
-        and killed_worker run on."""
-        documents = os.path.join(self.tmp, "real documents")
-        os.makedirs(documents, exist_ok=True)
-        return os.path.join(self.tmp, "no game.exe"), documents
+        return real_game_paths(self.tmp)
 
     def live_worker(self) -> tuple[subprocess.Popen, str]:
         """A worker that took its backup and wrote its marker on real tools
@@ -2823,42 +2837,55 @@ class RecorderTest(unittest.TestCase):
 
     # -- ch_start -------------------------------------------------------------------
 
-    def test_ch_start_runs_the_check_the_folder_the_recorder_the_launch_then_the_pid(self):
-        t = self.t
-        events = self.popen.events
-        quiet = FakeQuiet()
-        quiet.calls = events
-        real_scratch, real_start = t.tools._new_scratch, B.start_run
-        began = t.r.clock.t
+    # -- the real recorder program ----------------------------------------------------
 
-        def new_scratch():
-            events.append("scratch")
-            return real_scratch()
+    def real_tools(self) -> GT.GameTools:
+        return real_game_tools(self._tmp.name, os.path.join(self._tmp.name, "real scratch"))
 
-        def start_run(*args, **kwargs):
-            events.append("start_run")
-            self.assertEqual(t.r.clock.t, began)
-            return real_start(*args, **kwargs)
-
-        t.tools._new_scratch = new_scratch
-        with mock.patch.object(Q, "LIVE_ENV", quiet.env()), \
-                mock.patch.object(B, "start_run", start_run), \
-                mock.patch("time.sleep") as sleep:
-            t.tools.ch_start(t.r.song)
-        sleep.assert_not_called()
-        self.assertEqual([e for e in events if e not in ("processes", "scan", "memory", "power")],
-                         [("sample", Q.QUIET_SAMPLE_S), "scratch", "recorder start", "start_run",
-                          ("stdin", b"pid 4242\n")])
+    def start_real_recorder(self, tools: GT.GameTools) -> list:
+        """Start the real machine recorder through ch_start's own step, on the
+        session folder, and return its lines; the test's cleanup stops it."""
+        lines: list = []
+        tools._start_recorder(tools.session_dir(), GT.cap_for_end(None), lines)
+        self.addCleanup(tools._stop_recorder, [])
+        return lines
 
     def test_a_machine_that_is_not_quiet_starts_no_recorder(self):
-        with mock.patch.object(Q, "LIVE_ENV", FakeQuiet(cpu=Q.QUIET_CPU_PCT + 1).env()):
-            self.t.tools.ch_start(self.t.r.song)
-        self.assertEqual(self.popen.calls, [])
+        # The process list is a real one, read by a recorder while a build was
+        # linking: sample 615 of ls-g3-run1's machine-1 processes.csv, from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-g3-run1. The machine's other
+        # readings are this machine's own.
+        with open(BUILD_PROCESSES, encoding="utf-8", newline="") as f:
+            processes = [Q.Proc(row["name"], int(row["pid"]), None) for row in csv.DictReader(f)]
+        compilers = Q._compiler_lines(processes)
+        self.assertEqual(len(compilers), 1)
+        tools = self.real_tools()
+        # setUpModule puts a stand-in in Q.LIVE_ENV, so the real readers are
+        # named here.
+        env = Q.QuietEnv(list_processes=lambda: processes, sample_cpu=Q.sample_cpu,
+                         scan_folders=Q.scan_folders, free_memory_bytes=Q.free_memory_bytes,
+                         power_scheme=Q.power_scheme)
+        with mock.patch.object(Q, "LIVE_ENV", env):
+            reply = tools.ch_start()
+        self.assertIn(compilers[0], reply)
+        self.assertFalse(tools._recorder.running())
+        self.assertFalse(os.path.exists(os.path.join(self._tmp.name, "real scratch")))
+        self.assertEqual(tools.open_lines(), [])
 
     def test_the_reply_names_the_recorder_and_the_worker_and_its_parent(self):
-        lines = self.t.tools.ch_start(self.t.r.song).splitlines()
-        self.assertIn(f"machine recorder: started, pid 777, folder {self.folder()}", lines)
-        self.assertIn(f"worker pid {os.getpid()}, its parent pid {os.getppid()}", lines)
+        tools = self.real_tools()
+        lines = self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        self.assertTrue(GT.pid_running(proc.pid))
+        folder = proc.args[proc.args.index("--out") + 1]
+        self.assertTrue(os.path.isfile(os.path.join(folder, R.LOG_NAME)), folder)
+        said = [line for line in lines if re.search(rf"\b{proc.pid}\b", line) and folder in line]
+        self.assertEqual(len(said), 1, lines)
+        worker = proc.args[proc.args.index("--parent") + 1]
+        said = [line for line in lines if re.search(rf"\b{worker}\b", line)
+                and re.search(rf"\b{os.getppid()}\b", line)]
+        self.assertEqual(len(said), 1, lines)
+        self.assertEqual(tools.open_lines(), [tools._recorder.line()])
 
     def test_the_command_carries_this_worker_and_the_songs_run_cap(self):
         self.t.tools.ch_start(self.t.r.song)
@@ -2876,35 +2903,39 @@ class RecorderTest(unittest.TestCase):
         command = self.popen.calls[0][0]
         self.assertEqual(command[command.index("--run-cap-s") + 1], str(play_chart.RUN_CAP_S))
 
-    def test_a_recorder_that_fails_to_start_is_one_line_and_the_run_opens(self):
-        self.popen.error = OSError("no python")
-        said = R.start_failed_line(self.popen.error)
-        lines = self.t.tools.ch_start(self.t.r.song).splitlines()
-        self.assertEqual(lines.count(said), 1)
-        self.assertIsNotNone(self.t.tools._run)
-        self.assertEqual(len(self.t.tools.open_lines()), 1)
-        self.assertIn(said, self.t.tools.ch_status().splitlines())
+    def test_a_recorder_that_fails_to_start_is_one_line_and_ch_status_keeps_it(self):
+        tools = self.real_tools()
+        # A file where the session folder goes, so the real recorder's folder
+        # cannot be made.
+        session = os.path.join(self._tmp.name, "a file")
+        _write(session, b"")
+        with self.assertRaises(OSError) as refused:
+            os.makedirs(os.path.join(session, f"{R.FOLDER_PREFIX}1"))
+        lines: list = []
+        tools._start_recorder(session, GT.cap_for_end(None), lines)
+        said = [line for line in lines
+                if f"({type(refused.exception).__name__}: {refused.exception})" in line]
+        self.assertEqual(len(said), 1, lines)
+        self.assertFalse(tools._recorder.running())
+        self.assertEqual(tools.open_lines(), [])
+        self.assertIn(said[0], tools.ch_status().splitlines())
 
-    def test_a_fake_recorder_whose_start_raises_still_lets_the_run_open(self):
-        class Broken(R.RecorderLink):
-            def start(self, *_args):
-                raise RuntimeError("broken")
-
-        self.t = ToolRig(self._tmp.name + "-broken", make_recorder=Broken)
-        reply = self.t.tools.ch_start(self.t.r.song)
-        self.assertIn("machine recorder: not started (RuntimeError: broken)", reply)
-        self.assertIsNotNone(self.t.tools._run)
-
-    def test_a_pid_line_that_cannot_be_written_is_one_line_and_the_run_opens(self):
-        def failing(*args, **kwargs):
-            proc = FakePopen.__call__(self.popen, *args, **kwargs)
-            proc.stdin.fail = True
-            return proc
-
-        self.t.tools._recorder = R.RecorderLink(popen=failing)
-        reply = self.t.tools.ch_start(self.t.r.song)
-        self.assertIn('machine recorder: "pid 4242" not sent (OSError: the pipe is closed)', reply)
-        self.assertIsNotNone(self.t.tools._run)
+    def test_a_pid_line_that_cannot_be_sent_is_one_line_and_raises_nothing(self):
+        tools = self.real_tools()
+        self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        # The real recorder ends, so the pipe to it is closed for real.
+        proc.terminate()
+        proc.wait(CHILD_CAP_S)
+        sent = f"pid {os.getpid()}"
+        lines: list = []
+        tools._tell_recorder(sent, lines)
+        with self.assertRaises(OSError) as closed:
+            proc.stdin.write(f"{sent}\n".encode("ascii"))
+            proc.stdin.flush()
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn(f'"{sent}"', lines[0])
+        self.assertIn(f"({type(closed.exception).__name__}: {closed.exception})", lines[0])
 
     def test_a_launch_that_fails_stops_the_recorder_before_ch_start_returns(self):
         for error in (B.SongLengthMissing("no length"), B.LaunchFailed("refused"),
