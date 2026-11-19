@@ -1003,7 +1003,7 @@ TEST_CASE("activation badges: one per timing, the fill first, then each squeeze"
         const std::vector<ActivationTiming> timings = act.badge_timings();
         const std::vector<ActivationBadge> badges = activation_badges(act);
         const size_t fill = act.is_e_critical() ? 1 : 0;
-        REQUIRE(timings.size() == act.sqinouts.size() + fill);
+        REQUIRE(timings.size() - fill == act.sqinouts.size());
         REQUIRE(badges.size() == timings.size());
         if (fill == 1) CHECK(timings[0].part == TimingPart::EarlyFill);
         for (size_t k = 0; k < act.sqinouts.size(); ++k) {
@@ -1374,9 +1374,12 @@ std::optional<double> printed_scale(const std::string& line, const std::string& 
     return std::strtod(line.c_str() + x + 1, nullptr);
 }
 
-// Whether `r` would print as x1.00 at two decimals, the scale line's
+// Whether `a` and `b` read the same at two decimals, the scale line's
 // shortest form.
-bool reads_one_at_two_decimals(double r) { return std::round(r * 100.0) / 100.0 == 1.0; }
+bool same_at_two_decimals(double a, double b) { return std::round(a * 100.0) == std::round(b * 100.0); }
+
+// Whether `r` would print as x1.00 at two decimals.
+bool reads_one_at_two_decimals(double r) { return same_at_two_decimals(r, kIdentityScale); }
 
 // An activation whose SP-end scale is `post`, with one squeezed-out row
 // 187.5 ms inside SP (a row the early side governs), as one path.
@@ -1402,15 +1405,14 @@ ActivationRowView only_row(const Path& p) {
 }
 
 // The scale line names `side` with a multiplier that never reads 1 and is
-// `r` to at least the two decimals it always prints (half of 0.01 either
-// way).
+// `r` at the two decimals it always prints.
 void check_names_scale(const std::string& line, const std::string& side, double r) {
     CAPTURE(line);
     CAPTURE(side);
     const std::optional<double> printed = printed_scale(line, side);
     REQUIRE(printed.has_value());
     CHECK(*printed != 1.0);
-    CHECK(std::fabs(*printed - r) <= 0.005);
+    CHECK(same_at_two_decimals(*printed, r));
 }
 
 }  // namespace
