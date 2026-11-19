@@ -217,15 +217,21 @@ std::vector<hydra::app::ScanItem> scan_song_folders(const std::string& tag,
     return std::move(scan.first);
 }
 
-// The library as the app loads it: the scan saved as the library
+// The library's charts as the app loads them: the scan saved as the library
 // (save_scan_as_library) and listed back from the store.
-LibraryModel scanned_library(const std::string& tag, const std::vector<SongFolder>& folders) {
+std::vector<ChartLibraryEntry> scanned_entries(const std::string& tag,
+                                               const std::vector<SongFolder>& folders) {
     hydra::store::RecordStore store(":memory:");
     const std::optional<std::string> error =
         hydra::app::save_scan_as_library(store, scan_song_folders(tag, folders));
     REQUIRE_MESSAGE(!error, "saving the scan failed: " << *error);
+    return store.list_chart_library(0, -1);
+}
+
+// The library as the app loads it, from scanned_entries.
+LibraryModel scanned_library(const std::string& tag, const std::vector<SongFolder>& folders) {
     LibraryModel m;
-    m.set_charts(store.list_chart_library(0, -1));
+    m.set_charts(scanned_entries(tag, folders));
     REQUIRE(m.rows().size() == folders.size());
     return m;
 }
@@ -272,6 +278,7 @@ std::string unknown_word() {
 // analysed again.
 struct ScannedSample {
     LibraryModel model;
+    std::vector<ChartLibraryEntry> entries;  // the charts the store listed, in row order
     std::string burnout, yyz, chair;  // the three analysed charts' hashes
     RecordLookup burnout_ready;       // Burnout's answer, as the model holds it
     RecordLookup yyz_ready;           // YYZ's answer once its result is saved
@@ -309,7 +316,8 @@ ScannedSample build_scanned_sample() {
     REQUIRE_MESSAGE(!error, "saving the scan failed: " << *error);
 
     ScannedSample s;
-    s.model.set_charts(store.list_chart_library(0, -1));
+    s.entries = store.list_chart_library(0, -1);
+    s.model.set_charts(s.entries);
     REQUIRE(s.model.rows().size() == folders.size());
     const std::string burnout_path = row_in(s.model, "burnout").entry.notespath;
     const std::string yyz_path = row_in(s.model, "yyz").entry.notespath;
@@ -354,17 +362,13 @@ const ScannedSample& scanned_sample() {
     return lib;
 }
 
-// The charts a library's rows keep, in row order.
-std::vector<ChartLibraryEntry> entries_of(const LibraryModel& m) {
-    std::vector<ChartLibraryEntry> out;
-    for (const hydra::ui::LibraryRow& row : m.rows()) out.push_back(row.entry);
-    return out;
-}
-
 // A library of one scanned song folder of its own, under a scratch root named
 // by `tag`: what a fresh scan hands set_charts.
 std::vector<ChartLibraryEntry> one_scanned_chart(const std::string& tag) {
-    return entries_of(scanned_library(tag, {{"a", "name = A\nartist = X\ncharter = Y\n"}}));
+    const std::vector<ChartLibraryEntry> entries =
+        scanned_entries(tag, {{"a", "name = A\nartist = X\ncharter = Y\n"}});
+    REQUIRE(entries.size() == 1);
+    return entries;
 }
 
 // Four scanned song folders: one corpus chart (testdata/input) copied into two
@@ -1115,7 +1119,7 @@ TEST_CASE("library model: Best path sorts a Can't analyze row after Not analyzed
     const ScannedSample& lib = scanned_sample();
     hydra::store::RecordStore store(":memory:");
     const FailedChart cant = kept_failure(store, "lm_sort_cant", "notes.chart", guitar_only_chart());
-    std::vector<ChartLibraryEntry> entries = entries_of(lib.model);
+    std::vector<ChartLibraryEntry> entries = lib.entries;
     entries.push_back(cant.entry);
     std::vector<RecordLookup> answers = lib.answers;
     answers.push_back(cant.lookup);
