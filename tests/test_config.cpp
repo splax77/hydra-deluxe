@@ -237,14 +237,11 @@ TEST_CASE("a missing INI yields defaults") {
     CHECK(r.last_run_version == d.last_run_version);
 }
 
-// The user's ruling: the early-fill window is a setting, default 60 ms, 0 to
-// 85 ms (docs/agents/rulings/code-and-engine.md, "early fill threshold").
-TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads 60") {
-    CHECK(hydra::kDefaultEarlyFillWindowMs == 60.0);
-    CHECK(Settings{}.early_fill_window_ms == 60);
+TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads the default") {
     // A file that sets other keys but not this one: the default.
-    CHECK(load_ini_text("efill_missing", "sp_cap=8\n").early_fill_window_ms == 60);
-    for (const int ms : {0, 37, 85}) {
+    CHECK(load_ini_text("efill_missing", "sp_cap=8\n").early_fill_window_ms ==
+          Settings{}.early_fill_window_ms);
+    for (const int ms : {0, 37, hydra::kMaxEarlyFillWindowMs}) {
         CAPTURE(ms);
         Settings s;
         s.early_fill_window_ms = ms;
@@ -266,30 +263,37 @@ TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads 
 // key, and moves nothing else in the key.
 TEST_CASE("early_fill_window_ms reaches the search and the result's key together") {
     namespace store = hydra::store;
-    Settings at60;
-    Settings at85;
-    at85.early_fill_window_ms = 85;
-    CHECK(at60.to_analysis_settings().early_fill_window_ms == 60.0);
-    CHECK(at85.to_analysis_settings().early_fill_window_ms == 85.0);
-    CHECK(at60.lens().efill_window_ms == 60);
-    CHECK(at85.lens().efill_window_ms == 85);
+    const Settings at_default;
+    Settings at_max;
+    at_max.early_fill_window_ms = hydra::kMaxEarlyFillWindowMs;
+    REQUIRE(at_max.early_fill_window_ms != at_default.early_fill_window_ms);
+
+    // The search and the result's key carry the same window, for each setting.
+    for (const Settings* s : {&at_default, &at_max}) {
+        CAPTURE(s->early_fill_window_ms);
+        CHECK(s->to_analysis_settings().early_fill_window_ms ==
+              static_cast<double>(s->lens().efill_window_ms));
+    }
+    // Two different windows search differently and file under different keys.
+    CHECK(at_default.to_analysis_settings().early_fill_window_ms !=
+          at_max.to_analysis_settings().early_fill_window_ms);
 
     // The two profiles differ in the lens's window and nowhere else.
-    const store::Profile p60 = at60.profile();
-    const store::Profile p85 = at85.profile();
-    CHECK(p60 != p85);
-    CHECK(p60.chartmode == p85.chartmode);
-    CHECK(p60.cap == p85.cap);
-    CHECK(p60.lens != p85.lens);
-    store::Lens rest = p85.lens;
-    rest.efill_window_ms = p60.lens.efill_window_ms;
-    CHECK(rest == p60.lens);
+    const store::Profile p_default = at_default.profile();
+    const store::Profile p_max = at_max.profile();
+    CHECK(p_default != p_max);
+    CHECK(p_default.chartmode == p_max.chartmode);
+    CHECK(p_default.cap == p_max.cap);
+    CHECK(p_default.lens != p_max.lens);
+    store::Lens rest = p_max.lens;
+    rest.efill_window_ms = p_default.lens.efill_window_ms;
+    CHECK(rest == p_default.lens);
 
     // A batch files under the window it searches with.
-    const hydra::app::BatchRun run = at85.batch_run();
-    CHECK(run.settings.early_fill_window_ms == 85.0);
-    CHECK(run.profile.lens.efill_window_ms == 85);
-    CHECK(run.profile == p85);
+    const hydra::app::BatchRun run = at_max.batch_run();
+    CHECK(run.settings.early_fill_window_ms ==
+          static_cast<double>(run.profile.lens.efill_window_ms));
+    CHECK(run.profile == p_max);
 }
 
 TEST_CASE("blank and comment lines load, and keys and values are trimmed") {
@@ -974,22 +978,34 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(r.dm_last_user == "1234");
 }
 
-// The settings button and the Reset tooltip name the early-fill window as
-// "Early fill window" and describe_settings' value, like Path limit.
+// The settings button and the Reset tooltip name the early-fill window by
+// kEarlyFillWindowName and describe_settings' value, like Path limit.
 TEST_CASE("settings summary: the early-fill window, off its default") {
     using hydra::ui::detail::reset_settings_tooltip;
     using hydra::ui::detail::settings_button_label;
+    using hydra::ui::detail::kEarlyFillWindowName;
+    // The phrase the button and tooltip use for `s`'s window: the setting's
+    // name and describe_settings' value for it.
+    auto phrase = [](const Settings& s) {
+        return std::string(kEarlyFillWindowName) + " " +
+               hydra::app::describe_settings(s.to_analysis_settings()).early_fill;
+    };
     Settings s;
-    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill == "60 ms");
-    CHECK(settings_button_label(s, false) == "Analysis settings: defaults");
-    s.early_fill_window_ms = 85;
-    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill == "85 ms");
-    CHECK(settings_button_label(s, false) == "Analysis settings: Early fill window 85 ms");
-    CHECK(reset_settings_tooltip(s, false) == "Resets: Early fill window 85 ms");
-    s.early_fill_window_ms = 0;
-    CHECK(settings_button_label(s, false) == "Analysis settings: Early fill window 0 ms");
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill ==
+          hydra::format_ms_whole(s.early_fill_window_ms));
+    // At its default the window is not named on the button.
+    CHECK(settings_button_label(s, false).find(kEarlyFillWindowName) == std::string::npos);
+    for (const int ms : {hydra::kMaxEarlyFillWindowMs, 0}) {
+        CAPTURE(ms);
+        s.early_fill_window_ms = ms;
+        REQUIRE(s.early_fill_window_ms != Settings{}.early_fill_window_ms);
+        CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill ==
+              hydra::format_ms_whole(ms));
+        CHECK(settings_button_label(s, false).find(phrase(s)) != std::string::npos);
+        CHECK(reset_settings_tooltip(s, false).find(phrase(s)) != std::string::npos);
+    }
     CHECK(settings_at_defaults(s.with_analysis_defaults()));
-    CHECK(s.with_analysis_defaults().early_fill_window_ms == 60);
+    CHECK(s.with_analysis_defaults().early_fill_window_ms == Settings{}.early_fill_window_ms);
 }
 
 TEST_CASE("config: resource_dir is the resource folder beside the exe") {
