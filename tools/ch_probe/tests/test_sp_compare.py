@@ -1,6 +1,10 @@
-"""Tests for experiments/sp_compare.py on a small hand-written run.
+"""Tests for experiments/sp_compare.py.
 
-The score JSON is eight chords with three phrase ends and one activation
+Most tests read real recordings under testdata/ch_runs (each excerpt names its
+source run folder under hydra-data/ch-mcp-runs). The rest use a small
+hand-written run for cases no recording shows.
+
+The hand-written score JSON is eight chords with three phrase ends and one activation
 (chord 4, tick 768) that ends on chord 6 (tick 1152, 4000 ms). The chart's
 resolution is 192, so the game's full meter is 5,760 (SP-11). The watcher rows
 have the columns sp_watch.py logs. They are built from a short list of events
