@@ -1,0 +1,58 @@
+id	verdict	category	theme	sides	why
+L-F04-01	CONFIRMED	P	-	none	All homes agree at 100/150/20/30/5/10; only the writer-brief wording of the stop differs mildly, so the fix is pointers to progress.py:14-16.
+L-F04-02	CONFIRMED	P	-	none	No split: the one-home test sees only .py files and lines with certain words; a test gap, fix is widening it.
+L-F04-03	CONFIRMED	P	-	none	No value split; typed 4,000 copies in tests and PRE:33,35 agree with bash_windows_rule.py:16 and shell_output.py:15.
+L-F04-04	CONFIRMED	P	-	none	No split; the 300-character log cut is a literal retyped in four tests.
+L-F04-05	CONFIRMED	Q	auto-compact claim at 500K	stall.py:36 text says auto-compact fires at 500K (50%); settings.json and settings.fragment.json set no auto-compact	The hook text claims a setting nothing sets, so the fix needs a choice (set it or drop the claim).
+L-F04-06	CONFIRMED-CHANGED	Q	posture resend interval	posture.py:16 says 60 is the user's answer to Q8; plan 2026-10-31-harness-hooks-and-tools.md:89,306 says 60 is a pick awaiting an answer	A guessed value claimed as the user's answer with no ruling; the fix needs a choice.
+L-F04-07	CONFIRMED	Q	hook line budget	replay.py:41 hard budget 3100; Confirmed review-and-hooks.md:13 says 3,050 and :11 says exact number does not matter	Value and meaning of the cap disagree with Confirmed lines, a real choice.
+L-F04-08	CONFIRMED	P	-	none	No split; README.md:128 and PRE:73 agree with the maxTurns check in test_docs_numbers.py.
+L-F04-09	CONFIRMED-CHANGED	P	-	none	No split; three docs say three builds, PRE:57 points to rule 14, owner build_slot.ps1:75.
+L-F04-10	CONFIRMED	Q	unclaimed pass timeout ruling	build_slot.ps1:79 says user answered 120 s; agents-and-workflow.md:35 holds it only under Unconfirmed	An owner claims a ruling no Confirmed line holds; needs the user to confirm or choose.
+L-F04-11	REFUTED	R	-	none	V04 found the hooks folder exists and holds state\build_slots.
+L-F04-12	CONFIRMED	P	-	none	No split; hydra_ui_mcp.py:41 is the one home and test_hydra_ui_mcp.py:293 retypes 12,000.
+L-F04-13	CONFIRMED	P	-	none	No split findable; a skill restates a third-party server's defaults, fix is a pointer.
+L-F04-15	CONFIRMED-CHANGED	A	handoff date rule	handoff.md:7 states one step of the date rule; check_handoff.py:398-413 has three steps (name, git author date, today)	Doc states less than the code does.
+L-F04-16	CONFIRMED	C	-	05-star-power.md:417,419 says model.h line 111; model.h:121 holds the constant; analyzing-sp-squeezes SKILL.md:10 says src/search/graph.h	Both docs cite a moved line or file and the current place is clear.
+L-F04-17	CONFIRMED-CHANGED	A	backend leeway is editable	05-star-power.md:453-459 says 3 ms flat; rules.h:32 and rules.cpp:76 make it a hydra_rules.ini default	Doc says flat 3 ms, code lets the rules file change it.
+L-F04-18	CONFIRMED-CHANGED	B	library chart counts in notes	no-full-library-runs.md:17 18,811 vs min-path-delta-proof.md:29 18,610 vs stored-versions-one-rule.md:11 18,755	Only memory notes hold the differing dated figures; none states a rule.
+L-F04-19	CONFIRMED-CHANGED	P	-	none	No split; the test overrides common._LOCK_WAIT by name, no retyped copy.
+L-F04-20	CONFIRMED	A	subagent depth limit undocumented	PRE:73 and README.md:128 say the budget hook is the only limit; settings.json:4 sets CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH 1	Docs say only limit, a setting adds a second limit.
+L-F05-01	CONFIRMED-CHANGED	A	quiet check CPU limit	plan 2026-11-12-player-stall-fixes.md:74,303 says 15 percent; quiet.py:29 QUIET_CPU_PCT = 30	A plan doc says 15 while the code uses 30.
+L-F05-02	CONFIRMED	A	quiet check duration	server.py:128,158 says about 6 s; quiet.py:30,46 is 5 s sample plus up to 3 s scan	Prose figure differs from what the code does.
+L-F05-03	CONFIRMED	Q	tool caps claimed as user ruling	quiet.py:43 cites the user's ruling of 2026-11-07 for the 3 s scan cap; no Confirmed line holds it	A comment claims a ruling no Confirmed line holds; needs confirm or choice.
+L-F05-04	CONFIRMED-CHANGED	Q	tool caps claimed as user ruling	bot_run.py:64-91 comments say user answered caps; the cited plans say recommended or a guess with no ruling	Guessed caps claimed as user answers; needs confirm or choice.
+L-F05-05	CONFIRMED	Q	tool caps claimed as user ruling	kit_tools.py:94-123, frida_tools.py:39-49, trace_hits.py:67-74 comments quote user answers; no Confirmed line for most caps	Comments claim rulings that are not filed Confirmed lines for most of these caps.
+L-F05-06	CONFIRMED	P	-	none	No disagreement: two readers parse different sections of settings.ini with a stated reason.
+L-F05-07	CONFIRMED	Q	menu step Blue guess	menu_tools.py:48 says Blue is a guess pending live step LS-K3	A guessed value only a live run settles, needs a choice.
+L-F05-08	CONFIRMED	Q	scroll ruling and game song list	ui-and-display.md:27 (Confirmed) bars scrolling the library unasked; menu_tools.py:39 SEARCH_DOWN_CAP = 10 scrolls the game's list	Whether the ruling covers the game's list is the user's reading, a real choice.
+L-F05-09	CONFIRMED	P	-	none	No split; two typed name lists agree today and the fix is a single list.
+L-F05-10	CONFIRMED-CHANGED	P	-	none	No disagreement: kHitWindowMs and kWindowBackMs agree and docs read true of the rating model; K2 drift refuted by V05.
+L-F05-11	CONFIRMED	P	-	none	No split; Python and C++ hit-window constants agree and no test links them.
+L-F05-12	CONFIRMED	Q	capture script click offset	report_shot.ps1:5-8 hand-measured 80 px offset; widgets.h:197 and library_toolbar.cpp:140 compute the button position	Hand-measured value vs computed layout; fix needs a choice of approach.
+L-F05-13	CONFIRMED	Q	capture startup wait	capture_window.ps1:56 default 12; shot.ps1:2 default 10 (W03 extra finding)	Two scripts decide the startup wait differently.
+L-F05-14	CONFIRMED	P	-	none	No split; shrink.py:17-21 and test_docs_match_code.cpp:2022-2025 agree and name each other.
+L-F05-15	CONFIRMED	P	-	none	No split; tests retype 12,000 and 85 that match the constants today.
+L-F05-16	CONFIRMED	P	-	none	No split; tests pin literals equal to the precheck constants.
+L-F05-17	CONFIRMED	P	-	none	No value split: three 3.0 numbers answer three questions and the constants live once in replay_schedule.cpp.
+L-F05-18	CONFIRMED	P	-	none	No split; the clean-time-plus-5-s rule is restated in run.py:967 and development.md:732.
+L-F05-19	CONFIRMED	P	-	none	No split; prose restates the three-builds hook and build_slot.ps1:75 owns it.
+L-F06-01	CONFIRMED	P	-	none	No split; key tool lists agree across percall.py, server.py and docs.
+L-F06-02	CONFIRMED	P	-	none	No split; shell tool list retyped in delete_rule.py:168 and a test, equal to progress.py:20.
+L-F06-03	CONFIRMED	P	-	none	No split; README.md:11 restates the refusal order in percall.py and agrees today.
+L-F06-04	CONFIRMED	A	worktree folder location	delete_rule.py:17-18 trusts two exact folders; model-postures.md:5 and README.md:136 read as any worktrees folder	Docs say any worktrees folder, code trusts two exact paths.
+L-F06-05	CONFIRMED	B	brief carries status rule	model-postures.md:11 says a brief carries no status file or id; memory note every-brief-carries-status-rule.md:3 says it must	Memory note disagrees with the doc, and names a gate that does not do it.
+L-F06-06	CONFIRMED	Q	agent id check rules	progress.py:23-26 regex and own-id test; common.py:113-116 check_id; status_append.ps1:25-39 any recorded name	Three code places decide whether an id is valid differently.
+L-F06-07	CONFIRMED	A	commit trailer exemptions	PRE:65 names merge commits only; ref_judge.py:225-232,188 also exempts commits origin or any local branch has	Doc names one exemption, code has more.
+L-F06-08	CONFIRMED-CHANGED	Q	main session detection	percall.py:163 tests only no agent_id; stall.py:421 and wake.py:97 test agent_id or no session_id	Code places decide main session differently for input with no ids.
+L-F06-09	REFUTED	R	-	none	V06 traced the merge path; pages and code agree.
+L-F06-10	CONFIRMED	A	review key refusal condition	README.md:39 and derive-once-review.md:17,200 read as unconditional; review_dispatch.py:155-159 refuses only a gated repo	Docs read unconditional, code refuses only when a review marker exists.
+L-F06-11	CONFIRMED	P	-	none	No split; writer-brief.md:101 retypes the progress.py numbers and the fix is a pointer.
+L-F06-12	CONFIRMED-CHANGED	Q	agent transcript count	prepass.py:143-170 counts direct agent files; agent_cost.py:160 rglob counts all; stall.py:175-185 own layout	Card count and disk count are different answers from three layout readers.
+L-F06-13	CONFIRMED	Q	scout model and tools	scout.md:4 model sonnet and :5 lists Edit, Write; rule 2 and model-postures.md:5 say Sonnet or Haiku, read-only	Agent file differs from rule 2 and its read-only prose; fix needs a choice.
+L-F06-14	CONFIRMED	B	parallel agent cap	lean-agent-fanout.md:21 and MEMORY.md:39 say 3-4 agents; agents-and-workflow.md:21 Confirmed says run as many as you can	Only a memory note disagrees with a Confirmed line.
+L-F06-15	CONFIRMED	Q	what a brief carries	model-postures.md:5 omits worktree and scratch folder; PRE:3 omits the status rule	Two docs list different brief contents with no code behind either.
+L-F06-16	CONFIRMED-CHANGED	A	stuck agent nudge step	model-postures.md:11 says nudge once then stop; stall.py:124-125,143-144 says stop and re-dispatch	Doc has a nudge step the hook text skips.
+L-F06-17	CONFIRMED-CHANGED	A	reviewer brief repo folder	model-postures.md:5 says that repo's root folder; review_dispatch.py:99-119 needs the branch's worktree top folder; judged_folder no longer exists	Doc wording and a stale name differ from the live code.
+L-F06-18	CONFIRMED	P	-	none	No split; the pages agree today and repeat the same sentences.
+L-F06-19	CONFIRMED	P	-	none	No split; prose spells out hook rules and no test holds delete-rule text, fix is pointers.

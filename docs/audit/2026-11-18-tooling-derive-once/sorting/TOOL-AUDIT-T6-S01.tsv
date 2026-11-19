@@ -1,0 +1,69 @@
+id	verdict	category	theme	sides	why
+L-F01-01	CONFIRMED	Q	calls versus minutes limit	CLAUDE.md:69 rule 7 'only time counts, not calls' vs model-postures.md:5 sizing by '100 tool calls' and progress.py:14-16 counting 100/150 calls	Values agree everywhere, but the row's S8 split puts rule 7 and the Confirmed 'minutes only' ruling against a hook that still counts calls, which is a choice of behaviour.
+L-F01-02	CONFIRMED-CHANGED	Q	what happens at the call warning	writer-brief.md:101 'stop starting new cards' vs progress.py:94-100 'commit and report' vs reviewer.md:11 'stop fixing, sign off'	Same 100-call/20-minute trigger gives three different instructions and BP:73 says a fresh agent takes the rest while AR:13 says nothing is handed on.
+L-F01-03	CONFIRMED	Q	operators inside quotes	delete_rule.py:29,77 cuts at an operator inside quotes; bash_windows_rule.py:40 does not cut in quotes	Two code owners of 'where a command is cut' answer differently.
+L-F01-04	CONFIRMED	Q	context 500K warning	stall.py:36-37 'ask the user to run /compact' vs model-postures.md:15 'end the phase and let compaction happen'	A doc-against-hook split, but '50% of the window' is a literal the hook cannot read (K4) and a choice is needed on what to tell the main session.
+L-F01-05	CONFIRMED	Q	cleanup sweep timeout	cleanup_sweep.ps1:58 GitTimeoutSec 600 vs settings.fragment.json:81 timeout 30	Two code places give different limits for the same hook and the fix needs a choice of which one rules.
+L-F01-06	CONFIRMED-CHANGED	Q	bash length limit ruling	bash_windows_rule.py:16 '1000 # the user's number' and README:27 claim a ruling; review-and-hooks.md:40,43 sit under Unconfirmed	The values agree but the code claims the user's ruling and no Confirmed line backs the 1,000 or the commit exemption, so the user must confirm.
+L-F01-07	CONFIRMED	A		session_cards_start.ps1:277 'batch.py sizes a wave to the at-once limit' vs batch.py:23-26,70 BATCHES_PER_WAVE 10	A comment names an 'at-once limit' that batch.py does not have; batch.py only sets a wave of 10 batches.
+L-F01-08	CONFIRMED	Q	status by calls or minutes	review-and-hooks.md:33 'every 10 tool calls, reject after 15' vs review-and-hooks.md:34 'every 5 minutes ... reject after 10 minutes'	Two Confirmed ruling lines disagree and the code follows only the minutes one.
+L-F01-09	CONFIRMED	Q	git exemption chained commands	BP:21 'a command that starts with git' vs progress.py:119 startswith('git ') on the whole command text	W01 found a bare 'git' is not exempt and a chain 'git status && x' is exempt as a whole, which needs a choice of behaviour.
+L-F01-10	CONFIRMED	P		none	Two constants share the value 300 for different outputs (progress.py:31, common.py:46) with no disagreement.
+L-F01-11	CONFIRMED-CHANGED	A		BP:73 'counted from your first tool call' vs progress.py:85-87 record may be made by the status helper first	W01: the doc says first tool call but the record's first time can be set by the status helper; a doc against the hook.
+L-F01-12	CONFIRMED	P		none	Two lock-wait helpers in two tool families with different numbers for different locks; the only copy is the 25 s prose in SC common.py:141.
+L-F01-13	CONFIRMED	P		none	shell_output.py:15 is the owner and BP:35 agrees ('over 4,000'); the row has no split.
+L-F01-14	CONFIRMED	P		none	AR:27 repeats the 10/20/30 minute steps that stall.py:22-24 owns and they agree.
+L-F01-15	CONFIRMED	Q	claimed ruling in code comment	stall.py:8-9 'user's ruling of 2026-10-25' vs no Confirmed line found	The header cites a plan and a user ruling as the rule's source and the ruling was never checked against a Confirmed line.
+L-F01-16	CONFIRMED	P		none	660 equals STALL_SECONDS + SCAN_EVERY and a test holds it; no split.
+L-F01-17	CONFIRMED	P		none	TOOL_TAIL 5 is copied as 'five' in BP:23 and model-postures.md:11 and agrees.
+L-F01-18	CONFIRMED	P		none	EMPTY_FLEET_SECONDS 300 is copied as '5 minutes' in README:29 and agrees.
+L-F01-19	CONFIRMED	P		none	FIELD_CAP 10000 and the probe_results 10,000 answer different questions; no disagreement.
+L-F01-20	CONFIRMED	P		none	The 25 s budget, 30 s registration and 2 h/500 MB/24 h values agree; the relation '30 less 5' is only prose.
+L-F01-21	CONFIRMED	P		none	INSTALL_DATE 2026-11-14 is written in code and in rulings README:51 and agrees.
+L-F01-22	CONFIRMED	P		none	MAX_CARD_LINES 60 matches writer-brief.md:71 and the Confirmed 'raise the cap to 60'; no split.
+L-F01-23	CONFIRMED	P		none	RUNNING_CUTOFF_SECONDS is copied as 7200 in a test and agrees.
+L-F01-24	CONFIRMED-CHANGED	P		none	The wave-N-batch-N file name is typed in four places (batch.py and session_cards_start.ps1:261-262) that agree today.
+L-F01-25	CONFIRMED	P		none	writer-brief.md:100 status call copy fits progress.py's _STATUS_CALL; no split.
+L-F01-26	CONFIRMED	Q	status line wording unchecked	BP:15-19 says what the line should say vs progress.py:26-27 accepts any text	A prose rule has no hook and adding one is a behaviour choice (hook gap).
+L-F02-01	CONFIRMED-CHANGED	P		none	DOR:9 and DR:9 omit BP:15's 'do not write the file with Edit' but name the helper, so it is prose restating a hook.
+L-F02-02	CONFIRMED	Q	docs check reads main not branch	test_docs_numbers.py:22,70 reads docs from main or GATES_HYDRA_ROOT	A check that does not see a branch edit is a design choice about when docs are checked.
+L-F02-03	CONFIRMED	P		none	CLAUDE.md:66 and AR:10 are identical copies of rule 4 and the Confirmed line names the rule; no split.
+L-F02-04	CONFIRMED	P		none	BP:79-85, audit-method.md:40 and clone-hero-mcp.md:37 state the same cap rule with different scope; no split.
+L-F02-05	CONFIRMED	Q	ch tools given library root	clone-hero-mcp.md:39 'Nothing runs over the user's song library' vs tools/ch_mcp/*.py no refusal of a library root	The doc claims a limit no code enforces and adding a guard is a behaviour choice (hook gap).
+L-F02-06	CONFIRMED-CHANGED	B		memory no-full-library-runs.md:11 'about 115' and questions-describe-the-real-rule.md:24 '[N/97]' vs ui-testing.md:48 98 and tests pinning 98	The drift in ui-testing.md is refuted; what remains is memory notes saying 115 and 97 against 98.
+L-F02-07	CONFIRMED-CHANGED	P		none	W02: 'about 6 s' is a hand-copied value near the 5 s constant with no proven drift; the fix is a pointer.
+L-F02-08	CONFIRMED	Q	sp compare asks resolution	sp_tools.py:317,330-332 refuses without resolution vs game_tools.py:470-487 schedule names the chart	K4: a tool asks the agent for a value it could read and removing the ask is a design choice.
+L-F02-09	CONFIRMED	P		none	shrink.py:19-21 and test_docs_match_code.cpp:2024-2025 hold the same two limits and agree.
+L-F02-10	CONFIRMED	Q	replay tool numbers ruling	replay_schedule.cpp:36-40 comment 'the user set it' vs no Confirmed line for 15 ms (DOR:108 'no game rule sets that margin')	The code claims a user ruling that no Confirmed line backs, so the user must confirm the number.
+L-F02-11	CONFIRMED	Q	replay tool numbers ruling	replay_schedule.cpp:21-31 'the user chose One frame' vs no Confirmed line (code-and-engine.md:13 speaks to the leeway only)	Same kind of claimed ruling with no Confirmed line, plus DOR:64 types 3.00 by hand.
+L-F02-12	CONFIRMED	Q	large review threshold	review-and-hooks.md:22 Confirmed 'only large items over 20 lines should go for review' vs items.h:50 kLargeRangeLines 400	A Confirmed ruling about 20 lines has no code applying it and the 400 is a different warning, so a behaviour choice.
+L-F02-13	CONFIRMED-CHANGED	Q	questions per message number	audit-method.md:104 'main session's own suggestion' vs player-audit.md:102 and docs-gaps-search.md:187 stating it as the rule	Two docs disagree on the standing of 'five or fewer' with no code behind either.
+L-F02-14	CONFIRMED	P		none	premise-map.md:68 says two or more is a shape error and test_docs_match_code.cpp:1850 checks >= 2; the doc only lacks a pointer.
+L-F02-15	CONFIRMED-CHANGED	P		none	audit-method.md:13,135 tell the deleted 10 ms band as history and agree with rules.h:32; no split.
+L-F02-16	CONFIRMED-CHANGED	P		none	public-doc-style.md:7 lists ten sources and the research file has its own list; nothing disagrees today.
+L-F02-17	CONFIRMED	P		none	kViewProgressDelaySeconds 0.15 is copied as '0.15 s' in ui-testing.md:124 and agrees.
+L-F02-18	CONFIRMED	P		none	clone-hero-mcp.md:48 '50 ms' and '+0x1B8' copy GAP_MS and OFF_SP_HALF and agree.
+L-F02-19	CONFIRMED-CHANGED	P		none	The three 120.0 caps answer different questions; the page names constants by name; only test comments copy the numbers.
+L-F02-20	CONFIRMED-CHANGED	Q	settings reload claim strength	README.md:118 'reaches every running session' vs README.md:190 and probe_results.md:49-52 'not seen directly'	Docs state one claim with different strength and no code behind either.
+L-F03-01	CONFIRMED	B		memory early-fill-orange-85-d250.md:3,11 fixed slack kEarlyFillSlackMs vs model.h:108-115 one setting default 60 up to 85	The memory note says the fixed slack constant while model.h has one setting (old plans naming kEarlyFillSlackMs are history).
+L-F03-02	CONFIRMED	Q	squeeze window pointer	SKILL.md:10 and squeeze_scout.py:34 say graph.h; model.h:117-121 owns it; note sp-squeeze-mechanics.md:13-15 narrows callers	A mix of a stale skill pointer, a memory note and a second 500.0 and 85.0 copy outside the repo.
+L-F03-03	CONFIRMED	P		none	Memory notes copy the status interval, 3 ms leeway and max tied paths and all agree.
+L-F03-04	CONFIRMED-CHANGED	Q	fan-out numbers no home	lean-agent-fanout.md:3,20-21 '8 per agent, 3-4 agents' vs no doc or hook	The numbers live only in one memory note and index line, a rule with no home.
+L-F03-05	CONFIRMED	B		measure-small-explain-first.md:11 quotes a hook message vs no hook carries that text in the gates	A memory note quotes a hook message that no hook carries today.
+L-F03-06	CONFIRMED	B		every-brief-carries-status-rule.md:3 'dispatch gate now denies briefs' vs :15 'No gate checks' and review_dispatch.py	A memory note contradicts itself and the hook code.
+L-F03-07	CONFIRMED	P		none	build_slot.ps1 BuildSlotCount 3 and test_build_pass.ps1 literal 3 agree.
+L-F03-08	CONFIRMED-CHANGED	Q	library chart count	no-full-library-runs.md:17 '18,811 charts' vs min-path-delta-proof.md:29 '18,610 charts'	Two memory notes give different counts, no owner was read, and 18,755 is a different thing.
+L-F03-09	CONFIRMED	P		none	Worked-example numbers are copied between test-rubric pages and no split was found.
+L-F03-10	CONFIRMED	C		test-rubric-examples.md:88 'engine.cpp line 2015' vs engine.cpp:2015 not a bank-rise line	A doc cites a line number whose code no longer matches; the stamp is findable by the name bank_rise_ticks.
+L-F03-11	CONFIRMED	C		fix-decisions.md:103 says test_search.cpp vs tests/test_sp_end.cpp:793,830	A decision-log line names a test file; the check now lives in test_sp_end.cpp.
+L-F03-12	CONFIRMED	Q	same goal failed twice rule	question-the-design-before-patching.md:11 vs no hook or doc	The rule lives only in a memory note with no home and no hook.
+L-F03-13	CONFIRMED	B		approved-work-is-not-reasked.md:13 'about 8 ms' vs code-and-engine.md:63 '5.4 ms against 13.8'	A memory note's figure disagrees with the ruling-file line.
+L-F03-14	CONFIRMED	Q	no re-ask rule home	approved-work-is-not-reasked.md and MEMORY.md:5 vs no hook or doc rule	The rule rests on user words and a memory note and no hook or agent doc carries it.
+L-F03-15	CONFIRMED	P		none	Weak K1: note 'cold 30s+' and code 'tens of seconds' with a 120 s timeout agree.
+L-F03-16	CONFIRMED-CHANGED	C		02-note-list.md:611,631,641 and questions.md:270 'line 203, 2009' vs song.cpp:205 and :2204	Docs cite line numbers that moved and the current lines are clear.
+L-F03-17	CONFIRMED-CHANGED	Q	executor worktree base rule	git-traps-in-shared-checkout.md:13,16 gives the figure; the archived note gives the cause; no hook or doc	The rule on an executor's base lives only in memory notes and has no home.
+L-F03-18	CONFIRMED	P		none	The 781k tokens figure is in the note and the decision log and agrees.
+L-F03-19	CONFIRMED	P		none	KEY_HOLD_S 0.003 is held by a scan rule and a pin; no split.
+L-F03-20	CONFIRMED	Q	scroll to middle of list	search-before-clicking-a-song.md:11,13 never scroll vs render-checks-use-the-corpus.md:19 'Scroll to the middle'	Two memory notes disagree and only the user can say what the render-checks step means.
+L-F03-21	CONFIRMED	P		none	The skill says 'pre-collection end' and the code says 'the one SP end'; no contradiction.
+L-F03-22	CONFIRMED	P		none	One home (doc-screenshots.md:21-23) states when to re-run; no split.

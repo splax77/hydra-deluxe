@@ -1,0 +1,57 @@
+id	verdict	category	theme	sides	why
+L-F13-01	CONFIRMED	Q	git pins in gates	ref_judge.py:34-35 pins four settings and drops config env; review_rules.py:60-62 and check_handoff.py:24-26 pin three and drop six others	Code places pin different git settings and environment for the same question, so a choice is needed.
+L-F13-02	CONFIRMED	A	status call shape owner	status_append.ps1:1 says the preamble owns the call shape; brief-preamble.md:19 says progress.py:22-27 owns it; writer-brief.md:100 omits the quote rule	Every split is a comment or doc against progress.py, the hook that really owns the shape.
+L-F13-03	CONFIRMED	Q	30,000 character ceiling	brief-preamble.md:35 says shell_output.py owns the number; shell_output.py:15 CAP = 4000 only, 30,000 is Claude Code's own limit	A number the preamble says a file owns has no home in our code (K7).
+L-F13-04	CONFIRMED	Q	destructive git commands asked or refused	delete_rule.py:32-35 refuses agents a longer list than brief-preamble.md:43; settings.fragment.json:60-63 only asks the main session for four patterns	Agent refused versus main session asked, with ask patterns missing, is a choice of behaviour.
+L-F13-05	CONFIRMED	Q	worktree folder location	delete_rule.py:14-18 and brief-preamble.md:43 name HY\.claude\worktrees; cleanup_sweep.ps1:172-179 and real task worktrees use HY\worktrees	Code places differ on which worktrees folder is safe to delete in, and a filed ruling names no path.
+L-F13-06	CONFIRMED	Q	which python spelling	brief-preamble.md:33 python -I versus this-machine.md:4-8 use py; ruling_rules.py:108 and sync_settings.py:20 bare python.exe versus README:114 full path	Mix of doc-against-doc and doc-against-code splits needing a choice of one spelling.
+L-F13-07	CONFIRMED	Q	agents rewriting own branches	brief-preamble.md:71 and integrate.md:31 forbid any rewrite; ref_judge.py:135-137 refuses only main or branches origin has	Which side is right (extend the gate or narrow the doc) is a choice of behaviour.
+L-F13-08	CONFIRMED-CHANGED	Q	hand-typed gh issue close	issue-tracker.md:14 hand-types gh issue close --comment; this-machine.md:15 says text never goes through hand-typed gh	The settings deny list lacks issue close, so a real choice of route and hook is needed.
+L-F13-09	CONFIRMED	Q	integrator commit hold	integrate.md:27 hold last merge uncommitted; brief-preamble.md:71 commit before 100th call and after each step	Two docs disagree with no code behind either.
+L-F13-10	CONFIRMED	B	none	every-brief-carries-status-rule.md front matter says dispatch gate denies briefs; its body says no gate checks; review_dispatch.py has no such check	The only split is a memory note against the code and itself.
+L-F13-11	CONFIRMED	Q	elevated window ruling	this-machine.md:49 says the user has ruled no elevated window; no Confirmed ruling line exists, only a card and a plan; memory note prefers ETW/WPR	Doc claims a ruling no filed ruling holds, mixed with a memory note, so it goes to the user.
+L-F13-12	CONFIRMED	P	none	none	Row says no split today: the install table copies versions and the fix replaces it with a pointer.
+L-F13-13	CONFIRMED-CHANGED	P	none	none	Both finder splits were refuted; build_slot.ps1 owns the rule and nothing disagrees.
+L-F13-14	CONFIRMED	P	none	none	Row says no split on the number; bash_windows_rule.py MAX_CHARS and the preamble agree and a test holds them.
+L-F13-15	CONFIRMED	A	key route allow text	clone-hero-mcp.md:29 says exactly allow key run; review_rules.py:54-55,86 accepts case and trailing . or !	The split is a doc line against the hook that does the matching.
+L-F13-16	CONFIRMED	P	none	none	Second-round verifier W08 found no split; text matches ruling_rules.py, and four lines has no code owner.
+L-F13-17	CONFIRMED-CHANGED	Q	hand-typed gh issue close	issue-tracker.md:12-13 hand-types gh issue edit/close; settings.fragment.json deny list and publish.ps1 kinds have no route for them	Same hook gap as L-F13-08 where the route needs a choice.
+L-F13-18	CONFIRMED	P	none	none	Row has no split; test_docs_numbers.py holds the settings to CHECK_COMMAND.
+L-F13-19	CONFIRMED	P	none	none	W08 confirms all copies of the handoff and precheck commands agree today.
+L-F13-20	CONFIRMED-CHANGED	Q	commit trailer and co-author line	ref_judge.py:225-232 allows orchestrator as Agent; brief-preamble.md:65-67 fixes Co-Authored-By Opus 5.5 versus the session attribution reminder	Includes a co-author model line that no code checks and that differs from the session reminder, a choice.
+L-F13-21	CONFIRMED	Q	background commands and Read tool	brief-preamble.md:77 forbids background runs; agent_stop.py:44-51 treats them as parked; no hook refuses either rule	Rules with no hook behind them and a hook that tolerates what the doc forbids, a choice.
+L-F13-22	CONFIRMED-CHANGED	Q	library run allow phrase	CLAUDE.md rule 8 says asked for in chat; review_rules.py:51 wants the exact phrase; this-machine.md:91 versus percall.py:14 keying on the flag only	Doc rule versus hook phrase tied to a user ruling, so a choice is needed.
+L-F13-23	CONFIRMED	Q	hook tests run by agents	gates README:17 says agents run hook tests; brief-preamble.md:47 says never run all the hook tests; README:152 powershell versus this-machine.md:51 pwsh	Two docs disagree with no code behind either.
+L-F13-24	CONFIRMED	Q	README repeats preamble rules	gates README:5 says it does not repeat the preamble; README:19,23,25,27 restate delete, trim and Bash rules	One doc disagrees with itself with no code behind it, and the fix is a choice of how much to keep.
+L-F14-01	CONFIRMED-CHANGED	A	testdata chart count	agent-rules.md:14 about 115 charts versus ui-testing.md:46 and test_engine_sweeps.cpp:656 98	The doc number differs from the count the code and tests hold.
+L-F14-02	CONFIRMED	Q	pwsh or powershell	this-machine.md:51 use pwsh; gates README.md:152 powershell -ExecutionPolicy Bypass	Two docs disagree with no code behind either.
+L-F14-03	CONFIRMED	Q	copy live hydra.db	this-machine.md:81 plain copy; ui-testing.md:195 online backup; ui-testing.md:350 copy while closed	Three docs give three procedures, no single code rule, a choice.
+L-F14-04	CONFIRMED	A	cdb attach command	this-machine.md:63 cdb with -y; stall_harness.py:121 CDB_COMMAND and launch_cdb pass no -y	The doc differs from the script that runs it.
+L-F14-05	CONFIRMED-CHANGED	A	UI test build command	ui-testing.md:18-20 bare build_cpp.ps1 -Target; build_cpp.ps1 header and build_slot.ps1:208 require a pass	The doc example omits what the build script requires.
+L-F14-06	CONFIRMED	P	none	none	The row names no split; a Confirmed complaint line is read as a design fact.
+L-F14-07	CONFIRMED-CHANGED	A	menus ch_open_song reaches	clone-hero-mcp.md:31 names four menus no tool opens; menu_tools.py:191-234 enforces an online flag and kit-only items	The doc states an outcome the code enforces by a narrower mechanism.
+L-F14-08	CONFIRMED	Q	ch_compare settings required	game_tools.py:954-972 needs all four or none; compare_scorestats.py:202 keys on three	Two code places decide the same thing differently.
+L-F14-09	CONFIRMED	P	none	none	Same literal in two code homes, no disagreement; fix points one at the other.
+L-F14-10	CONFIRMED-CHANGED	Q	scrolling the library rule	render-checks-use-the-corpus.md:19 scroll the middle of the list versus search-before-clicking-a-song.md:11 never scroll; guard only in uitest_commands.cpp	Two memory notes disagree plus a hook gap and user rulings, so a choice goes to the user.
+L-F14-11	CONFIRMED-CHANGED	Q	game window focus at spawn	clone-hero-mcp.md:23 never front but one launch cannot ask hidden; ch-runs-must-not-need-focus.md:11 never show the window	Whether a brief focus at spawn is allowed is stated nowhere and rulings do not name both sides.
+L-F14-12	CONFIRMED	Q	public doc style word lists	public-doc-style.md:27-31 versus user global CLAUDE.md:5 throat-clearing list overlap with different words	Two docs for different readers disagree with no code behind them.
+L-F14-13	CONFIRMED	P	none	none	Row lists no split; owner label verified and copies agree.
+L-F14-14	CONFIRMED-CHANGED	A	version refusal gates	clone-hero-mcp.md:78 names one refusal; build_facts.py:31-65 and build_stamp.py:210 are two gates	The doc lists one gate where the code has two.
+L-F14-15	CONFIRMED	P	none	none	No split found in the spot checks; the table is a copy of code labels.
+L-F14-16	CONFIRMED	P	none	none	Spot checks found no disagreement, only copies to replace with pointers.
+L-F14-17	CONFIRMED	P	none	none	Row says no splits; dated numbers and a stale copy are copies to replace.
+L-F15-01	CONFIRMED	Q	git add forms allowed	brief-preamble.md:63 bans add -A and add . ; git-traps-in-shared-checkout.md:19 bans add -A and add -u	Doc and memory note ban different forms, no hook, a choice of the rule.
+L-F15-02	CONFIRMED	P	none	none	Single-home rule with no split.
+L-F15-03	CONFIRMED	P	none	none	Row says no split between the two join procedures.
+L-F15-04	CONFIRMED-CHANGED	P	none	none	W09 found no split between homes; only a gap the note itself names.
+L-F15-05	CONFIRMED	P	none	none	All five homes agree and nothing checks them.
+L-F15-06	CONFIRMED	P	none	none	Row says no split; the rule lives only in a memory note.
+L-F15-07	CONFIRMED-CHANGED	P	none	none	W09 reads this as a two-routes pointer, not a drift.
+L-F15-08	CONFIRMED	P	none	none	W09 found no split; values and README match.
+L-F15-09	CONFIRMED-CHANGED	B	release target needs full SHA	windows-installer.md:19 says needs the full SHA; development.md:1011 passes --target main	A weak memory note against a working doc command; the staging half agrees.
+L-F15-10	CONFIRMED	B	none	no-full-library-runs.md:15 says No hook enforces it yet; percall.py:14 enforces it	The split is a stale memory note against the hook.
+L-F15-11	CONFIRMED	C	squeeze window constant location	SKILL.md:10 and squeeze-tools README:9 say src/search/graph.h; the constant is at src/core/model.h:121; 05-star-power.md says line 111	Docs cite a file and line that are wrong and the current place is clear.
+L-F15-12	CONFIRMED	A	commit text length exemption	brief-preamble.md:33 any git commit text is free; bash_windows_rule.py:172-174 charges --no-pager commit and quoted git commit	The doc is wider than what the hook does.
+L-F15-13	CONFIRMED-CHANGED	P	none	none	W09 says the shell-tools pair is not a code split; only literal copies.
+L-F15-14	CONFIRMED	Q	background commands and Read tool	brief-preamble.md:77 forbids run_in_background; agent_stop.py:45-51 and README:41 plan for it and no hook refuses it	A rule with no hook behind it and a hook that tolerates it, a choice.
+L-F15-15	CONFIRMED-CHANGED	Q	REA client list	reverse-engineer-anything SKILL.md:37-42 lists 15 client ids; connection-and-recovery.md:46-50 lists 23	Two docs list different sets with no code behind either.

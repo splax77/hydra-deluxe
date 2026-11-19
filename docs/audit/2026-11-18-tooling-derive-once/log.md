@@ -48,3 +48,5 @@ After the user said "every split? im not manually reviewing hundreds of question
 
 These are the user's answers in this session, not filed rulings under docs/agents/rulings/. Exit 3 rows cite them by this section.
 - T6 sorting launched 2026-11-18 22:12: eleven sorters, one per ledger file, each proposes a category per row with the quotes that place it (brief briefs/T6-sort.md). The main session applies exits from the categories by script; T7's closure checkers check every exit 3 and Fix pending row against the files.
+- T6 sorting returned (workflow wf_dfe56c7b-1f9, 11 agents, no errors): 660 rows. A 79, B 33, C 21 (exit 3 by the user's answers), P 282 (Fix pending), Q 238 (exit 2), R 7 (refuted). Four rows are still NOT VERIFIED after both rounds (L-F12-17, L-F19-20, L-F20-13, L-F25-16) and stay open. The 238 Q rows carry 211 small themes. exits.md written by script from sorting/.
+- T7 launched 2026-11-18 22:17: 23 closure checkers for the 415 A, B, C and P rows against the current files (brief briefs/T7-closure.md, batches of 25), and one grouper (T8-G1) to fold the 238 Q rows into at most 20 decision themes.

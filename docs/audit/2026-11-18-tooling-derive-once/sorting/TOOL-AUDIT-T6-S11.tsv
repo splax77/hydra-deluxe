@@ -1,0 +1,71 @@
+id	verdict	category	theme	sides	why
+L-F31-01	CONFIRMED	Q	who writes a missing owner	derive-display-from-engine-truth.md:18 and agent-rules.md:21 say propose or write a new owner in core; owner-map.md:37 and scout.md:11 say nobody proposes one	Two docs and a memory note disagree on a real behaviour choice, with no code behind either and no Confirmed line naming both.
+L-F31-02	CONFIRMED-CHANGED	P	none	none	Verifier found only a wording tension, CONFIRMED-CHANGED: CONTEXT.md decides and code usage is checked first, so no split remains.
+L-F31-03	CONFIRMED	Q	display-changing fold stops or not	integrate.md:21-23 stops on a fold that changes a display or score; derive-once-review.md:96 says fold every copy with no stop	Whether a fold that changes a shown text or score is done or stopped is a behaviour choice; the ruling at agents-and-workflow.md:19 does not name the fold step.
+L-F31-04	CONFIRMED-CHANGED	P	none	none	Verifier: same word, different actors and shapes, so not one question with two answers.
+L-F31-05	CONFIRMED	P	none	none	Owner is right and no split; only the caller claim in the rubric examples is indirect.
+L-F31-06	CONFIRMED	Q	drum lane lit after Note Shuffle	drum-lanes-d112 memory:13 and song.cpp:192-196 say every pad lit; ui-and-display.md:56 Confirmed says lane must match the chart notes	Possible clash between memory/code and a Confirmed ruling that does not clearly name both sides; not proven.
+L-F31-07	CONFIRMED	B	none	ch-disco-noflip-rule.md:11,15 says Clone Hero ignores drums0dnoflip; 02-note-list.md:253-260 says it counts as a span start with a no-flip flag	Only the memory note wording differs from the page and code; Hydra value agrees.
+L-F31-08	CONFIRMED	C	none	02-note-list.md:611,631 cite song.cpp lines 203/88/147 and call at 2009; code is at 205/90/149 and 2204	Page cites stale line numbers and the current ones are clear.
+L-F31-09	CONFIRMED	B	none	check-an-edge-case-can-happen.md:15 says planner and reviewer briefs carry the rule; no agent file in the searched folder does	Memory note claims a copy that was not found.
+L-F31-10	CONFIRMED	P	none	none	No split in value; memory note points at README checklist items that exist, only trigger wording differs.
+L-F31-11	CONFIRMED	C	none	analyzing-sp-squeezes SKILL.md:34 names memory note gameplay-video-score-analysis; it exists only in memory/archive	Skill cites a note that has moved to the archive, current place clear.
+L-F31-12	CONFIRMED	P	none	none	Hook message restates rule 14 and agrees; fix is a pointer.
+L-F31-13	CONFIRMED	P	none	none	W16 confirms all about ten homes agree on who runs builds and tests; only copies.
+L-F31-14	CONFIRMED	Q	who may run hydra_replay dump	test-rubric.md:45 says an agent asks the main session; analyzing-sp-squeezes SKILL.md:18 runs hydra_replay dump itself and rule 14 forbids agents	Two docs disagree with no code behind either, and the fix needs a choice about who runs it.
+L-F31-15	CONFIRMED	Q	SqOut draw and measure point	derive-display memory:23 says nominal end is not where a squeeze happens; SKILL.md:22-23 measures SqOut from pre-collection end	Unproven possible clash about which tick a squeeze is shown or measured at.
+L-F31-16	CONFIRMED-CHANGED	P	none	none	W16 finds no split; only near-copies and one wrong sub-claim about test-rubric.md copying the steps.
+L-F31-17	CONFIRMED	P	none	none	No split in value; test-rubric.md is only silent on a calibration miss that audit-method.md covers.
+L-F31-18	CONFIRMED	P	none	none	Owner claim holds and no split; two code forms of the same edge agree.
+L-F31-19	CONFIRMED	P	none	none	Pointer in premise-map.md to clone-hero-mcp.md content; no disagreement.
+L-F31-20	CONFIRMED	P	none	none	No split in value; integrate.md lists and the preamble default list just need one pointer.
+L-F31-21	CONFIRMED	P	none	none	One text home, pointer true.
+L-F31-22	CONFIRMED	Q	chosen mockup is the design	approved-work-is-not-reasked.md:15 memory rule with no page or hook; ui-and-display.md:123 Unconfirmed hints an exception	Rule with no home outside a memory note, and one side only in the Confirmed ruling.
+L-F31-23	CONFIRMED-CHANGED	Q	above-optimal run: bug or normal	video-tools README.md:41-43 and SKILL.md:55 say a bug, never a real score; dmleaderboards-comparison.md:26-29 says above-optimal is NORMAL	Opposite verbs for a run that beats optimal, no code behind either.
+L-F31-24	CONFIRMED	P	none	none	Memory copy of kSpActivationBars agrees with the owner today.
+L-F31-25	CONFIRMED	Q	out-of-scope lists in plans	planner.md:13 moves items to an Out of scope list for approval; search-web-before-finalizing-plans.md:11-15 says leave no left-alone list	Two rules that differ on a real planning behaviour; no Confirmed line.
+L-F31-26	CONFIRMED	P	none	none	No split in value; memory line names no owner and ADR text wording differs between modes.
+L-F31-27	CONFIRMED	C	none	SKILL.md:10 cites kSqueezeWindowMs in src/search/graph.h; it lives in src/core/model.h:121	Skill cites the wrong file and the current place is clear; value 500 agrees.
+L-F32-01	CONFIRMED	Q	builds per branch or per wave	one-build-per-wave.md:11 builds once on a combined branch; model-postures.md:11 and agent-rules.md:20 build each branch before review	Real choice of build behaviour; rulings at agents-and-workflow.md:8-9 name neither side.
+L-F32-02	CONFIRMED	P	none	none	W16: no split beyond L-F32-01; copies of build numbers, only the CLAUDECODE scope is missing from two docs.
+L-F32-03	CONFIRMED	Q	where SP ends and leeway	squeeze_rating.cpp:185-188 uses paid_by_sp_walk for squeezed-out rows, counted_without_squeeze with leeway for others	Two code branches answer the same edge differently and the Confirmed ruling at code-and-engine.md:12 does not settle which question the branch asks.
+L-F32-04	CONFIRMED	P	none	none	Single memory home matches code, no split.
+L-F32-05	CONFIRMED	P	none	none	Same rule in scout and song.cpp agree by reading; skill only lacks a pointer.
+L-F32-06	CONFIRMED-CHANGED	Q	where a proper name may come from	names-from-data-not-recall.md:15 and SKILL.md:63 accept web lookup; derive-once-review.md:76 says only the repo	Docs differ on whether a web-found name is allowed, a real rule choice with no code.
+L-F32-07	CONFIRMED	Q	mockup rule has no home	new-screens-start-from-a-clickable-mockup.md:17 says no option switches but also four toggles were accepted	Rule lives only in a memory note with an inner wording gap and no page, hook or agent file.
+L-F32-08	CONFIRMED	B	none	no-full-library-runs.md says no hook enforces it; percall.py:45-55 _library_refusal refuses it	Memory note is stale against the hook code.
+L-F32-09	CONFIRMED-CHANGED	B	none	questions-describe-the-real-rule.md:11 says rules 11 to 13; agent-rules.md rules 11-12 hold the cited content	Memory note cites one rule too many.
+L-F32-10	CONFIRMED	B	none	relay-status-in-plain-english.md:11,15 cites an unfiled ruling and a test_ skip; stall.py and model-postures.md:11 have neither	Memory note cites a ruling with no Confirmed line and claims a skip the hook lacks.
+L-F32-11	CONFIRMED	P	none	none	Different subjects, no split; copies of narrowing rule.
+L-F32-12	CONFIRMED	Q	prior-art search rule has no home	search-web-before-finalizing-plans.md:11-15 only in memory; audit-method.md:36 covers left-alone for audits	Rule has no home in planner.md, premise-map.md or owner-map.md; fix needs a choice.
+L-F32-13	CONFIRMED-CHANGED	P	none	none	A gap not a clash; the memory note is silent on the one-never-tried cap that premise-map.md sets.
+L-F32-14	CONFIRMED	P	none	none	Several wordings of one rule that agree; no split.
+L-F32-15	CONFIRMED	C	none	SKILL.md:10 and squeeze_scout.py:33-34 cite kSqueezeWindowMs in src/search/graph.h; it lives in src/core/model.h:121	Skill cites a wrong file, the current place is clear.
+L-F32-16	CONFIRMED	P	none	none	Near-identical copies of approval rule and pinned version, no split.
+L-F32-17	CONFIRMED	P	none	none	Pointers to hydra_use_mimalloc are true; only a machine path pinned in a memory note.
+L-F32-18	CONFIRMED	P	none	none	Hook registration copies agree, no split.
+L-F32-19	CONFIRMED	P	none	none	Script constants and doc copies agree; no split.
+L-F32-20	CONFIRMED-CHANGED	A	none	ui-testing.md:99 says no hook reads shell text; brief-preamble.md:43 and percall.py library guard read shell text	W16: a doc line contradicted by real hook code.
+L-F32-21	CONFIRMED	Q	unfiled ruling cited in code	quiet.py:38 cites the user's ruling of 2026-11-07 on MSBuild helpers; no such line in rulings	Code comment cites a ruling that is not filed, fix needs the user to file it or drop the claim.
+L-F32-22	CONFIRMED	P	none	none	W16: no split in value; second lock in Directory.Build.targets covers other routes.
+L-F33-01	CONFIRMED	P	none	none	Cleanup ages and retry numbers are copies that agree today.
+L-F33-02	CONFIRMED	Q	worktree folder location	cleanup_sweep.ps1:174-178 Get-SweepPrefixes vs delete_rule.py:17-18 WORKTREE_FOLDERS; neither covers H\worktrees	Two code places decide the same folder list differently.
+L-F33-03	CONFIRMED	Q	when a session counts as running	cleanup_sweep.ps1:355-389 uses 7 days; prepass.py:31 RUNNING_CUTOFF_SECONDS is 2 hours	Two code places decide differently for a session quiet 3 hours to 7 days.
+L-F33-04	CONFIRMED-CHANGED	Q	posture resend interval	posture.py:16 comment calls 60 minutes the user's answer; plan line 306 shows T2 picks 60	Guessed value whose provenance claim has no ruling; fix needs the user to confirm.
+L-F33-05	CONFIRMED	P	none	none	W16: prose homes agree with code; cited 2026-10-30 rulings just not filed.
+L-F33-06	CONFIRMED	Q	ref gate clean merge rule	ref_judge.py:305-316 made_from_existing vs review_rules.py:234-244 _carries	Two code places decide the same carry rule differently and the docstring claim of same rule is false.
+L-F33-07	CONFIRMED	P	none	none	Repeated folder names and thresholds that agree; no split.
+L-F33-08	CONFIRMED	Q	which card folders count	check.py:213-226 default_cards includes staging; ruling_rules.py:214-215 reads no staging	Two code places read different card folders.
+L-F33-09	CONFIRMED-CHANGED	P	none	none	Weak; verifier says the two patterns answer different questions, so no split.
+L-F33-10	CONFIRMED	Q	kResultsStamp release rule has no home	stored-versions-one-rule.md:17 only; no doc, hook or test	Rule with no home outside a memory note.
+L-F33-11	CONFIRMED	C	none	session_cards_start.ps1:21 names state_prune.ps1; cleanup_sweep.ps1:16,28 has Invoke-StatePrune	Comment names a file that does not exist and the current place is clear.
+L-F33-12	CONFIRMED	Q	report tools saved before budget	percall.py:99-102 saves only SubagentHandback; progress.py:18-19 REPORT_TOOLS also has StructuredOutput	Two code places list report tools differently, a StructuredOutput report is never saved.
+L-F33-13	CONFIRMED	P	none	none	Single home in wake.py with a behaviour test; no split.
+L-F33-14	CONFIRMED	P	none	none	One home rule with no disagreement.
+L-F33-15	CONFIRMED-CHANGED	P	none	none	Claims hold, only finder line numbers were off; history told twice without conflict.
+L-F33-16	CONFIRMED	P	none	none	Different questions, wording gap only.
+L-F33-17	CONFIRMED-CHANGED	P	none	none	Copy of the build folder date pinned by a behaviour test, no split.
+L-F33-18	CONFIRMED	P	none	none	One number serves two waits with no split in value.
+L-F33-19	CONFIRMED	A	none	ch_mcp/README.md:83 says a human-played folder launch is not copied; bot_run.py:755-761 and clone-hero-mcp.md:60 say it is	README line disagrees with the code that copies the file.
+L-F33-20	CONFIRMED	P	none	none	Single-home and pointer rows, spot-read, no split.
+L-F33-21	CONFIRMED	P	none	none	Two state folders, one per owner; no split.
