@@ -277,14 +277,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        copy: [1, 2, 3, 4]
+        copy: [1]
     # The caps here, the job's and each step's, are set from measured runs
     # with room to spare. "Continuous integration" in docs/development.md gives
     # the runs and their times. The build step starts from an empty folder
     # every night, and the sccache cache decides how long it takes. An empty
     # cache is the slow case, and a slow runner can add minutes to it, so the
     # build step's cap is sized for that case.
-    timeout-minutes: 80
+    timeout-minutes: 150
     defaults:
       run:
         shell: pwsh
@@ -298,10 +298,22 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_GHA_VERSION: coverage-1
     steps:
-      - name: Diag stop unless on the new image
+      - name: Diag bring Visual Studio to 18.12 as the 20261116 image has it
+        timeout-minutes: 60
         run: |
           "ImageVersion: $env:ImageVersion"
-          if ($env:ImageVersion -notlike '20261116*') { throw "old image $env:ImageVersion, nothing to learn here" }
+          $vsw = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $before = & $vsw -latest -all -products * -property catalog_productDisplayVersion
+          "VS before: $before"
+          if ($before -notlike '18.12*') {
+            $path = & $vsw -latest -all -products * -property installationPath
+            Invoke-WebRequest https://aka.ms/vs/18/stable/vs_enterprise.exe -OutFile "$env:RUNNER_TEMP\vs_enterprise.exe"
+            $p = Start-Process "$env:RUNNER_TEMP\vs_enterprise.exe" -ArgumentList @('update', '--installPath', "`"$path`"", '--quiet', '--norestart', '--wait') -Wait -PassThru
+            "installer exit: $($p.ExitCode)"
+          }
+          $after = & $vsw -latest -all -products * -property catalog_productDisplayVersion
+          "VS after: $after"
+          if ($after -notlike '18.12*') { throw "Visual Studio is $after, not 18.12" }
 
       # The full history, for the precheck self-test's two real commit ranges;
       # the comment on build-and-test's checkout says why.
