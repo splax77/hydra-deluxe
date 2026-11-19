@@ -1962,17 +1962,17 @@ class ReplyStopTest(unittest.TestCase):
     chord (D318 item 2), on a recorded game clock."""
 
     def test_a_reply_without_groups_stops_the_run_at_that_chord(self):
-        # From 4.2 s the first message the Mouths schedule sends is chord 4,
-        # split in two groups. The kit's real reply to a one-group press has
-        # no `groups` list, so it is not a reply to this press.
+        # The Mouths schedule's first split chord is chord 4, which the
+        # recorded clock passes; the chord before it is due too soon after
+        # the recording's first read to be pressed, so chord 4 is the run's
+        # first press. The kit's real reply to a one-group press has no
+        # `groups` list, so it is not a reply to this press.
         from tools.ch_mcp.kit_tools import reply_gap
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
         reply = _e_replies()[0]
         self.assertNotIn("groups", reply)
-        start_ms = _RecordedGame(_F1_SPLIT_CHORD).read()[0] * 1000.0
         head, later = next((h, l) for h, l in play_chart.press_messages(
-            play_chart.press_plan(chords)) if h.at_ms - start_ms >= live.START_LEAD_MS)
-        self.assertTrue(later)
+            play_chart.press_plan(chords)) if l)
         calls = []
         result, _sent, out, _took, _chords = _play_recorded(
             _F1_SPLIT_CHORD, chords=chords, press=_replying(reply, calls), kit=True,
@@ -2154,12 +2154,16 @@ class MainExitTest(unittest.TestCase):
         self.assertIsNone(result)
         self.assertIn(str(caught.exception), text)
 
-        # The song end: the chords from 0.3 s to 1.5 s after the recording's
-        # first read, all pressed inside its 2 s cap.
+        # The song end: the chords after the recording's first read whose
+        # every press is due before its last read, so the run presses the
+        # last of them while the recording still holds the game.
+        last_ms = _RecordedGame(_F1_MID_SONG).last_clock_s * 1000.0
+
         def song_end(chords):
-            window = [c for c in chords if mid_ms + 300.0 < c.ms < mid_ms + 1500.0]
+            window = [c for c in chords if c.ms > mid_ms
+                      if all(p.last_send_ms < last_ms for p in c.presses)]
             self.assertTrue(window)
-            return on(_F1_MID_SONG, window, cap_s=cap_s)
+            return on(_F1_MID_SONG, window, cap_s=play_chart.RUN_CAP_S)
 
         code, text, result = self._main(song_end)
         self.assertEqual(result.stop, play_chart.STOP_DONE)
