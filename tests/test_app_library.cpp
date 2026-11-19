@@ -880,6 +880,7 @@ TEST_CASE("the confirm counts every library row, and rows with a result from the
     int64_t copies_of_first = 0;
     for (size_t i = 0; i < app.library_shown_count(); ++i)
         if (app.library_row_at(i).entry.md5 == first.md5) ++copies_of_first;
+    REQUIRE(copies_of_first == 2);  // the two song folders holding the chart
     CHECK(app.batch_scope_with_result() == copies_of_first);
 }
 
