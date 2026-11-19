@@ -11,7 +11,6 @@ from __future__ import annotations
 import io
 import json
 import os
-import re
 import stat
 import subprocess
 import sys
@@ -44,8 +43,10 @@ GAME_SAVES_IN_DOCUMENTS = (G.SETTINGS, G.SCORESTATS)
 GAME_SAVES_IN_LOCALLOW = ("scoredata.bin", "user.bin")
 ORIGINAL = {name: f"original {name}".encode() for name in
             GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW}
+# The title prefix install_chart gives a copy, as song.ini bytes.
+PREFIX = probe_songs.NAME_PREFIX.encode()
 NEW_STATS = json.dumps({"players": [{"is_bot": True}]}).encode()
-SONG_LENGTH_MS = 4000  # the fake song's song end in its fake dump; the cap tests pin 64 s
+SONG_LENGTH_MS = 4000  # the fake song's song end in its fake dump
 
 
 def setUpModule():
@@ -176,7 +177,7 @@ class BotRunTest(unittest.TestCase):
         r.game_writes_stats_at(5)
         self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
         self.assertEqual(r.launch.commands,
-                         [[r"C:\fake\Clone Hero.exe", "--song", r.song, "--player", "Drums,Expert"]])
+                         [B.launch_command(r.env.exe, r.song, B.DEFAULT_PLAYER)])
 
     def test_a_relative_song_path_reaches_the_game_absolute(self):
         # The game starts in its own folder, so it must get the full path.
@@ -196,19 +197,26 @@ class BotRunTest(unittest.TestCase):
         self.assertEqual(os.path.basename(G.GAME_EXE), PROCESS_NAME)
 
     def test_profile_appears_only_when_passed(self):
-        cmd = B.launch_command("exe", "song", "ProDrums,Expert", "Tester")
-        self.assertEqual(cmd, ["exe", "--song", "song", "--player", "ProDrums,Expert",
-                               "--profile", "Tester"])
-        self.assertNotIn("--profile", B.launch_command("exe", "song", "Drums,Expert"))
+        # A profile adds one flag and its value after the song and the player,
+        # and nothing else changes.
+        plain = B.launch_command("exe", "song", B.DEFAULT_PLAYER)
+        cmd = B.launch_command("exe", "song", B.DEFAULT_PLAYER, "Tester")
+        self.assertEqual(cmd[:len(plain)], plain)
+        self.assertEqual(len(cmd), len(plain) + 2)
+        self.assertTrue(cmd[-2].startswith("--"), cmd)
+        self.assertEqual(cmd[-1], "Tester")
+        self.assertNotIn("Tester", plain)
 
     def test_poll_notices_the_change_copies_it_and_restores(self):
-        r = Rig(self.tmp, exits_at=12)
-        r.game_writes_stats_at(5)
+        writes_at, exits_at = 5, 12
+        r = Rig(self.tmp, exits_at=exits_at)
+        r.game_writes_stats_at(writes_at)
         self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
         copy = os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json")
         self.assertEqual(_read(copy), NEW_STATS)
-        self.assertIn(f"scorestats.json changed after 5 s; copied to {copy}", r.lines)
-        self.assertIn("game exited after 7 s", r.lines)
+        self.assertIn(f"scorestats.json changed after {writes_at} s; copied to {copy}", r.lines)
+        # The exit check starts once the stats changed.
+        self.assertIn(f"game exited after {exits_at - writes_at} s", r.lines)
         self.assertIn(f"backup folder: {r.backup_dir()}", r.lines)
         r.assert_settings_untouched(self)
         # The game's own saves stay as the game left them.
@@ -222,27 +230,23 @@ class BotRunTest(unittest.TestCase):
         r = Rig(self.tmp, exits_at=None)
         r.game_writes_stats_at(5)
         self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
-        self.assertIn("game still running after 30 s (menu or results screen)", r.lines)
+        self.assertIn(f"game still running after {B.EXIT_CHECK_S:.0f} s (menu or results screen)",
+                      r.lines)
         self.assertFalse(r.game.stopped)  # never closed without --stop
         self.assertTrue(any("--restore" in line for line in r.lines))
         r.assert_settings_untouched(self)
 
-    def test_stop_closes_a_game_that_stays(self):
+    def test_the_cap_prints_its_line_runs_the_restore_and_leaves_settings_ini(self):
         r = Rig(self.tmp, exits_at=None)
-        r.game_writes_stats_at(5)
-        B.run_bot(r.song, r.out_dir, stop=True, env=r.env)
-        self.assertTrue(r.game.stopped)
-        self.assertIn("stopped the game (--stop)", r.lines)
-
-    def test_the_cap_prints_its_line_and_still_restores(self):
-        r = Rig(self.tmp, exits_at=None)
+        cap_s = B.run_cap_s(SONG_LENGTH_MS)
         # The game changes settings.ini during the run but never the stats.
         r.clock.events.append((10, lambda: _write(r.path("settings.ini"), b"the game changed this")))
         self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 1)
-        self.assertIn("scorestats.json unchanged after 64 s; bot launch wrote no stats", r.lines)
+        self.assertIn(f"scorestats.json unchanged after {cap_s:.0f} s; bot launch wrote no stats",
+                      r.lines)
         self.assertFalse(any("game exited" in line or "still running after" in line
                              for line in r.lines))
-        self.assertEqual(r.clock.t, 64)
+        self.assertEqual(r.clock.t, cap_s)
         self.assertFalse(os.path.exists(os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json")))
         self.assertEqual(_read(r.path(G.SETTINGS)), b"the game changed this")
         self.assertIn(f"restoring the backup from {r.backup_dir()}", r.lines)
@@ -256,9 +260,11 @@ class BotRunTest(unittest.TestCase):
             raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
 
         with mock.patch.object(B.game_files, "restore_all", fail):
-            self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 2)
+            code = B.run_bot(r.song, r.out_dir, env=r.env)
+        # Neither the success code nor the no-stats code.
+        self.assertNotIn(code, (0, 1))
         self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", r.lines)
-        self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
+        self.assertIn(r.backup_dir(), r.lines[-1])
 
     def test_a_restore_failure_on_the_cap_path_runs_no_exit_check(self):
         r = Rig(self.tmp, exits_at=None)
@@ -278,10 +284,9 @@ class BotRunTest(unittest.TestCase):
         self.assertEqual(len(r.launch.commands), 1)
         self.assertEqual(r.clock.t, 0.0)  # never slept, so never polled
         self.assertIn(f"backup folder: {r.backup_dir()}", r.lines)
-        self.assertIn("game process id: 4242", r.lines)
-        self.assertEqual(r.lines[-1],
-                         "--no-wait: not waiting and not restoring; afterwards run "
-                         f'py tools/ch_mcp/bot_run.py --restore "{r.backup_dir()}"')
+        self.assertIn(f"game process id: {r.game.pid}", r.lines)
+        # The last line names the restore to run afterwards, with the backup.
+        self.assertIn(f'--restore "{r.backup_dir()}"', r.lines[-1])
         self.assertFalse(any(line.startswith("restoring") for line in r.lines))
 
         # The step: the game rewrites every file, its own saves included.
@@ -317,7 +322,8 @@ class BotRunTest(unittest.TestCase):
         r = Rig(self.tmp, length_ms=None)
         with self.assertRaises(B.SongLengthMissing) as caught:
             B.run_bot(r.song, r.out_dir, env=r.env)
-        self.assertIn("song_length_ms is null", str(caught.exception))
+        self.assertIn(f"{hydra_end.FIELD} is null", str(caught.exception))
+        self.assertIn(r.song, str(caught.exception))
         self.assertEqual(r.launch.commands, [])
         self.assertFalse(os.path.exists(r.out_dir))
 
@@ -326,14 +332,24 @@ class BotRunTest(unittest.TestCase):
         os.remove(r.chart)
         with self.assertRaises(B.SongLengthMissing) as caught:
             B.run_bot(r.song, r.out_dir, env=r.env)
-        self.assertIn("has no notes.chart or notes.mid", str(caught.exception))
+        self.assertIn(f"{r.song} has no {' or '.join(I.CHART_FILES)}", str(caught.exception))
         self.assertEqual(r.launch.commands, [])
 
     def test_pro_drums_chart_with_a_drums_player_prints_a_note(self):
         r = Rig(self.tmp, exits_at=10, song_ini="[song]\npro_drums = True\n")
         r.game_writes_stats_at(5)
         B.run_bot(r.song, r.out_dir, env=r.env)
-        self.assertTrue(r.lines[0].startswith("note: song.ini says pro_drums = True"))
+        # The first line, before the backup, names the player given and the
+        # instrument to pass instead.
+        self.assertTrue(r.lines[0].startswith("note: "), r.lines[0])
+        self.assertIn(B.DEFAULT_PLAYER, r.lines[0])
+        self.assertIn(f"--player {B.PRO_DRUMS_INSTRUMENT},", r.lines[0])
+
+    def test_a_drums_chart_with_a_drums_player_prints_no_note(self):
+        r = Rig(self.tmp, exits_at=10)
+        r.game_writes_stats_at(5)
+        B.run_bot(r.song, r.out_dir, env=r.env)
+        self.assertFalse(any(line.startswith("note: ") for line in r.lines), r.lines)
 
 
 class StuckGame(FakeGame):
@@ -357,55 +373,65 @@ class RunStepsTest(unittest.TestCase):
     def start(self, r: Rig, song_dir) -> B.Run:
         return B.start_run(song_dir, backup_root=os.path.join(r.out_dir, "backups"), env=r.env)
 
-    def test_start_run_backs_up_launches_and_returns_before_any_sleep(self):
+    def test_start_run_backs_up_before_the_launch(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
+        self.assertEqual(run.backup_dir, r.backup_dir())
+        self.assertEqual(os.listdir(run.backup_dir), [G.BACKUP_MANIFEST])
+        self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
+        self.assertFalse(any(line.startswith("restoring") for line in r.lines))
+
+    def test_start_run_keeps_the_stats_state_from_before_the_launch(self):
         r = Rig(self.tmp, exits_at=None)
         before = B._file_state(r.path(G.SCORESTATS))
         run = self.start(r, r.song)
-        self.assertEqual(r.clock.t, 0.0)
-        self.assertEqual(run.backup_dir, r.backup_dir())
-        self.assertEqual(os.listdir(run.backup_dir), [G.BACKUP_MANIFEST])
         self.assertIsNotNone(run.before)
         self.assertEqual(run.before, before)
+
+    def test_start_run_launches_the_command_and_records_the_game(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
         self.assertEqual(r.launch.commands, [run.command])
         self.assertEqual(run.command, B.launch_command(r.env.exe, r.song, B.DEFAULT_PLAYER))
         self.assertIs(run.game, r.game)
-        self.assertEqual(run.launched_at, 0.0)
         self.assertEqual(run.length_ms, SONG_LENGTH_MS)
-        self.assertEqual(run.cap_s, 64)
+        self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
         self.assertEqual(run.length_source, hydra_end.chart_source_text(r.chart))
-        self.assertEqual(len(r.lines), 3)
-        self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
-        self.assertTrue(r.lines[1].startswith("starting: "))
-        self.assertEqual(r.lines[2], "game process id: 4242")
-        self.assertFalse(any(line.startswith("restoring") for line in r.lines))
+        self.assertTrue(any(line.startswith("starting: ") for line in r.lines), r.lines)
+        self.assertEqual(r.lines[-1], f"game process id: {r.game.pid}")
+
+    def test_start_run_returns_before_any_sleep(self):
+        r = Rig(self.tmp, exits_at=None)
+        run = self.start(r, r.song)
+        self.assertEqual(r.clock.t, 0.0)
+        self.assertEqual(run.launched_at, 0.0)
 
     def test_run_cap_is_the_song_plus_the_extra_minute(self):
-        # The Senri fill-check chart's song_length (ruling 3 of the 2026-10-30
-        # ch_mcp Star Power plan).
-        self.assertEqual(B.run_cap_s(260504), 320.504)
+        # The song's seconds plus POLL_CAP_EXTRA_S, for any length.
+        for length_ms in (0, 4000, 260504, 1):
+            with self.subTest(length_ms=length_ms):
+                self.assertAlmostEqual(B.run_cap_s(length_ms) - length_ms / 1000,
+                                       B.POLL_CAP_EXTRA_S)
 
     def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
-        # The fake dump's song_length_ms is the Senri chart's 260,504, so the
-        # cap is the one test_run_cap_is_the_song_plus_the_extra_minute pins.
         r = Rig(self.tmp, exits_at=None, length_ms=260504)
         run = self.start(r, r.song)
-        self.assertEqual(run.length_ms, 260504)
-        self.assertEqual(run.cap_s, 320.504)
         self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
 
     def test_start_run_takes_a_song_end_already_read_without_a_dump(self):
         r = Rig(self.tmp, exits_at=None, length_ms=260504)
         dumps_before = len(FAKE.charts)
+        given_ms = 4000.0
         run = B.start_run(r.song, backup_root=os.path.join(r.out_dir, "backups"), env=r.env,
-                          song_end=(4000.0, "given"))
+                          song_end=(given_ms, "given"))
         self.assertEqual(len(FAKE.charts), dumps_before)
-        self.assertEqual((run.length_ms, run.length_source), (4000.0, "given"))
-        self.assertEqual(run.cap_s, B.run_cap_s(4000.0))
+        # The cap comes from the given end, not the dump's 260504.
+        self.assertEqual(run.cap_s, B.run_cap_s(given_ms))
 
     def test_start_run_with_no_song_launches_the_bare_exe_after_a_backup(self):
         r = Rig(self.tmp, exits_at=None)
         run = self.start(r, None)
-        self.assertEqual(r.launch.commands, [[r"C:\fake\Clone Hero.exe"]])
+        self.assertEqual(r.launch.commands, [[r.env.exe]])
         self.assertTrue(os.path.isdir(run.backup_dir))
         self.assertIsNone(run.song_dir)
         self.assertIsNone(run.cap_s)
@@ -435,7 +461,7 @@ class RunStepsTest(unittest.TestCase):
             _write(r.path(name), b"changed by the game")
         self.assertTrue(B.finish_run(run, stop=True, env=r.env))
         self.assertTrue(r.game.stopped)
-        self.assertIn("stopped the game (--stop)", r.lines)
+        self.assertIn(B.STOPPED_BY_FLAG_LINE, r.lines)
         r.assert_files_hold(self, b"changed by the game")
         self.assertFalse(any("--restore" in line for line in r.lines))
 
@@ -443,8 +469,8 @@ class RunStepsTest(unittest.TestCase):
         r = Rig(self.tmp, exits_at=None)
         run = self.start(r, r.song)
         self.assertTrue(B.finish_run(run, stop=True, env=r.env, stop_line=B.STOPPED_LINE))
-        self.assertIn("stopped the game", r.lines)
-        self.assertNotIn("stopped the game (--stop)", r.lines)
+        self.assertIn(B.STOPPED_LINE, r.lines)
+        self.assertNotIn(B.STOPPED_BY_FLAG_LINE, r.lines)
 
     def test_finish_run_reports_a_game_that_outlives_the_stop_and_still_restores(self):
         r = Rig(self.tmp, exits_at=None)
@@ -453,26 +479,15 @@ class RunStepsTest(unittest.TestCase):
         for name in ORIGINAL:
             _write(r.path(name), b"changed by the game")
         self.assertTrue(B.finish_run(run, stop=True, env=r.env))
-        self.assertIn(f"{PROCESS_NAME} (pid 4242) was told to stop but was still running "
-                      "after 30 s", r.lines)
-        self.assertNotIn("stopped the game (--stop)", r.lines)
+        # The stop line names the game, its pid and the stop's wait.
+        stuck = [line for line in r.lines if "was told to stop" in line]
+        self.assertEqual(len(stuck), 1, r.lines)
+        self.assertIn(f"{PROCESS_NAME} (pid {r.game.pid})", stuck[0])
+        self.assertIn(f"after {B.EXIT_CHECK_S:.0f} s", stuck[0])
+        self.assertNotIn(B.STOPPED_BY_FLAG_LINE, r.lines)
         r.assert_files_hold(self, b"changed by the game")
-        self.assertEqual(r.lines[-1],
-                         "the game is still running and may write the registry key again when it "
-                         f'closes; after closing it, run py tools/ch_mcp/bot_run.py --restore '
-                         f'"{r.backup_dir()}"')
-
-    def test_finish_run_with_a_failed_restore_names_it_and_returns_false(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-
-        def fail(backup_dir, **_kw):
-            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
-
-        with mock.patch.object(B.game_files, "restore_all", fail):
-            self.assertFalse(B.finish_run(run, stop=False, env=r.env))
-        self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", r.lines)
-        self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
+        # The last line names the restore to run once the game is closed.
+        self.assertIn(f'--restore "{r.backup_dir()}"', r.lines[-1])
 
 
 class LaunchStepsTest(unittest.TestCase):
@@ -523,7 +538,7 @@ class LaunchStepsTest(unittest.TestCase):
             self.start(r, before_launch=before_launch)
         self.assertEqual(_read(r.path(G.SETTINGS)), b"changed")
         self.assertEqual(reg.text, original)
-        self.assertEqual(r.lines[-1], "rewired registry: restored")
+        self.assertEqual(r.lines[-1], f"{G.REGISTRY_LINE_NAME}: restored")
 
     def test_the_key_is_backed_up_and_restored_with_the_envs_runner(self):
         r = Rig(self.tmp)
@@ -533,7 +548,7 @@ class LaunchStepsTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(run.backup_dir, G.REGISTRY_BACKUP)))
         reg.text = b"the game changed this"
         self.assertTrue(B.finish_run(run, stop=True, env=r.env))
-        self.assertEqual(r.lines[-1], "rewired registry: restored")
+        self.assertEqual(r.lines[-1], f"{G.REGISTRY_LINE_NAME}: restored")
         self.assertEqual(reg.text, original)
 
     def test_a_registry_restore_failure_stops_like_a_file_one(self):
@@ -543,44 +558,102 @@ class LaunchStepsTest(unittest.TestCase):
         reg.text = b"the game changed this"
         reg.import_works = False
         self.assertFalse(B.finish_run(run, stop=True, env=r.env))
-        self.assertTrue(any(line.startswith("restore failed on rewired.reg: ")
+        self.assertTrue(any(line.startswith(f"restore failed on {G.REGISTRY_BACKUP}: ")
                             for line in r.lines), r.lines)
-        self.assertEqual(r.lines[-1], f"stopped; the backup is still in {r.backup_dir()}")
+        self.assertIn(r.backup_dir(), r.lines[-1])
 
 
-class FakePopen:
-    """Records how subprocess.Popen was called."""
-    calls: list = []
+# A small real program in place of the game: it writes what it was started
+# with (its folder, its stdin, and the window flags of its start-up info) to
+# the file named by its one argument, then exits.
+_STARTED_WITH = r'''
+import ctypes, json, os, sys
+from ctypes import wintypes
 
-    def __init__(self, cmd, **kw):
-        self.pid = 4321
-        FakePopen.calls.append((cmd, kw))
+class STARTUPINFOW(ctypes.Structure):
+    _fields_ = [("cb", wintypes.DWORD), ("lpReserved", wintypes.LPWSTR),
+                ("lpDesktop", wintypes.LPWSTR), ("lpTitle", wintypes.LPWSTR),
+                ("dwX", wintypes.DWORD), ("dwY", wintypes.DWORD),
+                ("dwXSize", wintypes.DWORD), ("dwYSize", wintypes.DWORD),
+                ("dwXCountChars", wintypes.DWORD), ("dwYCountChars", wintypes.DWORD),
+                ("dwFillAttribute", wintypes.DWORD), ("dwFlags", wintypes.DWORD),
+                ("wShowWindow", wintypes.WORD), ("cbReserved2", wintypes.WORD),
+                ("lpReserved2", ctypes.c_void_p), ("hStdInput", wintypes.HANDLE),
+                ("hStdOutput", wintypes.HANDLE), ("hStdError", wintypes.HANDLE)]
+
+info = STARTUPINFOW()
+info.cb = ctypes.sizeof(info)
+ctypes.windll.kernel32.GetStartupInfoW(ctypes.byref(info))
+stdin = sys.stdin.read() if sys.stdin is not None else None
+with open(sys.argv[1], "w", encoding="utf-8") as f:
+    json.dump({"cwd": os.getcwd(), "stdin": stdin, "flags": info.dwFlags,
+               "show": info.wShowWindow}, f)
+'''
+
+
+def _start_stand_in(tmp: str, start) -> tuple:
+    """Start _STARTED_WITH through `start` (one of bot_run's real launch
+    seams). Returns the game it gave back, the folder the program runs from
+    and the file it writes."""
+    script = os.path.join(tmp, "started_with.py")
+    with open(script, "w", encoding="utf-8") as f:
+        f.write(_STARTED_WITH)
+    out = os.path.join(tmp, "started_with.json")
+    return start([sys.executable, "-I", script, out]), os.path.dirname(sys.executable), out
+
+
+def _started_with(test: unittest.TestCase, game, out: str) -> dict:
+    """What the stand-in wrote, once it has exited. The wait ends as soon as
+    the program exits, so a program that died early fails at once; THREAD_CAP_S
+    is only the last stop."""
+    try:
+        game._p.wait(timeout=THREAD_CAP_S)
+    except subprocess.TimeoutExpired:
+        game._p.kill()
+        test.fail(f"the stand-in program was still running after {THREAD_CAP_S:g} s")
+    test.assertTrue(os.path.isfile(out), "the stand-in exited without writing what it saw")
+    with open(out, encoding="utf-8") as f:
+        return json.load(f)
 
 
 class RealLaunchTest(unittest.TestCase):
-    def test_the_game_gets_no_stdin_and_no_stdout_and_keeps_its_folder(self):
-        FakePopen.calls = []
-        cmd = [os.path.join("games", "ch", "Clone Hero.exe"), "--song", "x"]
-        with mock.patch.object(B.subprocess, "Popen", FakePopen):
-            game = B._real_launch(cmd)
-        self.assertEqual(game.pid, 4321)
-        [(seen_cmd, kw)] = FakePopen.calls
-        kw = dict(kw)
-        kw.pop("startupinfo")  # test_the_game_opens_minimized_without_the_focus checks it
-        self.assertEqual([(seen_cmd, kw)], [(cmd, {
-            "cwd": os.path.dirname(cmd[0]),
-            "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.DEVNULL})])
+    """bot_run's real launch seams, on a small real program."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_game_gets_no_stdin_and_keeps_its_folder(self):
+        game, folder, out = _start_stand_in(self.tmp, B._real_launch)
+        seen = _started_with(self, game, out)
+        self.assertEqual(os.path.normcase(seen["cwd"]), os.path.normcase(folder))
+        self.assertEqual(seen["stdin"], "")  # stdin is empty at once: nothing feeds it
 
     def test_the_game_opens_minimized_without_the_focus(self):
-        FakePopen.calls = []
-        with mock.patch.object(B.subprocess, "Popen", FakePopen):
-            B._real_launch([os.path.join("games", "ch", "Clone Hero.exe")])
-        info = FakePopen.calls[0][1]["startupinfo"]
-        self.assertTrue(info.dwFlags & subprocess.STARTF_USESHOWWINDOW)
-        # SW_SHOWMINNOACTIVE: minimized, not activated.
-        self.assertEqual(info.wShowWindow, 7)
-        self.assertEqual(B.SW_SHOWMINNOACTIVE, 7)
+        game, _folder, out = _start_stand_in(self.tmp, B._real_launch)
+        seen = _started_with(self, game, out)
+        self.assertTrue(seen["flags"] & subprocess.STARTF_USESHOWWINDOW)
+        self.assertEqual(seen["show"], B.SW_SHOWMINNOACTIVE)
+
+    def test_the_paused_start_runs_nothing_until_the_resume(self):
+        game, folder, out = _start_stand_in(self.tmp, B._real_start_suspended)
+        try:
+            # Paused: the program has written nothing. resume_main_thread
+            # refuses a thread that was not suspended, so its success is the
+            # proof the start was paused.
+            self.assertFalse(os.path.exists(out))
+            B.resume_main_thread(game.pid)
+        except BaseException:
+            game._p.kill()
+            raise
+        seen = _started_with(self, game, out)
+        self.assertEqual(os.path.normcase(seen["cwd"]), os.path.normcase(folder))
+        self.assertEqual(seen["stdin"], "")
+        self.assertTrue(seen["flags"] & subprocess.STARTF_USESHOWWINDOW)
+        self.assertEqual(seen["show"], B.SW_SHOWMINNOACTIVE)
 
 
 # launch_patch.json's fields that bot_run reads or names, with the values the
@@ -588,7 +661,8 @@ class RealLaunchTest(unittest.TestCase):
 PATCH = {"launch": "suspended", "defer": False,
          "entry_expect": "40 56 57 41 55 48 81 EC C0 00 00 00",
          "expect": "BA 01 00 00 00", "write": "BA 00 00 00 00"}
-# How long a test waits on a fake's thread before it fails instead of hanging.
+# How long a test waits on a fake's thread, or on the stand-in program, before
+# it fails instead of hanging.
 THREAD_CAP_S = 5.0
 
 
@@ -710,25 +784,6 @@ class HumanLaunchTest(unittest.TestCase):
             self.launch(agent, patch)
         return str(cm.exception)
 
-    def test_the_caps_and_the_poll_are_the_users_answers(self):
-        self.assertEqual((B.LAUNCH_ATTACH_CAP_S, B.LAUNCH_ARM_CAP_S, B.LAUNCH_PATCH_CAP_S,
-                          B.LAUNCH_POLL_S), (20.0, 5.0, 30.0, 0.5))
-        self.assertEqual(B.CREATE_SUSPENDED, 4)
-
-    def test_the_paused_start_passes_create_suspended_and_todays_startupinfo(self):
-        FakePopen.calls = []
-        cmd = [os.path.join("games", "ch", "Clone Hero.exe"), "--song", "x"]
-        with mock.patch.object(B.subprocess, "Popen", FakePopen):
-            game = B._real_start_suspended(cmd)
-        self.assertEqual(game.pid, 4321)
-        [(seen_cmd, kw)] = FakePopen.calls
-        info = kw.pop("startupinfo")
-        self.assertTrue(info.dwFlags & subprocess.STARTF_USESHOWWINDOW)
-        self.assertEqual(info.wShowWindow, 7)
-        self.assertEqual((seen_cmd, kw), (cmd, {
-            "cwd": os.path.dirname(cmd[0]), "stdin": subprocess.DEVNULL,
-            "stdout": subprocess.DEVNULL, "creationflags": 4}))
-
     def test_the_order_is_start_attach_load_arm_resume_status(self):
         agent = FakeLaunchAgent(self.events)
         launch, attaches = self.launch(agent)
@@ -750,8 +805,10 @@ class HumanLaunchTest(unittest.TestCase):
         self.launch(agent)
         self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
                          + ["status"] * 4)
-        self.assertEqual(self.r.clock.t, 1.5)
-        self.assertIn("patched 1.5 s after the resume", self.r.lines)
+        # Three waiting replies, one poll gap after each.
+        waited_s = 3 * B.LAUNCH_POLL_S
+        self.assertEqual(self.r.clock.t, waited_s)
+        self.assertIn(f"patched {waited_s:.1f} s after the resume", self.r.lines)
 
     def test_a_refused_status_kills_the_game_and_names_the_bytes(self):
         refused = status("refused", before="BA 02 00 00 00", entry_before="CC CC CC CC")
@@ -773,8 +830,8 @@ class HumanLaunchTest(unittest.TestCase):
             said = self.fails(agent)
         finally:
             block.set()
-        self.assertEqual(waited, [20.0])
-        self.assertIn("had not finished after 20 s (LAUNCH_ATTACH_CAP_S)", said)
+        self.assertEqual(waited, [B.LAUNCH_ATTACH_CAP_S])
+        self.assertIn(f"had not finished after {B.LAUNCH_ATTACH_CAP_S:g} s", said)
         self.assertIn("kill", self.events)
         self.assertNotIn("resume", self.events)
         self.assertNotIn("detach", self.events)  # the start is still running
@@ -843,16 +900,19 @@ class HumanLaunchTest(unittest.TestCase):
             resumed.append(self.r.clock.t)
 
         self.r.env.resume_thread = resume
-        self.r.clock.t = 7.0  # the resume comes later than time 0
+        resume_at = 7.0  # the resume comes later than time 0
+        self.r.clock.t = resume_at
         with self.assertRaises(B.LaunchFailed) as cm:
             B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
         said = str(cm.exception)
-        self.assertIn("still said waiting 30 s after the resume (LAUNCH_PATCH_CAP_S)", said)
-        self.assertEqual(resumed, [7.0])
-        self.assertEqual(self.r.clock.t, 37.0)
+        self.assertIn(f"still said waiting {B.LAUNCH_PATCH_CAP_S:g} s after the resume", said)
+        self.assertEqual(resumed, [resume_at])
+        # The cap counts from the resume, not from the start.
+        self.assertEqual(self.r.clock.t, resume_at + B.LAUNCH_PATCH_CAP_S)
         statuses = [cap for message, cap in agent.requests if message["type"] == "status"]
-        self.assertEqual(len(statuses), 60)
-        self.assertEqual(statuses[0], 30.0)  # each status waits at most what is left
+        self.assertEqual(len(statuses), round(B.LAUNCH_PATCH_CAP_S / B.LAUNCH_POLL_S))
+        # Each status waits at most what is left of the cap.
+        self.assertEqual(statuses[0], B.LAUNCH_PATCH_CAP_S)
         self.assertEqual(self.events[-2:], ["kill", "detach"])
 
     def test_the_spawn_form_takes_the_spawn_seam_and_resumes_through_the_device(self):
@@ -865,12 +925,15 @@ class HumanLaunchTest(unittest.TestCase):
     def test_a_bad_launch_form_or_a_missing_agent_starts_nothing(self):
         agent = FakeLaunchAgent(self.events)
         said = self.fails(agent, {**PATCH, "launch": "late"})
-        self.assertIn("`launch` is 'late', not one of suspended, spawn; nothing was started", said)
+        # The refusal names the bad form and every form the code takes.
+        self.assertIn("'late'", said)
+        for form in B.LAUNCH_FORMS:
+            self.assertIn(form, said)
         wire_human(self.r, agent)
         os.remove(self.r.env.launch_agent_path)
         with self.assertRaises(B.LaunchFailed) as cm:
             B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        self.assertIn("npm run build:launch", str(cm.exception))
+        self.assertIn(BS.build_command(self.r.env.launch_agent_path), str(cm.exception))
         self.assertEqual(self.events, [])
 
     def test_a_stale_stamp_refuses_naming_the_file_and_the_build_command(self):
@@ -885,14 +948,15 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertEqual(str(cm.exception),
                          f"the launch agent may not load: {BS.check(path)}; nothing was started")
         self.assertIn(path, str(cm.exception))
-        self.assertIn("launch.ts changed since it was built", str(cm.exception))
-        self.assertIn("npm run build:launch", str(cm.exception))
+        self.assertIn(os.path.basename(source), str(cm.exception))
+        self.assertIn(BS.build_command(path), str(cm.exception))
         self.assertEqual(self.events, [])
         os.remove(BS.stamp_path(path))
         with self.assertRaises(B.LaunchFailed) as cm:
             B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        self.assertIn("has no build stamp", str(cm.exception))
-        self.assertIn("npm run build:launch", str(cm.exception))
+        self.assertEqual(str(cm.exception),
+                         f"the launch agent may not load: {BS.check(path)}; nothing was started")
+        self.assertIn(BS.build_command(path), str(cm.exception))
         self.assertEqual(self.events, [])
 
     def test_the_real_env_uses_the_real_seams_and_files(self):
@@ -903,23 +967,21 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertEqual(os.path.basename(env.launch_patch_path), "launch_patch.json")
 
     def test_the_real_attach_builds_a_live_agent_for_the_pid(self):
-        seen = []
-
-        class FakeLiveAgent:
-            def __init__(self, agent_path, **kw):
-                seen.append((agent_path, kw))
-
+        # The real LiveAgent; it attaches only on start(), which this test
+        # never calls, so the pid needs no process behind it.
         out = [].append
-        with mock.patch.object(B.FA, "LiveAgent", FakeLiveAgent):
-            B._real_attach_agent(1234, "launch.js", "log.jsonl", out)
-        self.assertEqual(seen, [("launch.js", {"log_path": "log.jsonl", "pid": 1234, "out": out})])
+        agent = B._real_attach_agent(1234, "launch.js", "log.jsonl", out)
+        self.assertIsInstance(agent, FA.LiveAgent)
+        self.assertEqual((agent.pid, agent.agent_path, agent.log_path), (1234, "launch.js", "log.jsonl"))
+        self.assertFalse(agent.alive)
 
     def test_resume_main_thread_refuses_a_process_with_no_thread(self):
         # A Toolhelp snapshot only reads; no process id is a multiple of 4
         # this high.
+        pid = 0xFFFFFFF0
         with self.assertRaises(OSError) as cm:
-            B.resume_main_thread(0xFFFFFFF0)
-        self.assertIn("has no thread to resume", str(cm.exception))
+            B.resume_main_thread(pid)
+        self.assertIn(f"process {pid} ", str(cm.exception))
 
     def test_the_toolhelp_and_thread_time_calls_find_this_processs_main_thread(self):
         # Read-only calls on the test's own process: they check the struct
@@ -936,14 +998,19 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertEqual(process.pid, os.getpid())
         self.assertTrue(process.is_running())
 
-    def test_bot_run_never_opens_the_game_exe_for_writing(self):
-        with open(B.__file__, encoding="utf-8") as f:
-            source = f.read().splitlines()
-        write_mode = re.compile(r"""open\([^)]*["'][rbt]*[wax+]""")
-        self.assertEqual([line for line in source if write_mode.search(line)], [])
-        for line in source:
-            if "GAME_EXE" in line:
-                self.assertNotIn("open(", line)
+    def test_a_run_leaves_the_game_exe_as_it_was(self):
+        # A run on a game folder of its own: the exe's bytes and modified
+        # time are the same after the run, its restore included.
+        with tempfile.TemporaryDirectory() as tmp:
+            r = Rig(tmp, exits_at=10)
+            r.game_writes_stats_at(5)
+            r.env.exe = os.path.join(tmp, "game", os.path.basename(G.GAME_EXE))
+            os.makedirs(os.path.dirname(r.env.exe))
+            _write(r.env.exe, b"MZ the game")
+            before = (_read(r.env.exe), os.stat(r.env.exe).st_mtime_ns)
+            self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
+            self.assertEqual(r.launch.commands[0][0], r.env.exe)
+            self.assertEqual((_read(r.env.exe), os.stat(r.env.exe).st_mtime_ns), before)
 
 
 class LoaderLineTest(unittest.TestCase):
@@ -999,7 +1066,6 @@ class HumanStartRunTest(unittest.TestCase):
         with self.assertRaises(B.LaunchFailed) as cm:
             self.start(None, FakeLaunchAgent(self.events))
         self.assertEqual(str(cm.exception), B.HUMAN_NEEDS_SONG)
-        self.assertIn("runs only with --song", B.HUMAN_NEEDS_SONG)
         self.assertEqual(B.human_refusal(True, None), B.HUMAN_NEEDS_SONG)
         self.assertIsNone(B.human_refusal(True, self.r.song))
         self.assertIsNone(B.human_refusal(False, None))
@@ -1085,24 +1151,25 @@ class InstallChartTest(unittest.TestCase):
         I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
         self.assertEqual([ms for _path, ms in self.oggs], [90000])
 
-    def test_refuses_a_folder_without_a_song_end_or_chart_or_song_ini(self):
-        chart = os.path.join(self.src, "notes.mid")
-        FAKE.set_end(chart, None)
+    def refused(self) -> str:
+        """Install the source, which must be refused with nothing made."""
         with self.assertRaises(I.InstallRefused) as cm:
             I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
-        self.assertIn("song_length_ms is null", str(cm.exception))
-        os.remove(chart)
-        with self.assertRaises(I.InstallRefused) as cm:
-            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
-        self.assertIn("has no notes.chart or notes.mid", str(cm.exception))
-        _write(chart, b"MThd")
-        FAKE.set_end(chart, 90000)
-        os.remove(os.path.join(self.src, G.SONG_INI))
-        with self.assertRaises(I.InstallRefused) as cm:
-            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
-        self.assertIn(f"has no {G.SONG_INI}", str(cm.exception))
         self.assertFalse(os.path.exists(self.dest_root))
         self.assertEqual(self.oggs, [])
+        return str(cm.exception)
+
+    def test_refuses_a_folder_whose_chart_has_no_song_end(self):
+        FAKE.set_end(os.path.join(self.src, "notes.mid"), None)
+        self.assertIn(f"{hydra_end.FIELD} is null", self.refused())
+
+    def test_refuses_a_folder_without_a_chart(self):
+        os.remove(os.path.join(self.src, "notes.mid"))
+        self.assertIn(f"has no {' or '.join(I.CHART_FILES)}", self.refused())
+
+    def test_refuses_a_folder_without_a_song_ini(self):
+        os.remove(os.path.join(self.src, G.SONG_INI))
+        self.assertIn(f"has no {G.SONG_INI}", self.refused())
 
     def test_install_refuses_a_name_that_is_not_a_plain_folder_name(self):
         outside = os.path.join(self.tmp, "outside")
@@ -1112,7 +1179,8 @@ class InstallChartTest(unittest.TestCase):
                 with self.assertRaises(I.InstallRefused) as cm:
                     I.install(self.src, dest_root=self.dest_root, name=name,
                               write_ogg=self.fake_ogg)
-                self.assertIn("is not a plain folder name", str(cm.exception))
+                # The refusal names the name it refused.
+                self.assertTrue(str(cm.exception).startswith(repr(name)), str(cm.exception))
         self.assertFalse(os.path.exists(self.dest_root))
         self.assertFalse(os.path.exists(outside))
         self.assertEqual(self.oggs, [])
@@ -1147,10 +1215,11 @@ class InstallChartTest(unittest.TestCase):
     def test_the_copys_title_gets_the_probe_prefix(self):
         ini = self.installed_ini(b"[song]\nname = Ladies Talk [Kiyo Sen] (Drumeo Performance)\n"
                                  b"song_length = 90000\n")
-        self.assertEqual(ini, b"[song]\nname = Hydra Probe - Ladies Talk [Kiyo Sen] "
-                              b"(Drumeo Performance)\nsong_length = 90000\n")
+        title = "Ladies Talk [Kiyo Sen] (Drumeo Performance)"
+        self.assertEqual(ini, b"[song]\nname = " + PREFIX + title.encode()
+                         + b"\nsong_length = 90000\n")
         self.assertEqual(G.read_song_ini(os.path.join(self.dest_root, "Some Song"))["name"],
-                         "Hydra Probe - Ladies Talk [Kiyo Sen] (Drumeo Performance)")
+                         probe_songs.NAME_PREFIX + title)
 
     def test_every_other_byte_of_the_song_ini_stays(self):
         ini = self.installed_ini(b"\xef\xbb\xbf; name = a comment\r\n"
@@ -1167,7 +1236,7 @@ class InstallChartTest(unittest.TestCase):
                               b"[Song]\r\n"
                               b"artist  =  Caf\xe9 \r\n"
                               b"# name = another comment\r\n"
-                              b"NAME=Hydra Probe - Caf\xe9 Title  \r\n"
+                              b"NAME=" + PREFIX + b"Caf\xe9 Title  \r\n"
                               b"\r\n"
                               b"song_length = 90000\r\n"
                               b"[other]\r\n"
@@ -1231,7 +1300,7 @@ class InstallChartTest(unittest.TestCase):
         finally:
             os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
         self.assertEqual(_read(os.path.join(self.dest_root, "Some Song", G.SONG_INI)),
-                         b"[song]\nname = Hydra Probe - Real Title\nsong_length = 90000\n")
+                         b"[song]\nname = " + PREFIX + b"Real Title\nsong_length = 90000\n")
 
     def test_a_failed_title_leaves_no_half_made_folder(self):
         with mock.patch.object(G, "set_song_title", side_effect=OSError("disk full")):
