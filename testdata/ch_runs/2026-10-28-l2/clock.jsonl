@@ -1,0 +1,2 @@
+{"type": "send", "payload": {"t": 1793237578458, "songTime": 3.0683152319907094, "isSongOver": false, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237578709, "songTime": 3.316899529476359, "isSongOver": false, "isSongPlaying": true, "isPaused": false, "instances": 1}}
