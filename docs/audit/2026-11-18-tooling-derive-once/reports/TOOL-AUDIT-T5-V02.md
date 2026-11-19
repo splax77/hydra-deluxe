@@ -1,0 +1,45 @@
+# TOOL-AUDIT-T5-V02 (verifier V02, checking finder F02's report)
+
+All claims are "by reading". Paths: GATES = C:\Users\Patrick\.claude\gates, HY = the Hydra repo (checked in worktree copy and main checkout testdata). I ran nothing.
+
+## Candidate 1. K1 copies of the budget numbers (100/150, 20/30, 5/10) with no test over them. CONFIRMED
+Owner: GATES\progress.py:14-16 `CALL_WARN, CALL_STOP = 100, 150`, `MINUTES_WARN, MINUTES_STOP = 20, 30`, `STATUS_NAG_MINUTES, STATUS_DENY_MINUTES = 5, 10` ("The one home of these numbers ... Docs quote them").
+Copies seen in the files: model-postures.md:5 "inside 100 tool calls and 20 minutes"; reviewer.md "at 100 calls or 20 minutes you stop fixing"; writer-brief.md:101 "At 20 minutes or 100 tool calls, stop starting new cards"; memory one-reviewer-rule-d107.md:11,15; agent-rules.md rule 7 line 13 and line 27 (10/20/30 minutes); GATES\README.md:124.
+Held by test: GATES\tests\test_docs_numbers.py reads only CLAUDE.md, AR, BP, DOR, DR (DOCS, line 25). Its REVIEW_DOCS_HERE (reviewer.md, README, line 40; used at line 92) is checked only for typed doc keys, not for numbers. So reviewer.md, README, MP, writer-brief, memory and AR:27 have no test. Finder correct.
+Differs by situation: card writers skip the preamble (they get 20 min / 100 calls from writer-brief only); the main session is not counted by the hook.
+
+## Candidate 2. K2 risk "98 charts" (finder counted 102). REFUTED as a drift
+Finder's 102 is the number of folders holding any .chart/.mid/.sng (I get the same: 102 folders; 116 chart-type files). Counting the files a library scan takes (notes.chart, notes.mid, *.sng) gives 98. Tests pin 98 as well: tests\test_engine_sweeps.cpp:656 `CHECK(charts == 98)`, tests\ui\uitest_library.cpp:550 "98 charts", uitest_batch_reports.cpp:389 "Analyze 98 charts". So ui-testing.md:46,48 agree with the code today. What remains is K1: the 98 is hand-copied into ui-testing.md and test-rubric pages with only literal-number tests beside it (they would fail when the corpus changes, but nothing ties the doc to them). Which file names the loader accepts: open (I did not read the loader).
+
+## Candidate 3. K2 risk "about 6 s". CONFIRMED-CHANGED (K1, not shown to be K2)
+Owner: tools\ch_mcp\quiet.py:30 `QUIET_SAMPLE_S = 5`, used at :197. Copies of "about 6 s": tools\ch_mcp\server.py:128 and :158, docs\agents\clone-hero-mcp.md:15. None is built from the constant. Whether 6 is wrong cannot be settled by reading: the extra second is overhead (process list, other checks) and only a run of ch_start timing would show it. So it is a copied value with a hand-added second, not a proven drift. No test found over it (I looked at the test_game_tools hit only by name).
+
+## Candidate 4. K4 ch_sp_compare asks the agent for `resolution`. CONFIRMED
+tools\ch_mcp\sp_tools.py:317,330-332 refuses with "compare refused: give resolution, the chart's Resolution from its [Song] section". The schedule JSON names its chart: game_tools.py:470-487 `schedule_chart_folder` returns the folder of `doc["chart"]` (refuses a relative or missing path). No `resolution` appears in tools\replay_schedule.cpp (grep found none), so the schedule does not carry it; the chart file does. Situation: a schedule with an absolute chart path (a tool could read it); a schedule with a relative or missing chart path (cannot). Also a .mid chart keeps resolution in its header, not [Song], which the refusal text does not say. By reading.
+
+## Candidate 5. K6/K8 picture limits in shrink.py and test_docs_match_code.cpp. CONFIRMED
+tools\doc_shots\shrink.py:19-21 `MAX_FILE_BYTES = 500 * 1024`, `MAX_FOLDER_BYTES = 4 * 1024 * 1024` (comment: "tests/test_docs_match_code.cpp checks the same two at merge"). tests\test_docs_match_code.cpp:2024-2025 `kDocImageMaxBytes = 500 * 1024`, `kDocImagesMaxTotalBytes = 4 * 1024 * 1024` (comment :2022 names shrink.py). Two code places, each pointing at the other, neither reading the other. Equal today. Whether doc-screenshots.md:17 "the constants at the top of shrink.py hold them" is a wrong owner claim: it names shrink.py, which does hold them, so K8 is weak; the second owner is the point.
+
+## Candidate 6. K6 CTX_THRESHOLD vs literal 500K in CTX_TEXT. CONFIRMED
+GATES\stall.py:27 `CTX_THRESHOLD = 500000`; :36 `CTX_TEXT = ("Context is {:,} tokens. Auto-compact should have fired at 500K (50% of the window)...` is a literal. test_stall.py:424 pins the literal. "50% of the window" is stated nowhere I could check (open: a window setting is not read by any file I opened). Also copied in model-postures.md:15 "under 500K tokens".
+
+## Candidate 7. K7 "every step has a cap" and CH "each tool takes one folder". CONFIRMED
+Cap rule: BP:79-85 "Any step that repeats or waits needs a cap, in runs or minutes, and a line saying what to report when the cap is hit"; audit-method.md:40 "Every stage that repeats needs a cap and a line saying what happens at the cap"; clone-hero-mcp.md:37 "Every wait has a cap ... No tool retries on its own." No test or hook holds any of them; the progress hook limits an agent's total only. My grep for "retry|retries" in tools\ch_mcp\*.py (non-test) found no hit, which is consistent with CH:37 but a name search proves little.
+CH:39 "Each tool takes one song folder or one chart folder": no refusal of a library-root folder found in tools\ch_mcp\*.py (grep "library" hits only unrelated lines). The whole-library hook reads shell text only (finder; not re-opened by me). Open: a run with a library root as a folder argument would show it.
+
+## Splits
+S1 (finder's split 1). CONFIRMED-CHANGED. The hook text (progress.py:94-100) says "Start wrapping up: commit what passes and report what is unfinished." for every subagent. For a reviewer that is not a contradiction: "report what is unfinished" is the Notes list. The real split is in words around it: BP:73 (read by reviewers) says the warning is so "a fresh agent can take the rest"; reviewer.md, derive-once-review.md:110 and doc-review.md:100 say "No fresh agent picks it up". agent-rules.md:13 resolves it in its own words: "A reviewer hands nothing on: it signs off what it fixed and lists the rest in the Notes". So BP:73 differs from AR:13 / DOR:110 for the reviewer, and the hook has no reviewer branch. Same trigger, same reader (a reviewer), different instruction about who takes the rest.
+S2 (finder's split 2). CONFIRMED-CHANGED to a scope question. review-and-hooks.md is `## Confirmed` from line 7 to 36; line 24 (2026-10-09): "Agents have a soft cap of 20 minutes real time, they should plan to wrap up soon and dispatch remaining work to a new agent with fresh context. Agents have a hard cap of 30 minutes real time." Later (2026-10-10): :20 "i asked for the review agent to fix its findings directly, then we're done." and :21 "notes are fine, and yes do that for running out". D107 (fix-decisions.md:599) quotes "one reviewer who fixes his findings directly, then we're done. no more follow ups." The ruling at :24 speaks to all agents; :20/:21 speak to a reviewer that runs out. No single line names both sides as a split; the three lines together do cover reviewer (Notes) and other agents (dispatch). The main session must decide if that is enough. I do not.
+S3 (finder's split 3). CONFIRMED but mild. stall.py CTX_TEXT: "If it has not, finish the current step, then ask the user to run /compact before the next dispatch." model-postures.md:15: "End the phase and let compaction happen before the next dispatch". The text is conditional ("If it has not") so the two differ only when auto-compact did not fire. No Confirmed ruling found by the finder; I did not search for one.
+S4 (finder missed). The 10 in progress.py `STATUS_DENY_MINUTES = 10` and in stall.py `STALL_SECONDS = 600` are two different questions with one number (status age vs silence). Both were listed by the finder as "separate meaning"; not a split, listed so it is not lost.
+S5 (finder missed). BP:73 itself and BP rule 5 line: BP:73 "so a fresh agent can take the rest", while the same page says elsewhere (finder, BP rule 5) "A reviewer hands nothing on". Same as S1; one line only.
+
+## Rulings checked
+Confirmed lines named by the finder at review-and-hooks.md:20, 21, 22, 24 exist as quoted. None names a split. No Confirmed line found for 15 ms or the one frame (finder searched; I did not repeat).
+
+## Summary (five lines)
+Candidates checked: 7 grouped candidates (budget copies, 98 charts, about 6 s, resolution, picture limits, CTX 500K, K7 pair), plus the 3 splits.
+CONFIRMED: budget copies, resolution (K4), picture limits (K6), CTX 500K (K6), K7 pair; split 3.
+CONFIRMED-CHANGED: about 6 s (copy, not proven drift); split 1 (real difference is BP:73 "a fresh agent can take the rest" vs DOR/reviewer.md/AR:13); split 2 (a scope question, :24 against :20/:21).
+REFUTED: "98 charts" as drift (98 counts notes.*/.sng files and tests pin 98; 102 counts folders).
+Splits added: 1 (S5 folds into S1); candidates not reached: none (the "about 6 s" wording and the CH:39 library check stay open for a run).
