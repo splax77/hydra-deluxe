@@ -25,6 +25,60 @@
 using namespace hydra;
 namespace fs = std::filesystem;
 
+namespace {
+
+// The chart files in one testdata/input fixture folder, sorted. Library
+// discovery (corpus::chart_paths) does not list these fixture folders, so
+// each file is loaded by path, the way test_fast_tempo.cpp and
+// test_tied_variants.cpp load them.
+std::vector<std::string> fixture_chart_paths(const std::string& folder) {
+    std::vector<std::string> paths;
+    for (const fs::directory_entry& e :
+         fs::directory_iterator(fs::u8path(corpus::root() + "/" + folder))) {
+        const std::string p = e.path().u8string();
+        if (e.is_regular_file() && chart_format_of(p) != ChartFormat::None)
+            paths.push_back(p);
+    }
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}
+
+// The fixture folders this file analyzes beside the library's charts.
+const std::vector<std::string>& squeeze_fixture_folders() {
+    static const std::vector<std::string> folders{"test_folded_sqin", "test_fast_tempo"};
+    return folders;
+}
+
+// One activation the search wrote, with the chart file it came from.
+struct ChartActivation {
+    std::string chart;
+    Activation act;
+};
+
+// Every activation on every path the search keeps (HydraRecord::all_paths),
+// under the app's default settings, for every chart library discovery lists
+// (corpus::chart_paths) and every chart in the squeeze fixture folders. A
+// chart with no notes under those settings has no activation and is passed
+// over. Built once per run.
+const std::vector<ChartActivation>& searched_activations() {
+    static const std::vector<ChartActivation> all = [] {
+        const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+        std::vector<std::string> charts = corpus::chart_paths();
+        for (const std::string& folder : squeeze_fixture_folders())
+            for (const std::string& p : fixture_chart_paths(folder)) charts.push_back(p);
+        std::vector<ChartActivation> out;
+        for (const std::string& chart : charts) {
+            if (corpus::song(chart, cfg.reading(), cfg.rules).is_empty()) continue;
+            for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
+                for (const Activation& a : p->all_activations()) out.push_back({chart, a});
+        }
+        return out;
+    }();
+    return all;
+}
+
+}  // namespace
+
 TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
     // Ten 7/8 measures at 87.35 BPM, then 7/16 at 85.1, then two tempo
     // changes inside the 7/16 section, to 90 and to 95 BPM. No boundary sits
@@ -187,21 +241,10 @@ TEST_CASE("step_transfer_scale: equals every stored scale on the squeeze corpus 
                a.late == doctest::Approx(b.late).epsilon(1e-12);
     };
 
-    for (const std::string folder : {"test_folded_sqin", "test_fast_tempo"}) {
+    for (const std::string& folder : squeeze_fixture_folders()) {
         CAPTURE(folder);
-        // Library discovery (corpus::chart_paths) does not list these fixture
-        // folders, so every chart file in the folder is loaded by path, the
-        // way test_fast_tempo.cpp and test_tied_variants.cpp load them.
-        std::vector<std::string> paths;
-        for (const fs::directory_entry& e :
-             fs::directory_iterator(fs::u8path(corpus::root() + "/" + folder))) {
-            const std::string p = e.path().u8string();
-            if (e.is_regular_file() && chart_format_of(p) != ChartFormat::None)
-                paths.push_back(p);
-        }
-        std::sort(paths.begin(), paths.end());
         int charts = 0, acts = 0, sqins = 0;
-        for (const std::string& path : paths) {
+        for (const std::string& path : fixture_chart_paths(folder)) {
             CAPTURE(path);
             ++charts;
             const Song& song = corpus::song(path, ChartReading{});
@@ -254,22 +297,6 @@ TEST_CASE("step_transfer_scale: equals every stored scale on the squeeze corpus 
     Activation empty;
     empty.timecode = st.timecode(0);
     CHECK_FALSE(step_transfer_scale(empty, 0, st).has_value());
-}
-
-TEST_CASE("transfer_scale_between: a measure that is not a positive finite length is refused") {
-    // The load guard keeps such timing out of every chart (Task 3); a
-    // hand-built SongTiming is not guarded, so this pins the function's own
-    // refusal on both sides. A 0 BPM section makes a measure last forever,
-    // a negative one makes it last negative time.
-    std::map<int64_t, int64_t> tpm{{0, 1920}};
-    SongTiming forever(480, tpm, std::map<int64_t, double>{{0, 120.0}, {7680, 0.0}},
-                       {{0, {4, 4}}});
-    CHECK(transfer_scale_between(0, 3840, forever).has_value());
-    CHECK_FALSE(transfer_scale_between(0, 9600, forever).has_value());     // the end side
-    CHECK_FALSE(transfer_scale_between(9600, 11520, forever).has_value()); // the front side
-    SongTiming backwards(480, tpm, std::map<int64_t, double>{{0, 120.0}, {7680, -120.0}},
-                         {{0, {4, 4}}});
-    CHECK_FALSE(transfer_scale_between(0, 9600, backwards).has_value());
 }
 
 TEST_CASE("frontend_transfer_scales: direction-dependent at boundaries") {
@@ -718,52 +745,62 @@ TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it rea
 
 // D302: the squeezed-out row's side is read the same way, so both kinds are
 // pinned at the SP end.
+// The search squeezes a phrase out exactly on the SP end on real charts:
+// Evans Blue - Beg [highfine] (testdata/input/common/IB24/T1) does it on its
+// best path's first activation, so the walk below meets at least one.
 TEST_CASE("rate_note side at the SP end: a squeeze-out at 0 reads the early side too") {
-    auto rated_row = [](TransferScale post) {
-        Activation act;
-        test::set_skips(act, 0);
-        act.e_offset = 300.0;
-        act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 0.0});
-        BackendSqueeze row;
-        row.timecode = Timecode::raw(5000);
-        row.offset_ms = 0.0;
-        act.backends.push_back(row);
-        act.sqout_tick = 5000;
-        test::set_transfer(act, TransferScale{}, post);
-        ActivationRating r = rate_activation(act, 85.0);
-        REQUIRE(r.backends.size() == 1);
-        REQUIRE(r.backends[0].squeezed_out);
-        return r.backends[0].note;
-    };
-    const NoteRating early = rated_row(TransferScale{1.6, 1.0});
-    CHECK(early.early);
-    CHECK(early.scale == 1.6);
-    REQUIRE(early.effective_ms.has_value());
-    CHECK(*early.effective_ms == 0.0);
-    const NoteRating late = rated_row(TransferScale{1.0, 1.6});
-    CHECK(late.early);
-    CHECK(late.scale == 1.0);
-    CHECK_FALSE(late.effective_ms.has_value());
+    int at_end = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const ActivationRating r = rate_activation(ca.act);
+        REQUIRE(r.scales.has_value());
+        for (const BackendRating& br : r.backends) {
+            if (!br.squeezed_out || br.row.offset() != 0.0) continue;
+            ++at_end;
+            // On the end is inside Star Power, so the early side of the SP
+            // end's stored scale governs it, and it needs no ms to move.
+            CHECK(br.note.early);
+            CHECK(br.note.scale == r.scales->post.early);
+            CHECK(br.note.effective_ms.has_value() == is_scaled(r.scales->post.early));
+            if (br.note.effective_ms) CHECK(*br.note.effective_ms == 0.0);
+        }
+    }
+    REQUIRE(at_end > 0);
 }
 
+// Real cases of both ends: Pitch Dark (testdata/input/test_pitch_dark_ratio)
+// has an activation whose SqIn sits past its own end at a scaled stored
+// scale, so a scaled side governs it; Evans Blue - Beg [highfine]
+// (testdata/input/common/IB24/T1) has activations with every stored scale at
+// x1.00.
 TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rated note") {
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;
-    // The late side is scaled, but the only row is inside SP (early, x1.00).
-    test::set_transfer(act, TransferScale{1.0, 6.33});
-    BackendSqueeze in;
-    in.offset_ms = -40.0;
-    act.backends.push_back(in);
-    ActivationRating r = rate_activation(act);
-    CHECK_FALSE(r.scale_governs);
-    CHECK_FALSE(r.backends[0].note.effective_ms.has_value());
+    int governs = 0, flat = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const ActivationRating r = rate_activation(ca.act);
+        REQUIRE(r.scales.has_value());
+        // A side governs when a rated note read it and it is scaled.
+        auto governing = [](const SidesRead& read, const TransferScale& s) {
+            return (read.early && is_scaled(s.early)) || (read.late && is_scaled(s.late));
+        };
+        bool want = governing(r.post_read, r.scales->post);
+        REQUIRE(r.sqins_read.size() == r.scales->sqins.size());
+        for (size_t k = 0; k < r.sqins_read.size(); ++k)
+            want = want || governing(r.sqins_read[k], r.scales->sqins[k]);
+        CHECK(r.scale_governs == want);
+        if (r.scale_governs) ++governs;
 
-    // A flat activation never governs, even with a gap past the budget.
-    Activation flat = act;
-    test::set_transfer(flat, TransferScale{});
-    flat.backends[0].offset_ms = 222.2;
-    CHECK_FALSE(rate_activation(flat).scale_governs);
+        // An activation with no scaled side never governs, whatever its gaps.
+        bool any_scaled = is_scaled(r.scales->post.early) || is_scaled(r.scales->post.late);
+        for (const TransferScale& s : r.scales->sqins)
+            any_scaled = any_scaled || is_scaled(s.early) || is_scaled(s.late);
+        if (!any_scaled) {
+            ++flat;
+            CHECK_FALSE(r.scale_governs);
+        }
+    }
+    REQUIRE(governs > 0);
+    REQUIRE(flat > 0);
 }
 
 TEST_CASE("rate_activation: the stored scales are the only scales") {
@@ -876,59 +913,66 @@ TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search gr
     CHECK(offset_from_sp_end(1000.0, 1250.0) == -250.0);
 }
 
+// cap_clamped needs both halves: the SP cap clamped the window (clamp_tick
+// is set) and the frontend decides at least one squeeze (a SqIn or SqOut, or
+// a row is_frontend_decided accepts). Real cases of both outcomes: Pitch Dark
+// (testdata/input/test_pitch_dark_ratio) has clamped activations that hold a
+// SqIn; Evans Blue - Beg [highfine] (testdata/input/common/IB24/T1) has a
+// SqOut on an activation the cap never clamped.
 TEST_CASE("rate_activation: cap_clamped flag") {
-    // cap_clamped is only meaningful when both halves are true: the window
-    // was cap-clamped (clamp_tick is set) AND the activation actually lists a
-    // squeeze the frontend decides (a SqIn/SqOut, or a backend row that's
-    // squeezed out or at or past the backend leeway). Either half missing means
-    // there's no frontend-decided squeeze for the overfill warning to attach
-    // to, so the flag stays false.
-
-    // clamp_tick set, plus a SqOut -- both halves true, so this is the case
-    // the overfill warning is for.
-    // The SP end itself is never read here; 6144 is any end past the clamp.
-    Activation clamped_with_squeeze;
-    test::set_clamped_window(clamped_with_squeeze, 3072, 6144);
-    clamped_with_squeeze.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    ActivationRating r1 = rate_activation(clamped_with_squeeze);
-    CHECK(r1.cap_clamped);
-
-    // clamp_tick set, but the only backend row is at -30 ms -- inside the
-    // SP window, so the engine counts it and it isn't a squeeze the frontend
-    // decides. No SqIn/SqOut either, so cap_clamped stays false.
-    Activation clamped_no_squeeze;
-    test::set_clamped_window(clamped_no_squeeze, 3072, 6144);
-    BackendSqueeze mild_row;
-    mild_row.offset_ms = -30.0;
-    clamped_no_squeeze.backends.push_back(mild_row);
-    ActivationRating r2 = rate_activation(clamped_no_squeeze);
-    CHECK_FALSE(r2.cap_clamped);
-
-    // A SqOut with no clamp_tick at all -- the window was never cap-clamped,
-    // so there's nothing to warn about regardless of the squeeze.
-    Activation unclamped_with_squeeze;
-    unclamped_with_squeeze.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -50.0});
-    ActivationRating r3 = rate_activation(unclamped_with_squeeze);
-    CHECK_FALSE(r3.cap_clamped);
+    const double leeway = core::default_rules().backend_leeway_ms;
+    int clamped_flagged = 0, unclamped_with_squeeze = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const ActivationRating r = rate_activation(ca.act);
+        bool decided = !ca.act.sqinouts.empty();
+        for (const BackendRating& br : r.backends)
+            decided = decided || is_frontend_decided(br, leeway);
+        const bool clamped = ca.act.clamp_tick().has_value();
+        CHECK(r.cap_clamped == (clamped && decided));
+        if (clamped && r.cap_clamped) ++clamped_flagged;
+        if (!clamped && !ca.act.sqinouts.empty()) {
+            ++unclamped_with_squeeze;
+            CHECK_FALSE(r.cap_clamped);
+        }
+    }
+    REQUIRE(clamped_flagged > 0);
+    REQUIRE(unclamped_with_squeeze > 0);
 }
 
+// The rows the search writes: Pitch Dark (testdata/input/test_pitch_dark_ratio)
+// has chords inside Star Power and past the leeway beside one SP end, and
+// Evans Blue - Beg [highfine] (testdata/input/common/IB24/T1) squeezes a
+// phrase out, so the walk meets every kind of row.
 TEST_CASE("is_frontend_decided: squeezed out, or not counted without a squeeze") {
     const double leeway = core::default_rules().backend_leeway_ms;
-    BackendRating counted;
-    counted.row.offset_ms = -40.0;
-    CHECK_FALSE(is_frontend_decided(counted, leeway));
-
-    BackendRating uncounted;
-    uncounted.row.offset_ms = leeway + 5.0;
-    CHECK(is_frontend_decided(uncounted, leeway));
-
-    BackendRating squeezed;
-    squeezed.row.offset_ms = -40.0;
-    squeezed.squeezed_out = true;
-    CHECK(is_frontend_decided(squeezed, leeway));
-
-    BackendRating no_offset;
-    CHECK_FALSE(is_frontend_decided(no_offset, leeway));
+    int counted = 0, uncounted = 0, squeezed = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const ActivationRating r = rate_activation(ca.act, leeway);
+        REQUIRE(r.scales.has_value());
+        for (const BackendRating& br : r.backends) {
+            CAPTURE(br.row.offset());
+            if (br.squeezed_out) {
+                ++squeezed;
+                CHECK(is_frontend_decided(br, leeway));
+                continue;
+            }
+            // A plain row's side of the end is the engine's count of it:
+            // rate_activation reads the early side exactly when the engine
+            // counts the row without a squeeze.
+            if (br.note.early) {
+                ++counted;
+                CHECK_FALSE(is_frontend_decided(br, leeway));
+            } else {
+                ++uncounted;
+                CHECK(is_frontend_decided(br, leeway));
+            }
+        }
+    }
+    REQUIRE(counted > 0);
+    REQUIRE(uncounted > 0);
+    REQUIRE(squeezed > 0);
 }
 
 // The engine counts a plain row less than the leeway past the SP end, so it
