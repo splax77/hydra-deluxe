@@ -333,11 +333,6 @@
           "why": "checks the counts phrase's last clause, not a file format"
         },
         {
-          "file": "tests/test_config.cpp",
-          "line_text": "CHECK(hydra::ends_with(dir, tail));",
-          "why": "checks the resource folder's name, not a file format"
-        },
-        {
           "file": "tests/test_preview_boxes.cpp",
           "line_text": "if (box.position != want || !ends_with(box.tempo, want_sig)) {",
           "why": "checks the time box's tempo text ends in the time signature, not a file format"
