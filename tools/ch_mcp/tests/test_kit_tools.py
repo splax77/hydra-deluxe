@@ -408,67 +408,124 @@ class ConstantsTest(unittest.TestCase):
 
 class SetupTest(Rig):
     def test_refused_without_ch_attach(self):
-        tools = self.tools(attached=False)
+        # The server's real FridaTools, with nothing attached.
+        tools = self.tools(real_frida_tools=True)
         self.assertEqual(tools.ch_kit_setup(), FT.NOT_ATTACHED)
         self.assertEqual(self.events, [])
 
-    def test_refused_when_the_settings_line_is_1(self):
-        reply = self.tools(setting="1").ch_kit_setup()
-        self.assertEqual(reply, "refused: settings.ini reads pause_on_focus_lost = 1, not 0; "
-                                "start the game with ch_start, which sets it for the run")
-        self.assertEqual(self.events, [])
+    # The settings.ini a real run backed up before its launch, which reads
+    # pause_on_focus_lost = 1 (copied from
+    # hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/backup-20261112-182956).
+    REAL_SETTINGS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                                 "backup-20261112-182956", G.SETTINGS)
 
-    def test_refused_when_the_settings_line_is_missing(self):
-        reply = self.tools(setting=G.SettingNotFound("no `pause_on_focus_lost` line")).ch_kit_setup()
-        self.assertTrue(reply.startswith("refused: could not read pause_on_focus_lost"))
+    def documents_with(self, drop_setting_line=False):
+        """A documents folder holding the real settings.ini, read through the
+        real reader; with `drop_setting_line`, the same file less its
+        pause_on_focus_lost line."""
+        folder = os.path.join(self.tmp, "documents")
+        os.makedirs(folder)
+        with open(self.REAL_SETTINGS, "rb") as f:
+            lines = f.read().splitlines(keepends=True)
+        if drop_setting_line:
+            kept = [line for line in lines
+                    if line.split(b"=")[0].strip() != G.PAUSE_ON_FOCUS_LOST.encode()]
+            self.assertEqual(len(kept), len(lines) - 1)
+            lines = kept
+        with open(os.path.join(folder, G.SETTINGS), "wb") as f:
+            f.write(b"".join(lines))
+        return folder
+
+    def test_refused_when_the_settings_line_is_1(self):
+        value = G.get_game_setting(self.REAL_SETTINGS, G.PAUSE_ON_FOCUS_LOST)
+        self.assertNotEqual(value, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        reply = self.tools(documents_dir=self.documents_with()).ch_kit_setup()
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(f"{G.SETTINGS} reads {G.PAUSE_ON_FOCUS_LOST} = {value}, "
+                      f"not {G.PAUSE_ON_FOCUS_LOST_RUN_VALUE}", reply)
         self.assertIn("ch_start", reply)
         self.assertEqual(self.events, [])
 
-    def test_a_stale_or_missing_kit_agent_is_refused_before_any_attach(self):
-        path = os.path.join(self.agent_dir, K.KIT_AGENT_FILE)
-        with open(os.path.join(self.agent_dir, "kit.ts"), "a", encoding="utf-8") as f:
-            f.write("// an edit after the build\n")
-        reply = self.tools([STATUS, setup_reply()]).ch_kit_setup()
-        self.assertEqual(reply.splitlines()[-1],
-                         f"{path} is stale: kit.ts changed since it was built; "
-                         "run npm run build:kit in tools/ch_mcp/agent first")
-        os.remove(BS.stamp_path(path))
-        reply = self.tools([STATUS, setup_reply()]).ch_kit_setup()
-        self.assertEqual(reply.splitlines()[-1], BS.check(path))
-        self.assertIn("has no build stamp", reply)
+    def test_refused_when_the_settings_line_is_missing(self):
+        folder = self.documents_with(drop_setting_line=True)
+        with self.assertRaises(G.SettingNotFound) as cm:
+            K.read_pause_setting(folder)
+        reply = self.tools(documents_dir=folder).ch_kit_setup()
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(f"could not read {G.PAUSE_ON_FOCUS_LOST} in {G.SETTINGS} "
+                      f"({cm.exception})", reply)
+        self.assertIn("ch_start", reply)
+        self.assertEqual(self.events, [])
+
+    def test_an_unbuilt_kit_agent_is_refused_before_any_attach(self):
+        # The real agent folder's checked-in files, as a checkout holds them
+        # before npm run build:kit has made kit.js.
+        folder = os.path.join(self.tmp, "real-agent")
+        os.makedirs(folder)
+        for name in (K.KIT_AGENT_NAME + ".ts", *BS.BUILD_INPUTS):
+            shutil.copyfile(os.path.join(FT.AGENT_DIR, name), os.path.join(folder, name))
+        self.agent_dir = folder
+        path = os.path.join(folder, K.KIT_AGENT_FILE)
+        refusal = BS.check(path)
+        self.assertIsNotNone(refusal)
+        self.assertIn(BS.build_command(path), refusal)
+        reply = self.tools([LS_G1_STATUS, LS_G1_SETUP]).ch_kit_setup()
+        self.assertEqual(reply.splitlines()[-1], refusal)
         self.assertNotIn("attach", self.events)
+        self.assertIsNone(self.session.script)
 
     def test_backup_then_attach_then_setup_and_the_flags_are_printed(self):
-        tools = self.tools([STATUS, setup_reply()])
-        lines = tools.ch_kit_setup().splitlines()
+        # The replies of a real run, which handed the kit to System.
+        player = LS_G1_SETUP["kit"]["player"]
+        tools = self.tools([LS_G1_STATUS, LS_G1_SETUP])
+        lines = tools.ch_kit_setup(player).splitlines()
         self.assertEqual(self.events, ["backup", "attach"])
-        self.assertEqual(self.posted(), [
-            {"type": "read"},
-            {"type": "setup", "tag": "hydra-kit", "definition_id": 1, "player": "Player1",
-             "category_id": 1, "layout_id": 2, "placeholder_tags": PLACEHOLDER_TAGS}])
-        self.assertEqual(lines[0], BACKUP_LINE)
-        self.assertIn("ignoreInputWhenAppNotInFocus: was on, now off", lines)
-        self.assertIn("Keyboard.enabled: was on, now off", lines)
-        self.assertIn("Mouse.enabled: was on, now off", lines)
-        self.assertIn("player 9999999 System: keyboard was on, now off; mouse was on, now off", lines)
-        self.assertIn("player 0 Player1: keyboard was on, now off; mouse was off, now off", lines)
-        self.assertIn("kit: controller 6, definition 1 (MIDI Drums), tag hydra-kit, created, "
-                      "on Player1", lines)
-        self.assertIn("map: category 1, layout 2, enabled, 10 bindings", lines)
-        self.assertIn("  Kick (element 7) -> Orange (action 4)", lines)
-        self.assertEqual(lines[-1], "bindings: all 10 match KIT_BINDINGS")
+        self.assertEqual(self.posted(), [{"type": "read"}, K.setup_message(player)])
+        self.assertEqual(lines[:2], [K.given_player_line(player), BACKUP_LINE])
+        printed = K.setup_lines(LS_G1_SETUP)
+        start = lines.index(printed[0])
+        self.assertEqual(lines[start:start + len(printed)], printed)
+        # Every device and every player the game read back gets its line.
+        for device in K.KIT_DEVICES:
+            self.assertTrue(any(line.startswith(f"{K.device_label(device)}: ")
+                                for line in printed), device)
+        for p in LS_G1_SETUP["players_was"]:
+            self.assertTrue(any(line.startswith(f"player {p['id']} {p['name']}: ")
+                                for line in printed), p)
+        self.assertTrue(any(line.startswith(f"kit: controller {LS_G1_SETUP['kit']['id']}, ")
+                            for line in printed))
+        self.assertEqual(lines[-1], f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS")
         self.assertIsNotNone(self.game.kit_source())
 
     def test_a_map_that_differs_is_refused_naming_the_element_and_torn_down(self):
-        wrong = [b if b["element_id"] != 7 else {**b, "action_id": 0, "action_name": "Green"}
-                 for b in BINDINGS]
-        tools = self.tools([STATUS, setup_reply(wrong), TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("refused: the kit's bindings differ from KIT_BINDINGS:", lines)
-        self.assertIn("  Kick (element 7): expected action 4 (Orange), the map gives 0", lines)
-        self.assertEqual(self.posted()[-1], TEARDOWN_MESSAGE)
-        self.assertIn("kit teardown: all checks ok", lines)
-        self.assertEqual(lines[-1], "kit agent: detached")
+        # A real run's kit got id 6 and the drum map but from another
+        # definition (LS_E_SETUP); the teardown reply is a real one too.
+        player = LS_E_SETUP["kit"]["player"]
+        self.assertIsNone(K.kit_id_problem(LS_E_SETUP))
+        self.assertEqual(K.map_problems(LS_E_SETUP["maps"]), [])
+        real = bindings_by_element(LS_E_SETUP)
+        unbound = [i for i in K.KIT_BINDINGS if i not in real]
+        extra = [i for i in real if i not in K.KIT_BINDINGS]
+        self.assertTrue(unbound and extra)
+        tools = self.tools([LS_E_STATUS, LS_E_SETUP, LS_G1_TEARDOWN])
+        lines = tools.ch_kit_setup(player).splitlines()
+        refusal = next(i for i, line in enumerate(lines) if line.startswith("refused: "))
+        self.assertIn("KIT_BINDINGS", lines[refusal])
+        named = lines[refusal + 1:]
+        names = {e.id: e.name for e in K.KIT_ELEMENTS.values()}
+        for element_id in unbound:
+            self.assertTrue(any(line.startswith(f"  {names[element_id]} (element {element_id}):")
+                                for line in named), element_id)
+        for element_id in extra:
+            self.assertTrue(any(line.startswith(f"  element {element_id}:") for line in named),
+                            element_id)
+        self.assertNotIn(f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS", lines)
+        self.assertEqual(self.posted()[-1], K.teardown_message())
+        printed = K.teardown_lines(LS_G1_TEARDOWN)
+        start = lines.index(printed[0])
+        self.assertEqual(lines[start:start + len(printed)], printed)
+        self.assertTrue(lines[-1].startswith("kit agent: "), lines[-1])
+        self.assertIsNone(tools._agent)
         self.assertIsNone(self.game.kit_source())
 
     def test_a_keyboard_left_on_is_refused_and_torn_down(self):
