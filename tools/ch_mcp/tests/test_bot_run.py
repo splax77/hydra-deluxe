@@ -236,6 +236,13 @@ class BotRunTest(unittest.TestCase):
         self.assertTrue(any("--restore" in line for line in r.lines))
         r.assert_settings_untouched(self)
 
+    def test_run_bot_passes_stop_on_so_a_game_that_stays_is_closed(self):
+        r = Rig(self.tmp, exits_at=None)
+        r.game_writes_stats_at(5)
+        B.run_bot(r.song, r.out_dir, stop=True, env=r.env)
+        self.assertTrue(r.game.stopped)
+        self.assertIn(B.STOPPED_BY_FLAG_LINE, r.lines)
+
     def test_the_cap_prints_its_line_runs_the_restore_and_leaves_settings_ini(self):
         r = Rig(self.tmp, exits_at=None)
         cap_s = B.run_cap_s(SONG_LENGTH_MS)
@@ -414,9 +421,11 @@ class RunStepsTest(unittest.TestCase):
                                        B.POLL_CAP_EXTRA_S)
 
     def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
-        r = Rig(self.tmp, exits_at=None, length_ms=260504)
+        end_ms = 260504
+        r = Rig(self.tmp, exits_at=None, length_ms=end_ms)
         run = self.start(r, r.song)
-        self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
+        self.assertEqual(run.length_ms, end_ms)
+        self.assertEqual(run.cap_s, B.run_cap_s(end_ms))
 
     def test_start_run_takes_a_song_end_already_read_without_a_dump(self):
         r = Rig(self.tmp, exits_at=None, length_ms=260504)
