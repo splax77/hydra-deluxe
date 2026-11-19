@@ -1,0 +1,119 @@
+id	family	question	note
+I2-001	F1	How long may an agent stay silent before a stall notice.	
+I2-002	F1	How long an agent may run before its time limit applies.	
+I2-003	F1	How many stall notices one silence gets.	
+I2-004	F1	How often the stall scan runs.	
+I2-005	F1	How many status lines are relayed per scan.	
+I2-006	F1	Context size that starts the context warning.	
+I2-007	F1	Context size step between repeat context warnings.	
+I2-008	F1	How much of a transcript's end is read.	
+I2-009	F7	What the status relay header tells the main session to do.	
+I2-010	F1	How many of an agent's newest tool names the evidence line shows.	
+I2-011	F7	What the context warning tells the main session to do.	also repeats the 500K figure (F1)
+I2-012	F6	Which usage fields add up to context size.	could be F1 (context size)
+I2-013	F1	How long a Workflow may stay open with no agent call.	
+I2-014	F1	Slack allowed between a journal write and the launch stamp.	
+I2-015	F6	File suffix of the Workflow launch record.	could be F3 (file name)
+I2-016	F7	What the empty-fleet notice tells the main session to do.	
+I2-017	F3	Where stall state files are kept.	
+I2-018	F6	Which agent records count as still running.	also F8 (who is watched)
+I2-019	F3	Where agent records are found and their file shape.	
+I2-020	F7	What a stall notice says and where the status file is.	also F6 (notice doubles as a stall record)
+I2-021	F1	When a stall notice is due.	
+I2-022	F7	What the stall summary tells the main session to do.	
+I2-023	F1	When an agent counts as past its time limit.	
+I2-024	F7	What the past-limit notice tells the main session to do.	
+I2-025	F6	What the evidence line holds and how it is worded.	
+I2-026	F3	Where an agent's transcript file is found.	
+I2-027	F2	Which commits count as an agent's, by its Agent trailer.	also F6 (trailer format)
+I2-028	F3	Which repo is the hooks repo.	
+I2-029	F3	Where an agent's status lines are read from.	also F6
+I2-030	F6	What the parked note says.	
+I2-031	F5	What the verdict-problem relay says.	
+I2-032	F6	How the journal records an agent starting or finishing.	
+I2-033	F1	When an open Workflow is reported as stuck.	also F7 (reported to main session)
+I2-034	F1	When the context notice repeats.	
+I2-035	F6	Which state keys the trouble check keeps.	
+I2-036	F2	Who gets stall scans: only the main session.	
+I2-037	F2	Which tool launch stamps a Workflow.	
+I2-038	F7	What the check-in text tells the main session to do.	also F1 (timing)
+I2-039	F6	The order of the parts of the trouble report.	
+I2-040	F2	Which agent type's stop records a verdict.	
+I2-041	F5	Which hand-back line holds the merge or says clean.	
+I2-042	F5	What a hand-back with neither sign-off line counts as.	
+I2-043	F3	Where an agent's hand-back is saved.	
+I2-044	F5	How a reviewer is tied to its handover.	also F2 (agent identity)
+I2-045	F5	What is said when no verdict was recorded.	
+I2-046	F4	How a background task start and end are recognised.	
+I2-047	F6	What marks an agent parked or finished.	also F8
+I2-048	F2	Where the Agent trailer is read from commits.	
+I2-049	F5	Which commit a reviewer's verdict is for.	
+I2-050	F5	Which changed paths count as documents for a verdict.	
+I2-051	F5	When a brief asks for a doc review.	
+I2-052	F5	What is said when a doc review records no document.	
+I2-053	F6	What a recorded verdict says and which fields it holds.	
+I2-054	F6	Which run log file holds stop lines, and its fields.	also F3, F8
+I2-055	F7	What the hook does when it fails.	
+I2-056	F7	What the hook says when it cannot tell if an agent is parked.	
+I2-057	F7	Which hook event runs the watch and wakes the session.	also F1 (wake timing)
+I2-058	F6	What exit codes the watch returns.	
+I2-059	F7	Whether the watch decides any notice itself.	
+I2-060	F3	Names of the watch and crash record files.	also F6
+I2-061	F8	How watches avoid piling up.	
+I2-062	F1	When a watch ends or wakes the session.	also F7
+I2-063	F1	Longest sleep between watch passes.	
+I2-064	F1	When the check-in lands after the stall wait.	
+I2-065	F7	When a crash wakes the session.	also F8
+I2-066	F7	What a crash wake says.	
+I2-067	F2	Who is watched: a subagent's stop returns quietly.	
+I2-068	F3	Where the posture text file lives.	
+I2-069	F8	How often the posture is resent.	also F1 (how often)
+I2-070	F8	When the posture goes out.	also F7 (main session gets it)
+I2-071	F3	Where the last-send record for the posture lives.	
+I2-072	F7	What is said when the posture file is missing or empty.	
+I2-073	F6	Which hook event name the posture reply uses.	
+I2-074	F7	What happens when the posture hook fails.	
+I2-075	F4	Which scripts the prompt hook runs, in order.	also F7
+I2-076	F1	Claude Code's cap on one hook's added context.	
+I2-077	F6	How part replies are joined together.	
+I2-078	F7	What a prompt part's deny becomes.	also F5
+I2-079	F1	What is said when context is over the cap.	also F6
+I2-080	F6	How input is passed to prompt parts.	
+I2-081	F5	Which typed phrases count as waivers or allows.	
+I2-082	F5	What waiver kinds are recorded.	also F6
+I2-083	F6	What is recorded with each waiver.	also F5
+I2-084	F5	How the hook proves the user typed the phrase.	
+I2-085	F5	What happens when the hook input lacks a field.	
+I2-086	F5	Whether the waiver hook ever blocks a message.	also F7
+I2-087	F8	Least time between sweep starts.	
+I2-088	F8	How long a worktree must be idle to be removed.	
+I2-089	F8	How old a scratch entry or state record must be.	
+I2-090	F8	How long read-back logs keep a line.	
+I2-091	F1	Longest one git command in the sweep runs.	
+I2-092	F8	Which default folders the sweep covers.	
+I2-093	F8	Which worktrees the sweep removes and which it keeps.	
+I2-094	F8	Which sessions still count as running.	
+I2-095	F8	Which scratch entries the sweep removes.	
+I2-096	F8	Which state subfolders the sweep prunes.	
+I2-097	F8	What each log keeps when the sweep rewrites it.	
+I2-098	F8	How the log rewrite stays safe.	
+I2-099	F8	How the sweep worker runs and reports.	
+I2-100	F8	What the sweep report says.	also F6
+I2-101	F7	What the cleanup hook outputs and how it fails.	also F8
+I2-102	F7	Which parameters the sweep test takes.	
+I2-103	F1	How long a card claim holds the work for one session.	
+I2-104	F1	Size of removable transcripts that earns a reminder.	
+I2-105	F1	How often the removal reminder is said.	
+I2-106	F1	The card hook's time budget.	
+I2-107	F3	Where the card tools and data live.	
+I2-108	F3	Which sessions the card hook acts on.	also F2
+I2-109	F4	Which scripts the card hook runs, in what order.	also F7
+I2-110	F6	Claim file format and the rule for refusing a claim.	also F1
+I2-111	F3	Where the reminder state file lives and its format.	also F6
+I2-112	F3	Where batch files go and how they are named.	also F6
+I2-113	F7	What the card-writer instructions tell the main session.	
+I2-114	F3	Which folder holds the session cards.	
+I2-115	F7	What the removal reminder tells the user.	also F8
+I2-116	F7	What the card hook says on failure.	
+I2-117	F1	How many agents run at once in a wave.	also F7 (agent rule 14)
+I2-118	F7	Which test proves the card hook.	

@@ -1,0 +1,66 @@
+id	verdict	category	theme	sides	why
+L-F28-01	CONFIRMED	P	none	none	Values agree today; only the refusal text has three wordings that a pointer would unify.
+L-F28-02	CONFIRMED	Q	stuck agent nudge or stop	model-postures.md:11 nudge once then TaskStop; stall.py:124,143 TaskStop and re-dispatch with no nudge	Split is a real choice of behaviour for a stuck agent and no ruling names both sides.
+L-F28-03	CONFIRMED	P	none	none	Row says "None (the two agree)"; MP:11 only restates the hook text.
+L-F28-04	CONFIRMED	A	stall notice at 30 minutes	agent-rules.md:27 notice at 30 minutes; stall.py:134 only after more than 30 minutes	Doc line differs from the hook at exactly 30 minutes.
+L-F28-05	CONFIRMED	P	none	none	Row has no split; the 500K figure is copied into MP:15 and a literal in stall.py:36.
+L-F28-06	CONFIRMED	Q	missing plan file cited	wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md which does not exist; check.py:34-35 cites it by name only	Cited plan is gone and no current place is clear, so it is not a plain stale reference.
+L-F28-07	CONFIRMED	P	none	none	W15: no split; Python and PowerShell hooks both warn and exit 0, README restates it.
+L-F28-08	CONFIRMED	A	header comments list fewer params	cleanup_sweep.ps1:33-46 and session_cards_start.ps1:26-32 header comments; the scripts' param blocks	W15: two header lists are shorter than their param blocks, a comment against code.
+L-F28-09	CONFIRMED	Q	write-back reminder has no hook	CLAUDE.md Past sessions says next main session adds the fact; session_cards_start.ps1 has no write-back text	K7: the rule is carried by no hook, so who enforces it is a choice.
+L-F28-10	CONFIRMED	C	gate markers name removed folder	.derive-once-gate and .doc-review-gate name hooks\lib\*_rules.ps1; logic is in gates\review_rules.py	Markers cite files that no longer exist and the current place is clear.
+L-F28-11	CONFIRMED	P	none	none	W15: comment and code agree today; comment only restates the rule.
+L-F28-12	CONFIRMED-CHANGED	P	none	none	K1 copy: writer-brief.md:91 repeats check.py:36 CATCHERS and they agree.
+L-F28-13	CONFIRMED-CHANGED	Q	plain English rule copies	brief-preamble.md:123 keeps the gloss; model-postures.md:13 drops it; both restate a different subset of ~/.claude/CLAUDE.md	Docs disagree on which parts of the rule apply with no code behind either.
+L-F28-14	CONFIRMED-CHANGED	B	may agents ask any question	Hydra CLAUDE.md:1 ask if unclear; memory ask-only-game-or-permission-questions.md limits to game or permission	The only split is a memory note against a doc.
+L-F28-15	CONFIRMED-CHANGED	Q	who defines a project word	agent-rules.md:41 CONTEXT.md decides; agent-rules.md:43 code usage settles the meaning	Two doc lines answer who defines a word and no ruling names both.
+L-F28-16	CONFIRMED	Q	meaning of build in rules 3 and 14	agent-rules.md:9 build is any piece of work; agent-rules.md:20 build means compiling	One word with two meanings across rules, a doc-against-doc choice.
+L-F28-17	CONFIRMED	Q	unfiled user quotes in rules	agent-rules.md:21,23 quote the user; rulings/agents-and-workflow.md Confirmed has no such lines	Quotes cited as the user's words are not filed rulings, needing the user's call.
+L-F28-18	CONFIRMED-CHANGED	Q	who writes a missing owner	agent-rules.md:21 new owner goes in core; owner-map.md:37 nobody writes a new owner	Doc-against-doc split plus a filter-form copy; no code behind it.
+L-F28-19	CONFIRMED	Q	agent edit limits across worktrees	brief-preamble.md:41 never touch another worktree; brief-preamble.md:43 and gates README.md:19 delete hook passes any worktree path	Prose and hook gap plus a move-or-rewrite rule with no hook, a choice of enforcement.
+L-F28-20	CONFIRMED	Q	build pass slot folder	build_slot.ps1:78 hooks\state\build_slots; every other hook state in gates\state	Two code places disagree on the state folder and which is live is a choice.
+L-F28-21	CONFIRMED-CHANGED	Q	who updates Clone Hero page	Hydra CLAUDE.md:9 any session or agent updates the page; brief-preamble.md:105 only an agent whose brief owns the page	Two docs answer differently for an executor that does not own the page.
+L-F28-22	CONFIRMED	P	none	none	No split; percall.py refuses only by tool name, which AR:27 already says.
+L-F29-01	CONFIRMED-CHANGED	Q	when a wave is built	model-postures.md:11 and derive-once-review.md:198 build each branch before review; memory one-build-per-wave.md builds one combined branch	Docs and a memory note disagree on a real build schedule.
+L-F29-02	CONFIRMED	P	none	none	Row has no split; the ban copies agree and only the pass tool has a hook.
+L-F29-03	CONFIRMED-CHANGED	Q	hook tests agents may run	gates README.md:17 agents run hook tests; brief-preamble.md:47 only the ones the brief names	Two docs disagree for an unnamed hook test with no code behind either.
+L-F29-04	CONFIRMED	Q	build pass slot folder	build_slot.ps1:78 hooks\state\build_slots; gates\state holds all other hook state	Same state-folder question as L-F28-20 and which path is live needs a choice.
+L-F29-05	CONFIRMED	P	none	none	W15: no splits; copies of one rule agree.
+L-F29-06	CONFIRMED	Q	what backs a new number	brief-preamble.md:117 brief names the decision; derive-once-review.md:45 lists four places	Two docs answer differently and nothing says which governs.
+L-F29-07	CONFIRMED	Q	why comments versus no history	brief-preamble.md:119 allows why-a-rule-exists comments; rulings/code-and-engine.md:22 bans history in comments	A doc against a Confirmed ruling with no stated winner.
+L-F29-08	CONFIRMED-CHANGED	Q	plain English rule copies	model-postures.md:13 drops the gloss; brief-preamble.md:123 and global CLAUDE.md differ in subsets	Same doc-against-doc question as L-F28-13.
+L-F29-09	CONFIRMED	B	main session builds without new yes	agent-rules.md:9 no separate yes for compiles; memory one-build-per-wave.md:15 get a yes before builds	Only split is a memory note against a doc.
+L-F29-10	CONFIRMED	Q	meaning of build in rules 3 and 14	agent-rules.md:9 any piece of work; model-postures.md:3 versus :9,:11 compile meaning	Same word-meaning question as L-F28-16.
+L-F29-11	CONFIRMED	Q	number of hook jobs	hooks-from-scratch plan line 11 five jobs; gates README.md:3 six jobs	Two docs give different counts and the README says the code wins but names no code.
+L-F29-12	CONFIRMED-CHANGED	P	none	none	W15: no split in values; three lists cover different subsets.
+L-F29-13	CONFIRMED	Q	who defines a project word	agent-rules.md:41 CONTEXT.md decides; agent-rules.md:43 code usage settles meaning	Same doc-against-doc question as L-F28-15.
+L-F29-14	CONFIRMED	A	late press moves one for one	derive-once-review.md:66 one for one; play_chart.py:361-369 scales by conversion	Doc line against the code that actually does it.
+L-F29-15	CONFIRMED-CHANGED	A	worked example read-end path	derive-once-review.md:57-66 transfer_scale_between; replay_schedule.cpp:656 step_transfer_scale	Doc example no longer matches the code path.
+L-F29-16	CONFIRMED	Q	end conversion two code homes	replay_schedule.cpp:267-276 C++ inverse; play_chart.py:361-369 Python forward	Two code places hold the same sum and merging them is a choice.
+L-F29-17	CONFIRMED-CHANGED	A	filter form for scan and docs tests	integrate.md:43-44 and derive-once-review.md:99 tc and sf forms; precheck test_pick.cpp:789-790 prints the reverse	Doc prose against the precheck code that writes the filters.
+L-F29-18	CONFIRMED-CHANGED	Q	integrator role and build timing	integrate.md:3,41-46 integrator builds joined branch; model-postures.md:5,11 five types and per-branch build	Docs disagree on roles and schedule with no code behind either.
+L-F29-19	CONFIRMED	A	background jobs for agents	brief-preamble.md:77 never; agent_stop.py and stall.py:239 tolerate and track parked agents	Prose ban against hook behaviour that treats it as normal.
+L-F29-20	CONFIRMED	P	none	none	W15: no splits; audit-method rules agree with their copies.
+L-F30-01	CONFIRMED	P	none	none	Row says pages agree word for word and only the pass tool has a hook.
+L-F30-02	CONFIRMED-CHANGED	A	whole-library run needs flag	agent-rules.md:14 any whole-library run; percall.py:48 and review_rules.py:51 test only the flag text	Doc claims wider than what the hook checks.
+L-F30-03	CONFIRMED-CHANGED	P	none	none	Constant and test literals agree today; they differ only if the constant changes.
+L-F30-04	CONFIRMED-CHANGED	Q	who writes a missing owner	agent-rules.md:21 new owner goes in core; owner-map.md:37 and scout.md:11 nobody writes one	Doc-against-doc plus a carve-out missing from CLAUDE.md.
+L-F30-05	CONFIRMED	P	none	none	Row: not a two-answer split; ch_stop rule stated once with nothing checking it.
+L-F30-06	REFUTED	R	none	none	Final verdict is REFUTED.
+L-F30-07	CONFIRMED	P	none	none	Row says they agree today.
+L-F30-08	CONFIRMED	P	none	none	Row says labels agree today.
+L-F30-09	CONFIRMED-CHANGED	Q	who defines a project word	README.md:34 and brief-preamble.md:99 and derive-once-review.md:51 differ; domain.md:11 lets a skill create terms	Docs disagree on who defines words with no code behind.
+L-F30-10	CONFIRMED	Q	when to refresh doc screenshots	doc-screenshots.md two triggers; development.md:977-983 release only	Two docs differ and no code behind either.
+L-F30-11	CONFIRMED	Q	old names in release notes	public-doc-style.md:77 keep old names; public-doc-style.md:5 check names against code	Page says both and not which wins.
+L-F30-12	CONFIRMED	Q	where the user's words are searched	audit-method.md:126 omits rulings; CLAUDE.md:41 omits plans and cards; premise-map.md:45 adds chat	Three docs give three lists with no code behind.
+L-F30-13	CONFIRMED-CHANGED	Q	question recommendation rule	audit-method.md:98 always recommend; memory counts-on-screen-must-agree.md:21 never recommend keeping a side	Docs disagree on how questions are written; a real choice.
+L-F30-14	CONFIRMED-CHANGED	P	none	none	Row has no split; the brief list is copied across pages.
+L-F30-15	CONFIRMED	Q	who writes a missing owner	memory derive-display-from-engine-truth.md:18 propose an owner; scout.md:11 and owner-map.md stops say nobody writes one	Memory note against docs plus doc-against-doc cases; a real choice.
+L-F30-16	CONFIRMED	P	none	none	Two homes of the same two owner-map checks, no disagreement.
+L-F30-17	CONFIRMED	Q	plain English rule copies	brief-preamble.md:123, doc-review.md:81 and writer-brief.md:94 are three subsets of the global file	Three docs each claim the global file is the one home with different sets.
+L-F30-18	CONFIRMED	P	none	none	Device list in kit_tools.py and kit.ts agree today; split only if one is edited alone.
+L-F30-19	CONFIRMED-CHANGED	A	retimed word list	clone-hero-mcp.md:49 late inside plain; play_chart.py:99,418-438 adds range	Doc word list differs from the code that emits it.
+L-F30-20	CONFIRMED-CHANGED	A	late press moves one for one	derive-once-review.md:66 one for one; play_chart.py:361-369 multiplies by conversion	W15: one function and the doc is the page that is off.
+L-F30-21	CONFIRMED	P	none	none	Row says they agree today.
+L-F30-22	CONFIRMED	P	none	none	Single home with no split.
+L-F30-23	CONFIRMED-CHANGED	Q	skills named but missing	issue-tracker.md:20,40 names /triage and /wayfinder; ~/.claude/skills holds neither	Referenced skills not found and whether they exist elsewhere is unknown.

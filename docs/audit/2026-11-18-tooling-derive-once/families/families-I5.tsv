@@ -1,0 +1,197 @@
+id	family	question	note
+I5-001	F7	How must explanations be written	style rule; no closer family
+I5-002	F7	Pre-show check of plans and long answers	style rule; no closer family
+I5-003	F7	What shape counts as BAD vs GOOD	style rule; no closer family
+I5-004	F7	Plain-English rule home claim	
+I5-005	F7	When to ask the user	
+I5-006	F3	Where explanation rules live	
+I5-007	F7	How to drive Clone Hero	
+I5-008	F7	What to read before a Clone Hero question or plan	
+I5-009	F3	Where a learned Clone Hero fact goes	
+I5-010	F3	Issue tracker location	
+I5-011	F6	Triage labels	
+I5-012	F3	Domain docs layout	
+I5-013	F6	Where past-session cards live and their shape	could be F3
+I5-014	F6	What a card keeps	
+I5-015	F6	Status of condensed transcripts	
+I5-016	F6	When to look at cards, how to search	
+I5-017	F6	Is a card proof	
+I5-018	F7	Start-of-session card writing	
+I5-019	F5	Audit method page and exits	
+I5-020	F5	Which GUI check a change needs	
+I5-021	F6	Where rulings live and who may cite	could be F5
+I5-022	F7	Who changes a CONTEXT.md term	
+I5-023	F3	Where this machine's tools and paths are	
+I5-024	F5	Public-doc style	
+I5-025	F5	When a code merge needs review	
+I5-026	F5	What gets doc review	
+I5-027	F5	How text reaches GitHub	could be F3
+I5-028	F6	Required plan contents	
+I5-029	F6	When a scout writes an Owner map	could be F7
+I5-030	F8	Finished plan or handoff removal	
+I5-031	F7	Short form of agent rule 1	
+I5-032	F2	Rule 2: model roles	
+I5-033	F7	Rule 3: approval before work starts	
+I5-034	F7	Rule 1: who runs tests and which	could be F5
+I5-035	F5	Shared hook code list that forces whole hook suite	
+I5-036	F5	Always-run tests at every Hydra main merge	
+I5-037	F3	Live settings.json tracking and sync	could be F8
+I5-038	F2	Rule 2: model roles	
+I5-039	F7	Rule 3: what needs approval	
+I5-040	F1	Rule 4: stalling or going quiet	
+I5-041	F5	Rule 5: one review	
+I5-042	F2	Rule 6: parallel runs	could be F7
+I5-043	F1	Rule 7: status line cadence and budgets	could be F7
+I5-044	F5	Rule 8: whole-library permission	could be F4
+I5-045	F7	Rule 9: trusting summaries	
+I5-046	F7	Rule 10: CI after push	
+I5-047	F7	Rule 11: question lists what user will see	
+I5-048	F7	Rule 12: unasked visible change	
+I5-049	F7	Rule 13: stray edits	
+I5-050	F7	Rule 14: builds	
+I5-051	F7	Rule 15: find existing owner	
+I5-052	F7	Display decides nothing	
+I5-053	F7	Owner map required	could be F6
+I5-054	F7	Which hooks check which rules	
+I5-055	F5	Rulings: nothing recorded without approval	
+I5-056	F6	Confirmed vs Unconfirmed lines	
+I5-057	F5	What never counts as user's words	
+I5-058	F7	Who defines CONTEXT.md words	
+I5-059	F5	Which records count as decisions	
+I5-060	F7	Rule count wording	
+I5-061	F3	Where hooks are documented	
+I5-062	F2	Agent id source	
+I5-063	F3	Status file path	could be F2
+I5-064	F1	Status line form and cadence	could be F6
+I5-065	F4	Status write command	
+I5-066	F2	Status id rule	
+I5-067	F4	Status line typing rules	
+I5-068	F1	Status deadlines	
+I5-069	F6	Stall evidence line contents	could be F1
+I5-070	F4	How to read files	
+I5-071	F4	Shell choice and Bash path form	
+I5-072	F4	Five refused Bash shapes	
+I5-073	F4	Shell output trim threshold	could be F1
+I5-074	F7	Scope of files an agent may edit	could be F3
+I5-075	F3	Delete rule allowed roots	could be F4
+I5-076	F7	Which tests an agent may run	could be F5
+I5-077	F5	Whole-library run rule	could be F4
+I5-078	F1	Busy-machine timing failure	could be F7
+I5-079	F7	Failing-first tests	could be F5
+I5-080	F7	Build ban	
+I5-081	F4	Commit staging	could be F7
+I5-082	F2	Commit form and trailers	could be F4
+I5-083	F1	Commit timing	could be F4
+I5-084	F2	Co-author model line	
+I5-085	F1	Call and time budget numbers	
+I5-086	F1	Reviewer budget behaviour	could be F5
+I5-087	F4	Helpers and waiting	could be F2
+I5-088	F1	Step stop conditions	
+I5-089	F5	Review findings	
+I5-090	F7	Code is source of truth	
+I5-091	F7	Absence claims	
+I5-092	F3	Where Clone Hero facts go	
+I5-093	F7	When blocked	
+I5-094	F5	Project words and rulings	could be F7
+I5-095	F7	Owner check before commit	
+I5-096	F7	Tests and numbers	could be F1
+I5-097	F7	Comments rule	
+I5-097a	F7	Plain English home	
+I5-098	F6	Final report default	could be F7
+I5-099	F6	Brief contents the preamble expects	could be F2
+I5-099a	F4	Python invocation	
+I5-100	F7	Which hooks the preamble says are enforced	
+I5-101	F7	Main session's role	
+I5-102	F7	Approval gate	
+I5-103	F2	Worktree and parallelism	could be F3
+I5-104	F1	Size limit for an executor task	
+I5-105	F2	subagent_type names and models	
+I5-106	F5	What counts as a review	
+I5-107	F2	Cross-repo brief	could be F3
+I5-108	F5	One review then done	
+I5-109	F5	Early start of dependent task	could be F2
+I5-110	F7	Who builds and tests	
+I5-111	F2	Supervising agents	could be F7
+I5-112	F7	Post-executor sequence	
+I5-113	F5	Merge test list for Hydra	
+I5-114	F5	Merge test list for hooks	
+I5-115	F7	Handoff and library claims	
+I5-116	F1	Context ceiling	
+I5-117	F7	Plain English in the main-session postures file	
+I5-118	F2	card-writer model and tools	
+I5-119	F2	card-writer brief it follows	could be F6
+I5-120	F2	executor model and tools	
+I5-121	F2	executor preamble and handoff	could be F7
+I5-122	F7	executor: no builds, no build-needing tests	
+I5-123	F2	planner model and tools	
+I5-124	F6	planner Promise map	
+I5-125	F6	planner Premise map and live steps	could be F4
+I5-126	F6	planner ruling and premise rules	
+I5-127	F7	planner: invent no rule for a screen	could be F6
+I5-128	F6	planner owner map build rule	
+I5-129	F2	reviewer model and tools	
+I5-130	F2	reviewer guides used	could be F5
+I5-131	F5	reviewer: plan is the contract	
+I5-132	F5	reviewer: plan Premise map check	could be F6
+I5-133	F5	reviewer: invented rules in plans	could be F7
+I5-134	F5	reviewer: owner-map check	could be F6
+I5-135	F5	reviewer: fix on same branch	could be F4
+I5-136	F7	reviewer: no build-needing tests	could be F5
+I5-137	F5	reviewer: cross-repo commit	could be F3
+I5-138	F5	reviewer: sign-off line	
+I5-139	F5	reviewer: what the stop hook does	
+I5-140	F2	scout model and tools	
+I5-141	F3	scout write scope	could be F7
+I5-142	F6	scout owner map shape	
+I5-143	F2	All five agent files forbid helpers	
+I5-144	F1	No maxTurns in agent files	could be F2
+I5-145	F7	What jobs hooks do	
+I5-146	F3	Where agent rules live	
+I5-147	F6	update_agent lock	could be F1
+I5-148	F4	percall.py order and scope	could be F7
+I5-149	F4	Whole-library check	could be F5
+I5-150	F4	Key-route check	could be F5
+I5-151	F4	Build-pass refusal	could be F7
+I5-152	F7	Test run line has no hook	could be F4
+I5-153	F1	progress.py as numbers' home	
+I5-154	F4	Delete rule specifics	could be F3
+I5-155	F3	Media guard	could be F4
+I5-156	F4	Shell output trim	could be F1
+I5-157	F4	Exit-code rewrite	
+I5-158	F4	bash_windows_rule	could be F1
+I5-159	F1	stall.py steps	could be F7
+I5-160	F1	wake.py	could be F6
+I5-161	F1	prompt.py parts and field cap	could be F4
+I5-162	F8	Posture resend	could be F1
+I5-163	F5	Waiver kinds	could be F4
+I5-164	F5	review_dispatch	could be F2
+I5-165	F5	agent_stop: parked agents	could be F8
+I5-166	F5	agent_stop: verdict word	
+I5-167	F5	agent_stop: new tip	could be F6
+I5-168	F5	agent_stop: documents verdict	
+I5-169	F6	agent_stop problem log	could be F5
+I5-170	F5	Ref gate and trailer rule	could be F2 and F4
+I5-171	F5	Real-app check for UI changes	could be F6
+I5-172	F5	Ruling check	could be F6
+I5-173	F5	publish_gate	
+I5-174	F5	Helper scripts	could be F4
+I5-175	F8	Cleanup sweep	
+I5-176	F3	Pointer check at session start	could be F8
+I5-177	F4	Settings fragment contents	could be F3
+I5-178	F3	State folder layout	could be F6
+I5-179	F6	Refusal log	
+I5-180	F6	Hook shape	could be F7
+I5-181	F3	Registration	could be F4
+I5-182	F7	One-registration rule	could be F4
+I5-183	F1	Settings reload	could be F3
+I5-184	F1	Call budget text	
+I5-185	F1	No maxTurns	could be F2
+I5-186	F3	Where hooks work happens	
+I5-187	F4	Hook test command	could be F3
+I5-188	F4	PowerShell hook tests	could be F3
+I5-189	F7	test_docs_numbers.py	could be F1
+I5-190	F5	Which hook tests a merge runs	
+I5-191	F5	Making a change live	could be F4
+I5-192	F3	Shim scope	could be F4
+I5-193	F4	Rollback commands	could be F8
+I5-194	F2	Probe findings	could be F1

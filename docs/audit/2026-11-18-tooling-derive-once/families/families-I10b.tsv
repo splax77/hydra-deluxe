@@ -1,0 +1,117 @@
+id	family	question	note
+I10b-001	F1	CPU share below which the machine counts as quiet before a launch
+I10b-002	F1	How many seconds the CPU share is averaged over for the quiet check
+I10b-003	F1	How young a build folder's newest file must be to count as a build
+I10b-004	F1	How long the quiet check takes, as the ch tool text tells agents	The 6 s figure appears only in tool text.
+I10b-005	F1	Longest time the build-folder scan may run before it gives up
+I10b-006	F7	Which process names count as a running compiler and refuse a launch	Could also read as F4 (refused launch).
+I10b-007	F7	Whether an MSBuild started with a given flag counts as a compiler
+I10b-008	F7	Which busy programs get reported but never refuse a launch
+I10b-009	F1	How long the bot's live steps poll, extra-wait and exit-check
+I10b-010	F4	Which player the launch uses when none is given	Could also read as F7 (who plays).
+I10b-011	F1	How long each human-launch step may wait: attach, arm, patch, poll
+I10b-012	F6	Which launch forms and state words the launch tool reports
+I10b-013	F4	What a human launch without a song is refused with
+I10b-014	F6	Which one-byte patch makes the launcher build a human player	A fixed-format patch record; no family covers game addresses.
+I10b-015	F3	Where the il2cpp dump files are kept	Same dump path appears in four files.
+I10b-016	F3	Where the Il2CppDumper program lives, and how long it may run	The 600 s run cap is F1.
+I10b-017	F6	Which files and stage lines make a dump count as good
+I10b-018	F6	Which build number and named signatures the facts tool uses by default
+I10b-019	F3	Where the Clone Hero game folder lives
+I10b-020	F3	Where the game's save folders and files sit
+I10b-021	F8	What the game's registry key and settings are backed up and restored around a run	Restore caps are F1; paths are F3.
+I10b-022	F6	Which song.ini key gives a song's title
+I10b-023	F6	Which chart files a song folder may hold
+I10b-024	F1	How long the silent-audio install call may wait
+I10b-025	F3	What name prefixes scratch and log files get
+I10b-026	F5	Which press routes need the user's typed allow before a press	Refusal of route-less presses could also be F4.
+I10b-027	F1	How long the attach, delay and state-read waits may run
+I10b-028	F6	Which bit in the engine flags marks dynamics stop
+I10b-029	F4	Which refusal messages trace and attach calls return
+I10b-030	F6	Which menu field kinds and page words the menu tool uses
+I10b-031	F1	How long the front server waits for workers and polls
+I10b-032	F2	Which tool names the front server exposes to agents
+I10b-033	F6	Which identity values the virtual kit controller is registered with	Game-side values; no family covers them.
+I10b-034	F6	Which kit pads and buttons can be pressed, by name
+I10b-035	F6	Which game action id each kit element maps to
+I10b-036	F1	How long kit setup, press and watch steps may run, and hold frames
+I10b-037	F8	Which Rewired devices are switched off for a run, and when	Could also read as F5 (user's ruling).
+I10b-038	F1	How long the frame probe runs on the green pad	Its scratch file prefix is F3.
+I10b-039	F6	Which stop reasons and event words a play reports
+I10b-040	F1	How often the machine recorder samples, and its cap	Its file names are F6.
+I10b-041	F6	How Windows thread states map to words
+I10b-042	F1	Report thresholds: how long a step counts as slow and how many are listed	Report list contents could also read as F7.
+I10b-043	F1	How long the recorder may take to exit, and its names	Folder and log names are F3.
+I10b-044	F1	How long menu walking steps and searches may run	Screen names and the search target are F6.
+I10b-045	F4	Which key presses walk the menu from the title to a song	Steps file is JSON; F6 if read as its record shape.
+I10b-046	F2	Which game methods an agent may call	Could also read as F5 (allow list).
+I10b-047	F1	How long a method watch may run, and its hook kinds
+I10b-048	F1	How long the Mono reader may run, and which assemblies it reads
+I10b-049	F1	How big a time gap the Star Power watch treats as a break
+I10b-050	F1	How long a trace may run before it stops
+I10b-051	F6	Which chart field gives a song's end time for a run	Feeds the trace cap in F1.
+I10b-052	F1	How often the foreground check polls
+I10b-053	F6	What makes a build stamp, and which files count as build inputs	Could also read as F7 (who builds).
+I10b-054	F6	Which dynamics words the kit and compare tools use
+I10b-055	F1	How many bytes the disassembler reads by default
+I10b-056	F1	Timing and size limits the agent code uses for sampling and watches
+I10b-057	F4	What exact command a person runs to dump the build	Paths in the same README are F3.
+I10b-058	F3	Where the probe's game addresses are kept	No family covers game addresses; F3 is the nearest.
+I10b-059	F6	Which function addresses and field offsets the probe uses for build 6142
+I10b-060	F1	Which hit window sizes the probe expects
+I10b-061	F1	Largest and smallest hit window the probe accepts
+I10b-062	F1	How long the probe's empty-window and clock checks wait
+I10b-063	F1	How long the stall hunt logs and how many runs it may make
+I10b-064	F3	Which program and window names identify the game
+I10b-065	F1	How long the menu keys wait between presses	Which keys are pressed is F4.
+I10b-066	F6	Which document is the source for the probe's numbers	A spec file; no family fits cleanly.
+I10b-067	F4	How a capture script starts Hydra, with its wait	Default wait times are F1.
+I10b-068	F4	Which window step words and show codes a capture accepts
+I10b-069	F1	How long each capture step waits, and its message codes	Message codes could be F4.
+I10b-070	F1	Where the path-report button sits and how long to wait for it
+I10b-071	F1	Largest size a doc picture or folder may reach	A size limit, not a time limit.
+I10b-072	F6	Which pictures the doc-shot list names and its timeout
+I10b-073	F4	Which clicks and expected text each picture starts from
+I10b-074	F1	How long a stand-in session may wait before timing out	Its commands are F4.
+I10b-075	F4	Default range and options the precheck tool takes
+I10b-076	F5	Which five derive-once checks run and what kind each is
+I10b-077	F1	How big a body must be to count as the same function
+I10b-078	F1	How many lines back the namespace check looks
+I10b-079	F1	How many lines make a range too big to review in one read
+I10b-080	F6	Which prefixes the range size output uses
+I10b-081	F1	How many repeated characters or fields make a repeat count
+I10b-082	F5	Which numbers are unit factors exempt from the new-number check
+I10b-083	F5	How far a cited decision's reach extends in the check
+I10b-084	F3	Which folders are searched for decision records
+I10b-085	F1	Which number limits the decision parser allows
+I10b-086	F1	How many common names and tests the test picker lists	Picker chooses merge tests; F5.
+I10b-087	F5	Which test files a merge's test picker includes or leaves out
+I10b-088	F5	What reason text a second-home finding gives	Could also read as F6 (text shape).
+I10b-089	F5	Which known copies and spellings are hand-listed as exceptions
+I10b-090	F6	Which letter kind each scanned test path gets	Could also read as F5.
+I10b-091	F1	How long one game frame lasts for replay timing
+I10b-092	F1	How early a press is judged relative to the clock
+I10b-093	F1	How far ahead of a chord the press leads
+I10b-094	F1	How far ahead of a Star Power end chord the press leads
+I10b-095	F1	How late a squeezed-out chord's late gem lands
+I10b-096	F1	How wide the gap is between order-split chord groups
+I10b-097	F1	How much room a squeeze press keeps inside its window
+I10b-098	F1	Which clamps and formula set the note window	Constants are owned by core/note_window.h.
+I10b-099	F4	Which options hydra_replay takes, and what each means
+I10b-100	F3	Where the scoring code lives	Points to core/replay.h; no family covers engine ownership.
+I10b-101	F6	Which field names the replay JSON output uses
+I10b-102	F1	How long a mutated run may take before it is cut off
+I10b-103	F5	What exit codes mean pass or fail for the test runner
+I10b-104	F4	Longest command line the test runner will build
+I10b-105	F3	Which env switch, build folder and run folder a mutation run uses	Also a format number and process count.
+I10b-106	F7	Whether the mutation runner may build, and what it does if no build	Restates agent rule 14.
+I10b-107	F5	Which test files fall into fast, slow and between groups	Wait helper path is F3.
+I10b-108	F6	What the first-use table records for each test line
+I10b-109	F2	Which model names the cost test expects	Expected prices have no family.
+I10b-110	F3	Which checkout, worktree and branch names the fixture uses
+I10b-111	F6	Which columns a handoff's claims table must have
+I10b-112	F7	Whether the build pass scripts still avoid building
+I10b-113	F8	When the build folder is deleted, and which files trigger it
+I10b-114	F5	How the release signature is checked against the test key
+I10b-115	F6	How the compare-db test lays out its stand-in tables
+I10b-116	F5	What the Hydra UI MCP test file checks	Not read in the report; tagged from its name.

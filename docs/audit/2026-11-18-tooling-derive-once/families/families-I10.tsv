@@ -1,0 +1,89 @@
+id	family	question	note
+I10-001	F3	Where memory notes are read from by default	
+I10-002	F3	Where the hooks (gates) folder is by default	
+I10-003	F4	Which file extensions make a bare name a hook name	
+I10-004	F3	Which subfolders of the gates folder hold hook scripts	
+I10-005	F3	Which folders the hook-file index skips	
+I10-006	F6	Which line starts a memory note's card pointers	
+I10-007	F6	How a doc names a file that has left the repo	
+I10-008	F4	Which words send a git show to the hooks repo	
+I10-009	F3	Which pages are checked for word-for-word user quotes	
+I10-010	F3	Which documents the pointer checker reads	
+I10-011	F6	What counts as a pointer in a document	
+I10-012	F6	How a pointer is judged broken, retired or found elsewhere	F5 also fits (verdict)
+I10-013	F4	Exit codes and reply text of the pointer check hook	F7 also fits (hook reply asks main session to fix)
+I10-014	F6	Format of each pointer check output line	
+I10-015	F1	How the pointer check hook is called and its time limit	
+I10-016	F4	Which git settings the handoff checker pins or drops	
+I10-017	F6	What counts as a full commit hash in a Claims row	
+I10-018	F6	The heading the Claims table must use	
+I10-019	F6	Which claim kinds are checked by hand	
+I10-020	F6	Which row statuses a handoff check may report	
+I10-021	F3	Which git refs count as main and pushed	
+I10-022	F1	How a handoff's date is found, for its age	
+I10-023	F4	Exit codes of the handoff checker	
+I10-024	F5	When a handoff table passes the checker	
+I10-025	F6	Output titles of the handoff checker's scrape mode	
+I10-026	F5	Which files are excluded when proving a function exists	
+I10-027	F4	Which file extensions make a bare name a path	
+I10-028	F4	Which prefixes make a branch name	
+I10-029	F6	What shapes count as a token in a document	
+I10-030	F6	When a bare hex string counts as a commit hash	
+I10-031	F1	How many builds may run at once	F7 also fits (who may build)
+I10-032	F1	How often a waiting build checks for a free slot	
+I10-033	F1	How often a waiting build says it is waiting	
+I10-034	F3	Where the build slot lock files live	
+I10-035	F1	How long a build pass may sit unclaimed	
+I10-036	F1	How long to wait for the slot folder's turn	
+I10-037	F1	How long an empty lock counts as being written	
+I10-038	F7	What the build refusal tells agents and the main session	
+I10-039	F2	How the script tells a run is under the agent gate	
+I10-040	F8	When a build slot lock still counts as held	F1 also fits (expiry)
+I10-041	F6	Format of a build slot lock file	
+I10-042	F7	Who may get a build pass, and one per session	F2 also fits (session id)
+I10-043	F7	What the pass reply tells the main session to do	
+I10-044	F7	Whether a pass serves one build or nested builds too	
+I10-045	F7	Which env var carries the build pass and who sets it	
+I10-046	F1	How many times a lock release is retried, and how far apart	
+I10-047	F4	Which build option combination is refused	
+I10-048	F3	Where a worktree's build script runs from and its exit codes	F4 also fits (exit codes)
+I10-049	F4	When the check-mode build gate refuses a build	
+I10-050	F1	How long the reply wait margin is	
+I10-051	F1	How long to wait for the hello line on start	
+I10-052	F1	Longest reply handed to Claude and its cut note	
+I10-053	F1	What timeout is in force and where it is owned	
+I10-054	F1	How many crash log lines are tailed and the pipe retry interval	
+I10-055	F3	Where the user's library folder is read from	
+I10-056	F3	Exe names and build folder the helper uses	
+I10-057	F3	Where the helper's scratch folder and its files are	
+I10-058	F3	Which files a snapshot copies	F8 also fits (copy and sweep)
+I10-059	F2	What message is given when there is no session	
+I10-060	F6	Fields of the real-app record file	
+I10-061	F5	When a window session counts as a real-app check	
+I10-062	F6	What reply prefix counts as a screenshot	
+I10-063	F1	How long a git call may run	
+I10-064	F1	Build-pass tool's session input and its time limit	F7 also fits (who gets a pass)
+I10-065	F4	Why the build-pass tool lives in this file	
+I10-066	F8	How a window session is stopped and how long it waits	F1 also fits (wait)
+I10-067	F4	Refusal of a command that holds a line break	
+I10-068	F4	What a script run does at its first failure	
+I10-069	F7	What instructions every agent gets from the server	F4 also fits (tool text)
+I10-070	F2	Which tools the server offers and their per-tool rules	
+I10-071	F8	When scratch folders are removed by the cleanup sweep	
+I10-072	F3	Where cmake is looked for	
+I10-073	F3	Where task worktrees go and how they are named	
+I10-074	F3	Whether a new worktree starts with a build folder	
+I10-075	F7	Who builds in a new worktree and when	
+I10-076	F1	How long capture waits after launch and before kill	
+I10-077	F6	Format of a capture: pixels, flags, type version	
+I10-078	F3	Which files a capture folder must hold	
+I10-079	F3	Inputs and outputs of the doc picture step	
+I10-080	F4	When the doc picture step refuses and with what code	F7 also fits (asks main session to build)
+I10-081	F6	Crop rule for a screenshot after a rect line	
+I10-082	F4	Which stand-in commands exist and their caps	F1 also fits (caps)
+I10-083	F1	When a diff range is too big for one read	F5 also fits (review)
+I10-084	F5	Test-pick limits deciding which tests a merge runs	F1 also fits (counts)
+I10-085	F1	Thresholds for repeated strings and record fields	
+I10-086	F1	Body token floor and namespace look-back size	
+I10-087	F6	Limits on how numbers are written in canon checks	
+I10-088	F5	Order of review items and which docs numbers are checked against	F6 also fits (record order)
