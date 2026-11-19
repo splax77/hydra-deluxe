@@ -407,6 +407,12 @@ class PressLogTest(unittest.TestCase):
 _F1_RUN = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-f1-run1")
 _F1_BEFORE_FIRST_CHORD = os.path.join(_F1_RUN, "sp_watch-1-clock-2.9-4.3.csv")
 _F1_MID_SONG = os.path.join(_F1_RUN, "sp_watch-1-clock-20.0-22.6.csv")
+# The same log's stretch around chord 134, a declined chord that keeps no gem.
+_F1_DECLINED = os.path.join(_F1_RUN, "sp_watch-1-clock-30.0-31.6.csv")
+# The first 30 kit press replies of the real run
+# hydra-data/ch-mcp-runs/2026-11-07/ls-e-run1 (kit-1.jsonl), as kit.ts sent them.
+_E_REPLIES = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-e-run1",
+                          "kit-1-press-replies.jsonl")
 
 
 class _RecordedGame:
@@ -472,6 +478,12 @@ def _play_recorded(path, sent=None, chords=None, press=None, **kwargs):
     result = play_chart.play_chords(
         chords, game, game.read_score, press, out=out, **kwargs)
     return result, sent, out.getvalue(), time.perf_counter() - began, chords
+
+
+def _pressed_rows(result):
+    """The rows of a run's messages that were sent: a message the run
+    dropped calls no press, and a run on the real timer may drop one."""
+    return [r for r in result.rows if r[play_chart.SEND_COLUMN] != play_chart.DROPPED]
 
 
 class RunStopsTest(unittest.TestCase):
@@ -729,7 +741,7 @@ class DynamicsTest(unittest.TestCase):
         self.assertEqual(result.stop, "cap")
         # Every row not dropped is a press, since no chord in this stretch is
         # a declined chord that keeps no gem.
-        sent_rows = [r for r in result.rows if r[play_chart.SEND_COLUMN] != play_chart.DROPPED]
+        sent_rows = _pressed_rows(result)
         self.assertTrue(seen)
         self.assertEqual(len(seen), len(sent_rows))
         for (lanes, axes), row in zip(seen, sent_rows):
@@ -763,26 +775,38 @@ class PressReplyRowTest(unittest.TestCase):
     the row; a press that returns keys adds none."""
 
     def test_a_dict_reply_rides_into_the_row(self):
-        wall = _FakeTime()
-        game = _FakeGame()
-        down_ms = fakes.KIT_EPOCH_MS + 7
+        # Real kit press replies, one per press in turn, on the recorded
+        # mid-song clock: each row keeps its own reply's kit columns, and the
+        # press log writes them.
+        from tools.ch_probe.experiments.overlay_logs import KIT_PRESS_COLUMNS
+        with open(_E_REPLIES, encoding="utf-8") as f:
+            replies = [json.loads(line)["payload"] for line in f]
+        given = iter(replies)
+        returned = []
 
-        def press(lanes, _axes):
-            game.press(lanes)
-            return fakes.kit_reply([(40, 42, down_ms, down_ms + 12)], rewrite=True)
+        def press(lanes, _axes=None, then=()):
+            reply = next(given, None)
+            if reply is None:
+                raise AssertionError(f"the run pressed more often than {_E_REPLIES} replied")
+            returned.append(reply)
+            return reply
 
-        result = play_chart.play_chords(
-            _load_chords()[:1], _FakeSongClock(wall, start_s=12.0),
-            game.read_score, press, now=wall.now, sleep=wall.sleep, out=io.StringIO(),
-            kit=True)
-        row = result.rows[0]
-        self.assertEqual(row, {
-            "index": 38, "chart_ms": 13043.48, "clock_ms_at_press": row["clock_ms_at_press"],
-            "lead_ms": 2.0, "score_before": 0, "score_after": 100, "send": "sent",
-            "scored_between": 0,
-            "down_frame": 40, "up_frame": 42, "down_ms": down_ms, "up_ms": down_ms + 12,
-            "wall_s_at_read": row["wall_s_at_read"], "wall_s_at_reply": row["wall_s_at_reply"],
-            **{c: row[c] for c in _STEP_COLUMNS_OF_A_KIT_PRESS}})
+        result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_MID_SONG, press=press, cap_s=CallerHooksTest._CAP_S, kit=True)
+        self.assertEqual(result.stop, "cap")
+        self.assertTrue(returned)
+        rows = _pressed_rows(result)
+        self.assertEqual(len(rows), len(returned))
+        for row, reply in zip(rows, returned):
+            self.assertEqual({c: row[c] for c in KIT_PRESS_COLUMNS},
+                             {c: reply[c] for c in KIT_PRESS_COLUMNS})
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "press.csv")
+            play_chart.write_press_log(path, rows)
+            with open(path, encoding="utf-8", newline="") as f:
+                logged = list(csv.DictReader(f))
+        self.assertEqual([{c: r[c] for c in KIT_PRESS_COLUMNS} for r in logged],
+                         [{c: str(reply[c]) for c in KIT_PRESS_COLUMNS} for reply in returned])
 
     def test_a_key_press_adds_nothing(self):
         result, _game, _wall = _run({"start_s": 12.0})
@@ -793,11 +817,6 @@ class PressReplyRowTest(unittest.TestCase):
             "score_read_took_ms"})
 
 
-# The timing columns on the first row of a run's first kit press that reads
-# no end: every step but the end read, and no hand-off before it.
-_STEP_COLUMNS_OF_A_KIT_PRESS = (
-    "wait_read_max_ms", "wait_oversleep_max_ms", "press_took_ms", "reply_check_took_ms",
-    "score_read_took_ms")
 
 
 # A wall clock far from the fake `now`, as time.time is from time.perf_counter.
@@ -828,10 +847,23 @@ class WallColumnsTest(unittest.TestCase):
         return result, stamps
 
     def test_the_columns_are_the_wall_times_around_the_press(self):
-        result, stamps = self._run_with_a_slow_press(_load_chords()[:3])
-        self.assertEqual(len(stamps), 3)
-        self.assertEqual([(r["wall_s_at_read"], r["wall_s_at_reply"]) for r in result.rows],
-                         stamps)
+        # The recorded mid-song clock and the real wall clock: each row's
+        # read stamp comes before its press begins, and its reply stamp
+        # after the press returns.
+        stamps = []
+
+        def press(lanes, _axes=None, then=()):
+            before = time.time()
+            stamps.append((before, time.time()))
+
+        result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_MID_SONG, press=press, cap_s=CallerHooksTest._CAP_S)
+        self.assertEqual(result.stop, "cap")
+        self.assertTrue(stamps)
+        self.assertEqual(len(stamps), len(_pressed_rows(result)))
+        for row, (before, after) in zip(_pressed_rows(result), stamps):
+            self.assertLessEqual(row["wall_s_at_read"], before)
+            self.assertLessEqual(after, row["wall_s_at_reply"])
 
     def test_the_columns_are_on_the_wall_clocks_scale(self):
         result, _stamps = self._run_with_a_slow_press(_load_chords()[:3])
@@ -839,15 +871,33 @@ class WallColumnsTest(unittest.TestCase):
             self.assertGreater(row["wall_s_at_read"], _WALL_EPOCH_S)
             self.assertGreater(row["wall_s_at_reply"], row["wall_s_at_read"])
 
-    def test_a_chord_that_sends_no_press_stamps_one_moment_twice(self):
-        # A declined chord whose press keeps no gem, as the schedule writes it.
-        doc = _schedule_of({"chords": _DUMP["chords"][:1]})
-        doc["chords"][0]["declined"] = True
-        doc["presses"][0]["gems"] = []
-        declined = _write_and_load(doc, play_chart.load_schedule).chords
-        result, stamps = self._run_with_a_slow_press(declined)
-        self.assertEqual(stamps, [])
-        self.assertEqual(result.rows[0]["wall_s_at_read"], result.rows[0]["wall_s_at_reply"])
+    def test_a_chord_that_sends_no_press_still_gets_both_stamps(self):
+        # Chord 134 of the Freak schedule is declined and keeps no gem. On the
+        # recorded clock around it, the run sends it no press, and its row
+        # still has both wall stamps, read first.
+        declined = [p.index for p in _presses_of(_freak_chords()) if p.declined and not p.lanes]
+        self.assertIn(134, declined)
+        pressed = []
+
+        def press(lanes, _axes=None, then=()):
+            pressed.append(list(lanes))
+
+        # The recording holds 1.59 s of wall time, and chord 134 comes 0.96 s
+        # into it; a 1.3 s cap ends the run between the two.
+        from tools.ch_probe import constants as C
+        recording = _RecordedGame(_F1_DECLINED)
+        self.assertLess(next(c.ms for c in _freak_chords() if c.index == 134),
+                        C.s_to_ms(recording.last_clock_s))
+        result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_DECLINED, press=press, cap_s=1.3)
+        self.assertEqual(result.stop, "cap")
+        rows = _rows_of(result, 134)
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertEqual(row[play_chart.SEND_COLUMN], play_chart.DECLINED)
+        self.assertNotIn([], pressed)
+        self.assertEqual(len(pressed), len(_pressed_rows(result)) - 1)
+        self.assertLessEqual(row["wall_s_at_read"], row["wall_s_at_reply"])
 
     def test_the_wall_clock_is_the_watchs_and_now_stays_the_timer(self):
         parameters = inspect.signature(play_chart.play_chords).parameters
@@ -925,23 +975,25 @@ class PressLogWriterTest(unittest.TestCase):
         self.assertEqual(_table(self.path), [list(overlay_logs.PRESS_LOG_COLUMNS)])
 
     def test_a_failed_write_is_kept_and_ends_the_writing(self):
-        real = play_chart._press_log_writer
-
-        class Failing:
-            def __init__(self, f):
-                self._real = real(f)
-                self.writeheader = self._real.writeheader
-
-            def writerow(self, row):
-                raise PermissionError("held open")
-
-        with mock.patch.object(play_chart, "_press_log_writer", new=Failing):
-            writer = self._writer()
-            writer.add({"index": 1})
-            writer.add({"index": 2})
-            self.assertTrue(writer.stop(self.CAP_S))
-        self.assertIsInstance(writer.error, PermissionError)
-        self.assertEqual([r[0] for r in _table(self.path)], ["index"])
+        # Once the header is on disk, a second handle locks the bytes after
+        # it, as another process holding the log can, so Windows refuses the
+        # writer's first row. That error is kept, and no row reaches the file.
+        import msvcrt
+        writer = self._writer()
+        self.assertEqual(self._table_once(0), [list(overlay_logs.PRESS_LOG_COLUMNS)])
+        with open(self.path, "rb+") as other:
+            other.seek(0, os.SEEK_END)
+            # Any length past a row's would do; 1 MiB is past them all.
+            msvcrt.locking(other.fileno(), msvcrt.LK_NBLCK, 1 << 20)
+            try:
+                writer.add({"index": 1})
+                writer.add({"index": 2})
+                self.assertTrue(writer.stop(self.CAP_S))
+            finally:
+                other.seek(0, os.SEEK_END)
+                msvcrt.locking(other.fileno(), msvcrt.LK_UNLCK, 1 << 20)
+        self.assertIsInstance(writer.error, OSError)
+        self.assertEqual(_table(self.path), [list(overlay_logs.PRESS_LOG_COLUMNS)])
 
     def test_a_log_nowhere_writable_is_kept_as_the_error(self):
         writer = play_chart.PressLogWriter(os.path.join(self.path, "no such folder", "x.csv"))
@@ -1044,12 +1096,23 @@ class SplitSendTest(unittest.TestCase):
         self.assertEqual(result.sent, 1)
 
     def test_a_chord_of_one_group_is_sent_with_no_then(self):
-        press = _SplitReplyPress()
-        chords = _load_chords({"chords": [
-            {"index": 7, "ms": 1000.0, "notes": [_gem("Kick", "none"), _gem("Red", "none")]}]})
-        result = self._run(chords, [0, 0, 100], press)
-        self.assertEqual(press.calls, [([Lane.KICK, Lane.RED], [])])
-        self.assertEqual(len(result.rows), 1)
+        # The Freak schedule on the recorded mid-song clock, where no chord
+        # is split: every press call comes without `then`, one per row.
+        not_given = object()
+        calls = []
+
+        def press(lanes, _axes=None, then=not_given):
+            calls.append(then)
+
+        chords = _freak_chords()
+        result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_MID_SONG, chords=chords, press=press, cap_s=CallerHooksTest._CAP_S)
+        self.assertEqual(result.stop, "cap")
+        played = {r["index"] for r in result.rows}
+        self.assertFalse([later for head, later in play_chart.press_messages(
+            play_chart.press_plan(chords)) if later and head.index in played])
+        self.assertTrue(calls)
+        self.assertEqual(calls, [not_given] * len(_pressed_rows(result)))
 
     def test_the_mouths_fixture_sends_one_message_per_split_chord(self):
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
