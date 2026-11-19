@@ -10,6 +10,7 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -555,43 +556,54 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
-    // Inside SP, inside the 3 ms leeway, just past it, far past it.
-    const std::pair<int64_t, double> rows_at[] = {
-        {100, -40.0}, {200, 2.5}, {300, 20.0}, {400, 120.0}};
+    const double leeway = core::default_rules().backend_leeway_ms;
+    const int full_points = 460;
+    const int sqout_points = 260;
+    // Inside SP, inside the leeway, exactly on it, just past it, far past it,
+    // and a phrase chord past it that this path did not squeeze out (a plain
+    // row, finding 29).
+    const std::pair<int64_t, double> rows_at[] = {{100, -40.0}, {200, leeway - 0.5},
+                                                  {250, leeway},  {300, 20.0},
+                                                  {400, 120.0},   {500, 150.0}};
     for (const auto& [tick, ms] : rows_at) {
         BackendSqueeze row;
         row.timecode = Timecode::raw(tick);
-        row.sp_points = 460;
-        row.sqout_sp_points = 260;
+        row.sp_points = full_points;
+        row.sqout_sp_points = sqout_points;
         row.offset_ms = ms;
         act.backends.push_back(row);
     }
-    // A phrase chord past the leeway that this path did not squeeze out: a
-    // plain row (finding 29).
-    BackendSqueeze phrase;
-    phrase.timecode = Timecode::raw(500);
-    phrase.sp_points = 460;
-    phrase.sqout_sp_points = 260;
-    phrase.offset_ms = 150.0;
-    act.backends.push_back(phrase);
 
     Path p;
     p.activations.push_back(act);
     ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
     const std::vector<BackendRowView>& b = v.acts[0].backends;
-    REQUIRE(b.size() == 5);
-    CHECK(b[0].points == "460");
-    CHECK(b[0].rating == "Normal");
-    CHECK(b[1].points == "460");
-    CHECK(b[1].rating == "Normal");
-    CHECK(b[2].points == "0");
-    CHECK(b[2].rating == "Hard (uncounted)");
-    CHECK(b[3].points == "0");
-    CHECK(b[3].rating == "Insane (uncounted)");
-    CHECK(b[4].points == "0");
-    CHECK(b[4].rating == "Insane+ (uncounted)");
-    for (const BackendRowView& row : b) CHECK_FALSE(row.warn);
+    REQUIRE(b.size() == std::size(rows_at));
+    const std::vector<TimingTier> tiers = timing_tiers();
+    int counted = 0;
+    int uncounted = 0;
+    for (size_t i = 0; i < b.size(); ++i) {
+        const double ms = rows_at[i].second;
+        CAPTURE(ms);
+        // The points are what the engine pays this row with no squeeze out.
+        const int pays = core::backend_row_value(ms, full_points, sqout_points,
+                                                 core::SqOutPosition::NoSqOut, leeway);
+        CHECK(b[i].points == std::to_string(pays));
+        if (core::counted_without_squeeze(ms, leeway)) {
+            // A counted plain row needs no timing, so it reads the first tier.
+            CHECK(b[i].rating == tiers.front().name);
+            ++counted;
+        } else {
+            CHECK(pays == 0);
+            CHECK(b[i].rating == tier_for(ms, tiers).first + " (uncounted)");
+            ++uncounted;
+        }
+        CHECK_FALSE(b[i].warn);
+    }
+    // The leeway's edge is strict: the row exactly on it is uncounted.
+    CHECK(counted == 2);
+    CHECK(uncounted == 4);
 }
 
 TEST_CASE("format_measure: one form for both tabs") {
