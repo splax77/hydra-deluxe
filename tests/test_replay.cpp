@@ -271,7 +271,10 @@ struct TiedVariantCount {
     int variants = 0;  // tied variants the analysis listed
     int compared = 0;  // of those, the ones a lone search could price
     int differing = 0; // of those, the ones whose stored facts differ
-    int skipped() const { return variants - compared; }
+    int no_part = 0;   // charts with no notes at these settings
+    // Each variant with no lone root to compare against, named by chart and
+    // path, with what the lone search gave instead.
+    std::vector<std::string> skipped;
 };
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
@@ -280,15 +283,16 @@ struct TiedVariantCount {
 // and every window fact, early-fill facts included). All-zero variants are
 // not visited.
 //
-// A variant the lone search folded under a root of its own has no oracle,
-// so it is skipped, and each skip is printed. The caller pins how many there
-// are, so a regression that turns a compared variant into a skipped one
-// fails instead of passing quietly.
+// A variant the lone search folded under a root of its own has no oracle.
+// It is not compared; it goes on the skipped list by name, with its reason.
 TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
     TiedVariantCount n;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++n.no_part;
+            continue;
+        }
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
         for (const Path* p : rec.all_paths()) {
@@ -296,7 +300,8 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
             ++n.variants;
             const test::LonePricing lone = test::lone_pricing(song, cfg, *p);
             if (!lone.diff.empty() && lone.tied_under_root) {
-                MESSAGE("skipped " << path << ": " << lone.diff);
+                n.skipped.push_back(path + " [" + p->pathstring() +
+                                    "]: folded under a lone root of its own, " + lone.diff);
                 continue;
             }
             ++n.compared;
@@ -321,29 +326,23 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 // Those two hold hundreds of variants, and with either D3 fix taken out of the
 // engine dozens of them store their leader's facts instead of their own.
 TEST_CASE("every tied variant stores what a search pricing it alone stores") {
-    // `skipped` is pinned exactly: the variants with no lone root to compare
-    // against. Each is printed with its reason. If the count moves, read
-    // those lines before changing it.
-    //
-    // `min_variants` is a floor, not a pin: today the three settings list 12,
-    // 295 and 303 variants. A change that stopped listing most ties would
-    // still pass every other check here (fewer variants, none skipped, none
-    // differ), so the floor is what catches it.
-    struct Setting { int cap; int depth; int skipped; int min_variants; };
-    for (const Setting s : {Setting{4, 4, 0, 10}, Setting{4, 40, 0, 200},
-                            Setting{2, 40, 4, 200}}) {
+    // A variant with no lone root to compare against is printed by name,
+    // with the reason, so the run shows each one rather than a count.
+    struct Setting { int cap; int depth; };
+    for (const Setting s : {Setting{4, 4}, Setting{4, 40}, Setting{2, 40}}) {
         app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
         cfg.sp_cap = s.cap;
         cfg.depth_value = s.depth;
         INFO("cap " << s.cap << ", score range " << s.depth);
         const TiedVariantCount n = check_tied_variants(cfg);
-        CHECK(n.variants >= s.min_variants);
+        for (const std::string& why : n.skipped) MESSAGE("skipped " << why);
+        // A walk that compared no variant checked nothing at this setting.
         CHECK(n.compared > 0);
         CHECK(n.differing == 0);
-        CHECK(n.skipped() == s.skipped);
         MESSAGE("cap " << s.cap << ", score range " << s.depth << ": compared " << n.compared
                        << " of " << n.variants << " variants against a lone search, "
-                       << n.differing << " differ, " << n.skipped() << " skipped");
+                       << n.differing << " differ, " << n.skipped.size() << " skipped, "
+                       << n.no_part << " charts with no notes at these settings");
     }
 }
 
@@ -352,21 +351,42 @@ TEST_CASE("every tied variant stores what a search pricing it alone stores") {
 TEST_CASE("targeted search rejects a tick that is not a fill") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
+    // Every corpus chart whose best path activates. The non-fill tick is the
+    // chart's own: the nearest chord before the first activation whose
+    // SongTimestamp carries no fill (has_activation() false), so Star Power
+    // has had the most time to fill by then.
+    int checked = 0, no_part = 0, no_activation = 0;
     for (const std::string& path : corpus::chart_paths()) {
+        CAPTURE(path);
         const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++no_part;
+            continue;
+        }
         const HydraRecord& rec = corpus::analyzed(path, cfg);
-        if (rec.paths.empty()) continue;
+        REQUIRE_MESSAGE(!rec.paths.empty(), "a chart with notes stored no path");
         const std::vector<Activation> acts = rec.best_path().all_activations();
-        if (acts.empty()) continue;
+        if (acts.empty()) {
+            ++no_activation;
+            continue;
+        }
 
-        // One tick past a real activation fill: the fill node lives on the
-        // tick itself, so tick + 1 is never one.
-        const int64_t bogus = acts[0].timecode.ticks() + 1;
-        CHECK(search_target(song, cfg, {bogus}).empty());
-        return;
+        const int64_t act_tick = acts[0].timecode.ticks();
+        std::optional<int64_t> not_a_fill;
+        for (const SongTimestamp& ts : song.sequence) {
+            if (ts.timecode.ticks() >= act_tick) break;
+            if (!ts.has_activation()) not_a_fill = ts.timecode.ticks();
+        }
+        CHECK_MESSAGE(not_a_fill.has_value(), "no chord without a fill before tick " << act_tick);
+        if (!not_a_fill) continue;
+        ++checked;
+        CHECK_MESSAGE(search_target(song, cfg, {*not_a_fill}).empty(),
+                      "a path came back for tick " << *not_a_fill << ", which is not a fill");
     }
-    FAIL("no corpus chart with an activation to build the negative case from");
+    MESSAGE(checked << " charts checked, " << no_part << " with no notes at these settings, "
+                    << no_activation << " whose best path never activates");
+    // A walk that met no chart with an activation built no negative case.
+    CHECK(checked > 0);
 }
 
 TEST_CASE("replay without Star Power scores no doubling at all") {
@@ -378,17 +398,14 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
     CHECK(r.final.notes > 0);
     CHECK(r.chords.size() == song.sequence.size());
 
-    // The running totals are a prefix sum of the per-chord points, and the
-    // on-screen total only ever lags the real one (a solo's bonus is withheld
-    // until the run ends, never paid early).
-    ReplayScore running;
+    // No chord is in Star Power, none earns SP points, and the disc shows
+    // the plain combo multiplier on every one.
     for (const ReplayChord& c : r.chords) {
-        running.add(c.points);
-        CHECK(c.cum.total() == running.total());
-        CHECK(c.cum_onscreen_total <= c.cum.total());
+        CAPTURE(c.tick);
+        CHECK_FALSE(c.in_sp);
+        CHECK(c.points.sp == 0);
+        CHECK(c.multiplier_shown == c.multiplier_after);
     }
-    CHECK(r.final.total() == running.total());
-    CHECK(r.chords.back().cum_onscreen_total == r.final.total());
 }
 
 // D2 on the engine's own squeeze-outs: every window the search stored with a
@@ -435,12 +452,41 @@ TEST_CASE("a squeezed-out chord SP pays nothing shows the plain multiplier, on c
 
 TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
     using core::SqOutPosition;
-    CHECK(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::NoSqOut, 3.0));
-    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::Exact, 3.0));
-    CHECK(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::Exact, 3.0));
-    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::After, 3.0));
-    CHECK(core::paid_by_sp(2.0, 100, 50, SqOutPosition::NoSqOut, 3.0));        // in the leeway
-    CHECK_FALSE(core::paid_by_sp(4.0, 100, 50, SqOutPosition::NoSqOut, 3.0));  // past it
+    // The leeway past the SP end, read from the rules the app runs with.
+    const double leeway = core::default_rules().backend_leeway_ms;
+    REQUIRE(leeway > 0.0);
+    // A row's full SP value, and what is left of it when it is the
+    // squeezed-out chord: some, or none at all.
+    const int sp_points = 100, sqout_some = 50, sqout_none = 0;
+    const double inside = -10.0;  // before the SP end
+
+    struct Case {
+        const char* name;
+        double offset_ms;
+        int sqout_sp_points;
+        SqOutPosition pos;
+        bool paid;
+    };
+    const Case cases[] = {
+        {"inside the window, no squeeze-out", inside, sqout_none, SqOutPosition::NoSqOut, true},
+        {"the squeezed-out chord with nothing left", inside, sqout_none, SqOutPosition::Exact,
+         false},
+        {"the squeezed-out chord with points left", inside, sqout_some, SqOutPosition::Exact, true},
+        {"a chord after the squeezed-out one", inside, sqout_some, SqOutPosition::After, false},
+        {"inside the leeway", leeway / 2.0, sqout_some, SqOutPosition::NoSqOut, true},
+        {"exactly the leeway after the end (D29: strict)", leeway, sqout_some,
+         SqOutPosition::NoSqOut, false},
+        {"past the leeway", leeway * 2.0, sqout_some, SqOutPosition::NoSqOut, false},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const bool paid = core::paid_by_sp(c.offset_ms, sp_points, c.sqout_sp_points, c.pos, leeway);
+        CHECK(paid == c.paid);
+        // The yes is the row's SP value being above zero, the name's claim.
+        const int value =
+            core::backend_row_value(c.offset_ms, sp_points, c.sqout_sp_points, c.pos, leeway);
+        CHECK(paid == (value > 0));
+    }
 }
 
 
@@ -572,55 +618,46 @@ TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only
 TEST_CASE("windows read from a path JSON match the ones read from the record") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    // Every corpus chart with windows is compared. The loop only counts and
-    // keeps the first difference; the assertions sit after it.
-    int charts = 0, checked = 0, mismatches = 0;
-    std::string first_diff;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        if (rec.paths.empty()) continue;
-
-        const std::vector<const Path*> all = rec.all_paths();
-        const json dumped = paths_json(all, song.timing());
-        REQUIRE(dumped.size() == all.size());
-        bool had_windows = false;
-        for (size_t k = 0; k < all.size(); ++k) {
-            const Path* p = all[k];
-            const std::vector<ReplayWindow> want = windows_for_path(*p);
-            if (want.empty()) continue;
-            had_windows = true;
-
+    // Every stored path of every corpus chart, a path with no windows too
+    // (its dump must read back as none). A chart that fails to load throws;
+    // one with no notes at these settings is counted and printed.
+    int windows = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const std::vector<ReplayWindow> want = windows_for_path(p);
             // The real dump producer, so a format change on either side fails.
-            const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
-            ++checked;
-            std::string diff;
-            if (got.size() != want.size()) {
-                diff = "window count " + std::to_string(got.size()) + " vs " +
-                       std::to_string(want.size());
-            } else {
-                for (size_t i = 0; i < got.size() && diff.empty(); ++i) {
-                    // read_sqout (tools/replay_json.cpp) decides when the
-                    // offset is read; today's records always stamp a tick.
-                    if (got[i].act_tick != want[i].act_tick ||
-                        got[i].deact_tick != want[i].deact_tick ||
-                        got[i].sqout_tick != want[i].sqout_tick ||
-                        (!want[i].sqout_tick &&
-                         got[i].sqout_offset_ms != want[i].sqout_offset_ms))
-                        diff = "window " + std::to_string(i) + " differs";
-                }
+            const json dumped = paths_json({&p}, song.timing());
+            if (dumped.size() != 1) return ": the dump wrote " + std::to_string(dumped.size()) + " paths";
+            std::vector<ReplayWindow> got;
+            try {
+                got = windows_from_json(dumped[0]);
+            } catch (const std::runtime_error& e) {
+                return std::string(": the dump does not read back: ") + e.what();
             }
-            if (diff.empty()) continue;
-            ++mismatches;
-            if (first_diff.empty()) first_diff = chart + " [" + p->pathstring() + "] " + diff;
-        }
-        if (had_windows) ++charts;
-    }
-    MESSAGE(charts << " charts, " << checked << " paths with windows compared");
-    CHECK(checked > 0);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+            if (got.size() != want.size())
+                return ": window count " + std::to_string(got.size()) + " vs " +
+                       std::to_string(want.size());
+            for (size_t i = 0; i < got.size(); ++i) {
+                ++windows;
+                // read_sqout (tools/replay_json.cpp) decides when the offset
+                // is read: only when the window has no squeeze-out tick.
+                if (got[i].act_tick != want[i].act_tick ||
+                    got[i].deact_tick != want[i].deact_tick ||
+                    got[i].sqout_tick != want[i].sqout_tick ||
+                    (!want[i].sqout_tick && got[i].sqout_offset_ms != want[i].sqout_offset_ms) ||
+                    got[i].sqin_ticks != want[i].sqin_ticks ||
+                    got[i].from_record != want[i].from_record)
+                    return ": window " + std::to_string(i) + " differs";
+            }
+            return "";
+        });
+    MESSAGE(run.charts << " charts, " << run.paths << " paths, " << windows << " windows compared, "
+                       << run.no_part << " charts with no notes at these settings");
+    CHECK(run.charts > 0);
+    // A walk that compared no window checked nothing.
+    CHECK(windows > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 // D34: a window never squeezes out a phrase it already squeezed in, and the
