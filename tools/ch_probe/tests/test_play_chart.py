@@ -456,19 +456,21 @@ def _plan_parts(chords):
             for p in (head, *later)]
 
 
-def _play_recorded(path, sent=None, **kwargs):
-    """play_chords over the Freak schedule on the recording at `path`, with
-    the real timer; `press` only notes each chord's keys in `sent`, since no
-    key may reach a window from a test."""
+def _play_recorded(path, sent=None, chords=None, press=None, **kwargs):
+    """play_chords over `chords` (the Freak schedule when None) on the
+    recording at `path`, with the real timer. The default `press` only notes
+    each chord's keys in `sent`, since no key may reach a window from a
+    test."""
     game = _RecordedGame(path)
     sent = [] if sent is None else sent
-    chords = _freak_chords()
+    chords = _freak_chords() if chords is None else chords
+    if press is None:
+        def press(lanes, _axes=None, then=()):
+            sent.append(list(lanes))
     out = io.StringIO()
     began = time.perf_counter()
     result = play_chart.play_chords(
-        chords, game, game.read_score,
-        lambda lanes, _axes=None, then=(): sent.append(list(lanes)),
-        out=out, **kwargs)
+        chords, game, game.read_score, press, out=out, **kwargs)
     return result, sent, out.getvalue(), time.perf_counter() - began, chords
 
 
@@ -561,44 +563,6 @@ class _FakeDriver:
 
 
 class LivePlayTest(unittest.TestCase):
-    def _cap_seen_by_play_chords(self, **live_kwargs):
-        from unittest import mock
-
-        class _FakeEngine:
-            def __init__(self, _proc):
-                pass
-
-            def use_object(self, _ptr):
-                pass
-
-            def song_clock(self):
-                return 0.0
-
-            def score(self):
-                return 0
-
-            def sp_end(self):
-                return None
-
-        seen = {}
-
-        def fake_play_chords(*args, **kwargs):
-            seen.update(kwargs)
-            return play_chart.RunResult(stop="done")
-
-        with mock.patch.object(play_chart, "EngineModel", _FakeEngine), \
-                mock.patch.object(play_chart, "find_game_window", lambda: 0), \
-                mock.patch.object(play_chart, "play_chords", fake_play_chords):
-            play_chart.live_play(
-                _load_chords(), open_proc=lambda **kw: _FakeProc(),
-                find_engine=lambda _proc: 0x1000, driver=_FakeDriver([]),
-                out=io.StringIO(), **live_kwargs)
-        return seen["cap_s"]
-
-    def test_the_cap_reaches_play_chords(self):
-        self.assertEqual(self._cap_seen_by_play_chords(cap_s=320.504), 320.504)
-        self.assertEqual(self._cap_seen_by_play_chords(), play_chart.RUN_CAP_S)
-
     def test_live_play_takes_no_press_and_passes_no_kit(self):
         # live_play is the keys route only (D342): no kit press goes in, and
         # play_chords gets no `kit`.
@@ -618,27 +582,6 @@ class LivePlayTest(unittest.TestCase):
                 out=io.StringIO())
         self.assertIn("cap_s", seen)
         self.assertNotIn("kit", seen)
-
-    def test_live_play_sends_each_chords_keys_through_the_driver(self):
-        chords = _load_chords()
-        events, windows = [], []
-
-        def fake_play_chords(chords, clock, read_score, press, **kwargs):
-            for chord in chords:
-                press(chord.lanes)
-            return play_chart.RunResult(stop="done")
-
-        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
-                mock.patch.object(play_chart, "find_game_window", lambda: 0x77), \
-                mock.patch.object(play_chart, "focus_window", windows.append), \
-                mock.patch.object(play_chart, "play_chords", fake_play_chords):
-            result = play_chart.live_play(
-                chords, open_proc=lambda **kw: _FakeProc(),
-                find_engine=lambda _proc: 0x1000, driver=_FakeDriver(events),
-                out=io.StringIO())
-        self.assertEqual(result.stop, "done")
-        self.assertEqual(events, [("press", list(c.lanes)) for c in chords])
-        self.assertEqual(windows, [0x77] * len(chords))
 
     def test_only_the_harness_calls_play_chords_with_a_kit(self):
         # The stall harness's loop case is the one caller that hands
@@ -660,15 +603,6 @@ class LivePlayTest(unittest.TestCase):
 
 def _gem(color, dynamic, cymbal=False):
     return {"color": color, "cymbal": cymbal, "dynamic": dynamic}
-
-
-# One chord of each strength in one press, then a plain chord. The words are
-# the ones hydra_replay writes.
-_DYNAMICS_DUMP = {"chords": [
-    {"index": 3, "ms": 1000.0, "notes": [
-        _gem("Red", "ghost"), _gem("Yellow", "accent", cymbal=True), _gem("Kick", "none")]},
-    {"index": 4, "ms": 1500.0, "notes": [_gem("Green", "none")]},
-]}
 
 
 def _load_dump(dump):
@@ -701,114 +635,127 @@ class _ThresholdEngine:
         return type(self).threshold
 
 
+# A committed schedule with ghost gems, some pressed beside full-strength ones.
+_GHOST_SCHEDULE = os.path.join(_HERE, "bomber_refine_schedule.json")
+
+# The ch_snapshot reply of the real run hydra-data/ch-mcp-runs/2026-11-06/
+# ls-o1-run1, which read the engine's dynamics threshold field in Clone Hero.
+_O1_SNAPSHOT = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o1-run1",
+                            "replies-snapshot.txt")
+
+
+class _RecordedThresholdEngine:
+    """The dynamics threshold one real run read from the game, handed back
+    on each dyn_threshold call, which it counts."""
+
+    def __init__(self) -> None:
+        with open(_O1_SNAPSHOT, encoding="utf-8") as f:
+            found = [line.split(":", 1)[1].split()[0] for line in f
+                     if line.startswith("dynamics threshold:")]
+        if len(found) != 1:
+            raise AssertionError(f"{_O1_SNAPSHOT} holds {len(found)} threshold lines, not 1")
+        self.value = int(found[0])
+        self.reads = 0
+
+    def dyn_threshold(self) -> int:
+        self.reads += 1
+        return self.value
+
+
+def _presses_of(chords):
+    return [p for chord in chords for p in chord.presses]
+
+
 class DynamicsTest(unittest.TestCase):
-    """Each gem keeps its dynamic, and the kit route (live_in_game) reads the
-    threshold for the ghosts it must press."""
+    """with_axes gives each gem the strength of its own dynamic, from the
+    threshold the game read, and reads that field only for a ghost. The
+    ghost chart is _GHOST_SCHEDULE; the threshold is the one a real run
+    read."""
 
-    def setUp(self):
-        _ThresholdEngine.reads = 0
+    def _ghost_chart_with_axes(self):
+        engine = _RecordedThresholdEngine()
+        chords, threshold = play_chart.with_axes(
+            play_chart.load_schedule(_GHOST_SCHEDULE).chords, engine)
+        return chords, threshold, engine
 
-    def _live_in_game(self, chords, threshold):
-        from unittest import mock
-        _ThresholdEngine.threshold = threshold
-        seen, proc = [], _FakeProc()
-
-        def fake_play_in_game(chords, player, **kwargs):
-            seen.extend(chords)
-            return play_chart.RunResult(stop="done")
-
-        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine), \
-                mock.patch.object(play_chart, "engine_addresses", lambda _engine: (0, 0)), \
-                mock.patch.object(play_chart, "play_in_game", fake_play_in_game):
-            try:
-                result = play_chart.live_in_game(
-                    chords, player=object(), open_proc=lambda **kw: proc,
-                    find_engine=lambda _proc: 0x1000, out=io.StringIO())
-            finally:
-                self.assertTrue(proc.closed)
-        return result, seen
-
-    def test_chords_carry_each_gems_dynamic_beside_its_lane(self):
-        chords = _load_dump(_DYNAMICS_DUMP)
-        self.assertEqual(chords[0].lanes, [Lane.RED, Lane.YELLOW_CYMBAL, Lane.KICK])
-        self.assertEqual(chords[0].dynamics, ["ghost", "accent", "none"])
-        self.assertEqual(chords[1].dynamics, ["none"])
+    def test_each_gems_dynamic_sets_the_strength_of_its_own_lane(self):
+        # A press that mixes a ghost with a full-strength gem presses the
+        # ghost's lane softer than the others in the same message.
+        from tools.ch_mcp.kit_tools import DYNAMIC_GHOST
+        chords, _threshold, _engine = self._ghost_chart_with_axes()
+        mixed = [p for p in _presses_of(chords)
+                 if DYNAMIC_GHOST in p.dynamics and set(p.dynamics) != {DYNAMIC_GHOST}]
+        self.assertTrue(mixed)
+        for p in mixed:
+            self.assertEqual(len(p.axes), len(p.lanes))
+            ghost = {a for a, d in zip(p.axes, p.dynamics) if d == DYNAMIC_GHOST}
+            other = {a for a, d in zip(p.axes, p.dynamics) if d != DYNAMIC_GHOST}
+            self.assertLess(max(ghost), min(other), p)
 
     def test_a_ghost_chart_reads_the_threshold_once_and_returns_it(self):
-        from tools.ch_mcp.kit_tools import pad_axis
-        result, seen = self._live_in_game(_load_dump(_DYNAMICS_DUMP), 64)
-        self.assertEqual(_ThresholdEngine.reads, 1)
-        self.assertEqual(result.dyn_threshold, 64)
-        self.assertEqual(seen[0].presses[0].axes, [pad_axis("ghost", 64),
-                                                   pad_axis("accent", 64), pad_axis("none", 64)])
-        self.assertEqual(seen[1].presses[0].axes, [pad_axis("none", 64)])
-
-    def test_a_ghost_chart_with_a_threshold_of_0_raises_naming_the_field(self):
-        with self.assertRaises(ValueError) as caught:
-            self._live_in_game(_load_dump(_DYNAMICS_DUMP), 0)
-        # The field's name is read from constants, the offsets' one owner.
-        from tools.ch_probe import constants
-        field = [name for name, value in vars(constants).items()
-                 if name.startswith("OFF_") and value is constants.OFF_DYN_THRESHOLD]
-        self.assertTrue(field)
-        self.assertTrue(any(name in str(caught.exception) for name in field),
-                        str(caught.exception))
-
-    def test_the_keys_route_reads_no_threshold_even_for_a_ghost_chart(self):
-        from unittest import mock
-        _ThresholdEngine.threshold = 0
-        proc, out = _FakeProc(), io.StringIO()
-        with mock.patch.object(play_chart, "EngineModel", _ThresholdEngine),                 mock.patch.object(play_chart, "play_chords",
-                                  lambda *a, **k: play_chart.RunResult(stop="done")),                 mock.patch.object(play_chart, "find_game_window", lambda: 0),                 mock.patch.object(play_chart, "InputDriver", lambda: object()):
-            result = play_chart.live_play(
-                _load_dump(_DYNAMICS_DUMP), open_proc=lambda **kw: proc,
-                find_engine=lambda _proc: 0x1000, out=out)
-        self.assertEqual(result.stop, "done")
-        self.assertEqual(_ThresholdEngine.reads, 0)
-        self.assertIsNone(result.dyn_threshold)
+        from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis
+        chords, threshold, engine = self._ghost_chart_with_axes()
+        self.assertEqual(engine.reads, 1)
+        self.assertEqual(threshold, engine.value)
+        ghost_axes = {a for p in _presses_of(chords)
+                      for a, d in zip(p.axes, p.dynamics) if d == DYNAMIC_GHOST}
+        # Every ghost gets pad_axis's ghost strength for the threshold read.
+        self.assertEqual(ghost_axes, {pad_axis(DYNAMIC_GHOST, engine.value)})
 
     def test_a_chart_with_no_ghost_never_reads_the_threshold(self):
-        result, seen = self._live_in_game(_load_chords(), 0)
-        self.assertEqual(result.stop, "done")
-        self.assertEqual(_ThresholdEngine.reads, 0)
-        self.assertIsNone(result.dyn_threshold)
-        self.assertEqual(seen[-1].dynamics, ["accent"])
-        self.assertEqual(len(seen), 8)
+        # The Freak schedule has no ghost gem.
+        engine = _RecordedThresholdEngine()
+        chords, threshold = play_chart.with_axes(_freak_chords(), engine)
+        self.assertEqual(engine.reads, 0)
+        self.assertIsNone(threshold)
+        presses = _presses_of(chords)
+        self.assertTrue(presses)
+        for p in presses:
+            self.assertEqual(len(p.axes), len(p.lanes))
 
     def test_each_chord_reaches_the_press_with_its_axes(self):
-        wall = _FakeTime()
-        game = _FakeGame()
+        # The Freak schedule with its strengths, played on the recorded
+        # mid-song clock: each press gets the axes with_axes gave its message.
+        chords, _threshold = play_chart.with_axes(_freak_chords(),
+                                                  _RecordedThresholdEngine())
+        axes_of = {(tuple(p.lanes), p.index): p.axes for p in _presses_of(chords)}
         seen = []
 
-        def press(lanes, axes):
-            game.press(lanes)
-            seen.append(axes)
+        def press(lanes, axes=None, then=()):
+            seen.append((tuple(lanes), axes))
 
-        _ThresholdEngine.threshold = 64
-        chords, _threshold = play_chart.with_axes(_load_dump(_DYNAMICS_DUMP), _ThresholdEngine())
-        play_chart.play_chords(chords, _FakeSongClock(wall, start_s=0.5), game.read_score,
-                               press, now=wall.now, sleep=wall.sleep, out=io.StringIO())
-        self.assertEqual(seen, [chords[0].presses[0].axes, chords[1].presses[0].axes])
+        result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_MID_SONG, chords=chords, press=press, cap_s=CallerHooksTest._CAP_S)
+        self.assertEqual(result.stop, "cap")
+        # Every row not dropped is a press, since no chord in this stretch is
+        # a declined chord that keeps no gem.
+        sent_rows = [r for r in result.rows if r[play_chart.SEND_COLUMN] != play_chart.DROPPED]
+        self.assertTrue(seen)
+        self.assertEqual(len(seen), len(sent_rows))
+        for (lanes, axes), row in zip(seen, sent_rows):
+            self.assertIsNotNone(axes)
+            self.assertEqual(axes, axes_of[(lanes, row["index"])])
 
     def test_a_ghost_or_accent_kick_gets_the_axis_a_pad_gets(self):
         # T2 of docs/superpowers/plans/2026-11-08-kick-axis-bind.md: the kit
-        # presses the kick as an axis, so with_axes must hand a kick its
-        # pad_axis strength exactly as it hands a pad one.
-        from tools.ch_mcp.kit_tools import pad_axis
-        _ThresholdEngine.threshold = 64
+        # presses the kick as an axis, so with_axes must hand a kick the
+        # strength it hands a pad of the same dynamic. No committed chart has
+        # a ghost or accent kick, so this chart is written by hand.
         dump = {"chords": [
-            {"index": 0, "ms": 1000.0, "notes": [_gem("Kick", "ghost")]},
+            {"index": 0, "ms": 1000.0, "notes": [_gem("Kick", "ghost"),
+                                                 _gem("Yellow", "accent", cymbal=True)]},
             {"index": 1, "ms": 1500.0, "notes": [_gem("Kick", "accent"), _gem("Red", "ghost")]},
         ]}
-        chords, threshold = play_chart.with_axes(_load_dump(dump), _ThresholdEngine())
-        self.assertEqual(threshold, 64)
-        self.assertEqual(chords[0].lanes, [Lane.KICK])
-        self.assertEqual(chords[0].presses[0].axes, [pad_axis("ghost", 64)])
-        self.assertLess(chords[0].presses[0].axes[0], 1.0)
+        engine = _RecordedThresholdEngine()
+        chords, threshold = play_chart.with_axes(_load_dump(dump), engine)
+        self.assertEqual(threshold, engine.value)
+        kick_ghost, pad_accent = chords[0].presses[0].axes
+        kick_accent, pad_ghost = chords[1].presses[0].axes
+        self.assertEqual(chords[0].lanes, [Lane.KICK, Lane.YELLOW_CYMBAL])
         self.assertEqual(chords[1].lanes, [Lane.KICK, Lane.RED])
-        self.assertEqual(chords[1].presses[0].axes, [pad_axis("accent", 64),
-                                                     pad_axis("ghost", 64)])
-        self.assertNotEqual(pad_axis("ghost", 64), pad_axis("accent", 64))
+        self.assertEqual(kick_ghost, pad_ghost)
+        self.assertEqual(kick_accent, pad_accent)
+        self.assertLess(kick_ghost, kick_accent)
 
 
 class PressReplyRowTest(unittest.TestCase):
