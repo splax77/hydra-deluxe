@@ -24,6 +24,7 @@
 #include "app/song_length.h"
 #include "core/model.h"
 #include "core/replay.h"
+#include "core/scoring.h"  // solo_note_count, solo_bonus
 #include "core/squeeze_rating.h"
 #include "core/stars.h"
 #include "core/strutil.h"  // ends_with
@@ -195,6 +196,72 @@ const ReplayChord* struck_chord(const ReplayResult& r, double ms) {
     for (const ReplayChord& c : r.chords)
         if (struck_at(ms, c.ms)) at = &c;
     return at;
+}
+
+// Whether Star Power's bar from drawn measure line `i` runs inside one tempo
+// and one signature: the kMeasuresPerSpBar measures from that line all have
+// its signature, and no tempo entry falls strictly inside them. There the
+// engine's bar (engine_sp_ms) is the bar in force the drain box reads.
+bool steady_bar_from(const Song& song, const std::vector<PreviewBeat>& lines, size_t i) {
+    const size_t end = i + static_cast<size_t>(kMeasuresPerSpBar);
+    if (end >= lines.size()) return false;
+    const SongTiming& timing = song.timing();
+    const std::pair<int, int> sig = timing.time_signature_at(lines[i].tick);
+    for (size_t k = i + 1; k < end; ++k)
+        if (timing.time_signature_at(lines[k].tick) != sig) return false;
+    for (const int64_t c : timing.ms_index().change_ticks())
+        if (c > lines[i].tick && c < lines[end].tick) return false;
+    return true;
+}
+
+// Pitch Dark (testdata/input/test_pitch_dark_ratio) analyzed under the app's
+// default settings, and the record's path "3+ 2+ 1" drawn on it. Its first
+// activation's stored SP end moves twice, by a clamp and then a squeeze-in
+// (the Pitch Dark case in test_sp_meter_curve.cpp requires those steps).
+struct PitchDarkScene {
+    std::string chart;
+    const Song* song = nullptr;
+    const Path* path = nullptr;
+    PreviewScene scene;  // with the path
+    PreviewScene bare;   // the same song with no path
+};
+PitchDarkScene pitch_dark_scene() {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    PitchDarkScene pd;
+    pd.chart = corpus::chart_named("test_pitch_dark_ratio");
+    REQUIRE_FALSE(pd.chart.empty());
+    pd.song = &corpus::song(pd.chart, cfg.reading(), cfg.rules);
+    pd.path = test::path_named(corpus::analyzed(pd.chart, cfg).all_paths(), "3+ 2+ 1");
+    REQUIRE(pd.path != nullptr);
+    pd.scene = build_preview_scene(*pd.song, pd.path, cfg.sp_cap, cfg.rules);
+    pd.bare = build_preview_scene(*pd.song, nullptr, cfg.sp_cap, cfg.rules);
+    REQUIRE(pd.scene.activations.size() == pd.path->walk_activations().size());
+    return pd;
+}
+
+// A corpus chart whose drum track names one solo: Snakeskin Boots, whose
+// .chart writes "E solo" at tick 53376 and "E soloend" at 59424 in its
+// ExpertDrums track, with 31 of the solo's 66 chords holding two or more pads.
+const Song& solo_song() {
+    const Song& song = corpus_song("Jack Wall - Snakeskin Boots");
+    REQUIRE(song.solo_sections.size() == 1);
+    return song;
+}
+
+// The notes the engine's scoring counts in `s` (solo_note_count, core/scoring.h).
+int section_notes(const Song& song, const SoloSection& s) {
+    int notes = 0;
+    for (size_t i = s.first; i <= s.last; ++i)
+        notes += solo_note_count(song.sequence[i].chord, song.sequence[i].flag_solo);
+    return notes;
+}
+
+// The bonus the engine's scoring pays over `s` (solo_bonus, core/scoring.h).
+int64_t section_bonus(const Song& song, const SoloSection& s) {
+    int64_t bonus = 0;
+    for (size_t i = s.first; i <= s.last; ++i)
+        bonus += solo_bonus(song.sequence[i].chord, song.sequence[i].flag_solo);
+    return bonus;
 }
 
 }  // namespace
@@ -738,68 +805,112 @@ TEST_CASE("drain box: the rate switches exactly at a tempo change") {
     CHECK(engine_sp_ms(song, change_tick, scene.sp_meter.cap) == doctest::Approx(bar_after * cap));
 }
 
-TEST_CASE("drain box: past the length it reads the moment the time box shows") {
-    // The fixture above. A playhead past where playback ends reads the
-    // moment the time box shows (shown_ms), so it lands on the length.
-    Song song = make_sp_song({960}, /*last_tick=*/13440, {{5760, 60.0}});
-    PreviewScene scene = build_preview_scene(song, nullptr);
-
-    const PreviewDrainBox held = build_drain_box(scene, 6000.0, /*length_ms=*/5990.0);
-    CHECK(held.rate == "1 bar / 4.0 s");
-    CHECK(held.detail == "full meter 16.0 s");
-    const PreviewDrainBox at = build_drain_box(scene, 6000.0, /*length_ms=*/6000.0);
-    CHECK(at.rate == "1 bar / 8.0 s");
-    CHECK(at.detail == "full meter 32.0 s");
-}
-
 TEST_CASE("drain box: a 7/8 section drains faster at the same BPM") {
-    // 7/8 from tick 3840 (4000 ms, a barline): 1680 ticks = 1750 ms a
-    // measure, so a bar lasts 3500 ms instead of 4000.
-    Song song = make_sp_song({960}, /*last_tick=*/13440, {}, 480, {{3840, {7, 8}}});
-    PreviewScene scene = build_preview_scene(song, nullptr);
+    // Stabwound writes 7/8 (its .chart's "TS 7 3") between 8/8 sections at
+    // 120 BPM (its "B 120000"). Wherever Star Power's bar runs inside one
+    // tempo and one signature (steady_bar_from), the box's bar is the
+    // engine's (engine_sp_ms), and its full meter is that bar times the cap.
+    const Song& song = corpus_song("Necrophagist - Stabwound");
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.timing.has_value());
+    const std::vector<PreviewBeat> lines = drawn_measure_lines(scene);
+    const double cap = static_cast<double>(scene.sp_meter.cap);
 
-    CHECK(drain_box_at(scene, 2000.0).rate == "1 bar / 4.0 s");
-    CHECK(drain_box_at(scene, 4000.0).rate == "1 bar / 3.5 s");
-    CHECK(drain_box_at(scene, 4000.0).detail == "full meter 14.0 s");
+    // The engine's bar at each steady measure line in 7/8 and in 8/8, with
+    // the tempo there.
+    struct SteadyBar {
+        double tempo;
+        double bar_ms;
+    };
+    std::vector<SteadyBar> seven_eight;
+    std::vector<SteadyBar> eight_eight;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (!steady_bar_from(song, lines, i)) continue;
+        const PreviewBeat& line = lines[i];
+        INFO("measure line at tick " << line.tick);
+        const double bar_ms = engine_sp_ms(song, line.tick, 1);
+        const PreviewDrainBox box = drain_box_at(scene, line.ms);
+        CHECK(box.rate == "1 bar / " + drain_seconds(bar_ms) + " s");
+        CHECK(box.detail == "full meter " + drain_seconds(bar_ms * cap) + " s");
+        const std::pair<int, int> sig = scene.timing->time_signature_at(line.tick);
+        const SteadyBar bar{scene.timing->tempo_at(line.tick), bar_ms};
+        if (sig == std::pair<int, int>{7, 8}) seven_eight.push_back(bar);
+        if (sig == std::pair<int, int>{8, 8}) eight_eight.push_back(bar);
+    }
+
+    // At the same tempo a 7/8 bar is shorter than an 8/8 one, so the box
+    // reads a faster drain in 7/8. The chart's steady 7/8 measures (from tick
+    // 10320) and 8/8 measures (from tick 4560) are both at 120 BPM.
+    size_t compared = 0;
+    for (const SteadyBar& s : seven_eight) {
+        for (const SteadyBar& e : eight_eight) {
+            if (s.tempo != e.tempo) continue;
+            ++compared;
+            CHECK(s.bar_ms < e.bar_ms);
+            CHECK(drain_seconds(s.bar_ms) != drain_seconds(e.bar_ms));
+        }
+    }
+    CHECK(compared > 0);
 }
 
 TEST_CASE("drain box: active inside the stored SP window, idle outside it") {
-    // Two bars at tick 3840 (4000 ms): the stored end is tick 11520 (12000 ms).
-    Song song = make_sp_song({960}, /*last_tick=*/13440);
-    Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
-    PreviewScene scene = build_preview_scene(song, &path);
+    // Pitch Dark's record: each activation's window runs from its own moment
+    // to the stored end, the record's Activation::window_end_tick.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const PreviewScene& scene = pd.scene;
+    REQUIRE_FALSE(scene.activations.empty());
+    // Is any activation other than `self` running at `ms`?
+    auto other_running = [&scene](const PreviewActivation& self, double ms) {
+        for (const PreviewActivation& o : scene.activations)
+            if (&o != &self && o.sp_running_at(ms)) return true;
+        return false;
+    };
+    for (size_t i = 0; i < scene.activations.size(); ++i) {
+        const PreviewActivation& a = scene.activations[i];
+        INFO("activation at tick " << a.tick);
+        REQUIRE(a.sp_end_tick == pd.path->walk_activations()[i].window_end_tick());
+        REQUIRE(a.sp_window().has_value());
+        const double start = a.sp_window()->first;
+        const double end = a.sp_window()->second;
 
-    PreviewDrainBox before = drain_box_at(scene, 3999.0);
-    CHECK_FALSE(before.active);
-    CHECK(before.header == "SP drain (if activated)");
+        // From its own moment the box counts down to the stored end.
+        const PreviewDrainBox at = drain_box_at(scene, start);
+        CHECK(at.active);
+        CHECK(at.header == "SP drain");
+        CHECK(at.detail == "empties in " + drain_seconds(end - start) + " s");
+        const double mid = (start + end) / 2.0;
+        CHECK(drain_box_at(scene, mid).detail == "empties in " + drain_seconds(end - mid) + " s");
 
-    PreviewDrainBox at = drain_box_at(scene, 4000.0);
-    CHECK(at.active);
-    CHECK(at.header == "SP drain");
-    CHECK(at.rate == "1 bar / 4.0 s");
-    CHECK(at.detail == "empties in 8.0 s");
-    CHECK(drain_box_at(scene, 9000.0).detail == "empties in 3.0 s");
-
-    // At the stored end SP is over, as the gauge reads that boundary too.
-    PreviewDrainBox after = drain_box_at(scene, 12000.0);
-    CHECK_FALSE(after.active);
-    CHECK(after.detail.rfind("full meter ", 0) == 0);
+        // Just before it, and from the stored end on, it reads idle: what it
+        // reads with no path at all.
+        for (const double idle_ms : {std::nextafter(start, 0.0), end}) {
+            if (other_running(a, idle_ms)) continue;
+            const PreviewDrainBox box = drain_box_at(scene, idle_ms);
+            const PreviewDrainBox bare = drain_box_at(pd.bare, idle_ms);
+            CHECK_FALSE(box.active);
+            CHECK(box.header == bare.header);
+            CHECK(box.detail == bare.detail);
+        }
+    }
 }
 
 TEST_CASE("drain box: empties in reads the stored end, not a recount") {
-    // A phrase collected mid-SP pushes the stored end two measures past the
-    // plain act + 4 measures: 16000 ms, not 12000. Only the record knows.
-    Song song = make_sp_song({960, 5760}, /*last_tick=*/17280);
-    Path path;
-    Activation act = sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520);
-    act.sp_end_steps = {{3840, 11520, SpEndKind::Activation}, {5760, 15360, SpEndKind::Collected}};
-    path.activations = {act};
-    PreviewScene scene = build_preview_scene(song, &path);
+    // Pitch Dark's first activation: its stored SP end moves past the first
+    // step's end (a clamp, then a squeeze-in). Past that first end the box
+    // still runs, and counts down to the last step's end.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const Activation& rec = pd.path->walk_activations()[0];
+    REQUIRE(rec.sp_end_steps.size() >= 2);
+    const PreviewActivation& a = pd.scene.activations[0];
+    REQUIRE(a.sp_end_tick == rec.window_end_tick());
+    const int64_t first_end_tick = rec.sp_end_steps.front().end_tick;
+    REQUIRE(first_end_tick < a.sp_end_tick);
 
-    PreviewDrainBox box = drain_box_at(scene, 12000.0);
+    const double first_end_ms = pd.song->timing().ms_index().at(first_end_tick);
+    const double now = (first_end_ms + a.sp_end_ms) / 2.0;
+    const PreviewDrainBox box = drain_box_at(pd.scene, now);
     CHECK(box.active);
-    CHECK(box.detail == "empties in 4.0 s");
+    CHECK(box.detail == "empties in " + drain_seconds(a.sp_end_ms - now) + " s");
 }
 
 TEST_CASE("drain box: an activation with no stored end stays idle") {
