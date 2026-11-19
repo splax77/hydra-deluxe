@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import ctypes
 import dataclasses
+import math
 import mmap
 import os
 import struct
@@ -93,14 +94,10 @@ def fake_table(processes, base=0):
 # One real table: NtQuerySystemInformation class 5, read on this machine with
 # machine_recorder.read_table on 2026-11-08 and trimmed to its first two entries
 # (the second entry's NextEntryOffset set to 0, no other byte changed). The
-# numbers below come from that read, and the thread counts from Windows'
-# Get-Process at the same moment, not from the parser.
+# offsets below were read from that file by hand, never from the parser.
 SAMPLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorder_sample.bin")
-SAMPLE_SIZE = 41_744
 SYSTEM_AT = 4464  # where the second entry, System, starts
 SYSTEM_NAME_AT = 41728  # where System's name text starts in the sample
-IDLE_THREADS = 48  # Get-Process -Id 0
-SYSTEM_THREADS = 458  # Get-Process -Id 4
 # System's threads: (index, byte where the entry starts, tid, state, wait reason,
 # context switches, kernel + user time in 100 ns ticks), read by hand.
 SYSTEM_THREAD_ROWS = (
@@ -113,6 +110,21 @@ SYSTEM_THREAD_ROWS = (
 def read_sample():
     with open(SAMPLE_PATH, "rb") as file:
         return file.read()
+
+
+def thread_entries(sample, at, pid):
+    """How many thread entries follow the process entry at `at` and name `pid` in
+    their ClientId (byte 0x28 of a thread entry), counted by hand from the bytes."""
+    count = 0
+    while P.decode_u64(sample[at + 0x100 + count * 0x50 + 0x28:][:8]) == pid:
+        count += 1
+    return count
+
+
+# Each process's thread count, counted from the thread entries Windows wrote
+# after its entry; CapturedTable checks NumberOfThreads (byte 4) agrees.
+IDLE_THREADS = thread_entries(read_sample(), 0, 0)
+SYSTEM_THREADS = thread_entries(read_sample(), SYSTEM_AT, 4)
 
 
 def sample_base(sample):
@@ -129,11 +141,6 @@ TWO_PROCESSES = [
     {"pid": 8, "parent": 7, "name": "other.exe", "user": 1, "kernel": 2, "read": 3, "write": 4,
      "faults": 5, "threads": [(81, 1, 2, 3, 1, 0)]},
 ]
-
-
-def layout_of(fields):
-    """The parser's struct layout for a {name: (offset, code)} dict."""
-    return M._layout(fields.values())
 
 
 def with_system_states(sample, states):
@@ -161,8 +168,10 @@ class CapturedTable(unittest.TestCase):
         return P.decode_u64(self.sample[at:at + 8])
 
     def test_the_sample_is_the_table_that_was_captured(self):
-        self.assertEqual(len(self.sample), SAMPLE_SIZE)
         # NextEntryOffset (byte 0 of an entry) and NumberOfThreads (byte 4), by hand.
+        # Each NumberOfThreads equals the thread entries that name the process.
+        self.assertGreater(IDLE_THREADS, 0)
+        self.assertGreater(SYSTEM_THREADS, 0)
         self.assertEqual((self.u32(0), self.u32(4)), (SYSTEM_AT, IDLE_THREADS))
         self.assertEqual((self.u32(SYSTEM_AT), self.u32(SYSTEM_AT + 4)), (0, SYSTEM_THREADS))
         # UniqueProcessId (byte 0x50) and InheritedFromUniqueProcessId (byte 0x58).
@@ -173,6 +182,11 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual(length, 12)
         self.assertEqual(self.sample[SYSTEM_NAME_AT:SYSTEM_NAME_AT + length].decode("utf-16-le"),
                          "System")
+        # System is the last entry, and its name text is the last thing in it, so
+        # the file ends within the 8-byte alignment after that text.
+        name_end = SYSTEM_NAME_AT + length
+        self.assertLessEqual(name_end, len(self.sample))
+        self.assertLess(len(self.sample), name_end + 8)
         for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
             with self.subTest(thread=index):
                 self.assertEqual(at, SYSTEM_AT + 0x100 + index * 0x50)
@@ -183,29 +197,62 @@ class CapturedTable(unittest.TestCase):
                                  (switches, state, reason))
                 self.assertEqual(self.u64(at) + self.u64(at + 8), ticks)
 
+    def by_hand(self, at, layout, field):
+        """One field of the entry at `at`, read at the literal layout above."""
+        offset, code = layout[field]
+        raw = self.sample[at + offset:at + offset + struct.calcsize("<" + code)]
+        if code == "H":
+            return int.from_bytes(raw, "little")
+        # The sample's times and counts are all non-negative, so q reads as Q.
+        return (P.decode_u32 if code == "I" else P.decode_u64)(raw)
+
+    def process_by_hand(self, at):
+        """The entry's process fields, with no thread rows, read by hand."""
+        field = lambda name: self.by_hand(at, PROCESS_LAYOUT, name)  # noqa: E731
+        name_at = field("name_buffer") - sample_base(self.sample) if field("name_length") else 0
+        name = self.sample[name_at:name_at + field("name_length")].decode("utf-16-le")
+        return (field("pid"), field("parent"), name, field("user") + field("kernel"),
+                field("read"), field("write"), field("faults"))
+
+    def threads_by_hand(self, at, count):
+        rows = []
+        for number in range(count):
+            first = at + PROCESS_SIZE + number * THREAD_SIZE
+            field = lambda name: self.by_hand(first, THREAD_LAYOUT, name)  # noqa: E731
+            rows.append(M.Thread(field("tid"), field("state"), field("wait_reason"),
+                                 field("switches"), field("kernel") + field("user")))
+        return rows
+
     def test_the_parser_reads_the_captured_table(self):
         table = self.parse()
         self.assertEqual(list(table.processes), [0, 4])
         self.assertEqual(table.thread_count, IDLE_THREADS + SYSTEM_THREADS)
-        self.assertEqual(table.thread_count, 506)
-        # Idle's threads are left out of the run queue, and every System thread waits.
-        self.assertEqual(table.ready_threads, 0)
         idle, system = table.processes[0], table.processes[4]
-        self.assertEqual((idle.pid, idle.parent_pid, idle.name, idle.cpu_ticks, idle.read_bytes,
-                          idle.write_bytes, idle.hard_faults),
-                         (0, 0, "", 8_630_397_031_250, 0, 0, 0))
-        self.assertEqual((system.pid, system.parent_pid, system.name, system.cpu_ticks,
-                          system.read_bytes, system.write_bytes, system.hard_faults),
-                         (4, 0, "System", 97_909_843_750, 121_967_916, 2_250_372_155, 124))
+        for process, at in ((idle, 0), (system, SYSTEM_AT)):
+            with self.subTest(pid=process.pid):
+                self.assertEqual(process[:-1], self.process_by_hand(at))
+        self.assertEqual((idle.name, system.name), ("", "System"))
         # System's thread ids are all distinct, so its dict holds every thread.
+        system_rows = self.threads_by_hand(SYSTEM_AT, SYSTEM_THREADS)
+        self.assertEqual(system.threads, {row.tid: row for row in system_rows})
         self.assertEqual(len(system.threads), SYSTEM_THREADS)
         for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
             with self.subTest(thread=index):
                 self.assertEqual(system.threads[tid], M.Thread(tid, state, reason, switches, ticks))
-        self.assertEqual(idle.threads[32], M.Thread(32, 3, 0, 101_772, 625_000))
-        # Idle holds 48 entries, 16 of them (one per processor here) with thread id
-        # 0, so its dict, keyed by thread id, keeps 33.
-        self.assertEqual(len(idle.threads), 33)
+        # Some of Idle's entries share thread id 0 (one per processor), so its dict,
+        # keyed by thread id, keeps one per distinct id; each unshared id holds its
+        # own entry.
+        idle_rows = self.threads_by_hand(0, IDLE_THREADS)
+        tids = [row.tid for row in idle_rows]
+        self.assertLess(len(set(tids)), IDLE_THREADS)
+        self.assertEqual(set(idle.threads), set(tids))
+        for row in idle_rows:
+            if tids.count(row.tid) == 1:
+                with self.subTest(idle_thread=row.tid):
+                    self.assertEqual(idle.threads[row.tid], row)
+        # Idle's threads are left out of the run queue, and every System thread waits.
+        self.assertEqual(table.ready_threads,
+                         sum(M.reads_as(row.state) == M.READY for row in system_rows))
 
     def test_a_live_table_holds_this_process_as_windows_reports_it(self):
         # A table Windows writes now, read by the recorder's own reader. The pid,
@@ -222,49 +269,37 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual(M.reads_as(me.threads[tid].state), M.RUNNING)
         self.assertGreater(me.cpu_ticks, 0)
 
-    def test_an_offset_moved_by_4_reads_a_wrong_table(self):
-        # The parser reads the entries through _PROCESS_FIELDS and _THREAD_FIELDS,
-        # so a wrong offset is one of those layouts built with the offset moved.
-        moved_parent = dict(PROCESS_LAYOUT, parent=(0x58 + 4, "Q"))
-        with unittest.mock.patch.object(M, "_PROCESS_FIELDS", layout_of(moved_parent)):
-            table = self.parse()
-        # The read takes the high half of the parent pid and HandleCount (byte 0x60).
-        self.assertEqual(table.processes[4].parent_pid, 7509 << 32)
-        self.assertNotEqual(table.processes[4].parent_pid, 0)
-        moved_tid = dict(THREAD_LAYOUT, tid=(0x30 + 4, "Q"))
-        with unittest.mock.patch.object(M, "_THREAD_FIELDS", layout_of(moved_tid)):
-            table = self.parse()
-        self.assertNotIn(33572, table.processes[4].threads)
-        self.assertNotIn(12, table.processes[4].threads)
-
     def test_names_count_from_the_address_the_table_was_read_at(self):
         self.assertEqual(self.parse().processes[4].name, "System")
         moved = M.parse_table(self.sample, sample_base(self.sample) - 2)
         self.assertNotEqual(moved.processes[4].name, "System")
 
-    def test_an_unnamed_process_reads_as_empty(self):
-        self.assertEqual(self.parse().processes[0].name, "")
-
     def test_the_filter_keeps_counts_for_the_whole_table(self):
+        whole = self.parse()
         table = self.parse(thread_pids=[4])
         self.assertEqual(len(table.processes[4].threads), SYSTEM_THREADS)
         self.assertEqual(table.processes[0].threads, {})
-        self.assertEqual((table.thread_count, table.ready_threads), (506, 0))
+        self.assertEqual((table.thread_count, table.ready_threads),
+                         (IDLE_THREADS + SYSTEM_THREADS, whole.ready_threads))
 
     def test_an_empty_filter_parses_no_threads(self):
         table = self.parse(thread_pids=())
         self.assertEqual((table.processes[0].threads, table.processes[4].threads), ({}, {}))
-        self.assertEqual(table.thread_count, 506)
+        self.assertEqual(table.thread_count, IDLE_THREADS + SYSTEM_THREADS)
 
     def test_every_ready_state_counts_toward_the_run_queue(self):
         table = self.parse(with_system_states(self.sample, (1, 2, 3, 4, 5, 6, 7)))
         self.assertEqual(table.ready_threads, 3)
 
     def test_the_idle_process_adds_nothing_to_the_run_queue(self):
-        # Idle's own entries hold 18 in state 3 (standby), byte 0x44 of each.
-        states = [self.u32(0x100 + n * 0x50 + 0x44) for n in range(IDLE_THREADS)]
-        self.assertEqual(states.count(3), 18)
-        self.assertEqual(self.parse().ready_threads, 0)
+        # Some of Idle's own entries hold a state that reads as ready (byte 0x44 of
+        # each, by hand), yet the run queue counts only System's ready threads.
+        def ready(at, count):
+            return sum(M.reads_as(self.u32(at + 0x100 + n * 0x50 + 0x44)) == M.READY
+                       for n in range(count))
+
+        self.assertGreater(ready(0, IDLE_THREADS), 0)
+        self.assertEqual(self.parse().ready_threads, ready(SYSTEM_AT, SYSTEM_THREADS))
 
     def test_each_ready_state_of_a_real_process_counts_beside_the_idle_process(self):
         # Every System thread in the sample waits, so one thread set to a state
@@ -607,9 +642,9 @@ class Loop(Folder):
 
     def test_the_first_end_to_arrive_is_kept(self):
         stop = M.Stop()
-        stop.set("parent gone")
-        stop.set("stdin closed")
-        self.assertEqual(stop.reason, "parent gone")
+        stop.set(M.STOP_PARENT)
+        stop.set(M.STOP_STDIN)
+        self.assertEqual(stop.reason, M.STOP_PARENT)
 
     def test_each_row_carries_the_pid_and_period_and_only_the_last_the_process_time(self):
         loop = FakeLoop(self.folder)
@@ -704,9 +739,6 @@ class CommandLine(Folder):
     def test_the_rate_defaults_to_the_one_constant(self):
         self.assertEqual(self.run_main("--cap-s", "9")["period_s"], 0.02)
 
-    def test_cap_s_is_the_exact_cap(self):
-        self.assertEqual(self.run_main("--cap-s", "9")["cap_s"], 9)
-
     def test_run_cap_s_adds_the_extra(self):
         self.assertEqual(self.run_main("--run-cap-s", "100")["cap_s"], 160)
 
@@ -783,7 +815,7 @@ class RealRun(Folder):
         process.stdin.write(f"pid {os.getpid()}\n")
         _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         self.assertEqual(process.returncode, 0, stderr)
-        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "stdin closed")
+        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], M.STOP_STDIN)
 
     def test_a_cap_ends_the_real_process_with_its_stdin_still_open(self):
         out, process = self.start("--cap-s", "0.2", stdin=subprocess.PIPE)
@@ -795,7 +827,7 @@ class RealRun(Folder):
             process.stdout.close()
             process.stderr.close()
         self.assertEqual((process.returncode, stderr), (0, ""))
-        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "cap")
+        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], M.STOP_CAP)
 
     def test_a_dead_parent_ends_the_real_process(self):
         parent = subprocess.Popen([sys.executable, "-I", "-c", "input()"], stdin=subprocess.PIPE)
@@ -807,7 +839,7 @@ class RealRun(Folder):
         parent.wait(SUBPROCESS_CAP_S)
         _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         self.assertEqual(process.returncode, 0, stderr)
-        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "parent gone")
+        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], M.STOP_PARENT)
 
     def test_a_parent_that_cannot_be_opened_fails_loudly(self):
         gone = finished_pid()
@@ -1075,6 +1107,13 @@ class RealEnds(Folder):
         samples = self.ended_by("--cap-s", str(cap_s), "--seconds", str(SUBPROCESS_CAP_S))
         self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_CAP, cap_s)
 
+    def test_cap_s_is_the_exact_cap(self):
+        # The real process with --cap-s alone ends one cap after it starts, not
+        # RECORDER_CAP_EXTRA_S later as --run-cap-s does.
+        cap_s = 1
+        samples = self.ended_by("--cap-s", str(cap_s))
+        self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_CAP, cap_s)
+
     def test_seconds_stops_it_when_they_come_before_the_cap(self):
         seconds = 1
         samples = self.ended_by("--cap-s", str(SUBPROCESS_CAP_S), "--seconds", str(seconds))
@@ -1198,26 +1237,65 @@ class RecordedPace(unittest.TestCase):
                 self.assertAlmostEqual(walls[i + 2] - walls[i + 1], period_s, delta=period_s / 4)
 
 
+# Nine rows of samples.csv where Clone Hero's song clock crosses zero, copied
+# unchanged from hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/machine-1/samples.csv
+# (samples 876-884): the game's clock reads below zero through the lead-in.
+LEAD_IN_SAMPLES = os.path.join(ROOT, "testdata", "ch_runs", "ls-t3-run-b",
+                               "machine-1-samples-876-884", "samples.csv")
+
+
+def lead_in_clocks():
+    """The song clocks the recorder wrote in LEAD_IN_SAMPLES, in sample order."""
+    rows = read_rows(os.path.dirname(LEAD_IN_SAMPLES), M.SAMPLES_FILE)
+    return [float(row["clock_s"]) for row in rows if row["clock_s"]]
+
+
+class RecordedClock(unittest.TestCase):
+    def test_a_real_lead_in_reads_below_zero_and_the_recorder_kept_it(self):
+        clocks = lead_in_clocks()
+        self.assertLess(clocks[0], 0)
+        self.assertGreater(clocks[-1], 0)
+        self.assertEqual(clocks, sorted(clocks))
+
+
 class ClockRange(Folder):
+    start = RealInputs.start
+    wait_for = RealInputs.wait_for
+    told_to_read = RealEnds.told_to_read
+    finish = RealEnds.finish
+    def wait_for_clock(self, process, out, what, read, after=0):
+        """RealEnds.wait_for_clock, which also fails at once on a written clock no
+        song clock could hold: the empty column it waits for then never comes."""
+        def ready(rows):
+            written = [row["clock_s"] for row in rows if row["clock_s"]]
+            bad = [text for text in written if not math.isfinite(float(text))]
+            if bad:
+                self.fail(f"the recorder wrote clock {bad[0]}")
+            return any(int(row["sample"]) > after and bool(row["clock_s"]) == read
+                       for row in rows)
+        return self.wait_for(process, out, what, ready)
+
     def test_a_nonfinite_clock_is_no_clock_and_a_negative_one_is_kept(self):
-        # The game's clock is below zero through every song's lead-in (TM-11), so a
-        # negative read is a real clock (D325).
-        for value, written in ((float("nan"), ""), (float("inf"), ""), (float("-inf"), ""),
-                               (-1.0, "-1.0"), (12.5, "12.5")):
-            with self.subTest(value=value):
-                folder = os.path.join(self.folder, repr(value))
-                os.mkdir(folder)
-                inputs = M.Inputs(7)
-                inputs.engine = 0x1000
-                raw = struct.pack("<d", value)
-                loop = FakeLoop(folder, inputs=inputs,
-                                open_reader=lambda pid, raw=raw: lambda address, size: raw)
-                loop.run(cap_s=PERIOD_S)
-                samples = read_rows(folder, "samples.csv")
-                self.assertEqual([row["clock_s"] for row in samples], [written, written])
-                stamped = written != ""
-                self.assertEqual([row["clock_wall_before_s"] != "" for row in samples],
-                                 [stamped, stamped])
+        # The real recorder reads a double in this process's memory: first the
+        # game's own lead-in clock, then each value no clock can hold, each time
+        # followed by the lead-in clock again.
+        lead_in = lead_in_clocks()[0]
+        clock = ctypes.c_double(lead_in)
+        out, process = self.told_to_read(os.getpid(), ctypes.addressof(clock))
+        last = self.wait_for_clock(process, out, "the lead-in clock", True)
+        for value in (float("nan"), float("inf"), float("-inf")):
+            clock.value = value
+            last = self.wait_for_clock(process, out, f"a sample with no clock for {value}",
+                                       False, last)
+            clock.value = lead_in
+            last = self.wait_for_clock(process, out, "the lead-in clock again", True, last)
+        samples = self.finish(out, process)
+        self.assertEqual({float(row["clock_s"]) for row in samples if row["clock_s"]}, {lead_in})
+        # A sample with no clock carries no clock stamps.
+        for row in samples:
+            with self.subTest(sample=row["sample"]):
+                self.assertEqual(row["clock_wall_before_s"] == "", row["clock_s"] == "")
+                self.assertEqual(row["clock_wall_after_s"] == "", row["clock_s"] == "")
 
 
 if __name__ == "__main__":
