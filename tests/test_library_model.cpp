@@ -388,34 +388,30 @@ TEST_CASE("library model: an album draws without its tags, a blank one draws emp
 }
 
 TEST_CASE("library model: each column's position and its user ID are one mapping") {
-    // The five shipped IDs keep their values and Album takes 5 while it is
-    // drawn third.
+    // Every column has a user ID of its own, and the ID leads back to that
+    // column, so a sort spec the table reports maps to the column clicked. The
+    // values themselves are LibrarySort's to keep.
     using hydra::ui::column_of;
     using hydra::ui::sort_of;
-    CHECK(hydra::ui::kLibraryColumnCount == 6);
-    CHECK(hydra::ui::kColumnAlbum == 2);
-    CHECK(hydra::ui::kColumnArtist < hydra::ui::kColumnAlbum);
-    CHECK(hydra::ui::kColumnAlbum < hydra::ui::kColumnCharter);
-    CHECK(static_cast<int>(LibrarySort::Title) == 0);
-    CHECK(static_cast<int>(LibrarySort::Artist) == 1);
-    CHECK(static_cast<int>(LibrarySort::Charter) == 2);
-    CHECK(static_cast<int>(LibrarySort::Folder) == 3);
-    CHECK(static_cast<int>(LibrarySort::BestPath) == 4);
-    CHECK(static_cast<int>(LibrarySort::Album) == 5);
-    CHECK(sort_of(0) == LibrarySort::Title);
-    CHECK(sort_of(1) == LibrarySort::Artist);
-    CHECK(sort_of(2) == LibrarySort::Album);
-    CHECK(sort_of(3) == LibrarySort::Charter);
-    CHECK(sort_of(4) == LibrarySort::Folder);
-    CHECK(sort_of(5) == LibrarySort::BestPath);
+    std::vector<LibrarySort> seen;
     for (int c = 0; c < hydra::ui::kLibraryColumnCount; ++c) {
         INFO("column " << c);
-        CHECK(column_of(sort_of(c)) == c);
+        const LibrarySort sort = sort_of(c);
+        CHECK(std::find(seen.begin(), seen.end(), sort) == seen.end());
+        seen.push_back(sort);
+        CHECK(column_of(sort) == c);
     }
 }
 
 TEST_CASE("library model: Album sorts on the album its cell shows, blanks first") {
-    LibraryModel m = sample();
+    LibraryModel m = scanned_library(
+        "lm_album_sort",
+        {{"burnout", "name = Burnout\nartist = Green Day\nalbum = Dookie\n"},
+         {"yyz", "name = YYZ\nartist = Rush\n"},
+         {"chair", "name = Chair\nartist = Sufferer\nalbum = Sufferer\n"},
+         {"acid", "name = Acid Romance\nartist = Some Band\nalbum = A Quiet Place To Die\n"},
+         {"halo", "name = Halo\nartist = Someone\n"},
+         {"other", "name = Other\nartist = Thrice\nalbum = The Illusion of Safety\n"}});
     m.set_sort(LibrarySort::Album, true);
     // Halo and YYZ have no album; they tie and fall back to title.
     CHECK(titles(m) == std::vector<std::string>{"Halo", "YYZ", "Acid Romance", "Burnout", "Chair",
@@ -428,97 +424,168 @@ TEST_CASE("library model: Album sorts on the album its cell shows, blanks first"
 TEST_CASE("library model: an empty or placeholder artist or charter reads (unknown), and the "
           "charter is trimmed") {
     // D56 item 2 and D266 item 2: every missing artist or charter reads
-    // "(unknown)". A present charter reads display_charter's text: tags gone,
-    // the spaces at its ends trimmed.
-    LibraryModel m;
-    m.set_charts({chart("a", "Song A", "", " <b>Bob</b> ", "common"),
-                  chart("b", "Song B", "<unknown artist>", "<unknown charter>", "common")});
-    REQUIRE(m.rows().size() == 2);
-    CHECK(m.rows()[0].artist == "(unknown)");
-    CHECK(m.rows()[0].charter == "Bob");
-    CHECK(m.rows()[1].artist == "(unknown)");
-    CHECK(m.rows()[1].charter == "(unknown)");
+    // kUnknownTitle. A present charter reads display_charter's text: tags gone,
+    // the spaces at its ends trimmed (here the spaces inside the tags, which
+    // the scan's own trim leaves). Song A's artist line is blank; Song B's
+    // song.ini holds the scan's placeholders, as an older scan stored them.
+    const LibraryModel m = scanned_library(
+        "lm_missing_names",
+        {{"a", "name = Song A\nartist =\ncharter = <b> Bob </b>\n"},
+         {"b", std::string("name = Song B\nartist = ") + hydra::kUnknownArtist +
+                   "\ncharter = " + hydra::kUnknownCharter + "\n"}});
+    CHECK(row_in(m, "a").artist == hydra::kUnknownTitle);
+    CHECK(row_in(m, "a").charter == "Bob");
+    CHECK(row_in(m, "b").artist == hydra::kUnknownTitle);
+    CHECK(row_in(m, "b").charter == hydra::kUnknownTitle);
 }
 
 TEST_CASE("library model: a name sorts on the text its cell shows, not the stored text") {
-    // D114 item 3. A blank title and a placeholder artist show "(unknown)" and
-    // sort there; a leading space the cell trims does not move the row.
-    LibraryModel m;
-    m.set_charts({chart("blank", "", "1 Band", "C", "common"),
-                  chart("bang", "!!! Song", "<unknown artist>", "C", "common"),
-                  chart("space", " Zebra", "Band", "C", "common"),
-                  chart("apple", "Apple", "Cats", "C", "common")});
-    CHECK(titles(m) == std::vector<std::string>{"!!! Song", "(unknown)", "Apple", "Zebra"});
+    // D114 item 3. A blank title and a blank artist show kUnknownTitle and
+    // sort there; a leading space the cell trims does not move the row. The
+    // space sits after an empty tag, since the scan trims a name's own ends.
+    LibraryModel m = scanned_library(
+        "lm_name_sort", {{"blank", "name =\nartist = 1 Band\ncharter = C\n"},
+                         {"bang", "name = !!! Song\nartist =\ncharter = C\n"},
+                         {"space", "name = <b></b> Zebra\nartist = Band\ncharter = C\n"},
+                         {"apple", "name = Apple\nartist = Cats\ncharter = C\n"}});
+    const std::string unknown = hydra::kUnknownTitle;
+    CHECK(titles(m) == std::vector<std::string>{"!!! Song", unknown, "Apple", "Zebra"});
     m.set_sort(LibrarySort::Artist, true);
-    CHECK(titles(m) == std::vector<std::string>{"!!! Song", "(unknown)", "Zebra", "Apple"});
+    CHECK(titles(m) == std::vector<std::string>{"!!! Song", unknown, "Zebra", "Apple"});
 }
 
 TEST_CASE("library model: a lookup that differs only in a field the library never reads changes nothing") {
-    LibraryModel m = sample();
-    const hydra::ui::LibraryRow& burnout = m.rows()[0];  // ready(378315, "3- 1 2", 7, 163.0)
-    RecordLookup same = ready(378315, "3- 1 2", 7, 163.0);
-    same.record.paths.front().actcount = 4;
-    CHECK(burnout.shows_same_as(same));
-    CHECK(m.set_summary_for("burnout", same) == 0);
-    CHECK_FALSE(burnout.shows_same_as(ready(378315, "3- 1 2", 6, 163.0)));
-    CHECK_FALSE(burnout.shows_same_as(stale()));
+    // One corpus chart's own result, saved and read back through the store as
+    // the app reads it. Each variant below changes that real lookup in one
+    // field.
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    const corpus::ChartWithPaths c = corpus::first_chart_with_paths(run.settings);
+    const ChartLibraryEntry entry = corpus::scanned_entry(c.chart);
+    hydra::store::RecordStore store(":memory:");
+    store.save(hydra::store::prepare_record(entry.md5, run.profile, c.result.record));
+    const RecordLookup found = store.lookup_one(entry.md5, run.profile);
+    REQUIRE(found.status == RecordStatus::Ready);
+    REQUIRE(found.record.stars.has_value());
+
+    LibraryModel m;
+    m.set_charts({entry});
+    REQUIRE(m.set_summary_for(entry.md5, found) == 1);
+    const hydra::ui::LibraryRow& row = m.rows()[0];
+
+    // The best path's activation count is in the record, but no column, chip
+    // or filter reads it.
+    RecordLookup same = found;
+    same.record.paths.front().actcount += 1;
+    CHECK(row.shows_same_as(same));
+    CHECK(m.set_summary_for(entry.md5, same) == 0);
+
+    // The stars are shown, so a change there is a change.
+    RecordLookup more_stars = found;
+    more_stars.record.stars = *found.record.stars + 1;
+    CHECK_FALSE(row.shows_same_as(more_stars));
+
+    // The same result saved as another Hydra version's reads Stale.
+    hydra::store::RecordStore old_store(":memory:");
+    hydra::test::save_old_build_record(
+        old_store, hydra::store::prepare_record(entry.md5, run.profile, c.result.record));
+    const RecordLookup stale_found = old_store.lookup_one(entry.md5, run.profile);
+    REQUIRE(stale_found.status == RecordStatus::Stale);
+    CHECK_FALSE(row.shows_same_as(stale_found));
 }
 
 TEST_CASE("library model: status_label is the one source of the status words") {
     using hydra::ui::status_label;
-    CHECK(std::string(status_label(RecordStatus::Ready)) == "Analyzed");
-    CHECK(std::string(status_label(RecordStatus::Stale)) == "Stale");
-    CHECK(std::string(status_label(RecordStatus::NotAnalyzed)) == "Not analyzed");
-    CHECK(std::string(status_label(RecordStatus::CantAnalyze)) == "Can't analyze");
-    // The Best path cell of a row with no current result shows the same word.
+    const RecordStatus statuses[] = {RecordStatus::Ready, RecordStatus::Stale,
+                                     RecordStatus::NotAnalyzed, RecordStatus::CantAnalyze};
     const hydra::store::PathSummary none;
-    CHECK(hydra::ui::best_path_label(RecordStatus::Stale, "", none) == "Stale");
-    CHECK(hydra::ui::best_path_label(RecordStatus::NotAnalyzed, "", none) == "Not analyzed");
-    CHECK(hydra::ui::best_path_label(RecordStatus::CantAnalyze, "", none) == "Can't analyze");
+    std::vector<std::string> words;
+    for (RecordStatus s : statuses) {
+        const std::string word = status_label(s);
+        INFO("status word " << word);
+        // Each status has a word, and no two share one.
+        CHECK_FALSE(word.empty());
+        CHECK(std::find(words.begin(), words.end(), word) == words.end());
+        words.push_back(word);
+        // The Best path cell of a row with no current result shows that word.
+        if (s != RecordStatus::Ready) CHECK(hydra::ui::best_path_label(s, "", none) == word);
+    }
+    // Each status's chip is named with the same word.
+    for (StatusChip chip : {StatusChip::NotAnalyzed, StatusChip::Stale, StatusChip::Analyzed,
+                            StatusChip::CantAnalyze}) {
+        const std::optional<RecordStatus> s = hydra::ui::status_of(chip);
+        REQUIRE(s.has_value());
+        CHECK(hydra::ui::chip_label(chip, 1).find(status_label(*s)) == 0);
+    }
 }
 
-// One chart under each status, the Can't analyze one a failure the store kept
-// (failure_record) and read back the way the app reads it (lookup).
+// One chart under each status, each read back through the store the way the
+// app reads it (lookup): a corpus chart's own result (Ready), another's saved
+// as another Hydra version's (Stale), a third with nothing saved (Not
+// analyzed), and a written chart with no drum notes whose real analysis fails
+// and whose failure the batch's own step keeps (prepare_failed_chart).
 TEST_CASE("library model: every status has its own chip, and All counts them all") {
-    const Profile profile{"mode", CapQuery::at(8), hydra::store::Lens{}};
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    const std::vector<corpus::ChartWithPaths> charts = corpus::charts_with_paths(run.settings, 3);
+    REQUIRE_MESSAGE(charts.size() == 3, "the corpus needs three charts with paths");
+    const std::string dir = testtemp::temp_dir("lm_cant");
+    const std::string cant_path = dir + "\\notes.chart";
+    audiochart::write_text_file(dir + "\\song.ini", "[song]\nname = Cant\n");
+    audiochart::write_text_file(
+        cant_path,
+        testchart::chart_text(testchart::section("ExpertSingle", testchart::line(0, "N 0 0"))));
+
+    std::vector<ChartLibraryEntry> entries;
+    for (const corpus::ChartWithPaths& c : charts) entries.push_back(corpus::scanned_entry(c.chart));
+    entries.push_back(corpus::scanned_entry(cant_path, "Cant"));
+    const std::string cant_md5 = entries[3].md5;
+
     hydra::store::RecordStore store(":memory:");
-    store.save(hydra::store::failure_record("cant", profile, hydra::ErrorKind::NoNotes,
-                                            no_notes.what()));
-    const RecordLookup cant = store.lookup_one("cant", profile);
-    REQUIRE(cant.status == RecordStatus::CantAnalyze);
+    store.save(hydra::store::prepare_record(entries[0].md5, run.profile, charts[0].result.record));
+    hydra::test::save_old_build_record(
+        store, hydra::store::prepare_record(entries[1].md5, run.profile, charts[1].result.record));
+    std::optional<hydra::store::PreparedRecord> failure;
+    try {
+        hydra::app::analyze_chart_file(cant_path, run.settings);
+    } catch (const std::exception& e) {
+        failure = hydra::app::prepare_failed_chart(cant_md5, run.profile, e);
+    }
+    REQUIRE_MESSAGE(failure.has_value(), "a chart with no drum notes must fail as a kept failure");
+    store.save(*failure);
 
     LibraryModel m;
-    m.set_charts({chart("ready", "Ready", "A", "C", "common"),
-                  chart("stale", "Stale", "A", "C", "common"),
-                  chart("new", "New", "A", "C", "common"),
-                  chart("cant", "Cant", "A", "C", "common")});
-    m.set_summaries({ready(300000, "1 1", 6, 40.0), stale(), RecordLookup{}, cant});
+    m.set_charts(entries);
+    m.set_summaries(store.lookup(m.hashes(), run.profile));
 
     const hydra::ui::ChipCounts& c = m.counts();
     CHECK(c.analyzed == 1);
     CHECK(c.stale == 1);
     CHECK(c.not_analyzed == 1);
     CHECK(c.cant_analyze == 1);
-    CHECK(c.all == 4);
+    CHECK(c.all == entries.size());
     CHECK(c.of(StatusChip::CantAnalyze) == 1);
-    CHECK(hydra::ui::chip_label(StatusChip::CantAnalyze, 1) == "Can't analyze (1)##chipcant");
 
     // The chip narrows the table to that one chart, which is what the
     // Analyze button counts and runs (D115).
     m.set_chip(StatusChip::CantAnalyze);
-    CHECK(titles(m) == std::vector<std::string>{"Cant"});
+    REQUIRE(m.order().size() == 1);
+    CHECK(m.rows()[m.order()[0]].entry.md5 == cant_md5);
     CHECK(m.narrowed());
 
     // The row keeps the stored kind and text, and its cell reads the word.
     const hydra::ui::LibraryRow& row = m.rows()[3];
-    CHECK(row.failure_kind == hydra::ErrorKind::NoNotes);
-    CHECK(row.failure_text == no_notes.what());
-    CHECK(hydra::ui::library_cell_text(row, hydra::ui::kColumnBestPath) == "Can't analyze");
+    CHECK(row.failure_kind == failure->record.failure_kind);
+    CHECK(row.failure_text == failure->record.failure_text);
+    CHECK(hydra::ui::library_cell_text(row, hydra::ui::kColumnBestPath) ==
+          hydra::ui::status_label(RecordStatus::CantAnalyze));
 
-    // Re-analyzed after the file was fixed: the chip empties and falls back
-    // to All.
-    CHECK(m.set_summary_for("cant", ready(1000, "0", 1, 1.0)) == 1);
+    // Re-analyzed after the file was fixed (two drum notes written in its
+    // place): the chip empties and falls back to All.
+    audiochart::write_text_file(
+        cant_path, testchart::chart_text(testchart::section(
+                       "ExpertDrums", testchart::line(0, "N 0 0") + testchart::line(192, "N 1 0"))));
+    const hydra::app::AnalysisResult fixed = hydra::app::analyze_chart_file(cant_path, run.settings);
+    store.save(hydra::store::prepare_record(cant_md5, run.profile, fixed.record));
+    CHECK(m.set_summary_for(cant_md5, store.lookup_one(cant_md5, run.profile)) == 1);
     CHECK(m.chip() == StatusChip::All);
     CHECK(m.counts().cant_analyze == 0);
     CHECK_FALSE(m.rows()[3].failure_kind.has_value());
