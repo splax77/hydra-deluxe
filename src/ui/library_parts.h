@@ -61,6 +61,8 @@ std::string early_fill_window_help_text();
 // Called every frame inside the "##library" child, even when the library is
 // empty: it also runs AppState::tick_library.
 void render_library(AppState& app);
+// The short line under the search box, before the Search tips link.
+inline constexpr const char* kSearchLineText = "Type any words, or narrow it down.";
 
 // library_dialogs.cpp
 void render_folder_manager(AppState& app);

@@ -79,6 +79,22 @@ struct VersionBarStatus {
     bool update_button = false;
 };
 
+// The version bar's fixed sentences (D259 and D260 in
+// docs/audit/2026-10-03-fix-decisions.md). AppState puts them in UpdateState
+// and VersionBarStatus; tests read them here. The ones that name a version
+// are built with core::named_version.
+inline constexpr const char* kUpdateVerifyingText = "Checking the download...";
+inline constexpr const char* kUpdateLaunchingText = "Starting the installer...";
+inline constexpr const char* kUpdateDeclinedText =
+    "The installer didn't start, so Hydra wasn't updated.";
+inline constexpr const char* kOnlyInstalledChecksText =
+    "Only the installed copy of " HYDRA_APP_NAME " checks for updates.";
+inline constexpr const char* kCheckingForUpdatesText = "Checking for updates...";
+inline constexpr const char* kCouldNotCheckText =
+    "Hydra couldn't check for updates when it started.";
+inline constexpr const char* kUpToDateText = "Up to date";
+inline constexpr const char* kSkippedText = "Skipped.";
+
 // GETs kLatestReleaseUrl and reads it with app::parse_latest_release_json.
 // Whether the release is newer, or skipped, is AppState's to say.
 class UpdateCheckJob : public ResultJobBase {

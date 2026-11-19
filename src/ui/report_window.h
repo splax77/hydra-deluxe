@@ -206,6 +206,12 @@ Frame frame_from(const ReportWindowInput<Result>& input) {
     return f;
 }
 
+// The out-of-date strip's sentence: why the rows may be old, naming the
+// batch's finish time when the library changed and `batch_finished` is set.
+// Empty for ReportOutOfDate::None.
+std::string out_of_date_text(ReportOutOfDate why,
+                             std::optional<std::chrono::system_clock::time_point> batch_finished);
+
 // Whether `w` still points at the result `p` owns (an expired one never
 // matches a new one, even at the same address).
 template <class Result>
