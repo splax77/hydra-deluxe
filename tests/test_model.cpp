@@ -1247,11 +1247,13 @@ TEST_CASE("backend_row_value: every engine case") {
     const double past_leeway = 2 * lw;
 
     int rows = 0;
+    int rows_priced_apart = 0;
     for (const CorpusAct& ca : default_acts()) {
         for (const BackendSqueeze& b : ca.act->backends) {
             ++rows;
             const int sp = b.sp_points;
             const int sq = b.sqout_sp_points;
+            if (sp != sq) ++rows_priced_apart;
             CAPTURE(ca.chart);
             CAPTURE(b.timecode.ticks());
             CAPTURE(sp);
@@ -1287,6 +1289,10 @@ TEST_CASE("backend_row_value: every engine case") {
     // The anchor test above finds SqOut squeezes on the corpus, and set_sqout
     // throws unless such an activation holds a backend row, so rows exist.
     REQUIRE(rows > 0);
+    // The Exact cases only tell sqout_sp_points from sp_points on a row where
+    // the two differ, so the corpus must hold one: a chord squeezed out loses
+    // its first note's doubling.
+    REQUIRE(rows_priced_apart > 0);
 
     // Position comes from ticks, the way the engine compares them.
     CHECK(core::sqout_position(100, std::nullopt) == P::NoSqOut);
