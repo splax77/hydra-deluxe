@@ -54,7 +54,8 @@ OVERRIDE = {
 
 # After the T8 closure check (reports/TOOL-AUDIT-T8-K1.md to K6.md, R7.md): rows a checker
 # reopened, and the main session's refold of each, read against the files. Applied last.
-BUILD_Q = "exit 2, question: whether a wave's build count needs the user's yes (the one-build-per-wave note against agent-rules.md rule 3)"
+BUILD_Q = ('exit 3, the user\'s "Yes, state the count" (log.md, batch 5): the note\'s rule wins; '
+           "agent-rules.md rule 3 is fixed to say so, and the rule gets a home there (fix plan)")
 AFTER_CHECK = {
     "L-F09-12": ("REAL", "doc-vs-code;code-vs-code",
                  'doc-vs-code: exit 3, "The code wins"; code-vs-code: exit 3, "Merge, I pick"; pick goes in the fix plan',

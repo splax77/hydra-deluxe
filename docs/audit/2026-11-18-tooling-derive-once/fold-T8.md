@@ -18,7 +18,7 @@ After the check: REAL 66, NOT A SPLIT 47, GONE 2. Twelve rows, in five themes, g
 
 K7 (reports/TOOL-AUDIT-T8-K7.md) checked the three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdicts on L-F21-09: all PASS.
 
-After the user's batch 4 answers (log.md): the line budget rows close by the Confirmed line at review-and-hooks.md:11, which the re-check missed; the scrolling rows close by the user's "delete that memory note"; and L-F27-27 becomes a Fix pending rename, since no value changes and no screen shows the values. The `gh issue close --comment` rows (L-F13-08, L-F16-08, L-F13-17) were fixed on the user's "Fix the doc line" (exit 1, merge 6acfbed4). Three rows in one theme are still questions: the build count (L-F29-01, L-F29-18, L-F32-01).
+After the user's batch 4 answers (log.md): the line budget rows close by the Confirmed line at review-and-hooks.md:11, which the re-check missed; the scrolling rows close by the user's "delete that memory note"; and L-F27-27 becomes a Fix pending rename, since no value changes and no screen shows the values. The `gh issue close --comment` rows (L-F13-08, L-F16-08, L-F13-17) were fixed on the user's "Fix the doc line" (exit 1, merge 6acfbed4). The build-count rows (L-F29-01, L-F29-18, L-F32-01) close by the user's "Yes, state the count". No row of the 115 is still a question.
 
 | Row | Report | Verdict | Kinds | Exit | Main session's note |
 |---|---|---|---|---|---|
@@ -111,14 +111,14 @@ After the user's batch 4 answers (log.md): the line budget rows close by the Con
 | L-F28-16 | R2 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F28-18 | R1 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F28-21 | R2 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
-| L-F29-01 | R2 | REAL | doc-vs-doc;memory-vs-other | doc-vs-doc: exit 3, "Merge, I pick"; memory-vs-other: exit 2, question: whether a wave's build count needs the user's yes (the one-build-per-wave note against agent-rules.md rule 3) | K5 REOPEN: "Note is wrong" would drop the note's build-count rule, which no doc holds; agent-rules.md:9 says compiling inside approved work needs no separate yes |
+| L-F29-01 | R2 | REAL | doc-vs-doc;memory-vs-other | doc-vs-doc: exit 3, "Merge, I pick"; memory-vs-other: exit 3, the user's "Yes, state the count" (log.md, batch 5): the note's rule wins; agent-rules.md rule 3 is fixed to say so, and the rule gets a home there (fix plan) | K5 REOPEN: "Note is wrong" would drop the note's build-count rule, which no doc holds; agent-rules.md:9 says compiling inside approved work needs no separate yes |
 | L-F29-03 | R3 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F29-07 | R2 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F29-08 | R3 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F29-10 | R2 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F29-11 | R5 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F29-13 | R1 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
-| L-F29-18 | R2 | REAL | doc-vs-doc;memory-vs-other | doc-vs-doc: exit 3, "Merge, I pick"; memory-vs-other: exit 2, question: whether a wave's build count needs the user's yes (the one-build-per-wave note against agent-rules.md rule 3) | K5 REOPEN: as L-F29-01 |
+| L-F29-18 | R2 | REAL | doc-vs-doc;memory-vs-other | doc-vs-doc: exit 3, "Merge, I pick"; memory-vs-other: exit 3, the user's "Yes, state the count" (log.md, batch 5): the note's rule wins; agent-rules.md rule 3 is fixed to say so, and the rule gets a home there (fix plan) | K5 REOPEN: as L-F29-01 |
 | L-F30-04 | R1 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F30-09 | R1 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F30-10 | R5 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
@@ -134,7 +134,7 @@ After the user's batch 4 answers (log.md): the line budget rows close by the Con
 | L-F31-15 | R5 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F31-23 | R5 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F31-25 | R5 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
-| L-F32-01 | R2 | REAL | doc-vs-doc;memory-vs-other | doc-vs-doc: exit 3, "Merge, I pick"; memory-vs-other: exit 2, question: whether a wave's build count needs the user's yes (the one-build-per-wave note against agent-rules.md rule 3) | K6 REOPEN: as L-F29-01 |
+| L-F32-01 | R2 | REAL | doc-vs-doc;memory-vs-other | doc-vs-doc: exit 3, "Merge, I pick"; memory-vs-other: exit 3, the user's "Yes, state the count" (log.md, batch 5): the note's rule wins; agent-rules.md rule 3 is fixed to say so, and the rule gets a home there (fix plan) | K6 REOPEN: as L-F29-01 |
 | L-F32-06 | R5 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F32-10 | R6 | REAL | claimed-ruling;memory-vs-other | claimed-ruling: exit 3, "Drop the claim" (K6 PASS); the test_ skip: exit 3, "Note is wrong", as L-F26-04 | the skip half refolds with L-F26-04; checked in K7 |
 
