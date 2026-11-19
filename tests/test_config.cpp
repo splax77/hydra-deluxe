@@ -348,6 +348,7 @@ TEST_CASE("a bad line refuses") {
         {"unknown_key", "whatever", false},
         {"depth_value", "not_a_number", true},
         {"view_prodrums", "yes", true},
+        {"legacy_fills", "yes", true},  // a second on/off key, a word instead of 0 or 1
         {"view_difficulty", "Expret", true},
         {"sp_cap", "abc", true},
         {"sp_cap", "auto", true},
