@@ -24,6 +24,7 @@
 #include "audio_chart_fixtures.h"  // write_text_file: the song folders' files
 #include "chart_text.h"            // chart_text: the song folders' short drum charts
 #include "core/error_kind.h"
+#include "core/model.h"  // shown_timing, timing_within_limit: what the squeeze filter reads
 #include "core/rules.h"
 #include "core/stars.h"   // kMaxStars: the top of the stars: filter
 #include "core/winstr.h"  // parent_folder, join_folder: a chart's song folder
@@ -35,7 +36,6 @@
 
 using hydra::store::CapQuery;
 using hydra::store::ChartLibraryEntry;
-using hydra::store::PathRow;
 using hydra::store::Profile;
 using hydra::store::RecordLookup;
 using hydra::store::RecordStatus;
@@ -56,47 +56,6 @@ ChartLibraryEntry chart(const char* md5, const char* title, const char* artist,
     e.rootfolder = folder;
     e.notespath = std::string("C:\\songs\\") + folder + "\\" + title + "\\notes.mid";
     return e;
-}
-
-// A Ready lookup whose record keeps one path: the best path's text, score and
-// hardest timing, and the record's stars.
-RecordLookup ready(int64_t score, const char* bestpath, int stars, double hardest_ms) {
-    RecordLookup s;
-    s.status = RecordStatus::Ready;
-    PathRow best;
-    best.path = bestpath;
-    best.score = score;
-    best.hardest_ms = hardest_ms;
-    s.record.paths.push_back(best);
-    s.record.stars = stars;
-    return s;
-}
-
-RecordLookup stale() {
-    RecordLookup s;
-    s.status = RecordStatus::Stale;
-    return s;
-}
-
-// Six charts from the scratch library's shapes: Burnout analyzed, Chair
-// stale, the rest not analyzed. Row order here is scan order, not title order.
-// Halo and YYZ have no album.
-LibraryModel sample() {
-    LibraryModel m;
-    m.set_charts({
-        chart("burnout", "Burnout", "Green Day", "Hoph2o", "common\\Summer Blast _25 Setlist\\Tier 4",
-              "Dookie"),
-        chart("yyz", "YYZ", "Rush", "Harmonix, Onyxite", "common\\Summer Blast _25 Setlist\\Tier 4"),
-        chart("chair", "Chair", "Sufferer", "Satan", "common\\Summer Blast _25 Setlist\\Tier 4",
-              "Sufferer"),
-        chart("acid", "Acid Romance", "Some Band", "<color=#e02222>Blood</color>line", "common\\Other",
-              "A Quiet Place To Die"),
-        chart("halo", "Halo", "Beyoncé", "Someone", "common\\Other"),
-        chart("other", "Other", "Thrice", "Someone", "IB24\\T4", "The Illusion of Safety"),
-    });
-    RecordLookup none;
-    m.set_summaries({ready(378315, "3- 1 2", 7, 163.0), none, stale(), none, none, none});
-    return m;
 }
 
 std::vector<std::string> titles(const LibraryModel& m) {
@@ -1239,68 +1198,63 @@ namespace {
 
 using Answers = std::vector<std::pair<std::string, RecordLookup>>;
 
-// One chart in two folders and two other charts, all Not analyzed.
-LibraryModel two_folders_and_two_more() {
-    LibraryModel m;
-    m.set_charts({chart("same", "Song", "A", "C", "Pack 1"), chart("same", "Song", "A", "C", "Pack 2"),
-                  chart("first", "First", "B", "C", "Pack 1"),
-                  chart("second", "Second", "D", "C", "Pack 2")});
-    return m;
-}
-
-// The answer `answers` gives for `md5`.
-const RecordLookup& answer_for(const Answers& answers, const std::string& md5) {
-    const auto found = std::find_if(answers.begin(), answers.end(),
-                                    [&](const auto& a) { return a.first == md5; });
-    REQUIRE(found != answers.end());
-    return found->second;
-}
-
 }  // namespace
 
-TEST_CASE("library model: set_summaries_for gives every row the answer set_summary_for would") {
-    RecordLookup cant;
-    cant.status = RecordStatus::CantAnalyze;
-    cant.failure_kind = hydra::ErrorKind::NoNotes;
-    cant.failure_text = "x";
-    const Answers answers{{"same", ready(1000, "1", 3, 0.0)},
-                          {"first", stale()},
-                          {"second", cant}};
+TEST_CASE("library model: set_summaries_for gives every row the answer it was given") {
+    // The scanned sample's six charts and a chart whose analysis fails, all
+    // listed with no answer yet. Then every row's own store answer arrives at
+    // once: Burnout's and YYZ's results (Analyzed), Chair's result saved as
+    // another Hydra version's (Stale), the failure the batch kept (Can't
+    // analyze) and nothing saved for the other three (Not analyzed).
+    const ScannedSample& lib = scanned_sample();
+    hydra::store::RecordStore store(":memory:");
+    const FailedChart failed =
+        kept_failure(store, "lm_bulk_failure", "notes.chart", guitar_only_chart());
+    std::vector<ChartLibraryEntry> entries = lib.entries;
+    entries.push_back(failed.entry);
+    REQUIRE(lib.with_yyz.size() == lib.model.rows().size());
+    Answers answers;
+    for (size_t i = 0; i < lib.model.rows().size(); ++i)
+        answers.emplace_back(lib.model.rows()[i].entry.md5, lib.with_yyz[i]);
+    answers.emplace_back(failed.entry.md5, failed.lookup);
 
-    LibraryModel at_once = two_folders_and_two_more();
-    const size_t changed_at_once = at_once.set_summaries_for(answers);
-
-    LibraryModel one_by_one = two_folders_and_two_more();
-    size_t changed_one_by_one = 0;
-    for (const auto& [md5, lookup] : answers)
-        changed_one_by_one += one_by_one.set_summary_for(md5, lookup);
-
-    CHECK(changed_at_once == changed_one_by_one);
-    CHECK(changed_at_once == at_once.rows().size());  // every row was Not analyzed
-    REQUIRE(at_once.rows().size() == one_by_one.rows().size());
-    for (size_t i = 0; i < at_once.rows().size(); ++i) {
-        const RecordLookup& expected = answer_for(answers, at_once.rows()[i].entry.md5);
-        CHECK(at_once.rows()[i].shows_same_as(expected));
-        CHECK(one_by_one.rows()[i].shows_same_as(expected));
+    // Each status the answers hold, counted from the answers themselves.
+    size_t n_ready = 0, n_stale = 0, n_cant = 0, n_none = 0;
+    for (const auto& answer : answers) {
+        switch (answer.second.status) {
+            case RecordStatus::Ready: ++n_ready; break;
+            case RecordStatus::Stale: ++n_stale; break;
+            case RecordStatus::CantAnalyze: ++n_cant; break;
+            case RecordStatus::NotAnalyzed: ++n_none; break;
+        }
     }
-    CHECK(at_once.counts().all == one_by_one.counts().all);
-    CHECK(at_once.counts().not_analyzed == one_by_one.counts().not_analyzed);
-    CHECK(at_once.counts().stale == one_by_one.counts().stale);
-    CHECK(at_once.counts().analyzed == one_by_one.counts().analyzed);
-    CHECK(at_once.counts().cant_analyze == one_by_one.counts().cant_analyze);
-}
+    // Every status is in the batch, so a status the bulk path drops shows.
+    REQUIRE(n_ready > 0);
+    REQUIRE(n_stale > 0);
+    REQUIRE(n_cant > 0);
+    REQUIRE(n_none > 0);
 
-TEST_CASE("library model: set_summaries_for applies a chart's later answer when it is listed twice") {
-    LibraryModel m = two_folders_and_two_more();
-    const Answers answers{{"same", ready(1000, "1", 3, 0.0)}, {"same", ready(2000, "2", 4, 0.0)}};
-    CHECK(m.set_summaries_for(answers) == 2);
-    size_t shown = 0;
+    LibraryModel m;
+    m.set_charts(entries);
+    REQUIRE(m.rows().size() == answers.size());
+    REQUIRE(m.counts().not_analyzed == answers.size());
+    // A row whose answer is Not analyzed again shows nothing new.
+    CHECK(m.set_summaries_for(answers) == answers.size() - n_none);
     for (const hydra::ui::LibraryRow& row : m.rows()) {
-        if (row.entry.md5 != "same") continue;
-        CHECK(row.shows_same_as(answers.back().second));
-        ++shown;
+        INFO("row " << row.title);
+        size_t given = 0;
+        for (const auto& answer : answers) {
+            if (answer.first != row.entry.md5) continue;
+            CHECK(row.shows_same_as(answer.second));
+            ++given;
+        }
+        CHECK(given == 1);
     }
-    CHECK(shown == 2);
+    CHECK(m.counts().all == answers.size());
+    CHECK(m.counts().analyzed == n_ready);
+    CHECK(m.counts().stale == n_stale);
+    CHECK(m.counts().cant_analyze == n_cant);
+    CHECK(m.counts().not_analyzed == n_none);
 }
 
 TEST_CASE("library model: set_summaries_for updates both rows of a chart in two folders") {
@@ -1323,13 +1277,16 @@ TEST_CASE("library model: set_summaries_for updates both rows of a chart in two 
 // set_summary_for.
 TEST_CASE("library model: set_summaries_for holds the row order under the Best path sort until "
           "sort_if_out_of_date") {
-    LibraryModel m = sample();
+    // The scanned sample, then YYZ's saved result and Chair's fresh one, each
+    // as the store gave it, in one batch.
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     m.set_sort(LibrarySort::BestPath, false);
     const std::vector<std::string> before = titles(m);
-    REQUIRE(m.set_summaries_for({{"yyz", ready(500000, "2 2", 7, 12.0)},
-                                 {"halo", ready(400000, "1 1", 6, 10.0)}}) == 2);
+    const size_t analyzed_before = m.counts().analyzed;
+    REQUIRE(m.set_summaries_for({{lib.yyz, lib.yyz_ready}, {lib.chair, lib.chair_ready}}) == 2);
     CHECK(titles(m) == before);
-    CHECK(m.counts().analyzed == 3);
+    CHECK(m.counts().analyzed == analyzed_before + 2);
 
     CHECK(m.sort_if_out_of_date());
     // The scored rows come first, each score no higher than the one above it,
@@ -1633,13 +1590,29 @@ TEST_CASE("library model: query_version moves when the search changes and at no 
     CHECK(m.query_version() != searched);
 }
 
-TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") {
+TEST_CASE("library model: filtering 20,000 charts gives each search the rows it names") {
     // query_matches runs for every row on every applied keystroke. The times
     // are printed for a person to read; a timing belongs in hydra_bench, not
     // in a pass/fail check that a busy machine can fail.
-    // The hardest timing each summary row gets is i modulo this, so the
-    // squeeze filter's count below is worked from the same figure.
-    static constexpr int kHardestCycle = 90;
+    // Three corpus charts' results (testdata/input), each saved and read back
+    // from the store the way the app reads it (lookup_one). Every third row
+    // is given one of them in turn; the other rows have nothing saved.
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    const std::vector<corpus::ChartWithPaths> analysed = corpus::charts_with_paths(run.settings, 3);
+    REQUIRE_MESSAGE(analysed.size() == 3, "the corpus needs three charts with paths");
+    hydra::store::RecordStore store(":memory:");
+    std::vector<RecordLookup> results;
+    for (size_t k = 0; k < analysed.size(); ++k) {
+        const std::string md5 = "result" + std::to_string(k);
+        store.save(hydra::store::prepare_record(md5, run.profile, analysed[k].result.record));
+        results.push_back(store.lookup_one(md5, run.profile));
+        REQUIRE(results.back().status == RecordStatus::Ready);
+        REQUIRE(results.back().record.summary().has_scored_best_path());
+    }
+    // The result row i is given, or none.
+    const auto result_of = [&](int i) -> const RecordLookup* {
+        return i % 3 == 0 ? &results[static_cast<size_t>((i / 3) % 3)] : nullptr;
+    };
     std::vector<ChartLibraryEntry> charts;
     std::vector<RecordLookup> summaries;
     charts.reserve(20000);
@@ -1651,11 +1624,8 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         std::snprintf(charter, sizeof(charter), "<color=#e02222>Char</color>ter %d", i % 30);
         std::snprintf(folder, sizeof(folder), "Pack %03d\\Tier %d", i % 200, i % 7);
         charts.push_back(chart(md5, title, artist, charter, folder));
-        // Only every third row has a summary, so its stars step on i / 3 to
-        // give 5, 6 and 7 among those rows.
-        summaries.push_back(i % 3 == 0
-                                ? ready(300000 + i, "1 2 3", 5 + (i / 3) % 3, i % kHardestCycle)
-                                : RecordLookup{});
+        const RecordLookup* given = result_of(i);
+        summaries.push_back(given ? *given : RecordLookup{});
     }
     LibraryModel m;
     auto t0 = std::chrono::steady_clock::now();
@@ -1704,9 +1674,29 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         }
         return true;
     };
-    // stars: and squeeze filters match only the rows given a summary, i % 3 == 0.
+    // stars: and squeeze filters match only the rows given a result, and read
+    // that result's saved summary. The stars asked for are the first result's
+    // own star count, so at least a third of the given rows match.
+    REQUIRE(results[0].record.summary().stars.has_value());
+    const int stars = *results[0].record.summary().stars;
+    const auto stars_of = [&](int i) -> std::optional<int> {
+        const RecordLookup* given = result_of(i);
+        if (!given) return std::nullopt;
+        return given->record.summary().stars;
+    };
+    // A squeeze limit passes a path whose shown figure is within it
+    // (timing_within_limit) and a path that needs no timing (shown_timing
+    // gives none; search_tips words it for the player).
+    const int squeeze_limit = 20;  // any whole number of ms; the query types it
+    const auto within_squeeze_limit = [&](int i) {
+        const RecordLookup* given = result_of(i);
+        if (!given) return false;
+        const std::optional<double> shown =
+            hydra::shown_timing(given->record.summary().hardest_ms);
+        return !shown || hydra::timing_within_limit(*shown, squeeze_limit);
+    };
     struct QueryRows {
-        const char* query;
+        std::string query;
         size_t rows;
     };
     const QueryRows queries[] = {
@@ -1715,10 +1705,10 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         {"\"tier 4\"", count_where([](int i) { return i % 7 == 4; })},
         {"artist 07 song", count_where([&](int i) { return words_match(i, {"artist", "07", "song"}); })},
         {"charter", count_where([&](int i) { return words_match(i, {"charter"}); })},
-        {"stars:7", count_where([](int i) { return i % 3 == 0 && 5 + (i / 3) % 3 == 7; })},
-        {"squeeze<=20 pack", count_where([&](int i) {
-             return i % 3 == 0 && i % kHardestCycle <= 20 && words_match(i, {"pack"});
-         })},
+        {"stars:" + std::to_string(stars),
+         count_where([&](int i) { return stars_of(i) == std::optional<int>(stars); })},
+        {"squeeze<=" + std::to_string(squeeze_limit) + " pack",
+         count_where([&](int i) { return within_squeeze_limit(i) && words_match(i, {"pack"}); })},
         {"zzqx", count_where([&](int i) { return words_match(i, {"zzqx"}); })},
         {"", 20000},
     };
