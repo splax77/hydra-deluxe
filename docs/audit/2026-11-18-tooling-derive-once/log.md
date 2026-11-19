@@ -22,3 +22,6 @@ The plan is `docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md` on 
 - Row ids: each row keeps its scout's id (I1-001 and so on) instead of a V-number, so a row can be traced to its report without a renumbering table.
 - T3 re-send launched 2026-11-18 21:04: one fresh scout I10b for exactly I10's unreached files. The plan allows one re-send.
 - T4 sorting: ten sorters (Haiku), one per report, each tags its report's rows with one of the eight families and writes id, family and question to a TSV. They sort and judge nothing. The plan has the main session sort; an agent does the tagging here so 1,660 rows stay out of the main session's context, and the main session cuts finders from the TSVs with a script and spot-checks the tags.
+- T3 re-send I10b returned: 116 rows, headers and constants only; the rest is in coverage.md as not inventoried.
+- T4: 1,782 rows tagged (ten taggers plus one for I10b), spot-checked by sample, cut by script into 33 finders of at most 60 rows (families.md).
+- T5 launched 2026-11-18 21:11: 33 finders, each piped to a fresh verifier as it finishes, plus one verifier for seeds.md; up to sixteen agents at once (workflow cap).

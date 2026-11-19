@@ -1,0 +1,269 @@
+id	family	question	note
+I6-001	F2	which model runs the derive-once reviewer	
+I6-002	F7	may a reviewer use helpers or background jobs	could also be F2
+I6-003	F7	which page binds the reviewer first	
+I6-004	F1	how often a reviewer writes a status line, in what form, by what call	form and call shape also F4 and F6
+I6-005	F3	where the status file lives	
+I6-006	F5	the one rule a review enforces	
+I6-007	F5	what the reviewer is handed	also F2 (dispatch inputs)
+I6-008	F5	when a reviewer must stop and report	
+I6-009	F2	what a reviewer dispatch hook refuses	also F5 (review gate)
+I6-010	F5	may a reviewer write before its review is written	
+I6-011	F5	what precheck prints and who owns its threshold	
+I6-012	F4	how a reviewer runs precheck	
+I6-013	F5	the kinds of copy and their letters	
+I6-014	F5	where the pasted-block scan lives	also F3 (where it lives)
+I6-015	F5	a finding on known_clones	
+I6-016	F5	the ten review steps and the questions in each	
+I6-017	F6	where a user decision for a new number must live	also F3
+I6-018	F6	what counts as a decision entry	
+I6-019	F3	test rubric page	
+I6-020	F3	which file lists known audit copies	
+I6-021	F7	who defines project words	
+I6-022	F7	what to do when a CONTEXT.md definition and code disagree	
+I6-023	F6	what counts as a user's words for a visible change	also F5 (visible-change rule)
+I6-024	F5	the Visible changes rule's example	
+I6-025	F6	step 10 boundary table shape	
+I6-026	F5	step 10 arithmetic rule	
+I6-027	F5	worked example numbers	example figures only; no family fits cleanly
+I6-028	F7	where the squeeze ratio between two ends is computed	engine owner question; no family fits cleanly
+I6-029	F7	where the bot shifts later presses	
+I6-030	F1	the replay tool's SP-end lead	a time offset in ms
+I6-031	F1	the 3.00 ms frame of judging	a time window
+I6-032	F5	kind G rule: what may set a loop's cost	also F1 (size and count limits)
+I6-033	F7	rule for tool reading names	
+I6-034	F5	one review per change, all in one pass	
+I6-035	F5	kind A fix ends in a scan row	
+I6-036	F5	comment that restates a rule	
+I6-037	F5	developer tools wording rule	
+I6-038	F5	one review by one agent, no second round	also F1 (30-minute limit)
+I6-039	F5	fixes: one finding per commit	
+I6-040	F5	test filters a reviewer lists	also F4 (command shape)
+I6-041	F5	which findings a reviewer must not fix	
+I6-042	F5	what holds the merge	
+I6-043	F1	out-of-time rule	
+I6-044	F5	where fixes are committed	also F3 (branch placement)
+I6-045	F7	who may build or run tests	
+I6-046	F4	how to test a gates change	also F3 (python path)
+I6-047	F6	report sections and sign-off line	
+I6-048	F5	what a missing sign-off line counts as	
+I6-049	F5	what a verdict fingerprints	
+I6-050	F5	resolution review key and command	also F4
+I6-051	F5	what a resolution review is allowed for	
+I6-052	F5	fix review: when allowed	
+I6-053	F5	who runs the merge and what refuses it	also F7
+I6-054	F5	merge of main into a reviewed branch	
+I6-055	F1	large range split	also F5 (review range)
+I6-056	F3	where worktrees are cut	
+I6-057	F2	how the reviewer is dispatched	
+I6-058	F2	what a non-Agent-tool reviewer's sign-off counts for	also F5 (verdict)
+I6-059	F5	what the main session gives the reviewer	also F2
+I6-060	F2	model for reviewer	
+I6-061	F5	when a not-asked visible change blocks	
+I6-062	F7	build-fail path	also F5
+I6-063	F5	what a doc reviewer's one question is	
+I6-064	F2	doc reviewer model and helpers	
+I6-065	F1	doc reviewer status line	also F4 (call shape)
+I6-066	F3	where the numbered source tags point	
+I6-067	F5	which moves of main the doc gate covers	
+I6-068	F5	which repos the gate applies in	also F3 (marker file)
+I6-069	F5	how short a text may pass without review	also F1 (size limit)
+I6-070	F5	what happens after sign-off	
+I6-071	F5	which docs are not gated	
+I6-072	F5	the only way text reaches GitHub	also F4 (command gates)
+I6-073	F5	how a document is sent for review	
+I6-074	F3	which design note is superseded	precedence between docs; no family fits cleanly
+I6-075	F5	skipping a doc review	
+I6-076	F5	the four failure kinds	
+I6-077	F5	what a doc reviewer is given	also F2
+I6-078	F5	missing sources rule	
+I6-079	F6	cold read output	
+I6-080	F5	claim-check rules	
+I6-081	F6	what counts as ruling in a plan	also F5
+I6-082	F6	plan owner-table rule	
+I6-083	F3	where the style rules live	
+I6-084	F5	check not to do	
+I6-085	F5	doc review fix and sign-off flow	also F1 (time and call limits)
+I6-086	F5	findings not to fix	
+I6-087	F6	doc review sign-off lines	also F5
+I6-088	F6	doc review report sections	
+I6-089	F3	where a handoff lives and how named	also F6
+I6-090	F4	what the handoff command is	
+I6-091	F6	what a handoff holds	
+I6-092	F6	the Claims table: heading, columns, kinds	
+I6-093	F6	commit value format	
+I6-094	F6	state a handoff ends with	
+I6-095	F6	a claim without a row	also F5
+I6-096	F6	a failing row	
+I6-097	F3	scratch paths in a handoff	also F6
+I6-098	F4	checker command	
+I6-099	F6	row status words and when exit is nonzero	also F4
+I6-100	F6	which kinds the checker leaves manual	
+I6-101	F6	scrape mode: how tokens are sorted	
+I6-102	F6	which mode applies	
+I6-103	F7	who runs the checker and when	
+I6-104	F4	repo flag	
+I6-105	F7	the integrator's job	
+I6-106	F7	what the brief names	
+I6-107	F4	list of what main gained	
+I6-108	F7	how to check a task branch calls owners	also F4
+I6-109	F7	stop condition on fold	also F5
+I6-110	F4	join command	
+I6-111	F7	appended scan-row files	also F6
+I6-112	F4	conflict rule	also F7
+I6-113	F7	who builds and tests the joined branch	
+I6-114	F4	precheck on joined branch	
+I6-115	F5	tests the main session runs after hand-over	also F4
+I6-116	F7	what to do when scan row fails	
+I6-117	F5	after the last merge	also F8
+I6-118	F5	integrator hands to reviewer	also F7
+I6-119	F7	integrator's report	also F6
+I6-120	F7	what an audit is	
+I6-121	F6	words: finding, split, exit, closure	also F7
+I6-122	F7	the four exits	
+I6-123	F6	what a ruling closure needs	also F7
+I6-124	F7	what "not a problem" needs	also F6
+I6-125	F7	"code-only" status	
+I6-126	F7	who the audit plan goes to	
+I6-127	F7	audit scope	
+I6-128	F7	decisions an audit plan must list	also F3
+I6-129	F1	cap on repeating stages	
+I6-130	F7	calibration rule	
+I6-131	F6	what finder reports	
+I6-132	F7	how finders split work	
+I6-133	F7	a split row must reach the user	
+I6-134	F7	verifier rules	
+I6-135	F6	how exits are evidenced	also F7
+I6-136	F7	no exit for a case	
+I6-137	F5	closure check	also F7 (who checks)
+I6-138	F7	main session greps exit-3 quotes	also F4
+I6-139	F7	where checkers search for rulings	also F3
+I6-140	F7	question-writing rules	
+I6-141	F1	how many questions per message	
+I6-142	F6	recording	
+I6-143	F8	triage update time	
+I6-144	F2	fix grouping and models	also F7
+I6-145	F7	what every audit brief carries	also F6
+I6-146	F1	M39 numbers	
+I6-147	F1	historic counts	
+I6-148	F3	where the audit's own sources live	
+I6-149	F6	who owns an owner map's shape	also F7
+I6-150	F7	which plans need an owner map	
+I6-151	F7	who writes it	also F2
+I6-152	F6	map shape	
+I6-153	F6	Status words	
+I6-154	F6	row id form	
+I6-155	F6	question wording rule	
+I6-156	F7	when a name is not an owner	also F6
+I6-157	F7	one owner per question	
+I6-158	F7	stop on none	
+I6-159	F7	stop on contradiction	
+I6-160	F7	what planner may do with map	
+I6-161	F7	who checks the map	
+I6-162	F7	origin of the page	history; no family fits cleanly
+I6-163	F6	who owns the premise map's shape	also F7
+I6-164	F6	the rule: a fact names its source or is unchecked	
+I6-165	F6	table heading and columns	
+I6-166	F6	row id form	
+I6-167	F6	row rules	
+I6-168	F6	source must be for the exact thing	
+I6-169	F6	Status form	
+I6-170	F7	deferred premise blocks	also F6
+I6-171	F6	the six Kind words	
+I6-172	F3	where run results live	
+I6-173	F6	which Clone Hero page labels count as a data source	also F7
+I6-174	F6	what counts as a ruling source	also F5
+I6-175	F6	what is not a source	
+I6-176	F6	live step heading shape	
+I6-177	F6	the call list line	
+I6-178	F6	what "seen" means	
+I6-179	F1	max never-tried calls	
+I6-180	F7	who checks the map	
+I6-181	F7	go request	
+I6-182	F7	settle-read before showing	
+I6-183	F4	which Python runs scripts	also F3
+I6-184	F4	what bare python is	also F3
+I6-185	F3	gh version, path, account	
+I6-186	F3	GitHub repo	also F4
+I6-187	F4	text to GitHub: never a hand-typed gh command	also F5
+I6-188	F6	release naming	
+I6-189	F3	where the version number is set	
+I6-190	F3	where the hooks live	
+I6-191	F3	Ghidra and Java	
+I6-192	F3	REA server	also F4
+I6-193	F3	where the Clone Hero decompile is	
+I6-194	F6	build number of Clone Hero decompile	
+I6-195	F3	Visual Studio installs	
+I6-196	F3	how cmake is found	also F4
+I6-197	F4	cmake refusal fix	also F3
+I6-198	F4	shell elevation	also F7
+I6-199	F4	which PowerShell runs scripts	
+I6-200	F3	Clone Hero log path	
+I6-201	F3	how to find cdb	also F4
+I6-202	F4	how to attach cdb	
+I6-203	F3	stall harness path and load	also F1
+I6-204	F2	which Opus model agents run	
+I6-205	F3	where hydra.db lives	
+I6-206	F3	read a copy of the database	also F4
+I6-207	F4	how to read the database	
+I6-208	F6	tables and where columns are defined	
+I6-209	F6	the join: a result row's song_id is the chart's md5	
+I6-210	F4	re-analyze one chart	
+I6-211	F4	whole-library run guard	also F5 (typed allow)
+I6-212	F7	quote numbers the user can see	
+I6-213	F7	machine-wins rule	
+I6-214	F6	where rulings live	also F3
+I6-215	F3	the eight topic files	
+I6-216	F6	what each heading means	
+I6-217	F7	project word meaning	
+I6-218	F6	shape of a Confirmed line	
+I6-219	F5	the filing steps	also F6
+I6-220	F6	removal	also F5
+I6-221	F5	who can approve	
+I6-222	F5	backfill route	also F8
+I6-223	F6	how an Unconfirmed line reads	
+I6-224	F3	where issues live	also F4
+I6-225	F5	posting path	also F4
+I6-226	F4	create and comment forms	
+I6-227	F4	list, read, labels and close commands	
+I6-228	F7	PRs as a request surface	
+I6-229	F4	external PR filter	
+I6-230	F6	number space	also F3
+I6-231	F4	"publish to the issue tracker" and "fetch the ticket"	also F7
+I6-232	F6	wayfinder map shape	
+I6-233	F7	blocking and frontier rule	
+I6-234	F6	the five triage labels	
+I6-235	F6	meaning of each label	
+I6-236	F6	how a skill names a role	
+I6-237	F7	editing guidance	
+I6-238	F3	what skills read before exploring	also F7
+I6-239	F7	what to do if those files are missing	
+I6-240	F3	file layout	
+I6-241	F7	use glossary vocabulary	
+I6-242	F7	flag ADR conflicts	
+I6-243	F4	command that retakes all pictures	
+I6-244	F3	where pictures go	
+I6-245	F6	the shot list	also F3
+I6-246	F3	data the runner reads	also F7
+I6-247	F6	the shot checks	also F4
+I6-248	F6	the main-screen crop	
+I6-249	F1	shrink step and limits	also F6 (size limits; not time or count)
+I6-250	F7	who runs it	
+I6-251	F7	when to run	also F1
+I6-252	F6	settings reset in shots	also F4
+I6-253	F5	which pages a player reads	also F3
+I6-254	F7	internal docs follow another page	
+I6-255	F7	accuracy first	
+I6-256	F1	rule sources: two web searches on a date	also F3
+I6-257	F7	voice	style rule; no family fits cleanly
+I6-258	F4	cut words list	word list
+I6-259	F4	"is" replaces	word list
+I6-260	F4	throat-clearing list	word list, also F7
+I6-261	F7	one name per thing	style rule; no family fits cleanly
+I6-262	F7	sentence shapes	style rule; no family fits cleanly
+I6-263	F7	headings	style rule; no family fits cleanly
+I6-264	F7	bullets and UI names	style rule; no family fits cleanly
+I6-265	F7	other formatting	style rule; no family fits cleanly
+I6-266	F7	page structure	style rule; no family fits cleanly
+I6-267	F7	release notes rule	also F6
+I6-268	F7	detector and fact rules	style rule; no family fits cleanly

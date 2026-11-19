@@ -1,0 +1,256 @@
+id	family	question	note
+I8-001	F6	What do the RULE and TOP RULE labels mean, and where do user words live?	
+I8-002	F6	Where are the user's rulings kept and which lines count?	
+I8-003	F3	Where are this machine's tools and paths documented?	
+I8-004	F5	Which GUI check does a GUI change need?	
+I8-005	F3	Where do finished and superseded memories live?	could be F8 (archiving)
+I8-006	F6	What does each memory index line say?	
+I8-007	F5	Does the merge-tests rule say grep changed files or run precheck's list?	
+I8-008	F1	How many jobs per agent and agents per round for fan-out?	
+I8-009	F7	Must the build count be said before launching work?	
+I8-010	F7	When may a session re-ask about work the user approved?	
+I8-011	F7	Are a chosen mockup's values the design, with no option beside it?	no family fits well; F7 is nearest
+I8-012	F1	What are the timings and counts quoted from the cited cases?	figures from examples, not limits
+I8-013	F7	Which questions may be put to the user?	
+I8-014	F6	What decides that a video record counts?	
+I8-015	F7	Is Clone Hero ignoring drums0dnoflip a bug, and what must Hydra do?	game fact; no family covers game facts
+I8-016	F7	How is a run that beats optimal on an affected chart priced?	
+I8-017	F6	What are the Splax video layout numbers and where are they kept?	
+I8-018	F3	Where do the Clone Hero facts now live?	
+I8-019	F4	May a live Clone Hero run need window focus or the keyboard?	game input, not a shell command
+I8-020	F6	What did the user say about autonomous runs, quoted exactly?	quoted user words
+I8-021	F5	When may a key-driven run start, and what unlocks the keys?	
+I8-022	F5	Is brief window focus a failure or only information?	
+I8-023	F4	May the game window be shown, and how are Rewired bindings handled?	
+I8-024	F3	Where is the Clone Hero kit described?	
+I8-025	F7	When may an edge case reach the user as a question?	
+I8-026	F7	What does SP activation need, and where is it owned?	game fact; no family covers game facts
+I8-027	F1	How long before a long capture's first output must be checked?	
+I8-028	F4	Which capture method is preferred over hooking?	method preference, not a shell rule
+I8-029	F7	What must be done when the user says a display is wrong?	
+I8-030	F6	What may a code comment hold?	comment shape; no closer family
+I8-031	F6	Do the comment rules in the note and the preamble agree?	comment shape; no closer family
+I8-032	F7	What to do when two counts of one thing disagree?	
+I8-033	F7	May a split be kept, and who asks about it?	
+I8-034	F7	Must a display question show what Hydra already writes first?	
+I8-035	F7	Must sibling paths be checked when a ruling names one path?	
+I8-036	F7	Does an out-of-scope line need a recorded yes?	
+I8-037	F6	Must a unit shown to the user be defined on screen?	display wording
+I8-038	F7	What does the rule cover, and who owns each numbering?	
+I8-039	F7	How many places may derive a fact, and who is the owner?	
+I8-040	F5	Where is the backing row for a derive-once promise?	scan test row; could be F3
+I8-041	F7	Which engine names answer the Star Power questions?	
+I8-042	F7	Where does a display's Star Power end come from?	
+I8-043	F7	Where are squeeze events drawn on the chart highway?	
+I8-044	F7	What must a table of owners show before work is dispatched?	could be F2 (dispatch)
+I8-045	F5	Is a verification needing an unexplained variant a live bug?	verdict rule
+I8-046	F7	What may a display plan offer for a gap or edge case?	
+I8-047	F3	What is the leaderboard API address?	a URL, not a file path
+I8-048	F6	What are the leaderboard routes and their fields?	
+I8-049	F6	What key joins the leaderboard to Hydra's songs?	
+I8-050	F1	How long do leaderboard fetches take, and what fetch rules apply?	
+I8-051	F5	Are above-optimal leaderboard scores bugs or normal?	verdict on a score
+I8-052	F6	How does the leaderboard backend replace a user's row?	
+I8-053	F7	Which play speeds does Hydra compare against the leaderboard?	
+I8-054	F7	Where are drum lane pads set?	engine owner; no family covers it
+I8-055	F7	Do drum lanes light every pad under Note Shuffle?	game and display rule
+I8-056	F7	Do lanes whose notes start late still count?	
+I8-057	F1	How many lanes in testdata differ between pad rules?	
+I8-058	F3	Which vtable slot holds the hit routine?	code location, not a folder
+I8-059	F1	What is the early-fill orange reach in milliseconds?	
+I8-060	F1	What is the early-fill white slack in milliseconds?	
+I8-061	F6	What does the orange label mean?	display label
+I8-062	F5	Which library run results were kept by the user?	user's keep decision
+I8-063	F1	How many tied paths are kept at most?	
+I8-064	F4	How do I find a specific path without widening the band?	
+I8-065	F2	Must every brief carry the status-line instruction?	dispatch content; also F1 (every 5 minutes)
+I8-066	F1	How often must an agent write a status line?	
+I8-067	F2	Does a gate check that briefs carry the status sentence?	
+I8-068	F6	Must every number say where it comes from?	
+I8-069	F3	Where does the FC video tool live?	
+I8-070	F5	Must the regression check run after any edit to the tool?	which test runs; could be F4
+I8-071	F7	Who reports the headline and who may not rewrite the video?	
+I8-072	F5	What review gate applies to tool work?	could be F2 (model names)
+I8-073	F6	Where is the issue that records the four tool gaps?	
+I8-074	F3	Where are executor worktrees cut from?	could be F4 (git command)
+I8-075	F2	May a reviewer set isolation when it is dispatched?	
+I8-076	F5	What is the review key, and what happens if a merge is refused?	
+I8-077	F4	How must files be staged before a commit?	
+I8-078	F4	What must be checked before a commit is made?	
+I8-079	F2	Where must the trailers sit in a commit message?	
+I8-080	F1	How old was the base when four executors started?	
+I8-081	F4	May a hook fill in a value when the user gave none?	hook refusal rule; could be F7
+I8-082	F5	What did the stop hook assume about where reviews start?	
+I8-083	F5	Does removing hook guesses add a second review?	
+I8-084	F3	Which names say Hydra Deluxe and which keep Hydra?	program and file names
+I8-085	F3	What is the repo name and its remote?	
+I8-086	F3	What is the installer file name?	
+I8-087	F6	What is the window title?	display text
+I8-088	F1	May a label or quota stand in as a reason or a count?	could be F7
+I8-089	F1	What value is the rule number?	
+I8-090	F1	How many small jobs go into one agent?	
+I8-091	F1	How many agents run per discovery round?	could be F2
+I8-092	F2	Must approved independent tasks launch together?	dispatch
+I8-093	F2	When must work be serialised?	dispatch
+I8-094	F2	How must comparison runs be launched?	dispatch; could be F8
+I8-095	F1	How big is the smallest timing run that decides it?	
+I8-096	F4	How must a bisect be built from a baseline?	could be F5
+I8-097	F1	How often may a bench run be launched without explaining it?	
+I8-098	F5	Which tests does a merge run?	
+I8-099	F7	Who runs the merge tests?	
+I8-100	F5	Which tests does a merge run, and was a list missed?	
+I8-101	F7	Who owns the mimalloc linking?	
+I8-102	F4	How is mimalloc redirect checked?	
+I8-103	F3	Where is dumpbin?	
+I8-104	F1	What are the minimum path-score deltas?	
+I8-105	F1	What are the SP score term values?	
+I8-106	F7	Which code owns the display-only gain?	
+I8-107	F1	How many charts and gaps are in the corpus?	
+I8-108	F7	Where do proper names come from?	
+I8-109	F7	Is Feeble Words a full drum tacet?	game fact
+I8-110	F7	When is a mockup needed before a plan?	
+I8-111	F7	May a mockup show option switches?	
+I8-112	F5	Must every screen plan include one GUI test?	
+I8-113	F5	When may a full library test run?	
+I8-114	F5	What counts as a full library test?	
+I8-115	F1	How many charts are in testdata/input?	
+I8-116	F7	What must a question say about a full library run?	
+I8-117	F5	Does a real-window start count as a library run?	
+I8-118	F1	How many charts does the library hold?	
+I8-119	F1	How many builds per wave?	could be F7
+I8-120	F7	When must the build count be said and approved?	
+I8-121	F1	How many builds may run at once?	
+I8-122	F5	How many fresh reviewers review one change?	
+I8-123	F1	At what call count or time does the reviewer get the wrap-up warning?	
+I8-124	F5	What does the SubagentStop hook record as the verdict?	
+I8-125	F5	What is the review key for a branch?	
+I8-126	F1	How many tokens and review agents did the review cost?	
+I8-127	F3	Where do the review brief homes live?	
+I8-128	F6	How must time scales appear on one screen?	could be F7
+I8-129	F7	What must be opened before offering costly work?	
+I8-130	F6	What does a blank column in a summary mean?	
+I8-131	F5	When may a plan be shown to the user?	
+I8-132	F1	How many failed runs trigger putting the design to the user?	could be F7
+I8-133	F3	Where should past sessions and plans be searched?	could be F7
+I8-134	F6	How must a decision question be worded?	
+I8-135	F7	Which agent rules hold the 'You will see' list?	could be F3
+I8-136	F4	What command gives the before-and-after batch proof?	could be F5
+I8-137	F7	Which paths hold the user to the same functionality?	
+I8-138	F7	Must a narrowing be its own question?	
+I8-139	F6	How should an agent status be relayed?	
+I8-140	F6	How is an evidence line checked against the status?	could be F2
+I8-141	F7	What did the user say about relaying status?	
+I8-142	F5	Which check does a layout change need before merge?	
+I8-143	F5	How must a capture be zoomed before showing it?	
+I8-144	F3	Which database copy may be used, and for what?	could be F7
+I8-145	F4	How is a transition checked by scrolling and clicking?	
+I8-146	F3	Which tree do the repo scans read?	
+I8-147	F5	What pre-merge scan runs on a branch?	
+I8-148	F1	How long is the key-hold value in seconds?	
+I8-149	F6	How must a badge be described?	
+I8-150	F6	What words does the badge show on screen?	
+I8-151	F4	May a session scroll the library without asking?	
+I8-152	F4	How is a song opened in the GUI?	
+I8-153	F4	Does the search guard refuse a library-row click?	could be F5
+I8-154	F1	How many wheel notches were cited?	
+I8-155	F7	Must a prior-art search run before a plan?	
+I8-156	F7	May a plan keep a left-alone list of defects?	
+I8-157	F7	Where does Star Power end?	game fact; could be F1
+I8-158	F1	What is the leeway value in milliseconds?	
+I8-159	F7	Which leeway side is an open conflict to ask the user about?	
+I8-160	F7	How must a two-values claim be checked?	
+I8-161	F1	How far does Hydra look for squeeze candidates?	
+I8-162	F3	Where is the squeeze tool?	
+I8-163	F1	What is the video intro offset in milliseconds?	
+I8-164	F3	Where is the game's SqIn and SqOut rule documented?	could be F7
+I8-165	F4	How are auto fills written into a stitched chart?	could be F6
+I8-166	F4	What merge rules and ffmpeg shape apply to stitching?	
+I8-167	F3	Where is the built stitched chart?	
+I8-168	F6	Where do stored-data stamps live and how are they compared?	
+I8-169	F8	When must the results stamp be bumped?	could be F6
+I8-170	F7	Must release notes about re-analysis check the stamps?	
+I8-171	F1	How many results were stored?	
+I8-172	F1	Where do timings for the user come from?	could be F7
+I8-173	F7	What must be traced before a live run?	could be F1
+I8-174	F1	How long may a CI step run before it times out?	
+I8-175	F7	Must an intermittent bug get a forced repro first?	
+I8-176	F5	Must an unproven step be proven on a branch run?	
+I8-177	F6	Where does song length come from?	
+I8-178	F7	What standard applies to a negative search claim?	could be F5
+I8-179	F3	Where is the machine's tool list checked before saying a tool is missing?	
+I8-180	F1	How many frames per second does decoding reach?	
+I8-181	F4	Which decoder may the tool use for h264?	
+I8-182	F4	How must crop amounts be aligned?	
+I8-183	F3	Where are the ffmpeg paths and machine specs?	
+I8-184	F3	Where are the evidence tables kept?	could be F6
+I8-185	F3	What are the installer files and their output name?	
+I8-186	F6	Must the AppId GUID ever change?	could be F3
+I8-187	F3	What are the install folder permissions?	
+I8-188	F4	How must the install stage be built and checked?	
+I8-189	F4	What release command traps apply?	
+I8-190	F8	Must empty C:\ytdl folders be raised?	could be F3
+I8-191	F1	How far does Hydra consider squeeze candidates?	
+I8-192	F4	What command checks squeezes beyond the window?	
+I8-193	F3	Where does the squeeze tool get the replay path?	
+I8-194	F1	What is the budget formula and its W value?	
+I8-195	F1	What is the squeeze gap measured against?	
+I8-196	F1	How much does SP phrase collection extend SP?	
+I8-197	F7	Which kick notes count as phrase completions?	
+I8-198	F7	Is a note at the phrase-off tick counted?	
+I8-199	F4	May the GUI or uitest be used for this analysis?	could be F3
+I8-200	F4	What is the FC video command and its output?	
+I8-201	F3	May the Hydra repo be modified for analysis?	could be F4
+I8-202	F3	Which memory notes does the tool point to?	could be F6
+I8-203	F5	Must the game version be checked before trusting a comparison?	
+I8-204	F5	What is the ceiling for an executed path?	
+I8-205	F5	How are 'other' losses classed?	
+I8-206	F4	May the search band be widened to find a path?	
+I8-207	F4	How is a half-speed recording read?	
+I8-208	F4	How is a new layout added?	could be F6
+I8-209	F5	Must the regression check run after an edit?	
+I8-210	F7	Who may edit fcvideo.py at once?	could be F5
+I8-211	F7	How must names in a report be sourced?	
+I8-212	F2	How many background workers may a fleet run?	
+I8-213	F7	When should the Star Power skill be invoked?	
+I8-214	F6	What version and tool count does the skill record?	could be F1
+I8-215	F4	Which REA package version is pinned in the commands?	
+I8-216	F4	Which client IDs are supported?	word list
+I8-217	F4	Which tool is first for each target kind?	could be F7
+I8-218	F7	Who must approve setup writes?	could be F5
+I8-219	F4	What does setup never install?	
+I8-220	F7	When must the user be asked which app?	
+I8-221	F4	When may an identical analysis call be repeated?	could be F1
+I8-222	F6	How must conclusions separate observations, inferences and unknowns?	
+I8-223	F2	How must parallel workers be scoped?	
+I8-224	F8	When must a native session be closed?	
+I8-225	F1	What are the default heap and timeout limits?	
+I8-226	F1	What is the Windows runtime memory reserve?	
+I8-227	F3	What Java and JADX paths and versions are needed?	could be F7
+I8-228	F3	Which environment variables name tool paths?	
+I8-229	F3	Which tool versions are demanded?	could be F6
+I8-230	F1	How many matching frames or rows are shown by default?	
+I8-231	F6	What are the raw binary entry values?	
+I8-232	F2	How is approval set for tools in Codex?	could be F5
+I8-233	F1	What are the passive capture time limits?	
+I8-234	F4	What are the target-specific usage rules?	could be F7
+I8-235	F6	What is the handoff command for?	
+I8-236	F6	What form must a handoff slug take?	
+I8-237	F3	Where is the handoff shape defined?	could be F6
+I8-238	F3	Where does the handoff file go?	
+I8-239	F6	What does a handoff hold?	
+I8-240	F4	What is the handoff checker command?	
+I8-241	F6	What are the checker's row words?	
+I8-242	F1	How many checker runs are done?	could be F4
+I8-243	F6	What must the checker output section show?	
+I8-244	F4	How must a handoff be committed?	could be F6
+I8-245	F6	What must the handoff report contain?	could be F7
+I8-246	F2	May new agents start before the handoff is written?	
+I8-247	F1	Which files repeat the status-line interval?	
+I8-248	F1	Which files repeat the 500 ms squeeze window?	
+I8-249	F4	Which files repeat the search-band rule?	
+I8-250	F5	Which files repeat the no-full-library-runs rule?	
+I8-251	F1	Which files repeat the 3 ms leeway?	
+I8-252	F5	Which files repeat the review-key rule?	
+I8-253	F4	Which hook gaps exist for guards and whole-library runs?	could be F5
+I8-254	F1	How many charts does the library hold, by each figure?	
+I8-255	F3	Which referenced memory note is missing and where are archive links?	

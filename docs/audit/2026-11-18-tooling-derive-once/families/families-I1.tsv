@@ -1,0 +1,99 @@
+id	family	question	note
+I1-001	F2	Which tool names count as key tools that take the game window and keyboard
+I1-002	F2	Which tool is key-route only when its route value is keys
+I1-003	F7	Which tool hands out build passes, refused to every agent	F2 (the tool is refused to agents)
+I1-004	F4	Which flag marks a whole-library run
+I1-005	F5	Whole-library run refused unless the user types a single-use allow line
+I1-006	F5	Key-route calls refused unless the user types a single-use allow line
+I1-007	F4	How a ch_call is judged, and when unreadable arguments count as key calls
+I1-008	F2	Which refusals apply to subagents and which to the main session, in what order	F4 (order of refusals)
+I1-009	F4	Media rule in the main session asks the user instead of denying	F5 (the ask is an approval)
+I1-010	F4	Shell-output rewrite runs last and never sets a permission decision
+I1-011	F4	A crash in the subagent path denies, except report tools which pass
+I1-012	F8	Report body saved before the budget check, so an over-budget report is kept	F6 (handback record)
+I1-013	F7	Text telling a refused agent to hand back instead of building
+I1-014	F1	Tool calls before an agent is warned and before it is refused
+I1-015	F1	Minutes since first call before an agent is warned and refused
+I1-016	F1	Minutes since last status line before the nag and the refusal
+I1-017	F4	Which tools always pass so a report can be handed back
+I1-018	F2	Which tools are the shell tools	F4 (shell tool list used by the shell rules)
+I1-019	F4	Exact shape of the status-helper call the progress hook accepts
+I1-020	F3	Path of the status helper as compared in refusals
+I1-021	F6	Shape of a status line: time, done, next
+I1-022	F1	How much of a refused command is quoted back in the refusal
+I1-023	F4	A status call is never counted; one under another agent's id is refused
+I1-024	F4	Any other shell call naming the status helper is refused and counted
+I1-025	F1	Which git commands and report tools skip the budget and status deadline	F4 (exemption by command shape)
+I1-026	F6	Where each agent's record lives and which fields it holds
+I1-027	F2	Text of the first-call note giving the agent its id and status file
+I1-028	F1	Text of the budget warnings sent at 100 calls and 20 minutes
+I1-029	F1	Text sent when the call or time budget is spent
+I1-030	F1	When the deadline clock starts before the first status line exists
+I1-031	F4	Which tools the delete rule judges	F2 (tool list)
+I1-032	F3	Worktree folders where an agent may delete
+I1-033	F3	Scratch folder as the second allowed delete root
+I1-034	F4	Which command words count as deletes
+I1-035	F4	Cmd-style delete words and their flags
+I1-036	F4	rm short options, and which of them count as force
+I1-037	F4	Long force flags for delete commands
+I1-038	F4	What counts as a path that is not literal
+I1-039	F3	A delete path must be absolute and strictly inside an allowed root	F4 (judged within the delete command)
+I1-040	F4	Find: which tokens end its starting paths and which run a command
+I1-041	F4	Where a shell command is cut into pieces
+I1-042	F4	Which command word a token names
+I1-043	F4	Git options that take a value
+I1-044	F4	Which git commands are refused to agents
+I1-045	F4	Refusal text for git discard commands
+I1-046	F4	Text telling the agent how to delete instead
+I1-047	F4	Delete judged only when the delete word starts a piece; wrapped forms unread
+I1-048	F2	Delete rule applies to subagents only, not the main session	F4 (which calls are judged)
+I1-049	F4	Delete rule denies when it crashes
+I1-050	F3	Where the state folder is
+I1-051	F6	Refusal log: file name, fields and reason truncation
+I1-052	F6	Review record kinds and the fields each must carry	F5 (review records)
+I1-053	F3	Names of the state files: reviews, waivers, agent and status files	F6 (state record formats)
+I1-054	F1	How long lock waits last and how often retries run
+I1-055	F3	Which ids may be used in state paths	F2 (agent ids)
+I1-056	F4	What a crashed hook does: deny quietly or print a loud message	F6 (hook output shape)
+I1-057	F6	How a hook changes an agent record, and what happens on lock timeout
+I1-058	F6	Which decisions get logged as refusals
+I1-059	F6	Output shape of deny, context and system-message hook replies
+I1-060	F1	Result length above which a shell result is trimmed
+I1-061	F1	How much of the start and end a trimmed result keeps
+I1-062	F4	Error lines kept from the middle of a trimmed result, and the error words
+I1-063	F4	Which commands get the exit-code tail
+I1-064	F4	Python launchers and flags that get the exit-code tail
+I1-065	F4	Commands never trimmed
+I1-066	F3	Where a saved full shell result is written
+I1-067	F3	Digits used in the saved result's file name	F6 (file name format)
+I1-068	F6	Marker and notice text for exit codes and trimmed results
+I1-069	F4	Exit-code tail text for each shell tool
+I1-070	F4	When a shell call is not rewritten: background, status, or tail already present
+I1-071	F4	When a saved shell result is left untrimmed, and when a trim is dropped
+I1-071a	F4	Trim never reads a quoted-first-word delete as a command
+I1-071b	F3	Where the shell-output design document is
+I1-072	F1	Longest Bash command allowed, in characters
+I1-073	F4	Git options with a value, used to find git commit
+I1-074	F4	Word that stops Git Bash rewriting paths
+I1-075	F4	The five refused Bash shapes and their tags
+I1-076	F1	Whether a git commit's own message counts toward the length limit	F4 (exemption by command shape)
+I1-077	F4	Doubled backslash allowed in double quotes and comments only
+I1-078	F4	cmd with a slash flag refused unless the path-conversion word is set
+I1-079	F4	Refused ref-with-dotpath argument pattern
+I1-080	F4	Open quote starting a Windows path that ends in a backslash refused
+I1-081	F4	Bash rule judges only the Bash tool; wrapped shapes are not read	F2 (which tool is judged)
+I1-082	F3	Where the Bash rule's measurements are kept
+I1-083	F4	Refusal texts giving the fix for each refused shape
+I1-084	F4	Heredoc and variable-assignment patterns
+I1-085	F3	Main session's free media folder
+I1-086	F4	Which media tools are guarded
+I1-087	F4	Which media options only read files
+I1-088	F4	Which yt-dlp options name an output path
+I1-089	F4	Shape of a write path and of the output template	F3 (write path)
+I1-090	F3	Where media output may go for agents and for the main session	F4 (refused shapes)
+I1-091	F3	Live state folder the status helper writes to
+I1-092	F2	Status file name must be an agent id that has a record	F3 (status file path)
+I1-093	F6	Default status line, and how arguments join into the line
+I1-094	F4	Why the status helper is a script, and where the call shape is defined
+I1-095	F6	Helper's output messages and exit codes
+I1-096	F6	How hooks read their input: raw bytes, UTF-8, no byte-order mark

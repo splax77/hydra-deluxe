@@ -1,0 +1,193 @@
+id	family	question	note
+I9-001	F3	Where do the agent files live (folder)	
+I9-002	F6	Which agent files the Premise map test reads	could be F3 (which files are read)
+I9-003	F6	Which page owns the Premise map shape	
+I9-004	F6	Phrases the planner file must carry for the Premise map	
+I9-005	F6	Phrases the reviewer file must carry for the Premise map	could be F7 (what the reviewer checks)
+I9-006	F6	Premise map ask comes after the Promise map text	could be F7
+I9-007	F6	Fields every refusals log line carries	
+I9-008	F1	How long a logged refusal reason may be	could be F6 (log line)
+I9-009	F6	Hook name written in a refusal log line	
+I9-010	F6	Which outcomes write a refusal log line	could be F4 (which calls are refused)
+I9-011	F6	What a failed refusal log adds to the deny reason	
+I9-012	F4	Media-guard ask shape in the refusal test	
+I9-013	F6	Output shape of a deny	could be F4
+I9-014	F6	Output shape of context and system messages	
+I9-015	F4	What a crashing hook does in each mode	crash handling; could be F7
+I9-016	F1	How many racing hooks the test starts, and for how long	
+I9-017	F3	Where the state root folder is	
+I9-018	F3	Where agent records and locks are stored	
+I9-019	F2	Which agent ids are refused	
+I9-020	F1	How long a lock wait lasts and what a held lock does	could be F6 (lock record)
+I9-021	F6	Review log line shapes	
+I9-022	F6	Waiver line shape and file	
+I9-023	F3	Which docs folder and root the number check reads	
+I9-024	F6	Retired words that must not reappear in the docs	could be F8 (retired things)
+I9-025	F1	May an agent file set a turn cap	could be F2 (agent type file)
+I9-026	F5	Which review docs must not ask for a typed key	
+I9-027	F1	Which call counts and status intervals docs may quote	
+I9-028	F1	Phrases rule 7 must quote for call and status limits	could be F7 (rule 7 text)
+I9-029	F1	Phrases the brief preamble must quote for limits	could be F7
+I9-030	F1	Bash length and output cap the preamble must quote	
+I9-031	F6	Names the gates README must carry	could be F3 (file names)
+I9-032	F6	Forbidden README phrase	
+I9-033	F6	Rulings README approval heading and old wording	
+I9-034	F1	Banned settings key bashOutputMaxChars	could be F4 (settings)
+I9-035	F4	Permission rule for the ruling check command	
+I9-036	F7	Only one process runs per prompt	could be F8
+I9-037	F7	Only one PostToolUse hook is registered	could be F8
+I9-038	F3	Where the settings fragment and live settings file are	
+I9-039	F2	Fixture ids and names used in agent_stop tests	
+I9-040	F6	Finished flag written when any agent stops	
+I9-041	F6	When a stopped agent counts as parked, not finished	could be F2 (agent lifecycle)
+I9-042	F4	Wordings that open a background task	
+I9-043	F6	Message when a transcript cannot be read	
+I9-044	F5	Verdict word the reviewer must end with	
+I9-045	F5	Old Key and Path lines in a reviewer report	
+I9-046	F5	Which commit a verdict signs	
+I9-047	F5	Which documents get fingerprinted at the tip	
+I9-048	F5	When a doc review recording no document is a problem	
+I9-049	F5	Gates read records with no rule change	
+I9-050	F5	Binding a stop to its handover	could be F6 (handover record)
+I9-051	F5	Stop hook never blocks	could be F6 (output shape)
+I9-052	F6	agent_stop run-log fields and outcomes	
+I9-053	F1	Bash command length limit	could be F4 (refused shape)
+I9-054	F4	What the length refusal says	
+I9-055	F4	Git commit message text excluded from the length count	
+I9-056	F4	Hook tags and refusal shape	
+I9-057	F4	Which shell the Windows rule reads	
+I9-058	F4	Status-call exemption from the length rule	
+I9-059	F4	What each Windows-rule part refuses and passes	
+I9-060	F4	Only one reader of quote characters	code structure; could be F7
+I9-061	F3	Where a subagent may delete recursively (roots)	
+I9-062	F4	What a subagent delete is refused for	
+I9-063	F4	What the delete refusal tells the agent	names folders; could be F3
+I9-064	F4	Which git words a subagent may never run	
+I9-065	F4	A find with a delete counted as a recursive delete	
+I9-066	F2	Where the delete rule gets its scope	could be F4
+I9-067	F4	Delete rule crash and entry behaviour	
+I9-068	F3	What the media guard does in the main session	could be F4
+I9-069	F3	What the media guard does in a subagent	could be F4
+I9-070	F4	Commands the media guard does not read	
+I9-071	F2	Media guard routing through percall	could be F4
+I9-072	F3	Fixed project, session and path values in fixtures	could be F2 (session id)
+I9-073	F4	Which Clone Hero server calls count as pressing keys	could be F5 (typed allow)
+I9-074	F5	Text a key-run refusal and key allow use	
+I9-075	F7	Build pass is the main session's only	
+I9-076	F4	When and how percall rewrites a shell command	could be F8
+I9-077	F2	First-call notice text (agent id)	
+I9-078	F1	Budget limit used by a test as past the budget	
+I9-079	F1	Posture resend interval	
+I9-080	F3	Where the posture text and send record live	
+I9-081	F8	What the posture hook does at its edges	could be F1
+I9-082	F7	One prompt-time process runs three parts	could be F4
+I9-083	F5	Prompt phrases that record waivers	
+I9-084	F1	How many tool calls an agent may make	
+I9-085	F1	How long an agent may run	
+I9-086	F1	How old an agent's status file may be	
+I9-087	F4	Which calls pass after the call budget is spent	could be F1
+I9-088	F4	What counts as a status call	
+I9-089	F2	First counted call notice (agent id and status file)	could be F3
+I9-090	F2	Where percall sends a call	could be F4
+I9-091	F4	Crash behaviour of percall	could be F2
+I9-092	F6	Hand-back save record for agent_stop	could be F8
+I9-093	F5	Whole-library run needs the user's typed allow	
+I9-094	F5	Clone Hero key route needs the user's typed allow	
+I9-095	F4	Which ch_play_chart calls are key-route	
+I9-096	F1	Budget numbers live once in progress.py	could be F7
+I9-097	F6	Lock behaviour when a record is held	could be F1
+I9-098	F6	Parked flag cleared by a call	
+I9-099	F5	How long a plan may be before needing a sign-off	could be F1
+I9-100	F5	When a long document passes the publish gate	
+I9-101	F5	Which repos the publish gate covers	could be F3
+I9-102	F5	Typed waiver for a long document	
+I9-103	F5	Which tools the publish gate reads	could be F4
+I9-104	F5	What the publish refusal says	could be F4
+I9-105	F5	How GitHub text reaches gh through publish.ps1	could be F4
+I9-106	F4	Which gh flags may not carry text in GhArgs	
+I9-107	F3	Default repo for gh in tests	
+I9-108	F5	How a reviewer dispatch is judged	could be F2
+I9-109	F6	Handover record a dispatch writes	
+I9-110	F3	Which other repos a brief may name	could be F5
+I9-111	F5	Which typed phrases make a waiver	
+I9-112	F1	How long an agent may be silent before main is told	
+I9-113	F1	Unfinished agent past the time limit	
+I9-114	F1	How often stall scans	
+I9-115	F7	Status relay to the main session	could be F1
+I9-116	F6	What the evidence line holds	
+I9-117	F5	Reviewer verdict problem relay	could be F7
+I9-118	F1	Context size warning	could be F8
+I9-119	F1	Empty fleet warning	could be F2
+I9-120	F5	Stall output never decides	could be F7
+I9-121	F3	Posture file location and print	
+I9-122	F1	When the Stop-hook watch wakes the main session	could be F7
+I9-123	F1	Registered timeout of the wake hook	
+I9-124	F4	Wake crash behaviour	could be F7
+I9-125	F8	What sync_settings owns in the live settings	could be F3
+I9-126	F1	Fixture times and ids in stall and wake tests	could be F2
+I9-127	F5	When may main move to a tip	
+I9-128	F5	Shape of a refusal to move main	could be F6
+I9-129	F5	Which paths count as code needing derive-once review	
+I9-130	F5	Which documents need a doc-review record	
+I9-131	F6	How a document key is computed	could be F5
+I9-132	F5	Which human typed text counts for a waiver	
+I9-133	F5	Typed phrases for library and key allows	
+I9-134	F5	Real-app proof for a UI change	
+I9-135	F5	Which src/ui changes are comments only	
+I9-136	F3	Real-app record file location	could be F6
+I9-137	F2	Fixture git identity and commit trailers	
+I9-138	F5	Reflog replay: what must be allowed	could be F8
+I9-139	F5	Which files the old doc-review keys came from	could be F3
+I9-140	F6	Where rulings live and ruling line shape	could be F3
+I9-141	F5	What the words test requires for a ruling	could be F6
+I9-142	F5	What the approval test requires for a ruling	
+I9-143	F6	Which ruling-file edits are judged and which pass free	could be F5
+I9-144	F5	Backfill route for old ruling lines	could be F6
+I9-145	F4	Ruling check command and refusal text	could be F6
+I9-146	F6	Transcript record shapes copied into tests	
+I9-147	F4	Bash and PowerShell exit-code tails	could be F6
+I9-148	F4	Which commands get the exit-code tail	
+I9-149	F4	Delete-rule word reading shared with shell_output	
+I9-150	F1	Output cap and what the trim keeps	could be F4
+I9-151	F3	Where the full text of a trimmed output is saved	
+I9-152	F4	Real-exit-code marker read from a command's output	could be F6
+I9-153	F4	Which output is never trimmed	
+I9-154	F6	How the post-tool hook answers	could be F4
+I9-155	F2	Which commits the git gate requires trailers on	could be F5
+I9-156	F5	Which ref moves the git gate refuses	
+I9-157	F5	When review_rules judge a move of main	
+I9-158	F5	What happens when the ref judge fails	could be F7
+I9-159	F8	Checkout restore after a refused move	could be F5
+I9-160	F7	Installer and self-test for the git gate	could be F8
+I9-161	F3	Gate files copied by the tests	
+I9-162	F5	Ruling check behind the git gate shim	
+I9-163	F6	Refusal log lines of the git gate	
+I9-164	F8	When a worktree is removed by the cleanup sweep	
+I9-165	F8	Which scratch entries the sweep deletes	
+I9-166	F8	How the sweep reports and paces itself	could be F1
+I9-167	F8	What the state prune removes	
+I9-168	F8	What the log prune keeps	
+I9-169	F7	When session-card work starts and who gets it	could be F1
+I9-170	F7	Which session holds the session-card claim	could be F8
+I9-171	F7	Text of the session-card note	could be F6
+I9-172	F8	Failures of the card scripts	could be F1
+I9-173	F8	Transcript-removal reminder	could be F1
+I9-174	F6	What status_append.ps1 does	could be F3
+I9-175	F3	The PowerShell test harness functions and markers	tests only; could be F7
+I9-176	F3	What the harness owns and where live state is	
+I9-177	F4	How the harness runs a hook	could be F3
+I9-178	F3	What a hook copy holds	
+I9-179	F1	Replay line budget for hook code	
+I9-180	F4	Replay repos and main-session ask rules	could be F3
+I9-181	F4	Replay old refusal texts and their classes	
+I9-182	F2	How replay judges each call	could be F4
+I9-183	F4	Why the new set refuses what the old allowed	
+I9-184	F3	Where replay extract and report may be written	
+I9-185	F3	What replay extract reads	could be F8
+I9-186	F1	Shell-output size study	could be F4
+I9-187	F2	How live probes ran (model and flags)	could be F4
+I9-188	F2	Facts the gates rest on: subagent stop, maxTurns, dispatch	could be F1
+I9-189	F4	Bash on Windows measurements	
+I9-190	F1	Shell output facts: Claude Code size limits	could be F4
+I9-191	F1	Wake and nudge probe timings	could be F7
+I9-192	F3	What changed in gates/tests during the scan	could be F8
