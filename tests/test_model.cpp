@@ -624,6 +624,12 @@ TEST_CASE("multiplier_step: the multipliers at a chord's two ends") {
             CHECK(step.first == first);
             CHECK(step.last == last);
         }
+        // category_scores, the payout's own copy of the two ends, reads a
+        // chord with no notes the same way: the combo's multiplier at both.
+        const CategoryScores empty = category_scores(Chord{}, combo);
+        CHECK(empty.multiplier == to_multiplier(combo));
+        CHECK(empty.multiplier_after == to_multiplier(combo));
+        CHECK(empty.combo_after == combo);
     }
     // category_scores reads the same two ends on every multiplier squeeze the
     // engine wrote for the corpus: the chords that straddle a step, where a
