@@ -655,9 +655,10 @@ TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
             if (!is_lane_tex(c.material.texture) && !is_lit_target_tex(c.material.texture)) continue;
             const double c_lo = std::min<double>(c.lo[2], c.hi[2]);
             const double c_hi = std::max<double>(c.lo[2], c.hi[2]);
-            // A strip that only touches the hidden fill's edge, within a
-            // rounding sliver, belongs to a neighbouring fill.
-            if (std::min(c_hi, z_hi) - std::max(c_lo, z_lo) > 1e-4) ++over;
+            // A strip that only touches the hidden fill's edge (equal depth,
+            // as strips_over compares depths) belongs to a neighbouring fill.
+            const bool touches = c_hi == doctest::Approx(z_lo) || c_lo == doctest::Approx(z_hi);
+            if (c_hi > z_lo && c_lo < z_hi && !touches) ++over;
         }
         CHECK(over == 0);
         ++checked;
