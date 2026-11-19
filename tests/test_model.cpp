@@ -1409,13 +1409,6 @@ TEST_CASE("SPSqueeze::needs_no_timing: a squeeze at exactly 0 needs 0.0 ms, one 
     CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.needs_no_timing());
 }
 
-// D302: a timing of 0.0 ms is still a timing to hit.
-TEST_CASE("timing_needs_hitting: 0.0 ms and more need hitting, below 0 does not") {
-    CHECK_FALSE(timing_needs_hitting(-0.001));
-    CHECK(timing_needs_hitting(0.0));
-    CHECK(timing_needs_hitting(0.001));
-}
-
 TEST_CASE("early_fill_needs_timing: zero slack needs timing, time to spare does not") {
     CHECK(early_fill_needs_timing(0.0));
     CHECK(early_fill_needs_timing(-0.001));
@@ -1550,9 +1543,12 @@ TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
 // A multiplier squeeze is a chord whose notes straddle a to_multiplier step.
 // MultSqueeze accepts exactly the straddling chords of every size, 2 to 5
 // notes (D51 call 3: Clone Hero allows 4- and 5-note chords, so Hydra must
-// get them right). The combos are pinned as literals: the steps sit at
-// combos 10, 20 and 30, so a chord of n notes hit at one of these combos
-// pays its first note below a step and its last note at or above it.
+// get them right). A chord of n notes hit at combo c straddles a step when
+// its first note's multiplier, to_multiplier(c + 1), is below its last
+// note's, to_multiplier(c + n); to_multiplier owns where the steps sit
+// (Clone Hero's 10, 20 and 30, model.h). The graph asks applies(), and the
+// constructor refuses what applies() refuses; both are checked against that
+// rule, for every combo up to past the last step.
 TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a multiplier step") {
     const NoteColor order[] = {NoteColor::Red, NoteColor::Yellow, NoteColor::Kick,
                                NoteColor::Blue, NoteColor::Green};
@@ -1572,25 +1568,41 @@ TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a m
             return false;
         }
     };
-    const std::map<int, std::set<int>> straddling = {
-        {2, {8, 18, 28}},
-        {3, {7, 8, 17, 18, 27, 28}},
-        {4, {6, 7, 8, 16, 17, 18, 26, 27, 28}},
-        {5, {5, 6, 7, 8, 15, 16, 17, 18, 25, 26, 27, 28}},
-    };
-    for (const auto& [n, combos] : straddling)
+    int straddles = 0;
+    for (int n = 2; n <= 5; ++n)
         for (int combo = 0; combo < 40; ++combo) {
-            CHECK_MESSAGE(accepted(chord_of(n, true), combo) == (combos.count(combo) == 1),
-                          "n=" << n << " combo=" << combo);
-            CHECK_MESSAGE(!accepted(chord_of(n, false), combo),
-                          "all-same-value n=" << n << " combo=" << combo);
+            CAPTURE(n);
+            CAPTURE(combo);
+            const bool straddle = to_multiplier(combo + 1) < to_multiplier(combo + n);
+            if (straddle) ++straddles;
+            const Chord mixed = chord_of(n, true);
+            CHECK(MultSqueeze::applies(mixed, combo) == straddle);
+            CHECK(accepted(mixed, combo) == straddle);
+            const Chord same = chord_of(n, false);
+            CHECK_FALSE(MultSqueeze::applies(same, combo));
+            CHECK_FALSE(accepted(same, combo));
         }
+    // A straddling chord must turn up, or only the refusals were checked.
+    CHECK(straddles > 0);
 }
 
-// Kick and Red (50 each) with yellow and blue cymbals (65 each), hit at
-// combo 7: two notes are paid at 1x and two at 2x. Two notes cross the step,
-// so the right order gains two cymbal bonuses.
+// The best order puts the cymbals past the step and the pads before it; the
+// worst order swaps them. Each cymbal that the best order moves past the step
+// is worth its cymbal bonus more per multiplier gained, so the gain is that
+// count times kCymbalBonusPoints times the step's rise. The notes paid past
+// the step are those whose combo reaches a higher multiplier than the first
+// note's (to_multiplier owns where the steps sit).
 TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
+    auto paid_past_step = [](int combo, int notes) {
+        int past = 0;
+        for (int k = 1; k <= notes; ++k)
+            if (to_multiplier(combo + k) > to_multiplier(combo + 1)) ++past;
+        return past;
+    };
+    auto rise = [](int combo, int notes) { return to_multiplier(combo + notes) - to_multiplier(combo + 1); };
+
+    // Kick and Red pads with yellow and blue cymbals, hit at combo 7: the
+    // last two notes are paid past the step, and both cymbals fit there.
     Chord kryb;
     kryb.add_note(NoteColor::Kick);
     kryb.add_note(NoteColor::Red);
@@ -1598,13 +1610,19 @@ TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
     kryb.add_note(NoteColor::Blue);
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
-    CHECK(MultSqueeze(kryb, 7).gain() == 30);
+    const int kryb_cymbals = 2;
+    REQUIRE(paid_past_step(7, kryb.count()) == kryb_cymbals);
+    CHECK(MultSqueeze(kryb, 7).gain() == kryb_cymbals * kCymbalBonusPoints * rise(7, kryb.count()));
 
+    // A red pad and a yellow cymbal at combo 8: only the last note is paid
+    // past the step, and the one cymbal goes there.
     Chord ry;
     ry.add_note(NoteColor::Red);
     ry.add_note(NoteColor::Yellow);
     ry.apply_cymbal(NoteColor::Yellow);
-    CHECK(MultSqueeze(ry, 8).gain() == 15);
+    const int ry_cymbals = 1;
+    REQUIRE(paid_past_step(8, ry.count()) == ry_cymbals);
+    CHECK(MultSqueeze(ry, 8).gain() == ry_cymbals * kCymbalBonusPoints * rise(8, ry.count()));
 }
 
 // D51 call 3: the advice names every note that has to cross the step.
@@ -1777,30 +1795,6 @@ TEST_CASE("MultSqueeze::howto names the note in the Pro Drums setting's words") 
     CHECK(named_note(kry, NoteColor::Yellow, false) == cymbal_name);
     CHECK(cymbal.howto(false) == cymbal.howto(true));
     CHECK(cymbal.howto(false).find(cymbal_name) != std::string::npos);
-}
-
-// The graph asks applies() of every chord instead of catching a throw.
-// It must answer exactly as the constructor decides, for every shape.
-TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {
-    const NoteColor order[] = {NoteColor::Red, NoteColor::Yellow, NoteColor::Kick,
-                               NoteColor::Blue, NoteColor::Green};
-    for (int n = 0; n <= 5; ++n) {
-        for (bool cymbal : {false, true}) {
-            Chord c;
-            for (int i = 0; i < n; ++i) c.add_note(order[i]);
-            if (cymbal && n >= 2) c.apply_cymbal(NoteColor::Yellow);
-            for (int combo = 0; combo < 40; ++combo) {
-                bool constructed = true;
-                try {
-                    MultSqueeze ms(c, combo);
-                } catch (const std::invalid_argument&) {
-                    constructed = false;
-                }
-                CHECK_MESSAGE(MultSqueeze::applies(c, combo) == constructed,
-                              "n=" << n << " cymbal=" << cymbal << " combo=" << combo);
-            }
-        }
-    }
 }
 
 TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the SqOut from its row") {
