@@ -288,4 +288,4 @@ calls: 284
   call 283: ʾʼʺʻˀʵʶʸʶʻʳ at 59080.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 141 at 59080 ms, diff +0.4 ms
   call 284: ʿʾʹʲˀʶʷʵʶʶˀ at 59080.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 141 at 59080 ms, diff +0.4 ms
 calls within 85 ms of their nearest note (EXPECT_NORMAL_BACK_MS): 284 of 284
-messages written to C:\Users\Patrick\AppData\Local\Temp\claude\C--Users-Patrick-Downloads-Hydra-hydra-test\6a549de0-baf9-484b-bc31-5c46be6059e6\scratchpad\l3\trace-wm-args.jsonl
+messages written to C:\scratch\trace-wm-args.jsonl
