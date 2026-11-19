@@ -1141,6 +1141,17 @@ class SummaryTest(Workspace):
 # ---- the agents ---------------------------------------------------------------
 
 class ByNameOnlyTest(unittest.TestCase):
+    def test_the_check_catches_an_offset_read_added_to_a_real_agent(self):
+        # Without this, a broken pattern would let every agent pass. The real
+        # clock.ts passes; the same text with one offset read added fails at
+        # that line.
+        with open(os.path.join(AGENT_DIR, "clock.ts"), encoding="utf-8") as fh:
+            clock = fh.read()
+        bad = "const v = gm.handle.add(0x70).readDouble();"
+        found = by_name_only_findings(clock + bad + "\n")
+        self.assertEqual([(n, line) for n, line, _ in found],
+                         [(len(clock.splitlines()) + 1, bad)])
+
     def test_no_agent_reads_by_offset(self):
         sources = agent_sources()
         self.assertIn(os.path.join(AGENT_DIR, "clock.ts"), sources)
@@ -1175,6 +1186,52 @@ class AllowedCallsTest(unittest.TestCase):
         held = sorted(name for name, text in self.real_texts().items()
                       if _ALLOWED_LIST.search(text))
         self.assertEqual(held, sorted(LISTED_AGENTS))
+
+    def test_a_list_in_an_unlisted_file_fails(self):
+        texts = self.real_texts()
+        texts["clock.ts"] += 'export const ALLOWED_CALLS = ["SetActive"];\n'
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith("clock.ts:"), findings[0])
+        self.assertIn("ALLOWED_CALLS", findings[0])
+
+    def test_a_method_outside_the_files_list_fails(self):
+        texts = self.real_texts()
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        texts["clock.ts"] += 'go.method("SetActive");\n'
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"clock.ts:{added_at}: SetActive"),
+                        findings[0])
+
+    def test_a_name_on_another_files_list_fails(self):
+        # Each file's list covers that file only: a name from menu.ts's real
+        # list, called in clock.ts, fails.
+        texts = self.real_texts()
+        name = allowed_calls(texts[MENU_AGENT])[0]
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        texts["clock.ts"] += f'go.method("{name}");\n'
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"clock.ts:{added_at}: {name}"),
+                        findings[0])
+
+    def test_a_kit_list_name_the_data_file_lacks_fails(self):
+        data = load_kit_methods()
+        gone = data["methods"][0]["name"]
+        data = {"methods": data["methods"][1:]}
+        findings = kit_methods_findings(self.real_texts()[KIT_AGENT], data)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"{gone} is in {KIT_AGENT}'s"),
+                        findings[0])
+
+    def test_a_data_file_name_the_kit_list_lacks_fails(self):
+        data = load_kit_methods()
+        gone = allowed_calls(self.real_texts()[KIT_AGENT])[0]
+        kit = self.real_texts()[KIT_AGENT].replace(f'"{gone}"', '"x_placeholder"', 1)
+        findings = kit_methods_findings(kit, data)
+        self.assertTrue(any(f.startswith(f"{gone} is in kit_methods.json")
+                            for f in findings), findings)
 
     def test_kit_calls_match_the_data_file(self):
         data = load_kit_methods()
