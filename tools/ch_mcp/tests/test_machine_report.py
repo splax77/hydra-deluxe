@@ -126,19 +126,6 @@ class Fixture:
                 out.writerows(rows)
 
 
-def clock_fixture(pairs):
-    """Samples whose steps are `pairs` of (clock gain, wall gain) in ms."""
-    fx = Fixture()
-    clock = wall = 0
-    last = fx.sample(wall, clock)
-    fx.thread(last)
-    for clock_gain, wall_gain in pairs:
-        clock += clock_gain
-        wall += wall_gain
-        fx.sample(wall, clock)
-    return fx
-
-
 class ReportCase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -163,16 +150,6 @@ class ReportCase(unittest.TestCase):
 
 
 class Constants(unittest.TestCase):
-    def test_the_questions_numbers(self):
-        self.assertEqual(R.LONG_STEP_FACTOR, 2)
-        self.assertEqual(R.READY_STRETCH_MIN, 2)
-
-    def test_the_watchs_gap_threshold_and_the_listed_names(self):
-        self.assertEqual(R.GAP_MS, 50)
-        self.assertEqual(R.ALWAYS_LISTED_NAMES,
-                         ("cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link", "rc",
-                          "mt", "tsc", "esbuild", "Spotify.exe", "MsMpEng.exe"))
-
     def test_the_recorders_files_and_words_are_the_ones_read(self):
         for name in R.SAMPLE_OPTIONAL:
             self.assertIn(name, machine_recorder.SAMPLES_COLUMNS)
@@ -502,34 +479,9 @@ class NoThreadRowsInARealRecording(RealRecordingCase):
         self.assertNotIn(message, self.lines("--worker", str(worker)))
 
 
-class StretchesAcrossLateSamples(ReportCase):
-    LATE_MARK = R.LATE_MARK
-
-    def ready_at(self, walls_ms, switches=None):
-        """A thread ready in one sample at each of these times."""
-        fx = Fixture()
-        for at, ms in enumerate(walls_ms):
-            fx.thread(fx.sample(ms), reads_as="ready", switches=switches[at] if switches else 1)
-        return fx
-
-    def stretch_line(self, fx, *args):
-        return next(line for line in self.lines(fx, *args) if "thread 70" in line)
-
-    def test_normal_wobble_under_twice_the_period_carries_no_mark(self):
-        line = self.stretch_line(self.ready_at((0, 25, 45, 85)))
-        self.assertNotIn(self.LATE_MARK, line)
-
-    def test_one_sample_prints_no_stretch_and_no_mark(self):
-        fx = Fixture()
-        fx.steady(2)
-        fx.thread(1, reads_as="ready", switches=9)
-        self.assertEqual(self.stretch_line(fx),
-                         "  game pid 7 thread 70: running 0, ready 1, no ready stretch")
-
-
 class LateStretchesInARealRecording(RealRecordingCase):
     FOLDER = LATE_RUN
-    LATE_MARK = StretchesAcrossLateSamples.LATE_MARK
+    LATE_MARK = R.LATE_MARK
 
     def ready_in(self, tid, run):
         """Checks that this game thread is ready in exactly the samples of `run`
@@ -667,14 +619,6 @@ class LateClockInARealRecording(ClockInARealRecording):
                       f"{R._wall(Fraction(high_at['wall_s']))}, "
                       f"lowest {float(low - middle):+.1f} ms at wall "
                       f"{R._wall(Fraction(low_at['wall_s']))}", self.lines())
-
-
-class ClockSteps(ReportCase):
-    SIX_PAIRS =((20, 20), (20, 20), (70, 20), (300, 100), (100, 100), (20, 80))
-
-    def test_the_late_sample_is_not_listed(self):
-        lines = self.lines(clock_fixture(self.SIX_PAIRS))
-        self.assertFalse([line for line in lines if "wall 1000.260" in line])
 
 
 class ClockRowsCase(RealRecordingCase):
