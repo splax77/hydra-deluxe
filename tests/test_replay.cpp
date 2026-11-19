@@ -47,10 +47,9 @@
 using namespace hydra;
 using json = nlohmann::json;
 
-// Shared with test_replay_windows.cpp (replay_util.h): Round and Round's shape
-// on a hand-built chart, and where two replays first differ, row by row.
+// Shared with test_replay_windows.cpp (replay_util.h): where two replays
+// first differ, row by row.
 using test::first_result_difference;
-using test::squeeze_chart;
 
 namespace {
 
@@ -385,29 +384,46 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
     CHECK(r.chords.back().cum_onscreen_total == r.final.total());
 }
 
-// Round and Round's shape (squeeze_chart): a window whose squeeze-out sits
-// on an R+Y phrase chord ~479 ms past the SP end. That chord is outside the
-// window and outside the leeway, so it earns no doubling at all -- the
-// squeeze-out changes nothing. The chord on the deactivation node is paid.
-TEST_CASE("a squeezed-out chord past the leeway earns nothing") {
-    const Song song = squeeze_chart();
-
-    ReplayWindow w;
-    w.act_tick = 0;
-    w.deact_tick = 3072;
-    w.sqout_offset_ms = offset_from_sp_end(song.timecode(3256).ms(), song.timecode(3072).ms());
-    w.sqout_tick = 3256;
-
-    const ReplayResult r = replay_path(song, {w});
-    REQUIRE(r.chords.size() == 6);
-    CHECK(r.chords[4].in_sp);  // on the deactivation node: paid in full
-    CHECK(r.chords[4].points.sp > 0);
-    CHECK_FALSE(r.chords[5].in_sp);
-    CHECK(r.chords[5].points.sp == 0);
-
-    // The disc follows the same decision: doubled on the paid chord only.
-    CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after * kStarPowerMultiplier);
-    CHECK(r.chords[5].multiplier_shown == r.chords[5].multiplier_after);
+// D2 on the engine's own squeeze-outs: every window the search stored with a
+// squeezed-out chord, on every corpus chart at the app's defaults. Under the
+// default first-note rule a one-note chord squeezed out loses all its
+// doubling, whether it sits inside the window or past the leeway. On any
+// squeezed-out chord, the disc doubles exactly when SP paid it something.
+TEST_CASE("a squeezed-out chord SP pays nothing shows the plain multiplier, on corpus paths") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    REQUIRE(cfg.rules.sqout_rule == core::SqOutRule::FirstNote);
+    int sqout_chords = 0, one_note = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const std::vector<ReplayWindow> wl = windows_for_path(p);
+            const ReplayResult r = replay_path(song, wl, cfg.rules);
+            for (const ReplayWindow& w : wl) {
+                if (!w.sqout_tick) continue;
+                const ReplayChord* c = nullptr;
+                for (const ReplayChord& row : r.chords)
+                    if (row.tick == *w.sqout_tick) c = &row;
+                if (!c) return ": no chord on squeeze-out tick " + std::to_string(*w.sqout_tick);
+                ++sqout_chords;
+                const std::string at = " on squeeze-out tick " + std::to_string(c->tick);
+                if (c->in_sp != (c->points.sp > 0)) return ": in_sp disagrees with SP points" + at;
+                const int want = c->in_sp ? c->multiplier_after * kStarPowerMultiplier
+                                          : c->multiplier_after;
+                if (c->multiplier_shown != want) return ": disc shows the wrong multiplier" + at;
+                if (c->notes.size() == 1) {
+                    ++one_note;
+                    if (c->points.sp != 0) return ": a one-note squeeze-out kept SP points" + at;
+                }
+            }
+            return "";
+        });
+    MESSAGE(sqout_chords << " squeezed-out chords, " << one_note << " of one note");
+    CHECK(run.charts > 0);
+    // The corpus stores squeeze-outs (test_engine_sweeps.cpp walks them), so
+    // a walk that met none, or no one-note one, checked nothing here.
+    CHECK(sqout_chords > 0);
+    CHECK(one_note > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
@@ -420,44 +436,6 @@ TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
     CHECK_FALSE(core::paid_by_sp(4.0, 100, 50, SqOutPosition::NoSqOut, 3.0));  // past it
 }
 
-// D2: the disc doubles only when Star Power paid the chord something.
-TEST_CASE("replay: a squeezed-out chord SP pays nothing shows the plain multiplier") {
-    // 120 BPM, 192 ticks per beat: 96 ticks are 250 ms.
-    auto build = [](bool two_notes) {
-        Song song(192);
-        song.bpm_changes[0] = 120.0;
-        song.build_timing();
-        for (int64_t tick : {0, 768, 1536, 2304, 2976, 3072}) {
-            SongTimestamp ts;
-            ts.timecode = song.timecode(tick);
-            ts.chord.add_note(NoteColor::Red);
-            if (tick != 2976 || two_notes) ts.chord.add_note(NoteColor::Yellow);
-            if (tick == 2976) test::mark_phrase_end(ts, tick, song.tick_resolution());
-            song.sequence.push_back(ts);
-        }
-        return song;
-    };
-    ReplayWindow w;
-    w.act_tick = 0;
-    w.deact_tick = 3072;
-    w.sqout_tick = 2976;  // a phrase chord 250 ms before the SP end
-
-    const Song one = build(false);
-    const ReplayResult r = replay_path(one, {w});
-    REQUIRE(r.chords.size() == 6);
-    CHECK(r.chords[3].in_sp);  // an ordinary chord inside the window: doubled
-    CHECK(r.chords[3].multiplier_shown == r.chords[3].multiplier_after * kStarPowerMultiplier);
-    CHECK(r.chords[4].points.sp == 0);  // first-note rule: one note loses all its doubling
-    CHECK_FALSE(r.chords[4].in_sp);
-    CHECK(r.chords[4].multiplier_shown == r.chords[4].multiplier_after);
-
-    // Two notes: only the first note's share is lost, so SP still paid it.
-    const Song two = build(true);
-    const ReplayResult r2 = replay_path(two, {w});
-    CHECK(r2.chords[4].points.sp > 0);
-    CHECK(r2.chords[4].in_sp);
-    CHECK(r2.chords[4].multiplier_shown == r2.chords[4].multiplier_after * kStarPowerMultiplier);
-}
 
 // ambiguous_window_warnings reads in_sp, so a chord that no window pays
 // anything for does not count as paid just because a squeezed-out window
@@ -497,10 +475,12 @@ TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying wi
 }
 
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
-    CHECK(shown_multiplier(1, false) == 1);
-    CHECK(shown_multiplier(1, true) == 2);
-    CHECK(shown_multiplier(4, false) == 4);
-    CHECK(shown_multiplier(4, true) == 8);
+    // The doubling is kStarPowerMultiplier, read from its owner by name.
+    for (int m : {1, 2, 3, 4}) {
+        CAPTURE(m);
+        CHECK(shown_multiplier(m, false) == m);
+        CHECK(shown_multiplier(m, true) == m * kStarPowerMultiplier);
+    }
 }
 
 // `score --path` prices a path straight out of the JSON `dump` and `target`
