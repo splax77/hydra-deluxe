@@ -16,7 +16,9 @@ After the check: REAL 66, NOT A SPLIT 47, GONE 2. Twelve rows, in five themes, g
 4. constants.py's swapped formula tables: L-F27-27.
 5. Whether a wave's build count needs the user's yes: L-F29-01, L-F29-18, L-F32-01 (their memory halves).
 
-Three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdicts on L-F21-09 have not yet had a fresh check. They wait for K7.
+K7 (reports/TOOL-AUDIT-T8-K7.md) checked the three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdicts on L-F21-09: all PASS.
+
+After the user's batch 4 answers (log.md): the line budget rows close by the Confirmed line at review-and-hooks.md:11, which the re-check missed; the scrolling rows close by the user's "delete that memory note"; and L-F27-27 becomes a Fix pending rename, since no value changes and no screen shows the values. Six rows in two themes are still questions: `gh issue close --comment` (L-F13-08, L-F16-08, L-F13-17) and the build count (L-F29-01, L-F29-18, L-F32-01).
 
 | Row | Report | Verdict | Kinds | Exit | Main session's note |
 |---|---|---|---|---|---|
@@ -26,8 +28,8 @@ Three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdi
 | L-F02-20 | R4 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F03-02 | R4 | REAL | code-vs-code;moved-pointer | code-vs-code: exit 3, "Merge, I pick" (log.md, T8 batch 1); pick goes in the fix plan; moved-pointer: exit 3, "Fix without asking" (log.md, T6) |  |
 | L-F03-08 | R4 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
-| L-F03-20 | R4 | REAL | homeless-rule;memory-vs-other;ruling-vs-other | exit 2, question: the render note's scrolling step against the Confirmed line at rulings/ui-and-display.md:27 | no answer covers ruling-vs-other |
-| L-F04-07 | R2 | REAL | ruling-vs-other | exit 2, question: theme 17, whether any fixed line budget should exist | no answer covers ruling-vs-other |
+| L-F03-20 | R4 | REAL | homeless-rule;memory-vs-other;ruling-vs-other | exit 3, the user's words in session 0e741144: "delete that memory note. search function exists for a reason." The note render-checks-use-the-corpus.md was deleted the same day | the scroll step lived only in that note; the Confirmed no-scroll line at ui-and-display.md:27 stands |
+| L-F04-07 | R2 | REAL | ruling-vs-other | exit 3, covered by the Confirmed line docs/agents/rulings/review-and-hooks.md:11 (2026-10-31): "im not too concerned about the exact number as much as efficiency and functionality"; the "user's hard budget" comment is dropped and the size is information only | R2 missed this Confirmed line; it names the number against what each hook does |
 | L-F04-13 | R6 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F04-18 | R6 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F05-06 | R6 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
@@ -41,7 +43,7 @@ Three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdi
 | L-F07-02 | R4 | REAL | doc-vs-code;memory-vs-other | doc-vs-code: exit 3, "The code wins" (log.md, T6); memory-vs-other: exit 3, "Note is wrong" (log.md, T6) |  |
 | L-F07-09 | R2 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F07-10 | R4 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
-| L-F07-16 | R2 | REAL | ruling-vs-other | exit 2, question: theme 17, whether any fixed line budget should exist | no answer covers ruling-vs-other |
+| L-F07-16 | R2 | REAL | ruling-vs-other | exit 3, covered by the Confirmed line docs/agents/rulings/review-and-hooks.md:11 (2026-10-31): "im not too concerned about the exact number as much as efficiency and functionality"; the "user's hard budget" comment is dropped and the size is information only | R2 missed this Confirmed line; it names the number against what each hook does |
 | L-F07-17 | R4 | REAL | memory-vs-other | exit 3, "Note is wrong" (log.md, T6) |  |
 | L-F08-09 | R6 | REAL | code-vs-code | exit 3, "Merge, I pick" (log.md, T8 batch 1); pick goes in the fix plan |  |
 | L-F09-12 | R6 | REAL | doc-vs-code;code-vs-code | doc-vs-code: exit 3, "The code wins"; code-vs-code: exit 3, "Merge, I pick"; pick goes in the fix plan | K2 REOPEN: tools/bench.cpp:986 also holds the library path, which R6's .py/.ps1 search missed; refold checked in K7 |
@@ -59,7 +61,7 @@ Three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdi
 | L-F14-02 | R3 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F14-03 | R3 | REAL | doc-vs-code;doc-vs-doc | doc-vs-code: exit 3, "The code wins" (log.md, T6); doc-vs-doc: exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F14-06 | R6 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
-| L-F14-10 | R4 | REAL | homeless-rule;memory-vs-other;ruling-vs-other | exit 2, question: same split as L-F03-20 | no answer covers ruling-vs-other |
+| L-F14-10 | R4 | REAL | homeless-rule;memory-vs-other;ruling-vs-other | exit 3, as L-F03-20 | same split as L-F03-20 |
 | L-F14-11 | R4 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F14-12 | R3 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F15-01 | R3 | REAL | memory-vs-other | exit 3, "Note is wrong" (log.md, T6) |  |
@@ -85,7 +87,7 @@ Three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdi
 | L-F20-06 | R5 | GONE | - | closure: GONE, the split is no longer in the files |  |
 | L-F20-07 | R5 | REAL | doc-vs-code;doc-vs-doc | doc-vs-code: exit 3, "The code wins" (log.md, T6); doc-vs-doc: exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F21-04 | R6 | REAL | code-vs-code | exit 3, "Merge, I pick" (log.md, T8 batch 1); pick goes in the fix plan |  |
-| L-F21-06 | R2 | REAL | ruling-vs-other | exit 2, question: theme 17, whether any fixed line budget should exist | no answer covers ruling-vs-other |
+| L-F21-06 | R2 | REAL | ruling-vs-other | exit 3, covered by the Confirmed line docs/agents/rulings/review-and-hooks.md:11 (2026-10-31): "im not too concerned about the exact number as much as efficiency and functionality"; the "user's hard budget" comment is dropped and the size is information only | R2 missed this Confirmed line; it names the number against what each hook does |
 | L-F21-09 | R6 | REAL | moved-pointer | D49's missing file name: exit 3, "Fix without asking" (K4 PASS; deleted in db87b55c, so the line gets "(removed; git show ...)"); the other six pieces: WATCHDOG GONE, five exit 4 (reports/TOOL-AUDIT-T8-R7.md) | R7's six verdicts are checked in K7 |
 | L-F22-04 | R6 | REAL | doc-vs-code | exit 3, "The code wins" (log.md, T6) |  |
 | L-F22-09 | R6 | REAL | doc-vs-code | exit 3, "The code wins" (log.md, T6) |  |
@@ -102,7 +104,7 @@ Three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdi
 | L-F26-13 | R3 | REAL | memory-vs-other;homeless-rule | the "what a constant means" half: exit 3, "Note is wrong"; the "no history in comments" half: exit 3, "Give each a home" | K4 PASS with note: a Confirmed ruling backs the no-history half and no agent page or hook states it, so that half gets a home rather than being pruned |
 | L-F26-15 | R5 | REAL | doc-vs-code;memory-vs-other | doc-vs-code: exit 3, "The code wins" (log.md, T6); memory-vs-other: exit 3, "Note is wrong" (log.md, T6) |  |
 | L-F27-23 | R5 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
-| L-F27-27 | R6 | REAL | doc-vs-code | exit 2, question: rename constants.py's swapped formula tables to match the disassembly | K5 REOPEN: docs/clone-hero/03-timing.md:355 proves constants.py's normal and precision tables are swapped, so the code is the wrong side; SPEC.md's 0x0313ECB0 is in no 6142 listing |
+| L-F27-27 | R6 | REAL | doc-vs-code | Fix pending: rename constants.py's two formula tables to match the disassembly; no value changes | the user: "if no value changes then why is this even a question?"; only experiments/milestone1.py prints the values, by hand, so no screen shows them |
 | L-F28-06 | R5 | REAL | moved-pointer | exit 3, "Fix without asking" (log.md, T6) |  |
 | L-F28-13 | R3 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F28-15 | R1 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |

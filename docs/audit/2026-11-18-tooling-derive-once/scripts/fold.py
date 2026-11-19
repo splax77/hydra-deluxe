@@ -88,6 +88,25 @@ AFTER_CHECK = {
                  "K4 PASS with note: a Confirmed ruling backs the no-history half and no agent page or hook states it, so that half gets a home rather than being pruned"),
 }
 
+# After the user's batch 4 answers (log.md, "T8: the user's answers, batch 4"). Applied last.
+BUDGET = ('exit 3, covered by the Confirmed line docs/agents/rulings/review-and-hooks.md:11 (2026-10-31): "im not too concerned '
+          'about the exact number as much as efficiency and functionality"; the "user\'s hard budget" comment is dropped and the size is information only',
+          "R2 missed this Confirmed line; it names the number against what each hook does")
+AFTER_ANSWERS = {
+    "L-F04-07": ("REAL", "ruling-vs-other") + BUDGET,
+    "L-F07-16": ("REAL", "ruling-vs-other") + BUDGET,
+    "L-F21-06": ("REAL", "ruling-vs-other") + BUDGET,
+    "L-F03-20": ("REAL", "homeless-rule;memory-vs-other;ruling-vs-other",
+                 'exit 3, the user\'s words in session 0e741144: "delete that memory note. search function exists for a reason." '
+                 "The note render-checks-use-the-corpus.md was deleted the same day",
+                 "the scroll step lived only in that note; the Confirmed no-scroll line at ui-and-display.md:27 stands"),
+    "L-F14-10": ("REAL", "homeless-rule;memory-vs-other;ruling-vs-other",
+                 "exit 3, as L-F03-20", "same split as L-F03-20"),
+    "L-F27-27": ("REAL", "doc-vs-code",
+                 "Fix pending: rename constants.py's two formula tables to match the disassembly; no value changes",
+                 "the user: \"if no value changes then why is this even a question?\"; only experiments/milestone1.py prints the values, by hand, so no screen shows them"),
+}
+
 CHECK_NOTE = {
     "L-F27-27": "closure checker: say whether SPEC.md's 0x0313ECB0 and constants.py's c1 answer the same question; they may be different constants",
 }
@@ -112,7 +131,9 @@ for rid, rep, base, kinds, _v, _k in rows:
                 exit_ = "exit 2, question: no answer covers " + (",".join(missing) or "an unnamed kind")
             else:
                 exit_ = "; ".join(f"{k}: {ANSWER[k]}" if len(ks) > 1 else ANSWER[k] for k in ks)
-    if rid in AFTER_CHECK:
+    if rid in AFTER_ANSWERS:
+        base, kinds, exit_, note = AFTER_ANSWERS[rid]
+    elif rid in AFTER_CHECK:
         base, kinds, exit_, note = AFTER_CHECK[rid]
     elif rid in CHECK_NOTE:
         note = (note + "; " if note else "") + CHECK_NOTE[rid]
