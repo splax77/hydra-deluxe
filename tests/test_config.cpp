@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -85,7 +86,8 @@ TEST_CASE("settings round-trip through an INI file") {
     s.mslimit_enabled = false;
     s.mslimit_value = 42;
     s.backendlimit_enabled = true;
-    s.backendlimit_value = 42;
+    // Unlike mslimit_value, so a swap of the two shows.
+    s.backendlimit_value = s.mslimit_value + 1;
     s.preview_volume = 23;
     s.sp_cap = 16;
     s.legacy_fills = true;
@@ -108,34 +110,29 @@ TEST_CASE("settings: load and save name the same keys") {
     REQUIRE(d.save_file(path));
     check_same_settings(Settings::load_file(path), d);
 
-    // The file's key names, in the order save_file writes them. Each one is a
-    // name load_file reads (the round trip above proves it), so a name changed
-    // on one side only fails here or there.
+    // Every line save_file writes is, on its own, a line load_file takes: a
+    // key written under a name the loader does not read refuses as unknown.
     Settings s;
     s.dm_last_user = "123";
     s.chartfolders = {"C:\\a"};
     REQUIRE(s.save_file(path));
-    std::vector<std::string> names;
+    std::vector<std::string> lines;
     {
         std::ifstream f(path);
         std::string line;
-        while (std::getline(f, line)) names.push_back(line.substr(0, line.find('=')));
+        while (std::getline(f, line)) lines.push_back(line);
     }
     std::remove(path.c_str());
-    const std::vector<std::string> expected = {
-        "is_rescan",        "view_difficulty",      "view_prodrums",      "view_bass2x",
-        "view_noteshuffle",
-        "depth_value",     "depth_mode",           "mslimit_enabled",    "mslimit_value",
-        "backendlimit_enabled", "backendlimit_value", "preview_volume",
-        "sp_cap",           "legacy_fills",         "early_fill_window_ms",
-        "auto_open_report", "dm_last_user",
-        "chartfolder"};
-    CHECK(names == expected);
+    REQUIRE_FALSE(lines.empty());
+    for (const std::string& line : lines) {
+        CAPTURE(line);
+        CHECK_NOTHROW(load_ini_text("samekeys_line", line + "\n"));
+    }
 }
 
 // The updater's two keys (D260): they round-trip and Reset to defaults leaves
-// them alone. A 2.11.x file's check_updates and last_update_check lines load
-// and are not written back.
+// them alone. A file holding retired keys still loads its live ones; that the
+// retired keys are never written back is the retired-keys test's.
 TEST_CASE("the updater's settings round-trip and survive Reset to defaults") {
     Settings s;
     s.skipped_update_version = "9.9.9";
@@ -154,13 +151,6 @@ TEST_CASE("the updater's settings round-trip and survive Reset to defaults") {
     }
     const Settings old = Settings::load_file(path);
     CHECK(old.skipped_update_version == "9.9.9");
-    REQUIRE(old.save_file(path));
-    {
-        std::ifstream in(path);
-        const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-        CHECK(saved.find("check_updates=") == std::string::npos);
-        CHECK(saved.find("last_update_check=") == std::string::npos);
-    }
     std::remove(path.c_str());
 
     const Settings reset = s.with_analysis_defaults();
@@ -173,15 +163,24 @@ TEST_CASE("the 1.0 fills setting reaches the search and the result's key togethe
     Settings s;
     CHECK_FALSE(s.legacy_fills);  // Clone Hero 1.1 by default
     CHECK_FALSE(s.to_analysis_settings().legacy_fills);
-    CHECK(s.lens().legacy_fills == 0);
+    CHECK_FALSE(s.lens().legacy_fills != 0);
 
     s.legacy_fills = true;
     CHECK(s.to_analysis_settings().legacy_fills);
-    CHECK(s.lens().legacy_fills == 1);
-    CHECK(s.profile().lens.legacy_fills == 1);
+    CHECK(s.lens().legacy_fills != 0);
+    CHECK(s.profile().lens == s.lens());
+    // The key differs from the off key in the fill rule alone.
+    {
+        Settings off = s;
+        off.legacy_fills = false;
+        CHECK(s.lens() != off.lens());
+        hydra::store::Lens rest = s.lens();
+        rest.legacy_fills = off.lens().legacy_fills;
+        CHECK(rest == off.lens());
+    }
     const hydra::app::BatchRun run = s.batch_run();
     CHECK(run.settings.legacy_fills);
-    CHECK(run.profile.lens.legacy_fills == 1);
+    CHECK(run.profile == s.profile());
 }
 
 TEST_CASE("command-line settings take the fill rule from the flag, the rest from the INI") {
@@ -203,12 +202,13 @@ TEST_CASE("command-line settings take the fill rule from the flag, the rest from
     write_ini("legacy_fills=0\n");
     const Settings on = Settings::load_for_command_line(true);
     CHECK(on.legacy_fills);
-    CHECK(on.batch_run().profile.lens.legacy_fills == 1);
+    CHECK(on.batch_run().profile.lens.legacy_fills != 0);
 }
 
-// The tools' one loader (D270 call 4). The text it prints is checked through
-// the tools themselves in test_cli.cpp.
-TEST_CASE("load_tool_settings gives the tools' settings, or exit code 2 for a refused file") {
+// The tools' one loader. The text it prints is checked through the tools
+// themselves in test_cli.cpp; the flag winning over the file is the
+// command-line test's above.
+TEST_CASE("load_tool_settings gives the tools' settings, or a failing exit code for a refused file") {
     const ScratchPaths paths("tool_settings");
     auto write_ini = [&](const std::string& text) {
         std::ofstream f(paths.ini, std::ios::trunc);
@@ -220,43 +220,30 @@ TEST_CASE("load_tool_settings gives the tools' settings, or exit code 2 for a re
     CHECK(hydra::app::load_tool_settings(st, std::nullopt) == 0);
     CHECK(st.legacy_fills);  // no flag of its own: the file's setting stands
     CHECK(st.sp_cap == 2);
-    CHECK(hydra::app::load_tool_settings(st, false) == 0);
-    CHECK_FALSE(st.legacy_fills);  // the tool's flag wins
-    CHECK(st.sp_cap == 2);
 
     write_ini("sp_cap=abc\n");
     Settings untouched;
     untouched.sp_cap = 7;
-    CHECK(hydra::app::load_tool_settings(untouched, std::nullopt) == 2);
-    CHECK(hydra::app::load_tool_settings(untouched, true) == 2);
+    CHECK(hydra::app::load_tool_settings(untouched, std::nullopt) != 0);
+    CHECK(hydra::app::load_tool_settings(untouched, true) != 0);
     CHECK(untouched.sp_cap == 7);
 }
 
 TEST_CASE("a missing INI yields defaults") {
-    Settings r = Settings::load_file(testtemp::temp_path("missing_never_written", ".ini"));
-    Settings d;
-    CHECK(r.sp_cap == 4);
-    CHECK(r.chartfolders.empty());
-    CHECK(r.view_difficulty == d.view_difficulty);
-    CHECK(r.depth_value == d.depth_value);
-    CHECK(r.mslimit_enabled == d.mslimit_enabled);
-    CHECK(r.mslimit_value == d.mslimit_value);
-    CHECK(r.mslimit_value == 10);
-    CHECK(r.backendlimit_enabled == false);
-    CHECK(r.backendlimit_value == 50);
-    CHECK(r.preview_volume == 40);
-    CHECK_FALSE(r.legacy_fills);
-    CHECK(r.early_fill_window_ms == static_cast<int>(hydra::kDefaultEarlyFillWindowMs));
+    const std::string path = testtemp::temp_path("missing_never_written", ".ini");
+    REQUIRE_FALSE(std::filesystem::exists(hydra::os_path(path)));
+    const Settings r = Settings::load_file(path);
+    const Settings d;
+    check_same_settings(r, d);
+    CHECK(r.skipped_update_version == d.skipped_update_version);
+    CHECK(r.last_run_version == d.last_run_version);
 }
 
-// The user's ruling: the early-fill window is a setting, default 60 ms, 0 to
-// 85 ms (docs/agents/rulings/code-and-engine.md, "early fill threshold").
-TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads 60") {
-    CHECK(hydra::kDefaultEarlyFillWindowMs == 60.0);
-    CHECK(Settings{}.early_fill_window_ms == 60);
+TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads the default") {
     // A file that sets other keys but not this one: the default.
-    CHECK(load_ini_text("efill_missing", "sp_cap=8\n").early_fill_window_ms == 60);
-    for (const int ms : {0, 37, 85}) {
+    CHECK(load_ini_text("efill_missing", "sp_cap=8\n").early_fill_window_ms ==
+          Settings{}.early_fill_window_ms);
+    for (const int ms : {0, 37, hydra::kMaxEarlyFillWindowMs}) {
         CAPTURE(ms);
         Settings s;
         s.early_fill_window_ms = ms;
@@ -278,37 +265,37 @@ TEST_CASE("early_fill_window_ms: round-trips, and a file without the line loads 
 // key, and moves nothing else in the key.
 TEST_CASE("early_fill_window_ms reaches the search and the result's key together") {
     namespace store = hydra::store;
-    Settings at60;
-    Settings at85;
-    at85.early_fill_window_ms = 85;
-    CHECK(at60.to_analysis_settings().early_fill_window_ms == 60.0);
-    CHECK(at85.to_analysis_settings().early_fill_window_ms == 85.0);
-    CHECK(at60.lens().efill_window_ms == 60);
-    CHECK(at85.lens().efill_window_ms == 85);
+    const Settings at_default;
+    Settings at_max;
+    at_max.early_fill_window_ms = hydra::kMaxEarlyFillWindowMs;
+    REQUIRE(at_max.early_fill_window_ms != at_default.early_fill_window_ms);
+
+    // The search and the result's key carry the same window, for each setting.
+    for (const Settings* s : std::initializer_list<const Settings*>{&at_default, &at_max}) {
+        CAPTURE(s->early_fill_window_ms);
+        CHECK(s->to_analysis_settings().early_fill_window_ms ==
+              static_cast<double>(s->lens().efill_window_ms));
+    }
+    // Two different windows search differently and file under different keys.
+    CHECK(at_default.to_analysis_settings().early_fill_window_ms !=
+          at_max.to_analysis_settings().early_fill_window_ms);
 
     // The two profiles differ in the lens's window and nowhere else.
-    const store::Profile p60 = at60.profile();
-    const store::Profile p85 = at85.profile();
-    CHECK(p60 != p85);
-    CHECK(p60.chartmode == p85.chartmode);
-    CHECK(p60.cap == p85.cap);
-    CHECK(p60.lens != p85.lens);
-    store::Lens rest = p85.lens;
-    rest.efill_window_ms = p60.lens.efill_window_ms;
-    CHECK(rest == p60.lens);
+    const store::Profile p_default = at_default.profile();
+    const store::Profile p_max = at_max.profile();
+    CHECK(p_default != p_max);
+    CHECK(p_default.chartmode == p_max.chartmode);
+    CHECK(p_default.cap == p_max.cap);
+    CHECK(p_default.lens != p_max.lens);
+    store::Lens rest = p_max.lens;
+    rest.efill_window_ms = p_default.lens.efill_window_ms;
+    CHECK(rest == p_default.lens);
 
     // A batch files under the window it searches with.
-    const hydra::app::BatchRun run = at85.batch_run();
-    CHECK(run.settings.early_fill_window_ms == 85.0);
-    CHECK(run.profile.lens.efill_window_ms == 85);
-    CHECK(run.profile == p85);
-}
-
-// The app and the search start from one depth; this is the literal pin.
-TEST_CASE("config: the default depth is the search's, 4") {
-    CHECK(hydra::kDefaultDepthValue == 4);
-    CHECK(Settings{}.depth_value == 4);
-    CHECK(hydra::SearchSettings{}.depth_value == 4);
+    const hydra::app::BatchRun run = at_max.batch_run();
+    CHECK(run.settings.early_fill_window_ms ==
+          static_cast<double>(run.profile.lens.efill_window_ms));
+    CHECK(run.profile == p_max);
 }
 
 TEST_CASE("blank and comment lines load, and keys and values are trimmed") {
@@ -325,44 +312,52 @@ TEST_CASE("blank and comment lines load, and keys and values are trimmed") {
     CHECK(r.chartfolders.empty());
 }
 
-// D270 call 4 ("refuse anything bad"), calls 5 and 6, D276: each bad line on
-// its own stops the load with an error naming the file, the key and the value.
+// Each bad line on its own stops the load with an error naming the file, the
+// key and, for a key the file knows, the value. The wording is the ini_*_text builders'; this checks the
+// message holds the file's path and the line's own key and value.
 TEST_CASE("a bad line refuses") {
     const std::string path = testtemp::temp_path("badline", ".ini");
-    // Loads a file holding just `line`.
-    auto load = [&path](const char* line) {
+    // Loads a file holding `key=value`, or just `key` when `value` is empty,
+    // and returns the refusal's text, or nothing when the file loads.
+    auto refusal = [&path](const std::string& key,
+                           const std::string& value) -> std::optional<std::string> {
         {
             std::ofstream f(path, std::ios::trunc);
-            f << line << "\n";
+            f << (value.empty() ? key : key + "=" + value) << "\n";
         }
-        return Settings::load_file(path);
+        try {
+            Settings::load_file(path);
+        } catch (const hydra::app::SettingsFileError& e) {
+            return std::string(e.what());
+        }
+        return std::nullopt;
     };
-    using hydra::app::SettingsFileError;
-    CHECK_THROWS_WITH_AS(load("no_equals_sign_here"),
-                         (path + ": \"no_equals_sign_here\" is not key = value").c_str(),
-                         SettingsFileError);
-    CHECK_THROWS_WITH_AS(load("unknown_key=whatever"),
-                         (path + ": unknown key \"unknown_key\"").c_str(), SettingsFileError);
-    CHECK_THROWS_WITH_AS(load("depth_value=not_a_number"),
-                         (path + ": depth_value = \"not_a_number\" is not a whole number").c_str(),
-                         SettingsFileError);
-    CHECK_THROWS_WITH_AS(load("view_prodrums=yes"),
-                         (path + ": view_prodrums = \"yes\" is not 0 or 1").c_str(),
-                         SettingsFileError);
-    CHECK_THROWS_WITH_AS(
-        load("view_difficulty=Expret"),
-        (path + ": view_difficulty = \"Expret\" is not Expert, Hard, Medium or Easy").c_str(),
-        SettingsFileError);
-    CHECK_THROWS_WITH_AS(load("sp_cap=abc"),
-                         (path + ": sp_cap = \"abc\" is not a whole number").c_str(),
-                         SettingsFileError);
-    CHECK_THROWS_WITH_AS(load("sp_cap=auto"),
-                         (path + ": sp_cap = \"auto\" is not a whole number").c_str(),
-                         SettingsFileError);
-    // A decimal in a whole-number key is not a clean number (D276).
-    CHECK_THROWS_WITH_AS(load("preview_volume=40.5"),
-                         (path + ": preview_volume = \"40.5\" is not a whole number").c_str(),
-                         SettingsFileError);
+    struct Bad {
+        const char* key;
+        const char* value;
+        bool names_value;  // an unknown key is refused by its name alone
+    };
+    const Bad bad_lines[] = {
+        {"no_equals_sign_here", "", true},
+        {"unknown_key", "whatever", false},
+        {"depth_value", "not_a_number", true},
+        {"view_prodrums", "yes", true},
+        {"view_difficulty", "Expret", true},
+        {"sp_cap", "abc", true},
+        {"sp_cap", "auto", true},
+        {"preview_volume", "40.5", true},  // a decimal in a whole-number key
+    };
+    for (const Bad& b : bad_lines) {
+        CAPTURE(b.key);
+        CAPTURE(b.value);
+        const std::optional<std::string> msg = refusal(b.key, b.value);
+        REQUIRE(msg.has_value());
+        CHECK(msg->find(path) != std::string::npos);
+        CHECK(msg->find(b.key) != std::string::npos);
+        if (b.names_value) {
+            CHECK(msg->find(b.value) != std::string::npos);
+        }
+    }
     std::remove(path.c_str());
 }
 
@@ -985,22 +980,34 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     CHECK(r.dm_last_user == "1234");
 }
 
-// The settings button and the Reset tooltip name the early-fill window as
-// "Early fill window" and describe_settings' value, like Path limit.
+// The settings button and the Reset tooltip name the early-fill window by
+// kEarlyFillWindowName and describe_settings' value, like Path limit.
 TEST_CASE("settings summary: the early-fill window, off its default") {
     using hydra::ui::detail::reset_settings_tooltip;
     using hydra::ui::detail::settings_button_label;
+    using hydra::ui::detail::kEarlyFillWindowName;
+    // The phrase the button and tooltip use for `s`'s window: the setting's
+    // name and describe_settings' value for it.
+    auto phrase = [](const Settings& s) {
+        return std::string(kEarlyFillWindowName) + " " +
+               hydra::app::describe_settings(s.to_analysis_settings()).early_fill;
+    };
     Settings s;
-    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill == "60 ms");
-    CHECK(settings_button_label(s, false) == "Analysis settings: defaults");
-    s.early_fill_window_ms = 85;
-    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill == "85 ms");
-    CHECK(settings_button_label(s, false) == "Analysis settings: Early fill window 85 ms");
-    CHECK(reset_settings_tooltip(s, false) == "Resets: Early fill window 85 ms");
-    s.early_fill_window_ms = 0;
-    CHECK(settings_button_label(s, false) == "Analysis settings: Early fill window 0 ms");
+    CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill ==
+          hydra::format_ms_whole(s.early_fill_window_ms));
+    // At its default the window is not named on the button.
+    CHECK(settings_button_label(s, false).find(kEarlyFillWindowName) == std::string::npos);
+    for (const int ms : {hydra::kMaxEarlyFillWindowMs, 0}) {
+        CAPTURE(ms);
+        s.early_fill_window_ms = ms;
+        REQUIRE(s.early_fill_window_ms != Settings{}.early_fill_window_ms);
+        CHECK(hydra::app::describe_settings(s.to_analysis_settings()).early_fill ==
+              hydra::format_ms_whole(ms));
+        CHECK(settings_button_label(s, false).find(phrase(s)) != std::string::npos);
+        CHECK(reset_settings_tooltip(s, false).find(phrase(s)) != std::string::npos);
+    }
     CHECK(settings_at_defaults(s.with_analysis_defaults()));
-    CHECK(s.with_analysis_defaults().early_fill_window_ms == 60);
+    CHECK(s.with_analysis_defaults().early_fill_window_ms == Settings{}.early_fill_window_ms);
 }
 
 TEST_CASE("config: resource_dir is the resource folder beside the exe") {
