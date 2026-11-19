@@ -477,8 +477,8 @@
 - 2026-11-08 31e4f22f Playing code audit (2026-11-08) | clone-hero, agents, tests, review, planning | The session ended with every audit finding given an exit and two handoffs committed. No code was changed, and nothing was merged or pushed. [stale]
 - 2026-11-08 274bd9dd Player audit continuation (2026-11-08) | clone-hero, press-schedule, review, docs, agents | The player audit was merged to main and the docs test passed, but the fix plan was not started; a handoff for the plan was written on its own branch. [stale]
 - 2026-11-08 77057df2 Clone Hero docs gaps (2026-11-08) | clone-hero, docs, agents, planning, review | Ended on the user's stop order: the Unknowns checks were halted part way and written up as a handoff. [stale] [write-back]
-- 2026-11-08 0963d03d Player audit fix plan (2026-11-08) | press-schedule, planning, review, agents, docs | The fix plan was merged to main, and its first four tasks (F1, F3, F8 and F9) were built, reviewed and merged; about two thirds of the plan is left.
-- 2026-11-08 33b364db Player audit fixes wave 1 (2026-11-08) | press-schedule, squeeze, agents, review, tests, clone-hero | Stopped at the user's request after the replay schedule chain was merged into main, and a handoff was written.
+- 2026-11-08 0963d03d Player audit fix plan (2026-11-08) | press-schedule, planning, review, agents, docs | The fix plan was merged to main, and its first four tasks (F1, F3, F8 and F9) were built, reviewed and merged; about two thirds of the plan is left. [stale]
+- 2026-11-08 33b364db Player audit fixes wave 1 (2026-11-08) | press-schedule, squeeze, agents, review, tests, clone-hero | Stopped at the user's request after the replay schedule chain was merged into main, and a handoff was written. [stale]
 - 2026-11-09 b37f362d Replay schedule chain handoff (2026-11-09) | press-schedule, agents, review, tests, planning, clone-hero | The session ended at the user's request, after TP2 merged to main as 44200a63 and the replay plan was finished, and a handoff was written.
 - 2026-11-09 7b39835b Clone Hero unknowns quantification (2026-11-09) | clone-hero, fill-rule, generated-fill, fill-spawn-deadline-ch-1-0, agents, review | The session ended with the coda-fill rule (FL-08) merged to main as 5fe26cb8, and a handoff written for the rest of the unknowns audit.
 - 2026-11-12 428cf079 Clone Hero unknowns REST handoff (2026-11-12) | clone-hero, docs, agents, review, planning, tests | Ended with the audit merged to main, and with CR-24 and the handoff still unmerged on their branches.
@@ -532,6 +532,16 @@
 - 2026-11-18 83f6e05e Dynamic hit window calculation (2026-11-18) | hit-window, backend-squeeze, clone-hero | Ended with the user satisfied that Hydra's 64.7 ms matches the formula; no code or docs were changed.
 - 2026-11-18 42db4ba2 Normal backend after beyond backend (2026-11-18) | squeeze, backend-row, path, tests, review | Ended with the fix merged into main and pushed to GitHub; the push also carried one commit from another session, which is not counted here.
 - 2026-11-18 98fa2925 Test audit handoff (2026-11-18) | tests, agents, review, hooks, planning | Ended with two handoffs written and E7 still unsigned: the read-and-sign pass was cut short on the user's word.
+- 2026-11-18 7f240a9c Hook timeout on long branches (2026-11-18) | hooks, review, agents, planning, docs | The no-guess hook fix and the two review pages were merged to their repos' main branches, after the plan was reviewed, trimmed and built.
+- 2026-11-19 8e6a2908 Test audit fix plan handoff (2026-11-19) | tests, agents, review, planning, docs | The session ended after wave 2 with a handoff, and no new executor was started.
+- 2026-11-19 f6a384b5 Dynamic hit window at 125% (2026-11-19) | agents, hooks, planning, docs, memory | The session ended with a handoff, and the audit was not finished.
+- 2026-11-19 5ec8a7a5 Coverage report CI failure (2026-11-19) | ci, tests, agents | The session ended with no cause found for either CI failure. It stopped at the user's request, with no CI run left running.
+- 2026-11-19 3fd42b4e Test fix wave 2 review handoff (2026-11-19) | agents, review, hooks, tests, planning | Wave 2 finished: all 16 reviews ran in one Workflow, the gate recorded 16 CLEAN sign-offs, and the 10 Python branches merged into main.
+- 2026-11-19 57045e74 Tooling audit T8 questions handoff (2026-11-19) | hooks, docs, tests, agents, review | The session ended with the docs check fixed and merged on main, the seven waiting session cards committed, and a handoff written for the rest of the audit.
+- 2026-11-19 aafe2801 Wave2 C++ build handoff (2026-11-19) | tests, agents, review, docs | Wave 2's six C++ branches and wave 3's sixteen branches were merged into main, and the wave 4 handoff was written and committed.
+- 2026-11-19 0e741144 Tooling audit T8 fold handoff (2026-11-19) | clone-hero, docs, agents, review, hooks | The session ended with the audit records merged to main and a handoff written for the fix plan. No fix was made yet. [write-back]
+- 2026-11-19 c783491f Tooling audit fix plan handoff (2026-11-19) | planning, hooks, agents, review, docs | The session ended waiting on the user: the hook passed its tests and one review, but its merge is blocked until a fresh review or the user's waiver.
+- 2026-11-19 58633898 Wave 4 handoff test fix (2026-11-19) | tests, agents, review, docs | The session ended with wave 4 finished: all 16 chunks were reviewed clean and merged into main at f1ef98f2, and main's tree matches the tree that was built and tested.
 
 ## Proposed tags
 
