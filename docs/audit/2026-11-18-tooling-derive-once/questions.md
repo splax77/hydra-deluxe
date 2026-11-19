@@ -330,4 +330,24 @@ For the 115 fold rows, `fold-T8.md` gives each row its exit, and it wins over th
 
 The other 142 rows are in themes 1 to 10 and 16, and leave by theme. Theme 1 goes to Q5. Themes 2 and 3 go to Q7. Theme 4 goes to Q12. Theme 5's folder rows go to Q11, and its command rows to Q6. Themes 6 to 9 go to Q6. Theme 10 goes to Q9. Theme 16's calls-against-minutes rows go to Q8, and its warning row to Q10.
 
-One gap is left. Four theme 16 rows are named by neither Q8 nor Q10: L-F01-04 and L-F04-05 (the 500K context warning's text, stall.py against model-postures.md and the settings), L-F01-09 (the git exemption for chained commands, the preamble against progress.py:119) and L-F28-02 (a stuck agent nudged or stopped, model-postures.md:11 against stall.py:124,143). Each is a doc against a hook, the kind Q1 covers. But log.md never says Q1 or any other answer closes them, so this file does not place them. They need a placement by the main session.
+Four theme 16 rows are named by neither Q8 nor Q10: L-F01-04 and L-F04-05 (the 500K context warning's text, stall.py against model-postures.md and the settings), L-F01-09 (the git exemption for chained commands, the preamble against progress.py:119) and L-F28-02 (a stuck agent nudged or stopped, model-postures.md:11 against stall.py:124,143). The main session placed them, with L-F04-14, which never reached exits.md, in `late-folds.md`, each under an answer above. The T9 closure check passed all five.
+
+The T9 closure check (`briefs/T9-closure.md`, `reports/TOOL-AUDIT-T9-K1.md` to `K8.md`) then read the 143 rows that left by theme or late fold: PASS 121, REOPEN 18, GONE 4. The main session refolded each REOPEN and GONE from the checker's reading (`scripts/final_exits.py`, `T9_REFOLD`, each with its checker). Two of them went to the user, as Q22 and Q23. After them, no row is a question.
+
+### Q22. Which worktree folders the hooks trust, asked again (theme 5)
+
+**Asked:** "Worktree folders: every task worktree goes in hydra-test\worktrees (the prompt hook tells the main session so), and that folder now holds 123. But the delete rule (delete_rule.py:17-18) trusts only hydra-test\.claude\worktrees and ~\.claude\worktrees, and the start-of-session sweep (cleanup_sweep.ps1:174-178) trusts .claude\worktrees in any repo plus ~\.claude\worktrees. So agents can't delete inside their own worktrees, and the sweep never removes them. Your earlier "Trust both" was asked when the sweep was thought to trust that folder already. Which fix?" Options: "Trust both folders (Recommended)", "Move to .claude\worktrees".
+
+**Why it was asked again:** T9 checker K8 found that Q11's side "cleanup_sweep.ps1:174-178 also trusts `<root>\worktrees`" holds only for the hooks repo, not Hydra.
+
+**Answer:** "if i already picked an option why are you asking again". So Q11's "Trust both" stands, read as the user meant it: the delete rule and the sweep accept `<repo>\worktrees` as well as `<repo>\.claude\worktrees`, in both repos.
+
+**Rows:** L-F07-11, L-F10-11, L-F13-05, L-F33-02. **What it did:** exit 3 by Q11. **D-record:** D351 item 1.
+
+### Q23. The rules that left with the deleted render-check note
+
+**Asked:** "Lost rules: the memory note you had deleted (render-checks-use-the-corpus.md) also held four rules that no doc has: zoom a capture 2x and check gaps, alignment and baselines before showing it; a test that compares against the rule's own output proves nothing; if you say "just merge", still say plainly the real-app check wasn't done; grep for code that depends on what changed. The scroll step stays gone either way. Keep them?" Options: "Move into ui-testing.md (Recommended)", "Let them go".
+
+**Answer:** "Move into ui-testing.md (Recommended)".
+
+**Rows:** L-F20-12 (T9 checker K6 found the 2x-zoom rule's only home gone). **What it did:** exit 3; the four rules get a home in docs/agents/ui-testing.md, in the fix plan. **D-record:** D351 item 2.

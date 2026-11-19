@@ -88,7 +88,7 @@ ANSWERS = {
     "minutes": ('"Minutes (line 34)"', "log.md, T8 batch 1", "review-and-hooks.md line 33 is retired and the copies follow line 34"),
     "warning": ('"Finish, report the rest"', "log.md, T8 batch 2", "the warning texts are made to say: finish the item in hand, commit, list the rest"),
     "confirmed": ('"Confirmed only"', "log.md, T8 batch 2", "the reviewer and premise-map pages are fixed to say a card or chat quote closes nothing"),
-    "trust": ('"Trust both"', "log.md, T8 batch 2", "the delete rule accepts both worktree folders"),
+    "trust": ('"Trust both"', "log.md, T8 batches 2 and 6", "the delete rule and the cleanup sweep accept <repo>/worktrees as well as <repo>/.claude/worktrees, in both repos"),
     "budget": ("the Confirmed line review-and-hooks.md:11", "log.md, T8 batch 4", "the \"user's hard budget\" comment is dropped"),
     "count": ('"Yes, state the count"', "log.md, T8 batch 5", "agent-rules.md rule 3 says the build count needs a yes, and the one-build-per-wave rule gets its home there"),
     "rename": ("\"if no value changes then why is this even a question?\"", "log.md, T8 batch 4", "constants.py's two formula tables are renamed to match the disassembly"),
@@ -96,8 +96,7 @@ ANSWERS = {
     "issue": ('"Fix the doc line"', "log.md, T8 batch 4", "done: merge 6acfbed4"),
     "carry": ("no owner (T9 K1)", "reports/TOOL-AUDIT-T9-K1.md", "the value is read from the chart instead of typed by the agent"),
     "spend": ("the Confirmed line code-and-engine.md:12", "docs/agents/rulings/code-and-engine.md", "the copies follow the one SP end; 3 ms decides counted or uncounted only"),
-    "worktrees": ("question: which worktree folders the hooks trust", "this round", "open"),
-    "lost": ("question: the rules that lived only in render-checks-use-the-corpus.md", "this round", "open"),
+    "uitest": ('"Move into ui-testing.md"', "log.md, T8 batch 6", "the four rules the deleted note held get a home in docs/agents/ui-testing.md"),
     "lib4": ("the library-run check (theme 4, runs half)", "log.md, T8 batch 2", "nothing: the flag is the only way to start such a run"),
 }
 DONE = {"scroll", "issue"}
@@ -147,7 +146,7 @@ ROW_ANSWERS = {
 }
 # After the T9 closure check (reports/TOOL-AUDIT-T9-K1.md to K8.md): each REOPEN and GONE, refolded
 # by the main session from the checker's reading of today's files. These win over the theme answers.
-# "worktrees" and "lost" are the two questions this round leaves for the user.
+# The worktree rows follow "Trust both" and the lost rules "Move into ui-testing.md" (log.md, batch 6).
 T9_REFOLD = {
     "L-F02-08": [("Fix pending", "carry")],                                  # K1: one home; agent types a chart value
     "L-F09-06": [("exit 3", "claim"), ("exit 3", "merge"), ("exit 3", "code")],  # K3: two more splits
@@ -169,11 +168,11 @@ T9_REFOLD = {
     "L-F08-06": [("GONE", None)],                                            # K2
     "L-F18-16": [("GONE", None)],                                            # K5
     "L-F33-10": [("GONE", None)],                                            # K8
-    "L-F20-12": [("exit 2", "lost")],                                        # K6: the rule went with the deleted note
-    "L-F33-02": [("exit 2", "worktrees")],                                   # K8: no hook trusts hydra-test\worktrees
-    "L-F07-11": [("exit 2", "worktrees")],
-    "L-F10-11": [("exit 2", "worktrees")],
-    "L-F13-05": [("exit 2", "worktrees")],
+    "L-F20-12": [("exit 3", "uitest")],                                        # K6: the rule went with the deleted note
+    "L-F33-02": [("exit 3", "trust")],                                   # K8: no hook trusts hydra-test\worktrees
+    "L-F07-11": [("exit 3", "trust")],
+    "L-F10-11": [("exit 3", "trust")],
+    "L-F13-05": [("exit 3", "trust")],
 }
 # Rows no stage gave an exit, folded in late-folds.md. L-F04-14 never reached exits.md.
 LATE = {"L-F04-14": [("exit 3", "merge")]}

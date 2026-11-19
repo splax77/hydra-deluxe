@@ -111,3 +111,17 @@ These are the user's answers in this session, not filed rulings under docs/agent
 
 - Build count (memory halves of L-F29-01, L-F29-18, L-F32-01). Question: "Before agents launch, must the build count get your yes?" The two sides: memory note one-build-per-wave.md, "before launching work that will need builds, say how many builds it needs and get a yes" (from the user's 2026-11-18 words "3 builds at once? what? i didnt accept doing lots of builds. what do you need all those builds for?" and their choice "One build per wave", card 8e6a2908), against docs/agents/agent-rules.md:9 (rule 3), "The main session's compiling and test runs inside approved work need no separate yes (rule 14)." The user chose "Yes, state the count". The note's rule wins: the fix plan changes rule 3 to say the build count is stated and needs a yes before work that will need builds launches, and gives the one-build-per-wave rule its home in agent-rules.md.
 - With this, all 115 T8 rows have an exit (fold-T8.md). Next is T9.
+
+## T9: records, late folds and the last closure check (2026-11-19)
+
+- T9 writers: TOOL-AUDIT-T9-Q wrote questions.md (Q1 to Q21) and D345 to D350; TOOL-AUDIT-T9-S wrote scripts/final_exits.py. The harness refused T9-S's write of summary.md ("Subagents should return findings as text"), so the main session wrote summary.md from the script's output.
+- Both writers found rows with no exit: four theme 16 rows no answer named (L-F01-04, L-F04-05, L-F01-09, L-F28-02) and L-F04-14, which the T6 sorter left out of sorting/ and exits.md. The main session folded all five in late-folds.md.
+- T9-S found that the 142 rows that left by an answer for a whole theme (themes 1 to 10 and 16) had never had a fresh closure check. The T9 closure check (briefs/T9-closure.md, eight Sonnet scouts, reports/TOOL-AUDIT-T9-K1.md to K8.md) read those 142 plus L-F04-14: PASS 121, REOPEN 18, GONE 4. The main session read the reopens' homes where a verdict turned on a fact (delete_rule.py:17-18 and cleanup_sweep.ps1:174-178 for L-F33-02; code-and-engine.md:12 for L-F32-03; this-machine.md:49 and the memory note check-long-captures-early.md for L-F13-11) and refolded each REOPEN and GONE in final_exits.py's T9_REFOLD, each with its checker. Two went to the user (batch 6).
+- K2 and K6 each left background work running after their hand-backs (K2 a read-only `find /`); the main session stopped both.
+- K6 said MEMORY.md still indexes render-checks-use-the-corpus.md; it does not (grep, 2026-11-19).
+
+## T8: the user's answers, batch 6 (2026-11-19)
+
+- Worktree folders (L-F07-11, L-F10-11, L-F13-05, L-F33-02). Question (Q22): no hook trusts hydra-test\worktrees, where every task worktree goes (123 folders); delete_rule.py:17-18 trusts hydra-test\.claude\worktrees and ~\.claude\worktrees, and cleanup_sweep.ps1:174-178 trusts .claude\worktrees in any repo plus ~\.claude\worktrees; which fix? The user: "if i already picked an option why are you asking again". So the batch 2 "Trust both" stands as the user meant it: both kinds of folder, in both repos.
+- The deleted render note's other rules (L-F20-12). Question (Q23): keep the four rules that lived only in render-checks-use-the-corpus.md? The user chose "Move into ui-testing.md (Recommended)".
+- With this, every one of the 661 ledger rows has a final exit (summary.md).
