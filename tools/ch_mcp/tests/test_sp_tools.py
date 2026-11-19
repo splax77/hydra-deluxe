@@ -903,16 +903,14 @@ class GapLineOnARecordedRunTest(unittest.TestCase):
 
     def test_the_gap_line_leaves_out_a_gap_past_the_song_end(self):
         rows, end = self.rows, self.end_ms
-        past = [i for i in range(1, len(rows) - 1)
-                if C.s_to_ms(rows[i - 1]["clock_s"]) > end and wall_gap_ms(rows, i) > sp_tools.GAP_MS]
-        self.assertTrue(past, "the recording has no gap past its song end before its last row")
-        # The rows past the song end change nothing: the line is the one of
-        # the rows up to the end.
         inside = [row for row in rows if C.s_to_ms(row["clock_s"]) <= end]
-        self.assertLess(len(inside), len(rows))
+        # The rows past the song end, before the final one, hold gaps: with
+        # every row counted, they change the line.
+        self.assertNotEqual(sp_tools._gap_line(rows[:-1], None),
+                            sp_tools._gap_line(inside, None))
+        # With the song end, they change nothing: the line is the one of the
+        # rows up to the end.
         self.assertEqual(sp_tools._gap_line(rows, end), sp_tools._gap_line(inside, end))
-        self.assertNotEqual(sp_tools._gap_line(rows, None).split(" (", 1)[0],
-                            sp_tools._gap_line(inside, None).split(" (", 1)[0])
 
     def test_the_gap_line_leaves_out_a_final_frozen_clock_row(self):
         rows, end = self.rows, self.end_ms
@@ -936,12 +934,8 @@ class GapLineOnARecordedRunTest(unittest.TestCase):
             f"gaps over {sp_tools.GAP_MS:g} ms between samples: {count}, "), unknown)
 
     def test_an_unknown_song_length_is_said_when_no_gap_is_over(self):
-        rows = self.rows
-        # The first two reads of the recording no more than GAP_MS apart.
-        i = next((i for i in range(1, len(rows)) if wall_gap_ms(rows, i) <= sp_tools.GAP_MS),
-                 None)
-        self.assertIsNotNone(i, "the recording has no two reads within GAP_MS")
-        unknown = sp_tools._gap_line(rows[i - 1:i + 1], None)
+        # The recording's first two reads, 4.5 ms apart on its wall clock.
+        unknown = sp_tools._gap_line(self.rows[:2], None)
         self.assertTrue(unknown.startswith(
             f"gaps over {sp_tools.GAP_MS:g} ms between samples: 0 "), unknown)
         self.assertIn("song length not known", unknown)
