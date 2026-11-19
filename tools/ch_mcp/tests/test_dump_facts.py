@@ -439,6 +439,11 @@ TINY_VERSION = "1.1.0.6142-final"
 HELLO_MD5 = "5d41402abc4b2a76b9719d911017c592"
 
 
+# The real 4045 facts.json's GameManager record, copied whole from
+# hydra-data/ch-dumps/4045/facts.json.
+REAL_4045_FACTS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-4045", "facts.json")
+
+
 class _TableFixture(unittest.TestCase):
     """A temp folder with the tiny dump, constants, DLL and a pages folder."""
 
@@ -622,11 +627,9 @@ class FactsTableTests(_TableFixture):
         self.assertIn("songTime", text)
 
     def test_4045_facts_json_is_read_by_name_with_no_address(self):
-        # The GameManager record of the real 4045 facts.json, copied whole from
-        # hydra-data/ch-dumps/4045/facts.json. Build 4045 has no method addresses.
-        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-4045", "facts.json")
-        with open(path, encoding="utf-8") as f:
-            manager = by_name(json.load(f)["classes"], "GameManager")
+        # Build 4045 has no method addresses.
+        path = REAL_4045_FACTS
+        manager = self.real_4045_manager()
         self.assertIsNone(next(m for m in manager["methods"] if m["name"] == "Update")["rva"])
         self.page("# P\n\n## Build 1.0.0.4045\n\n`GameManager.Update`\n\n## Back\n\n`0x20DEEC0`\n")
         text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
@@ -645,33 +648,40 @@ class FactsTableTests(_TableFixture):
         for outside in (("n.md",), ("code", "names.md"), ("sub", "code", "4045", "n.md")):
             self.assertIsNone(D.place_build(os.path.join(self.pages, *outside), self.pages))
 
-    def test_a_note_under_code_4045_is_looked_up_in_the_4045_table_not_the_6142_one(self):
-        facts = {"game_version": "v1.0.0.4045-master", "classes": [
-            {"name": "GameManager", "namespace": "", "kind": "class", "typedef_index": 562,
-             "readable": True, "base": None, "interfaces": [],
-             "fields": [], "methods": [{"name": "Update", "return": "void", "params": [],
-                                        "static": False, "rva": None}]}]}
-        path = os.path.join(self.tmp, "facts.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(facts, f)
+    # A 1.0 note: the page text the code-folder tests below place in different folders.
+    NOTE_4045 = "# Clone Hero 1.0 (build 4045): notes\n\nThe game runs `GameManager.Update`.\n"
+
+    def real_4045_manager(self):
+        """The GameManager record of REAL_4045_FACTS."""
+        with open(REAL_4045_FACTS, encoding="utf-8") as f:
+            return by_name(json.load(f)["classes"], "GameManager")
+
+    def test_a_note_under_code_4045_is_looked_up_in_the_4045_table(self):
+        manager = self.real_4045_manager()
         os.makedirs(os.path.join(self.pages, "code", "4045"))
-        self.page("# Clone Hero 1.0 (build 4045): notes\n\nThe game runs `GameManager.Update`.\n",
-                  name=os.path.join("code", "4045", "note.md"))
-        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.page(self.NOTE_4045, name=os.path.join("code", "4045", "note.md"))
+        text, errors = D.build_table(REAL_4045_FACTS, self.pages, self.dll, constants_path=self.constants)
         self.assertEqual(errors, [])
-        self.assertEqual(self.rows(text)[0][7], "GameManager.Update")
-        # The same page elsewhere is a 6142 page, so the 4045 run leaves its span alone.
-        os.remove(os.path.join(self.pages, "code", "4045", "note.md"))
-        self.page("# Clone Hero 1.0 (build 4045): notes\n\nThe game runs `GameManager.Update`.\n")
-        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
+        self.assertEqual(self.rows(text), [["4045", "method", str(manager["typedef_index"]), "GameManager",
+                                            "Update", "", "", "GameManager.Update"]])
+
+    def test_the_same_note_outside_code_4045_is_left_out_of_the_4045_table(self):
+        # Outside code/4045 the page is a 6142 page, so the 4045 run leaves its span alone.
+        self.page(self.NOTE_4045)
+        text, errors = D.build_table(REAL_4045_FACTS, self.pages, self.dll, constants_path=self.constants)
+        self.assertEqual(errors, [])
         self.assertEqual(self.rows(text), [])
-        # A 6142 note under code/6142 is looked up in 6142 even under a heading naming another build.
-        os.remove(os.path.join(self.pages, "page.md"))
+
+    def test_a_note_under_code_6142_stays_6142_under_a_heading_naming_another_build(self):
+        manager = by_name(D.parse_dump(TINY_DUMP), "GameManager")
+        song_time = next(f for f in manager["fields"] if f["name"] == "songTime")
         os.makedirs(os.path.join(self.pages, "code", "6142"))
         self.page("## Build 1.0.0.4045\n\n`GameManager.songTime`\n", name=os.path.join("code", "6142", "n.md"))
         text, errors = self.table()
         self.assertEqual(errors, [])
-        self.assertIn("GameManager.songTime", text)
+        # The 6142 table also holds the constants file's rows, so the page's row is looked for among them.
+        self.assertIn(["6142", "field", str(manager["typedef_index"]), "GameManager",
+                       "songTime", "", f"0x{song_time['offset']:X}", "GameManager.songTime"], self.rows(text))
 
 
 # More of the tiny dump for the names map: a namespaced class, and a readable
