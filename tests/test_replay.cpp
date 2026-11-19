@@ -1083,9 +1083,7 @@ TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
 // Power ran out and is not doubled; if they did not, it is. The window list
 // alone cannot tell the two apart, so the tool says so instead of guessing.
 // Every corpus chart that has the four shapes below is checked, so no one
-// chart is chosen by file order. The first .mid chart in chart_paths() has
-// all four (the test read only that chart before and required each shape),
-// so at least one chart is always checked.
+// chart is chosen by file order. The test fails if no chart has them.
 TEST_CASE("a window ending on a phrase note with no offset is flagged") {
     const core::Rules& rules = core::default_rules();
     int checked = 0;
