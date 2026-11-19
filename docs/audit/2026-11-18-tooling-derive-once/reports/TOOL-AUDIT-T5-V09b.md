@@ -1,0 +1,8 @@
+# V09b: hand-back text, saved unchanged by the main session (no report file was found at the path it named)
+
+Report path: C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\TOOL-AUDIT-T5-V09b.md
+1. I6-205 CONFIRMED: ui-testing.md:195 "snapshot_library is the only code that knows the library folder's path" is contradicted by compare_db.py:51,87 and this-machine.md:77, which also name C:\Program Files\Hydra.
+2. I6-206 CONFIRMED: this-machine.md:81 says copy hydra.db plus -wal and -shm by hand. ui-testing.md:195 and compare_db.py:87 use SQLite's online backup and end with one file. That is a split on method.
+3. I5-190 CONFIRMED: the hook shared-code list is typed in gates README:156 and agent-rules.md:7. agent-rules.md:7 says precheck decides it, but tools\precheck holds nothing about gates or hooks. I5-176 CONFIRMED: gates README:71 "always exits 0" holds only for --session-start (check_pointers.py docstring line 16).
+4. I6-193 and I6-215 CONFIRMED, no split. I6-148, I4-092 and I4-105 are CONFIRMED but only spot-checked. The ch-dumps root copies were not re-opened. I did not re-read gates README:110,114,145 or derive-once-review.md:124 for the python path claim.
+5. No Confirmed ruling names both sides of any split. tests-and-runs.md:17 (quoted from the finder, not re-opened) says only "run what changed" and names no list. Everything is by reading and I ran nothing. Open: a run that copies the db while Hydra writes would show whether a three-file copy is ever torn.

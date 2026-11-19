@@ -1,0 +1,3 @@
+# V25b: hand-back text, saved unchanged by the main session
+
+The finder report file does not exist, so I stopped and verified nothing. The dispatch named C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\TOOL-AUDIT-T5-F25b.md. That scratchpad folder holds only TOOL-AUDIT-T5-F25.md and TOOL-AUDIT-T5-V25.md for number 25. The F25b finder said it wrote no file; its report lives only in its hand-back message. I wrote no V25b report and read no other finder report. The main session needs to save the F25b hand-back text to that path and re-send me.
