@@ -4,14 +4,22 @@
 // shows. The library side is a real store: an analyzed corpus chart, or a
 // corpus chart folder scanned and analyzed the way the app does it.
 
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 #include "doctest.h"
 
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "app/analysis.h"
@@ -29,9 +37,12 @@
 #include "display_fixtures.h"
 #include "dm_fixture.h"
 #include "net/dmbot_client.h"
+#include "net/http.h"
 #include "parse/song.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
+#include "temp_util.h"
+#include "wait_util.h"
 
 using namespace hydra;
 using app::dm_report::DmReportRow;
@@ -972,4 +983,244 @@ TEST_CASE("settings_change_touches: the comparison reads its chart mode and the 
     app::Settings auto_open = before;
     auto_open.auto_open_report = !before.auto_open_report;
     CHECK_FALSE(app::dm_report::settings_change_touches(before, auto_open));
+}
+
+namespace {
+
+// A one-shot HTTP server on 127.0.0.1 for the real WinHTTP transport (the
+// Fetcher seam swaps http_get out wholesale, so it can't reach that code).
+// One thread accepts one connection, reads the request headers and sends
+// `reply`. With `stall` set it then sends nothing more and keeps the
+// connection open, like a render.com cold start (empty `reply`) or a body
+// that stops arriving (a reply of headers and a short body). A stall ends
+// when the server is destroyed, or at testwait's cap, so a cancel that never
+// works fails the test instead of hanging it.
+class LoopbackServer {
+public:
+    explicit LoopbackServer(std::string reply, bool stall = false)
+        : reply_(std::move(reply)), stall_(stall) {
+        WSADATA wsa;
+        REQUIRE(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+        listener_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        REQUIRE(listener_ != INVALID_SOCKET);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;  // any free port
+        REQUIRE(bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+        REQUIRE(listen(listener_, 4) == 0);
+        int len = sizeof(addr);
+        REQUIRE(getsockname(listener_, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
+        port_ = ntohs(addr.sin_port);
+        thread_ = std::thread([this] { serve_one(); });
+    }
+    ~LoopbackServer() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            released_ = true;
+        }
+        release_.notify_all();   // ends a stall
+        closesocket(listener_);  // also unblocks an accept() still waiting
+        if (thread_.joinable()) thread_.join();
+        WSACleanup();
+    }
+    LoopbackServer(const LoopbackServer&) = delete;
+    LoopbackServer& operator=(const LoopbackServer&) = delete;
+
+    std::string url() const { return "http://127.0.0.1:" + std::to_string(port_); }
+
+    // True once the whole reply is sent (none, for an empty reply) and the
+    // connection is stalled: the client's request is in, and it now waits on
+    // a step only a cancel can end.
+    bool stalled() const { return stalled_.load(); }
+
+private:
+    void serve_one() {
+        SOCKET s = accept(listener_, nullptr, nullptr);
+        if (s == INVALID_SOCKET) return;
+        std::string request;
+        char buf[4096];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            int n = recv(s, buf, sizeof(buf), 0);
+            if (n <= 0) break;
+            request.append(buf, static_cast<size_t>(n));
+        }
+        size_t sent = 0;
+        while (sent < reply_.size()) {
+            int n = send(s, reply_.data() + sent,
+                         static_cast<int>(std::min<size_t>(reply_.size() - sent, 1 << 16)), 0);
+            if (n <= 0) break;
+            sent += static_cast<size_t>(n);
+        }
+        if (stall_) {
+            stalled_ = true;
+            std::unique_lock<std::mutex> lock(mutex_);
+            release_.wait_for(lock, testwait::kWaitCap, [this] { return released_; });
+            closesocket(s);
+            return;
+        }
+        // Graceful close: FIN, then wait for the client to hang up, so no
+        // unread bytes turn the close into a reset that drops the reply.
+        shutdown(s, SD_SEND);
+        while (recv(s, buf, sizeof(buf), 0) > 0) {}
+        closesocket(s);
+    }
+
+    std::string reply_;
+    bool stall_ = false;
+    std::atomic<bool> stalled_{false};
+    std::mutex mutex_;
+    std::condition_variable release_;
+    bool released_ = false;  // guarded by mutex_
+    SOCKET listener_ = INVALID_SOCKET;
+    unsigned short port_ = 0;
+    std::thread thread_;
+};
+
+std::string http_response(const std::string& status_line, const std::string& body) {
+    return "HTTP/1.1 " + status_line +
+           "\r\nContent-Type: application/json\r\nContent-Length: " +
+           std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+}
+
+// The response headers of a 200 whose body is promised but never comes in
+// full: Content-Length is larger than what follows.
+std::string stalled_body_response(const std::string& body_start) {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n" + body_start;
+}
+
+// What one cancelled call ended with. `error` is its exception text.
+// `cancel_to_return_ms` is how long it ran on after the cancel was set; it is
+// empty when the call ended before `ready` came true, so no cancel was set.
+struct CancelResult {
+    std::string error;
+    std::optional<long long> cancel_to_return_ms;
+};
+
+// Runs `call`, and sets `cancel` from a second thread once `ready()` says the
+// call is parked on a step only a cancel can end. Timing starts at the cancel,
+// so WinHTTP's own setup before that is not counted.
+template <class Ready, class Call>
+CancelResult cancel_when(std::atomic<bool>& cancel, Ready ready, Call call) {
+    using clock = std::chrono::steady_clock;
+    std::atomic<bool> call_ended{false};
+    std::optional<clock::time_point> cancel_at;
+    std::string wait_error;
+    std::thread setter([&] {
+        try {
+            testwait::wait_until([&] { return call_ended.load() || ready(); },
+                                 "the loopback server to stall the request");
+        } catch (const testwait::WaitTimeout& e) {
+            wait_error = e.what();
+            cancel = true;  // so the call cannot run on to its own 120 s timeout
+            return;
+        }
+        if (call_ended) return;
+        cancel_at = clock::now();
+        cancel = true;
+    });
+    CancelResult result;
+    try {
+        call();
+    } catch (const std::exception& e) {
+        result.error = e.what();
+    }
+    const clock::time_point returned = clock::now();
+    call_ended = true;
+    setter.join();
+    REQUIRE_MESSAGE(wait_error.empty(), wait_error);
+    if (cancel_at)
+        result.cancel_to_return_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(returned - *cancel_at).count();
+    return result;
+}
+
+// The checks every cancel case shares: the cancel was set while the call was
+// stalled, the call ended with the transport's "cancelled" (a receive timeout
+// or a dropped connection reads differently), and it did so within 500 ms of
+// the cancel (the user's limit).
+void check_cancelled_promptly(const CancelResult& r) {
+    REQUIRE_MESSAGE(r.cancel_to_return_ms.has_value(),
+                    "the call ended before the cancel was set, with: " << r.error);
+    MESSAGE("returned " << *r.cancel_to_return_ms << " ms after the cancel flag was set");
+    CHECK(r.error == Cancelled().what());
+    CHECK(*r.cancel_to_return_ms < 500);
+}
+
+}  // namespace
+
+TEST_CASE("http transport: cancel aborts a request the server never answers") {
+    net::set_fetcher({});  // the real WinHTTP transport
+    LoopbackServer server("", /*stall=*/true);
+
+    // Set before the call: fails at once, before any connection is made.
+    std::atomic<bool> cancel{true};
+    const std::string cancelled_text = Cancelled().what();
+    CHECK_THROWS_WITH_AS((void)net::fetch_users(server.url(), &cancel), cancelled_text.c_str(),
+                         std::runtime_error);
+    CHECK_FALSE(server.stalled());
+
+    // Set once the server holds the request and sends nothing back (the
+    // receive timeout is 120 s, so only the cancel can end this promptly).
+    cancel = false;
+    check_cancelled_promptly(cancel_when(cancel, [&] { return server.stalled(); },
+                                         [&] { (void)net::fetch_users(server.url(), &cancel); }));
+}
+
+TEST_CASE("http transport: cancel aborts a body that stops after the headers") {
+    net::set_fetcher({});  // the real WinHTTP transport
+    net::set_downloader({});
+
+    // The server cannot see when the client has read the headers, so here the
+    // cancel may land just before the body read starts. The download subcase
+    // below waits until body bytes reach the file, so it cancels inside it.
+    SUBCASE("http_get: headers, then nothing") {
+        LoopbackServer server(stalled_body_response(""), /*stall=*/true);
+        std::atomic<bool> cancel{false};
+        check_cancelled_promptly(cancel_when(cancel, [&] { return server.stalled(); },
+                                             [&] { (void)net::fetch_users(server.url(), &cancel); }));
+    }
+
+    SUBCASE("http_download: part of the body, then nothing") {
+        const std::string body_start = "[{\"id\":";
+        LoopbackServer server(stalled_body_response(body_start), /*stall=*/true);
+        testtemp::ScopedFile file("dm_http_stall", ".bin");
+        const std::string part = file.path + ".part";
+        std::atomic<uint64_t> received{0};
+        std::atomic<bool> cancel{false};
+        // The first body bytes reaching the file prove the call is in its body
+        // read, past the headers.
+        check_cancelled_promptly(cancel_when(
+            cancel, [&] { return server.stalled() && received.load() > 0; },
+            [&] { net::http_download(server.url(), file.path, 1000, &received, &cancel); }));
+        CHECK(received.load() == body_start.size());
+        CHECK_FALSE(std::filesystem::exists(hydra::os_path(file.path)));
+        CHECK_FALSE(std::filesystem::exists(hydra::os_path(part)));
+    }
+}
+
+TEST_CASE("http transport: a 200 reply is read in full, a 404 keeps its message") {
+    net::set_fetcher({});  // the real WinHTTP transport
+
+    // Big enough (~250 KB) to arrive over several read chunks.
+    std::string body = "[";
+    for (int i = 0; i < 5000; ++i) {
+        if (i) body += ",";
+        body += R"({"id":")" + std::to_string(i) + R"(","username":"user)" +
+                std::to_string(i) + R"(","elo":1500})";
+    }
+    body += "]";
+    {
+        LoopbackServer server(http_response("200 OK", body));
+        std::atomic<bool> cancel{false};  // present but never set
+        std::vector<net::DmUser> users = net::fetch_users(server.url(), &cancel);
+        REQUIRE(users.size() == 5000);
+        CHECK(users.front().id == "0");
+        CHECK(users.back().username == "user4999");
+    }
+    {
+        LoopbackServer server(http_response("404 Not Found", ""));
+        CHECK_THROWS_WITH_AS((void)net::fetch_users(server.url()),
+                             "leaderboard returned HTTP 404", std::runtime_error);
+    }
 }
