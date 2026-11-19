@@ -19,9 +19,11 @@ Every count below was made by a script over `AUD/exits/row-files.tsv`, the row-t
 | Fix now | 2,459 | the row carries at least one key that breaks a filed ruling, and no live-run key |
 | Waits for question 1 (live runs) | 525 | the row carries O-gamemem, F-sample, F-presslog or F-watchlog |
 | Waits for question 2 (rubric keys) | 476 | every key on the row is E-echo or a K key |
-| Waits for question 3 (no key) | 98 | the row has no key at all |
+| No key, sent with the first pass | 98 | the row has no key at all; no question waits on it (see "No-key rows") |
 
 The piles add up to 3,558, so no row is in two piles and none is in none.
+
+**No-key rows.** The user already said to fix every bad test, and the work list ("The 107 rows no key fits") already gives each kind of these rows its fix: run the claim on a real chart, wait on the event with a cap, make a flaky check exact, split a bundled test, check the drawn text. The one kind that stays as it is is hand-written input that the real code reads, which the user chose to call input and not a fake in a question box, `AUD/questions.md` question 1 (that choice was never filed as a ruling; work list line 171 builds on it). So these 98 rows go in the first pass beside the fix-now rows. The executor leaves a hand-written-input row unchanged and lists it in its report. This replaces the earlier draft's question about these rows: the plan had no rule to ask, only the work list's own recipes to apply. A part that the extra rows push past about 45 is cut in two.
 
 Each row also lands in exactly one task. The test-file tasks T01 to T30 hold 3,356 rows. The mop-up tasks M1 to M6 and T31 hold the other 202. That is 3,558 again. The same check holds pile by pile:
 
@@ -30,16 +32,16 @@ Each row also lands in exactly one task. The test-file tasks T01 to T30 hold 3,3
 | Fix now | 2,301 | 158 | 2,459 |
 | Waits for question 1 | 524 | 1 | 525 |
 | Waits for question 2 | 434 | 42 | 476 |
-| Waits for question 3 | 97 | 1 | 98 |
+| No key | 97 | 1 | 98 |
 | All | 3,356 | 202 | 3,558 |
 
 The numbers in each task's heading below are the same script's output, and the script summed them to the first column.
 
 A fix-now row that also carries a rubric key gets its ruling recipe now. Its rubric recipe is applied in the same pass only if question 2 was answered yes before the task was sent.
 
-The 20 open records in `AUD/exits/open.md` are separate from the 3,558 and wait for question 4.
+The 20 open records in `AUD/exits/open.md` are separate from the 3,558 and wait for question 3.
 
-The plan has 29 test-file tasks (T01 to T26 and T28 to T30; the old T27 is folded into T26 and M5). Three files are too big for one executor and are cut by line range, and the bigger tasks are cut by file, which makes 65 executor parts. There are 7 mop-up tasks (M1 to M6 and T31), 9 bug tasks (B1 to B9), 2 hooks-repo bug tasks (H1, H2), 1 check task (G1), 1 task for the open records (O1) and 3 for the visible group (V0 to V2).
+The plan has 29 test-file tasks (T01 to T26 and T28 to T30; the number T27 was the earlier plan's name for the PowerShell tool tests, whose rows are in M5). Three files are too big for one executor and are cut by line range, and the bigger tasks are cut by file, which makes 65 executor parts. There are 7 mop-up tasks (M1 to M6 and T31), 9 bug tasks (B1 to B9), 2 hooks-repo bug tasks (H1, H2), 1 check task (G1), 1 task for the open records (O1) and 3 for the visible group (V0 to V2).
 
 ## The row-to-file table
 
@@ -58,9 +60,9 @@ A path that starts `~/.claude/` is in the hooks repo, `C:\Users\Patrick\.claude`
 
 Every task follows the same shape. The executor owns the listed test files whole, and no file is in two tasks. It opens `row-files.tsv`, takes the rows whose `test_file` is one of its files, and applies the recipe from Part 2 of the work list for each key a row carries. It changes no production code unless the task says so. It hands the branch back unbuilt.
 
-**Parts.** A task with more than about 45 fix-now rows is cut into parts a, b, c. Each part is one executor on its own branch. Most parts are whole files, so they can run side by side. Three files hold too many rows for one executor: `tests/test_preview_boxes.cpp`, `tools/ch_mcp/tests/test_frida_attach.py` and `tools/ch_mcp/tests/test_game_tools.py`. Each is cut by line range, with the cuts on test-case starts and the first test of each part named, because line numbers move once the part before it merges. Parts of one file never run at the same time: part b starts from main after part a has merged.
+**Parts.** A task with more than about 45 fix-now rows (counted before the no-key rows were added to the first pass; a part that now holds clearly more is cut again by file) is cut into parts a, b, c. Each part is one executor on its own branch. Most parts are whole files, so they can run side by side. Three files hold too many rows for one executor: `tests/test_preview_boxes.cpp`, `tools/ch_mcp/tests/test_frida_attach.py` and `tools/ch_mcp/tests/test_game_tools.py`. Each is cut by line range, with the cuts on test-case starts and the first test of each part named, because line numbers move once the part before it merges. Parts of one file never run at the same time: part b starts from main after part a has merged.
 
-**Passes.** A task may hold rows that go now and rows that wait. The file is still owned by that one task. The first pass fixes the "Fix now" rows. When a question is answered yes, the same task runs again for that answer's rows, with a fresh executor. A waiting pass with more than about 45 rows is cut into parts the same way as the first pass.
+**Passes.** A task may hold rows that go now and rows that wait. The file is still owned by that one task. The first pass fixes the "Fix now" and "No key" rows. When a question is answered yes, the same task runs again for that answer's rows, with a fresh executor. A waiting pass with more than about 45 rows is cut into parts the same way as the first pass.
 
 **The first step.** Before it changes anything, the executor finds each of its rows' tests in its files, by the test name or line the audit row gives. A row whose test is not in the task's files is not fixed there. The executor lists it in its report with the file it is really in, and the main session moves it to that file's task or to a mop-up task. This step matters most for the guessed rows. It is a lookup of where a test is, not a second judgement of the test.
 
@@ -76,55 +78,57 @@ Acceptance for every test-file task and every mop-up task, checked by the review
 4. No row waiting on an unanswered question was changed. The reviewer checks the diff against the pass's row list.
 5. The executor's report gives the result of the first step: how many rows it found in its files, and each one it did not.
 
-In the tables below, "Fix now" is the first pass. "After q1", "After q2" and "After q3" are the rows that wait for questions 1, 2 and 3. "Guessed" counts the rows the table placed by guess. For a file cut by line range, the counts are for the whole file and sit on its first part; see "Not done", item 1.
+**A sixth ruling the recipes must also keep.** `tests-and-runs.md` line 8 (under `## Confirmed`, session 872cc6f3, 2026-11-16) says: "yes a test should fail instantly if its pass condition is impossible, not hang until it's forced to time out". The work list's five rulings (lines 9-13) leave it out. Every wait the executor writes under C-clock, K-floor or a fixed-sleep row therefore ends at once, with a failure, when the event it waits for can no longer happen (the process has exited, the file can no longer appear), and uses its cap only as the last stop. A K-skip row is fixed to fail, never to pass quietly. Each executor's report says which rows this applied to.
+
+In the tables below, "Fix now" is the first pass. "After q1" and "After q2" are the rows that wait for questions 1 and 2. "No key" is the no-key rows, which go in the first pass (see "No-key rows"). "Guessed" counts the rows the table placed by guess. For a file cut by line range, the counts are for the whole file and sit on its first part; see "Not done", item 1.
 
 **C++ tests, T01 to T17.** The main session builds and runs these, and executors run nothing.
 
 T04, T09 and T15 hold P-setting, P-name and P-message rows whose recipe reads a text from its owner. Where B6 makes that owner, they read it if B6 has merged, and otherwise report the row as waiting for B6.
 
-### T01: 89 rows in 1 file (now 68, after question 1 0, after question 2 12, after question 3 9; 0 placed by guess)
+### T01: 89 rows in 1 file (now 68, after question 1 0, after question 2 12, no key 9; 0 placed by guess)
 
 Rows per key: P-builtchart 48, K-comment 18, K-duplicate 18, Z-cite 10, P-other 9, S-snapshot 9, F-result 6, K-invented 5, P-setting 4, K-namebody 4, K-unreachable 2, K-cantfail 2, P-name 2, P-message 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T01a | `tests/test_preview_boxes.cpp` lines 1-612 (27 test cases, from `build_time_box: timestamp, measure, tempo`) | 68 | 0 | 12 | 9 | 0 |
 | T01b | `tests/test_preview_boxes.cpp` lines 613-1098 (26 test cases, from `drain box: past the length it reads the moment the time box `) | same file | | | |  |
 
-### T02: 80 rows in 3 files (now 55, after question 1 0, after question 2 23, after question 3 2; 1 placed by guess)
+### T02: 80 rows in 3 files (now 55, after question 1 0, after question 2 23, no key 2; 1 placed by guess)
 
 Rows per key: K-comment 18, F-result 17, P-builtchart 17, K-floor 16, K-selfmade 13, S-snapshot 12, K-skip 10, P-message 10, P-other 9, Z-cite 9, E-echo 5, K-cantfail 5, K-duplicate 5, F-schedule 3, K-partial 2, P-name 2, K-nocode 2, K-namebody 1, P-onefile 1, K-unreachable 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T02a | `tests/test_replay.cpp` | 28 | 0 | 18 | 2 | 0 |
 | T02a | `tests/test_replay_windows.cpp` | 4 | 0 | 2 | 0 | 0 |
 | T02b | `tests/test_replay_schedule.cpp` | 23 | 0 | 3 | 0 | 1 |
 
-### T03: 72 rows in 2 files (now 62, after question 1 0, after question 2 10, after question 3 0; 1 placed by guess)
+### T03: 72 rows in 2 files (now 62, after question 1 0, after question 2 10, no key 0; 1 placed by guess)
 
 Rows per key: P-other 30, F-result 14, K-comment 12, K-selfmade 12, S-snapshot 10, K-duplicate 10, Z-cite 9, P-setting 8, P-message 7, K-cantfail 6, P-tiers 5, K-floor 4, P-burnout 3, P-builtchart 3, F-record 2, E-echo 2, K-namebody 2, K-skip 2, K-unreachable 2.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T03a | `tests/test_activation_rows.cpp` | 35 | 0 | 8 | 0 | 0 |
 | T03b | `tests/test_squeeze_rating.cpp` | 27 | 0 | 2 | 0 | 1 |
 
-### T04: 75 rows in 3 files (now 52, after question 1 0, after question 2 14, after question 3 9; 0 placed by guess)
+### T04: 75 rows in 3 files (now 52, after question 1 0, after question 2 14, no key 9; 0 placed by guess)
 
 Rows per key: P-other 22, P-setting 14, K-duplicate 14, P-name 11, K-selfmade 8, K-cantfail 6, K-comment 4, Z-cite 3, K-unreachable 3, E-echo 2, P-message 2, K-namebody 2, F-window 2, S-snapshot 1, K-partial 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T04a | `tests/test_config.cpp` | 27 | 0 | 13 | 9 | 0 |
 | T04a | `tests/test_helpers.cpp` | 4 | 0 | 0 | 0 | 0 |
 | T04b | `tests/test_app_shell.cpp` | 21 | 0 | 1 | 0 | 0 |
 
-### T05: 41 rows in 5 files (now 38, after question 1 0, after question 2 3, after question 3 0; 0 placed by guess)
+### T05: 41 rows in 5 files (now 38, after question 1 0, after question 2 3, no key 0; 0 placed by guess)
 
 Rows per key: O-reply 18, P-message 16, P-other 13, P-setting 6, F-row 4, E-echo 3, K-cantfail 3, K-floor 3, K-comment 2, S-snapshot 1, K-duplicate 1, Z-cite 1, P-name 1, F-record 1, K-partial 1, C-stub 1, K-namebody 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T05 | `tests/test_dm_report.cpp` | 28 | 0 | 2 | 0 | 0 |
 | T05 | `tests/test_dm_other_speed.cpp` | 4 | 0 | 0 | 0 | 0 |
@@ -132,11 +136,11 @@ Rows per key: O-reply 18, P-message 16, P-other 13, P-setting 6, F-row 4, E-echo
 | T05 | `tests/test_http_download.cpp` | 1 | 0 | 0 | 0 | 0 |
 | T05 | `tests/test_update_release.cpp` | 1 | 0 | 0 | 0 | 0 |
 
-### T06: 100 rows in 5 files (now 83, after question 1 0, after question 2 14, after question 3 3; 18 placed by guess)
+### T06: 100 rows in 5 files (now 83, after question 1 0, after question 2 14, no key 3; 18 placed by guess)
 
 Rows per key: F-row 41, C-analyzer 37, K-comment 15, P-message 15, P-other 12, F-record 6, K-namebody 6, O-reply 4, K-floor 3, K-cantfail 3, Z-cite 2, K-duplicate 2, E-echo 2, P-placeholder 2, S-snapshot 2, K-partial 2, P-setting 1, C-worker 1, F-db 1, K-skip 1, K-selfmade 1, P-onefile 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T06a | `tests/test_app_library.cpp` | 32 | 0 | 4 | 0 | 13 |
 | T06a | `tests/test_analysis.cpp` | 11 | 0 | 3 | 1 | 0 |
@@ -144,11 +148,11 @@ Rows per key: F-row 41, C-analyzer 37, K-comment 15, P-message 15, P-other 12, F
 | T06b | `tests/test_app_reports.cpp` | 11 | 0 | 1 | 2 | 0 |
 | T06b | `tests/test_song_panel_state.cpp` | 5 | 0 | 0 | 0 | 0 |
 
-### T07: 99 rows in 6 files (now 81, after question 1 0, after question 2 17, after question 3 1; 2 placed by guess)
+### T07: 99 rows in 6 files (now 81, after question 1 0, after question 2 17, no key 1; 2 placed by guess)
 
 Rows per key: F-record 38, K-cantfail 16, P-other 16, F-row 13, Z-cite 11, F-db 8, S-snapshot 6, E-echo 5, K-selfmade 5, F-result 4, P-message 4, K-duplicate 4, K-skip 4, K-floor 4, K-namebody 4, K-comment 3, K-partial 3, P-name 3, K-unreachable 1, K-nocode 1, F-summary 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T07a | `tests/test_store_records.cpp` | 36 | 0 | 8 | 0 | 1 |
 | T07a | `tests/test_store_library.cpp` | 8 | 0 | 0 | 0 | 1 |
@@ -157,11 +161,11 @@ Rows per key: F-record 38, K-cantfail 16, P-other 16, F-row 13, Z-cite 11, F-db 
 | T07b | `tests/test_store_results.cpp` | 16 | 0 | 4 | 0 | 0 |
 | T07b | `tests/test_chart_index.cpp` | 2 | 0 | 2 | 0 | 0 |
 
-### T08: 132 rows in 6 files (now 122, after question 1 0, after question 2 9, after question 3 1; 36 placed by guess)
+### T08: 132 rows in 6 files (now 122, after question 1 0, after question 2 9, no key 1; 36 placed by guess)
 
 Rows per key: F-row 86, P-other 25, P-message 18, F-record 13, P-setting 12, K-duplicate 8, F-result 8, Z-cite 7, K-comment 7, K-selfmade 5, P-placeholder 4, P-tiers 4, S-snapshot 3, K-unreachable 3, E-echo 2, K-cantfail 2, K-floor 2, P-onefile 2, K-nocode 2, F-summary 1, P-burnout 1, P-name 1, K-skip 1, K-partial 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T08a | `tests/test_library_model.cpp` | 47 | 0 | 2 | 0 | 35 |
 | T08b | `tests/test_library_query.cpp` | 24 | 0 | 3 | 0 | 0 |
@@ -170,11 +174,11 @@ Rows per key: F-row 86, P-other 25, P-message 18, F-record 13, P-setting 12, K-d
 | T08c | `tests/test_report_rows.cpp` | 23 | 0 | 3 | 1 | 1 |
 | T08c | `tests/test_report_page.cpp` | 11 | 0 | 0 | 0 | 0 |
 
-### T09: 64 rows in 6 files (now 60, after question 1 0, after question 2 4, after question 3 0; 0 placed by guess)
+### T09: 64 rows in 6 files (now 60, after question 1 0, after question 2 4, no key 0; 0 placed by guess)
 
 Rows per key: P-message 39, F-record 13, P-setting 9, K-duplicate 6, P-other 6, K-nocode 5, F-row 4, K-comment 4, K-unreachable 2, P-name 2, P-placeholder 1, K-namebody 1, P-builtchart 1, K-selfmade 1, K-cantfail 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T09a | `tests/test_cli.cpp` | 22 | 0 | 0 | 0 | 0 |
 | T09a | `tests/test_fill_report.cpp` | 21 | 0 | 1 | 0 | 0 |
@@ -183,11 +187,11 @@ Rows per key: P-message 39, F-record 13, P-setting 9, K-duplicate 6, P-other 6, 
 | T09b | `tests/test_run_guard.cpp` | 3 | 0 | 0 | 0 | 0 |
 | T09b | `tests/test_user_messages.cpp` | 3 | 0 | 0 | 0 | 0 |
 
-### T10: 123 rows in 6 files (now 85, after question 1 0, after question 2 34, after question 3 4; 0 placed by guess)
+### T10: 123 rows in 6 files (now 85, after question 1 0, after question 2 34, no key 4; 0 placed by guess)
 
 Rows per key: K-comment 35, Z-cite 29, P-other 29, F-result 28, S-snapshot 27, K-duplicate 11, P-setting 10, K-selfmade 10, K-partial 9, K-skip 8, K-floor 7, P-builtchart 3, E-echo 3, K-unreachable 3, F-row 3, C-stub 3, P-message 3, K-cantfail 3, K-namebody 3, P-burnout 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T10a | `tests/test_sp_meter_curve.cpp` | 24 | 0 | 3 | 0 | 0 |
 | T10a | `tests/test_preview_controller.cpp` | 16 | 0 | 8 | 2 | 0 |
@@ -196,11 +200,11 @@ Rows per key: K-comment 35, Z-cite 29, P-other 29, F-result 28, S-snapshot 27, K
 | T10b | `tests/test_preview_timeline.cpp` | 15 | 0 | 0 | 0 | 0 |
 | T10b | `tests/test_overlay_layout.cpp` | 11 | 0 | 1 | 2 | 0 |
 
-### T11: 85 rows in 8 files (now 83, after question 1 0, after question 2 1, after question 3 1; 0 placed by guess)
+### T11: 85 rows in 8 files (now 83, after question 1 0, after question 2 1, no key 1; 0 placed by guess)
 
 Rows per key: Z-cite 40, S-snapshot 35, P-burnout 24, P-message 23, P-pbticks 20, P-other 9, P-builtchart 6, P-allister 4, F-result 3, K-selfmade 2, K-duplicate 1, K-namebody 1, P-setting 1, E-echo 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T11a | `tests/test_pb_coach.cpp` | 24 | 0 | 0 | 1 | 0 |
 | T11a | `tests/test_pb_text.cpp` | 19 | 0 | 0 | 0 | 0 |
@@ -211,11 +215,11 @@ Rows per key: Z-cite 40, S-snapshot 35, P-burnout 24, P-message 23, P-pbticks 20
 | T11b | `tests/pb_ui/pbtest_build.cpp` | 5 | 0 | 0 | 0 | 0 |
 | T11b | `tests/pb_ui/pbtest_files.cpp` | 1 | 0 | 0 | 0 | 0 |
 
-### T12: 112 rows in 11 files (now 89, after question 1 0, after question 2 23, after question 3 0; 0 placed by guess)
+### T12: 112 rows in 11 files (now 89, after question 1 0, after question 2 23, no key 0; 0 placed by guess)
 
 Rows per key: P-builtchart 48, S-snapshot 23, K-comment 23, Z-cite 21, K-skip 16, K-selfmade 13, K-floor 12, P-other 8, F-result 6, P-tiers 6, K-duplicate 4, K-unreachable 4, K-cantfail 3, P-message 3, K-namebody 2, P-setting 1, K-partial 1, P-name 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T12a | `tests/test_rules.cpp` | 15 | 0 | 8 | 0 | 0 |
 | T12a | `tests/test_search_target.cpp` | 13 | 0 | 3 | 0 | 0 |
@@ -229,11 +233,11 @@ Rows per key: P-builtchart 48, S-snapshot 23, K-comment 23, Z-cite 21, K-skip 16
 | T12b | `tests/test_path_costs.cpp` | 5 | 0 | 0 | 0 | 0 |
 | T12b | `tests/test_sp_end_clamp.cpp` | 1 | 0 | 0 | 0 | 0 |
 
-### T13: 151 rows in 8 files (now 129, after question 1 0, after question 2 20, after question 3 2; 47 placed by guess)
+### T13: 151 rows in 8 files (now 129, after question 1 0, after question 2 20, no key 2; 47 placed by guess)
 
 Rows per key: P-other 53, F-result 33, K-comment 22, Z-cite 18, P-setting 15, S-snapshot 14, K-selfmade 12, K-duplicate 10, F-record 7, P-message 7, P-name 6, P-burnout 6, K-unreachable 4, K-floor 4, K-namebody 4, K-skip 4, E-echo 3, P-tiers 3, K-partial 3, F-row 1, P-placeholder 1, K-cantfail 1, P-builtchart 1, K-nocode 1, P-onefile 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T13a | `tests/test_model.cpp` | 44 | 0 | 8 | 1 | 36 |
 | T13b | `tests/test_highway_draw.cpp` | 27 | 0 | 2 | 1 | 11 |
@@ -244,11 +248,11 @@ Rows per key: P-other 53, F-result 33, K-comment 22, Z-cite 18, P-setting 15, S-
 | T13c | `tests/test_note_window.cpp` | 6 | 0 | 3 | 0 | 0 |
 | T13c | `tests/test_timeline_view.cpp` | 6 | 0 | 0 | 0 | 0 |
 
-### T14: 120 rows in 10 files (now 84, after question 1 0, after question 2 34, after question 3 2; 4 placed by guess)
+### T14: 120 rows in 10 files (now 84, after question 1 0, after question 2 34, no key 2; 4 placed by guess)
 
 Rows per key: Z-cite 33, P-other 31, S-snapshot 25, K-floor 18, P-message 17, K-skip 14, K-selfmade 11, K-comment 10, P-placeholder 7, K-cantfail 5, K-duplicate 5, K-namebody 4, E-echo 3, K-partial 2, F-record 1, K-unreachable 1, P-name 1, F-result 1, C-reader 1, C-ownchecker 1, P-tiers 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T14a | `tests/test_song_length.cpp` | 14 | 0 | 0 | 0 | 0 |
 | T14a | `tests/test_stem_reader.cpp` | 12 | 0 | 1 | 2 | 0 |
@@ -261,11 +265,11 @@ Rows per key: Z-cite 33, P-other 31, S-snapshot 25, K-floor 18, P-message 17, K-
 | T14b | `tests/test_timing.cpp` | 4 | 0 | 3 | 0 | 0 |
 | T14b | `tests/test_srb.cpp` | 3 | 0 | 4 | 0 | 0 |
 
-### T15: 85 rows in 8 files (now 72, after question 1 0, after question 2 12, after question 3 1; 5 placed by guess)
+### T15: 85 rows in 8 files (now 72, after question 1 0, after question 2 12, no key 1; 5 placed by guess)
 
 Rows per key: P-burnout 19, P-other 17, P-message 16, F-row 13, Z-cite 9, K-selfmade 6, S-snapshot 6, P-setting 6, K-floor 5, O-reply 5, K-cantfail 4, C-analyzer 4, K-duplicate 4, E-echo 3, F-record 2, P-name 2, K-skip 2, K-nocode 2, C-stub 1, F-window 1, C-ownchecker 1, P-onefile 1, K-namebody 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T15a | `tests/ui/uitest_paths.cpp` | 20 | 0 | 2 | 0 | 0 |
 | T15a | `tests/ui/uitest_report_windows.cpp` | 19 | 0 | 0 | 1 | 0 |
@@ -276,11 +280,11 @@ Rows per key: P-burnout 19, P-other 17, P-message 16, F-row 13, Z-cite 9, K-self
 | T15b | `tests/ui/uitest_library.cpp` | 15 | 0 | 2 | 0 | 0 |
 | T15b | `tests/ui/uitest_preview.cpp` | 12 | 0 | 1 | 0 | 5 |
 
-### T16: 88 rows in 14 files (now 74, after question 1 0, after question 2 13, after question 3 1; 0 placed by guess)
+### T16: 88 rows in 14 files (now 74, after question 1 0, after question 2 13, no key 1; 0 placed by guess)
 
 Rows per key: P-message 42, P-other 23, C-ownchecker 22, K-skip 10, K-floor 6, Z-cite 4, P-onefile 3, O-toolout 3, K-namebody 2, F-result 2, P-setting 1, K-selfmade 1, S-snapshot 1, F-row 1, E-echo 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T16a | `tests/single_owner/scan.cpp` | 15 | 0 | 3 | 1 | 0 |
 | T16a | `tests/test_precheck_pick.cpp` | 15 | 0 | 1 | 0 | 0 |
@@ -297,11 +301,11 @@ Rows per key: P-message 42, P-other 23, C-ownchecker 22, K-skip 10, K-floor 6, Z
 | T16b | `tests/test_precheck_pick_lines.cpp` | 1 | 0 | 0 | 0 | 0 |
 | T16b | `tests/test_precheck_pick_names.cpp` | 1 | 0 | 0 | 0 | 0 |
 
-### T17: 115 rows in 31 files (now 47, after question 1 0, after question 2 60, after question 3 8; 7 placed by guess)
+### T17: 115 rows in 31 files (now 47, after question 1 0, after question 2 60, no key 8; 7 placed by guess)
 
 Rows per key: K-comment 27, P-other 24, Z-cite 20, K-floor 14, K-cantfail 13, S-snapshot 12, K-duplicate 11, K-skip 8, K-selfmade 5, K-nocode 4, P-setting 3, F-row 3, E-echo 3, C-clock 3, K-namebody 3, P-name 2, F-result 2, K-unreachable 2, P-builtchart 1, K-partial 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T17a | `tests/test_theme.cpp` | 9 | 0 | 1 | 0 | 0 |
 | T17a | `tests/test_list_scroll.cpp` | 5 | 0 | 0 | 0 | 3 |
@@ -337,11 +341,11 @@ Rows per key: K-comment 27, P-other 24, Z-cite 20, K-floor 14, K-cantfail 13, S-
 
 **Clone Hero tool tests, T18 to T25.** These are Python. Many of their rows wait for question 1; the first pass fixes only the fix-now rows.
 
-### T18: 237 rows in 1 file (now 175, after question 1 42, after question 2 19, after question 3 1; 42 placed by guess)
+### T18: 237 rows in 1 file (now 175, after question 1 42, after question 2 19, no key 1; 42 placed by guess)
 
 Rows per key: C-rig 120, P-message 113, E-echo 46, C-stub 42, O-gamemem 28, F-schedule 20, Z-cite 17, P-other 15, F-presslog 13, C-reader 13, F-record 12, C-session 12, F-row 11, O-scorestats 6, K-namebody 6, K-nocode 5, K-selfmade 5, K-comment 5, F-result 4, P-name 4, C-clock 3, C-worker 3, K-duplicate 3, S-snapshot 2, F-sample 1, K-cantfail 1, K-floor 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T18a | `tools/ch_mcp/tests/test_game_tools.py` lines 1-893 (47 test cases, from `test_session_dir_is_the_scratch_folder_the_backups_go_in`) | 175 | 42 | 19 | 1 | 42 |
 | T18b | `tools/ch_mcp/tests/test_game_tools.py` lines 894-1652 (47 test cases, from `test_the_status_names_the_first_chord_while_the_run_goes_on`) | same file | | | |  |
@@ -349,29 +353,29 @@ Rows per key: C-rig 120, P-message 113, E-echo 46, C-stub 42, O-gamemem 28, F-sc
 | T18d | `tools/ch_mcp/tests/test_game_tools.py` lines 2300-2947 (47 test cases, from `test_an_adopted_game_starts_no_watch`) | same file | | | |  |
 | T18e | `tools/ch_mcp/tests/test_game_tools.py` lines 2948-3558 (47 test cases, from `test_a_run_with_no_song_gets_the_cap_with_no_folder`) | same file | | | |  |
 
-### T19: 62 rows in 1 file (now 50, after question 1 12, after question 2 0, after question 3 0; 1 placed by guess)
+### T19: 62 rows in 1 file (now 50, after question 1 12, after question 2 0, no key 0; 1 placed by guess)
 
 Rows per key: C-rig 37, P-message 30, C-stub 24, P-other 20, O-gamemem 12, E-echo 8, C-clock 7, C-analyzer 7, F-result 6, P-name 6, Z-cite 3, O-scorestats 2, K-duplicate 2, K-selfmade 1, K-namebody 1, C-ownchecker 1, K-nocode 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T19 | `tools/ch_mcp/tests/test_bot_run.py` | 50 | 12 | 0 | 0 | 1 |
 
-### T20: 129 rows in 3 files (now 61, after question 1 60, after question 2 8, after question 3 0; 0 placed by guess)
+### T20: 129 rows in 3 files (now 61, after question 1 60, after question 2 8, no key 0; 0 placed by guess)
 
 Rows per key: P-message 79, O-gamemem 47, C-session 41, P-other 28, C-stub 28, E-echo 21, F-sample 17, C-rig 15, Z-cite 6, K-nocode 4, F-watchlog 4, K-duplicate 4, F-summary 3, F-schedule 2, S-snapshot 2, C-reader 2, F-result 1, O-payload 1, O-process 1, K-selfmade 1, C-clock 1, K-comment 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T20a | `tools/ch_mcp/tests/test_trace_hits.py` | 24 | 13 | 3 | 0 | 0 |
 | T20a | `tools/ch_mcp/tests/test_kit_tools.py` | 14 | 19 | 3 | 0 | 0 |
 | T20b | `tools/ch_mcp/tests/test_sp_tools.py` | 23 | 28 | 2 | 0 | 0 |
 
-### T21: 274 rows in 6 files (now 126, after question 1 82, after question 2 23, after question 3 43; 0 placed by guess)
+### T21: 274 rows in 6 files (now 126, after question 1 82, after question 2 23, no key 43; 0 placed by guess)
 
 Rows per key: P-message 108, O-gamemem 80, C-session 54, E-echo 34, C-clock 33, P-other 27, C-ownchecker 22, K-nocode 16, C-stub 14, C-reader 10, K-cantfail 8, K-duplicate 8, C-worker 8, K-comment 6, K-selfmade 5, K-namebody 5, P-name 5, Z-cite 3, S-snapshot 3, C-rig 3, F-sample 2, F-result 2, K-unreachable 2, P-setting 1, O-process 1, K-skip 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T21a | `tools/ch_mcp/tests/test_frida_attach.py` lines 1-851 (47 test cases, from `test_detaches_after_a_normal_end`) | 60 | 16 | 11 | 1 | 0 |
 | T21b | `tools/ch_mcp/tests/test_frida_attach.py` lines 852-1499 (46 test cases, from `test_a_failed_log_write_stops_the_log_and_not_the_reply`) | same file | | | |  |
@@ -381,11 +385,11 @@ Rows per key: P-message 108, O-gamemem 80, C-session 54, E-echo 34, C-clock 33, 
 | T21d | `tools/ch_mcp/tests/test_game_files.py` | 14 | 0 | 3 | 11 | 0 |
 | T21d | `tools/ch_mcp/tests/test_frida_tools.py` | 8 | 66 | 5 | 0 | 0 |
 
-### T22: 316 rows in 16 files (now 192, after question 1 109, after question 2 15, after question 3 0; 16 placed by guess)
+### T22: 316 rows in 16 files (now 192, after question 1 109, after question 2 15, no key 0; 16 placed by guess)
 
 Rows per key: P-message 115, F-sample 67, P-other 57, C-stub 43, O-gamemem 42, E-echo 41, O-process 36, C-clock 33, C-reader 31, C-rig 28, Z-cite 18, K-duplicate 16, P-name 14, S-snapshot 9, F-schedule 6, P-setting 5, F-result 5, K-nocode 4, O-toolout 4, O-scorestats 4, C-session 3, K-namebody 3, F-summary 3, K-cantfail 3, P-onefile 2, K-partial 2, O-reply 2, C-worker 2, K-selfmade 2, C-analyzer 2, K-skip 1, K-floor 1, O-payload 1, K-comment 1, K-unreachable 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T22a | `tools/ch_mcp/tests/test_machine_recorder.py` | 42 | 3 | 7 | 0 | 0 |
 | T22a | `tools/ch_mcp/tests/test_build_facts.py` | 3 | 0 | 1 | 0 | 0 |
@@ -404,11 +408,11 @@ Rows per key: P-message 115, F-sample 67, P-other 57, C-stub 43, O-gamemem 42, E
 | T22e | `tools/ch_mcp/tests/test_machine_report.py` | 3 | 59 | 3 | 0 | 0 |
 | T22e | `tools/ch_mcp/tests/test_build_stamp.py` | 2 | 0 | 1 | 0 | 0 |
 
-### T23: 173 rows in 7 files (now 79, after question 1 68, after question 2 19, after question 3 7; 2 placed by guess)
+### T23: 173 rows in 7 files (now 79, after question 1 68, after question 2 19, no key 7; 2 placed by guess)
 
 Rows per key: O-gamemem 68, C-clock 46, P-other 36, C-stub 33, P-message 27, E-echo 21, C-reader 20, P-name 13, K-comment 12, K-selfmade 8, S-snapshot 7, K-duplicate 7, Z-cite 5, K-cantfail 5, F-schedule 4, K-nocode 3, C-ownchecker 2, K-namebody 2, P-setting 2, C-rig 2, K-partial 1, K-floor 1, K-unreachable 1, P-onefile 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T23a | `tools/ch_probe/tests/test_play_chart.py` | 49 | 43 | 10 | 7 | 0 |
 | T23b | `tools/ch_probe/tests/test_prep_inputs.py` | 9 | 0 | 0 | 0 | 0 |
@@ -418,11 +422,11 @@ Rows per key: O-gamemem 68, C-clock 46, P-other 36, C-stub 33, P-message 27, E-e
 | T23b | `tools/ch_probe/tests/test_process_readonly.py` | 4 | 0 | 1 | 0 | 1 |
 | T23b | `tools/ch_probe/tests/test_play_in_game.py` | 1 | 17 | 0 | 0 | 0 |
 
-### T24: 211 rows in 9 files (now 42, after question 1 148, after question 2 21, after question 3 0; 1 placed by guess)
+### T24: 211 rows in 9 files (now 42, after question 1 148, after question 2 21, no key 0; 1 placed by guess)
 
 Rows per key: O-gamemem 60, F-watchlog 59, P-message 56, P-other 38, F-result 28, E-echo 24, F-presslog 23, F-schedule 22, C-clock 17, K-duplicate 13, Z-cite 11, K-comment 10, F-sample 8, K-nocode 6, F-summary 6, K-cantfail 5, O-scorestats 5, C-stub 5, K-unreachable 4, S-snapshot 3, C-rig 3, K-selfmade 3, O-process 3, P-name 2, C-reader 2, K-floor 2, K-namebody 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T24 | `tools/ch_probe/tests/test_sp_compare.py` | 8 | 40 | 4 | 0 | 0 |
 | T24 | `tools/ch_probe/tests/test_engine.py` | 7 | 18 | 2 | 0 | 0 |
@@ -434,11 +438,11 @@ Rows per key: O-gamemem 60, F-watchlog 59, P-message 56, P-other 38, F-result 28
 | T24 | `tools/ch_probe/tests/test_debugger.py` | 2 | 11 | 4 | 0 | 0 |
 | T24 | `tools/ch_probe/tests/test_watch_checks.py` | 0 | 19 | 1 | 0 | 1 |
 
-### T25: 85 rows in 8 files (now 71, after question 1 3, after question 2 10, after question 3 1; 0 placed by guess)
+### T25: 85 rows in 8 files (now 71, after question 1 3, after question 2 10, no key 1; 0 placed by guess)
 
 Rows per key: P-other 38, P-message 18, C-stub 17, Z-cite 15, E-echo 9, O-ocr 8, C-clock 5, F-schedule 4, S-snapshot 3, K-selfmade 2, K-cantfail 2, K-nocode 2, C-ownchecker 2, K-duplicate 2, K-unreachable 1, O-gamemem 1, K-namebody 1, C-session 1, F-presslog 1, F-sample 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T25a | `tools/ch_probe/tests/test_input_driver.py` | 12 | 0 | 3 | 1 | 0 |
 | T25a | `tools/ch_probe/tests/test_cheap_checks.py` | 11 | 1 | 3 | 0 | 0 |
@@ -451,11 +455,11 @@ Rows per key: P-other 38, P-message 18, C-stub 17, Z-cite 15, E-echo 9, O-ocr 8,
 
 **Hydra's other tool tests, T26.** Python, and every row is fix-now.
 
-### T26: 69 rows in 9 files (now 69, after question 1 0, after question 2 0, after question 3 0; 0 placed by guess)
+### T26: 69 rows in 9 files (now 69, after question 1 0, after question 2 0, no key 0; 0 placed by guess)
 
 Rows per key: O-transcript 27, P-message 24, P-other 11, F-db 7, S-snapshot 6, P-name 4, Z-cite 2.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T26a | `tools/test_effort_test_taint.py` | 24 | 0 | 0 | 0 | 0 |
 | T26a | `tools/test_hydra_ui_mcp.py` | 13 | 0 | 0 | 0 | 0 |
@@ -469,22 +473,22 @@ Rows per key: O-transcript 27, P-message 24, P-other 11, F-db 7, S-snapshot 6, P
 
 **Hooks-repo tests, T28 to T30.** These run in a worktree of `C:\Users\Patrick\.claude`, never in Hydra's.
 
-### T28: 102 rows in 4 files (now 90, after question 1 0, after question 2 11, after question 3 1; 0 placed by guess)
+### T28: 102 rows in 4 files (now 90, after question 1 0, after question 2 11, no key 1; 0 placed by guess)
 
 Rows per key: P-message 45, F-verdict 33, C-gate 33, E-echo 17, O-transcript 11, C-stub 5, S-snapshot 3, K-cantfail 3, O-payload 3, Z-cite 2, K-duplicate 1, K-namebody 1, P-name 1, P-other 1, K-selfmade 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T28a | `~/.claude/gates/tests/test_review_rules.py` | 38 | 0 | 4 | 0 | 0 |
 | T28a | `~/.claude/gates/tests/test_refusals.py` | 5 | 0 | 0 | 0 | 0 |
 | T28b | `~/.claude/gates/tests/test_ref_judge.py` | 32 | 0 | 1 | 1 | 0 |
 | T28c | `~/.claude/gates/tests/test_review_dispatch.py` | 15 | 0 | 6 | 0 | 0 |
 
-### T29: 55 rows in 6 files (now 53, after question 1 0, after question 2 2, after question 3 0; 0 placed by guess)
+### T29: 55 rows in 6 files (now 53, after question 1 0, after question 2 2, no key 0; 0 placed by guess)
 
 Rows per key: P-other 28, P-message 20, S-snapshot 8, K-cantfail 2, K-duplicate 1, O-payload 1, K-namebody 1, O-transcript 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T29a | `~/.claude/gates/tests/test_progress.py` | 19 | 0 | 2 | 0 | 0 |
 | T29a | `~/.claude/gates/tests/test_shell_output.py` | 13 | 0 | 0 | 0 | 0 |
@@ -493,11 +497,11 @@ Rows per key: P-other 28, P-message 20, S-snapshot 8, K-cantfail 2, K-duplicate 
 | T29b | `~/.claude/gates/tests/test_agent_stop.py` | 7 | 0 | 0 | 0 | 0 |
 | T29b | `~/.claude/gates/tests/test_percall_key.py` | 1 | 0 | 0 | 0 | 0 |
 
-### T30: 12 rows in 8 files (now 9, after question 1 0, after question 2 3, after question 3 0; 0 placed by guess)
+### T30: 12 rows in 8 files (now 9, after question 1 0, after question 2 3, no key 0; 0 placed by guess)
 
 Rows per key: P-other 5, P-message 3, K-duplicate 2, K-cantfail 2, P-name 1, K-namebody 1.
 
-| Part | File | Fix now | After q1 | After q2 | After q3 | Guessed |
+| Part | File | Fix now | After q1 | After q2 | No key | Guessed |
 |---|---|---|---|---|---|---|
 | T30 | `~/.claude/gates/tests/test_agent_files.py` | 2 | 0 | 0 | 0 | 0 |
 | T30 | `~/.claude/gates/tests/test_docs_numbers.py` | 2 | 0 | 0 | 0 | 0 |
@@ -512,7 +516,7 @@ Rows per key: P-other 5, P-message 3, K-duplicate 2, K-cantfail 2, P-name 1, K-n
 
 These hold the 202 rows whose test file the table does not give. The table below lists them by audit file, as the script counted them. Its last column is what `row-files.tsv` holds in place of a test file. The tasks under it group the audit files, and their row counts are sums of this table's lines.
 
-| Kind | Audit file | Rows | Fix now | After q1 | After q2 | After q3 | What the table holds |
+| Kind | Audit file | Rows | Fix now | After q1 | After q2 | No key | What the table holds |
 |---|---|---|---|---|---|---|---|
 | twice in the hooks repo | `records/E4.md` | 19 | 13 | 0 | 6 | 0 | ~/.claude/gates/tests/test_h52_cleanup_sweep.ps1 or ~/.claude/h (11); ~/.claude/gates/tests/test_h53_session_cards_start.ps1 or ~/.cl (8) |
 | names a file that is no test | `counts/T5-IR15.md` | 6 | 6 | 0 | 0 | 0 | docs/audit/note-shuffle/probes/vectors/gen_vectors.py (5); docs/audit/note-shuffle/verify/check_video.py (1) |
@@ -569,11 +573,11 @@ Five rows named by a file that is no path in the repo (`counts/T5-IR1.md`, `T5-I
 
 ### T31: the two hook tests that exist twice (19 rows)
 
-`test_h52_cleanup_sweep.ps1` (11 rows) and `test_h53_session_cards_start.ps1` (8 rows) are each in both `gates\tests` and `hooks\tests` of the hooks repo. 13 rows are fix-now and 6 wait for question 2. `Waits for: question 5`, which says which copy is live.
+`test_h52_cleanup_sweep.ps1` (11 rows) and `test_h53_session_cards_start.ps1` (8 rows) are each in both `gates\tests` and `hooks\tests` of the hooks repo. 13 rows are fix-now and 6 wait for question 2. The live copy is the one in `gates\tests`: the hooks repo's `settings.json` runs `gates\cleanup_sweep.ps1` and `gates\session_cards_start.ps1` (lines 89 and 101), and `gates\README.md` (lines 67 and 152) calls these scripts carried over from the old `hooks\` folder and names their tests in `gates\tests`. The executor fixes the `gates\tests` copy only and leaves the old `hooks\` folder alone; deleting that folder is out of scope (below). No question waits on this task.
 
 ### O1: the 20 open records
 
-The 20 records in `AUD/exits/open.md` are not in the 3,558. After a yes to question 4 the main session settles them as that question describes, and each one that turns out faulty joins its file's task. `Waits for: question 4`.
+The 20 records in `AUD/exits/open.md` are not in the 3,558. After a yes to question 3 the main session settles them as that question describes, and each one that turns out faulty joins its file's task. `Waits for: question 3`.
 
 ## The bug tasks from Part 1
 
@@ -583,19 +587,19 @@ No planner opened the production lines the work list names for these items (prem
 
 ### B1: remove the test-only switches (item 18)
 
-Removes the test-only switches from the store and the jobs, once no test calls them. `Waits for: T06, T07` (their first passes).
+Removes the test-only switches from the store and the jobs, once no test calls them. `Waits for: T06, T07, T15` (their first passes). Those are the tasks whose files call the switches: `test_analysis.cpp`, `test_app_library.cpp`, `test_app_reports.cpp`, `test_library_jobs.cpp`, `test_song_panel_state.cpp` (T06), `test_store_library.cpp`, `test_store_records.cpp` (T07), and `tests/ui/uitest_harness.cpp` and `uitest_report_windows.cpp` (T15). The fixture header `tests/app_state_fixtures.h` also names them and no task owns it, so B1 owns that header. B1's last step is a search of `tests/`, `tools/` and `src/` for each switch name; a test file that still names one stops the task.
 
 ### B2: delete the code only tests call (item 19)
 
-Deletes that code and the tests that pin only it. A test that reaches real code through a dead wrapper moves to the real function. `assign_score`'s removal changes words in `CONTEXT.md:518`; the executor does not edit that file and reports the line for the user. It edits tests in files other tasks own. `Waits for: T02, T03, T13, T14` (their first passes), and it runs while no pass on those files is out.
+Deletes that code and the tests that pin only it. A test that reaches real code through a dead wrapper moves to the real function. `assign_score`'s removal changes words in `CONTEXT.md:518`; the executor does not edit that file and reports the line for the user. It edits tests in files other tasks own. `Waits for` the first pass of every task whose files call a name on its list. Its first step is a search of `tests/` for each name; the main session looks each hit's file up in the task tables and sends B2 only when the first pass of every task the hits name has merged. It runs while no pass on those files is out.
 
 ### B3: the Clone Hero tools (items 21, 27, 29, 30, 35)
 
-Dead readers, plurals, the two route-word copies, the copied multiplier, the refuted +0x2E0 check with its D13 tests, and a source comment on each unnamed number. `Waits for: T22, T23, T24, T25` (their first passes).
+Dead readers, plurals, the two route-word copies, the copied multiplier, the refuted +0x2E0 check with its D13 tests, and a source comment on each unnamed number. `Waits for: T18, T19, T20, T21, T22, T23, T24, T25` (their first passes), because the plural fixes, the route words, the dead readers and the D13 tests sit in `test_game_tools.py`, `test_bot_run.py`, `test_frida_attach.py`, `test_game_files.py`, `test_machine_report.py`, `test_play_chart.py`, `test_watch_checks.py` and others those tasks own.
 
 ### B4: the precheck, the quiet check and the guard script (items 23, 24, 28)
 
-The precheck's flag name, its case-blind member count and its repeated mask; the quiet check's worktree folder; the guard script's home-folder default.
+The precheck's flag name, its case-blind member count and its repeated mask; the quiet check's worktree folder; the guard script's home-folder default. `Waits for: T16, T22c` (their first passes), because the flag text is pinned in T16's precheck tests and the quiet check is tested in T22c's `test_quiet.py`. B4 owns `tools/test_effort_test_guard.ps1`, which no task owns.
 
 ### B5: wrong comments and stale lists (item 22)
 
@@ -603,7 +607,7 @@ Corrects them. Nothing else changes.
 
 ### B6: one owner for each repeated text (items 14, 15, 16, 17)
 
-Gives each ownerless screen sentence one owner, states the short-beat refusal once, and names the SQLite setting. From item 14 it takes the settings names: "Pro Drums", "2x Bass" and "Note Shuffle" get one owner, which `batch_settings_summary` and `change_phrase` in `library_dialogs.cpp` both read. No text changes. The fills spelling in item 14 does change text, so it is not here; it is in the visible group.
+Gives each ownerless screen sentence one owner, states the short-beat refusal once, and names the SQLite setting. For each text, the executor first searches `src/core`, `src/app`, `src/ui` and `tools` for an existing owner and calls it; it writes a new one only when the search finds none, and its report names each search (agent rule 15). From item 14 it takes the settings names: "Pro Drums", "2x Bass" and "Note Shuffle" get one owner, which `batch_settings_summary` and `change_phrase` in `library_dialogs.cpp` both read. No text changes. The fills spelling in item 14 does change text, so it is not here; it is in the visible group.
 
 ### B7: the squeeze rating figures (item 7)
 
@@ -623,7 +627,7 @@ Moves them from display code to the engine. No number may change; a changed numb
 
 ### H2: the Bash rule (item 26)
 
-`bash_windows_rule.py` learns the other git option spellings. Hooks worktree.
+`bash_windows_rule.py` learns the other git option spellings. Hooks worktree. `Waits for: T30` (its first pass), because the new test goes in `test_bash_windows_rule.py`, which T30 owns.
 
 Item 20 of the work list needs no task: that code is used by a tool and stays.
 
@@ -647,7 +651,7 @@ The main session runs `hydra_uitest` on corpus charts from `testdata/input` and 
 
 ### V2: one fix task per item
 
-Written by a planner from V0's map. `Waits for: V0, V1, question 6`.
+Written by a planner from V0's map. `Waits for: V0, V1, question 4`.
 
 ## Questions
 
@@ -656,33 +660,31 @@ Each question is in the user's hands only because no filed ruling decides it.
 ### Round 1
 
 1. **May the Clone Hero tool tests be fed from real runs of the game?** 525 tests fake the game's memory, a recorder sample, a press log or a watcher log. The fix is to record those once from the real game and check the recordings in. That needs live Clone Hero runs on single songs, never the library. You would see the game start and play a song with nobody at the keyboard. Unblocks 525 rows: 524 in T18 to T25 and 1 in M5.
-2. **Do the tests that break only the test rubric get fixed too?** 476 tests break no rule you have filed. They echo a value back, cannot fail, skip quietly, repeat another test, or check something other than their name says. Nothing on any screen changes either way. Unblocks 476 rows: 434 in the test-file tasks and 42 in the mop-up tasks.
-3. **The 98 tests no label fits.** The audit sorted them into kinds in `AUD/exits/groups.md`. 46 of the 98 are hand-written input files that the real code reads, which your earlier answer called input, not a fake. Should those 46 stay as they are, and the other 52 (fixed sleeps, bundled tests, proxies and the rest) be fixed? Nothing on screen changes. Unblocks 98 rows: 97 in the test-file tasks and 1 in M4.
-4. **May the 20 unsettled records be settled by running them?** Twelve need one test run on the checked-in songs; one of those needs your library's timing file. Six need the game's real `dump.cs` and `facts.json`. Two are scripts with no check in them that need a person watching the game; are those two tests at all? Unblocks O1.
-5. **Two hook tests exist twice.** `test_h52_cleanup_sweep.ps1` and `test_h53_session_cards_start.ps1` are in both `gates\tests` and `hooks\tests` of your hooks folder. Which copy is the live one? Unblocks T31, 19 rows.
-
-The 46 in question 3 is a count of the rows in the "Rows no key fits" table of `AUD/exits/groups.md` that carry no key and come from the audit files the work list names as hand-written input: `counts/T5-IR3.md` (22), `T5-IR17.md` (11), `T5-IR7.md` (7), `T5-IR19.md` (2), `T5-KR4.md` (1) and `T5-KR5.md` (3).
+2. **Do the tests that break only the test rubric get fixed too?** 476 tests break none of the five rulings the work list names (fake data, typed constants, citing a non-code source, an arbitrary string, hand-made databases). They echo a value back, cannot fail, skip quietly, repeat another test, or check something other than their name says. Nothing on any screen changes either way. Unblocks 476 rows: 434 in the test-file tasks and 42 in the mop-up tasks.
+3. **May the 20 unsettled records be settled by running them?** Twelve need one test run on the checked-in songs; one of those needs your library's timing file. Six need the game's real `dump.cs` and `facts.json`. Two are scripts with no check in them that need a person watching the game; are those two tests at all? Unblocks O1.
 
 ### Round 2
 
-6. **The eight screen changes.** Asked after V0 and V1, with each screen's real text before and after. Unblocks V2.
-7. **Two things you said that are not filed.** "Yes, drop it" and "why are we relying on framerate at all? this is just bad design" (session 1ac0d6b4) sit under Unconfirmed, and a tool cites them as confirmed. Filing them is your click.
+4. **The eight screen changes.** Asked after V0 and V1, with each screen's real text before and after. Unblocks V2.
+5. **Two things you said that are not filed.** "Yes, drop it" and "why are we relying on framerate at all? this is just bad design" (session 1ac0d6b4) sit under Unconfirmed, and a tool cites them as confirmed. Filing them is your click. It unblocks no task; it is here only so the words the quiet-check bug (item 24 of the work list) cites are filed.
 
-Work-list question 5 is mostly not asked here, and this keeps the earlier planner's call. Whether a row is P-builtchart or P-other changes no fix, because both keys have the same kind of recipe: read the value from its owner or check the behaviour. Whether a fixed wait is K-floor changes no fix either, because the row is fixed by waiting on the event with a cap on both sides. The hand-written-input part of it does change the fix, and that part is question 3.
+Work-list question 5 is not asked here, and this keeps the earlier planner's call. Whether a row is P-builtchart or P-other changes no fix, because both keys have the same kind of recipe: read the value from its owner or check the behaviour. Whether a fixed wait is K-floor changes no fix either, because the row is fixed by waiting on the event and failing at once when it cannot happen. The hand-written-input part of it does change the fix; the plan applies the work list's own answer there (see "No-key rows") and asks nothing.
 
 ## Order and rounds
 
-**Round 1 needs no answer.** It is the first pass of every test-file part, plus B4, B5, B6, H1, H2, G1 and V0. Three or four executors run at once. When one finishes, the next on this list starts. The list is biggest first, by fix-now rows:
+**Round 1 needs no answer.** It is the first pass of every test-file part, plus B5, B6, H1, G1, V0 and T31. Three or four executors run at once. When one finishes, the next on this list starts. The list is biggest first, by fix-now rows:
 
 T19 (50), T23a (49), T08a (47), then the parts with 45: T11a, T12a, T14a, T15a, T16a, T17a, T22a, T22b, T22c, T26a, T29a. Then T07a, T10a, T12b, T13a, T21c and T22d (44 each), T06a, T09a, T13c and T28a (43), T13b, T24 and T25a (42), T08b and T10b (41), T06b (40), T14b (39), T05, T11b and T20a (38), T07b (37), T03a and T18a (35), T01a and T08c (34), T02a and T28b (32), T04a (31), T21a and T23b (30), T16b and T25b (29), T03b and T15b (27), T26b (24), T02b and T20b (23), T21d (22), T04b (21), T09b (17), T28c (15), T22e (13), T30 (9), T29b (8), T17b (2).
 
 The three files cut by line range are averaged in that list, at 35 rows a part for T18, 34 for T01 and 30 for T21's `test_frida_attach.py`. Their later parts go in order, each after the one before it has merged: T01b after T01a; T21b after T21a; T18b, T18c, T18d and T18e after T18a.
 
-No two parts in the list share a file, so any three or four of them can run together. B4, B5, B6, H1, H2, G1 and V0 touch no test file a part owns and start in the first wave beside them. B6 goes first among them, because T04, T09 and T15 read its owners.
+No two parts in the list share a file, so any three or four of them can run together. B5, B6, G1, V0, H1 and T31 touch no test file a part owns and start in the first wave beside them. B6 goes first among them, because T04, T09 and T15 read its owners.
 
-**Round 2 is the mop-up tasks M1 to M6**, after the first passes they depend on have merged, and B1, B2 and B3, each after the tasks its `Waits for:` line names.
+Two bug tasks do touch files a part owns, so they wait for those parts' first passes instead of starting in the first wave. B4 changes the precheck's flag text that `tests/test_precheck.cpp`, `test_precheck_check3.cpp` and `test_precheck_git.cpp` pin (T16a, T16b) and the quiet check that `tools/ch_mcp/tests/test_quiet.py` tests (T22c), so `Waits for: T16, T22c`. H2 adds its test to `~/.claude/gates/tests/test_bash_windows_rule.py`, which T30 owns, so `Waits for: T30`. B5's comment fixes touch no file a part owns. A task that finds its edit lands in a file a pass has out stops and reports; the main session then orders the two.
 
-**Then each answer's tasks.** A yes to question 1 first needs a short plan for the recording runs, with live steps written to the call-list rule on `docs/agents/premise-map.md`; the after-q1 passes of T18 to T25 and M5 wait for those recordings. A yes to question 2 sends the after-q2 pass of every task that has one. An answer to question 3 sends the after-q3 passes. Question 4 sends O1. Question 5 sends T31. A pass for an answer never runs while another pass on the same file is out.
+**Round 2 is the mop-up tasks M1 to M6**, after the first passes they depend on have merged, and B1, B2, B3, B4 and H2, each after the tasks its `Waits for:` line names.
+
+**Then each answer's tasks.** A yes to question 1 first needs a short plan for the recording runs, with live steps written to the call-list rule on `docs/agents/premise-map.md`; the after-q1 passes of T18 to T25 and M5 wait for those recordings. A yes to question 2 sends the after-q2 pass of every task that has one. Question 3 sends O1. A pass for an answer never runs while another pass on the same file is out.
 
 The visible group runs beside all of this. Only B7, B8 and B9 wait on it.
 
@@ -719,9 +721,12 @@ Fixing the hooks named in work-list item 34 (the key lock and `prepass.py`) beyo
 | The settings names get one owner and no text changes | B6 | B6 | `hydra_uitest` text of the batch confirm the same before and after |
 | Hook fixes have a test that fails on the old code | The bug tasks | H1, H2 | reviewer reads the test |
 | An unproven bug is checked once, then fixed or dropped | G1 | G1 | the scout's report names each of the four |
-| Visible items wait for the map and the user | The visible group | V0, V1, V2 | V2 is not written until the map and answer 6 exist |
-| No run touches the whole library | Questions 1 and 4 | every task | the whole-library hook refuses the command |
+| Visible items wait for the map and the user | The visible group | V0, V1, V2 | V2 is not written until the map and answer 4 exist |
+| No run touches the whole library | Questions 1 and 3 | every task | the whole-library hook refuses the command |
 | Hooks work stays out of Hydra's worktrees | Hooks-repo tests | T28 to T31, M6, H1, H2 | the branch is in `C:\Users\Patrick\.claude` |
+| A wait ends at once when its event cannot happen (the 16 November ruling) | A sixth ruling | tasks with C-clock, K-floor, K-skip or fixed-sleep rows | each executor's report lists the rows it applied to; the reviewer reads those diffs |
+| The 98 no-key rows are fixed by the work list's recipes, hand-written input left alone | No-key rows | every task with No key rows | the report lists the left rows; the reviewer reads the diff |
+| A bug task that touches a part's file waits for that part | Order and rounds | B1, B2, B3, B4, H2 | the `Waits for:` lines |
 | Nothing waits on the visible group except B7 to B9 | Order and rounds | all | the `Waits for:` lines |
 
 ## Premise map
@@ -740,6 +745,9 @@ Fixing the hooks named in work-list item 34 (the key lock and `prepass.py`) beyo
 | P9: a rubric key breaks no filed ruling, so its group is its own question | code | `docs/audit/2026-11-14-test-audit/exits/keys.md` line 23 | checked 2026-11-18 by the first planner |
 | P10: the two h5x hook tests each exist in `gates/tests` and `hooks/tests` | code | `docs/audit/2026-11-14-test-audit/exits/row-files.tsv`, the 19 `ambiguous` lines, which the script wrote from `git ls-files` in `C:\Users\Patrick\.claude` | checked 2026-11-18 |
 | P11: every Python test file an executor is allowed to run needs no built exe | unchecked | `docs/agents/brief-preamble.md` line 47 says so of the Python tools' tests in general; a search found the words `build-cpp` or an exe name in `tools/ch_mcp/tests/test_quiet.py`, `tools/ch_probe/tests/test_prep_inputs.py` and `tools/test_hydra_ui_mcp.py`, not opened | T22 (it owns `test_quiet.py`; T23 and T26 own the other two; each reports a test that needs a build and does not run it) |
+| P13: a sixth filed test ruling exists, "yes a test should fail instantly if its pass condition is impossible, not hang until it's forced to time out" | ruling | `docs/agents/rulings/tests-and-runs.md` line 8, under `## Confirmed` | checked 2026-11-18 by the reviewer, who opened the file |
+| P14: the live copy of the two h5x hook tests is the one in `gates\tests` | code | `C:\Users\Patrick\.claude\settings.json` lines 89 and 101; `C:\Users\Patrick\.claude\gates\README.md` lines 67 and 152 | checked 2026-11-18 by the reviewer, who opened both |
+| P15: hand-written input that the real code reads stays as it is | ruling | `docs/audit/2026-11-14-test-audit/questions.md` question 1 (line 13-15): the choice was made in a question box and never filed, so it is the user's choice, not a filed ruling | checked 2026-11-18 by the reviewer; the plan applies it as the work list does and asks nothing |
 | P12: the user wants every bad test fixed with no further reading rounds | ruling | "well i still want to fix all the garbage tests, i just want to stop wasting time with more reads and get to the point where we can actually act on our findings", session 98fa2925, as the main session's brief quotes it | checked 2026-11-18 |
 
 There are no live steps in this plan. A yes to question 1 adds them, and whoever writes them follows the call-list rule on `docs/agents/premise-map.md`.

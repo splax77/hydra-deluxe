@@ -79,7 +79,7 @@ These need one check before they become a task. The fix plan gives each a short 
 
 A key names a ruling and the way a test breaks it (`exits/keys.md`). Each recipe below applies to every row under its key; `exits/labels/labels.tsv` lists the rows, and the row counts are from `exits/groups.md`. A test with two keys gets both recipes. Rows are tests, so the plan groups them by test file, not by key: one executor owns a file and applies every recipe its rows carry.
 
-The rulings these recipes stand on are the user's words under `## Confirmed` in `docs/agents/rulings/tests-and-runs.md`, lines 9-13: R-fake, R-const, R-cite, R-string and R-db.
+The rulings these recipes stand on are the user's words under `## Confirmed` in `docs/agents/rulings/tests-and-runs.md`, lines 9-13: R-fake, R-const, R-cite, R-string and R-db. A sixth line there (line 8, 2026-11-16, session 872cc6f3) says "yes a test should fail instantly if its pass condition is impossible, not hang until it's forced to time out"; the audit's keys do not name it, so every wait, skip and floor recipe below (C-clock, K-floor, K-skip) also ends the test at once when its pass condition can no longer happen.
 
 ### Stand-ins for Hydra's own output (R-fake)
 
