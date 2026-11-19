@@ -12,7 +12,7 @@ Row form: id | question | file:line | value | owner claim | who reads/acts | who
 
 ## A. writer-brief.md (rules the card writers are given)
 
-I4-001 | Which plan is behind the cards | writer-brief.md:5 | `docs/superpowers/plans/2026-10-14-session-cards-backfill.md` (removed; `git show 444631e6:...`) | none | writers | none. Same path stated in common.py (I4-040).
+I4-001 | Which plan is behind the cards | writer-brief.md:5 | `docs/superpowers/plans/2026-10-14-session-cards-backfill.md (`git show 35e9c32e:docs/superpowers/plans/2026-10-14-session-cards-backfill.md`)` (removed; `git show 444631e6:...`) | none | writers | none. Same path stated in common.py (I4-040).
 I4-002 | Who reads the cards | writer-brief.md:9-10 | "Cards are published with the Hydra repo, in its `docs/sessions/` folder, so anyone can read them." | none | writers | none. Same folder is I4-041.
 I4-003 | May a card hold a secret | writer-brief.md:11 | no secret, token, password or key; say "a GitHub token was pasted into chat", never copy any part | none | writers | none
 I4-004 | How a card names files | writer-brief.md:12-13 | repo files by repo path; outside the repo only "kept locally" or "not kept"; scratch/temp file = "a scratch file, not kept", never its path | none | writers | none

@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: a closure checker.
 
 Task id: given in your dispatch (TOOL-AUDIT-T7-C<n>). Session id: f6a384b5-9eed-4607-95cb-681ec635d569.
-You change no file in either repo. You must write one file in C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\, named `<your task id>.md`; your hand-back is its path and a five-line summary. Status lines as the preamble says. When the hook warns you, stop taking new rows and list the ids you did not reach.
+You change no file in either repo. You must write one file in the session's scratch folder (not kept; each report was copied to this audit's reports folder), named `<your task id>.md`; your hand-back is its path and a five-line summary. Status lines as the preamble says. When the hook warns you, stop taking new rows and list the ids you did not reach.
 
 ## Your job
 A derive-once audit of our own tooling closed some findings without a question. You check each closure against the files as they are now (both repos have moved since the findings were written; read the current files). Your dispatch gives a sorting file and the ledger ids to check. For each id, read its line in the sorting file (`category`, `sides`, `why`) and its section in the ledger file named in your dispatch (and, if the ledger row says NOT VERIFIED, the matching section in the W reports under ..\reports\TOOL-AUDIT-T5-W*.md).

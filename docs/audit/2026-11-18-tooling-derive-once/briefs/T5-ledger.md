@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: a ledger compiler.
 
 Task id: given in your dispatch (TOOL-AUDIT-T5-L<n>). Session id: f6a384b5-9eed-4607-95cb-681ec635d569.
-You change no file in either repo. Write one file in C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\, named `<your task id>.md`, and hand back that path with a five-line summary. Status lines as the preamble says. Your budget is the progress hook's.
+You change no file in either repo. Write one file in the session's scratch folder (not kept; each report was copied to this audit's reports folder), named `<your task id>.md`, and hand back that path with a five-line summary. Status lines as the preamble says. Your budget is the progress hook's.
 
 ## Your job
 A derive-once audit of our own tooling ran finders and verifiers. Your dispatch names three finder ids (Fxx). For each, read these reports in C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\tooling-audit-records\docs\audit\2026-11-18-tooling-derive-once\reports\: `TOOL-AUDIT-T5-Fxx.md` (finder), `TOOL-AUDIT-T5-Vxx.md` (its verifier), and, if they exist, `TOOL-AUDIT-T5-Fxxb.md` and `TOOL-AUDIT-T5-Vxxb.md` (the re-send pair). Read no other report. You compile; you do not search the files again and you judge nothing new. Where the verifier and finder disagree, the verifier's reading wins, and you say so.

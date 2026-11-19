@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: a question re-checker.
 
 Task id: given in your dispatch (TOOL-AUDIT-T8-R<n>). Session id: 57045e74-0b59-432e-94f2-0890be921616.
-You change no file in either repo. You must write one file in C:\Users\Patrick\AppData\Local\Temp\claude\63488935a2a6b8a1\57045e74-0b59-432e-94f2-0890be921616\scratchpad\tooling-audit\, named `<your task id>.md`; your hand-back is its path and a five-line summary. Status lines as the preamble says. When the hook warns you, stop taking new rows and list the ids you did not reach.
+You change no file in either repo. You must write one file in the session's scratch folder (not kept; each report was copied to this audit's reports folder), named `<your task id>.md`; your hand-back is its path and a five-line summary. Status lines as the preamble says. When the hook warns you, stop taking new rows and list the ids you did not reach.
 
 ## Your job
 A derive-once audit of our own tooling has rows that are meant to go to the user as questions. Before any of them does, each one must be shown to be a real case in today's files. The user caught one invented case already ("is this a real concern or an edge case you invented"), and said "im not manually reviewing hundreds of questions". Your dispatch lists ledger ids. The audit folder is C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\tooling-audit-records\docs\audit\2026-11-18-tooling-derive-once\. For each id, grep the id in `sorting\TOOL-AUDIT-T6-S*.tsv` (columns id, verdict, category, theme, sides, why) and read its section in `ledger\TOOL-AUDIT-T5-L*.md`. If the id is one T7 reopened, also read its verdict in `reports\TOOL-AUDIT-T7-C*.md`.

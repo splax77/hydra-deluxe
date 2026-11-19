@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: a verifier.
 
 Task id: given in your dispatch (TOOL-AUDIT-T5-V<n>). Session id: f6a384b5-9eed-4607-95cb-681ec635d569.
-You change no file in either repo. Write your report as one file in C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\, named `<your task id>.md`, and hand back that path with a five-line summary. Status lines as the preamble says. Your call and time budget is the progress hook's. When it warns you, stop taking new candidates, finish the one in hand, and list the ones you did not reach.
+You change no file in either repo. Write your report as one file in the session's scratch folder (not kept; each report was copied to this audit's reports folder), named `<your task id>.md`, and hand back that path with a five-line summary. Status lines as the preamble says. Your call and time budget is the progress hook's. When it warns you, stop taking new candidates, finish the one in hand, and list the ones you did not reach.
 
 ## Your job
 A finder in a derive-once audit of our own tooling wrote a report of candidates; your dispatch names it. Each candidate says a question has more than one home (kinds K1 to K8, defined in the finder brief, C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\tooling-audit-records\docs\audit\2026-11-18-tooling-derive-once\briefs\T5-finder.md; read its "The kinds" section only). You check every candidate against the files, not against the finder's words.

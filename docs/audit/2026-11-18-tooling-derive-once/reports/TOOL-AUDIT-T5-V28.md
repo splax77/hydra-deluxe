@@ -14,7 +14,7 @@ G = ~/.claude/gates, H = Hydra main checkout, AR = H/docs/agents/agent-rules.md.
 10. K6 crash handling in common.run and two .ps1 hooks: NOT REACHED.
 11. K7 [write-back] duty only in CLAUDE.md: CONFIRMED. session_cards_start.ps1 has 0 matches for "write-back". (writer-brief.md:64 and :81 carry the `write-back:` line the writer writes; the next main session's duty is CLAUDE.md only.)
 12. K8 .derive-once-gate and .doc-review-gate name `hooks\lib\derive_once_rules.ps1` / `doc_review_rules.ps1`: CONFIRMED. Both marker files say so; ~/.claude/hooks holds only `state`; ~/.claude/hooks/lib does not exist.
-13. K8 plan files not found: CONFIRMED. wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md; nothing in H/docs/superpowers/plans matches "supervis" and ~/.claude/plans has none. check.py:34-35 says "the supervisor plan" with no path (a pointer to a doc I could not find).
+13. K8 plan files not found: CONFIRMED. wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`); nothing in H/docs/superpowers/plans matches "supervis" and ~/.claude/plans has none. check.py:34-35 says "the supervisor plan" with no path (a pointer to a doc I could not find).
 14. AR user quotes (rules 15 and display) not under `## Confirmed`: CONFIRMED. grep for "correct rule is to use", "invent new rules", "invents its own rule" in docs/agents/rulings/*.md: no hits. In agents-and-workflow.md, Confirmed starts line 7, Unconfirmed line 32. "Yes, record it" (cited in check.py) also has no hit in rulings.
 
 ## Splits (each a separate line)

@@ -545,7 +545,7 @@ Rows still NOT VERIFIED after both verifier rounds stay open whatever their cate
 | L-F28-03 | CONFIRMED | P | Fix pending |  | none |
 | L-F28-04 | CONFIRMED | A | exit 3 |  | agent-rules.md:27 notice at 30 minutes; stall.py:134 only after more than 30 minutes |
 | L-F28-05 | CONFIRMED | P | Fix pending |  | none |
-| L-F28-06 | CONFIRMED | Q | exit 2 | missing plan file cited | wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md which does not exist; check.py:34-35 cites it by name only |
+| L-F28-06 | CONFIRMED | Q | exit 2 | missing plan file cited | wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`) which does not exist; check.py:34-35 cites it by name only |
 | L-F28-07 | CONFIRMED | P | Fix pending |  | none |
 | L-F28-08 | CONFIRMED | A | exit 3 |  | cleanup_sweep.ps1:33-46 and session_cards_start.ps1:26-32 header comments; the scripts' param blocks |
 | L-F28-09 | CONFIRMED | Q | exit 2 | write-back reminder has no hook | CLAUDE.md Past sessions says next main session adds the fact; session_cards_start.ps1 has no write-back text |
