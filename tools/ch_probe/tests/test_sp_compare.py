@@ -32,6 +32,7 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_probe.experiments import play_chart, sp_compare  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
+from tools.ch_probe.experiments.score_compare import stop_check  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
 
 
@@ -146,130 +147,292 @@ PASS   activation 1 end chord: game end 4100.0 ms, the game's last chord inside:
 PASS multiplier at each chord: 8 of 8 chords match (one chord of lag allowed)"""
 
 
-class MatchingRunTest(unittest.TestCase):
-    def test_everything_passes(self):
-        report = run(build_rows(), sp_bar_ticks=14400)
-        self.assertEqual(report.fails, 0)
-        self.assertEqual(report.text(), MATCHING_REPORT)
+# --- Two real runs of one corpus chart -----------------------------------------
+#
+# Both runs had the auto-player play path 0 of CHON - Pitch Dark (B), whose
+# notes.mid is byte for byte the corpus chart
+# testdata/input/test_pitch_dark_ratio/notes.mid. Pieces of each run's
+# sp_watch-1.csv are copied, rows unchanged, under testdata/ch_runs.
+#
+# hydra-data/ch-mcp-runs/2026-11-13/pitch-dark-ratios-run1 kept to the path.
+# Its sp_watch-1-act3.csv holds clock 188.4 s to 195.6 s, the run's third
+# activation from before its flip to after its end; sp_watch-1-rise776.csv
+# holds clock 179.2 s to 179.6 s, around the meter's rise after the song's
+# last phrase end.
+#
+# hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1 did not: its second
+# Star Power ended about 3 s before Hydra's end, and its third activation
+# came on another chord. Each *-edges.csv holds four rows of one activation,
+# the row before the flag sets, the row it sets on, the last row with it set
+# and the row it clears on (data rows 29270, 29271, 33961 and 33962 for the
+# second; 37338, 37339, 38941 and 38942 for the third).
+_RUNS_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs")
+_ACT3_CSV = os.path.join(_RUNS_DIR, "pitch-dark-ratios-run1", "sp_watch-1-act3.csv")
+_RISE_CSV = os.path.join(_RUNS_DIR, "pitch-dark-ratios-run1", "sp_watch-1-rise776.csv")
+_EARLY_END_CSV = os.path.join(_RUNS_DIR, "pitch-dark-run1", "sp_watch-1-act2-edges.csv")
+_OFF_PATH_CSV = os.path.join(_RUNS_DIR, "pitch-dark-run1", "sp_watch-1-act3-edges.csv")
+_PITCH_DARK_CHART = os.path.join(_REPO_ROOT, "testdata", "input",
+                                 "test_pitch_dark_ratio", "notes.mid")
+
+# Hydra's own files for that chart, in testdata/replay. From the repo root,
+#   py -I tools/ch_probe/prep_inputs.py
+#       --chart testdata/input/test_pitch_dark_ratio/notes.mid --out testdata/replay
+# writes the dump and path 0's score and schedule, the path both runs played.
+# The runs' own schedules were made by older builds; the press times here
+# come from the schedule this checkout's hydra_replay makes.
+_REPLAY_DIR = os.path.join(_REPO_ROOT, "testdata", "replay")
+_REPLAY_HOW = ("make it as the comment above _REPLAY_DIR in "
+               "tools/ch_probe/tests/test_sp_compare.py says")
+
+
+def _replay_file(name):
+    """A file in testdata/replay; a missing one fails the test at once."""
+    path = os.path.join(_REPLAY_DIR, name)
+    if not os.path.isfile(path):
+        raise AssertionError(f"{path} is missing; {_REPLAY_HOW}")
+    return path
+
+
+def _path_files():
+    """(score, press_reach) of path 0's hydra_replay files for the chart."""
+    score = sp_compare.load_score(_replay_file("test_pitch_dark_ratio-score.json"))
+    reach = sp_compare.press_reach(_replay_file("test_pitch_dark_ratio-schedule.json"))
+    return score, reach
+
+
+def _midi_resolution(path):
+    """The chart's resolution: the division field (ticks per quarter note) of
+    its Standard MIDI File header, bytes 12-13 of the MThd chunk."""
+    with open(path, "rb") as f:
+        head = f.read(14)
+    if head[:4] != b"MThd":
+        raise AssertionError(f"{path} does not start with a MIDI header")
+    return int.from_bytes(head[12:14], "big")
+
+
+def _within(score, rows, lead_ms=0.0):
+    """The score with only the chords and path activations inside the clock
+    span of a watch piece; chords reach lead_ms further back. The piece is a
+    few seconds of the run, so the comparison is held to Hydra's chords in
+    those seconds; no chord or activation is changed."""
+    lo, hi = sp_compare._ms(rows[0]), sp_compare._ms(rows[-1])
+    return dict(score,
+                chords=[c for c in score["chords"] if lo - lead_ms <= c["ms"] <= hi],
+                activations=[a for a in score["activations"]
+                             if lo <= a["act_ms"] and a["deact_ms"] <= hi])
+
+
+def _starting(report, text):
+    """The report's lines that start with `text`."""
+    return [line for line in report.lines if line.startswith(text)]
+
+
+class RealRunTest(unittest.TestCase):
+    """sp_compare on the real pitch-dark-run1 watch pieces, against Hydra's
+    score and schedule of the path the run played."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.score, cls.reach = _path_files()
+        cls.resolution = _midi_resolution(_PITCH_DARK_CHART)
+        cls.act3 = sp_compare.load_watch_rows(_ACT3_CSV)
+        cls.rise = sp_compare.load_watch_rows(_RISE_CSV)
+        cls.act3_score = _within(cls.score, cls.act3)
+        cls.rise_score = _within(cls.score, cls.rise)
+
+    def compare(self, rows, score, *, reach=None, stop=play_chart.STOP_DONE, **kwargs):
+        return sp_compare.compare(rows, score, resolution=self.resolution,
+                                  reach=reach or self.reach, stop=stop, **kwargs)
+
+    def _activation(self):
+        """The path activation inside the act3 piece and its chord."""
+        acts = self.act3_score["activations"]
+        self.assertEqual(len(acts), 1, "the act3 piece should hold one path activation")
+        act = acts[0]
+        chord = next(c for c in self.act3_score["chords"] if c["tick"] == act["act_tick"])
+        return act, chord
+
+    def _hydra_deact_chord(self, act):
+        """The last chord Hydra pays in Star Power from act_tick to deact_tick."""
+        return [c for c in self.act3_score["chords"]
+                if c["in_sp"] and act["act_tick"] <= c["tick"] <= act["deact_tick"]][-1]
+
+    def _first_flag_row(self, rows):
+        return next(i for i, r in enumerate(rows) if sp_compare.is_active(r))
+
+    def test_the_runs_last_activation_passes_every_check(self):
+        report = self.compare(self.act3, self.act3_score)
+        self.assertEqual(report.fails, 0, report.text())
+        act, chord = self._activation()
+        flip = self.act3[self._first_flag_row(self.act3)]
+        self.assertIn(f"Activation 1 at clock {sp_compare.format_ms(sp_compare._ms(flip))}:",
+                      report.lines)
+        self.assertIn("PASS   activation 1 on the path's chord: "
+                      + sp_compare._chord_label(chord), report.lines)
+        end = _starting(report, "PASS   activation 1 end chord:")
+        self.assertEqual(len(end), 1, report.text())
+        self.assertIn("Hydra's deactivation: "
+                      + sp_compare._chord_label(self._hydra_deact_chord(act)), end[0])
+        sp_max = _starting(report, "PASS sp_max ")
+        self.assertEqual(len(sp_max), 1, report.text())
+        self.assertIn(str(sp_compare.game_full_meter(self.resolution)), sp_max[0])
+        self.assertEqual(len(_starting(report, "PASS multiplier at each chord:")), 1)
+
+    def test_the_last_phrase_rise_is_found_on_the_row_the_game_shows_it(self):
+        ends = [c for c in self.rise_score["chords"] if c["is_sp_phrase_end"]]
+        self.assertEqual(len(ends), 1, "the rise piece should hold one phrase end")
+        rises = sp_compare.phrase_rises(self.rise, AMOUNT)
+        self.assertTrue(rises, "the rise piece should hold the game's rise")
+        report = self.compare(self.rise, self.rise_score)
+        line = _starting(report, f"PASS phrase rise after {sp_compare._chord_label(ends[0])}: ")
+        self.assertEqual(len(line), 1, report.text())
+        self.assertIn(f"at {sp_compare.format_ms(rises[0].ms)}", line[0])
+
+    def _rise_cut_before_the_rise(self):
+        """The rise piece up to the row before the game's rise: a watch that
+        stopped just before the meter rose."""
+        first_rise = next(i for i in range(1, len(self.rise))
+                          if self.rise[i][AMOUNT] > self.rise[i - 1][AMOUNT])
+        return self.rise[:first_rise]
 
     def test_summary_is_the_first_line(self):
-        self.assertEqual(run(build_rows()).lines[0], "Summary: 12 PASS, 0 FAIL")
-        failing = run(build_rows(rise_skip={2}))
-        self.assertEqual(failing.lines[0], "Summary: 11 PASS, 1 FAIL")
-        self.assertEqual(sum(1 for line in failing.lines if line.startswith("Summary")), 1)
+        passing = self.compare(self.act3, self.act3_score)
+        failing = self.compare(self._rise_cut_before_the_rise(), self.rise_score)
+        self.assertGreater(failing.fails, 0)
+        for report in (passing, failing):
+            passes = len(_starting(report, "PASS "))
+            fails = len(_starting(report, "FAIL "))
+            self.assertEqual((report.passes, report.fails), (passes, fails))
+            self.assertEqual(report.lines[0], f"Summary: {passes} PASS, {fails} FAIL")
+            self.assertEqual(len(_starting(report, "Summary")), 1)
 
-
-class RunEndTest(unittest.TestCase):
     def test_a_run_that_stopped_before_the_song_end_fails(self):
-        report = run(build_rows(), stop=play_chart.STOP_NO_ENGINE,
-                     stop_message="no engine after 30 s")
-        self.assertIn("FAIL run end: the run stopped before the song's end "
-                      "(no engine): no engine after 30 s", report.lines)
-        self.assertEqual(report.fails, 1)
+        done = self.compare(self.act3, self.act3_score)
+        stopped = self.compare(self.act3, self.act3_score, stop=play_chart.STOP_NO_ENGINE)
+        ok, line = stop_check(play_chart.STOP_NO_ENGINE)
+        self.assertFalse(ok)
+        self.assertIn(line, stopped.lines)
+        self.assertIn(play_chart.STOP_NO_ENGINE, line)
+        self.assertEqual(stopped.fails, done.fails + 1)
 
     def test_a_run_with_no_stop_reason_fails(self):
-        report = run(build_rows(), stop=None)
-        self.assertIn("FAIL run end: the run's stop reason was not given", report.lines)
-        self.assertEqual(report.fails, 1)
+        done = self.compare(self.act3, self.act3_score)
+        report = self.compare(self.act3, self.act3_score, stop=None)
+        ok, line = stop_check(None)
+        self.assertFalse(ok)
+        self.assertIn(line, report.lines)
+        self.assertEqual(report.fails, done.fails + 1)
 
-
-class FailingRunTest(unittest.TestCase):
     def test_missing_rise_fails(self):
-        report = run(build_rows(rise_skip={2}))
-        self.assertIn("FAIL phrase rise after chord 2 (tick 384, 2000.0 ms): "
-                      "missing (no rise from 1998.0 ms to 2100.0 ms)", report.lines)
-        self.assertEqual(report.fails, 1)
+        rows = self._rise_cut_before_the_rise()
+        end = next(c for c in self.rise_score["chords"] if c["is_sp_phrase_end"])
+        report = self.compare(rows, self.rise_score)
+        line = _starting(report, f"FAIL phrase rise after {sp_compare._chord_label(end)}: "
+                                 f"missing")
+        self.assertEqual(len(line), 1, report.text())
+        # The search starts at the chord's first press (press_reach).
+        self.assertIn(f"from {sp_compare.format_ms(self.reach[end['index']].earliest_ms)}",
+                      line[0])
 
     def test_flag_never_sets_fails(self):
-        report = run(build_rows(act=None))
-        self.assertIn("FAIL path activation 1 (act_tick 768): the game made no "
-                      "activation", report.lines)
-        self.assertIn("Multiplier not compared from chord 3 on: the game's "
-                      "activations part from the path at 3000.0 ms", report.lines)
-        self.assertEqual(report.fails, 1)
+        # The act3 piece up to the row before the flag sets: a watch that
+        # stopped before the game activated.
+        rows = self.act3[:self._first_flag_row(self.act3)]
+        act, chord = self._activation()
+        report = self.compare(rows, self.act3_score)
+        self.assertIn(f"FAIL path activation 1 (act_tick {act['act_tick']}): the game "
+                      f"made no activation", report.lines)
+        parted = _starting(report, "Multiplier not compared from chord ")
+        self.assertEqual(len(parted), 1, report.text())
+        self.assertTrue(parted[0].endswith(
+            f"the game's activations part from the path at {sp_compare.format_ms(chord['ms'])}"),
+            parted[0])
 
     def test_end_never_clears_fails(self):
-        report = run(build_rows(act_clears=False))
-        self.assertIn("FAIL   activation 1 flag clears at the end: still set at the "
-                      "last row (5000.0 ms), end time 4100.0 ms", report.lines)
+        # The act3 piece up to the last row with the flag set: a watch that
+        # stopped inside the activation.
+        flip = self._first_flag_row(self.act3)
+        drop = next(i for i in range(flip, len(self.act3))
+                    if not sp_compare.is_active(self.act3[i]))
+        rows = self.act3[:drop]
+        act, _ = self._activation()
+        report = self.compare(rows, self.act3_score)
+        self.assertEqual(len(_starting(
+            report, "FAIL   activation 1 flag clears at the end: still set at the last "
+                    f"row ({sp_compare.format_ms(sp_compare._ms(rows[-1]))})")), 1,
+            report.text())
         self.assertIn("FAIL   activation 1 end chord: the flag never cleared; Hydra's "
-                      "deactivation: chord 6 (tick 1152, 4000.0 ms)", report.lines)
-        self.assertEqual(report.fails, 2)
-
-    def test_multiplier_that_stays_4_fails(self):
-        report = run(build_rows(mult_doubles=False))
-        self.assertIn("FAIL   activation 1 multiplier doubles: 4 before, [4] within "
-                      "100 ms, expected 8", report.lines)
-        self.assertIn("FAIL   activation 1 multiplier halves at the end: 4 before, "
-                      "[4] within 100 ms of the end", report.lines)
-        self.assertIn("FAIL multiplier at each chord: first mismatch at chord 5 "
-                      "(tick 960, 3500.0 ms): game 4, expected 8 (multiplier 4, in "
-                      "Star Power); 7 of 8 chords match", report.lines)
-        self.assertEqual(report.fails, 3)
-
-    def test_star_power_over_before_hydras_end_fails_three_ways(self):
-        # The game's Star Power ends at 3300 ms, 700 ms before Hydra's 4000:
-        # the flag clears early, the last chord inside is chord 4 and not
-        # chord 6, and chord 5, which Hydra pays in Star Power, gets 4.
-        report = run(build_rows(act=(3005, 3300)))
-        self.assertIn("FAIL   activation 1 flag clears at Hydra's end: Hydra 4000.0 ms, "
-                      "flag 0 at 3300.0 ms", report.lines)
-        self.assertIn("FAIL   activation 1 end chord: game end 3300.0 ms, the game's "
-                      "last chord inside: chord 4 (tick 768, 3000.0 ms); Hydra's "
-                      "deactivation: chord 6 (tick 1152, 4000.0 ms), difference "
-                      "-700.0 ms", report.lines)
-        self.assertIn("FAIL multiplier at each chord: first mismatch at chord 5 "
-                      "(tick 960, 3500.0 ms): game 4, expected 8 (multiplier 4, in "
-                      "Star Power); 7 of 8 chords match", report.lines)
-        self.assertEqual(report.fails, 3)
+                      "deactivation: " + sp_compare._chord_label(self._hydra_deact_chord(act)),
+                      report.lines)
 
     def test_zero_of_zero_fails(self):
-        # One row, before any chord's press: no chord is compared.
+        # The piece's first row comes before the first chord's first press, so
+        # no chord has a row to be read on.
+        chords = self.act3_score["chords"]
+        self.assertLess(sp_compare._ms(self.act3[0]),
+                        self.reach[chords[0]["index"]].earliest_ms)
         report = sp_compare.Report()
-        sp_compare._check_multipliers(report, [_row(0.5, 0)], SCORE["chords"],
-                                      None, _score_reach())
-        self.assertEqual(report.lines[0], "FAIL multiplier at each chord: 0 of 0 "
-                                          "chords match (one chord of lag allowed)")
+        sp_compare._check_multipliers(report, self.act3[:1], chords, None, self.reach)
         self.assertEqual(report.fails, 1)
+        self.assertTrue(report.lines[0].startswith(
+            "FAIL multiplier at each chord: 0 of 0 chords match"), report.lines[0])
+        self.assertIn(f"Multiplier not compared on {len(chords)} chords", report.lines[1])
 
     def test_an_activation_on_at_row_0_is_reported(self):
-        # The watch starts at 3010 ms, after the activation at 3005 ms.
-        rows = build_rows(range(3010, 5001, 10))
+        # The act3 piece from the row the flag sets on: a watch that started
+        # after the activation began.
+        rows = self.act3[self._first_flag_row(self.act3):]
         found = sp_compare.find_activations(rows)
-        self.assertEqual([(a.number, a.flip_row, a.drop_row) for a in found],
-                         [(1, 0, 109)])
-        report = run(rows)
+        self.assertEqual([(a.number, a.flip_row) for a in found], [(1, 0)])
+        drop = found[0].drop_row
+        self.assertTrue(sp_compare.is_active(rows[drop - 1]))
+        self.assertFalse(sp_compare.is_active(rows[drop]))
+        report = self.compare(rows, self.act3_score)
         self.assertIn("FAIL   activation 1 was already on at the watch's first row "
-                      "(3010.0 ms); its start was not seen", report.lines)
+                      f"({sp_compare.format_ms(sp_compare._ms(rows[0]))}); its start was "
+                      "not seen", report.lines)
 
+    def test_star_power_that_ends_before_hydras_end_fails(self):
+        # pitch-dark-run1's second activation, on path 0's second activation
+        # chord: the flag clears about 3 s before Hydra's deact_ms.
+        rows = sp_compare.load_watch_rows(_EARLY_END_CSV)
+        act = sp_compare.find_activations(rows)
+        self.assertEqual([(a.flip_row, a.drop_row) for a in act], [(1, 3)])
+        want = self.score["activations"][1]
+        report = sp_compare.Report()
+        sp_compare._check_activation(report, rows, act[0], want["deact_ms"])
+        sp_compare._check_end_chord(report, rows, act[0], want, self.score["chords"],
+                                    self.reach)
+        drop_ms = sp_compare._ms(rows[3])
+        self.assertLess(drop_ms, want["deact_ms"] - sp_compare.EVENT_WINDOW_MS)
+        self.assertIn(f"FAIL   activation 1 flag clears at Hydra's end: Hydra "
+                      f"{sp_compare.format_ms(want['deact_ms'])}, flag 0 at "
+                      f"{sp_compare.format_ms(drop_ms)}", report.lines)
+        hydra = [c for c in self.score["chords"] if c["in_sp"]
+                 and want["act_tick"] <= c["tick"] <= want["deact_tick"]][-1]
+        end = _starting(report, "FAIL   activation 1 end chord: game end ")
+        self.assertEqual(len(end), 1, report.text())
+        self.assertIn("Hydra's deactivation: " + sp_compare._chord_label(hydra), end[0])
+        self.assertNotIn("the game's last chord inside: " + sp_compare._chord_label(hydra),
+                         end[0])
 
-class PathTest(unittest.TestCase):
-    def test_activation_one_fill_early_is_off_the_path(self):
-        report = run(build_rows(act=(2505, 3600)))
-        self.assertIn("FAIL   activation 1 not on the path's chord: game tick 576, "
-                      "path act_tick 768", report.lines)
-        for line in (
-            "PASS   activation 1 multiplier doubles: 4 -> 8 at 2510.0 ms",
-            "PASS   activation 1 end time ahead of the clock: end 3600.0 ms, "
-            "clock 2510.0 ms",
-            "FAIL   activation 1 flag clears at Hydra's end: Hydra 4000.0 ms, flag 0 "
-            "at 3600.0 ms",
-            "PASS   activation 1 multiplier halves at the end: 8 -> 4 at 3600.0 ms",
-        ):
-            self.assertIn(line, report.lines)
-        self.assertFalse(any("end chord" in line for line in report.lines))
-        self.assertIn("Multiplier not compared from chord 3 on: the game's "
-                      "activations part from the path at 2510.0 ms", report.lines)
-        self.assertEqual(report.fails, 2)
-
-    def test_flag_a_ms_before_the_chord_lands_on_it(self):
-        # The auto-player presses early, so the flag can show on a row whose
-        # clock is just before the activation chord's ms.
-        times = sorted(set(DEFAULT_TIMES) | {2999})
-        report = run(build_rows(times, act=(2999, 4100)))
-        self.assertIn("PASS   activation 1 on the path's chord: chord 4 (tick 768, "
-                      "3000.0 ms)", report.lines)
-        self.assertEqual(report.fails, 0)
+    def test_an_activation_on_a_chord_the_path_does_not_activate_on_is_off_the_path(self):
+        # pitch-dark-run1's third activation came between path 0's second and
+        # third: inside these rows' span the path makes no activation.
+        # Its first row is the one before the flip, so the chords reach back
+        # as far as a flip may land (LANDING_WINDOW_MS).
+        rows = sp_compare.load_watch_rows(_OFF_PATH_CSV)
+        score = _within(self.score, rows, sp_compare.LANDING_WINDOW_MS)
+        self.assertEqual(score["activations"], [])
+        report = self.compare(rows, score)
+        off = _starting(report, "FAIL   activation 1 not on the path's chord: game tick ")
+        self.assertEqual(len(off), 1, report.text())
+        self.assertTrue(off[0].endswith(", path act_tick none"), off[0])
+        game_tick = int(off[0].split("game tick ")[1].split(",")[0])
+        self.assertIn(game_tick, [c["tick"] for c in self.score["chords"]])
+        self.assertNotIn(game_tick, [a["act_tick"] for a in self.score["activations"]])
+        self.assertFalse(_starting(report, "PASS   activation 1 end chord"))
+        self.assertFalse(_starting(report, "FAIL   activation 1 end chord"))
 
 
 # LS-M2's activation 2 (hydra-data/ch-mcp-runs/2026-11-08/ls-m2-run1): the row
