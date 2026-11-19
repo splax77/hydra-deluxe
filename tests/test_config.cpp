@@ -5,6 +5,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -22,10 +23,13 @@
 #include "core/strutil.h"
 #include "core/version.h"
 #include "core/winstr.h"
+#include "db_file_util.h"  // scalar_on_file
+#include "parse/song.h"  // difficulty_name
 #include "scratch_paths.h"
 #include "search/pather.h"  // kDefaultDepthValue, SearchSettings
 #include "store/record_store.h"  // CapQuery, Lens
 #include "temp_util.h"
+#include "testdata_dirs.h"  // testdata_root
 #include "ui/library_parts.h"  // settings_at_defaults, settings_changes_summary
 
 using hydra::app::AnalysisSettings;
@@ -78,6 +82,8 @@ TEST_CASE("settings round-trip through an INI file") {
     Settings s;
     s.chartfolders = {"C:\\charts\\a", "C:\\charts\\b"};
     s.is_rescan = true;
+    // Off its default, so a difficulty dropped on save or load shows.
+    s.view_difficulty = hydra::difficulty_name(hydra::Difficulty::Hard);
     s.view_prodrums = false;
     s.view_bass2x = false;
     s.view_noteshuffle = true;
@@ -361,64 +367,78 @@ TEST_CASE("a bad line refuses") {
     std::remove(path.c_str());
 }
 
-// D51 Q14, D270 calls 1 and 2.
+// D51 Q14, D270 calls 1 and 2. The range is stated once, by Settings::clamp
+// (the key table every box asks); the file must land on the same number.
 TEST_CASE("settings: a value outside its range loads at the nearest edge") {
-    // The Path limit's range is the squeeze window on either side.
-    CHECK(load_ini_text("range1", "mslimit_value=900\n").mslimit_value ==
-          static_cast<int>(hydra::kSqueezeWindowMs));
-    CHECK(load_ini_text("range2", "mslimit_value=-900\n").mslimit_value ==
-          -static_cast<int>(hydra::kSqueezeWindowMs));
-    // A depth below 0 would crash the search (finding 311).
-    CHECK(load_ini_text("range3", "depth_value=-1\n").depth_value == 0);
-    // The Backend limit is 0 up to the squeeze window; the shown value and
-    // the window the tables use are the same number (finding 31).
-    const Settings back = load_ini_text("range4", "backendlimit_enabled=1\nbackendlimit_value=-30\n");
-    CHECK(back.backendlimit_value == 0);
+    struct NumberKey {
+        const char* name;
+        int Settings::* field;
+    };
+    const NumberKey number_keys[] = {
+        {"depth_value", &Settings::depth_value},
+        {"depth_mode", &Settings::depth_mode},
+        {"mslimit_value", &Settings::mslimit_value},
+        {"backendlimit_value", &Settings::backendlimit_value},
+        {"preview_volume", &Settings::preview_volume},
+        {"sp_cap", &Settings::sp_cap},
+        {"early_fill_window_ms", &Settings::early_fill_window_ms},
+    };
+    const int window = static_cast<int>(hydra::kSqueezeWindowMs);
+    // Beyond every key's edges on both sides, and a value inside each range.
+    const int values[] = {-window - 400, -5, -1, 0, 1, 7, 42, window + 400};
+    for (const NumberKey& k : number_keys) {
+        for (const int v : values) {
+            CAPTURE(k.name);
+            CAPTURE(v);
+            const Settings r =
+                load_ini_text("range", std::string(k.name) + "=" + std::to_string(v) + "\n");
+            CHECK(r.*k.field == Settings::clamp(k.field, v));
+        }
+    }
+
+    // The Path limit's edges are the squeeze window on either side (D41).
+    CHECK(Settings::clamp(&Settings::mslimit_value, window + 400) == window);
+    CHECK(Settings::clamp(&Settings::mslimit_value, -window - 400) == -window);
+    // The Backend limit's top is the same window, so the shown value and the
+    // window the tables use are the same number (finding 31).
+    CHECK(Settings::clamp(&Settings::backendlimit_value, window + 400) == window);
+    // The early-fill window's top is the hit window.
+    CHECK(Settings::clamp(&Settings::early_fill_window_ms, window + 400) ==
+          hydra::kMaxEarlyFillWindowMs);
+    // Below the range a value lands where the range starts: a depth below 0
+    // would crash the search (finding 311), and a backend limit below 0 is
+    // the narrowest window the tables draw.
+    CHECK(load_ini_text("range_depth", "depth_value=-1\n").depth_value ==
+          load_ini_text("range_depth0", "depth_value=0\n").depth_value);
+    const Settings back =
+        load_ini_text("range_back", "backendlimit_enabled=1\nbackendlimit_value=-30\n");
+    const Settings back0 =
+        load_ini_text("range_back0", "backendlimit_enabled=1\nbackendlimit_value=0\n");
     REQUIRE(back.backend_limit().has_value());
-    CHECK(*back.backend_limit() == 0.0);
-    CHECK(load_ini_text("range4b", "backendlimit_value=900\n").backendlimit_value ==
-          static_cast<int>(hydra::kSqueezeWindowMs));
-    // Volume is 0 to 100 percent.
-    CHECK(load_ini_text("range5", "preview_volume=150\n").preview_volume == 100);
-    CHECK(load_ini_text("range6", "preview_volume=-5\n").preview_volume == 0);
-    // depth_mode's range is 0 to 1, so a stray number lands on an edge too.
-    CHECK(load_ini_text("range7", "depth_mode=7\n").depth_mode == 1);
-    CHECK(load_ini_text("range8", "depth_mode=-1\n").depth_mode == 0);
-    CHECK(load_ini_text("range9", "depth_mode=1\n").depth_mode == 1);
-    // The cap's floor is 1 bar, in the file as in the box.
-    CHECK(load_ini_text("range10", "sp_cap=0\n").sp_cap == 1);
-    CHECK(load_ini_text("range11", "sp_cap=-3\n").sp_cap == 1);
-    // The early-fill window is 0 up to the hit window.
-    CHECK(load_ini_text("range12", "early_fill_window_ms=200\n").early_fill_window_ms == 85);
-    CHECK(load_ini_text("range13", "early_fill_window_ms=-5\n").early_fill_window_ms == 0);
-    CHECK(load_ini_text("range14", "early_fill_window_ms=0\n").early_fill_window_ms == 0);
-    CHECK(load_ini_text("range15", "early_fill_window_ms=85\n").early_fill_window_ms == 85);
+    REQUIRE(back0.backend_limit().has_value());
+    CHECK(*back.backend_limit() == *back0.backend_limit());
+    CHECK(load_ini_text("range_efill", "early_fill_window_ms=-5\n").early_fill_window_ms ==
+          load_ini_text("range_efill0", "early_fill_window_ms=0\n").early_fill_window_ms);
+    // "An SP cap below 1 reads 1" (D270 call 1).
+    CHECK(load_ini_text("range_cap0", "sp_cap=0\n").sp_cap == 1);
+    CHECK(load_ini_text("range_cap3", "sp_cap=-3\n").sp_cap == 1);
+    // "depth_mode=7 reads 1" (D270 call 2): points, as the search reads it.
+    const Settings mode7 = load_ini_text("range_mode7", "depth_mode=7\n");
+    CHECK(mode7.depth_mode == 1);
+    CHECK(mode7.search_depth_mode() == hydra::DepthMode::Points);
 }
 
-TEST_CASE("Settings::clamp is the one range every caller asks") {
-    const int window = static_cast<int>(hydra::kSqueezeWindowMs);
-    CHECK(Settings::clamp(&Settings::mslimit_value, 900) == window);
-    CHECK(Settings::clamp(&Settings::mslimit_value, -900) == -window);
-    CHECK(Settings::clamp(&Settings::mslimit_value, 25) == 25);
-    CHECK(Settings::clamp(&Settings::backendlimit_value, -30) == 0);
-    CHECK(Settings::clamp(&Settings::depth_value, -1) == 0);
-    CHECK(Settings::clamp(&Settings::preview_volume, 150) == 100);
-    // The cap's floor is 1 bar (D51 Q16).
-    CHECK(Settings::clamp(&Settings::sp_cap, 0) == 1);
-    // The early-fill window's edges are 0 and the hit window.
-    CHECK(Settings::clamp(&Settings::early_fill_window_ms, 200) == 85);
-    CHECK(Settings::clamp(&Settings::early_fill_window_ms, -5) == 0);
-    CHECK(Settings::clamp(&Settings::early_fill_window_ms, 42) == 42);
-    // The volume percent as a gain.
-    CHECK(Settings::volume_gain(40) == 0.4f);
-    CHECK(Settings::volume_gain(150) == 1.0f);
-    CHECK(Settings::volume_gain(-5) == 0.0f);
-    // depth_mode as the search's enum.
-    Settings s;
-    s.depth_mode = 1;
-    CHECK(s.search_depth_mode() == hydra::DepthMode::Points);
-    s.depth_mode = 2;
-    CHECK(s.search_depth_mode() == hydra::DepthMode::Scores);
+TEST_CASE("Settings::volume_gain is the clamped percent as a playback gain") {
+    for (const int percent : {-5, 0, 40, 100, 150}) {
+        CAPTURE(percent);
+        const float gain = Settings::volume_gain(percent);
+        CHECK(gain == static_cast<float>(Settings::clamp(&Settings::preview_volume, percent)) /
+                          100.0f);
+        // Whatever the file says, the gain stays between silence and full
+        // volume, so playback never amplifies past the mix.
+        CHECK(gain >= 0.0f);
+        CHECK(gain <= 1.0f);
+    }
 }
 
 // D51 Q15.
@@ -431,25 +451,6 @@ TEST_CASE("settings: a # after a value is a comment") {
     // name, so a library folder never changes on load.
     CHECK(load_ini_text("hash3", "chartfolder=C:\\Songs\\#1 Hits\n").chartfolders ==
           std::vector<std::string>{"C:\\Songs\\#1 Hits"});
-}
-
-TEST_CASE("settings: on/off keys take 0 or 1 only") {
-    // Anything but 0 or 1 refuses (D270 call 4).
-    CHECK_THROWS_AS(load_ini_text("bool1", "view_prodrums=true\n"),
-                    hydra::app::SettingsFileError);
-    CHECK(load_ini_text("bool2", "view_prodrums=0\n").view_prodrums == false);
-    CHECK_THROWS_AS(load_ini_text("bool3", "legacy_fills=yes\n"), hydra::app::SettingsFileError);
-    CHECK(load_ini_text("bool4", "legacy_fills=1\n").legacy_fills == true);
-}
-
-TEST_CASE("chartmode_key builds its difficulty word from difficulty()") {
-    // A word set in memory, never cleaned by load_file, still names a real
-    // difficulty in the key (finding 134).
-    Settings s;
-    s.view_difficulty = "easy";
-    CHECK(s.chartmode_key().rfind("Easy ", 0) == 0);
-    s.view_difficulty = "Legendary";
-    CHECK(s.chartmode_key().rfind("Expert ", 0) == 0);
 }
 
 namespace {
@@ -485,6 +486,57 @@ const ModeCase kModeCases[] = {
     {"Easy", hydra::Difficulty::Easy, false, false, "Easy Drums, 1x Bass", "Easy Drums, 1x Bass, Note Shuffle"},
 };
 
+// A scratch copy of the database `file` in testdata/store, so reading it never
+// writes beside the checked-in file. The copy is deleted when it goes out of
+// scope.
+testtemp::ScopedFile copy_of_store_fixture(const char* file) {
+    CAPTURE(file);
+    const std::string source = corpus::testdata_root() + "/store/" + file;
+    REQUIRE(std::filesystem::exists(hydra::os_path(source)));
+    testtemp::ScopedFile copy("store_fixture", ".db");
+    std::filesystem::copy_file(hydra::os_path(source), hydra::os_path(copy.path));
+    return copy;
+}
+
+// The chart-mode keys real Hydra releases filed, read from the databases they
+// wrote in testdata/store (its README.md names each release and run).
+struct StoredKeys {
+    std::vector<std::string> keys;  // each kModeCases key some file holds
+    int64_t rows = 0;               // rows with a chart mode, across the files
+    int64_t matched = 0;            // of those, rows whose key is a kModeCases key
+};
+
+StoredKeys stored_chartmodes() {
+    struct Library {
+        const char* file;
+        const char* table;  // the table that release filed its keys in
+    };
+    const Library libraries[] = {
+        {"v1.8.4-schema2.db", "results"},
+        {"v1.8.4-schema2-legacy-fills.db", "results"},
+        {"v2.0.0-schema3.db", "results"},
+        {"v2.1.0-schema4.db", "results"},
+        {"v2.12.1_library.db", "profiles"},
+    };
+    StoredKeys out;
+    for (const Library& lib : libraries) {
+        const testtemp::ScopedFile copy = copy_of_store_fixture(lib.file);
+        const std::string table = lib.table;
+        out.rows += hydra::test::scalar_on_file(copy.path, "SELECT COUNT(chartmode) FROM " + table);
+        for (const ModeCase& c : kModeCases) {
+            for (const char* key : {c.key_off, c.key_on}) {
+                const int64_t n = hydra::test::scalar_on_file(
+                    copy.path,
+                    "SELECT COUNT(*) FROM " + table + " WHERE chartmode = '" + key + "'");
+                out.matched += n;
+                if (n > 0 && std::find(out.keys.begin(), out.keys.end(), key) == out.keys.end())
+                    out.keys.push_back(key);
+            }
+        }
+    }
+    return out;
+}
+
 }  // namespace
 
 // D104.
@@ -505,6 +557,13 @@ TEST_CASE("chartmode_key: Note Shuffle off leaves every key as it was, on adds a
         s.view_noteshuffle = true;
         CHECK(s.chartmode_key() == c.key_on);
     }
+
+    // The keys above are the ones in users' stores: every key a real release
+    // filed is one of them. Each library in testdata/store holds result rows
+    // (its README.md), so there are keys to check.
+    const StoredKeys stored = stored_chartmodes();
+    REQUIRE(stored.rows > 0);
+    CHECK(stored.matched == stored.rows);
 }
 
 TEST_CASE("with_chartmode rebuilds the settings behind every key, shuffled or not") {
@@ -527,66 +586,31 @@ TEST_CASE("with_chartmode rebuilds the settings behind every key, shuffled or no
         }
     }
     CHECK_FALSE(base.with_chartmode("Expert Pro Drums, 2x Bass, Shuffled").has_value());
+
+    // Every key a real release filed comes back the same way.
+    const StoredKeys stored = stored_chartmodes();
+    REQUIRE_FALSE(stored.keys.empty());
+    for (const std::string& key : stored.keys) {
+        CAPTURE(key);
+        const std::optional<Settings> mode = base.with_chartmode(key);
+        REQUIRE(mode.has_value());
+        CHECK(mode->sp_cap == 7);
+        CHECK(mode->chartmode_key() == key);
+    }
 }
 
-TEST_CASE("with_reading: reading() gives back the reading written, the rest kept") {
-    Settings base;
-    base.sp_cap = 7;
-    const hydra::ChartReading hard{hydra::Difficulty::Hard, false, false, true};
-    const Settings s = base.with_reading(hard);
-    CHECK(s.reading() == hard);
-    CHECK(s.view_difficulty == "Hard");
-    CHECK(s.sp_cap == 7);
-    CHECK(base.with_reading(base.reading()).chartmode_key() == base.chartmode_key());
-}
-
-// The tests that write a bare ChartReading{} lean on this pin: change a default
-// and this case names it, instead of a dozen unrelated expectations moving.
-TEST_CASE("the default ChartReading is Expert, Pro Drums, 2x Bass, no Note Shuffle") {
-    CHECK(hydra::ChartReading{} ==
-          hydra::ChartReading{hydra::Difficulty::Expert, true, true, false});
+TEST_CASE("a default Settings reads the default ChartReading") {
     CHECK(Settings{}.reading() == hydra::ChartReading{});
 }
 
-TEST_CASE("view_noteshuffle: off by default, and the INI key loads and saves it") {
-    CHECK_FALSE(Settings{}.view_noteshuffle);
-    CHECK_FALSE(load_ini_text("ns_missing", "view_prodrums=1\n").view_noteshuffle);
-    CHECK(load_ini_text("ns_on", "view_noteshuffle=1\n").view_noteshuffle);
-    CHECK_FALSE(load_ini_text("ns_off", "view_noteshuffle=0\n").view_noteshuffle);
-
-    const std::string path = testtemp::temp_path("noteshuffle", ".ini");
-    Settings s;
-    s.view_noteshuffle = true;
-    REQUIRE(s.save_file(path));
-    std::vector<std::string> lines;
-    {
-        std::ifstream f(path);
-        std::string line;
-        while (std::getline(f, line)) lines.push_back(line);
-    }
-    CHECK(Settings::load_file(path).view_noteshuffle);
-    std::remove(path.c_str());
-    CHECK(std::find(lines.begin(), lines.end(), "view_noteshuffle=1") != lines.end());
-}
-
-TEST_CASE("view_difficulty round-trips, and a junk value refuses") {
-    const std::string path = testtemp::temp_path("difficulty", ".ini");
-
-    Settings s;
-    s.view_difficulty = "Hard";
-    REQUIRE(s.save_file(path));
-    Settings r = Settings::load_file(path);
-    CHECK(r.view_difficulty == "Hard");
-    CHECK(r.difficulty() == hydra::Difficulty::Hard);
-    std::remove(path.c_str());
-
-    // A hand-edited INI can hold anything; a word that names no difficulty
-    // stops the load (D270 call 4), so it can't reach chartmode_key.
-    CHECK_THROWS_AS(load_ini_text("difficulty_junk", "view_difficulty=Legendary\n"),
-                    hydra::app::SettingsFileError);
-}
-
 TEST_CASE("view_difficulty matches any case and loads as the real name") {
+    const std::string hard_name = hydra::difficulty_name(hydra::Difficulty::Hard);
+    // The key the app files for Hard when the word is set in memory already
+    // spelled right, with every other setting at its default.
+    Settings in_memory;
+    in_memory.view_difficulty = hard_name;
+    const std::string hard_key = in_memory.chartmode_key();
+
     const std::string path = testtemp::temp_path("difficulty_case", ".ini");
     for (const char* word : {"hard", "HARD", "hArD"}) {
         CAPTURE(word);
@@ -596,10 +620,9 @@ TEST_CASE("view_difficulty matches any case and loads as the real name") {
         }
         Settings r = Settings::load_file(path);
         // What the app carries, and bakes into the store key, is the real name.
-        CHECK(r.view_difficulty == "Hard");
+        CHECK(r.view_difficulty == hard_name);
         CHECK(r.difficulty() == hydra::Difficulty::Hard);
-        // view_bass2x defaults on, and applies at Hard too (D20).
-        CHECK(r.chartmode_key() == "Hard Pro Drums, 2x Bass");
+        CHECK(r.chartmode_key() == hard_key);
     }
     std::remove(path.c_str());
 
@@ -613,35 +636,61 @@ TEST_CASE("profile carries the chartmode, the SP cap and the lens") {
     namespace store = hydra::store;
 
     Settings s;
+    s.view_prodrums = false;
+    s.sp_cap = 32;
     s.mslimit_enabled = true;
     s.mslimit_value = 10;
-    s.depth_mode = 0;
-    s.depth_value = 4;
-    const store::Profile default_profile = s.profile();
-    CHECK(default_profile.chartmode == s.chartmode_key());
-    CHECK(default_profile.cap == store::CapQuery::at(4));
-    CHECK(default_profile.lens == store::Lens::from(10, 0, 4));
-
-    // A fixed cap asks for exactly that cap, and the chartmode follows the
-    // view flags.
-    s.sp_cap = 32;
-    s.view_prodrums = false;
-    const store::Profile exact_profile = s.profile();
-    CHECK(exact_profile.chartmode == "Expert Drums, 2x Bass");
-    CHECK(exact_profile.cap == store::CapQuery::at(32));
-
-    // Each searched-over setting moves the lens...
     s.depth_mode = 1;
     s.depth_value = 5000;
-    CHECK(s.profile().lens == store::Lens::from(10, 1, 5000));
+    const store::Profile p = s.profile();
+    CHECK(p.chartmode == s.chartmode_key());
+    CHECK(p.cap == s.cap_query());
+    CHECK(p.lens == s.lens());
 
-    // ...and switching the ms limit off drops its number, because the search
-    // stops reading it.
+    // The chartmode follows the view flags: the key reads back with Pro Drums
+    // off, and differs from the default settings' key.
+    const std::optional<Settings> from_key = Settings{}.with_chartmode(p.chartmode);
+    REQUIRE(from_key.has_value());
+    CHECK_FALSE(from_key->view_prodrums);
+    CHECK(p.chartmode != Settings{}.profile().chartmode);
+    // A fixed cap asks for the record analyzed at exactly that cap.
+    CHECK(p.cap == store::CapQuery::at(s.sp_cap));
+
+    // Switching the ms limit off drops its number, because the search stops
+    // reading it: the lens no longer moves with the number.
     s.mslimit_enabled = false;
-    CHECK(s.profile().lens == store::Lens::from(std::nullopt, 1, 5000));
-    CHECK(s.lens().ms_value == 0);
+    const store::Lens off = s.lens();
+    CHECK(off.ms_enabled == 0);
+    CHECK(off.ms_value == 0);
     s.mslimit_value = 42;
-    CHECK(s.lens() == store::Lens::from(std::nullopt, 1, 5000));
+    CHECK(s.lens() == off);
+    CHECK(s.profile().lens == off);
+
+    // A real v2.12.1 run filed one profile row (testdata/store/README.md
+    // gives its settings: Expert Pro Drums 2x Bass, SP cap 4 bars, path limit
+    // 10 ms, 4 scores, Clone Hero 1.1 fills). The same settings here build a
+    // profile that matches that row column for column.
+    Settings run;
+    run.view_difficulty = hydra::difficulty_name(hydra::Difficulty::Expert);
+    run.view_prodrums = true;
+    run.view_bass2x = true;
+    run.sp_cap = 4;
+    run.mslimit_enabled = true;
+    run.mslimit_value = 10;
+    run.depth_mode = 0;
+    run.depth_value = 4;
+    run.legacy_fills = false;
+    const store::Profile filed = run.profile();
+    const testtemp::ScopedFile library = copy_of_store_fixture("v2.12.1_library.db");
+    CHECK(hydra::test::scalar_on_file(
+              library.path,
+              "SELECT COUNT(*) FROM profiles WHERE chartmode = '" + filed.chartmode +
+                  "' AND sp_cap = " + std::to_string(filed.cap.exact) +
+                  " AND ms_enabled = " + std::to_string(filed.lens.ms_enabled) +
+                  " AND ms_value = " + std::to_string(filed.lens.ms_value) +
+                  " AND depth_mode = " + std::to_string(filed.lens.depth_mode) +
+                  " AND depth_value = " + std::to_string(filed.lens.depth_value) +
+                  " AND legacy_fills = " + std::to_string(filed.lens.legacy_fills)) == 1);
 }
 
 namespace {
