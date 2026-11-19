@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import ctypes
 import dataclasses
+import math
 import mmap
 import os
 import struct
@@ -637,9 +638,9 @@ class Loop(Folder):
 
     def test_the_first_end_to_arrive_is_kept(self):
         stop = M.Stop()
-        stop.set("parent gone")
-        stop.set("stdin closed")
-        self.assertEqual(stop.reason, "parent gone")
+        stop.set(M.STOP_PARENT)
+        stop.set(M.STOP_STDIN)
+        self.assertEqual(stop.reason, M.STOP_PARENT)
 
     def test_each_row_carries_the_pid_and_period_and_only_the_last_the_process_time(self):
         loop = FakeLoop(self.folder)
@@ -734,9 +735,6 @@ class CommandLine(Folder):
     def test_the_rate_defaults_to_the_one_constant(self):
         self.assertEqual(self.run_main("--cap-s", "9")["period_s"], 0.02)
 
-    def test_cap_s_is_the_exact_cap(self):
-        self.assertEqual(self.run_main("--cap-s", "9")["cap_s"], 9)
-
     def test_run_cap_s_adds_the_extra(self):
         self.assertEqual(self.run_main("--run-cap-s", "100")["cap_s"], 160)
 
@@ -813,7 +811,7 @@ class RealRun(Folder):
         process.stdin.write(f"pid {os.getpid()}\n")
         _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         self.assertEqual(process.returncode, 0, stderr)
-        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "stdin closed")
+        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], M.STOP_STDIN)
 
     def test_a_cap_ends_the_real_process_with_its_stdin_still_open(self):
         out, process = self.start("--cap-s", "0.2", stdin=subprocess.PIPE)
@@ -825,7 +823,7 @@ class RealRun(Folder):
             process.stdout.close()
             process.stderr.close()
         self.assertEqual((process.returncode, stderr), (0, ""))
-        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "cap")
+        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], M.STOP_CAP)
 
     def test_a_dead_parent_ends_the_real_process(self):
         parent = subprocess.Popen([sys.executable, "-I", "-c", "input()"], stdin=subprocess.PIPE)
@@ -837,7 +835,7 @@ class RealRun(Folder):
         parent.wait(SUBPROCESS_CAP_S)
         _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         self.assertEqual(process.returncode, 0, stderr)
-        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "parent gone")
+        self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], M.STOP_PARENT)
 
     def test_a_parent_that_cannot_be_opened_fails_loudly(self):
         gone = finished_pid()
@@ -1105,6 +1103,13 @@ class RealEnds(Folder):
         samples = self.ended_by("--cap-s", str(cap_s), "--seconds", str(SUBPROCESS_CAP_S))
         self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_CAP, cap_s)
 
+    def test_cap_s_is_the_exact_cap(self):
+        # The real process with --cap-s alone ends one cap after it starts, not
+        # RECORDER_CAP_EXTRA_S later as --run-cap-s does.
+        cap_s = 1
+        samples = self.ended_by("--cap-s", str(cap_s))
+        self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_CAP, cap_s)
+
     def test_seconds_stops_it_when_they_come_before_the_cap(self):
         seconds = 1
         samples = self.ended_by("--cap-s", str(SUBPROCESS_CAP_S), "--seconds", str(seconds))
@@ -1228,26 +1233,65 @@ class RecordedPace(unittest.TestCase):
                 self.assertAlmostEqual(walls[i + 2] - walls[i + 1], period_s, delta=period_s / 4)
 
 
+# Nine rows of samples.csv where Clone Hero's song clock crosses zero, copied
+# unchanged from hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/machine-1/samples.csv
+# (samples 876-884): the game's clock reads below zero through the lead-in.
+LEAD_IN_SAMPLES = os.path.join(ROOT, "testdata", "ch_runs", "ls-t3-run-b",
+                               "machine-1-samples-876-884", "samples.csv")
+
+
+def lead_in_clocks():
+    """The song clocks the recorder wrote in LEAD_IN_SAMPLES, in sample order."""
+    rows = read_rows(os.path.dirname(LEAD_IN_SAMPLES), M.SAMPLES_FILE)
+    return [float(row["clock_s"]) for row in rows if row["clock_s"]]
+
+
+class RecordedClock(unittest.TestCase):
+    def test_a_real_lead_in_reads_below_zero_and_the_recorder_kept_it(self):
+        clocks = lead_in_clocks()
+        self.assertLess(clocks[0], 0)
+        self.assertGreater(clocks[-1], 0)
+        self.assertEqual(clocks, sorted(clocks))
+
+
 class ClockRange(Folder):
+    start = RealInputs.start
+    wait_for = RealInputs.wait_for
+    told_to_read = RealEnds.told_to_read
+    finish = RealEnds.finish
+    def wait_for_clock(self, process, out, what, read, after=0):
+        """RealEnds.wait_for_clock, which also fails at once on a written clock no
+        song clock could hold: the empty column it waits for then never comes."""
+        def ready(rows):
+            written = [row["clock_s"] for row in rows if row["clock_s"]]
+            bad = [text for text in written if not math.isfinite(float(text))]
+            if bad:
+                self.fail(f"the recorder wrote clock {bad[0]}")
+            return any(int(row["sample"]) > after and bool(row["clock_s"]) == read
+                       for row in rows)
+        return self.wait_for(process, out, what, ready)
+
     def test_a_nonfinite_clock_is_no_clock_and_a_negative_one_is_kept(self):
-        # The game's clock is below zero through every song's lead-in (TM-11), so a
-        # negative read is a real clock (D325).
-        for value, written in ((float("nan"), ""), (float("inf"), ""), (float("-inf"), ""),
-                               (-1.0, "-1.0"), (12.5, "12.5")):
-            with self.subTest(value=value):
-                folder = os.path.join(self.folder, repr(value))
-                os.mkdir(folder)
-                inputs = M.Inputs(7)
-                inputs.engine = 0x1000
-                raw = struct.pack("<d", value)
-                loop = FakeLoop(folder, inputs=inputs,
-                                open_reader=lambda pid, raw=raw: lambda address, size: raw)
-                loop.run(cap_s=PERIOD_S)
-                samples = read_rows(folder, "samples.csv")
-                self.assertEqual([row["clock_s"] for row in samples], [written, written])
-                stamped = written != ""
-                self.assertEqual([row["clock_wall_before_s"] != "" for row in samples],
-                                 [stamped, stamped])
+        # The real recorder reads a double in this process's memory: first the
+        # game's own lead-in clock, then each value no clock can hold, each time
+        # followed by the lead-in clock again.
+        lead_in = lead_in_clocks()[0]
+        clock = ctypes.c_double(lead_in)
+        out, process = self.told_to_read(os.getpid(), ctypes.addressof(clock))
+        last = self.wait_for_clock(process, out, "the lead-in clock", True)
+        for value in (float("nan"), float("inf"), float("-inf")):
+            clock.value = value
+            last = self.wait_for_clock(process, out, f"a sample with no clock for {value}",
+                                       False, last)
+            clock.value = lead_in
+            last = self.wait_for_clock(process, out, "the lead-in clock again", True, last)
+        samples = self.finish(out, process)
+        self.assertEqual({float(row["clock_s"]) for row in samples if row["clock_s"]}, {lead_in})
+        # A sample with no clock carries no clock stamps.
+        for row in samples:
+            with self.subTest(sample=row["sample"]):
+                self.assertEqual(row["clock_wall_before_s"] == "", row["clock_s"] == "")
+                self.assertEqual(row["clock_wall_after_s"] == "", row["clock_s"] == "")
 
 
 if __name__ == "__main__":
