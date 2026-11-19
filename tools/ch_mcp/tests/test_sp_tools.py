@@ -43,7 +43,6 @@ from tools.ch_probe import process  # noqa: E402
 from tools.ch_probe.experiments import sp_compare, sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
 from tools.ch_probe.experiments import play_chart  # noqa: E402
-from tools.ch_mcp import install_chart  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 
 
@@ -54,15 +53,6 @@ def setUpModule():
 
 def tearDownModule():
     FAKE.stop()
-
-
-def song_with_end(folder: str, length_ms) -> None:
-    """Give the song folder `folder` a chart whose fake dump holds `length_ms`
-    as Hydra's song end."""
-    chart = os.path.join(folder, install_chart.CHART_FILES[0])
-    with open(chart, "w", encoding="utf-8") as f:
-        f.write("[Song]\n")
-    FAKE.set_end(chart, length_ms)
 
 
 _PROBE_TESTS = os.path.join(_REPO_ROOT, "tools", "ch_probe", "tests")
