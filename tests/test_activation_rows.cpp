@@ -1271,7 +1271,7 @@ TEST_CASE("squeeze sentences: a squeezed-out row far past the end names its chor
     row.sqout_sp_points = 260;
     row.offset_ms = 479.999;
     far.backends.push_back(row);
-    far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, row.offset_ms});
+    far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, row.offset()});
     far.sqout_tick = 3256;
     Path p;
     p.activations.push_back(far);
