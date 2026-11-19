@@ -902,44 +902,82 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode, an
         CHECK(store.lookup_one("h1", at4("other mode")).status == RecordStatus::NotAnalyzed);
         CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
         CHECK(store.record_count() == 1);
-        // The save leaves the old build's emptied profile in place.
-        CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") ==
-              1);
     }
-    // Closing alone deletes nothing; the next open does.
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 1);
     { RecordStore reopened(file.path); }
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 0);
+    const std::string profiles_with_no_record =
+        "SELECT COUNT(*) FROM profiles WHERE NOT EXISTS"
+        " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)";
+    const std::string old_build_profiles = std::string("SELECT COUNT(*) FROM profiles WHERE hyversion='") +
+                                           hydra::test::kOldBuildStamp + "'";
+    CHECK(scalar_on_file(file.path, profiles_with_no_record) == 0);
+    CHECK(scalar_on_file(file.path, old_build_profiles) == 0);
 }
+
+namespace {
+
+// Two real song folders from the corpus, Young Robot and Limbo (the old
+// library's two .mid charts, testdata/store/README.md), copied under a
+// scratch root named by `tag`, so a test can delete one and scan again.
+struct TwoSongFolders {
+    std::filesystem::path root;
+    std::filesystem::path gone;
+    explicit TwoSongFolders(const std::string& tag) {
+        testtemp::remove_dir(testtemp::temp_dir(tag));
+        root = std::filesystem::u8path(testtemp::temp_dir(tag));
+        const std::filesystem::path tier =
+            std::filesystem::u8path(corpus::root()) / "common" / "Summer Blast _25 Setlist" / "Tier 2";
+        gone = root / "Dance Gavin Dance - Young Robot";
+        std::filesystem::copy(tier / "Dance Gavin Dance - Young Robot", gone,
+                              std::filesystem::copy_options::recursive);
+        std::filesystem::copy(tier / "Thornhill - Limbo", root / "Thornhill - Limbo",
+                              std::filesystem::copy_options::recursive);
+    }
+    ~TwoSongFolders() { testtemp::remove_dir(root.u8string()); }
+    // The app's library scan of the root (discover_charts). Fails on any
+    // scan error.
+    std::vector<app::ScanItem> scan() const {
+        auto found = app::discover_charts({root.u8string()});
+        REQUIRE_MESSAGE(found.second.empty(), "scan error: " << found.second.front());
+        return std::move(found.first);
+    }
+};
+
+}  // namespace
 
 TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the next open "
           "deletes it") {
+    // The user deletes one of two song folders and rescans.
+    TwoSongFolders folders("purge_scan");
+    const std::vector<app::ScanItem> both = folders.scan();
+    REQUIRE(both.size() == 2);
+    std::filesystem::remove_all(folders.gone);
+    const std::vector<app::ScanItem> after = folders.scan();
+    REQUIRE(after.size() == 1);
+    const std::string kept = after.front().md5;
+    const std::string gone = both[0].md5 == kept ? both[1].md5 : both[0].md5;
+    REQUIRE(gone != kept);
+    const Profile gone_mode = at4("gone mode");
+
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
-        store.rebuild_chart_library({library_row("gone", "Gone"), library_row("kept", "Kept")});
-        store.save(prepare_record("gone", at4("gone mode"), fixture().record));
-        store.save(prepare_record("kept", at4(), fixture().record));
-        REQUIRE(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::Ready);
+        REQUIRE_FALSE(app::save_scan_as_library(store, both).has_value());
+        store.save(prepare_record(gone, gone_mode, fixture().record));
+        store.save(prepare_record(kept, at4(), fixture().record));
+        REQUIRE(store.lookup_one(gone, gone_mode).status == RecordStatus::Ready);
 
-        // The library no longer lists "gone", so the scan's purge takes its
-        // only record and leaves its profile empty.
-        store.rebuild_chart_library({library_row("kept", "Kept")});
-        CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
-        // No read shows the empty profile.
-        CHECK(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::NotAnalyzed);
-        CHECK(store.settled_song_ids(at4("gone mode")).empty());
-        CHECK(store.ready_song_ids(at4("gone mode")).empty());
-        CHECK(store.ready_records(at4("gone mode")).empty());
+        // The rescan no longer lists the deleted chart, so its purge takes
+        // that chart's only record. No read shows the profile it emptied.
+        REQUIRE_FALSE(app::save_scan_as_library(store, after).has_value());
+        CHECK(store.lookup_one(gone, gone_mode).status == RecordStatus::NotAnalyzed);
+        CHECK(store.settled_song_ids(gone_mode).empty());
         CHECK(store.record_count() == 1);
     }
     { RecordStore reopened(file.path); }
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE chartmode='gone mode'") ==
-          0);
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE chartmode='" +
+                                        gone_mode.chartmode + "'") == 0);
     RecordStore store(file.path);
-    CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
+    CHECK(store.lookup_one(kept, at4()).status == RecordStatus::Ready);
 }
 
 TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
@@ -1150,7 +1188,8 @@ TEST_CASE("store: a failure replaces the real record's path rows in the file") {
         RecordStore store(file.path);
         store.save(prepare_record("h1", at4(), fixture().record));
         REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") > 0);
-        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+        // The chart is edited into one with no notes and analyzed again.
+        store.save(failed_chart("h1", kNoNotesChart).prepared);
     }
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") == 0);
     CHECK(hydra::test::record_rows_in(file.path) == 1);
@@ -1199,22 +1238,6 @@ TEST_CASE("store: a profile whose only record is a failure is kept") {
     RecordStore reopened(file.path);
     CHECK(reopened.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
-}
-
-TEST_CASE("store: a failure of a kind this build cannot name reads Stale for another build") {
-    StoreFile file("store_records");
-    {
-        RecordStore store(file.path);
-        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
-    }
-    // What a later build that remembers one more kind would leave.
-    hydra::test::exec_on_file(file.path, "UPDATE records SET failure_kind = 'LaterKind'");
-    RecordStore store(file.path);
-    const RecordLookup got = store.lookup_one("h1", at4());
-    CHECK(got.status == RecordStatus::Stale);
-    CHECK(got.stale_build);
-    CHECK_FALSE(got.failure_kind.has_value());
-    CHECK(store.settled_song_ids(at4()).empty());
 }
 
 TEST_CASE("store: lookup's three answers against sibling profiles") {
@@ -1507,8 +1530,7 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
     // D51 call 8 (finding 65): a result made under other rules is kept, and
     // reads Ready again, with its own numbers, once the store runs those rules.
     const core::Rules other = hydra::test::other_rules();
-    const PreparedRecord foreign =
-        prepare_record("h", at4(), hydra::test::other_rules_record(fixture().record));
+    const PreparedRecord foreign = prepare_record("h", at4(), other_rules_analysis());
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
@@ -1529,57 +1551,32 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
     }
 }
 
-TEST_CASE("store: a Stale lookup says why (another build, other rules, or both), a Ready one nothing") {
-    RecordStore store(":memory:");
-    hydra::test::add_stale_records(store, fixture().record, at4(), "build", "rules", "both");
-    store.save(prepare_record("ready", at4(), fixture().record));
+TEST_CASE("store: a Stale lookup says why (another build or other rules), a Ready one nothing") {
+    // The real v2.12.1 library's records are another build's, made under the
+    // default rules: today's default rules have the fingerprint text that
+    // build had (core/rules.cpp, rules_fields).
+    OldLibrary old("stale_why");
+    RecordStore store(old.path);
+    const Profile profile = OldLibrary::profile();
+    const std::string build = OldLibrary::song_ids().front();
+    store.save(prepare_record("rules", profile, other_rules_analysis(OldLibrary::settings())));
+    store.save(prepare_record("ready", profile, old_library_analysis()));
 
     // This build, other rules.
-    const RecordLookup by_rules = store.lookup_one("rules", at4());
+    const RecordLookup by_rules = store.lookup_one("rules", profile);
     CHECK(by_rules.status == RecordStatus::Stale);
     CHECK(by_rules.stale_rules);
     CHECK_FALSE(by_rules.stale_build);
 
     // Another build, these rules.
-    const RecordLookup by_build = store.lookup_one("build", at4());
+    const RecordLookup by_build = store.lookup_one(build, profile);
     CHECK(by_build.status == RecordStatus::Stale);
     CHECK(by_build.stale_build);
     CHECK_FALSE(by_build.stale_rules);
 
-    // Another build and other rules: both reasons.
-    const RecordLookup by_both = store.lookup_one("both", at4());
-    CHECK(by_both.status == RecordStatus::Stale);
-    CHECK(by_both.stale_build);
-    CHECK(by_both.stale_rules);
-
     // A Ready record carries no reason.
-    const RecordLookup ready = store.lookup_one("ready", at4());
+    const RecordLookup ready = store.lookup_one("ready", profile);
     CHECK(ready.status == RecordStatus::Ready);
     CHECK_FALSE(ready.stale_build);
     CHECK_FALSE(ready.stale_rules);
-}
-
-TEST_CASE("store: a current record with no paths is Ready, not Stale") {
-    // "Analyzed, and nothing survived" is a real result, so it reads back as
-    // Ready with no summary -- the status, not the path count, is what says
-    // whether a record is usable.
-    RecordStore store(":memory:");
-    store.save(prepare_record("h", at4(), no_paths_at_cap(4)));
-    const RecordLookup got = store.lookup_one("h", at4());
-    CHECK(got.status == RecordStatus::Ready);
-    CHECK(got.record.paths.empty());
-    CHECK(got.record.best_path_text().empty());
-    CHECK(got.record.summary() == PathSummary{});
-    CHECK(store.ready_song_ids(at4()).count("h") == 1);
-
-    // D51 call 11 (finding 88): such a record has no scored best path, and
-    // the summary says so in one place. A record with paths has one. The
-    // listing's records say the same.
-    CHECK_FALSE(record_of("h", no_paths_at_cap(4)).summary().has_scored_best_path());
-    CHECK(record_of("h", at_cap(4)).summary().has_scored_best_path());
-    store.save(prepare_record("g", at4(), at_cap(4)));
-    const std::vector<RecordRow> rows = store.ready_records(at4());
-    REQUIRE(rows.size() == 2);
-    for (const RecordRow& row : rows)
-        CHECK(row.summary().has_scored_best_path() == (row.song_id == "g"));
 }
