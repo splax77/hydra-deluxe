@@ -897,17 +897,24 @@ class GapLineOnARecordedRunTest(unittest.TestCase):
         def ms(i):
             return C.s_to_ms(rows[i]["clock_s"])
 
-        # Each pair of rows next to each other inside the song, both clocks at
-        # or before its end, with more than GAP_MS of wall time between them.
-        over = [i for i in range(1, len(rows))
-                if max(ms(i - 1), ms(i)) <= end and wall_gap_ms(rows, i) > sp_tools.GAP_MS]
-        self.assertGreater(len(over), 1, "the recording should hold gaps inside the song")
-        longest = max(wall_gap_ms(rows, i) for i in over)
+        line = sp_tools._gap_line(rows, end)
+        prefix = f"gaps over {sp_tools.GAP_MS:g} ms between samples: "
+        self.assertTrue(line.startswith(prefix), line)
+        count = int(line[len(prefix):].split(",", 1)[0])
+        self.assertGreater(count, 1, "the recording should hold gaps inside the song")
+        # Each pair of rows next to each other inside the song (both clocks at
+        # or before its end), the widest wall gap first.
+        widest = sorted((i for i in range(1, len(rows)) if max(ms(i - 1), ms(i)) <= end),
+                        key=lambda i: wall_gap_ms(rows, i), reverse=True)
+        # The pairs counted are the widest ones: each is over GAP_MS, and the
+        # next widest is not.
+        self.assertGreater(wall_gap_ms(rows, widest[count - 1]), sp_tools.GAP_MS)
+        self.assertLessEqual(wall_gap_ms(rows, widest[count]), sp_tools.GAP_MS)
+        counted = sorted(widest[:count])
         self.assertEqual(
-            sp_tools._gap_line(rows, end),
-            f"gaps over {sp_tools.GAP_MS:g} ms between samples: {len(over)}, "
-            f"longest {round(longest, 1):g} ms, between "
-            f"{sp_compare.format_ms(ms(over[0] - 1))} and {sp_compare.format_ms(ms(over[-1]))}")
+            line,
+            f"{prefix}{count}, longest {round(wall_gap_ms(rows, widest[0]), 1):g} ms, between "
+            f"{sp_compare.format_ms(ms(counted[0] - 1))} and {sp_compare.format_ms(ms(counted[-1]))}")
 
     def test_a_gap_of_exactly_gap_ms_is_not_printed(self):
         # The recording's first two reads, inside the song, with their wall
