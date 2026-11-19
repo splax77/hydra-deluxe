@@ -15,6 +15,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -2274,17 +2275,6 @@ class HumanStartTest(unittest.TestCase):
                 self.assertEqual(len(never), 1 if status["state"] == B.STATE_IDLE else 0, lines)
 
 
-def next_worker(t: ToolRig, running: bool = False, **tool_args) -> GT.GameTools:
-    """A second GameTools on the same temp root and user folders, the way a
-    fresh worker comes up after `t`'s was killed: `t.tools` is simply never
-    stopped. `running` is what the fake pid test answers for every pid. Both
-    workers share this test's pid, so a later stamp keeps their backups apart."""
-    t.r.env.stamp = lambda: "20261028-101501"
-    return GT.GameTools(t.r.env, threading.RLock(), t.scratch_root, driver=t.driver,
-                        find_window=lambda: t.hwnd, is_pid_running=lambda pid: running,
-                        make_recorder=t.make_recorder, **tool_args)
-
-
 # A worker on real GameTools: argv gives the repo root, the game exe, the
 # documents folder and the scratch root. It takes its backup, which writes
 # the marker, prints the backup folder, then stays alive until its stdin ends,
@@ -2309,21 +2299,12 @@ class MarkerTest(unittest.TestCase):
         self.tmp = self._tmp.name
         self.t = ToolRig(self.tmp)
         self.path = os.path.join(self.t.scratch_root, GT.OPEN_RUN_MARKER)
-
-    def tearDown(self):
-        self._tmp.cleanup()
+        # A cleanup, not tearDown, so a live worker's cleanup, added later,
+        # runs first and frees the folder.
+        self.addCleanup(self._tmp.cleanup)
 
     def assert_marker_names(self, folder):
         self.assertEqual(GT.read_marker(self.path), (os.getpid(), folder))
-
-    def killed_run(self):
-        """A run left open with the registry key and every game file
-        changed; returns its backup."""
-        self.t.tools.ch_start(self.t.r.song)
-        self.t.reg.text = b"changed by the game"
-        for name in ORIGINAL:
-            _write(self.t.r.path(name), b"changed by the game")
-        return self.t.backup_dir()
 
     # -- writing and deleting -----------------------------------------------------
 
@@ -2346,23 +2327,35 @@ class MarkerTest(unittest.TestCase):
         os.makedirs(documents, exist_ok=True)
         return os.path.join(self.tmp, "no game.exe"), documents
 
-    def killed_worker(self) -> tuple[int, str]:
-        """A worker that took its backup and wrote its marker on real tools,
-        then was ended from outside, as a reload ends one. Returns its pid,
-        no longer running, and its backup folder, which the marker names."""
+    def live_worker(self) -> tuple[subprocess.Popen, str]:
+        """A worker that took its backup and wrote its marker on real tools
+        and still runs, as a second session's worker does. Returns its
+        process and its backup folder, which the marker names; the test's
+        cleanup ends it."""
         exe, documents = self.real_paths()
         child = subprocess.Popen([sys.executable, "-I", "-c", KILLED_WORKER_CHILD, _REPO_ROOT,
                                   exe, documents, self.t.scratch_root],
                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-        try:
-            folder = child.stdout.readline().strip()
-        finally:
-            child.terminate()
-            child.wait(CHILD_CAP_S)
-            child.stdout.close()
-            child.stdin.close()
+        self.addCleanup(self.end_worker, child)
+        folder = child.stdout.readline().strip()
         self.assertTrue(os.path.isdir(folder), folder)
         self.assertEqual(GT.read_marker(self.path), (child.pid, folder))
+        self.assertTrue(GT.pid_running(child.pid))
+        return child, folder
+
+    def end_worker(self, child: subprocess.Popen) -> None:
+        """End a live worker from outside, as a reload ends one."""
+        if child.poll() is None:
+            child.terminate()
+        child.wait(CHILD_CAP_S)
+        child.stdout.close()
+        child.stdin.close()
+
+    def killed_worker(self) -> tuple[int, str]:
+        """A live worker, then ended from outside. Returns its pid, no longer
+        running, and its backup folder, which the marker names."""
+        child, folder = self.live_worker()
+        self.end_worker(child)
         self.assertFalse(GT.pid_running(child.pid))
         return child.pid, folder
 
@@ -2626,44 +2619,71 @@ class MarkerTest(unittest.TestCase):
         self.assertIn(backup, said[0])
         self.assertEqual(GT.read_marker(self.path), (pid, backup))
 
+    def marker_lines(self, tools: GT.GameTools, pid: int, folder: str) -> list:
+        """ch_status's lines that name both a previous worker's pid and its
+        backup folder."""
+        return [line for line in tools.ch_status().splitlines()
+                if folder in line and re.search(rf"\b{pid}\b", line)]
+
     def test_a_folder_with_no_manifest_is_not_adopted_and_the_marker_stays(self):
-        backup = self.killed_run()
+        pid, backup = self.killed_worker()
+        written = self.put_game_files()
         os.remove(os.path.join(backup, G.BACKUP_MANIFEST))
-        tools = next_worker(self.t)
+        tools = self.real_tools()
         self.assertIsNone(tools._adopted_backup)
-        self.assertIn(f"holds no {G.BACKUP_MANIFEST}", tools.ch_status())
-        self.assertIn("nothing to restore", tools.ch_stop())
-        self.assert_marker_names(backup)
+        said = self.marker_lines(tools, pid, backup)
+        self.assertEqual(len(said), 1)
+        self.assertIn(G.BACKUP_MANIFEST, said[0])
+        self.assertIn(self.path, said[0])
+        self.assertEqual(tools.open_lines(), [])
+        tools.ch_stop()
+        self.assert_game_files_kept(written)
+        self.assertEqual(GT.read_marker(self.path), (pid, backup))
 
     # -- a marker whose pid still runs --------------------------------------------
 
     def test_a_running_pid_is_not_adopted_and_the_line_gives_the_by_hand_restore(self):
-        backup = self.killed_run()
-        tools = next_worker(self.t, running=True)
+        child, backup = self.live_worker()
+        tools = self.real_tools()
         self.assertIsNone(tools._adopted_backup)
-        status = tools.ch_status()
-        self.assertIn(f"process {os.getpid()} was running", status)
-        self.assertIn(backup, status)
-        self.assertIn(f'py tools/ch_mcp/bot_run.py --restore "{backup}"', status)
-        self.assertIn(self.path, status)
+        said = self.marker_lines(tools, child.pid, backup)
+        self.assertEqual(len(said), 1)
+        self.assertIn(B._restore_hint(backup), said[0])
+        self.assertIn(self.path, said[0])
         self.assertEqual(tools.open_lines(), [])
+        # The running pid is what held the backup back: once that worker has
+        # ended, the next worker adopts the same marker.
+        self.end_worker(child)
+        self.assertEqual(self.real_tools()._adopted_backup, backup)
 
     def test_a_worker_that_adopted_nothing_never_deletes_anothers_marker(self):
-        backup = self.killed_run()
-        tools = next_worker(self.t, running=True)
-        self.assertIn("nothing to restore", tools.ch_stop())
-        self.assertIn("nothing to restore", tools.shutdown())
-        self.assert_marker_names(backup)
-        self.assertEqual(_read(self.t.r.path(G.SETTINGS)), b"changed by the game")
+        child, backup = self.live_worker()
+        written = self.put_game_files()
+        tools = self.real_tools()
+        for stop in (tools.ch_stop, tools.shutdown):
+            with self.subTest(stop=stop.__name__):
+                stop()
+                self.assertEqual(GT.read_marker(self.path), (child.pid, backup))
+                self.assert_game_files_kept(written)
 
-    def test_a_second_workers_run_leaves_the_first_workers_marker_alone(self):
-        backup = self.killed_run()
-        tools = next_worker(self.t, running=True, make_watch=lambda: FakeWatch([]))
-        reply = tools.ch_start(self.t.r.song)
-        self.assertIn("open-run marker not written (FileExistsError", reply)
-        self.assert_marker_names(backup)
+    def test_a_second_workers_backup_leaves_the_first_workers_marker_alone(self):
+        child, backup = self.live_worker()
+        tools = self.real_tools()
+        lines = tools.ensure_backup().splitlines()
+        mine = tools._adopted_backup
+        self.assertNotEqual(mine, backup)
+        # The marker is written by renaming a temp file onto its path, and
+        # Windows refuses a rename onto a file that is there.
+        other = os.path.join(self.tmp, "other marker")
+        _write(other, b"")
+        with self.assertRaises(OSError) as refused:
+            os.rename(other, self.path)
+        said = [line for line in lines if B._restore_hint(mine) in line]
+        self.assertEqual(len(said), 1, lines)
+        self.assertIn(f"({type(refused.exception).__name__}: ", said[0])
+        self.assertEqual(GT.read_marker(self.path), (child.pid, backup))
         tools.ch_stop()
-        self.assert_marker_names(backup)
+        self.assertEqual(GT.read_marker(self.path), (child.pid, backup))
         self.assertEqual([n for n in os.listdir(self.t.scratch_root) if n.endswith(".tmp")], [])
 
     # -- a marker whose folder is gone --------------------------------------------
@@ -2671,69 +2691,87 @@ class MarkerTest(unittest.TestCase):
     def test_a_gone_folder_deletes_the_marker_and_ch_stop_has_nothing_to_restore(self):
         for running in (False, True):
             with self.subTest(running=running):
-                gone = os.path.join(self.tmp, "gone")
-                os.makedirs(self.t.scratch_root, exist_ok=True)
-                _write(self.path, json.dumps({"pid": 77, "folder": gone}).encode())
-                tools = next_worker(self.t, running=running)
+                if running:
+                    child, backup = self.live_worker()
+                    pid = child.pid
+                else:
+                    pid, backup = self.killed_worker()
+                shutil.rmtree(backup)
+                tools = self.real_tools()
                 self.assertFalse(os.path.exists(self.path))
                 self.assertIsNone(tools._adopted_backup)
-                self.assertIn(f"a previous worker (pid 77) left a marker for a backup that is "
-                              f"gone: {gone}; the marker was deleted",
-                              tools.ch_status().splitlines())
-                self.assertIn("nothing to restore", tools.ch_stop())
+                self.assertEqual(len(self.marker_lines(tools, pid, backup)), 1)
+                self.assertEqual(tools.open_lines(), [])
+                tools.ch_stop()
+                self.assertFalse(os.path.exists(self.path))
 
     # -- a marker that cannot be read ---------------------------------------------
 
+    def assert_unread_marker_said(self, tools: GT.GameTools, said: list) -> None:
+        """`said` is the one line naming the marker, ending with what
+        read_marker raises on it, and ch_status repeats it."""
+        with self.assertRaises(Exception) as unread:
+            GT.read_marker(self.path)
+        self.assertEqual(len(said), 1, said)
+        self.assertIn(self.path, said[0])
+        self.assertTrue(said[0].endswith(f"{type(unread.exception).__name__}: "
+                                         f"{unread.exception}"), said[0])
+        self.assertIn(said[0], tools.ch_status().splitlines())
+
     def test_an_unreadable_marker_starts_the_worker_and_stays_byte_for_byte(self):
-        cases = {"garbage": b"{not json", "empty": b"", "not utf-8": b"\xff\xfe\x00",
-                 "a list": b"[1, 2]", "no folder": b'{"pid": 5}', "no pid": b'{"folder": "x"}',
-                 "a true pid": b'{"pid": true, "folder": "x"}',
-                 "a text pid": b'{"pid": "5", "folder": "x"}',
-                 "a zero pid": b'{"pid": 0, "folder": "x"}',
-                 "an empty folder": b'{"pid": 5, "folder": ""}',
-                 "a numeric folder": b'{"pid": 5, "folder": 9}',
+        # Each case is the killed worker's real marker, damaged one way.
+        pid, _backup = self.killed_worker()
+        real = _read(self.path)
+        marker = json.loads(real)
+
+        def dump(value) -> bytes:
+            return json.dumps(value).encode()
+
+        cases = {"cut short": real[:len(real) // 2], "empty": b"", "not utf-8": b"\xff" + real,
+                 "a list": dump(list(marker.values())),
+                 "no folder": dump({"pid": marker["pid"]}),
+                 "no pid": dump({"folder": marker["folder"]}),
+                 "a true pid": dump({**marker, "pid": True}),
+                 "a text pid": dump({**marker, "pid": str(pid)}),
+                 "a zero pid": dump({**marker, "pid": 0}),
+                 "an empty folder": dump({**marker, "folder": ""}),
+                 "a numeric folder": dump({**marker, "folder": pid}),
                  "deep nesting": b"[" * 200000}
-        os.makedirs(self.t.scratch_root, exist_ok=True)
         for name, data in cases.items():
             with self.subTest(case=name):
                 _write(self.path, data)
-                self.t.r.lines.clear()
-                tools = next_worker(self.t)
+                printed = io.StringIO()
+                with contextlib.redirect_stdout(printed):
+                    tools = self.real_tools()
                 self.assertIsNone(tools._adopted_backup)
-                said = [line for line in self.t.r.lines if self.path in line]
-                self.assertEqual(len(said), 1, self.t.r.lines)
-                self.assertIn("was left in place and nothing was adopted", said[0])
-                self.assertIn(said[0], tools.ch_status().splitlines())
+                self.assert_unread_marker_said(tools, printed.getvalue().splitlines())
                 tools.ch_stop()
                 self.assertEqual(_read(self.path), data)
 
     def test_a_folder_at_the_markers_path_starts_the_worker_and_stays(self):
+        # A folder where the marker file goes: opening it to read fails.
         os.makedirs(self.path)
-        tools = next_worker(self.t)
-        self.assertIn(self.path, tools.ch_status())
+        printed = io.StringIO()
+        with contextlib.redirect_stdout(printed):
+            tools = self.real_tools()
+        self.assertIsNone(tools._adopted_backup)
+        self.assert_unread_marker_said(tools, printed.getvalue().splitlines())
         tools.ch_stop()
         self.assertTrue(os.path.isdir(self.path))
 
     def test_an_unreadable_marker_is_never_replaced_by_a_new_run(self):
-        os.makedirs(self.t.scratch_root, exist_ok=True)
-        _write(self.path, b"{not json")
-        tools = next_worker(self.t, make_watch=lambda: FakeWatch([]))
-        self.assertIn("open-run marker not written", tools.ch_start(self.t.r.song))
+        # The killed worker's real marker, cut short.
+        self.killed_worker()
+        data = _read(self.path)
+        data = data[:len(data) // 2]
+        _write(self.path, data)
+        with contextlib.redirect_stdout(io.StringIO()):
+            tools = self.real_tools()
+        lines = tools.ensure_backup().splitlines()
+        said = [line for line in lines if B._restore_hint(tools._adopted_backup) in line]
+        self.assertEqual(len(said), 1, lines)
         tools.ch_stop()
-        self.assertEqual(_read(self.path), b"{not json")
-
-    def test_a_pid_test_that_raises_leaves_the_marker(self):
-        backup = self.killed_run()
-
-        def broken(pid):
-            raise OSError("no answer")
-
-        tools = GT.GameTools(self.t.r.env, threading.RLock(), self.t.scratch_root,
-                             driver=self.t.driver, is_pid_running=broken)
-        self.assertIsNone(tools._adopted_backup)
-        self.assertIn("was left in place and nothing was adopted: OSError: no answer",
-                      tools.ch_status())
-        self.assert_marker_names(backup)
+        self.assertEqual(_read(self.path), data)
 
 
 class RecorderTest(unittest.TestCase):
