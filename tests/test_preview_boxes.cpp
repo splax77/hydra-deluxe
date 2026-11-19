@@ -34,6 +34,7 @@
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
+#include "ui/preview_panel.h"  // kStepMs, the step the Preview's buttons take
 
 using namespace hydra;
 using namespace hydra::app;
@@ -110,163 +111,255 @@ Song meter_song(std::initializer_list<SigAt> sigs, int64_t note_tick) {
     return song;
 }
 
-}  // namespace
-
-TEST_CASE("build_time_box: timestamp, measure, tempo") {
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-
-    // 1300 ms is tick 1248: bar 1, third beat, 288 ticks into it. 5000 ms is
-    // tick 4800: the third bar's third beat, exactly on the line.
-    PreviewTimeBox box = build_time_box(scene, 1300.0, 5000.0);
-    CHECK(box.timestamp == "0:01.300 / 0:05.000");
-    CHECK(box.position == "m1.3.288");
-    CHECK(box.length == "m3.3.0");
-    CHECK(box.tempo == "BPM 120.000 " + kDot + " 4/4");
-    CHECK(box.section_line.empty());
-
-    CHECK(build_time_box(scene, 0.0, 5000.0).position == "m1.1.0");
-
-    PreviewTimeBox later = build_time_box(scene, 64000.0, 64000.0);
-    CHECK(later.timestamp == "1:04.000 / 1:04.000");
-
-    // The playhead is clamped to the length.
-    CHECK(build_time_box(scene, 9999.0, 5000.0).timestamp == "0:05.000 / 0:05.000");
+// A corpus chart's song (testdata/input), read by the parser the app uses.
+const Song& corpus_song(const std::string& name) {
+    const std::string path = corpus::chart_named(name);
+    REQUIRE_MESSAGE(!path.empty(), "no corpus chart named " << name);
+    return corpus::song(path, ChartReading{});
 }
 
-TEST_CASE("build_time_box: the timestamp rounds 59,999.6 ms to 1:00.000") {
-    // The clock rounds to the whole ms before it splits off the minutes, so
-    // it never reads 0:60.000 (D48, Q20).
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-    CHECK(build_time_box(scene, 59999.6, 64000.0).timestamp == "1:00.000 / 1:04.000");
+// A position in the shape format_measure (core/timing.h) prints, for an
+// expected measure, beat and tick counted from somewhere other than the box.
+std::string grid_label(int measure, int beat, int64_t ticks_in) {
+    return "m" + std::to_string(measure) + "." + std::to_string(beat) + "." +
+           std::to_string(ticks_in);
+}
+
+bool ends_with(const std::string& s, const std::string& tail) {
+    return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0;
+}
+
+// The signature as the time box's tempo line ends with it.
+std::string sig_text(const std::pair<int, int>& sig) {
+    return std::to_string(sig.first) + "/" + std::to_string(sig.second);
+}
+
+// The drawn measure lines of a scene, in order.
+std::vector<PreviewBeat> measure_lines(const PreviewScene& scene) {
+    std::vector<PreviewBeat> lines;
+    for (const PreviewBeat& b : scene.beats)
+        if (b.kind == PreviewBeatKind::MeasureLine) lines.push_back(b);
+    return lines;
+}
+
+// A real song's length and one playhead on it: the last note of My Own Summer
+// and the chord halfway through its notes, for the step cases.
+struct RealPlayhead {
+    PreviewScene scene;
+    double len = 0.0;
+    double chord_ms = 0.0;
+};
+RealPlayhead real_playhead() {
+    const Song& song = corpus_song("Deftones - My Own Summer");
+    RealPlayhead p;
+    p.scene = build_preview_scene(song, nullptr);
+    p.len = last_note_ms(p.scene);
+    REQUIRE_FALSE(song.sequence.empty());
+    p.chord_ms =
+        song.timing().ms_index().at(song.sequence[song.sequence.size() / 2].timecode.ticks());
+    // The cases step a whole kStepMs either way from the chord.
+    REQUIRE(p.chord_ms - ui::kStepMs > 0.0);
+    REQUIRE(p.chord_ms + ui::kStepMs < p.len);
+    return p;
+}
+
+// The score box's detail line for a multiplier and combo.
+std::string score_detail(int multiplier, int combo) {
+    return "x" + std::to_string(multiplier) + " " + kDot + " combo " + std::to_string(combo);
+}
+
+// The replay chord struck at `ms` (struck_at), or none before the first.
+const ReplayChord* struck_chord(const ReplayResult& r, double ms) {
+    const ReplayChord* at = nullptr;
+    for (const ReplayChord& c : r.chords)
+        if (struck_at(ms, c.ms)) at = &c;
+    return at;
+}
+
+}  // namespace
+
+TEST_CASE("build_time_box: the position counts the drawn grid on a real chart") {
+    // Entertain Me changes meter over a hundred times (5/4, 15/16 and back),
+    // so its grid restarts often. At every line the highway draws, the box's
+    // measure and beat are the count of drawn measure and beat lines so far,
+    // a half line sits its distance from the beat line before it, and the
+    // signature is the grid's own at that tick.
+    const Song& song = corpus_song("Tigran Hamasyan - Entertain Me");
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.timing.has_value());
+    REQUIRE_FALSE(scene.beats.empty());
+    REQUIRE(scene.beats.front().kind == PreviewBeatKind::MeasureLine);
+    const double len = scene.beats.back().ms;
+
+    int measure = 0;
+    int beat = 0;
+    int64_t beat_tick = 0;
+    size_t wrong = 0;
+    for (const PreviewBeat& b : scene.beats) {
+        if (b.kind == PreviewBeatKind::MeasureLine) {
+            ++measure;
+            beat = 1;
+            beat_tick = b.tick;
+        } else if (b.kind == PreviewBeatKind::Beat) {
+            ++beat;
+            beat_tick = b.tick;
+        }
+        const PreviewTimeBox box = build_time_box(scene, b.ms, len);
+        const std::string want = grid_label(measure, beat, b.tick - beat_tick);
+        const std::string want_sig = sig_text(scene.timing->time_signature_at(b.tick));
+        if (box.position != want || !ends_with(box.tempo, want_sig)) {
+            // Only the first disagreement is printed; the count says how many.
+            if (wrong++ == 0) {
+                CHECK(box.position == want);
+                CHECK_MESSAGE(ends_with(box.tempo, want_sig), box.tempo << " lacks " << want_sig);
+            }
+        }
+    }
+    CHECK(wrong == 0);
+
+    // The length line reads where playback ends the way the position reads
+    // the playhead, and a playhead past the end shows the end.
+    const PreviewTimeBox at_end = build_time_box(scene, len, len);
+    CHECK(build_time_box(scene, 0.0, len).length == at_end.position);
+    const PreviewTimeBox past = build_time_box(scene, len + 1000.0, len);
+    CHECK(past.timestamp == at_end.timestamp);
+    CHECK(past.position == at_end.position);
 }
 
 TEST_CASE("build_time_box: the end measure runs past the last beat line") {
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-    // The beat grid stops at tick 4320, but the last tempo and meter hold
-    // forever: 30 s is tick 28800, which is bar 16 on the nose.
-    REQUIRE(scene.beats.back().tick == 4320);
-    PreviewTimeBox box = build_time_box(scene, 30000.0, 30000.0);
-    CHECK(box.position == "m16.1.0");
-    CHECK(box.length == "m16.1.0");
-    CHECK(box.timestamp == "0:30.000 / 0:30.000");
+    // Past the drawn grid the last tempo and meter hold: a playhead a whole
+    // number of measures past the last measure line reads that many measures
+    // on, on the first beat.
+    const Song& song = corpus_song("Deftones - My Own Summer");
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.timing.has_value());
+    const std::vector<PreviewBeat> lines = measure_lines(scene);
+    REQUIRE_FALSE(lines.empty());
+    const PreviewBeat& last = lines.back();
+
+    const int measures_on = 3;  // a free input: any count that lands past the grid
+    const double ms = last.ms + measures_on * scene.timing->ms_per_measure_at(last.tick);
+    REQUIRE(ms > scene.beats.back().ms);
+    const PreviewTimeBox box = build_time_box(scene, ms, ms);
+    CHECK(box.position == grid_label(static_cast<int>(lines.size()) + measures_on, 1, 0));
+    CHECK(box.length == box.position);
 }
 
 TEST_CASE("build_time_box: the practice section in force") {
-    Song song = make_hand_song();
-    song.practice_sections.push_back({480, "Verse 1"});
-    song.practice_sections.push_back({2400, "Chorus"});
-    PreviewScene scene = build_preview_scene(song, nullptr);
+    // My Own Summer's chart names its practice sections. The box names the
+    // section whose tick is at or before the playhead's, from its own tick on,
+    // and nothing before the first.
+    const Song& song = corpus_song("Deftones - My Own Summer");
+    const std::vector<SongSection>& sections = song.practice_sections;
+    REQUIRE(sections.size() >= 2);
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    const MsIndex& ms = song.timing().ms_index();
 
-    REQUIRE(scene.sections.size() == 2);
-    CHECK(scene.sections[0].tick == 480);
-    CHECK(scene.sections[0].ms == doctest::Approx(500.0));
-    CHECK(scene.sections[0].name == "Verse 1");
-    // Past the last note (tick 720), where the ms index has no entry.
-    CHECK(scene.sections[1].ms == doctest::Approx(2500.0));
+    // The scene carries the chart's sections as parsed.
+    REQUIRE(scene.sections.size() == sections.size());
+    for (size_t i = 0; i < sections.size(); ++i) {
+        CHECK(scene.sections[i].tick == sections[i].tick);
+        CHECK(scene.sections[i].name == sections[i].name);
+        CHECK(scene.sections[i].ms == doctest::Approx(ms.at(sections[i].tick)));
+    }
 
-    const double len = 10000.0;
-    CHECK(build_time_box(scene, 0.0, len).section_line.empty());
-    CHECK(build_time_box(scene, 400.0, len).section_line.empty());
-    CHECK(build_time_box(scene, 500.0, len).section_line == "Section Verse 1");
-    CHECK(build_time_box(scene, 2000.0, len).section_line == "Section Verse 1");
-    CHECK(build_time_box(scene, 2500.0, len).section_line == "Section Chorus");
-    CHECK(build_time_box(scene, 9000.0, len).section_line == "Section Chorus");
+    const double len = std::max(scene.beats.back().ms, ms.at(sections.back().tick)) + 1.0;
+    for (size_t i = 0; i < sections.size(); ++i) {
+        const SongSection& s = sections[i];
+        CAPTURE(s.name);
+        CHECK(build_time_box(scene, ms.at(s.tick), len).section_line == "Section " + s.name);
+        if (s.tick == 0) continue;
+        const std::string before = i == 0 ? std::string{} : "Section " + sections[i - 1].name;
+        CHECK(build_time_box(scene, ms.at(s.tick - 1), len).section_line == before);
+    }
 }
 
 TEST_CASE("build_time_box: a mid-measure meter change restarts the grid") {
-    // 4/4 from tick 0, 3/4 from tick 2880: beat 3 of the second measure, not
-    // a measure line. Clone Hero's grid restarts there (MeasureIndex), so the
-    // measure lines run 0, 1920, 2880, 4320 and the second measure is cut
-    // short. The box and the drawn lines both read that grid.
-    const Song song = meter_song({{2880, 3, 4}}, 3600);
+    // No corpus chart writes a meter change inside a measure, so this chart
+    // is written here. Clone Hero's grid restarts a measure at such a change
+    // (docs/clone-hero/code/6142/grid_restart_20DACA0.md; Hydra's MeasureIndex),
+    // and the box and the drawn lines both read that grid.
+    const int64_t beat = 480;  // meter_song's ticks a quarter
+    const int64_t change = 4 * beat + 2 * beat;  // the 4/4 second measure's third beat
+    const int64_t playhead = change + beat + beat / 2;  // half a beat into the 3/4 measure's second beat
+    const Song song = meter_song({{change, 3, 4}}, playhead);
     PreviewScene scene = build_preview_scene(song, nullptr);
 
-    // 120 BPM at 480 ticks/quarter: tick 3600 is 3750 ms, past the change:
-    // 720 ticks into the third measure, so its second beat, 240 ticks in.
-    PreviewTimeBox box = build_time_box(scene, 3750.0, 3750.0);
-    CHECK(box.position == "m3.2.240");
-    CHECK(box.tempo == "BPM 120.000 " + kDot + " 3/4");
-
-    // ...and that measure is the one the drawn measure lines put tick 3600
-    // in: the third line is at 2880 and the fourth at 4320.
-    std::vector<int64_t> lines;
-    for (const PreviewBeat& b : scene.beats)
-        if (b.kind == PreviewBeatKind::MeasureLine) lines.push_back(b.tick);
+    // The lines: the first 4/4 measure, the cut-short second, then 3/4 from
+    // the change.
+    const std::vector<PreviewBeat> lines = measure_lines(scene);
     REQUIRE(lines.size() >= 4);
-    CHECK(lines[0] == 0);
-    CHECK(lines[1] == 1920);
-    CHECK(lines[2] == 2880);
-    CHECK(lines[3] == 4320);
-}
+    CHECK(lines[0].tick == 0);
+    CHECK(lines[1].tick == 4 * beat);
+    CHECK(lines[2].tick == change);
+    CHECK(lines[3].tick == change + 3 * beat);
 
-TEST_CASE("build_time_box: a change between two beats shows from the next beat") {
-    // 3/4 written at tick 2900, 20 ticks after the 4/4 beat at 2880. The grid
-    // first sees it at the next beat, 3360, and the time box's signature
-    // switches there with the position, not at the written tick.
-    const Song song = meter_song({{2900, 3, 4}}, 4800);
-    PreviewScene scene = build_preview_scene(song, nullptr);
-    const MsIndex& ms = song.timing().ms_index();
-
-    // Tick 3000: still 4/4, the second measure's third beat, 120 ticks in.
-    PreviewTimeBox before = build_time_box(scene, ms.at(3000), 5000.0);
-    CHECK(before.position == "m2.3.120");
-    CHECK(before.tempo == "BPM 120.000 " + kDot + " 4/4");
-    // Tick 3360: the restart, a new measure in 3/4.
-    PreviewTimeBox at = build_time_box(scene, ms.at(3360), 5000.0);
-    CHECK(at.position == "m3.1.0");
-    CHECK(at.tempo == "BPM 120.000 " + kDot + " 3/4");
+    // The box puts the playhead in the measure the third line starts.
+    const PreviewTimeBox box =
+        build_time_box(scene, song.timing().ms_index().at(playhead), 1e9);
+    CHECK(box.position == grid_label(3, 2, beat / 2));
+    CHECK(ends_with(box.tempo, sig_text({3, 4})));
 }
 
 TEST_CASE("build_time_box: the time signature in force, as the chart wrote it") {
-    // 120 BPM, 480 ticks per quarter. 6/8 from tick 1920 (2000 ms), then 3/4
-    // from tick 3360 (3500 ms). Both are 1440 ticks a measure, so only the
-    // stored signature tells them apart.
-    const Song song = meter_song({{1920, 6, 8}, {3360, 3, 4}}, 4800);
-    PreviewScene scene = build_preview_scene(song, nullptr);
+    // Stabwound is the corpus chart that writes 6/8 (its .chart's "TS 6 3").
+    // 6/8 and 3/4 measures are the same length, so only the written signature
+    // tells them apart. On every 6/8 measure line the box shows 6/8, and the
+    // next beat line is an eighth note on (half a quarter), its second beat.
+    const Song& song = corpus_song("Necrophagist - Stabwound");
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.timing.has_value());
+    const double len = scene.beats.back().ms;
+    const int64_t eighth = song.tick_resolution() / 2;
 
-    CHECK(build_time_box(scene, 0.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 4/4");
-    CHECK(build_time_box(scene, 1999.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 4/4");
-    CHECK(build_time_box(scene, 2000.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 6/8");
-    CHECK(build_time_box(scene, 3500.0, 5000.0).tempo == "BPM 120.000 " + kDot + " 3/4");
-    // On the 6/8 change's own tick the position and the label switch
-    // together: a new measure, read in 6/8.
-    CHECK(build_time_box(scene, 1999.0, 5000.0).position == "m1.4.479");
-    CHECK(build_time_box(scene, 2000.0, 5000.0).position == "m2.1.0");
-    // In 6/8 a beat is an eighth note (240 ticks): tick 2420 is 500 ticks
-    // into the measure, its third beat, 20 ticks in.
-    const double ms_2420 = song.timing().ms_index().at(2420);
-    CHECK(build_time_box(scene, ms_2420, 5000.0).position == "m2.3.20");
-    // A scene built from nothing reads the chart default.
-    CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).tempo == "BPM 0.000 " + kDot + " 4/4");
-    CHECK(build_time_box(PreviewScene{}, 0.0, 0.0).position == "m1.1.0");
+    int six_eight_lines = 0;
+    for (size_t i = 0; i < scene.beats.size(); ++i) {
+        const PreviewBeat& line = scene.beats[i];
+        if (line.kind != PreviewBeatKind::MeasureLine) continue;
+        if (scene.timing->time_signature_at(line.tick) != std::pair<int, int>{6, 8}) continue;
+        ++six_eight_lines;
+        CHECK(ends_with(build_time_box(scene, line.ms, len).tempo, "6/8"));
+        size_t j = i + 1;
+        while (j < scene.beats.size() && scene.beats[j].kind == PreviewBeatKind::Half) ++j;
+        if (j == scene.beats.size() || scene.beats[j].kind != PreviewBeatKind::Beat) continue;
+        CHECK(scene.beats[j].tick - line.tick == eighth);
+        CHECK(ends_with(build_time_box(scene, scene.beats[j].ms, len).position, ".2.0"));
+    }
+    // The chart's 6/8 reached the grid: without it nothing above ran.
+    CHECK(six_eight_lines > 0);
 }
 
 TEST_CASE("step_shown_ms: a step moves the shown moment by exactly its size") {
-    CHECK(step_shown_ms(1300.0, 5000.0, 10.0) == doctest::Approx(1310.0));
-    CHECK(step_shown_ms(1300.0, 5000.0, -10.0) == doctest::Approx(1290.0));
-    CHECK(step_shown_ms(1300.25, 5000.0, 10.0) == doctest::Approx(1310.25));
+    // A real song's length and a real chord's moment, and the step the
+    // Preview's buttons take.
+    const RealPlayhead p = real_playhead();
+    CHECK(step_shown_ms(p.chord_ms, p.len, ui::kStepMs) == doctest::Approx(p.chord_ms + ui::kStepMs));
+    CHECK(step_shown_ms(p.chord_ms, p.len, -ui::kStepMs) == doctest::Approx(p.chord_ms - ui::kStepMs));
     // A step of 0 lands on the shown moment itself.
-    CHECK(step_shown_ms(1300.0, 5000.0, 0.0) == doctest::Approx(1300.0));
+    CHECK(step_shown_ms(p.chord_ms, p.len, 0.0) == doctest::Approx(p.chord_ms));
 }
 
 TEST_CASE("step_shown_ms: never before 0 or past where playback ends") {
-    CHECK(step_shown_ms(5.0, 5000.0, -10.0) == doctest::Approx(0.0));
-    CHECK(step_shown_ms(0.0, 5000.0, -10.0) == doctest::Approx(0.0));
-    CHECK(step_shown_ms(4995.0, 5000.0, 10.0) == doctest::Approx(5000.0));
-    CHECK(step_shown_ms(5000.0, 5000.0, 10.0) == doctest::Approx(5000.0));
+    const RealPlayhead p = real_playhead();
+    const double half = ui::kStepMs / 2.0;
+    CHECK(step_shown_ms(half, p.len, -ui::kStepMs) == 0.0);
+    CHECK(step_shown_ms(0.0, p.len, -ui::kStepMs) == 0.0);
+    CHECK(step_shown_ms(p.len - half, p.len, ui::kStepMs) == p.len);
+    CHECK(step_shown_ms(p.len, p.len, ui::kStepMs) == p.len);
 }
 
 TEST_CASE("step_shown_ms: a playhead outside the song steps from the moment shown") {
-    // Past the end the time box shows the end, 5000 ms, and the step starts
-    // there: back 10 ms is 4990 ms, not 5990 ms.
-    CHECK(build_time_box(PreviewScene{}, 6000.0, 5000.0).timestamp ==
-          build_time_box(PreviewScene{}, 5000.0, 5000.0).timestamp);
-    CHECK(step_shown_ms(6000.0, 5000.0, -10.0) == doctest::Approx(4990.0));
+    // Past the end the time box shows the end, and the step starts there.
+    const RealPlayhead p = real_playhead();
+    const double outside = 100.0 * ui::kStepMs;  // a free input: well past either edge
+    CHECK(build_time_box(p.scene, p.len + outside, p.len).timestamp ==
+          build_time_box(p.scene, p.len, p.len).timestamp);
+    CHECK(step_shown_ms(p.len + outside, p.len, -ui::kStepMs) ==
+          doctest::Approx(p.len - ui::kStepMs));
     // Before 0 the time box shows 0, and the step starts there.
-    CHECK(step_shown_ms(-50.0, 5000.0, 10.0) == doctest::Approx(10.0));
+    CHECK(build_time_box(p.scene, -outside, p.len).timestamp ==
+          build_time_box(p.scene, 0.0, p.len).timestamp);
+    CHECK(step_shown_ms(-outside, p.len, ui::kStepMs) == doctest::Approx(ui::kStepMs));
 }
 
 TEST_CASE("score box: no path hides the box") {
