@@ -8,7 +8,6 @@ import csv
 import ctypes
 import dataclasses
 import os
-import queue
 import struct
 import subprocess
 import sys
@@ -446,8 +445,9 @@ class WriteSample(unittest.TestCase):
     def test_the_columns_are_pinned_with_one_header_per_file(self):
         # The recorded rows written again give back the recorded file byte for
         # byte: one header, each cell in the form the recorder wrote in that run,
-        # and an empty cell for each missing value.
-        with open(REAL_SAMPLES, newline="", encoding="utf-8") as file:
+        # and an empty cell for each missing value. The copy is read with universal
+        # newlines, because git may check it out with CRLF line ends.
+        with open(REAL_SAMPLES, encoding="utf-8") as file:
             recorded = file.read()
         table = captured_table(thread_pids=())
         nothing_moved = M.deltas(table.processes, table.processes)
@@ -593,72 +593,6 @@ class Folder(unittest.TestCase):
 
 
 class Loop(Folder):
-    def lines_at(self, loop, script):
-        """A stdin fed by the real reader thread: `script` maps a sample to the
-        line sent after it, and the sleep waits until the thread has taken it."""
-        lines = queue.Queue()
-        taken = threading.Semaphore(0)
-
-        def feed():
-            while True:
-                line = lines.get()
-                if line is None:
-                    return
-                yield line
-
-        class Counting(M.Inputs):
-            def apply(self, line):
-                super().apply(line)
-                taken.release()
-
-        loop.inputs = Counting()
-        thread = threading.Thread(target=M.read_stdin, args=(feed(), loop.inputs, loop.stop),
-                                  daemon=True)
-        thread.start()
-
-        def on_sleep(sample):
-            if sample in script:
-                lines.put(script[sample])
-                self.assertTrue(taken.acquire(timeout=SUBPROCESS_CAP_S))
-
-        loop.on_sleep = on_sleep
-        return lines
-
-    def test_stdin_lines_switch_the_threads_and_the_clock_on_at_their_samples(self):
-        reads = []
-
-        def reader(address, size):
-            reads.append((address, size))
-            return struct.pack("<d", 1.5)
-
-        tables = lambda sample: [dict(TWO_PROCESSES[0]),  # noqa: E731
-                                 dict(TWO_PROCESSES[1], pid=PARENT), dict(TWO_PROCESSES[1],
-                                                                          pid=RECORDER)]
-        loop = FakeLoop(self.folder, tables=tables, open_reader=lambda pid: reader)
-        self.lines_at(loop, {2: "pid 7\n", 4: "engine 0x1000\n"})
-        reason = loop.run(cap_s=PERIOD_S * 5)
-        self.assertEqual(reason, "cap")
-        samples = read_rows(self.folder, "samples.csv")
-        self.assertEqual([row["clock_s"] for row in samples], ["", "", "", "", "1.5", "1.5"])
-        self.assertEqual(samples[3]["clock_wall_before_s"], "")
-        self.assertEqual(samples[3]["clock_wall_after_s"], "")
-        self.assertNotEqual(samples[4]["clock_wall_before_s"], "")
-        self.assertNotEqual(samples[4]["clock_wall_after_s"], "")
-        self.assertEqual(reads[0], (0x1000 + C.OFF_SONG_CLOCK, 8))
-        threads = read_rows(self.folder, "threads.csv")
-        self.assertEqual(min(int(row["sample"]) for row in threads), 3)
-        self.assertEqual({row["pid"] for row in threads}, {"7", str(PARENT), str(RECORDER)})
-
-    def test_the_game_the_worker_and_the_recorder_always_get_rows(self):
-        tables = lambda sample: [dict(TWO_PROCESSES[0]),  # noqa: E731
-                                 dict(TWO_PROCESSES[1], pid=PARENT), dict(TWO_PROCESSES[1],
-                                                                          pid=RECORDER),
-                                 dict(TWO_PROCESSES[1], pid=55)]
-        loop = FakeLoop(self.folder, tables=tables, inputs=M.Inputs(7))
-        loop.run(cap_s=PERIOD_S * 2)
-        rows = [row for row in read_rows(self.folder, "processes.csv") if row["sample"] != "1"]
-        self.assertEqual({row["pid"] for row in rows}, {"7", str(PARENT), str(RECORDER)})
-
     def test_until_the_pid_line_no_process_is_left_out_of_the_gains(self):
         def tables(sample):
             return [dict(TWO_PROCESSES[1], pid=55, user=sample * 10_000)]
@@ -669,37 +603,6 @@ class Loop(Folder):
         self.assertEqual([(row["sample"], row["pid"], row["cpu_ms"]) for row in rows],
                          [("1", "55", "0.0"), ("2", "55", "1.0")])
         self.assertEqual(read_rows(self.folder, "threads.csv"), [])
-
-    def test_the_first_sample_lists_every_process_and_later_ones_keep_the_filter(self):
-        idle = [dict(TWO_PROCESSES[1], pid=pid, parent=pid - 1) for pid in (40, 41, 42)]
-        loop = FakeLoop(self.folder, tables=lambda sample: idle)
-        loop.run(cap_s=PERIOD_S * 2)
-        rows = read_rows(self.folder, "processes.csv")
-        self.assertEqual([(row["sample"], row["pid"], row["parent_pid"]) for row in rows],
-                         [("1", "40", "39"), ("1", "41", "40"), ("1", "42", "41")])
-
-    def test_the_before_stamp_is_the_samples_own_wall_stamp(self):
-        # A wall clock that moves 1 s at every call, so a second stamp would show.
-        loop = FakeLoop(self.folder, inputs=M.Inputs(7),
-                        open_reader=lambda pid: lambda address, size: struct.pack("<d", 2.5))
-        loop.inputs.engine = 0x1000
-        calls = []
-
-        def wall():
-            calls.append(1)
-            return float(len(calls))
-
-        seams = M.Seams(loop.read_table, loop.open_reader, wall=wall, monotonic=lambda: loop.time,
-                        sleep=loop.sleep, process_time=lambda: 1.25)
-        files = M.RecorderFiles(self.folder)
-        try:
-            M.record(files, loop.inputs, loop.stop, seams, period_s=PERIOD_S, parent_pid=PARENT,
-                     recorder_pid=RECORDER, cap_s=PERIOD_S)
-        finally:
-            files.close()
-        samples = read_rows(self.folder, "samples.csv")
-        self.assertEqual([(row["wall_s"], row["clock_wall_before_s"], row["clock_wall_after_s"])
-                          for row in samples], [("1.0", "1.0", "2.0"), ("3.0", "3.0", "4.0")])
 
     def test_a_short_clock_read_leaves_the_column_empty(self):
         loop = FakeLoop(self.folder, inputs=M.Inputs(7),
@@ -1053,6 +956,148 @@ class RealRun(Folder):
         _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         self.assertNotEqual(process.returncode, 0)
         self.assertIn("OpenProcess failed for parent pid", stderr)
+
+
+def complete_rows(folder, name):
+    """The rows of a file the recorder is still writing, less a last line it has
+    not finished."""
+    path = os.path.join(folder, name)
+    if not os.path.exists(path):
+        return []
+    return [row for row in read_rows(folder, name) if None not in row.values()]
+
+
+def idle_child():
+    """A Python process that says it is ready, then blocks on its stdin and uses
+    no CPU until the test closes it."""
+    child = subprocess.Popen(
+        [sys.executable, "-I", "-c", "import sys; print('ready', flush=True); sys.stdin.read()"],
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    if child.stdout.readline().strip() != "ready":
+        child.kill()
+        raise AssertionError("the idle child did not start")
+    return child
+
+
+class RealInputs(Folder):
+    """What the stdin lines and the listed pids do, on the real recorder process
+    reading the real process table and the real memory of this process."""
+
+    def start(self, *args, **options):
+        out, process = RealRun.start(self, *args, **options)
+        self.addCleanup(lambda: process.poll() is None and process.kill())
+        return out, process
+
+    def wait_for(self, process, folder, what, ready):
+        """Read samples.csv until `ready(rows)` holds. The recorder ending first, or
+        the cap passing, fails at once with what was awaited."""
+        deadline = time.monotonic() + SUBPROCESS_CAP_S
+        while True:
+            if process.poll() is not None:
+                self.fail(f"the recorder ended before {what}: {process.stderr.read()}")
+            rows = complete_rows(folder, M.SAMPLES_FILE)
+            if ready(rows):
+                return int(rows[-1]["sample"])
+            if time.monotonic() > deadline:
+                self.fail(f"no {what} within {SUBPROCESS_CAP_S} s")
+            time.sleep(1 / M.RATE_PER_S)
+
+    def clock_run(self):
+        """A recorder told by stdin first which pid to watch (this one) and then
+        where its engine is: an address whose song clock offset holds a double in
+        this process. Returns the files' rows, the last sample before each line
+        was sent, and the recorder's pid."""
+        clock = ctypes.c_double(1.5)
+        engine = ctypes.addressof(clock) - C.OFF_SONG_CLOCK
+        out, process = self.start("--cap-s", str(SUBPROCESS_CAP_S), stdin=subprocess.PIPE)
+        self.assertIn("machine recorder", process.stdout.readline())
+        before_pid = self.wait_for(process, out, "two samples", lambda rows: len(rows) >= 2)
+        process.stdin.write(f"pid {os.getpid()}\n")
+        process.stdin.flush()
+        self.wait_for(process, out, "a thread row",
+                      lambda rows: complete_rows(out, M.THREADS_FILE))
+        before_engine = self.wait_for(process, out, "a sample after the thread rows",
+                                      lambda rows: True)
+        process.stdin.write(f"engine {engine:#x}\n")
+        process.stdin.flush()
+        self.wait_for(process, out, "a song clock",
+                      lambda rows: any(row["clock_s"] for row in rows))
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
+        self.assertEqual(process.returncode, 0, stderr)
+        return (read_rows(out, M.SAMPLES_FILE), read_rows(out, M.THREADS_FILE), before_pid,
+                before_engine, process.pid, clock.value)
+
+    def test_stdin_lines_switch_the_threads_and_the_clock_on_at_their_samples(self):
+        samples, threads, before_pid, before_engine, recorder, clock = self.clock_run()
+        self.assertEqual(samples[-1]["stop_reason"], M.STOP_STDIN)
+        self.assertGreater(min(int(row["sample"]) for row in threads), before_pid)
+        # The pid line names this process, which is also the recorder's parent.
+        self.assertEqual({int(row["pid"]) for row in threads}, {os.getpid(), recorder})
+        early = [row for row in samples if int(row["sample"]) <= before_engine]
+        self.assertEqual({(row["clock_s"], row["clock_wall_before_s"], row["clock_wall_after_s"])
+                          for row in early}, {("", "", "")})
+        clocked = [row for row in samples if row["clock_s"]]
+        self.assertTrue(clocked)
+        self.assertEqual({float(row["clock_s"]) for row in clocked}, {clock})
+        # Once the engine is known every later sample reads the clock.
+        first = int(clocked[0]["sample"])
+        self.assertEqual([row["sample"] for row in clocked],
+                         [row["sample"] for row in samples if int(row["sample"]) >= first])
+
+    def test_the_before_stamp_is_the_samples_own_wall_stamp(self):
+        # A live run, and the recording of a real run (REAL_SAMPLES): each sample
+        # with a clock carries its own wall stamp as the before stamp, and the
+        # after stamp is taken later.
+        samples = self.clock_run()[0]
+        with open(REAL_SAMPLES, newline="", encoding="utf-8") as file:
+            recorded = list(csv.DictReader(file))
+        for source, rows in (("live", samples), ("recorded", recorded)):
+            clocked = [row for row in rows if row["clock_s"]]
+            with self.subTest(source):
+                self.assertTrue(clocked)
+                for row in clocked:
+                    self.assertEqual(row["clock_wall_before_s"], row["wall_s"])
+                    self.assertGreaterEqual(float(row["clock_wall_after_s"]),
+                                            float(row["clock_wall_before_s"]))
+
+    def listed_run(self):
+        """A one-second recorder run with this process as its target and an idle
+        child as its parent, beside a second idle child nobody lists."""
+        parent, bystander = idle_child(), idle_child()
+        for child in (parent, bystander):
+            self.addCleanup(child.stdout.close)
+            self.addCleanup(child.wait, SUBPROCESS_CAP_S)
+            self.addCleanup(child.stdin.close)
+        out, process = self.start("--seconds", "1", "--target", str(os.getpid()),
+                                  parent=parent.pid)
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
+        self.assertEqual(process.returncode, 0, stderr)
+        by_sample = {}
+        for row in read_rows(out, M.PROCESSES_FILE):
+            by_sample.setdefault(int(row["sample"]), {})[int(row["pid"])] = row
+        samples = read_rows(out, M.SAMPLES_FILE)
+        self.assertGreaterEqual(len(samples), 3)
+        return samples, by_sample, parent.pid, bystander.pid, process.pid
+
+    def test_the_game_the_worker_and_the_recorder_always_get_rows(self):
+        samples, by_sample, parent, _, recorder = self.listed_run()
+        for row in samples[1:]:
+            with self.subTest(sample=row["sample"]):
+                self.assertLessEqual({os.getpid(), parent, recorder},
+                                     set(by_sample.get(int(row["sample"]), {})))
+        # The idle parent gains nothing, so only its listing gives it its rows.
+        self.assertEqual({by_sample[int(row["sample"])][parent]["cpu_ms"] for row in samples[1:]},
+                         {"0.0"})
+
+    def test_the_first_sample_lists_every_process_and_later_ones_keep_the_filter(self):
+        samples, by_sample, _, bystander, _ = self.listed_run()
+        first = by_sample[1]
+        self.assertEqual(len(first), int(samples[0]["processes"]))
+        self.assertEqual(int(first[bystander]["parent_pid"]), os.getpid())
+        later = {pid for number, rows in by_sample.items() if number > 1 for pid in rows}
+        self.assertNotIn(bystander, later)
+        self.assertLess(max(len(rows) for number, rows in by_sample.items() if number > 1),
+                        len(first))
 
 
 class ClockRange(Folder):
