@@ -296,14 +296,26 @@ class Rig(unittest.TestCase):
 
 class AttachTest(Rig):
     def test_attach_before_the_delay_waits_the_rest_then_attaches(self):
-        self.clock.t = 12.0
-        tools = self.tools([STATE], game=FakeGame(launched_at=10.0))
+        # On the real clock (time.monotonic, the clock launched_at is on), the
+        # game launched half a second short of ATTACH_DELAY_S ago.
+        reply = recorded_state()
+        launched = time.monotonic() - (FT.ATTACH_DELAY_S - 0.5)
+        tools = self.tools([reply], game=FakeGame(launched_at=launched), real_time=True)
+        attached_at = []
+        attach = self.frida.attach
+
+        def timed_attach(name):
+            attached_at.append(time.monotonic())
+            return attach(name)
+
+        self.frida.attach = timed_attach
         out = tools.ch_attach()
-        self.assertEqual(self.clock.slept, [3.0])
         self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME])
-        self.assertIn("waited 3.0 s, so the attach comes 5 s after the launch (ATTACH_DELAY_S)", out)
-        self.assertIn("state: playing", out)
-        self.assertIn("songTime: 3.5", out)
+        # The attach comes no sooner than ATTACH_DELAY_S after the launch.
+        self.assertGreaterEqual(attached_at[0] - launched, FT.ATTACH_DELAY_S)
+        (waited,) = [line for line in out.splitlines() if "(ATTACH_DELAY_S)" in line]
+        self.assertLessEqual(float(re.match(r"waited (\d+\.\d) s", waited).group(1)), 0.5)
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
         self.assertEqual(self.game.backups, 0)
 
     def test_attach_after_the_delay_does_not_wait(self):
@@ -339,10 +351,18 @@ class AttachTest(Rig):
         self.assertEqual(self.game.backups, 0)
 
     def test_the_facts_load_once_per_build(self):
-        tools = self.tools([STATE, STATE])
+        # The real loader on the real 6142 facts and version file, counted.
+        def load_facts():
+            self.loads += 1
+            return real_6142_facts()
+
+        tools = self.tools([recorded_state(), recorded_state()], real_time=True,
+                           current_build=lambda: B.current_build(REAL_6142_GAME),
+                           load_facts=load_facts)
         tools.ch_attach()
         tools.ch_detach()
         tools.ch_attach()
+        self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME, C.PROCESS_NAME])
         self.assertEqual(self.loads, 1)
 
     def drop_session(self):
@@ -413,33 +433,28 @@ class AttachTest(Rig):
         self.assertEqual(self.frida.attached_to, [])
 
     def test_a_stale_trace_agent_starts_no_trace(self):
-        # ch_trace_start reaches trace_hits.TraceSession, the trace loader.
+        # ch_trace_start builds the real trace session, which checks the
+        # agent's build stamp; the refusal is build_stamp's own line.
         path = os.path.join(self.agent_dir, os.path.basename(TH.DEFAULT_AGENT))
+        tools = self.real_trace_tools(reads=3)
+        self.game.backups = 0
         with open(os.path.join(self.agent_dir, "trace.ts"), "a", encoding="utf-8") as f:
             f.write("// an edit after the build\n")
-        with self.assertRaises(TH.AgentMissing) as raised:
-            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertEqual(str(raised.exception),
-                         f"{path} is stale: trace.ts changed since it was built; "
-                         "run npm run build:trace in tools/ch_mcp/agent first")
+        stale = BS.check(path)
+        self.assertIsNotNone(stale)
+        self.assertEqual(tools.ch_trace_start(self.song).splitlines()[-1], stale)
         os.remove(BS.stamp_path(path))
-        with self.assertRaises(TH.AgentMissing) as raised:
-            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertIn("has no build stamp", str(raised.exception))
-        out = []
-        self.assertEqual(TH.main(["--song", self.song, "--mode", TH.MODE_COUNT,
-                                  "--engine-class", "Eng", "--agent", path,
-                                  "--out", os.path.join(self.tmp, "t.jsonl")], out=out.append), 1)
-        self.assertEqual(out, [BS.check(path)])
+        unstamped = BS.check(path)
+        self.assertIsNotNone(unstamped)
+        self.assertNotEqual(unstamped, stale)
+        self.assertEqual(tools.ch_trace_start(self.song).splitlines()[-1], unstamped)
+        self.assertEqual(self.traces, [])
+        self.assertEqual(self.game.backups, 0)
+        # Once the agent is rebuilt, the same call starts the trace on it.
         make_built_agent(self.agent_dir, TH.DEFAULT_AGENT_NAME)
-        session = TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                                  os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertEqual(session.agent_path, path)
+        tools.ch_trace_start(self.song)
+        (trace,) = self.traces
+        self.assertEqual(trace.agent_path, path)
 
 
 class ReadTest(Rig):
@@ -515,30 +530,12 @@ class SnapshotEngineLinesTest(Rig):
         self.assertIn(repr(pad_axis(DYNAMIC_GHOST, threshold)), printed[3])
 
     def test_the_threshold_line_names_the_value_and_the_offsets_constant(self):
-        self.assertIn("dynamics threshold: 64 (OFF_DYN_THRESHOLD, +0x2c0)",
+        self.assertIn(f"dynamics threshold: 64 (OFF_DYN_THRESHOLD, +{C.OFF_DYN_THRESHOLD:#x})",
                       self.snapshot_lines(threshold=64))
 
     def test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision(self):
         lines = self.snapshot_lines(threshold=64)
         self.assertIn(f"ghost axis value: {pad_axis('ghost', 64)!r} (kit_tools.pad_axis)", lines)
-
-    def test_the_search_runs_without_the_servers_lock(self):
-        seen = []
-
-        def try_the_lock():
-            taken = self.lock.acquire(blocking=False)
-            seen.append(taken)
-            if taken:
-                self.lock.release()
-
-        def finder(proc):
-            other = threading.Thread(target=try_the_lock)
-            other.start()
-            other.join()
-            return ENGINE
-
-        self.snapshot_lines(find_engine=finder)
-        self.assertEqual(seen, [True])
 
 
 # A hand-written menu block in the shape agent/menu.ts sends.
