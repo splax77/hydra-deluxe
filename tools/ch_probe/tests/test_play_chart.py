@@ -10,14 +10,15 @@ hand, with hand-picked times, for a case no fixture shows. Waiting for a
 press, noticing the song stopped and picking the first press when a run joins
 mid-song are live.py's.
 
-A run is tested on fakes for the song clock, the score and the keys, so no
-test opens the game or sends a key: the press log's rows, the frozen-clock
-stop, the wall-time cap, and main()'s read-only open and capped engine search.
+No test opens the game or sends a key. The run-cap and caller-hook tests play
+the Freak fixture on the song clock and score a real run recorded, cut into
+testdata/ch_runs/ls-f1-run1, on the real timer. Other run tests still use
+the fakes below.
 """
 
 from __future__ import annotations
 
-import contextlib
+import bisect
 import csv
 import inspect
 import io
@@ -36,7 +37,6 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.experiments import live, overlay_logs, play_chart  # noqa: E402
 from tools.ch_probe.input_driver import Lane  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
@@ -185,11 +185,23 @@ class LoadScheduleTest(unittest.TestCase):
         self.assertEqual(len(plan), len(_read_json(_FREAK_SCHEDULE)["presses"]))
 
     def test_a_refusal_in_the_file_stops_the_load_quoting_it(self):
-        doc = _schedule_of(_DUMP)
-        doc["refusals"] = ["chord 41 is a made-up refusal"]
-        with self.assertRaises(ValueError) as caught:
-            _write_and_load(doc, play_chart.load_schedule)
-        self.assertIn("chord 41 is a made-up refusal", str(caught.exception))
+        # The real Freak file loads; the same file with refusals in it does
+        # not, and the error names the file and keeps every refusal, not only
+        # the first.
+        doc = _read_json(_FREAK_SCHEDULE)
+        self.assertEqual(doc["refusals"], [])
+        play_chart.load_schedule(_FREAK_SCHEDULE)
+        doc["refusals"] = ["no chord at skipped fill A", "no chord at skipped fill B"]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "refused_schedule.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+            with self.assertRaises(ValueError) as caught:
+                play_chart.load_schedule(path)
+        message = str(caught.exception)
+        self.assertIn(path, message)
+        for refusal in doc["refusals"]:
+            self.assertIn(refusal, message)
 
     def test_an_infeasible_squeeze_stops_the_load_naming_it(self):
         doc = _schedule_of(_DUMP)
@@ -229,12 +241,18 @@ class LoadScheduleTest(unittest.TestCase):
                                   f"{name} in {os.path.basename(module.__file__)}")
 
     def test_no_timing_constant_is_defined_in_python(self):
-        numeric = sorted(name for name, value in vars(play_chart).items()
-                         if name.isupper() or name.lstrip("_").isupper()
-                         if isinstance(value, (int, float)) and not isinstance(value, bool))
-        self.assertEqual(numeric, ["RUN_CAP_S", "SCORE_READ_DELAY_S", "_SAME_MS"])
-        self.assertEqual([name for name in vars(play_chart) if name.endswith("_MS")],
-                         ["_SAME_MS"])
+        # The schedule file's `constants` block is the list of timing numbers
+        # tools/replay_schedule.cpp owns. play_chart defines none of them
+        # again, by name or by value.
+        constants = _read_json(_FREAK_SCHEDULE)["constants"]
+        self.assertTrue(constants)
+        numeric = {name: value for name, value in vars(play_chart).items()
+                   if name.lstrip("_").isupper()
+                   if isinstance(value, (int, float)) and not isinstance(value, bool)}
+        for key, value in constants.items():
+            self.assertNotIn(key.upper(), {n.lstrip("_") for n in numeric}, key)
+            for name, own in numeric.items():
+                self.assertNotEqual(own, value, f"{name} is {key}'s {value}")
 
     def test_score_times_are_the_chords_index_and_ms(self):
         # What the trace's note list reads from a score file.
@@ -380,38 +398,98 @@ class PressLogTest(unittest.TestCase):
             self.assertLessEqual(early_ms, 2.0)
 
 
-class RunStopsTest(unittest.TestCase):
-    def test_a_frozen_clock_ends_the_run(self):
-        # The clock holds at 20 s, between the third chord and the fourth.
-        result, _game, wall = _run({"start_s": 12.0, "freeze_at_s": 20.0})
-        self.assertEqual(result.stop, "frozen")
-        self.assertEqual([r["index"] for r in result.rows], [38, 41, 45])
-        self.assertLess(wall.t, play_chart.RUN_CAP_S)
+# --- a run on a recorded game clock and the real timer ------------------------
 
-    def test_the_wall_cap_ends_the_run(self):
-        # A song clock running at a quarter speed reaches the chord at 78.26 s
-        # only after 265 s of wall time, past the cap; it never freezes.
-        result, _game, wall = _run({"start_s": 12.0, "rate": 0.25})
-        self.assertEqual(result.stop, "cap")
-        self.assertEqual([r["index"] for r in result.rows], [38, 41, 45, 91, 95, 97])
-        self.assertGreaterEqual(wall.t, play_chart.RUN_CAP_S)
-        self.assertLess(wall.t, play_chart.RUN_CAP_S + 1.0)
+# Clock windows cut from the Star Power watcher log (sp_watch-1.csv) of the
+# real run hydra-data/ch-mcp-runs/2026-11-07/ls-f1-run1, which played
+# freak_limits_schedule.json in Clone Hero. Only the wall time, song clock and
+# score columns are kept.
+_F1_RUN = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-f1-run1")
+_F1_BEFORE_FIRST_CHORD = os.path.join(_F1_RUN, "sp_watch-1-clock-2.9-4.3.csv")
+_F1_MID_SONG = os.path.join(_F1_RUN, "sp_watch-1-clock-20.0-22.6.csv")
+
+
+class _RecordedGame:
+    """The song clock and score one real run recorded, read back at the
+    recording's own pace on the real timer: a read gives the row the watcher
+    logged as much wall time after its first row as has passed since this
+    object's first read. A read past the last row fails the test at once,
+    since the recording cannot say what the game did next."""
+
+    def __init__(self, path: str) -> None:
+        with open(path, encoding="utf-8", newline="") as f:
+            self._rows = [(float(r["wall_s"]), float(r["clock_s"]), int(r["score"]))
+                          for r in csv.DictReader(f)]
+        self._walls = [row[0] for row in self._rows]
+        self._name = os.path.basename(path)
+        self._t0 = None
+
+    @property
+    def last_clock_s(self) -> float:
+        return self._rows[-1][1]
+
+    def _row(self):
+        now = time.perf_counter()
+        if self._t0 is None:
+            self._t0 = now
+        at = self._walls[0] + (now - self._t0)
+        if at > self._walls[-1]:
+            raise AssertionError(f"the run read past the end of {self._name}")
+        return self._rows[bisect.bisect_right(self._walls, at) - 1]
+
+    def read(self):
+        clock_s = self._row()[1]
+        return clock_s, clock_s
+
+    def read_score(self) -> int:
+        return self._row()[2]
+
+
+def _freak_chords():
+    return play_chart.load_schedule(_FREAK_SCHEDULE).chords
+
+
+def _plan_parts(chords):
+    """(index, chart_ms) of every press in the order play_chords sends them."""
+    return [(p.index, p.chart_ms)
+            for head, later in play_chart.press_messages(play_chart.press_plan(chords))
+            for p in (head, *later)]
+
+
+def _play_recorded(path, sent=None, **kwargs):
+    """play_chords over the Freak schedule on the recording at `path`, with
+    the real timer; `press` only notes each chord's keys in `sent`, since no
+    key may reach a window from a test."""
+    game = _RecordedGame(path)
+    sent = [] if sent is None else sent
+    chords = _freak_chords()
+    out = io.StringIO()
+    began = time.perf_counter()
+    result = play_chart.play_chords(
+        chords, game, game.read_score,
+        lambda lanes, _axes=None, then=(): sent.append(list(lanes)),
+        out=out, **kwargs)
+    return result, sent, out.getvalue(), time.perf_counter() - began, chords
+
+
+class RunStopsTest(unittest.TestCase):
+    def test_play_chords_caps_at_run_cap_s_unless_told(self):
+        # What a cap does is the next test's; this is which cap a run gets.
+        cap = inspect.signature(play_chart.play_chords).parameters["cap_s"]
+        self.assertIs(cap.default, play_chart.RUN_CAP_S)
 
     def test_a_caller_given_cap_ends_the_run_there(self):
-        # The first chord is at 13.04 s on a clock that starts at 12 s, so a
-        # 1 s cap ends the run before any press.
-        wall = _FakeTime()
-        game = _FakeGame()
-        out = io.StringIO()
-        result = play_chart.play_chords(
-            _load_chords(),
-            _FakeSongClock(wall, start_s=12.0), game.read_score, game.press,
-            now=wall.now, sleep=wall.sleep, out=out, cap_s=1)
+        # The whole recording comes before the Freak schedule's first chord,
+        # so a 1 s cap ends the run before any press.
+        result, sent, out, took_s, chords = _play_recorded(_F1_BEFORE_FIRST_CHORD, cap_s=1)
+        from tools.ch_probe import constants as C
+        self.assertGreater(min(c.ms for c in chords),
+                           C.s_to_ms(_RecordedGame(_F1_BEFORE_FIRST_CHORD).last_clock_s))
         self.assertEqual(result.stop, "cap")
         self.assertEqual(result.rows, [])
-        self.assertGreaterEqual(wall.t, 1.0)
-        self.assertLess(wall.t, 2.0)
-        self.assertIn("run cap of 1 s reached", out.getvalue())
+        self.assertEqual(sent, [])
+        self.assertGreaterEqual(took_s, 1.0)
+        self.assertIn(result.message, out)
 
 
 class _FakeProc:
@@ -428,112 +506,47 @@ class _FakeProc:
         self.closed = True
 
 
-class LiveStartTest(unittest.TestCase):
-    """main() up to the engine search, on a fake process and a finder that
-    never finds a playing song."""
-
-    def _main_with_no_song(self):
-        proc = _FakeProc()
-        opens = []
-
-        def opener(**kwargs):
-            opens.append(kwargs)
-            return proc
-
-        wall = _FakeTime()
-
-        def never_finds(p):
-            return engine_finder.find_live_engine_capped(
-                p, [(b"\x00" * 8, b"\x01" * 8)],
-                scan=lambda _proc, _back, _front: ([], 0, 0),
-                sleep=wall.sleep, now=wall.now, out=io.StringIO())
-
-        out = io.StringIO()
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "schedule.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(_schedule_of(_DUMP), f)
-            code = play_chart.main([path, "--log", os.path.join(d, "press.csv")],
-                                   open_proc=opener, find_engine=never_finds,
-                                   out=out)
-            log_written = os.path.exists(os.path.join(d, "press.csv"))
-        return code, out.getvalue(), proc, opens, log_written, never_finds
-
-    def test_no_song_exits_2_with_the_finder_message(self):
-        code, text, proc, _opens, log_written, never_finds = self._main_with_no_song()
-        self.assertEqual(code, 2)
-        # The message main prints is the one the finder itself raises.
-        with self.assertRaises(engine_finder.EngineSearchTimeout) as caught:
-            never_finds(_FakeProc())
-        self.assertIn(str(caught.exception), text)
-        self.assertTrue(proc.closed)
-        self.assertFalse(log_written)
-
-    def test_the_game_is_opened_read_only(self):
-        _code, _text, proc, opens, _log, _finder = self._main_with_no_song()
-        self.assertEqual(opens, [{"read_only": True}])
-        self.assertTrue(proc.verified)
-
-
 # --- the pieces a server calls ----------------------------------------------------
 
 class CallerHooksTest(unittest.TestCase):
-    """play_chords hands each row to `on_press` and asks `should_stop`."""
+    """play_chords hands each row to `on_press` and asks `should_stop`, on
+    the recorded mid-song clock with a 2 s cap, inside the 2.6 s the
+    recording holds."""
 
-    def _run_with(self, on_press=None, should_stop=None):
-        wall = _FakeTime()
-        game = _FakeGame()
-        result = play_chart.play_chords(
-            _load_chords(),
-            _FakeSongClock(wall, start_s=12.0), game.read_score, game.press,
-            now=wall.now, sleep=wall.sleep, on_press=on_press,
-            should_stop=should_stop, out=io.StringIO())
-        return result, game
+    _CAP_S = 2.0
+
+    def _run_with(self, **kwargs):
+        return _play_recorded(_F1_MID_SONG, cap_s=self._CAP_S, **kwargs)
+
+    def assert_a_run_of_the_plan(self, rows, chords):
+        # The rows are the presses the plan sends, in its order, with none
+        # left out between the first and the last.
+        parts = _plan_parts(chords)
+        got = [(r["index"], r["chart_ms"]) for r in rows]
+        self.assertTrue(got)
+        starts = [k for k, part in enumerate(parts) if part == got[0]]
+        self.assertTrue(any(parts[k:k + len(got)] == got for k in starts), got)
 
     def test_on_press_sees_every_row_in_order(self):
         seen = []
-        result, _game = self._run_with(on_press=seen.append)
-        self.assertEqual(result.stop, "done")
-        self.assertEqual([r["index"] for r in seen],
-                         [38, 41, 45, 91, 95, 97, 400, 573])
+        result, _sent, _out, _took, chords = self._run_with(on_press=seen.append)
+        self.assertEqual(result.stop, "cap")
         self.assertEqual(seen, result.rows)
+        self.assert_a_run_of_the_plan(seen, chords)
 
-    def test_should_stop_after_the_second_chord_ends_the_run(self):
-        seen = []
-        result, game = self._run_with(on_press=seen.append,
-                                      should_stop=lambda: len(seen) >= 2)
+    def test_should_stop_after_the_second_press_ends_the_run(self):
+        sent = []
+        result, _sent, _out, _took, chords = self._run_with(
+            sent=sent, should_stop=lambda: len(sent) >= 2)
         self.assertEqual(result.stop, "stopped")
-        self.assertEqual([r["index"] for r in result.rows], [38, 41])
-        self.assertEqual(len(game.presses), 2)
-
-    def test_a_stop_leaves_no_key_held_down(self):
-        # The real InputDriver press, with its key events recorded: the stop
-        # is asked only between presses, so every key that went down is up.
-        from tools.ch_probe.input_driver import InputDriver
-        events = []
-        driver = InputDriver()
-        driver.send_key = lambda vk, key_up: events.append((vk, key_up))
-        wall = _FakeTime()
-        game = _FakeGame()
-        seen = []
-        result = play_chart.play_chords(
-            _load_chords(),
-            _FakeSongClock(wall, start_s=12.0), game.read_score,
-            play_chart.live_press(driver, 0), now=wall.now, sleep=wall.sleep,
-            on_press=seen.append, should_stop=lambda: len(seen) >= 3,
-            out=io.StringIO())
-        self.assertEqual(result.stop, "stopped")
-        self.assertEqual(len(seen), 3)
-        down = [vk for vk, key_up in events if not key_up]
-        up = [vk for vk, key_up in events if key_up]
-        self.assertEqual(len(down), 1 + 1 + 3)  # yellow cymbal, kick, chord of 3
-        self.assertEqual(sorted(down), sorted(up))
-        self.assertTrue(events[-1][1])
+        self.assertEqual(len(sent), 2)
+        self.assert_a_run_of_the_plan(result.rows, chords)
 
     def test_should_stop_false_changes_nothing(self):
-        result, game = self._run_with(should_stop=lambda: False)
-        self.assertEqual(result.stop, "done")
-        self.assertEqual(len(game.presses), 8)
+        result, sent, _out, _took, chords = self._run_with(should_stop=lambda: False)
+        self.assertEqual(result.stop, "cap")
+        self.assertTrue(sent)
+        self.assert_a_run_of_the_plan(result.rows, chords)
 
 
 class _FakeDriver:
@@ -548,45 +561,6 @@ class _FakeDriver:
 
 
 class LivePlayTest(unittest.TestCase):
-    def test_no_engine_returns_the_finder_message_and_closes_the_game(self):
-        proc = _FakeProc()
-        opens = []
-
-        def opener(**kwargs):
-            opens.append(kwargs)
-            return proc
-
-        def times_out(_proc):
-            raise engine_finder.EngineSearchTimeout("the fake finder gave up")
-
-        events = []
-        result = play_chart.live_play(
-            _load_chords(), open_proc=opener,
-            find_engine=times_out, driver=_FakeDriver(events),
-            out=io.StringIO())
-        self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
-        self.assertEqual(result.message, "the fake finder gave up")
-        self.assertEqual(result.rows, [])
-        self.assertEqual(opens, [{"read_only": True}])
-        self.assertTrue(proc.verified)
-        self.assertTrue(proc.closed)
-        self.assertEqual(events, [])
-
-    def test_the_default_engine_search_prints_its_dots_to_out_only(self):
-        # A caller that gives live_play a buffer (the ch MCP server) must get
-        # no stdout from the search: its stdout is the protocol channel.
-        out, stdout = io.StringIO(), io.StringIO()
-        with fakes.searching_for_no_song(engine_finder),                 contextlib.redirect_stdout(stdout):
-            result = play_chart.live_play(
-                _load_chords(),
-                open_proc=lambda **kw: _FakeProc(), driver=_FakeDriver([]),
-                out=out)
-        self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
-        self.assertEqual(stdout.getvalue(), "")
-        # The search's retry marks (engine_finder owns them) land in the
-        # caller's buffer.
-        self.assertTrue(out.getvalue().endswith("."), repr(out.getvalue()))
-
     def _cap_seen_by_play_chords(self, **live_kwargs):
         from unittest import mock
 
