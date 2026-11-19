@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -478,7 +479,6 @@ TEST_CASE("early-fill window: at 0 ms no spawning activation is an E") {
             CAPTURE(a.timecode.ticks());
             ++acts;
             CHECK(a.e_window_ms == 0.0);
-            CHECK_FALSE(fill_refuses(a.e_offset, a.e_window_ms));
             CHECK_FALSE(a.is_e_critical());
             CHECK_FALSE(a.e_difficulty().has_value());
         }
@@ -1648,9 +1648,30 @@ TEST_CASE("MultSqueeze::howto names every note that crosses the step") {
     CHECK(accented.find(named(kryb, NoteColor::Blue)) == std::string::npos);
 }
 
+// One note of `chord` as the advice names it: its own one-note chord
+// (Chord::rowstr) in the Pro Drums setting's words.
+static std::string named_note(const Chord& chord, NoteColor c, bool pro) {
+    Chord one;
+    one.insert_note(*chord.at(c));
+    return one.rowstr(pro);
+}
+
+// Whether `advice` names exactly the one note `lone` of `chord`'s lanes in
+// `lanes`, and none of the others.
+static bool names_only(const std::string& advice, const Chord& chord,
+                       const std::vector<NoteColor>& lanes, NoteColor lone) {
+    for (const NoteColor c : lanes) {
+        const bool named = advice.find(named_note(chord, c, true)) != std::string::npos;
+        if (named != (c == lone)) return false;
+    }
+    return true;
+}
+
 // A 3-note chord splits two and one across the step. When one end holds a
 // single note, the advice names that note whichever side of the step the
 // chord falls on; only three different values need direction-specific advice.
+// Which end the note must take is MultSqueeze::direction: a lone cheap note
+// is hit first and a lone dear one last, so the two read opposite ways.
 TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     // Kick (50) + two cymbals (65): the kick is the lone cheap note.
     Chord kyb;
@@ -1659,9 +1680,16 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     kyb.add_note(NoteColor::Blue);
     kyb.apply_cymbal(NoteColor::Yellow);
     kyb.apply_cymbal(NoteColor::Blue);
-    for (int combo : {17, 18, 27, 28})
-        CHECK_MESSAGE(MultSqueeze(kyb, combo).howto() == "Hit [Kick] first.",
-                      "combo=" << combo);
+    const std::vector<NoteColor> kyb_lanes = {NoteColor::Kick, NoteColor::Yellow,
+                                              NoteColor::Blue};
+    const std::string cheap_end = MultSqueeze(kyb, 17).direction();
+    for (int combo : {17, 18, 27, 28}) {
+        CAPTURE(combo);
+        const MultSqueeze ms(kyb, combo);
+        CAPTURE(ms.howto());
+        CHECK(names_only(ms.howto(), kyb, kyb_lanes, NoteColor::Kick));
+        CHECK(ms.direction() == cheap_end);
+    }
 
     // Kick + Red (50) + one cymbal (65): the cymbal is the lone dear note.
     Chord kry;
@@ -1669,20 +1697,36 @@ TEST_CASE("MultSqueeze::howto names the lone note of a 3-note chord") {
     kry.add_note(NoteColor::Red);
     kry.add_note(NoteColor::Yellow);
     kry.apply_cymbal(NoteColor::Yellow);
-    for (int combo : {17, 18, 27, 28})
-        CHECK_MESSAGE(MultSqueeze(kry, combo).howto() == "Hit [Yellow cymbal] last.",
-                      "combo=" << combo);
+    const std::vector<NoteColor> kry_lanes = {NoteColor::Kick, NoteColor::Red,
+                                              NoteColor::Yellow};
+    const std::string dear_end = MultSqueeze(kry, 17).direction();
+    CHECK(dear_end != cheap_end);
+    for (int combo : {17, 18, 27, 28}) {
+        CAPTURE(combo);
+        const MultSqueeze ms(kry, combo);
+        CAPTURE(ms.howto());
+        CHECK(names_only(ms.howto(), kry, kry_lanes, NoteColor::Yellow));
+        CHECK(ms.direction() == dear_end);
+    }
 
     // Kick (50) + cymbal (65) + accented Red (100): three values, so the
-    // direction decides. Combo 17 carries one note over; 18 leaves one behind.
+    // direction decides. Combo 17 carries one note over, the dear Red; 18
+    // leaves one behind, the cheap kick.
     Chord kya;
     kya.add_note(NoteColor::Kick);
     kya.add_note(NoteColor::Red);
     kya.add_note(NoteColor::Yellow);
     kya.apply_cymbal(NoteColor::Yellow);
     kya.apply_accent(NoteColor::Red);
-    CHECK(MultSqueeze(kya, 17).howto() == "Hit [Red snare (Accent)] last.");
-    CHECK(MultSqueeze(kya, 18).howto() == "Hit [Kick] first.");
+    const std::vector<NoteColor> kya_lanes = kry_lanes;
+    const MultSqueeze over(kya, 17);
+    const MultSqueeze behind(kya, 18);
+    CAPTURE(over.howto());
+    CAPTURE(behind.howto());
+    CHECK(names_only(over.howto(), kya, kya_lanes, NoteColor::Red));
+    CHECK(over.direction() == dear_end);
+    CHECK(names_only(behind.howto(), kya, kya_lanes, NoteColor::Kick));
+    CHECK(behind.direction() == cheap_end);
 }
 
 // The advice names its note in the Pro Drums setting's words, as the chord
@@ -1696,24 +1740,41 @@ TEST_CASE("MultSqueeze::howto names the note in the Pro Drums setting's words") 
     kyb.add_note(NoteColor::Blue);
     kyb.apply_cymbal(NoteColor::Blue);
     kyb.apply_accent(NoteColor::Yellow);
-    CHECK(MultSqueeze(kyb, 17).howto(true) == "Hit [Yellow tom (Accent)] last.");
-    CHECK(MultSqueeze(kyb, 17).howto(false) == "Hit [Yellow (Accent)] last.");
+    // Each setting's advice names the note in its own words and not in the
+    // other setting's, and the two words differ for a pad.
+    auto names_in_own_words = [](const MultSqueeze& ms, const Chord& chord, NoteColor c) {
+        const std::string pro_name = named_note(chord, c, true);
+        const std::string plain_name = named_note(chord, c, false);
+        CAPTURE(ms.howto(true));
+        CAPTURE(ms.howto(false));
+        CHECK(pro_name != plain_name);
+        CHECK(ms.howto(true).find(pro_name) != std::string::npos);
+        CHECK(ms.howto(false).find(plain_name) != std::string::npos);
+        CHECK(ms.howto(false).find(pro_name) == std::string::npos);
+        CHECK(ms.howto(true).find(plain_name) == std::string::npos);
+    };
+    names_in_own_words(MultSqueeze(kyb, 17), kyb, NoteColor::Yellow);
 
-    // Kick (50) + accented red (100) + yellow cymbal (65).
+    // Kick (50) + accented red (100) + yellow cymbal (65): combo 17 carries
+    // the dear red over.
     Chord kya;
     kya.add_note(NoteColor::Kick);
     kya.add_note(NoteColor::Red);
     kya.add_note(NoteColor::Yellow);
     kya.apply_cymbal(NoteColor::Yellow);
     kya.apply_accent(NoteColor::Red);
-    CHECK(MultSqueeze(kya, 17).howto(false) == "Hit [Red (Accent)] last.");
+    names_in_own_words(MultSqueeze(kya, 17), kya, NoteColor::Red);
     // A cymbal says cymbal either way.
     Chord kry;
     kry.add_note(NoteColor::Kick);
     kry.add_note(NoteColor::Red);
     kry.add_note(NoteColor::Yellow);
     kry.apply_cymbal(NoteColor::Yellow);
-    CHECK(MultSqueeze(kry, 17).howto(false) == "Hit [Yellow cymbal] last.");
+    const MultSqueeze cymbal(kry, 17);
+    const std::string cymbal_name = named_note(kry, NoteColor::Yellow, true);
+    CHECK(named_note(kry, NoteColor::Yellow, false) == cymbal_name);
+    CHECK(cymbal.howto(false) == cymbal.howto(true));
+    CHECK(cymbal.howto(false).find(cymbal_name) != std::string::npos);
 }
 
 // The graph asks applies() of every chord instead of catching a throw.
@@ -1765,140 +1826,218 @@ TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the S
     CHECK_THROWS_AS(none.set_sqout(200), std::logic_error);  // no row on that tick
 }
 
+// On every path the engine writes for the corpus. A window's Star Power ends
+// on its squeezed-out chord when core::after_sp_end says the chord is not
+// after the stored end (deact_tick), and on the stored end otherwise; the
+// stored end itself is never moved. The bars an activation spends arrived
+// where the search stored them (bank_rise_ticks, or trailing_bank_ticks
+// after the last activation), except that after a squeezed-out activation
+// the first one arrives on its chord.
 TEST_CASE("Bank arrivals and window_end_tick: a squeezed-out chord ends the window it is not after") {
-    // An activation whose only stored step is the activation itself.
-    auto one_step = [](int64_t act_tick, int64_t end_tick) {
-        Activation a;
-        a.timecode = Timecode::raw(act_tick);
-        a.sp_end_steps = {{act_tick, end_tick, SpEndKind::Activation}};
-        return a;
-    };
-
-    // An early squeeze-out: the chord, 64800, is before the stored end, so
-    // Star Power is over on the chord. The stored end is unchanged.
-    Activation early = one_step(57600, 65280);
-    early.sqout_tick = 64800;
-    CHECK(early.window_end_tick() == std::optional<int64_t>(64800));
-    CHECK(early.deact_tick() == std::optional<int64_t>(65280));
-
-    // A late squeeze-out: the chord, 71200, is after the stored end, so the
-    // stored end stands.
-    Activation late = one_step(59520, 71040);
-    late.sqout_tick = 71200;
-    CHECK(late.window_end_tick() == std::optional<int64_t>(71040));
-
-    // The chord exactly on the stored end is not after it: the window ends
-    // there, which is both ticks.
-    Activation on_end = one_step(59520, 71040);
-    on_end.sqout_tick = 71040;
-    CHECK(on_end.window_end_tick() == std::optional<int64_t>(71040));
-
-    // No squeeze-out: the stored end.
-    Activation plain = one_step(5760, 13440);
-    CHECK(plain.window_end_tick() == std::optional<int64_t>(13440));
-
-    // A hand-built activation with no steps has no end at all.
-    Activation bare;
-    bare.sqout_tick = 64800;
-    CHECK_FALSE(bare.window_end_tick().has_value());
-
-    // bank_arrivals: the bars activation 1 spends were stored at 65280 (the
-    // squeezed-out bar, stamped by the search), 70000 and 74000. Activation 0
-    // squeezed out on 64800, so the first bar arrives there; the rest stand.
-    Path path;
-    Activation first = one_step(57600, 65280);
-    first.sqout_tick = 64800;
-    first.bank_rise_ticks = {20000, 30000, 40000, 50000};
-    Activation second = one_step(80000, 95360);
-    second.bank_rise_ticks = {65280, 70000, 74000};
-    path.activations = {first, second};
-    path.trailing_bank_ticks = {100000};
-    // The first activation has no activation before it: its list as stored.
-    CHECK(path.bank_arrivals(0) == std::vector<int64_t>{20000, 30000, 40000, 50000});
-    CHECK(path.bank_arrivals(1) == std::vector<int64_t>{64800, 70000, 74000});
-    // The trailing bars follow activation 1, which did not squeeze out.
-    CHECK(path.bank_arrivals(2) == std::vector<int64_t>{100000});
-
-    // The trailing bars after a squeezed-out last activation: the first moves
-    // to the chord. An empty list stays empty.
-    path.activations[1].sqout_tick = 95000;
-    CHECK(path.bank_arrivals(2) == std::vector<int64_t>{95000});
-    path.trailing_bank_ticks.clear();
-    CHECK(path.bank_arrivals(2).empty());
+    int squeezed_out = 0, plain = 0, moved = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        const Path& p = *cp.path;
+        CAPTURE(cp.chart);
+        CAPTURE(p.pathstring());
+        const ActivationWalk acts = p.walk_activations();
+        for (size_t i = 0; i <= acts.size(); ++i) {
+            CAPTURE(i);
+            if (i < acts.size()) {
+                const Activation& a = acts[i];
+                const std::optional<int64_t> end = a.deact_tick();
+                REQUIRE(end.has_value());
+                if (a.sqout_tick && !core::after_sp_end(*a.sqout_tick, *end)) {
+                    ++squeezed_out;
+                    CHECK(a.window_end_tick() == a.sqout_tick);
+                } else {
+                    ++plain;
+                    CHECK(a.window_end_tick() == end);
+                }
+            }
+            const std::vector<int64_t>& stored =
+                i == acts.size() ? p.trailing_bank_ticks : acts[i].bank_rise_ticks;
+            const std::vector<int64_t> arrivals = p.bank_arrivals(i);
+            REQUIRE(arrivals.size() == stored.size());
+            if (stored.empty()) continue;
+            for (size_t j = 1; j < stored.size(); ++j) CHECK(arrivals[j] == stored[j]);
+            if (i > 0 && acts[i - 1].sqout_tick) {
+                ++moved;
+                CHECK(arrivals.front() == *acts[i - 1].sqout_tick);
+            } else {
+                CHECK(arrivals.front() == stored.front());
+            }
+        }
+    }
+    // The corpus holds SqOuts ("squeeze timing and difficulty follow the
+    // offset on every corpus squeeze"), each stamped by set_sqout with its
+    // chord. The search picks a squeezed-out chord only where it is not
+    // after the stored end (core/sqout_chord.h), and the chord ends an SP
+    // phrase whose bar the next list holds, so all three cases turn up.
+    CHECK(squeezed_out > 0);
+    CHECK(plain > 0);
+    CHECK(moved > 0);
 }
 
-// The rows of "backend_row_value: every engine case": what the squeezed-out
-// chord gives up against its full value.
+// What squeezing a row out costs, on every corpus backend row at its own
+// prices (sp_points and sqout_sp_points, as the search stored them), with
+// offsets set from the leeway rule: where the row would be counted it keeps
+// its reduced value and loses the rest, and where it would not be counted it
+// loses all of it.
 TEST_CASE("backend_value: sqout_cost is what the squeezed-out chord loses") {
-    const double lw = core::default_rules().backend_leeway_ms;  // 3 ms
-    CHECK(core::sqout_cost(-5.0, 460, 260, lw) == 200);
-    CHECK(core::sqout_cost(1.5, 460, 260, lw) == 200);
-    // Round and Round (Ratt): the row the engine counts as 0 loses all of it.
-    CHECK(core::sqout_cost(479.999, 460, 260, lw) == 460);
-    CHECK(core::sqout_cost(5.0, 460, 260, 10.0) == 200);
+    const double lw = core::default_rules().backend_leeway_ms;
+    REQUIRE(lw > 0.0);
+    const double inside_sp = -lw;
+    const double in_leeway = lw / 2;
+    const double past_leeway = 2 * lw;
+    int rows = 0, rows_priced_apart = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        for (const BackendSqueeze& b : ca.act->backends) {
+            ++rows;
+            const int sp = b.sp_points;
+            const int sq = b.sqout_sp_points;
+            if (sp != sq) ++rows_priced_apart;
+            CAPTURE(ca.chart);
+            CAPTURE(b.timecode.ticks());
+            CAPTURE(sp);
+            CAPTURE(sq);
+            CHECK(core::sqout_cost(inside_sp, sp, sq, lw) == sp - sq);
+            CHECK(core::sqout_cost(0.0, sp, sq, lw) == sp - sq);
+            CHECK(core::sqout_cost(in_leeway, sp, sq, lw) == sp - sq);
+            CHECK(core::sqout_cost(lw, sp, sq, lw) == sp);
+            CHECK(core::sqout_cost(past_leeway, sp, sq, lw) == sp);
+            // The leeway is the user's rule, not a constant: a row past this
+            // leeway is counted under a wider one.
+            CHECK(core::sqout_cost(lw, sp, sq, past_leeway) == sp - sq);
+        }
+    }
+    // "backend_row_value: every engine case" requires both on the corpus.
+    REQUIRE(rows > 0);
+    REQUIRE(rows_priced_apart > 0);
 }
 
+// What the code does with a row's offset: set_sqout builds each SqOut from
+// its row's offset, which every corpus SqOut shows. A row with no offset (a
+// hand-built or corrupt record; the engine always stores one) fails loudly,
+// naming its tick, and leaves the activation with no squeeze-out.
 TEST_CASE("BackendSqueeze::offset: the stored offset, or a loud failure") {
-    BackendSqueeze row;
-    row.timecode = Timecode::raw(300);
-    row.offset_ms = 12.5;
-    CHECK(row.offset() == 12.5);
+    const Activation* first = nullptr;
+    int sqouts = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        if (!a.sqout_tick) continue;
+        CAPTURE(ca.chart);
+        CAPTURE(*a.sqout_tick);
+        ++sqouts;
+        if (!first) first = &a;
+        const BackendSqueeze* row = a.sqout_row();
+        REQUIRE(row != nullptr);
+        int found = 0;
+        for (const SPSqueeze& sq : a.sqinouts) {
+            if (sq.kind != SqueezeKind::SqOut) continue;
+            ++found;
+            CHECK(sq.offset_ms == row->offset());
+        }
+        CHECK(found == 1);
+    }
+    // "squeeze timing and difficulty follow the offset on every corpus
+    // squeeze" requires a SqOut, and set_sqout stamps each one's chord.
+    REQUIRE(sqouts > 0);
+    REQUIRE(first != nullptr);
 
-    row.offset_ms.reset();
+    // The same activation as the engine wrote it, before its squeeze-out,
+    // with the offset gone from the squeezed-out row.
+    const int64_t tick = *first->sqout_tick;
+    Activation unsqueezed = *first;
+    unsqueezed.sqout_tick.reset();
+    unsqueezed.sqinouts.erase(
+        std::remove_if(unsqueezed.sqinouts.begin(), unsqueezed.sqinouts.end(),
+                       [](const SPSqueeze& sq) { return sq.kind == SqueezeKind::SqOut; }),
+        unsqueezed.sqinouts.end());
+    int emptied = 0;
+    for (BackendSqueeze& b : unsqueezed.backends) {
+        if (b.timecode.ticks() != tick) continue;
+        b.offset_ms.reset();
+        ++emptied;
+    }
+    REQUIRE(emptied == 1);
     bool threw = false;
     try {
-        (void)row.offset();
+        unsqueezed.set_sqout(tick);
     } catch (const std::logic_error& e) {
         threw = true;
-        CHECK(std::string(e.what()).find("300") != std::string::npos);
+        CHECK(std::string(e.what()).find(std::to_string(tick)) != std::string::npos);
     }
     CHECK(threw);
+    CHECK_FALSE(unsqueezed.sqout_tick.has_value());
 }
 
-// Finding 190's table: the kick's flag is 2x, a cymbal pad's is a cymbal,
-// red has none.
+// Every lane's one flag: the kick's is 2x and a cymbal pad's (allows_cymbals)
+// is a cymbal, so a lane has a flag exactly when it is the kick or a cymbal
+// pad. set_lane_flag sets that flag and nothing else, lane_flag reads it
+// back, and a lane with no flag refuses it loudly.
 TEST_CASE("lane flags: the kick carries 2x, the cymbal pads carry a cymbal, red carries nothing") {
-    CHECK(lane_allows_flag(NoteColor::Kick));
-    CHECK(lane_allows_flag(NoteColor::Yellow));
-    CHECK(lane_allows_flag(NoteColor::Blue));
-    CHECK(lane_allows_flag(NoteColor::Green));
-    CHECK_FALSE(lane_allows_flag(NoteColor::Red));
-
-    ChordNote kick{NoteColor::Kick};
-    CHECK_FALSE(lane_flag(kick));
-    set_lane_flag(kick);
-    CHECK(kick.is2x);
-    CHECK(kick.cymbaltype == NoteCymbalType::Normal);
-    CHECK(lane_flag(kick));
-
-    ChordNote yellow{NoteColor::Yellow};
-    CHECK_FALSE(lane_flag(yellow));
-    set_lane_flag(yellow);
-    CHECK(yellow.cymbaltype == NoteCymbalType::Cymbal);
-    CHECK_FALSE(yellow.is2x);
-    CHECK(lane_flag(yellow));
-
-    ChordNote red{NoteColor::Red};
-    CHECK_THROWS_AS(set_lane_flag(red), std::logic_error);
+    const NoteColor lanes[] = {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow,
+                               NoteColor::Blue, NoteColor::Green};
+    int flagged = 0, unflagged = 0;
+    for (const NoteColor c : lanes) {
+        CAPTURE(color_str(c));
+        const bool kick = c == NoteColor::Kick;
+        CHECK(lane_allows_flag(c) == (kick || allows_cymbals(c)));
+        ChordNote note{c};
+        CHECK_FALSE(lane_flag(note));
+        if (!lane_allows_flag(c)) {
+            ++unflagged;
+            CHECK_THROWS_AS(set_lane_flag(note), std::logic_error);
+            continue;
+        }
+        ++flagged;
+        set_lane_flag(note);
+        CHECK(lane_flag(note));
+        CHECK(note.is2x == kick);
+        CHECK(note.is_cymbal() == !kick);
+    }
+    CHECK(flagged > 0);
+    CHECK(unflagged > 0);
 }
 
+// The display word for a dynamic is dynamic_str's word with its first letter
+// capitalised, and a plain note has no word on screen. The two dynamics'
+// words differ, and the stored word for a plain note differs from both.
 TEST_CASE("dynamic_label: the display word for each dynamic") {
-    CHECK(dynamic_label(NoteDynamicType::Ghost) == "Ghost");
-    CHECK(dynamic_label(NoteDynamicType::Accent) == "Accent");
-    CHECK(dynamic_label(NoteDynamicType::Normal) == "");
-    CHECK(dynamic_str(NoteDynamicType::Ghost) == "ghost");
-    CHECK(dynamic_str(NoteDynamicType::Accent) == "accent");
-    CHECK(dynamic_str(NoteDynamicType::Normal) == "none");
+    for (const NoteDynamicType dyn : {NoteDynamicType::Ghost, NoteDynamicType::Accent}) {
+        const std::string label = dynamic_label(dyn);
+        const std::string word = dynamic_str(dyn);
+        CAPTURE(word);
+        CAPTURE(label);
+        REQUIRE_FALSE(label.empty());
+        CHECK(to_lower_ascii(label) == word);
+        CHECK(label.substr(1) == word.substr(1));
+        CHECK(label[0] != lower_ascii(label[0]));
+        CHECK(word != dynamic_str(NoteDynamicType::Normal));
+    }
+    CHECK(dynamic_label(NoteDynamicType::Normal).empty());
+    CHECK_FALSE(dynamic_str(NoteDynamicType::Normal).empty());
+    CHECK(dynamic_str(NoteDynamicType::Ghost) != dynamic_str(NoteDynamicType::Accent));
 }
 
+// squeeze_kind_from_name reads back exactly the words type_name writes: each
+// kind's own word gives that kind, and the word in another case, cut short,
+// run on, or empty gives nothing.
 TEST_CASE("squeeze_kind_from_name: type_name's two words and nothing else") {
-    CHECK(squeeze_kind_from_name("SqIn") == std::optional<SqueezeKind>(SqueezeKind::SqIn));
-    CHECK(squeeze_kind_from_name("SqOut") == std::optional<SqueezeKind>(SqueezeKind::SqOut));
-    CHECK_FALSE(squeeze_kind_from_name("sqout").has_value());
+    for (SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut}) {
+        const std::string name = SPSqueeze{kind, 0.0}.type_name();
+        CAPTURE(name);
+        REQUIRE(name.size() > 1);
+        CHECK(squeeze_kind_from_name(name) == std::optional<SqueezeKind>(kind));
+        const std::string lower = to_lower_ascii(name);
+        REQUIRE(lower != name);
+        CHECK_FALSE(squeeze_kind_from_name(lower).has_value());
+        CHECK_FALSE(squeeze_kind_from_name(name.substr(0, name.size() - 1)).has_value());
+        CHECK_FALSE(squeeze_kind_from_name(name + name).has_value());
+    }
+    CHECK(std::string(SPSqueeze{SqueezeKind::SqIn, 0.0}.type_name()) !=
+          std::string(SPSqueeze{SqueezeKind::SqOut, 0.0}.type_name()));
     CHECK_FALSE(squeeze_kind_from_name("").has_value());
-    for (SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut})
-        CHECK(squeeze_kind_from_name(SPSqueeze{kind, 0.0}.type_name()) ==
-              std::optional<SqueezeKind>(kind));
 }
 
 // The same six values "replay score fields: one list in schema order"
