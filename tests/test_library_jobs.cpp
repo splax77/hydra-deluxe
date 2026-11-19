@@ -1489,7 +1489,7 @@ TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok an
     try {
         (void)hydra::app::analyze_chart_file(gone, AnalysisSettings{});
     } catch (const hydra::KindedError& e) {
-        thrown = e;
+        thrown.emplace(e);
     }
     REQUIRE(thrown.has_value());
     const hydra::KindedError& failure = *thrown;
