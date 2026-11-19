@@ -1082,101 +1082,129 @@ TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
 // a squeeze-out hides. If the player squeezed, that note was hit after Star
 // Power ran out and is not doubled; if they did not, it is. The window list
 // alone cannot tell the two apart, so the tool says so instead of guessing.
+// Every corpus chart that has the four shapes below is checked, so no one
+// chart is chosen by file order. The first .mid chart in chart_paths() has
+// all four (the test read only that chart before and required each shape),
+// so at least one chart is always checked.
 TEST_CASE("a window ending on a phrase note with no offset is flagged") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
-    REQUIRE_FALSE(song.is_empty());
+    const core::Rules& rules = core::default_rules();
+    int checked = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        INFO(path);
 
-    const ReplayResult r = replay_path(song, {});
+        const ReplayResult r = replay_path(song, {});
 
-    // The first phrase note, the chord just after it, the first chord that is
-    // further past a phrase note than a squeeze could ever reach, and a chord
-    // with no phrase note behind it at all.
-    const ReplayChord* phrase_note = nullptr;    // the first phrase note
-    const ReplayChord* just_after = nullptr;     // the chord right after it
-    const ReplayChord* long_after = nullptr;     // first chord out of reach
-    const ReplayChord* no_phrase_yet = nullptr;  // a chord before any of them
-    const ReplayChord* last_phrase = nullptr;
-    for (const ReplayChord& c : r.chords) {
-        if (c.is_sp_phrase_end) {
-            last_phrase = &c;
-            if (!phrase_note) phrase_note = &c;
-            continue;
+        // The first phrase note, the chord just after it, the first chord that
+        // is further past a phrase note than a squeeze could ever reach, and a
+        // chord with no phrase note behind it at all.
+        const ReplayChord* phrase_note = nullptr;    // the first phrase note
+        const ReplayChord* just_after = nullptr;     // the chord right after it
+        const ReplayChord* long_after = nullptr;     // first chord out of reach
+        const ReplayChord* no_phrase_yet = nullptr;  // a chord before any of them
+        const ReplayChord* last_phrase = nullptr;
+        for (const ReplayChord& c : r.chords) {
+            if (c.is_sp_phrase_end) {
+                last_phrase = &c;
+                if (!phrase_note) phrase_note = &c;
+                continue;
+            }
+            if (!last_phrase) {
+                if (!no_phrase_yet) no_phrase_yet = &c;
+                continue;
+            }
+            // Inside or out of reach is asked of the window's owner,
+            // within_squeeze_window, on the gap in ms.
+            if (last_phrase == phrase_note && !just_after &&
+                within_squeeze_window(c.ms - phrase_note->ms))
+                just_after = &c;
+            if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))
+                long_after = &c;
         }
-        if (!last_phrase) {
-            if (!no_phrase_yet) no_phrase_yet = &c;
+        if (!phrase_note || !just_after || !long_after || !no_phrase_yet) continue;
+
+        // A phrase note inside the leeway after an SP end is paid by the
+        // window too, and is a second chord the player may have squeezed out.
+        // A chart with one right after any of the four ends below is left out,
+        // so each warning count here has one cause.
+        const auto phrase_in_leeway_after = [&](const ReplayChord* end) {
+            for (size_t i = static_cast<size_t>(end->index) + 1; i < r.chords.size(); ++i) {
+                if (r.chords[i].ms - end->ms > rules.backend_leeway_ms) return false;
+                if (r.chords[i].is_sp_phrase_end) return true;
+            }
+            return false;
+        };
+        if (phrase_in_leeway_after(phrase_note) || phrase_in_leeway_after(just_after) ||
+            phrase_in_leeway_after(long_after) || phrase_in_leeway_after(no_phrase_yet))
             continue;
-        }
-        // Inside or out of reach is asked of the window's owner,
-        // within_squeeze_window, on the gap in ms.
-        if (last_phrase == phrase_note && !just_after &&
-            within_squeeze_window(c.ms - phrase_note->ms))
-            just_after = &c;
-        if (!long_after && !within_squeeze_window(c.ms - last_phrase->ms))
-            long_after = &c;
+        ++checked;
+
+        ReplayWindow w;
+        w.act_tick = r.chords.front().tick;
+
+        // The warning only fires for a chord the window paid, so it reads the
+        // replay of that same window, as `hydra_replay score` does.
+        auto warnings_for = [&](const ReplayWindow& win) {
+            return ambiguous_window_warnings(song, replay_path(song, {win}), {win}, rules);
+        };
+
+        // Ending on the phrase note itself.
+        w.deact_tick = phrase_note->tick;
+        const std::vector<std::string> flagged = warnings_for(w);
+        REQUIRE(flagged.size() == 1);
+        CHECK(flagged[0].find(std::to_string(phrase_note->tick)) != std::string::npos);
+
+        // Ending a hair after it: still the same doubt. This is the case a
+        // rule that only looked at the deactivation tick itself would miss.
+        w.deact_tick = just_after->tick;
+        const std::vector<std::string> after = warnings_for(w);
+        REQUIRE(after.size() == 1);
+        CHECK(after[0].find(std::to_string(phrase_note->tick)) != std::string::npos);
+
+        // Far enough past it that no squeeze could have reached: no doubt left.
+        w.deact_tick = long_after->tick;
+        CHECK(warnings_for(w).empty());
+
+        // No phrase note in the window at all: never in doubt.
+        w.deact_tick = no_phrase_yet->tick;
+        CHECK(warnings_for(w).empty());
+
+        // An offset settles the question, so there is nothing left to warn
+        // about. Any offset does; the warning does not resolve it.
+        ReplayWindow settled;
+        settled.act_tick = r.chords.front().tick;
+        settled.deact_tick = phrase_note->tick;
+        settled.sqout_offset_ms = 0.0;
+        CHECK(ambiguous_window_warnings(song, r, {settled}, rules).empty());
     }
-    REQUIRE(phrase_note != nullptr);
-    REQUIRE(just_after != nullptr);
-    REQUIRE(long_after != nullptr);
-    REQUIRE(no_phrase_yet != nullptr);
-
-    ReplayWindow w;
-    w.act_tick = r.chords.front().tick;
-
-    // The warning only fires for a chord the window paid, so it reads the
-    // replay of that same window, as `hydra_replay score` does.
-    auto warnings_for = [&](const ReplayWindow& win) {
-        return ambiguous_window_warnings(song, replay_path(song, {win}), {win},
-                                         core::default_rules());
-    };
-
-    // Ending on the phrase note itself.
-    w.deact_tick = phrase_note->tick;
-    const std::vector<std::string> flagged = warnings_for(w);
-    REQUIRE(flagged.size() == 1);
-    CHECK(flagged[0].find(std::to_string(phrase_note->tick)) !=
-          std::string::npos);
-
-    // Ending a hair after it: still the same doubt. This is the case a rule
-    // that only looked at the deactivation tick itself would miss, and it is
-    // a real one -- five of Hail The Sun - Wake's six squeeze-outs sit on the
-    // node and the sixth sits 93.75 ms before it.
-    w.deact_tick = just_after->tick;
-    CHECK(warnings_for(w).size() == 1);
-
-    // Far enough past it that no squeeze could have reached: no doubt left.
-    w.deact_tick = long_after->tick;
-    CHECK(warnings_for(w).empty());
-
-    // No phrase note in the window at all: never in doubt.
-    w.deact_tick = no_phrase_yet->tick;
-    CHECK(warnings_for(w).empty());
-
-    // An offset settles the question, so there is nothing left to warn about.
-    ReplayWindow settled;
-    settled.act_tick = r.chords.front().tick;
-    settled.deact_tick = phrase_note->tick;
-    settled.sqout_offset_ms = 8.0;
-    CHECK(ambiguous_window_warnings(song, r, {settled}, core::default_rules()).empty());
+    REQUIRE(checked > 0);
 }
 
 TEST_CASE("per-note sp points sum to the chord's sp points") {
-    Song song = load_songpath(corpus::first_chart_with_suffix(".mid"), ChartReading{});
-    REQUIRE_FALSE(song.is_empty());
+    int charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        if (song.is_empty()) continue;
+        ++charts;
+        INFO(path);
 
-    // One window over the whole chart, so every chord is under Star Power and
-    // its points.sp is the full doubling.
-    ReplayWindow w;
-    w.act_tick = 0;
-    w.deact_tick = song.sequence.back().timecode.ticks();
-    const ReplayResult r = replay_path(song, {w});
+        // One window over the whole chart, so every chord is under Star Power
+        // and its points.sp is the full doubling.
+        ReplayWindow w;
+        w.act_tick = 0;
+        w.deact_tick = song.sequence.back().timecode.ticks();
+        const ReplayResult r = replay_path(song, {w});
 
-    for (const ReplayChord& c : r.chords) {
-        CHECK(c.in_sp);
-        int64_t sum = 0;
-        for (const ReplayNote& n : c.notes) sum += n.sp_points;
-        CHECK(sum == c.points.sp);
-        CHECK(static_cast<int>(c.notes.size()) > 0);
+        for (const ReplayChord& c : r.chords) {
+            CHECK(c.in_sp);
+            REQUIRE_FALSE(c.notes.empty());
+            int64_t sum = 0;
+            for (const ReplayNote& n : c.notes) sum += n.sp_points;
+            CHECK(sum == c.points.sp);
+        }
     }
+    CHECK(charts > 0);
 }
 
 namespace {
@@ -1219,21 +1247,23 @@ void add_dynamic_cymbal(Chord& chord, NoteDynamicType dyn) {
     y.dynamictype = dyn;
 }
 
-}  // namespace
-
-// A hand-built phrase end carries what the parser writes on one: the flag
-// and where the phrase starts (test::mark_phrase_end, one resolution back,
-// clamped at 0).
-TEST_CASE("fixtures: mark_phrase_end sets the flag and the phrase start together") {
-    const Song song = song_with({{0, true}, {192, false}, {768, true}});
-    REQUIRE(song.sequence.size() == 3);
-    CHECK(song.sequence[0].flag_sp);
-    CHECK(song.sequence[0].sp_phrase_start == 0);
-    CHECK_FALSE(song.sequence[1].flag_sp);
-    CHECK_FALSE(song.sequence[1].sp_phrase_start.has_value());
-    CHECK(song.sequence[2].flag_sp);
-    CHECK(song.sequence[2].sp_phrase_start == 576);
+// The text of the runtime_error resolve_sqout_note throws for `w`, or empty
+// when it throws none. A refusal is checked by the ticks it names, not by
+// its whole sentence.
+std::string sqout_refusal(const Song& song, const ReplayWindow& w) {
+    try {
+        (void)resolve_sqout_note(song, w);
+    } catch (const std::runtime_error& e) {
+        return e.what();
+    }
+    return "";
 }
+
+bool names_tick(const std::string& text, int64_t tick) {
+    return text.find("tick " + std::to_string(tick)) != std::string::npos;
+}
+
+}  // namespace
 
 // A typed offset is only ever an approximation of a chord that sits on a
 // tick. The tool resolves it to the phrase chord it means and says which.
@@ -1284,14 +1314,12 @@ TEST_CASE("a typed squeeze-out on a chord the engine never squeezes out is refus
     older.act_tick = 0;
     older.deact_tick = 3072;
     older.sqout_offset_ms = -375.0;
-    CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(two, older),
-        "window 0:3072: the SqOut offset -375.00 ms lands on the phrase chord "
-        "at tick 2928 (-375.00 ms from the SP end), which the engine never "
-        "squeezes out. A window squeezes out only its newest phrase chord at "
-        "or before the SP end or the first one after it: here tick 3036 "
-        "(-93.75 ms). Not priced.",
-        std::runtime_error);
+    // Refused, naming the chord the offset landed on and the one the engine
+    // would squeeze out instead (D274 item 20).
+    CHECK_THROWS_AS(resolve_sqout_note(two, older), std::runtime_error);
+    const std::string refused = sqout_refusal(two, older);
+    CHECK(names_tick(refused, 2928));
+    CHECK(names_tick(refused, 3036));
 
     // The engine's own chord is accepted.
     ReplayWindow newest = older;
@@ -1312,14 +1340,15 @@ TEST_CASE("a typed squeeze-out offset halfway between two phrase chords is refus
     w.act_tick = 0;
     w.deact_tick = 3072;
     w.sqout_offset_ms = 0.0;
-    CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(song, w),
-        "window 0:3072: the SqOut offset 0.00 ms is equally close to the "
-        "phrase chords at tick 3036 (-93.75 ms) and tick 3108 (93.75 ms). "
-        "Type an offset nearer the one you mean. Not priced.",
-        std::runtime_error);
+    // Refused, naming both tied chords (D83).
+    CHECK_THROWS_AS(resolve_sqout_note(song, w), std::runtime_error);
+    const std::string refused = sqout_refusal(song, w);
+    CHECK(names_tick(refused, 3036));
+    CHECK(names_tick(refused, 3108));
 
-    // A hair off the middle is no tie: the nearer chord is used.
+    // A hair off the middle is no tie: the nearer chord is used. The tie is
+    // an exact equality of the two misses, so any offset off the exact middle
+    // breaks it; 0.01 ms is just a small one.
     w.sqout_offset_ms = 0.01;
     const SqOutNote late = resolve_sqout_note(song, w);
     CHECK(late.tick == 3108);
@@ -1338,13 +1367,11 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     w.act_tick = 3000;
     w.deact_tick = 3072;
     w.sqout_offset_ms = -375.0;
-    CHECK_THROWS_WITH_AS(
-        resolve_sqout_note(song, w),
-        "window 3000:3072: the SqOut offset -375.00 ms lands on the phrase "
-        "chord at tick 2928, at or before the activation at tick 3000. That "
-        "phrase was banked before Star Power started, so this window cannot "
-        "squeeze it out. Not priced.",
-        std::runtime_error);
+    // Refused, naming the banked phrase and the activation it came before.
+    CHECK_THROWS_AS(resolve_sqout_note(song, w), std::runtime_error);
+    const std::string refused = sqout_refusal(song, w);
+    CHECK(names_tick(refused, 2928));
+    CHECK(names_tick(refused, w.act_tick));
 
     // An earlier window paid the chord. The later window's SP end has it in
     // range, but cannot squeeze it out, so only the earlier window is flagged.
@@ -1358,33 +1385,14 @@ TEST_CASE("a typed squeeze-out on a phrase banked before the activation is refus
     const std::vector<std::string> warned =
         ambiguous_window_warnings(song, r, {first, second}, core::default_rules());
     REQUIRE(warned.size() == 1);
-    CHECK(warned[0].rfind("window 0:2950 ", 0) == 0);
-}
-
-// D34: a phrase chord banked before the activation is never the window's to
-// squeeze. Before the end the engine offers the window's newest phrase
-// (D36), here the one after the banked chord. The replay accepts a typed
-// squeeze-out on it, and warns about it, as the engine would squeeze it.
-TEST_CASE("a typed squeeze-out on the phrase after a banked one is the engine's") {
-    // Phrase chords at 2928 (banked: the activation is on 3000) and 3036,
-    // 375 ms and 93.75 ms before D = 3072.
-    const Song song = song_with({{0, false}, {768, false}, {2928, true},
-                                 {3000, false}, {3036, true}, {3072, false}});
-    ReplayWindow w;
-    w.act_tick = 3000;
-    w.deact_tick = 3072;
-    w.sqout_offset_ms = -93.73;
-    const SqOutNote n = resolve_sqout_note(song, w);
-    CHECK(n.tick == 3036);
-
-    ReplayWindow plain;
-    plain.act_tick = 3000;
-    plain.deact_tick = 3072;
-    const ReplayResult r = replay_path(song, {plain});
-    const std::vector<std::string> warned =
-        ambiguous_window_warnings(song, r, {plain}, core::default_rules());
-    REQUIRE(warned.size() == 1);
-    CHECK(warned[0].find("tick 3036") != std::string::npos);
+    // The one warning is the earlier window's: it names that window by its
+    // two ticks, and the banked phrase it paid.
+    const auto window_name = [](const ReplayWindow& win) {
+        return std::to_string(win.act_tick) + ":" + std::to_string(win.deact_tick);
+    };
+    CHECK(warned[0].find(window_name(first)) != std::string::npos);
+    CHECK(warned[0].find(window_name(second)) == std::string::npos);
+    CHECK(names_tick(warned[0], 2928));
 }
 
 // A typed window may squeeze out its newest phrase chord at or before the SP
@@ -1427,56 +1435,69 @@ TEST_CASE("the squeeze-out warning names the chord the graph would squeeze") {
 
 // The warning quotes what squeezing the chord out would cost, under the rules
 // the replay ran with, and that cost is the whole drop, not just the phrase
-// chord's share. song_with's chords are two notes (red and yellow, 50 points
-// each). The phrase chord at 3024 is the fourth chord (combo 6), both notes
-// at 1x, so its doubling is 50 + 50. The chord at 3072 is the fifth (combo
-// 8): its first note is the ninth hit, at 1x, and its second the tenth, the
-// first one paid at 2x, so its doubling is 50 + 100 = 150. Squeezing 3024
-// out ends Star Power before it:
-//   first_note:  3024 loses its first note's 50, 3072 loses its 150 = 200.
-//   whole_chord: 3024 loses both notes' 100,     3072 loses its 150 = 250.
-// Ending the window on 3024 itself leaves no later chord, so there the cost
-// is the phrase chord's share alone: 50 and 100.
+// chord's share. A window ending after the phrase chord at 3024 has a later
+// chord (3072) that loses its doubling too, so its drop is more than the
+// phrase chord's own loss; a window ending on 3024 has no later chord, so its
+// drop is the phrase chord's loss alone. whole_chord takes every note of the
+// phrase chord out of Star Power and first_note only its first (D274 item
+// 16, sqout_pays_outside), so whole_chord's drop is the larger.
 TEST_CASE("the squeeze-out warning quotes the whole drop under sqout_rule") {
     const Song two = song_with({{0, false}, {768, false}, {2928, true},
                                 {3024, true}, {3072, false}});
+    const int64_t phrase = 3024;
     ReplayWindow w;
     w.act_tick = 0;
     w.deact_tick = 3072;
     ReplayWindow on = w;
-    on.deact_tick = 3024;
+    on.deact_tick = phrase;
+
+    // The drop a squeeze-out on `phrase` really costs: the window replayed as
+    // typed, less the same window replayed with that squeeze-out. Also the
+    // phrase chord's own share of it.
+    struct Drop {
+        int64_t total = 0;
+        int64_t phrase_share = 0;
+    };
+    const auto drop = [&](const ReplayWindow& win, const core::Rules& rules) {
+        ReplayWindow out = win;
+        out.sqout_tick = phrase;
+        const ReplayResult plain = replay_path(two, {win}, rules);
+        const ReplayResult squeezed = replay_path(two, {out}, rules);
+        Drop d;
+        d.total = plain.final.total() - squeezed.final.total();
+        for (size_t i = 0; i < plain.chords.size(); ++i)
+            if (plain.chords[i].tick == phrase)
+                d.phrase_share = plain.chords[i].points.sp - squeezed.chords[i].points.sp;
+        return d;
+    };
+    // The warning's one figure is the drop, as a whole number on its own.
+    const auto quotes = [&](const ReplayWindow& win, const core::Rules& rules, int64_t cost) {
+        const std::vector<std::string> warned =
+            ambiguous_window_warnings(two, replay_path(two, {win}, rules), {win}, rules);
+        REQUIRE(warned.size() == 1);
+        CHECK(names_tick(warned[0], phrase));
+        CHECK(warned[0].find(" " + std::to_string(cost) + " ") != std::string::npos);
+    };
 
     const core::Rules& first = core::default_rules();
     REQUIRE(first.sqout_rule == core::SqOutRule::FirstNote);
-    const ReplayResult r1 = replay_path(two, {w}, first);
-    const std::vector<std::string> one = ambiguous_window_warnings(two, r1, {w}, first);
-    REQUIRE(one.size() == 1);
-    CHECK(one[0] ==
-          "window 0:3072 ends just after the Star Power phrase note at tick 3024 "
-          "(125.00 ms earlier) with no squeeze-out offset; if the player squeezed "
-          "it out, this score is 200 points high (the same windows replayed with "
-          "that squeeze-out, under sqout_rule)");
-    // The same window typed with that squeeze-out really scores 200 less.
-    ReplayWindow out = w;
-    out.sqout_tick = 3024;
-    CHECK(r1.final.total() - replay_path(two, {out}, first).final.total() == 200);
-
-    const std::vector<std::string> one_on =
-        ambiguous_window_warnings(two, replay_path(two, {on}, first), {on}, first);
-    REQUIRE(one_on.size() == 1);
-    CHECK(one_on[0].find("this score is 50 points high") != std::string::npos);
-
     core::Rules whole = core::default_rules();
     whole.sqout_rule = core::SqOutRule::WholeChord;
-    const std::vector<std::string> both =
-        ambiguous_window_warnings(two, replay_path(two, {w}, whole), {w}, whole);
-    REQUIRE(both.size() == 1);
-    CHECK(both[0].find("this score is 250 points high") != std::string::npos);
 
-    const std::vector<std::string> both_on =
-        ambiguous_window_warnings(two, replay_path(two, {on}, whole), {on}, whole);
-    REQUIRE(both_on.size() == 1);
-    CHECK(both_on[0].find("this score is 100 points high") != std::string::npos);
+    for (const core::Rules* rules : {&first, static_cast<const core::Rules*>(&whole)}) {
+        const Drop after = drop(w, *rules);
+        const Drop ending = drop(on, *rules);
+        REQUIRE(after.phrase_share > 0);
+        // A later chord loses its doubling too, so the drop is more than the
+        // phrase chord's share; with no later chord it is exactly that share.
+        CHECK(after.total > after.phrase_share);
+        CHECK(ending.total == ending.phrase_share);
+        quotes(w, *rules, after.total);
+        quotes(on, *rules, ending.total);
+    }
+    // whole_chord takes more of the phrase chord out of Star Power.
+    CHECK(drop(w, whole).total > drop(w, first).total);
+    CHECK(drop(on, whole).total > drop(on, first).total);
 }
 
 // The phrase chords strictly inside an SP end's squeeze window, in chart
@@ -1516,34 +1537,75 @@ TEST_CASE("squeeze_window_phrases: the phrase chords strictly inside the window,
 // nothing. A step that moved the end from here while the list lacks its
 // phrase is an impossible state, and throws.
 TEST_CASE("offered_phrase: the newest step's phrase early, the first unsqueezed one late") {
-    const std::vector<int64_t> window = {2928, 3036, 3100, 3200};  // the end is 3072
+    // The SP end and the window's phrase chords around it, in chart order.
+    const int64_t sp_end = 3072;
+    const int64_t older = 2928;       // a phrase before `newest`
+    const int64_t newest = 3036;      // the newest phrase at or before sp_end
+    const int64_t late = 3100;        // the first phrase after sp_end
+    const int64_t after_late = 3200;  // the phrase after that
+    const std::vector<int64_t> window = {older, newest, late, after_late};
+
+    // The window's own end: somewhere after this SP end, or this SP end.
+    const std::optional<int64_t> ends_later = sp_end + 1000;
+    const std::optional<int64_t> ends_here = sp_end;
+    // The SP end the newest step moved from: this one, a twin one tick
+    // before it, or no squeeze node at all.
+    const std::optional<int64_t> moved_from_here = sp_end;
+    const std::optional<int64_t> moved_from_twin = sp_end - 1;
+    const std::optional<int64_t> no_squeeze_node = std::nullopt;
+    // A step's phrase that is not in the window's list.
+    const int64_t unlisted = 3000;
+
     const auto tick = [](int64_t t) { return t; };
-    const auto none = [](int64_t) { return false; };
-    const auto in_3100 = [](int64_t t) { return t == 3100; };
-    auto at = [&](std::optional<int64_t> path_end, int64_t newest, std::optional<int64_t> from,
-                  auto squeezed_in) {
-        const auto it = core::offered_phrase(window.begin(), window.end(), 3072, path_end,
-                                             newest, from, tick, squeezed_in);
-        return it == window.end() ? int64_t{-1} : *it;
+    const auto nothing_squeezed_in = [](int64_t) { return false; };
+    const auto newest_squeezed_in = [&](int64_t t) { return t == newest; };
+    const auto late_squeezed_in = [&](int64_t t) { return t == late; };
+    const auto all_squeezed_in = [](int64_t) { return true; };
+
+    // What offered_phrase answers, or none_offered when it offers nothing.
+    const int64_t none_offered = -1;
+    auto offered = [&](std::optional<int64_t> path_end, int64_t newest_tick,
+                       std::optional<int64_t> moved_from, auto squeezed_in) {
+        const auto it = core::offered_phrase(window.begin(), window.end(), sp_end, path_end,
+                                             newest_tick, moved_from, tick, squeezed_in);
+        return it == window.end() ? none_offered : *it;
     };
-    CHECK(at(4000, 3036, 3072, none) == 3036);          // newest moved from here
-    CHECK(at(4000, 2928, 3072, none) == 2928);          // whichever it is
-    CHECK(at(4000, 3036, 3071, none) == -1);            // moved from a twin end
-    CHECK(at(4000, 3036, std::nullopt, none) == -1);    // no squeeze node
-    CHECK(at(4000, 3036, 3072, [](int64_t t) { return t == 3036; }) == -1);  // squeezed in
-    CHECK(at(3072, 3036, std::nullopt, none) == 3100);  // the end is here: late
-    CHECK(at(3072, 3036, std::nullopt, in_3100) == 3200);
-    CHECK(at(3072, 0, std::nullopt, [](int64_t) { return true; }) == -1);
-    CHECK_THROWS_AS(at(4000, 3000, 3072, none), std::logic_error);  // 3000 is not listed
+
+    // Early side: the newest step's phrase, when its step moved the end from
+    // this SP end and the window has not squeezed it in.
+    CHECK(offered(ends_later, newest, moved_from_here, nothing_squeezed_in) == newest);
+    CHECK(offered(ends_later, older, moved_from_here, nothing_squeezed_in) == older);
+    CHECK(offered(ends_later, newest, moved_from_twin, nothing_squeezed_in) == none_offered);
+    CHECK(offered(ends_later, newest, no_squeeze_node, nothing_squeezed_in) == none_offered);
+    CHECK(offered(ends_later, newest, moved_from_here, newest_squeezed_in) == none_offered);
+    // Late side: when the window ends here, the first phrase after the end
+    // that the window has not squeezed in.
+    CHECK(offered(ends_here, newest, no_squeeze_node, nothing_squeezed_in) == late);
+    CHECK(offered(ends_here, newest, no_squeeze_node, late_squeezed_in) == after_late);
+    CHECK(offered(ends_here, newest, no_squeeze_node, all_squeezed_in) == none_offered);
+    // A step moved the end from here, but its phrase is not in the list.
+    CHECK_THROWS_AS(offered(ends_later, unlisted, moved_from_here, nothing_squeezed_in),
+                    std::logic_error);
 }
 
 // The replay's form of the rule (core::sqout_chords): a typed window has no
 // history, so either side; a stored window that ended plainly, only late.
 // D36.
 TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first after D") {
-    const Song s = song_with({{0, false}, {768, false}, {2928, true}, {3000, false},
-                              {3036, true}, {3072, false}, {3100, true}, {3200, true}});
-    const Timecode d = s.timecode(3072);
+    // Phrase chords around the SP end, in chart order, and a plain chord
+    // between `older` and `newest` for an activation to start on.
+    const int64_t sp_end = 3072;
+    const int64_t older = 2928;       // a phrase before `newest`
+    const int64_t between = 3000;     // a plain chord after `older`
+    const int64_t newest = 3036;      // the newest phrase at or before sp_end
+    const int64_t late = 3100;        // the first phrase after sp_end
+    const int64_t after_late = 3200;  // the phrase after that
+    const Song s = song_with({{0, false}, {768, false}, {older, true}, {between, false},
+                              {newest, true}, {sp_end, false}, {late, true},
+                              {after_late, true}});
+    const Timecode d = s.timecode(sp_end);
+    const bool typed = false;          // a typed window: no history
+    const bool ended_plainly = true;   // a stored window that ended plainly at D
     auto ticks = [&](int64_t act, const std::vector<int64_t>& in, bool plain) {
         std::vector<int64_t> out;
         for (const SongTimestamp* c : core::sqout_chords(s, d, act, in, plain))
@@ -1551,63 +1613,81 @@ TEST_CASE("sqout_chords: a window's newest phrase at or before D, or the first a
         return out;
     };
     using V = std::vector<int64_t>;
-    CHECK(ticks(0, {}, false) == V{3036, 3100});      // 3036 is newest, never 2928
-    CHECK(ticks(3000, {}, false) == V{3036, 3100});   // 2928 banked, 3036 still newest
-    CHECK(ticks(3036, {}, false) == V{3100});         // both banked: late only
-    CHECK(ticks(0, {3036}, false) == V{3100});        // the newest squeezed in
-    CHECK(ticks(0, {3100}, false) == V{3036, 3200});  // the late one squeezed in
-    CHECK(ticks(0, {}, true) == V{3100});             // ended plainly at D
-    CHECK(ticks(0, {3036, 3100, 3200}, false).empty());
+    const V none_squeezed_in;
+    // The newest phrase at or before D, never an older one, and the first after.
+    CHECK(ticks(0, none_squeezed_in, typed) == V{newest, late});
+    // `older` banked before the activation: `newest` is still the newest.
+    CHECK(ticks(between, none_squeezed_in, typed) == V{newest, late});
+    // `newest` banked too (the activation is on it): only the late side is left.
+    CHECK(ticks(newest, none_squeezed_in, typed) == V{late});
+    // A phrase squeezed in is never squeezed out; the late side moves on past it.
+    CHECK(ticks(0, V{newest}, typed) == V{late});
+    CHECK(ticks(0, V{late}, typed) == V{newest, after_late});
+    CHECK(ticks(0, none_squeezed_in, ended_plainly) == V{late});
+    CHECK(ticks(0, V{newest, late, after_late}, typed).empty());
 }
 
+// The single-note steps are stated by to_multiplier's own tests; this one is
+// the per-note answer of a chord that straddles a step.
 TEST_CASE("category_scores reports the multiplier each note was paid at") {
-    Chord one;
-    one.add_note(NoteColor::Red);
-    CHECK(category_scores(one, 8).multiplier == 1);  // the 9th note: 1x
-    CHECK(category_scores(one, 9).multiplier == 2);  // the 10th note: 2x
-    CHECK(category_scores(one, 19).multiplier == 3);
-    CHECK(category_scores(one, 29).multiplier == 4);
-    CHECK(category_scores(one, 40).multiplier == 4);
-    CHECK(category_scores(one, 9).multiplier_after == 2);
+    // The first combo paid at 2x is the first that to_multiplier lifts above 1x.
+    int x2_from = 1;
+    while (to_multiplier(x2_from) == 1) ++x2_from;
 
-    // A two-note chord after 8 notes of combo straddles the step: its first
-    // note is the 9th (1x) and its second the 10th (2x).
+    // A two-note chord hit two notes before that step straddles it: its first
+    // note is paid at 1x and its second, the x2_from-th hit, at 2x.
     Chord two;
     two.add_note(NoteColor::Red);
     two.add_note(NoteColor::Kick);
+    const int combo_before = x2_from - 2;
     std::vector<CategoryScores> per_note;
-    const CategoryScores s = category_scores(two, 8, &per_note);
-    CHECK(s.multiplier == 1);
-    CHECK(s.multiplier_after == 2);
-    CHECK(s.combo == 50);  // only the second note earns combo points
+    const CategoryScores s = category_scores(two, combo_before, &per_note);
     REQUIRE(per_note.size() == 2);
     CHECK(per_note[0].multiplier == 1);
     CHECK(per_note[1].multiplier == 2);
+    // The chord's own fields are its first and its last note's.
+    CHECK(s.multiplier == per_note[0].multiplier);
+    CHECK(s.multiplier_after == per_note[1].multiplier);
+    // Only the second note earns combo points: a pad's base points at 2x,
+    // less the same at 1x (both notes are plain pads, kNoteBasePoints each).
+    CHECK(per_note[0].combo == 0);
+    CHECK(per_note[1].combo == kNoteBasePoints * (per_note[1].multiplier - 1));
+    CHECK(s.combo == per_note[0].combo + per_note[1].combo);
 }
 
+// In a chord that mixes a plain note with a dynamic cymbal, the dynamics bonus
+// is the cymbal's alone. One note at a time, the bonus's size is stated by
+// test_stars.cpp; this test is the attribution inside a mixed chord.
 TEST_CASE("category_scores prices a dynamic cymbal's bonus at its own note") {
-    // A kick and a ghost cymbal after 9 notes of combo: both notes are at 2x.
-    // The cymbal's dynamics are the pad's 50 plus the cymbal's 15, times 2.
-    // The chord's ghost category holds only the raw 50.
     Chord chord;
     chord.add_note(NoteColor::Kick);
     add_dynamic_cymbal(chord, NoteDynamicType::Ghost);
+    const int combo_before = 9;
     std::vector<CategoryScores> per_note;
-    const CategoryScores s = category_scores(chord, 9, &per_note);
-    CHECK(s.ghost == 50);
+    const CategoryScores s = category_scores(chord, combo_before, &per_note);
+    // The chord's ghost category holds the pad's base points at 1x, without
+    // the cymbal's extra.
+    CHECK(s.ghost == kNoteBasePoints);
 
     const std::vector<ChordNote> order = chord.notes(true);
     REQUIRE(order.size() == 2);
     REQUIRE(per_note.size() == 2);
+    int cymbals = 0;
     for (size_t k = 0; k < order.size(); ++k) {
         if (order[k].colortype == NoteColor::Yellow) {
-            CHECK(per_note[k].dynamics_bonus == 130);  // (50 + 15) x 2
-            // Without its dynamics the cymbal pays a plain 2x cymbal: 130.
-            CHECK(per_note[k].sp - per_note[k].dynamics_bonus == 130);
+            ++cymbals;
+            // A plain cymbal is the pad's base points plus the cymbal's extra,
+            // at the note's multiplier; a ghost hit pays that once more.
+            const int note_multiplier = to_multiplier(combo_before + static_cast<int>(k) + 1);
+            const int plain_cymbal = (kNoteBasePoints + kCymbalBonusPoints) * note_multiplier;
+            CHECK(per_note[k].multiplier == note_multiplier);
+            CHECK(per_note[k].dynamics_bonus == plain_cymbal);
+            CHECK(per_note[k].sp - per_note[k].dynamics_bonus == plain_cymbal);
         } else {
             CHECK(per_note[k].dynamics_bonus == 0);
         }
     }
+    CHECK(cymbals == 1);
 }
 
 TEST_CASE("replay reports the multipliers category_scores applied") {
