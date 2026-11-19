@@ -781,14 +781,15 @@ TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rate
         CAPTURE(ca.chart);
         const ActivationRating r = rate_activation(ca.act);
         REQUIRE(r.scales.has_value());
-        // A side governs when a rated note read it and it is scaled.
-        auto governing = [](const SidesRead& read, const TransferScale& s) {
-            return (read.early && is_scaled(s.early)) || (read.late && is_scaled(s.late));
-        };
-        bool want = governing(r.post_read, r.scales->post);
-        REQUIRE(r.sqins_read.size() == r.scales->sqins.size());
-        for (size_t k = 0; k < r.sqins_read.size(); ++k)
-            want = want || governing(r.sqins_read[k], r.scales->sqins[k]);
+        // A rated row has a figure exactly when the side it read is scaled,
+        // and the activation governs exactly when a row or SqIn has a figure.
+        bool want = false;
+        for (const BackendRating& br : r.backends) {
+            CHECK(br.note.effective_ms.has_value() == is_scaled(br.note.scale));
+            want = want || br.note.effective_ms.has_value();
+        }
+        for (const std::optional<double>& figure : r.note_effective_ms)
+            want = want || figure.has_value();
         CHECK(r.scale_governs == want);
         if (r.scale_governs) ++governs;
 
