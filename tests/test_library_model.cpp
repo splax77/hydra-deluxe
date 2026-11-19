@@ -820,7 +820,7 @@ TEST_CASE("library model: set_summaries_for holds the row order under the Best p
         }
         INFO("row " << row.title);
         CHECK(unscored_after.empty());  // no scored row below an unscored one
-        REQUIRE(row.summary.score.has_value());
+        REQUIRE(row.summary.has_scored_best_path());
         if (last_score) CHECK(*row.summary.score <= *last_score);
         last_score = row.summary.score;
     }
@@ -1078,6 +1078,9 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
     // query_matches runs for every row on every applied keystroke. The times
     // are printed for a person to read; a timing belongs in hydra_bench, not
     // in a pass/fail check that a busy machine can fail.
+    // The hardest timing each summary row gets is i modulo this, so the
+    // squeeze filter's count below is worked from the same figure.
+    static constexpr int kHardestCycle = 90;
     std::vector<ChartLibraryEntry> charts;
     std::vector<RecordLookup> summaries;
     charts.reserve(20000);
@@ -1091,8 +1094,9 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         charts.push_back(chart(md5, title, artist, charter, folder));
         // Only every third row has a summary, so its stars step on i / 3 to
         // give 5, 6 and 7 among those rows.
-        summaries.push_back(i % 3 == 0 ? ready(300000 + i, "1 2 3", 5 + (i / 3) % 3, i % 90)
-                                       : RecordLookup{});
+        summaries.push_back(i % 3 == 0
+                                ? ready(300000 + i, "1 2 3", 5 + (i / 3) % 3, i % kHardestCycle)
+                                : RecordLookup{});
     }
     LibraryModel m;
     auto t0 = std::chrono::steady_clock::now();
@@ -1154,7 +1158,7 @@ TEST_CASE("library model: filtering 20,000 charts keeps the pinned row counts") 
         {"charter", count_where([&](int i) { return words_match(i, {"charter"}); })},
         {"stars:7", count_where([](int i) { return i % 3 == 0 && 5 + (i / 3) % 3 == 7; })},
         {"squeeze<=20 pack", count_where([&](int i) {
-             return i % 3 == 0 && i % 90 <= 20 && words_match(i, {"pack"});
+             return i % 3 == 0 && i % kHardestCycle <= 20 && words_match(i, {"pack"});
          })},
         {"zzqx", count_where([&](int i) { return words_match(i, {"zzqx"}); })},
         {"", 20000},
