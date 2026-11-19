@@ -6,11 +6,13 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <vector>
 
@@ -364,10 +366,13 @@ TEST_CASE("early-fill window: each corpus activation keeps its search's window")
         if (wide_records.size() == 5) break;
         wide_records.push_back({r.chart, &corpus::analyzed(r.chart, wide)});
     }
-    for (const auto& [window, records] :
-         {std::pair<double, std::vector<CorpusRecord>>{default_cfg().early_fill_window_ms,
-                                                       default_records()},
-          std::pair<double, std::vector<CorpusRecord>>{kHitWindowMs, wide_records}}) {
+    const std::pair<double, const std::vector<CorpusRecord>*> runs[] = {
+        {default_cfg().early_fill_window_ms, &default_records()},
+        {kHitWindowMs, &wide_records},
+    };
+    for (const auto& run : runs) {
+        const double window = run.first;
+        const std::vector<CorpusRecord>& records = *run.second;
         CAPTURE(window);
         int critical = 0, not_critical = 0;
         for (const CorpusPath& cp : paths_of(records)) {
@@ -510,22 +515,48 @@ TEST_CASE("past_difficult_floor: kDifficultMs itself is not past it") {
     }
 }
 
-TEST_CASE("HydraRecord::is_optimal: every path tied at the top score") {
-    const HydraRecord rec = test::tied_variant_record();
-    const Path& root = rec.paths.at(0);
-    CHECK(rec.is_optimal(root));
-    CHECK(rec.is_optimal(root.variants.at(0)));  // the tied variant
-    CHECK_FALSE(rec.is_optimal(rec.paths.at(1)));
+// The highest total over every path a record holds, variants included.
+static std::optional<int64_t> top_total(const HydraRecord& rec) {
+    std::optional<int64_t> top;
+    for (const Path* p : rec.all_paths())
+        if (!top || p->totalscore() > *top) top = p->totalscore();
+    return top;
 }
 
-TEST_CASE("HydraRecord::optimal_score: the best path's total, empty with no paths") {
-    const HydraRecord rec = test::tied_variant_record();
-    REQUIRE(rec.optimal_score().has_value());
-    CHECK(*rec.optimal_score() == rec.paths.at(0).totalscore());
+// On every corpus record: a path is optimal exactly when it ties the highest
+// total of any path the record holds. A tied variant counts as optimal too.
+TEST_CASE("HydraRecord::is_optimal: every corpus path tied at the top score") {
+    int tied_beside_best = 0, below = 0;
+    for (const CorpusRecord& r : default_records()) {
+        CAPTURE(r.chart);
+        const std::optional<int64_t> top = top_total(*r.rec);
+        REQUIRE(top.has_value());
+        const Path& best = r.rec->paths.at(0);
+        for (const Path* p : r.rec->all_paths()) {
+            CAPTURE(p->pathstring());
+            const bool at_top = p->totalscore() == *top;
+            CHECK(r.rec->is_optimal(*p) == at_top);
+            if (at_top && p != &best) ++tied_beside_best;
+            if (!at_top) ++below;
+        }
+    }
+    // A path tied with the best one and a path below it must both turn up,
+    // or the check reads one side of the rule only.
+    CHECK(tied_beside_best > 0);
+    CHECK(below > 0);
+}
 
+// On every corpus record the optimal score is the highest total of any path
+// it holds. A record with no paths, the state before any analysis, has none,
+// and no path is optimal in it.
+TEST_CASE("HydraRecord::optimal_score: the highest corpus path total, empty with no paths") {
+    for (const CorpusRecord& r : default_records()) {
+        CAPTURE(r.chart);
+        CHECK(r.rec->optimal_score() == top_total(*r.rec));
+    }
     const HydraRecord empty{};
     CHECK_FALSE(empty.optimal_score().has_value());
-    CHECK_FALSE(empty.is_optimal(rec.paths.at(0)));
+    CHECK_FALSE(empty.is_optimal(default_records().front().rec->paths.at(0)));
 }
 
 TEST_CASE("multiplier_step: the multipliers at a chord's two ends") {
@@ -569,46 +600,57 @@ TEST_CASE("category_scores: a chord with no notes keeps the combo's multiplier a
     CHECK(at10.combo_after == 10);
 }
 
-TEST_CASE("Activation::hardest: the part with its ms, a tie names the squeeze") {
+// On every corpus activation, hardest() names one of the activation's own
+// timings (badge_timings) and leaves out the two kinds that need no hitting:
+// a squeeze that needs no timing and a fill with time to spare. A required
+// timing larger than the one named never exists. A required fill is named
+// only when it beats every squeeze, so a tie names the squeeze (D48 Q2). An
+// optional fill is named only when nothing required is (D48 Q10), and is
+// never a difficulty.
+TEST_CASE("Activation::hardest: on every corpus activation, the largest timing to hit") {
     using P = TimingPart;
-    auto plain = [] {
-        Activation a;
-        test::set_skips(a, 0);
-        a.e_offset = 300.0;  // not e-critical
-        return a;
-    };
+    int named_squeeze = 0, named_none = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        CAPTURE(ca.chart);
+        CAPTURE(a.timecode.ticks());
+        CAPTURE(a.notationstr_verbose());
+        const std::vector<ActivationTiming> timings = a.badge_timings();
+        // The timings that take part: those that need hitting.
+        std::vector<ActivationTiming> to_hit;
+        for (const ActivationTiming& t : timings)
+            if (t.part == P::EarlyFill ? early_fill_needs_timing(a.e_offset) : t.required)
+                to_hit.push_back(t);
 
-    // The larger of two SqIns, with its raw value.
-    Activation two = plain();
-    two.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 12.4}, SPSqueeze{SqueezeKind::SqIn, 12.6}};
-    CHECK(two.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeIn, 12.6}));
-    two.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 12.4}};
-    CHECK(two.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeIn, 12.4}));
-
-    // A required (E0) fill and a SqOut at the same ms: the squeeze.
-    Activation tie = plain();
-    tie.e_offset = -12.6;  // early fill 12.6 ms
-    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.6}};
-    REQUIRE(tie.is_E0());
-    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeOut, 12.6}));
-
-    // The fill alone, when it is harder.
-    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.4}};
-    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 12.6}));
-
-    // An E activation that skips one fill, with no squeeze: its optional
-    // early fill (D48 Q10).
-    Activation skip = plain();
-    test::set_skips(skip, 1);
-    skip.e_offset = -12.6;
-    REQUIRE(skip.is_e_critical());
-    REQUIRE_FALSE(skip.is_E0());
-    CHECK(skip.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 12.6}));
-    // ...which difficulty() still leaves out.
-    CHECK_FALSE(skip.difficulty().has_value());
-
-    // Nothing to time: no badge.
-    CHECK_FALSE(plain().hardest().has_value());
+        const std::optional<HardestTiming> h = a.hardest();
+        CHECK(h.has_value() == !to_hit.empty());
+        if (!h) {
+            ++named_none;
+            CHECK_FALSE(a.difficulty().has_value());
+            continue;
+        }
+        if (h->part != P::EarlyFill) ++named_squeeze;
+        bool listed = false;
+        for (const ActivationTiming& t : to_hit) listed = listed || (t.part == h->part && t.ms == h->ms);
+        CHECK(listed);
+        for (const ActivationTiming& t : to_hit) {
+            if (!t.required) continue;
+            CHECK(t.ms <= h->ms);
+            // A required fill named over a squeeze must beat it outright.
+            if (h->part == P::EarlyFill && t.part != P::EarlyFill) CHECK(t.ms < h->ms);
+        }
+        const bool optional_fill = h->part == P::EarlyFill && !a.is_E0();
+        if (optional_fill) {
+            for (const ActivationTiming& t : to_hit) CHECK_FALSE(t.required);
+            CHECK_FALSE(a.difficulty().has_value());
+        } else {
+            CHECK(a.difficulty() == std::optional<double>(h->ms));
+        }
+    }
+    // A squeeze named hardest and an activation with nothing to time must
+    // both turn up, or the checks above read one side only.
+    CHECK(named_squeeze > 0);
+    CHECK(named_none > 0);
 }
 
 // D51 Q4; D302.
@@ -671,183 +713,149 @@ TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none")
     CHECK(q.needs_timing());
 }
 
-TEST_CASE("Activation::badge_timings: every timing in notation order; hardest() picks from it") {
+// On every corpus activation, badge_timings lists the early fill first when
+// the activation is E-critical, then each squeeze in sqinouts order. The fill
+// is required when it is an E0 and warn-coloured only when required and past
+// the floor (D48 Q10, D261). A squeeze is required when it needs timing and
+// warn-coloured when it is difficult (D80). A timing that needs no hitting
+// has a figure below 0 (D302).
+TEST_CASE("Activation::badge_timings: every corpus activation's timings in notation order") {
     using P = TimingPart;
-    // The user's E3+ row: an optional fill with no time to spare, then a free
-    // squeeze-in. Both listed, neither weighed as required, neither difficult.
-    Activation row;
-    test::set_skips(row, 3);
-    row.e_offset = 0.0;
-    row.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -12.0}};
-    const std::vector<ActivationTiming> t = row.badge_timings();
-    REQUIRE(t.size() == 2);
-    CHECK(t[0].part == P::EarlyFill);
-    CHECK(t[0].ms == 0.0);
-    CHECK_FALSE(t[0].required);
-    CHECK_FALSE(t[0].difficult);
-    CHECK(t[1].part == P::SqueezeIn);
-    CHECK(t[1].ms == -12.0);
-    CHECK_FALSE(t[1].required);
-    CHECK_FALSE(t[1].difficult);
-    // The free squeeze never names the hardest part; the optional fill does,
-    // as nothing else needs timing (D48 Q10), and is still no difficulty.
-    CHECK(row.hardest() == std::optional<HardestTiming>(HardestTiming{P::EarlyFill, 0.0}));
-    CHECK_FALSE(row.difficulty().has_value());
-
-    // A required fill tied with a squeeze: both listed, fill first, both
-    // required and difficult; hardest() still names the squeeze.
-    Activation tie;
-    test::set_skips(tie, 0);
-    tie.e_offset = -12.6;
-    tie.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.6}};
-    const std::vector<ActivationTiming> tt = tie.badge_timings();
-    REQUIRE(tt.size() == 2);
-    CHECK(tt[0].part == P::EarlyFill);
-    CHECK(tt[1].part == P::SqueezeOut);
-    CHECK((tt[0].required && tt[1].required && tt[0].difficult && tt[1].difficult));
-    CHECK(tie.hardest() == std::optional<HardestTiming>(HardestTiming{P::SqueezeOut, 12.6}));
-
-    // A required fill with time to spare is listed, not difficult, and never
-    // named hardest (D261, D51 call 4).
-    Activation slack;
-    test::set_skips(slack, 0);
-    slack.e_offset = 10.0;
-    const std::vector<ActivationTiming> st = slack.badge_timings();
-    REQUIRE(st.size() == 1);
-    CHECK(st[0].part == P::EarlyFill);
-    CHECK(st[0].ms == -10.0);
-    CHECK_FALSE(st[0].difficult);
-    CHECK_FALSE(slack.hardest().has_value());
-    CHECK_FALSE(slack.difficulty().has_value());
-    CHECK(slack.within_ms_limit(0.0));
-
-    // An optional fill with time to spare beside a free squeeze: both listed,
-    // and nothing is hardest, as nothing needs timing.
-    Activation spare;
-    test::set_skips(spare, 2);
-    spare.e_offset = 56.2;
-    spare.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -56.0}};
-    const std::vector<ActivationTiming> sp = spare.badge_timings();
-    REQUIRE(sp.size() == 2);
-    CHECK(sp[0].part == P::EarlyFill);
-    CHECK(sp[0].ms == -56.2);
-    CHECK_FALSE(sp[0].difficult);
-    CHECK(sp[1].part == P::SqueezeIn);
-    CHECK_FALSE(spare.hardest().has_value());
-    CHECK_FALSE(spare.difficulty().has_value());
+    int with_fill = 0, with_squeeze = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        CAPTURE(ca.chart);
+        CAPTURE(a.timecode.ticks());
+        const std::vector<ActivationTiming> t = a.badge_timings();
+        const size_t fill = a.is_e_critical() ? 1 : 0;
+        REQUIRE(t.size() == fill + a.sqinouts.size());
+        if (fill) {
+            ++with_fill;
+            CHECK(t[0].part == P::EarlyFill);
+            CHECK(t[0].ms == early_fill_difficulty(a.e_offset));
+            CHECK(t[0].required == a.is_E0());
+            CHECK(t[0].difficult == (t[0].required && past_difficult_floor(t[0].ms)));
+            if (!early_fill_needs_timing(a.e_offset)) CHECK(t[0].ms < 0.0);
+        }
+        for (size_t k = 0; k < a.sqinouts.size(); ++k) {
+            const SPSqueeze& sq = a.sqinouts[k];
+            const ActivationTiming& row = t[fill + k];
+            CAPTURE(k);
+            ++with_squeeze;
+            CHECK(row.part == (sq.kind == SqueezeKind::SqIn ? P::SqueezeIn : P::SqueezeOut));
+            CHECK(row.ms == sq.difficulty());
+            CHECK(row.required == !sq.needs_no_timing());
+            CHECK(row.difficult == sq.is_difficult());
+            if (!row.required) CHECK(row.ms < 0.0);
+        }
+    }
+    // A listed fill and a listed squeeze must both turn up.
+    CHECK(with_fill > 0);
+    CHECK(with_squeeze > 0);
 }
 
-// D85: the all-0 list's 0 ms limit lets a timing of exactly 0 ms through,
-// though such a timing needs hitting (Activation::needs_timing). A free
-// squeeze counts too, so a negative limit can still refuse one.
-TEST_CASE("Activation::within_ms_limit: 0 ms timings pass a 0 ms limit") {
-    auto plain = [] {
-        Activation a;
-        test::set_skips(a, 0);
-        a.e_offset = 300.0;  // not e-critical
-        return a;
-    };
+// D85: a timing exactly at the limit is inside it, a 0 ms timing at a 0 ms
+// limit included. On every corpus activation, the limit that just holds is
+// the largest figure the limit judges: every squeeze, free ones too, and the
+// early fill only when it is an E0 (an optional fill is never a limit's
+// business). At that figure the activation is inside; a hair below it, it is
+// outside. A path is inside when every activation is; one with none always is.
+TEST_CASE("Activation::within_ms_limit: inside at its largest timing, outside just below") {
+    using P = TimingPart;
+    int judged = 0, unjudged = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        const Path& p = *cp.path;
+        CAPTURE(cp.chart);
+        CAPTURE(p.pathstring_verbose({}));
+        std::optional<double> path_top;
+        for (const Activation& a : p.walk_activations()) {
+            CAPTURE(a.timecode.ticks());
+            std::optional<double> top;
+            for (const ActivationTiming& t : a.badge_timings()) {
+                if (t.part == P::EarlyFill && !t.required) continue;
+                if (!top || t.ms > *top) top = t.ms;
+            }
+            if (!top) {
+                ++unjudged;
+                // Nothing the limit judges: inside any limit at all.
+                CHECK(a.within_ms_limit(-std::numeric_limits<double>::max()));
+                continue;
+            }
+            ++judged;
+            CHECK(a.within_ms_limit(*top));
+            CHECK_FALSE(a.within_ms_limit(std::nextafter(*top, -std::numeric_limits<double>::max())));
+            if (!path_top || *top > *path_top) path_top = top;
+        }
+        if (path_top) {
+            CHECK(p.within_ms_limit(*path_top));
+            CHECK_FALSE(p.within_ms_limit(std::nextafter(*path_top, -std::numeric_limits<double>::max())));
+        } else {
+            CHECK(p.within_ms_limit(-std::numeric_limits<double>::max()));
+        }
+    }
+    CHECK(judged > 0);
+    CHECK(unjudged > 0);
 
-    Activation on_end_out = plain();
-    on_end_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
-    REQUIRE(on_end_out.needs_timing());
-    CHECK(on_end_out.within_ms_limit(0.0));
-
-    Activation tight_fill = plain();
-    tight_fill.e_offset = 0.0;
-    REQUIRE(tight_fill.is_E0());
-    REQUIRE(tight_fill.needs_timing());
-    CHECK(tight_fill.within_ms_limit(0.0));
-
-    Activation late_out = plain();
-    late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -0.5}};
-    CHECK_FALSE(late_out.within_ms_limit(0.0));
-    CHECK(late_out.within_ms_limit(0.5));
-
-    Activation late_fill = plain();
-    late_fill.e_offset = -0.5;
-    REQUIRE(late_fill.is_E0());
-    CHECK_FALSE(late_fill.within_ms_limit(0.0));
-
-    // An optional fill (not E0) is never a limit's business.
-    Activation optional_fill = plain();
-    test::set_skips(optional_fill, 1);
-    test::set_sp_meter(optional_fill, 2);
-    optional_fill.e_offset = -30.0;
-    REQUIRE_FALSE(optional_fill.is_E0());
-    CHECK(optional_fill.within_ms_limit(0.0));
-
-    // A free squeeze-in 163 ms inside SP is -163 ms: inside 0, outside -200.
-    Activation free_in = plain();
-    free_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -163.0}};
-    REQUIRE_FALSE(free_in.needs_timing());
-    CHECK(free_in.within_ms_limit(0.0));
-    CHECK_FALSE(free_in.within_ms_limit(-200.0));
-
-    // A path is inside when every activation is; no activations is inside.
-    Path p;
-    CHECK(p.within_ms_limit(0.0));
-    p.activations = {on_end_out, tight_fill, free_in};
-    CHECK(p.within_ms_limit(0.0));
-    p.activations.push_back(late_out);
-    CHECK_FALSE(p.within_ms_limit(0.0));
+    const Path none;
+    CHECK(none.within_ms_limit(0.0));
 }
 
-TEST_CASE("Activation: each end's anchor and each squeeze's end, from the steps") {
-    using K = SpEndKind;
-    Activation a;
-    a.timecode = Timecode::raw(2304);
+// On every corpus activation, read against the SP-end steps the engine wrote.
+// Each end is measured from the latest clamp at or before the step that set
+// it, else from the activation (D1). The k-th SqIn is the k-th SqIn step; its
+// end is the end in force just before that step, and its chord is that
+// step's note. A SqOut is measured from the final end, with that end's
+// anchor.
+TEST_CASE("Activation: each end's anchor and each squeeze's end, from the corpus steps") {
+    int sqins = 0, sqouts = 0, clamped = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        CAPTURE(ca.chart);
+        CAPTURE(a.timecode.ticks());
+        const std::vector<SpEndStep>& steps = a.sp_end_steps;
+        REQUIRE_FALSE(steps.empty());
 
-    // Clamp at C1, SqIn, clamp at C2.
-    a.sp_end_steps = {{2304, 5376, K::Activation},
-                      {3072, 6144, K::Clamped},     // C1 pins X
-                      {6100, 7680, K::SqIn},        // early SqIn: X = 6144
-                      {6912, 9984, K::Clamped}};    // C2 pins D
-    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -50.0}};
-    CHECK(a.end_anchor_tick(0) == 2304);
-    CHECK(a.end_anchor_tick(1) == 3072);
-    CHECK(a.end_anchor_tick(3) == 6912);
-    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(6144));
-    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));  // C1
-    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6912));     // C2
+        // Each step's anchor, walked forward: the latest clamp so far.
+        std::vector<int64_t> anchor(steps.size());
+        int64_t latest = a.timecode.ticks();
+        for (size_t s = 0; s < steps.size(); ++s) {
+            if (steps[s].kind == SpEndKind::Clamped) {
+                latest = steps[s].tick;
+                ++clamped;
+            }
+            anchor[s] = latest;
+            CAPTURE(s);
+            CHECK(a.end_anchor_tick(s) == anchor[s]);
+        }
+        CHECK(a.deact_anchor_tick() == std::optional<int64_t>(anchor.back()));
 
-    // SqIn, then a clamp. The SqIn's end was the activation's.
-    a.sp_end_steps = {{2304, 5376, K::Activation},
-                      {5400, 6912, K::SqIn},        // late SqIn: X = 5376
-                      {6144, 12288, K::Clamped}};
-    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(5376));
-    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(2304));
-    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(6144));
-
-    // Clamp at C, then a SqIn. X was pinned to C, so both anchors are C.
-    a.sp_end_steps = {{2304, 5376, K::Activation},
-                      {3072, 6144, K::Clamped},
-                      {6100, 7680, K::SqIn}};
-    CHECK(a.squeeze_anchor_tick(0) == std::optional<int64_t>(3072));
-    CHECK(a.deact_anchor_tick() == std::optional<int64_t>(3072));
-
-    // A SqOut is measured from D, with D's anchor.
-    a.sp_end_steps = {{2304, 5376, K::Activation},
-                      {5400, 6912, K::SqIn},
-                      {6144, 12288, K::Clamped}};
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -20.0});
-    CHECK(a.squeeze_end_tick(1) == a.deact_tick());
-    CHECK(a.squeeze_anchor_tick(1) == a.deact_anchor_tick());
-
-    // Two SqIns map to the two SqIn steps in order.
-    a.sp_end_steps = {{2304, 5376, K::Activation},
-                      {5400, 6912, K::SqIn},
-                      {6950, 8448, K::SqIn}};
-    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 24.0}, SPSqueeze{SqueezeKind::SqIn, 38.0}};
-    CHECK(a.squeeze_end_tick(0) == std::optional<int64_t>(5376));
-    CHECK(a.squeeze_end_tick(1) == std::optional<int64_t>(6912));
-
-    // An old record (no steps) answers nothing.
-    Activation old;
-    old.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 5.0}};
-    CHECK_FALSE(old.squeeze_end_tick(0).has_value());
-    CHECK_FALSE(old.squeeze_anchor_tick(0).has_value());
-    CHECK_FALSE(old.deact_anchor_tick().has_value());
+        // The SqIn steps, in order, after the activation's own.
+        std::vector<size_t> sqin_steps;
+        for (size_t s = 1; s < steps.size(); ++s)
+            if (steps[s].kind == SpEndKind::SqIn) sqin_steps.push_back(s);
+        size_t rank = 0;
+        for (size_t k = 0; k < a.sqinouts.size(); ++k) {
+            CAPTURE(k);
+            if (a.sqinouts[k].kind == SqueezeKind::SqOut) {
+                ++sqouts;
+                CHECK(a.squeeze_end_tick(k) == a.deact_tick());
+                CHECK(a.squeeze_anchor_tick(k) == a.deact_anchor_tick());
+                CHECK(a.squeeze_chord_tick(k) == a.sqout_tick);
+                continue;
+            }
+            ++sqins;
+            REQUIRE(rank < sqin_steps.size());
+            const size_t s = sqin_steps[rank++];
+            CHECK(a.squeeze_end_tick(k) == std::optional<int64_t>(steps[s - 1].end_tick));
+            CHECK(a.squeeze_anchor_tick(k) == std::optional<int64_t>(anchor[s - 1]));
+            CHECK(a.squeeze_chord_tick(k) == std::optional<int64_t>(steps[s].tick));
+        }
+    }
+    // A SqIn, a SqOut and a clamp must each turn up, or part of the rule
+    // above goes unread.
+    CHECK(sqins > 0);
+    CHECK(sqouts > 0);
+    CHECK(clamped > 0);
 }
 
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
@@ -878,64 +886,126 @@ TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
     CHECK(a.notationstr() == "E2+-");
 }
 
-TEST_CASE("Path pathstring and pathstring_verbose") {
-    Path p;
-    Activation a;
-    test::set_skips(a, 1);
-    a.e_offset = 400.0;  // not e-critical, no sqinouts -> verbose == notationstr
-    p.activations.push_back(a);
-    p.notes_points = 100000;  // totalscore == 100000
+// The text of a list of pieces, each pair split by `sep`.
+static std::string joined(const std::vector<std::string>& parts, std::string_view sep) {
+    std::string out;
+    for (size_t i = 0; i < parts.size(); ++i) {
+        if (i) out += sep;
+        out += parts[i];
+    }
+    return out;
+}
 
-    CHECK(p.pathstring() == "1");
-    CHECK(p.pathstring_verbose({}) ==
-          "(No mult squeezes.) | 1 | Score: 100,000");
-    Chord c;
-    c.add_note(NoteColor::Red);
-    c.add_note(NoteColor::Yellow);
-    c.apply_cymbal(NoteColor::Yellow);
-    CHECK(p.pathstring_verbose({MultSqueeze(c, 8)}) == "2x | 1 | Score: 100,000");
+// The pieces of `text` between each `sep`.
+static std::vector<std::string> split_on(const std::string& text, std::string_view sep) {
+    std::vector<std::string> out;
+    size_t from = 0;
+    for (size_t at; (at = text.find(sep, from)) != std::string::npos; from = at + sep.size())
+        out.push_back(text.substr(from, at - from));
+    out.push_back(text.substr(from));
+    return out;
+}
 
-    Path empty;
-    CHECK(empty.pathstring() == "(No activations.)");
-    CHECK(empty.pathstring_verbose({}) ==
-          "(No mult squeezes.) | (No activations.) | Score: 0");
+// On every corpus path: the short text is each activation's notation in walk
+// order, a space apart. The copied text is three sections split by the
+// writer's separator: the record's multiplier squeezes (or the words for
+// none), the activations' long notations, and the score grouped by
+// group_thousands. A path with no activations writes the same words for
+// none in both texts, and its score section differs from a real path's only
+// in the number.
+TEST_CASE("Path pathstring and pathstring_verbose: every corpus path's sections") {
+    const Path empty;
+    const std::vector<std::string> empty_sections =
+        split_on(empty.pathstring_verbose({}), kPathSectionSeparator);
+    REQUIRE(empty_sections.size() == 3);
+    CHECK(empty_sections[1] == empty.pathstring());
+    const std::string zero = group_thousands(0);
+    REQUIRE(empty_sections[2].size() > zero.size());
+    CHECK(empty_sections[2].substr(empty_sections[2].size() - zero.size()) == zero);
+    const std::string score_words =
+        empty_sections[2].substr(0, empty_sections[2].size() - zero.size());
+
+    int with_mult = 0, without_mult = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        const Path& p = *cp.path;
+        CAPTURE(cp.chart);
+        std::vector<std::string> shorts, longs;
+        for (const Activation& a : p.walk_activations()) {
+            shorts.push_back(a.notationstr());
+            longs.push_back(a.notationstr_verbose());
+        }
+        if (shorts.empty()) {
+            CHECK(p.pathstring() == empty.pathstring());
+        } else {
+            CHECK(p.pathstring() == joined(shorts, " "));
+        }
+
+        const std::vector<MultSqueeze>& mults = cp.rec->multsqueezes;
+        const std::vector<std::string> sections =
+            split_on(p.pathstring_verbose(mults), kPathSectionSeparator);
+        CAPTURE(p.pathstring_verbose(mults));
+        REQUIRE(sections.size() == 3);
+        if (mults.empty()) {
+            ++without_mult;
+            CHECK(sections[0] == empty_sections[0]);
+        } else {
+            ++with_mult;
+            std::vector<std::string> ms;
+            for (const MultSqueeze& m : mults) ms.push_back(m.notationstr());
+            CHECK(sections[0] == joined(ms, ", "));
+        }
+        CHECK(sections[1] == (longs.empty() ? empty_sections[1] : joined(longs, " ")));
+        CHECK(sections[2] == score_words + group_thousands(p.totalscore()));
+    }
+    // A record with multiplier squeezes and one without must both turn up.
+    CHECK(with_mult > 0);
+    CHECK(without_mult > 0);
 }
 
 // walk_activations reads a path's activations in place: its own, then the
-// tail it shares with its parent, in that order, and copies nothing.
+// tail it shares with its parent, in that order, and copies nothing. Checked
+// on every corpus path; a variant with both its own activations and a shared
+// tail must turn up.
 TEST_CASE("Path::walk_activations: own activations then the variant tail, in place") {
-    Path p;
-    Activation a1, a2, t1;
-    test::set_skips(a1, 0);
-    test::set_skips(a2, 1);
-    test::set_skips(t1, 2);
-    p.activations = {a1, a2};
-    p.variant_tail = {t1};
+    int both_sides = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        const Path& p = *cp.path;
+        CAPTURE(cp.chart);
+        CAPTURE(p.pathstring());
+        const size_t own = p.activations.size();
+        const size_t tail = p.variant_tail.size();
+        if (own > 0 && tail > 0) ++both_sides;
 
-    const ActivationWalk walk = p.walk_activations();
-    REQUIRE(walk.size() == 3);
-    CHECK_FALSE(walk.empty());
-    // In place: each element is the very object in the path, not a copy.
-    CHECK(&walk[0] == &p.activations[0]);
-    CHECK(&walk[1] == &p.activations[1]);
-    CHECK(&walk[2] == &p.variant_tail[0]);
-    CHECK(&walk.front() == &p.activations[0]);
-    CHECK(&walk.back() == &p.variant_tail[0]);
+        const ActivationWalk walk = p.walk_activations();
+        REQUIRE(walk.size() == own + tail);
+        CHECK(walk.empty() == (own + tail == 0));
+        CHECK(p.has_activations() == !walk.empty());
+        // In place: each element is the very object in the path, not a copy.
+        std::vector<const Activation*> expected;
+        for (const Activation& a : p.activations) expected.push_back(&a);
+        for (const Activation& a : p.variant_tail) expected.push_back(&a);
+        for (size_t i = 0; i < expected.size(); ++i) CHECK(&walk[i] == expected[i]);
+        if (!walk.empty()) {
+            CHECK(&walk.front() == expected.front());
+            CHECK(&walk.back() == expected.back());
+        }
+        // A range-for visits the same objects in the same order.
+        std::vector<const Activation*> seen;
+        for (const Activation& a : walk) seen.push_back(&a);
+        CHECK(seen == expected);
 
-    // A range-for visits the same objects in the same order.
-    std::vector<const Activation*> seen;
-    for (const Activation& a : walk) seen.push_back(&a);
-    CHECK(seen == std::vector<const Activation*>{&p.activations[0], &p.activations[1],
-                                                 &p.variant_tail[0]});
+        // The same sequence the copying all_activations() hands out.
+        const std::vector<Activation> copied = p.all_activations();
+        REQUIRE(copied.size() == walk.size());
+        for (size_t i = 0; i < copied.size(); ++i) {
+            CHECK(copied[i].timecode.ticks() == walk[i].timecode.ticks());
+            CHECK(copied[i].skipped_fill_ticks == walk[i].skipped_fill_ticks);
+        }
+    }
+    CHECK(both_sides > 0);
 
-    // The same sequence the copying all_activations() hands out.
-    const std::vector<Activation> copied = p.all_activations();
-    REQUIRE(copied.size() == walk.size());
-    for (size_t i = 0; i < copied.size(); ++i) CHECK(copied[i].skips() == walk[i].skips());
-    CHECK(p.has_activations());
-
-    // Nothing on either side.
-    Path none;
+    // A path with nothing on either side, as a chart with no activation gives.
+    const Path none;
     const ActivationWalk nothing = none.walk_activations();
     CHECK(nothing.empty());
     CHECK(nothing.begin() == nothing.end());
