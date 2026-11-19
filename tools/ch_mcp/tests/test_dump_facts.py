@@ -19,6 +19,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_facts as BF  # noqa: E402
 from tools.ch_mcp import dump_build as B  # noqa: E402
 from tools.ch_mcp import dump_facts as D  # noqa: E402
 
@@ -197,20 +198,45 @@ class ParseDumpTests(unittest.TestCase):
              "static": True, "offset": 0x14},
         )
 
-    def test_method_without_rva_line_fails_loudly(self):
-        broken = "// Namespace: \npublic class X // TypeDefIndex: 1\n{\n\t// Methods\n\tpublic void F() { }\n}\n"
-        with self.assertRaisesRegex(D.FactsError, "method with no RVA line"):
-            D.parse_dump(broken)
+    def test_method_without_rva_line_fails_loudly_naming_its_line(self):
+        method_line = "\tpublic void F() { }"
+        head = ["// Namespace: ", "public class X // TypeDefIndex: 1", "{", "\t// Methods"]
+        broken = head + [method_line, "}"]
+        with self.assertRaises(D.FactsError) as caught:
+            D.parse_dump("\n".join(broken) + "\n")
+        message = str(caught.exception)
+        # The refusal points at the method's own line, by number and by text.
+        self.assertIn(f"line {broken.index(method_line) + 1}:", message)
+        self.assertIn(method_line.strip(), message)
+        # The same method with its RVA line before it is read, so only the missing line refuses.
+        fixed = head + ["\t// RVA: 0xC05A0 Offset: 0xBF9A0 VA: 0x1800C05A0", method_line, "}"]
+        method = by_name(D.parse_dump("\n".join(fixed) + "\n"), "X")["methods"][0]
+        self.assertEqual((method["name"], method["rva"]), ("F", 0xC05A0))
 
 
 class SignatureTests(unittest.TestCase):
     def test_ctor_rva_finds_the_one_engine_class(self):
         facts = D.build_facts(FRAGMENT, "1.1.0.6142-final", ENGINE_CTOR_RVA, "dump.cs")
-        engine = facts["signatures"]["drums_engine"]
-        self.assertEqual(engine["name"], ENGINE)
-        self.assertEqual(engine["typedef_index"], 8255)
-        self.assertEqual(engine["ctor_rva"], ENGINE_CTOR_RVA)
-        self.assertEqual(facts["game_version"], "1.1.0.6142-final")
+        # The MCP reads the engine back through engine_class; the class it names
+        # must be the one parsed class whose constructor sits at the address it gives.
+        name, rva = BF.engine_class(facts)
+        self.assertEqual(name, ENGINE)
+        engine_cls = by_name(facts["classes"], name)
+        self.assertIn(rva, [m["rva"] for m in engine_cls["methods"] if m["name"] == ".ctor"])
+        self.assertEqual(facts["signatures"]["drums_engine"]["typedef_index"], engine_cls["typedef_index"])
+
+    def test_written_facts_refuse_a_table_run_for_another_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            dump = os.path.join(tmp, "dump.cs")
+            with open(dump, "w", encoding="utf-8") as f:
+                f.write(FRAGMENT)
+            path, _ = D.write_facts(dump, "1.1.0.6142-final", ENGINE_CTOR_RVA)
+            classes, _, _ = D.load_classes(path, "1.1.0.6142-final")
+            self.assertIn(ENGINE, [c["name"] for c in classes])
+            with self.assertRaises(D.FactsError) as caught:
+                D.load_classes(path, "v1.0.0.4045-master")
+            self.assertIn(path, str(caught.exception))
+            self.assertIn("v1.0.0.4045-master", str(caught.exception))
 
     def test_ctor_rva_matching_no_class_refuses(self):
         with self.assertRaisesRegex(D.FactsError, r"^engine ctor RVA matched 0 classes$"):
