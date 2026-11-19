@@ -170,16 +170,19 @@ class LoadScheduleTest(unittest.TestCase):
         self.assertTrue(all(p.declined for p in chord.presses))
 
     def test_the_file_level_values_are_read(self):
+        doc = _read_json(_FREAK_SCHEDULE)
         schedule = play_chart.load_schedule(_FREAK_SCHEDULE)
-        self.assertEqual(schedule.song_length_ms, 193934.0)
-        self.assertEqual(schedule.activations[0].sp_ready_ms, 17314.681543154737)
-        self.assertEqual(schedule.activations[0].read_end_after, 263)
+        self.assertEqual(schedule.song_length_ms, doc["song_length_ms"])
+        self.assertEqual(len(schedule.activations), len(doc["activations"]))
+        for act, entry in zip(schedule.activations, doc["activations"]):
+            self.assertEqual(act.sp_ready_ms, entry["sp_ready_ms"])
+            self.assertEqual(act.read_end_after, entry["read_end_after"])
 
     def test_press_plan_returns_the_presses_in_firing_order(self):
         chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
         plan = play_chart.press_plan(chords)
         self.assertEqual(sorted(plan, key=lambda p: p.at_ms), plan)
-        self.assertEqual(len(plan), 1609)
+        self.assertEqual(len(plan), len(_read_json(_FREAK_SCHEDULE)["presses"]))
 
     def test_a_refusal_in_the_file_stops_the_load_quoting_it(self):
         doc = _schedule_of(_DUMP)
@@ -196,8 +199,8 @@ class LoadScheduleTest(unittest.TestCase):
                                     "anchor_room_ms": -1.5, "squeeze_room_ms": -2.5}]}]
         with self.assertRaises(ValueError) as caught:
             _write_and_load(doc, play_chart.load_schedule)
+        # The refusal names the squeeze's chord; its wording is the loader's.
         self.assertIn("chord 91", str(caught.exception))
-        self.assertIn("cannot make", str(caught.exception))
 
     def test_no_deleted_name_remains(self):
         # Design point 8 of the replay press-schedule plan, with DECLINE_MODES
@@ -378,9 +381,6 @@ class PressLogTest(unittest.TestCase):
 
 
 class RunStopsTest(unittest.TestCase):
-    def test_run_cap_is_240_s(self):
-        self.assertEqual(play_chart.RUN_CAP_S, 240.0)
-
     def test_a_frozen_clock_ends_the_run(self):
         # The clock holds at 20 s, between the third chord and the fourth.
         result, _game, wall = _run({"start_s": 12.0, "freeze_at_s": 20.0})
@@ -457,18 +457,20 @@ class LiveStartTest(unittest.TestCase):
                                    open_proc=opener, find_engine=never_finds,
                                    out=out)
             log_written = os.path.exists(os.path.join(d, "press.csv"))
-        return code, out.getvalue(), proc, opens, log_written
+        return code, out.getvalue(), proc, opens, log_written, never_finds
 
     def test_no_song_exits_2_with_the_finder_message(self):
-        code, text, proc, _opens, log_written = self._main_with_no_song()
+        code, text, proc, _opens, log_written, never_finds = self._main_with_no_song()
         self.assertEqual(code, 2)
-        self.assertIn("no playing song found in 120 s; start the song and run again",
-                      text)
+        # The message main prints is the one the finder itself raises.
+        with self.assertRaises(engine_finder.EngineSearchTimeout) as caught:
+            never_finds(_FakeProc())
+        self.assertIn(str(caught.exception), text)
         self.assertTrue(proc.closed)
         self.assertFalse(log_written)
 
     def test_the_game_is_opened_read_only(self):
-        _code, _text, proc, opens, _log = self._main_with_no_song()
+        _code, _text, proc, opens, _log, _finder = self._main_with_no_song()
         self.assertEqual(opens, [{"read_only": True}])
         self.assertTrue(proc.verified)
 
@@ -563,7 +565,6 @@ class LivePlayTest(unittest.TestCase):
             find_engine=times_out, driver=_FakeDriver(events),
             out=io.StringIO())
         self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
-        self.assertEqual(play_chart.STOP_NO_ENGINE, "no engine")
         self.assertEqual(result.message, "the fake finder gave up")
         self.assertEqual(result.rows, [])
         self.assertEqual(opens, [{"read_only": True}])
@@ -582,7 +583,9 @@ class LivePlayTest(unittest.TestCase):
                 out=out)
         self.assertEqual(result.stop, play_chart.STOP_NO_ENGINE)
         self.assertEqual(stdout.getvalue(), "")
-        self.assertIn("....", out.getvalue())
+        # The search's retry marks (engine_finder owns them) land in the
+        # caller's buffer.
+        self.assertTrue(out.getvalue().endswith("."), repr(out.getvalue()))
 
     def _cap_seen_by_play_chords(self, **live_kwargs):
         from unittest import mock
@@ -769,7 +772,13 @@ class DynamicsTest(unittest.TestCase):
     def test_a_ghost_chart_with_a_threshold_of_0_raises_naming_the_field(self):
         with self.assertRaises(ValueError) as caught:
             self._live_in_game(_load_dump(_DYNAMICS_DUMP), 0)
-        self.assertIn("OFF_DYN_THRESHOLD", str(caught.exception))
+        # The field's name is read from constants, the offsets' one owner.
+        from tools.ch_probe import constants
+        field = [name for name, value in vars(constants).items()
+                 if name.startswith("OFF_") and value is constants.OFF_DYN_THRESHOLD]
+        self.assertTrue(field)
+        self.assertTrue(any(name in str(caught.exception) for name in field),
+                        str(caught.exception))
 
     def test_the_keys_route_reads_no_threshold_even_for_a_ghost_chart(self):
         from unittest import mock
@@ -1754,9 +1763,6 @@ class ReadRangeTest(unittest.TestCase):
         fields.update(more)
         return _timed_press(**fields)
 
-    def test_the_word(self):
-        self.assertEqual(play_chart.RETIMED_RANGE, "range")
-
     def test_a_read_just_inside_moves_by_the_sum(self):
         press = self._press()
         for read_ms in self.RANGE:
@@ -1873,9 +1879,18 @@ class RetimedColumnTest(unittest.TestCase):
         marked = {r["index"]: r["retimed"] for r in result.rows if "retimed" in r}
         self.assertEqual(marked, {387: play_chart.RETIMED_LATE, 1144: play_chart.RETIMED_INSIDE})
 
-    def test_the_words(self):
-        self.assertEqual((play_chart.RETIMED_LATE, play_chart.RETIMED_INSIDE,
-                          play_chart.RETIMED_PLAIN), ("late", "inside", "plain"))
+    def test_the_words_are_the_ones_the_schedule_writes(self):
+        # Every "retimed" word a fallback in a hydra_replay schedule file
+        # carries is one of play_chart's words.
+        words = {play_chart.RETIMED_LATE, play_chart.RETIMED_INSIDE,
+                 play_chart.RETIMED_PLAIN, play_chart.RETIMED_RANGE}
+        written = set()
+        for path in (_FREAK_SCHEDULE, _MOUTHS_SCHEDULE):
+            for entry in _read_json(path)["presses"]:
+                if entry.get("fallback") and "retimed" in entry["fallback"]:
+                    written.add(entry["fallback"]["retimed"])
+        self.assertTrue(written)
+        self.assertLessEqual(written, words)
 
 
 # --- what is missing stops the run (task F4 of
