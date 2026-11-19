@@ -1,6 +1,6 @@
 # Late folds: five rows T9 found with no exit
 
-T9's writers found five ledger rows that no stage had given an exit. Four are theme 16 rows (reports/TOOL-AUDIT-T8-G1.md) that no answer in log.md names: the T8 re-check took themes 11 to 15 and 17 to 20, and the theme 16 answers ("Minutes (line 34)", "Finish, report the rest") cover other rows of the theme. The fifth, L-F04-14, is in the ledger (ledger/TOOL-AUDIT-T5-L02.md) but never reached sorting/ or exits.md. The main session read each row's homes in today's files on 2026-11-19 and folded it under an answer the user already gave. None counts as closed until a fresh closure checker passes it (reports/TOOL-AUDIT-T8-K8.md).
+T9's writers found five ledger rows that no stage had given an exit. Four are theme 16 rows (reports/TOOL-AUDIT-T8-G1.md) that no answer in log.md names: the T8 re-check took themes 11 to 15 and 17 to 20, and the theme 16 answers ("Minutes (line 34)", "Finish, report the rest") cover other rows of the theme. The fifth, L-F04-14, is in the ledger (ledger/TOOL-AUDIT-T5-L02.md) but never reached sorting/ or exits.md. The main session read each row's homes in today's files on 2026-11-19 and folded it under an answer the user already gave. None counts as closed until a fresh closure checker passes it. The T9 closure check did, in reports/TOOL-AUDIT-T9-K1.md to K8.md (for example K2 read L-F04-14 and K7 read L-F28-02); the summary says all five passed.
 
 | Row | Homes today | Kind | Exit |
 |---|---|---|---|

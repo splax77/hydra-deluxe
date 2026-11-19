@@ -1,6 +1,6 @@
 # Closures by theme answer, for the T9 closure check
 
-Printed by `py -I scripts/final_exits.py . --theme-closures` from this folder. These 143 rows left by an answer the user gave for a whole theme (themes 1 to 10 and 16, reports/TOOL-AUDIT-T8-G1.md) or by a late fold (late-folds.md). No fresh agent had checked them; the T9 closure check (briefs/T9-closure.md, reports/TOOL-AUDIT-T9-K<n>.md) does.
+Printed by `py -I scripts/final_exits.py . --theme-closures` from this folder, before the T9 refolds. The script today prints the refolded exits for the rows the closure check reopened or found gone, so its output now differs from this table in those rows; this table is the list the checkers were given. These 143 rows left by an answer the user gave for a whole theme (themes 1 to 10 and 16, reports/TOOL-AUDIT-T8-G1.md) or by a late fold (late-folds.md). No fresh agent had checked them; the T9 closure check (briefs/T9-closure.md, reports/TOOL-AUDIT-T9-K<n>.md) does.
 
 | Row | Source | Exits |
 |---|---|---|

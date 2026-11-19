@@ -4,7 +4,7 @@ This file lists every question the user was asked in this audit, in the order as
 
 The source for every answer is `log.md`. The user's words are copied from there exactly, typos included. A label in quotes, such as "The code wins (Recommended)", is the option the user clicked. A sentence in quotes with no option label is what the user typed.
 
-These are answers given in chat. They are not filed rulings under `docs/agents/rulings/`. Only three answers rest on a filed line, and each says so with the file and line.
+These are answers given in chat. They are not filed rulings under `docs/agents/rulings/`. Three questions cite filed lines (Q8 and Q17 as the two sides, Q16 as the line the rows close by), and each gives the file and line; the answers to Q8 and Q17 were still given in chat. The rows of L-F32-03 also close by a filed line, `docs/agents/rulings/code-and-engine.md:12`, which the closure check applied.
 
 Where `log.md` holds only the option text, and not the question as it was sent, this file says so. In those cases the two sides are taken from the theme's text in `reports/TOOL-AUDIT-T8-G1.md` (G1 below), and are marked as G1's words. Theme numbers are G1's. Row ids are written as the ledger writes them (L-F01-06).
 
@@ -312,7 +312,7 @@ These four came after the user said "every split? im not manually reviewing hund
 
 **Asked:** "Before agents launch, must the build count get your yes?"
 
-**The two sides:** the memory note `one-build-per-wave.md`, "before launching work that will need builds, say how many builds it needs and get a yes", against `docs/agents/agent-rules.md:9` (rule 3), "The main session's compiling and test runs inside approved work need no separate yes (rule 14)." The note comes from the user's 2026-11-18 words "3 builds at once? what? i didnt accept doing lots of builds. what do you need all those builds for?" and their choice "One build per wave", in session 8e6a2908.
+**The two sides:** the memory note `one-build-per-wave.md`, "before launching work that will need builds, say how many builds it needs and get a yes", against `docs/agents/agent-rules.md:9` (rule 3), "The main session's compiling and test runs inside approved work need no separate yes (rule 14)." The note comes from the user's 2026-11-18 words "3 builds at once? what? i didnt accept doing lots of builds. what do you need all those builds for?" and their choice "One build per wave", in session 8e6a2908. Those words are copied from the memory note, which records them; session 8e6a2908 has no card in `docs/sessions/`, so no card confirms them.
 
 **Answer:** "Yes, state the count".
 
@@ -340,7 +340,9 @@ The T9 closure check (`briefs/T9-closure.md`, `reports/TOOL-AUDIT-T9-K1.md` to `
 
 **Why it was asked again:** T9 checker K8 found that Q11's side "cleanup_sweep.ps1:174-178 also trusts `<root>\worktrees`" holds only for the hooks repo, not Hydra.
 
-**Answer:** "if i already picked an option why are you asking again". So Q11's "Trust both" stands, read as the user meant it: the delete rule and the sweep accept `<repo>\worktrees` as well as `<repo>\.claude\worktrees`, in both repos.
+**Answer:** "if i already picked an option why are you asking again". The user chose neither option. Q11's "Trust both" stands, and its option text said only "The delete rule accepts both folders." Extending it to the cleanup sweep and to both repos (`<repo>\worktrees` as well as `<repo>\.claude\worktrees`) is the main session's reading of the answer, not words the user saw; the fix plan, which needs the user's yes, shows that scope again.
+
+log.md holds only a shorter paraphrase of this question, so the full text above is the main session's copy of what it sent.
 
 **Rows:** L-F07-11, L-F10-11, L-F13-05, L-F33-02. **What it did:** exit 3 by Q11. **D-record:** D351 item 1.
 
@@ -348,6 +350,6 @@ The T9 closure check (`briefs/T9-closure.md`, `reports/TOOL-AUDIT-T9-K1.md` to `
 
 **Asked:** "Lost rules: the memory note you had deleted (render-checks-use-the-corpus.md) also held four rules that no doc has: zoom a capture 2x and check gaps, alignment and baselines before showing it; a test that compares against the rule's own output proves nothing; if you say "just merge", still say plainly the real-app check wasn't done; grep for code that depends on what changed. The scroll step stays gone either way. Keep them?" Options: "Move into ui-testing.md (Recommended)", "Let them go".
 
-**Answer:** "Move into ui-testing.md (Recommended)".
+**Answer:** "Move into ui-testing.md (Recommended)". log.md holds only a shorter paraphrase of this question, so the text above is the main session's copy of what it sent.
 
 **Rows:** L-F20-12 (T9 checker K6 found the 2x-zoom rule's only home gone). **What it did:** exit 3; the four rules get a home in docs/agents/ui-testing.md, in the fix plan. **D-record:** D351 item 2.
