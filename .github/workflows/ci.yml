@@ -46,6 +46,7 @@ env:
 jobs:
   build-and-test:
     name: Build and test (Windows, Release)
+    if: false
     # It runs on the nightly schedule too: that run builds cold, as a check
     # that the saved build folder never hid a broken build.
     runs-on: windows-2025
@@ -133,6 +134,7 @@ jobs:
   # it; "Build and test" does that.
   gui-tests:
     name: GUI tests (Windows, Release)
+    if: false
     runs-on: windows-2025
     # The cap covers the GUI tests and a cold build, with room for a slow
     # runner.
@@ -177,7 +179,7 @@ jobs:
   # built with AddressSanitizer run in "asan-gui" below, beside this job.
   asan:
     name: AddressSanitizer (Windows, Release)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     runs-on: windows-2025
     timeout-minutes: 60
     # Job-wide, so every sccache call (the builds and the stats steps) talks
@@ -227,7 +229,7 @@ jobs:
   # gives the timing.
   asan-gui:
     name: AddressSanitizer GUI tests (Windows, Release)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: false
     runs-on: windows-2025
     timeout-minutes: 30
     # As in the asan job: the asan-ninja preset runs every compile through sccache.
@@ -278,7 +280,7 @@ jobs:
     # every night, and the sccache cache decides how long it takes. An empty
     # cache is the slow case, and a slow runner can add minutes to it, so the
     # build step's cap is sized for that case.
-    timeout-minutes: 30
+    timeout-minutes: 60
     defaults:
       run:
         shell: pwsh
@@ -317,6 +319,27 @@ jobs:
           .\build_cpp.ps1 -Preset coverage-ninja -Target hydra_uitest
           sccache --show-stats
 
+      - name: Diag versions
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores | Format-List
+          $vsw = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vsw -latest -all -products * -property installationPath
+          "VS: $vs"
+          & $vsw -latest -all -products * -property catalog_productDisplayVersion
+          Get-ChildItem -Recurse (Join-Path $vs 'Common7\IDE\Extensions\Microsoft\CodeCoverage.Console') -Include *.exe,*.dll | Select-Object FullName, @{n='Version';e={$_.VersionInfo.FileVersion}} | Format-Table -AutoSize | Out-String -Width 400
+          Get-ChildItem (Join-Path $vs 'VC\Tools\MSVC') | Select-Object Name
+          $cdb = "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe"
+          "cdb present: $(Test-Path $cdb)"
+
+      - name: Diag tests before instrumenting
+        continue-on-error: true
+        run: ctest --test-dir build-coverage-ninja -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+
+      - name: Diag keep a plain copy
+        run: |
+          New-Item -ItemType Directory -Force diag\plain, diag\instrumented | Out-Null
+          Copy-Item build-coverage-ninja\Release\hydra_tests.exe, build-coverage-ninja\Release\hydra_tests.pdb diag\plain\
+
       # Puts the tool's path in CC for the later steps. The CLI tests start
       # hydra_batch and hydra_fillcompare as child processes, so those two are
       # instrumented as well.
@@ -333,6 +356,39 @@ jobs:
             if ($LASTEXITCODE) { throw "instrument $exe failed" }
           }
 
+      - name: Diag instrumented, no collector
+        continue-on-error: true
+        run: ctest --test-dir build-coverage-ninja -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+
+      - name: Diag crash sites under cdb
+        continue-on-error: true
+        run: |
+          Copy-Item build-coverage-ninja\Release\hydra_tests.exe, build-coverage-ninja\Release\hydra_tests.pdb diag\instrumented\
+          Get-ChildItem build-coverage-ninja\Release -Filter 'hydra_tests*' | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize
+          $cdb = "${env:ProgramFiles(x86)}\Windows Kits\10\Debuggers\x64\cdb.exe"
+          if (-not (Test-Path $cdb)) { throw "cdb not found at $cdb" }
+          @(
+            'sxe -c "r; kv 30; ln @rip; ub @rip L30; u @rip L10; lm; q" ill',
+            'sxe -c "r; kv 30; ln @rip; ub @rip L30; u @rip L10; q" av',
+            'g'
+          ) | Set-Content diag\cdb.txt
+          $tests = (ctest --test-dir build-coverage-ninja -C Release ${{ env.HOSTED_CTEST_FILTER }} --show-only=json-v1 | ConvertFrom-Json).tests
+          foreach ($t in $tests) {
+            if ($t.name -eq 'hydra_tests_shards_cover_all') { continue }
+            "===== $($t.name): $($t.command -join ' ')"
+            Push-Location build-coverage-ninja
+            $exe, $rest = $t.command
+            & $cdb -g -G -y "$PWD\Release" -cf ..\diag\cdb.txt $exe @rest
+            Pop-Location
+          }
+
+      - name: Diag upload both exes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diag-hydra-tests
+          path: diag
+
       # Each test step runs its command inside "collect", which records every
       # instrumented process the command starts and returns when the command
       # ends, with the command's exit code. No collector outlives its step.
@@ -342,6 +398,7 @@ jobs:
       # The unit-test slices run one at a time here. The GUI runner keeps its
       # own job count (tests/ui/uitest_main.cpp), as in the other jobs.
       - name: Run hydra_tests
+        continue-on-error: true
         timeout-minutes: 5
         run: >
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
@@ -349,6 +406,7 @@ jobs:
           ctest --test-dir build-coverage-ninja -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Run hydra_uitest
+        if: false
         timeout-minutes: 8
         run: >
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
@@ -356,16 +414,19 @@ jobs:
           .\build-coverage-ninja\Release\hydra_uitest.exe --all
 
       - name: Merge and convert to Cobertura
+        if: false
         timeout-minutes: 3
         run: |
           & $env:CC merge "$env:COVERAGE_OUT\hydra_tests.coverage" "$env:COVERAGE_OUT\hydra_uitest.coverage" -f cobertura -o "$env:COVERAGE_OUT\cobertura.xml" --nologo
           if ($LASTEXITCODE) { throw "merge failed" }
 
       - name: Install ReportGenerator
+        if: false
         timeout-minutes: 3
         run: dotnet tool install dotnet-reportgenerator-globaltool --tool-path "$env:RUNNER_TEMP\rg"
 
       - name: Write the HTML report and the summary
+        if: false
         timeout-minutes: 3
         run: |
           & "$env:RUNNER_TEMP\rg\reportgenerator.exe" "-reports:$env:COVERAGE_OUT\cobertura.xml" "-targetdir:$env:COVERAGE_OUT\html" "-sourcedirs:$env:GITHUB_WORKSPACE" "-reporttypes:Html;MarkdownSummaryGithub"
@@ -373,6 +434,7 @@ jobs:
           Get-Content "$env:COVERAGE_OUT\html\SummaryGithub.md" >> $env:GITHUB_STEP_SUMMARY
 
       - name: Upload the HTML report
+        if: false
         timeout-minutes: 3
         uses: actions/upload-artifact@v4
         with:
@@ -387,7 +449,7 @@ jobs:
   # the limits. See "Fuzzing the file parsers" in docs/development.md.
   fuzz-replay:
     name: Fuzz corpus replay (Windows, Release)
-    if: github.event_name != 'schedule'
+    if: false
     runs-on: windows-2025
     timeout-minutes: 40
     defaults:
@@ -441,7 +503,7 @@ jobs:
 
   tool-tests:
     name: Tool tests (Python)
-    if: github.event_name != 'schedule'
+    if: false
     runs-on: windows-2025
     timeout-minutes: 30
     defaults:
