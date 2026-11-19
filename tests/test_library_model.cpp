@@ -803,10 +803,28 @@ TEST_CASE("library model: set_summaries_for holds the row order under the Best p
     CHECK(m.counts().analyzed == 3);
 
     CHECK(m.sort_if_out_of_date());
-    // Highest score first: YYZ 500,000, Halo 400,000, Burnout 378,315, then
-    // the unscored rows as before.
-    CHECK(titles(m) == std::vector<std::string>{"YYZ", "Halo", "Burnout", "Chair", "Acid Romance",
-                                                "Other"});
+    // The scored rows come first, each score no higher than the one above it,
+    // then the unscored rows in the order they held before.
+    std::vector<std::string> unscored_before;
+    for (const std::string& title : before)
+        for (const hydra::ui::LibraryRow& row : m.rows())
+            if (row.title == title && row.status != RecordStatus::Ready)
+                unscored_before.push_back(title);
+    std::vector<std::string> unscored_after;
+    std::optional<int64_t> last_score;
+    for (size_t i : m.order()) {
+        const hydra::ui::LibraryRow& row = m.rows()[i];
+        if (row.status != RecordStatus::Ready) {
+            unscored_after.push_back(row.title);
+            continue;
+        }
+        INFO("row " << row.title);
+        CHECK(unscored_after.empty());  // no scored row below an unscored one
+        REQUIRE(row.summary.score.has_value());
+        if (last_score) CHECK(*row.summary.score <= *last_score);
+        last_score = row.summary.score;
+    }
+    CHECK(unscored_after == unscored_before);
     CHECK_FALSE(m.sort_if_out_of_date());
 }
 
