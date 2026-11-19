@@ -9,6 +9,7 @@
 // test_store_results.cpp.
 #include "doctest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -238,6 +239,25 @@ const HydraRecord& old_library_analysis(int cap = 4) {
     return corpus::analyzed(fixture_chart(), s);
 }
 
+// The corpus as the app's library scan lists it: discover_charts over
+// testdata/input, saved the app's way (save_scan_as_library). Fails on any
+// scan error or a failed save.
+void save_corpus_scan(RecordStore& store) {
+    const auto scan = app::discover_charts({corpus::root()});
+    REQUIRE_MESSAGE(scan.second.empty(), "scan error: " << scan.second.front());
+    REQUIRE_FALSE(scan.first.empty());
+    const std::optional<std::string> error = app::save_scan_as_library(store, scan.first);
+    REQUIRE_MESSAGE(!error, "saving the scan failed: " << *error);
+}
+
+// The fixture's chart searched at the widest early-fill window the setting
+// allows (kMaxEarlyFillWindowMs): a real record for a profile at that window.
+const HydraRecord& searched_at_max_window() {
+    app::AnalysisSettings s = store_fixture_settings();
+    s.early_fill_window_ms = kMaxEarlyFillWindowMs;
+    return corpus::analyzed(fixture_chart(), s);
+}
+
 }  // namespace
 
 TEST_CASE("the store's reader answers every lookup as the store does") {
@@ -404,11 +424,9 @@ TEST_CASE("closing the store closes its reader") {
 TEST_CASE("the reader counts records and library charts as the writer does") {
     StoreFile file("store_records");
     RecordStore store(file.path);
-    // The library lists the four charts first, since a rescan deletes the
-    // results of charts it does not list.
-    std::vector<ChartLibraryEntry> library;
-    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
-    store.rebuild_chart_library(library);
+    // The library is the corpus scan, saved before the results, since a
+    // rescan deletes the results of charts it does not list.
+    save_corpus_scan(store);
     save_four_charts(store);
 
     // The writer's counts are the expected values; neither is zero, so a
@@ -478,9 +496,7 @@ uintmax_t wal_size(const StoreFile& file) {
 TEST_CASE("an own reader gives the writer's answer for every read") {
     StoreFile file("own_reader");
     RecordStore store(file.path);
-    std::vector<ChartLibraryEntry> library;
-    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
-    store.rebuild_chart_library(library);
+    save_corpus_scan(store);
     save_four_charts(store);
 
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
@@ -699,19 +715,34 @@ TEST_CASE("an in-memory store's own reader reads through the store") {
 }
 
 TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order") {
-    const HydraRecord& analysis = fixture().record;
+    // Trippin on a Hole in a Paper Heart under the old library's settings: the
+    // record a real v2.12.1 hydra_batch wrote for it under these settings
+    // (testdata/store/v2.12.1_library.db) keeps five paths, so the ranks are
+    // checked against more than one engine path.
+    const std::string chart = corpus::chart_named("Trippin on a Hole in a Paper Heart");
+    REQUIRE_FALSE(chart.empty());
+    const HydraRecord& analysis = corpus::analyzed(chart, OldLibrary::settings());
+    const std::vector<const Path*> engine_paths = analysis.all_paths();
+    REQUIRE(engine_paths.size() >= 2);
+    const Profile profile = OldLibrary::profile();
     RecordStore store(":memory:");
-    const PreparedRecord prepared = prepare_record("h1", at4(), analysis);
+    const PreparedRecord prepared = prepare_record("h1", profile, analysis);
     store.save(prepared);
 
-    const RecordLookup got = store.lookup_one("h1", at4());
+    const RecordLookup got = store.lookup_one("h1", profile);
     REQUIRE(got.status == RecordStatus::Ready);
     CHECK(got.record == prepared.record);
-    REQUIRE_FALSE(got.record.paths.empty());
-    for (size_t i = 0; i < got.record.paths.size(); ++i)
+    // The record keeps the engine's first paths, as many as the cap allows,
+    // in the engine's order, each numbered by its place.
+    const size_t kept = std::min(engine_paths.size(), static_cast<size_t>(kPathsPerRecord));
+    REQUIRE(got.record.paths.size() == kept);
+    for (size_t i = 0; i < kept; ++i) {
+        INFO("rank " << i + 1);
         CHECK(got.record.paths[i].rank == static_cast<int>(i + 1));
-    CHECK(got.record.paths.size() <= static_cast<size_t>(kPathsPerRecord));
-    CHECK(got.record.pathcount == static_cast<int>(analysis.all_paths().size()));
+        CHECK(got.record.paths[i].path == engine_paths[i]->pathstring());
+        CHECK(got.record.paths[i].score == engine_paths[i]->totalscore());
+    }
+    CHECK(got.record.pathcount == static_cast<int>(engine_paths.size()));
     // Rank 1 is the engine's best path, and the summary reads its score.
     const Path& best = analysis.best_path();
     CHECK(got.record.best_path_text() == best.pathstring());
@@ -720,15 +751,13 @@ TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order
 }
 
 TEST_CASE("store: prepare_record refuses a profile the analysis did not run under") {
+    // A 4-bar analysis filed at another cap. The ms limit and the fill rule
+    // are refused the same way, in both directions, in test_store_results.cpp
+    // ("prepare_record refuses a profile whose ms limit isn't the analysis's",
+    // "prepare_record refuses a profile that names the other fill rule").
     const HydraRecord& analysis = fixture().record;
+    REQUIRE(analysis.sp_cap == 4);
     CHECK_THROWS_AS(prepare_record("h1", Profile{"mode", CapQuery::at(8), Lens{}}, analysis),
-                    std::invalid_argument);
-    CHECK_THROWS_AS(prepare_record("h1", Profile{"mode", CapQuery::at(4), Lens::from(20, 0, 0)},
-                                   analysis),
-                    std::invalid_argument);
-    CHECK_THROWS_AS(prepare_record("h1",
-                                   Profile{"mode", CapQuery::at(4), Lens::from(std::nullopt, 0, 0, true)},
-                                   analysis),
                     std::invalid_argument);
 }
 
@@ -740,9 +769,10 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
     Profile at_85 = at4();
     at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
     CHECK_THROWS_AS(prepare_record("h1", at_85, analysis), std::invalid_argument);
-    // And the other way: a record searched at 85 under the default profile.
-    HydraRecord searched_at_85 = at_cap(4);
-    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    // And the other way: the same chart searched at that window, filed under
+    // the default profile.
+    const HydraRecord& searched_at_85 = searched_at_max_window();
+    REQUIRE(searched_at_85.early_fill_window_ms == kMaxEarlyFillWindowMs);
     CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_85), std::invalid_argument);
     // The matching pair files.
     CHECK(prepare_record("h1", at_85, searched_at_85).profile.lens.efill_window_ms ==
@@ -751,15 +781,22 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
 
 TEST_CASE("store: one chart's results at two early-fill windows are two results") {
     // Two profiles that differ only in the window. Each save keeps the other's
-    // record, and each lookup gets its own back.
+    // record, and each lookup gets its own back. The two records are two
+    // corpus charts' real analyses, one at each window, filed under one chart
+    // id so each lookup's answer shows whose record it read.
     const Profile at_default = at4();
     Profile at_85 = at4();
     at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
     REQUIRE(at_default != at_85);
-    HydraRecord searched_at_85 = no_paths_at_cap(4);
-    searched_at_85.early_fill_window_ms = kHitWindowMs;
-    const PreparedRecord saved_default = prepare_record("h1", at_default, at_cap(4));
-    const PreparedRecord saved_85 = prepare_record("h1", at_85, searched_at_85);
+    app::AnalysisSettings settings_85 = store_fixture_settings();
+    settings_85.early_fill_window_ms = kMaxEarlyFillWindowMs;
+    std::string other_chart;
+    for (const corpus::ChartWithPaths& c : corpus::charts_with_paths(store_fixture_settings(), 2))
+        if (c.chart != fixture_chart()) other_chart = c.chart;
+    REQUIRE_MESSAGE(!other_chart.empty(), "the corpus has one chart with paths");
+    const PreparedRecord saved_default = prepare_record("h1", at_default, fixture().record);
+    const PreparedRecord saved_85 =
+        prepare_record("h1", at_85, corpus::analyzed(other_chart, settings_85));
     REQUIRE(saved_default.record != saved_85.record);
 
     StoreFile file("store_records");
@@ -783,14 +820,27 @@ TEST_CASE("store: one chart's results at two early-fill windows are two results"
 }
 
 TEST_CASE("store: every path of one analysis carries the same note count") {
-    // The record keeps the note count once; this is why that loses nothing.
-    int checked = 0;
-    for (const HydraRecord* analysis : corpus_analyses()) {
-        const std::vector<const Path*> paths = analysis->all_paths();
-        for (const Path* p : paths) CHECK(p->notecount == paths.front()->notecount);
-        if (paths.size() > 1) ++checked;
+    // The record keeps the note count once (record_of takes rank 1's); this is
+    // why that loses nothing: every path carries the chart's own note count
+    // (Song::note_count). Every corpus chart is analyzed; the one kind left
+    // out is a chart with no notes at these settings, which has no paths to
+    // check, and any other load failure throws and fails the test.
+    const app::AnalysisSettings settings{};
+    int multi_path_charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        INFO(path);
+        const Song& song = corpus::song(path, settings.reading(), settings.rules);
+        if (song.is_empty()) continue;
+        const std::vector<const Path*> paths = corpus::analyzed(path, settings).all_paths();
+        for (const Path* p : paths) CHECK(p->notecount == song.note_count());
+        if (paths.size() > 1) ++multi_path_charts;
     }
-    CHECK(checked > 0);
+    // A chart with two or more paths is the case where a path could disagree
+    // with rank 1. Trippin on a Hole in a Paper Heart is one: the record a
+    // real v2.12.1 hydra_batch wrote for it at these depth and cap settings,
+    // with a 10 ms limit on top (testdata/store/v2.12.1_library.db), keeps
+    // five paths.
+    CHECK(multi_path_charts > 0);
 }
 
 TEST_CASE("store: a save under the same profile replaces the record and every path") {
