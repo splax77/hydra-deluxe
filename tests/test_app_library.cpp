@@ -1058,7 +1058,7 @@ TEST_CASE("an AppState closed during its startup open stops the open") {
 
 TEST_CASE("a library read that fails after the startup open is the status line's problem") {
     ScratchPaths paths("appstate_startreadfail");
-    seeded_store(paths.db).reset();
+    REQUIRE(seed_scanned_corpus(paths) > 0);
     // Dropped once the store is open (it would make a missing table again),
     // at the chart list's first report, before any row is read.
     const ScopedHook gate(
@@ -1176,16 +1176,18 @@ TEST_CASE("an AppState on a current library leaves no notice and asks for no sca
 
 namespace {
 
-// The seeded library on `paths`, its scan stamp set to one this build does
-// not accept, with the corpus as the ini's chart folders plus `extra_folders`.
-void seed_out_of_date_library(const ScratchPaths& paths,
-                              const std::vector<std::string>& extra_folders = {}) {
+// The scanned corpus library on `paths` (seed_scanned_corpus), its scan stamp
+// set to one this build does not accept, with the corpus as the ini's chart
+// folders plus `extra_folders`. Returns how many rows the library holds.
+size_t seed_out_of_date_library(const ScratchPaths& paths,
+                                const std::vector<std::string>& extra_folders = {}) {
+    const size_t charts = seed_scanned_corpus(paths);
     Settings s = scratch_settings();
     for (const std::string& f : extra_folders) s.chartfolders.push_back(f);
     REQUIRE(s.save());
-    seeded_store(paths.db).reset();
     hydra::test::exec_on_file(paths.db,
                               "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    return charts;
 }
 
 }  // namespace
@@ -1218,7 +1220,7 @@ TEST_CASE("an AppState on an empty library asks for no scan") {
 // next open asks again; a finished one makes it current.
 TEST_CASE("a cancelled scan on open leaves the library out of date; a finished one clears it") {
     ScratchPaths paths("appstate_rescancancel");
-    seed_out_of_date_library(paths);
+    const size_t seeded = seed_out_of_date_library(paths);
     AppState app;
     app.wait_store_open();
     REQUIRE(app.request_scan);
@@ -1233,7 +1235,7 @@ TEST_CASE("a cancelled scan on open leaves the library out of date; a finished o
     CHECK(app.scan_job->snapshot().cancelled);
     CHECK(app.store->chart_library_out_of_date());
     app.tick_library(0.0);
-    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.library_shown_count() == seeded);
     app.scan_job.reset();
 
     app.start_scan();
@@ -1265,7 +1267,7 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     ScratchPaths paths("appstate_rescanmissing");
     const std::string missing = testtemp::temp_path("appstate_rescanmissing", "_nofolder");
     REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
-    seed_out_of_date_library(paths, {missing});
+    const size_t seeded = seed_out_of_date_library(paths, {missing});
     int64_t records_before = 0;
     {
         RecordStore before(paths.db);
@@ -1283,7 +1285,7 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     CHECK(app.status_is_problem);
     CHECK(app.status_message ==
           hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::Open));
-    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.library_shown_count() == seeded);
     CHECK(app.store->record_count() == records_before);
 }
 
@@ -1295,10 +1297,10 @@ TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and
     ScratchPaths paths("appstate_scanmissing");
     const std::string missing = testtemp::temp_path("appstate_scanmissing", "_nofolder");
     REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
+    const size_t seeded = seed_scanned_corpus(paths);
     Settings s = scratch_settings();
     s.chartfolders.push_back(missing);
     REQUIRE(s.save());
-    seeded_store(paths.db).reset();
     int64_t records_before = 0;
     {
         RecordStore before(paths.db);
@@ -1318,27 +1320,50 @@ TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and
     CHECK(app.status_message ==
           hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::User));
     app.tick_library(0.0);
-    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.library_shown_count() == seeded);
     CHECK(app.store->record_count() == records_before);
 }
 
 TEST_CASE("the startup screen's line names what the open is doing") {
     using hydra::ui::StoreOpenProgress;
-    StoreOpenProgress p;
-    CHECK(p.label() == "Opening your library...");
-    p.step = StoreOpenProgress::Step::ReadingCharts;
-    CHECK(p.label() == "Reading your charts...");
-    p.step = StoreOpenProgress::Step::ReadingResults;
-    CHECK(p.label() == "Reading your results...");
+    using Step = StoreOpenProgress::Step;
+    // The line for `step`, on an upgrading file or not.
+    const auto line = [](Step step, bool upgrading) {
+        StoreOpenProgress p;
+        p.step = step;
+        p.upgrading = upgrading;
+        return p.label();
+    };
+    const std::string opening = line(Step::Opening, false);
+    const std::string charts = line(Step::ReadingCharts, false);
+    const std::string results = line(Step::ReadingResults, false);
+    // Each step of a plain open has a line of its own.
+    CHECK_FALSE(opening.empty());
+    CHECK_FALSE(charts.empty());
+    CHECK_FALSE(results.empty());
+    CHECK(opening != charts);
+    CHECK(opening != results);
+    CHECK(charts != results);
+    // The conversion's steps happen only on an upgrading file; anywhere else
+    // they read as the open.
+    CHECK(line(Step::ConvertingRecords, false) == opening);
+    CHECK(line(Step::ReadingSavedPaths, false) == opening);
 
-    // An upgrade names the library read's steps in the same words.
-    p.upgrading = true;
-    p.step = StoreOpenProgress::Step::ConvertingRecords;
-    CHECK(p.label() == "Updating the results table...");
-    p.step = StoreOpenProgress::Step::ReadingCharts;
-    CHECK(p.label() == "Reading your charts...");
-    p.step = StoreOpenProgress::Step::ReadingResults;
-    CHECK(p.label() == "Reading your results...");
+    // An upgrade names the library read's steps in the same words, and each
+    // conversion step in words of its own.
+    CHECK(line(Step::Opening, true) == opening);
+    CHECK(line(Step::ReadingCharts, true) == charts);
+    CHECK(line(Step::ReadingResults, true) == results);
+    const std::string converting = line(Step::ConvertingRecords, true);
+    const std::string saved_paths = line(Step::ReadingSavedPaths, true);
+    CHECK(saved_paths == hydra::ui::kReadingSavedPathsLabel);
+    for (const std::string& own : {converting, saved_paths}) {
+        CHECK_FALSE(own.empty());
+        CHECK(own != opening);
+        CHECK(own != charts);
+        CHECK(own != results);
+    }
+    CHECK(converting != saved_paths);
 }
 
 // D72 item 4: the Analyze-library click asks the store which charts already
@@ -1346,7 +1371,7 @@ TEST_CASE("the startup screen's line names what the open is doing") {
 // opens, and no batch starts.
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
-    std::unique_ptr<AppState> app = app_on(paths);
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
     hydra::test::exec_on_file(paths.db, "DROP TABLE records");
 
     app->open_batch_confirm();
