@@ -8,6 +8,7 @@ records its keys, and live_play is a fake that delivers rows.
 from __future__ import annotations
 
 import csv
+import glob
 import inspect
 import json
 import os
@@ -36,6 +37,7 @@ from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import quiet as Q  # noqa: E402
 from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
+from tools.ch_mcp import server  # noqa: E402
 from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import menu_tools  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
@@ -1939,55 +1941,91 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(lines[1].startswith("song check: FAILED"), lines[1])
         self.assertTrue(lines[2].startswith(f"no read came back: {unread.exception}"), lines[2])
 
-    def test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach(self):
-        t, events, _seen = self._chain_rig()
-        schedule = os.path.join(self.tmp, "x schedule.json")
-        _write(schedule, json.dumps(for_song(SCHEDULE_JSON, os.path.join(self.tmp, "x"))).encode())
-        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), schedule, "System")
-        self.assertEqual(reply, f"refused: song_folder {t.r.song} is not the folder of the "
-                                f"schedule's chart, {os.path.join(self.tmp, 'x')}; nothing started")
-        self.assertEqual(events, [])
+    # The refusals below come before the attach, so they run on the server's
+    # own tools (server.Helper, the wiring the MCP server uses) and on real
+    # hydra_replay schedules. EFL_* are the early-fill live check's prep
+    # files, copied from hydra-data/ch-mcp-runs/2026-11-12/efl-prep: its
+    # schedule was made from path 1 of its dump.
+    EFL_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "efl-prep")
+    EFL_SCHEDULE = os.path.join(EFL_DIR, "schedule.json")
+    EFL_SCORE = os.path.join(EFL_DIR, "score.json")
 
-    def test_run_chart_refuses_a_schedule_with_no_chart_or_a_relative_one(self):
-        t, events, _seen = self._chain_rig()
-        for chart, said in ((None, "names no chart"),
-                            ("songs/x/notes.chart", "names its chart by the relative path")):
-            with self.subTest(chart=chart):
-                path = os.path.join(self.tmp, "chart schedule.json")
-                doc = dict(SCHEDULE_JSON)
-                if chart is not None:
-                    doc["chart"] = chart
-                _write(path, json.dumps(doc).encode())
-                reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System")
-                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
-                self.assertEqual(events, [])
+    def _server_tools(self) -> GT.GameTools:
+        """The GameTools of a real server.Helper on this test's temp folder,
+        with its real run parts handed in."""
+        return server.Helper(scratch_root=os.path.join(self.tmp, "server")).game
+
+    def _assert_started_nothing(self, tools: GT.GameTools):
+        """No play, no press log and no builds record: the run never reached
+        the attach."""
+        self.assertIsNone(tools._play)
+        self.assertEqual(tools._press_log_count, 0)
+        self.assertEqual(glob.glob(os.path.join(tools.session_dir(), GT.BUILDS_PREFIX + "*")),
+                         [])
+
+    @staticmethod
+    def _schedule_source(path):
+        """The path index and dump file the schedule at `path` says it was
+        made from (its path_source, as hydra_replay schedule writes it)."""
+        source = GT.schedule_doc(path)["path_source"]
+        return source["index"], source["file"]
+
+    def test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach(self):
+        tools = self._server_tools()
+        index, _dump = self._schedule_source(self.EFL_SCHEDULE)
+        chart_folder = GT.schedule_chart_folder(GT.schedule_doc(self.EFL_SCHEDULE),
+                                                self.EFL_SCHEDULE)
+        other = os.path.join(self.tmp, "another song")
+        reply = tools.ch_run_chart(other, self.EFL_SCORE, self.EFL_SCHEDULE, "System",
+                                   path_index=index)
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(f"song_folder {other} ", reply)
+        self.assertIn(chart_folder, reply)
+        self.assertTrue(reply.endswith("nothing started"), reply)
+        self._assert_started_nothing(tools)
+
+    def test_run_chart_refuses_a_schedule_that_names_its_chart_by_a_relative_path(self):
+        # Pitch Dark's schedule in testdata/replay was made by prep_inputs.py
+        # with a relative --chart (the command is in the comment above
+        # _REPLAY_DIR in tools/ch_probe/tests/test_sp_compare.py), so its
+        # chart says nothing about where the song folder is.
+        path = os.path.join(_REPO_ROOT, "testdata", "replay",
+                            "test_pitch_dark_ratio-schedule.json")
+        chart = GT.schedule_doc(path)["chart"]
+        self.assertFalse(os.path.isabs(chart), chart)
+        index, _dump = self._schedule_source(path)
+        tools = self._server_tools()
+        reply = tools.ch_run_chart(os.path.join(self.tmp, "song"), self.EFL_SCORE, path,
+                                   "System", path_index=index)
+        self.assertTrue(reply.startswith(f"refused: {path} "), reply)
+        self.assertIn(chart, reply)
+        self.assertTrue(reply.endswith("nothing started"), reply)
+        self._assert_started_nothing(tools)
 
     def test_path_index_must_match_path_source(self):
-        dump = PATH_SOURCE["file"]
-        cases = (
-            (dict(SCHEDULE_JSON, path_source={"file": dump, "index": 2}), 0,
-             f"was made from path 2 of {dump}, but path_index is 0; nothing started"),
-            ({k: v for k, v in SCHEDULE_JSON.items() if k != "path_source"}, 0,
-             "has no path_source index, so the path it plays is unknown"),
-            (SCHEDULE_JSON, 1, f"was made from path 0 of {dump}, but path_index is 1"))
-        t, events, _seen = self._chain_rig()
-        for doc, index, said in cases:
-            with self.subTest(said=said):
-                path = self._schedule_json(doc)
-                reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System",
-                                             path_index=index)
-                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
-                self.assertTrue(reply.endswith("; nothing started"), reply)
-                self.assertEqual(events, [])
-                reply = t.tools.ch_play_chart(self._score_json(), path, route="keys",
-                                              path_index=index)
-                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
-                self.assertIsNone(t.tools._play)
-        # A schedule made from path 2, asked for path 2, plays.
-        path = self._schedule_json(dict(SCHEDULE_JSON, path_source={"file": dump, "index": 2}))
-        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System", path_index=2)
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("first press chord index 0", reply)
+        index, dump = self._schedule_source(self.EFL_SCHEDULE)
+        other = 0 if index != 0 else 1
+        tools = self._server_tools()
+        song = os.path.join(self.tmp, "another song")
+        # Asked for another path, both tools refuse, naming the schedule's
+        # own path and the one asked for, and start nothing.
+        for reply in (tools.ch_run_chart(song, self.EFL_SCORE, self.EFL_SCHEDULE, "System",
+                                         path_index=other),
+                      tools.ch_play_chart(self.EFL_SCORE, self.EFL_SCHEDULE, route="keys",
+                                          path_index=other)):
+            with self.subTest(reply=reply):
+                self.assertTrue(reply.startswith(f"refused: {self.EFL_SCHEDULE} "), reply)
+                self.assertIn(f"path {index} of {dump}", reply)
+                self.assertIn(f"path_index is {other}", reply)
+                self.assertTrue(reply.endswith("nothing started"), reply)
+                self._assert_started_nothing(tools)
+        # Asked for its own path, the path check passes: the next check, the
+        # song folder's, is the one that refuses.
+        reply = tools.ch_run_chart(song, self.EFL_SCORE, self.EFL_SCHEDULE, "System",
+                                   path_index=index)
+        self.assertNotIn("path_index", reply)
+        self.assertTrue(reply.startswith(f"refused: song_folder {song} "), reply)
+        self._assert_started_nothing(tools)
 
     def test_builds_json_in_the_run_folder(self):
         t, _events, _seen = self._chain_rig()
