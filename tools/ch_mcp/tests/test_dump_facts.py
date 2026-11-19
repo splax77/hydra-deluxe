@@ -768,35 +768,68 @@ class NamesMapTests(_TableFixture):
             self.assertTrue(error.startswith(where + span), (where, error))
             self.assertIn(names_map, error)
 
+    def map_where(self, lineno, build=D.DEFAULT_BUILD):
+        """The `<file>:<line>: ` start of a message about one line of a names map."""
+        return f"{D._display_path(D.names_path(self.pages, build))}:{lineno}: "
+
+    def page_where(self, lineno):
+        """The `<file>:<line>: ` start of a message about one line of page.md."""
+        return f"{D._display_path(os.path.join(self.pages, 'page.md'))}:{lineno}: "
+
     def test_an_uncited_row_is_a_warning_not_an_error(self):
         self.names(GOOD_MAP)
         self.page("# P\n\n`DrumsEngine.addScore`\n")
         _, errors, warnings = self.table_and_warnings()
         self.assertEqual(errors, [])
-        self.assertEqual(len(warnings), 2, warnings)
-        self.assertTrue(any("`spAmount` is cited by no page" in w for w in warnings), warnings)
-        self.assertTrue(any("`fillDeadline` is cited by no page" in w for w in warnings), warnings)
+        # One warning for each map row no page cites, naming that row's line and name.
+        map_lines = GOOD_MAP.splitlines()
+        uncited = [(map_lines.index(line) + 1, line.split("\t")[4]) for line in map_lines
+                   if "\tspAmount\t" in line or "\tfillDeadline\t" in line]
+        self.assertEqual(len(warnings), len(uncited), warnings)
+        for lineno, name in uncited:
+            self.assertTrue(any(w.startswith(self.map_where(lineno) + f"`{name}`") for w in warnings),
+                            (lineno, name, warnings))
 
-    def test_map_rows_that_do_not_match_the_dump_are_errors(self):
-        self.names(MAP_COLUMNS
-                   + "6142\t8255\tʻʻ\t\tWrongClass\tNot the class at that index.\n"
-                   + f"6142\t8255\tʺʺʸ\tʻʻʻ\tnoSuch\tA member the class lacks.\n"
-                   + f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\t.ctor\tNot an identifier.\n"
-                   + f"6142\t8255\tʺʺʸ\t{SHARED_A}\tUpdate2\tFine on its own.\n"
-                   + f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\tUpdate2\tThe same name twice in one class.\n"
-                   + f"6142\t449\tGameManager\tsongTime\tUpdate\tA real member's name.\n"
-                   + "6142\t8288\tʿʶʴ\t\tGameManager\tA real class's name.\n"
-                   + "6142\t\tʿʶʴ\t\tNoIndex\tNo TypeDefIndex in a build keyed by it.\n")
+    def bad_row_errors(self, *rows):
+        """The errors about the last of `rows` in a 6142 map holding them, after
+        checking every error names the map file."""
+        self.names(MAP_COLUMNS + "".join(rows))
         _, errors = self.table()
-        joined = "\n".join(errors)
-        self.assertIn("TypeDefIndex 8255 is the class `ʺʺʸ` in the dump, not `ʻʻ`", joined)
-        self.assertIn("has no member `ʻʻʻ`", joined)
-        self.assertIn("the name '.ctor' is not an ASCII identifier", joined)
-        self.assertIn("`Update2` names another member of the class too", joined)
-        self.assertIn("`Update` is a real member name of the class `GameManager`", joined)
-        self.assertIn("`GameManager` is a real class name in the dump", joined)
-        self.assertIn("names a class by its TypeDefIndex", joined)
-        self.assertTrue(all("names-6142.tsv:" in e for e in errors), errors)
+        names_map = D._display_path(D.names_path(self.pages, D.DEFAULT_BUILD))
+        self.assertTrue(all(e.startswith(names_map) for e in errors), errors)
+        return [e for e in errors if e.startswith(self.map_where(len(rows) + 1))]
+
+    def assert_bad_row(self, wording, *rows):
+        mine = self.bad_row_errors(*rows)
+        self.assertTrue(any(wording in e for e in mine), (wording, mine))
+
+    def test_a_map_row_naming_the_wrong_class_at_an_index_is_an_error(self):
+        self.assert_bad_row("TypeDefIndex 8255 is the class `ʺʺʸ` in the dump, not `ʻʻ`",
+                            "6142\t8255\tʻʻ\t\tWrongClass\tNot the class at that index.\n")
+
+    def test_a_map_row_naming_a_member_the_class_lacks_is_an_error(self):
+        self.assert_bad_row("has no member `ʻʻʻ`", "6142\t8255\tʺʺʸ\tʻʻʻ\tnoSuch\tA member the class lacks.\n")
+
+    def test_a_map_row_whose_name_is_not_an_identifier_is_an_error(self):
+        self.assert_bad_row("the name '.ctor' is not an ASCII identifier",
+                            f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\t.ctor\tNot an identifier.\n")
+
+    def test_a_map_row_giving_a_name_twice_in_one_class_is_an_error(self):
+        self.assert_bad_row("`Update2` names another member of the class too",
+                            f"6142\t8255\tʺʺʸ\t{SHARED_A}\tUpdate2\tFine on its own.\n",
+                            f"6142\t8255\tʺʺʸ\t{ENGINE_SCORE}\tUpdate2\tThe same name twice in one class.\n")
+
+    def test_a_map_row_giving_a_real_member_name_is_an_error(self):
+        self.assert_bad_row("`Update` is a real member name of the class `GameManager`",
+                            "6142\t449\tGameManager\tsongTime\tUpdate\tA real member's name.\n")
+
+    def test_a_map_row_giving_a_real_class_name_is_an_error(self):
+        self.assert_bad_row("`GameManager` is a real class name in the dump",
+                            "6142\t8288\tʿʶʴ\t\tGameManager\tA real class's name.\n")
+
+    def test_a_map_row_with_no_index_in_a_build_keyed_by_it_is_an_error(self):
+        self.assert_bad_row("names a class by its TypeDefIndex",
+                            "6142\t\tʿʶʴ\t\tNoIndex\tNo TypeDefIndex in a build keyed by it.\n")
 
     def test_check_exits_1_on_a_map_error(self):
         self.page("# P\n\n`GameManager.Update`\n")
@@ -811,75 +844,96 @@ class NamesMapTests(_TableFixture):
     def test_a_bad_column_line_is_an_error(self):
         self.names("build\tclass\tname\n")
         _, errors = self.table()
+        # The one error is about the map's first line.
         self.assertEqual(len(errors), 1, errors)
-        self.assertIn("not the column line", errors[0])
+        self.assertTrue(errors[0].startswith(self.map_where(1)), errors)
+        # The column line the loader names is read without error.
+        self.names("\t".join(D.NAMES_COLUMNS) + "\n")
+        self.assertEqual(self.table()[1], [])
 
-    def test_a_4045_map_names_its_class_by_name(self):
-        scrambled = "ʶˀʵ"
+    # A scrambled 4045 class, as a facts.json lists it: the build has no
+    # properties there and no method addresses.
+    SCRAMBLED_4045, METHOD_4045, PROPERTY_4045 = "ʶˀʵ", "ʹʹʾ", "ʸʶʳ"
+    CLASS_ROW_4045 = f"4045\t\t{SCRAMBLED_4045}\t\tFillGenerator\tBuilds the fills.\n"
+    METHOD_ROW_4045 = f"4045\t\t{SCRAMBLED_4045}\t{METHOD_4045}\tbuild\tBuilds one fill.\n"
+    PROPERTY_ROW_4045 = f"4045\t\t{SCRAMBLED_4045}\t{PROPERTY_4045}\tWrittenFills\tA property.\n"
+    INDEX_4045 = 3
+
+    def table_4045(self, *map_rows):
+        """The 4045 table and its errors and warnings, for a names map holding `map_rows`."""
         facts = {"game_version": "v1.0.0.4045-master", "classes": [
-            {"name": scrambled, "namespace": "", "kind": "class", "typedef_index": 3,
+            {"name": self.SCRAMBLED_4045, "namespace": "", "kind": "class", "typedef_index": self.INDEX_4045,
              "readable": False, "base": None, "interfaces": [],
-             "fields": [], "methods": [{"name": "ʹʹʾ", "return": "void", "params": [],
+             "fields": [], "methods": [{"name": self.METHOD_4045, "return": "void", "params": [],
                                         "static": False, "rva": None}]}]}
         path = os.path.join(self.tmp, "facts.json")
         with open(path, "w", encoding="utf-8") as f:
             json.dump(facts, f, ensure_ascii=False)
-        self.names(MAP_COLUMNS + f"4045\t\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n"
-                   + f"4045\t\t{scrambled}\tʹʹʾ\tbuild\tBuilds one fill.\n", build="4045")
-        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.build`\n")
-        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
-        self.assertEqual(errors, [])
-        self.assertEqual(self.rows(text), [["4045", "method", "3", "", "ʹʹʾ", "", "", "FillGenerator.build"]])
-        self.names(MAP_COLUMNS + f"4045\t3\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n", build="4045")
-        _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
-        self.assertTrue(any("typedef_index stays empty" in e for e in errors), errors)
-        # facts.json lists no properties, so a member it lacks is a warning; a missing class stays an error.
-        self.names(MAP_COLUMNS + f"4045\t\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n"
-                   + f"4045\t\t{scrambled}\tʹʹʾ\tbuild\tBuilds one fill.\n"
-                   + f"4045\t\t{scrambled}\tʸʶʳ\tWrittenFills\tA property.\n"
-                   + "4045\t\tʻʻʻ\tʸʶʳ\tLaneMask\tA class the build lacks.\n", build="4045")
+        self.names(MAP_COLUMNS + "".join(map_rows), build="4045")
         warnings = []
-        _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants, warnings=warnings)
-        self.assertEqual(len(errors), 1, errors)
-        self.assertIn("names-4045.tsv:5: the class `ʻʻʻ` matches 0 classes", errors[0])
-        self.assertTrue(any("names-4045.tsv:4:" in w and "facts.json has no properties to check it against" in w
+        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants, warnings=warnings)
+        return self.rows(text), errors, warnings
+
+    def test_a_4045_map_finds_its_class_and_member_by_name(self):
+        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.build`\n")
+        rows, errors, _ = self.table_4045(self.CLASS_ROW_4045, self.METHOD_ROW_4045)
+        self.assertEqual(errors, [])
+        self.assertEqual(rows, [["4045", "method", str(self.INDEX_4045), "", self.METHOD_4045, "", "",
+                                 "FillGenerator.build"]])
+
+    def test_a_4045_map_row_giving_a_typedef_index_is_an_error(self):
+        indexed = self.CLASS_ROW_4045.replace("4045\t\t", f"4045\t{self.INDEX_4045}\t", 1)
+        _, errors, _ = self.table_4045(indexed)
+        self.assertTrue(any(e.startswith(self.map_where(2, "4045")) and "typedef_index stays empty" in e
+                            for e in errors), errors)
+
+    def test_a_4045_map_row_naming_a_member_facts_json_lacks_is_a_warning(self):
+        # facts.json lists no 4045 properties, so the map's property row cannot be checked.
+        _, errors, warnings = self.table_4045(self.CLASS_ROW_4045, self.METHOD_ROW_4045, self.PROPERTY_ROW_4045)
+        self.assertEqual(errors, [])
+        self.assertTrue(any(w.startswith(self.map_where(4, "4045")) and f"`{self.PROPERTY_4045}`" in w
+                            and "facts.json has no properties to check it against" in w
                             for w in warnings), warnings)
 
-    def test_a_4045_span_naming_a_mapped_property_gets_an_unlisted_row_and_a_warning(self):
-        scrambled, prop = "ʶˀʵ", "ʸʶʳ"
-        facts = {"game_version": "v1.0.0.4045-master", "classes": [
-            {"name": scrambled, "namespace": "", "kind": "class", "typedef_index": 3,
-             "readable": False, "base": None, "interfaces": [],
-             "fields": [], "methods": [{"name": "ʹʹʾ", "return": "void", "params": [],
-                                        "static": False, "rva": None}]}]}
-        path = os.path.join(self.tmp, "facts.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(facts, f, ensure_ascii=False)
-        self.names(MAP_COLUMNS + f"4045\t\t{scrambled}\t\tFillGenerator\tBuilds the fills.\n"
-                   + f"4045\t\t{scrambled}\tʹʹʾ\tbuild\tBuilds one fill.\n"
-                   + f"4045\t\t{scrambled}\t{prop}\tWrittenFills\tA property.\n", build="4045")
-        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.WrittenFills` and `FillGenerator.build`\n"
-                  "`FillGenerator.noSuchThing`\n")
-        warnings = []
-        text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants,
-                                     warnings=warnings)
-        rows = self.rows(text)
-        self.assertIn(["4045", "property-unlisted", "3", "", prop, "", "", "FillGenerator.WrittenFills"], rows)
-        self.assertIn(["4045", "method", "3", "", "ʹʹʾ", "", "", "FillGenerator.build"], rows)
-        # A member with no map row and no facts.json entry stays an error.
+    def test_a_4045_map_row_naming_a_class_the_build_lacks_is_an_error(self):
+        lacking = "4045\t\tʻʻʻ\tʸʶʳ\tLaneMask\tA class the build lacks.\n"
+        _, errors, _ = self.table_4045(self.CLASS_ROW_4045, lacking)
         self.assertEqual(len(errors), 1, errors)
-        self.assertIn("page.md:6: `FillGenerator.noSuchThing` matches 0 classes and members in build 4045", errors[0])
-        self.assertTrue(any("page.md:5: `FillGenerator.WrittenFills` is a property" in w for w in warnings),
+        self.assertTrue(errors[0].startswith(self.map_where(3, "4045") + "the class `ʻʻʻ` matches 0 classes"),
+                        errors)
+
+    def test_a_4045_span_naming_a_mapped_property_gets_an_unlisted_row_and_a_warning(self):
+        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.WrittenFills`\n")
+        rows, errors, warnings = self.table_4045(self.CLASS_ROW_4045, self.PROPERTY_ROW_4045)
+        self.assertEqual(errors, [])
+        self.assertIn(["4045", D.UNLISTED_PROPERTY_KIND, str(self.INDEX_4045), "", self.PROPERTY_4045, "", "",
+                       "FillGenerator.WrittenFills"], rows)
+        self.assertTrue(any(w.startswith(self.page_where(5) + "`FillGenerator.WrittenFills`") for w in warnings),
                         warnings)
-        self.assertFalse(any("`FillGenerator.build`" in w for w in warnings), warnings)
+
+    def test_a_4045_span_naming_a_mapped_method_gets_no_warning(self):
+        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.build`\n")
+        rows, errors, warnings = self.table_4045(self.CLASS_ROW_4045, self.METHOD_ROW_4045, self.PROPERTY_ROW_4045)
+        self.assertEqual(errors, [])
+        self.assertIn(["4045", "method", str(self.INDEX_4045), "", self.METHOD_4045, "", "", "FillGenerator.build"],
+                      rows)
+        self.assertFalse(any(w.startswith(self.page_where(5)) for w in warnings), warnings)
+
+    def test_a_4045_span_naming_a_member_with_no_map_row_stays_an_error(self):
+        self.page("# P\n\n## Build 1.0.0.4045\n\n`FillGenerator.noSuchThing`\n")
+        _, errors, _ = self.table_4045(self.CLASS_ROW_4045, self.METHOD_ROW_4045, self.PROPERTY_ROW_4045)
+        self.assertEqual(len(errors), 1, errors)
+        self.assertTrue(errors[0].startswith(self.page_where(5) + "`FillGenerator.noSuchThing`"), errors)
+        self.assertTrue(errors[0].endswith(" in build 4045"), errors)
 
     def test_a_6142_span_naming_a_member_the_dump_lacks_is_an_error_not_an_unlisted_row(self):
         self.names(GOOD_MAP + "6142\t8255\tʺʺʸ\tʻʻʻ\tghost\tA member the class lacks.\n")
         self.page("# P\n\n`DrumsEngine.ghost`\n")
         text, errors, _ = self.table_and_warnings()
-        self.assertNotIn("property-unlisted", text)
-        self.assertTrue(any("`DrumsEngine.ghost` matches 0 classes and members in build 6142" in e
-                            for e in errors), errors)
+        # Build 6142's dump lists properties, so the span gets no unlisted row.
+        self.assertFalse(any(row[1] == D.UNLISTED_PROPERTY_KIND for row in self.rows(text)), text)
+        self.assertTrue(any(e.startswith(self.page_where(3) + "`DrumsEngine.ghost`")
+                            and e.endswith(f" in build {D.DEFAULT_BUILD}") for e in errors), errors)
 
 
 if __name__ == "__main__":
