@@ -733,18 +733,46 @@ const char* const kSteadyFields[] = {"steady_ms_before_act", "steady_ms_after_ac
 // activation, both ways, and no change lies on either side of either tick. A
 // marker that repeats the tempo or meter in force is no change.
 TEST_CASE("paths_json: a constant tempo gives end ratios of 1 and no change on any side") {
-    const SongTiming timing(192, {{0, 768}, {1536, 768}}, {{0, 120.0}, {768, 120.0}},
-                            {{0, {4, 4}}, {1536, {4, 4}}});
-    const json a = dump_one_activation(timing, 3840, 9984);
-    CHECK(a["end_anchor_tick"].get<int64_t>() == 3840);
-    REQUIRE(a["end_scale_early"].is_number());
-    REQUIRE(a["end_scale_late"].is_number());
-    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(1.0));
-    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(1.0));
-    for (const char* k : kSteadyFields) {
-        REQUIRE_MESSAGE(a.contains(k), k);
-        CHECK_MESSAGE(a[k].is_null(), k);
+    // Every corpus chart whose tempo and meter never change (a marker that
+    // repeats the one in force is no change), dumped by the real writer.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const auto steady = [](const auto& changes) {
+        for (const auto& kv : changes)
+            if (kv.second != changes.begin()->second) return false;
+        return true;
+    };
+    int charts = 0, activations = 0, ratios = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty() || !steady(song.bpm_changes) || !steady(song.tpm_changes)) continue;
+        const std::vector<const Path*> all = corpus::analyzed(chart, cfg).all_paths();
+        const json dumped = paths_json(all, song.timing());
+        REQUIRE(dumped.size() == all.size());
+        ++charts;
+        for (size_t k = 0; k < all.size(); ++k) {
+            CAPTURE(chart);
+            CAPTURE(all[k]->pathstring());
+            for (const json& a : dumped[k]["activations"]) {
+                ++activations;
+                // Null when the search stored no ratio: only a stored one is read.
+                for (const char* key : {"end_scale_early", "end_scale_late"}) {
+                    REQUIRE_MESSAGE(a.contains(key), key);
+                    if (!a[key].is_number()) continue;
+                    ++ratios;
+                    CHECK_MESSAGE(a[key].get<double>() == doctest::Approx(1.0), key);
+                }
+                for (const char* key : kSteadyFields) {
+                    REQUIRE_MESSAGE(a.contains(key), key);
+                    CHECK_MESSAGE(a[key].is_null(), key);
+                }
+            }
+        }
     }
+    MESSAGE(charts << " constant-tempo charts, " << activations << " activations, " << ratios
+                   << " stored ratios");
+    // A walk that met no such chart, or read no ratio, checked nothing here.
+    CHECK(charts > 0);
+    CHECK(ratios > 0);
 }
 
 // Rescued's shape: a tempo marker sits on the activation tick itself (150.67
