@@ -158,13 +158,15 @@ TEST_CASE("build_activations: rows and backend rows line up") {
 
 namespace {
 
-// Calls visit(chart, song, record, path) for every kept path of every corpus
-// chart that analyzes under the app's default settings.
+// Calls visit(chart, song, record) for every corpus chart that analyzes under
+// the app's default settings, with the chart captured, and requires at least
+// one such chart.
 template <typename Visit>
-void for_each_corpus_path(Visit&& visit) {
+void for_each_corpus_chart(Visit&& visit) {
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int charts = 0;
     for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
         const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
         const HydraRecord* rec = nullptr;
@@ -174,9 +176,18 @@ void for_each_corpus_path(Visit&& visit) {
             continue;
         }
         ++charts;
-        for (const Path& path : rec->paths) visit(chart, song, *rec, path);
+        visit(chart, song, *rec);
     }
     REQUIRE(charts > 0);
+}
+
+// Calls visit(chart, song, record, path) for every kept path of every corpus
+// chart that analyzes under the app's default settings.
+template <typename Visit>
+void for_each_corpus_path(Visit&& visit) {
+    for_each_corpus_chart([&](const std::string& chart, const Song& song, const HydraRecord& rec) {
+        for (const Path& path : rec.paths) visit(chart, song, rec, path);
+    });
 }
 
 // Pitch Dark (testdata/input/test_pitch_dark_ratio) under the app's default
@@ -1850,8 +1861,6 @@ void check_any_row(const WindowRowView& row, double safe_ms, int& short_tags, in
 // sign, and a squeeze row names its anchor the frontend and its squeezed note
 // the backend, the anchor first, whichever way its sentence says to press.
 TEST_CASE("dynamic hit window: every corpus row") {
-    const AnalysisSettings cfg = Settings().to_analysis_settings();
-    int charts = 0;
     int squeeze_rows = 0;
     int fill_rows = 0;
     int short_tags = 0;
@@ -1859,22 +1868,12 @@ TEST_CASE("dynamic hit window: every corpus row") {
     // Squeeze rows whose sentence presses the squeezed note early and the
     // anchor late: the rows a label by press direction would switch.
     int note_pressed_early = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        CAPTURE(chart);
-        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
-        const HydraRecord* rec = nullptr;
-        try {
-            rec = &corpus::analyzed(chart, cfg);
-        } catch (const std::exception&) {
-            continue;
-        }
-        ++charts;
+    for_each_corpus_chart([&](const std::string& /*chart*/, const Song& song, const HydraRecord& rec) {
         const ChordTimes chords = chord_times(song);
         const SongTiming& timing = song.timing();
-        for (const Path& path : rec->paths) {
+        for (const Path& path : rec.paths) {
             const std::vector<Activation> acts = path.all_activations();
-            const ActivationsView view = build_activations(path, *rec, &timing, std::nullopt,
+            const ActivationsView view = build_activations(path, rec, &timing, std::nullopt,
                                                            core::default_rules(), std::nullopt,
                                                            /*pro_drums=*/true, &chords);
             REQUIRE(view.acts.size() == acts.size());
@@ -1932,8 +1931,7 @@ TEST_CASE("dynamic hit window: every corpus row") {
                 }
             }
         }
-    }
-    CHECK(charts > 0);
+    });
     CHECK(squeeze_rows > 0);
     CHECK(fill_rows > 0);
     // Both tag words occur (Tapped Out's squeeze out is short, Burnout's safe).
