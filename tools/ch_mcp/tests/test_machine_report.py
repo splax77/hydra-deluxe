@@ -209,7 +209,7 @@ class RealRecordingCase(unittest.TestCase):
         return f"running {running}, ready {ready}, "
 
     def gap_ms(self, earlier, later):
-        return (Fraction(self.walls[later]) - Fraction(self.walls[earlier])) * 1000
+        return R._ms(Fraction(self.walls[later]) - Fraction(self.walls[earlier]))
 
     def late_limit_ms(self):
         return R.LONG_STEP_FACTOR * Fraction(self.rows(R.SAMPLES_FILE)[0]["period_ms"])
@@ -572,10 +572,10 @@ class ClockInARealRecording(RealRecordingCase):
         period = Fraction(samples[0]["period_ms"])
         for row in samples:
             self.assertTrue(row["clock_s"], row)
-            read_ms = (Fraction(row["clock_wall_after_s"]) - Fraction(row["clock_wall_before_s"])) * 1000
+            read_ms = R._ms(Fraction(row["clock_wall_after_s"]) - Fraction(row["clock_wall_before_s"]))
             self.assertLessEqual(read_ms, period, row)
-        return [(later, (Fraction(later["clock_s"]) - Fraction(earlier["clock_s"])) * 1000,
-                 (Fraction(later["wall_s"]) - Fraction(earlier["wall_s"])) * 1000)
+        return [(later, R._ms(Fraction(later["clock_s"]) - Fraction(earlier["clock_s"])),
+                 R._ms(Fraction(later["wall_s"]) - Fraction(earlier["wall_s"])))
                 for earlier, later in zip(samples, samples[1:])]
 
 
@@ -618,7 +618,7 @@ class LateClockInARealRecording(ClockInARealRecording):
 
     def test_the_lead_line(self):
         self.clock_steps()
-        offsets = [((Fraction(row["clock_s"]) - Fraction(row["wall_s"])) * 1000, row)
+        offsets = [(R._ms(Fraction(row["clock_s"]) - Fraction(row["wall_s"])), row)
                    for row in self.rows(R.SAMPLES_FILE)]
         middle = statistics.median(offset for offset, _ in offsets)
         high, high_at = max(offsets, key=lambda item: item[0])
