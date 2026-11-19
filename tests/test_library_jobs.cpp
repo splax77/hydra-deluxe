@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -101,15 +102,79 @@ hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<b
     };
 }
 
-// A chart that fails once the test has released it: the chart that started
-// n-th (from 0) waits until `released` is above n.
-hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
-    auto started = std::make_shared<std::atomic<int>>(0);
-    return [&released, started](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) -> AnalysisResult {
-        const int me = (*started)++;
+// The library rows a scan of the corpus writes (discover_charts, the scan's
+// own reader), read once. A discovery error throws: the corpus is checked in.
+const std::vector<ChartLibraryEntry>& corpus_scan() {
+    static const std::vector<ChartLibraryEntry> rows = [] {
+        auto [items, errors] = hydra::app::discover_charts({corpus::root()});
+        if (!errors.empty()) throw std::runtime_error("corpus scan error: " + errors.front());
+        return items;
+    }();
+    return rows;
+}
+
+// The scan's row for the corpus chart at `notespath`.
+ChartLibraryEntry corpus_row(const std::string& notespath) {
+    for (const ChartLibraryEntry& e : corpus_scan())
+        if (e.notespath == notespath) return e;
+    throw std::runtime_error("the corpus scan has no row for " + notespath);
+}
+
+// The scan's rows for the first `n` (at most 4) corpus charts that analyze to
+// a path under the default settings (corpus::charts_with_paths), so the real
+// analyzer saves a result for each.
+std::vector<ChartLibraryEntry> corpus_rows(size_t n) {
+    static const std::vector<ChartLibraryEntry> four = [] {
+        std::vector<ChartLibraryEntry> rows;
+        for (const corpus::ChartWithPaths& c : corpus::charts_with_paths(AnalysisSettings{}, 4))
+            rows.push_back(corpus_row(c.chart));
+        return rows;
+    }();
+    REQUIRE(n <= four.size());
+    return std::vector<ChartLibraryEntry>(four.begin(),
+                                          four.begin() + static_cast<std::ptrdiff_t>(n));
+}
+
+// An empty scratch folder for this run (testtemp::temp_dir, cleared).
+std::string empty_dir(const std::string& tag) {
+    testtemp::remove_dir(testtemp::temp_dir(tag));
+    return testtemp::temp_dir(tag);
+}
+
+// The scan's row for a copy of the chart `row` names, put in the empty folder
+// `dir`: its chart file and, when its folder has one, its song.ini, read back
+// by discover_charts. Same chart, so same md5, in a second folder.
+ChartLibraryEntry copied_row(const ChartLibraryEntry& row, const std::string& dir) {
+    const std::filesystem::path chart = hydra::os_path(row.notespath);
+    const std::filesystem::path to = hydra::os_path(dir);
+    std::filesystem::copy_file(chart, to / chart.filename());
+    const std::filesystem::path ini = chart.parent_path() / "song.ini";
+    if (std::filesystem::exists(ini)) std::filesystem::copy_file(ini, to / "song.ini");
+    auto [items, errors] = hydra::app::discover_charts({dir});
+    REQUIRE(errors.empty());
+    for (const ChartLibraryEntry& e : items)
+        if (e.md5 == row.md5) return e;
+    throw std::runtime_error("the scan of " + dir + " has no copy of " + row.notespath);
+}
+
+// The real analyzer (app::analyze_chart_file), with nothing in front of it.
+hydra::app::ChartAnalyzer real_analyzer() {
+    return [](const std::string& path, const AnalysisSettings& settings,
+              const std::function<void(float)>& on_progress) -> AnalysisResult {
+        return hydra::app::analyze_chart_file(path, settings, on_progress);
+    };
+}
+
+// The real analyzer, held at the start of each chart until the test lets it
+// go: the chart that started n-th (from 0) counts itself in `started`, waits
+// until `released` is above n, then is analyzed for real.
+hydra::app::ChartAnalyzer real_analysis_in_turn(std::atomic<int>& started,
+                                                std::atomic<int>& released) {
+    return [&started, &released](const std::string& path, const AnalysisSettings& settings,
+                                 const std::function<void(float)>& on_progress) -> AnalysisResult {
+        const int me = started++;
         wait_until([&released, me] { return released.load() > me; }, "the test to release it");
-        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "MD5 hashing failed");
+        return hydra::app::analyze_chart_file(path, settings, on_progress);
     };
 }
 
@@ -124,9 +189,13 @@ void wait_for_batch_step(const BatchJob& job, Done done, const std::string& what
 }  // namespace
 
 // AOA-W3 V9-SN1: an exception out of the scan ends the job with the error as
-// its one problem line. It writes no library.
+// its one problem line. It writes no library: the library a real scan of the
+// corpus saved before stays as it was.
 TEST_CASE("jobs: a scan that throws finishes with its error as a problem") {
     RecordStore store(":memory:");
+    REQUIRE_FALSE(hydra::app::save_scan_as_library(store, corpus_scan()).has_value());
+    const std::vector<ChartLibraryEntry> before = store.list_chart_library(0, -1);
+    REQUIRE_FALSE(before.empty());
     const std::runtime_error broke("scan broke");
     const ScopedHook hold(hydra::ui::set_scan_hold_for_test, [&broke] { throw broke; });
     hydra::ui::ScanJob job({corpus::root()}, store);
@@ -137,7 +206,12 @@ TEST_CASE("jobs: a scan that throws finishes with its error as a problem") {
     CHECK(p.errors[0] == hydra::app::plain_error_line(broke));
     CHECK(p.phase == hydra::ui::ScanProgress::Phase::Done);
     CHECK_FALSE(p.cancelled);
-    CHECK(p.charts_found == 0);
+    const std::vector<ChartLibraryEntry> after = store.list_chart_library(0, -1);
+    REQUIRE(after.size() == before.size());
+    for (size_t i = 0; i < before.size(); ++i) {
+        CHECK(after[i].md5 == before[i].md5);
+        CHECK(after[i].notespath == before[i].notespath);
+    }
 }
 
 TEST_CASE("jobs: the batch clock leaves paused time out") {
@@ -199,11 +273,13 @@ TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then sho
 }
 
 TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers") {
-    // One worker, so the window is 2 charts. Each chart waits for its turn.
+    // One worker, so the window is 2 charts. Each corpus chart waits for its
+    // turn, then is analyzed for real.
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);
+    BatchJob job(plan_of(corpus_rows(4)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
     job.start();
 
     released = 1;
@@ -223,31 +299,40 @@ TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers
 // Paused time never counts (D283): a chart that finishes during a pause is
 // timed at the pause, and the window after the resume spans only run time.
 TEST_CASE("jobs: time left leaves a pause out of its window") {
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);  // a window of 2
+    BatchJob job(plan_of(corpus_rows(4)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released),
+                              /*workers=*/1);  // a window of 2
     job.start();
-    wait_for_batch_step(job, [&] { return job.snapshot().current_title == "fake 0"; },
-                        "the first chart to start");
+    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
     job.pause();
     released = 1;
     wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
                         "the chart in flight to finish");
     CHECK_FALSE(job.snapshot().eta_s.has_value());
-    constexpr auto kPause = 1200ms;  // far longer than the run time that follows
+    constexpr auto kPause = 2000ms;  // longer than the run time that follows
     std::this_thread::sleep_for(kPause);
 
+    const auto resumed = std::chrono::steady_clock::now();
     job.resume();
     released = 2;
     wait_for_batch_step(job, [&] { return job.snapshot().completed == 2; },
                         "the second chart to finish");
+    const double run_s =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - resumed).count();
+    const double pause_s = std::chrono::duration<double>(kPause).count();
+    // The second chart's real analysis must take less than the pause, or the
+    // check below cannot tell run time from paused time.
+    REQUIRE(run_s < pause_s);
     // Two charts left over a rate of 2 charts in the window's span: the span
-    // in seconds. Counting the pause would make it kPause or more.
+    // in seconds, which is run time only, so at most run_s. Counting the
+    // pause would make it pause_s or more.
     const std::optional<double> eta = job.snapshot().eta_s;
     REQUIRE(eta.has_value());
-    CHECK(*eta < std::chrono::duration<double>(kPause).count() / 2);
+    CHECK(*eta <= run_s);
 
     released = 4;
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
@@ -255,16 +340,15 @@ TEST_CASE("jobs: time left leaves a pause out of its window") {
 
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     std::atomic<int> started{0};
-    std::atomic<bool> release{false};
+    std::atomic<int> released{0};
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(3)), test_run(), store);
-    job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
-                              /*workers=*/1);
+    BatchJob job(plan_of(corpus_rows(3)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
     job.start();
     wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
     job.pause();
-    release = true;
+    released = 3;
     wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
                         "the chart in flight to finish");
     std::this_thread::sleep_for(200ms);
@@ -278,17 +362,17 @@ TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     BatchJob::Snapshot done = job.snapshot();
     CHECK(started.load() == 3);
     CHECK(done.completed == 3);
-    CHECK(done.failed == 3);
+    CHECK(done.analyzed == 3);
+    CHECK(done.failed == 0);
     CHECK_FALSE(done.paused);
 }
 
 TEST_CASE("jobs: stop while paused ends the run and fails nothing") {
     std::atomic<int> started{0};
-    std::atomic<bool> release{true};
+    std::atomic<int> released{4};  // no chart is held: each may run at once
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
-                              /*workers=*/2);
+    BatchJob job(plan_of(corpus_rows(4)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/2);
     job.pause();
     job.start();
     std::this_thread::sleep_for(200ms);
