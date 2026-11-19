@@ -9,6 +9,7 @@
 
 #include "doctest.h"
 
+#include <cmath>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -67,11 +68,18 @@ void check_word_agrees_with_badge(Activation act) {
 }  // namespace
 
 TEST_CASE("display format: the average multiplier rounds the exact double") {
-    // Python's round(x, 3) on the binary value, not on the decimal literal.
-    CHECK(format_avg_mult(2.3456) == "2.346");  // a slice would give 2.345
-    CHECK(format_avg_mult(2.0005) == "2.001");  // stored as 2.000500000000000167
-    CHECK(format_avg_mult(1.0005) == "1.000");  // stored as 1.000499999999999945
-    CHECK(py_round3(2.3456) == 2.346);
+    // Rounds, not truncates: a slice of 2.3456 would give 2.345.
+    CHECK(format_avg_mult(2.3456) == "2.346");
+
+    // The rounding reads the stored binary value, not the decimal literal.
+    // `stored - whole` is exact (the two are within a factor of 2), and fma
+    // rounds once, so its sign is the exact sign of (stored - halfway).
+    const double above_half = 2.0005;
+    const double below_half = 1.0005;
+    REQUIRE(std::fma(above_half - 2.0, 10000.0, -5.0) > 0.0);
+    REQUIRE(std::fma(below_half - 1.0, 10000.0, -5.0) < 0.0);
+    CHECK(format_avg_mult(above_half) == "2.001");
+    CHECK(format_avg_mult(below_half) == "1.000");
 }
 
 TEST_CASE("display format: ms text is one decimal, a space and the unit") {
@@ -79,7 +87,10 @@ TEST_CASE("display format: ms text is one decimal, a space and the unit") {
     CHECK(format_ms(12.3) == "12.3 ms");
     CHECK(format_ms(-20.0) == "-20.0 ms");
     CHECK(format_ms(0.0) == "0.0 ms");
-    CHECK(format_ms(163.5) == "163.5 ms");
+    // A whole figure keeps its decimal.
+    CHECK(format_ms(163.0) == "163.0 ms");
+    // A figure with more digits rounds to one decimal.
+    CHECK(format_ms(12.36) == "12.4 ms");
 }
 
 TEST_CASE("build_activations: the early fill reads positive = early on both lines") {
@@ -587,15 +598,27 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
 }
 
 TEST_CASE("format_measure: one form for both tabs") {
-    // 192 ticks a beat, 768 a measure: tick 960 is measure 2, beat 2.
-    std::map<int64_t, int64_t> tpm{{0, 768}};
+    // One 4/4 grid with no tempo or signature change, so every measure is
+    // the same length and each expected string is written from the grid.
+    const int64_t beat = 192;
+    const int64_t measure = 4 * beat;
+    std::map<int64_t, int64_t> tpm{{0, measure}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming timing(192, tpm, bpm, {{0, {4, 4}}});
-    CHECK(format_measure(timing, 0) == "m1.1.0");
-    CHECK(format_measure(timing, 960) == "m2.2.0");
-    CHECK(format_measure(timing, 1000) == "m2.2.40");
-    CHECK(format_measure(timing.timecode(960)) == "m2.2.0");
-    CHECK(format_ms(163.0) == "163.0 ms");
+    SongTiming timing(static_cast<int>(beat), tpm, bpm, {{0, {4, 4}}});
+    // "m<measure>.<beat>.<tick past the beat>", measure and beat 1-based.
+    auto on_grid = [&](int64_t m, int64_t b, int64_t t) {
+        const int64_t tick = m * measure + b * beat + t;
+        const std::string want = "m" + std::to_string(m + 1) + "." + std::to_string(b + 1) + "." +
+                                 std::to_string(t);
+        CAPTURE(tick);
+        CHECK(format_measure(timing, tick) == want);
+        // The Timecode overload, which the Preview reads, prints the same.
+        CHECK(format_measure(timing.timecode(tick)) == want);
+    };
+    on_grid(0, 0, 0);
+    on_grid(1, 1, 0);
+    on_grid(1, 1, 40);
+    on_grid(2, 3, beat - 1);
 }
 
 TEST_CASE("activation rows: Burnout's three activations") {
@@ -946,10 +969,19 @@ TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the
     std::map<int64_t, int64_t> tpm{{0, 768}};
     std::map<int64_t, double> bpm{{0, 120.0}};
     SongTiming timing(192, tpm, bpm, {{0, {4, 4}}});
-    CHECK(measure_label(timing.timecode(768)) == "m2");  // 768 is measure 2
-    CHECK(format_measure(timing.timecode(768)) == "m2.1.0");
-    CHECK(measure_label(timing.timecode(0)) == "m1");
-    CHECK(first_measure_label() == "m1.1.0");
+    // The timeline's label is the rows' measure text up to its beat, so the
+    // two never number a measure differently.
+    for (const int64_t tick : {int64_t{0}, int64_t{768}, int64_t{1000}}) {
+        CAPTURE(tick);
+        const Timecode tc = timing.timecode(tick);
+        const std::string label = measure_label(tc);
+        CHECK(format_measure(tc).rfind(label + ".", 0) == 0);
+    }
+    // Ticks a whole measure apart get labels one apart, from 1.
+    CHECK(measure_label(timing.timecode(0)) == "m" + std::to_string(1));
+    CHECK(measure_label(timing.timecode(768)) == "m" + std::to_string(2));
+    // The first measure with no timing is the chart's first tick.
+    CHECK(first_measure_label() == format_measure(timing, 0));
 }
 
 TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
