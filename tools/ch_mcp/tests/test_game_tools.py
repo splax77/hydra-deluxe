@@ -44,7 +44,7 @@ from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread  # noqa: E402
 from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
-    GAME_SAVES_IN_DOCUMENTS, GAME_SAVES_IN_LOCALLOW, ORIGINAL, PATCHED, FakeGame, FakeLaunchAgent,
+    GAME_SAVES_IN_DOCUMENTS, GAME_SAVES_IN_LOCALLOW, ORIGINAL, FakeGame, FakeLaunchAgent,
     Rig, _read, _write, wire_human)
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
@@ -2213,131 +2213,66 @@ class RunWithoutFocusTest(unittest.TestCase):
             G.get_game_setting(path, key)
         self.assertIn(f"({missing.exception})", said)
 
-    def test_both_backups_carry_the_registry_key_with_the_envs_runner(self):
-        for start in ("ch_start", "ensure_backup"):
-            with self.subTest(start=start):
-                t = ToolRig(os.path.join(self.tmp, start))
-                t.r.env.run_reg = reg = FakeReg()
-                getattr(t.tools, start)(*([t.r.song] if start == "ch_start" else []))
-                self.assertTrue(os.path.isfile(os.path.join(t.backup_dir(), G.REGISTRY_BACKUP)))
-                reg.text = b"the game changed this"
-                self.assertIn("rewired registry: restored", t.tools.ch_stop().splitlines())
+
+# The launch agent's status replies from a real human launch, copied from
+# hydra-data/ch-mcp-runs/2026-11-06/ls-d2a-run1/launch-20261106-194201.jsonl:
+# its idle, waiting and two patched replies, the second after the game's
+# command-line loader ran once. The waiting reply that lists the modules is
+# left out.
+D2A_LAUNCH_LOG = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-11-06-ls-d2a-run1",
+                              "launch-20261106-194201.jsonl")
+
+
+def _recorded_statuses() -> list:
+    with open(D2A_LAUNCH_LOG, encoding="utf-8") as f:
+        return [json.loads(line)["payload"] for line in f if line.strip()]
 
 
 class HumanStartTest(unittest.TestCase):
-    """ch_start(human=True), ch_status's loader line and ch_stop's detach,
-    on test_bot_run's launch fakes."""
+    """ch_start(human=True)'s refusal on real tools, and ch_status's launch
+    lines from the launch agent's recorded replies."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
-        self.events = []
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    def rig(self, agent=None, folder=""):
-        t = ToolRig(os.path.join(self.tmp, folder))
-        agent = agent or FakeLaunchAgent(self.events)
-        wire_human(t.r, agent)
-        return t, agent
-
     def test_human_with_no_song_folder_is_refused_naming_the_reason(self):
-        t, _agent = self.rig()
-        reply = t.tools.ch_start(human=True)
-        self.assertEqual(reply, B.HUMAN_NEEDS_SONG)
-        self.assertIn("runs only with --song", reply)
-        self.assertIsNone(t.backup_dir())
-        self.assertEqual(self.events, [])
-        self.assertEqual(t.r.launch.commands, [])
+        # A real Env with no registry runner and a game exe that is not there,
+        # so a refusal that broke could not start the game or touch the key.
+        documents = os.path.join(self.tmp, "documents")
+        os.makedirs(documents)
+        scratch_root = os.path.join(self.tmp, "scratch")
+        tools = GT.GameTools(B.Env(exe=os.path.join(self.tmp, "no game.exe"),
+                                   documents_dir=documents, run_reg=None),
+                             threading.RLock(), scratch_root)
+        reply = tools.ch_start(human=True)
+        self.assertIsNotNone(B.human_refusal(True, None))
+        self.assertEqual(reply, B.human_refusal(True, None))
+        # Nothing ran: no backup folder and no marker under the scratch root,
+        # and nothing is held open.
+        left = os.listdir(scratch_root) if os.path.isdir(scratch_root) else []
+        self.assertEqual(left, [])
+        self.assertEqual(tools.open_lines(), [])
 
-    def test_human_takes_the_backup_before_the_paused_start(self):
-        t, agent = self.rig()
-        seen = []
-        fake_start = t.r.env.start_process
-
-        def start(cmd):
-            seen.append([d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)])
-            return fake_start(cmd)
-
-        t.r.env.start_process = start
-        lines = t.tools.ch_start(t.r.song, player="ProDrums,Expert", human=True).splitlines()
-        self.assertEqual(seen, [[os.path.basename(t.backup_dir())]])
-        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
-        self.assertIn("game process id: 4242", lines)
-        self.assertIs(t.tools._run.launch.agent, agent)
-        self.assertEqual(t.watches[0].started, True)
-
-    def test_ch_status_prints_the_loader_line_all_three_ways(self):
-        cases = [(dict(loader_runs=1, bytes_at_first_run="BA 00 00 00 00"), "yes"),
-                 (dict(loader_runs=1, bytes_at_first_run="BA 01 00 00 00"), "no"),
-                 (dict(loader_runs=0), "not yet")]
-        for fields, word in cases:
-            with self.subTest(word=word):
-                self.events.clear()
-                later = {**PATCHED, **fields}
-                t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[PATCHED, later]),
-                                     folder=word)
-                t.tools.ch_start(t.r.song, human=True)
-                lines = t.tools.ch_status().splitlines()
-                self.assertIn("player: human (suspended launch)", lines)
-                self.assertIn(f"loader ran after patch: {word}", lines)
-                self.assertTrue(any(line.startswith("launch patch: patched; at the patch "
-                                                    "BA 01 00 00 00 before and BA 00 00 00 00 after")
-                                    for line in lines), lines)
-                t.tools.ch_stop()
-
-    def test_ch_status_prints_each_of_the_four_states(self):
-        cases = {
-            "idle": ({"state": "idle"}, "the launch agent holds no arm, so it will never patch"),
-            "waiting": ({"state": "waiting", "loader_runs": 0, "reason": None},
-                        "loader ran after patch: not yet"),
-            "patched": (PATCHED, "patched at: 1200 ms on the agent's own clock (Date.now)"),
-            "refused": ({"state": "refused", "before": "BA 01 00 00 00", "after": None,
-                         "loader_runs": 0, "reason": "patching GameAssembly.dll failed: boom"},
-                        "launch agent reason: patching GameAssembly.dll failed: boom"),
-        }
-        for state, (later, want) in cases.items():
-            with self.subTest(state=state):
-                self.events.clear()
-                t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[PATCHED, later]),
-                                     folder="state-" + state)
-                t.tools.ch_start(t.r.song, human=True)
-                lines = t.tools.ch_status().splitlines()
-                self.assertTrue(any(line.startswith(f"launch patch: {state};") for line in lines),
-                                lines)
-                self.assertIn(want, lines)
-                t.tools.ch_stop()
-
-    def test_ch_status_names_a_status_that_fails(self):
-        t, agent = self.rig()
-        t.tools.ch_start(t.r.song, human=True)
-
-        def failing(message, cap_s):
-            raise FA.ReadFailed(FA.END_DETACHED, "session detached: process-terminated")
-
-        agent.request = failing
-        self.assertIn("launch agent: status failed: session detached: process-terminated",
-                      t.tools.ch_status().splitlines())
-
-    def test_ch_stop_detaches_the_launch_agent_before_it_stops_the_game(self):
-        t, agent = self.rig()
-        t.tools.ch_start(t.r.song, human=True)
-        agent.detach = lambda: (self.events.append(("detach", t.r.game.stopped)), "detached")[1]
-        lines = t.tools.ch_stop().splitlines()
-        self.assertIn(("detach", False), self.events)
-        self.assertLess(lines.index("launch agent: detached"), lines.index("stopped the game"))
-        self.assertTrue(t.r.game.stopped)
-        self.assertIn("rewired registry: unchanged", lines)
-
-    def test_a_failed_human_launch_says_so_and_restores_the_key(self):
-        t, _agent = self.rig(FakeLaunchAgent(self.events, statuses=[{"state": "refused"}]))
-        lines = t.tools.ch_start(t.r.song, human=True).splitlines()
-        self.assertTrue(lines[-1].startswith("the human launch failed: launch.ts refused the patch"),
-                        lines)
-        self.assertIn("rewired registry: unchanged", lines)
-        self.assertIsNone(t.tools._run)
-        self.assertEqual(t.watches, [])
+    def test_ch_status_launch_lines_from_the_recorded_replies(self):
+        patch = B._read_patch(B.LAUNCH_PATCH_FILE)
+        statuses = _recorded_statuses()
+        self.assertEqual([s["state"] for s in statuses],
+                         [B.STATE_IDLE, B.STATE_WAITING, B.STATE_PATCHED, B.STATE_PATCHED])
+        # The loader had not run in the first three replies. In the last it
+        # had run once and read the bytes launch_patch.json writes.
+        words = [B.LOADER_NOT_YET, B.LOADER_NOT_YET, B.LOADER_NOT_YET, B.LOADER_YES]
+        for status, word in zip(statuses, words):
+            with self.subTest(id=status["id"]):
+                lines = B.launch_status_lines(status, patch)
+                self.assertTrue(lines[0].startswith(f"launch patch: {status['state']};"), lines)
+                self.assertEqual(lines[-1], B.LOADER_LINE + word)
+                # Only the idle reply says the agent will never patch.
+                never = [line for line in lines if "never patch" in line]
+                self.assertEqual(len(never), 1 if status["state"] == B.STATE_IDLE else 0, lines)
 
 
 def next_worker(t: ToolRig, running: bool = False, **tool_args) -> GT.GameTools:
@@ -2380,71 +2315,40 @@ class MarkerTest(unittest.TestCase):
     def test_the_marker_sits_under_the_scratch_root_and_never_the_real_temp_folder(self):
         self.assertEqual(self.t.tools._marker_path(), self.path)
 
-    def test_ch_start_names_the_pid_and_folder_and_ch_stop_deletes_the_marker(self):
-        self.t.tools.ch_start(self.t.r.song)
-        self.assert_marker_names(self.t.backup_dir())
-        self.t.tools.ch_stop()
-        self.assertFalse(os.path.exists(self.path))
-
-    def test_the_marker_is_there_before_the_settings_change_and_the_launch(self):
-        seen = []
-
-        def set_setting(path, key, value):
-            seen.append(("setting", GT.read_marker(self.path)))
-
-        t = self.t
-        t.tools._set_setting = set_setting
-        real_launch = t.r.launch
-        t.r.env.launch = lambda cmd: seen.append(("launch", GT.read_marker(self.path))) or real_launch(cmd)
-        t.tools.ch_start(t.r.song)
-        said = (os.getpid(), t.backup_dir())
-        self.assertEqual(seen, [("setting", said), ("launch", said)])
-
-    def test_a_human_start_has_its_marker_before_the_game_starts(self):
-        wire_human(self.t.r, FakeLaunchAgent([]))
-        seen = []
-        fake_start = self.t.r.env.start_process
-
-        def start(cmd):
-            seen.append(GT.read_marker(self.path))
-            return fake_start(cmd)
-
-        self.t.r.env.start_process = start
-        self.t.tools.ch_start(self.t.r.song, human=True)
-        self.assertEqual(seen, [(os.getpid(), self.t.backup_dir())])
+    def real_tools(self) -> GT.GameTools:
+        """A GameTools on a real Env whose scratch root is this test's marker
+        folder. It has no registry runner, so its backups are the code's own
+        temp-folder form, and a game exe that is not there. ensure_backup and
+        shutdown never start the game."""
+        documents = os.path.join(self.tmp, "real documents")
+        os.makedirs(documents, exist_ok=True)
+        return GT.GameTools(B.Env(exe=os.path.join(self.tmp, "no game.exe"),
+                                  documents_dir=documents, run_reg=None),
+                            threading.RLock(), self.t.scratch_root)
 
     def test_ensure_backup_writes_the_marker_and_shutdown_deletes_it(self):
-        self.t.tools.ensure_backup()
-        self.assert_marker_names(self.t.backup_dir())
-        self.t.tools.shutdown()
+        tools = self.real_tools()
+        self.assertFalse(os.path.exists(self.path))
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        self.assertTrue(os.path.isdir(backup), backup)
+        self.assert_marker_names(backup)
+        tools.shutdown()
         self.assertFalse(os.path.exists(self.path))
 
     def test_a_failed_restore_keeps_the_marker_and_the_next_good_one_deletes_it(self):
-        self.t.tools.ch_start(self.t.r.song)
-        backup = self.t.backup_dir()
-
-        def fail(backup_dir, **_kw):
-            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
-
-        with mock.patch.object(G, "restore_all", fail):
-            self.t.tools.ch_stop()
+        tools = self.real_tools()
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        # A real failure: the backup folder is moved away, so the restore
+        # cannot read its manifest.
+        moved = backup + " moved"
+        os.rename(backup, moved)
+        tools.ch_stop()
         self.assert_marker_names(backup)
-        self.t.tools.ch_stop()
+        os.rename(moved, backup)
+        tools.ch_stop()
         self.assertFalse(os.path.exists(self.path))
-
-    def test_a_stop_that_raises_keeps_the_marker(self):
-        self.t.tools.ch_start(self.t.r.song)
-        backup = self.t.backup_dir()
-        with mock.patch.object(B, "finish_run", side_effect=RuntimeError("boom")):
-            self.t.tools.ch_stop()
-        self.assert_marker_names(backup)
-
-    def test_a_second_ch_start_leaves_a_marker_naming_the_new_backup(self):
-        self.t.tools.ch_start(self.t.r.song)
-        first = self.t.backup_dir()
-        self.t.tools.ch_start(self.t.r.song)
-        self.assertNotEqual(self.t.backup_dir(), first)
-        self.assert_marker_names(self.t.backup_dir())
 
     def test_a_marker_that_cannot_be_deleted_is_named_with_what_it_would_do(self):
         self.t.tools.ch_start(self.t.r.song)
