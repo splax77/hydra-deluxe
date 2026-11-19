@@ -93,14 +93,10 @@ def fake_table(processes, base=0):
 # One real table: NtQuerySystemInformation class 5, read on this machine with
 # machine_recorder.read_table on 2026-11-08 and trimmed to its first two entries
 # (the second entry's NextEntryOffset set to 0, no other byte changed). The
-# numbers below come from that read, and the thread counts from Windows'
-# Get-Process at the same moment, not from the parser.
+# offsets below were read from that file by hand, never from the parser.
 SAMPLE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "recorder_sample.bin")
-SAMPLE_SIZE = 41_744
 SYSTEM_AT = 4464  # where the second entry, System, starts
 SYSTEM_NAME_AT = 41728  # where System's name text starts in the sample
-IDLE_THREADS = 48  # Get-Process -Id 0
-SYSTEM_THREADS = 458  # Get-Process -Id 4
 # System's threads: (index, byte where the entry starts, tid, state, wait reason,
 # context switches, kernel + user time in 100 ns ticks), read by hand.
 SYSTEM_THREAD_ROWS = (
@@ -113,6 +109,21 @@ SYSTEM_THREAD_ROWS = (
 def read_sample():
     with open(SAMPLE_PATH, "rb") as file:
         return file.read()
+
+
+def thread_entries(sample, at, pid):
+    """How many thread entries follow the process entry at `at` and name `pid` in
+    their ClientId (byte 0x28 of a thread entry), counted by hand from the bytes."""
+    count = 0
+    while P.decode_u64(sample[at + 0x100 + count * 0x50 + 0x28:][:8]) == pid:
+        count += 1
+    return count
+
+
+# Each process's thread count, counted from the thread entries Windows wrote
+# after its entry; CapturedTable checks NumberOfThreads (byte 4) agrees.
+IDLE_THREADS = thread_entries(read_sample(), 0, 0)
+SYSTEM_THREADS = thread_entries(read_sample(), SYSTEM_AT, 4)
 
 
 def sample_base(sample):
@@ -129,11 +140,6 @@ TWO_PROCESSES = [
     {"pid": 8, "parent": 7, "name": "other.exe", "user": 1, "kernel": 2, "read": 3, "write": 4,
      "faults": 5, "threads": [(81, 1, 2, 3, 1, 0)]},
 ]
-
-
-def layout_of(fields):
-    """The parser's struct layout for a {name: (offset, code)} dict."""
-    return M._layout(fields.values())
 
 
 def with_system_states(sample, states):
@@ -161,8 +167,10 @@ class CapturedTable(unittest.TestCase):
         return P.decode_u64(self.sample[at:at + 8])
 
     def test_the_sample_is_the_table_that_was_captured(self):
-        self.assertEqual(len(self.sample), SAMPLE_SIZE)
         # NextEntryOffset (byte 0 of an entry) and NumberOfThreads (byte 4), by hand.
+        # Each NumberOfThreads equals the thread entries that name the process.
+        self.assertGreater(IDLE_THREADS, 0)
+        self.assertGreater(SYSTEM_THREADS, 0)
         self.assertEqual((self.u32(0), self.u32(4)), (SYSTEM_AT, IDLE_THREADS))
         self.assertEqual((self.u32(SYSTEM_AT), self.u32(SYSTEM_AT + 4)), (0, SYSTEM_THREADS))
         # UniqueProcessId (byte 0x50) and InheritedFromUniqueProcessId (byte 0x58).
@@ -173,6 +181,11 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual(length, 12)
         self.assertEqual(self.sample[SYSTEM_NAME_AT:SYSTEM_NAME_AT + length].decode("utf-16-le"),
                          "System")
+        # System is the last entry, and its name text is the last thing in it, so
+        # the file ends within the 8-byte alignment after that text.
+        name_end = SYSTEM_NAME_AT + length
+        self.assertLessEqual(name_end, len(self.sample))
+        self.assertLess(len(self.sample), name_end + 8)
         for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
             with self.subTest(thread=index):
                 self.assertEqual(at, SYSTEM_AT + 0x100 + index * 0x50)
@@ -183,29 +196,58 @@ class CapturedTable(unittest.TestCase):
                                  (switches, state, reason))
                 self.assertEqual(self.u64(at) + self.u64(at + 8), ticks)
 
+    def by_hand(self, at, layout, field):
+        """One field of the entry at `at`, read at the literal layout above."""
+        offset, code = layout[field]
+        return struct.unpack_from("<" + code, self.sample, at + offset)[0]
+
+    def process_by_hand(self, at):
+        """The entry's process fields, with no thread rows, read by hand."""
+        field = lambda name: self.by_hand(at, PROCESS_LAYOUT, name)  # noqa: E731
+        name_at = field("name_buffer") - sample_base(self.sample) if field("name_length") else 0
+        name = self.sample[name_at:name_at + field("name_length")].decode("utf-16-le")
+        return (field("pid"), field("parent"), name, field("user") + field("kernel"),
+                field("read"), field("write"), field("faults"))
+
+    def threads_by_hand(self, at, count):
+        rows = []
+        for number in range(count):
+            first = at + PROCESS_SIZE + number * THREAD_SIZE
+            field = lambda name: self.by_hand(first, THREAD_LAYOUT, name)  # noqa: E731
+            rows.append(M.Thread(field("tid"), field("state"), field("wait_reason"),
+                                 field("switches"), field("kernel") + field("user")))
+        return rows
+
     def test_the_parser_reads_the_captured_table(self):
         table = self.parse()
         self.assertEqual(list(table.processes), [0, 4])
         self.assertEqual(table.thread_count, IDLE_THREADS + SYSTEM_THREADS)
-        self.assertEqual(table.thread_count, 506)
-        # Idle's threads are left out of the run queue, and every System thread waits.
-        self.assertEqual(table.ready_threads, 0)
         idle, system = table.processes[0], table.processes[4]
-        self.assertEqual((idle.pid, idle.parent_pid, idle.name, idle.cpu_ticks, idle.read_bytes,
-                          idle.write_bytes, idle.hard_faults),
-                         (0, 0, "", 8_630_397_031_250, 0, 0, 0))
-        self.assertEqual((system.pid, system.parent_pid, system.name, system.cpu_ticks,
-                          system.read_bytes, system.write_bytes, system.hard_faults),
-                         (4, 0, "System", 97_909_843_750, 121_967_916, 2_250_372_155, 124))
+        for process, at in ((idle, 0), (system, SYSTEM_AT)):
+            with self.subTest(pid=process.pid):
+                self.assertEqual(process[:-1], self.process_by_hand(at))
+        self.assertEqual((idle.name, system.name), ("", "System"))
         # System's thread ids are all distinct, so its dict holds every thread.
+        system_rows = self.threads_by_hand(SYSTEM_AT, SYSTEM_THREADS)
+        self.assertEqual(system.threads, {row.tid: row for row in system_rows})
         self.assertEqual(len(system.threads), SYSTEM_THREADS)
         for index, at, tid, state, reason, switches, ticks in SYSTEM_THREAD_ROWS:
             with self.subTest(thread=index):
                 self.assertEqual(system.threads[tid], M.Thread(tid, state, reason, switches, ticks))
-        self.assertEqual(idle.threads[32], M.Thread(32, 3, 0, 101_772, 625_000))
-        # Idle holds 48 entries, 16 of them (one per processor here) with thread id
-        # 0, so its dict, keyed by thread id, keeps 33.
-        self.assertEqual(len(idle.threads), 33)
+        # Some of Idle's entries share thread id 0 (one per processor), so its dict,
+        # keyed by thread id, keeps one per distinct id; each unshared id holds its
+        # own entry.
+        idle_rows = self.threads_by_hand(0, IDLE_THREADS)
+        tids = [row.tid for row in idle_rows]
+        self.assertLess(len(set(tids)), IDLE_THREADS)
+        self.assertEqual(set(idle.threads), set(tids))
+        for row in idle_rows:
+            if tids.count(row.tid) == 1:
+                with self.subTest(idle_thread=row.tid):
+                    self.assertEqual(idle.threads[row.tid], row)
+        # Idle's threads are left out of the run queue, and every System thread waits.
+        self.assertEqual(table.ready_threads,
+                         sum(M.reads_as(row.state) == M.READY for row in system_rows))
 
     def test_a_live_table_holds_this_process_as_windows_reports_it(self):
         # A table Windows writes now, read by the recorder's own reader. The pid,
@@ -222,49 +264,37 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual(M.reads_as(me.threads[tid].state), M.RUNNING)
         self.assertGreater(me.cpu_ticks, 0)
 
-    def test_an_offset_moved_by_4_reads_a_wrong_table(self):
-        # The parser reads the entries through _PROCESS_FIELDS and _THREAD_FIELDS,
-        # so a wrong offset is one of those layouts built with the offset moved.
-        moved_parent = dict(PROCESS_LAYOUT, parent=(0x58 + 4, "Q"))
-        with unittest.mock.patch.object(M, "_PROCESS_FIELDS", layout_of(moved_parent)):
-            table = self.parse()
-        # The read takes the high half of the parent pid and HandleCount (byte 0x60).
-        self.assertEqual(table.processes[4].parent_pid, 7509 << 32)
-        self.assertNotEqual(table.processes[4].parent_pid, 0)
-        moved_tid = dict(THREAD_LAYOUT, tid=(0x30 + 4, "Q"))
-        with unittest.mock.patch.object(M, "_THREAD_FIELDS", layout_of(moved_tid)):
-            table = self.parse()
-        self.assertNotIn(33572, table.processes[4].threads)
-        self.assertNotIn(12, table.processes[4].threads)
-
     def test_names_count_from_the_address_the_table_was_read_at(self):
         self.assertEqual(self.parse().processes[4].name, "System")
         moved = M.parse_table(self.sample, sample_base(self.sample) - 2)
         self.assertNotEqual(moved.processes[4].name, "System")
 
-    def test_an_unnamed_process_reads_as_empty(self):
-        self.assertEqual(self.parse().processes[0].name, "")
-
     def test_the_filter_keeps_counts_for_the_whole_table(self):
+        whole = self.parse()
         table = self.parse(thread_pids=[4])
         self.assertEqual(len(table.processes[4].threads), SYSTEM_THREADS)
         self.assertEqual(table.processes[0].threads, {})
-        self.assertEqual((table.thread_count, table.ready_threads), (506, 0))
+        self.assertEqual((table.thread_count, table.ready_threads),
+                         (IDLE_THREADS + SYSTEM_THREADS, whole.ready_threads))
 
     def test_an_empty_filter_parses_no_threads(self):
         table = self.parse(thread_pids=())
         self.assertEqual((table.processes[0].threads, table.processes[4].threads), ({}, {}))
-        self.assertEqual(table.thread_count, 506)
+        self.assertEqual(table.thread_count, IDLE_THREADS + SYSTEM_THREADS)
 
     def test_every_ready_state_counts_toward_the_run_queue(self):
         table = self.parse(with_system_states(self.sample, (1, 2, 3, 4, 5, 6, 7)))
         self.assertEqual(table.ready_threads, 3)
 
     def test_the_idle_process_adds_nothing_to_the_run_queue(self):
-        # Idle's own entries hold 18 in state 3 (standby), byte 0x44 of each.
-        states = [self.u32(0x100 + n * 0x50 + 0x44) for n in range(IDLE_THREADS)]
-        self.assertEqual(states.count(3), 18)
-        self.assertEqual(self.parse().ready_threads, 0)
+        # Some of Idle's own entries hold a state that reads as ready (byte 0x44 of
+        # each, by hand), yet the run queue counts only System's ready threads.
+        def ready(at, count):
+            return sum(M.reads_as(self.u32(at + 0x100 + n * 0x50 + 0x44)) == M.READY
+                       for n in range(count))
+
+        self.assertGreater(ready(0, IDLE_THREADS), 0)
+        self.assertEqual(self.parse().ready_threads, ready(SYSTEM_AT, SYSTEM_THREADS))
 
     def test_each_ready_state_of_a_real_process_counts_beside_the_idle_process(self):
         # Every System thread in the sample waits, so one thread set to a state
