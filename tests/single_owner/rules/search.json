@@ -19,6 +19,13 @@
           "why": "it tests plusmeasure itself and pins its result as a literal tick"
         }
       ],
+      "owner_lines": [
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "return song.timing().plusmeasure(from, sp_bars_to_measures(bars)).ms() - from.ms();",
+          "why": "engine_sp_ms, a test oracle: it reads the engine's own SP-length rule so the drain box's times can be checked against it; it decides nothing the app shows"
+        }
+      ],
       "must_match": [
         "song.timing().plusmeasure(act.timecode, sp_bars_to_measures(act.sp_meter())).ticks());",
         "song.timing().plusmeasure(end, sp_bars_to_measures(1)).ticks();"
