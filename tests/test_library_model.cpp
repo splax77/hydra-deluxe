@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -23,11 +24,11 @@
 #include "chart_text.h"            // chart_text: the song folders' short drum charts
 #include "core/error_kind.h"
 #include "core/rules.h"
+#include "core/stars.h"   // kMaxStars: the top of the stars: filter
 #include "core/winstr.h"  // parent_folder, join_folder: a chart's song folder
 #include "corpus_util.h"      // charts_with_paths, scanned_entry: corpus charts and their results
 #include "display_fixtures.h"  // kTagOnlyTitle, add_stale_records, empty_analysis_under
 #include "temp_util.h"         // temp_dir, remove_dir: the scan's scratch root
-#include "parse/song.h"        // NoNotesError
 #include "store/record_store.h"
 #include "ui/library_model.h"
 
@@ -133,12 +134,49 @@ std::vector<hydra::ui::LibraryRow> stale_rows() {
 // One song folder a test writes for the library scan: the folder's name, the
 // lines of its song.ini under [song], and which short drum chart it holds
 // (own_drum_chart). A chart of -1 is the folder's own, numbered by its place
-// in the list, so two folders share a hash only when a test says so.
+// in the list, so two folders share a hash only when a test says so. A folder
+// with a `copy_of` holds a copy of that corpus chart file instead, beside its
+// corpus song.ini with the folder's own lines in place of its names.
 struct SongFolder {
     std::string name;
     std::string ini;
     int chart = -1;
+    std::string copy_of;
 };
+
+// The song.ini key of one line, its spaces dropped and lower-cased; empty for
+// a line with no '='.
+std::string ini_key(const std::string& line) {
+    const size_t eq = line.find('=');
+    if (eq == std::string::npos) return {};
+    std::string key;
+    for (size_t i = 0; i < eq; ++i) {
+        const unsigned char c = static_cast<unsigned char>(line[i]);
+        if (!std::isspace(c)) key.push_back(static_cast<char>(std::tolower(c)));
+    }
+    return key;
+}
+
+// The corpus song.ini beside `chart` with its name, artist, album and charter
+// lines (and frets, the charter's other key) left out, then the lines `own`.
+std::string copied_song_ini(const std::string& chart, const std::string& own) {
+    const std::string text =
+        corpus::read_bytes(hydra::join_folder(hydra::parent_folder(chart), "song.ini"));
+    std::string out;
+    size_t start = 0;
+    while (start < text.size()) {
+        size_t end = text.find('\n', start);
+        if (end == std::string::npos) end = text.size();
+        std::string line = text.substr(start, end - start);
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const std::string key = ini_key(line);
+        if (key != "name" && key != "artist" && key != "album" && key != "charter" &&
+            key != "frets")
+            out += line + "\n";
+        start = end + 1;
+    }
+    return out + own;
+}
 
 // A two-note drum chart whose second note sits on a tick of its own, so the
 // k-th chart hashes differently from every other.
@@ -157,6 +195,15 @@ std::vector<hydra::app::ScanItem> scan_song_folders(const std::string& tag,
     for (size_t k = 0; k < folders.size(); ++k) {
         const std::string dir = hydra::join_folder(root, folders[k].name);
         std::filesystem::create_directories(hydra::os_path(dir));
+        if (!folders[k].copy_of.empty()) {
+            const std::string& from = folders[k].copy_of;
+            const std::string file = from.substr(from.find_last_of("\\/") + 1);
+            std::filesystem::copy_file(hydra::os_path(from),
+                                       hydra::os_path(hydra::join_folder(dir, file)));
+            audiochart::write_text_file(hydra::join_folder(dir, "song.ini"),
+                                        copied_song_ini(from, folders[k].ini));
+            continue;
+        }
         audiochart::write_text_file(hydra::join_folder(dir, "song.ini"),
                                     "[song]\n" + folders[k].ini);
         const int chart_no = folders[k].chart < 0 ? static_cast<int>(k) : folders[k].chart;
@@ -212,6 +259,144 @@ std::string unknown_word() {
     REQUIRE(shown.front() == '(');
     REQUIRE(shown.back() == ')');
     return shown.substr(1, shown.size() - 2);
+}
+
+// Six scanned song folders, in the shapes of the scratch library: three under
+// "Tier 4" hold copies of three corpus charts (testdata/input) with paths, and
+// three hold short drum charts of their own. Burnout's chart is analysed and
+// saved, Chair's saved as another Hydra version's (Stale), and the rest have
+// nothing saved. Halo and YYZ have no album. Every answer is read back from
+// the store the way the app reads it (lookup), and the answers kept here are
+// the store's later ones: YYZ's once its chart is analysed and saved (it
+// holds the highest-scoring of the three charts), and Chair's once it is
+// analysed again.
+struct ScannedSample {
+    LibraryModel model;
+    std::string burnout, yyz, chair;  // the three analysed charts' hashes
+    RecordLookup burnout_ready;       // Burnout's answer, as the model holds it
+    RecordLookup yyz_ready;           // YYZ's answer once its result is saved
+    RecordLookup chair_ready;         // Chair's answer once it is analysed again
+    std::vector<RecordLookup> with_yyz;  // every row's answer once YYZ's is saved
+};
+
+ScannedSample build_scanned_sample() {
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    std::vector<corpus::ChartWithPaths> charts = corpus::charts_with_paths(run.settings, 3);
+    REQUIRE_MESSAGE(charts.size() == 3, "the corpus needs three charts with paths");
+    // Lowest best path score first: Burnout gets the lowest, YYZ the highest.
+    std::sort(charts.begin(), charts.end(),
+              [](const corpus::ChartWithPaths& a, const corpus::ChartWithPaths& b) {
+                  return a.result.record.paths.front().totalscore() <
+                         b.result.record.paths.front().totalscore();
+              });
+    const std::vector<SongFolder> folders{
+        {"Tier 4\\burnout", "name = Burnout\nartist = Green Day\ncharter = Hoph2o\nalbum = Dookie\n",
+         -1, charts[0].chart},
+        {"Tier 4\\yyz", "name = YYZ\nartist = Rush\ncharter = Harmonix, Onyxite\n", -1,
+         charts[2].chart},
+        {"Tier 4\\chair", "name = Chair\nartist = Sufferer\ncharter = Satan\nalbum = Sufferer\n", -1,
+         charts[1].chart},
+        {"Other\\acid",
+         "name = Acid Romance\nartist = Some Band\ncharter = <color=#e02222>Blood</color>line\n"
+         "album = A Quiet Place To Die\n"},
+        {"Other\\halo", "name = Halo\nartist = Beyoncé\ncharter = Someone\n"},
+        {"IB24\\T4\\other",
+         "name = Other\nartist = Thrice\ncharter = Someone\nalbum = The Illusion of Safety\n"}};
+    hydra::store::RecordStore store(":memory:");
+    const std::optional<std::string> error =
+        hydra::app::save_scan_as_library(store, scan_song_folders("lm_sample", folders));
+    REQUIRE_MESSAGE(!error, "saving the scan failed: " << *error);
+
+    ScannedSample s;
+    s.model.set_charts(store.list_chart_library(0, -1));
+    REQUIRE(s.model.rows().size() == folders.size());
+    const std::string burnout_path = row_in(s.model, "burnout").entry.notespath;
+    const std::string yyz_path = row_in(s.model, "yyz").entry.notespath;
+    const std::string chair_path = row_in(s.model, "chair").entry.notespath;
+    s.burnout = row_in(s.model, "burnout").entry.md5;
+    s.yyz = row_in(s.model, "yyz").entry.md5;
+    s.chair = row_in(s.model, "chair").entry.md5;
+
+    store.save(hydra::store::prepare_record(
+        s.burnout, run.profile, hydra::app::analyze_chart_file(burnout_path, run.settings).record));
+    const hydra::HydraRecord chair_record =
+        hydra::app::analyze_chart_file(chair_path, run.settings).record;
+    hydra::test::save_old_build_record(store,
+                                       hydra::store::prepare_record(s.chair, run.profile, chair_record));
+    s.model.set_summaries(store.lookup(s.model.hashes(), run.profile));
+    s.burnout_ready = store.lookup_one(s.burnout, run.profile);
+
+    store.save(hydra::store::prepare_record(
+        s.yyz, run.profile, hydra::app::analyze_chart_file(yyz_path, run.settings).record));
+    s.yyz_ready = store.lookup_one(s.yyz, run.profile);
+    s.with_yyz = store.lookup(s.model.hashes(), run.profile);
+
+    store.save(hydra::store::prepare_record(s.chair, run.profile, chair_record));
+    s.chair_ready = store.lookup_one(s.chair, run.profile);
+
+    REQUIRE(row_in(s.model, "burnout").status == RecordStatus::Ready);
+    REQUIRE(row_in(s.model, "chair").status == RecordStatus::Stale);
+    REQUIRE(s.yyz_ready.status == RecordStatus::Ready);
+    REQUIRE(s.chair_ready.status == RecordStatus::Ready);
+    const std::optional<int64_t> low = s.burnout_ready.record.summary().score;
+    const std::optional<int64_t> high = s.yyz_ready.record.summary().score;
+    REQUIRE(low.has_value());
+    REQUIRE(high.has_value());
+    REQUIRE_MESSAGE(*high > *low, "YYZ's chart must outscore Burnout's");
+    return s;
+}
+
+// Built once: the scan and the three analyses are the slow part.
+const ScannedSample& scanned_sample() {
+    static const ScannedSample lib = build_scanned_sample();
+    return lib;
+}
+
+// A chart file that fails to analyze, as the app keeps it: `text` written as
+// `file_name` under a fresh scratch folder named by `tag`, beside a song.ini,
+// analysed as the batch does (analyze_chart_file), its failure kept through
+// the batch's own step (prepare_failed_chart) and read back from `store`.
+// The live failure's words are kept beside it, from their owners.
+struct FailedChart {
+    ChartLibraryEntry entry;
+    RecordLookup lookup;        // the store's answer for the chart
+    std::string live_block;     // plain_error_block of the live failure
+    std::string live_sentence;  // plain_error of it
+    std::string live_detail;    // plain_error_detail of it
+    std::string live_what;      // its raw text
+};
+
+FailedChart failed_chart(hydra::store::RecordStore& store, const std::string& tag,
+                         const std::string& file_name, const std::string& text) {
+    testtemp::remove_dir(testtemp::temp_dir(tag));
+    const std::string dir = testtemp::temp_dir(tag);
+    audiochart::write_text_file(hydra::join_folder(dir, "song.ini"), "[song]\nname = " + tag + "\n");
+    const std::string path = hydra::join_folder(dir, file_name);
+    audiochart::write_text_file(path, text);
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    FailedChart out;
+    out.entry = corpus::scanned_entry(path, tag);
+    std::optional<hydra::store::PreparedRecord> kept;
+    try {
+        hydra::app::analyze_chart_file(path, run.settings);
+    } catch (const std::exception& e) {
+        out.live_block = hydra::app::plain_error_block(e);
+        out.live_sentence = hydra::app::plain_error(e);
+        out.live_detail = hydra::app::plain_error_detail(e);
+        out.live_what = e.what();
+        kept = hydra::app::prepare_failed_chart(out.entry.md5, run.profile, e);
+    }
+    REQUIRE_MESSAGE(kept.has_value(), "the chart in " << tag << " must fail as a kept failure");
+    store.save(*kept);
+    out.lookup = store.lookup_one(out.entry.md5, run.profile);
+    REQUIRE(out.lookup.status == RecordStatus::CantAnalyze);
+    REQUIRE(out.lookup.failure_kind.has_value());
+    return out;
+}
+
+// A chart with notes only on guitar, so it has no drum notes to analyze.
+std::string guitar_only_chart() {
+    return testchart::chart_text(testchart::section("ExpertSingle", testchart::line(0, "N 0 0")));
 }
 
 }  // namespace
@@ -597,42 +782,75 @@ TEST_CASE("library model: every status has its own chip, and All counts them all
 // the same kind reads: a no-notes chart's sentence quotes its raw text, so
 // there is no details line under it.
 TEST_CASE("library model: a stored failure's hover reads as the live failure does") {
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    // Two written charts whose real analysis fails, kept and read back through
+    // the store into their rows: one with no drum notes, one whose .chart text
+    // has no [section] header. The hover is worded from the row's kind and
+    // text (stored_failure_text), as library_table.cpp words it.
+    hydra::store::RecordStore store(":memory:");
+    const FailedChart no_notes =
+        failed_chart(store, "lm_hover_none", "notes.chart", guitar_only_chart());
+    const FailedChart unreadable =
+        failed_chart(store, "lm_hover_bad", "notes.chart", "this is not a chart\n");
+    LibraryModel m;
+    m.set_charts({no_notes.entry, unreadable.entry});
+    REQUIRE(m.set_summary_for(no_notes.entry.md5, no_notes.lookup) == 1);
+    REQUIRE(m.set_summary_for(unreadable.entry.md5, unreadable.lookup) == 1);
+    // The rows keep the order set_charts was given.
+    const hydra::ui::LibraryRow& none_row = m.rows()[0];
+    const hydra::ui::LibraryRow& bad_row = m.rows()[1];
+    REQUIRE(none_row.entry.md5 == no_notes.entry.md5);
+    REQUIRE(bad_row.entry.md5 == unreadable.entry.md5);
+
+    // A no-notes chart's sentence quotes its raw text, so there is no details
+    // line under it.
+    REQUIRE(none_row.failure_kind == hydra::ErrorKind::NoNotes);
     const std::string hover =
-        hydra::app::stored_failure_text(hydra::ErrorKind::NoNotes, no_notes.what());
-    CHECK(hover == "No Expert Pro Drums notes in this chart.");
-    CHECK(hover == hydra::app::plain_error_block(no_notes));
+        hydra::app::stored_failure_text(*none_row.failure_kind, none_row.failure_text);
+    CHECK(hover == no_notes.live_block);
+    CHECK(no_notes.live_detail.empty());
+    CHECK(hover == no_notes.live_sentence);
 
     // A kind whose sentence does not quote the raw text gets the details line
     // under it.
-    const hydra::KindedError unreadable(hydra::ErrorKind::ChartUnreadable,
-                                        "expected a [section] header");
+    REQUIRE(bad_row.failure_kind.has_value());
     const std::string block =
-        hydra::app::stored_failure_text(hydra::ErrorKind::ChartUnreadable, unreadable.what());
-    CHECK(block == hydra::app::plain_error_block(unreadable));
-    CHECK(block.find(hydra::app::plain_error(unreadable)) == 0);
-    CHECK(block.find("expected a [section] header") != std::string::npos);
+        hydra::app::stored_failure_text(*bad_row.failure_kind, bad_row.failure_text);
+    CHECK(block == unreadable.live_block);
+    CHECK_FALSE(unreadable.live_detail.empty());
+    CHECK(block.find(unreadable.live_sentence) == 0);
+    CHECK(block.find(unreadable.live_what) != std::string::npos);
 }
 
 TEST_CASE("library model: a new failure text or kind changes the row") {
+    // Three written charts whose real analysis fails, each kept and read back
+    // through the store: a .chart and a .mid that are unreadable for their
+    // own reasons, and a chart with no drum notes. Each variant below changes
+    // the first chart's real answer in one field, to another chart's value.
+    hydra::store::RecordStore store(":memory:");
+    const FailedChart bad_chart =
+        failed_chart(store, "lm_fail_chart", "notes.chart", "this is not a chart\n");
+    const FailedChart bad_mid =
+        failed_chart(store, "lm_fail_mid", "notes.mid", "this is not a MIDI file\n");
+    const FailedChart no_notes =
+        failed_chart(store, "lm_fail_none", "notes.chart", guitar_only_chart());
+    REQUIRE(bad_mid.lookup.failure_kind == bad_chart.lookup.failure_kind);
+    REQUIRE(bad_mid.lookup.failure_text != bad_chart.lookup.failure_text);
+    REQUIRE(no_notes.lookup.failure_kind != bad_chart.lookup.failure_kind);
+
     LibraryModel m;
-    m.set_charts({chart("cant", "Cant", "A", "C", "common")});
-    RecordLookup first;
-    first.status = RecordStatus::CantAnalyze;
-    first.failure_kind = hydra::ErrorKind::ChartUnreadable;
-    first.failure_text = "line 3";
-    REQUIRE(m.set_summary_for("cant", first) == 1);
-    CHECK(m.rows()[0].shows_same_as(first));
-    RecordLookup other_text = first;
-    other_text.failure_text = "line 4";
+    m.set_charts({bad_chart.entry});
+    REQUIRE(m.set_summary_for(bad_chart.entry.md5, bad_chart.lookup) == 1);
+    CHECK(m.rows()[0].shows_same_as(bad_chart.lookup));
+    RecordLookup other_text = bad_chart.lookup;
+    other_text.failure_text = bad_mid.lookup.failure_text;
     CHECK_FALSE(m.rows()[0].shows_same_as(other_text));
-    RecordLookup other_kind = first;
-    other_kind.failure_kind = hydra::ErrorKind::ChartTimingRefused;
+    RecordLookup other_kind = bad_chart.lookup;
+    other_kind.failure_kind = no_notes.lookup.failure_kind;
     CHECK_FALSE(m.rows()[0].shows_same_as(other_kind));
 }
 
 TEST_CASE("library model: the search narrows the rows and the chip counts follow it") {
-    LibraryModel m = sample();
+    LibraryModel m = scanned_sample().model;
     m.set_query("\"tier 4\"");
     CHECK(titles(m) == std::vector<std::string>{"Burnout", "Chair", "YYZ"});
     CHECK(m.counts().all == 3);
@@ -651,23 +869,24 @@ TEST_CASE("library model: the search narrows the rows and the chip counts follow
     CHECK(m.counts().all == 1);
     m.set_query("album:thrice");  // Thrice is an artist here, not an album
     CHECK(titles(m).empty());
+    CHECK(m.counts().all == 0);
     m.set_query("dookie");  // a plain word matches an album too
     CHECK(titles(m) == std::vector<std::string>{"Burnout"});
-    m.set_query("stars:7");
+    // stars: reads the saved stars of the one Ready row; Chair's Stale result
+    // is not current, so it has none to match.
+    const std::optional<int> stars = row_in(m, "burnout").summary.stars;
+    REQUIRE(stars.has_value());
+    m.set_query("stars:" + std::to_string(*stars));
     CHECK(titles(m) == std::vector<std::string>{"Burnout"});
-    m.set_query("squeeze<=200");
-    CHECK(titles(m) == std::vector<std::string>{"Burnout"});
-    m.set_query("squeeze<=20");
-    CHECK(titles(m).empty());
-    CHECK(m.counts().all == 0);
-    m.set_query("stars:9");
+    m.set_query("stars:" + std::to_string(hydra::kMaxStars + 1));
     CHECK_FALSE(m.query().errors.empty());
     m.set_query("");
     CHECK(m.order().size() == 6);
 }
 
 TEST_CASE("library model: a status chip narrows the rows, and an emptied chip falls back to All") {
-    LibraryModel m = sample();
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     m.set_chip(StatusChip::NotAnalyzed);
     CHECK(titles(m) == std::vector<std::string>{"Acid Romance", "Halo", "Other", "YYZ"});
     CHECK(m.counts().all == 6);  // counts ignore the chip
@@ -676,16 +895,16 @@ TEST_CASE("library model: a status chip narrows the rows, and an emptied chip fa
     // What the Analyze button runs: the rows on screen, the chip applied (D115).
     CHECK(m.order().size() == 1);
 
-    // Chair is re-analyzed: the Stale group is empty, so the table goes back
-    // to All instead of sitting empty.
-    CHECK(m.set_summary_for("chair", ready(300000, "1 1", 6, 40.0)) == 1);
+    // Chair is analysed again: the Stale group is empty, so the table goes
+    // back to All instead of sitting empty.
+    CHECK(m.set_summary_for(lib.chair, lib.chair_ready) == 1);
     CHECK(m.chip() == StatusChip::All);
     CHECK(m.order().size() == 6);
     CHECK(m.counts().analyzed == 2);
 }
 
 TEST_CASE("library model: the search or a chip narrows the table, and nothing else does") {
-    LibraryModel m = sample();
+    LibraryModel m = scanned_sample().model;
     CHECK_FALSE(m.narrowed());                    // neither
     m.set_query("\"tier 4\"");
     CHECK(m.narrowed());                          // the search alone
@@ -695,14 +914,16 @@ TEST_CASE("library model: the search or a chip narrows the table, and nothing el
     CHECK(m.narrowed());                          // the chip alone
     CHECK(m.order().size() == 4);
     m.set_chip(StatusChip::All);
-    m.set_query("stars:9");                       // a filter that does not parse
+    m.set_query("stars:" + std::to_string(hydra::kMaxStars + 1));  // a filter that does not parse
+    CHECK_FALSE(m.query().errors.empty());
     CHECK_FALSE(m.narrowed());
     CHECK(m.order().size() == 6);
 }
 
 TEST_CASE("library model: Best path sorts by score, with unscored rows last both ways") {
-    LibraryModel m = sample();
-    m.set_summary_for("yyz", ready(500000, "2 2", 7, 12.0));
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
+    m.set_summary_for(lib.yyz, lib.yyz_ready);
     m.set_sort(LibrarySort::BestPath, false);
     CHECK(titles(m) == std::vector<std::string>{"YYZ", "Burnout", "Chair", "Acid Romance",
                                                 "Halo", "Other"});
@@ -715,8 +936,8 @@ TEST_CASE("library model: Best path sorts by score, with unscored rows last both
     CHECK(titles(m).front() == "Halo");  // "beyonce" folds first
 }
 
-// The rows of sample() under Best path, highest first, once YYZ has a new score
-// that its row is still holding back from the sort.
+// The rows of the scanned sample under Best path, highest first, once YYZ has
+// its result and its row is still holding back from the sort.
 namespace {
 
 const std::vector<std::string> kHeldOrder{"Burnout", "Chair", "Acid Romance", "Halo", "Other",
@@ -725,9 +946,10 @@ const std::vector<std::string> kScoreOrder{"YYZ", "Burnout", "Chair", "Acid Roma
                                            "Other"};
 
 LibraryModel sample_with_held_yyz() {
-    LibraryModel m = sample();
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     m.set_sort(LibrarySort::BestPath, false);
-    REQUIRE(m.set_summary_for("yyz", ready(500000, "2 2", 7, 12.0)) == 1);
+    REQUIRE(m.set_summary_for(lib.yyz, lib.yyz_ready) == 1);
     return m;
 }
 
@@ -736,9 +958,14 @@ LibraryModel sample_with_held_yyz() {
 // The user's words: "Yes, hold them still". New scores fill in where each row
 // already sits, and the list re-sorts when it is asked to.
 TEST_CASE("library model: a new score fills in where the row sits, and one call sorts it") {
+    const ScannedSample& lib = scanned_sample();
     LibraryModel m = sample_with_held_yyz();
     CHECK(titles(m) == kHeldOrder);
-    CHECK(m.rows()[m.order().back()].best_label() == "500,000  2 2");
+    // The held row already shows YYZ's saved result.
+    const hydra::ui::LibraryRow& yyz = m.rows()[m.order().back()];
+    CHECK(yyz.entry.md5 == lib.yyz);
+    CHECK(yyz.summary == lib.yyz_ready.record.summary());
+    CHECK(yyz.bestpath == lib.yyz_ready.record.best_path_text());
     CHECK(m.counts().analyzed == 2);
 
     CHECK(m.sort_if_out_of_date());
@@ -747,40 +974,42 @@ TEST_CASE("library model: a new score fills in where the row sits, and one call 
 }
 
 TEST_CASE("library model: a whole re-read of the summaries keeps the rows in place too") {
-    LibraryModel m = sample();
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     m.set_sort(LibrarySort::BestPath, false);
-    const RecordLookup none;
-    REQUIRE(m.set_summaries({ready(378315, "3- 1 2", 7, 163.0), ready(500000, "2 2", 7, 12.0),
-                             stale(), none, none, none}) == 1);
+    REQUIRE(m.set_summaries(lib.with_yyz) == 1);
     CHECK(titles(m) == kHeldOrder);
     CHECK(m.sort_if_out_of_date());
     CHECK(titles(m) == kScoreOrder);
 }
 
 TEST_CASE("library model: answers that change nothing leave the order up to date") {
-    LibraryModel m = sample();
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     m.set_sort(LibrarySort::BestPath, false);
-    REQUIRE(m.set_summary_for("burnout", ready(378315, "3- 1 2", 7, 163.0)) == 0);
+    REQUIRE(m.set_summary_for(lib.burnout, lib.burnout_ready) == 0);
     CHECK_FALSE(m.sort_if_out_of_date());
 }
 
 // Only the Best path sort reads a row's summary, so no other sort has an order
 // a new summary can put out of date.
 TEST_CASE("library model: a new score under another sort leaves nothing to re-sort") {
-    LibraryModel m = sample();
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     const std::vector<std::string> by_title = titles(m);
-    REQUIRE(m.set_summary_for("yyz", ready(500000, "2 2", 7, 12.0)) == 1);
+    REQUIRE(m.set_summary_for(lib.yyz, lib.yyz_ready) == 1);
     CHECK(titles(m) == by_title);
     CHECK_FALSE(m.sort_if_out_of_date());
 }
 
 TEST_CASE("library model: a held row still leaves a chip it no longer belongs to") {
-    LibraryModel m = sample();
+    const ScannedSample& lib = scanned_sample();
+    LibraryModel m = lib.model;
     m.set_sort(LibrarySort::BestPath, false);
     m.set_chip(StatusChip::NotAnalyzed);
     REQUIRE(titles(m) == std::vector<std::string>{"Acid Romance", "Halo", "Other", "YYZ"});
-    REQUIRE(m.set_summary_for("halo", ready(500000, "2 2", 7, 12.0)) == 1);
-    CHECK(titles(m) == std::vector<std::string>{"Acid Romance", "Other", "YYZ"});
+    REQUIRE(m.set_summary_for(lib.yyz, lib.yyz_ready) == 1);
+    CHECK(titles(m) == std::vector<std::string>{"Acid Romance", "Halo", "Other"});
     CHECK(m.counts().not_analyzed == 3);
     CHECK(m.counts().analyzed == 2);
 }
