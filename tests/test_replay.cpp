@@ -437,41 +437,58 @@ TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
 }
 
 
-// ambiguous_window_warnings reads in_sp, so a chord that no window pays
-// anything for does not count as paid just because a squeezed-out window
-// reached it. Here window A has no squeeze-out offset and ends on tick 768; the
-// phrase chord 250 ms later is one note, and only window B (which squeezes it
-// out, so it pays 0) reaches it. A pays nothing for it, so there is nothing for
-// the warning to say.
-TEST_CASE("replay: the squeeze-out warning ignores a chord only a zero-paying window reached") {
-    Song song(192);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (int64_t tick : {0, 768, 864, 1536}) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(tick);
-        ts.chord.add_note(NoteColor::Red);  // one note: a squeeze-out loses all its doubling
-        if (tick == 864) test::mark_phrase_end(ts, tick, song.tick_resolution());
-        song.sequence.push_back(ts);
-    }
-    ReplayWindow a;  // no squeeze-out offset: the warning looks at it
-    a.act_tick = 0;
-    a.deact_tick = 768;
-    ReplayWindow b;  // squeezes the chord at 864 out
-    b.act_tick = 864;
-    b.deact_tick = 1536;
-    b.sqout_tick = 864;
-
-    const ReplayResult r = replay_path(song, {a, b});
-    REQUIRE(r.chords.size() == 4);
-    CHECK(r.chords[2].points.sp == 0);
-    CHECK_FALSE(r.chords[2].in_sp);
-    CHECK(ambiguous_window_warnings(song, r, {a, b}, core::default_rules()).empty());
-
-    // With no squeezed-out window the chord still is not paid (250 ms is past
-    // the leeway), so the answer is the same.
-    const ReplayResult alone = replay_path(song, {a});
-    CHECK(ambiguous_window_warnings(song, alone, {a}, core::default_rules()).empty());
+/// ambiguous_window_warnings reads in_sp, so a chord the replay did not pay SP
+// for is never named, just because the engine could squeeze it out. Every
+// corpus path is replayed with its windows typed plain (the squeeze-outs
+// taken off, so each window has candidates to be asked about). For every
+// window and every chord core::sqout_chords offers, the warning names the
+// chord exactly when the replay's row for it is in Star Power.
+TEST_CASE("replay: the squeeze-out warning names a candidate chord exactly when the replay paid it") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int paid = 0, unpaid = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            std::vector<ReplayWindow> wl = windows_for_path(p);
+            for (ReplayWindow& w : wl) {
+                w.sqout_tick.reset();
+                w.sqout_offset_ms.reset();
+                w.from_record = false;
+            }
+            const ReplayResult r = replay_path(song, wl, cfg.rules);
+            const std::vector<std::string> warned =
+                ambiguous_window_warnings(song, r, wl, cfg.rules);
+            for (const ReplayWindow& w : wl) {
+                const std::string head =
+                    "window " + std::to_string(w.act_tick) + ":" + std::to_string(w.deact_tick) + " ";
+                for (const SongTimestamp* engine :
+                     core::sqout_chords(song, song.timing().timecode(w.deact_tick), w.act_tick,
+                                        w.sqin_ticks, w.from_record)) {
+                    const int64_t tick = engine->timecode.ticks();
+                    const ReplayChord* c = nullptr;
+                    for (const ReplayChord& row : r.chords)
+                        if (row.tick == tick) c = &row;
+                    if (!c) return ": no chord on candidate tick " + std::to_string(tick);
+                    bool named = false;
+                    for (const std::string& warn : warned)
+                        if (warn.rfind(head, 0) == 0 &&
+                            warn.find("tick " + std::to_string(tick) + " ") != std::string::npos)
+                            named = true;
+                    (c->in_sp ? paid : unpaid)++;
+                    if (named != c->in_sp)
+                        return std::string(named ? ": warned about an unpaid chord"
+                                                 : ": no warning about a paid chord") +
+                               " at tick " + std::to_string(tick);
+                }
+            }
+            return "";
+        });
+    MESSAGE(paid << " paid candidates, " << unpaid << " unpaid");
+    CHECK(run.charts > 0);
+    // Both sides must occur, or the walk never asked the question.
+    CHECK(paid > 0);
+    CHECK(unpaid > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power") {
