@@ -191,6 +191,25 @@ void for_each_corpus_path(Visit&& visit) {
     });
 }
 
+// Calls visit(act, row) for every activation of every kept corpus path, with
+// row the one build_activations makes for act under the song's timing.
+template <typename Visit>
+void for_each_corpus_row(Visit&& visit) {
+    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
+                             const Path& path) {
+        CAPTURE(chart);
+        CAPTURE(path.pathstring());
+        const SongTiming& timing = song.timing();
+        const std::vector<Activation> acts = path.all_activations();
+        const ActivationsView view = build_activations(path, rec, &timing);
+        REQUIRE(view.acts.size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            visit(acts[i], view.acts[i]);
+        }
+    });
+}
+
 // Pitch Dark (testdata/input/test_pitch_dark_ratio) under the app's default
 // settings, with its path "3+ 2+ 1". That path's first activation has a
 // clamp and then a squeeze-in among its SP end steps (the Pitch Dark case in
@@ -253,45 +272,34 @@ BackendSqueeze backend_at(double offset_ms) {
 TEST_CASE("build_activations: on every corpus activation the scale line names the sides rate_activation read") {
     int scaled_lines = 0;
     int both_sides = 0;
-    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
-                             const Path& path) {
-        CAPTURE(chart);
-        CAPTURE(path.pathstring());
-        const SongTiming& timing = song.timing();
-        const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView view = build_activations(path, rec, &timing);
-        REQUIRE(view.acts.size() == acts.size());
-        for (size_t i = 0; i < acts.size(); ++i) {
-            CAPTURE(i);
-            const ActivationRowView& av = view.acts[i];
-            CAPTURE(av.scale_warning);
-            const ActivationRating rate = rate_activation(acts[i]);
-            // A fresh record always stores its scales (D4).
-            REQUIRE(rate.scales.has_value());
-            const bool early = rate.post_read.early && is_scaled(rate.scales->post.early);
-            const bool late = rate.post_read.late && is_scaled(rate.scales->post.late);
-            CHECK(names_side(av.scale_warning, "early") == early);
-            CHECK(names_side(av.scale_warning, "late") == late);
-            CHECK(av.scale_warning.empty() == !(early || late));
-            if (early && late) {
-                CHECK(av.scale_warning.find("(early)") < av.scale_warning.find("(late)"));
-                ++both_sides;
-            }
-            if (early || late) ++scaled_lines;
-
-            // A SqIn line needs a SqIn that read a scaled side. rate_activation
-            // pairs sqins_read with scales->sqins entry for entry.
-            REQUIRE(rate.sqins_read.size() == rate.scales->sqins.size());
-            bool sqin_scaled = false;
-            auto read = rate.sqins_read.begin();
-            for (const TransferScale& s : rate.scales->sqins) {
-                sqin_scaled = sqin_scaled || (read->early && is_scaled(s.early)) ||
-                              (read->late && is_scaled(s.late));
-                ++read;
-            }
-            if (!sqin_scaled) CHECK(av.sqin_scale_warning.empty());
-            CHECK(av.scale_warn == rate.scale_governs);
+    for_each_corpus_row([&](const Activation& act, const ActivationRowView& av) {
+        CAPTURE(av.scale_warning);
+        const ActivationRating rate = rate_activation(act);
+        // A fresh record always stores its scales (D4).
+        REQUIRE(rate.scales.has_value());
+        const bool early = rate.post_read.early && is_scaled(rate.scales->post.early);
+        const bool late = rate.post_read.late && is_scaled(rate.scales->post.late);
+        CHECK(names_side(av.scale_warning, "early") == early);
+        CHECK(names_side(av.scale_warning, "late") == late);
+        CHECK(av.scale_warning.empty() == !(early || late));
+        if (early && late) {
+            CHECK(av.scale_warning.find("(early)") < av.scale_warning.find("(late)"));
+            ++both_sides;
         }
+        if (early || late) ++scaled_lines;
+
+        // A SqIn line needs a SqIn that read a scaled side. rate_activation
+        // pairs sqins_read with scales->sqins entry for entry.
+        REQUIRE(rate.sqins_read.size() == rate.scales->sqins.size());
+        bool sqin_scaled = false;
+        auto read = rate.sqins_read.begin();
+        for (const TransferScale& s : rate.scales->sqins) {
+            sqin_scaled = sqin_scaled || (read->early && is_scaled(s.early)) ||
+                          (read->late && is_scaled(s.late));
+            ++read;
+        }
+        if (!sqin_scaled) CHECK(av.sqin_scale_warning.empty());
+        CHECK(av.scale_warn == rate.scale_governs);
     });
     // Pitch Dark's first activation (the next case) has a line with both.
     CHECK(scaled_lines > 0);
@@ -1226,29 +1234,18 @@ void check_sentence(const TextLine& s, const SPSqueeze& sq, const BackendRating*
 TEST_CASE("squeeze sentences: SqIn and SqOut are one sentence each") {
     int sqins = 0;
     int sqouts_naming_a_chord = 0;
-    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
-                             const Path& path) {
-        CAPTURE(chart);
-        CAPTURE(path.pathstring());
-        const SongTiming& timing = song.timing();
-        const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView view = build_activations(path, rec, &timing);
-        REQUIRE(view.acts.size() == acts.size());
-        for (size_t i = 0; i < acts.size(); ++i) {
-            CAPTURE(i);
-            const Activation& act = acts[i];
-            const ActivationRating rate = rate_activation(act);
-            const BackendRating* squeezed_out = nullptr;
-            for (const BackendRating& br : rate.backends)
-                if (br.squeezed_out) squeezed_out = &br;
-            REQUIRE(view.acts[i].squeeze_sentences.size() == act.sqinouts.size());
-            for (size_t k = 0; k < act.sqinouts.size(); ++k) {
-                const std::optional<double> eff =
-                    k < rate.note_effective_ms.size() ? rate.note_effective_ms[k] : std::nullopt;
-                check_sentence(view.acts[i].squeeze_sentences[k], act.sqinouts[k], squeezed_out, eff);
-                if (act.sqinouts[k].kind == SqueezeKind::SqIn) ++sqins;
-                else if (squeezed_out) ++sqouts_naming_a_chord;
-            }
+    for_each_corpus_row([&](const Activation& act, const ActivationRowView& av) {
+        const ActivationRating rate = rate_activation(act);
+        const BackendRating* squeezed_out = nullptr;
+        for (const BackendRating& br : rate.backends)
+            if (br.squeezed_out) squeezed_out = &br;
+        REQUIRE(av.squeeze_sentences.size() == act.sqinouts.size());
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            const std::optional<double> eff =
+                k < rate.note_effective_ms.size() ? rate.note_effective_ms[k] : std::nullopt;
+            check_sentence(av.squeeze_sentences[k], act.sqinouts[k], squeezed_out, eff);
+            if (act.sqinouts[k].kind == SqueezeKind::SqIn) ++sqins;
+            else if (squeezed_out) ++sqouts_naming_a_chord;
         }
     });
     // Pitch Dark has a squeeze in and Beg a squeeze out of a named chord.
@@ -1331,31 +1328,21 @@ TEST_CASE("squeeze sentences at the SP end: the squeeze-in earns, the squeeze-ou
 // scaled on both sides (the scale line case above), so some rows carry one.
 TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
     int rows_with_eff = 0;
-    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
-                             const Path& path) {
-        CAPTURE(chart);
-        CAPTURE(path.pathstring());
-        const SongTiming& timing = song.timing();
-        const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView view = build_activations(path, rec, &timing);
-        REQUIRE(view.acts.size() == acts.size());
-        for (size_t i = 0; i < acts.size(); ++i) {
-            CAPTURE(i);
-            const ActivationRating rate = rate_activation(acts[i]);
-            // No backend limit is passed, so every stored row shows.
-            REQUIRE(view.acts[i].backends.size() == rate.backends.size());
-            for (size_t r = 0; r < rate.backends.size(); ++r) {
-                const BackendRowView& row = view.acts[i].backends[r];
-                CAPTURE(row.rating);
-                const std::optional<double>& eff = rate.backends[r].note.effective_ms;
-                if (eff) {
-                    CHECK(row.rating.find("(eff. " + format_ms(*eff) + ")") != std::string::npos);
-                    CHECK(row.tooltip.find(format_ms(*eff)) != std::string::npos);
-                    ++rows_with_eff;
-                } else {
-                    CHECK(row.rating.find("eff.") == std::string::npos);
-                    CHECK(row.tooltip.empty());
-                }
+    for_each_corpus_row([&](const Activation& act, const ActivationRowView& av) {
+        const ActivationRating rate = rate_activation(act);
+        // No backend limit is passed, so every stored row shows.
+        REQUIRE(av.backends.size() == rate.backends.size());
+        for (size_t r = 0; r < rate.backends.size(); ++r) {
+            const BackendRowView& row = av.backends[r];
+            CAPTURE(row.rating);
+            const std::optional<double>& eff = rate.backends[r].note.effective_ms;
+            if (eff) {
+                CHECK(row.rating.find("(eff. " + format_ms(*eff) + ")") != std::string::npos);
+                CHECK(row.tooltip.find(format_ms(*eff)) != std::string::npos);
+                ++rows_with_eff;
+            } else {
+                CHECK(row.rating.find("eff.") == std::string::npos);
+                CHECK(row.tooltip.empty());
             }
         }
     });
