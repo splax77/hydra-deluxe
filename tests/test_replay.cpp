@@ -492,36 +492,48 @@ TEST_CASE("shown_multiplier doubles the combo multiplier only under Star Power")
 // trip. The stamped tick names that chord; the SqOut offset is read only for a
 // dump from before the tick existed (read_sqout in tools/replay_json.cpp).
 TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only for older dumps") {
-    const json path = json::parse(R"({
-      "index": 0,
-      "activations": [
-        {"act_tick": 480, "deact_tick": 3840, "sqinouts": []},
-        {"act_tick": 7680, "deact_tick": 11520, "sqout_tick": 11532,
-         "sqinouts": [{"kind": "SqIn",  "offset_ms": 12.5},
-                      {"kind": "SqOut", "offset_ms": 31.25}]},
-        {"act_tick": 7680, "deact_tick": 11520,
-         "sqinouts": [{"kind": "SqIn",  "offset_ms": 12.5},
-                      {"kind": "SqOut", "offset_ms": 31.25}]}
-      ]})");
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int by_tick = 0, by_offset = 0, plain = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const std::vector<const Path*> all = corpus::analyzed(chart, cfg).all_paths();
+        const json dumped = paths_json(all, song.timing());
+        REQUIRE(dumped.size() == all.size());
+        for (size_t k = 0; k < all.size(); ++k) {
+            CAPTURE(chart);
+            CAPTURE(all[k]->pathstring());
+            const std::vector<ReplayWindow> want = windows_for_path(*all[k]);
 
-    const std::vector<ReplayWindow> w = windows_from_json(path);
-    REQUIRE(w.size() == 3);
-    CHECK(w[0].act_tick == 480);
-    CHECK(w[0].deact_tick == 3840);
-    CHECK_FALSE(w[0].sqout_offset_ms.has_value());
-    CHECK_FALSE(w[0].sqout_tick.has_value());
+            // The dump as written: a squeezed-out window is named by its tick
+            // and the offset is not read.
+            const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
+            REQUIRE(got.size() == want.size());
+            for (size_t i = 0; i < got.size(); ++i) {
+                CHECK(got[i].sqout_tick == want[i].sqout_tick);
+                CHECK_FALSE(got[i].sqout_offset_ms.has_value());
+                ++(want[i].sqout_tick ? by_tick : plain);
+            }
 
-    CHECK(w[1].act_tick == 7680);
-    CHECK(w[1].deact_tick == 11520);
-    REQUIRE(w[1].sqout_tick.has_value());
-    CHECK(*w[1].sqout_tick == 11532);
-    CHECK_FALSE(w[1].sqout_offset_ms.has_value());
-
-    // An older dump with no tick: the offset is what names the chord. The
-    // SqIn sits in the same list and must not be mistaken for the SqOut.
-    CHECK_FALSE(w[2].sqout_tick.has_value());
-    REQUIRE(w[2].sqout_offset_ms.has_value());
-    CHECK(*w[2].sqout_offset_ms == doctest::Approx(31.25));
+            // An older dump, with no tick: this real dump with the tick taken
+            // out. The offset then names the chord, read from the SqOut in
+            // the same list as any SqIn, never from the SqIn.
+            json old = dumped[k];
+            for (json& act : old["activations"]) act.erase("sqout_tick");
+            const std::vector<ReplayWindow> older = windows_from_json(old);
+            REQUIRE(older.size() == want.size());
+            for (size_t i = 0; i < older.size(); ++i) {
+                CHECK_FALSE(older[i].sqout_tick.has_value());
+                CHECK(older[i].sqout_offset_ms == want[i].sqout_offset_ms);
+                if (want[i].sqout_offset_ms) ++by_offset;
+            }
+        }
+    }
+    MESSAGE(by_tick << " squeezed-out windows by tick, " << by_offset << " by offset, "
+                    << plain << " plain");
+    // A walk that met no squeezed-out window checked nothing here.
+    CHECK(by_tick > 0);
+    CHECK(by_offset == by_tick);
 
     // JSON that is not a path at all says so rather than scoring something.
     CHECK_THROWS(windows_from_json(json::object()));
@@ -530,7 +542,7 @@ TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only
         R"({"activations": [{"act_tick": 480, "deact_tick": -1}]})")));
 }
 
-// A path read from a file has to give the same windows as the same path read
+/ A path read from a file has to give the same windows as the same path read
 // from the record it was dumped from, or `--path` would price something the
 // database does not agree with.
 TEST_CASE("windows read from a path JSON match the ones read from the record") {
