@@ -49,7 +49,9 @@ DROPPED_READ = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine
 # Samples 9742 to 9746 of hydra-data/ch-mcp-runs/2026-11-11/ls-a2-run1/machine-2,
 # copied unchanged. Sample 9744's clock read took a little over one period.
 JUST_OVER_READ = os.path.join(REPO, "testdata", "ch_runs", "ls-a2-run1", "machine-2-samples-9742-9746")
-# Samples 1 to 84 of ls-t3-run-b/machine-1, copied the same way. Sample 1 holds a row
+# Samples 1 to 84 of hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/machine-1, copied the
+# same way, except that processes.csv lacks the rows of the user's own chat, music, browser,
+# store and vendor-tool programs (the tests do not read them). Sample 1 holds a row
 # for every process, so the game's parent (the worker), its parent and theirs are all
 # named; some other processes' parents have no row.
 FAMILY_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-1-84")
