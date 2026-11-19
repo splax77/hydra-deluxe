@@ -18,7 +18,7 @@ After the check: REAL 66, NOT A SPLIT 47, GONE 2. Twelve rows, in five themes, g
 
 K7 (reports/TOOL-AUDIT-T8-K7.md) checked the three refolds (L-F09-12, L-F26-04, and L-F32-10's test_ half) and R7's six verdicts on L-F21-09: all PASS.
 
-After the user's batch 4 answers (log.md): the line budget rows close by the Confirmed line at review-and-hooks.md:11, which the re-check missed; the scrolling rows close by the user's "delete that memory note"; and L-F27-27 becomes a Fix pending rename, since no value changes and no screen shows the values. Six rows in two themes are still questions: `gh issue close --comment` (L-F13-08, L-F16-08, L-F13-17) and the build count (L-F29-01, L-F29-18, L-F32-01).
+After the user's batch 4 answers (log.md): the line budget rows close by the Confirmed line at review-and-hooks.md:11, which the re-check missed; the scrolling rows close by the user's "delete that memory note"; and L-F27-27 becomes a Fix pending rename, since no value changes and no screen shows the values. The `gh issue close --comment` rows (L-F13-08, L-F16-08, L-F13-17) were fixed on the user's "Fix the doc line" (exit 1, merge 6acfbed4). Three rows in one theme are still questions: the build count (L-F29-01, L-F29-18, L-F32-01).
 
 | Row | Report | Verdict | Kinds | Exit | Main session's note |
 |---|---|---|---|---|---|
@@ -51,9 +51,9 @@ After the user's batch 4 answers (log.md): the line budget rows close by the Con
 | L-F10-23 | R4 | REAL | doc-vs-code | exit 3, "The code wins" (log.md, T6) |  |
 | L-F11-04 | R4 | REAL | moved-pointer | exit 3, "Fix without asking" (log.md, T6) |  |
 | L-F13-06 | R3 | REAL | doc-vs-code;doc-vs-doc | doc-vs-code: exit 3, "The code wins" (log.md, T6); doc-vs-doc: exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
-| L-F13-08 | R3 | REAL | doc-vs-code;doc-vs-doc | exit 2, question: whether gh issue close --comment, which posts text with no deny rule, should pass the publish gate | "The code wins" keeps an ungated way to post text; "Merge, I pick" takes the safer reading; the two answers point opposite ways |
+| L-F13-08 | R3 | REAL | doc-vs-code;doc-vs-doc | exit 1, fixed by merge 6acfbed4 on main: issue-tracker.md:14 now posts a closing comment through publish.ps1, then a plain gh issue close, as :47 already did | the user: "Fix the doc line" (session 0e741144) |
 | L-F13-09 | R2 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
-| L-F13-17 | R3 | REAL | doc-vs-code;doc-vs-doc | exit 2, question: same split as L-F13-08 (its label-edit half is not a split) | K2 REOPEN: its close-comment half is the L-F13-08 gap |
+| L-F13-17 | R3 | REAL | doc-vs-code;doc-vs-doc | exit 1, as L-F13-08 (its label-edit half is not a split) | same split as L-F13-08 |
 | L-F13-20 | R2 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F13-23 | R3 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
 | L-F13-24 | R4 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
@@ -66,7 +66,7 @@ After the user's batch 4 answers (log.md): the line budget rows close by the Con
 | L-F14-12 | R3 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F15-01 | R3 | REAL | memory-vs-other | exit 3, "Note is wrong" (log.md, T6) |  |
 | L-F15-15 | R4 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
-| L-F16-08 | R3 | REAL | doc-vs-code;doc-vs-doc | exit 2, question: same split as L-F13-08 | duplicate of L-F13-08 |
+| L-F16-08 | R3 | REAL | doc-vs-code;doc-vs-doc | exit 1, as L-F13-08 | duplicate of L-F13-08 |
 | L-F16-19 | R4 | NOT A SPLIT | - | exit 4, not a problem: the report's sentence |  |
 | L-F17-02 | R6 | REAL | doc-vs-code | exit 3, "The code wins" (log.md, T6) |  |
 | L-F17-16 | R4 | REAL | doc-vs-doc | exit 3, "Merge, I pick" (log.md, T8 batch 3); pick goes in the fix plan |  |
