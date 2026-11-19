@@ -267,13 +267,15 @@ TEST_CASE("build_activations: on every corpus activation the scale line names th
             }
             if (early || late) ++scaled_lines;
 
-            // A SqIn line needs a SqIn that read a scaled side.
+            // A SqIn line needs a SqIn that read a scaled side. rate_activation
+            // pairs sqins_read with scales->sqins entry for entry.
             REQUIRE(rate.sqins_read.size() == rate.scales->sqins.size());
             bool sqin_scaled = false;
-            for (size_t k = 0; k < rate.sqins_read.size(); ++k) {
-                const TransferScale& s = rate.scales->sqins[k];
-                sqin_scaled = sqin_scaled || (rate.sqins_read[k].early && is_scaled(s.early)) ||
-                              (rate.sqins_read[k].late && is_scaled(s.late));
+            auto read = rate.sqins_read.begin();
+            for (const TransferScale& s : rate.scales->sqins) {
+                sqin_scaled = sqin_scaled || (read->early && is_scaled(s.early)) ||
+                              (read->late && is_scaled(s.late));
+                ++read;
             }
             if (!sqin_scaled) CHECK(av.sqin_scale_warning.empty());
             CHECK(av.scale_warn == rate.scale_governs);
@@ -1409,9 +1411,11 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
                     if (at != std::string::npos) from = at + word.size();
                 }
             }
+            // A note whose own name changes with the setting (a snare or a
+            // tom, by note_label).
             bool has_drum_pad = false;
             for (const ChordNote& n : notes)
-                has_drum_pad = has_drum_pad || (n.colortype != NoteColor::Kick && !n.is_cymbal());
+                has_drum_pad = has_drum_pad || n.str(true) != n.str(false);
             CHECK((pro.acts[i].chord != plain.acts[i].chord) == has_drum_pad);
             ++(has_drum_pad ? rows_the_setting_changes : rows_the_setting_keeps);
         }
