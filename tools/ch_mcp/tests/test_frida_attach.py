@@ -10,6 +10,7 @@ from inside the game, copied under testdata/ch_runs (see `recorded`).
 
 from __future__ import annotations
 
+import csv
 import io
 import json
 import os
@@ -678,65 +679,155 @@ class LiveAgentTest(Workspace):
         self.assertEqual(session.detach_calls, 0)
 
     def test_an_agent_error_carries_its_whole_reply(self):
-        agent, _ = self.started(
-            [STATE, {"error": "setup failed: boom", "fault": {"type": "access-violation"}}])
+        # The same real kit run: its error reply carries a fault record
+        # beside the error text (hydra-data/ch-mcp-runs/2026-10-31/
+        # ls-d1a-run2/kit-1.jsonl).
+        agent, session, msgs = self.real_started("2026-10-31-ls-d1a-run2",
+                                                 "kit-1-from-start.jsonl")
+        error = msgs[1]["payload"]
+        self.assertGreater(set(error) - {"id", "error"}, set())
+        session.replies.append([msgs[1]])
         with self.assertRaises(FA.ReadFailed) as caught:
             agent.read(5.0)
-        self.assertEqual(caught.exception.reply,
-                         {"error": "setup failed: boom", "fault": {"type": "access-violation"}})
+        # The caller gets every key the agent sent, all but the read's id.
+        reply = caught.exception.reply
+        self.assertNotIn("id", reply)
+        self.assertEqual({**reply, "id": error["id"]}, error)
 
     def test_a_failure_with_no_reply_carries_none(self):
-        self.assertIsNone(FA.ReadFailed(FA.END_CAP, "no reply").reply)
+        # A read that got nothing in time, then one that ended on a real
+        # script error (hydra-data/ch-mcp-runs/2026-10-31/ls-d1a-run1/
+        # kit-1.jsonl): neither has an agent reply to carry.
+        agent, session, _ = self.real_started("2026-11-06-ls-d2b-run1",
+                                              "state-4.jsonl")
+        thrown = recorded("2026-10-31-ls-d1a-run1", "kit-1.jsonl")
+        session.replies += [None, thrown]
+        for cap_s, reason in ((SHORT_CAP_S, FA.END_CAP),
+                              (5.0, FA.END_SCRIPT_ERROR)):
+            with self.subTest(reason=reason):
+                with self.assertRaises(FA.ReadFailed) as caught:
+                    agent.read(cap_s)
+                self.assertEqual(caught.exception.reason, reason)
+                self.assertIsNone(caught.exception.reply)
 
     def test_a_script_exception_fails_the_read(self):
-        agent, _ = self.started(
-            [STATE, [{"type": "error", "description": "TypeError: boom"}]])
+        # A real kit agent's first reply (hydra-data/ch-mcp-runs/2026-10-31/
+        # ls-d1a-run2/kit-1.jsonl), then the error the same agent's
+        # JavaScript threw inside the game in the run before
+        # (2026-10-31/ls-d1a-run1/kit-1.jsonl).
+        agent, session, _ = self.real_started("2026-10-31-ls-d1a-run2",
+                                              "kit-1-from-start.jsonl")
+        thrown = recorded("2026-10-31-ls-d1a-run1", "kit-1.jsonl")
+        session.replies.append(thrown)
         with self.assertRaises(FA.ReadFailed) as caught:
             agent.read(5.0)
-        self.assertEqual(str(caught.exception), "script error: TypeError: boom")
         self.assertEqual(caught.exception.reason, FA.END_SCRIPT_ERROR)
+        # The line says it was a script error and carries the game's text.
+        text = str(caught.exception)
+        self.assertTrue(text.startswith(FA.END_SCRIPT_ERROR), text)
+        self.assertIn(thrown[0]["description"], text)
+        # A script error ends the read, not the session.
+        self.assertTrue(agent.alive)
+        self.assertEqual(session.detach_calls, 0)
 
     def test_detach_twice_detaches_once_and_reports_the_second(self):
-        agent, session = self.started([STATE])
-        self.assertEqual(agent.detach(), "detached")
-        self.assertEqual(agent.detach(),
-                         "already detached (detached by the caller)")
+        # Started on the state agent's real first reply (hydra-data/
+        # ch-mcp-runs/2026-11-06/ls-d2b-run1/state-4.jsonl).
+        agent, session, _ = self.real_started("2026-11-06-ls-d2b-run1",
+                                              "state-4.jsonl")
+        first = agent.detach()
+        second = agent.detach()
+        self.assertNotEqual(first, second)
+        self.assertNotIn("already", first)
+        # The second detach says nothing was left and names why the first
+        # one happened.
+        self.assertRegex(second, r"^already detached\b")
+        self.assertIn(FA._DETACHED_BY_CALLER, second)
         self.assertEqual(session.detach_calls, 1)
         self.assertFalse(agent.alive)
         with self.assertRaises(FA.ReadFailed) as caught:
             agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "no session for the read: detached by the caller")
+        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
+        text = str(caught.exception)
+        self.assertRegex(text, r"\bthe read\b")
+        self.assertIn(FA._DETACHED_BY_CALLER, text)
+        # The read posted nothing past start's own.
+        self.assertEqual(session.script.posted, [{"type": "read", "id": 1}])
 
     def test_detach_after_the_game_closed_says_it_was_gone(self):
-        agent, session = self.started([STATE])
+        # Started on the state agent's real first reply (hydra-data/
+        # ch-mcp-runs/2026-11-06/ls-d2b-run1/state-4.jsonl). Frida then
+        # reports the drop with its reason for a game that closed,
+        # "process-terminated" (one of Frida's session detach reasons).
+        agent, session, _ = self.real_started("2026-11-06-ls-d2b-run1",
+                                              "state-4.jsonl")
         session.handlers["detached"]("process-terminated", None)
-        self.assertEqual(agent.detach(),
-                         "already gone: session detached: process-terminated")
+        self.assertFalse(agent.alive)
+        dropped = FA._detached_text("process-terminated")
+        self.assertEqual(agent.gone_reason, dropped)
+        line = agent.detach()
+        self.assertRegex(line, r"^already gone\b")
+        self.assertIn(dropped, line)
+        self.assertNotIn(FA._DETACHED_BY_CALLER, line)
+        # The caller's detach still asks Frida once, and the reason stays the
+        # game's.
         self.assertEqual(session.detach_calls, 1)
+        self.assertEqual(agent.gone_reason, dropped)
 
     def test_a_detach_that_raises_is_reported_and_the_log_closes(self):
-        agent, session = self.started([STATE])
+        # Started on the state agent's real first reply (hydra-data/
+        # ch-mcp-runs/2026-11-06/ls-d1b-run1/state-1.jsonl); its second
+        # reply then arrives after the detach.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        # What Frida raises when a session the game dropped is detached.
+        refusal = RuntimeError("session is gone")
 
         def refuse():
             session.detach_calls += 1
-            raise RuntimeError("session is gone")
+            raise refusal
 
         session.detach = refuse
-        self.assertEqual(agent.detach(), "detached")
-        self.assertEqual(self.lines, ["detach reported: session is gone"])
-        session.script.handlers["message"](sent(MENU), None)
-        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+        line = agent.detach()
+        self.assertNotIn("already", line)
+        self.assertFalse(agent.alive)
+        # One line says the detach reported a fault, with Frida's own text.
+        self.assertEqual(len(self.lines), 1)
+        self.assertRegex(self.lines[0], r"^detach reported\b")
+        self.assertIn(str(refusal), self.lines[0])
+        # The log closed anyway: the later reply is not written.
+        session.script.handlers["message"](msgs[1], None)
+        self.assertEqual(self.written(), msgs[:1])
+
+    def real_game_pid(self):
+        """The pid Clone Hero had in a real run, from the machine recorder's
+        process list (hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/
+        machine-1/processes.csv)."""
+        path = os.path.join(CH_RUNS, "ls-t3-run-b", "machine-1", "processes.csv")
+        with open(path, encoding="utf-8", newline="") as fh:
+            pids = {int(row["pid"]) for row in csv.DictReader(fh)
+                    if row["name"] == PROCESS_NAME}
+        self.assertEqual(len(pids), 1, pids)
+        return pids.pop()
 
     def test_a_pid_attaches_to_that_process(self):
-        session = ReplySession([STATE])
+        # Started on the state agent's real first reply (hydra-data/
+        # ch-mcp-runs/2026-11-06/ls-d2b-run1/state-4.jsonl).
+        pid = self.real_game_pid()
+        reply = recorded("2026-11-06-ls-d2b-run1", "state-4.jsonl")
+        session = ReplySession([reply])
         frida = FakeFrida(session)
-        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=1234,
-                             frida_mod=frida, wait=instant_wait,
+        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=pid,
+                             frida_mod=frida, wait=FA._default_wait,
                              out=self.lines.append)
         self.addCleanup(agent.detach)
-        self.assertEqual(agent.start(30.0), STATE)
-        self.assertEqual(frida.attached_to, [1234])
+        state = agent.start(30.0)
+        # The attach goes to that process, not to the game by its name.
+        self.assertEqual(len(frida.attached_to), 1)
+        self.assertNotEqual(frida.attached_to[0], PROCESS_NAME)
+        self.assertEqual(frida.attached_to[0], pid)
+        self.assertTrue(agent.alive)
+        self.assertEqual({**state, "id": 1}, reply[0]["payload"])
 
     def test_no_pid_attaches_by_the_process_name(self):
         frida = FakeFrida(ReplySession([STATE]))
@@ -744,16 +835,31 @@ class LiveAgentTest(Workspace):
         self.assertEqual(frida.attached_to, [PROCESS_NAME])
 
     def test_a_pid_that_is_not_running_names_the_pid(self):
-        frida = FakeFrida(None)
-        agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=1234,
-                             frida_mod=frida, wait=instant_wait,
-                             out=self.lines.append)
-        with self.assertRaises(FA.AttachFailed) as caught:
-            agent.start(30.0)
-        self.assertEqual(str(caught.exception),
-                         "process 1234 is not running; nothing attached")
-        self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
-        self.assertEqual(frida.attached_to, [1234])
+        # The pid the game had in a real run, now long gone, so Frida finds
+        # no such process.
+        pid = self.real_game_pid()
+        failures = {}
+        for target in (pid, None):
+            frida = FakeFrida(None)
+            agent = FA.LiveAgent(self.agent, log_path=self.out_path, pid=target,
+                                 frida_mod=frida, wait=FA._default_wait,
+                                 out=self.lines.append)
+            with self.assertRaises(FA.AttachFailed) as caught:
+                agent.start(30.0)
+            self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
+            self.assertEqual(frida.attached_to,
+                             [PROCESS_NAME if target is None else pid])
+            failures[target] = str(caught.exception)
+        # The line with a pid is the line without one, with the pid named
+        # where the game's name stood.
+        by_name = failures[None]
+        self.assertTrue(by_name.startswith(PROCESS_NAME), by_name)
+        rest = by_name[len(PROCESS_NAME):]
+        by_pid = failures[pid]
+        self.assertTrue(by_pid.endswith(rest), by_pid)
+        self.assertRegex(by_pid[:-len(rest)], rf"\b{pid}$")
+        self.assertNotIn(PROCESS_NAME, by_pid)
+        # Nothing attached, so no log was opened.
         self.assertFalse(os.path.exists(self.out_path))
 
     def blocked_writes(self, agent):

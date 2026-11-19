@@ -1,0 +1,7 @@
+{"type": "send", "payload": {"t": 1793237637855, "songTime": 62.46247508847591, "isSongOver": false, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237638105, "songTime": 62.71399798458879, "isSongOver": false, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237638356, "songTime": 62.96278678165254, "isSongOver": false, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237638606, "songTime": 63.20844557917735, "isSongOver": true, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237638856, "songTime": 63.46296707949659, "isSongOver": true, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237639106, "songTime": 63.55996457989386, "isSongOver": true, "isSongPlaying": true, "isPaused": false, "instances": 1}}
+{"type": "send", "payload": {"t": 1793237639357, "songTime": 63.55996457989386, "isSongOver": true, "isSongPlaying": true, "isPaused": false, "instances": 1}}
