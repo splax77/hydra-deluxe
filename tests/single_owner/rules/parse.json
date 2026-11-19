@@ -298,6 +298,16 @@
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
+          "file": "tests/test_model.cpp",
+          "line_text": "CHECK(ends_with(n, syms));",
+          "why": "checks that an activation's notation ends with its squeeze symbols, not a file format"
+        },
+        {
+          "file": "tests/test_model.cpp",
+          "line_text": "CHECK(ends_with(n.substr(0, n.size() - syms.size()), std::to_string(a.skips())));",
+          "why": "checks that an activation's notation ends with its skip count before the squeeze symbols, not a file format"
+        },
+        {
           "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, \"SP cap 1 bar\"));",
           "why": "checks a report subtitle's tail, not a file format"
