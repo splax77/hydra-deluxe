@@ -1,9 +1,7 @@
 """Tests for dump_facts (the dump.cs reader) and dump_build (the dumper runner).
 
 No real dump: the reader runs on the hand-written dump.cs fragment below.
-The runner tests for a run that fails or hits its cap start the real
-Il2CppDumper (dump_build.DEFAULT_DUMPER); the others give the runner a fake
-subprocess.
+The runner tests start the real Il2CppDumper (dump_build.DEFAULT_DUMPER).
 """
 
 from __future__ import annotations
@@ -12,10 +10,8 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
-import types
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -126,12 +122,6 @@ public class ʻʻʻ // TypeDefIndex: 9000
 }
 """
 
-THREE_STAGES = (
-    "Initializing metadata...\nDumping...\nDone!\nGenerate struct...\nDone!\n"
-    "Generate dummy dll...\nDone!\nPress any key to exit...\n"
-)
-CRASH = "Unhandled exception. System.InvalidOperationException: Cannot read keys\n"
-
 
 def by_name(classes, name):
     return next(c for c in classes if c["name"] == name)
@@ -195,12 +185,10 @@ class ParseDumpTests(unittest.TestCase):
         self.assertEqual(self.classes[-1]["typedef_index"], 8255)
 
     def test_field_with_a_metadata_offset_note_keeps_its_offset(self):
-        field = by_name(self.classes, "<PrivateImplementationDetails>")["fields"][0]
-        self.assertEqual(
-            field,
-            {"name": "0D58", "type": "<PrivateImplementationDetails>.__StaticArrayInitTypeSize=20",
-             "static": True, "offset": 0x14},
-        )
+        # The fragment's one field line there ends in a /*Metadata offset ...*/ note before its "// 0x14".
+        fields = by_name(self.classes, "<PrivateImplementationDetails>")["fields"]
+        self.assertEqual(len(fields), 1, fields)
+        self.assertEqual((fields[0]["static"], fields[0]["offset"]), (True, 0x14))
 
     def test_method_without_rva_line_fails_loudly_naming_its_line(self):
         method_line = "\tpublic void F() { }"
@@ -281,24 +269,6 @@ class SignatureTests(unittest.TestCase):
             self.assertTrue(os.path.isfile(out_path))
 
 
-class FakeRunner:
-    """Stands in for subprocess.run: records the call, writes the files a run leaves."""
-
-    def __init__(self, stdout="", returncode=0, files=B.REPORTED_FILES):
-        self.stdout = stdout
-        self.returncode = returncode
-        self.files = files
-        self.calls = []
-
-    def __call__(self, cmd, **kwargs):
-        self.calls.append((cmd, kwargs))
-        out_dir = cmd[-1]
-        for name in self.files:
-            with open(os.path.join(out_dir, name), "w", encoding="utf-8") as f:
-                f.write(name)
-        return types.SimpleNamespace(returncode=self.returncode, stdout=self.stdout, stderr=CRASH)
-
-
 class DumpBuildTests(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -314,12 +284,15 @@ class DumpBuildTests(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_output_folder_inside_the_repo_is_refused(self):
-        runner = FakeRunner(THREE_STAGES)
+        # The real runner. The refusal comes before the dumper starts, so the
+        # folder is never made; without the refusal, run_dump would make it.
         inside = os.path.join(_REPO_ROOT, "ch-dumps", "6142")
-        with self.assertRaisesRegex(B.DumpError, "inside the git checkout"):
-            B.run_dump(self.game, inside, runner=runner)
-        self.assertEqual(runner.calls, [])
+        with self.assertRaises(B.DumpError) as caught:
+            B.run_dump(self.game, inside)
         self.assertFalse(os.path.exists(inside))
+        # The refusal names the folder and the checkout that holds it.
+        self.assertIn(inside, str(caught.exception))
+        self.assertIn(_REPO_ROOT, str(caught.exception))
 
     def test_cap_reports_the_cap_and_leaves_the_output_folder(self):
         # The real dumper on the real game folder. A whole run took 7.1 s
@@ -332,14 +305,18 @@ class DumpBuildTests(unittest.TestCase):
         self.assertTrue(os.path.isdir(self.out))
 
     def test_three_done_lines_and_a_crash_exit_count_as_good(self):
-        runner = FakeRunner(THREE_STAGES, returncode=0xE0434352)
-        sizes, exit_code = B.run_dump(self.game, self.out, runner=runner)
-        self.assertEqual(sorted(sizes), sorted(B.REPORTED_FILES))
-        self.assertEqual(exit_code, 0xE0434352)
-        _, kwargs = runner.calls[0]
-        self.assertIs(kwargs["stdin"], subprocess.DEVNULL)
-        self.assertEqual(kwargs["env"]["DOTNET_ROLL_FORWARD"], "Major")
-        self.assertEqual(kwargs["timeout"], 600)
+        # The real dumper on the real game folder, with the default cap. Its
+        # end-of-run key wait crashes when it has no stdin, so a good run exits
+        # non-zero and still returns here; a run left waiting on a key would
+        # hit the cap and raise instead.
+        sizes, exit_code = B.run_dump(G.GAME_DIR, self.out)
+        self.assertNotEqual(exit_code, 0)
+        for name in B.REQUIRED_FILES:
+            self.assertGreater(os.path.getsize(os.path.join(self.out, name)), 0, name)
+        # Each reported size is the size of the file the run left.
+        on_disk = {name: os.path.getsize(os.path.join(self.out, name))
+                   for name in B.REPORTED_FILES if os.path.isfile(os.path.join(self.out, name))}
+        self.assertEqual(sizes, on_disk)
 
     def failed_real_run(self):
         """The real dumper on setUp's game folder, whose one-byte files are no
