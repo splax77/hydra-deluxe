@@ -31,7 +31,8 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe.experiments import play_chart, sp_compare  # noqa: E402
-from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
+from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
+    WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_OLDER_NAMES)
 from tools.ch_probe.experiments.score_compare import stop_check  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import _schedule_of  # noqa: E402
 
@@ -435,135 +436,31 @@ class RealRunTest(unittest.TestCase):
         self.assertFalse(_starting(report, "FAIL   activation 1 end chord"))
 
 
-# LS-M2's activation 2 (hydra-data/ch-mcp-runs/2026-11-08/ls-m2-run1): the row
-# before the flip, the flip, the last row with the flag set and the row it
-# clears on, copied from that run's sp_watch-2.csv (data rows 34704, 34705,
-# 36289, 36290).
-LS_M2_ACT2_CSV = """\
-wall_s,clock_s,score,sp_amount_u32,sp_amount_u64,sp_max_u32,sp_max_u64,sp_active_byte,sp_active_u32,sp_mult_byte,sp_mult_u32,sp_end_s,sp_overflow_u32,round_start_s,audio_s,raw_s,corr_s
-1794158598.3915508,156.35033088494401,275945,7200,7200,14400,14400,0,65536,4,4,0.0,1,0.0,156.3490625,156.35033088494401,7.236376404762268e-07
-1794158598.395959,156.35639098487172,276465,7200,7200,14400,14400,1,65537,8,8,163.47694157434088,0,0.0,156.35510416666668,156.35639098487172,7.236376404762268e-07
-1794158605.5179918,163.47676531263005,302915,1,1,14400,14400,1,65537,8,8,163.47694157434088,0,0.0,163.47527083333333,163.47676531263005,7.236376404762268e-07
-1794158605.522446,163.4828281124619,302915,0,0,14400,14400,0,65536,4,4,0.0,0,0.0,163.481375,163.4828281124619,7.236376404762268e-07
-"""
-
-# The path's activation 2 and six of its chords, copied from the score file of
-# the path that run played (hydra-data/ch-mcp-runs/2026-11-08/kick-prep/who):
-# chord 609 is the activation, 655 and 656 sit either side of the game's end,
-# and 680 is Hydra's deactivation chord.
-LS_M2_ACT2 = {"act_tick": 168960, "deact_tick": 180480,
-              "deact_ms": 167027.11399999994}
-LS_M2_CHORDS = [
-    _chord(609, 168960, 156354.29199999996, 4, in_sp=True),
-    _chord(654, 176560, 163401.1258333333, 4, in_sp=True),
-    _chord(655, 176640, 163474.87199999994, 4, in_sp=True),
-    _chord(656, 176880, 163696.11049999995, 4, in_sp=True),
-    _chord(679, 180240, 166806.03849999994, 4, in_sp=True),
-    _chord(680, 180480, 167027.11399999994, 4, in_sp=True),
-]
+# The first three rows of hydra-data/ch-mcp-runs/2026-11-07/ls-r1-run1's
+# sp_watch-1.csv, copied unchanged: a run of another chart, whose meter is
+# not Pitch Dark's.
+_OTHER_CHART_CSV = os.path.join(_RUNS_DIR, "ls-r1-run1", "sp_watch-1-head.csv")
 
 
-class LsM2EndTest(unittest.TestCase):
-    def test_the_end_check_fails_when_the_last_paid_chord_is_not_hydras_deact_chord(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "watch.csv")
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                f.write(LS_M2_ACT2_CSV)
-            rows = sp_compare.load_watch_rows(path)
-        act = sp_compare._Activation(2, 1, 3)
-        # Each chord pressed 2 ms early, the same hand-picked aim as
-        # test_play_chart._schedule_of; the run's own schedule is not kept.
-        reach = {c["index"]: sp_compare.PressReach(c["ms"] - 2.0, c["ms"] - 2.0)
-                 for c in LS_M2_CHORDS}
-        report = sp_compare.Report()
-        sp_compare._check_activation(report, rows, act, LS_M2_ACT2["deact_ms"])
-        sp_compare._check_end_chord(report, rows, act, LS_M2_ACT2, LS_M2_CHORDS, reach)
-        # The flag clears 3,544 ms before Hydra's end (the run's figure); the
-        # game's stored end is 6 ms earlier still.
-        self.assertEqual(report.lines, [
-            "PASS   activation 2 multiplier doubles: 4 -> 8 at 156356.4 ms",
-            "PASS   activation 2 end time ahead of the clock: end 163476.9 ms, "
-            "clock 156356.4 ms",
-            "FAIL   activation 2 flag clears at Hydra's end: Hydra 167027.1 ms, "
-            "flag 0 at 163482.8 ms",
-            "PASS   activation 2 multiplier halves at the end: 8 -> 4 at 163482.8 ms",
-            "FAIL   activation 2 end chord: game end 163476.9 ms, the game's last "
-            "chord inside: chord 655 (tick 176640, 163474.9 ms); Hydra's "
-            "deactivation: chord 680 (tick 180480, 167027.1 ms), difference "
-            "-3550.2 ms",
-        ])
-        self.assertEqual(report.fails, 2)
-
-    def test_a_chord_pressed_exactly_at_the_end_is_inside(self):
-        # Hydra pays a chord at the end (paid_by_sp_walk in
-        # src/core/backend_value.h); the judge's game side does the same.
-        rows = [_row(1.0, 0), _row(1.5, 0, active=1), _row(2.0, 0, active=1),
-                _row(2.1, 0)]
-        rows[2]["sp_end_s"] = 2.0
-        chords = [_chord(1, 100, 1500.0, 4, in_sp=True),
-                  _chord(2, 200, 2000.0, 4, in_sp=True),
-                  _chord(3, 300, 2500.0, 4)]
-        reach = {c["index"]: sp_compare.PressReach(c["ms"], c["ms"]) for c in chords}
-        report = sp_compare.Report()
-        sp_compare._check_end_chord(report, rows, sp_compare._Activation(1, 1, 3),
-                                    {"act_tick": 100, "deact_tick": 200},
-                                    chords, reach)
-        self.assertEqual(report.fails, 0)
-        self.assertIn("the game's last chord inside: chord 2 (tick 200, 2000.0 ms)",
-                      report.lines[0])
-
-    def test_hydras_chord_is_the_last_in_sp_one_in_the_window(self):
-        # A chord on deact_tick that Hydra does not pay in Star Power is not
-        # Hydra's deactivation chord.
-        rows = [_row(1.0, 0), _row(1.5, 0, active=1), _row(1.8, 0, active=1),
-                _row(1.9, 0)]
-        rows[2]["sp_end_s"] = 1.8
-        chords = [_chord(1, 100, 1500.0, 4, in_sp=True),
-                  _chord(2, 150, 1750.0, 4, in_sp=True),
-                  _chord(3, 200, 2000.0, 4)]
-        reach = {c["index"]: sp_compare.PressReach(c["ms"], c["ms"]) for c in chords}
-        report = sp_compare.Report()
-        sp_compare._check_end_chord(report, rows, sp_compare._Activation(1, 1, 3),
-                                    {"act_tick": 100, "deact_tick": 200},
-                                    chords, reach)
-        self.assertEqual(report.fails, 0)
-        self.assertIn("Hydra's deactivation: chord 2 (tick 150, 1750.0 ms)",
-                      report.lines[0])
-
-
-# Freak's resolution. Its sp_max, 14,400, is pinned in the test below: the
-# plan's F5 acceptance (docs/superpowers/plans/2026-11-08-player-audit-fixes.md)
-# and SP-11.
-FREAK_RESOLUTION = 480
-# Hydra's own full bar at that resolution, 32 x 480 (SP-11), which the game's
-# meter is not.
-HYDRA_BAR_AT_FREAK_RESOLUTION = 15360
-
-
-def _sp_max_lines(sp_max, resolution):
+def _sp_max_lines(rows, resolution):
     report = sp_compare.Report()
-    sp_compare._check_sp_max(report, [_row(1.0, 0, sp_max=sp_max)], MAX,
-                             resolution, None)
+    sp_compare._check_sp_max(report, rows, MAX, resolution, None)
     return report.lines
 
 
 class SpMaxTest(unittest.TestCase):
-    def test_sp_max_is_checked_against_30_times_resolution(self):
-        self.assertEqual(sp_compare.game_full_meter(FREAK_RESOLUTION), 14400)
-        self.assertEqual(_sp_max_lines(14400, FREAK_RESOLUTION),
-                         ["PASS sp_max 14400; the game's full meter "
-                          "14400 (resolution 480 x 30)"])
-        self.assertEqual(_sp_max_lines(HYDRA_BAR_AT_FREAK_RESOLUTION, FREAK_RESOLUTION),
-                         ["FAIL sp_max 15360; the game's full meter "
-                          "14400 (resolution 480 x 30)"])
-
-    def test_changing_sp_max_fails(self):
-        # The meter's maximum changes at chord 3's ms.
-        changes_ms = SCORE["chords"][3]["ms"]
-        report = run(build_rows(sp_max=lambda t: FULL_METER if t < changes_ms else 7000),
-                     sp_bar_ticks=14400)
-        self.assertIn("FAIL sp_max 5760, 7000; the game's full meter 5760 "
-                      "(resolution 192 x 30); sp_bar_ticks 14400", report.lines)
+    def test_sp_max_is_checked_against_the_charts_resolution(self):
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        want = sp_compare.game_full_meter(resolution)
+        pitch = sp_compare.load_watch_rows(_RISE_CSV)
+        other = sp_compare.load_watch_rows(_OTHER_CHART_CSV)
+        self.assertNotEqual(other[0][MAX], want)
+        for rows, verdict in ((pitch, "PASS"), (other, "FAIL")):
+            lines = _sp_max_lines(rows, resolution)
+            self.assertEqual(len(lines), 1, lines)
+            self.assertTrue(lines[0].startswith(f"{verdict} sp_max {rows[0][MAX]}; "), lines)
+            self.assertIn(f"the game's full meter {want} (resolution {resolution} x "
+                          f"{sp_compare.GAME_FULL_METER_PER_RESOLUTION})", lines[0])
 
     def test_sp_max_check_refuses_without_a_resolution(self):
         with self.assertRaisesRegex(ValueError, "no chart resolution given"):
@@ -596,41 +493,60 @@ class CodeTest(unittest.TestCase):
             self.assertNotIn(name, text)
 
 
+# Two more pieces of pitch-dark-ratios-run1's sp_watch-1.csv, rows unchanged.
+# sp_watch-1-clamp166.csv holds clock 88.70 s to 88.96 s (data rows 19736 to
+# 19793), where a phrase end fills the meter during Star Power.
+# sp_watch-1-end269.csv holds clock 103.30 s to 104.08 s (data rows 23003 to
+# 23178), around the end of the run's first activation.
+_CLAMP_CSV = os.path.join(_RUNS_DIR, "pitch-dark-ratios-run1", "sp_watch-1-clamp166.csv")
+_END_CSV = os.path.join(_RUNS_DIR, "pitch-dark-ratios-run1", "sp_watch-1-end269.csv")
+
+
 class TolerancesTest(unittest.TestCase):
-    def test_clamped_rise_passes(self):
-        report = run(build_rows(amount0=4000))
-        self.assertIn("PASS phrase rise after chord 2 (tick 384, 2000.0 ms): +320 "
-                      "(5440 -> 5760) at 2010.0 ms, clamped", report.lines)
-        self.assertIn("Full rises: all 1440 ticks; sp_max / 4 = 1440", report.lines)
-        self.assertEqual(report.fails, 0)
+    """The checks' allowances, on real rows of the run that kept to path 0."""
 
-    def test_multiplier_one_chord_late_passes(self):
-        report = run(build_rows(mult_lag=1))
-        self.assertIn("PASS multiplier at each chord: 8 of 8 chords match (one chord "
-                      "of lag allowed)", report.lines)
-        self.assertEqual(report.fails, 0)
+    @classmethod
+    def setUpClass(cls):
+        cls.score, cls.reach = _path_files()
 
+    def test_a_rise_cut_short_by_the_full_meter_passes_as_clamped(self):
+        rows = sp_compare.load_watch_rows(_CLAMP_CSV)
+        chords = _within(self.score, rows)["chords"]
+        ends = [c for c in chords if c["is_sp_phrase_end"]]
+        self.assertEqual(len(ends), 1, "the clamp piece should hold one phrase end")
+        rises = sp_compare.phrase_rises(rows, AMOUNT)
+        self.assertEqual(len(rises), 1, rises)
+        # The game's meter is full on the row the rise shows on, and the rise
+        # is smaller than the quarter of the meter a phrase gives.
+        risen = next(r for r in rows if sp_compare._ms(r) == rises[0].ms)
+        self.assertEqual(risen[AMOUNT], risen[MAX])
+        self.assertLess(rises[0].size, risen[MAX] / sp_compare.PHRASES_PER_FULL_METER)
+        report = sp_compare.Report()
+        sp_compare._check_phrase_rises(report, rows, chords, AMOUNT, MAX, self.reach)
+        self.assertEqual(report.fails, 0, report.text())
+        line = _starting(report, f"PASS phrase rise after {sp_compare._chord_label(ends[0])}: ")
+        self.assertEqual(len(line), 1, report.text())
+        self.assertIn(f"+{rises[0].size} ({rises[0].before} -> {rises[0].after})", line[0])
+        self.assertTrue(line[0].endswith(", clamped, during Star Power"), line[0])
 
-def _mult_rows(points):
-    """Hand-written watcher rows from (clock_s, score, sp_mult_u32) triples;
-    only the fields the multiplier check reads vary."""
-    rows = []
-    for clock_s, score, mult in points:
-        row = _row(clock_s, 0)
-        row.update(score=score, sp_mult_byte=mult, sp_mult_u32=mult)
-        rows.append(row)
-    return rows
-
-
-def _last_chord_check(last_in_sp, points):
-    """_check_multipliers over three chords whose last one (2500 ms) is in
-    Star Power or not, each pressed at its own ms; the report's lines."""
-    chords = [_chord(0, 0, 1000.0, 4), _chord(1, 480, 2000.0, 4, in_sp=True),
-              _chord(2, 720, 2500.0, 4, in_sp=last_in_sp)]
-    reach = {c["index"]: sp_compare.PressReach(c["ms"], c["ms"]) for c in chords}
-    report = sp_compare.Report()
-    sp_compare._check_multipliers(report, _mult_rows(points), chords, None, reach)
-    return report.lines
+    def test_a_multiplier_read_that_shows_the_next_chords_value_passes(self):
+        # The flag clears between Hydra's last chord in Star Power and the
+        # next chord, so the row read for that last chord (the last one
+        # before the next chord's ms) already shows the next chord's value.
+        rows = sp_compare.load_watch_rows(_END_CSV)
+        chords = _within(self.score, rows)["chords"]
+        last_sp = max(i for i, c in enumerate(chords) if c["in_sp"])
+        self.assertLess(last_sp + 1, len(chords), "the piece should reach the next chord")
+        chord, after = chords[last_sp], chords[last_sp + 1]
+        read = [r for r in rows if sp_compare._ms(r) < after["ms"]][-1]
+        self.assertNotIn(read["sp_mult_u32"], sp_compare._expected_multipliers(chord))
+        self.assertIn(read["sp_mult_u32"], sp_compare._expected_multipliers(after))
+        report = sp_compare.Report()
+        sp_compare._check_multipliers(report, rows, chords, None, self.reach)
+        self.assertEqual(report.fails, 0, report.text())
+        self.assertEqual(report.lines[0], f"PASS multiplier at each chord: {len(chords)} of "
+                                          f"{len(chords)} chords match (one chord of lag "
+                                          f"allowed)")
 
 
 class LastChordMultiplierTest(unittest.TestCase):
@@ -638,70 +554,76 @@ class LastChordMultiplierTest(unittest.TestCase):
     reads it on the row its points land on, not on the watcher's final row."""
 
     def test_last_chord_paid_in_star_power_before_it_ends_passes(self):
-        # Star Power doubles 4 to 8 at 1.8 s; the last chord's points land at
-        # 2.505 s at 8x; Star Power ends at 3.0 s and the watch runs on to
-        # 3.5 s, so the final row shows 4.
-        lines = _last_chord_check(True, [
-            (0.9, 0, 4), (1.005, 100, 4), (1.8, 100, 8), (2.005, 300, 8),
-            (2.505, 500, 8), (3.0, 500, 4), (3.5, 500, 4)])
-        self.assertEqual(lines, ["PASS multiplier at each chord: 3 of 3 chords "
-                                 "match (one chord of lag allowed)"])
-
-    def test_last_chord_out_of_star_power_passes(self):
-        # Star Power ends at 2.2 s, before the last chord; its points land at
-        # 2.505 s at 4x, and the rows after the song show 1.
-        lines = _last_chord_check(False, [
-            (0.9, 0, 4), (1.005, 100, 4), (1.8, 100, 8), (2.005, 300, 8),
-            (2.2, 300, 4), (2.505, 400, 4), (3.0, 400, 1), (3.5, 400, 1)])
-        self.assertEqual(lines, ["PASS multiplier at each chord: 3 of 3 chords "
-                                 "match (one chord of lag allowed)"])
-
-    def test_last_chord_with_no_score_rise_is_read_on_the_final_row(self):
-        # The score never rises after 2500 ms, so the check falls back to the
-        # row before the final one, which shows 4 after Star Power ended.
-        lines = _last_chord_check(True, [
-            (0.9, 0, 4), (1.005, 100, 4), (1.8, 100, 8), (2.005, 300, 8),
-            (2.505, 300, 8), (3.0, 300, 4), (3.5, 300, 4)])
-        self.assertEqual(lines, ["FAIL multiplier at each chord: first mismatch at "
-                                 "chord 2 (tick 720, 2500.0 ms): game 4, expected 8 "
-                                 "(multiplier 4, in Star Power); 2 of 3 chords match"])
+        # The act3 piece runs past the run's last Star Power, which ends after
+        # the song's last chord, so its final row shows the halved multiplier.
+        score, reach = _path_files()
+        rows = sp_compare.load_watch_rows(_ACT3_CSV)
+        chords = _within(score, rows)["chords"]
+        last = chords[-1]
+        self.assertEqual(last["index"], score["chords"][-1]["index"])
+        self.assertTrue(last["in_sp"])
+        for row in (rows[-2], rows[-1]):
+            self.assertNotIn(row["sp_mult_u32"], sp_compare._expected_multipliers(last))
+        report = sp_compare.Report()
+        sp_compare._check_multipliers(report, rows, chords, None, reach)
+        self.assertEqual(report.fails, 0, report.text())
+        self.assertTrue(report.lines[0].startswith("PASS multiplier at each chord: "),
+                        report.lines[0])
 
 
 class FilesTest(unittest.TestCase):
+    # The first three rows of hydra-data/ch-mcp-runs/2026-11-06/ls-d2b-run1's
+    # sp_watch-1.csv, copied unchanged. The watcher that wrote it logged no
+    # clock columns and called round_start_s by an older name.
+    _OLD_LOG = os.path.join(_RUNS_DIR, "ls-d2b-run1", "sp_watch-1-head.csv")
+
+    @staticmethod
+    def _header_and_cells(path):
+        with open(path, newline="", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader)
+            return header, list(reader)
+
     def test_a_log_without_the_clock_columns_loads_with_them_nan(self):
-        old = [c for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "old.csv")
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                w = csv.writer(f)
-                w.writerow(old)
-                w.writerow([7 for _ in old])
-            rows = sp_compare.load_watch_rows(path)
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["score"], 7)
-        self.assertTrue(all(math.isnan(rows[0][c])
-                            for c in ("audio_s", "raw_s", "corr_s")))
+        header, cells = self._header_and_cells(self._OLD_LOG)
+        self.assertFalse(set(WATCH_CLOCK_COLUMNS) & set(header))
+        rows = sp_compare.load_watch_rows(self._OLD_LOG)
+        self.assertEqual(len(rows), len(cells))
+        for row in rows:
+            self.assertEqual(set(row), set(WATCH_COLUMNS))
+            self.assertTrue(all(math.isnan(row[c]) for c in WATCH_CLOCK_COLUMNS), row)
+            self.assertIsInstance(row["score"], int)
+            self.assertIsInstance(row["clock_s"], float)
+        # The loaded rows feed the checks: their clock reads as ms, in order.
+        clocks = [sp_compare._ms(r) for r in rows]
+        self.assertEqual(clocks, sorted(clocks))
+        self.assertFalse(any(math.isnan(t) for t in clocks))
 
     def test_a_saved_log_with_the_older_hit_time_s_header_loads(self):
-        old = ["hit_time_s" if c == "round_start_s" else c
-               for c in WATCH_COLUMNS if c not in ("audio_s", "raw_s", "corr_s")]
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "saved.csv")
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                w = csv.writer(f)
-                w.writerow(old)
-                w.writerow(range(len(old)))
-            rows = sp_compare.load_watch_rows(path)
-        self.assertEqual(rows[0]["round_start_s"], old.index("hit_time_s"))
-        self.assertNotIn("hit_time_s", rows[0])
+        header, cells = self._header_and_cells(self._OLD_LOG)
+        renamed = {old: new for old, new in WATCH_OLDER_NAMES.items() if old in header}
+        self.assertTrue(renamed, "the log should use an older column name")
+        rows = sp_compare.load_watch_rows(self._OLD_LOG)
+        for old, new in renamed.items():
+            self.assertNotIn(new, header)
+            for row, line in zip(rows, cells):
+                self.assertNotIn(old, row)
+                self.assertEqual(row[new], float(line[header.index(old)]))
 
     def test_a_log_lacking_another_column_is_still_refused(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "bad.csv")
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                csv.writer(f).writerow(("wall_s", "clock_s"))
-            with self.assertRaises(ValueError):
-                sp_compare.load_watch_rows(path)
+        # A machine recorder's samples.csv from ls-p3-run1 (copied from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1/machine-1): it has the
+        # watcher's wall_s and clock_s but not its Star Power columns.
+        path = os.path.join(_RUNS_DIR, "ls-p3-run1", "machine-1", "samples.csv")
+        header, _ = self._header_and_cells(path)
+        self.assertIn("clock_s", header)
+        self.assertNotIn(AMOUNT, header)
+        with self.assertRaises(ValueError) as caught:
+            sp_compare.load_watch_rows(path)
+        message = str(caught.exception)
+        self.assertIn(path, message)
+        self.assertIn(repr(AMOUNT), message)
+        self.assertNotIn(repr("clock_s"), message)
 
     def _write(self, folder, rows):
         csv_path = os.path.join(folder, "watch.csv")
