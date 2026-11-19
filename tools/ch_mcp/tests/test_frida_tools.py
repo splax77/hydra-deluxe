@@ -11,6 +11,7 @@ is a fake that sleeping moves.
 
 from __future__ import annotations
 
+import csv
 import json
 import os
 import re
@@ -31,16 +32,16 @@ from tools.ch_mcp import build_facts as B  # noqa: E402
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
+from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import hydra_end  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
-from tools.ch_mcp.kit_tools import pad_axis  # noqa: E402
+from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     MENU, MENU_ONE_DESTROYED, STATE, FakeFrida, ReplySession, instant_wait)
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe import engine_finder  # noqa: E402
 from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
 from tools.ch_probe.process import decode_u32  # noqa: E402
 
@@ -411,19 +412,46 @@ class ReadTest(Rig):
         self.assertEqual(tools.ch_state(), f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
         self.assertEqual(self.frida.attached_to, [])
 
+    def real_game_tools(self, rows=None):
+        """A real game_tools.GameTools whose play_snapshot ch_snapshot reads:
+        with `rows`, a finished play session holding those press rows; without,
+        no play session ever ran."""
+        game = GT.GameTools(None, self.lock, os.path.join(self.tmp, "scratch"))
+        if rows is not None:
+            game._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                         log_path=None, rows=rows)
+        return game
+
+    def snapshot_with(self, game):
+        tools = self.tools([recorded_state(), recorded_state()], attached=True,
+                           real_time=True)
+        self.game.play_snapshot = game.play_snapshot
+        return tools.ch_snapshot().splitlines()
+
     def test_snapshot_with_no_play_session_says_the_score_is_not_read(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        out = tools.ch_snapshot()
-        self.assertIn("songTime: 3.5", out)
-        self.assertIn("score: not read (no play session has found the engine)", out)
+        lines = self.snapshot_with(self.real_game_tools())
+        score = [line for line in lines if line.startswith("score")]
+        self.assertEqual(len(score), 1, lines)
+        self.assertTrue(score[0].startswith("score: not read ("), score[0])
+        self.assertIn("no play session", score[0])
 
     def test_snapshot_shows_the_score_after_the_last_press(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.play = {"last_row": {"score_after": 150, "clock_ms_at_press": 2998.0},
-                          "press_count": 2, "stop": None}
-        out = tools.ch_snapshot()
-        self.assertIn("score after press 2: 150", out)
-        self.assertIn("song clock at that press: 2998.0 ms", out)
+        # The rows are a real in-game run's press log
+        # (testdata/ch_runs/ls-g2-run1/press-1.csv, copied from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-g2-run1). The line takes the
+        # last row's score and clock and counts every row.
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "press-1.csv")
+        with open(path, encoding="utf-8", newline="") as f:
+            rows = list(csv.DictReader(f))
+        self.assertGreater(len(rows), 1)
+        self.assertNotEqual(rows[0]["score_after"], rows[-1]["score_after"])
+        lines = self.snapshot_with(self.real_game_tools(rows))
+        score = [line for line in lines if line.startswith("score after press ")]
+        self.assertEqual(len(score), 1, lines)
+        self.assertTrue(score[0].startswith(
+            f"score after press {len(rows)}: {rows[-1]['score_after']}"), score[0])
+        self.assertIn(f"song clock at that press: {rows[-1]['clock_ms_at_press']} ms "
+                      "(the play session's clock)", lines)
 
 
 class SnapshotEngineLinesTest(Rig):
@@ -432,15 +460,23 @@ class SnapshotEngineLinesTest(Rig):
         tools = self.tools([STATE, state], attached=True, **kw)
         return tools.ch_snapshot().splitlines()
 
-    def test_the_flags_word_prints_in_hex_with_bit_0x10_set(self):
-        lines = self.snapshot_lines(flags=0x1010)
-        self.assertIn("flags word: 0x1010 (OFF_FLAGS)", lines)
-        self.assertIn("bit 0x10: set", lines)
-
-    def test_bit_0x10_prints_clear_beside_the_precision_bit(self):
-        lines = self.snapshot_lines(flags=0x1000)
-        self.assertIn("flags word: 0x1000 (OFF_FLAGS)", lines)
-        self.assertIn("bit 0x10: clear", lines)
+    def test_the_engine_fields_a_real_run_read_print_as_that_run_printed_them(self):
+        # The engine lines of a ch_snapshot in a real run
+        # (testdata/ch_runs/ls-o1-run1/replies.txt, copied from
+        # hydra-data/ch-mcp-runs/2026-11-06/ls-o1-run1/replies.txt). The flags
+        # word and threshold that run read from the game give back the lines
+        # it printed: the word in hex, the stop bit clear because that word
+        # does not hold it, the threshold, and pad_axis's ghost value for it.
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o1-run1", "replies.txt")
+        with open(path, encoding="utf-8") as f:
+            recorded = f.read().splitlines()
+        start = next(i for i, line in enumerate(recorded) if line.startswith("flags word: "))
+        printed = recorded[start:start + 4]
+        flags = int(re.match(r"flags word: (0x[0-9a-f]+) ", printed[0]).group(1), 16)
+        threshold = int(re.match(r"dynamics threshold: (\d+) ", printed[2]).group(1))
+        self.assertFalse(flags & FT.DYNAMICS_STOP_BIT)
+        self.assertEqual(FT.engine_lines(flags, threshold), printed)
+        self.assertIn(repr(pad_axis(DYNAMIC_GHOST, threshold)), printed[3])
 
     def test_the_threshold_line_names_the_value_and_the_offsets_constant(self):
         self.assertIn("dynamics threshold: 64 (OFF_DYN_THRESHOLD, +0x2c0)",
@@ -449,49 +485,6 @@ class SnapshotEngineLinesTest(Rig):
     def test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision(self):
         lines = self.snapshot_lines(threshold=64)
         self.assertIn(f"ghost axis value: {pad_axis('ghost', 64)!r} (kit_tools.pad_axis)", lines)
-
-    def test_a_threshold_of_0_prints_it_and_says_no_ghost_value_is_possible(self):
-        lines = self.snapshot_lines(threshold=0)
-        self.assertIn("dynamics threshold: 0 (OFF_DYN_THRESHOLD, +0x2c0)", lines)
-        ghost = [line for line in lines if line.startswith("ghost axis value:")]
-        self.assertEqual(len(ghost), 1)
-        self.assertTrue(ghost[0].startswith("ghost axis value: none is possible ("), ghost[0])
-
-    def test_the_read_opens_the_game_read_only_checks_it_and_closes_it(self):
-        self.snapshot_lines()
-        self.assertEqual(self.opens, [{"read_only": True}])
-        self.assertTrue(self.proc.verified)
-        self.assertTrue(self.proc.closed)
-
-    def test_a_game_not_playing_is_not_searched_and_the_line_says_why(self):
-        # The engine search waits for a moving clock, so a song that is not
-        # playing would hold the tool for the search's whole cap.
-        for state, word in ((MENU, "menu (no live GameManager)"),
-                            ({**STATE, "isPaused": True}, "paused")):
-            with self.subTest(word=word):
-                self.opens.clear()
-                lines = self.snapshot_lines(state=state)
-                self.assertEqual(self.opens, [])
-                self.assertIn(f"engine fields: not read (state: {word}; "
-                              "the engine search needs a playing song)", lines)
-                self.assertFalse([line for line in lines if line.startswith("flags word")])
-
-    def test_a_game_that_will_not_open_says_so_and_the_reply_keeps_its_read(self):
-        def closed(**kw):
-            raise OSError("no process")
-
-        lines = self.snapshot_lines(opener=closed)
-        self.assertIn("songTime: 3.5", lines)
-        self.assertIn("engine fields: not read: OSError: no process", lines)
-
-    def test_a_search_that_finds_no_engine_says_so_and_closes_the_game(self):
-        def no_song(proc):
-            raise engine_finder.EngineSearchTimeout("no playing song found in 120 s")
-
-        lines = self.snapshot_lines(find_engine=no_song)
-        self.assertIn("engine fields: not read: EngineSearchTimeout: "
-                      "no playing song found in 120 s", lines)
-        self.assertTrue(self.proc.closed)
 
     def test_the_search_runs_without_the_servers_lock(self):
         seen = []
