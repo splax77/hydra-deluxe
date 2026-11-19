@@ -796,7 +796,7 @@ class SpToolsOnARecordedRunTest(unittest.TestCase):
     def test_since_ms_does_not_narrow_the_gap_line(self):
         # Each poll sleeps twice GAP_MS on the real clock, so every recorded
         # read the watch writes comes after a gap over GAP_MS.
-        poll_s = 2 * sp_tools.GAP_MS / 1000
+        poll_s = C.ms_to_s(2 * sp_tools.GAP_MS)
         tools = self.tools(sleep=lambda _s: time.sleep(poll_s))
         self.watched(tools)
         status = tools.ch_sp_watch_status()
@@ -1004,28 +1004,22 @@ class GapLineOnARecordedRunTest(unittest.TestCase):
             f"gaps over {sp_tools.GAP_MS:g} ms between samples: 0 "), unknown)
         self.assertIn("song length not known", unknown)
 
-    def inside_gaps_ms(self):
-        """{row index: wall gap before it} for each gap over GAP_MS whose two
-        rows both lie at or before the song end."""
-        rows, end = self.rows, self.end_ms
-        return {i: wall_gap_ms(rows, i) for i in range(1, len(rows))
-                if wall_gap_ms(rows, i) > sp_tools.GAP_MS
-                and C.s_to_ms(max(rows[i - 1]["clock_s"], rows[i]["clock_s"])) <= end}
+    def inside_gaps(self):
+        """sp_compare.gap_summary, the owner of the gap count, over the
+        recording up to its song end."""
+        return sp_compare.gap_summary(self.rows, sp_tools.GAP_MS, self.end_ms)
 
     def test_the_gap_line_counts_the_gaps_and_names_the_clocks_around_them(self):
-        gaps = self.inside_gaps_ms()
-        self.assertGreater(len(gaps), 1, "the recording should hold gaps inside the song")
-        first, last = min(gaps), max(gaps)
-        longest = max(gaps.values())
+        gaps = self.inside_gaps()
+        self.assertGreater(gaps.count, 1, "the recording should hold gaps inside the song")
         self.assertEqual(
             sp_tools._gap_line(self.rows, self.end_ms),
-            f"gaps over {sp_tools.GAP_MS:g} ms between samples: {len(gaps)}, "
-            f"longest {round(longest, 1):g} ms, between "
-            f"{sp_compare.format_ms(C.s_to_ms(self.rows[first - 1]['clock_s']))} and "
-            f"{sp_compare.format_ms(C.s_to_ms(self.rows[last]['clock_s']))}")
+            f"gaps over {sp_tools.GAP_MS:g} ms between samples: {gaps.count}, "
+            f"longest {round(gaps.longest_ms, 1):g} ms, between "
+            f"{sp_compare.format_ms(gaps.from_ms)} and {sp_compare.format_ms(gaps.to_ms)}")
 
     def test_the_longest_gap_keeps_its_tenth_of_a_ms(self):
-        longest = max(self.inside_gaps_ms().values())
+        longest = self.inside_gaps().longest_ms
         # The recording's longest gap inside the song is not a whole ms at a
         # tenth's rounding, so a line rounded to the ms would differ.
         self.assertNotEqual(round(longest, 1), round(longest))
