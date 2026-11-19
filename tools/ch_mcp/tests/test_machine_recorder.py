@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import csv
 import ctypes
+import dataclasses
 import os
 import queue
 import struct
@@ -14,6 +15,7 @@ import sys
 import tempfile
 import threading
 import time
+import typing
 import unittest
 import unittest.mock
 
@@ -205,11 +207,20 @@ class CapturedTable(unittest.TestCase):
         # 0, so its dict, keyed by thread id, keeps 33.
         self.assertEqual(len(idle.threads), 33)
 
-    def test_the_parser_layout_is_windows_layout(self):
-        self.assertEqual(M._PROCESS_FIELDS.format, layout_of(PROCESS_LAYOUT).format)
-        self.assertEqual(M._THREAD_FIELDS.format, layout_of(THREAD_LAYOUT).format)
-        self.assertEqual((M.PROCESS_ENTRY_SIZE, M.THREAD_ENTRY_SIZE, M.THREAD_STATE),
-                         (PROCESS_SIZE, THREAD_SIZE, 0x44))
+    def test_a_live_table_holds_this_process_as_windows_reports_it(self):
+        # A table Windows writes now, read by the recorder's own reader. The pid,
+        # parent pid, image name and thread id come from the OS, so each of the
+        # parser's offsets and entry sizes is checked against what Windows says.
+        buffer, base = M.read_table(M.TableBuffer())
+        table = M.parse_table(buffer, base, thread_pids=[os.getpid()])
+        me = table.processes[os.getpid()]
+        self.assertEqual(me.parent_pid, os.getppid())
+        self.assertEqual(me.name.lower(), os.path.basename(sys.executable).lower())
+        tid = threading.get_native_id()
+        self.assertIn(tid, me.threads)
+        # This thread made the call that read the table, so it was on a processor.
+        self.assertEqual(M.reads_as(me.threads[tid].state), M.RUNNING)
+        self.assertGreater(me.cpu_ticks, 0)
 
     def test_an_offset_moved_by_4_reads_a_wrong_table(self):
         # The parser reads the entries through _PROCESS_FIELDS and _THREAD_FIELDS,
@@ -256,10 +267,13 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual(self.parse().ready_threads, 0)
 
     def test_each_ready_state_of_a_real_process_counts_beside_the_idle_process(self):
-        for state in (1, 3, 7):
+        # Every System thread in the sample waits, so one thread set to a state
+        # adds one to the run queue exactly when that state reads as ready.
+        self.assertTrue(M.READY_STATES)
+        for state in range(max(M.STATE_READS_AS) + 2):
             with self.subTest(state=state):
                 table = self.parse(with_system_states(self.sample, (state,)))
-                self.assertEqual(table.ready_threads, 1)
+                self.assertEqual(table.ready_threads, int(M.reads_as(state) == M.READY))
 
     def test_no_test_builds_bytes_from_the_parser_offsets(self):
         with open(os.path.abspath(__file__), encoding="utf-8") as file:
@@ -301,10 +315,18 @@ class FakeTable(unittest.TestCase):
 
 
 class ReadsAs(unittest.TestCase):
-    def test_each_state_number(self):
-        words = {state: M.reads_as(state) for state in range(10)}
-        self.assertEqual(words, {0: "other", 1: "ready", 2: "running", 3: "ready", 4: "other",
-                                 5: "waiting", 6: "other", 7: "ready", 8: "other", 9: "other"})
+    def test_each_state_number_reads_as_its_word_and_any_other_reads_as_other(self):
+        for state, word in M.STATE_READS_AS.items():
+            with self.subTest(state=state):
+                self.assertEqual(M.reads_as(state), word)
+        self.assertEqual(M.reads_as(max(M.STATE_READS_AS) + 1), M.OTHER)
+
+    def test_the_captured_system_threads_read_as_waiting(self):
+        # No System thread in the captured table is in the run queue (its ready
+        # count is 0), and every one of them reads as waiting.
+        system = M.parse_table(read_sample(), sample_base(read_sample())).processes[4]
+        self.assertEqual({M.reads_as(thread.state) for thread in system.threads.values()},
+                         {M.WAITING})
 
 
 class Deltas(unittest.TestCase):
@@ -320,22 +342,44 @@ class Deltas(unittest.TestCase):
                          (100, 200, 1))
         self.assertEqual(gains[7].threads, {71: M.ThreadGain(4, 1.0), 72: M.ThreadGain(0, 0.0)})
 
+    # The three tests below read the table Windows wrote (recorder_sample.bin).
+
+    def captured(self, **options):
+        sample = read_sample()
+        return M.parse_table(sample, sample_base(sample), **options).processes
+
+    def assert_nothing_gained(self, gain):
+        self.assertEqual(gain[:4], (0, 0, 0, 0))
+        self.assertEqual({thread.switches for thread in gain.threads.values()} - {0}, set())
+        self.assertEqual({thread.cpu_ms for thread in gain.threads.values()} - {0}, set())
+
     def test_a_process_first_seen_gains_nothing(self):
-        current = M.parse_table(fake_table(TWO_PROCESSES)).processes
+        current = self.captured()
         gains = M.deltas({}, current)
-        self.assertEqual(gains[7][:4], (0, 0, 0, 0))
-        self.assertEqual(gains[7].threads[71], M.ThreadGain(0, 0.0))
+        self.assertEqual(gains.keys(), current.keys())
+        for pid, gain in gains.items():
+            with self.subTest(pid=pid):
+                # Both captured processes have run, so a gain from zero would show.
+                self.assertGreater(current[pid].cpu_ticks, 0)
+                self.assertEqual(gain.threads.keys(), current[pid].threads.keys())
+                self.assert_nothing_gained(gain)
 
     def test_a_thread_first_seen_gains_nothing(self):
-        before = M.parse_table(fake_table(TWO_PROCESSES), thread_pids=()).processes
-        after = M.parse_table(fake_table(TWO_PROCESSES)).processes
-        self.assertEqual(M.deltas(before, after)[7].threads[72], M.ThreadGain(0, 0.0))
+        before = self.captured(thread_pids=())
+        after = self.captured()
+        system = M.deltas(before, after)[4]
+        self.assertEqual(len(system.threads), len(after[4].threads))
+        self.assert_nothing_gained(system)
 
     def test_a_reused_pid_gains_nothing(self):
-        before = M.parse_table(fake_table(TWO_PROCESSES)).processes
-        reborn = [dict(TWO_PROCESSES[0], name="new.exe", user=999_999_999)]
-        after = M.parse_table(fake_table(reborn)).processes
-        self.assertEqual(M.deltas(before, after)[7].cpu_ms, 0)
+        # One pid held first by System and then by a process of another name with
+        # more CPU time: the Idle process, both as Windows wrote them. A CPU gain
+        # worked across the two would be above zero.
+        captured = self.captured()
+        system, idle = captured[4], captured[0]
+        self.assertGreater(idle.cpu_ticks, system.cpu_ticks)
+        gains = M.deltas({4: system}, {4: idle})
+        self.assert_nothing_gained(gains[4])
 
 
 def read_csv(folder, name):
@@ -348,8 +392,46 @@ def read_rows(folder, name):
         return list(csv.DictReader(file))
 
 
-def sample_row(number=1):
-    return M.SampleRow(number, 1000.5, 2.5, 2, 3, 1, None, None, None, RECORDER, 20)
+# Six lines of samples.csv from a recording of a real run: the header, the first
+# sample, two samples with a song clock and the last two, copied unchanged from
+# hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1/machine-1/samples.csv.
+REAL_SAMPLES = os.path.join(ROOT, "testdata", "ch_runs", "ls-p3-run1", "machine-1",
+                            "samples.csv")
+
+
+def real_sample_rows():
+    """The recorded rows as SampleRows, each cell turned into its field's type."""
+    hints = typing.get_type_hints(M.SampleRow)
+    rows = []
+    with open(REAL_SAMPLES, newline="", encoding="utf-8") as file:
+        for record in csv.DictReader(file):
+            values = {}
+            for field in dataclasses.fields(M.SampleRow):
+                kind = next(kind for kind in typing.get_args(hints[field.name]) or
+                            (hints[field.name],) if kind is not type(None))
+                text = record[field.name]
+                values[field.name] = None if text == "" else kind(text)
+            rows.append(M.SampleRow(**values))
+    return rows
+
+
+def captured_table(**options):
+    sample = read_sample()
+    return M.parse_table(sample, sample_base(sample), **options)
+
+
+def live_table(held, **options):
+    """A table Windows writes now, read and parsed by the recorder's own code."""
+    return M.parse_table(*M.read_table(held), **options)
+
+
+def burn_cpu(seconds):
+    """Spin until this process has used `seconds` of CPU, so its next table shows
+    a gain. The spin always uses CPU, so the cap only guards a stopped clock."""
+    start, cap = time.process_time(), time.perf_counter() + SUBPROCESS_CAP_S
+    while time.process_time() - start < seconds:
+        if time.perf_counter() > cap:
+            raise AssertionError("this process's CPU time did not move")
 
 
 class WriteSample(unittest.TestCase):
@@ -359,60 +441,99 @@ class WriteSample(unittest.TestCase):
         self.folder = self._dir.name
         self.files = M.RecorderFiles(self.folder)
         self.addCleanup(self.files.close)
-
-    def write(self, processes, gains, listed=frozenset()):
-        table = M.parse_table(fake_table(processes))
-        M.write_sample(self.files, sample_row(), table, gains, listed)
+        self.row = real_sample_rows()[0]
 
     def test_the_columns_are_pinned_with_one_header_per_file(self):
-        self.write(TWO_PROCESSES, {}, frozenset())
-        self.write(TWO_PROCESSES, {}, frozenset())
-        expected = {
-            "samples.csv": "sample,wall_s,sample_ms,processes,threads,ready_threads,clock_s,"
-                           "clock_wall_before_s,clock_wall_after_s,recorder_pid,period_ms,"
-                           "stop_reason,process_time_s",
-            "processes.csv": "sample,pid,parent_pid,name,cpu_ms,read_bytes,write_bytes,hard_faults",
-            "threads.csv": "sample,pid,tid,state,wait_reason,reads_as,switches,cpu_ms",
-        }
-        for name, header in expected.items():
-            rows = read_csv(self.folder, name)
-            self.assertEqual(",".join(rows[0]), header)
-            self.assertEqual(sum(row == rows[0] for row in rows), 1)
-        self.assertEqual(read_csv(self.folder, "samples.csv")[1],
-                         ["1", "1000.5", "2.5", "2", "3", "1", "", "", "", "901", "20", "", ""])
+        # The recorded rows written again give back the recorded file byte for
+        # byte: one header, each cell in the form the recorder wrote in that run,
+        # and an empty cell for each missing value.
+        with open(REAL_SAMPLES, newline="", encoding="utf-8") as file:
+            recorded = file.read()
+        table = captured_table(thread_pids=())
+        nothing_moved = M.deltas(table.processes, table.processes)
+        for row in real_sample_rows():
+            M.write_sample(self.files, row, table, nothing_moved, frozenset())
+        self.files.close()
+        with open(os.path.join(self.folder, M.SAMPLES_FILE), newline="", encoding="utf-8") as file:
+            self.assertEqual(file.read(), recorded)
+        self.assertEqual(read_csv(self.folder, M.SAMPLES_FILE)[0], list(M.SAMPLES_COLUMNS))
+        for name, columns in ((M.PROCESSES_FILE, M.PROCESSES_COLUMNS),
+                              (M.THREADS_FILE, M.THREADS_COLUMNS)):
+            with self.subTest(name):
+                self.assertEqual(read_csv(self.folder, name), [list(columns)])
 
     def test_a_process_row_needs_a_gain_or_a_listed_pid(self):
-        quiet = M.ProcessGain(0.0, 0, 0, 0, {})
-        for field, value in (("cpu_ms", 1.5), ("read_bytes", 1), ("write_bytes", 1),
-                             ("hard_faults", 1)):
-            with self.subTest(field):
-                gain = quiet._replace(**{field: value})
-                folder = tempfile.mkdtemp(dir=self.folder)
-                files = M.RecorderFiles(folder)
-                table = M.parse_table(fake_table(TWO_PROCESSES), thread_pids=())
-                M.write_sample(files, sample_row(), table, {7: gain, 8: quiet}, frozenset())
-                files.close()
-                self.assertEqual([row["pid"] for row in read_rows(folder, "processes.csv")], ["7"])
-        table = M.parse_table(fake_table(TWO_PROCESSES), thread_pids=())
-        M.write_sample(self.files, sample_row(), table, {7: quiet, 8: quiet}, frozenset({8}))
-        rows = read_csv(self.folder, "processes.csv")
-        self.assertEqual(rows[1:], [["1", "8", "7", "other.exe", "0.0", "0", "0", "0"]])
+        # Two live tables with CPU spent between them: this process gains, and the
+        # processes that gained nothing get no row unless they are listed.
+        held = M.TableBuffer()
+        before = live_table(held, thread_pids=())
+        burn_cpu(0.05)
+        after = live_table(held, thread_pids=())
+        gains = M.deltas(before.processes, after.processes)
+        moved = {pid for pid, gain in gains.items() if gain[:4] != (0, 0, 0, 0)}
+        quiet = sorted(set(gains) - moved)
+        self.assertIn(os.getpid(), moved)
+        self.assertTrue(quiet, "every process on the machine gained between two reads")
+        listed = quiet[0]
+        M.write_sample(self.files, self.row, after, gains, frozenset({listed}))
+        rows = {int(row["pid"]): row for row in read_rows(self.folder, M.PROCESSES_FILE)}
+        self.assertEqual(set(rows), moved | {listed})
+        process = after.processes[listed]
+        self.assertEqual(rows[listed], {
+            "sample": str(self.row.sample), "pid": str(listed),
+            "parent_pid": str(process.parent_pid), "name": process.name, "cpu_ms": "0.0",
+            "read_bytes": "0", "write_bytes": "0", "hard_faults": "0"})
+        self.assertGreater(float(rows[os.getpid()]["cpu_ms"]), 0)
 
     def test_a_thread_row_needs_a_non_waiting_state_or_moved_switches(self):
-        threads = [(1, 0, 0, 0, 5, 6), (2, 0, 0, 0, 5, 6), (3, 0, 0, 0, 2, 0), (4, 0, 0, 0, 1, 0),
-                   (5, 0, 0, 0, 7, 0), (6, 0, 0, 0, 4, 0)]
-        processes = [{"pid": 7, "name": "game.exe", "threads": threads}]
-        moved = M.ThreadGain(2, 0.5)
-        still = M.ThreadGain(0, 0.0)
-        gain = M.ProcessGain(0.0, 0, 0, 0, {1: still, 2: moved, 3: still, 4: still, 5: still,
-                                            6: still})
-        self.write(processes, {7: gain}, frozenset({7}))
-        rows = read_rows(self.folder, "threads.csv")
-        self.assertEqual([(row["tid"], row["state"], row["reads_as"]) for row in rows],
-                         [("2", "5", "waiting"), ("3", "2", "running"), ("4", "1", "ready"),
-                          ("5", "7", "ready"), ("6", "4", "other")])
-        self.assertEqual((rows[0]["wait_reason"], rows[0]["switches"], rows[0]["cpu_ms"]),
-                         ("6", "2", "0.5"))
+        # The captured table with nothing moved: only the threads in a state that
+        # does not read as waiting get rows. Every one of System's threads waits.
+        table = captured_table()
+        M.write_sample(self.files, self.row, table, M.deltas(table.processes, table.processes),
+                       frozenset())
+        written = [(int(row["pid"]), int(row["tid"]), row["reads_as"])
+                   for row in read_rows(self.folder, M.THREADS_FILE)]
+        expected = [(pid, tid, M.reads_as(thread.state))
+                    for pid, process in table.processes.items()
+                    for tid, thread in process.threads.items()
+                    if M.reads_as(thread.state) != M.WAITING]
+        self.assertTrue(expected)
+        self.assertEqual(written, expected)
+        self.assertNotIn(4, {pid for pid, _, _ in written})
+
+        # Live: a thread of this process that wakes every millisecond is caught
+        # waiting with its switches moved, and that alone gives it a row.
+        stop = threading.Event()
+
+        def tick():
+            while not stop.wait(0.001):
+                pass
+
+        ticker = threading.Thread(target=tick, daemon=True)
+        ticker.start()
+        self.addCleanup(stop.set)
+        held = M.TableBuffer()
+        for attempt in range(5):
+            before = live_table(held, thread_pids=[os.getpid()])
+            time.sleep(0.05)
+            after = live_table(held, thread_pids=[os.getpid()])
+            gains = M.deltas(before.processes, after.processes)
+            ticked = gains[os.getpid()].threads.get(ticker.native_id)
+            state = after.processes[os.getpid()].threads[ticker.native_id].state
+            if ticked and ticked.switches and M.reads_as(state) == M.WAITING:
+                break
+        else:
+            self.fail("in 5 tries the ticking thread was never caught waiting after a switch")
+        folder = tempfile.mkdtemp(dir=self.folder)
+        files = M.RecorderFiles(folder)
+        M.write_sample(files, self.row, after, {os.getpid(): gains[os.getpid()]}, frozenset())
+        files.close()
+        rows = {int(row["tid"]): row for row in read_rows(folder, M.THREADS_FILE)}
+        mine = after.processes[os.getpid()].threads
+        self.assertEqual(set(rows), {tid for tid, gain in gains[os.getpid()].threads.items()
+                                     if gain.switches or M.reads_as(mine[tid].state) != M.WAITING})
+        self.assertEqual((rows[ticker.native_id]["reads_as"], rows[ticker.native_id]["switches"]),
+                         (M.WAITING, str(ticked.switches)))
 
     def test_a_folder_with_a_recording_is_refused(self):
         with self.assertRaises(FileExistsError):
