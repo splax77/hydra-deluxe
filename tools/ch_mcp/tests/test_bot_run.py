@@ -648,6 +648,7 @@ class RunStepsTest(unittest.TestCase):
         self.assertGreaterEqual(seconds[0], round(B.POLL_INTERVAL_S))
         self.assertLessEqual(seconds[0], round(waited))
 
+
 class LaunchStepsTest(unittest.TestCase):
     """What start_run does between the backup and the launch, and the
     registry key's backup and restore."""
