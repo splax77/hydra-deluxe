@@ -10,6 +10,7 @@
 #include "doctest.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <iterator>
 #include <map>
 #include <optional>
@@ -905,20 +906,55 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
 
 namespace {
 
-std::vector<std::string> badge_texts(const Activation& act) {
-    std::vector<std::string> out;
-    for (const ActivationBadge& b : activation_badges(act)) out.push_back(b.text);
-    return out;
+// A timing's figure as every display writes a needed timing (format_ms,
+// D265: one decimal everywhere).
+std::string figure_of(const ActivationTiming& t) { return format_ms(t.ms); }
+
+// The word in front of a badge's figure: the badge text up to the space
+// before `figure`. Requires the text to end in that space and figure.
+std::string badge_word_of(const ActivationBadge& b, const std::string& figure) {
+    const std::string tail = " " + figure;
+    REQUIRE(b.text.size() > tail.size());
+    REQUIRE(b.text.compare(b.text.size() - tail.size(), tail.size(), tail) == 0);
+    return b.text.substr(0, b.text.size() - tail.size());
 }
 
-std::vector<bool> badge_warns(const Activation& act) {
-    std::vector<bool> out;
-    for (const ActivationBadge& b : activation_badges(act)) out.push_back(b.warn);
-    return out;
+// Calls visit(act) for every activation of every kept path of every corpus
+// chart that analyzes under the app's default settings.
+template <typename Visit>
+void for_each_corpus_activation(Visit&& visit) {
+    for_each_corpus_path([&](const std::string& chart, const Song& /*song*/, const HydraRecord& /*rec*/,
+                             const Path& path) {
+        CAPTURE(chart);
+        CAPTURE(path.pathstring());
+        for (const Activation& act : path.all_activations()) {
+            CAPTURE(act.notationstr_verbose());
+            visit(act);
+        }
+    });
 }
 
-using Texts = std::vector<std::string>;
-using Warns = std::vector<bool>;
+// The badge words of every timing part the corpus shows, each read off a
+// real badge, after checking every corpus badge against its timing: the
+// badge ends in the timing's figure and is orange exactly when the timing
+// is difficult.
+std::map<TimingPart, std::string> corpus_badge_words() {
+    std::map<TimingPart, std::string> words;
+    for_each_corpus_activation([&](const Activation& act) {
+        const std::vector<ActivationTiming> timings = act.badge_timings();
+        const std::vector<ActivationBadge> badges = activation_badges(act);
+        REQUIRE(badges.size() == timings.size());
+        for (size_t i = 0; i < timings.size(); ++i) {
+            CAPTURE(badges[i].text);
+            const std::string word = badge_word_of(badges[i], figure_of(timings[i]));
+            const auto placed = words.emplace(timings[i].part, word);
+            // One word per part, wherever it shows.
+            CHECK(placed.first->second == word);
+            CHECK(badges[i].warn == timings[i].difficult);
+        }
+    });
+    return words;
+}
 
 // Not e-critical, nothing to time.
 Activation no_timing() {
@@ -928,8 +964,9 @@ Activation no_timing() {
     return a;
 }
 
-// The user's row on "The Age of Betrayal": E3+, an optional early fill with
-// no time to spare and a squeeze-in that already lands inside SP.
+// The user's row on "The Age of Betrayal" (not in the corpus): E3+, an
+// optional early fill with no time to spare and a squeeze-in that already
+// lands inside SP.
 Activation user_row() {
     Activation a;
     test::set_skips(a, 3);
@@ -938,225 +975,175 @@ Activation user_row() {
     return a;
 }
 
-// Every fixture of the badge cases below, for the checks that hold for all.
-std::vector<Activation> badge_fixtures() {
-    std::vector<Activation> out;
-    out.push_back(no_timing());
-    out.push_back(user_row());
-    Activation sqout = no_timing();
-    sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
-    out.push_back(sqout);
-    Activation a = no_timing();
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -315.8});  // free SqIn
-    out.push_back(a);
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});  // and a timed one
-    out.push_back(a);
-    Activation slack = no_timing();
-    slack.e_offset = 10.0;  // required fill with time to spare
-    out.push_back(slack);
-    Activation e0 = no_timing();
-    e0.e_offset = -30.0;
-    out.push_back(e0);
-    e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
-    out.push_back(e0);
-    Activation tie = e0;
-    tie.sqinouts[0].offset_ms = -30.0;
-    out.push_back(tie);
-    e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});  // three timings
-    out.push_back(e0);
-    Activation e1 = no_timing();
-    test::set_skips(e1, 1);
-    e1.e_offset = -30.0;
-    e1.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
-    out.push_back(e1);
-    return out;
+// The one button build_path_buttons makes for a record holding only `act`.
+PathButtonView only_button(const Activation& act) {
+    Path p;
+    p.activations.push_back(act);
+    HydraRecord rec;
+    rec.paths.push_back(p);
+    const Settings s = Settings();
+    const PathButtonsView v = build_path_buttons(rec, s.depth_mode, s.depth_value);
+    REQUIRE(v.buttons.size() == 1);
+    return v.buttons[0];
 }
 
 }  // namespace
 
+// On every activation of every kept corpus path the badges are
+// Activation::badge_timings() in its order: one per squeeze, plus the early
+// fill first when the activation is E-critical; each the timing's figure
+// after its part's word; orange exactly when the timing is difficult. Each
+// part keeps one word and the three words differ. Beg (IB24 T1) has an E0
+// fill and a squeeze out and Pitch Dark (test_pitch_dark_ratio) a squeeze in
+// (the audit's engine records), so all three parts show.
 TEST_CASE("activation badges: one per timing, the fill first, then each squeeze") {
-    CHECK(activation_badges(no_timing()).empty());
+    int orange = 0;
+    int grey = 0;
+    for_each_corpus_activation([&](const Activation& act) {
+        const std::vector<ActivationTiming> timings = act.badge_timings();
+        const std::vector<ActivationBadge> badges = activation_badges(act);
+        const size_t fill = act.is_e_critical() ? 1 : 0;
+        REQUIRE(timings.size() == act.sqinouts.size() + fill);
+        REQUIRE(badges.size() == timings.size());
+        if (fill == 1) CHECK(timings[0].part == TimingPart::EarlyFill);
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            const SPSqueeze& sq = act.sqinouts[k];
+            const ActivationTiming& t = timings[k + fill];
+            CHECK(t.part == (sq.kind == SqueezeKind::SqIn ? TimingPart::SqueezeIn : TimingPart::SqueezeOut));
+            CHECK(t.ms == sq.difficulty());
+            CHECK(t.required == !sq.needs_no_timing());
+        }
+        for (const ActivationBadge& b : badges) ++(b.warn ? orange : grey);
+    });
+    const std::map<TimingPart, std::string> words = corpus_badge_words();
+    REQUIRE(words.size() == 3);
+    CHECK(words.at(TimingPart::EarlyFill) != words.at(TimingPart::SqueezeIn));
+    CHECK(words.at(TimingPart::EarlyFill) != words.at(TimingPart::SqueezeOut));
+    CHECK(words.at(TimingPart::SqueezeIn) != words.at(TimingPart::SqueezeOut));
+    CHECK(orange > 0);
+    CHECK(grey > 0);
+}
 
-    Activation sqin = no_timing();
-    sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.4});
-    CHECK(badge_texts(sqin) == Texts{"squeeze in 12.4 ms"});
-    // One decimal (D265): the figure the path button and the copied path show,
-    // with no rounding to whole ms.
-    sqin.sqinouts[0].offset_ms = 12.6;
-    CHECK(badge_texts(sqin) == Texts{"squeeze in 12.6 ms"});
-    sqin.sqinouts[0].offset_ms = 12.5;
-    CHECK(badge_texts(sqin) == Texts{"squeeze in 12.5 ms"});
-
-    Activation sqout = no_timing();
-    sqout.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -163.0});
-    CHECK(badge_texts(sqout) == Texts{"squeeze out 163.0 ms"});
-    CHECK(badge_warns(sqout) == Warns{true});
-
-    // A1, the user's row: the free squeeze keeps its badge beside the fill,
-    // fill first, both grey.
-    CHECK(badge_texts(user_row()) == Texts{"early fill 0.0 ms", "squeeze in -12.0 ms"});
-    CHECK(badge_warns(user_row()) == Warns{false, false});
-
-    // A2: a free squeeze-in (already inside SP) has nothing to time, but the
-    // row still shows it with its figure, as 2.0 did (D80). The activation
-    // still needs no timing, so the path button and filter are unchanged.
+// A free squeeze-in (already inside SP) has nothing to time, but the row
+// still shows it with its figure (D80), grey, and the activation still needs
+// no timing. A named input: the corpus is not shown to hold one.
+TEST_CASE("activation badges: a squeeze that needs no timing keeps its badge, grey") {
     Activation free_in = no_timing();
     free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -315.8});
-    CHECK(badge_texts(free_in) == Texts{"squeeze in -315.8 ms"});
-    CHECK(badge_warns(free_in) == Warns{false});
+    REQUIRE(free_in.sqinouts[0].needs_no_timing());
+    const std::vector<ActivationTiming> timings = free_in.badge_timings();
+    const std::vector<ActivationBadge> badges = activation_badges(free_in);
+    REQUIRE(timings.size() == 1);
+    REQUIRE(badges.size() == 1);
+    CHECK_FALSE(timings[0].required);
+    CHECK_FALSE(badges[0].warn);
+    badge_word_of(badges[0], figure_of(timings[0]));
     CHECK_FALSE(free_in.needs_timing());
-    // A squeeze-in exactly on the SP end is not free: it needs 0.0 ms (D302).
-    // Its badge reads the same, grey, but it is required, and the path button
-    // shows its 0.0 ms.
+    // Beside a timed squeeze, both show in list order.
+    free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});
+    const std::vector<ActivationTiming> two = free_in.badge_timings();
+    const std::vector<ActivationBadge> two_badges = activation_badges(free_in);
+    REQUIRE(two.size() == 2);
+    REQUIRE(two_badges.size() == 2);
+    for (size_t i = 0; i < 2; ++i) {
+        CHECK(two[i].ms == free_in.sqinouts[i].difficulty());
+        badge_word_of(two_badges[i], figure_of(two[i]));
+    }
+}
+
+// A squeeze-in exactly on the SP end is not free: it needs 0.0 ms (D302), so
+// it is required and the path button shows its figure. A named input: the
+// rule's edge exactly.
+TEST_CASE("path button: a squeeze exactly on the SP end shows its 0.0 ms") {
     Activation on_end_in = no_timing();
     on_end_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 0.0});
-    CHECK(badge_texts(on_end_in) == Texts{"squeeze in 0.0 ms"});
-    CHECK(badge_warns(on_end_in) == Warns{false});
-    const std::vector<ActivationTiming> on_end_timings = on_end_in.badge_timings();
-    REQUIRE(on_end_timings.size() == 1);
-    CHECK(on_end_timings[0].required);
-    CHECK_FALSE(on_end_timings[0].difficult);
+    const std::vector<ActivationTiming> timings = on_end_in.badge_timings();
+    REQUIRE(timings.size() == 1);
+    CHECK(timings[0].required);
+    CHECK_FALSE(timings[0].difficult);
     CHECK(on_end_in.needs_timing());
-    {
-        Path p;
-        p.activations.push_back(on_end_in);
-        HydraRecord rec;
-        rec.paths.push_back(p);
-        const PathButtonsView v = build_path_buttons(rec, 0, 2);
-        REQUIRE(v.buttons.size() == 1);
-        CHECK(v.buttons[0].timing == "0.0 ms");
-    }
-    // A free squeeze-out (already past the SP end) reads the same way.
-    Activation free_out = no_timing();
-    free_out.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 40.0});
-    CHECK(badge_texts(free_out) == Texts{"squeeze out -40.0 ms"});
-    // A5: two squeezes give two badges in list order, free one included.
-    free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});
-    CHECK(badge_texts(free_in) == Texts{"squeeze in -315.8 ms", "squeeze in 1.0 ms"});
+    CHECK(only_button(on_end_in).timing == format_ms(0.0));
+}
 
-    // A3: a required fill with 10 ms to spare still gets its badge, grey, and
-    // stays nothing to time (D261, D51 call 4).
+// A required fill with time to spare is nothing to time (D261, D51 call 4).
+TEST_CASE("Activation: a required fill with time to spare needs no timing") {
     Activation slack = no_timing();
-    slack.e_offset = 10.0;
+    slack.e_offset = 10.0;  // SP ready 10 ms before the fill's deadline
     REQUIRE(slack.is_E0());
-    CHECK(badge_texts(slack) == Texts{"early fill -10.0 ms"});
-    CHECK(badge_warns(slack) == Warns{false});
     CHECK_FALSE(slack.difficulty().has_value());
     CHECK(slack.within_ms_limit(0.0));
-
-    // A4: a required (E0) fill and a squeeze both show, fill first, each
-    // orange on its own.
-    Activation e0 = no_timing();
-    e0.e_offset = -30.0;
-    CHECK(badge_texts(e0) == Texts{"early fill 30.0 ms"});
-    CHECK(badge_warns(e0) == Warns{true});
-    e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
-    CHECK(badge_texts(e0) == Texts{"early fill 30.0 ms", "squeeze out 5.0 ms"});
-    CHECK(badge_warns(e0) == Warns{true, true});
-    // Tied exactly: both show, fill first; hardest() still names the squeeze.
-    Activation tie = e0;
-    tie.sqinouts[0].offset_ms = -30.0;
-    CHECK(badge_texts(tie) == Texts{"early fill 30.0 ms", "squeeze out 30.0 ms"});
-    // A5: three timings give three badges.
-    e0.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
-    CHECK(badge_texts(e0) ==
-          Texts{"early fill 30.0 ms", "squeeze out 5.0 ms", "squeeze in 12.6 ms"});
-
-    // An optional (E1) fill still gets a badge: its timing decides whether the
-    // first fill shows up, which is how the skips are counted. Optional, so
-    // grey; a squeeze beside it keeps its own colour.
-    Activation e1 = no_timing();
-    test::set_skips(e1, 1);
-    e1.e_offset = -30.0;
-    CHECK(badge_texts(e1) == Texts{"early fill 30.0 ms"});
-    CHECK(badge_warns(e1) == Warns{false});
-    e1.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -5.0});
-    CHECK(badge_texts(e1) == Texts{"early fill 30.0 ms", "squeeze out 5.0 ms"});
-    CHECK(badge_warns(e1) == Warns{false, true});
 }
 
-TEST_CASE("activation badges: an early fill with time to spare shows, grey (D261)") {
-    // The user's row on Weltseele, activation 13 E2+: the fill lands 56.2 ms
-    // before its deadline, then a free squeeze-in.
-    Activation act;
-    test::set_skips(act, 2);
-    act.e_offset = 56.2;
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -56.0});
-    REQUIRE(act.is_e_critical());
-    CHECK(badge_texts(act) == Texts{"early fill -56.2 ms", "squeeze in -56.0 ms"});
-    CHECK(badge_warns(act) == Warns{false, false});
-    CHECK_FALSE(act.difficulty().has_value());
-}
-
+// The timeline mark's colour (difficult) and the pills' colours agree on
+// every activation of every kept corpus path.
 TEST_CASE("activation badges: the row is difficult exactly when a badge is orange") {
-    // A7: the timeline mark's colour (difficult) and the pills' colours agree.
-    HydraRecord rec;
-    for (const Activation& act : badge_fixtures()) {
-        Path p;
-        p.activations.push_back(act);
-        const ActivationsView v = build_activations(p, rec, nullptr);
-        REQUIRE(v.acts.size() == 1);
-        const ActivationRowView& av = v.acts[0];
-        bool any_warn = false;
-        for (const ActivationBadge& b : av.badges) any_warn = any_warn || b.warn;
-        CAPTURE(act.notationstr_verbose());
-        CHECK(av.difficult == any_warn);
-        CHECK(av.badges.size() == activation_badges(act).size());
-    }
+    int difficult_rows = 0;
+    int plain_rows = 0;
+    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
+                             const Path& path) {
+        CAPTURE(chart);
+        CAPTURE(path.pathstring());
+        const SongTiming& timing = song.timing();
+        const ActivationsView v = build_activations(path, rec, &timing);
+        for (const ActivationRowView& av : v.acts) {
+            CAPTURE(av.number);
+            bool any_warn = false;
+            for (const ActivationBadge& b : av.badges) any_warn = any_warn || b.warn;
+            CHECK(av.difficult == any_warn);
+            ++(av.difficult ? difficult_rows : plain_rows);
+        }
+    });
+    CHECK(difficult_rows > 0);
+    CHECK(plain_rows > 0);
 }
 
-TEST_CASE("activation badges: the user's row agrees with the copied path") {
-    // A8: every badge's figure is the copied path's figure, and the path
-    // button shows no timing (an optional fill and a free squeeze are nothing
-    // to time).
+// On every kept corpus path the copied path (notationstr_verbose) carries
+// each badge's figure in badge order, and the path button shows a timing
+// exactly when the path needs one, that timing being one of its badges'
+// figures.
+TEST_CASE("activation badges: the badges, the copied path and the path button show one figure") {
+    int buttons_with_timing = 0;
+    for_each_corpus_chart([&](const std::string& chart, const Song& /*song*/, const HydraRecord& rec) {
+        CAPTURE(chart);
+        const Settings s = Settings();
+        const PathButtonsView v = build_path_buttons(rec, s.depth_mode, s.depth_value);
+        for (const PathButtonView& b : v.buttons) {
+            REQUIRE(b.path != nullptr);
+            CAPTURE(b.notation);
+            std::vector<std::string> figures;
+            for (const Activation& act : b.path->all_activations()) {
+                CAPTURE(act.notationstr());
+                const std::string verbose = act.notationstr_verbose();
+                std::string joined;
+                for (const ActivationTiming& t : act.badge_timings()) {
+                    joined += (joined.empty() ? "" : "/") + figure_of(t);
+                    figures.push_back(figure_of(t));
+                }
+                if (joined.empty()) CHECK(verbose == act.notationstr());
+                else CHECK(verbose == act.notationstr() + " (" + joined + ")");
+            }
+            CHECK(b.timing.empty() == !b.path->needs_timing());
+            if (!b.timing.empty()) {
+                ++buttons_with_timing;
+                bool among = false;
+                for (const std::string& f : figures) among = among || f == b.timing;
+                CHECK(among);
+            }
+        }
+    });
+    CHECK(buttons_with_timing > 0);
+}
+
+// The user's row: an optional fill with no time to spare and a free squeeze
+// both show a badge, and the path button shows no timing: neither is
+// anything to time.
+TEST_CASE("activation badges: an optional fill and a free squeeze show, the button shows nothing") {
     const Activation act = user_row();
-    const std::string verbose = act.notationstr_verbose();
-    CHECK(verbose == "E3+ (0.0 ms/-12.0 ms)");
-    const std::vector<ActivationBadge> badges = activation_badges(act);
-    REQUIRE(badges.size() == 2);
-    CHECK(badges[0].text == "early fill 0.0 ms");
-    CHECK(badges[1].text == "squeeze in -12.0 ms");
-    // Each badge's figure is the copied path's figure, in the same order.
-    const std::string fill_fig = badges[0].text.substr(std::string("early fill ").size());
-    const std::string sq_fig = badges[1].text.substr(std::string("squeeze in ").size());
-    CHECK(verbose.find("(" + fill_fig + "/" + sq_fig + ")") != std::string::npos);
-
-    Path p;
-    p.activations.push_back(act);
-    HydraRecord rec;
-    rec.paths.push_back(p);
-    PathButtonsView v = build_path_buttons(rec, 0, 2);
-    REQUIRE(v.buttons.size() == 1);
-    CHECK(v.buttons[0].timing.empty());
+    REQUIRE_FALSE(act.is_E0());
+    REQUIRE(act.sqinouts[0].needs_no_timing());
+    CHECK(activation_badges(act).size() == 2);
     CHECK_FALSE(act.needs_timing());
-}
-
-TEST_CASE("activation badge and copied path agree") {
-    // A 12.6 ms squeeze-in: the badge, the copied path and the path button
-    // all say 12.6 ms (D265).
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;  // not e-critical
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
-    Path p;
-    p.activations.push_back(act);
-
-    const std::vector<ActivationBadge> badges = activation_badges(act);
-    REQUIRE(badges.size() == 1);
-    const std::string badge = badges[0].text;
-    CHECK(badge == "squeeze in 12.6 ms");
-    const std::string verbose = act.notationstr_verbose();
-    CHECK(verbose == "0+ (12.6 ms)");
-    // The badge's number is the copied path's number.
-    const std::string number = badge.substr(std::string("squeeze in ").size());
-    CHECK(verbose.find("(" + number + ")") != std::string::npos);
-
-    HydraRecord rec;
-    rec.paths.push_back(p);
-    PathButtonsView v = build_path_buttons(rec, 0, 2);
-    REQUIRE(v.buttons.size() == 1);
-    CHECK(v.buttons[0].timing == "12.6 ms");
-    CHECK(v.buttons[0].timing == number);  // and the path button's
+    CHECK(only_button(act).timing.empty());
 }
 
 TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the first measure") {
@@ -1179,64 +1166,101 @@ TEST_CASE("measure labels: one numbering rule for the rows, the timeline and the
     CHECK(first_measure_label() == format_measure(timing, 0));
 }
 
+// The widest badge is the widest part word followed by the squeeze window's
+// bound as a figure (longest_activation_badge says why the window bounds
+// every figure), and no badge on any kept corpus path is wider.
 TEST_CASE("longest_activation_badge: the widest wording with the window's figure") {
     const std::string longest = longest_activation_badge();
-    CHECK(longest == "squeeze out -500.0 ms");
-    CHECK(longest.size() == 21);
-    // A9: no single badge of any badge fixture is longer.
-    for (const Activation& act : badge_fixtures())
-        for (const ActivationBadge& b : activation_badges(act)) CHECK(longest.size() >= b.text.size());
+    std::string widest_word;
+    for (const auto& part_word : corpus_badge_words())
+        if (part_word.second.size() > widest_word.size()) widest_word = part_word.second;
+    CHECK(longest == widest_word + " " + format_ms(-kSqueezeWindowMs));
+    int badges = 0;
+    for_each_corpus_activation([&](const Activation& act) {
+        for (const ActivationBadge& b : activation_badges(act)) {
+            CAPTURE(b.text);
+            CHECK(b.text.size() <= longest.size());
+            ++badges;
+        }
+    });
+    CHECK(badges > 0);
 }
 
+namespace {
+
+// Checks one squeeze's sentence against the engine's answers for it: the
+// edge it prints is the squeeze's timing() as a figure; it is a "no more
+// than" limit exactly when the squeeze needs no timing (D302); the squeezed
+// note goes the way squeeze_presses presses it; a SqOut names its squeezed
+// chord when the rating found the squeezed-out row; a SqIn carries its eff.
+// figure exactly when the rating gave one; orange exactly when the squeeze is
+// difficult.
+void check_sentence(const TextLine& s, const SPSqueeze& sq, const BackendRating* squeezed_out,
+                    std::optional<double> effective_ms) {
+    CAPTURE(s.text);
+    const std::string edge = format_ms(std::fabs(sq.timing()));
+    const std::string side = squeeze_presses(sq).squeezed == Press::Late ? " late" : " early";
+    CHECK(s.text.find(edge + side) != std::string::npos);
+    CHECK((s.text.find("no more than " + edge) != std::string::npos) == sq.needs_no_timing());
+    if (sq.kind == SqueezeKind::SqOut) {
+        CHECK(s.text.find("after Star Power ends.") != std::string::npos);
+        if (squeezed_out)
+            CHECK(s.text.find(squeezed_out->row.chord.notationstr()) != std::string::npos);
+        CHECK(s.text.find("eff.") == std::string::npos);
+    } else {
+        CHECK(s.text.find("before Star Power ends.") != std::string::npos);
+        if (effective_ms)
+            CHECK(s.text.find("(eff. " + format_ms(*effective_ms) + ")") != std::string::npos);
+        else
+            CHECK(s.text.find("eff.") == std::string::npos);
+    }
+    CHECK(s.warn == sq.is_difficult());
+}
+
+}  // namespace
+
+// Every squeeze on every kept corpus path gets one sentence, read from the
+// engine's squeeze and rating (check_sentence).
 TEST_CASE("squeeze sentences: SqIn and SqOut are one sentence each") {
-    HydraRecord rec;
-    auto sentence_of = [&rec](const Activation& act) {
-        Path p;
-        p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr);
-        REQUIRE(v.acts.size() == 1);
-        REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
-        return v.acts[0].squeeze_sentences[0];
-    };
-    Activation base;
-    test::set_skips(base, 0);
-    base.e_offset = 300.0;  // not e-critical
+    int sqins = 0;
+    int sqouts_naming_a_chord = 0;
+    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
+                             const Path& path) {
+        CAPTURE(chart);
+        CAPTURE(path.pathstring());
+        const SongTiming& timing = song.timing();
+        const std::vector<Activation> acts = path.all_activations();
+        const ActivationsView view = build_activations(path, rec, &timing);
+        REQUIRE(view.acts.size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            const Activation& act = acts[i];
+            const ActivationRating rate = rate_activation(act);
+            const BackendRating* squeezed_out = nullptr;
+            for (const BackendRating& br : rate.backends)
+                if (br.squeezed_out) squeezed_out = &br;
+            REQUIRE(view.acts[i].squeeze_sentences.size() == act.sqinouts.size());
+            for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+                const std::optional<double> eff =
+                    k < rate.note_effective_ms.size() ? rate.note_effective_ms[k] : std::nullopt;
+                check_sentence(view.acts[i].squeeze_sentences[k], act.sqinouts[k], squeezed_out, eff);
+                if (act.sqinouts[k].kind == SqueezeKind::SqIn) ++sqins;
+                else if (squeezed_out) ++sqouts_naming_a_chord;
+            }
+        }
+    });
+    // Pitch Dark has a squeeze in and Beg a squeeze out of a named chord.
+    CHECK(sqins > 0);
+    CHECK(sqouts_naming_a_chord > 0);
+}
 
-    Activation sqin = base;
-    sqin.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});
-    TextLine s = sentence_of(sqin);
-    CHECK(s.text ==
-          "Hit the SP phrase's last note more than 50.0 ms early so it lands before Star "
-          "Power ends.");
-    CHECK(s.warn);
-
-    Activation easy_in = base;
-    easy_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -20.0});
-    s = sentence_of(easy_in);
-    CHECK(s.text.rfind("Hit the SP phrase's last note no more than 20.0 ms late so it "
-                       "lands before Star Power ends.", 0) == 0);
-    CHECK_FALSE(s.warn);
-
-    // A SqIn whose margin the frontend scale moves carries its eff. figure,
-    // the one a squeezed-out row shows in the backend table (Sun of Nothing
-    // act 5: free by 400 ms, early hits scale x1.60 -> eff. 307.7 ms).
-    Activation scaled_in = base;
-    scaled_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -400.0});
-    test::set_transfer(scaled_in, TransferScale{1.6, 1.0});
-    s = sentence_of(scaled_in);
-    CHECK(s.text.rfind("Hit the SP phrase's last note no more than 400.0 ms late "
-                       "(eff. 307.7 ms) so it lands before Star Power ends.", 0) == 0);
-
-    // A SqOut with no stored squeezed-out row names no chord.
-    Activation bare_out = base;
-    bare_out.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 60.0});
-    CHECK(sentence_of(bare_out).text ==
-          "Hit the SP phrase's last note no more than 60.0 ms early so it lands after "
-          "Star Power ends.");
-
-    // The Round and Round fixture: an R+Y phrase chord squeezed out 480 ms past
-    // the SP end. The sentence names its chord and says nothing of its cost.
-    Activation far = base;
+// A squeezed-out row far past the SP end: its sentence still names its chord
+// and says nothing of its cost (the backend table shows that). Typed by
+// hand: no corpus record is shown to hold a squeezed-out row this far out.
+// The chord, points and 480 ms are the Round and Round row (not in the
+// corpus).
+TEST_CASE("squeeze sentences: a squeezed-out row far past the end names its chord") {
+    Activation far = no_timing();
     BackendSqueeze row;
     row.timecode = Timecode::raw(3256);
     row.chord.add_note(NoteColor::Red);
@@ -1245,167 +1269,213 @@ TEST_CASE("squeeze sentences: SqIn and SqOut are one sentence each") {
     row.sqout_sp_points = 260;
     row.offset_ms = 479.999;
     far.backends.push_back(row);
-    far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 479.999});
+    far.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, row.offset_ms});
     far.sqout_tick = 3256;
-    s = sentence_of(far);
-    CHECK(s.text ==
-          "Hit the [ RY  ] note no more than 480.0 ms early so it lands after Star Power "
-          "ends.");
-    CHECK_FALSE(s.warn);
-
-    // The same chord 5 ms inside SP costs points, which the backend table
-    // shows; the sentence still stops after its one sentence.
-    Activation near = far;
-    near.backends[0].offset_ms = -5.0;
-    near.sqinouts[0].offset_ms = -5.0;
-    s = sentence_of(near);
-    CHECK(s.text ==
-          "Hit the [ RY  ] note more than 5.0 ms late so it lands after Star Power ends.");
-    CHECK(s.warn);
+    Path p;
+    p.activations.push_back(far);
+    HydraRecord rec;
+    const ActivationsView v = build_activations(p, rec, nullptr);
+    REQUIRE(v.acts.size() == 1);
+    REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
+    const ActivationRating rate = rate_activation(far);
+    const BackendRating* squeezed_out = nullptr;
+    for (const BackendRating& br : rate.backends)
+        if (br.squeezed_out) squeezed_out = &br;
+    REQUIRE(squeezed_out != nullptr);
+    check_sentence(v.acts[0].squeeze_sentences[0], far.sqinouts[0], squeezed_out, std::nullopt);
+    const std::string& text = v.acts[0].squeeze_sentences[0].text;
+    CHECK(text.find("point") == std::string::npos);
 }
 
 // D302: a squeeze exactly on the SP end needs 0.0 ms, a squeeze-in the same
-// as a squeeze-out.
+// as a squeeze-out. Believer (IB24 T1) has both: a squeeze in and a squeeze
+// out at offset 0 (the audit's engine records, paths 0 and 4).
 TEST_CASE("squeeze sentences at the SP end: the squeeze-in earns, the squeeze-out earns") {
-    HydraRecord rec;
-    auto sentence_at = [&rec](SqueezeKind kind, double offset) {
-        Activation act;
-        test::set_skips(act, 0);
-        act.e_offset = 300.0;  // not e-critical
-        // Only the early side scaled: a figure means the rating read that side.
-        act.sqinouts.push_back(SPSqueeze{kind, offset});
-        test::set_transfer(act, TransferScale{1.6, 1.0});
-        Path p;
-        p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr);
-        REQUIRE(v.acts.size() == 1);
-        REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
-        return v.acts[0].squeeze_sentences[0].text;
-    };
-    const std::string before = " so it lands before Star Power ends.";
-    // Exactly on the end: the squeeze-in is still to earn. The note sits
-    // inside Star Power, so its eff. figure comes from the early side.
-    CHECK(sentence_at(SqueezeKind::SqIn, 0.0).rfind(
-              "Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms)" + before, 0) == 0);
-    // The squeeze-out on the same note is still to earn too.
-    CHECK(sentence_at(SqueezeKind::SqOut, 0.0) ==
-          "Hit the SP phrase's last note more than 0.0 ms late so it lands after Star Power "
-          "ends.");
-    // Just before the end: the squeeze-in needs no timing.
-    CHECK(sentence_at(SqueezeKind::SqIn, -0.001).rfind(
-              "Hit the SP phrase's last note no more than 0.0 ms late (eff. 0.0 ms)" + before, 0) == 0);
-    // Just past the end: still to earn, on the unscaled late side, so no figure.
-    CHECK(sentence_at(SqueezeKind::SqIn, 0.04).rfind(
-              "Hit the SP phrase's last note more than 0.0 ms early" + before, 0) == 0);
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    const std::string chart = corpus::chart_named("I_m A Believer");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const SongTiming& timing = song.timing();
+    int on_end_in = 0;
+    int on_end_out = 0;
+    for (const Path& path : rec.paths) {
+        CAPTURE(path.pathstring());
+        const std::vector<Activation> acts = path.all_activations();
+        const ActivationsView view = build_activations(path, rec, &timing);
+        REQUIRE(view.acts.size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            REQUIRE(view.acts[i].squeeze_sentences.size() == acts[i].sqinouts.size());
+            for (size_t k = 0; k < acts[i].sqinouts.size(); ++k) {
+                const SPSqueeze& sq = acts[i].sqinouts[k];
+                if (sq.offset_ms != 0.0) continue;
+                const std::string& text = view.acts[i].squeeze_sentences[k].text;
+                CAPTURE(text);
+                // On the end it is still to earn: a timing, not a limit.
+                CHECK_FALSE(sq.needs_no_timing());
+                CHECK(text.find("more than " + format_ms(0.0)) != std::string::npos);
+                CHECK(text.find("no more than") == std::string::npos);
+                ++(sq.kind == SqueezeKind::SqIn ? on_end_in : on_end_out);
+            }
+        }
+    }
+    CHECK(on_end_in > 0);
+    CHECK(on_end_out > 0);
+}
+
+// On every kept corpus path each backend row shows the rating's own eff.
+// figure (rate_activation's effective_ms) exactly when the rating gave one,
+// with a tooltip then and only then. Pitch Dark's first activation has rows
+// scaled on both sides (the scale line case above), so some rows carry one.
+TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
+    int rows_with_eff = 0;
+    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
+                             const Path& path) {
+        CAPTURE(chart);
+        CAPTURE(path.pathstring());
+        const SongTiming& timing = song.timing();
+        const std::vector<Activation> acts = path.all_activations();
+        const ActivationsView view = build_activations(path, rec, &timing);
+        REQUIRE(view.acts.size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            const ActivationRating rate = rate_activation(acts[i]);
+            // No backend limit is passed, so every stored row shows.
+            REQUIRE(view.acts[i].backends.size() == rate.backends.size());
+            for (size_t r = 0; r < rate.backends.size(); ++r) {
+                const BackendRowView& row = view.acts[i].backends[r];
+                CAPTURE(row.rating);
+                const std::optional<double>& eff = rate.backends[r].note.effective_ms;
+                if (eff) {
+                    CHECK(row.rating.find("(eff. " + format_ms(*eff) + ")") != std::string::npos);
+                    CHECK(row.tooltip.find(format_ms(*eff)) != std::string::npos);
+                    ++rows_with_eff;
+                } else {
+                    CHECK(row.rating.find("eff.") == std::string::npos);
+                    CHECK(row.tooltip.empty());
+                }
+            }
+        }
+    });
+    CHECK(rows_with_eff > 0);
 }
 
 namespace {
 
-// Sun of Nothing act 5 as a one-activation path: early frontend hits reach
-// the SP end x1.60, and one counted Green backend row (260 points) sits
-// 400 ms inside SP.
-Path sun_of_nothing_act5() {
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;  // not e-critical
-    test::set_transfer(act, TransferScale{1.6, 1.0});
-    BackendSqueeze row;
-    row.chord.add_note(NoteColor::Green);
-    row.sp_points = 260;
-    row.offset_ms = -400.0;
+// The multiplier a scale line prints for `side` ("early" or "late"), read
+// back as a number; unset when the line names no such side.
+std::optional<double> printed_scale(const std::string& line, const std::string& side) {
+    const size_t at = line.find(" (" + side + ")");
+    if (at == std::string::npos) return std::nullopt;
+    const size_t x = line.rfind('x', at);
+    if (x == std::string::npos) return std::nullopt;
+    return std::strtod(line.c_str() + x + 1, nullptr);
+}
+
+// Whether `r` would print as x1.00 at two decimals, the scale line's
+// shortest form.
+bool reads_one_at_two_decimals(double r) { return std::round(r * 100.0) / 100.0 == 1.0; }
+
+// An activation whose SP-end scale is `post`, with one squeezed-out row
+// 187.5 ms inside SP (a row the early side governs), as one path.
+Path near_one_path(const TransferScale& post) {
+    Activation act = scale_base();
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
+    test::set_transfer(act, post);
+    BackendSqueeze row = backend_at(-187.5);
+    row.timecode = Timecode::raw(5000);
     act.backends.push_back(row);
+    act.sqout_tick = 5000;
     Path p;
     p.activations.push_back(act);
     return p;
 }
 
-}  // namespace
-
-TEST_CASE("backend table: a counted row inside SP shows its early-scale eff. figure") {
-    // Sun of Nothing act 5: early frontend hits reach the SP end x1.60, so
-    // the note 400 ms inside SP is effectively 307.7 ms from being lost.
+// The one row build_activations makes for `p`.
+ActivationRowView only_row(const Path& p) {
     HydraRecord rec;
-    const Path p = sun_of_nothing_act5();
-
-    ActivationsView v = build_activations(p, rec, nullptr);
+    const ActivationsView v = build_activations(p, rec, nullptr);
     REQUIRE(v.acts.size() == 1);
-    REQUIRE(v.acts[0].backends.size() == 1);
-    const BackendRowView& r = v.acts[0].backends[0];
-    CHECK(r.timing == "-400.0");
-    CHECK(r.rating.find(" (eff. 307.7 ms)") != std::string::npos);
-    CHECK_FALSE(r.tooltip.empty());
-    CHECK(v.acts[0].scale_warning.find("x1.60") != std::string::npos);
+    return v.acts[0];
 }
 
+// The scale line names `side` with a multiplier that never reads 1 and is
+// `r` to at least the two decimals it always prints (half of 0.01 either
+// way).
+void check_names_scale(const std::string& line, const std::string& side, double r) {
+    CAPTURE(line);
+    CAPTURE(side);
+    const std::optional<double> printed = printed_scale(line, side);
+    REQUIRE(printed.has_value());
+    CHECK(*printed != 1.0);
+    CHECK(std::fabs(*printed - r) <= 0.005);
+}
+
+}  // namespace
+
+// A scale a thousandth or more from 1 (is_scaled, D256) is named with enough
+// decimals never to read x1.00; a scale nearer 1 is no scale.
 TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its row's figure") {
-    HydraRecord rec;
-    Activation act;
-    test::set_skips(act, 0);
-    act.e_offset = 300.0;  // not e-critical
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
-    test::set_transfer(act, TransferScale{0.9973, 1.0});
-    BackendSqueeze ry;
-    ry.timecode = Timecode::raw(5000);
-    ry.offset_ms = -187.5;
-    act.backends.push_back(ry);
-    act.sqout_tick = 5000;
-    Path p;
-    p.activations.push_back(act);
-
-    ActivationsView v = build_activations(p, rec, nullptr);
-    REQUIRE(v.acts.size() == 1);
-    CHECK(v.acts[0].scale_warning == "Frontend timing scales x0.997 (early) at the SP end.");
-    CHECK(v.acts[0].scale_warn);
-    REQUIRE(v.acts[0].backends.size() == 1);
-    // 187.5 ms at x0.9973 is worth 187.753... ms.
-    CHECK(v.acts[0].backends[0].rating.find(" (eff. 187.8 ms)") != std::string::npos);
-    const std::string& tip = v.acts[0].backends[0].tooltip;
-    CHECK(tip.find("on the normal 170.0 ms scale") != std::string::npos);
-    CHECK(tip.find("scales x0.997 here") != std::string::npos);
-    CHECK(tip.find("budget is 169.8 ms, not 170.0 ms") != std::string::npos);
-    // The squeeze-out's figure lives on its row only (decision 2).
-    REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
-    CHECK(v.acts[0].squeeze_sentences[0].text.find("eff.") == std::string::npos);
-
-    // Just past is_scaled's tolerance (D256) the line still never reads x1: it
-    // prints as many decimals as kScaleIdentityDigits allows. A second row
-    // past the SP end reads the late side, so both print.
-    Activation both_near = act;
-    both_near.transfer_post = TransferScale{1.0011, 0.9989};
-    BackendSqueeze late_row;
-    late_row.offset_ms = 50.0;
-    both_near.backends.push_back(late_row);
-    p.activations[0] = both_near;
-    v = build_activations(p, rec, nullptr);
-    REQUIRE(v.acts.size() == 1);
-    CHECK(v.acts[0].scale_warning ==
-          "Frontend timing scales x1.001 (early) / x0.999 (late) at the SP end.");
-
-    // Without that row, only the squeezed-out row reads the SP end, from
-    // inside SP: the late side is left out.
-    act.transfer_post = TransferScale{1.0011, 0.9989};
-    p.activations[0] = act;
-    v = build_activations(p, rec, nullptr);
-    REQUIRE(v.acts.size() == 1);
-    CHECK(v.acts[0].scale_warning == "Frontend timing scales x1.001 (early) at the SP end.");
-
-    // A scale exactly a thousandth from 1 is scaled (D256).
-    act.transfer_post = TransferScale{1.001, 1.0};
-    p.activations[0] = act;
-    v = build_activations(p, rec, nullptr);
-    REQUIRE(v.acts.size() == 1);
-    CHECK(v.acts[0].scale_warning == "Frontend timing scales x1.001 (early) at the SP end.");
-
-    // Tapestry of the Starless Abstract's late scale from whole-microsecond
-    // MIDI tempos is no scale: no line and no figure (D256).
-    act.transfer_post = TransferScale{1.0, 1.00000175};
-    p.activations[0] = act;
-    v = build_activations(p, rec, nullptr);
-    REQUIRE(v.acts.size() == 1);
-    CHECK(v.acts[0].scale_warning.empty());
-    CHECK_FALSE(v.acts[0].scale_warn);
-    REQUIRE(v.acts[0].backends.size() == 1);
-    CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
+    SUBCASE("a scale that reads x1.00 at two decimals prints more, and its row's figure") {
+        const double early = 0.9973;
+        REQUIRE(is_scaled(early));
+        REQUIRE(reads_one_at_two_decimals(early));
+        const Path p = near_one_path(TransferScale{early, kIdentityScale});
+        const ActivationRowView av = only_row(p);
+        check_names_scale(av.scale_warning, "early", early);
+        CHECK_FALSE(printed_scale(av.scale_warning, "late").has_value());
+        CHECK(av.scale_warn);
+        const ActivationRating rate = rate_activation(p.activations[0]);
+        REQUIRE(rate.backends.size() == 1);
+        REQUIRE(av.backends.size() == 1);
+        const NoteRating& note = rate.backends[0].note;
+        REQUIRE(note.effective_ms.has_value());
+        CHECK(av.backends[0].rating.find("(eff. " + format_ms(*note.effective_ms) + ")") != std::string::npos);
+        const std::string& tip = av.backends[0].tooltip;
+        CHECK(tip.find(format_ms(nominal_budget_ms())) != std::string::npos);
+        CHECK(tip.find(format_ms(note.budget_ms)) != std::string::npos);
+        // The squeeze-out's figure lives on its row only.
+        REQUIRE(av.squeeze_sentences.size() == 1);
+        CHECK(av.squeeze_sentences[0].text.find("eff.") == std::string::npos);
+    }
+    // Just past the tolerance on each side, the line names both sides when a
+    // second row past the SP end reads the late side, early first.
+    const double just_above = kIdentityScale + kScaleIdentityTolerance + 0.0001;
+    const double just_below = kIdentityScale - kScaleIdentityTolerance - 0.0001;
+    SUBCASE("both sides just past the tolerance both print") {
+        REQUIRE(is_scaled(just_above));
+        REQUIRE(is_scaled(just_below));
+        Path p = near_one_path(TransferScale{just_above, just_below});
+        p.activations[0].backends.push_back(backend_at(50.0));
+        const ActivationRowView av = only_row(p);
+        check_names_scale(av.scale_warning, "early", just_above);
+        check_names_scale(av.scale_warning, "late", just_below);
+        CHECK(av.scale_warning.find("(early)") < av.scale_warning.find("(late)"));
+    }
+    SUBCASE("with only the row inside SP, the late side is left out") {
+        const ActivationRowView av = only_row(near_one_path(TransferScale{just_above, just_below}));
+        check_names_scale(av.scale_warning, "early", just_above);
+        CHECK_FALSE(printed_scale(av.scale_warning, "late").has_value());
+    }
+    SUBCASE("a scale exactly the tolerance from 1 is scaled") {
+        const double at_tolerance = kIdentityScale + kScaleIdentityTolerance;
+        REQUIRE(is_scaled(at_tolerance));
+        const ActivationRowView av = only_row(near_one_path(TransferScale{at_tolerance, kIdentityScale}));
+        check_names_scale(av.scale_warning, "early", at_tolerance);
+    }
+    SUBCASE("a scale nearer 1 than the tolerance is no scale") {
+        // Tapestry of the Starless Abstract's late scale from whole-microsecond
+        // MIDI tempos (D256).
+        const double tapestry_late = 1.00000175;
+        REQUIRE_FALSE(is_scaled(tapestry_late));
+        Path p = near_one_path(TransferScale{kIdentityScale, tapestry_late});
+        p.activations[0].backends.push_back(backend_at(50.0));
+        const ActivationRowView av = only_row(p);
+        CHECK(av.scale_warning.empty());
+        CHECK_FALSE(av.scale_warn);
+        REQUIRE(av.backends.size() == 2);
+        for (const BackendRowView& row : av.backends) CHECK(row.rating.find("eff.") == std::string::npos);
+    }
 }
 
 // D4: an activation with no stored scale is a bug the row shows rather than
