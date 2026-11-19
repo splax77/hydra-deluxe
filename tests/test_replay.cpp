@@ -733,7 +733,11 @@ TEST_CASE("paths_json writes every field the dump readers use") {
 
             // fcvideo, which lives outside this repo, reads these activation
             // keys; no list in the repo owns them, so they are named here.
-            for (const json& a : d["activations"]) {
+            const ActivationWalk walk = p.walk_activations();
+            if (d["activations"].size() != walk.size())
+                return ": the dump wrote another number of activations";
+            for (size_t i = 0; i < walk.size(); ++i) {
+                const json& a = d["activations"][i];
                 ++activations;
                 for (const char* k :
                      {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick", "sp_meter",
@@ -747,6 +751,11 @@ TEST_CASE("paths_json writes every field the dump readers use") {
                 if (a["deact_tick"].get<int64_t>() < 0) continue;
                 for (const char* k : {"end_anchor_tick", "end_scale_early", "end_scale_late"})
                     if (!a[k].is_number()) return std::string(": ") + k + " is not a number";
+                // The anchor is the one the activation names: its own tick, or
+                // the cap's collecting note.
+                const std::optional<int64_t> anchor = walk[i].deact_anchor_tick();
+                if (!anchor || a["end_anchor_tick"].get<int64_t>() != *anchor)
+                    return ": end_anchor_tick is not deact_anchor_tick";
             }
             return "";
         });
