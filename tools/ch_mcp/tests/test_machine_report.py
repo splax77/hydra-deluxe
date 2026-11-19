@@ -807,16 +807,15 @@ class JustOverOnePeriodInARealRecording(ClockRowsCase):
 
 
 class SampleGapsInARealRecording(RealRecordingCase):
-    FOLDER = LATE_RUN
+    FOLDER = DROPPED_READ
 
     def test_gaps_over_gap_ms_are_the_recorders_stalls(self):
         numbers = sorted(self.walls)
         gaps = [self.gap_ms(a, b) for a, b in zip(numbers, numbers[1:])]
-        over = [gap for gap in gaps if gap > R.GAP_MS]
-        self.assertTrue(over)
-        self.assertTrue([gap for gap in gaps if gap <= R.GAP_MS])
+        # Read off samples.csv: the gaps into samples 2901 and 2902 are 80.4 and
+        # 80.6 ms, so two are over 50 ms; the gap into 2904 is 49.4 ms, just under.
         self.assertIn(f"gaps between samples: median {float(statistics.median(gaps)):.1f} ms, "
-                      f"worst {float(max(gaps)):.1f} ms, {len(over)} over {R.GAP_MS} ms "
+                      f"worst {float(max(gaps)):.1f} ms, 2 over {R.GAP_MS} ms "
                       "(the recorder's own stalls)", self.lines())
 
 
