@@ -94,6 +94,10 @@ ANSWERS = {
     "rename": ("\"if no value changes then why is this even a question?\"", "log.md, T8 batch 4", "constants.py's two formula tables are renamed to match the disassembly"),
     "scroll": ('"delete that memory note. search function exists for a reason."', "log.md, T8 batch 4", "done: the note was deleted the same day"),
     "issue": ('"Fix the doc line"', "log.md, T8 batch 4", "done: merge 6acfbed4"),
+    "carry": ("no owner (T9 K1)", "reports/TOOL-AUDIT-T9-K1.md", "the value is read from the chart instead of typed by the agent"),
+    "spend": ("the Confirmed line code-and-engine.md:12", "docs/agents/rulings/code-and-engine.md", "the copies follow the one SP end; 3 ms decides counted or uncounted only"),
+    "worktrees": ("question: which worktree folders the hooks trust", "this round", "open"),
+    "lost": ("question: the rules that lived only in render-checks-use-the-corpus.md", "this round", "open"),
     "lib4": ("the library-run check (theme 4, runs half)", "log.md, T8 batch 2", "nothing: the flag is the only way to start such a run"),
 }
 DONE = {"scroll", "issue"}
@@ -140,6 +144,36 @@ ROW_ANSWERS = {
     "L-F04-05": [("exit 3", "code")],
     "L-F01-09": [("exit 4", None)],
     "L-F28-02": [("exit 3", "merge")],
+}
+# After the T9 closure check (reports/TOOL-AUDIT-T9-K1.md to K8.md): each REOPEN and GONE, refolded
+# by the main session from the checker's reading of today's files. These win over the theme answers.
+# "worktrees" and "lost" are the two questions this round leaves for the user.
+T9_REFOLD = {
+    "L-F02-08": [("Fix pending", "carry")],                                  # K1: one home; agent types a chart value
+    "L-F09-06": [("exit 3", "claim"), ("exit 3", "merge"), ("exit 3", "code")],  # K3: two more splits
+    "L-F12-12": [("exit 4", None), ("exit 3", "pointer")],                   # K4: stale mutation_probe.ps1 entry
+    "L-F13-03": [("exit 3", "code")],                                        # K4: doc says shell_output.py owns 30,000
+    "L-F13-11": [("exit 3", "claim"), ("exit 3", "note"), ("exit 3", "home")],  # K4: ETW advice; non-invasive rule
+    "L-F17-09": [("exit 3", "code")],                                        # K5: doc against code
+    "L-F17-17": [("exit 3", "claim")],                                       # K5: limit has a home; claim does not
+    "L-F18-11": [("exit 4", None)],                                          # K5: three homes agree
+    "L-F18-13": [("exit 3", "merge"), ("exit 4", None)],                     # K5: two merges; earlyStart has a home
+    "L-F25-04": [("exit 3", "merge")],                                       # K7: two lists of non-sources
+    "L-F25-12": [("exit 4", None)],                                          # K7: one home only
+    "L-F27-02": [("exit 4", None)],                                          # K7: different questions
+    "L-F27-18": [("exit 4", None)],                                          # K7: hook and doc agree
+    "L-F28-09": [("exit 4", None)],                                          # K7: doc home exists; reminder missing
+    "L-F29-06": [("exit 3", "merge")],                                       # K8: two docs
+    "L-F32-03": [("exit 3", "spend")],                                       # K8: Confirmed line names both sides
+    "L-F08-11": [("exit 3", "claim"), ("exit 3", "code")],                   # K2: agent-rules.md:5 "each prompt"
+    "L-F08-06": [("GONE", None)],                                            # K2
+    "L-F18-16": [("GONE", None)],                                            # K5
+    "L-F33-10": [("GONE", None)],                                            # K8
+    "L-F20-12": [("exit 2", "lost")],                                        # K6: the rule went with the deleted note
+    "L-F33-02": [("exit 2", "worktrees")],                                   # K8: no hook trusts hydra-test\worktrees
+    "L-F07-11": [("exit 2", "worktrees")],
+    "L-F10-11": [("exit 2", "worktrees")],
+    "L-F13-05": [("exit 2", "worktrees")],
 }
 # Rows no stage gave an exit, folded in late-folds.md. L-F04-14 never reached exits.md.
 LATE = {"L-F04-14": [("exit 3", "merge")]}
@@ -217,6 +251,8 @@ for i in sorted(set(ledger) | set(t6)):
             gaps.append((i, "question row, theme %s, no answer and not in fold-T8.md" % th))
             continue
         why[i] = "theme %s" % th
+        if i in T9_REFOLD:
+            p = T9_REFOLD[i]
     if verdict == "NOT VERIFIED" and i not in fold:
         p = [("still open", None)] + p
     if not p:
