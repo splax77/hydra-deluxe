@@ -1071,12 +1071,12 @@ class RealEnds(Folder):
         self.assertLess(before_last - first, end_s + period_s)
 
     def test_the_cap_stops_it_when_it_comes_before_seconds(self):
-        cap_s = 0.3
+        cap_s = 1
         samples = self.ended_by("--cap-s", str(cap_s), "--seconds", str(SUBPROCESS_CAP_S))
         self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_CAP, cap_s)
 
     def test_seconds_stops_it_when_they_come_before_the_cap(self):
-        seconds = 0.3
+        seconds = 1
         samples = self.ended_by("--cap-s", str(SUBPROCESS_CAP_S), "--seconds", str(seconds))
         self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_SECONDS, seconds)
 
@@ -1191,9 +1191,9 @@ class RecordedPace(unittest.TestCase):
                 if float(row["sample_ms"]) > 2 * float(row["period_ms"])]
         self.assertTrue(late)
         for i in late:
-            period_s = float(rows[i]["period_ms"]) / 1000
+            period_s = C.ms_to_s(float(rows[i]["period_ms"]))
             with self.subTest(sample=rows[i]["sample"]):
-                self.assertLess(walls[i + 1] - walls[i] - float(rows[i]["sample_ms"]) / 1000,
+                self.assertLess(walls[i + 1] - walls[i] - C.ms_to_s(float(rows[i]["sample_ms"])),
                                 period_s / 4)
                 self.assertAlmostEqual(walls[i + 2] - walls[i + 1], period_s, delta=period_s / 4)
 
