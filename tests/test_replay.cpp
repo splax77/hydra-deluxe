@@ -709,43 +709,55 @@ TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
 TEST_CASE("paths_json writes every field the dump readers use") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    bool checked = false;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        const std::vector<const Path*> all = rec.all_paths();
-        if (all.empty() || all[0]->all_activations().empty()) continue;
+    // Every stored path of every corpus chart. A chart that fails to load
+    // throws; one with no notes at these settings is counted and printed.
+    int activations = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const json dumped = paths_json({&p}, song.timing());
+            if (dumped.size() != 1) return ": the dump wrote " + std::to_string(dumped.size()) + " paths";
+            const json& d = dumped[0];
+            for (const char* k : {"index", "pathstring", "total", "score", "activations"})
+                if (!d.contains(k)) return std::string(": no top-level key ") + k;
+            if (d["pathstring"].get<std::string>() != p.pathstring()) return ": pathstring differs";
+            if (d["total"].get<int64_t>() != p.totalscore()) return ": total differs";
 
-        const json dumped = paths_json(all, song.timing());
-        REQUIRE(dumped.size() == all.size());
+            // The score split's names come from their one owner,
+            // kReplayScoreFields, and each value from score_of.
+            const ReplayScore stored = score_of(p);
+            for (const ReplayScoreField& f : kReplayScoreFields) {
+                if (!d["score"].contains(f.name)) return std::string(": no score key ") + f.name;
+                if (d["score"][f.name].get<int64_t>() != stored.*(f.member))
+                    return std::string(": score ") + f.name + " differs";
+            }
 
-        const json& p0 = dumped[0];
-        for (const char* k : {"index", "pathstring", "total", "score", "activations"})
-            CHECK_MESSAGE(p0.contains(k), k);
-        for (const char* k : {"notes", "combo", "sp", "solo", "accent", "ghost"})
-            CHECK_MESSAGE(p0["score"].contains(k), k);
-        CHECK(p0["pathstring"].get<std::string>() == all[0]->pathstring());
-
-        REQUIRE(!p0["activations"].empty());
-        const json& a0 = p0["activations"][0];
-        for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks",
-                              "chord_code", "sqinouts",
-                              "sqin_ticks", "end_anchor_tick", "end_scale_early", "end_scale_late",
-                              "steady_ms_before_act", "steady_ms_after_act",
-                              "steady_ms_before_end", "steady_ms_after_end"})
-            CHECK_MESSAGE(a0.contains(k), k);
-        // The real search stores the end's ratio on every activation it
-        // returns, so a fresh dump never writes it null.
-        CHECK(a0["end_anchor_tick"].is_number());
-        CHECK(a0["end_scale_early"].is_number());
-        CHECK(a0["end_scale_late"].is_number());
-
-        checked = true;
-        break;  // one chart's first path is the whole contract
-    }
-    CHECK(checked);
+            // fcvideo, which lives outside this repo, reads these activation
+            // keys; no list in the repo owns them, so they are named here.
+            for (const json& a : d["activations"]) {
+                ++activations;
+                for (const char* k :
+                     {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick", "sp_meter",
+                      "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks", "chord_code",
+                      "sqinouts", "sqin_ticks", "from_record", "end_anchor_tick",
+                      "end_scale_early", "end_scale_late", "steady_ms_before_act",
+                      "steady_ms_after_act", "steady_ms_before_end", "steady_ms_after_end"})
+                    if (!a.contains(k)) return std::string(": no activation key ") + k;
+                // The real search stores the end's ratio on every activation
+                // that has an end, so a fresh dump never writes it null there.
+                if (a["deact_tick"].get<int64_t>() < 0) continue;
+                for (const char* k : {"end_anchor_tick", "end_scale_early", "end_scale_late"})
+                    if (!a[k].is_number()) return std::string(": ") + k + " is not a number";
+            }
+            return "";
+        });
+    MESSAGE(run.charts << " charts, " << run.paths << " paths, " << activations
+                       << " activations, " << run.no_part
+                       << " charts with no notes at these settings");
+    CHECK(run.charts > 0);
+    // A walk that dumped no activation checked no activation key.
+    CHECK(activations > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 namespace {
@@ -783,7 +795,11 @@ json dump_one_activation(const SongTiming& timing, int64_t act_tick,
     return dump_alone(timing, a);
 }
 
-double rounded_4(double v) { return std::round(v * 1e4) / 1e4; }
+// How long `ticks` last at one steady `bpm`, on a chart of `resolution`
+// ticks a beat: a beat lasts 60000 / bpm ms.
+double ms_at_bpm(int64_t ticks, int64_t resolution, double bpm) {
+    return static_cast<double>(ticks) / static_cast<double>(resolution) * 60000.0 / bpm;
+}
 
 const char* const kSteadyFields[] = {"steady_ms_before_act", "steady_ms_after_act",
                                      "steady_ms_before_end", "steady_ms_after_end"};
@@ -836,84 +852,110 @@ TEST_CASE("paths_json: a constant tempo gives end ratios of 1 and no change on a
     CHECK(ratios > 0);
 }
 
-// Rescued's shape: a tempo marker sits on the activation tick itself (150.67
-// BPM before it, 155.656 from it), and the end's tick follows 150 BPM. An
-// early hit lands in the segment before the marker, so the early ratio reads
-// that segment's tempo, not the marker's, and the early side stays exact back
-// to the marker at 83520: one beat at 150.67 BPM, about 398 ms. The end's
-// early side reaches back to the 150 BPM marker at 89000: 856 ticks at 150
-// BPM. Nothing changes after the end.
+// Rescued's shape: a tempo marker sits on the activation tick itself, with
+// one tempo before it and another from it, and the end's tick follows a
+// third. An early hit lands in the segment before the marker, so the early
+// ratio reads that segment's tempo against the end's, and the late ratio the
+// marker's tempo against the end's. The early side stays exact back to the
+// marker before; the end's early side reaches back to the end's own marker.
+// Nothing changes after the end.
 TEST_CASE("paths_json: a tempo marker on the activation tick gives the earlier segment's ratio") {
-    const SongTiming timing(192, {{0, 768}},
-                            {{0, 120.0}, {83520, 150.67}, {83712, 155.656}, {89000, 150.0}},
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kBeforeMarker = 83520, kActTick = 83712, kEndMarker = 89000,
+                      kEndTick = 89856;
+    constexpr double kBpmBefore = 150.67, kBpmFromAct = 155.656, kBpmAtEnd = 150.0;
+    const SongTiming timing(kRes, {{0, 768}},
+                            {{0, 120.0},
+                             {kBeforeMarker, kBpmBefore},
+                             {kActTick, kBpmFromAct},
+                             {kEndMarker, kBpmAtEnd}},
                             {{0, {4, 4}}});
-    const json a = dump_one_activation(timing, 83712, 89856);
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
-    CHECK(rounded_4(a["end_scale_early"].get<double>()) == doctest::Approx(1.0045));
-    CHECK(rounded_4(a["end_scale_late"].get<double>()) == doctest::Approx(1.0377));
+    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(kBpmBefore / kBpmAtEnd));
+    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(kBpmFromAct / kBpmAtEnd));
     REQUIRE(a["steady_ms_before_act"].is_number());
-    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(398.22).epsilon(1e-4));
+    CHECK(a["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kActTick - kBeforeMarker, kRes, kBpmBefore)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(1783.33).epsilon(1e-5));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kEndMarker, kRes, kBpmAtEnd)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A change exactly on the tick starts the late side's section, so it bounds
-// neither side: the early side measures back to the change before (768, 768
-// ticks at 60 BPM = 4000 ms) and the late side on to the change after (2304,
-// 768 ticks at 120 BPM = 2000 ms), never 0. The end at 3840 reaches back to
-// 2304 (1536 ticks at 60 BPM = 8000 ms) with nothing after it.
+// neither side: the early side measures back to the change before and the
+// late side on to the change after, never 0. The end reaches back to the
+// last change, with nothing after it.
 TEST_CASE("paths_json: a change on the tick bounds neither of its steady spans") {
-    const SongTiming timing(192, {{0, 768}},
-                            {{0, 120.0}, {768, 60.0}, {1536, 120.0}, {2304, 60.0}},
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kChangeBefore = 768, kActTick = 1536, kChangeAfter = 2304, kEndTick = 3840;
+    constexpr double kBpmBefore = 60.0, kBpmFromAct = 120.0, kBpmAtEnd = 60.0;
+    const SongTiming timing(kRes, {{0, 768}},
+                            {{0, 120.0},
+                             {kChangeBefore, kBpmBefore},
+                             {kActTick, kBpmFromAct},
+                             {kChangeAfter, kBpmAtEnd}},
                             {{0, {4, 4}}});
-    const json a = dump_one_activation(timing, 1536, 3840);
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
     REQUIRE(a["steady_ms_before_act"].is_number());
-    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kActTick - kChangeBefore, kRes, kBpmBefore)));
     REQUIRE(a["steady_ms_after_act"].is_number());
-    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["steady_ms_after_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kChangeAfter - kActTick, kRes, kBpmFromAct)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(8000.0));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kChangeAfter, kRes, kBpmAtEnd)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A meter change between the activation and its end changes the measure
-// length while the tempo stays put, so the ratio is the measure ratio (3/4
-// against 4/4), not the BPM ratio of 1. The meter change bounds the spans the
-// way a tempo change does: 768 ticks at 120 BPM after the activation, 1536
-// before the end.
+// length while the tempo stays put, so the ratio is the end's measure length
+// against the activation's (3/4 against 4/4), not the BPM ratio of 1. The
+// meter change bounds the spans the way a tempo change does.
 TEST_CASE("paths_json: a time signature change between the ticks gives the measure ratio") {
-    const SongTiming timing(192, {{0, 768}, {1536, 576}}, {{0, 120.0}},
-                            {{0, {4, 4}}, {1536, {3, 4}}});
-    const json a = dump_one_activation(timing, 768, 3072);
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kMeasure44 = 768, kMeasure34 = 576;  // ticks a measure
+    constexpr int64_t kActTick = 768, kMeterChange = 1536, kEndTick = 3072;
+    constexpr double kBpm = 120.0;
+    const SongTiming timing(kRes, {{0, kMeasure44}, {kMeterChange, kMeasure34}}, {{0, kBpm}},
+                            {{0, {4, 4}}, {kMeterChange, {3, 4}}});
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
+    const double measure_ratio = static_cast<double>(kMeasure34) / static_cast<double>(kMeasure44);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
-    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(0.75));
-    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(0.75));
-    CHECK(a["end_scale_early"].get<double>() != doctest::Approx(1.0));
+    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(measure_ratio));
+    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(measure_ratio));
     CHECK(a["steady_ms_before_act"].is_null());
     REQUIRE(a["steady_ms_after_act"].is_number());
-    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["steady_ms_after_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kMeterChange - kActTick, kRes, kBpm)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kMeterChange, kRes, kBpm)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // When the cap pinned the end to a collecting note, that note's timing moves
 // the end, not the activation's: end_anchor_tick names it and the "act" spans
-// are measured from it. Here the clamp at 1536 sits 768 ticks at 60 BPM past
-// the change at 768; from the activation at 384 there would be no change
-// before at all.
+// are measured from it. The clamp note sits past a tempo change; from the
+// activation, before that change, there would be no change before at all.
 TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
-    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}, {768, 60.0}}, {{0, {4, 4}}});
-    Activation a = act_at(timing, 384);
-    test::set_clamped_window(a, 1536, 3072);
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kActTick = 384, kChange = 768, kClampTick = 1536, kEndTick = 3072;
+    constexpr double kBpmAfterChange = 60.0;
+    const SongTiming timing(kRes, {{0, 768}}, {{0, 120.0}, {kChange, kBpmAfterChange}},
+                            {{0, {4, 4}}});
+    Activation a = act_at(timing, kActTick);
+    test::set_clamped_window(a, kClampTick, kEndTick);
     const json d = dump_alone(timing, a);
-    CHECK(d["act_tick"].get<int64_t>() == 384);
-    CHECK(d["end_anchor_tick"].get<int64_t>() == 1536);
+    CHECK(d["act_tick"].get<int64_t>() == kActTick);
+    CHECK(d["end_anchor_tick"].get<int64_t>() == kClampTick);
     REQUIRE(d["steady_ms_before_act"].is_number());
-    CHECK(d["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(d["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kClampTick - kChange, kRes, kBpmAfterChange)));
     CHECK(d["steady_ms_after_act"].is_null());
 }
 
@@ -922,16 +964,26 @@ TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
 // activation the search stored none for writes null ratios beside its spans.
 TEST_CASE("paths_json writes the end ratio the search stored") {
     const SongTiming timing(192, {{0, 768}}, {{0, 120.0}}, {{0, {4, 4}}});
-    Activation a = act_at(timing, 3840);
-    test::set_plain_window(a, 9984);
-    a.transfer_post = TransferScale{0.5, 2.0};
+    constexpr int64_t kActTick = 3840, kEndTick = 9984;
+    Activation a = act_at(timing, kActTick);
+    test::set_plain_window(a, kEndTick);
+    const TransferScale stored_pair{0.5, 2.0};
+    // Worked out again from this timing, the pair would differ: one steady
+    // tempo gives another ratio, so a writer that recomputed would show it.
+    const std::optional<ActTransferScales> recomputed = frontend_transfer_scales(a, timing);
+    REQUIRE(recomputed.has_value());
+    CHECK(recomputed->post.early != doctest::Approx(stored_pair.early));
+    CHECK(recomputed->post.late != doctest::Approx(stored_pair.late));
+
+    a.transfer_post = stored_pair;
     const json stored = dump_alone(timing, a, false);
-    CHECK(stored["end_scale_early"].get<double>() == 0.5);
-    CHECK(stored["end_scale_late"].get<double>() == 2.0);
+    CHECK(stored["end_scale_early"].get<double>() == stored_pair.early);
+    CHECK(stored["end_scale_late"].get<double>() == stored_pair.late);
 
     a.transfer_post.reset();
     const json unknown = dump_alone(timing, a, false);
-    CHECK(unknown["end_anchor_tick"].get<int64_t>() == 3840);
+    // A plain window's end is anchored on its activation tick.
+    CHECK(unknown["end_anchor_tick"].get<int64_t>() == kActTick);
     CHECK(unknown["end_scale_early"].is_null());
     CHECK(unknown["end_scale_late"].is_null());
     for (const char* k : kSteadyFields) CHECK_MESSAGE(unknown.contains(k), k);
@@ -961,13 +1013,19 @@ TEST_CASE("result block: an empty record writes a null score and an empty bestpa
     CHECK(empty["score"].is_null());
     CHECK(empty["bestpath"].get<std::string>() == "");
 
-    // One corpus chart, named by its path, with its best score and path as one
-    // run printed them.
+    // On a corpus chart the block prints what the record's owners answer:
+    // HydraRecord::optimal_score for the score, RecordRow::best_path_text for
+    // the path.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::string chart = corpus::root() + "/common/IB24/T1/Allister - Overrated/notes.mid";
-    const json full = result_json(corpus::analyzed(chart, cfg));
-    CHECK(full["score"].get<int64_t>() == 228710);
-    CHECK(full["bestpath"].get<std::string>() == "1 2");
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const std::optional<int64_t> best = rec.optimal_score();
+    REQUIRE(best.has_value());
+    const json full = result_json(rec);
+    CHECK(full["score"].get<int64_t>() == *best);
+    const std::string best_text = store::record_of(std::string(), rec).best_path_text();
+    CHECK_FALSE(best_text.empty());
+    CHECK(full["bestpath"].get<std::string>() == best_text);
 }
 
 // dump prints each activation's passed-over fills as the record stores them.
