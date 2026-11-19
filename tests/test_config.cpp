@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <functional>
+#include <initializer_list>
 #include <iterator>
 #include <optional>
 #include <string>
@@ -270,7 +271,7 @@ TEST_CASE("early_fill_window_ms reaches the search and the result's key together
     REQUIRE(at_max.early_fill_window_ms != at_default.early_fill_window_ms);
 
     // The search and the result's key carry the same window, for each setting.
-    for (const Settings* s : {&at_default, &at_max}) {
+    for (const Settings* s : std::initializer_list<const Settings*>{&at_default, &at_max}) {
         CAPTURE(s->early_fill_window_ms);
         CHECK(s->to_analysis_settings().early_fill_window_ms ==
               static_cast<double>(s->lens().efill_window_ms));
