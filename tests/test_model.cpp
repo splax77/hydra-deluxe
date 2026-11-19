@@ -1543,9 +1543,9 @@ TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
 // A multiplier squeeze is a chord whose notes straddle a to_multiplier step.
 // MultSqueeze accepts exactly the straddling chords of every size, 2 to 5
 // notes (D51 call 3: Clone Hero allows 4- and 5-note chords, so Hydra must
-// get them right). A chord of n notes hit at combo c straddles a step when
-// its first note's multiplier, to_multiplier(c + 1), is below its last
-// note's, to_multiplier(c + n); to_multiplier owns where the steps sit
+// get them right). A chord straddles a step when the payout (category_scores,
+// which owns each note's multiplier) pays its first note below its last;
+// multiplier_step's own test pins those ends to to_multiplier's steps
 // (Clone Hero's 10, 20 and 30, model.h). The graph asks applies(), and the
 // constructor refuses what applies() refuses; both are checked against that
 // rule, for every combo up to past the last step.
@@ -1573,9 +1573,10 @@ TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a m
         for (int combo = 0; combo < 40; ++combo) {
             CAPTURE(n);
             CAPTURE(combo);
-            const bool straddle = to_multiplier(combo + 1) < to_multiplier(combo + n);
-            if (straddle) ++straddles;
             const Chord mixed = chord_of(n, true);
+            const CategoryScores paid = category_scores(mixed, combo);
+            const bool straddle = paid.multiplier < paid.multiplier_after;
+            if (straddle) ++straddles;
             CHECK(MultSqueeze::applies(mixed, combo) == straddle);
             CHECK(accepted(mixed, combo) == straddle);
             const Chord same = chord_of(n, false);
@@ -1589,17 +1590,22 @@ TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a m
 // The best order puts the cymbals past the step and the pads before it; the
 // worst order swaps them. Each cymbal that the best order moves past the step
 // is worth its cymbal bonus more per multiplier gained, so the gain is that
-// count times kCymbalBonusPoints times the step's rise. The notes paid past
-// the step are those whose combo reaches a higher multiplier than the first
-// note's (to_multiplier owns where the steps sit).
+// count times kCymbalBonusPoints times the step's rise. Each note's
+// multiplier is read from the payout (category_scores): the notes paid past
+// the step are those paid above the first note's multiplier.
 TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
-    auto paid_past_step = [](int combo, int notes) {
+    auto paid_past_step = [](const Chord& chord, int combo) {
+        std::vector<CategoryScores> per_note;
+        category_scores(chord, combo, &per_note);
         int past = 0;
-        for (int k = 1; k <= notes; ++k)
-            if (to_multiplier(combo + k) > to_multiplier(combo + 1)) ++past;
+        for (const CategoryScores& note : per_note)
+            if (note.multiplier > per_note.front().multiplier) ++past;
         return past;
     };
-    auto rise = [](int combo, int notes) { return to_multiplier(combo + notes) - to_multiplier(combo + 1); };
+    auto rise = [](const Chord& chord, int combo) {
+        const CategoryScores cs = category_scores(chord, combo);
+        return cs.multiplier_after - cs.multiplier;
+    };
 
     // Kick and Red pads with yellow and blue cymbals, hit at combo 7: the
     // last two notes are paid past the step, and both cymbals fit there.
@@ -1611,8 +1617,8 @@ TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
     const int kryb_cymbals = 2;
-    REQUIRE(paid_past_step(7, kryb.count()) == kryb_cymbals);
-    CHECK(MultSqueeze(kryb, 7).gain() == kryb_cymbals * kCymbalBonusPoints * rise(7, kryb.count()));
+    REQUIRE(paid_past_step(kryb, 7) == kryb_cymbals);
+    CHECK(MultSqueeze(kryb, 7).gain() == kryb_cymbals * kCymbalBonusPoints * rise(kryb, 7));
 
     // A red pad and a yellow cymbal at combo 8: only the last note is paid
     // past the step, and the one cymbal goes there.
@@ -1621,8 +1627,8 @@ TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
     ry.add_note(NoteColor::Yellow);
     ry.apply_cymbal(NoteColor::Yellow);
     const int ry_cymbals = 1;
-    REQUIRE(paid_past_step(8, ry.count()) == ry_cymbals);
-    CHECK(MultSqueeze(ry, 8).gain() == ry_cymbals * kCymbalBonusPoints * rise(8, ry.count()));
+    REQUIRE(paid_past_step(ry, 8) == ry_cymbals);
+    CHECK(MultSqueeze(ry, 8).gain() == ry_cymbals * kCymbalBonusPoints * rise(ry, 8));
 }
 
 // D51 call 3: the advice names every note that has to cross the step.
