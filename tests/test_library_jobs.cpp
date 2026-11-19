@@ -36,7 +36,7 @@
 #include "core/rules.h"  // RulesStamp
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
-#include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record, save_old_build_record, other_rules_record
+#include "display_fixtures.h"  // save_batch_record, save_old_build_record, other_rules_record
 #include "env_util.h"  // read_env
 #include "net/dmbot_client.h"
 #include "parse/song.h"  // NoNotesError
