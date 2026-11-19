@@ -872,7 +872,9 @@ class StateWordsTest(unittest.TestCase):
 class TraceTest(Rig):
     def test_trace_start_refuses_with_no_live_game_manager(self):
         tools = self.tools([STATE, MENU], attached=True)
+        self.game.backups = 0
         out = tools.ch_trace_start(self.song)
+        self.assertEqual(self.game.backups, 0)
         self.assertEqual(out.splitlines()[-1],
                          "no live GameManager: start the song (pause it if you like), "
                          "then call ch_trace_start")
