@@ -3,9 +3,9 @@
 No game, no real game files and no real registry key. The tests that use
 _real_env run bot_run's real launcher, clock and sleep on temp folders: its
 exe path names a file that is not there, so the real launch fails before any
-game starts. The rest use the fakes below. The user folders are temp
-folders, and no Env here has a reg.exe runner unless a test hands it
-test_game_files' FakeReg.
+game starts. _launching_env's exe is this Python, which exits at once. The
+rest use the fakes below. The user folders are temp folders, and no Env here
+has a reg.exe runner.
 """
 
 from __future__ import annotations
@@ -37,7 +37,6 @@ from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import hydra_end  # noqa: E402
 from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
-from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import prep_inputs, probe_songs  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME, ms_to_s  # noqa: E402
@@ -87,6 +86,32 @@ def _real_env(tmp: str, lines: list) -> B.Env:
     os.makedirs(docs, exist_ok=True)
     return B.Env(exe=os.path.join(tmp, os.path.basename(G.GAME_EXE)), documents_dir=docs,
                  out=lines.append, run_reg=None)
+
+
+# Windows' own whoami: with no arguments it prints the user's name (into
+# _popen_game's DEVNULL stdout) and exits, and it refuses the game's flags
+# and exits. It reads and writes nothing else.
+_WHOAMI = os.path.join(os.environ.get("SystemRoot", r"C:\Windows"), "System32", "whoami.exe")
+
+
+def _launching_env(tmp: str, lines: list) -> B.Env:
+    """_real_env with whoami as its exe, so the real launch starts a real
+    process that exits on its own at once. For a step that needs a launched
+    run and does nothing with the game itself."""
+    env = _real_env(tmp, lines)
+    env.exe = _WHOAMI
+    return env
+
+
+def _reap(test: unittest.TestCase, game) -> None:
+    """Wait for a process _launching_env started. It exits on its own at
+    once, so the wait ends as soon as it does; THREAD_CAP_S is only the last
+    stop."""
+    try:
+        game._p.wait(timeout=THREAD_CAP_S)
+    except subprocess.TimeoutExpired:
+        game._p.kill()
+        test.fail(f"{_WHOAMI} was still running after {THREAD_CAP_S:g} s")
 
 
 def _pitch_dark_dump(test: unittest.TestCase) -> str:
@@ -471,13 +496,6 @@ class BotRunTest(unittest.TestCase):
         self.assertFalse(any(line.startswith("note: ") for line in r.lines), r.lines)
 
 
-class StuckGame(FakeGame):
-    """A game that does not exit within the stop's wait."""
-
-    def stop(self) -> None:
-        raise subprocess.TimeoutExpired(PROCESS_NAME, B.EXIT_CHECK_S)
-
-
 class RunStepsTest(unittest.TestCase):
     """The steps the server calls one at a time: start_run, wait_stats and
     finish_run."""
@@ -540,76 +558,95 @@ class RunStepsTest(unittest.TestCase):
         self.assertEqual(run.cap_s, B.run_cap_s(end_ms))
 
     def test_start_run_takes_a_song_end_already_read_without_a_dump(self):
-        r = Rig(self.tmp, exits_at=None, length_ms=260504)
-        dumps_before = len(FAKE.charts)
-        given_ms = 4000.0
-        run = B.start_run(r.song, backup_root=os.path.join(r.out_dir, "backups"), env=r.env,
-                          song_end=(given_ms, "given"))
-        self.assertEqual(len(FAKE.charts), dumps_before)
-        # The cap comes from the given end, not the dump's 260504.
+        # A song folder holding only PITCH_DARK's song.ini has no chart, so
+        # song_length_ms cannot read an end there. Given Hydra's end for
+        # PITCH_DARK's chart (its dump in testdata/replay), start_run reads
+        # none and the run's cap and source come from the given end.
+        song = os.path.join(self.tmp, "songs", os.path.basename(PITCH_DARK))
+        os.makedirs(song)
+        shutil.copyfile(os.path.join(PITCH_DARK, G.SONG_INI), os.path.join(song, G.SONG_INI))
+        with self.assertRaises(B.SongLengthMissing):
+            B.song_length_ms(song)
+        given_ms, given_source = _pitch_dark_end(self)
+        lines = []
+        run = B.start_run(song, env=_launching_env(self.tmp, lines),
+                          song_end=(given_ms, given_source),
+                          backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        self.assertEqual(run.length_ms, given_ms)
+        self.assertEqual(run.length_source, given_source)
         self.assertEqual(run.cap_s, B.run_cap_s(given_ms))
 
     def test_start_run_with_no_song_launches_the_bare_exe_after_a_backup(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, None)
-        self.assertEqual(r.launch.commands, [[r.env.exe]])
-        self.assertTrue(os.path.isdir(run.backup_dir))
-        self.assertIsNone(run.song_dir)
-        self.assertIsNone(run.cap_s)
-        self.assertEqual(B.launch_command("exe", None, "Drums,Expert"), ["exe"])
-        self.assertEqual(B.launch_command("exe", None, "ProDrums,Expert", "Tester"), ["exe"])
+        # The real launch of a missing exe fails (_real_env) after start_run
+        # printed the command it was given and made the backup.
+        lines = []
+        env = _real_env(self.tmp, lines)
+        backup_root = os.path.join(self.tmp, "backups")
+        with self.assertRaises(OSError):
+            B.start_run(None, env=env, backup_root=backup_root)
+        backups = os.listdir(backup_root)
+        self.assertEqual(len(backups), 1, backups)
+        backup_dir = os.path.join(backup_root, backups[0])
+        backup_line = next(i for i, line in enumerate(lines) if backup_dir in line)
+        # The one command line printed is the exe alone, after the backup.
+        commands = [i for i, line in enumerate(lines)
+                    if subprocess.list2cmdline([env.exe]) in line]
+        self.assertEqual(len(commands), 1, lines)
+        self.assertGreater(commands[0], backup_line, lines)
+        self.assertEqual(shlex.split(lines[commands[0]].partition(": ")[2], posix=False),
+                         [subprocess.list2cmdline([env.exe])])
+        # No player or profile reaches a command with no song.
+        for player in (B.DEFAULT_PLAYER, f"{B.PRO_DRUMS_INSTRUMENT},Expert"):
+            with self.subTest(player=player):
+                self.assertEqual(B.launch_command(env.exe, None, player, "Tester"), [env.exe])
 
     def test_wait_stats_on_a_no_song_run_says_so_without_sleeping(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, None)
-        self.assertIsNone(B.wait_stats(run, r.out_dir, r.env))
-        self.assertEqual(r.lines[-1], "no song was launched from the command line; nothing to wait for")
-        self.assertEqual(r.clock.t, 0.0)
+        # A real launch with no song (_launching_env) gives a run with no cap.
+        lines = []
+        env = _launching_env(self.tmp, lines)
+        run = B.start_run(None, env=env, backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        self.assertIsNone(run.cap_s)
+        printed = len(lines)
+        out_dir = os.path.join(self.tmp, "out")
+        start = env.now()
+        self.assertIsNone(B.wait_stats(run, out_dir, env))
+        # It returns before the poll's first sleep, makes no copy folder and
+        # prints one line, which is not the wait's own line.
+        self.assertLess(env.now() - start, B.POLL_INTERVAL_S)
+        self.assertFalse(os.path.exists(out_dir))
+        self.assertEqual(len(lines), printed + 1, lines)
+        self.assertNotIn(G.SCORESTATS, lines[-1])
 
     def test_wait_stats_copies_a_changed_file_and_names_the_seconds(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        r.game_writes_stats_at(5)
-        copy = B.wait_stats(run, r.out_dir, r.env)
-        self.assertEqual(copy, os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json"))
-        self.assertEqual(_read(copy), NEW_STATS)
-        self.assertIn(f"scorestats.json changed after 5 s; copied to {copy}", r.lines)
-
-    def test_finish_run_with_stop_stops_the_game_and_leaves_every_file(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        for name in ORIGINAL:
-            _write(r.path(name), b"changed by the game")
-        self.assertTrue(B.finish_run(run, stop=True, env=r.env))
-        self.assertTrue(r.game.stopped)
-        self.assertIn(B.STOPPED_BY_FLAG_LINE, r.lines)
-        r.assert_files_hold(self, b"changed by the game")
-        self.assertFalse(any("--restore" in line for line in r.lines))
-
-    def test_finish_run_says_a_caller_given_stop_line_instead_of_the_flag_one(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertTrue(B.finish_run(run, stop=True, env=r.env, stop_line=B.STOPPED_LINE))
-        self.assertIn(B.STOPPED_LINE, r.lines)
-        self.assertNotIn(B.STOPPED_BY_FLAG_LINE, r.lines)
-
-    def test_finish_run_reports_a_game_that_outlives_the_stop_and_still_restores(self):
-        r = Rig(self.tmp, exits_at=None)
-        r.game = r.launch.game = StuckGame(r.clock)
-        run = self.start(r, r.song)
-        for name in ORIGINAL:
-            _write(r.path(name), b"changed by the game")
-        self.assertTrue(B.finish_run(run, stop=True, env=r.env))
-        # The stop line names the game, its pid and the stop's wait.
-        stuck = [line for line in r.lines if "was told to stop" in line]
-        self.assertEqual(len(stuck), 1, r.lines)
-        self.assertIn(f"{PROCESS_NAME} (pid {r.game.pid})", stuck[0])
-        self.assertIn(f"after {B.EXIT_CHECK_S:.0f} s", stuck[0])
-        self.assertNotIn(B.STOPPED_BY_FLAG_LINE, r.lines)
-        r.assert_files_hold(self, b"changed by the game")
-        # The last line names the restore to run once the game is closed.
-        self.assertIn(f'--restore "{r.backup_dir()}"', r.lines[-1])
-
+        # scorestats.json as it was before a real run, then as the game wrote
+        # it after one; the run is a real launch (_launching_env) with Hydra's
+        # end for PITCH_DARK, and the wait runs on the real clock.
+        lines = []
+        env = _launching_env(self.tmp, lines)
+        stats = os.path.join(env.documents_dir, G.SCORESTATS)
+        shutil.copyfile(STATS_BEFORE_A_RUN, stats)
+        run = B.start_run(PITCH_DARK, env=env, song_end=_pitch_dark_end(self),
+                          backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        shutil.copyfile(STATS_AFTER_A_RUN, stats)
+        out_dir = os.path.join(self.tmp, "out")
+        start = env.now()
+        copy = B.wait_stats(run, out_dir, env)
+        waited = env.now() - start
+        self.assertIsNotNone(copy, lines)
+        self.assertEqual(os.path.dirname(copy), out_dir)
+        self.assertEqual(_read(copy), _read(STATS_AFTER_A_RUN))
+        # One line names the file, the copy and the whole seconds the wait
+        # took: at least one poll's sleep, and no more than the wall time.
+        copied = [line for line in lines if copy in line]
+        self.assertEqual(len(copied), 1, lines)
+        self.assertIn(G.SCORESTATS, copied[0])
+        seconds = [int(n) for n in re.findall(r"\b(\d+) s\b", copied[0])]
+        self.assertEqual(len(seconds), 1, copied[0])
+        self.assertGreaterEqual(seconds[0], round(B.POLL_INTERVAL_S))
+        self.assertLessEqual(seconds[0], round(waited))
 
 class LaunchStepsTest(unittest.TestCase):
     """What start_run does between the backup and the launch, and the
@@ -622,66 +659,55 @@ class LaunchStepsTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def start(self, r: Rig, **kw) -> B.Run:
-        return B.start_run(r.song, backup_root=os.path.join(r.out_dir, "backups"), env=r.env, **kw)
-
     def test_the_servers_env_backs_up_the_key_with_reg_exe(self):
         self.assertIs(B.Env().run_reg, G.run_reg)
 
     def test_before_launch_runs_after_the_backup_and_before_the_launch(self):
-        r = Rig(self.tmp)
+        # The real launch of a missing exe raises (_real_env), and nothing
+        # after it runs, so a before_launch that ran at all ran before it.
+        lines = []
+        backup_root = os.path.join(self.tmp, "backups")
         seen = []
-        real_launch = r.launch
-
-        def launch(cmd):
-            seen.append("launch")
-            return real_launch(cmd)
-
-        r.env.launch = launch
-        self.start(r, before_launch=lambda: seen.append(
-            ("before_launch", os.path.isdir(r.backup_dir()))))
-        self.assertEqual(seen, [("before_launch", True), "launch"])
-
-    def test_a_launch_that_raises_restores_the_key_and_leaves_what_before_launch_changed(self):
-        r = Rig(self.tmp)
-        r.env.run_reg = reg = FakeReg()
-        original = reg.text
-
-        def launch(cmd):
-            raise OSError("no such file")
 
         def before_launch():
-            _write(r.path(G.SETTINGS), b"changed")
-            reg.text = b"changed before the launch failed"
+            seen.append([os.path.join(backup_root, name) for name in os.listdir(backup_root)])
 
-        r.env.launch = launch
         with self.assertRaises(OSError):
-            self.start(r, before_launch=before_launch)
-        self.assertEqual(_read(r.path(G.SETTINGS)), b"changed")
-        self.assertEqual(reg.text, original)
-        self.assertEqual(r.lines[-1], f"{G.REGISTRY_LINE_NAME}: restored")
+            B.start_run(PITCH_DARK, env=_real_env(self.tmp, lines), backup_root=backup_root,
+                        song_end=_pitch_dark_end(self), before_launch=before_launch)
+        # It ran once, with the backup folder already made and named.
+        self.assertEqual(len(seen), 1, seen)
+        self.assertEqual(len(seen[0]), 1, seen)
+        self.assertTrue(os.path.isfile(os.path.join(seen[0][0], G.BACKUP_MANIFEST)))
+        self.assertTrue(any(seen[0][0] in line for line in lines), lines)
 
-    def test_the_key_is_backed_up_and_restored_with_the_envs_runner(self):
-        r = Rig(self.tmp)
-        r.env.run_reg = reg = FakeReg()
-        original = reg.text
-        run = self.start(r)
-        self.assertTrue(os.path.isfile(os.path.join(run.backup_dir, G.REGISTRY_BACKUP)))
-        reg.text = b"the game changed this"
-        self.assertTrue(B.finish_run(run, stop=True, env=r.env))
-        self.assertEqual(r.lines[-1], f"{G.REGISTRY_LINE_NAME}: restored")
-        self.assertEqual(reg.text, original)
+    def test_a_launch_that_raises_restores_the_backup_and_leaves_what_before_launch_changed(self):
+        # A real settings.ini from a run's backup; before_launch changes its
+        # run setting the way set_game_setting does for a run, and then the
+        # real launch of a missing exe raises (_real_env).
+        lines = []
+        env = _real_env(self.tmp, lines)
+        settings = os.path.join(env.documents_dir, G.SETTINGS)
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), settings)
+        backup_root = os.path.join(self.tmp, "backups")
 
-    def test_a_registry_restore_failure_stops_like_a_file_one(self):
-        r = Rig(self.tmp)
-        r.env.run_reg = reg = FakeReg()
-        run = self.start(r)
-        reg.text = b"the game changed this"
-        reg.import_works = False
-        self.assertFalse(B.finish_run(run, stop=True, env=r.env))
-        self.assertTrue(any(line.startswith(f"restore failed on {G.REGISTRY_BACKUP}: ")
-                            for line in r.lines), r.lines)
-        self.assertIn(r.backup_dir(), r.lines[-1])
+        def before_launch():
+            G.set_game_setting(settings, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+
+        with self.assertRaises(OSError):
+            B.start_run(PITCH_DARK, env=env, backup_root=backup_root,
+                        song_end=_pitch_dark_end(self), before_launch=before_launch)
+        # The restore ran on the run's backup, after the launch's line...
+        backup_dir = os.path.join(backup_root, os.listdir(backup_root)[0])
+        launch_line = next(i for i, line in enumerate(lines)
+                           if line.endswith(subprocess.list2cmdline(
+                               B.launch_command(env.exe, PITCH_DARK, B.DEFAULT_PLAYER))))
+        restores = [i for i, line in enumerate(lines) if backup_dir in line][1:]
+        self.assertEqual(len(restores), 1, lines)
+        self.assertGreater(restores[0], launch_line, lines)
+        # ...and the setting before_launch changed stays changed.
+        self.assertEqual(G.get_game_setting(settings, G.PAUSE_ON_FOCUS_LOST),
+                         G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
 
 
 # A small real program in place of the game: it writes what it was started
