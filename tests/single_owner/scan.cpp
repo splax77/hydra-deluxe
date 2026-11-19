@@ -287,8 +287,8 @@ const char* const kWalkAnswer = "x = made_up(3)\n";
 
 // Makes a fresh git repo in the temp folder `name` and returns its path. It
 // holds a committed code file and markdown file (tools/kept.py,
-// docs/kept.md), a new file of each kind nobody has added (tools/new.py,
-// docs/new.md), and a file of each kind in a folder git ignores
+// notes/kept.md), a new file of each kind nobody has added (tools/new.py,
+// notes/new.md), and a file of each kind in a folder git ignores
 // (tools/vendor/ignored.py, tools/vendor/ignored.md).
 std::string make_walk_fixture(const std::string& name) {
     using namespace precheck_fixture;
@@ -298,12 +298,12 @@ std::string make_walk_fixture(const std::string& name) {
     fixture_git(dir, {"init", "-q", "-b", "main"});
     write_fixture_file(dir, ".gitignore", "tools/vendor/\n");
     write_fixture_file(dir, "tools/kept.py", kWalkAnswer);
-    write_fixture_file(dir, "docs/kept.md", "# Kept\n");
+    write_fixture_file(dir, "notes/kept.md", "# Kept\n");
     commit_all(dir, "kept");
     write_fixture_file(dir, "tools/vendor/ignored.py", kWalkAnswer);
     write_fixture_file(dir, "tools/vendor/ignored.md", "# Ignored\n");
     write_fixture_file(dir, "tools/new.py", kWalkAnswer);
-    write_fixture_file(dir, "docs/new.md", "# New\n");
+    write_fixture_file(dir, "notes/new.md", "# New\n");
     return dir;
 }
 
@@ -372,8 +372,8 @@ TEST_CASE("single-owner: the committed-only listing holds committed and staged f
     const std::string dir = make_walk_fixture("source_tree_committed_only");
     // A file added to git's index but not yet committed counts as committed.
     precheck_fixture::write_fixture_file(dir, "tools/staged.py", kWalkAnswer);
-    precheck_fixture::write_fixture_file(dir, "docs/staged.md", "# Staged\n");
-    precheck_fixture::fixture_git(dir, {"add", "--", "tools/staged.py", "docs/staged.md"});
+    precheck_fixture::write_fixture_file(dir, "notes/staged.md", "# Staged\n");
+    precheck_fixture::fixture_git(dir, {"add", "--", "tools/staged.py", "notes/staged.md"});
     const fs::path root = fs::path(hydra::os_path(dir));
     using sourcetree::Listing;
 
@@ -382,13 +382,13 @@ TEST_CASE("single-owner: the committed-only listing holds committed and staged f
                                      [&](const fs::path&, const std::string& rel) { visited.push_back(rel); });
     CHECK(visited == std::vector<std::string>{"tools/kept.py", "tools/staged.py"});
     CHECK(sourcetree::markdown_files(root, Listing::CommittedOnly) ==
-          std::vector<std::string>{"docs/kept.md", "docs/staged.md"});
-    CHECK(sourcetree::git_listed(root, "docs", Listing::CommittedOnly) ==
-          std::vector<std::string>{"docs/kept.md", "docs/staged.md"});
+          std::vector<std::string>{"notes/kept.md", "notes/staged.md"});
+    CHECK(sourcetree::git_listed(root, "notes",Listing::CommittedOnly) ==
+          std::vector<std::string>{"notes/kept.md", "notes/staged.md"});
 
     // The default listing still holds the new files, so the scans see them.
     CHECK(sourcetree::markdown_files(root) ==
-          std::vector<std::string>{"docs/kept.md", "docs/new.md", "docs/staged.md"});
+          std::vector<std::string>{"notes/kept.md", "notes/new.md", "notes/staged.md"});
     CHECK(sourcetree::source_files(root) ==
           std::vector<std::string>{"tools/kept.py", "tools/new.py", "tools/staged.py"});
     testtemp::remove_dir(dir);
