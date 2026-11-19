@@ -68,6 +68,9 @@ _MOUTHS_SCHEDULE = os.path.join(_PROBE_TESTS, "mouths_refine_schedule.json")
 BACKUP_LINE = "backup folder: X (taken now)"
 ENGINE = 0x2_0000_1000
 WAIT_S = 5.0
+# A watch cap short enough to run out well inside WAIT_S. It is a test input,
+# not a value the tools decide.
+SHORT_CAP_S = WAIT_S / 25
 NO_SONG = "no playing song found in 120 s; start the song and run again"
 
 
@@ -884,7 +887,7 @@ class SpToolsOnARecordedRunTest(unittest.TestCase):
         # run: had the watch used it, the watch would have failed.
         tools = sp_tools.SpTools(self.game, self.lock, opener=self.opener,
                                  reader=self.run.reader)
-        cap_s = 0.2
+        cap_s = SHORT_CAP_S
         engine_ptr, text = tools.watch_for_run(cap_s, self.run.find_engine)
         self.assertEqual(engine_ptr, self.run.engine_ptr, text)
         self.assertTrue(os.path.isfile(csv_named_in(text)), text)
