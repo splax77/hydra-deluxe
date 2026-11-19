@@ -23,7 +23,7 @@
 #include "chart_text.h"            // chart_text: the song folders' short drum charts
 #include "core/error_kind.h"
 #include "core/rules.h"
-#include "core/strutil.h"  // ends_with
+#include "core/winstr.h"  // parent_folder, join_folder: a chart's song folder
 #include "corpus_util.h"      // charts_with_paths, scanned_entry: corpus charts and their results
 #include "display_fixtures.h"  // kTagOnlyTitle, add_stale_records, empty_analysis_under
 #include "temp_util.h"         // temp_dir, remove_dir: the scan's scratch root
@@ -155,11 +155,12 @@ std::vector<hydra::app::ScanItem> scan_song_folders(const std::string& tag,
     testtemp::remove_dir(testtemp::temp_dir(tag));
     const std::string root = testtemp::temp_dir(tag);
     for (size_t k = 0; k < folders.size(); ++k) {
-        const std::string dir = root + "\\" + folders[k].name;
+        const std::string dir = hydra::join_folder(root, folders[k].name);
         std::filesystem::create_directories(hydra::os_path(dir));
-        audiochart::write_text_file(dir + "\\song.ini", "[song]\n" + folders[k].ini);
+        audiochart::write_text_file(hydra::join_folder(dir, "song.ini"),
+                                    "[song]\n" + folders[k].ini);
         const int chart = folders[k].chart < 0 ? static_cast<int>(k) : folders[k].chart;
-        audiochart::write_text_file(dir + "\\notes.chart", own_drum_chart(chart));
+        audiochart::write_text_file(hydra::join_folder(dir, "notes.chart"), own_drum_chart(chart));
     }
     std::pair<std::vector<hydra::app::ScanItem>, std::vector<std::string>> scan =
         hydra::app::discover_charts({root});
@@ -181,9 +182,10 @@ LibraryModel scanned_library(const std::string& tag, const std::vector<SongFolde
     return m;
 }
 
-// True when `notespath` is the chart in the song folder named `name`.
+// True when `notespath` is a chart in the song folder named `name`.
 bool in_folder(const std::string& notespath, const std::string& name) {
-    return hydra::ends_with(notespath, "\\" + name + "\\notes.chart");
+    const std::string folder = hydra::parent_folder(notespath);
+    return hydra::join_folder(hydra::parent_folder(folder), name) == folder;
 }
 
 // The row of the song folder named `name`.
