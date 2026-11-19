@@ -151,59 +151,77 @@ TEST_CASE("note_list(true) orders a tied chord as notes(true) always has") {
     for (const ChordNote& note : unsorted) CHECK(note.colortype == lanes[i++]);
 }
 
+// Every note of every corpus chart is priced from one 1x value,
+// ChordNote::basescore: the Notes, accent and ghost shares add up to it, and
+// with the combo share they make it at the note's own multiplier, which is
+// to_multiplier of the combo once that note is hit.
 TEST_CASE("note value: one owner for base, cymbal and dynamic points") {
-    CHECK(kNoteBasePoints == 50);
-    CHECK(kCymbalBonusPoints == 15);
-    CHECK(kSoloBonusPerNote == 100);
-    const ChordNote accent_cymbal{NoteColor::Yellow, NoteDynamicType::Accent,
-                                  NoteCymbalType::Cymbal, false};
-    CHECK(accent_cymbal.basescore() == (kNoteBasePoints + kCymbalBonusPoints) * 2);
-    CHECK(ChordNote{NoteColor::Red}.basescore() == kNoteBasePoints);
+    const app::AnalysisSettings& cfg = default_cfg();
+    int priced = 0;
+    for (const CorpusRecord& r : default_records()) {
+        CAPTURE(r.chart);
+        const Song& song = corpus::song(r.chart, cfg.reading(), cfg.rules);
+        const ChordScoreTable table =
+            chord_score_table(song, cfg.rules.sqout_rule, ChordScoreDetail::WithNotes);
+        REQUIRE(table.rows.size() == song.sequence.size());
+        for (size_t i = 0; i < table.rows.size(); ++i) {
+            const ChordScoreRow& row = table.rows[i];
+            const std::vector<ChordNote> notes = song.sequence[i].chord.notes(true);
+            CAPTURE(song.sequence[i].timecode.ticks());
+            REQUIRE(static_cast<size_t>(row.note_end - row.note_begin) == notes.size());
+            for (size_t k = 0; k < notes.size(); ++k) {
+                CAPTURE(k);
+                const CategoryScores& n = table.notes[row.note_begin + k];
+                const int at_1x = notes[k].basescore();
+                CHECK(n.notes + n.accent + n.ghost == at_1x);
+                CHECK(n.notes + n.accent + n.ghost + n.combo == at_1x * n.multiplier);
+                CHECK(n.multiplier == to_multiplier(n.combo_after));
+                ++priced;
+            }
+        }
+    }
+    CHECK(priced > 0);
 }
 
+// On every multiplier squeeze the engine finds in the corpus (a chord whose
+// notes straddle a multiplier step, so its notes pay at different
+// multipliers), each note the squeeze-out rule pays outside Star Power
+// (sqout_pays_outside) is cut by its basescore at its own multiplier: the
+// one the combo reaches as that note is hit, one note at a time. Every other
+// note is not cut. Checked under both rules.
 TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's multiplier") {
-    Chord c;
-    c.at(NoteColor::Red) = ChordNote{NoteColor::Red};
-    c.at(NoteColor::Yellow) = ChordNote{NoteColor::Yellow, NoteDynamicType::Accent,
-                                        NoteCymbalType::Cymbal, false};
-    const std::vector<ChordNote> notes = c.notes(true);
-    REQUIRE(notes.size() == 2);
-    // The cuts for this chord (a Red tom worth 50 and an accented Yellow
-    // cymbal worth 130), pinned from one run of category_scores, one row per
-    // combo before the chord. The combos straddle the multiplier steps, so
-    // the two notes sometimes pay at different ones.
-    struct Row {
-        int combo;
-        int first_cut;  // first_note: only the Red tom loses its doubling
-        int whole_cut;  // whole_chord: both notes lose it
-    };
-    const Row rows[] = {
-        {0, 50, 180}, {8, 50, 310}, {9, 100, 360}, {29, 200, 720}, {45, 200, 720},
-    };
-    for (const Row& row : rows) {
-        const int combo = row.combo;
-        CAPTURE(combo);
-        // first_note (the default): only note 0 loses its SP doubling.
-        std::vector<CategoryScores> per_note;
-        const CategoryScores cs = category_scores(c, combo, &per_note);
-        CHECK(cs.sqout_reduction == row.first_cut);
-        REQUIRE(per_note.size() == 2);
-        CHECK(per_note[0].sqout_reduction == row.first_cut);
-        CHECK(per_note[1].sqout_reduction == 0);
-        CHECK(cs.sqout_sp() == cs.sp - cs.sqout_reduction);
-
-        // whole_chord: every note loses it, each at its own multiplier. The
-        // Red tom's share is the same as under first_note.
-        std::vector<CategoryScores> whole_per_note;
-        const CategoryScores whole =
-            category_scores(c, combo, &whole_per_note, core::SqOutRule::WholeChord);
-        REQUIRE(whole_per_note.size() == 2);
-        CHECK(whole_per_note[0].sqout_reduction == row.first_cut);
-        CHECK(whole_per_note[0].sqout_reduction + whole_per_note[1].sqout_reduction ==
-              row.whole_cut);
-        CHECK(whole.sqout_reduction == row.whole_cut);
-        CHECK(whole.sqout_sp() == whole.sp - whole.sqout_reduction);
+    int squeezes = 0;
+    for (const CorpusRecord& r : default_records()) {
+        for (const MultSqueeze& ms : r.rec->multsqueezes) {
+            CAPTURE(r.chart);
+            CAPTURE(ms.combo());
+            ++squeezes;
+            const Chord& c = ms.chord();
+            const std::vector<ChordNote> notes = c.notes(true);
+            CHECK(crosses_multiplier_step(ms.combo(), static_cast<int>(notes.size())));
+            for (const core::SqOutRule rule :
+                 {core::SqOutRule::FirstNote, core::SqOutRule::WholeChord}) {
+                CAPTURE(core::sqout_rule_name(rule));
+                std::vector<CategoryScores> per_note;
+                const CategoryScores cs = category_scores(c, ms.combo(), &per_note, rule);
+                REQUIRE(per_note.size() == notes.size());
+                int total = 0;
+                for (size_t k = 0; k < notes.size(); ++k) {
+                    CAPTURE(k);
+                    const int combo_once_hit = ms.combo() + static_cast<int>(k) + 1;
+                    const int cut = sqout_pays_outside(k, rule)
+                                        ? notes[k].basescore() * to_multiplier(combo_once_hit)
+                                        : 0;
+                    CHECK(per_note[k].sqout_reduction == cut);
+                    total += cut;
+                }
+                CHECK(cs.sqout_reduction == total);
+            }
+        }
     }
+    // "Path pathstring and pathstring_verbose" requires a corpus record with
+    // multiplier squeezes, so this loop has some to check.
+    CHECK(squeezes > 0);
 }
 
 // The copied path writes each timing of an activation the way every screen
@@ -432,8 +450,10 @@ TEST_CASE("early-fill window: every fill that refuses is an E0 at the same windo
     }
 }
 
-// The 0 ms window (O19): a fill spawns only when SP was ready by its
-// deadline, and no activation that spawns is an early fill.
+// The 0 ms window, the setting's lowest: a fill spawns only when SP was
+// ready by its deadline, and no activation that spawns is an early fill.
+// The engine's own activations are checked on the first few corpus charts
+// analysed at 0 ms (one more analysis per chart is the slow part).
 TEST_CASE("early-fill window: at 0 ms no spawning activation is an E") {
     CHECK(fill_refuses(-0.1, 0.0));        // a hair after the deadline refuses
     CHECK_FALSE(fill_refuses(0.0, 0.0));   // exactly on it spawns
@@ -444,12 +464,29 @@ TEST_CASE("early-fill window: at 0 ms no spawning activation is an E") {
         CHECK_FALSE(allzero_activation(e, 1, 0.0));
         CHECK(fill_within_limit(e, 0, 0.0, 0.0));
     }
-    Activation a;
-    a.e_window_ms = 0.0;
-    a.e_offset = 0.0;
-    test::set_skips(a, 0);
-    CHECK_FALSE(a.is_e_critical());
-    CHECK_FALSE(a.e_difficulty().has_value());
+    app::AnalysisSettings none = default_cfg();
+    none.early_fill_window_ms = 0.0;
+    std::vector<CorpusRecord> none_records;
+    for (const CorpusRecord& r : default_records()) {
+        if (none_records.size() == 5) break;
+        none_records.push_back({r.chart, &corpus::analyzed(r.chart, none)});
+    }
+    int acts = 0;
+    for (const CorpusPath& cp : paths_of(none_records)) {
+        for (const Activation& a : cp.path->walk_activations()) {
+            CAPTURE(cp.chart);
+            CAPTURE(a.timecode.ticks());
+            ++acts;
+            CHECK(a.e_window_ms == 0.0);
+            CHECK_FALSE(fill_refuses(a.e_offset, a.e_window_ms));
+            CHECK_FALSE(a.is_e_critical());
+            CHECK_FALSE(a.e_difficulty().has_value());
+        }
+    }
+    // "early-fill window: each corpus activation keeps its search's window"
+    // finds activations on these charts at the other windows; a fill whose
+    // SP was ready by its deadline still spawns at 0 ms.
+    CHECK(acts > 0);
 }
 
 // The default window has one home, kDefaultEarlyFillWindowMs, and every
@@ -855,32 +892,51 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the corpus
     CHECK(clamped > 0);
 }
 
+// A path token is the E mark when the activation is E-critical under its own
+// window, then the skip count, then one symbol per squeeze. Checked on every
+// corpus activation at the default window, and on the first few corpus
+// charts at the widest one, so the mark follows each search's window. The
+// mark is one text, the same on every E-critical activation, and absent on
+// the rest.
 TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
-    Activation a;
-    test::set_skips(a, 2);
-    a.e_offset = 300.0;  // not e-critical (at or past the window)
-    CHECK(a.notationstr() == "2");
-
-    a.e_offset = a.e_window_ms;  // boundary: not e-critical
-    CHECK(a.notationstr() == "2");
-
-    a.e_offset = 50.0;  // e-critical
-    CHECK(a.notationstr() == "E2");
-
-    a.e_offset = a.e_window_ms - 0.1;  // boundary: e-critical
-    CHECK(a.notationstr() == "E2");
-
-    // The E prefix follows the activation's own window, not a constant.
-    a.e_window_ms = kHitWindowMs;
-    a.e_offset = kHitWindowMs - 0.1;
-    CHECK(a.notationstr() == "E2");
-    a.e_window_ms = kDefaultEarlyFillWindowMs;
-    CHECK(a.notationstr() == "2");
-    a.e_offset = 50.0;
-
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -1.0});
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, 1.0});
-    CHECK(a.notationstr() == "E2+-");
+    app::AnalysisSettings wide = default_cfg();
+    wide.early_fill_window_ms = kHitWindowMs;
+    std::vector<CorpusRecord> wide_records;
+    for (const CorpusRecord& r : default_records()) {
+        if (wide_records.size() == 5) break;
+        wide_records.push_back({r.chart, &corpus::analyzed(r.chart, wide)});
+    }
+    const std::vector<CorpusRecord>* const runs[] = {&default_records(), &wide_records};
+    std::optional<std::string> mark;
+    int critical = 0, plain = 0;
+    for (const std::vector<CorpusRecord>* records : runs) {
+        for (const CorpusPath& cp : paths_of(*records)) {
+            for (const Activation& a : cp.path->walk_activations()) {
+                CAPTURE(cp.chart);
+                CAPTURE(a.e_window_ms);
+                CAPTURE(a.timecode.ticks());
+                std::string tail = std::to_string(a.skips());
+                for (const SPSqueeze& sq : a.sqinouts) tail += sq.symbol();
+                const std::string n = a.notationstr();
+                CAPTURE(n);
+                REQUIRE(ends_with(n, tail));
+                const std::string prefix = n.substr(0, n.size() - tail.size());
+                if (a.is_e_critical()) {
+                    ++critical;
+                    CHECK_FALSE(prefix.empty());
+                    if (!mark) mark = prefix;
+                    CHECK(prefix == *mark);
+                } else {
+                    ++plain;
+                    CHECK(prefix.empty());
+                }
+            }
+        }
+    }
+    // "early-fill window: each corpus activation keeps its search's window"
+    // requires both answers on these same records.
+    CHECK(critical > 0);
+    CHECK(plain > 0);
 }
 
 // The text of a list of pieces, each pair split by `sep`.
