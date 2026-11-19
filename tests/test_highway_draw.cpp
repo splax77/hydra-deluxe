@@ -50,7 +50,7 @@ std::vector<const DrawCommand*> of_mesh(const std::vector<DrawCommand>& cmds, Me
 // path scene has offered fills beside its taken ones, and its activations
 // carry SP windows. The chart has one solo and no drum lane.
 struct PitchDarkScenes {
-    PreviewScene bare;     // the song alone: every fill Hidden, no activation
+    PreviewScene bare;     // no path: every fill Offered, no activation
     PreviewScene path;     // with the record's path "3+ 2+ 1"
     PreviewScene ghosted;  // the same path, with the record's best path as the ghost
 };
@@ -624,24 +624,45 @@ TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
     CHECK(checked > 0);
 }
 
-// Pitch Dark drawn with no path: every fill is Hidden (build_preview_base's
-// default) and the chart has no drum lane, so a frame on any fill draws no
-// lane strip at all.
+// Pitch Dark's path "3+ 2+ 1" leaves fills Hidden. The overlay marks only the
+// fills each activation passed over and the one it stands on
+// (apply_preview_overlay), so a fill under a running activation, or before SP
+// is ready again, stays Hidden. The record's first activation, at tick 109440,
+// runs to 132240, and SP is ready for the next at 151440
+// (testdata/replay/test_pitch_dark_ratio-schedule.json); fills fall in
+// between. The chart has no drum lane, and every lane strip the highway draws
+// sits on an offered or taken fill's span, so a frame on a hidden fill draws
+// no lane strip over that fill's own stretch.
 TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark_scenes().bare;
+    const PreviewScene& scene = pitch_dark_scenes().path;
     REQUIRE(scene.drum_lanes.empty());
-    REQUIRE_FALSE(scene.fills.empty());
     const TrackState st = build_track_state(scene, TrackStateOptions{});
+    int checked = 0;
     for (size_t i = 0; i < scene.fills.size(); ++i) {
+        if (scene.fills[i].state != PreviewFillState::Hidden) continue;
         CAPTURE(i);
-        CHECK(scene.fills[i].state == PreviewFillState::Hidden);
-        const double now = scene.fills[i].span.start_ms / 1000.0;
-        int lanes = 0;
-        for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0))
-            if (is_lane_tex(c.material.texture)) ++lanes;
-        CHECK(lanes == 0);
+        const HighwayView v = view_at(cfg, scene.fills[i].span.start_ms / 1000.0);
+        const double t1 = std::max(v.near_t, scene.fills[i].span.start_ms / 1000.0);
+        const double t2 = std::min(v.far_t, scene.fills[i].span.end_ms / 1000.0);
+        REQUIRE(t2 > t1);
+        const double za = time_to_z(cfg, v.now, t1, v.speed);
+        const double zb = time_to_z(cfg, v.now, t2, v.speed);
+        const double z_lo = std::min(za, zb);
+        const double z_hi = std::max(za, zb);
+        int over = 0;
+        for (const DrawCommand& c : build_highway_draws(st, cfg, v.now, v.speed)) {
+            if (!is_lane_tex(c.material.texture) && !is_lit_target_tex(c.material.texture)) continue;
+            const double c_lo = std::min<double>(c.lo[2], c.hi[2]);
+            const double c_hi = std::max<double>(c.lo[2], c.hi[2]);
+            // A strip that only touches the hidden fill's edge, within a
+            // rounding sliver, belongs to a neighbouring fill.
+            if (std::min(c_hi, z_hi) - std::max(c_lo, z_lo) > 1e-4) ++over;
+        }
+        CHECK(over == 0);
+        ++checked;
     }
+    CHECK(checked > 0);
 }
 
 namespace {
