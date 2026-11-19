@@ -1,0 +1,67 @@
+# TOOL-AUDIT-T5-W06 (second-round verifier; all claims by reading, nothing run)
+
+GR = C:\Users\Patrick\.claude\gates; H = C:\Users\Patrick\Downloads\Hydra\hydra-test; TM = H\docs\agents\this-machine.md.
+
+### L-F08-15
+**Verdict:** CONFIRMED (hook gap exists; kind is hook gap, not K1-K8).
+**Homes as found:** GR\delete_rule.py:1-6 docstring "it judges only deletes written plainly ... A delete word anywhere else, inside quotes or behind a wrapper (bash -c, xargs, sudo) is not read." `pieces` (:75-77) cuts at operators; `_piece_refusal` (:153-164) reads only `tokens[0]` as the command. GR\media_rule.py:1-2 "it never parses shell: a write it cannot read as literal is outside"; `_writes` (:30-44) finds the tool word at the first token that names it, and skips it when a quote is open before it (`odd`, :31-32), so a quoted or wrapped ffmpeg/yt-dlp is not read as a write. GR\README.md:19 says it in general words for delete ("a delete word inside quotes, later in a piece, or behind a wrapper ... is not read") and quotes "trying to ban specific command patterns is a losing battle ..."; README:21 says media reads only literal absolute paths. The README does not say in so many words that the media guard misses a quoted/wrapped tool; it says only that unreadable paths count as outside.
+**Splits:** none between values. The two files differ in what they read: delete reads only the first word of a piece; media looks for the tool word anywhere in a segment. They differ for a command like `cmd /c "ffmpeg ..."` (media: open quote hides the tool; delete: first word `cmd` is not a delete word).
+**Ruling:** README:19 quotes a 2026-10-31 user ruling. I searched H\docs\agents\rulings\ for none of it (see L-F08-13, not my row); not confirmed as a `## Confirmed` line here.
+**Open:** none by reading. Hook gap: yes, in GR\delete_rule.py and GR\media_rule.py (a delete or media write written in a form the rule does not read passes).
+
+### L-F08-16
+**Verdict:** CONFIRMED-CHANGED. Only one home carries a copy, not two.
+**Homes as found:** C:\Users\Patrick\.claude\agents\card-writer.md:9 holds no status rule and no numbers; it says the writer brief replaces the preamble and tells the agent to use PowerShell "only for the status-line command the brief gives". C:\Users\Patrick\.claude\tools\session_cards\writer-brief.md:100 "One status line every 5 minutes ... Only time counts, not tool calls." and :101 "At 20 minutes or 100 tool calls, stop starting new cards". GR\progress.py:13-16 "The one home of these numbers": CALL_WARN 100, MINUTES_WARN 20, STATUS_NAG_MINUTES 5. Values equal today. I grepped GR\*.py for "writer-brief" and found no test holding the brief's numbers to progress.py (test_docs_numbers.py not opened for those words, so a hit there is unsearched by name; the grep over all gate .py files returned nothing).
+**Splits:** writer-brief.md:100-101 retypes progress.py's numbers (5 / 20 / 100) as prose; same values today; they would differ the day progress.py changes. The writer brief's "stop starting new cards" at 100/20 is the progress hook's warn point, not its stop (150/30); the brief does not mention the stop or the 10-minute refusal.
+**Ruling:** none checked beyond L-F07-08 (R\review-and-hooks.md:34, 5 minutes / reject after 10); it names neither side.
+**Open:** none.
+
+### L-F09-03
+**Verdict:** CONFIRMED-CHANGED (more homes than the row lists; one stale description).
+**Homes as found:** H\CLAUDE.md:13 "`splax77/hydra-deluxe`"; TM:15 "The repo is `splax77/hydra-deluxe`"; TM:13 gh account `patseguin1-commits`, gh 2.97.0 at `C:\Program Files\GitHub CLI\gh.exe` (only home of version/path/account); H\docs\agents\issue-tracker.md:16 "Infer the repo from `git remote -v`" (no name typed). `git remote -v` in this worktree: origin https://github.com/splax77/hydra-deluxe.git. GR\publish.ps1 names no repo (grep for splax77/patseguin1/-R/remote found only a comment about gh's -R flag at :25). GR\tests\test_publish.py:341,342,391,393 type `splax77/hydra-deluxe` as test literals. Player-facing copies: H\README.md:30, H\docs\differences-from-public-hydra.md:111 and :170 (URL). Memory: ...\memory\hydra-deluxe-rename.md:3 front-matter description says "repo now patseguin1-commits/hydra-deluxe" while its body line 11 says the repo moved the same day to `splax77/hydra-deluxe`; fc-video-workflow.md:15 names splax77; archive\gh-cli-location.md:18 names splax77.
+**Splits:**
+- hydra-deluxe-rename.md:3 (patseguin1-commits/hydra-deluxe) versus its own body :11, CLAUDE.md:13, TM:15 and `git remote -v` (splax77/hydra-deluxe). They differ for any agent that reads only the note's description. A memory note is not the user's words and is not an owner.
+- TM:13 (gh signed in as patseguin1-commits) versus the repo owner splax77: two different facts (the login versus the repo's owner), not a split in value.
+**Ruling:** none found; I searched docs\agents\rulings\ for "splax77" and "hydra-deluxe": only ui-and-display.md:127 (visible-name ruling about the title, not the repo name).
+**Open:** none by reading. K4 risk: no agent is handed the name where `git remote -v` holds it, other than CLAUDE.md and TM text.
+
+### L-F09-05
+**Verdict:** CONFIRMED-CHANGED. V09's "REA pin not found" is wrong; the pin is there.
+**Homes as found:** TM:25 "It starts as `npx -y rea-agents@6.5.0 mcp`" (V09's grep missed it). C:\Users\Patrick\.claude.json:4779 `rea-agents@6.5.0`. C:\Users\Patrick\.claude\skills\reverse-engineer-anything\SKILL.md:37,51,56,71,79 each `npx -y rea-agents@6.5.0 ...`. So one version pin is typed in three homes (registration, page, skill), same value today. H\tools\ch_probe\experiments\stall_harness.py:119-124 comment "The PowerShell lookup docs/agents/this-machine.md gives for cdb's folder." then `_CDB_LOOKUP = "(Get-AppxPackage -Name Microsoft.WinDbg).InstallLocation"`; TM:57-60 holds the same lookup; equal. Python path: TM:7 `...\pythoncore-3.14-64\python.exe`; GR\publish.ps1:16 and GR\install_ref_gate.ps1:10 `$Python = 'C:\Users\Patrick\AppData\Local\Python\pythoncore-3.14-64\python.exe'`; same. Clone Hero logs: TM:53 `C:\Users\Patrick\AppData\locallow\srylain Inc_\Clone Hero\` versus H\tools\ch_mcp\game_files.py:38 `AppData\LocalLow\srylain Inc_\Clone Hero` (case only; Windows ignores case). TM:19 and :17 not reopened beyond TM:17's "VERSION 3.1.2 today" (the literal is present at TM:17, contrary to V09's note under L-F09-04). TM:71 Opus entry equals settings.json:3 (see L-F09-19). find_cmake, VS table and the build-cpp generator claim (TM:37-41) not checked against the machine.
+**Splits:** none in value. TM:3 "the machine wins over the page" is a rule for drift, not a second home.
+**Ruling:** none found.
+**Open:** a run would be needed to check TM against the machine (versions, paths); not run. TM:37-41 and :67 unchecked.
+
+### L-F09-07
+**Verdict:** CONFIRMED-CHANGED. There are three typed copies of the list, and the "precheck decides" sentence is about Hydra changes, not hooks.
+**Homes as found:** GR\README.md:156 "It runs every test only when it touches what every hook shares: `common.py`, `lib\`, `settings.fragment.json` or `tests\lib\`." H\docs\agents\agent-rules.md:7 "That tool [hydra_precheck --tests] decides what counts as shared code and when the whole suite runs, so nobody types the test list by hand. For hooks, the main session runs the whole suite only when the change touches shared code: `gates\common.py`, `gates\lib`, `gates\settings.fragment.json`, `gates\tests\lib`." C:\Users\Patrick\.claude\model-postures.md:11 the same list again ("gates\common.py, gates\lib, gates\settings. ..."; cut off in my pattern, the first three entries match). H\tools\precheck holds nothing about gates: the only `.py` hit is range.cpp:76 (a test-file name check). The paths exist: GR\lib\hook_input.ps1, GR\tests\lib\harness.ps1.
+**Splits:**
+- Three prose lists (README:156, agent-rules.md:7, model-postures.md:11) name the same four items; no code holds the list; precheck decides nothing for gates. They would differ the day a gate file becomes shared.
+- agent-rules.md:7 sentence order reads as if precheck decides this list too; the next sentence gives the hook list by hand. V09b's reading that agent-rules says precheck decides the hook list is half right: the words "That tool decides" attach to the Hydra change, then the hook list is typed.
+**Ruling:** H\docs\agents\rulings\tests-and-runs.md:17 (quoted from the ledger, not reopened): about not running the whole suite for small changes; names no list, so names neither side.
+**Open:** none.
+
+### L-F09-09
+**Verdict:** CONFIRMED (prose only; hook gap exists).
+**Homes as found:** C:\Users\Patrick\.claude\agents\scout.md:9 "Change no files except your status line and files in your own scratch folder." scout.md:5 `tools: Bash, PowerShell, Read, Edit, Write, Grep, Glob, WebFetch, WebSearch, ToolSearch`, so the agent type grants Edit and Write. H\docs\agents\brief-preamble.md:3 and :41 "Touch only the files your brief owns, plus your scratch folder." Enforcement: GR\percall.py:104 and GR\agent_stop.py:7,290 read `agent_type` only for the reviewer; GR\delete_rule.py and GR\media_rule.py cover deletes and media writes; GR\tests\test_agent_stop.py:218-235 use agent_type "scout" for hand-back behaviour only. settings.json:13-15 has three allow rules for Edit on audit/handoffs/.superpowers paths, none about scouts. I searched GR\percall.py, agent_stop.py, progress.py, stall.py, common.py for "scout", "Edit", "Write", subagent_type, agent_type: no scout scope check. Searched settings.json for "scout": none.
+**Splits:** scout.md:9 lets a scout change "your status line and files in your own scratch folder"; this audit's brief says no file in either repo and one report file in scratch; they agree in effect but are two statements. Nothing blocks a scout's Edit or Write outside scratch; the rule is an instruction only.
+**Ruling:** none found. **Open:** none by reading. Hook gap: yes (no hook limits a scout's Edit/Write/shell writes to scratch; GR\percall.py has no scout branch).
+
+### L-F09-10
+**Verdict:** CONFIRMED-CHANGED (spot-checked; this row is a bundle). Several sub-claims confirmed, one new fact, some not reached.
+**Homes as found:** Confirmed: README:5 and agent-rules.md:5 are pointers (not reopened line by line). H\.claude\commands\handoff.md:9 "Stop launching work"; :10 points at docs\agents\handoff.md; :11 "name no scratch path". H\tests\test_docs_match_code.cpp:1233 `constexpr const char* kNotPermanentDirs[] = {"docs/handoffs/", "docs/superpowers/"};` used at :1236; :27-33 rule text agrees. docs\agents\test-rubric.md, handoff.md, doc-review.md exist; derivation-audit is H\docs\audit\2026-10-03-derivation-audit.md (exists), cited by audit-method.md:164 and derive-once-review.md:48 as `docs/audit/2026-10-03-derivation-audit.md`. DR:21 and :45 carry `git show` removal text (long lines, not read in full). README:75 state layout (agents\<session_id>\<agent_id>.json, status\<agent_id>.md, stall\, posture\, reviews.jsonl, waivers.jsonl, REVIEW_KINDS in common.py) matches common.py:10-13 for STATE_ROOT and REVIEW_KINDS; README:162 shim text agrees with install_ref_gate.ps1's own selftest step (:30). H\docs\agents\premise-map.md:44 `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\`: no code under H\tools names that folder (only a comment in tools\ch_mcp\tests\test_compare_scorestats.py:52); clone-hero-mcp.md has no "hydra-data" text; so premise-map:44 is the only page home, with no code owner found.
+New fact: GR\common.py:3 says "The folder layout and the record formats are described in gates/README.md." README:73-75 do describe the state layout and record names; so V08's doubt (no layout section) is not a split: the layout is in a paragraph at README:75, not under a heading.
+**Splits:** none found in what I read.
+**Ruling:** none found.
+**Open:** media guard pointer (media_rule.py header versus README:21 and audit-method.md:180), DR:11 and :21, and clone-hero-mcp.md for the run folder not read in full. Hook gap: none stated.
+
+### L-F09-19
+**Verdict:** CONFIRMED (K1; same value today).
+**Homes as found:** H\tools\agent_cost.py:33 "Every price lives here. Source: the `claude-api` skill." then :36-40 `PRICES` keys "claude-fable-5-1", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5". C:\Users\Patrick\.claude\settings.json:3 `"ANTHROPIC_DEFAULT_OPUS_MODEL": "claude-opus-5-5"`; TM:71 repeats it. H\tools\test_agent_cost.py holds the same ids as literals (grep: 2 hits for opus-5-5/sonnet-5-5 in the test, 2 in agent_cost.py). settings.json holds only the Opus entry (grep "model" found only line 3), so the sonnet, haiku and fable ids have no second home. The "`claude-api` skill" the comment cites: no folder named claude-api* under C:\Users\Patrick\.claude\skills (searched with a glob), so I could not see the source it names; it may be a built-in skill outside that folder (open).
+**Splits:** none today; they would differ when the user changes settings.json:3 by hand (TM:71 says the user picks it by hand) and PRICES keeps the old id; the cost tool then counts the new model as unpriced (agent_cost.py:286 `unpriced` counter), not as a wrong price.
+**Ruling:** none found. **Open:** where the `claude-api` skill lives.
+
+## Ids not reached
+None. Parts not reached inside L-F09-10 are listed there.
+
+Counts: CONFIRMED 3 (L-F08-15, L-F09-09, L-F09-19); CONFIRMED-CHANGED 5 (L-F08-16, L-F09-03, L-F09-05, L-F09-07, L-F09-10); REFUTED 0 (but V09's "REA pin not found" is itself refuted by TM:25).
