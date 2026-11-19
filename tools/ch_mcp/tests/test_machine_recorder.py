@@ -200,7 +200,11 @@ class CapturedTable(unittest.TestCase):
     def by_hand(self, at, layout, field):
         """One field of the entry at `at`, read at the literal layout above."""
         offset, code = layout[field]
-        return struct.unpack_from("<" + code, self.sample, at + offset)[0]
+        raw = self.sample[at + offset:at + offset + struct.calcsize("<" + code)]
+        if code == "H":
+            return int.from_bytes(raw, "little")
+        # The sample's times and counts are all non-negative, so q reads as Q.
+        return (P.decode_u32 if code == "I" else P.decode_u64)(raw)
 
     def process_by_hand(self, at):
         """The entry's process fields, with no thread rows, read by hand."""
