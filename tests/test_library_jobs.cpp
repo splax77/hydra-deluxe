@@ -1072,14 +1072,26 @@ TEST_CASE("jobs: a fill that fails still opens the library and leaves its senten
         job.start();
         job.wait();
         REQUIRE(job.ok());
-        CHECK(job.library_problem() ==
-              hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::DatabaseWrite, "x")));
         // The library was still read to its last step, and the marker stays
         // unset so the next open tries again.
         REQUIRE_FALSE(seen.empty());
         CHECK(seen.back().step == Step::ReadingResults);
         const std::unique_ptr<RecordStore> store = job.take_store();
         CHECK_FALSE(store->hardest_figure_filled(settings.profile()));
+        // The sentence is the one the store's own refused write reads as: the
+        // test makes the fill's write itself, on the row the fill replays.
+        const std::vector<hydra::store::MissingHardestRow> missing =
+            store->rows_missing_hardest(settings.profile());
+        REQUIRE_FALSE(missing.empty());
+        std::string refused;
+        try {
+            store->set_hardest(missing[0].song_id, missing[0].profile_id,
+                               {hydra::store::HardestFigure{missing[0].rank, 0.0}});
+        } catch (const std::exception& e) {
+            refused = hydra::app::plain_error(e);
+        }
+        REQUIRE_FALSE(refused.empty());
+        CHECK(job.library_problem() == refused);
     }
     testtemp::remove_dir(dir);
 }
@@ -1134,14 +1146,17 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         CHECK(store.rows_missing_hardest(settings.profile()).size() == 1);
     }
 
-    // The library read's two steps stop the same way, on a library of four
-    // charts.
+    // The library read's two steps stop the same way, on the library a scan of
+    // the corpus saves.
     const std::string read_db = testtemp::temp_dir("open_fill_stop") + "\\read.db";
+    uint64_t library_size = 0;
     {
         RecordStore store(read_db);
-        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B"),
-                                     library_row("c", "C"), library_row("d", "D")});
+        REQUIRE_FALSE(hydra::app::save_scan_as_library(store, corpus_scan()).has_value());
+        library_size = static_cast<uint64_t>(store.chart_library_count());
     }
+    // The stop at the second row needs a third row after it.
+    REQUIRE(library_size > 2);
     {
         // At the chart list's first report, before any row is read.
         const std::vector<OpenReport> seen =
@@ -1163,7 +1178,7 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         REQUIRE_FALSE(seen.empty());
         CHECK(seen.back().step == Step::ReadingCharts);
         CHECK(seen.back().done == 2);
-        CHECK(seen.back().total == 4);
+        CHECK(seen.back().total == library_size);
     }
     {
         // At the results' first report.
@@ -1468,20 +1483,33 @@ TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok an
     struct FailingJob : hydra::ui::ResultJobBase {
         using ResultJobBase::fail;
     };
-    const std::runtime_error boom("boom");
+    // A real failure: the analyzer asked for a chart file that is not there.
+    const std::string gone = empty_dir("jobs_failed_job") + "\\notes.chart";
+    std::optional<hydra::KindedError> thrown;
+    try {
+        (void)hydra::app::analyze_chart_file(gone, AnalysisSettings{});
+    } catch (const hydra::KindedError& e) {
+        thrown = e;
+    }
+    REQUIRE(thrown.has_value());
+    const hydra::KindedError& failure = *thrown;
+    const std::string raw = failure.what();
 
     FailingJob job;
-    job.fail(boom);
-    CHECK(job.error() == "boom");
-    CHECK(job.message() == hydra::app::plain_error(boom));
+    job.fail(failure);
+    // The raw text is kept for the details line, and the message is the
+    // plain sentence for its kind, not the raw text.
+    CHECK(job.error() == raw);
+    CHECK(job.message() == hydra::app::plain_error(failure));
+    CHECK(job.message() != job.error());
     CHECK_FALSE(job.ok());
     CHECK(job.finished());
 
     // A cancel is the user's own click: the raw text stays, the message is empty.
     FailingJob cancelled;
     cancelled.cancel();
-    cancelled.fail(boom);
-    CHECK(cancelled.error() == "boom");
+    cancelled.fail(failure);
+    CHECK(cancelled.error() == raw);
     CHECK(cancelled.message().empty());
     CHECK_FALSE(cancelled.ok());
     CHECK(cancelled.finished());
