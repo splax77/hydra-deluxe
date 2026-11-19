@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <exception>
 #include <limits>
@@ -1112,7 +1113,10 @@ RecordStore::BatchWrites::~BatchWrites() {
     std::lock_guard<std::recursive_mutex> lock(store_.writer_.mutex);
     sqlite3_exec(store_.writer_.db, "PRAGMA wal_checkpoint(TRUNCATE)", nullptr, nullptr, nullptr);
     // SQLite's own default threshold (D86 item 3).
-    sqlite3_exec(store_.writer_.db, "PRAGMA wal_autocheckpoint=1000", nullptr, nullptr, nullptr);
+    char restore[48];
+    std::snprintf(restore, sizeof(restore), "PRAGMA wal_autocheckpoint=%d",
+                  kSqliteWalAutocheckpointPages);
+    sqlite3_exec(store_.writer_.db, restore, nullptr, nullptr, nullptr);
 }
 
 int RecordStore::wal_autocheckpoint_for_test() {

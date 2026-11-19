@@ -48,6 +48,11 @@ std::string legacy_fills_help_text();
 // The early-fill window's name, as the panel row, the settings button's
 // phrase and the batch confirm's line all print it.
 inline constexpr const char* kEarlyFillWindowName = "Early fill window";
+// The three chart-mode switches' names, as the settings button's phrase and
+// the batch confirm's difficulty line both print them.
+inline constexpr const char* kProDrumsName = "Pro Drums";
+inline constexpr const char* kBass2xName = "2x Bass";
+inline constexpr const char* kNoteShuffleName = "Note Shuffle";
 // The help text beside the "Early fill window" box. Its top edge is the hit
 // window, as report::hit_window_text prints it.
 std::string early_fill_window_help_text();
@@ -56,6 +61,8 @@ std::string early_fill_window_help_text();
 // Called every frame inside the "##library" child, even when the library is
 // empty: it also runs AppState::tick_library.
 void render_library(AppState& app);
+// The short line under the search box, before the Search tips link.
+inline constexpr const char* kSearchLineText = "Type any words, or narrow it down.";
 
 // library_dialogs.cpp
 void render_folder_manager(AppState& app);

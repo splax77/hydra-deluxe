@@ -1103,18 +1103,7 @@ void AppState::apply_settings() {
 
 namespace {
 
-// The version bar's fixed sentences (D259 and D260 in
-// docs/audit/2026-10-03-fix-decisions.md). The ones that name a version are
-// built with core::named_version.
-constexpr const char* kUpdateVerifyingText = "Checking the download...";
-constexpr const char* kUpdateLaunchingText = "Starting the installer...";
-constexpr const char* kUpdateDeclinedText = "The installer didn't start, so Hydra wasn't updated.";
-constexpr const char* kOnlyInstalledChecksText =
-    "Only the installed copy of " HYDRA_APP_NAME " checks for updates.";
-constexpr const char* kCheckingForUpdatesText = "Checking for updates...";
-constexpr const char* kCouldNotCheckText = "Hydra couldn't check for updates when it started.";
-constexpr const char* kUpToDateText = "Up to date";
-constexpr const char* kSkippedText = "Skipped.";
+// The version bar's fixed sentences are in ui/update_job.h.
 
 // "Hydra Deluxe 9.9.9 is available.": the offer's sentence and the resting
 // bar's after Later or Skip this version.

@@ -66,6 +66,11 @@ struct StoreOpenProgress {
     // so far. It stays set through the library read, so the screen keeps its
     // upgrade heading until the library appears.
     bool upgrading = false;
+    // The upgrade heading's two lines, drawn above label() while `upgrading`.
+    static constexpr const char* kUpgradeHeading =
+        "Updating your library file for this version of Hydra";
+    static constexpr const char* kUpgradeNote =
+        "This happens once. Your charts and results are kept.";
     // Seconds since the job started.
     double elapsed_s = 0.0;
 

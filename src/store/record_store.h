@@ -401,6 +401,9 @@ inline constexpr int kSaveGroupSize = 16;
 // The WAL checkpoint threshold, in pages, while a batch runs (D86 item 3).
 // RecordStore::BatchWrites sets it and puts SQLite's own back at the end.
 inline constexpr int kBatchWalAutocheckpointPages = 10000;
+// SQLite's own default for that threshold (SQLITE_DEFAULT_WAL_AUTOCHECKPOINT
+// in sqlite3.c), which BatchWrites puts back when the batch ends.
+inline constexpr int kSqliteWalAutocheckpointPages = 1000;
 // The most bytes the WAL file keeps after a checkpoint resets it, set on every
 // open (D93): about SQLite's default 1,000-page checkpoint, so the log
 // never sits at its high-water size. Firefox ships the same default for the

@@ -110,7 +110,7 @@ private:
 
 std::string stream_md5(BCRYPT_ALG_HANDLE alg, const std::string& path) {
     FILE* f = fopen_utf8(path, L"rb");
-    if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + path);
+    if (f == nullptr) throw KindedError(ErrorKind::SongFileMissing, cannot_open_file_text(path));
     std::unique_ptr<FILE, int (*)(FILE*)> closer(f, &std::fclose);
 
     Md5Hash hash(alg);

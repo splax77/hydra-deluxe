@@ -287,7 +287,7 @@ ByteSource file_byte_source(const std::string& utf8_path) {
     // another program holds open still reads.
     HANDLE h = CreateFileW(win32_path(utf8_path).c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (h == INVALID_HANDLE_VALUE)
-        throw KindedError(ErrorKind::SongFileMissing, "cannot open file: " + utf8_path);
+        throw KindedError(ErrorKind::SongFileMissing, cannot_open_file_text(utf8_path));
     std::shared_ptr<void> file(h, [](void* p) { CloseHandle(static_cast<HANDLE>(p)); });
     // The size comes from the handle in 64 bits, because std::ftell returns a
     // 32-bit long on Windows and fails past 2 GB.

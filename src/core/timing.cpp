@@ -120,9 +120,8 @@ MeasureIndex::MeasureIndex(const std::map<int64_t, std::pair<int, int>>& sig_map
         Span s;
         s.numerator = sig.first;
         s.denominator = sig.second;
-        // Clone Hero's beat step: trunc(resolution * 4 / denominator).
-        s.step = tick_r * 4 / static_cast<int64_t>(sig.second);
-        if (s.step <= 0)
+        s.step = beat_step_ticks(tick_r, sig.second);
+        if (beat_under_a_tick(tick_r, sig.second))
             throw std::out_of_range("grid: a signature at tick " + std::to_string(tick) +
                                     " makes a beat shorter than one tick");
         s.length = s.step * static_cast<int64_t>(sig.first);
