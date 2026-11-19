@@ -585,7 +585,7 @@ class LivePlayTest(unittest.TestCase):
         self.assertEqual(stdout.getvalue(), "")
         # The search's retry marks (engine_finder owns them) land in the
         # caller's buffer.
-        self.assertIn(".", out.getvalue())
+        self.assertTrue(out.getvalue().endswith("."), repr(out.getvalue()))
 
     def _cap_seen_by_play_chords(self, **live_kwargs):
         from unittest import mock
