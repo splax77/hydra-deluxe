@@ -1,0 +1,1 @@
+{"type": "send", "payload": {"type": "play_events", "events": [{"kind": "sent", "seq": 0, "index": 0, "clock_ms_at_press": 33747.4452539318, "down_frame": 11674, "up_frame": 11676, "down_ms": 1794537661183, "up_ms": 1794537661189, "score_before": 0, "score_after": 180, "frame_gap_ms": 3, "agent_note": ""}]}}

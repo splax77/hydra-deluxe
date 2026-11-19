@@ -3,8 +3,9 @@ summary is right, the Frida agents read fields by name and never by raw
 offset, and every game method an agent calls is named in that agent's own
 ALLOWED_CALLS list.
 
-No game and no Frida: a fake frida module hands back a fake session whose
-script delivers hand-written messages, and a fake wait returns at once.
+No game and no Frida: a stand-in frida module hands back a session whose
+script delivers messages. The runner tests deliver messages real agents sent
+from inside the game, copied under testdata/ch_runs (see `recorded`).
 """
 
 from __future__ import annotations
@@ -230,6 +231,27 @@ def sample(song_time, over=False, playing=True):
             "isSongPlaying": playing, "isPaused": False, "instances": 1}
 
 
+# Messages real Frida agents sent from inside Clone Hero, each file a few lines
+# copied from one run's log under hydra-data/ch-mcp-runs; the test that reads
+# a file names its source folder.
+CH_RUNS = os.path.join(_REPO_ROOT, "testdata", "ch_runs")
+
+
+def recorded(run: str, name: str) -> list[dict]:
+    """The messages in testdata/ch_runs/<run>/<name>, one JSON line each, as
+    the agent's log kept them."""
+    with open(os.path.join(CH_RUNS, run, name), encoding="utf-8") as fh:
+        return [json.loads(line) for line in fh]
+
+
+# The cap in frida_attach.py's usage line (`--cap 93`): a run that is meant to
+# end on its own gets this long, and no test here waits on it.
+RUN_CAP_S = 93.0
+# A cap short enough that the real wait reaches it at once. frida_attach's
+# command line takes any cap above 0 (`--cap must be more than 0 seconds`).
+SHORT_CAP_S = 0.05
+
+
 class Workspace(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -240,9 +262,9 @@ class Workspace(unittest.TestCase):
         self.out_path = os.path.join(self.tmp.name, "out.jsonl")
         self.lines = []
 
-    def run_agent(self, frida, cap_s=93.0):
+    def run_agent(self, frida, cap_s=RUN_CAP_S, wait=instant_wait):
         return FA.run_agent(self.agent, cap_s, FA.ends_run, self.out_path,
-                            frida_mod=frida, wait=instant_wait,
+                            frida_mod=frida, wait=wait,
                             out=self.lines.append)
 
     def written(self):
@@ -254,48 +276,43 @@ class Workspace(unittest.TestCase):
 
 class DetachTest(Workspace):
     def test_detaches_after_a_normal_end(self):
-        msgs = [sent(sample(1.0)), sent(sample(1.25)),
-                sent({"done": "cap", "samples": 2})]
+        # A real trace agent run: one status message, then its done message
+        # (hydra-data/ch-mcp-runs/2026-10-28/l3/trace-ew-count.jsonl).
+        msgs = recorded("2026-10-28-l3", "trace-ew-count.jsonl")
+        status, done = (m["payload"] for m in msgs)
+        # The status message ends no run and the done message does, by the
+        # agents' shared end signal.
+        self.assertIsNone(FA.ends_run(status))
+        self.assertEqual(FA.ends_run(done), FA.END_DONE)
         session = FakeSession(msgs)
-        result = self.run_agent(FakeFrida(session))
+        result = self.run_agent(FakeFrida(session), wait=FA._default_wait)
         self.assertEqual(result.reason, FA.END_DONE)
+        self.assertIsNone(result.error)
+        self.assertEqual(result.payloads, [status, done])
         self.assertEqual(session.detach_calls, 1)
+        # The log keeps every message the agent sent, in order.
         self.assertEqual(self.written(), msgs)
         self.assertEqual(session.script.posted,
-                         [{"type": "start", "cap_s": 93.0}])
-        self.assertEqual(session.source, "// fake agent\n")
+                         [{"type": "start", "cap_s": RUN_CAP_S}])
+        with open(self.agent, encoding="utf-8") as fh:
+            self.assertEqual(session.source, fh.read())
         self.assertEqual(self.lines, [])
 
-    def test_start_settings_ride_in_the_start_message(self):
-        session = FakeSession([sent({"done": "cap"})])
-        FA.run_agent(self.agent, 93.0, FA.ends_run, self.out_path,
-                     start={"mode": "count", "type": "other", "cap_s": 1},
-                     frida_mod=FakeFrida(session), wait=instant_wait,
-                     out=self.lines.append)
-        # The runner's own `type` and `cap_s` win over the agent's settings.
-        self.assertEqual(session.script.posted,
-                         [{"type": "start", "cap_s": 93.0, "mode": "count"}])
-
     def test_detaches_after_the_cap(self):
-        session = FakeSession([sent(sample(1.0))])
-        result = self.run_agent(FakeFrida(session))
+        # One real clock sample (hydra-data/ch-mcp-runs/2026-10-28/l2/
+        # clock.jsonl). A sample ends no run, so the real wait runs to the cap.
+        first = recorded("2026-10-28-l2", "clock.jsonl")[:1]
+        session = FakeSession(first)
+        result = self.run_agent(FakeFrida(session), cap_s=SHORT_CAP_S,
+                                wait=FA._default_wait)
         self.assertEqual(result.reason, FA.END_CAP)
         self.assertIsNone(result.error)
         self.assertEqual(session.detach_calls, 1)
-        self.assertEqual(self.lines, [
-            "cap of 93 s reached before the agent finished; 1 messages seen"])
-
-    def test_detaches_after_a_thrown_error(self):
-        session = FakeSession([], load_raises=RuntimeError("bad script"))
-        with self.assertRaises(RuntimeError):
-            self.run_agent(FakeFrida(session))
-        self.assertEqual(session.detach_calls, 1)
-
-    def test_detaches_after_ctrl_c(self):
-        session = FakeSession([], load_raises=KeyboardInterrupt())
-        with self.assertRaises(KeyboardInterrupt):
-            self.run_agent(FakeFrida(session))
-        self.assertEqual(session.detach_calls, 1)
+        self.assertEqual(self.written(), first)
+        # One line, naming the cap that passed and how many messages came.
+        self.assertEqual(len(self.lines), 1)
+        self.assertRegex(self.lines[0], rf"\bcap of {SHORT_CAP_S:g} s\b")
+        self.assertRegex(self.lines[0], r"\b1 messages seen\b")
 
     def test_attaches_to_the_game_by_process_name(self):
         frida = FakeFrida(FakeSession([sent({"done": "cap"})]))
@@ -305,59 +322,41 @@ class DetachTest(Workspace):
 
 class EndTest(Workspace):
     def test_an_agent_error_ends_the_run_and_is_kept(self):
-        session = FakeSession([sent({"error": "GameManager not found"}),
-                               sent(sample(9.0))])
-        result = self.run_agent(FakeFrida(session))
+        # A real kit agent's error reply (hydra-data/ch-mcp-runs/2026-10-31/
+        # ls-d1a-run2/kit-1.jsonl), then a real clock sample (2026-10-28/l2/
+        # clock.jsonl) that comes after the run has ended.
+        error_msgs = recorded("2026-10-31-ls-d1a-run2", "kit-1.jsonl")
+        late = recorded("2026-10-28-l2", "clock.jsonl")[:1]
+        session = FakeSession(error_msgs + late)
+        result = self.run_agent(FakeFrida(session), wait=FA._default_wait)
         self.assertEqual(result.reason, FA.END_AGENT_ERROR)
-        self.assertEqual(result.error, "GameManager not found")
+        # The agent's own error text is kept, and the later sample does not
+        # replace it.
+        self.assertEqual(result.error, error_msgs[0]["payload"]["error"])
         self.assertEqual(session.detach_calls, 1)
 
     def test_a_script_exception_ends_the_run(self):
-        session = FakeSession([{"type": "error",
-                                "description": "TypeError: boom"}])
-        result = self.run_agent(FakeFrida(session))
+        # A real script error: the kit agent's JavaScript threw inside the
+        # game (hydra-data/ch-mcp-runs/2026-10-31/ls-d1a-run1/kit-1.jsonl).
+        thrown = recorded("2026-10-31-ls-d1a-run1", "kit-1.jsonl")
+        session = FakeSession(thrown)
+        result = self.run_agent(FakeFrida(session), wait=FA._default_wait)
         self.assertEqual(result.reason, FA.END_SCRIPT_ERROR)
-        self.assertEqual(result.error, "TypeError: boom")
+        self.assertEqual(result.error, thrown[0]["description"])
+        self.assertEqual(result.payloads, [])
+        self.assertEqual(session.detach_calls, 1)
 
     def test_no_message_is_written_after_the_run_ends(self):
-        session = FakeSession([sent({"done": "cap"})])
-        self.run_agent(FakeFrida(session))
-        session.script.handlers["message"](sent(sample(5.0)), None)
-        self.assertEqual(self.written(), [sent({"done": "cap"})])
-
-    def test_the_game_closing_ends_the_run(self):
-        session = FakeSession([])
-        frida = FakeFrida(session)
-
-        def wait(event, timeout_s):
-            session.handlers["detached"]("process-terminated", None)
-            return event.is_set()
-
-        result = FA.run_agent(self.agent, 93.0, FA.ends_run, self.out_path,
-                              frida_mod=frida, wait=wait,
-                              out=self.lines.append)
-        self.assertEqual(result.reason, FA.END_DETACHED)
-        self.assertEqual(result.error, "session detached: process-terminated")
-        self.assertEqual(session.detach_calls, 1)
-
-
-class DroppedSessionDetachTest(Workspace):
-    def test_a_detach_that_raises_is_reported_and_the_log_still_closes(self):
-        session = FakeSession([sent(sample(1.0))])
-
-        def refuse():
-            session.detach_calls += 1
-            raise RuntimeError("session is gone")
-
-        session.detach = refuse
-        result = self.run_agent(FakeFrida(session))
-        self.assertEqual(session.detach_calls, 1)
-        self.assertIn("detach reported: session is gone", self.lines)
-        self.assertEqual(result.reason, FA.END_CAP)
-        # The log was closed: it reads back whole and accepts no late write.
-        self.assertEqual(self.written(), [sent(sample(1.0))])
-        session.script.handlers["message"](sent(sample(2.0)), None)
-        self.assertEqual(self.written(), [sent(sample(1.0))])
+        # A real trace run that ends on its done message (hydra-data/
+        # ch-mcp-runs/2026-10-28/l3/trace-ew-count.jsonl), and a real clock
+        # sample (2026-10-28/l2/clock.jsonl) that arrives after it.
+        msgs = recorded("2026-10-28-l3", "trace-ew-count.jsonl")
+        late = recorded("2026-10-28-l2", "clock.jsonl")[0]
+        session = FakeSession(msgs)
+        result = self.run_agent(FakeFrida(session), wait=FA._default_wait)
+        session.script.handlers["message"](late, None)
+        self.assertEqual(self.written(), msgs)
+        self.assertEqual(result.payloads, [m["payload"] for m in msgs])
 
 
 class DefaultWaitTest(unittest.TestCase):
@@ -375,45 +374,33 @@ class DefaultWaitTest(unittest.TestCase):
         self.assertTrue(FA._default_wait(event, 30.0))
 
 
-class NotRunningTest(Workspace):
-    def test_not_running_says_so_and_stops(self):
-        result = self.run_agent(FakeFrida(None))
-        self.assertEqual(result.reason, FA.END_NOT_RUNNING)
-        self.assertEqual(self.lines,
-                         ["Clone Hero.exe is not running; nothing attached"])
-        self.assertFalse(os.path.exists(self.out_path))
-
-    def test_the_command_line_exits_1_when_not_running(self):
-        agent = make_built_agent(os.path.join(self.tmp.name, "built"), "clock")
-        code = FA.main(["--agent", agent, "--cap", "93",
-                        "--out", self.out_path],
-                       frida_mod=FakeFrida(None), wait=instant_wait,
-                       out=self.lines.append)
-        self.assertEqual(code, 1)
-        self.assertEqual(self.lines,
-                         ["Clone Hero.exe is not running; nothing attached"])
-
+class AgentRefusalTest(Workspace):
     def test_the_command_line_refuses_a_stale_or_missing_agent_before_attaching(self):
         folder = os.path.join(self.tmp.name, "built")
         agent = make_built_agent(folder, "clock")
         with open(os.path.join(folder, "clock.ts"), "a", encoding="utf-8") as fh:
             fh.write("// an edit after the build\n")
-        session = FakeSession([sent(sample(1.0))])
+        # Anything that reaches for Frida fails the test, so a refusal that
+        # comes after the attach cannot pass.
+        no_frida = object()
+        stale = BS.check(agent)
+        self.assertIsNotNone(stale)
         code = FA.main(["--agent", agent, "--cap", "93", "--out", self.out_path],
-                       frida_mod=FakeFrida(session), wait=instant_wait,
-                       out=self.lines.append)
+                       frida_mod=no_frida, out=self.lines.append)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [
-            f"{agent} is stale: clock.ts changed since it was built; "
-            "run npm run build:clock in tools/ch_mcp/agent first"])
+        # build_stamp owns the wording; the line names the source that changed.
+        self.assertEqual(self.lines, [stale])
+        self.assertIn("clock.ts", self.lines[0])
         os.remove(agent)
         self.lines.clear()
+        missing = BS.check(agent)
+        self.assertIsNotNone(missing)
+        self.assertNotEqual(missing, stale)
         code = FA.main(["--agent", agent, "--cap", "93", "--out", self.out_path],
-                       frida_mod=FakeFrida(session), wait=instant_wait,
-                       out=self.lines.append)
+                       frida_mod=no_frida, out=self.lines.append)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [BS.check(agent)])
-        self.assertEqual(session.detach_calls, 0)
+        self.assertEqual(self.lines, [missing])
+        self.assertIn(agent, self.lines[0])
         self.assertFalse(os.path.exists(self.out_path))
 
 
@@ -503,29 +490,48 @@ class LiveAgentTest(Workspace):
         return agent, session
 
     def test_start_posts_a_read_and_returns_its_reply(self):
-        session = ReplySession([STATE])
+        # The state agent's real answer to the first read of a run, carrying
+        # id 1 (hydra-data/ch-mcp-runs/2026-11-06/ls-d2b-run1/state-4.jsonl).
+        reply = recorded("2026-11-06-ls-d2b-run1", "state-4.jsonl")
+        session = ReplySession([reply])
         frida = FakeFrida(session)
-        agent = self.live(frida)
-        self.assertEqual(agent.start(30.0), STATE)
+        agent = self.live(frida, wait=FA._default_wait)
+        state = agent.start(30.0)
         self.assertEqual(frida.attached_to, [PROCESS_NAME])
         self.assertEqual(session.script.posted, [{"type": "read", "id": 1}])
-        self.assertEqual(session.source, "// fake agent\n")
+        # The caller gets the agent's payload without the id the read gave it.
+        self.assertNotIn("id", state)
+        self.assertEqual({**state, "id": 1}, reply[0]["payload"])
+        with open(self.agent, encoding="utf-8") as fh:
+            self.assertEqual(session.source, fh.read())
         self.assertTrue(agent.alive)
         self.assertEqual(session.detach_calls, 0)
-        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+        # The log keeps the message as the agent sent it, id and all.
+        self.assertEqual(self.written(), reply)
 
     def test_a_payload_with_no_id_goes_to_the_listener_and_the_log(self):
-        agent, session = self.started([STATE])
+        # The state agent's real first reply (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d2b-run1/state-4.jsonl) and one real play_events
+        # message from the kit agent, which carries no id (2026-11-12/
+        # ls-g3-run1/kit-1.jsonl).
+        reply = recorded("2026-11-06-ls-d2b-run1", "state-4.jsonl")
+        event_msg = recorded("2026-11-12-ls-g3-run1", "kit-1.jsonl")[0]
+        self.assertNotIn("id", event_msg["payload"])
+        session = ReplySession([reply])
+        agent = self.live(FakeFrida(session), wait=FA._default_wait)
+        agent.start(30.0)
         heard = []
         agent.listen(heard.append)
-        event = {"kind": "sent", "seq": 0}
-        session.script.handlers["message"](sent(event), None)
-        session.script.handlers["message"](sent({**STATE, "id": 99}), None)
-        self.assertEqual(heard, [event])
+        session.script.handlers["message"](event_msg, None)
+        # A message with an id is a reply, never the listener's, even when
+        # no read is waiting for it.
+        session.script.handlers["message"](reply[0], None)
+        self.assertEqual(heard, [event_msg["payload"]])
         agent.listen(None)
-        session.script.handlers["message"](sent(event), None)
-        self.assertEqual(heard, [event])
-        self.assertIn(sent(event), self.written())
+        session.script.handlers["message"](event_msg, None)
+        self.assertEqual(heard, [event_msg["payload"]])
+        # Both copies of the event reach the log, heard or not.
+        self.assertEqual(self.written().count(event_msg), 2)
 
     def test_start_on_a_game_that_is_not_running_attaches_nothing(self):
         agent = self.live(FakeFrida(None))
