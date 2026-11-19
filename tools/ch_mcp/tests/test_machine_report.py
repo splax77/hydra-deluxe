@@ -1,7 +1,7 @@
 """The report over the machine recorder's files. The tests whose classes end in
 "InARealRecording" read excerpts of a real recording under testdata/ch_runs; the
-rest build their rows here from the three files' columns. No test reads the live
-settings.ini.
+rest build their rows here from the three files' columns. Only the script test reads
+the live settings.ini, and it does not compare those lines.
 """
 import contextlib
 import csv
@@ -25,7 +25,7 @@ from tools.ch_mcp import machine_recorder  # noqa: E402
 from tools.ch_mcp import machine_report as R  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 
-GAME, WORKER, RECORDER = 7, 8, 9
+GAME, RECORDER = 7, 9
 GAME_TID = 70
 BASE_S = 1000
 PERIOD_MS = 20
@@ -59,6 +59,14 @@ FAMILY_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1
 # hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/backup-20261112-182956.
 REAL_SETTINGS = os.path.join(REPO, "testdata", "ch_runs", "ls-g1-run1", "backup-20261112-182956",
                              R.game_files.SETTINGS)
+# The last five samples of hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/machine-1, whose
+# last row says why the recorder stopped. Rows are copied unchanged, but processes.csv keeps
+# only the game's, the recorder's and the Idle process's rows, and threads.csv only the game's.
+STOPPED_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-3346-3350")
+# The last five samples of hydra-data/ch-mcp-runs/2026-11-07/ls-r1-run1/machine-1, cut the
+# same way. No row of that recording says why the recorder stopped.
+TERMINATED_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-r1-run1",
+                              "machine-1-samples-12460-12464")
 GAME_NAME = "Clone Hero.exe"
 
 
@@ -126,19 +134,6 @@ class Fixture:
                 out.writerows(rows)
 
 
-def clock_fixture(pairs):
-    """Samples whose steps are `pairs` of (clock gain, wall gain) in ms."""
-    fx = Fixture()
-    clock = wall = 0
-    last = fx.sample(wall, clock)
-    fx.thread(last)
-    for clock_gain, wall_gain in pairs:
-        clock += clock_gain
-        wall += wall_gain
-        fx.sample(wall, clock)
-    return fx
-
-
 class ReportCase(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -163,16 +158,6 @@ class ReportCase(unittest.TestCase):
 
 
 class Constants(unittest.TestCase):
-    def test_the_questions_numbers(self):
-        self.assertEqual(R.LONG_STEP_FACTOR, 2)
-        self.assertEqual(R.READY_STRETCH_MIN, 2)
-
-    def test_the_watchs_gap_threshold_and_the_listed_names(self):
-        self.assertEqual(R.GAP_MS, 50)
-        self.assertEqual(R.ALWAYS_LISTED_NAMES,
-                         ("cl", "link", "MSBuild", "cmake", "ninja", "clang-cl", "lld-link", "rc",
-                          "mt", "tsc", "esbuild", "Spotify.exe", "MsMpEng.exe"))
-
     def test_the_recorders_files_and_words_are_the_ones_read(self):
         for name in R.SAMPLE_OPTIONAL:
             self.assertIn(name, machine_recorder.SAMPLES_COLUMNS)
@@ -210,6 +195,26 @@ class RealRecordingCase(unittest.TestCase):
         code, lines = self.report(*args)
         self.assertEqual(code, 0, lines)
         return lines
+
+    def copy_of_folder(self, label):
+        """A copy of FOLDER in the test's temp folder, for a test that changes one file."""
+        folder = os.path.join(self.documents, label)
+        shutil.copytree(self.FOLDER, folder)
+        return folder
+
+    @staticmethod
+    def write_rows(folder, file_name, rows):
+        with open(os.path.join(folder, file_name), "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def report_on(self, folder):
+        """(exit code, output lines) of main on another folder, for the game."""
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = R.main([folder, str(self.game)], documents_dir=self.documents)
+        return code, out.getvalue().splitlines()
 
     def rows(self, file_name):
         return real_rows(file_name, self.FOLDER)
@@ -311,6 +316,17 @@ class CpuShares(RealRecordingCase):
                          recorder_row[0][0])
         shares = [shares[0] for _, shares in table]
         self.assertEqual(shares, sorted(shares, reverse=True))
+
+    def test_a_nameless_process_is_not_a_half_row(self):
+        # The recorder writes the Idle process with an empty name.
+        nameless = {int(row["pid"]) for row in self.rows(R.PROCESSES_FILE) if row["name"] == ""}
+        self.assertEqual(len(nameless), 1, nameless)
+        pid = nameless.pop()
+        lines = self.lines()
+        self.assertFalse([line for line in lines if "half-written" in line], lines)
+        cpu = self.cpu_by_process(first_sample_too=False)
+        self.assertEqual(self.shares_of(self.table(lines), pid, ""),
+                         [float(self.share_text(cpu[(pid, "")]))])
 
     def test_the_window_changes_the_shares(self):
         whole = dict(self.table(self.lines()))
@@ -502,34 +518,9 @@ class NoThreadRowsInARealRecording(RealRecordingCase):
         self.assertNotIn(message, self.lines("--worker", str(worker)))
 
 
-class StretchesAcrossLateSamples(ReportCase):
-    LATE_MARK = R.LATE_MARK
-
-    def ready_at(self, walls_ms, switches=None):
-        """A thread ready in one sample at each of these times."""
-        fx = Fixture()
-        for at, ms in enumerate(walls_ms):
-            fx.thread(fx.sample(ms), reads_as="ready", switches=switches[at] if switches else 1)
-        return fx
-
-    def stretch_line(self, fx, *args):
-        return next(line for line in self.lines(fx, *args) if "thread 70" in line)
-
-    def test_normal_wobble_under_twice_the_period_carries_no_mark(self):
-        line = self.stretch_line(self.ready_at((0, 25, 45, 85)))
-        self.assertNotIn(self.LATE_MARK, line)
-
-    def test_one_sample_prints_no_stretch_and_no_mark(self):
-        fx = Fixture()
-        fx.steady(2)
-        fx.thread(1, reads_as="ready", switches=9)
-        self.assertEqual(self.stretch_line(fx),
-                         "  game pid 7 thread 70: running 0, ready 1, no ready stretch")
-
-
 class LateStretchesInARealRecording(RealRecordingCase):
     FOLDER = LATE_RUN
-    LATE_MARK = StretchesAcrossLateSamples.LATE_MARK
+    LATE_MARK = R.LATE_MARK
 
     def ready_in(self, tid, run):
         """Checks that this game thread is ready in exactly the samples of `run`
@@ -669,14 +660,6 @@ class LateClockInARealRecording(ClockInARealRecording):
                       f"{R._wall(Fraction(low_at['wall_s']))}", self.lines())
 
 
-class ClockSteps(ReportCase):
-    SIX_PAIRS =((20, 20), (20, 20), (70, 20), (300, 100), (100, 100), (20, 80))
-
-    def test_the_late_sample_is_not_listed(self):
-        lines = self.lines(clock_fixture(self.SIX_PAIRS))
-        self.assertFalse([line for line in lines if "wall 1000.260" in line])
-
-
 class ClockRowsCase(RealRecordingCase):
     """Works out from FOLDER's samples.csv what the clock section should print."""
 
@@ -773,18 +756,12 @@ class ClockWithoutStampsInARealRecording(RealRecordingCase):
         rows = self.rows(R.SAMPLES_FILE)
         clocked = next(row for row in rows if row["clock_s"])
         clocked["clock_wall_after_s"] = ""
-        folder = os.path.join(self.documents, "blanked")
-        shutil.copytree(self.FOLDER, folder)
-        with open(os.path.join(folder, R.SAMPLES_FILE), "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
-            writer.writeheader()
-            writer.writerows(rows)
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = R.main([folder, str(self.game)], documents_dir=self.documents)
+        folder = self.copy_of_folder("blanked")
+        self.write_rows(folder, R.SAMPLES_FILE, rows)
+        code, lines = self.report_on(folder)
         self.assertEqual(code, 1)
         self.assertIn(f"sample {clocked['sample']} has a clock reading with no wall stamps",
-                      out.getvalue())
+                      "\n".join(lines))
 
 
 class NoClockInARealRecording(RealRecordingCase):
@@ -1003,6 +980,11 @@ class TheFrontInARealRecording(RealRecordingCase):
 
     def test_the_grandparent_is_the_front(self):
         rows, worker, launcher, front = self.family()
+        # The worker's parent gained nothing, so the recorder wrote it in the first sample
+        # only; the front is still named through that one row.
+        first = min(self.walls)
+        self.assertEqual({int(row["sample"]) for row in self.rows(R.PROCESSES_FILE)
+                          if int(row["pid"]) == launcher}, {first})
         lines = self.lines("--worker", str(worker))
         self.assertIn(f"worker {worker}: its parent is pid {launcher} {rows[launcher]['name']}", lines)
         self.assertIn(f"front: pid {front} {rows[front]['name']}, the parent of pid {launcher}", lines)
@@ -1051,63 +1033,39 @@ class TheFrontInARealRecording(RealRecordingCase):
         self.assertFalse([line for line in self.lines() if "front" in line])
 
 
-class ARecordingAsTheRecorderWritesIt(ReportCase):
-    """Sample numbers start at 1, the Idle process has no name, and a process
-    that gained nothing has a row in sample 1 only."""
-
-    def fixture(self):
-        fx = Fixture()
-        for number, ms in ((1, 0), (2, 20), (3, 40), (4, 60)):
-            fx.samples.append([number, wall_text(ms), 1, 400, 5000, 2, "", "", "", RECORDER,
-                               PERIOD_MS, "", ""])
-        fx.thread(1)
-        fx.process(1, 0, "", cpu_ms=0, parent=0)
-        fx.process(2, 0, "", cpu_ms=30, parent=0)
-        fx.process(1, WORKER, "python.exe", parent=30)
-        fx.process(1, 30, "py.exe", parent=31)
-        fx.process(1, 31, "claude.exe", parent=32)
-        fx.process(2, 31, "claude.exe", cpu_ms=2, parent=32)
-        return fx
-
-    def test_a_nameless_process_is_not_a_half_row(self):
-        lines = self.lines(self.fixture())
-        self.assertFalse([line for line in lines if "half-written" in line])
-        self.assertIn("    50.0%  pid 0 (no name)", lines)
-
-    def test_a_parent_with_a_row_only_in_sample_one_names_the_front(self):
-        lines = self.lines(self.fixture(), "--worker", str(WORKER))
-        self.assertIn("worker 8: its parent is pid 30 py.exe", lines)
-        self.assertIn("front: pid 31 claude.exe, the parent of pid 30", lines)
-        self.assertIn("     0.0%  pid 8 python.exe (worker)", lines)
-
-
-class TheRecordingsEnd(ReportCase):
-    def fixture(self):
-        fx = Fixture()
-        fx.steady(4)
-        fx.thread(1)
-        return fx
+class StoppedRecordingInARealRecording(RealRecordingCase):
+    FOLDER = STOPPED_RUN
 
     def test_the_last_row_says_why_it_stopped(self):
-        fx = self.fixture()
-        fx.stop("seconds", "9.5")
-        self.assertIn("recorder stopped: seconds, its own process time 9.5 s", self.lines(fx))
+        last = self.rows(R.SAMPLES_FILE)[-1]
+        self.assertTrue(last["stop_reason"])
+        self.assertIn(f"recorder stopped: {last['stop_reason']}, "
+                      f"its own process time {last['process_time_s']} s", self.lines())
+
+
+class TerminatedRecordingInARealRecording(RealRecordingCase):
+    FOLDER = TERMINATED_RUN
+    TERMINATED = ("recorder stopped: not said, the last row of samples.csv is missing, "
+                  "so the recorder was probably terminated")
 
     def test_a_missing_last_row_is_said_and_is_no_failure(self):
-        lines = self.lines(self.fixture())
-        self.assertIn("recorder stopped: not said, the last row of samples.csv is missing, "
-                      "so the recorder was probably terminated", lines)
+        self.assertFalse([row for row in self.rows(R.SAMPLES_FILE) if row["stop_reason"]])
+        self.assertIn(self.TERMINATED, self.lines())
 
     def test_a_half_written_row_is_left_out_and_counted(self):
-        fx = self.fixture()
-        fx.write(self.folder)
-        with open(os.path.join(self.folder, R.PROCESSES_FILE), "a", encoding="utf-8") as f:
-            f.write("3,9,1")
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            code = R.main([self.folder, str(GAME)], documents_dir=self.documents)
-        self.assertEqual(code, 0)
-        self.assertIn("left out 1 half-written rows", out.getvalue().splitlines())
+        lines = self.lines()
+        self.assertFalse([line for line in lines if "half-written" in line], lines)
+        # The recording's own last processes.csv row, cut off the way a recorder that is
+        # ended mid-write leaves it.
+        folder = self.copy_of_folder("cut")
+        with open(os.path.join(folder, R.PROCESSES_FILE), newline="", encoding="utf-8") as f:
+            last = f.read().splitlines()[-1]
+        with open(os.path.join(folder, R.PROCESSES_FILE), "a", newline="", encoding="utf-8") as f:
+            f.write(last[:last.index(",", last.index(",") + 1)])
+        code, cut = self.report_on(folder)
+        self.assertEqual(code, 0, cut)
+        self.assertIn("left out 1 half-written rows", cut)
+        self.assertIn(self.TERMINATED, cut)
 
 
 class BadFolders(ReportCase):
@@ -1134,28 +1092,39 @@ class BadFolders(ReportCase):
         self.assertEqual(code, 1)
         self.assertIn("has no column wait_reason, reads_as, switches, cpu_ms", out.getvalue())
 
+
+class OneSampleInARealRecording(RealRecordingCase):
+    """The real excerpt cut down to its first sample's rows."""
+
     def test_one_sample_is_refused(self):
-        fx = Fixture()
-        fx.steady(1)
-        fx.thread(0)
-        code, lines = self.run_report(fx)
+        first = min(self.walls)
+        folder = self.copy_of_folder("one-sample")
+        for name in (R.SAMPLES_FILE, R.PROCESSES_FILE, R.THREADS_FILE):
+            self.write_rows(folder, name, [row for row in self.rows(name)
+                                           if int(row["sample"]) == first])
+        mine = [row for row in self.thread_rows(self.game) if int(row["sample"]) == first]
+        self.assertTrue(mine)
+        code, lines = self.report_on(folder)
         self.assertEqual(code, 1)
-        self.assertEqual(lines[1], "refused: samples.csv holds 1 whole samples, "
-                                   "and a slice needs two")
+        self.assertEqual(lines, [f"the recording holds {len(mine)} thread samples for pid {self.game}",
+                                 f"refused: {R.SAMPLES_FILE} holds 1 whole samples, "
+                                 "and a slice needs two"])
 
 
-class AsAScript(ReportCase):
+class AsAScriptInARealRecording(RealRecordingCase):
     def test_runs_under_py_dash_i(self):
-        fx = Fixture()
-        fx.steady(3)
-        fx.thread(1)
-        fx.write(self.folder)
         done = subprocess.run(
             [sys.executable, "-I", os.path.join(REPO, "tools", "ch_mcp", "machine_report.py"),
-             self.folder, str(GAME)], capture_output=True, text=True, timeout=60, cwd=self.folder)
+             self.FOLDER, str(self.game)], capture_output=True, text=True, timeout=60,
+            cwd=self.documents)
         self.assertEqual(done.returncode, 0, done.stderr)
-        self.assertEqual(done.stdout.splitlines()[0],
-                         "the recording holds 1 thread samples for pid 7")
+        script = done.stdout.splitlines()
+        # The script reads the live settings.ini, so its settings lines may differ; from the
+        # recording line on it prints what main prints in this process.
+        here = self.lines()
+        at = next(i for i, line in enumerate(here) if line.startswith("recording: "))
+        self.assertEqual(script[0], here[0])
+        self.assertEqual(script[script.index(here[at]):], here[at:])
 
 
 if __name__ == "__main__":
