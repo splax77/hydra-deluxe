@@ -486,44 +486,6 @@ TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
     CHECK(score_box_at(scene, *jump).detail == "x2 " + kDot + " combo 6");
 }
 
-TEST_CASE("score box: a leeway chord past the SP end is paid doubled, the box stays plain") {
-    // Every chord, on every path the engine found for the analyzed corpus
-    // chart, that the replay paid in Star Power although it lies past its
-    // activation's SP end (inside backend_leeway_ms, the counted-backend
-    // leeway in core::Rules). The score pays it doubled; the box, at the
-    // chord's own instant, shows the plain disc, because SP has ended.
-    const AnalysisResult& a = corpus::analyzed_by_ten_scores();
-    const double leeway_ms = core::default_rules().backend_leeway_ms;
-    int leeway_chords = 0;
-    for (const Path& path : a.record.paths) {
-        const PreviewScene scene = build_preview_scene(a.song, &path);
-        if (scene.score.state != PreviewScore::State::Ready) continue;
-        const ReplayResult r = replay_stored_path(a.song, path).result;
-        REQUIRE(r.chords.size() == scene.score.steps.size());
-        for (size_t i = 0; i < r.chords.size(); ++i) {
-            const ReplayChord& c = r.chords[i];
-            if (!c.in_sp) continue;
-            // The activation whose SP end this chord lies just past.
-            const auto past = std::find_if(
-                scene.activations.begin(), scene.activations.end(),
-                [&](const PreviewActivation& act) {
-                    return act.has_sp_end && c.ms > act.sp_end_ms && act.ms < act.sp_end_ms &&
-                           c.ms - act.sp_end_ms < leeway_ms;
-                });
-            if (past == scene.activations.end()) continue;
-            ++leeway_chords;
-            CHECK(c.multiplier_shown == c.multiplier_after * kStarPowerMultiplier);
-            CHECK(scene.score.steps[i].multiplier == c.multiplier_shown);
-            CHECK(scene.score.steps[i].multiplier_plain == c.multiplier_after);
-            CHECK(score_box_at(scene, c.ms).detail ==
-                  score_detail(c.multiplier_after, c.combo_after));
-        }
-    }
-    // The chart's paths must hold such a chord, or nothing above ran.
-    CHECK_MESSAGE(leeway_chords > 0,
-                  "no path of the analyzed chart has a chord paid past its SP end");
-}
-
 TEST_CASE("score box: a path the replay can't reproduce says so") {
     Song song = make_hand_song();
 

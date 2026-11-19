@@ -326,6 +326,31 @@
           "file": "tests/test_config.cpp",
           "line_text": "CHECK(hydra::ends_with(dir, tail));",
           "why": "checks the resource folder's name, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "if (box.position != want || !ends_with(box.tempo, want_sig)) {",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK_MESSAGE(ends_with(box.tempo, want_sig), box.tempo << \" lacks \" << want_sig);",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK(ends_with(box.tempo, sig_text({3, 4})));",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK(ends_with(build_time_box(scene, line.ms, len).tempo, \"6/8\"));",
+          "why": "checks the time box's tempo text ends in the time signature, not a file format"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "CHECK(ends_with(build_time_box(scene, scene.beats[j].ms, len).position, \".2.0\"));",
+          "why": "checks the time box's position text ends on the beat, not a file format"
         }
       ],
       "scope": [
