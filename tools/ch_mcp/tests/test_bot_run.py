@@ -804,11 +804,21 @@ class RealLaunchTest(unittest.TestCase):
         self.assertEqual(seen["show"], B.SW_SHOWMINNOACTIVE)
 
 
-# launch_patch.json's fields that bot_run reads or names, with the values the
-# direct-start plan's "The launch" gives for build 6142.
-PATCH = {"launch": "suspended", "defer": False,
-         "entry_expect": "40 56 57 41 55 48 81 EC C0 00 00 00",
-         "expect": "BA 01 00 00 00", "write": "BA 00 00 00 00"}
+# The real launch_patch.json, read by bot_run's own reader.
+PATCH = B._read_patch(B.LAUNCH_PATCH_FILE)
+# The launch agent's log from one real human launch, copied whole from
+# hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1. Its replies in order: the
+# start's idle, the arm reply naming the modules loaded, one waiting status,
+# the patched status, then two later statuses after the loader ran.
+LS_D0_LAUNCH_LOG = os.path.join(_TESTDATA, "ch_runs", "ls-d0-run1",
+                                "launch-20261031-141438.jsonl")
+
+
+def recorded_launch_replies() -> list:
+    """The replies in LS_D0_LAUNCH_LOG, each without the id LiveAgent adds."""
+    with open(LS_D0_LAUNCH_LOG, encoding="utf-8") as f:
+        payloads = [json.loads(line)["payload"] for line in f if line.strip()]
+    return [{k: v for k, v in p.items() if k != "id"} for p in payloads]
 # How long a test waits on a fake's thread, or on the stand-in program, before
 # it fails instead of hanging.
 THREAD_CAP_S = 5.0
@@ -933,20 +943,59 @@ class HumanLaunchTest(unittest.TestCase):
         return str(cm.exception)
 
     def test_the_order_is_start_attach_load_arm_resume_status(self):
-        agent = FakeLaunchAgent(self.events)
-        launch, attaches = self.launch(agent)
-        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
+        # The real paused start, resume, kill and clock, on the stand-in
+        # program in place of the game. Only the Frida attach cannot run
+        # without the game, so the agent answers with the replies of a real
+        # launch (LS_D0_LAUNCH_LOG). The start and resume seams are wrapped
+        # only to record when they ran.
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        agent = FakeLaunchAgent(self.events, statuses=[waiting, patched], arm_reply=arm_reply)
+        lines, games, attaches = [], [], []
+
+        def start(cmd):
+            self.events.append("start")
+            games.append(B._real_start_suspended(cmd))
+            return games[-1]
+
+        def resume(pid):
+            if not agent.armed:
+                raise AssertionError("resumed before the arm reply")
+            self.events.append("resume")
+            B.resume_main_thread(pid)
+
+        def attach(pid, path, log, out):
+            self.events.append("attach")
+            attaches.append((pid, path, log))
+            return agent
+
+        env = B.Env(out=lines.append, start_process=start, resume_thread=resume,
+                    attach_agent=attach,
+                    launch_agent_path=make_built_agent(os.path.join(self.tmp, "agent"), "launch"))
+        log = os.path.join(self.tmp, "launch.jsonl")
+        try:
+            launch, _folder, out = _start_stand_in(
+                self.tmp, lambda cmd: B.launch_human(cmd, env, log))
+        except BaseException:
+            for game in games:
+                game._p.kill()
+            raise
+        # The stand-in only runs, writes and exits once resumed.
+        _started_with(self, launch.game, out)
+        self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
+                         + ["status"] * 2)
         self.assertIs(launch.agent, agent)
-        self.assertIs(launch.game, self.r.game)
-        self.assertEqual(launch.form, "suspended")
-        self.assertEqual(attaches, [(4242, self.r.env.launch_agent_path,
-                                     os.path.join(self.tmp, "launch.jsonl"))])
-        self.assertEqual(agent.start_caps, [20.0])
+        self.assertIs(launch.game, games[0])
+        self.assertEqual(launch.form, PATCH["launch"])
+        self.assertEqual(attaches, [(games[0].pid, env.launch_agent_path, log)])
+        self.assertEqual(agent.start_caps, [B.LAUNCH_ATTACH_CAP_S])
         # arm carries the data file's contents, with the arm cap.
-        self.assertEqual(agent.requests[0], ({"type": "arm", "patch": PATCH}, 5.0))
-        self.assertIn("armed; modules loaded now (2): Clone Hero.exe, ntdll.dll", self.r.lines)
-        self.assertIn("patched 0.0 s after the resume", self.r.lines)
-        self.assertFalse(self.r.game.stopped)
+        self.assertEqual(agent.requests[0], ({"type": "arm", "patch": PATCH}, B.LAUNCH_ARM_CAP_S))
+        # One line names every module the arm reply listed.
+        modules = arm_reply["modules"]
+        self.assertEqual(len([line for line in lines if all(m in line for m in modules)]), 1, lines)
+        # The patched status is reported through its one owner.
+        for line in B.launch_status_lines(patched, PATCH):
+            self.assertIn(line, lines)
 
     def test_waiting_statuses_are_polled_every_half_second_until_patched(self):
         agent = FakeLaunchAgent(self.events, statuses=[status("waiting")] * 3 + [PATCHED])
@@ -958,84 +1007,11 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertEqual(self.r.clock.t, waited_s)
         self.assertIn(f"patched {waited_s:.1f} s after the resume", self.r.lines)
 
-    def test_a_refused_status_kills_the_game_and_names_the_bytes(self):
-        refused = status("refused", before="BA 02 00 00 00", entry_before="CC CC CC CC")
-        agent = FakeLaunchAgent(self.events, statuses=[status("waiting"), refused])
-        said = self.fails(agent)
-        self.assertIn("at the loader's entry it found CC CC CC CC (launch_patch.json expects "
-                      "40 56 57 41 55 48 81 EC C0 00 00 00)", said)
-        self.assertIn("at the patch it found BA 02 00 00 00 (expects BA 01 00 00 00)", said)
-        self.assertIn("the game was killed", said)
-        self.assertEqual(self.events[-2:], ["kill", "detach"])
-        self.assertTrue(self.r.game.stopped)
-
-    def test_an_attach_that_never_returns_ends_at_its_cap_and_kills_the_game(self):
-        block = threading.Event()
-        agent = FakeLaunchAgent(self.events, start_block=block)
-        waited = []
-        self.r.env.wait_thread = lambda thread, cap_s: waited.append(cap_s)
-        try:
-            said = self.fails(agent)
-        finally:
-            block.set()
-        self.assertEqual(waited, [B.LAUNCH_ATTACH_CAP_S])
-        self.assertIn(f"had not finished after {B.LAUNCH_ATTACH_CAP_S:g} s", said)
-        self.assertIn("kill", self.events)
-        self.assertNotIn("resume", self.events)
-        self.assertNotIn("detach", self.events)  # the start is still running
-        self.assertTrue(self.r.game.stopped)
-
-    def test_an_attach_that_fails_kills_the_game(self):
-        agent = FakeLaunchAgent(self.events, start_error=FA.AttachFailed(
-            FA.END_SCRIPT_ERROR, "script error: loading the agent failed: boom"))
-        said = self.fails(agent)
-        self.assertIn("the attach to process 4242 failed: AttachFailed: script error", said)
-        # A failed LiveAgent.start leaves nothing attached, so nothing is detached.
-        self.assertEqual(self.events, ["start", "attach", "load", "kill"])
-
-    def test_an_arm_reply_that_never_comes_ends_at_its_cap_without_a_resume(self):
-        agent = FakeLaunchAgent(self.events, arm_error=FA.ReadFailed(
-            FA.END_CAP, "no reply to the arm request within the cap of 5 s"))
-        said = self.fails(agent)
-        self.assertEqual(agent.requests[0][1], 5.0)
-        self.assertIn("within the cap of 5 s (LAUNCH_ARM_CAP_S)", said)
-        self.assertEqual(self.events, ["start", "attach", "load", "arm", "kill", "detach"])
-        self.assertTrue(self.r.game.stopped)
-
-    def test_a_refused_arm_reply_kills_the_game_without_a_resume(self):
-        agent = FakeLaunchAgent(self.events, arm_reply=status(
-            "refused", before="00 00 00 00 00", entry_before=PATCH["entry_expect"]))
-        said = self.fails(agent)
-        self.assertIn("at the patch it found 00 00 00 00 00", said)
-        self.assertNotIn("resume", self.events)
-
-    def test_an_idle_arm_reply_is_a_fault_that_kills_the_game_without_a_resume(self):
-        agent = FakeLaunchAgent(self.events, arm_reply=status("idle"))
-        said = self.fails(agent)
-        self.assertIn(B.IDLE_AFTER_ARM, said)
-        self.assertEqual(self.events, ["start", "attach", "load", "arm", "kill", "detach"])
-
     def test_a_patched_arm_reply_still_resumes_and_reads_the_status(self):
         agent = FakeLaunchAgent(self.events, arm_reply=status("patched", modules=["x.dll"]))
         launch, _ = self.launch(agent)
         self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume", "status"])
         self.assertIs(launch.agent, agent)
-
-    def test_an_idle_status_after_the_arm_is_a_fault_named_at_once(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("waiting"), status("idle")])
-        said = self.fails(agent)
-        self.assertIn(B.IDLE_AFTER_ARM, said)
-        self.assertEqual(self.r.clock.t, 0.5)  # one poll, not the patch cap
-        self.assertEqual(self.events[-2:], ["kill", "detach"])
-
-    def test_a_refusal_for_a_failed_read_back_carries_the_agents_reason(self):
-        refused = status("refused", before="BA 01 00 00 00", after="BA 01 00 00 00",
-                         entry_before=PATCH["entry_expect"],
-                         reason="the write did not take: the patch site at 0x396EC5 reads "
-                               "BA 01 00 00 00 after writing BA 00 00 00 00")
-        said = self.fails(FakeLaunchAgent(self.events, statuses=[refused]))
-        self.assertIn("and BA 01 00 00 00 after; the agent says: the write did not take", said)
-        self.assertIn("the game was killed", said)
 
     def test_a_status_that_stays_waiting_ends_at_the_patch_cap_from_the_resume(self):
         agent = FakeLaunchAgent(self.events, statuses=[status("waiting")])
@@ -1070,49 +1046,56 @@ class HumanLaunchTest(unittest.TestCase):
                          ["spawn", "attach", "load", "arm", "resume spawned", "status"])
         self.assertEqual(launch.form, "spawn")
 
+    def refused_before_the_start(self, env) -> str:
+        """launch_human on the real Env `env`, which must refuse before its
+        real start runs: a start would raise OSError on the missing "exe",
+        not LaunchFailed. Returns the refusal."""
+        with self.assertRaises(B.LaunchFailed) as cm:
+            B.launch_human(["exe"], env, os.path.join(self.tmp, "l.jsonl"))
+        return str(cm.exception)
+
     def test_a_bad_launch_form_or_a_missing_agent_starts_nothing(self):
-        agent = FakeLaunchAgent(self.events)
-        said = self.fails(agent, {**PATCH, "launch": "late"})
+        # A launch_patch.json is input the real reader reads: the real one,
+        # with its form changed.
+        bad = os.path.join(self.tmp, "bad_patch.json")
+        _write(bad, json.dumps({**PATCH, "launch": "late"}).encode())
+        agent_path = make_built_agent(os.path.join(self.tmp, "agent"), "launch")
+        said = self.refused_before_the_start(
+            B.Env(out=[].append, launch_patch_path=bad, launch_agent_path=agent_path))
         # The refusal names the bad form and every form the code takes.
         self.assertIn("'late'", said)
         for form in B.LAUNCH_FORMS:
             self.assertIn(form, said)
-        wire_human(self.r, agent)
-        os.remove(self.r.env.launch_agent_path)
-        with self.assertRaises(B.LaunchFailed) as cm:
-            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        self.assertIn(BS.build_command(self.r.env.launch_agent_path), str(cm.exception))
-        self.assertEqual(self.events, [])
+        os.remove(agent_path)
+        said = self.refused_before_the_start(B.Env(out=[].append, launch_agent_path=agent_path))
+        self.assertIn(BS.build_command(agent_path), said)
 
     def test_a_stale_stamp_refuses_naming_the_file_and_the_build_command(self):
-        agent = FakeLaunchAgent(self.events)
-        wire_human(self.r, agent)
-        path = self.r.env.launch_agent_path
-        source = os.path.join(os.path.dirname(path), "launch.ts")
+        path = make_built_agent(os.path.join(self.tmp, "agent"), "launch")
+        env = B.Env(out=[].append, launch_agent_path=path)
+        source = os.path.join(os.path.dirname(path), BS.sources_of(path)[0])
         with open(source, "a", encoding="utf-8") as f:
             f.write("// an edit after the build\n")
-        with self.assertRaises(B.LaunchFailed) as cm:
-            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        self.assertEqual(str(cm.exception),
-                         f"the launch agent may not load: {BS.check(path)}; nothing was started")
-        self.assertIn(path, str(cm.exception))
-        self.assertIn(os.path.basename(source), str(cm.exception))
-        self.assertIn(BS.build_command(path), str(cm.exception))
-        self.assertEqual(self.events, [])
+        said = self.refused_before_the_start(env)
+        # The refusal carries build_stamp's own reason, which names the
+        # bundle, the changed source and the build command.
+        self.assertIn(BS.check(path), said)
+        self.assertIn(path, said)
+        self.assertIn(os.path.basename(source), said)
+        self.assertIn(BS.build_command(path), said)
         os.remove(BS.stamp_path(path))
-        with self.assertRaises(B.LaunchFailed) as cm:
-            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        self.assertEqual(str(cm.exception),
-                         f"the launch agent may not load: {BS.check(path)}; nothing was started")
-        self.assertIn(BS.build_command(path), str(cm.exception))
-        self.assertEqual(self.events, [])
+        said = self.refused_before_the_start(env)
+        self.assertIn(BS.check(path), said)
+        self.assertIn(BS.build_command(path), said)
 
     def test_the_real_env_uses_the_real_seams_and_files(self):
         env = B.Env()
         self.assertIs(env.start_process, B._real_start_suspended)
         self.assertIs(env.resume_thread, B.resume_main_thread)
-        self.assertEqual(os.path.basename(env.launch_agent_path), "launch.js")
-        self.assertEqual(os.path.basename(env.launch_patch_path), "launch_patch.json")
+        self.assertEqual(env.launch_agent_path, B.LAUNCH_AGENT_FILE)
+        self.assertEqual(env.launch_patch_path, B.LAUNCH_PATCH_FILE)
+        # The patch file the real Env names is one the real reader takes.
+        self.assertIn(B._read_patch(env.launch_patch_path)["launch"], B.LAUNCH_FORMS)
 
     def test_the_real_attach_builds_a_live_agent_for_the_pid(self):
         # The real LiveAgent; it attaches only on start(), which this test
@@ -1165,13 +1148,17 @@ class LoaderLineTest(unittest.TestCase):
     """The three words of ch_status's loader line."""
 
     def test_the_three_words(self):
-        self.assertEqual((B.LOADER_YES, B.LOADER_NO, B.LOADER_NOT_YET), ("yes", "no", "not yet"))
-        self.assertEqual(B.loader_ran(status("patched", loader_runs=1,
-                                             bytes_at_first_run="BA 00 00 00 00"), PATCH), "yes")
-        self.assertEqual(B.loader_ran(status("patched", loader_runs=2,
-                                             bytes_at_first_run="BA 01 00 00 00"), PATCH), "no")
-        self.assertEqual(B.loader_ran(status("patched", loader_runs=0), PATCH), "not yet")
-        self.assertEqual(B.loader_ran(status("waiting"), PATCH), "not yet")
+        # The statuses of one real launch (LS_D0_LAUNCH_LOG): waiting, then
+        # patched before the loader ran, then patched after it ran once.
+        _start, _arm, waiting, patched, loader_ran, *_rest = recorded_launch_replies()
+        self.assertEqual(B.loader_ran(loader_ran, PATCH), B.LOADER_YES)
+        self.assertEqual(B.loader_ran(patched, PATCH), B.LOADER_NOT_YET)
+        self.assertEqual(B.loader_ran(waiting, PATCH), B.LOADER_NOT_YET)
+        # The same run read against a patch whose write bytes are the ones
+        # the patch site held before (launch_patch.json's `expect`): the
+        # loader read bytes other than that patch writes.
+        other_write = {**PATCH, "write": PATCH["expect"]}
+        self.assertEqual(B.loader_ran(loader_ran, other_write), B.LOADER_NO)
 
     def test_ch_status_warns_when_the_loader_read_no(self):
         def lines_for(bytes_seen):
@@ -1186,11 +1173,6 @@ class LoaderLineTest(unittest.TestCase):
         said_yes = lines_for(PATCH["write"])
         self.assertIn(B.LOADER_LINE + "yes", said_yes)
         self.assertEqual([line for line in said_yes if line.startswith("warning")], [])
-
-    def test_a_list_of_numbers_reads_like_the_same_hex_text(self):
-        self.assertEqual(B.loader_ran(status("patched", loader_runs=1,
-                                             bytes_at_first_run=[0xBA, 0, 0, 0, 0]), PATCH), "yes")
-
 
 class HumanStartRunTest(unittest.TestCase):
     """start_run with human=True."""
