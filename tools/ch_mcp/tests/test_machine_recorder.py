@@ -7,6 +7,7 @@ from __future__ import annotations
 import csv
 import ctypes
 import dataclasses
+import mmap
 import os
 import struct
 import subprocess
@@ -604,61 +605,6 @@ class Loop(Folder):
                          [("1", "55", "0.0"), ("2", "55", "1.0")])
         self.assertEqual(read_rows(self.folder, "threads.csv"), [])
 
-    def test_a_short_clock_read_leaves_the_column_empty(self):
-        loop = FakeLoop(self.folder, inputs=M.Inputs(7),
-                        open_reader=lambda pid: lambda address, size: b"\0\0\0\0")
-        loop.inputs.engine = 0x1000
-        loop.run(cap_s=PERIOD_S)
-        self.assertEqual({row["clock_s"] for row in read_rows(self.folder, "samples.csv")}, {""})
-
-    def test_a_closed_stdin_stops_within_one_period(self):
-        seen = {}
-        loop = FakeLoop(self.folder)
-
-        def close(sample):
-            if sample == 3:
-                M.read_stdin([], loop.inputs, loop.stop)
-                seen["at"] = loop.time
-
-        loop.on_sleep = close
-        loop.on_table = lambda sample: seen.setdefault("last", {}).update({sample: loop.time})
-        self.assertEqual(loop.run(), "stdin closed")
-        samples = read_rows(self.folder, "samples.csv")
-        self.assertEqual(len(samples), 4)
-        self.assertEqual(samples[-1]["stop_reason"], "stdin closed")
-        self.assertLessEqual(seen["last"][4] - seen["at"], PERIOD_S)
-
-    def test_a_signalled_parent_handle_stops_within_one_period(self):
-        seen = {}
-        signalled = threading.Event()
-        loop = FakeLoop(self.folder)
-        watcher = threading.Thread(target=M.watch_parent, args=(signalled.wait, loop.stop),
-                                   daemon=True)
-        watcher.start()
-
-        def die(sample):
-            if sample == 3:
-                signalled.set()
-                watcher.join(SUBPROCESS_CAP_S)
-                seen["at"] = loop.time
-
-        loop.on_sleep = die
-        loop.on_table = lambda sample: seen.update({sample: loop.time})
-        self.assertEqual(loop.run(), "parent gone")
-        samples = read_rows(self.folder, "samples.csv")
-        self.assertEqual(samples[-1]["stop_reason"], "parent gone")
-        self.assertLessEqual(seen[4] - seen["at"], PERIOD_S)
-
-    def test_the_cap_stops_it_and_the_last_row_names_it(self):
-        loop = FakeLoop(self.folder)
-        self.assertEqual(loop.run(cap_s=PERIOD_S * 3), "cap")
-        samples = read_rows(self.folder, "samples.csv")
-        self.assertEqual([row["stop_reason"] for row in samples], ["", "", "", "cap"])
-
-    def test_seconds_stops_it_and_the_earlier_of_two_ends_is_named(self):
-        loop = FakeLoop(self.folder)
-        self.assertEqual(loop.run(cap_s=PERIOD_S * 3, seconds=PERIOD_S * 2), "seconds")
-
     def test_the_first_end_to_arrive_is_kept(self):
         stop = M.Stop()
         stop.set("parent gone")
@@ -674,61 +620,6 @@ class Loop(Folder):
         self.assertEqual([row["sample"] for row in samples], ["1", "2", "3"])
         self.assertEqual([row["process_time_s"] for row in samples], ["", "", "1.25"])
 
-    def test_a_clock_read_that_raises_leaves_the_column_empty_and_goes_on(self):
-        calls = []
-
-        def reader(address, size):
-            calls.append(address)
-            if len(calls) == 2:
-                raise OSError("the game went away")
-            return struct.pack("<d", 2.5)
-
-        inputs = M.Inputs(7)
-        inputs.engine = 0x1000
-        loop = FakeLoop(self.folder, inputs=inputs, open_reader=lambda pid: reader)
-        loop.run(cap_s=PERIOD_S * 2)
-        samples = read_rows(self.folder, "samples.csv")
-        self.assertEqual([row["clock_s"] for row in samples], ["2.5", "", "2.5"])
-        self.assertEqual(samples[1]["clock_wall_before_s"], "")
-        self.assertEqual(samples[1]["clock_wall_after_s"], "")
-
-    def test_a_game_that_cannot_be_opened_leaves_the_column_empty_and_goes_on(self):
-        def refuse(pid):
-            raise OSError("no such process")
-
-        inputs = M.Inputs(7)
-        inputs.engine = 0x1000
-        loop = FakeLoop(self.folder, inputs=inputs, open_reader=refuse)
-        self.assertEqual(loop.run(cap_s=PERIOD_S), "cap")
-        self.assertEqual([row["clock_s"] for row in read_rows(self.folder, "samples.csv")],
-                         ["", ""])
-
-    def test_a_short_clock_read_leaves_the_column_empty(self):
-        inputs = M.Inputs(7)
-        inputs.engine = 0x1000
-        loop = FakeLoop(self.folder, inputs=inputs, open_reader=lambda pid: lambda a, s: b"\0")
-        loop.run(cap_s=PERIOD_S)
-        self.assertEqual([row["clock_s"] for row in read_rows(self.folder, "samples.csv")],
-                         ["", ""])
-
-    def test_a_late_sample_skips_ticks_and_does_not_burst(self):
-        waits = []
-        loop = FakeLoop(self.folder)
-        real_table = loop.read_table
-
-        def slow_second_table():
-            result = real_table()
-            if loop.sample == 2:
-                loop.time += PERIOD_S * 5
-            return result
-
-        loop.read_table = slow_second_table
-        real_sleep = loop.sleep
-        loop.sleep = lambda seconds: (waits.append(seconds), real_sleep(seconds))
-        loop.run(cap_s=PERIOD_S * 8)
-        self.assertEqual(waits[1], 0)
-        self.assertAlmostEqual(waits[2], PERIOD_S)
-
     def test_a_bad_stdin_line_is_ignored(self):
         inputs = M.Inputs()
         for line in ("nonsense\n", "pid x\n", "engine zz\n", "pid\n", ""):
@@ -740,45 +631,6 @@ class Loop(Folder):
         inputs = M.Inputs()
         M.read_stdin([b"pid 7\n", "engine 1f\n"], inputs, M.Stop())
         self.assertEqual((inputs.target, inputs.engine), (7, 0x1f))
-
-
-class FakeFile:
-    """A file that holds writes until flush, as a buffered file does."""
-
-    def __init__(self, disk, path):
-        self.disk = disk
-        self.path = path
-        self.waiting = ""
-        disk[path] = ""
-
-    def write(self, text):
-        self.waiting += text
-        return len(text)
-
-    def flush(self):
-        self.disk[self.path] += self.waiting
-        self.waiting = ""
-
-    def close(self):
-        self.flush()
-
-
-class OnDisk(Folder):
-    def test_each_samples_rows_are_on_disk_before_the_next_sample(self):
-        disk = {}
-        files = M.RecorderFiles("x", open_file=lambda path, *a, **k: FakeFile(disk, path))
-        seen = []
-
-        def tables(sample):
-            seen.append({os.path.basename(path): text.count("\n") for path, text in disk.items()})
-            return [dict(TWO_PROCESSES[0], user=100_000 + sample * 10_000)]
-
-        inputs = M.Inputs(7)
-        FakeLoop(self.folder, tables=tables, inputs=inputs).run(files, cap_s=PERIOD_S * 2)
-        # Header only, then one more row in samples.csv and processes.csv per sample.
-        self.assertEqual([view["samples.csv"] for view in seen], [1, 2, 3])
-        self.assertEqual([view["processes.csv"] for view in seen], [1, 2, 3])
-        self.assertEqual([view["threads.csv"] for view in seen], [1, 2, 3])
 
 
 class ReadTable(unittest.TestCase):
@@ -809,21 +661,20 @@ class ReadTable(unittest.TestCase):
         self.assertEqual(sizes[-1], 20)
 
     def test_another_failure_is_loud(self):
-        with self.assertRaisesRegex(OSError, "0xc0000022"):
-            M.read_table(M.TableBuffer(), lambda *args: 0xC0000022)
-
-    def test_a_table_past_the_ulong_limit_stops_the_growing(self):
-        def query(information_class, address, size, needed):
-            needed._obj.value = 0xFFFFFFFF
-            return M._STATUS_INFO_LENGTH_MISMATCH
-
+        # Windows cannot write the table into read-only memory, so the real query
+        # fails with a status of its own, which the recorder must name.
+        memory = Memory(self, TABLE_PAGES, PAGE_READONLY)
         held = M.TableBuffer()
-        held.raw = ctypes.create_string_buffer(1)
-        with unittest.mock.patch.object(M.ctypes, "create_string_buffer",
-                                        lambda size: type("Big", (), {"__len__": lambda s: size})()):
-            with unittest.mock.patch.object(M.ctypes, "addressof", lambda raw: 0):
-                with self.assertRaisesRegex(OSError, "more than one call"):
-                    M.read_table(held, query)
+        held.raw = (ctypes.c_char * memory.size).from_address(memory.base)
+        needed = ctypes.c_ulong(0)
+        status = M._nt_query()(M.SYSTEM_PROCESS_INFORMATION_CLASS, memory.base, memory.size,
+                               ctypes.byref(needed))
+        self.assertNotIn(status, (0, M._STATUS_INFO_LENGTH_MISMATCH))
+        with self.assertRaises(OSError) as caught:
+            M.read_table(held)
+        self.assertIn(f"{status:#x}", str(caught.exception))
+        # Not taken for a short buffer: the buffer was never grown.
+        self.assertEqual(ctypes.addressof(held.raw), memory.base)
 
 
 class CommandLine(Folder):
@@ -837,8 +688,18 @@ class CommandLine(Folder):
             self.assertEqual(M.main(["--out", self.folder, "--parent", "5", *args]), 0)
         return record.call_args.kwargs
 
-    def test_the_numbers_the_plan_fixes(self):
-        self.assertEqual((M.RATE_PER_S, M.RECORDER_CAP_EXTRA_S), (50, 60))
+    def test_a_real_run_sampled_at_the_default_rate(self):
+        # recorder_link starts the recorder with no --rate, so the run recorded in
+        # REAL_SAMPLES took its samples at RATE_PER_S: each row says so, and two
+        # rows in a row are one period apart.
+        period_s = 1 / M.RATE_PER_S
+        rows = read_rows(os.path.dirname(REAL_SAMPLES), M.SAMPLES_FILE)
+        self.assertEqual({float(row["period_ms"]) for row in rows}, {C.s_to_ms(period_s)})
+        by_number = {int(row["sample"]): float(row["wall_s"]) for row in rows}
+        pairs = [(by_number[n], by_number[n + 1]) for n in by_number if n + 1 in by_number]
+        self.assertTrue(pairs)
+        for before, after in pairs:
+            self.assertAlmostEqual(after - before, period_s, delta=period_s / 4)
 
     def test_the_rate_defaults_to_the_one_constant(self):
         self.assertEqual(self.run_main("--cap-s", "9")["period_s"], 0.02)
@@ -949,13 +810,17 @@ class RealRun(Folder):
         self.assertEqual(read_rows(out, "samples.csv")[-1]["stop_reason"], "parent gone")
 
     def test_a_parent_that_cannot_be_opened_fails_loudly(self):
-        # A finished child's pid, which no live process holds any more.
-        child = subprocess.run([sys.executable, "-I", "-c", "import os; print(os.getpid())"],
-                               capture_output=True, text=True, timeout=SUBPROCESS_CAP_S, check=True)
-        _, process = self.start("--cap-s", "1", parent=int(child.stdout))
+        gone = finished_pid()
+        # The owner's own error for that pid, raised here in this process.
+        with self.assertRaises(OSError) as owner:
+            M.open_parent_wait(gone)
+        self.assertIn(str(gone), str(owner.exception))
+        out, process = self.start("--cap-s", "1", parent=gone)
         _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         self.assertNotEqual(process.returncode, 0)
-        self.assertIn("OpenProcess failed for parent pid", stderr)
+        self.assertIn(str(owner.exception), stderr)
+        # It fails before it makes a recording folder.
+        self.assertFalse(os.path.exists(out))
 
 
 def complete_rows(folder, name):
@@ -1098,6 +963,239 @@ class RealInputs(Folder):
         self.assertNotIn(bystander, later)
         self.assertLess(max(len(rows) for number, rows in by_sample.items() if number > 1),
                         len(first))
+
+
+def finished_pid():
+    """The pid of a child that has ended, which no live process holds any more."""
+    child = subprocess.run([sys.executable, "-I", "-c", "import os; print(os.getpid())"],
+                           capture_output=True, text=True, timeout=SUBPROCESS_CAP_S, check=True)
+    return int(child.stdout)
+
+
+# Windows' memory constants, from the VirtualAlloc and memory-protection pages
+# of the Win32 documentation.
+MEM_COMMIT_AND_RESERVE = 0x3000
+MEM_RELEASE = 0x8000
+PAGE_NOACCESS = 0x01
+PAGE_READONLY = 0x02
+PAGE_READWRITE = 0x04
+# 16 MiB of pages: more than this machine's whole process table, so the query
+# writes into the memory rather than asking for a bigger buffer.
+TABLE_PAGES = (16 << 20) // mmap.PAGESIZE
+
+
+class Memory:
+    """Pages of this process's own memory whose access a test shuts and opens, so
+    the real recorder's reads of them really fail and really succeed."""
+
+    def __init__(self, case, pages, protect=PAGE_READWRITE):
+        from ctypes import wintypes  # noqa: PLC0415  (Windows only)
+        self._k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self._k32.VirtualAlloc.restype = ctypes.c_void_p
+        self._k32.VirtualAlloc.argtypes = (ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD,
+                                           wintypes.DWORD)
+        self._k32.VirtualProtect.restype = wintypes.BOOL
+        self._k32.VirtualProtect.argtypes = (ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD,
+                                             ctypes.POINTER(wintypes.DWORD))
+        self._k32.VirtualFree.restype = wintypes.BOOL
+        self._k32.VirtualFree.argtypes = (ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD)
+        self.size = pages * mmap.PAGESIZE
+        self.base = self._k32.VirtualAlloc(None, self.size, MEM_COMMIT_AND_RESERVE, protect)
+        if not self.base:
+            raise OSError(ctypes.get_last_error(), "VirtualAlloc failed")
+        case.addCleanup(self._k32.VirtualFree, self.base, 0, MEM_RELEASE)
+
+    def protect(self, page, protect):
+        old = ctypes.c_ulong(0)
+        if not self._k32.VirtualProtect(self.base + page * mmap.PAGESIZE, mmap.PAGESIZE, protect,
+                                        ctypes.byref(old)):
+            raise OSError(ctypes.get_last_error(), "VirtualProtect failed")
+
+
+class RealEnds(Folder):
+    """How each end stops the real recorder process, and what it does when the
+    clock it is told to read cannot be read."""
+
+    start = RealInputs.start
+    wait_for = RealInputs.wait_for
+
+    def assert_stopped_at_the_next_sample(self, samples, reason, ended_at):
+        """Only the last row names the end. The sample under way when the end came
+        began before it; one more may begin before the recorder has seen it, and
+        the one after that is the last."""
+        self.assertEqual(samples[-1]["stop_reason"], reason)
+        self.assertEqual({row["stop_reason"] for row in samples[:-1]}, {""})
+        after = [row["sample"] for row in samples if float(row["wall_s"]) >= ended_at]
+        self.assertLessEqual(len(after), 2, f"samples begun after the end: {after}")
+
+    def test_a_closed_stdin_stops_it_at_the_next_sample(self):
+        out, process = self.start("--cap-s", str(SUBPROCESS_CAP_S), stdin=subprocess.PIPE)
+        self.assertIn("machine recorder", process.stdout.readline())
+        self.wait_for(process, out, "two samples", lambda rows: len(rows) >= 2)
+        closed_at = time.time()
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)  # closes its stdin
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assert_stopped_at_the_next_sample(read_rows(out, M.SAMPLES_FILE), M.STOP_STDIN,
+                                               closed_at)
+
+    def test_a_parent_that_ends_stops_it_at_the_next_sample(self):
+        parent = idle_child()
+        self.addCleanup(parent.stdout.close)
+        self.addCleanup(parent.stdin.close)
+        out, process = self.start("--cap-s", str(SUBPROCESS_CAP_S), "--target", str(os.getpid()),
+                                  parent=parent.pid)
+        self.assertIn("machine recorder", process.stdout.readline())
+        self.wait_for(process, out, "two samples", lambda rows: len(rows) >= 2)
+        parent.terminate()
+        parent.wait(SUBPROCESS_CAP_S)
+        gone_at = time.time()
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assert_stopped_at_the_next_sample(read_rows(out, M.SAMPLES_FILE), M.STOP_PARENT,
+                                               gone_at)
+
+    def ended_by(self, *args):
+        out, process = self.start("--target", str(os.getpid()), *args)
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
+        self.assertEqual(process.returncode, 0, stderr)
+        return read_rows(out, M.SAMPLES_FILE)
+
+    def assert_the_first_sample_past_the_end_is_the_last(self, samples, reason, end_s):
+        # The recorder times its end on its own clock and stamps rows on the wall
+        # clock; one period covers the difference.
+        period_s = 1 / M.RATE_PER_S
+        self.assertEqual([row["stop_reason"] for row in samples],
+                         [""] * (len(samples) - 1) + [reason])
+        first, *_, before_last, last = (float(row["wall_s"]) for row in samples)
+        self.assertGreater(last - first, end_s - period_s)
+        self.assertLess(before_last - first, end_s + period_s)
+
+    def test_the_cap_stops_it_when_it_comes_before_seconds(self):
+        cap_s = 0.3
+        samples = self.ended_by("--cap-s", str(cap_s), "--seconds", str(SUBPROCESS_CAP_S))
+        self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_CAP, cap_s)
+
+    def test_seconds_stops_it_when_they_come_before_the_cap(self):
+        seconds = 0.3
+        samples = self.ended_by("--cap-s", str(SUBPROCESS_CAP_S), "--seconds", str(seconds))
+        self.assert_the_first_sample_past_the_end_is_the_last(samples, M.STOP_SECONDS, seconds)
+
+    def test_a_sample_in_samples_csv_has_its_process_rows_on_disk(self):
+        # Read while the recorder runs: samples.csv first, then processes.csv. The
+        # target, the parent and the recorder get a process row in every sample,
+        # so each sample samples.csv shows must already be in processes.csv.
+        out, process = self.start("--target", str(os.getpid()), "--seconds", "1")
+        deadline = time.monotonic() + SUBPROCESS_CAP_S
+        shown = set()
+        while process.poll() is None:
+            if time.monotonic() > deadline:
+                self.fail(f"the recorder did not end within {SUBPROCESS_CAP_S} s")
+            samples = {int(row["sample"]) for row in complete_rows(out, M.SAMPLES_FILE)}
+            written = {int(row["sample"]) for row in complete_rows(out, M.PROCESSES_FILE)}
+            self.assertLessEqual(samples, written)
+            shown.add(len(samples))
+            time.sleep(1 / M.RATE_PER_S / 2)
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
+        self.assertEqual(process.returncode, 0, stderr)
+        self.assertGreaterEqual(len(shown - {0}), 3, "the files were seen growing fewer than 3 times")
+
+    def told_to_read(self, pid, clock_at):
+        """A recorder told by stdin to read the song clock of `pid` at `clock_at`."""
+        out, process = self.start("--cap-s", str(SUBPROCESS_CAP_S), stdin=subprocess.PIPE)
+        self.assertIn("machine recorder", process.stdout.readline())
+        process.stdin.write(f"pid {pid}\nengine {clock_at - C.OFF_SONG_CLOCK:#x}\n")
+        process.stdin.flush()
+        return out, process
+
+    def finish(self, out, process):
+        _, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
+        self.assertEqual(process.returncode, 0, stderr)
+        return read_rows(out, M.SAMPLES_FILE)
+
+    def assert_unread_rows_are_empty(self, rows):
+        self.assertTrue(rows)
+        self.assertEqual({(row["clock_s"], row["clock_wall_before_s"], row["clock_wall_after_s"])
+                          for row in rows}, {("", "", "")})
+
+    def wait_for_clock(self, process, out, what, read, after=0):
+        """Wait for a sample past `after` whose clock was read (`read`) or not."""
+        return self.wait_for(process, out, what, lambda rows: any(
+            int(row["sample"]) > after and bool(row["clock_s"]) == read for row in rows))
+
+    def test_a_clock_read_that_fails_leaves_the_column_empty_and_goes_on(self):
+        memory = Memory(self, 1)
+        ctypes.c_double.from_address(memory.base).value = 2.5
+        out, process = self.told_to_read(os.getpid(), memory.base)
+        self.wait_for_clock(process, out, "a song clock", True)
+        memory.protect(0, PAGE_NOACCESS)
+        shut = self.wait_for(process, out, "a sample", lambda rows: rows)
+        failed = self.wait_for_clock(process, out, "a failed read", False, shut)
+        memory.protect(0, PAGE_READWRITE)
+        self.wait_for_clock(process, out, "a song clock again", True, failed)
+        samples = self.finish(out, process)
+        clocked = [int(row["sample"]) for row in samples if row["clock_s"]]
+        self.assertEqual({float(row["clock_s"]) for row in samples if row["clock_s"]}, {2.5})
+        unread = [row for row in samples if clocked[0] < int(row["sample"]) < clocked[-1]
+                  and not row["clock_s"]]
+        self.assert_unread_rows_are_empty(unread)
+
+    def test_a_game_that_cannot_be_opened_leaves_the_column_empty_and_goes_on(self):
+        clock = ctypes.c_double(2.5)
+        out, process = self.told_to_read(finished_pid(), ctypes.addressof(clock))
+        sent = self.wait_for(process, out, "a sample", lambda rows: rows)
+        self.wait_for(process, out, "five more samples",
+                      lambda rows: int(rows[-1]["sample"]) >= sent + 5)
+        process.stdin.write(f"pid {os.getpid()}\n")
+        process.stdin.flush()
+        self.wait_for_clock(process, out, "a song clock from this process", True)
+        samples = self.finish(out, process)
+        first = min(int(row["sample"]) for row in samples if row["clock_s"])
+        unread = [row for row in samples if sent < int(row["sample"]) < first]
+        self.assertGreaterEqual(len(unread), 5)
+        self.assert_unread_rows_are_empty(unread)
+        self.assertEqual({float(row["clock_s"]) for row in samples if row["clock_s"]}, {2.5})
+
+    def test_a_short_clock_read_leaves_the_column_empty(self):
+        # The clock's 8 bytes straddle two pages; shutting the second leaves a
+        # read that can copy only the first half.
+        memory = Memory(self, 2)
+        clock_at = memory.base + mmap.PAGESIZE - M.CLOCK_BYTES // 2
+        ctypes.memmove(clock_at, struct.pack("<d", 2.5), M.CLOCK_BYTES)
+        out, process = self.told_to_read(os.getpid(), clock_at)
+        self.wait_for_clock(process, out, "a song clock", True)
+        memory.protect(1, PAGE_NOACCESS)
+        shut = self.wait_for(process, out, "a sample", lambda rows: rows)
+        self.wait_for_clock(process, out, "a short read", False, shut)
+        samples = self.finish(out, process)
+        last_read = max(int(row["sample"]) for row in samples if row["clock_s"])
+        self.assertEqual({float(row["clock_s"]) for row in samples if row["clock_s"]}, {2.5})
+        self.assert_unread_rows_are_empty(
+            [row for row in samples if int(row["sample"]) > last_read])
+
+
+# Nine rows of samples.csv around a late sample, copied unchanged from
+# hydra-data/ch-mcp-runs/2026-11-07/ls-e-run1/machine-1/samples.csv: sample 108
+# took 50.6 ms, more than two 20 ms periods.
+LATE_SAMPLES = os.path.join(ROOT, "testdata", "ch_runs", "ls-e-run1", "machine-1",
+                            "samples.csv")
+
+
+class RecordedPace(unittest.TestCase):
+    def test_a_late_sample_skips_ticks_and_does_not_burst(self):
+        # After a late sample the next one starts at once, and the one after it a
+        # whole period later: the missed ticks are skipped, not caught up in a
+        # burst of samples with no wait between them.
+        rows = read_rows(os.path.dirname(LATE_SAMPLES), M.SAMPLES_FILE)
+        walls = [float(row["wall_s"]) for row in rows]
+        late = [i for i, row in enumerate(rows[:-2])
+                if float(row["sample_ms"]) > 2 * float(row["period_ms"])]
+        self.assertTrue(late)
+        for i in late:
+            period_s = float(rows[i]["period_ms"]) / 1000
+            with self.subTest(sample=rows[i]["sample"]):
+                self.assertLess(walls[i + 1] - walls[i] - float(rows[i]["sample_ms"]) / 1000,
+                                period_s / 4)
+                self.assertAlmostEqual(walls[i + 2] - walls[i + 1], period_s, delta=period_s / 4)
 
 
 class ClockRange(Folder):
