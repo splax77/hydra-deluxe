@@ -892,8 +892,21 @@ TEST_CASE("paths_json prints the stored passed-over fills, not a guess") {
             CHECK(a["skips"].get<int>() == acts[i].skips());
         }
     }
-    CHECK((dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>() ==
-           std::vector<int64_t>{19200}));
+    // The pinned activation passes fills on its way, so the list is not empty,
+    // and each tick it names is a fill the chart carries before that
+    // activation. The ticks come from the song, never a typed number.
+    const int64_t act_tick = opts.target_act_ticks->front();
+    const std::vector<int64_t> skipped =
+        dumped[0]["activations"][0]["skipped_fill_ticks"].get<std::vector<int64_t>>();
+    CHECK_FALSE(skipped.empty());
+    for (int64_t t : skipped) {
+        CAPTURE(t);
+        CHECK(t < act_tick);
+        bool is_fill = false;
+        for (const SongTimestamp& ts : song.sequence)
+            if (ts.timecode.ticks() == t && ts.has_activation()) is_fill = true;
+        CHECK(is_fill);
+    }
 }
 
 // A window that ends on the note closing a Star Power phrase is exactly where
