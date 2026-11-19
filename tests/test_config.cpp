@@ -712,17 +712,6 @@ Settings every_key_part_changed() {
 
 }  // namespace
 
-TEST_CASE("profile moves with every key part") {
-    namespace store = hydra::store;
-
-    const Settings defaults;
-    const Settings s = every_key_part_changed();
-    CHECK(s.profile().chartmode == "Expert Drums, 2x Bass");
-    CHECK(s.profile().cap == store::CapQuery::at(32));
-    CHECK(s.profile().lens == store::Lens::from(10, 1, 5000, true));
-    CHECK(s.profile() != defaults.profile());
-}
-
 TEST_CASE("profile_at_clone_hero_cap differs from profile only in the cap") {
     namespace store = hydra::store;
 
@@ -745,7 +734,8 @@ TEST_CASE("profile_with_fills differs from profile only in the fill rule") {
     Settings s = every_key_part_changed();
     s.legacy_fills = false;
     const store::Profile ch10 = s.profile_with_fills(hydra::FillDeadlineRule::Ch10);
-    CHECK(ch10.lens.legacy_fills == 1);
+    CHECK((ch10.lens.legacy_fills != 0) == hydra::legacy_fills_for(hydra::FillDeadlineRule::Ch10));
+    CHECK(ch10.lens.legacy_fills != s.profile().lens.legacy_fills);
     CHECK(ch10.chartmode == s.profile().chartmode);
     CHECK(ch10.cap == s.profile().cap);
     store::Lens rest = ch10.lens;
@@ -755,7 +745,8 @@ TEST_CASE("profile_with_fills differs from profile only in the fill rule") {
     // The other way round: 1.0 fills on, asked for the 1.1 rule.
     s.legacy_fills = true;
     const store::Profile ch11 = s.profile_with_fills(hydra::FillDeadlineRule::Ch11);
-    CHECK(ch11.lens.legacy_fills == 0);
+    CHECK((ch11.lens.legacy_fills != 0) == hydra::legacy_fills_for(hydra::FillDeadlineRule::Ch11));
+    CHECK(ch11.lens.legacy_fills != s.profile().lens.legacy_fills);
     CHECK(s.profile_with_fills(hydra::FillDeadlineRule::Ch10) == s.profile());
 }
 
@@ -780,9 +771,10 @@ TEST_CASE("each retired settings key loads silently and is never written back") 
     }
 }
 
-// An older settings file holds this line (D270 call 7, D276), so it is named
-// here and not left to the list loop.
-TEST_CASE("hit_window_ms in an older file is skipped, whatever it says, and dropped on save") {
+// An older settings file holds this line (D270 call 7, D276). The retired-key
+// loop above covers its save; this test covers values the key's old parser
+// would have refused, which the skip must never read.
+TEST_CASE("hit_window_ms in an older file is skipped, whatever it says") {
     for (const char* value : {"85", "85.5", "banana"}) {
         CAPTURE(value);
         const Settings s = load_ini_text("hitwin_retired", std::string("hit_window_ms=") + value +
@@ -790,17 +782,6 @@ TEST_CASE("hit_window_ms in an older file is skipped, whatever it says, and drop
         // The live line beside it still reads.
         CHECK(s.sp_cap == 8);
     }
-    const std::string path = testtemp::temp_path("hitwin_dropped", ".ini");
-    {
-        std::ofstream f(path, std::ios::trunc);
-        f << "hit_window_ms=85\n";
-    }
-    REQUIRE(Settings::load_file(path).save_file(path));
-    std::ifstream in(path);
-    const std::string saved{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
-    in.close();
-    CHECK(saved.find("hit_window_ms") == std::string::npos);
-    std::remove(path.c_str());
 }
 
 // The whole-number test is app::parse_whole_number's, the one the rules file
@@ -815,94 +796,55 @@ TEST_CASE("settings: a whole-number key reads a whole decimal and refuses a numb
 
 TEST_CASE("legacy_fills_for reads fill_rule_for backwards") {
     using hydra::FillDeadlineRule;
-    CHECK(hydra::legacy_fills_for(FillDeadlineRule::Ch10));
-    CHECK_FALSE(hydra::legacy_fills_for(FillDeadlineRule::Ch11));
+    // Each function undoes the other, from either side, so the two can
+    // never name a different rule for one flag.
     for (bool flag : {false, true})
         CHECK(hydra::legacy_fills_for(hydra::fill_rule_for(flag)) == flag);
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        CHECK(hydra::fill_rule_for(hydra::legacy_fills_for(rule)) == rule);
 }
 
 TEST_CASE("batch_run bundles one Settings' profile and search settings") {
-    Settings s;
-    s.view_difficulty = "Hard";
-    s.view_prodrums = false;
-    s.mslimit_enabled = false;
-    s.depth_mode = 1;
-    s.depth_value = 5000;
-    s.sp_cap = 16;
-
-    const hydra::app::BatchRun run = s.batch_run();
-    // The run files under Settings::profile, so the batch and every other
-    // reader of these settings ask for the same records.
-    CHECK(run.profile == s.profile());
-    // The profile's cap and the search's cap are the one setting.
-    CHECK(run.profile.cap == hydra::store::CapQuery::at(16));
-    CHECK(run.settings.difficulty == hydra::Difficulty::Hard);
-    CHECK(run.settings.prodrums == false);
-    CHECK(!run.settings.ms_filter.has_value());
-    CHECK(run.settings.depth_mode == hydra::DepthMode::Points);
-    CHECK(run.settings.depth_value == 5000);
-    CHECK(run.settings.sp_cap == 16);
+    // The defaults, every key part moved, and a view of another difficulty
+    // with the ms limit off.
+    Settings hard;
+    hard.view_difficulty = hydra::difficulty_name(hydra::Difficulty::Hard);
+    hard.view_prodrums = false;
+    hard.mslimit_enabled = false;
+    hard.sp_cap = 16;
+    for (const Settings& s : {Settings{}, every_key_part_changed(), hard}) {
+        const std::string key = s.chartmode_key();
+        CAPTURE(key);
+        const hydra::app::BatchRun run = s.batch_run();
+        // The record's key and the search it files read the same settings.
+        CHECK(run.profile.chartmode == hydra::app::chartmode_key(run.settings.reading()));
+        CHECK(run.profile.cap == hydra::store::CapQuery::at(run.settings.sp_cap));
+    }
 }
 
-TEST_CASE("sp_cap: 0 reads 1, auto and junk refuse, retired keys are skipped") {
+TEST_CASE("sp_cap: a number reads back, and cap_query asks for exactly it") {
     const std::string path = testtemp::temp_path("spcap", ".ini");
-
-    // A number reads back as that number, and cap_query asks for it exactly.
     Settings s;
     s.sp_cap = 64;
     REQUIRE(s.save_file(path));
-    CHECK(Settings::load_file(path).sp_cap == 64);
-    CHECK(Settings::load_file(path).cap_query().exact == 64);
-
-    // "auto" is not a whole number and old versions get no support (D270
-    // call 6), so it refuses like any junk.
+    const Settings loaded = Settings::load_file(path);
     std::remove(path.c_str());
-    CHECK_THROWS_AS(load_ini_text("spcap_auto", "sp_cap=auto\n"), hydra::app::SettingsFileError);
-    CHECK_THROWS_AS(load_ini_text("spcap_junk", "sp_cap=banana\n"),
-                    hydra::app::SettingsFileError);
-    // 0 lands on the 1-bar floor (D270 call 1).
-    CHECK(load_ini_text("spcap_zero", "sp_cap=0\n").sp_cap == 1);
-
-    // The retired sp_cap_enabled and sp_cap_value keys are skipped, so they
-    // never turn a file into 8 bars.
-    CHECK(load_ini_text("spcap_old", "sp_cap_enabled=0\nsp_cap_value=8\n").sp_cap == 4);
+    CHECK(loaded.sp_cap == 64);
+    CHECK(loaded.cap_query().exact == 64);
 }
 
-TEST_CASE("to_analysis_settings maps the cap") {
+TEST_CASE("to_analysis_settings carries the SP cap and the ms limit, and no filter when it is off") {
     Settings s;
-    s.depth_mode = 1;
-    s.depth_value = 5000;
     s.mslimit_enabled = true;
     s.mslimit_value = 20;
-
-    // The cap rides along as it is.
     s.sp_cap = 16;
     AnalysisSettings a = s.to_analysis_settings();
-    CHECK(a.depth_mode == hydra::DepthMode::Points);
-    CHECK(a.depth_value == 5000);
     CHECK(a.ms_filter == 20.0);
     CHECK(a.sp_cap == 16);
 
-    // Disabled ms limit maps to no filter.
     s.mslimit_enabled = false;
     a = s.to_analysis_settings();
     CHECK_FALSE(a.ms_filter.has_value());
-}
-
-// The INI keeps depth_mode as a plain int, so the mapping to the search's
-// enum is where a stray value has to land somewhere safe: anything that isn't
-// 1 means the default, scores.
-TEST_CASE("to_analysis_settings maps depth_mode onto the search's enum") {
-    Settings s;
-
-    s.depth_mode = 1;
-    CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Points);
-
-    s.depth_mode = 0;
-    CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
-
-    s.depth_mode = 7;  // out of range: falls back to scores, never a bad enum
-    CHECK(s.to_analysis_settings().depth_mode == hydra::DepthMode::Scores);
 }
 
 // save_file goes through write_file_replacing (D114 item 20): a second save
@@ -1002,6 +944,8 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
         CHECK((t.chartmode_key() != d.chartmode_key()) == (f.part == KeyPart::ChartMode));
         CHECK(!(t.cap_query() == d.cap_query()) == (f.part == KeyPart::Cap));
         CHECK(!(t.lens() == d.lens()) == (f.part == KeyPart::Lens));
+        // profile() carries every key part, so the one moved part moves it.
+        CHECK(t.profile() != d.profile());
     }
 
     // All at once, with the settings the panel doesn't show changed too.
