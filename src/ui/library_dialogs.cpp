@@ -70,9 +70,10 @@ app::SettingsText setting_values(const app::Settings& s) {
 BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
     BatchSettingsSummary out;
     out.difficulty = difficulty_name(s.difficulty());
-    if (s.view_prodrums) out.difficulty += app::kFactSeparator + std::string("Pro Drums");
-    if (s.effective_bass2x()) out.difficulty += app::kFactSeparator + std::string("2x Bass");
-    if (s.view_noteshuffle) out.difficulty += app::kFactSeparator + std::string("Note Shuffle");
+    if (s.view_prodrums) out.difficulty += app::kFactSeparator + std::string(kProDrumsName);
+    if (s.effective_bass2x()) out.difficulty += app::kFactSeparator + std::string(kBass2xName);
+    if (s.view_noteshuffle)
+        out.difficulty += app::kFactSeparator + std::string(kNoteShuffleName);
     const app::SettingsText values = setting_values(s);
     out.sp_cap =
         values.cap + (is_clone_hero_cap(s.sp_cap) ? " (Clone Hero's rule)" : " (a what-if)");
@@ -85,16 +86,20 @@ BatchSettingsSummary batch_settings_summary(const app::Settings& s) {
 
 namespace {
 
+// A switch's phrase: its name when on, its name and " off" when off.
+std::string switch_phrase(const char* name, bool on) {
+    return on ? std::string(name) : std::string(name) + " off";
+}
+
 // One panel setting in the summary's words, as `s` has it.
 std::string change_phrase(const app::Settings& s, const app::SettingsText& values,
                           app::AnalysisSetting setting) {
     using app::AnalysisSetting;
     switch (setting) {
     case AnalysisSetting::Difficulty: return difficulty_name(s.difficulty());
-    case AnalysisSetting::ProDrums: return s.view_prodrums ? "Pro Drums" : "Pro Drums off";
-    case AnalysisSetting::Bass2x: return s.effective_bass2x() ? "2x Bass" : "2x Bass off";
-    case AnalysisSetting::NoteShuffle:
-        return s.view_noteshuffle ? "Note Shuffle" : "Note Shuffle off";
+    case AnalysisSetting::ProDrums: return switch_phrase(kProDrumsName, s.view_prodrums);
+    case AnalysisSetting::Bass2x: return switch_phrase(kBass2xName, s.effective_bass2x());
+    case AnalysisSetting::NoteShuffle: return switch_phrase(kNoteShuffleName, s.view_noteshuffle);
     case AnalysisSetting::SpCap: return "SP cap " + values.cap;
     case AnalysisSetting::Fills: return s.legacy_fills ? "1.0 fills" : "1.0 fills off";
     case AnalysisSetting::EarlyFillWindow: return std::string(kEarlyFillWindowName) + " " + values.early_fill;
