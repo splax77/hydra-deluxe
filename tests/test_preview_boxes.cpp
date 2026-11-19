@@ -546,6 +546,26 @@ TEST_CASE("struck_at: a chord exactly on the playhead counts as hit") {
     CHECK(struck_at(p.chord_ms, p.chord_ms));
     CHECK_FALSE(struck_at(p.chord_ms - 0.1, p.chord_ms));
     CHECK(struck_at(p.chord_ms + 0.1, p.chord_ms));
+
+    // The jump itself, on Pitch Dark's record: "Act >" from before each
+    // activation lands on a replay chord's own ms, so the box at the jump
+    // counts that chord as hit (its combo is the chord's) and the moment
+    // just before the jump does not.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const ReplayResult r = replay_stored_path(*pd.song, *pd.path).result;
+    REQUIRE_FALSE(pd.scene.activations.empty());
+    for (size_t i = 0; i < pd.scene.activations.size(); ++i) {
+        const double from = i == 0 ? 0.0 : pd.scene.activations[i - 1].ms;
+        const std::optional<double> jump = activation_jump_ms(pd.scene, from, +1);
+        REQUIRE(jump.has_value());
+        INFO("activation " << i << " at " << *jump << " ms");
+        const ReplayChord* c = struck_chord(r, *jump);
+        REQUIRE(c != nullptr);
+        CHECK(c->ms == doctest::Approx(*jump));
+        const std::string detail = score_box_at(pd.scene, *jump).detail;
+        CHECK(detail.find("combo " + std::to_string(c->combo_after)) != std::string::npos);
+        CHECK(struck_chord(r, std::nextafter(*jump, 0.0)) != c);
+    }
 }
 
 TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Power pays") {
