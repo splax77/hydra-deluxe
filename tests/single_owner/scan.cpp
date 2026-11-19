@@ -383,7 +383,7 @@ TEST_CASE("single-owner: the committed-only listing holds committed and staged f
     CHECK(visited == std::vector<std::string>{"tools/kept.py", "tools/staged.py"});
     CHECK(sourcetree::markdown_files(root, Listing::CommittedOnly) ==
           std::vector<std::string>{"notes/kept.md", "notes/staged.md"});
-    CHECK(sourcetree::git_listed(root, "notes",Listing::CommittedOnly) ==
+    CHECK(sourcetree::git_listed(root, "notes", Listing::CommittedOnly) ==
           std::vector<std::string>{"notes/kept.md", "notes/staged.md"});
 
     // The default listing still holds the new files, so the scans see them.
