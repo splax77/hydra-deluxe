@@ -1740,7 +1740,7 @@ TEST_CASE("replay names each note's dynamic") {
 // solo. Each row is its chord priced by category_scores at the running combo,
 // plus solo_bonus; the test states that walk, not one run's numbers. How
 // category_scores prices one note is stated by test_stars.cpp.
-TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
+TEST_CASE("chord_score_table: each row is its chord priced by category_scores, on a hand-built chart") {
     std::vector<std::vector<NoteColor>> chords(7, {NoteColor::Red});
     chords.push_back({NoteColor::Kick, NoteColor::Red});
     chords.push_back({NoteColor::Kick});
@@ -1851,7 +1851,7 @@ TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
           digest::loading_chart_count(corpus::chart_paths(), cfg));
 }
 
-TEST_CASE("replay score fields: one list in schema order") {
+TEST_CASE("replay score fields: each name reads its own member") {
     // Each member holds a different value, so a name paired with another
     // member reads that member's value. The list's order is not checked:
     // the dump's JSON prints the keys sorted, so no reader sees it.
