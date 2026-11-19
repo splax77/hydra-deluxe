@@ -1238,8 +1238,10 @@ TEST_CASE("library model: set_summaries_for gives every row the answer it was gi
     m.set_charts(entries);
     REQUIRE(m.rows().size() == answers.size());
     REQUIRE(m.counts().not_analyzed == answers.size());
-    // A row whose answer is Not analyzed again shows nothing new.
-    CHECK(m.set_summaries_for(answers) == answers.size() - n_none);
+    // Every row changes but those whose answer is Not analyzed again, which
+    // show nothing new: the Analyzed, Stale and Can't analyze answers.
+    const size_t n_changed = n_ready + n_stale + n_cant;
+    CHECK(m.set_summaries_for(answers) == n_changed);
     for (const hydra::ui::LibraryRow& row : m.rows()) {
         INFO("row " << row.title);
         size_t given = 0;
