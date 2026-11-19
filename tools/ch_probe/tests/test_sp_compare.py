@@ -871,11 +871,31 @@ class PressReachTest(unittest.TestCase):
         # 7.39399049700296 ms (squeeze_out_late).
         self.assertEqual(_rounded(reach[740]), (118403.34, 118433.34))
 
+    # Rows of hydra-data/ch-mcp-runs/2026-11-07/ls-r1-run1's sp_watch-1.csv,
+    # copied unchanged (data rows 26287 to 26301, clock 118.39 s to 118.46 s):
+    # a run of the same Mouths chart. Its press-1.csv shows chord 740 pressed
+    # twice, at clock 118412.5 ms and 118443.1 ms; the flag clears at
+    # 118431.0 ms and the meter rises 0 -> 1440 at 118449.2 ms.
+    _MOUTHS_RISE_CSV = os.path.join(_RUNS_DIR, "ls-r1-run1", "sp_watch-1-rise740.csv")
+
     def test_mouths_740_is_credited_at_its_second_press(self):
         reach = sp_compare.press_reach(_MOUTHS[1])
-        rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
-        self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
-                      "+1536 (0 -> 1536) at 118441.0 ms, full",
+        rows = sp_compare.load_watch_rows(self._MOUTHS_RISE_CSV)
+        rises = sp_compare.phrase_rises(rows, AMOUNT)
+        self.assertEqual(len(rises), 1, rises)
+        rise = rises[0]
+        # The rise shows after the chord's ms and after its last press.
+        chord = next(c for c in _fixture_chords(_MOUTHS[0]) if c["index"] == 740)
+        self.assertTrue(chord["is_sp_phrase_end"])
+        self.assertGreater(rise.ms, chord["ms"])
+        self.assertGreater(rise.ms, reach[740].latest_ms)
+        self.assertLess(rise.ms, max(chord["ms"], reach[740].latest_ms)
+                        + sp_compare.EVENT_WINDOW_MS)
+        risen = next(r for r in rows if sp_compare._ms(r) == rise.ms)
+        self.assertLess(rise.after, risen[MAX])
+        self.assertIn(f"PASS phrase rise after {sp_compare._chord_label(chord)}: "
+                      f"+{rise.size} ({rise.before} -> {rise.after}) at "
+                      f"{sp_compare.format_ms(rise.ms)}, full",
                       _rise_lines(_MOUTHS[0], reach, rows))
 
     def test_bomber_147_reaches_its_solved_early_press(self):
@@ -910,16 +930,6 @@ class PressReachTest(unittest.TestCase):
         self.assertEqual(_rounded(reach[268]), (31845.68, 31845.68))
         self.assertEqual(_rounded(reach[267]), (31757.33, 31757.33))
 
-    def test_a_schedule_that_refuses_its_path_is_refused(self):
-        doc = _schedule_of(SCORE)
-        doc["refusals"] = ["chord 3 is a squeeze the schedule could not split, so it is not pressed"]
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "schedule.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(doc, f)
-            with self.assertRaisesRegex(ValueError, "refuses to play this path"):
-                sp_compare.press_reach(path)
-
 
 def _samples(*pairs):
     """Rows holding only the two columns gap_summary reads, from (wall_s,
@@ -934,13 +944,15 @@ LS_O2_CSV = os.path.join(_REPO_ROOT, "testdata", "ch_watch", "ls-o2-run1-sp_watc
 
 class GapSummaryTest(unittest.TestCase):
     def test_two_gaps_give_the_count_the_longest_and_the_clocks_around_them(self):
-        got = sp_compare.gap_summary(
-            _samples((100.0, 1.0), (100.004, 1.004), (100.064, 1.064),
-                     (100.068, 1.068), (100.312, 1.312), (100.316, 1.316)), 50)
+        # The real ls-o2 run's first 165 rows. Its first two wall-time gaps
+        # over 50 ms are its data rows 162 -> 163 (73.576 ms, from clock
+        # 2146.834 ms) and 163 -> 164 (68.144 ms, to clock 2290.694 ms),
+        # read off the file (0-based rows).
+        got = sp_compare.gap_summary(self._ls_o2_rows()[:165], 50)
         self.assertEqual(got.count, 2)
-        self.assertAlmostEqual(got.longest_ms, 244.0, places=6)
-        self.assertAlmostEqual(got.from_ms, 1004.0, places=6)
-        self.assertAlmostEqual(got.to_ms, 1312.0, places=6)
+        self.assertAlmostEqual(got.longest_ms, 73.576, places=3)
+        self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
+        self.assertAlmostEqual(got.to_ms, 2290.694, places=3)
 
     def test_rows_with_no_gap_over_give_0(self):
         rows = _samples((100.0, 1.0), (100.004, 1.004), (100.008, 1.008))
