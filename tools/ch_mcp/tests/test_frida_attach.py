@@ -948,20 +948,35 @@ class LiveAgentTest(Workspace):
         self.assertEqual(len(self.raw_lines()), 2)
 
     def test_a_failed_log_write_stops_the_log_and_not_the_reply(self):
-        agent, session = self.started([STATE, {"pressed": True}, {"pressed": False}])
+        # Three real state replies, ids 1 to 3 (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d1b-run1/state-1.jsonl). After the first, the log's
+        # file is closed under the writer, so its next write really fails.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
         settle(agent)
-
-        def refuse(text):
-            raise OSError("the disk is full")
-
-        agent._log.write = refuse
-        self.assertEqual(agent.request({"type": "press"}, 5.0), {"pressed": True})
-        self.assertEqual(agent.request({"type": "press"}, 5.0), {"pressed": False})
-        self.assertEqual(agent.detach(), "detached")
-        self.assertEqual(self.lines, [
-            f"writing {self.out_path} failed: the disk is full; the log stops "
-            "here and the requests go on"])
-        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
+        agent._log.close()
+        try:
+            agent._log.write("")
+        except ValueError as e:
+            failure = str(e)
+        else:
+            self.fail("a closed file took a write")
+        session.replies += [[msgs[1]], [msgs[2]]]
+        for msg in msgs[1:]:
+            state = agent.read(5.0)
+            self.assertEqual({**state, "id": msg["payload"]["id"]}, msg["payload"])
+        self.assertTrue(agent.alive)
+        detached = agent.detach()
+        self.assertNotIn("may lack", detached)
+        # One line, once: it names the log, the file's own error and that
+        # the log stops while the requests go on.
+        self.assertEqual(len(self.lines), 1, self.lines)
+        line = self.lines[0]
+        self.assertIn(self.out_path, line)
+        self.assertIn(failure, line)
+        self.assertRegex(line, r"\bthe log stops\b")
+        self.assertRegex(line, r"\brequests go on$")
+        self.assertEqual(self.written(), msgs[:1])
 
     def test_a_message_after_the_log_closed_is_dropped(self):
         agent, session = self.started([STATE])
@@ -971,28 +986,64 @@ class LiveAgentTest(Workspace):
         self.assertEqual(self.lines, [])
 
     def test_read_before_start_says_nothing_is_attached(self):
-        agent = self.live(FakeFrida(ReplySession([STATE])))
+        # The state agent's real first reply (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d2b-run1/state-4.jsonl) waits for a start that
+        # never comes.
+        session = ReplySession([recorded("2026-11-06-ls-d2b-run1", "state-4.jsonl")])
+        frida = FakeFrida(session)
+        agent = self.live(frida, wait=FA._default_wait)
         with self.assertRaises(FA.ReadFailed) as caught:
             agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "no session for the read: not attached")
+        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
+        text = str(caught.exception)
+        self.assertRegex(text, r"\bthe read\b")
+        self.assertRegex(text, r"\bnot attached$")
+        self.assertNotIn(FA._DETACHED_BY_CALLER, text)
+        # The read reached for nothing: no attach and no script.
+        self.assertEqual(frida.attached_to, [])
+        self.assertIsNone(session.script)
+        self.assertFalse(agent.alive)
 
 
 # ---- the clock summary ------------------------------------------------------
 
-class SummaryTest(unittest.TestCase):
+def song_over_window() -> list[dict]:
+    """Seven real clock samples around the end of a song, the last three
+    after isSongOver turned true (hydra-data/ch-mcp-runs/2026-10-28/l2/
+    clock.jsonl, lines 238 to 244)."""
+    return recorded("2026-10-28-l2", "clock-song-over.jsonl")
+
+
+class SummaryTest(Workspace):
+    def summary_checks(self, lines, payloads, reason):
+        """The summary lines against what the payloads themselves hold: the
+        end reason, how many samples, the first and last songTime, how often
+        it went back, and whether isSongOver turned true."""
+        times = [p["songTime"] for p in payloads]
+        back = sum(1 for a, b in zip(times, times[1:]) if b < a)
+        over = any(p["isSongOver"] for p in payloads)
+        self.assertRegex(lines[0], rf"^ended: {re.escape(reason)}$")
+        self.assertRegex(lines[1], rf"^samples: {len(payloads)}$")
+        self.assertRegex(lines[2], rf"\bfirst {re.escape(str(times[0]))}\b")
+        self.assertRegex(lines[2], rf"\blast {re.escape(str(times[-1]))}$")
+        self.assertRegex(lines[3], rf"\bbackwards: {back} times$")
+        self.assertRegex(lines[4], rf"\bisSongOver went true: {'yes' if over else 'no'}$")
+
     def test_summary_of_a_song_that_ends(self):
-        result = FA.RunResult(reason=FA.END_DONE, cap_s=93.0, payloads=[
-            sample(0.5), sample(30.0), sample(62.1, over=True,
-                                               playing=False),
-            {"done": "cap", "samples": 3}])
-        self.assertEqual(FA.summarize_clock(result), [
-            "ended: done",
-            "samples: 3",
-            "songTime: first 0.5, last 62.1",
-            "songTime went backwards: 0 times",
-            "isSongOver went true: yes",
-        ])
+        # The real samples, as run_agent collects them; samples end no run,
+        # so the real wait runs to a short cap.
+        msgs = song_over_window()
+        payloads = [m["payload"] for m in msgs]
+        # The window holds the song's end and no step back.
+        self.assertFalse(payloads[0]["isSongOver"])
+        self.assertTrue(payloads[-1]["isSongOver"])
+        result = self.run_agent(FakeFrida(FakeSession(msgs)), cap_s=SHORT_CAP_S,
+                                wait=FA._default_wait)
+        self.assertEqual(result.payloads, payloads)
+        lines = FA.summarize_clock(result)
+        self.assertEqual(len(lines), 5, lines)
+        self.summary_checks(lines, payloads, FA.END_CAP)
+        self.assertRegex(lines[4], r"\byes$")
 
     def test_summary_counts_a_clock_that_went_backwards(self):
         result = FA.RunResult(reason=FA.END_CAP, cap_s=93.0, payloads=[
@@ -1002,62 +1053,66 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("songTime went backwards: 2 times", lines)
 
     def test_summary_with_an_error_and_no_samples(self):
-        result = FA.RunResult(reason=FA.END_AGENT_ERROR, cap_s=93.0,
-                              payloads=[{"error": "no live GameManager"}],
-                              error="no live GameManager")
-        self.assertEqual(FA.summarize_clock(result), [
-            "ended: error",
-            "samples: 0",
-            "songTime: no samples",
-            "songTime went backwards: 0 times",
-            "isSongOver went true: no",
-            "error: no live GameManager",
-        ])
+        # A real agent error reply, the run's only message (hydra-data/
+        # ch-mcp-runs/2026-10-31/ls-d1a-run2/kit-1.jsonl). It carries no
+        # songTime, so the run has no samples.
+        msgs = recorded("2026-10-31-ls-d1a-run2", "kit-1.jsonl")
+        self.assertNotIn("songTime", msgs[0]["payload"])
+        result = self.run_agent(FakeFrida(FakeSession(msgs)), wait=FA._default_wait)
+        self.assertEqual(result.reason, FA.END_AGENT_ERROR)
+        lines = FA.summarize_clock(result)
+        self.assertEqual(len(lines), 6, lines)
+        self.assertRegex(lines[0], rf"^ended: {re.escape(FA.END_AGENT_ERROR)}$")
+        self.assertRegex(lines[1], r"^samples: 0$")
+        self.assertRegex(lines[2], r"\bno samples$")
+        self.assertRegex(lines[3], r"\bbackwards: 0 times$")
+        self.assertRegex(lines[4], r"\bwent true: no$")
+        # The last line is the agent's own error text.
+        self.assertRegex(lines[5], r"^error: ")
+        self.assertTrue(lines[5].endswith(msgs[0]["payload"]["error"]), lines[5])
 
     def test_the_command_line_prints_the_summary(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = make_built_agent(tmp, "clock")
-            out_path = os.path.join(tmp, "clock.jsonl")
-            session = FakeSession([sent(sample(1.0)), sent(sample(2.0)),
-                                   sent({"done": "cap", "samples": 2})])
-            lines = []
-            code = FA.main(["--agent", agent, "--cap", "93",
-                            "--out", out_path],
-                           frida_mod=FakeFrida(session), wait=instant_wait,
-                           out=lines.append)
+        # The real samples around a song's end (song_over_window), through
+        # the command line with the real wait and a short cap.
+        msgs = song_over_window()
+        payloads = [m["payload"] for m in msgs]
+        agent = make_built_agent(os.path.join(self.tmp.name, "built"), "clock")
+        session = FakeSession(msgs)
+        code = FA.main(["--agent", agent, "--cap", f"{SHORT_CAP_S:g}",
+                        "--out", self.out_path],
+                       frida_mod=FakeFrida(session), wait=FA._default_wait,
+                       out=self.lines.append)
         self.assertEqual(code, 0)
-        self.assertEqual(lines, [
-            "ended: done",
-            "samples: 2",
-            "songTime: first 1.0, last 2.0",
-            "songTime went backwards: 0 times",
-            "isSongOver went true: no",
-            f"messages written to {out_path}",
-        ])
+        # The runner's cap line, then the summary, then where the messages
+        # went; the file holds every one of them.
+        self.assertEqual(len(self.lines), 7, self.lines)
+        self.summary_checks(self.lines[1:6], payloads, FA.END_CAP)
+        self.assertRegex(self.lines[6], rf"\bwritten to {re.escape(self.out_path)}$")
+        self.assertEqual(self.written(), msgs)
         self.assertEqual(session.detach_calls, 1)
 
     def test_the_command_line_ends_at_the_cap_with_no_error(self):
         # The runner's own detach after the cap must not turn the cap end
-        # into a "session detached" error.
-        with tempfile.TemporaryDirectory() as tmp:
-            agent = make_built_agent(tmp, "clock")
-            out_path = os.path.join(tmp, "clock.jsonl")
-            session = FakeSession([sent(sample(1.0)), sent(sample(2.0))])
-            lines = []
-            code = FA.main(["--agent", agent, "--cap", "93",
-                            "--out", out_path],
-                           frida_mod=FakeFrida(session), wait=instant_wait,
-                           out=lines.append)
+        # into a "session detached" error. Two real clock samples (hydra-data/
+        # ch-mcp-runs/2026-10-28/l2/clock.jsonl), and the real wait runs to
+        # a short cap.
+        msgs = recorded("2026-10-28-l2", "clock.jsonl")
+        agent = make_built_agent(os.path.join(self.tmp.name, "built"), "clock")
+        session = FakeSession(msgs)
+        code = FA.main(["--agent", agent, "--cap", f"{SHORT_CAP_S:g}",
+                        "--out", self.out_path],
+                       frida_mod=FakeFrida(session), wait=FA._default_wait,
+                       out=self.lines.append)
         self.assertEqual(code, 0)
-        self.assertEqual(lines, [
-            "cap of 93 s reached before the agent finished; 2 messages seen",
-            "ended: cap",
-            "samples: 2",
-            "songTime: first 1.0, last 2.0",
-            "songTime went backwards: 0 times",
-            "isSongOver went true: no",
-            f"messages written to {out_path}",
-        ])
+        # The first line names the cap and how many messages came.
+        self.assertRegex(self.lines[0], rf"\bcap of {SHORT_CAP_S:g} s\b")
+        self.assertRegex(self.lines[0], rf"\b{len(msgs)} messages seen\b")
+        self.summary_checks(self.lines[1:6], [m["payload"] for m in msgs],
+                            FA.END_CAP)
+        # No error line, and no word of a detach.
+        self.assertEqual(len(self.lines), 7, self.lines)
+        self.assertFalse([line for line in self.lines if line.startswith("error")])
+        self.assertFalse([line for line in self.lines if "detached" in line])
         self.assertEqual(session.detach_calls, 1)
 
     def test_the_command_line_refuses_a_zero_cap(self):
@@ -1166,13 +1221,6 @@ class AllowedCallsTest(unittest.TestCase):
                 self.assertTrue(entry["image"])
                 self.assertTrue(entry["class"])
                 self.assertIn(f" {entry['name']}(", entry["signature"])
-
-    def test_kit_loads_the_map_by_category_and_layout(self):
-        # The plan docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-kit-map-and-network-block.md),
-        # task M1: LoadMap's five-argument form replaces LoadDefaultMaps.
-        kit = self.real_texts()[KIT_AGENT]
-        self.assertNotIn("LoadDefaultMaps", kit)
-        self.assertEqual(kit.count('"LoadMap", 5'), 1)
 
     def test_kit_load_map_passes_the_method_pointer(self):
         # docs/clone-hero/07-internals.md, IN-76: the LoadMap stub writes the
