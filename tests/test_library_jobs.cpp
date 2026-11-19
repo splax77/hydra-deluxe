@@ -36,9 +36,8 @@
 #include "core/rules.h"  // RulesStamp
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
-#include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record
+#include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record, save_old_build_record, other_rules_record
 #include "env_util.h"  // read_env
-#include "library_fixtures.h"  // library_row
 #include "net/dmbot_client.h"
 #include "parse/song.h"  // NoNotesError
 #include "scoped_hook.h"
@@ -1236,51 +1235,98 @@ std::vector<uint64_t> read_in_slices(RecordStore& store, const hydra::app::Setti
     return answered;
 }
 
+// The rows answered after each slice when `rows` rows are read in slices of
+// `slice_charts`: one more slice each time, the last one ending on `rows`.
+std::vector<uint64_t> slice_ends(size_t rows, size_t slice_charts) {
+    std::vector<uint64_t> ends;
+    for (size_t to = slice_charts; to < rows; to += slice_charts) ends.push_back(to);
+    ends.push_back(rows);
+    return ends;
+}
+
 }  // namespace
 
 TEST_CASE("jobs: results read in slices match one read") {
     const hydra::app::Settings settings;
     const hydra::store::Profile profile = settings.profile();
     RecordStore store(":memory:");
-    // One chart in two folders, under names that sort its rows first and
-    // last, so a slice of one chart reads them in different slices.
-    ChartLibraryEntry first = library_row("same", "A First Copy");
-    first.notespath = "C:\\charts\\one\\same\\notes.chart";
-    first.rootfolder = "C:\\charts\\one";
-    ChartLibraryEntry last = library_row("same", "Z Last Copy");
-    last.notespath = "C:\\charts\\two\\same\\notes.chart";
-    last.rootfolder = "C:\\charts\\two";
-    // Chart "zzz" has the last hash but the second name, so its row comes
-    // early in row order and last in hash order. Row order and hash order
-    // differ throughout:
-    //   row order:  same ("A First Copy"), zzz, ready, never, build, rules,
-    //               both, same ("Z Last Copy")
-    //   hash order: both, build, never, ready, rules, same, same, zzz
-    // In slices of two taken in hash order, the two "same" rows fall in the
-    // third and fourth slices.
-    store.rebuild_chart_library({first, library_row("zzz", "AB Asked Late"),
-                                 library_row("ready", "B Ready"), library_row("never", "C Never"),
-                                 library_row("build", "D Build"), library_row("rules", "E Rules"),
-                                 library_row("both", "F Both"), last});
-    hydra::test::save_batch_record(store, "same", profile);
-    hydra::test::save_batch_record(store, "ready", profile);
-    hydra::test::add_stale_records(store, hydra::test::empty_analysis_under(profile), profile,
-                                   "build", "rules", "both");
+    // Five corpus charts the real analyzer reads to paths, each with its real
+    // analysis (charts_with_paths) and the row a scan of the corpus writes.
+    const std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.to_analysis_settings(), 5);
+    REQUIRE(charts.size() == 5);
+    std::vector<ChartLibraryEntry> scanned;
+    for (const corpus::ChartWithPaths& c : charts) scanned.push_back(corpus_row(c.chart));
+    // The chart with the last hash is asked late. The other four are, in
+    // their order, Ready, another build's, other rules' and both.
+    size_t late_at = 0;
+    for (size_t i = 1; i < scanned.size(); ++i)
+        if (scanned[i].md5 > scanned[late_at].md5) late_at = i;
+    std::vector<size_t> saved_at;
+    for (size_t i = 0; i < scanned.size(); ++i) {
+        if (i == late_at) continue;
+        REQUIRE(scanned[i].md5 < scanned[late_at].md5);
+        saved_at.push_back(i);
+    }
+    const ChartLibraryEntry& late = scanned[late_at];
+    const ChartLibraryEntry& ready = scanned[saved_at[0]];
+
+    // The library a scan of the corpus writes, in this row order: the Ready
+    // chart, the late chart, every other scanned row, then a copy of the
+    // Ready chart in a second folder, so one chart has the first and the last
+    // row. A slice of one chart reads those two rows in different slices.
+    const ChartLibraryEntry copy = copied_row(ready, empty_dir("slices_copy"));
+    std::vector<ChartLibraryEntry> rows{ready, late};
+    for (const ChartLibraryEntry& e : corpus_scan())
+        if (e.notespath != ready.notespath && e.notespath != late.notespath) rows.push_back(e);
+    rows.push_back(copy);
+    store.rebuild_chart_library(rows);
+
+    // Each saved chart's own real analysis: one saved by this build, one by
+    // another build, one under other rules and one with both.
+    const hydra::HydraRecord& build_record = charts[saved_at[1]].result.record;
+    const hydra::HydraRecord& rules_record = charts[saved_at[2]].result.record;
+    const hydra::HydraRecord& both_record = charts[saved_at[3]].result.record;
+    store.save(hydra::store::prepare_record(ready.md5, profile, charts[saved_at[0]].result.record));
+    hydra::test::save_old_build_record(
+        store, hydra::store::prepare_record(scanned[saved_at[1]].md5, profile, build_record));
+    store.save(hydra::store::prepare_record(scanned[saved_at[2]].md5, profile,
+                                            hydra::test::other_rules_record(rules_record)));
+    hydra::test::save_old_build_record(
+        store, hydra::store::prepare_record(scanned[saved_at[3]].md5, profile,
+                                            hydra::test::other_rules_record(both_record)));
 
     // The reference: one store lookup for every row, in row order, made here
     // without read_library_summaries.
     hydra::ui::LibraryModel whole;
     whole.set_charts(store.list_chart_library(0, -1));
     whole.set_summaries(store.lookup(whole.hashes(), profile));
-    REQUIRE(whole.rows().size() == 8);
-    REQUIRE(whole.rows().front().entry.md5 == "same");
-    REQUIRE(whole.rows()[1].entry.md5 == "zzz");
-    REQUIRE(whole.rows().back().entry.md5 == "same");
+    const size_t n = whole.rows().size();
+    REQUIRE(n == rows.size());
+    REQUIRE(whole.rows().front().entry.md5 == ready.md5);
+    REQUIRE(whole.rows()[1].entry.md5 == late.md5);
+    REQUIRE(whole.rows().back().entry.md5 == ready.md5);
+    REQUIRE(whole.rows().back().entry.notespath == copy.notespath);
+    // The one read shows each saved result as the store files it.
+    const auto row_of = [&whole](const std::string& md5) -> const hydra::ui::LibraryRow& {
+        for (const hydra::ui::LibraryRow& r : whole.rows())
+            if (r.entry.md5 == md5) return r;
+        throw std::runtime_error("the one read has no row for " + md5);
+    };
+    REQUIRE(whole.rows().front().status == hydra::store::RecordStatus::Ready);
+    REQUIRE(whole.rows().back().status == hydra::store::RecordStatus::Ready);
+    REQUIRE(row_of(scanned[saved_at[1]].md5).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(row_of(scanned[saved_at[1]].md5).stale_build);
+    REQUIRE(row_of(scanned[saved_at[2]].md5).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(row_of(scanned[saved_at[2]].md5).stale_rules);
+    REQUIRE(row_of(scanned[saved_at[3]].md5).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(row_of(scanned[saved_at[3]].md5).stale_build);
+    REQUIRE(row_of(scanned[saved_at[3]].md5).stale_rules);
 
     SUBCASE("one chart per slice") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 1);
-        CHECK(answered == std::vector<uint64_t>{1, 2, 3, 4, 5, 6, 7, 8});
+        CHECK(answered == slice_ends(n, 1));
         check_same_results(sliced, whole);
         // The chart in two folders has its result in both rows.
         CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
@@ -1290,42 +1336,42 @@ TEST_CASE("jobs: results read in slices match one read") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 2);
         // One report per slice, two rows more each time, ending on every row.
-        CHECK(answered == std::vector<uint64_t>{2, 4, 6, 8});
+        CHECK(answered == slice_ends(n, 2));
         check_same_results(sliced, whole);
-        // The chart in two folders, read in two different slices, has its
-        // result in both rows.
         CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
         CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the store is asked in hash order") {
-        // Chart "zzz" gets a result after the first slice. Asked in hash
-        // order, it is in the last slice, so its row reads that result. Asked
-        // in row order, it was in the first slice and would read Not analyzed.
+        // The late chart gets its result after the first slice of two. Its
+        // row is second, so asked in row order it was in the first slice and
+        // would read Not analyzed. Asked in hash order it comes after the
+        // four saved charts' five rows, so it is not in the first slice and
+        // its row reads that result.
         REQUIRE(whole.rows()[1].status == hydra::store::RecordStatus::NotAnalyzed);
+        const hydra::HydraRecord& late_record = charts[late_at].result.record;
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered =
             read_in_slices(store, settings, sliced, 2, [&](uint64_t rows_answered) {
-                if (rows_answered == 2) hydra::test::save_batch_record(store, "zzz", profile);
+                if (rows_answered == 2)
+                    store.save(hydra::store::prepare_record(late.md5, profile, late_record));
             });
-        CHECK(answered == std::vector<uint64_t>{2, 4, 6, 8});
-        REQUIRE(sliced.rows()[1].entry.md5 == "zzz");
+        CHECK(answered == slice_ends(n, 2));
+        REQUIRE(sliced.rows()[1].entry.md5 == late.md5);
         CHECK(sliced.rows()[1].status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the real slice size") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered =
             read_in_slices(store, settings, sliced, hydra::ui::kResultsSliceCharts);
-        // Eight rows fit in one slice.
-        REQUIRE(whole.rows().size() < hydra::ui::kResultsSliceCharts);
-        CHECK(answered == std::vector<uint64_t>{8});
+        CHECK(answered == slice_ends(n, hydra::ui::kResultsSliceCharts));
         check_same_results(sliced, whole);
     }
     SUBCASE("no callback, as the reload after a scan reads it") {
-        // Slices of two, so the two rows of the chart in two folders are read
+        // Slices of one, so the two rows of the chart in two folders are read
         // in different slices here too.
         hydra::ui::LibraryModel reread;
         reread.set_charts(store.list_chart_library(0, -1));
-        hydra::ui::read_library_summaries(store, settings, reread, {}, 2);
+        hydra::ui::read_library_summaries(store, settings, reread, {}, 1);
         check_same_results(reread, whole);
     }
 }
