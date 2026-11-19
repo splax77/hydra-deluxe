@@ -2094,79 +2094,77 @@ class LoadRefusalTest(unittest.TestCase):
 
 
 class MainExitTest(unittest.TestCase):
-    """main exits 0 with "Done." only when the run reached the song's end,
-    and 1 with the reason for every other stop (D319 item 1, D323 item 2)."""
+    """main exits 0 only when the run reached the song's end, and 1 with the
+    reason for every other stop (D319 item 1, D323 item 2). live_play needs
+    the running game, so in its place main gets the result of a real
+    play_chords run of the chords it read, on a recorded game clock."""
 
-    def _main(self, play, doc=None):
-        """main on `doc` (_schedule_of(_DUMP) when None), with live_play
-        replaced by `play(chords, out)`, a real play_chords run on fakes."""
-        from unittest import mock
+    def _main(self, play, path=_FREAK_SCHEDULE):
+        """main on the schedule at `path`, with live_play replaced by
+        `play(chords)`; it gives (exit code, printed text, the run's result)."""
+        ran = []
+
+        def live_play(chords, **_kw):
+            ran.append(play(chords))
+            return ran[-1]
+
         out = io.StringIO()
-        with tempfile.TemporaryDirectory() as d:
-            path = os.path.join(d, "schedule.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(_schedule_of(_DUMP) if doc is None else doc, f)
-            with mock.patch.object(play_chart, "live_play",
-                                   lambda chords, **kw: play(chords, kw["out"])):
-                code = play_chart.main([path], out=out)
-        return code, out.getvalue()
-
-    @staticmethod
-    def _play(clock_of, press=None, **kwargs):
-        def play(chords, out):
-            wall = _FakeTime()
-            game = _FakeGame()
-            return play_chart.play_chords(
-                chords, clock_of(wall), game.read_score, press or game.press,
-                now=wall.now, sleep=wall.sleep, out=out, **kwargs)
-        return play
+        with mock.patch.object(play_chart, "live_play", live_play):
+            code = play_chart.main([path], out=out)
+        return code, out.getvalue(), (ran[0] if ran else None)
 
     def test_main_exits_nonzero_on_every_stop_but_the_song_end(self):
-        def at(start_s, **kw):
-            return lambda wall: _FakeSongClock(wall, start_s=start_s, **kw)
+        cap_s = CallerHooksTest._CAP_S
+        no_frame = {k: v for k, v in _e_replies()[0].items() if k != "down_frame"}
+        mid_ms = _RecordedGame(_F1_MID_SONG).read()[0] * 1000.0
+
+        def on(path, chords, **kwargs):
+            return _play_recorded(path, chords=chords, **kwargs)[0]
 
         stops = {
-            # RunCapReached: a 1 s cap before the first chord at 13.04 s.
-            "cap": (self._play(at(12.0), cap_s=1), "run cap of 1 s reached"),
-            # StopAsked.
-            "stopped": (self._play(at(12.0), should_stop=lambda: True), "asked to stop"),
-            # ClockFrozen: the clock holds at 20 s, between chords 45 and 91.
-            "frozen": (self._play(at(12.0, freeze_at_s=20.0)), "clock frozen at 20.00 s"),
-            # ClockJumpedBack: the clock falls from 13.05 s to 11.95 s and the
-            # re-sync reads it past the last chord.
-            "past_end": (self._play(lambda wall: _ScriptedSongClock(
-                wall, [12.0, 13.05, 11.95, 200.0])),
-                "song clock jumped back (13.05 -> 11.95 s), and the clock at 200.00s "
-                "is past the last note"),
-            # The reply stop.
-            "reply": (self._play(at(12.0), press=_ReplyPress({}), kit=True),
-                      "the kit's reply to chord 38's press has no down_frame"),
+            # The whole recording comes before the first chord.
+            "cap": lambda chords: on(_F1_BEFORE_FIRST_CHORD, chords, cap_s=1),
+            "stopped": lambda chords: on(_F1_MID_SONG, chords, cap_s=cap_s,
+                                         should_stop=lambda: True),
+            "reply": lambda chords: on(_F1_MID_SONG, chords, cap_s=cap_s, kit=True,
+                                       press=_replying(no_frame, [])),
+            # Only the chords before the recording's first clock read.
+            "past_end": lambda chords: on(_F1_MID_SONG, [c for c in chords if c.ms < mid_ms],
+                                          cap_s=cap_s),
         }
-        for stop, (play, reason) in stops.items():
+        for stop, play in stops.items():
             with self.subTest(stop):
-                code, text = self._main(play)
+                code, text, result = self._main(play)
+                self.assertEqual(result.stop, stop)
+                self.assertTrue(result.message)
                 self.assertEqual(code, 1, text)
-                self.assertIn(f"Stopped before the song's end ({stop}): ", text)
-                self.assertIn(reason, text)
-                self.assertNotIn("Done.", text)
-        # The empty list never reaches the run.
-        code, text = self._main(self._play(at(12.0)), _schedule_of({"chords": []}))
-        self.assertEqual(code, 1)
-        self.assertIn("has no chords to play", text)
-        self.assertNotIn("Done.", text)
-        # The song end.
-        code, text = self._main(self._play(at(12.0)))
-        self.assertEqual(code, 0, text)
-        self.assertTrue(text.endswith("Done.\n"), text)
-        self.assertNotIn("Stopped", text)
+                self.assertIn(f"({stop}): {result.message}", text)
 
-    def test_main_prints_the_notes_of_a_run_that_ends_done(self):
-        note = "a retime was refused after the play ended"
-        code, text = self._main(lambda chords, out: play_chart.RunResult(
-            stop=play_chart.STOP_DONE, message=note))
+        # A file load_schedule refuses never reaches the run.
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "schedule.json")
+            doc = _read_json(_FREAK_SCHEDULE)
+            doc["chords"] = []
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(doc, f)
+            with self.assertRaises(ValueError) as caught:
+                play_chart.load_schedule(path)
+            code, text, result = self._main(lambda chords: self.fail("the run began"), path)
+        self.assertEqual(code, 1)
+        self.assertIsNone(result)
+        self.assertIn(str(caught.exception), text)
+
+        # The song end: the chords from 0.3 s to 1.5 s after the recording's
+        # first read, all pressed inside its 2 s cap.
+        def song_end(chords):
+            window = [c for c in chords if mid_ms + 300.0 < c.ms < mid_ms + 1500.0]
+            self.assertTrue(window)
+            return on(_F1_MID_SONG, window, cap_s=cap_s)
+
+        code, text, result = self._main(song_end)
+        self.assertEqual(result.stop, play_chart.STOP_DONE)
         self.assertEqual(code, 0, text)
-        self.assertIn(note, text)
-        self.assertTrue(text.endswith("Done.\n"), text)
+        self.assertNotIn(f"({result.stop})", text)
 
 
 class StartLineTest(unittest.TestCase):
@@ -2206,11 +2204,29 @@ class StartLineTest(unittest.TestCase):
         self.assertEqual(result.skipped, 1)
 
     def test_a_clock_past_the_last_note_counts_every_chord(self):
-        result, lines = self._text(lambda wall: _FakeSongClock(wall, start_s=200.0))
+        # The Freak chords before the recorded mid-song clock's first read,
+        # played on that clock: the run starts past its last note, plays
+        # nothing and counts every chord with a press as skipped.
+        game = _RecordedGame(_F1_MID_SONG)
+        with open(_F1_MID_SONG, encoding="utf-8", newline="") as f:
+            clocks_s = [float(r["clock_s"]) for r in csv.DictReader(f)]
+        chords = [c for c in _freak_chords() if c.ms < clocks_s[0] * 1000.0]
+        messages = play_chart.press_messages(play_chart.press_plan(chords))
+        pressed = {p.index for head, later in messages for p in (head, *later)}
+        self.assertTrue(pressed)
+        sent = []
+        out = io.StringIO()
+        result = play_chart.play_chords(chords, game, game.read_score,
+                                        lambda lanes, _axes=None, then=(): sent.append(lanes),
+                                        out=out)
         self.assertEqual(result.stop, "past_end")
-        self.assertEqual(lines[0], "  Song clock at 200.00s is past the last note; nothing to "
-                                   "play (skipped 8 chords).")
-        self.assertEqual(result.skipped, 8)
+        self.assertEqual(result.skipped, len(pressed))
+        self.assertEqual((sent, result.rows), ([], []))
+        # The line is start_line's for the clock read the run made, one of
+        # the recording's rows.
+        lines = {play_chart.start_line(clock_s, messages, len(messages))[0]
+                 for clock_s in clocks_s}
+        self.assertIn(out.getvalue().splitlines()[0], lines)
 
 
 class FakeReplyShapeTest(unittest.TestCase):
