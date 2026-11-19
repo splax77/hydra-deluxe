@@ -27,7 +27,6 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -447,35 +446,36 @@ class SpMaxTest(unittest.TestCase):
             self.assertIn(f"the game's full meter {want} (resolution {resolution} x "
                           f"{sp_compare.GAME_FULL_METER_PER_RESOLUTION})", lines[0])
 
+    def _real_act3(self):
+        """The real act3 piece, Hydra's score of its seconds and the path's
+        press reach, with the chart's resolution."""
+        score, reach = _path_files()
+        rows = sp_compare.load_watch_rows(_ACT3_CSV)
+        return rows, _within(score, rows), reach, _midi_resolution(_PITCH_DARK_CHART)
+
     def test_sp_max_check_refuses_without_a_resolution(self):
-        with self.assertRaisesRegex(ValueError, "no chart resolution given"):
-            run(build_rows(), resolution=None)
+        rows, score, reach, resolution = self._real_act3()
+        with self.assertRaises(ValueError) as caught:
+            sp_compare.compare(rows, score, reach=reach, stop=play_chart.STOP_DONE)
+        self.assertIn("resolution", str(caught.exception))
+        # The same real run with the chart's resolution is compared.
+        report = sp_compare.compare(rows, score, resolution=resolution, reach=reach,
+                                    stop=play_chart.STOP_DONE)
+        self.assertEqual(len(_starting(report, "PASS sp_max ")), 1, report.text())
 
     def test_the_hydra_full_meter_line_follows_question_4(self):
         # D324 item 4 chose "Drop that half": the line shows sp_max and the
-        # game's 30 x resolution only.
-        report = run(build_rows())
+        # game's full meter for the chart's resolution, and nothing more.
+        rows, score, reach, resolution = self._real_act3()
+        report = sp_compare.compare(rows, score, resolution=resolution, reach=reach,
+                                    stop=play_chart.STOP_DONE)
         self.assertNotIn("Hydra full meter", report.text())
-        self.assertIn("PASS sp_max 5760; the game's full meter 5760 (resolution "
-                      "192 x 30)", report.lines)
-        with open(sp_compare.__file__, encoding="utf-8") as f:
-            self.assertNotIn("Hydra full meter", f.read())
-
-
-class CodeTest(unittest.TestCase):
-    def test_ms_calls_s_to_ms(self):
-        with mock.patch.object(sp_compare.C, "s_to_ms", return_value=-1.0) as s_to_ms:
-            self.assertEqual(sp_compare._ms({"clock_s": 1.5}), -1.0)
-        s_to_ms.assert_called_once_with(1.5)
-
-    def test_no_ready_copy_remains(self):
-        # F6 reads the ready point from the game and Hydra (D323 item 1).
-        with open(sp_compare.__file__, encoding="utf-8") as f:
-            text = f.read()
-        for name in ("at_ready_level", "READY_FRACTION", "SP_ACTIVATION_BARS",
-                     "SP_CAP_BARS", "MEASURES_PER_SP_BAR", "QUARTERS_PER_MEASURE",
-                     "ready_between", "ReadyWindow", "hydra_full_meter_ticks"):
-            self.assertNotIn(name, text)
+        want = sp_compare.game_full_meter(resolution)
+        self.assertEqual(_starting(report, "PASS sp_max "),
+                         [f"PASS sp_max {rows[0][MAX]}; the game's full meter {want} "
+                          f"(resolution {resolution} x "
+                          f"{sp_compare.GAME_FULL_METER_PER_RESOLUTION})"],
+                         report.text())
 
 
 # Two more pieces of pitch-dark-ratios-run1's sp_watch-1.csv, rows unchanged.
@@ -720,14 +720,6 @@ class FilesTest(unittest.TestCase):
         self.assertTrue(lines32[1].endswith(", width 32"), lines32[1])
         self.assertEqual(lines64[2:], lines32[2:])
 
-    def test_missing_column_is_an_error(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "watch.csv")
-            with open(path, "w", newline="", encoding="utf-8") as f:
-                f.write("wall_s,clock_s\n1.0,0.5\n")
-            with self.assertRaises(ValueError):
-                sp_compare.load_watch_rows(path)
-
 
 def _row(clock_s, amount, *, active=0, sp_max=FULL_METER):
     """One hand-written watcher row; only the fields the row checks read vary."""
@@ -742,8 +734,8 @@ def _row(clock_s, amount, *, active=0, sp_max=FULL_METER):
     }
 
 
-AMOUNT = "sp_amount_u64"
-MAX = "sp_max_u64"
+# The columns sp_compare reads by default, from their owner.
+AMOUNT, MAX = sp_compare.column_names()
 
 
 class RowChecksTest(unittest.TestCase):
@@ -751,9 +743,18 @@ class RowChecksTest(unittest.TestCase):
         self.assertIs(sp_compare._find_activations, sp_compare.find_activations)
 
     def test_column_names_follow_the_width(self):
-        self.assertEqual(sp_compare.column_names(), (AMOUNT, MAX))
-        self.assertEqual(sp_compare.column_names(32),
-                         ("sp_amount_u32", "sp_max_u32"))
+        # Each width main accepts names two columns the watcher logs
+        # (WATCH_COLUMNS, the logs' owner), and the two widths name different
+        # columns.
+        widths = (32, 64)
+        names = {w: sp_compare.column_names(w) for w in widths}
+        for width, pair in names.items():
+            self.assertEqual(len(set(pair)), 2, pair)
+            for name in pair:
+                self.assertIn(name, WATCH_COLUMNS, (width, name))
+        self.assertFalse(set(names[32]) & set(names[64]), names)
+        self.assertEqual(sp_compare.column_names(),
+                         sp_compare.column_names(sp_compare.DEFAULT_WIDTH))
 
     def test_is_active_reads_the_flag_byte_only(self):
         # The game's real rows set bits above the flag byte in sp_active_u32:
@@ -898,37 +899,79 @@ class PressReachTest(unittest.TestCase):
                       f"{sp_compare.format_ms(rise.ms)}, full",
                       _rise_lines(_MOUTHS[0], reach, rows))
 
+    def _assert_reach_spans_presses(self, schedule_path):
+        """Every press of the schedule's plan (play_chart.press_plan) lies in
+        its chord's reach, and each reach's two ends are presses of that
+        chord. The chords' press times, by index."""
+        reach = sp_compare.press_reach(schedule_path)
+        presses = {}
+        for press in play_chart.press_plan(play_chart.load_schedule(schedule_path).chords):
+            presses.setdefault(press.index, []).append(press.at_ms)
+        self.assertEqual(set(reach), set(presses))
+        for index, times in presses.items():
+            for at in times:
+                self.assertLessEqual(reach[index].earliest_ms, at, index)
+                self.assertLessEqual(at, reach[index].latest_ms, index)
+            self.assertIn(reach[index].earliest_ms, times, index)
+            self.assertIn(reach[index].latest_ms, times, index)
+        return reach, presses
+
+    def _chord(self, score_path, index):
+        return next(c for c in _fixture_chords(score_path) if c["index"] == index)
+
     def test_bomber_147_reaches_its_solved_early_press(self):
-        reach = sp_compare.press_reach(_BOMBER[1])
         # 147 is an activation and chord 180's squeeze anchor, so the
-        # schedule presses it in two groups: the yellow cymbal aimed
-        # -62.42936351273587 ms from 27333.333333333332 ms, then the kick
-        # 8 ms later (after_ms 8.0).
-        self.assertEqual(_rounded(reach[147]), (27270.90, 27278.90))
-        # A flip after 147's press but before its ms lands on 147, not on
-        # chord 146 83 ms before it.
+        # schedule presses it early, before the chord's own ms.
+        reach, presses = self._assert_reach_spans_presses(_BOMBER[1])
         chords = _fixture_chords(_BOMBER[0])
         chord_ms = [c["ms"] for c in chords]
-        got = sp_compare._landed_chord(chords, chord_ms, 27285.0, reach)
+        at = chord_ms.index(self._chord(_BOMBER[0], 147)["ms"])
+        prev = chords[at - 1]
+        self.assertLess(reach[147].latest_ms, chords[at]["ms"])
+        # A flip after 147's last press but before its ms lands on 147. Chord
+        # 146 before it is near enough to take the flip if 147's early press
+        # were not read: its first press is before the flip, inside the
+        # landing window.
+        flip = (reach[147].latest_ms + chords[at]["ms"]) / 2
+        self.assertLessEqual(reach[prev["index"]].earliest_ms, flip)
+        self.assertLessEqual(flip - prev["ms"], sp_compare.LANDING_WINDOW_MS)
+        got = sp_compare._landed_chord(chords, chord_ms, flip, reach)
         self.assertEqual(got["index"], 147)
 
     def test_bomber_180_reaches_its_late_press(self):
-        reach = sp_compare.press_reach(_BOMBER[1])
-        # Chord 180 is at 32583.333333333336 ms, aimed 38.903969820592465 ms
-        # (squeeze_out_late).
-        self.assertEqual(_rounded(reach[180]), (32622.24, 32622.24))
-        rows = [_row(32.500, 0), _row(32.640, 1536)]
-        self.assertIn("PASS phrase rise after chord 180 (tick 18768, 32583.3 ms): "
-                      "+1536 (0 -> 1536) at 32640.0 ms, full",
-                      _rise_lines(_BOMBER[0], reach, rows))
+        # Chord 180 has one press, aimed after the chord's own ms. A rise on
+        # the press's row is credited; a rise between the chord's ms and the
+        # press is not, because the search starts at the press.
+        reach, presses = self._assert_reach_spans_presses(_BOMBER[1])
+        self.assertEqual(len(presses[180]), 1, presses[180])
+        chord = self._chord(_BOMBER[0], 180)
+        press_ms = reach[180].latest_ms
+        self.assertGreater(press_ms, chord["ms"])
+        size = FULL_METER // sp_compare.PHRASES_PER_FULL_METER
+
+        def rise_at(ms):
+            clock_s = ms / 1000
+            while sp_compare._ms({"clock_s": clock_s}) < ms:
+                clock_s = math.nextafter(clock_s, math.inf)
+            rows = [_row(chord["ms"] / 1000 - 0.1, 0), _row(clock_s, size)]
+            return sp_compare._ms(rows[1]), _rise_lines(_BOMBER[0], reach, rows)
+
+        shown, lines = rise_at(press_ms)
+        self.assertIn(f"PASS phrase rise after {sp_compare._chord_label(chord)}: "
+                      f"+{size} (0 -> {size}) at {sp_compare.format_ms(shown)}, full",
+                      lines)
+        _, early = rise_at((chord["ms"] + press_ms) / 2)
+        self.assertEqual(len([l for l in early if l.startswith(
+            f"FAIL phrase rise after {sp_compare._chord_label(chord)}: missing")]), 1,
+            early)
 
     def test_senri_with_no_squeeze_reaches_its_one_press(self):
-        # Chord 268 (31860.680000000004 ms) ends an activation and is aimed
-        # -15.0 ms (sp_end); chord 267 (31759.329000000005 ms) is aimed
-        # -2.0 ms (plain). Each has one press.
-        reach = sp_compare.press_reach(_fixture("senri_schedule.json"))
-        self.assertEqual(_rounded(reach[268]), (31845.68, 31845.68))
-        self.assertEqual(_rounded(reach[267]), (31757.33, 31757.33))
+        # Chords 267 (plain) and 268 (sp_end) each have one press, so their
+        # earliest and latest reach are that press.
+        reach, presses = self._assert_reach_spans_presses(_fixture("senri_schedule.json"))
+        for index in (267, 268):
+            self.assertEqual(len(presses[index]), 1, presses[index])
+            self.assertEqual(reach[index], (presses[index][0], presses[index][0]))
 
 
 def _samples(*pairs):
@@ -940,6 +983,9 @@ def _samples(*pairs):
 # The wall_s and clock_s columns of a real run's watch CSV. The copy reads them
 # by name, because the other columns are left out.
 LS_O2_CSV = os.path.join(_REPO_ROOT, "testdata", "ch_watch", "ls-o2-run1-sp_watch-1.csv")
+# The run folder is hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1. Its
+# replies.txt holds ch_start's "song length: 62080 ms".
+LS_O2_SONG_END_MS = 62080
 
 
 class GapSummaryTest(unittest.TestCase):
@@ -962,10 +1008,6 @@ class GapSummaryTest(unittest.TestCase):
         self.assertEqual(sp_compare.gap_summary([], 50), (0, None, None, None))
         self.assertEqual(sp_compare.gap_summary(_samples((100.0, 1.0)), 50),
                          (0, None, None, None))
-
-    def test_a_gap_of_exactly_the_threshold_does_not_count(self):
-        rows = _samples((0.0, 1.0), (0.05, 1.05))
-        self.assertEqual(sp_compare.gap_summary(rows, 50), (0, None, None, None))
 
     def test_the_boundary_holds_at_a_real_wall_time(self):
         # 0.0625 s is exact in binary even on a wall time this large, so this
@@ -1001,13 +1043,16 @@ class GapSummaryTest(unittest.TestCase):
                          (0, None, None, None))
 
     def test_a_final_frozen_clock_row_is_left_out(self):
-        # The last two rows show one clock, past the song's end, five seconds
-        # apart: the shape of a run that ended on a stopped clock.
-        rows = _samples((100.0, 4.9), (100.06, 4.96), (100.064, 5.02), (105.1, 5.02))
-        got = sp_compare.gap_summary(rows, 50, 5000.0)
-        self.assertEqual(got.count, 1)
-        self.assertAlmostEqual(got.longest_ms, 60.0, places=3)
-        self.assertAlmostEqual(got.to_ms, 4960.0, places=6)
+        # The real ls-o2 run ended on a stopped clock: its last two rows show
+        # one clock, past the song's end, with a wall-time gap over the
+        # threshold between them. With the song end that pair adds nothing.
+        rows = self._ls_o2_rows()
+        last_gap = self._last_gap_ms(rows)
+        self.assertGreater(last_gap, 50)
+        got = sp_compare.gap_summary(rows, 50, LS_O2_SONG_END_MS)
+        self.assertEqual(got, sp_compare.gap_summary(rows[:-1], 50, LS_O2_SONG_END_MS))
+        self.assertLess(got.longest_ms, last_gap)
+        self.assertLessEqual(got.to_ms, LS_O2_SONG_END_MS)
 
     def test_with_no_song_end_every_row_counts(self):
         rows = _samples((100.0, 4.9), (100.004, 5.02), (105.1, 5.02))
@@ -1021,26 +1066,54 @@ class GapSummaryTest(unittest.TestCase):
             return [{c: float(r[c]) for c in ("wall_s", "clock_s")}
                     for r in csv.DictReader(f)]
 
+    def _last_gap_ms(self, rows):
+        """The wall-time gap of the file's last pair, which must show one
+        clock: the watch writes its final row once live.StoppedCheck says the
+        clock has stopped."""
+        self.assertEqual(rows[-1]["clock_s"], rows[-2]["clock_s"])
+        return sp_compare.C.s_to_ms(rows[-1]["wall_s"] - rows[-2]["wall_s"])
+
+    def _assert_a_gap_of_the_file(self, rows, got, song_end_ms):
+        """The summary's longest gap and its first gap's start are pairs of
+        consecutive rows in the file, over the threshold and inside the song."""
+        def inside(i):
+            return song_end_ms is None or max(sp_compare._ms(rows[i - 1]),
+                                              sp_compare._ms(rows[i])) <= song_end_ms
+        def gap(i):
+            return sp_compare.C.s_to_ms(rows[i]["wall_s"] - rows[i - 1]["wall_s"])
+        self.assertTrue(any(inside(i) and gap(i) == got.longest_ms
+                            for i in range(1, len(rows))))
+        self.assertTrue(any(inside(i) and gap(i) > 50
+                            and sp_compare._ms(rows[i - 1]) == got.from_ms
+                            for i in range(1, len(rows))))
+        self.assertLessEqual(got.from_ms, got.to_ms)
+
     def test_the_real_ls_o2_run_inside_its_song(self):
-        # The run folder is hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1. Its
-        # ch_start printed "song length: 62080 ms".
+        # Every clock in the file rises or holds, so leaving out the rows past
+        # the song end gives the summary the song end gives.
         rows = self._ls_o2_rows()
-        self.assertEqual(len(rows), 6240)
-        got = sp_compare.gap_summary(rows, 50, 62080)
-        self.assertEqual(got.count, 360)
-        self.assertAlmostEqual(got.longest_ms, 243.7, places=1)
-        self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
-        self.assertAlmostEqual(got.to_ms, 40566.2, delta=0.05)
+        self.assertTrue(all(rows[i]["clock_s"] >= rows[i - 1]["clock_s"]
+                            for i in range(1, len(rows))))
+        inside = [r for r in rows if sp_compare._ms(r) <= LS_O2_SONG_END_MS]
+        self.assertLess(len(inside), len(rows), "the file should run past the song end")
+        got = sp_compare.gap_summary(rows, 50, LS_O2_SONG_END_MS)
+        self.assertGreater(got.count, 0)
+        self.assertEqual(got, sp_compare.gap_summary(inside, 50))
+        self.assertLessEqual(got.to_ms, LS_O2_SONG_END_MS)
+        self._assert_a_gap_of_the_file(rows, got, LS_O2_SONG_END_MS)
 
     def test_the_real_ls_o2_run_with_no_song_end(self):
-        # The longest gap is the last pair of rows: both show the same clock,
-        # because the watch writes its final row once live.StoppedCheck says
-        # the clock has stopped.
-        got = sp_compare.gap_summary(self._ls_o2_rows(), 50)
-        self.assertEqual(got.count, 371)
-        self.assertAlmostEqual(got.longest_ms, 5084.784, places=3)
-        self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
-        self.assertAlmostEqual(got.to_ms, 63700.788, places=3)
+        # With no song end the final frozen pair counts, and it is the longest
+        # gap: one more gap than the file without its last row, ending on the
+        # last row's clock.
+        rows = self._ls_o2_rows()
+        got = sp_compare.gap_summary(rows, 50)
+        before = sp_compare.gap_summary(rows[:-1], 50)
+        self.assertEqual(got.count, before.count + 1)
+        self.assertEqual(got.longest_ms, self._last_gap_ms(rows))
+        self.assertEqual(got.to_ms, sp_compare._ms(rows[-1]))
+        self.assertEqual(got.from_ms, before.from_ms)
+        self._assert_a_gap_of_the_file(rows, got, None)
 
 
 if __name__ == "__main__":

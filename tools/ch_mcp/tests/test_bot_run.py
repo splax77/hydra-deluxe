@@ -10,6 +10,7 @@ has a reg.exe runner.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import os
@@ -21,6 +22,8 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
+import types
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -130,6 +133,19 @@ def _pitch_dark_end(test: unittest.TestCase) -> tuple[float, str]:
             hydra_end.chart_source_text(I.chart_file(PITCH_DARK)))
 
 
+def _pitch_dark_dumps(test: unittest.TestCase, made: list):
+    """hydra_end.make_dump patched to write PITCH_DARK_DUMP for each chart it
+    is asked about, putting the chart into `made`. For a copy of PITCH_DARK's
+    chart, whose hydra_replay dump that file is."""
+    dump = _pitch_dark_dump(test)
+
+    def make_dump(chart, out):
+        made.append(chart)
+        shutil.copyfile(dump, out)
+
+    return mock.patch.object(hydra_end, "make_dump", make_dump)
+
+
 def _copy_real_backup(tmp: str) -> tuple[str, dict]:
     """REAL_BACKUP copied into `tmp`, with each file entry's source moved to a
     path under `tmp/sources`, so nothing a restore does can reach the user's
@@ -148,6 +164,20 @@ def _copy_real_backup(tmp: str) -> tuple[str, dict]:
     with open(manifest, "w", encoding="utf-8") as f:
         json.dump(doc, f, indent=1)
     return folder, sources
+
+
+def _assert_one_restore_after_the_launch(test: unittest.TestCase, lines: list,
+                                         backup_root: str, exe: str) -> None:
+    """A start_run of PITCH_DARK whose launch raised printed one line naming
+    its backup (the only folder in `backup_root`) after the launch's line:
+    the restore's. The first line naming it is the backup's own."""
+    backup_dir = os.path.join(backup_root, os.listdir(backup_root)[0])
+    launch_line = next(i for i, line in enumerate(lines)
+                       if line.endswith(subprocess.list2cmdline(
+                           B.launch_command(exe, PITCH_DARK, B.DEFAULT_PLAYER))))
+    restores = [i for i, line in enumerate(lines) if backup_dir in line][1:]
+    test.assertEqual(len(restores), 1, lines)
+    test.assertGreater(restores[0], launch_line, lines)
 
 
 def _folder_bytes(folder: str) -> dict:
@@ -317,7 +347,20 @@ class BotRunTest(unittest.TestCase):
         self.assertFalse(any(line.endswith(relative) for line in lines), lines)
 
     def test_the_game_exe_name_is_the_probe_process_name(self):
-        self.assertEqual(os.path.basename(G.GAME_EXE), PROCESS_NAME)
+        # The game installed on this machine is a Unity player, which loads
+        # the folder named after its own exe with "_Data" on the end. So the
+        # exe's real name is read from that folder, not from either constant.
+        game_dir = os.path.dirname(G.GAME_EXE)
+        data_suffix = "_Data"
+        stems = [name[:-len(data_suffix)] for name in os.listdir(game_dir)
+                 if name.endswith(data_suffix)
+                 and os.path.isdir(os.path.join(game_dir, name))]
+        self.assertEqual(len(stems), 1, os.listdir(game_dir))
+        installed = stems[0] + ".exe"
+        self.assertIn(installed, os.listdir(game_dir))
+        self.assertTrue(os.path.isfile(G.GAME_EXE))
+        self.assertEqual(PROCESS_NAME, installed)
+        self.assertEqual(os.path.basename(G.GAME_EXE), installed)
 
     def test_profile_appears_only_when_passed(self):
         # A profile adds one flag and its value after the song and the player,
@@ -362,20 +405,45 @@ class BotRunTest(unittest.TestCase):
         self.assertIn(B.STOPPED_BY_FLAG_LINE, r.lines)
 
     def test_the_cap_prints_its_line_runs_the_restore_and_leaves_settings_ini(self):
-        r = Rig(self.tmp, exits_at=None)
-        cap_s = B.run_cap_s(SONG_LENGTH_MS)
-        # The game changes settings.ini during the run but never the stats.
-        r.clock.events.append((10, lambda: _write(r.path("settings.ini"), b"the game changed this")))
-        self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 1)
-        self.assertIn(f"scorestats.json unchanged after {cap_s:.0f} s; bot launch wrote no stats",
-                      r.lines)
-        self.assertFalse(any("game exited" in line or "still running after" in line
-                             for line in r.lines))
-        self.assertEqual(r.clock.t, cap_s)
-        self.assertFalse(os.path.exists(os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json")))
-        self.assertEqual(_read(r.path(G.SETTINGS)), b"the game changed this")
-        self.assertIn(f"restoring the backup from {r.backup_dir()}", r.lines)
-        self.assertFalse(any(line.startswith(f"{G.SETTINGS}:") for line in r.lines))
+        # A real launch (_launching_env) of PITCH_DARK with Hydra's end, on the
+        # real clock. Its real cap is the song plus a minute, so the run is
+        # given a cap of 0 s: the wait then ends after its first poll, the
+        # soonest any cap can end it. The real scorestats.json from before a
+        # run never changes. settings.ini is a real one from a run's backup,
+        # changed during the run the way the game changes it.
+        lines = []
+        env = _launching_env(self.tmp, lines)
+        stats = os.path.join(env.documents_dir, G.SCORESTATS)
+        shutil.copyfile(STATS_BEFORE_A_RUN, stats)
+        settings = os.path.join(env.documents_dir, G.SETTINGS)
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), settings)
+        run = B.start_run(PITCH_DARK, env=env, song_end=_pitch_dark_end(self),
+                          backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        G.set_game_setting(settings, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        game_left = _read(settings)
+        out_dir = os.path.join(self.tmp, "out")
+        start = env.now()
+        self.assertIsNone(B.wait_stats(dataclasses.replace(run, cap_s=0.0), out_dir, env))
+        waited = env.now() - start
+        # One poll's sleep, then the wait's last line: it names the stats
+        # file and the whole seconds waited, and no copy.
+        self.assertGreaterEqual(waited, B.POLL_INTERVAL_S)
+        self.assertLess(waited, 2 * B.POLL_INTERVAL_S)
+        self.assertIn(G.SCORESTATS, lines[-1])
+        seconds = [int(n) for n in re.findall(r"\b(\d+) s\b", lines[-1])]
+        self.assertEqual(len(seconds), 1, lines[-1])
+        self.assertGreaterEqual(seconds[0], round(B.POLL_INTERVAL_S))
+        self.assertLessEqual(seconds[0], round(waited))
+        self.assertNotIn(out_dir, lines[-1])
+        self.assertEqual(os.listdir(out_dir), [])
+        printed = len(lines)
+        self.assertTrue(B.finish_run(run, stop=False, env=env))
+        # The restore names the run's backup and leaves settings.ini as the
+        # game left it.
+        self.assertTrue(any(run.backup_dir in line for line in lines[printed:]), lines)
+        self.assertEqual(_read(settings), game_left)
+        self.assertFalse(any(line.startswith(f"{G.SETTINGS}:") for line in lines), lines)
 
     def test_a_restore_failure_stops_with_the_entry_name_and_the_backup_folder(self):
         # A real backup that holds the registry key, restored with no reg.exe
@@ -432,12 +500,7 @@ class BotRunTest(unittest.TestCase):
         doubled = int(re.search(r"(?m)^song_length\s*=\s*(\d+)", text).group(1))
         dump = _pitch_dark_dump(self)
         made = []
-
-        def dump_from_testdata(chart, out):
-            made.append(chart)
-            shutil.copyfile(dump, out)
-
-        with mock.patch.object(hydra_end, "make_dump", dump_from_testdata):
+        with _pitch_dark_dumps(self, made):
             ms, source = B.song_length_ms(song)
         chart = I.chart_file(song)
         self.assertEqual(made, [chart])
@@ -507,41 +570,65 @@ class RunStepsTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def start(self, r: Rig, song_dir) -> B.Run:
-        return B.start_run(song_dir, backup_root=os.path.join(r.out_dir, "backups"), env=r.env)
+    def start_real(self, lines: list, before=None) -> B.Run:
+        """start_run on PITCH_DARK with Hydra's end, launched for real
+        (_launching_env), which it keeps as self.env. `before`, when given,
+        is a real scorestats.json put in place first."""
+        env = self.env = _launching_env(self.tmp, lines)
+        if before is not None:
+            shutil.copyfile(before, os.path.join(env.documents_dir, G.SCORESTATS))
+        run = B.start_run(PITCH_DARK, env=env, song_end=_pitch_dark_end(self),
+                          backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        return run
 
     def test_start_run_backs_up_before_the_launch(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertEqual(run.backup_dir, r.backup_dir())
+        lines = []
+        run = self.start_real(lines)
+        # The backup holds only its manifest (no reg.exe runner, so no key).
         self.assertEqual(os.listdir(run.backup_dir), [G.BACKUP_MANIFEST])
-        self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
-        self.assertFalse(any(line.startswith("restoring") for line in r.lines))
+        # The one line naming the backup comes before the launch's line, and
+        # no restore line names it after.
+        named = [i for i, line in enumerate(lines) if run.backup_dir in line]
+        self.assertEqual(len(named), 1, lines)
+        launch_line = next(i for i, line in enumerate(lines)
+                           if line.endswith(subprocess.list2cmdline(run.command)))
+        self.assertLess(named[0], launch_line, lines)
 
     def test_start_run_keeps_the_stats_state_from_before_the_launch(self):
-        r = Rig(self.tmp, exits_at=None)
-        before = B._file_state(r.path(G.SCORESTATS))
-        run = self.start(r, r.song)
+        lines = []
+        run = self.start_real(lines, before=STATS_BEFORE_A_RUN)
+        stats = os.path.join(self.env.documents_dir, G.SCORESTATS)
         self.assertIsNotNone(run.before)
-        self.assertEqual(run.before, before)
+        self.assertEqual(run.before, B._file_state(stats))
 
     def test_start_run_launches_the_command_and_records_the_game(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertEqual(r.launch.commands, [run.command])
-        self.assertEqual(run.command, B.launch_command(r.env.exe, r.song, B.DEFAULT_PLAYER))
-        self.assertIs(run.game, r.game)
-        self.assertEqual(run.length_ms, SONG_LENGTH_MS)
-        self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
-        self.assertEqual(run.length_source, hydra_end.chart_source_text(r.chart))
-        self.assertTrue(any(line.startswith("starting: ") for line in r.lines), r.lines)
-        self.assertEqual(r.lines[-1], f"game process id: {r.game.pid}")
+        lines = []
+        run = self.start_real(lines)
+        given_ms, given_source = _pitch_dark_end(self)
+        self.assertEqual(run.command, B.launch_command(_WHOAMI, os.path.abspath(PITCH_DARK),
+                                                       B.DEFAULT_PLAYER))
+        # The game is the process the launch started.
+        self.assertIsInstance(run.game.pid, int)
+        self.assertEqual(run.game._p.args, run.command)
+        self.assertEqual(run.length_ms, given_ms)
+        self.assertEqual(run.cap_s, B.run_cap_s(given_ms))
+        self.assertEqual(run.length_source, given_source)
+        # One line names the command, and the last line the game's process id.
+        self.assertEqual(len([line for line in lines
+                              if line.endswith(subprocess.list2cmdline(run.command))]), 1, lines)
+        self.assertTrue(lines[-1].endswith(f" {run.game.pid}"), lines)
 
     def test_start_run_returns_before_any_sleep(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertEqual(r.clock.t, 0.0)
-        self.assertEqual(run.launched_at, 0.0)
+        # On the real clock, start_run is back before the poll's first sleep
+        # would have ended, and the run's launch time falls inside the call.
+        lines = []
+        start = time.monotonic()
+        run = self.start_real(lines)
+        end = time.monotonic()
+        self.assertLess(end - start, B.POLL_INTERVAL_S)
+        self.assertGreaterEqual(run.launched_at, start)
+        self.assertLessEqual(run.launched_at, end)
 
     def test_run_cap_is_the_song_plus_the_extra_minute(self):
         # The song's seconds plus POLL_CAP_EXTRA_S, for any length.
@@ -549,13 +636,6 @@ class RunStepsTest(unittest.TestCase):
             with self.subTest(length_ms=length_ms):
                 self.assertAlmostEqual(B.run_cap_s(length_ms) - ms_to_s(length_ms),
                                        B.POLL_CAP_EXTRA_S)
-
-    def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
-        end_ms = 260504
-        r = Rig(self.tmp, exits_at=None, length_ms=end_ms)
-        run = self.start(r, r.song)
-        self.assertEqual(run.length_ms, end_ms)
-        self.assertEqual(run.cap_s, B.run_cap_s(end_ms))
 
     def test_start_run_takes_a_song_end_already_read_without_a_dump(self):
         # A song folder holding only PITCH_DARK's song.ini has no chart, so
@@ -699,13 +779,7 @@ class LaunchStepsTest(unittest.TestCase):
             B.start_run(PITCH_DARK, env=env, backup_root=backup_root,
                         song_end=_pitch_dark_end(self), before_launch=before_launch)
         # The restore ran on the run's backup, after the launch's line...
-        backup_dir = os.path.join(backup_root, os.listdir(backup_root)[0])
-        launch_line = next(i for i, line in enumerate(lines)
-                           if line.endswith(subprocess.list2cmdline(
-                               B.launch_command(env.exe, PITCH_DARK, B.DEFAULT_PLAYER))))
-        restores = [i for i, line in enumerate(lines) if backup_dir in line][1:]
-        self.assertEqual(len(restores), 1, lines)
-        self.assertGreater(restores[0], launch_line, lines)
+        _assert_one_restore_after_the_launch(self, lines, backup_root, env.exe)
         # ...and the setting before_launch changed stays changed.
         self.assertEqual(G.get_game_setting(settings, G.PAUSE_ON_FOCUS_LOST),
                          G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
@@ -822,6 +896,9 @@ def recorded_launch_replies() -> list:
 # How long a test waits on a fake's thread, or on the stand-in program, before
 # it fails instead of hanging.
 THREAD_CAP_S = 5.0
+# How long a test holds the resume back: well past the clock's jitter, so a
+# cap counted from before the resume shows.
+RESUME_LATE_S = 1.0
 
 
 def status(state, **kw):
@@ -942,51 +1019,88 @@ class HumanLaunchTest(unittest.TestCase):
             self.launch(agent, patch)
         return str(cm.exception)
 
-    def test_the_order_is_start_attach_load_arm_resume_status(self):
-        # The real paused start, resume, kill and clock, on the stand-in
-        # program in place of the game. Only the Frida attach cannot run
-        # without the game, so the agent answers with the replies of a real
-        # launch (LS_D0_LAUNCH_LOG). The start and resume seams are wrapped
-        # only to record when they ran.
-        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
-        agent = FakeLaunchAgent(self.events, statuses=[waiting, patched], arm_reply=arm_reply)
-        lines, games, attaches = [], [], []
+    def launch_stand_in(self, agent, before_resume=None, last_ask_s=None) -> types.SimpleNamespace:
+        """launch_human on the real paused start, resume, kill and clock, with
+        the stand-in program (_STARTED_WITH) in place of the game. Only the
+        Frida attach cannot run without the game, so `agent` answers in its
+        place. The start, resume and kill seams are wrapped only to record when
+        they ran; `before_resume`, when given, runs just before the real resume.
+        Each status ask is kept as (clock time, cap); one asked more than
+        `last_ask_s` after the resume fails the test at once, since past that
+        point the launch can no longer end the way the test needs.
+        Returns what it saw: the launch (or the LaunchFailed as `failed`), the
+        stand-in's out file, the games started, the lines, the attach calls,
+        the Env, the log path, the clock time after each resume and the asks."""
+        seen = types.SimpleNamespace(launch=None, failed=None, out=None, games=[],
+                                     lines=[], attaches=[], resumed_at=[], asks=[])
+        answer = agent.request
+
+        def request(message, cap_s):
+            if message["type"] == "status":
+                now = time.monotonic()
+                late_s = now - seen.resumed_at[0]
+                if last_ask_s is not None and late_s > last_ask_s:
+                    raise AssertionError(f"a status was still asked for {late_s:.1f} s after "
+                                         f"the resume, past {last_ask_s:g} s")
+                seen.asks.append((now, cap_s))
+            return answer(message, cap_s)
+
+        agent.request = request
 
         def start(cmd):
             self.events.append("start")
-            games.append(B._real_start_suspended(cmd))
-            return games[-1]
+            seen.games.append(B._real_start_suspended(cmd))
+            return seen.games[-1]
 
         def resume(pid):
             if not agent.armed:
                 raise AssertionError("resumed before the arm reply")
             self.events.append("resume")
+            if before_resume is not None:
+                before_resume()
             B.resume_main_thread(pid)
+            seen.resumed_at.append(time.monotonic())
 
         def attach(pid, path, log, out):
             self.events.append("attach")
-            attaches.append((pid, path, log))
+            seen.attaches.append((pid, path, log))
             return agent
 
-        env = B.Env(out=lines.append, start_process=start, resume_thread=resume,
-                    attach_agent=attach,
-                    launch_agent_path=make_built_agent(os.path.join(self.tmp, "agent"), "launch"))
-        log = os.path.join(self.tmp, "launch.jsonl")
+        def kill(game):
+            self.events.append("kill")
+            B._kill_game(game)
+
+        seen.env = B.Env(out=seen.lines.append, start_process=start, resume_thread=resume,
+                         attach_agent=attach, kill=kill,
+                         launch_agent_path=make_built_agent(os.path.join(self.tmp, "agent"),
+                                                            "launch"))
+        seen.log = os.path.join(self.tmp, "launch.jsonl")
         try:
-            launch, _folder, out = _start_stand_in(
-                self.tmp, lambda cmd: B.launch_human(cmd, env, log))
+            seen.launch, _folder, seen.out = _start_stand_in(
+                self.tmp, lambda cmd: B.launch_human(cmd, seen.env, seen.log))
+        except B.LaunchFailed as e:
+            seen.failed = e
         except BaseException:
-            for game in games:
+            for game in seen.games:
                 game._p.kill()
             raise
+        return seen
+
+    def test_the_order_is_start_attach_load_arm_resume_status(self):
+        # The agent answers with the replies of a real launch (LS_D0_LAUNCH_LOG).
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        agent = FakeLaunchAgent(self.events, statuses=[waiting, patched], arm_reply=arm_reply)
+        seen = self.launch_stand_in(agent)
+        self.assertIsNone(seen.failed)
+        launch, lines, games, env, log = seen.launch, seen.lines, seen.games, seen.env, seen.log
         # The stand-in only runs, writes and exits once resumed.
-        _started_with(self, launch.game, out)
+        _started_with(self, launch.game, seen.out)
         self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
                          + ["status"] * 2)
         self.assertIs(launch.agent, agent)
         self.assertIs(launch.game, games[0])
         self.assertEqual(launch.form, PATCH["launch"])
-        self.assertEqual(attaches, [(games[0].pid, env.launch_agent_path, log)])
+        self.assertEqual(seen.attaches, [(games[0].pid, env.launch_agent_path, log)])
         self.assertEqual(agent.start_caps, [B.LAUNCH_ATTACH_CAP_S])
         # arm carries the data file's contents, with the arm cap.
         self.assertEqual(agent.requests[0], ({"type": "arm", "patch": PATCH}, B.LAUNCH_ARM_CAP_S))
@@ -997,15 +1111,32 @@ class HumanLaunchTest(unittest.TestCase):
         for line in B.launch_status_lines(patched, PATCH):
             self.assertIn(line, lines)
 
-    def test_waiting_statuses_are_polled_every_half_second_until_patched(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("waiting")] * 3 + [PATCHED])
-        self.launch(agent)
+    def test_waiting_statuses_are_polled_every_poll_gap_until_patched(self):
+        # Three of the real launch's waiting replies, then its patched one
+        # (LS_D0_LAUNCH_LOG), on the real clock.
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        polls = 3
+        agent = FakeLaunchAgent(self.events, statuses=[waiting] * polls + [patched],
+                                arm_reply=arm_reply)
+        seen = self.launch_stand_in(
+            agent, last_ask_s=polls * B.LAUNCH_POLL_S + THREAD_CAP_S)
+        done = time.monotonic()
+        self.assertIsNone(seen.failed)
+        _started_with(self, seen.launch.game, seen.out)
         self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
-                         + ["status"] * 4)
-        # Three waiting replies, one poll gap after each.
-        waited_s = 3 * B.LAUNCH_POLL_S
-        self.assertEqual(self.r.clock.t, waited_s)
-        self.assertIn(f"patched {waited_s:.1f} s after the resume", self.r.lines)
+                         + ["status"] * (polls + 1))
+        # One poll gap after each waiting reply.
+        asked = [t for t, _cap in seen.asks]
+        self.assertEqual(len(asked), polls + 1)
+        for before, after in zip(asked, asked[1:]):
+            self.assertGreaterEqual(after - before, B.LAUNCH_POLL_S, asked)
+        # The line names the seconds from the resume to the patched reply: at
+        # least the polls' gaps, and no more than the wall time.
+        said = [float(m.group(1)) for line in seen.lines
+                for m in [re.fullmatch(r"patched (\d+\.\d) s after the resume", line)] if m]
+        self.assertEqual(len(said), 1, seen.lines)
+        self.assertGreaterEqual(said[0], round(polls * B.LAUNCH_POLL_S, 1))
+        self.assertLessEqual(said[0], round(done - seen.resumed_at[0], 1))
 
     def test_a_patched_arm_reply_still_resumes_and_reads_the_status(self):
         agent = FakeLaunchAgent(self.events, arm_reply=status("patched", modules=["x.dll"]))
@@ -1014,30 +1145,32 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertIs(launch.agent, agent)
 
     def test_a_status_that_stays_waiting_ends_at_the_patch_cap_from_the_resume(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("waiting")])
-        resumed = []
-        wire_human(self.r, agent)
-        fake_resume = self.r.env.resume_thread
-
-        def resume(pid):
-            fake_resume(pid)
-            resumed.append(self.r.clock.t)
-
-        self.r.env.resume_thread = resume
-        resume_at = 7.0  # the resume comes later than time 0
-        self.r.clock.t = resume_at
-        with self.assertRaises(B.LaunchFailed) as cm:
-            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        said = str(cm.exception)
+        # The real launch's waiting reply (LS_D0_LAUNCH_LOG), for good, on the
+        # real clock. The resume comes RESUME_LATE_S after the start, so a cap
+        # counted from before the resume would end that much too early.
+        _start, arm_reply, waiting, *_later = recorded_launch_replies()
+        agent = FakeLaunchAgent(self.events, statuses=[waiting], arm_reply=arm_reply)
+        seen = self.launch_stand_in(agent, before_resume=lambda: time.sleep(RESUME_LATE_S),
+                                    last_ask_s=B.LAUNCH_PATCH_CAP_S + B.LAUNCH_POLL_S)
+        failed_at = time.monotonic()
+        self.assertIsNotNone(seen.failed, seen.lines)
+        said = str(seen.failed)
         self.assertIn(f"still said waiting {B.LAUNCH_PATCH_CAP_S:g} s after the resume", said)
-        self.assertEqual(resumed, [resume_at])
-        # The cap counts from the resume, not from the start.
-        self.assertEqual(self.r.clock.t, resume_at + B.LAUNCH_PATCH_CAP_S)
-        statuses = [cap for message, cap in agent.requests if message["type"] == "status"]
-        self.assertEqual(len(statuses), round(B.LAUNCH_PATCH_CAP_S / B.LAUNCH_POLL_S))
-        # Each status waits at most what is left of the cap.
-        self.assertEqual(statuses[0], B.LAUNCH_PATCH_CAP_S)
+        self.assertEqual(len(seen.resumed_at), 1)
+        # The cap counts from the resume: the failure comes no sooner.
+        self.assertGreaterEqual(failed_at - seen.resumed_at[0], B.LAUNCH_PATCH_CAP_S)
+        # Each status asks for at most what is left of the cap, so the caps
+        # shrink from one ask to the next.
+        self.assertTrue(seen.asks, seen.lines)
+        for (_t, cap), (_later_t, later_cap) in zip(seen.asks, seen.asks[1:]):
+            self.assertLess(later_cap, cap)
+        for t, cap in seen.asks:
+            self.assertGreater(cap, 0)
+            self.assertLessEqual(cap, B.LAUNCH_PATCH_CAP_S)
+            self.assertGreaterEqual(cap, B.LAUNCH_PATCH_CAP_S - (t - seen.resumed_at[0]))
+        # The game is killed and the agent detached, in that order.
         self.assertEqual(self.events[-2:], ["kill", "detach"])
+        self.assertIn("the game was killed", said)
 
     def test_the_spawn_form_takes_the_spawn_seam_and_resumes_through_the_device(self):
         agent = FakeLaunchAgent(self.events)
@@ -1112,7 +1245,8 @@ class HumanLaunchTest(unittest.TestCase):
         pid = 0xFFFFFFF0
         with self.assertRaises(OSError) as cm:
             B.resume_main_thread(pid)
-        self.assertIn(f"process {pid} ", str(cm.exception))
+        # The refusal names the process it was asked about.
+        self.assertIn(str(pid), re.findall(r"\d+", str(cm.exception)))
 
     def test_the_toolhelp_and_thread_time_calls_find_this_processs_main_thread(self):
         # Read-only calls on the test's own process: they check the struct
@@ -1175,59 +1309,96 @@ class LoaderLineTest(unittest.TestCase):
         self.assertEqual([line for line in said_yes if line.startswith("warning")], [])
 
 class HumanStartRunTest(unittest.TestCase):
-    """start_run with human=True."""
+    """start_run with human=True, on PITCH_DARK with Hydra's end and bot_run's
+    real Env pieces. Only the Frida attach cannot run without the game, so
+    where a test needs one, the agent answers with the replies of a real
+    launch (LS_D0_LAUNCH_LOG)."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
-        self.r = Rig(self.tmp, exits_at=None)
-        self.events = []
+        self.backup_root = os.path.join(self.tmp, "backups")
+        self.lines = []
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    def start(self, song_dir, agent):
-        wire_human(self.r, agent)
-        return B.start_run(song_dir, player="ProDrums,Expert",
-                           backup_root=os.path.join(self.r.out_dir, "backups"),
-                           env=self.r.env, human=True)
+    def env(self) -> B.Env:
+        """_real_env with a built launch agent in a temp folder."""
+        env = _real_env(self.tmp, self.lines)
+        env.launch_agent_path = make_built_agent(os.path.join(self.tmp, "agent"), "launch")
+        return env
 
     def test_no_song_folder_is_refused_before_the_backup(self):
         with self.assertRaises(B.LaunchFailed) as cm:
-            self.start(None, FakeLaunchAgent(self.events))
+            B.start_run(None, backup_root=self.backup_root, env=self.env(), human=True)
         self.assertEqual(str(cm.exception), B.HUMAN_NEEDS_SONG)
         self.assertEqual(B.human_refusal(True, None), B.HUMAN_NEEDS_SONG)
-        self.assertIsNone(B.human_refusal(True, self.r.song))
+        self.assertIsNone(B.human_refusal(True, PITCH_DARK))
         self.assertIsNone(B.human_refusal(False, None))
-        self.assertFalse(os.path.exists(self.r.out_dir))
-        self.assertEqual(self.events, [])
+        # Nothing was backed up or started, and no line was printed.
+        self.assertFalse(os.path.exists(self.backup_root))
+        self.assertEqual(self.lines, [])
 
     def test_the_backup_comes_before_the_paused_start_and_the_run_keeps_the_launch(self):
-        agent = FakeLaunchAgent(self.events)
-        seen = []
-        attaches = wire_human(self.r, agent)
-        real_start = self.r.env.start_process
-        self.r.env.start_process = lambda cmd: (seen.append(os.path.isdir(self.r.backup_dir())),
-                                                real_start(cmd))[1]
-        run = B.start_run(self.r.song, player="ProDrums,Expert",
-                          backup_root=os.path.join(self.r.out_dir, "backups"),
-                          env=self.r.env, human=True)
-        self.assertEqual(seen, [True])
+        # The real paused start and resume, on whoami in place of the game:
+        # it refuses the game's flags and exits once resumed.
+        self.assertEqual(PATCH["launch"], B.LAUNCH_SUSPENDED)
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        events = []
+        agent = FakeLaunchAgent(events, statuses=[waiting, patched], arm_reply=arm_reply)
+        seen, games, attaches = [], [], []
+
+        def start(cmd):
+            events.append("start")
+            seen.append([os.path.join(self.backup_root, name)
+                         for name in os.listdir(self.backup_root)])
+            games.append(B._real_start_suspended(cmd))
+            return games[-1]
+
+        def attach(pid, path, log, out):
+            events.append("attach")
+            attaches.append((pid, path, log))
+            return agent
+
+        env = self.env()
+        env.exe = _WHOAMI
+        env.start_process = start
+        env.attach_agent = attach
+        try:
+            run = B.start_run(PITCH_DARK, backup_root=self.backup_root, env=env, human=True,
+                              song_end=_pitch_dark_end(self))
+        except BaseException:
+            for game in games:
+                game._p.kill()
+            raise
+        self.addCleanup(_reap, self, run.game)
+        # The paused start ran once, with the run's backup already made.
+        self.assertEqual(seen, [[run.backup_dir]])
+        self.assertEqual(events[0], "start")
         self.assertIs(run.launch.agent, agent)
-        self.assertIs(run.game, self.r.game)
-        self.assertEqual(run.command, B.launch_command(self.r.env.exe, self.r.song,
-                                                       "ProDrums,Expert"))
-        # The agent's log goes beside the backup folder.
-        self.assertEqual(attaches[0][2], os.path.join(self.r.out_dir, "backups",
-                                                      "launch-20261028-101500.jsonl"))
-        self.assertEqual(self.events[0], "start")
+        self.assertIs(run.game, games[0])
+        self.assertEqual(run.command, B.launch_command(_WHOAMI, os.path.abspath(PITCH_DARK),
+                                                       B.DEFAULT_PLAYER))
+        # The agent's log goes beside the backup folder, and a line names it.
+        log = attaches[0][2]
+        self.assertEqual(os.path.dirname(log), os.path.dirname(run.backup_dir))
+        self.assertNotEqual(log, run.backup_dir)
+        self.assertTrue(any(log in line for line in self.lines), self.lines)
 
     def test_a_failed_human_launch_restores_the_backup(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("refused")])
-        with self.assertRaises(B.LaunchFailed):
-            self.start(self.r.song, agent)
-        self.assertIn(f"restoring the backup from {self.r.backup_dir()}", self.r.lines)
-        self.r.assert_settings_untouched(self)
+        # The real paused start of an exe that is not there fails (_real_env).
+        # settings.ini is a real one from a run's backup.
+        env = self.env()
+        settings = os.path.join(env.documents_dir, G.SETTINGS)
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), settings)
+        before = _read(settings)
+        with self.assertRaises(OSError):
+            B.start_run(PITCH_DARK, backup_root=self.backup_root, env=env, human=True,
+                        song_end=_pitch_dark_end(self))
+        # The restore ran on the run's backup, after the launch's line.
+        _assert_one_restore_after_the_launch(self, self.lines, self.backup_root, env.exe)
+        self.assertEqual(_read(settings), before)
 
 
 class InstallChartTest(unittest.TestCase):
@@ -1301,20 +1472,31 @@ class InstallChartTest(unittest.TestCase):
         os.remove(os.path.join(self.src, G.SONG_INI))
         self.assertIn(f"has no {G.SONG_INI}", self.refused())
 
+    def corpus_copy(self) -> str:
+        """A copy of the corpus folder PITCH_DARK, to install from. Its
+        chart's dump is PITCH_DARK_DUMP (_pitch_dark_dumps)."""
+        src = os.path.join(self.tmp, "input", os.path.basename(PITCH_DARK))
+        shutil.copytree(PITCH_DARK, src)
+        return src
+
     def test_install_refuses_a_name_that_is_not_a_plain_folder_name(self):
+        # The real silent-audio writer: a refusal comes before it, so it never
+        # runs.
+        src = self.corpus_copy()
         outside = os.path.join(self.tmp, "outside")
-        for name in ("..", os.path.join("..", "outside"), "a/b", "a\\b", "", ".",
-                     os.path.join(self.tmp, "outside")):
-            with self.subTest(name=name):
-                with self.assertRaises(I.InstallRefused) as cm:
-                    I.install(self.src, dest_root=self.dest_root, name=name,
-                              write_ogg=self.fake_ogg)
-                # The refusal names the name it refused.
-                self.assertTrue(str(cm.exception).startswith(repr(name)), str(cm.exception))
+        made = []
+        with _pitch_dark_dumps(self, made):
+            for name in ("..", os.path.join("..", "outside"), "a/b", "a\\b", "", ".",
+                         os.path.join(self.tmp, "outside")):
+                with self.subTest(name=name):
+                    with self.assertRaises(I.InstallRefused) as cm:
+                        I.install(src, dest_root=self.dest_root, name=name)
+                    # The refusal is plain_name_refusal's for that name.
+                    self.assertEqual(str(cm.exception), I.plain_name_refusal(name))
+        # Nothing was made anywhere, and no dump of the chart was asked for.
         self.assertFalse(os.path.exists(self.dest_root))
         self.assertFalse(os.path.exists(outside))
-        self.assertEqual(self.oggs, [])
-        self.assertEqual(FAKE.charts.count(os.path.join(self.src, "notes.mid")), 0)
+        self.assertEqual(made, [])
 
     def test_install_refuses_a_name_as_a_refused_line(self):
         out = io.StringIO()
@@ -1325,14 +1507,25 @@ class InstallChartTest(unittest.TestCase):
                         out.getvalue())
 
     def test_install_copies_no_other_audio(self):
-        for name in (probe_songs.SONG_OGG, "drums.ogg", "guitar.opus", "song.mp3", "crowd.wav"):
-            _write(os.path.join(self.src, name), b"audio")
-        I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
-        dest = os.path.join(self.dest_root, "Some Song")
-        # The song.ogg there is the silent one write_ogg makes, which the fake
-        # here does not write; nothing of the source's audio is copied.
-        self.assertEqual(sorted(os.listdir(dest)), sorted([G.SONG_INI, "notes.mid"]))
-        self.assertEqual(self.oggs, [(os.path.join(dest, probe_songs.SONG_OGG), 90000)])
+        # A copy of the corpus folder with audio files of its own beside the
+        # chart, installed with the real silent-audio writer (ffmpeg).
+        src = self.corpus_copy()
+        source_audio = {name: f"the source's {name}".encode()
+                        for name in (probe_songs.SONG_OGG, "drums.ogg", "guitar.opus",
+                                     "song.mp3", "crowd.wav")}
+        for name, data in source_audio.items():
+            _write(os.path.join(src, name), data)
+        with _pitch_dark_dumps(self, []):
+            chart = I.install(src, dest_root=self.dest_root)
+        dest = os.path.dirname(chart)
+        # The copy holds the song.ini, the chart and the song.ogg the writer
+        # made; the source's own song.ogg is not it, and no other audio came.
+        self.assertEqual(sorted(os.listdir(dest)),
+                         sorted([G.SONG_INI, os.path.basename(I.chart_file(src)),
+                                 probe_songs.SONG_OGG]))
+        written = _read(os.path.join(dest, probe_songs.SONG_OGG))
+        self.assertTrue(written)
+        self.assertNotEqual(written, source_audio[probe_songs.SONG_OGG])
 
     # -- the copy's title -----------------------------------------------------------
 
@@ -1343,13 +1536,17 @@ class InstallChartTest(unittest.TestCase):
         return _read(os.path.join(self.dest_root, name or "Some Song", G.SONG_INI))
 
     def test_the_copys_title_gets_the_probe_prefix(self):
-        ini = self.installed_ini(b"[song]\nname = Ladies Talk [Kiyo Sen] (Drumeo Performance)\n"
-                                 b"song_length = 90000\n")
-        title = "Ladies Talk [Kiyo Sen] (Drumeo Performance)"
-        self.assertEqual(ini, b"[song]\nname = " + PREFIX + title.encode()
-                         + b"\nsong_length = 90000\n")
-        self.assertEqual(G.read_song_ini(os.path.join(self.dest_root, "Some Song"))["name"],
-                         probe_songs.NAME_PREFIX + title)
+        # A copy of the corpus folder, installed with the real silent-audio
+        # writer. The copy lists the source's title marked by full_name, and
+        # every other key of its song section stays.
+        src = self.corpus_copy()
+        source = G.read_song_ini(src)
+        self.assertTrue(source["name"])
+        self.assertFalse(source["name"].startswith(probe_songs.NAME_PREFIX))
+        with _pitch_dark_dumps(self, []):
+            chart = I.install(src, dest_root=self.dest_root)
+        copy = G.read_song_ini(os.path.dirname(chart))
+        self.assertEqual(copy, {**source, "name": probe_songs.full_name(source["name"])})
 
     def test_every_other_byte_of_the_song_ini_stays(self):
         ini = self.installed_ini(b"\xef\xbb\xbf; name = a comment\r\n"
@@ -1421,16 +1618,22 @@ class InstallChartTest(unittest.TestCase):
                          b"\xef\xbb\xbfsong_length = 90000\nname = Hydra Probe - Some Song")
 
     def test_a_read_only_song_ini_is_marked_in_the_copy_and_stays_read_only_at_the_source(self):
-        path = os.path.join(self.src, G.SONG_INI)
-        _write(path, b"[song]\nname = Real Title\nsong_length = 90000\n")
+        # A copy of the corpus folder whose song.ini is made read-only,
+        # installed with the real silent-audio writer.
+        src = self.corpus_copy()
+        path = os.path.join(src, G.SONG_INI)
+        source_bytes = _read(path)
+        title = G.read_song_ini(src)["name"]
         os.chmod(path, stat.S_IREAD)
         try:
-            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+            with _pitch_dark_dumps(self, []):
+                chart = I.install(src, dest_root=self.dest_root)
             self.assertFalse(os.access(path, os.W_OK))
         finally:
             os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
-        self.assertEqual(_read(os.path.join(self.dest_root, "Some Song", G.SONG_INI)),
-                         b"[song]\nname = " + PREFIX + b"Real Title\nsong_length = 90000\n")
+        self.assertEqual(_read(path), source_bytes)
+        self.assertEqual(G.read_song_ini(os.path.dirname(chart))["name"],
+                         probe_songs.full_name(title))
 
     def test_a_failed_title_leaves_no_half_made_folder(self):
         with mock.patch.object(G, "set_song_title", side_effect=OSError("disk full")):

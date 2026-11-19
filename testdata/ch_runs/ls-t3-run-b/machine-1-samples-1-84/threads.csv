@@ -1,0 +1,7 @@
+sample,pid,tid,state,wait_reason,reads_as,switches,cpu_ms
+83,28136,33692,2,31,running,0,0.0
+83,28828,4248,2,31,running,0,0.0
+84,28136,33692,2,31,running,9,15.625
+84,28828,4248,2,30,running,3,31.25
+84,28828,17312,5,6,waiting,2,0.0
+84,28828,5832,5,6,waiting,2,0.0

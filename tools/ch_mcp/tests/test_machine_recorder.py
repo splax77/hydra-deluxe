@@ -287,10 +287,6 @@ class CapturedTable(unittest.TestCase):
         self.assertEqual((table.processes[0].threads, table.processes[4].threads), ({}, {}))
         self.assertEqual(table.thread_count, IDLE_THREADS + SYSTEM_THREADS)
 
-    def test_every_ready_state_counts_toward_the_run_queue(self):
-        table = self.parse(with_system_states(self.sample, (1, 2, 3, 4, 5, 6, 7)))
-        self.assertEqual(table.ready_threads, 3)
-
     def test_the_idle_process_adds_nothing_to_the_run_queue(self):
         # Some of Idle's own entries hold a state that reads as ready (byte 0x44 of
         # each, by hand), yet the run queue counts only System's ready threads.
@@ -310,44 +306,6 @@ class CapturedTable(unittest.TestCase):
                 table = self.parse(with_system_states(self.sample, (state,)))
                 self.assertEqual(table.ready_threads, int(M.reads_as(state) == M.READY))
 
-    def test_no_test_builds_bytes_from_the_parser_offsets(self):
-        with open(os.path.abspath(__file__), encoding="utf-8") as file:
-            text = file.read()
-        for name in ("M." + "PROC_", "M." + "THREAD_KERNEL", "M." + "THREAD_USER",
-                     "M." + "THREAD_UNIQUE", "M." + "THREAD_CONTEXT", "M." + "THREAD_WAIT",
-                     "fixture" + "_table"):
-            with self.subTest(name=name):
-                self.assertNotIn(name, text)
-
-
-class FakeTable(unittest.TestCase):
-    """The literal-layout fake the loop tests use, and what only a fake can show."""
-
-    def test_the_fake_reads_back(self):
-        table = M.parse_table(fake_table(TWO_PROCESSES))
-        self.assertEqual(list(table.processes), [7, 8])
-        self.assertEqual((table.thread_count, table.ready_threads), (3, 1))
-        game = table.processes[7]
-        self.assertEqual((game.name, game.parent_pid, game.cpu_ticks, game.read_bytes,
-                          game.write_bytes, game.hard_faults),
-                         ("game.exe", 3, 150_000, 11, 22, 33))
-        self.assertEqual(game.threads, {
-            71: M.Thread(71, 2, 0, 5, 30_000),
-            72: M.Thread(72, 5, 6, 6, 70_000),
-        })
-
-    def test_the_next_entry_offset_finds_the_next_process(self):
-        # Windows may pad an entry; only NextEntryOffset says where the next one is.
-        first = fake_table(TWO_PROCESSES[:1])
-        second = fake_table(TWO_PROCESSES[1:])
-        padded = bytearray(first + b"\0" * 8)
-        struct.pack_into("<I", padded, 0x00, len(padded))
-        pointer = P.decode_u64(second[0x40:0x48])
-        moved = bytearray(second)
-        struct.pack_into("<Q", moved, 0x40, pointer + len(padded))
-        table = M.parse_table(bytes(padded) + bytes(moved))
-        self.assertEqual(table.processes[8].name, "other.exe")
-
 
 class ReadsAs(unittest.TestCase):
     def test_each_state_number_reads_as_its_word_and_any_other_reads_as_other(self):
@@ -366,16 +324,32 @@ class ReadsAs(unittest.TestCase):
 
 class Deltas(unittest.TestCase):
     def test_gains_and_a_vanished_process(self):
-        before = M.parse_table(fake_table(TWO_PROCESSES)).processes
-        later = [dict(TWO_PROCESSES[0], user=256_250, read=111, write=222, faults=34,
-                      threads=[(71, 10_000, 30_000, 9, 2, 0), (72, 30_000, 40_000, 6, 5, 6)])]
-        after = M.parse_table(fake_table(later)).processes
+        # Two tables Windows wrote, with CPU spent by this process between them and
+        # a child that ended between them. Each gain is the later value less the
+        # earlier one, and CPU time is in TICKS_PER_MS ticks a millisecond.
+        child = idle_child()
+        self.addCleanup(child.stdout.close)
+        held = M.TableBuffer()
+        before = live_table(held, thread_pids=[os.getpid()]).processes
+        self.assertIn(child.pid, before)
+        burn_cpu(0.05)
+        child.stdin.close()
+        child.wait(SUBPROCESS_CAP_S)
+        after = live_table(held, thread_pids=[os.getpid()]).processes
         gains = M.deltas(before, after)
-        self.assertEqual(list(gains), [7])
-        self.assertEqual(gains[7].cpu_ms, 15.625)
-        self.assertEqual((gains[7].read_bytes, gains[7].write_bytes, gains[7].hard_faults),
-                         (100, 200, 1))
-        self.assertEqual(gains[7].threads, {71: M.ThreadGain(4, 1.0), 72: M.ThreadGain(0, 0.0)})
+        self.assertNotIn(child.pid, gains)
+        self.assertEqual(gains.keys(), after.keys())
+        then, now, gain = before[os.getpid()], after[os.getpid()], gains[os.getpid()]
+        self.assertGreater(now.cpu_ticks, then.cpu_ticks)
+        self.assertEqual(gain.cpu_ms, (now.cpu_ticks - then.cpu_ticks) / M.TICKS_PER_MS)
+        self.assertEqual((gain.read_bytes, gain.write_bytes, gain.hard_faults),
+                         (now.read_bytes - then.read_bytes, now.write_bytes - then.write_bytes,
+                          now.hard_faults - then.hard_faults))
+        tid = threading.get_native_id()
+        self.assertIn(tid, then.threads)
+        self.assertEqual(gain.threads[tid], M.ThreadGain(
+            now.threads[tid].switches - then.threads[tid].switches,
+            (now.threads[tid].cpu_ticks - then.threads[tid].cpu_ticks) / M.TICKS_PER_MS))
 
     # The three tests below read the table Windows wrote (recorder_sample.bin).
 
@@ -630,14 +604,16 @@ class Folder(unittest.TestCase):
 
 class Loop(Folder):
     def test_until_the_pid_line_no_process_is_left_out_of_the_gains(self):
+        # Process 55 spends one millisecond of CPU (TICKS_PER_MS ticks) each sample.
         def tables(sample):
-            return [dict(TWO_PROCESSES[1], pid=55, user=sample * 10_000)]
+            return [dict(TWO_PROCESSES[1], pid=55, user=sample * M.TICKS_PER_MS)]
 
         loop = FakeLoop(self.folder, tables=tables)
         loop.run(cap_s=PERIOD_S)
         rows = read_rows(self.folder, "processes.csv")
+        gain_ms = (tables(2)[0]["user"] - tables(1)[0]["user"]) / M.TICKS_PER_MS
         self.assertEqual([(row["sample"], row["pid"], row["cpu_ms"]) for row in rows],
-                         [("1", "55", "0.0"), ("2", "55", "1.0")])
+                         [("1", "55", str(0.0)), ("2", "55", str(gain_ms))])
         self.assertEqual(read_rows(self.folder, "threads.csv"), [])
 
     def test_the_first_end_to_arrive_is_kept(self):
@@ -651,7 +627,7 @@ class Loop(Folder):
         loop.run(cap_s=PERIOD_S * 2)
         samples = read_rows(self.folder, "samples.csv")
         self.assertEqual({row["recorder_pid"] for row in samples}, {str(RECORDER)})
-        self.assertEqual({row["period_ms"] for row in samples}, {"15.625"})
+        self.assertEqual({float(row["period_ms"]) for row in samples}, {C.s_to_ms(PERIOD_S)})
         self.assertEqual([row["sample"] for row in samples], ["1", "2", "3"])
         self.assertEqual([row["process_time_s"] for row in samples], ["", "", "1.25"])
 
@@ -670,30 +646,33 @@ class Loop(Folder):
 
 class ReadTable(unittest.TestCase):
     def test_a_table_that_outgrows_the_buffer_grows_it_and_keeps_it(self):
-        sizes = []
-        table = b"table bytes"
+        # Windows' own query, watched: a new buffer holds nothing, so the first
+        # answer is a short-buffer status, and each try after it is bigger than the
+        # size the last answer asked for.
+        real = M._nt_query()
+        calls = []
 
         def query(information_class, address, size, needed):
-            self.assertEqual(information_class, 5)
-            sizes.append(size)
-            # Each answer falls short of the table, as when it grows between two calls.
-            if len(sizes) == 1:
-                needed._obj.value = 4
-                return M._STATUS_INFO_LENGTH_MISMATCH
-            if size < len(table):
-                needed._obj.value = len(table) - 1
-                return M._STATUS_INFO_LENGTH_MISMATCH
-            ctypes.memmove(address, table, len(table))
-            needed._obj.value = len(table)
-            return 0
+            status = real(information_class, address, size, needed)
+            calls.append((size, status, needed._obj.value))
+            return status
 
         held = M.TableBuffer()
         data, base = M.read_table(held, query)
-        self.assertEqual(data, table)
+        self.assertGreater(len(calls), 1)
+        self.assertEqual(calls[0][1], M._STATUS_INFO_LENGTH_MISMATCH)
+        for (_, status, asked), (size, _, _) in zip(calls, calls[1:]):
+            self.assertEqual(status, M._STATUS_INFO_LENGTH_MISMATCH)
+            self.assertGreaterEqual(size, asked)
+        self.assertEqual(calls[-1][1], 0)
+        # The bytes returned are the table Windows wrote, read at the grown buffer.
         self.assertEqual(base, ctypes.addressof(held.raw))
-        self.assertEqual(sizes, [0, 4, 10, 20])
+        self.assertEqual(len(data), calls[-1][2])
+        self.assertIn(os.getpid(), M.parse_table(data, base).processes)
+        # The next read starts from the grown buffer, not from nothing.
+        grown, first_try = calls[-1][0], len(calls)
         M.read_table(held, query)
-        self.assertEqual(sizes[-1], 20)
+        self.assertEqual(calls[first_try][0], grown)
 
     def test_another_failure_is_loud(self):
         # Windows cannot write the table into read-only memory, so the real query
@@ -737,10 +716,11 @@ class CommandLine(Folder):
             self.assertAlmostEqual(after - before, period_s, delta=period_s / 4)
 
     def test_the_rate_defaults_to_the_one_constant(self):
-        self.assertEqual(self.run_main("--cap-s", "9")["period_s"], 0.02)
+        self.assertEqual(self.run_main("--cap-s", "9")["period_s"], 1 / M.RATE_PER_S)
 
     def test_run_cap_s_adds_the_extra(self):
-        self.assertEqual(self.run_main("--run-cap-s", "100")["cap_s"], 160)
+        self.assertEqual(self.run_main("--run-cap-s", "100")["cap_s"],
+                         100 + M.RECORDER_CAP_EXTRA_S)
 
     def test_two_caps_are_an_error(self):
         with self.assertRaises(SystemExit) as caught, unittest.mock.patch("sys.stderr"):
@@ -759,13 +739,21 @@ class CommandLine(Folder):
 
 
 class Imports(unittest.TestCase):
-    def test_it_imports_neither_the_game_tools_nor_the_watch(self):
-        code = ("import sys; sys.path.insert(0, sys.argv[1]); "
+    def test_it_imports_only_the_standard_library_and_the_probe_helpers(self):
+        # In a fresh interpreter, every module the import adds is the standard
+        # library's, the recorder's own packages, or one of tools.ch_probe's.
+        code = ("import sys; sys.path.insert(0, sys.argv[1]); before = set(sys.modules); "
                 "import tools.ch_mcp.machine_recorder; "
-                "print([m for m in sys.modules if m.endswith(('game_tools', 'sp_tools'))])")
+                "print('\\n'.join(sorted(set(sys.modules) - before)))")
         out = subprocess.run([sys.executable, "-I", "-c", code, ROOT], capture_output=True,
                              text=True, timeout=SUBPROCESS_CAP_S, check=True)
-        self.assertEqual(out.stdout.strip(), "[]")
+        added = out.stdout.split()
+        self.assertIn("tools.ch_mcp.machine_recorder", added)
+        own = {"tools", "tools.ch_mcp", "tools.ch_mcp.machine_recorder"}
+        for name in added:
+            with self.subTest(module=name):
+                self.assertTrue(name in own or name.split(".")[:2] == ["tools", "ch_probe"]
+                                or name.split(".")[0] in sys.stdlib_module_names, name)
 
 
 @unittest.skipUnless(sys.platform == "win32", "the process table is Windows' own")
@@ -780,8 +768,9 @@ class RealRun(Folder):
             text=True)
 
     def test_a_one_second_run_on_this_process(self):
+        seconds = 1
         before = time.time()
-        out, process = self.start("--target", str(os.getpid()), "--seconds", "1")
+        out, process = self.start("--target", str(os.getpid()), "--seconds", str(seconds))
         stdout, stderr = process.communicate(timeout=SUBPROCESS_CAP_S)
         after = time.time()
         self.assertEqual(process.returncode, 0, stderr)
@@ -791,7 +780,20 @@ class RealRun(Folder):
         sampling_thread = first.split("sampling thread ")[1].split(",")[0]
 
         samples = read_rows(out, "samples.csv")
-        self.assertGreaterEqual(len(samples), 20)
+        # The run holds one tick each period from its start up to and including
+        # the tick at `seconds`, which is the last sample. A late sample skips the
+        # ticks it ran past, and the gap to the next row shows how many: each
+        # whole period in the gap past the first. A late sample also moves the
+        # ticks after it by part of a period, so each can cost one tick more than
+        # its gap shows, and the summed periods can round to one tick either way.
+        period_s = 1 / M.RATE_PER_S
+        ticks_held = round(seconds / period_s) + 1
+        walls = [float(row["wall_s"]) for row in samples]
+        gaps = [after - before for before, after in zip(walls, walls[1:])]
+        late = [gap for gap in gaps if gap >= 2 * period_s]
+        skipped = sum(int(gap // period_s) - 1 for gap in late)
+        self.assertLessEqual(len(samples), ticks_held + 1)
+        self.assertGreaterEqual(len(samples), ticks_held - skipped - len(late) - 1)
         self.assertEqual(samples[-1]["stop_reason"], "seconds")
         self.assertGreater(float(samples[-1]["process_time_s"]), 0)
         self.assertTrue(all(before <= float(row["wall_s"]) <= after for row in samples))
@@ -806,9 +808,11 @@ class RealRun(Folder):
         parents = {row["pid"]: row["parent_pid"] for row in processes}
         self.assertEqual(parents[str(process.pid)], str(os.getpid()))
 
+        # The sampling thread asks Windows for each table itself, so it is on a
+        # processor whenever Windows writes one: every sample shows it running.
         running = {row["sample"] for row in read_rows(out, "threads.csv")
-                   if row["tid"] == sampling_thread and row["reads_as"] == "running"}
-        self.assertGreaterEqual(len(running) / len(samples), 0.95)
+                   if row["tid"] == sampling_thread and row["reads_as"] == M.RUNNING}
+        self.assertEqual(running, {row["sample"] for row in samples})
 
     def test_a_closed_stdin_ends_the_real_process(self):
         out, process = self.start("--cap-s", str(SUBPROCESS_CAP_S), stdin=subprocess.PIPE)

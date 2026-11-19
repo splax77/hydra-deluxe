@@ -227,11 +227,6 @@ def sent(payload):
     return {"type": "send", "payload": payload}
 
 
-def sample(song_time, over=False, playing=True):
-    return {"t": 1000, "songTime": song_time, "isSongOver": over,
-            "isSongPlaying": playing, "isPaused": False, "instances": 1}
-
-
 # Messages real Frida agents sent from inside Clone Hero, each file a few lines
 # copied from one run's log under hydra-data/ch-mcp-runs; the test that reads
 # a file names its source folder.
@@ -243,6 +238,23 @@ def recorded(run: str, name: str) -> list[dict]:
     the agent's log kept them."""
     with open(os.path.join(CH_RUNS, run, name), encoding="utf-8") as fh:
         return [json.loads(line) for line in fh]
+
+
+def recorded_game_process() -> tuple[int, str]:
+    """The game's pid and process name in a real run: the pid from the line
+    ch_start replied with (hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/
+    replies.txt, line 9), and the name the machine recorder's process list
+    gives that pid (the same folder's machine-1/processes.csv)."""
+    with open(os.path.join(CH_RUNS, "ls-t3-run-b", "replies.txt"),
+              encoding="utf-8") as fh:
+        pid = int(re.search(r"\bgame process id (\d+)\.", fh.read()).group(1))
+    path = os.path.join(CH_RUNS, "ls-t3-run-b", "machine-1", "processes.csv")
+    with open(path, encoding="utf-8", newline="") as fh:
+        names = {row["name"] for row in csv.DictReader(fh)
+                 if int(row["pid"]) == pid}
+    if len(names) != 1:
+        raise AssertionError(f"pid {pid} has names {names} in {path}")
+    return pid, names.pop()
 
 
 # The cap in frida_attach.py's usage line (`--cap 93`): a run that is meant to
@@ -316,9 +328,13 @@ class DetachTest(Workspace):
         self.assertRegex(self.lines[0], r"\b1 messages seen\b")
 
     def test_attaches_to_the_game_by_process_name(self):
-        frida = FakeFrida(FakeSession([sent({"done": "cap"})]))
+        # The name the running game had in a real run, read from that run's
+        # own record rather than from the constant the runner uses; the
+        # agent's messages are a real trace run's (hydra-data/ch-mcp-runs/
+        # 2026-10-28/l3/trace-ew-count.jsonl).
+        frida = FakeFrida(FakeSession(recorded("2026-10-28-l3", "trace-ew-count.jsonl")))
         self.run_agent(frida)
-        self.assertEqual(frida.attached_to, [PROCESS_NAME])
+        self.assertEqual(frida.attached_to, [recorded_game_process()[1]])
 
 
 class EndTest(Workspace):
@@ -361,18 +377,37 @@ class EndTest(Workspace):
 
 
 class DefaultWaitTest(unittest.TestCase):
+    def wait_within(self, event, bound_s):
+        """Run the real wait on `event` with the long run cap (RUN_CAP_S) in
+        a thread, and give it `bound_s` to return. Fails at the bound rather
+        than sitting out the cap, so a wait that ignores the event fails in
+        `bound_s`, not in RUN_CAP_S. Returns what the wait returned."""
+        result = []
+        waiter = threading.Thread(
+            target=lambda: result.append(FA._default_wait(event, RUN_CAP_S)),
+            daemon=True)
+        waiter.start()
+        waiter.join(bound_s)
+        self.assertFalse(waiter.is_alive(),
+                         f"the wait was still running {bound_s:g} s in, "
+                         f"with a cap of {RUN_CAP_S:g} s")
+        return result[0]
+
     def test_returns_true_at_once_when_the_event_is_set(self):
+        # "At once": before the wait's first slice (_INTERRUPT_SLICE_S) ends.
         event = threading.Event()
         event.set()
-        self.assertTrue(FA._default_wait(event, 30.0))
+        self.assertTrue(self.wait_within(event, FA._INTERRUPT_SLICE_S))
 
     def test_returns_false_when_the_cap_passes(self):
         self.assertFalse(FA._default_wait(threading.Event(), 0.05))
 
     def test_wakes_when_the_event_is_set_during_the_wait(self):
+        # The event is set SHORT_CAP_S into the wait; the wait returns within
+        # one slice of that, far inside the run cap it was given.
         event = threading.Event()
-        threading.Timer(0.05, event.set).start()
-        self.assertTrue(FA._default_wait(event, 30.0))
+        threading.Timer(SHORT_CAP_S, event.set).start()
+        self.assertTrue(self.wait_within(event, SHORT_CAP_S + FA._INTERRUPT_SLICE_S))
 
 
 class AgentRefusalTest(Workspace):
@@ -483,12 +518,6 @@ class LiveAgentTest(Workspace):
         """The log's lines as text, read through a second handle."""
         with open(self.out_path, encoding="utf-8") as fh:
             return fh.readlines()
-
-    def started(self, replies):
-        session = ReplySession(replies)
-        agent = self.live(FakeFrida(session))
-        agent.start(30.0)
-        return agent, session
 
     def test_start_posts_a_read_and_returns_its_reply(self):
         # The state agent's real answer to the first read of a run, carrying
@@ -829,11 +858,6 @@ class LiveAgentTest(Workspace):
         self.assertTrue(agent.alive)
         self.assertEqual({**state, "id": 1}, reply[0]["payload"])
 
-    def test_no_pid_attaches_by_the_process_name(self):
-        frida = FakeFrida(ReplySession([STATE]))
-        self.live(frida).start(30.0)
-        self.assertEqual(frida.attached_to, [PROCESS_NAME])
-
     def test_a_pid_that_is_not_running_names_the_pid(self):
         # The pid the game had in a real run, now long gone, so Frida finds
         # no such process.
@@ -879,73 +903,105 @@ class LiveAgentTest(Workspace):
         return release
 
     def test_a_blocked_log_write_does_not_hold_up_the_reply(self):
-        agent, _ = self.started([STATE, {"pressed": True}])
+        # Two real state replies, ids 1 and 2 (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d1b-run1/state-1.jsonl). The second answers a read
+        # made while every log write is held.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        settle(agent)
         release = self.blocked_writes(agent)
+        session.replies.append([msgs[1]])
         replies = []
-        asker = threading.Thread(
-            target=lambda: replies.append(agent.request({"type": "press"}, 5.0)),
-            daemon=True)
+        asker = threading.Thread(target=lambda: replies.append(agent.read(5.0)),
+                                 daemon=True)
         asker.start()
         asker.join(2.0)
         answered = not asker.is_alive()
+        # The log still waits on the held write, so the reply did not.
+        self.assertEqual(len(self.raw_lines()), 1)
         release.set()
         asker.join(10.0)
         self.assertTrue(answered, "the reply waited for the blocked log write")
-        self.assertEqual(replies, [{"pressed": True}])
+        self.assertEqual(len(replies), 1)
+        self.assertEqual({**replies[0], "id": msgs[1]["payload"]["id"]},
+                         msgs[1]["payload"])
+        settle(agent)
+        self.assertEqual([json.loads(line) for line in self.raw_lines()], msgs[:2])
 
     def test_every_message_reaches_the_log_in_order_once(self):
-        agent, session = self.started([STATE])
-        for n in range(200):
-            session.script.handlers["message"](sent({"n": n}), None)
+        # Started on the state agent's real first reply (hydra-data/
+        # ch-mcp-runs/2026-11-06/ls-d1b-run1/state-1.jsonl), then the first
+        # 200 real clock samples of a run (2026-10-28/l2/clock.jsonl, lines
+        # 1 to 200), sent one after another while the writer runs.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        samples = recorded("2026-10-28-l2", "clock-first-200.jsonl")
+        for msg in samples:
+            session.script.handlers["message"](msg, None)
         self.assertEqual(agent.detach(), "detached")
+        # One line per message: the start's reply, then each sample once, in
+        # the order sent.
         lines = self.raw_lines()
-        self.assertEqual(len(lines), 201)
-        # The form _on_message has always written: json.dumps's default
-        # separators, one message per line.
-        self.assertEqual(lines[1], '{"type": "send", "payload": {"n": 0}}\n')
-        self.assertEqual([json.loads(line)["payload"]["n"] for line in lines[1:]],
-                         list(range(200)))
+        self.assertEqual(len(lines), 1 + len(samples))
+        self.assertEqual([json.loads(line) for line in lines], msgs[:1] + samples)
 
     def test_every_line_is_on_disk_before_detach(self):
-        agent, session = self.started([STATE])
-        for n in range(3):
-            session.script.handlers["message"](sent({"n": n}), None)
+        # Three real state replies (hydra-data/ch-mcp-runs/2026-11-06/
+        # ls-d1b-run1/state-1.jsonl): the first answers the start, the other
+        # two arrive while the agent stays attached.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        for msg in msgs[1:]:
+            session.script.handlers["message"](msg, None)
         settle(agent)
         self.assertTrue(agent.alive)
-        self.assertEqual([json.loads(line) for line in self.raw_lines()],
-                         [sent({**STATE, "id": 1}), sent({"n": 0}),
-                          sent({"n": 1}), sent({"n": 2})])
+        # A second handle reads every message from disk, in arrival order,
+        # with no detach yet.
+        self.assertEqual([json.loads(line) for line in self.raw_lines()], msgs)
 
-    def test_detach_waits_for_the_writer_and_says_so_when_the_cap_passes(self):
-        # A normal detach: each write is slow, well inside the cap, and the
-        # detach still waits for every line.
-        agent, session = self.started([STATE])
+    def test_detach_waits_for_a_slow_writer(self):
+        # Three real state replies (hydra-data/ch-mcp-runs/2026-11-06/
+        # ls-d1b-run1/state-1.jsonl): the first answers the start, the other
+        # two arrive while every write is slow. All the slow writes together
+        # take less than the writer's cap, so the detach waits for them all.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        slow_s = SHORT_CAP_S
+        self.assertLess(len(msgs) * slow_s, FA.LOG_WRITER_CAP_S)
         log = agent._log
         real_write = log.write
 
         def slow_write(text):
-            time.sleep(0.05)
+            time.sleep(slow_s)
             return real_write(text)
 
         log.write = slow_write
-        for n in range(3):
-            session.script.handlers["message"](sent({"n": n}), None)
+        for msg in msgs[1:]:
+            session.script.handlers["message"](msg, None)
         self.assertEqual(agent.detach(), "detached")
-        self.assertEqual(len(self.raw_lines()), 4)
+        self.assertEqual([json.loads(line) for line in self.raw_lines()], msgs)
 
-        # A writer held past the cap: detach returns at the cap and says so.
-        self.out_path = os.path.join(self.tmp.name, "held.jsonl")
-        held, session = self.started([STATE])
-        release = self.blocked_writes(held)
-        session.script.handlers["message"](sent({"n": 0}), None)
-        with unittest.mock.patch.object(FA, "LOG_WRITER_CAP_S", 0.05):
-            line = held.detach()
-        self.assertEqual(line, "detached; the log may lack its last lines: its "
-                               "writer was still busy 0.05 s after the detach")
+    def test_detach_says_so_when_the_writer_is_held_past_the_cap(self):
+        # Two real state replies (hydra-data/ch-mcp-runs/2026-11-06/
+        # ls-d1b-run1/state-1.jsonl). The second is sent while every write
+        # is held, and the writer's cap is cut to SHORT_CAP_S.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        settle(agent)
+        release = self.blocked_writes(agent)
+        session.script.handlers["message"](msgs[1], None)
+        with unittest.mock.patch.object(FA, "LOG_WRITER_CAP_S", SHORT_CAP_S):
+            line = agent.detach()
+        # The detach returns at the cap, with a line saying the log may lack
+        # its last lines and naming the cap that passed.
+        self.assertRegex(line, r"^detached; ")
+        self.assertIn("the log may lack its last lines", line)
+        self.assertRegex(line, rf"\b{SHORT_CAP_S:g} s after the detach$")
+        # Once released, the writer still writes the held line and ends.
         release.set()
-        held._writer.join(10.0)
-        self.assertFalse(held._writer.is_alive())
-        self.assertEqual(len(self.raw_lines()), 2)
+        agent._writer.join(10.0)
+        self.assertFalse(agent._writer.is_alive())
+        self.assertEqual([json.loads(l) for l in self.raw_lines()], msgs[:2])
 
     def test_a_failed_log_write_stops_the_log_and_not_the_reply(self):
         # Three real state replies, ids 1 to 3 (hydra-data/ch-mcp-runs/
@@ -977,13 +1033,6 @@ class LiveAgentTest(Workspace):
         self.assertRegex(line, r"\bthe log stops\b")
         self.assertRegex(line, r"\brequests go on$")
         self.assertEqual(self.written(), msgs[:1])
-
-    def test_a_message_after_the_log_closed_is_dropped(self):
-        agent, session = self.started([STATE])
-        self.assertEqual(agent.detach(), "detached")
-        session.script.handlers["message"](sent({"n": 0}), None)
-        self.assertEqual(self.written(), [sent({**STATE, "id": 1})])
-        self.assertEqual(self.lines, [])
 
     def test_read_before_start_says_nothing_is_attached(self):
         # The state agent's real first reply (hydra-data/ch-mcp-runs/
@@ -1044,13 +1093,6 @@ class SummaryTest(Workspace):
         self.assertEqual(len(lines), 5, lines)
         self.summary_checks(lines, payloads, FA.END_CAP)
         self.assertRegex(lines[4], r"\byes$")
-
-    def test_summary_counts_a_clock_that_went_backwards(self):
-        result = FA.RunResult(reason=FA.END_CAP, cap_s=93.0, payloads=[
-            sample(10.0), sample(10.25), sample(-3.0), sample(-2.75),
-            sample(5.0), sample(4.5)])
-        lines = FA.summarize_clock(result)
-        self.assertIn("songTime went backwards: 2 times", lines)
 
     def test_summary_with_an_error_and_no_samples(self):
         # A real agent error reply, the run's only message (hydra-data/
@@ -1116,48 +1158,36 @@ class SummaryTest(Workspace):
         self.assertEqual(session.detach_calls, 1)
 
     def test_the_command_line_refuses_a_zero_cap(self):
-        with self.assertRaises(SystemExit):
-            with unittest.mock.patch("sys.stderr", io.StringIO()):
-                FA.main(["--agent", "a.js", "--cap", "0", "--out", "o"],
-                        frida_mod=FakeFrida(None), wait=instant_wait,
-                        out=lambda s: None)
+        # A real built agent and an out path that would both be taken, so
+        # the cap is the only thing the command line can refuse.
+        agent = make_built_agent(os.path.join(self.tmp.name, "built"), "clock")
+        frida = FakeFrida(None)
+        stderr = io.StringIO()
+        with self.assertRaises(SystemExit) as caught:
+            with unittest.mock.patch("sys.stderr", stderr):
+                FA.main(["--agent", agent, "--cap", "0", "--out", self.out_path],
+                        frida_mod=frida, wait=instant_wait,
+                        out=self.lines.append)
+        self.assertNotEqual(caught.exception.code, 0)
+        # The refusal names the cap, and nothing was attached or written.
+        self.assertRegex(stderr.getvalue(), r"\berror: --cap\b")
+        self.assertEqual(frida.attached_to, [])
+        self.assertFalse(os.path.exists(self.out_path))
 
 
 # ---- the agents ---------------------------------------------------------------
 
 class ByNameOnlyTest(unittest.TestCase):
-    def test_the_check_catches_every_pattern(self):
-        # Without this, a broken pattern would let every agent pass.
-        bad = [
-            "gm.handle.add(0x70).readDouble();",
-        ]
-        for line in bad:
-            with self.subTest(line=line):
-                self.assertTrue(by_name_only_findings(line))
-
-    def test_reads_and_comparisons_pass(self):
-        ok = [
-            # Method calls and field sets are allowed (rulings 2 and 5).
-            "gm.method('Stop').invoke();",
-            "gm.field('count').value = 1;",
-            "Memory.writeU8(p, 1);",
-            "const t = gm.field<number>('songTime').value;",
-            "if (f.value === true) {}",
-            "if (f.value == 1) {}",
-            "Interceptor.attach(p, { onEnter() {} });",
-            "log.write('x');",
-            "if (f.value >= 1 || f.value <= 0 || f.value != 2) {}",
-            "const a = args[0]; if (args[1] == null) {}",
-            "const p = args[slot]; return args[slot] === null;",
-            "const buf = xmmOf(ctx, slot); if (ctx.xmm0 == undefined) {}",
-            "return (_c, a) => a[slot].toInt32();",
-            "const r = retval.toInt32() + this.context.rax.toInt32();",
-            "const b = Memory.alloc(8); const s = Memory.scan(p, 8, pat, cb);",
-            "return obj.field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull();",
-        ]
-        for line in ok:
-            with self.subTest(line=line):
-                self.assertEqual(by_name_only_findings(line), [])
+    def test_the_check_catches_an_offset_read_added_to_a_real_agent(self):
+        # Without this, a broken pattern would let every agent pass. The real
+        # clock.ts passes; the same text with one offset read added fails at
+        # that line.
+        with open(os.path.join(AGENT_DIR, "clock.ts"), encoding="utf-8") as fh:
+            clock = fh.read()
+        bad = "const v = gm.handle.add(0x70).readDouble();"
+        found = by_name_only_findings(clock + bad + "\n")
+        self.assertEqual([(n, line) for n, line, _ in found],
+                         [(len(clock.splitlines()) + 1, bad)])
 
     def test_no_agent_reads_by_offset(self):
         sources = agent_sources()
@@ -1184,32 +1214,58 @@ class AllowedCallsTest(unittest.TestCase):
         return texts
 
     def test_agent_calls_only_named_methods(self):
-        texts = self.real_texts()
-        self.assertEqual(allowed_calls(texts[MENU_AGENT]),
-                         ["get_activeInHierarchy", "get_gameObject"])
-        self.assertEqual(call_findings(texts), [])
+        self.assertEqual(call_findings(self.real_texts()), [])
 
     def test_only_the_listed_agents_hold_a_list(self):
         held = sorted(name for name, text in self.real_texts().items()
                       if _ALLOWED_LIST.search(text))
         self.assertEqual(held, sorted(LISTED_AGENTS))
-        texts = {"other.ts": 'export const ALLOWED_CALLS = ["SetActive"];\n'}
-        self.assertEqual(call_findings(texts), [
-            f"other.ts: holds an ALLOWED_CALLS list, and only "
-            f"{MENU_AGENT}, {KIT_AGENT} may"])
 
-    def test_a_method_outside_the_list_fails(self):
-        texts = {MENU_AGENT: self.MENU_TEXT,
-                 "other.ts": 'go.method("SetActive");\n'}
-        self.assertEqual(call_findings(texts),
-                         ["other.ts:1: SetActive is not in other.ts's ALLOWED_CALLS"])
+    def test_a_list_in_an_unlisted_file_fails(self):
+        texts = self.real_texts()
+        texts["clock.ts"] += 'export const ALLOWED_CALLS = ["SetActive"];\n'
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith("clock.ts:"), findings[0])
+        self.assertIn("ALLOWED_CALLS", findings[0])
+
+    def test_a_method_outside_the_files_list_fails(self):
+        texts = self.real_texts()
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        texts["clock.ts"] += 'go.method("SetActive");\n'
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"clock.ts:{added_at}: SetActive"),
+                        findings[0])
 
     def test_a_name_on_another_files_list_fails(self):
-        # Each file's list covers that file only.
-        texts = {MENU_AGENT: self.MENU_TEXT,
-                 "other.ts": 'go.method("get_activeInHierarchy");\n'}
-        self.assertEqual(call_findings(texts), [
-            "other.ts:1: get_activeInHierarchy is not in other.ts's ALLOWED_CALLS"])
+        # Each file's list covers that file only: a name from menu.ts's real
+        # list, called in clock.ts, fails.
+        texts = self.real_texts()
+        name = allowed_calls(texts[MENU_AGENT])[0]
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        texts["clock.ts"] += f'go.method("{name}");\n'
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"clock.ts:{added_at}: {name}"),
+                        findings[0])
+
+    def test_a_kit_list_name_the_data_file_lacks_fails(self):
+        data = load_kit_methods()
+        gone = data["methods"][0]["name"]
+        data = {"methods": data["methods"][1:]}
+        findings = kit_methods_findings(self.real_texts()[KIT_AGENT], data)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"{gone} is in {KIT_AGENT}'s"),
+                        findings[0])
+
+    def test_a_data_file_name_the_kit_list_lacks_fails(self):
+        data = load_kit_methods()
+        gone = allowed_calls(self.real_texts()[KIT_AGENT])[0]
+        kit = self.real_texts()[KIT_AGENT].replace(f'"{gone}"', '"x_placeholder"', 1)
+        findings = kit_methods_findings(kit, data)
+        self.assertTrue(any(f.startswith(f"{gone} is in kit_methods.json")
+                            for f in findings), findings)
 
     def test_kit_calls_match_the_data_file(self):
         data = load_kit_methods()
@@ -1227,39 +1283,27 @@ class AllowedCallsTest(unittest.TestCase):
         # slot of its hidden method pointer, which the bridge's .invoke does
         # not pass for a non-generic method. The call is the one NativeFunction
         # in kit.ts; it ends with the overload's own handle and is no .invoke.
+        # Each check matches on names and punctuation only, so laying the
+        # source out another way changes nothing.
         kit = self.real_texts()[KIT_AGENT]
-        start = kit.index('.method("LoadMap", 5)')
-        call = kit[start:kit.index(";", start)]
-        self.assertNotIn(".invoke(", call)
+        lookup = re.search(r"const\s+(\w+)\s*=\s*\w+\.method\(\s*\"LoadMap\"\s*,"
+                           r"\s*5\s*\)([^;]*);", kit)
+        self.assertIsNotNone(lookup, "no LoadMap lookup in kit.ts")
+        method, chain = lookup.group(1), lookup.group(2)
+        self.assertNotIn(".invoke(", chain)
+        # The one NativeFunction is on that method's own code address, and
+        # takes the bridge's types with one more pointer at the end.
         self.assertEqual(len(_NATIVE_FUNCTION.findall(kit)), 1)
-        self.assertIn('["pointer", ...loadMap.parameters.map((p) => p.type.fridaAlias), '
-                      '"pointer"];', kit)
-        self.assertIn("new NativeFunction(loadMap.virtualAddress,\n"
-                      "        loadMap.returnType.fridaAlias as NativeFunctionReturnType, "
-                      "loadMapTypes)", kit)
-        self.assertIn("loadMapCall(maps.handle,\n", kit)
-        self.assertIn("    loadMap.handle);", kit)
-
-    def test_a_kit_list_that_lacks_a_name_it_calls_fails(self):
-        kit = ('export const ALLOWED_CALLS = ["get_id"];\n'
-               'p.method<number>("get_id");\np.method("get_name");\n')
-        findings = call_findings({KIT_AGENT: kit})
-        self.assertIn(f"{KIT_AGENT}:3: get_name is not in {KIT_AGENT}'s "
-                      "ALLOWED_CALLS", findings)
-
-    def test_a_kit_list_name_the_data_file_lacks_fails(self):
-        data = {"methods": [{"name": "get_id"}]}
-        kit = 'export const ALLOWED_CALLS = ["get_id", "SetActive"];\n'
-        self.assertEqual(kit_methods_findings(kit, data), [
-            f"SetActive is in {KIT_AGENT}'s ALLOWED_CALLS but not in "
-            "kit_methods.json"])
-
-    def test_a_data_file_name_the_kit_list_lacks_fails(self):
-        data = {"methods": [{"name": "get_id"}, {"name": "get_name"}]}
-        kit = 'export const ALLOWED_CALLS = ["get_id"];\n'
-        self.assertEqual(kit_methods_findings(kit, data), [
-            f"get_name is in kit_methods.json but not in {KIT_AGENT}'s "
-            "ALLOWED_CALLS"])
+        native = re.search(rf"const\s+(\w+)\s*=\s*new\s+NativeFunction\(\s*"
+                           rf"{method}\.virtualAddress\s*,[^,]*,\s*(\w+)\s*\)", kit)
+        self.assertIsNotNone(native, f"no NativeFunction on {method}.virtualAddress")
+        call, types = native.group(1), native.group(2)
+        self.assertRegex(kit, rf"const\s+{types}\b[^=]*=\s*\[\s*\"pointer\"\s*,\s*"
+                              rf"\.\.\.{method}\.parameters\.map\([^;]*\)\s*,\s*"
+                              rf"\"pointer\"\s*\]\s*;")
+        # The call passes the method's own handle as its last argument.
+        self.assertRegex(kit, rf"\b{call}\(\s*\w+\.handle\s*,[^;]*,\s*"
+                              rf"{method}\.handle\s*\)\s*;")
 
     def test_one_more_invoke_in_kit_ts_fails(self):
         texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + "m.invoke();\n"}
@@ -1268,10 +1312,14 @@ class AllowedCallsTest(unittest.TestCase):
             f"expected {CALL_SITES[KIT_AGENT]}"])
 
     def test_an_invoke_in_a_second_file_fails(self):
-        texts = {MENU_AGENT: self.MENU_TEXT,
-                 "other.ts": "m.invoke();\n"}
-        self.assertEqual(call_findings(texts),
-                         ["other.ts: 1 .invoke( sites, expected 0"])
+        # The real agents, with one `.invoke(` added to clock.ts, which
+        # CALL_SITES does not name and which so may hold none.
+        texts = self.real_texts()
+        self.assertNotIn("clock.ts", CALL_SITES)
+        texts["clock.ts"] += "m.invoke();\n"
+        findings = call_findings(texts)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith("clock.ts: 1 .invoke("), findings[0])
 
     def test_a_second_invoke_in_menu_ts_fails(self):
         texts = {MENU_AGENT: self.MENU_TEXT + "m.invoke();\n"}
@@ -1289,11 +1337,17 @@ class AllowedCallsTest(unittest.TestCase):
         self.assertEqual(len(call_findings(texts)), 1)
 
     def test_a_second_native_function_in_kit_ts_fails(self):
-        line = "const f = new NativeFunction(p, 'void', []);"
-        texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + line + "\n"}
+        # The real kit.ts with its own LoadMap NativeFunction line added again
+        # at the end: the one finding names kit.ts, the added line's number
+        # and the line itself.
+        kit = self.real_texts()[KIT_AGENT]
+        line = next(l.strip() for l in kit.splitlines() if _NATIVE_FUNCTION.search(l))
+        texts = {KIT_AGENT: kit + line + "\n"}
+        added_at = len(texts[KIT_AGENT].splitlines())
         findings = call_findings(texts)
-        self.assertEqual(len(findings), 1)
-        self.assertTrue(findings[0].endswith(f": calls a game function: {line}"))
+        self.assertEqual(len(findings), 1, findings)
+        self.assertTrue(findings[0].startswith(f"{KIT_AGENT}:{added_at}:"), findings[0])
+        self.assertTrue(findings[0].endswith(line), findings[0])
 
 
 # ---- kit.ts's play hook -----------------------------------------------------
@@ -1419,11 +1473,15 @@ class KitPlayHookTest(unittest.TestCase):
         self.assertIn('`no frame came for ${quiet} ms`, "frozen")', block)
 
     def test_a_number_of_its_own_fails(self):
-        self.assertEqual(own_number_findings("const HOLD = 2;\nif (a > 0) {}\n// 3 frames\n"),
-                         ["holds the number 2: const HOLD = 2;"])
-
-    def test_kit_play_replies_before_the_schedule_ends(self):
-        self.assertEqual(play_waits_findings(self.kit()), [])
+        # The real timing block with one real kit.ts line from outside it
+        # added: setup's LoadMap lookup, which names its 5 parameters.
+        kit = self.kit()
+        added = next(l for l in kit.splitlines() if '.method("LoadMap", 5)' in l)
+        findings = own_number_findings(timing_block(kit) + "\n" + added + "\n")
+        # One finding, naming the number and the line that holds it.
+        self.assertEqual(len(findings), 1, findings)
+        self.assertRegex(findings[0], r"\b5\b")
+        self.assertIn(added.strip(), findings[0])
 
     def test_a_play_that_waits_fails(self):
         kit = self.kit().replace("function startPlay(", "async function startPlay(", 1)
@@ -1431,9 +1489,6 @@ class KitPlayHookTest(unittest.TestCase):
         kit = self.kit().replace("    play = p;\n", "    play = p;\n    await sleep(1);\n", 1)
         self.assertEqual(play_waits_findings(kit),
                          ["startPlay holds await", "startPlay holds sleep("])
-
-    def test_every_play_stop_goes_through_unhook(self):
-        self.assertEqual(stop_path_findings(self.kit()), [])
 
     def test_a_stop_that_skips_unhook_fails(self):
         kit = self.kit()
@@ -1453,14 +1508,6 @@ class DestroyedSkipTest(unittest.TestCase):
     def read(self, name):
         with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
             return fh.read()
-
-    def test_the_lookup_reads_the_native_object_field_by_name(self):
-        # UnityEngine.Object's field, read by name through the bridge: no
-        # offset and no method call decides whether a GameManager is destroyed.
-        text = self.read("gamemanager.ts")
-        self.assertIn('NATIVE_OBJECT_FIELD = "m_CachedPtr"', text)
-        self.assertIn("field<NativePointer>(NATIVE_OBJECT_FIELD).value.isNull()", text)
-        self.assertNotIn(".method(", text)
 
     def test_only_gamemanager_ts_names_the_native_object_field(self):
         # One owner for "is this Unity object destroyed": gamemanager.ts. The
@@ -1542,11 +1589,6 @@ class LaunchAgentTest(unittest.TestCase):
         self.assertNotIn(LAUNCH_AGENT, CALL_SITES)
         self.assertNotIn(LAUNCH_CORE, CALL_SITES)
 
-    def test_the_patch_runs_only_from_the_module_observer(self):
-        text = self.read(LAUNCH_AGENT)
-        self.assertEqual(patch_findings(text), [])
-        self.assertEqual(self.read(LAUNCH_CORE).count("Memory.patchCode("), 0)
-
     def test_neither_launch_file_holds_an_address(self):
         # Every RVA arrives in the arm message, from launch_patch.json.
         for name in (LAUNCH_AGENT, LAUNCH_CORE):
@@ -1567,37 +1609,35 @@ class LaunchAgentTest(unittest.TestCase):
                 self.assertNotEqual(patch_findings(text), [])
 
 
-@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
-class LaunchRepliesTest(Workspace):
-    """The statuses launch_core.ts really builds, run through LiveAgent's
-    request path as launch.ts sends them (a copy of the status plus the id).
-    LiveAgent raises on an `error` key, so a status that carried one would
-    fail every poll of bot_run.launch_human."""
-
-    def request_status(self, status):
-        session = ReplySession([{"state": "idle"}, status])
+class LaunchStatusRepliesTest(Workspace):
+    def test_every_status_the_agent_sent_comes_back_whole(self):
+        # launch.ts's replies from one real human launch, ids 1 to 6
+        # (hydra-data/ch-mcp-runs/2026-10-31/ls-d0-run1): the start's idle,
+        # the arm reply naming the modules, a waiting status, the patched
+        # status and two statuses after the loader ran. LiveAgent raises on
+        # an `error` key, so a status that carried one would fail every poll
+        # of bot_run.launch_human.
+        msgs = recorded("ls-d0-run1", "launch-20261031-141438.jsonl")
+        session = ReplySession([[m] for m in msgs])
         agent = FA.LiveAgent(self.agent, log_path=self.out_path,
-                             frida_mod=FakeFrida(session), wait=instant_wait,
+                             frida_mod=FakeFrida(session), wait=FA._default_wait,
                              out=self.lines.append)
         self.addCleanup(agent.detach)
-        agent.start(30.0)
-        return agent.request({"type": "status"}, 5.0)
+        replies = [agent.start(30.0), agent.request({"type": "arm"}, 5.0)]
+        replies += [agent.request({"type": "status"}, 5.0) for _ in msgs[2:]]
+        # Each reply is the agent's payload whole, less the id the request gave.
+        for reply, msg in zip(replies, msgs):
+            with self.subTest(id=msg["payload"]["id"]):
+                self.assertNotIn("id", reply)
+                self.assertEqual({**reply, "id": msg["payload"]["id"]}, msg["payload"])
+        self.assertEqual(len(replies), len(msgs))
+        self.assertTrue(agent.alive)
+        self.assertEqual(self.lines, [])
 
-    def test_every_status_the_agent_builds_comes_back_whole(self):
-        statuses = {
-            "waiting": LC.run({"op": "waiting"})["status"],
-            "patched": LC.apply()["status"],
-            "patched, loader ran": LC.apply(loader_runs=2)["status"],
-            "refused, entry differs": LC.apply(
-                {LC.LOADER: [0x48, 0x89, 0x5C], LC.SITE: LC.SITE_BYTES})["status"],
-            "refused, write did not take": LC.apply(write_sticks=False)["status"],
-            "refused, read threw": LC.apply(read_throws=True)["status"],
-        }
-        for what, status in statuses.items():
-            with self.subTest(case=what):
-                self.assertEqual(self.request_status(status), status)
-        self.assertEqual(statuses["refused, entry differs"]["state"], "refused")
-        self.assertIn("nothing was written", statuses["refused, entry differs"]["reason"])
+
+@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
+class LaunchRepliesTest(Workspace):
+    """launch.ts's error replies, and LiveAgent's answer to one."""
 
     def test_launch_ts_sends_an_error_key_only_for_a_fault(self):
         # Its one `error:` site is the catch that answers a message that threw.

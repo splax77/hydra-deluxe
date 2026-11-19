@@ -62,7 +62,7 @@ So you hand your branch back uncompiled. The main session builds it and runs the
 
 Stage files by name: `git add <file> <file>`. Never `git add -A` or `git add .`. Stage only edits you made: an edit you find in the tree that you did not make stays out of your commit, and your report names it (agent rule 13). Other sessions share the main checkout and leave their own edits in it; a broad add sweeps their work into your commit.
 
-Commit with the subject and body as `-m` arguments and each trailer as its own `--trailer` argument. Never pass the message on stdin, through `-F -` or through a heredoc. Never give the trailers as separate `-m` arguments either: git reads each `-m` as its own paragraph and counts only the last paragraph as trailers. The git-side gate (the ref gate, which git runs on every branch move made from Claude Code) refuses any new commit that lacks a `Task:`, `Agent:` or `Session:` trailer, except a merge commit (two or more parents), which git writes itself and which needs none; give a merge you make as a reviewer your own `Agent:` trailer anyway, because the stop hook finds your commits by it. A commit in the wrong form never lands. The exact form is:
+Commit with the subject and body as `-m` arguments and each trailer as its own `--trailer` argument. Never pass the message on stdin, through `-F -` or through a heredoc. Never give the trailers as separate `-m` arguments either: git reads each `-m` as its own paragraph and counts only the last paragraph as trailers. The git-side gate (the ref gate, which git runs on every branch move made from Claude Code) refuses any new commit that lacks a `Task:`, `Agent:` or `Session:` trailer, except a merge commit (two or more parents), which git writes itself and which needs none; give a merge you make as a reviewer your own `Agent:` trailer anyway, because the stall hook counts your commits by it. A commit in the wrong form never lands. The exact form is:
 
 `git commit -m "<plain subject>" -m "<body, optional>" --trailer "Task: <task id>" --trailer "Agent: <your agent id>" --trailer "Session: <session id>" --trailer "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"`
 
@@ -86,7 +86,7 @@ If your last two status lines show the same step and no new result, you are not 
 
 ## Review findings
 
-No agent is woken up again after its turn ends. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off (D107 in `docs/audit/2026-10-03-fix-decisions.md`). Nothing comes back to you. If you are that reviewer, nobody reviews your fixes; your own sign-off is the last check. The one exception is a C++ fix of yours that fails the main session's build (agent rule 5).
+No agent is woken up again after its turn ends, with one exception. A reviewer whose hand-back has no stamp line, or holds a stamp line the hook refuses, is asked by the main session for that line, and it hands back again with it. That is not a second review, and the reviewer's time limit is not restarted. Your job ends with your report. One fresh reviewer then reviews your change, fixes what it finds itself and signs off with its stamp line (D107 in `docs/audit/2026-10-03-fix-decisions.md`; the line's form is in `docs/agents/derive-once-review.md`, "Output"). Nothing comes back to you. If you are that reviewer, nobody reviews your fixes; your own sign-off is the last check. The one exception is a C++ fix of yours that fails the main session's build (agent rule 5).
 
 ## The code is the source of truth
 
