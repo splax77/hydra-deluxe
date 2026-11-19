@@ -1225,9 +1225,9 @@ class ScoredBetweenTest(unittest.TestCase):
                 header = tuple(reader.fieldnames)
         self.assertEqual(header, overlay_logs.PRESS_LOG_COLUMNS)
         self.assertEqual(len(table), len(result.rows))
-        # Every value a row holds for a press-log column is in the file, and
-        # each first row's scored_between is among them.
-        self.assertTrue(all(any(c in row for c in header) for row in result.rows))
+        # Every value a row holds for a press-log column is in the file, and a
+        # column it does not hold is empty there.
+        self.assertTrue([r for r in result.rows if "scored_between" in r])
         for row, written in zip(result.rows, table):
             self.assertEqual(written, {c: str(row[c]) if c in row else "" for c in header})
 
