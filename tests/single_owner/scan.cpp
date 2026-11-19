@@ -280,18 +280,37 @@ TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
           "rules/made_up.json)");
 }
 
-TEST_CASE("single-owner: the walk reads committed and new files, never ignored ones") {
+namespace {
+
+// The made-up answer each code file in the walk fixture holds.
+const char* const kWalkAnswer = "x = made_up(3)\n";
+
+// Makes a fresh git repo in the temp folder `name` and returns its path. It
+// holds a committed code file and markdown file (tools/kept.py,
+// docs/kept.md), a new file of each kind nobody has added (tools/new.py,
+// docs/new.md), and a file of each kind in a folder git ignores
+// (tools/vendor/ignored.py, tools/vendor/ignored.md).
+std::string make_walk_fixture(const std::string& name) {
     using namespace precheck_fixture;
-    const std::string dir = testtemp::temp_dir("single_owner_walk_git");
+    const std::string dir = testtemp::temp_dir(name);
     testtemp::remove_dir(dir);
     fs::create_directories(hydra::os_path(dir));
     fixture_git(dir, {"init", "-q", "-b", "main"});
-    const std::string answer = "x = made_up(3)\n";
     write_fixture_file(dir, ".gitignore", "tools/vendor/\n");
-    write_fixture_file(dir, "tools/kept.py", answer);
+    write_fixture_file(dir, "tools/kept.py", kWalkAnswer);
+    write_fixture_file(dir, "docs/kept.md", "# Kept\n");
     commit_all(dir, "kept");
-    write_fixture_file(dir, "tools/vendor/ignored.py", answer);
-    write_fixture_file(dir, "tools/new.py", answer);
+    write_fixture_file(dir, "tools/vendor/ignored.py", kWalkAnswer);
+    write_fixture_file(dir, "tools/vendor/ignored.md", "# Ignored\n");
+    write_fixture_file(dir, "tools/new.py", kWalkAnswer);
+    write_fixture_file(dir, "docs/new.md", "# New\n");
+    return dir;
+}
+
+}  // namespace
+
+TEST_CASE("single-owner: the walk reads committed and new files, never ignored ones") {
+    const std::string dir = make_walk_fixture("single_owner_walk_git");
 
     OwnerRule r;
     r.question = "Is this a made-up question?";
@@ -342,10 +361,37 @@ TEST_CASE("single-owner: the walk reads committed and new files, never ignored o
     INFO(outside);
     CHECK(outside.rfind("the source walk could not ask git for the files in " + plain_root.u8string() + ": ",
                         0) == 0);
-    fixture_git(plain, {"init", "-q", "-b", "main"});
+    precheck_fixture::fixture_git(plain, {"init", "-q", "-b", "main"});
     CHECK(walk_error() ==
           "the source walk found no files git knows under the walked folders in " + plain_root.u8string());
     testtemp::remove_dir(plain);
+}
+
+TEST_CASE("single-owner: the committed-only listing holds committed and staged files, never new or ignored "
+          "ones") {
+    const std::string dir = make_walk_fixture("source_tree_committed_only");
+    // A file added to git's index but not yet committed counts as committed.
+    precheck_fixture::write_fixture_file(dir, "tools/staged.py", kWalkAnswer);
+    precheck_fixture::write_fixture_file(dir, "docs/staged.md", "# Staged\n");
+    precheck_fixture::fixture_git(dir, {"add", "--", "tools/staged.py", "docs/staged.md"});
+    const fs::path root = fs::path(hydra::os_path(dir));
+    using sourcetree::Listing;
+
+    std::vector<std::string> visited;
+    sourcetree::for_each_source_file(root, Listing::CommittedOnly,
+                                     [&](const fs::path&, const std::string& rel) { visited.push_back(rel); });
+    CHECK(visited == std::vector<std::string>{"tools/kept.py", "tools/staged.py"});
+    CHECK(sourcetree::markdown_files(root, Listing::CommittedOnly) ==
+          std::vector<std::string>{"docs/kept.md", "docs/staged.md"});
+    CHECK(sourcetree::git_listed(root, "docs", Listing::CommittedOnly) ==
+          std::vector<std::string>{"docs/kept.md", "docs/staged.md"});
+
+    // The default listing still holds the new files, so the scans see them.
+    CHECK(sourcetree::markdown_files(root) ==
+          std::vector<std::string>{"docs/kept.md", "docs/new.md", "docs/staged.md"});
+    CHECK(sourcetree::source_files(root) ==
+          std::vector<std::string>{"tools/kept.py", "tools/new.py", "tools/staged.py"});
+    testtemp::remove_dir(dir);
 }
 
 TEST_CASE("single-owner: the hit sink reports taken, used-up and unlisted lines") {

@@ -101,30 +101,44 @@ std::vector<Doc> load_docs(const std::vector<std::string>& rels) {
     return out;
 }
 
-// Every .md under docs/clone-hero/, its subfolders included, in path order.
-std::vector<Doc> clone_hero_pages() {
+// The files this check lists under the folder `dir` (repo-relative): the ones
+// git has committed or staged (sourcetree::Listing::CommittedOnly) that are
+// files on disk, in byte order. A file nobody has added to git is not part of
+// the repo yet, so no check here reads it. With `direct`, only the files
+// directly in `dir`; otherwise its subfolders' files too.
+std::vector<std::string> committed_files(const std::string& dir, bool direct) {
     const fs::path root = sourcetree::root();
-    std::vector<std::string> rels;
-    for (const auto& e : fs::recursive_directory_iterator(root / fs::u8path(kCloneHeroDir))) {
-        if (!e.is_regular_file() || e.path().extension() != ".md") continue;
-        rels.push_back(fs::relative(e.path(), root).generic_u8string());
+    const std::string prefix = dir + "/";
+    std::vector<std::string> out;
+    for (std::string& rel : sourcetree::git_listed(root, dir, sourcetree::Listing::CommittedOnly)) {
+        if (rel.rfind(prefix, 0) != 0) continue;
+        if (direct && rel.find('/', prefix.size()) != std::string::npos) continue;
+        if (!fs::is_regular_file(root / fs::u8path(rel))) continue;
+        out.push_back(std::move(rel));
     }
-    std::sort(rels.begin(), rels.end());
+    return out;
+}
+
+// Whether the repo-relative path `rel` names a markdown file.
+bool is_markdown(const std::string& rel) { return fs::u8path(rel).extension() == ".md"; }
+
+// Every .md under docs/clone-hero/ that committed_files lists, its subfolders
+// included, in path order.
+std::vector<Doc> clone_hero_pages() {
+    std::vector<std::string> rels;
+    for (std::string& rel : committed_files(kCloneHeroDir, false))
+        if (is_markdown(rel)) rels.push_back(std::move(rel));
     return load_docs(rels);
 }
 
-// Every docs/adr/*.md and docs/agents/*.md, every page of the Clone Hero
-// reference, the README, CONTEXT.md, the User Guide, development.md and the
-// cap-clamped squeeze note.
+// Every docs/adr/*.md and docs/agents/*.md that committed_files lists, every
+// page of the Clone Hero reference, the README, CONTEXT.md, the User Guide,
+// development.md and the cap-clamped squeeze note.
 std::vector<Doc> docs() {
-    const fs::path root = sourcetree::root();
     std::vector<std::string> rels;
-    for (const char* dir : {"adr", "agents"}) {
-        for (const auto& e : fs::directory_iterator(root / "docs" / dir)) {
-            if (e.path().extension() != ".md") continue;
-            rels.push_back(fs::relative(e.path(), root).generic_u8string());
-        }
-    }
+    for (const char* dir : {"docs/adr", "docs/agents"})
+        for (std::string& rel : committed_files(dir, true))
+            if (is_markdown(rel)) rels.push_back(std::move(rel));
     for (const char* rel : {"README.md", "CONTEXT.md", "docs/UserGuide.md", "docs/development.md",
                             "docs/cap-clamped-squeeze-frontend-anchor.md"})
         rels.push_back(rel);
@@ -200,7 +214,8 @@ void add_words(const std::string& text, size_t begin, size_t end, std::set<std::
 // vouch for the names it lists.
 std::set<std::string> code_words() {
     std::set<std::string> words;
-    sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+    sourcetree::for_each_source_file(sourcetree::root(), sourcetree::Listing::CommittedOnly,
+                                     [&](const fs::path& path, const std::string& rel) {
             const std::optional<codelex::Lang> read_as =
                 codelex::language_of_extension(path.extension().string());
             if (!read_as) return;
@@ -566,7 +581,8 @@ std::optional<uint64_t> read_hex(std::string text) {
 const std::map<std::string, std::set<std::string>>& tools_python_modules() {
     static const std::map<std::string, std::set<std::string>> modules = [] {
         std::map<std::string, std::set<std::string>> out;
-        sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
+        sourcetree::for_each_source_file(sourcetree::root(), sourcetree::Listing::CommittedOnly,
+                                         [&](const fs::path& path, const std::string& rel) {
             if (rel.rfind("tools/", 0) != 0 || path.extension() != ".py") return;
             std::ifstream in(path, std::ios::binary);
             std::ostringstream ss;
@@ -983,16 +999,14 @@ CloneHeroCheck check_clone_hero(const std::vector<Doc>& pages) {
         if (!rulings_q.count(id)) problems.push_back(where + ": " + id + " is named by no rule block's Ruling line");
 
     // Every listing has its plain-words explanation beside it.
-    const fs::path listings = dir / "code" / kBuild11;
-    if (fs::is_directory(listings))
-        for (const auto& e : fs::recursive_directory_iterator(listings)) {
-            if (!e.is_regular_file() || e.path().extension() != ".asm") continue;
-            fs::path md = e.path();
-            md.replace_extension(".md");
-            if (!fs::is_regular_file(md))
-                problems.push_back(fs::relative(e.path(), sourcetree::root()).generic_u8string() + " has no " +
-                                   md.filename().u8string() + " beside it");
-        }
+    for (const std::string& rel : committed_files(prefix + "code/" + kBuild11, false)) {
+        const fs::path listing = sourcetree::root() / fs::u8path(rel);
+        if (listing.extension() != ".asm") continue;
+        fs::path md = listing;
+        md.replace_extension(".md");
+        if (!fs::is_regular_file(md))
+            problems.push_back(rel + " has no " + md.filename().u8string() + " beside it");
+    }
 
     // Every method address and field offset in tools/ch_probe/constants.py
     // has a row in the 6142 table, so the two homes cannot drift apart.
@@ -1238,12 +1252,12 @@ bool is_permanent_doc(const std::string& rel) {
     return true;
 }
 
-// Every markdown file git lists, read, in byte order. A tracked file deleted
-// in the work tree is skipped.
+// Every markdown file git has committed or staged, read, in byte order. A
+// tracked file deleted in the work tree is skipped.
 std::vector<Doc> markdown_docs() {
     const fs::path root = sourcetree::root();
     std::vector<Doc> all;
-    for (const std::string& rel : sourcetree::markdown_files(root)) {
+    for (const std::string& rel : sourcetree::markdown_files(root, sourcetree::Listing::CommittedOnly)) {
         const fs::path p = root / fs::u8path(rel);
         if (!fs::is_regular_file(p)) continue;
         all.push_back(Doc{rel, read_lines(p)});
@@ -1420,14 +1434,14 @@ void check_docs_paths(const std::vector<Doc>& docs, const std::set<std::string>&
 TEST_CASE("docs match code: no permanent doc or code comment names a docs path that is not in the tree") {
     const fs::path root = sourcetree::root();
     std::set<std::string> tree;
-    for (const std::string& rel : sourcetree::git_listed(root, "docs"))
-        if (fs::is_regular_file(root / fs::u8path(rel))) tree.insert(rel);
+    for (std::string& rel : committed_files("docs", false)) tree.insert(std::move(rel));
     REQUIRE(!tree.empty());
 
     std::vector<Doc> all = markdown_docs();
-    std::vector<std::string> code = sourcetree::source_files(root);
+    std::vector<std::string> code = sourcetree::source_files(root, sourcetree::Listing::CommittedOnly);
     for (const char* spec : kExtraCodePaths)
-        for (std::string& rel : sourcetree::git_listed(root, spec)) code.push_back(std::move(rel));
+        for (std::string& rel : sourcetree::git_listed(root, spec, sourcetree::Listing::CommittedOnly))
+            code.push_back(std::move(rel));
     int code_files = 0;
     for (const std::string& rel : code) {
         const fs::path p = root / fs::u8path(rel);
@@ -2086,20 +2100,21 @@ TEST_CASE("docs match code: every picture the public pages link is a shot the ca
         }
     }
 
-    // The files in docs/images, each checked as a PNG within the size limit.
+    // The files committed_files lists in docs/images, each checked as a PNG
+    // within the size limit.
     std::set<std::string> files;
     std::uintmax_t total = 0;
-    for (const auto& e : fs::directory_iterator(root / "docs" / "images")) {
-        if (!e.is_regular_file()) continue;
-        const std::string name = e.path().filename().generic_u8string();
+    for (const std::string& rel : committed_files("docs/images", true)) {
+        const fs::path path = root / fs::u8path(rel);
+        const std::string name = path.filename().generic_u8string();
         files.insert(name);
-        const std::uintmax_t size = e.file_size();
+        const std::uintmax_t size = fs::file_size(path);
         total += size;
         if (size > kDocImageMaxBytes)
             problems.push_back("docs/images/" + name + " is " + std::to_string(size) +
                                " bytes, over kDocImageMaxBytes (" +
                                std::to_string(kDocImageMaxBytes) + ")");
-        std::ifstream in(e.path(), std::ios::binary);
+        std::ifstream in(path, std::ios::binary);
         char sig[8] = {};
         in.read(sig, sizeof sig);
         static constexpr char kPngSignature[8] = {'\x89', 'P', 'N', 'G', '\r', '\n', '\x1a', '\n'};

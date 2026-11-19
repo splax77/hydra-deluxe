@@ -8,7 +8,11 @@
 //
 // Both lists come from git (git_listed), not from the disk. A folder git
 // ignores, such as a node_modules an npm install put under tools/, holds
-// vendored code the repo never ships, so the scans must not read it.
+// vendored code the repo never ships, so no test reads it. Each caller picks
+// one of two lists (Listing below). The single-owner and clone scans read
+// committed and new files, so they catch a copied rule in a file before its
+// first commit. The docs check reads committed and staged files only, so a
+// draft nobody has added to git never fails it.
 #pragma once
 
 #include <algorithm>
@@ -43,19 +47,35 @@ inline bool walk_visits(const std::string& rel) {
     return false;
 }
 
-// The repo-relative paths (forward slashes) that git tracks or would add and
-// that match the git pathspec `pathspec`. A new file nobody has added yet is
-// in the list, so a scan sees it before its commit; a file git ignores never
-// is. In byte order, each once. Throws std::runtime_error naming `root` when
-// git fails there.
-inline std::vector<std::string> git_listed(const std::filesystem::path& root, const std::string& pathspec) {
+// Which files a listing below holds.
+enum class Listing {
+    // The files git tracks (committed or staged) and the new files it would
+    // add. The single-owner and clone scans read this list.
+    CommittedAndNew,
+    // The files git tracks (committed or staged) and nothing else. The docs
+    // check in tests/test_docs_match_code.cpp reads this list.
+    CommittedOnly,
+};
+
+// The repo-relative paths (forward slashes) in the listing `which` that match
+// the git pathspec `pathspec`. A file git ignores is in neither listing. In
+// byte order, each once. Throws std::runtime_error naming `root` when git
+// fails there.
+inline std::vector<std::string> git_listed(const std::filesystem::path& root, const std::string& pathspec,
+                                           Listing which = Listing::CommittedAndNew) {
     const std::string where = root.u8string();
     std::vector<std::string> lines;
     try {
         // -z: names end in a NUL and come unquoted, so a space, a quote or a
         // non-ASCII byte in a name arrives as written.
-        lines = precheck::run_git(
-            where, {"ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", pathspec});
+        std::vector<std::string> args = {"ls-files", "-z", "--cached"};
+        if (which == Listing::CommittedAndNew) {
+            args.push_back("--others");
+            args.push_back("--exclude-standard");
+        }
+        args.push_back("--");
+        args.push_back(pathspec);
+        lines = precheck::run_git(where, args);
     } catch (const precheck::GitError& e) {
         throw std::runtime_error("the source walk could not ask git for the files in " + where + ": " +
                                  e.what());
@@ -78,25 +98,27 @@ inline std::vector<std::string> git_listed(const std::filesystem::path& root, co
     return out;
 }
 
-// Every markdown file in the repo git_listed lists, in byte order. Throws
-// std::runtime_error naming `root` when git fails there or lists nothing, so
-// a scan can never pass by reading no files.
-inline std::vector<std::string> markdown_files(const std::filesystem::path& root) {
-    std::vector<std::string> out = git_listed(root, "*.md");
+// Every markdown file in the repo in the listing `which`, in byte order.
+// Throws std::runtime_error naming `root` when git fails there or lists
+// nothing, so a scan can never pass by reading no files.
+inline std::vector<std::string> markdown_files(const std::filesystem::path& root,
+                                               Listing which = Listing::CommittedAndNew) {
+    std::vector<std::string> out = git_listed(root, "*.md", which);
     if (out.empty())
         throw std::runtime_error("the source walk found no markdown files git knows in " + root.u8string());
     return out;
 }
 
-// The paths git_listed lists under the walked folders. Folder by folder in
-// kWalkedFolders order, each in byte order. Throws std::runtime_error naming
-// `root` when git fails there or lists nothing, so a scan can never pass by
-// reading no files.
-inline std::vector<std::string> source_files(const std::filesystem::path& root) {
+// The paths in the listing `which` under the walked folders. Folder by folder
+// in kWalkedFolders order, each in byte order. Throws std::runtime_error
+// naming `root` when git fails there or lists nothing, so a scan can never
+// pass by reading no files.
+inline std::vector<std::string> source_files(const std::filesystem::path& root,
+                                             Listing which = Listing::CommittedAndNew) {
     const std::string where = root.u8string();
     std::vector<std::string> out;
     for (const char* sub : kWalkedFolders)
-        for (std::string& rel : git_listed(root, sub))
+        for (std::string& rel : git_listed(root, sub, which))
             if (walk_visits(rel)) out.push_back(std::move(rel));
     if (out.empty())
         throw std::runtime_error("the source walk found no files git knows under the walked folders in " +
@@ -104,18 +126,25 @@ inline std::vector<std::string> source_files(const std::filesystem::path& root) 
     return out;
 }
 
-// Calls visit(path, rel) for every file source_files lists under `root` that
-// is a regular file on disk (a tracked file deleted in the work tree is
-// skipped), in that order. rel is the file's repo-relative path with forward
-// slashes, such as "src/core/winstr.cpp"; its first part is the top folder.
+// Calls visit(path, rel) for every file source_files lists under `root` in
+// the listing `which` that is a regular file on disk (a tracked file deleted
+// in the work tree is skipped), in that order. rel is the file's
+// repo-relative path with forward slashes, such as "src/core/winstr.cpp"; its
+// first part is the top folder.
 template <typename Visit>
-void for_each_source_file(const std::filesystem::path& root, Visit&& visit) {
+void for_each_source_file(const std::filesystem::path& root, Listing which, Visit&& visit) {
     namespace fs = std::filesystem;
-    for (const std::string& rel : source_files(root)) {
+    for (const std::string& rel : source_files(root, which)) {
         const fs::path path = root / fs::u8path(rel);
         if (!fs::is_regular_file(path)) continue;
         visit(path, rel);
     }
+}
+
+// The same walk of the committed and new files.
+template <typename Visit>
+void for_each_source_file(const std::filesystem::path& root, Visit&& visit) {
+    for_each_source_file(root, Listing::CommittedAndNew, std::forward<Visit>(visit));
 }
 
 // The same walk of the repo at root().
