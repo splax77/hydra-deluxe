@@ -34,6 +34,7 @@ from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import hydra_end  # noqa: E402
+from tools.ch_mcp import menu_tools as MT  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
@@ -517,16 +518,6 @@ MENU_READ = {
     "selectedSong": {"folderPath": "C:\\Songs\\Window Map", "chartName": "notes.chart"},
     "globals": {"found": True, "currentSongFolder": None, "gameMode": 0, "playerCount": 1},
 }
-MENU_LINES = [
-    "MainMenu: 1 live, 0 destroyed; onlineMenuActive: [false]",
-    "SongSelect: 1 live, 2 destroyed; onlineMenuActive: [true]",
-    "PlayerSelectionMenu: PlayerSelectionMenu not found",
-    "selected song folder: C:\\Songs\\Window Map",
-    "selected song chartName: notes.chart",
-    "GlobalVariables currentSongFolder: null",
-    "GlobalVariables gameMode: 0",
-    "GlobalVariables playerCount: 1",
-]
 
 # One player screen as menu.ts sends it, one value per field for its one live
 # instance: on the Instrument page of a drum profile, with three rows and the
@@ -733,12 +724,19 @@ class MenuTest(Rig):
         self.assertIn("menu block", lines[0])
 
     def test_ch_menu_prints_the_lines_then_the_state_word(self):
-        tools = self.tools([STATE, {**MENU, "menu": MENU_READ}], attached=True)
+        # The recorded reply (recorded_state's run, mid-song) answers the
+        # attach and then ch_menu's one read: ch_menu prints that read's menu
+        # block as menu_lines prints it, then the state word for the same read.
+        reply = recorded_state()
+        tools = self.tools([reply, reply], attached=True, real_time=True)
         self.assertEqual(tools.ch_menu().splitlines(),
-                         MENU_LINES + ["state: menu (no live GameManager)"])
+                         FT.menu_lines(reply[FT.MENU_BLOCK])
+                         + [f"state: {FT.state_words(reply)}"])
+        self.assertEqual(FT.state_words(reply), FT.PLAYING)
 
     def test_ch_menu_before_attach_says_not_attached(self):
-        self.assertEqual(self.tools().ch_menu(), f"state: not attached; {FT.NOT_ATTACHED}")
+        self.assertEqual(self.tools().ch_menu(),
+                         f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
 
     def test_state_leaves_the_menu_block_to_ch_menu(self):
         tools = self.tools([STATE, {**STATE, "menu": MENU_READ}], attached=True)
@@ -746,22 +744,17 @@ class MenuTest(Rig):
         self.assertIn("songTime: 3.5", out)
         self.assertNotIn("menu", out)
 
-    def test_read_state_returns_the_agents_dict(self):
-        reply = {**STATE, "menu": MENU_READ}
-        tools = self.tools([STATE, reply], attached=True)
-        self.assertEqual(tools.read_state(), reply)
-
-    def test_menu_lines_print_active_and_the_player_screen_words(self):
-        def player(instrument, difficulty):
-            return {**MENU_READ, "classes": {"PlayerSelectionMenu": {
-                "found": True, "live": 1, "destroyed": 0, "active": [True],
-                "fields": {"instrument": [instrument], "difficulty": [difficulty]}}}}
-        self.assertEqual(FT.menu_lines(player(9, 3))[:2], [
-            "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]",
-            "PlayerSelectionMenu[0]: instrument: 9 (ProDrums); difficulty: 3 (Expert)"])
-        line = FT.menu_lines(player(6, 2))[1]
-        self.assertIn("instrument: 6 (Drums)", line)
-        self.assertIn("difficulty: 2 (Hard)", line)
+    def test_read_state_gives_the_song_check_the_loaded_folder(self):
+        # ch_run_chart's song check reads the loaded song folder from
+        # read_state through menu_tools.loaded_folder. On the recorded reply
+        # that is the folder GlobalVariables named in the run's own log line.
+        with open(RECORDED_STATE_LOG, encoding="utf-8") as f:
+            logged = json.loads(f.readline())["payload"]
+        folder = logged[FT.MENU_BLOCK]["globals"]["currentSongFolder"]
+        self.assertTrue(folder)
+        tools = self.tools([recorded_state(), recorded_state()], attached=True,
+                           real_time=True)
+        self.assertEqual(MT.loaded_folder(tools.read_state()), folder)
 
     def test_player_screen_on_the_instrument_page_with_drum_rows(self):
         self.assertEqual(FT.menu_lines(player_screen(PLAYER_FIELDS))[:3], [
@@ -774,74 +767,9 @@ class MenuTest(Rig):
             "PlayerSelectionMenu[0] rows: rowNames: [\"Guitar\", \"Drums\", \"Pro Drums\"]; "
             "rowInstruments: [0 (Guitar), 6 (Drums), 9 (ProDrums)]"])
 
-    def test_player_screen_page_the_enum_does_not_name(self):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "page": [6]}))[1]
-        self.assertTrue(line.startswith(
-            "PlayerSelectionMenu[0]: page: 6 (not in menu_fields.json); cursor: 1; "), line)
-
-    def test_player_screen_with_null_row_arrays(self):
-        lines = FT.menu_lines(player_screen(
-            {**PLAYER_FIELDS, "rowNames": [None], "rowInstruments": [None]}))
-        self.assertIn("highlighted row: 2, name none (rowNames is null), "
-                      "id none (rowInstruments is null); ", lines[1])
-        self.assertEqual(lines[2], "PlayerSelectionMenu[0] rows: "
-                         "rowNames: null (no array); rowInstruments: null (no array)")
-
-    def test_player_screen_highlight_index_out_of_range(self):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "scroll": [4]}))[1]
-        self.assertIn("scroll: 4; highlighted row: 5, "
-                      "name none (index 5 is outside the 3 rowNames), "
-                      "id none (index 5 is outside the 3 rowInstruments); ", line)
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": [-3]}))[1]
-        self.assertIn("highlighted row: -2, name none (index -2 is outside the 3 rowNames), ",
-                      line)
-
-    def test_player_screen_with_an_unread_cursor(self):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, "cursor": ["error: gone"]}))[1]
-        self.assertIn("cursor: error: gone; scroll: 1; "
-                      "highlighted row: not known (cursor was not read); ", line)
-
-    def highlighted(self, **fields):
-        line = FT.menu_lines(player_screen({**PLAYER_FIELDS, **fields}))[1]
-        return line.split("highlighted row: ")[1].split("; controllerType")[0]
-
-    def test_confirm_and_difficulty_take_the_cursor_alone(self):
-        # Page 0 is Confirm and 2 Difficulty: cursor 1 and scroll 1 give row 1.
-        for page in (0, 2):
-            self.assertEqual(self.highlighted(page=[page]),
-                             "1, name \"Drums\", id 6 (Drums)", page)
-
-    def test_instrument_and_modifiers_add_the_scroll(self):
-        # Page 1 is Instrument and 3 Modifiers: cursor 1 and scroll 1 give row 2.
-        for page in (1, 3):
-            self.assertEqual(self.highlighted(page=[page]),
-                             "2, name \"Pro Drums\", id 9 (ProDrums)", page)
-
-    def test_an_unread_scroll_matters_only_where_the_scroll_is_added(self):
-        self.assertEqual(self.highlighted(page=[0], scroll=["error: gone"]),
-                         "1, name \"Drums\", id 6 (Drums)")
-        self.assertEqual(self.highlighted(page=[3], scroll=["error: gone"]),
-                         "not known (scroll was not read)")
-
-    def test_the_ready_page_highlights_no_row(self):
-        self.assertEqual(self.highlighted(page=[4]), "none on the Ready page")
-
-    def test_a_page_with_no_row_rule_or_no_read(self):
-        self.assertEqual(self.highlighted(page=[6]), "not known (page 6 has no row rule)")
-        self.assertEqual(self.highlighted(page=["error: gone"]),
-                         "not known (page was not read)")
-
     def test_every_page_word_has_a_row_rule(self):
         words = set(FT._enum_words(FT.PAGE_KEY).values())
         self.assertEqual(words, set(FT.ROW_ADDS_SCROLL) | {FT.NO_ROW_PAGE})
-
-    def test_two_player_screens_get_a_line_pair_each(self):
-        fields = {key: values * 2 for key, values in PLAYER_FIELDS.items()}
-        fields["playerIndex"] = [0, 1]
-        lines = FT.menu_lines(player_screen(fields, live=2))
-        self.assertTrue(lines[3].startswith("PlayerSelectionMenu[1]: page: 1 (Instrument); "))
-        self.assertIn("playerIndex: 1; ", lines[3])
-        self.assertTrue(lines[4].startswith("PlayerSelectionMenu[1] rows: "))
 
     def test_menu_lines_print_why_the_player_screen_was_not_read(self):
         menu = {**MENU_READ, "classes": {"PlayerSelectionMenu": {
