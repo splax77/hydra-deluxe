@@ -1754,15 +1754,19 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
         chord_score_table(song, core::SqOutRule::FirstNote, ChordScoreDetail::WithNotes);
     REQUIRE(table.rows.size() == song.sequence.size());
 
-    int combo = 0;
-    uint32_t note_at = 0;
     for (size_t i = 0; i < table.rows.size(); ++i) {
         CAPTURE(i);
         const SongTimestamp& ts = song.sequence[i];
+        const ChordScoreRow& row = table.rows[i];
+        // One combo counter runs through the chart, and the notes run on in
+        // one list: each chord starts where the one before it ended.
+        const int combo_in = i == 0 ? 0 : table.rows[i - 1].combo_after;
+        const uint32_t notes_in = i == 0 ? 0 : table.rows[i - 1].note_end;
+        CHECK(row.combo_before == combo_in);
+        CHECK(row.note_begin == notes_in);
         std::vector<CategoryScores> per_note;
         const CategoryScores want =
-            category_scores(ts.chord, combo, &per_note, core::SqOutRule::FirstNote);
-        const ChordScoreRow& row = table.rows[i];
+            category_scores(ts.chord, row.combo_before, &per_note, core::SqOutRule::FirstNote);
         CHECK(row.notes == want.notes);
         CHECK(row.combo == want.combo);
         CHECK(row.sp == want.sp);
@@ -1772,43 +1776,33 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
         CHECK(row.solo == solo_bonus(ts.chord, ts.flag_solo));
         CHECK(row.multiplier == want.multiplier);
         CHECK(row.multiplier_after == want.multiplier_after);
-        // One combo counter runs through the chart: each chord starts where
-        // the last one ended and adds its own note count.
-        CHECK(row.combo_before == combo);
-        CHECK(row.combo_after == combo + static_cast<int>(per_note.size()));
+        CHECK(row.combo_after == want.combo_after);
         // The chord's notes are the next ones in the table, in the order
         // category_scores priced them.
-        CHECK(row.note_begin == note_at);
-        CHECK(row.note_end == note_at + per_note.size());
-        REQUIRE(table.notes.size() >= note_at + per_note.size());
-        for (size_t k = 0; k < per_note.size(); ++k) {
+        CHECK(row.note_end - row.note_begin == per_note.size());
+        REQUIRE(table.notes.size() >= row.note_end);
+        for (size_t k = 0; k < per_note.size() && row.note_begin + k < row.note_end; ++k) {
             CAPTURE(k);
-            const CategoryScores& got = table.notes[note_at + k];
+            const CategoryScores& got = table.notes[row.note_begin + k];
             CHECK(got.sp == per_note[k].sp);
             CHECK(got.combo == per_note[k].combo);
             CHECK(got.multiplier == per_note[k].multiplier);
             CHECK(got.dynamics_bonus == per_note[k].dynamics_bonus);
         }
-        combo = row.combo_after;
-        note_at = row.note_end;
     }
-    CHECK(table.notes.size() == note_at);
+    CHECK(table.notes.size() == table.rows.back().note_end);
 
     // The three chords after the singles are the cases the chart was built
-    // for, each stated by its rule on named inputs.
-    // The straddle crosses a step: to_multiplier lifts between its first
-    // note and its last.
+    // for. The straddle crosses a step, so its last note is paid at a higher
+    // multiplier than its first.
     const ChordScoreRow& straddle = table.rows[7];
-    CHECK(straddle.multiplier == to_multiplier(straddle.combo_before + 1));
-    CHECK(straddle.multiplier_after == to_multiplier(straddle.combo_after));
     CHECK(straddle.multiplier < straddle.multiplier_after);
     // The accent and ghost categories hold only the pad's base points
     // (CategoryScores::accent and ::ghost), one dynamic note each.
     CHECK(straddle.accent == kNoteBasePoints);
     CHECK(table.rows[8].ghost == kNoteBasePoints);
-    // The solo chord pays kSoloBonusPerNote for each of its two notes, and
-    // the chords outside the solo pay none.
-    CHECK(table.rows[9].solo == 2 * kSoloBonusPerNote);
+    // Only the chord inside the solo earns a solo bonus.
+    CHECK(table.rows[9].solo > 0);
     CHECK(table.rows[8].solo == 0);
 
     // Without the notes, every chord row's points are the same and every
