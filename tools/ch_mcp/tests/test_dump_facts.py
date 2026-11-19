@@ -1,13 +1,16 @@
 """Tests for dump_facts (the dump.cs reader) and dump_build (the dumper runner).
 
-No real dump and no real dumper: the reader runs on the hand-written dump.cs
-fragment below, and the runner gets a fake subprocess.
+No real dump: the reader runs on the hand-written dump.cs fragment below.
+The runner tests for a run that fails or hits its cap start the real
+Il2CppDumper (dump_build.DEFAULT_DUMPER); the others give the runner a fake
+subprocess.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -22,6 +25,7 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import build_facts as BF  # noqa: E402
 from tools.ch_mcp import dump_build as B  # noqa: E402
 from tools.ch_mcp import dump_facts as D  # noqa: E402
+from tools.ch_mcp import game_files as G  # noqa: E402
 
 ENGINE = "ʺʺʸʶʿʵˀʸʲˀʲ"
 ENGINE_CTOR_RVA = 0x20DF680
@@ -125,7 +129,6 @@ THREE_STAGES = (
     "Initializing metadata...\nDumping...\nDone!\nGenerate struct...\nDone!\n"
     "Generate dummy dll...\nDone!\nPress any key to exit...\n"
 )
-TWO_STAGES = "Initializing metadata...\nDumping...\nDone!\nGenerate struct...\nDone!\nGenerate dummy dll...\n"
 CRASH = "Unhandled exception. System.InvalidOperationException: Cannot read keys\n"
 
 
@@ -238,13 +241,21 @@ class SignatureTests(unittest.TestCase):
             self.assertIn(path, str(caught.exception))
             self.assertIn("v1.0.0.4045-master", str(caught.exception))
 
+    def assert_refusal_names_the_engine_and_its_match_count(self, text, rva, count):
+        with self.assertRaises(D.FactsError) as caught:
+            D.build_facts(text, "v", rva, "dump.cs")
+        message = str(caught.exception)
+        # The refusal is about the engine, and its one number is how many classes matched.
+        self.assertIn("engine", message)
+        self.assertEqual(re.findall(r"\d+", message), [str(count)])
+
     def test_ctor_rva_matching_no_class_refuses(self):
-        with self.assertRaisesRegex(D.FactsError, r"^engine ctor RVA matched 0 classes$"):
-            D.build_facts(FRAGMENT, "v", 0x1234, "dump.cs")
+        # No constructor in FRAGMENT sits at 0x1234.
+        self.assert_refusal_names_the_engine_and_its_match_count(FRAGMENT, 0x1234, 0)
 
     def test_ctor_rva_matching_two_classes_refuses(self):
-        with self.assertRaisesRegex(D.FactsError, r"^engine ctor RVA matched 2 classes$"):
-            D.build_facts(FRAGMENT + SECOND_CTOR, "v", ENGINE_CTOR_RVA, "dump.cs")
+        # SECOND_CTOR adds a second constructor at the engine's address.
+        self.assert_refusal_names_the_engine_and_its_match_count(FRAGMENT + SECOND_CTOR, ENGINE_CTOR_RVA, 2)
 
     def test_game_manager_signature_lists_readable_fields_only(self):
         facts = D.build_facts(FRAGMENT, "v", ENGINE_CTOR_RVA, "dump.cs")
@@ -264,24 +275,22 @@ class SignatureTests(unittest.TestCase):
             with open(dump, "w", encoding="utf-8") as f:
                 f.write(FRAGMENT)
             out_path, _ = D.write_facts(dump, "v", ENGINE_CTOR_RVA)
-            self.assertEqual(out_path, os.path.join(tmp, "facts.json"))
+            # The file goes under the name build_facts reads a build's facts by.
+            self.assertEqual(out_path, os.path.join(tmp, BF.FACTS_FILE))
             self.assertTrue(os.path.isfile(out_path))
 
 
 class FakeRunner:
     """Stands in for subprocess.run: records the call, writes the files a run leaves."""
 
-    def __init__(self, stdout="", returncode=0, files=B.REPORTED_FILES, timeout=False):
+    def __init__(self, stdout="", returncode=0, files=B.REPORTED_FILES):
         self.stdout = stdout
         self.returncode = returncode
         self.files = files
-        self.timeout = timeout
         self.calls = []
 
     def __call__(self, cmd, **kwargs):
         self.calls.append((cmd, kwargs))
-        if self.timeout:
-            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
         out_dir = cmd[-1]
         for name in self.files:
             with open(os.path.join(out_dir, name), "w", encoding="utf-8") as f:
@@ -311,11 +320,15 @@ class DumpBuildTests(unittest.TestCase):
         self.assertEqual(runner.calls, [])
         self.assertFalse(os.path.exists(inside))
 
-    def test_cap_reports_the_cap_line(self):
-        runner = FakeRunner(timeout=True)
+    def test_cap_reports_the_cap_and_leaves_the_output_folder(self):
+        # The real dumper on the real game folder. A whole run took 7.1 s
+        # (tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md),
+        # so a 1 s cap stops it; a run that ends inside the cap returns and fails here.
+        cap_s = 1
         with self.assertRaises(B.DumpError) as caught:
-            B.run_dump(self.game, self.out, runner=runner)
-        self.assertEqual(str(caught.exception), "Il2CppDumper did not finish in 600 s; output folder left as is")
+            B.run_dump(G.GAME_DIR, self.out, cap_s=cap_s)
+        self.assertIn(f" {cap_s} s", str(caught.exception))
+        self.assertTrue(os.path.isdir(self.out))
 
     def test_three_done_lines_and_a_crash_exit_count_as_good(self):
         runner = FakeRunner(THREE_STAGES, returncode=0xE0434352)
@@ -327,18 +340,24 @@ class DumpBuildTests(unittest.TestCase):
         self.assertEqual(kwargs["env"]["DOTNET_ROLL_FORWARD"], "Major")
         self.assertEqual(kwargs["timeout"], 600)
 
-    def test_fewer_than_three_done_lines_fail_and_name_the_missing_stage(self):
-        runner = FakeRunner(TWO_STAGES, returncode=1)
+    def failed_real_run(self):
+        """The real dumper on setUp's game folder, whose one-byte files are no
+        game: it stops before its first stage, prints no Done! line and writes
+        no output file."""
         with self.assertRaises(B.DumpError) as caught:
-            B.run_dump(self.game, self.out, runner=runner)
-        message = str(caught.exception)
-        self.assertIn("printed 2 of 3 Done! lines", message)
-        self.assertIn("stage 'Generate dummy dll...' never printed Done!", message)
+            B.run_dump(self.game, self.out)
+        return str(caught.exception).splitlines()
+
+    def test_fewer_than_three_done_lines_fail_and_name_the_missing_stage(self):
+        lines = self.failed_real_run()
+        self.assertTrue(any(f"0 of {len(B.STAGES)} {B.DONE_LINE}" in line for line in lines), lines)
+        for stage in B.STAGES:
+            self.assertTrue(any(repr(stage) in line and B.DONE_LINE in line for line in lines), (stage, lines))
 
     def test_missing_output_file_fails(self):
-        runner = FakeRunner(THREE_STAGES, files=("dump.cs", "il2cpp.h", "script.json"))
-        with self.assertRaisesRegex(B.DumpError, "stringliteral.json is missing"):
-            B.run_dump(self.game, self.out, runner=runner)
+        lines = self.failed_real_run()
+        for name in B.REQUIRED_FILES:
+            self.assertTrue(any(name in line and self.out in line for line in lines), (name, lines))
 
 
 # ---- the facts tables (--tsv) ------------------------------------------------
@@ -477,8 +496,17 @@ class _TableFixture(unittest.TestCase):
 
 class FactsTableTests(_TableFixture):
     def test_column_line_ends_with_cited(self):
-        text, _ = self.table()
-        self.assertIn("build\tkind\ttypedef_index\tclass\tmember\trva\toffset\tcited", text.splitlines())
+        span = "GameManager.songTime"
+        self.page(f"# P\n\n`{span}`\n")
+        text, errors = self.table()
+        self.assertEqual(errors, [])
+        self.assertIn("\t".join(D.TABLE_COLUMNS), text.splitlines())
+        # Every row has every column, and the last one holds the span as the page wrote it.
+        rows = self.rows(text)
+        self.assertTrue(rows)
+        for row in rows:
+            self.assertEqual(len(row), len(D.TABLE_COLUMNS))
+        self.assertIn(span, [row[-1] for row in rows])
 
     def test_cited_name_is_found(self):
         self.page("# P\n\nThe clock is `GameManager.songTime`.\n")
@@ -495,12 +523,17 @@ class FactsTableTests(_TableFixture):
                       self.rows(text))
 
     def test_missing_fact_is_an_error_naming_page_line_and_span(self):
-        self.page("# P\n\nfine\n`GameManager.songTimer` and `0x20DEEC1`\n")
+        # Neither span is in TINY_DUMP: no member songTimer, no method at 0x20DEEC1.
+        spans = ["`GameManager.songTimer`", "`0x20DEEC1`"]
+        lines = ["# P", "", "fine", f"{spans[0]} and {spans[1]}"]
+        self.page("\n".join(lines) + "\n")
         _, errors = self.table()
-        self.assertEqual(len(errors), 2)
-        self.assertTrue(all("page.md:4:" in e for e in errors), errors)
-        self.assertIn("`GameManager.songTimer`", errors[0])
-        self.assertIn("`0x20DEEC1`", errors[1])
+        # Both errors point at the page's last line, where the spans are.
+        where = f"{D._display_path(os.path.join(self.pages, 'page.md'))}:{len(lines)}:"
+        self.assertEqual(len(errors), len(spans), errors)
+        for error, span in zip(errors, spans):
+            self.assertTrue(error.startswith(where), (where, error))
+            self.assertIn(span, error)
 
     def test_shared_address_gives_one_row_per_method(self):
         self.page("# P\n\n`0x20AAAA0`\n")
