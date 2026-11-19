@@ -10,6 +10,7 @@ has a reg.exe runner.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import os
@@ -21,6 +22,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -317,7 +319,20 @@ class BotRunTest(unittest.TestCase):
         self.assertFalse(any(line.endswith(relative) for line in lines), lines)
 
     def test_the_game_exe_name_is_the_probe_process_name(self):
-        self.assertEqual(os.path.basename(G.GAME_EXE), PROCESS_NAME)
+        # The game installed on this machine is a Unity player, which loads
+        # the folder named after its own exe with "_Data" on the end. So the
+        # exe's real name is read from that folder, not from either constant.
+        game_dir = os.path.dirname(G.GAME_EXE)
+        data_suffix = "_Data"
+        stems = [name[:-len(data_suffix)] for name in os.listdir(game_dir)
+                 if name.endswith(data_suffix)
+                 and os.path.isdir(os.path.join(game_dir, name))]
+        self.assertEqual(len(stems), 1, os.listdir(game_dir))
+        installed = stems[0] + ".exe"
+        self.assertIn(installed, os.listdir(game_dir))
+        self.assertTrue(os.path.isfile(G.GAME_EXE))
+        self.assertEqual(PROCESS_NAME, installed)
+        self.assertEqual(os.path.basename(G.GAME_EXE), installed)
 
     def test_profile_appears_only_when_passed(self):
         # A profile adds one flag and its value after the song and the player,
@@ -362,20 +377,45 @@ class BotRunTest(unittest.TestCase):
         self.assertIn(B.STOPPED_BY_FLAG_LINE, r.lines)
 
     def test_the_cap_prints_its_line_runs_the_restore_and_leaves_settings_ini(self):
-        r = Rig(self.tmp, exits_at=None)
-        cap_s = B.run_cap_s(SONG_LENGTH_MS)
-        # The game changes settings.ini during the run but never the stats.
-        r.clock.events.append((10, lambda: _write(r.path("settings.ini"), b"the game changed this")))
-        self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 1)
-        self.assertIn(f"scorestats.json unchanged after {cap_s:.0f} s; bot launch wrote no stats",
-                      r.lines)
-        self.assertFalse(any("game exited" in line or "still running after" in line
-                             for line in r.lines))
-        self.assertEqual(r.clock.t, cap_s)
-        self.assertFalse(os.path.exists(os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json")))
-        self.assertEqual(_read(r.path(G.SETTINGS)), b"the game changed this")
-        self.assertIn(f"restoring the backup from {r.backup_dir()}", r.lines)
-        self.assertFalse(any(line.startswith(f"{G.SETTINGS}:") for line in r.lines))
+        # A real launch (_launching_env) of PITCH_DARK with Hydra's end, on the
+        # real clock. Its real cap is the song plus a minute, so the run is
+        # given a cap of 0 s: the wait then ends after its first poll, the
+        # soonest any cap can end it. The real scorestats.json from before a
+        # run never changes. settings.ini is a real one from a run's backup,
+        # changed during the run the way the game changes it.
+        lines = []
+        env = _launching_env(self.tmp, lines)
+        stats = os.path.join(env.documents_dir, G.SCORESTATS)
+        shutil.copyfile(STATS_BEFORE_A_RUN, stats)
+        settings = os.path.join(env.documents_dir, G.SETTINGS)
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), settings)
+        run = B.start_run(PITCH_DARK, env=env, song_end=_pitch_dark_end(self),
+                          backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        G.set_game_setting(settings, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        game_left = _read(settings)
+        out_dir = os.path.join(self.tmp, "out")
+        start = env.now()
+        self.assertIsNone(B.wait_stats(dataclasses.replace(run, cap_s=0.0), out_dir, env))
+        waited = env.now() - start
+        # One poll's sleep, then the wait's last line: it names the stats
+        # file and the whole seconds waited, and no copy.
+        self.assertGreaterEqual(waited, B.POLL_INTERVAL_S)
+        self.assertLess(waited, 2 * B.POLL_INTERVAL_S)
+        self.assertIn(G.SCORESTATS, lines[-1])
+        seconds = [int(n) for n in re.findall(r"\b(\d+) s\b", lines[-1])]
+        self.assertEqual(len(seconds), 1, lines[-1])
+        self.assertGreaterEqual(seconds[0], round(B.POLL_INTERVAL_S))
+        self.assertLessEqual(seconds[0], round(waited))
+        self.assertNotIn(out_dir, lines[-1])
+        self.assertEqual(os.listdir(out_dir), [])
+        printed = len(lines)
+        self.assertTrue(B.finish_run(run, stop=False, env=env))
+        # The restore names the run's backup and leaves settings.ini as the
+        # game left it.
+        self.assertTrue(any(run.backup_dir in line for line in lines[printed:]), lines)
+        self.assertEqual(_read(settings), game_left)
+        self.assertFalse(any(line.startswith(f"{G.SETTINGS}:") for line in lines), lines)
 
     def test_a_restore_failure_stops_with_the_entry_name_and_the_backup_folder(self):
         # A real backup that holds the registry key, restored with no reg.exe
@@ -510,38 +550,65 @@ class RunStepsTest(unittest.TestCase):
     def start(self, r: Rig, song_dir) -> B.Run:
         return B.start_run(song_dir, backup_root=os.path.join(r.out_dir, "backups"), env=r.env)
 
+    def start_real(self, lines: list, before=None) -> B.Run:
+        """start_run on PITCH_DARK with Hydra's end, launched for real
+        (_launching_env), which it keeps as self.env. `before`, when given,
+        is a real scorestats.json put in place first."""
+        env = self.env = _launching_env(self.tmp, lines)
+        if before is not None:
+            shutil.copyfile(before, os.path.join(env.documents_dir, G.SCORESTATS))
+        run = B.start_run(PITCH_DARK, env=env, song_end=_pitch_dark_end(self),
+                          backup_root=os.path.join(self.tmp, "backups"))
+        self.addCleanup(_reap, self, run.game)
+        return run
+
     def test_start_run_backs_up_before_the_launch(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertEqual(run.backup_dir, r.backup_dir())
+        lines = []
+        run = self.start_real(lines)
+        # The backup holds only its manifest (no reg.exe runner, so no key).
         self.assertEqual(os.listdir(run.backup_dir), [G.BACKUP_MANIFEST])
-        self.assertEqual(r.lines[0], f"backup folder: {r.backup_dir()}")
-        self.assertFalse(any(line.startswith("restoring") for line in r.lines))
+        # The one line naming the backup comes before the launch's line, and
+        # no restore line names it after.
+        named = [i for i, line in enumerate(lines) if run.backup_dir in line]
+        self.assertEqual(len(named), 1, lines)
+        launch_line = next(i for i, line in enumerate(lines)
+                           if line.endswith(subprocess.list2cmdline(run.command)))
+        self.assertLess(named[0], launch_line, lines)
 
     def test_start_run_keeps_the_stats_state_from_before_the_launch(self):
-        r = Rig(self.tmp, exits_at=None)
-        before = B._file_state(r.path(G.SCORESTATS))
-        run = self.start(r, r.song)
+        lines = []
+        run = self.start_real(lines, before=STATS_BEFORE_A_RUN)
+        stats = os.path.join(self.env.documents_dir, G.SCORESTATS)
         self.assertIsNotNone(run.before)
-        self.assertEqual(run.before, before)
+        self.assertEqual(run.before, B._file_state(stats))
 
     def test_start_run_launches_the_command_and_records_the_game(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertEqual(r.launch.commands, [run.command])
-        self.assertEqual(run.command, B.launch_command(r.env.exe, r.song, B.DEFAULT_PLAYER))
-        self.assertIs(run.game, r.game)
-        self.assertEqual(run.length_ms, SONG_LENGTH_MS)
-        self.assertEqual(run.cap_s, B.run_cap_s(run.length_ms))
-        self.assertEqual(run.length_source, hydra_end.chart_source_text(r.chart))
-        self.assertTrue(any(line.startswith("starting: ") for line in r.lines), r.lines)
-        self.assertEqual(r.lines[-1], f"game process id: {r.game.pid}")
+        lines = []
+        run = self.start_real(lines)
+        given_ms, given_source = _pitch_dark_end(self)
+        self.assertEqual(run.command, B.launch_command(_WHOAMI, os.path.abspath(PITCH_DARK),
+                                                       B.DEFAULT_PLAYER))
+        # The game is the process the launch started.
+        self.assertIsInstance(run.game.pid, int)
+        self.assertEqual(run.game._p.args, run.command)
+        self.assertEqual(run.length_ms, given_ms)
+        self.assertEqual(run.cap_s, B.run_cap_s(given_ms))
+        self.assertEqual(run.length_source, given_source)
+        # One line names the command, and the last line the game's process id.
+        self.assertEqual(len([line for line in lines
+                              if line.endswith(subprocess.list2cmdline(run.command))]), 1, lines)
+        self.assertTrue(lines[-1].endswith(f" {run.game.pid}"), lines)
 
     def test_start_run_returns_before_any_sleep(self):
-        r = Rig(self.tmp, exits_at=None)
-        run = self.start(r, r.song)
-        self.assertEqual(r.clock.t, 0.0)
-        self.assertEqual(run.launched_at, 0.0)
+        # On the real clock, start_run is back before the poll's first sleep
+        # would have ended, and the run's launch time falls inside the call.
+        lines = []
+        start = time.monotonic()
+        run = self.start_real(lines)
+        end = time.monotonic()
+        self.assertLess(end - start, B.POLL_INTERVAL_S)
+        self.assertGreaterEqual(run.launched_at, start)
+        self.assertLessEqual(run.launched_at, end)
 
     def test_run_cap_is_the_song_plus_the_extra_minute(self):
         # The song's seconds plus POLL_CAP_EXTRA_S, for any length.
