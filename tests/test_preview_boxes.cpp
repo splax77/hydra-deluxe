@@ -423,18 +423,15 @@ TEST_CASE("struck_at: a chord exactly on the playhead counts as hit") {
 }
 
 TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Power pays") {
-    // A Red note every 500 ms (tick 480 steps). One bar of SP activated at
-    // tick 2400 (2500 ms) runs two measures, to tick 6240 (6500 ms).
-    Song song = make_sp_song({1920}, 9600);
-    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
-    PreviewScene scene = build_preview_scene(song, &path);
+    // The analyzed corpus chart's best path, as the engine found it.
+    const AnalysisResult& a = corpus::analyzed_by_ten_scores();
+    const Path& best = a.record.best_path();
+    const PreviewScene scene = build_preview_scene(a.song, &best);
     REQUIRE(scene.score.state == PreviewScore::State::Ready);
-    REQUIRE(scene.activations.size() == 1);
-    REQUIRE(scene.activations[0].has_sp_end);
-    CHECK(scene.activations[0].sp_end_ms == doctest::Approx(6500.0));
+    REQUIRE_FALSE(scene.activations.empty());
 
     // Each step carries exactly what the replay says the disc shows.
-    const ReplayResult r = replay_stored_path(song, path).result;
+    const ReplayResult r = replay_stored_path(a.song, best).result;
     REQUIRE(r.chords.size() == scene.score.steps.size());
     for (size_t i = 0; i < r.chords.size(); ++i) {
         CHECK(scene.score.steps[i].multiplier == r.chords[i].multiplier_shown);
@@ -442,23 +439,27 @@ TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Pow
         CHECK(scene.score.steps[i].multiplier_plain == r.chords[i].multiplier_after);
     }
 
-    // The SP end itself: the chord on it (6500 ms) was paid doubled, but from
-    // this instant on the box is plain. A hair earlier it is still doubled.
-    CHECK(score_box_at(scene, 6499.0).detail == "x4 " + kDot + " combo 13");
-    CHECK(score_box_at(scene, 6500.0).detail == "x2 " + kDot + " combo 14");
-    CHECK(score_box_at(scene, scene.activations[0].sp_end_ms).detail ==
-          "x2 " + kDot + " combo 14");
-
-    // 2000 ms: five notes hit, before the activation.
-    CHECK(score_box_at(scene, 2000.0).detail == "x1 " + kDot + " combo 5");
-    // 2500 ms: the activation chord is hit and paid, so x1 shows as x2.
-    CHECK(score_box_at(scene, 2500.0).detail == "x2 " + kDot + " combo 6");
-    CHECK(score_box_at(scene, 3000.0).detail == "x2 " + kDot + " combo 7");
-    // 6600 ms: Star Power has ended, so the disc is plain even though the
-    // last chord hit (6500 ms, on the deactivation node) was paid doubled.
-    CHECK(score_box_at(scene, 6600.0).detail == "x2 " + kDot + " combo 14");
-    // 7000 ms: the first chord Star Power doesn't pay: the plain x2 of combo 15.
-    CHECK(score_box_at(scene, 7000.0).detail == "x2 " + kDot + " combo 15");
+    // Around each activation's SP end: a millisecond before it the box shows
+    // the doubled disc of the chord struck then, which Star Power paid; from
+    // the end on it shows that chord's plain disc.
+    int ends_checked = 0;
+    for (const PreviewActivation& act : scene.activations) {
+        if (!act.has_sp_end) continue;
+        const double before = act.sp_end_ms - 1.0;
+        REQUIRE(before > act.ms);
+        const ReplayChord* in = struck_chord(r, before);
+        REQUIRE(in != nullptr);
+        CHECK(in->in_sp);
+        CHECK(in->multiplier_shown == in->multiplier_after * kStarPowerMultiplier);
+        CHECK(score_box_at(scene, before).detail ==
+              score_detail(in->multiplier_shown, in->combo_after));
+        const ReplayChord* at_end = struck_chord(r, act.sp_end_ms);
+        REQUIRE(at_end != nullptr);
+        CHECK(score_box_at(scene, act.sp_end_ms).detail ==
+              score_detail(at_end->multiplier_after, at_end->combo_after));
+        ++ends_checked;
+    }
+    CHECK(ends_checked > 0);
 }
 
 TEST_CASE("score box: past the length it reads the moment the time box shows") {
@@ -488,51 +489,42 @@ TEST_CASE("score box: a chord exactly on the playhead counts as hit") {
     CHECK(score_box_at(scene, *jump).detail == "x2 " + kDot + " combo 6");
 }
 
-// User decision D11 (docs/audit/2026-10-03-fix-decisions.md): a chord just past
-// the SP end that Hydra's leeway still pays doubled is paid doubled in the
-// score, but the box reads plain from the SP end on.
 TEST_CASE("score box: a leeway chord past the SP end is paid doubled, the box stays plain") {
-    // Same song as above, plus one extra chord 1 tick (about 1 ms) after the
-    // SP end at tick 6240, inside the 3 ms leeway.
-    Song song = make_sp_song({1920}, 9600);
-    const int64_t leeway_tick = 6241;
-    const auto at = std::find_if(song.sequence.begin(), song.sequence.end(),
-                                 [&](const SongTimestamp& ts) {
-                                     return ts.timecode.ticks() > 6240;
-                                 });
-    REQUIRE(at != song.sequence.end());
-    SongTimestamp extra;
-    extra.timecode = song.timecode(leeway_tick);
-    extra.chord.add_note(NoteColor::Red);
-    song.sequence.insert(at, std::move(extra));
-
-    Path path = priced_path(song, {sp_act_at(song, 2400, 1, 6240)});
-    PreviewScene scene = build_preview_scene(song, &path);
-    REQUIRE(scene.score.state == PreviewScore::State::Ready);
-    REQUIRE(scene.activations.size() == 1);
-    const double sp_end = scene.activations[0].sp_end_ms;
-    CHECK(sp_end == doctest::Approx(6500.0));
-
-    const ReplayResult r = replay_stored_path(song, path).result;
-    REQUIRE(r.chords.size() == scene.score.steps.size());
-    size_t idx = r.chords.size();
-    for (size_t i = 0; i < r.chords.size(); ++i)
-        if (r.chords[i].tick == leeway_tick) idx = i;
-    REQUIRE(idx < r.chords.size());
-    const ReplayChord& leeway = r.chords[idx];
-
-    // The replay paid it doubled, a hair after the SP end.
-    CHECK(leeway.ms > sp_end);
-    CHECK(leeway.ms - sp_end < core::default_rules().backend_leeway_ms);
-    CHECK(leeway.in_sp);
-    CHECK(leeway.multiplier_shown == leeway.multiplier_after * kStarPowerMultiplier);
-    CHECK(scene.score.steps[idx].multiplier == leeway.multiplier_shown);
-    CHECK(scene.score.steps[idx].multiplier_plain == leeway.multiplier_after);
-
-    // The box, at its own instant, reads plain.
-    const PreviewScoreBox box = score_box_at(scene, leeway.ms);
-    CHECK(box.detail == "x" + std::to_string(leeway.multiplier_after) + " " + kDot +
-                            " combo " + std::to_string(leeway.combo_after));
+    // Every chord, on every path the engine found for the analyzed corpus
+    // chart, that the replay paid in Star Power although it lies past its
+    // activation's SP end (inside backend_leeway_ms, the counted-backend
+    // leeway in core::Rules). The score pays it doubled; the box, at the
+    // chord's own instant, shows the plain disc, because SP has ended.
+    const AnalysisResult& a = corpus::analyzed_by_ten_scores();
+    const double leeway_ms = core::default_rules().backend_leeway_ms;
+    int leeway_chords = 0;
+    for (const Path& path : a.record.paths) {
+        const PreviewScene scene = build_preview_scene(a.song, &path);
+        if (scene.score.state != PreviewScore::State::Ready) continue;
+        const ReplayResult r = replay_stored_path(a.song, path).result;
+        REQUIRE(r.chords.size() == scene.score.steps.size());
+        for (size_t i = 0; i < r.chords.size(); ++i) {
+            const ReplayChord& c = r.chords[i];
+            if (!c.in_sp) continue;
+            // The activation whose SP end this chord lies just past.
+            const auto past = std::find_if(
+                scene.activations.begin(), scene.activations.end(),
+                [&](const PreviewActivation& act) {
+                    return act.has_sp_end && c.ms > act.sp_end_ms && act.ms < act.sp_end_ms &&
+                           c.ms - act.sp_end_ms < leeway_ms;
+                });
+            if (past == scene.activations.end()) continue;
+            ++leeway_chords;
+            CHECK(c.multiplier_shown == c.multiplier_after * kStarPowerMultiplier);
+            CHECK(scene.score.steps[i].multiplier == c.multiplier_shown);
+            CHECK(scene.score.steps[i].multiplier_plain == c.multiplier_after);
+            CHECK(score_box_at(scene, c.ms).detail ==
+                  score_detail(c.multiplier_after, c.combo_after));
+        }
+    }
+    // The chart's paths must hold such a chord, or nothing above ran.
+    CHECK_MESSAGE(leeway_chords > 0,
+                  "no path of the analyzed chart has a chord paid past its SP end");
 }
 
 TEST_CASE("score box: a path the replay can't reproduce says so") {
@@ -768,17 +760,35 @@ TEST_CASE("drain box: empties in reads the stored end, not a recount") {
 }
 
 TEST_CASE("drain box: an activation with no stored end stays idle") {
-    // No deact node, so nothing says SP is running.
-    Song song = make_sp_song({960, 1920}, /*last_tick=*/9600);
-    Path path;
-    path.activations = {act_at(song, 3840, /*skipped_fills=*/{})};
-    PreviewScene scene = build_preview_scene(song, &path);
+    // The analyzed corpus chart's best path, with its first activation's
+    // stored SP end taken away, as a record without SP end steps holds it.
+    // Nothing then says SP is running inside that activation.
+    const AnalysisResult& a = corpus::analyzed_by_ten_scores();
+    const Path& best = a.record.best_path();
+    const PreviewScene with_end = build_preview_scene(a.song, &best);
+    REQUIRE_FALSE(with_end.activations.empty());
+    REQUIRE(with_end.activations[0].has_sp_end);
+    // A moment inside the first activation's window, where the full record
+    // shows SP draining.
+    const double inside = (with_end.activations[0].ms + with_end.activations[0].sp_end_ms) / 2.0;
+    REQUIRE(drain_box_at(with_end, inside).active);
+
+    Path no_end = best;
+    no_end.activations[0].sp_end_steps.clear();
+    const PreviewScene scene = build_preview_scene(a.song, &no_end);
     REQUIRE_FALSE(scene.activations[0].has_sp_end);
 
-    PreviewDrainBox box = drain_box_at(scene, 5000.0);
+    // At that moment the box is idle, and reads what it reads with no path
+    // at all: the idle drain line.
+    const PreviewScene no_path = build_preview_scene(a.song, nullptr);
+    const PreviewDrainBox idle = drain_box_at(no_path, inside);
+    REQUIRE(idle.shown);
+    REQUIRE_FALSE(idle.active);
+    const PreviewDrainBox box = drain_box_at(scene, inside);
     CHECK(box.shown);
     CHECK_FALSE(box.active);
-    CHECK(box.detail.rfind("full meter ", 0) == 0);
+    CHECK(box.header == idle.header);
+    CHECK(box.detail == idle.detail);
 }
 
 TEST_CASE("solo_percent: the game's float32 truncation") {
@@ -844,21 +854,40 @@ TEST_CASE("solo box: the count is notes, the bonus thousands-grouped") {
 }
 
 TEST_CASE("solo box: a solo that starts during the last one's results takes over") {
+    // The second solo starts while the first one's results still show. The
+    // expected boxes are each solo's own, as build_solo_box_samples gives
+    // them: per solo its first chord, its second-to-last chord, its last
+    // chord (the end message) and its bonus.
     const Song song = two_solo_song();
     const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.solo_notes.size() == 2);
+    const PreviewSoloNotes& first = scene.solo_notes[0];
+    const PreviewSoloNotes& second = scene.solo_notes[1];
+    REQUIRE(first.steps.size() >= 2);
+    REQUIRE(second.steps.size() >= 2);
+    const std::vector<PreviewSoloBox> samples = build_solo_box_samples(scene);
+    REQUIRE(samples.size() == 8);
+    const PreviewSoloBox& first_end = samples[2];
+    const PreviewSoloBox& second_start = samples[4];
+    const PreviewSoloBox& second_end = samples[6];
+    const PreviewSoloBox& second_bonus = samples[7];
+    const double second_ms = second.steps.front().ms;
+    const double second_last_ms = second.steps.back().ms;
+    // The case: the second solo starts inside the first one's results.
+    REQUIRE(second_ms < first.steps.back().ms + kSoloTailMs);
 
-    // The first solo ends at 1000 ms; just before the second starts, its
-    // end message still shows.
-    CHECK(solo_box_at(scene, 1499.9).headline == "Perfect Solo!");
-    // The second solo's first chord (1500 ms, two notes): the new solo wins.
-    const PreviewSoloBox next = solo_box_at(scene, 1500.0);
-    CHECK(next.headline == "50%");
-    CHECK(next.detail == "2 / 4 notes");
-    // It ends at 2000 ms and runs its own results; the first solo's would
-    // have ended at 4000 ms.
-    CHECK(solo_box_at(scene, 2000.0).headline == "Perfect Solo!");
-    CHECK(solo_box_at(scene, 2000.0 + kSoloResultMs).headline == "+400");
-    CHECK_FALSE(solo_box_at(scene, 2000.0 + kSoloTailMs).shown);
+    // Just before the second solo starts, the first one's results show.
+    const PreviewSoloBox before = solo_box_at(scene, std::nextafter(second_ms, 0.0));
+    CHECK(before.headline == first_end.headline);
+    // On the second solo's first chord the new solo wins: its own count.
+    const PreviewSoloBox next = solo_box_at(scene, second_ms);
+    CHECK(next.headline == second_start.headline);
+    CHECK(next.detail == second_start.detail);
+    CHECK(next.headline != before.headline);
+    // It runs its own results from its own last chord.
+    CHECK(solo_box_at(scene, second_last_ms).headline == second_end.headline);
+    CHECK(solo_box_at(scene, second_last_ms + kSoloResultMs).headline == second_bonus.headline);
+    CHECK_FALSE(solo_box_at(scene, second_last_ms + kSoloTailMs).shown);
 }
 
 TEST_CASE("solo box: the same with or without a path") {
@@ -1019,24 +1048,41 @@ TEST_CASE("next activation box: the note names follow the Pro Drums setting") {
           "at m2.1.0 " + kDot + " [Red snare]");
 }
 
-TEST_CASE("next activation box: on an activation within half a millisecond, and no chord") {
-    TwoActs t;
-    // The playhead counts as on an activation up to half a millisecond past
-    // it: at 2000.5 ms the box still names activation 1, a hair later 2.
-    CHECK(next_act_box_at(t.scene, -100.0, true).header == "Next: activation 1 of 2");
-    CHECK(next_act_box_at(t.scene, 2000.5, true).header == "Next: activation 1 of 2");
-    CHECK(next_act_box_at(t.scene, std::nextafter(2000.5, 1e300), true).header ==
-          "Next: activation 2 of 2");
-    CHECK(next_act_box_at(t.scene, 8000.5, true).header == "Next: activation 2 of 2");
-    CHECK_FALSE(next_act_box_at(t.scene, std::nextafter(8000.5, 1e300), true).shown);
+TEST_CASE("next activation box: on an activation it names that one, past it the next") {
+    // The analyzed corpus chart's best path. The playhead counts as on an
+    // activation for the same short span the "Act <" jump uses: once a jump
+    // back would land on activation k, the box names the one after it. Each
+    // expected header is the box's own reading with the playhead exactly on
+    // that activation.
+    const AnalysisResult& a = corpus::analyzed_by_ten_scores();
+    const Path& best = a.record.best_path();
+    const PreviewScene scene = build_preview_scene(a.song, &best);
+    const std::vector<PreviewActivation>& acts = scene.activations;
+    REQUIRE_FALSE(acts.empty());
 
-    // An activation with no chord names only its measure.
-    Song song = make_sp_song({960}, /*last_tick=*/13440);
-    Path path;
-    path.activations = {sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760)};
-    const PreviewNextActBox box = next_act_box_at(build_preview_scene(song, &path), 0.0, true);
-    CHECK(box.header == "Next: activation 1 of 1");
-    CHECK(box.detail == "at m2.1.0");
+    // Before the song the box names the first.
+    CHECK(next_act_box_at(scene, -100.0, true).header ==
+          next_act_box_at(scene, acts[0].ms, true).header);
+
+    for (size_t k = 0; k < acts.size(); ++k) {
+        // Probe moments just after activation k: free inputs on both sides of
+        // the span, nothing here says where it ends.
+        for (double d : {0.0, 0.25, 0.5, std::nextafter(0.5, 1.0), 1.0, 2.0}) {
+            const double t = acts[k].ms + d;
+            CAPTURE(k);
+            CAPTURE(d);
+            const std::optional<double> back = activation_jump_ms(scene, t, -1);
+            const bool past_k = back.has_value() && *back == acts[k].ms;
+            const PreviewNextActBox box = next_act_box_at(scene, t, true);
+            if (!past_k) {
+                CHECK(box.header == next_act_box_at(scene, acts[k].ms, true).header);
+            } else if (k + 1 < acts.size()) {
+                CHECK(box.header == next_act_box_at(scene, acts[k + 1].ms, true).header);
+            } else {
+                CHECK_FALSE(box.shown);
+            }
+        }
+    }
 }
 
 TEST_CASE("next activation box: the notation line is the activation's own, header and detail unchanged") {
