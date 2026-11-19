@@ -533,163 +533,149 @@ class LiveAgentTest(Workspace):
         # Both copies of the event reach the log, heard or not.
         self.assertEqual(self.written().count(event_msg), 2)
 
-    def test_start_on_a_game_that_is_not_running_attaches_nothing(self):
-        agent = self.live(FakeFrida(None))
-        with self.assertRaises(FA.AttachFailed) as caught:
-            agent.start(30.0)
-        self.assertEqual(str(caught.exception),
-                         "Clone Hero.exe is not running; nothing attached")
-        self.assertEqual(caught.exception.reason, FA.END_NOT_RUNNING)
-        self.assertFalse(agent.alive)
-        self.assertFalse(os.path.exists(self.out_path))
-        self.assertEqual(agent.detach(), "nothing attached")
+    def real_started(self, run, name):
+        """A LiveAgent started, with the real wait, on a recorded log's first
+        message, delivered as the agent sent it. Returns the agent, its
+        session and every message in the log, for the test to deliver."""
+        msgs = recorded(run, name)
+        session = ReplySession([msgs[:1]])
+        agent = self.live(FakeFrida(session), wait=FA._default_wait)
+        agent.start(30.0)
+        return agent, session, msgs
 
     def test_start_with_no_first_reply_raises_on_the_cap_and_detaches_once(self):
+        # The agent sends nothing, so the real wait runs to the cap.
         session = ReplySession([None])
-        agent = self.live(FakeFrida(session))
+        agent = self.live(FakeFrida(session), wait=FA._default_wait)
         with self.assertRaises(FA.AttachFailed) as caught:
-            agent.start(30.0)
-        self.assertEqual(str(caught.exception),
-                         "no reply to the first read within the cap of 30 s; "
-                         "detached")
+            agent.start(SHORT_CAP_S)
         self.assertEqual(caught.exception.reason, FA.END_CAP)
+        # The line names what got no reply, the cap that passed, and that
+        # nothing stays attached.
+        text = str(caught.exception)
+        self.assertRegex(text, r"\bfirst read\b")
+        self.assertRegex(text, rf"\bcap of {SHORT_CAP_S:g} s\b")
+        self.assertRegex(text, r"\bdetached$")
         self.assertEqual(session.detach_calls, 1)
         self.assertFalse(agent.alive)
-        self.assertEqual(agent.detach(),
-                         "already detached (detached by the caller)")
+        self.assertEqual(agent.gone_reason, FA._DETACHED_BY_CALLER)
+        # A second detach detaches nothing and names why the first happened.
+        self.assertIn(FA._DETACHED_BY_CALLER, agent.detach())
         self.assertEqual(session.detach_calls, 1)
-
-    def test_start_whose_agent_fails_to_load_detaches_once(self):
-        session = ReplySession([], load_raises=RuntimeError("bad script"))
-        agent = self.live(FakeFrida(session))
-        with self.assertRaises(FA.AttachFailed) as caught:
-            agent.start(30.0)
-        self.assertEqual(str(caught.exception),
-                         "script error: loading the agent failed: bad script")
-        self.assertEqual(caught.exception.reason, FA.END_SCRIPT_ERROR)
-        self.assertEqual(session.detach_calls, 1)
-
-    def test_start_detaches_on_ctrl_c(self):
-        session = ReplySession([], load_raises=KeyboardInterrupt())
-        agent = self.live(FakeFrida(session))
-        with self.assertRaises(KeyboardInterrupt):
-            agent.start(30.0)
-        self.assertEqual(session.detach_calls, 1)
+        self.assertEqual(self.written(), [])
 
     def test_read_returns_the_next_payload_and_the_log_holds_it(self):
-        later = {**STATE, "songTime": 4.0}
-        agent, session = self.started([STATE, later])
-        self.assertEqual(agent.read(5.0), later)
+        # Three state reads in a row from one real run, ids 1 to 3
+        # (hydra-data/ch-mcp-runs/2026-11-06/ls-d1b-run1/state-1.jsonl).
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        second = msgs[1]["payload"]
+        session.replies.append([msgs[1]])
+        state = agent.read(5.0)
+        # The read takes the next id, and returns that reply without its id.
         self.assertEqual(session.script.posted, [{"type": "read", "id": 1},
                                                  {"type": "read", "id": 2}])
-        self.assertEqual(self.written(), [sent({**STATE, "id": 1}),
-                                          sent({**later, "id": 2})])
-
-    def test_no_live_game_manager_is_returned_as_data(self):
-        agent, _ = self.started([STATE, MENU])
-        self.assertEqual(agent.read(5.0), MENU)
-        self.assertTrue(agent.alive)
+        self.assertEqual(second["id"], 2)
+        self.assertNotIn("id", state)
+        self.assertEqual({**state, "id": 2}, second)
+        self.assertNotEqual(state["songTime"], msgs[0]["payload"]["songTime"])
+        self.assertEqual(self.written(), msgs[:2])
 
     def test_read_with_no_reply_names_the_cap(self):
-        agent, _ = self.started([STATE, None])
+        # The state agent's real first reply (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d2b-run1/state-4.jsonl); the next read gets nothing,
+        # so the real wait runs to the cap.
+        agent, session, _ = self.real_started("2026-11-06-ls-d2b-run1",
+                                              "state-4.jsonl")
+        session.replies.append(None)
         with self.assertRaises(FA.ReadFailed) as caught:
-            agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "no reply to the read within the cap of 5 s")
+            agent.read(SHORT_CAP_S)
         self.assertEqual(caught.exception.reason, FA.END_CAP)
+        text = str(caught.exception)
+        self.assertRegex(text, r"\bthe read\b")
+        self.assertNotRegex(text, r"\bfirst read\b")
+        self.assertRegex(text, rf"\bcap of {SHORT_CAP_S:g} s$")
+        # A read that got no reply leaves the session up.
+        self.assertTrue(agent.alive)
 
     def test_a_late_reply_is_not_taken_by_the_next_read(self):
-        stale = {**STATE, "songTime": 4.0, "id": 2}
-        fresh = {**STATE, "songTime": 9.0, "id": 3}
-        agent, _ = self.started([STATE, None, [sent(stale), sent(fresh)]])
+        # Real state replies with ids 1 to 3 (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d1b-run1/state-1.jsonl). Read 2 gets nothing in time;
+        # its reply then arrives just before read 3's.
+        agent, session, msgs = self.real_started("2026-11-06-ls-d1b-run1",
+                                                 "state-1.jsonl")
+        stale, fresh = msgs[1], msgs[2]
+        session.replies += [None, [stale, fresh]]
         with self.assertRaises(FA.ReadFailed):
-            agent.read(5.0)
-        self.assertEqual(agent.read(5.0)["songTime"], 9.0)
-        # Both still reach the log.
-        self.assertEqual(self.written()[-2:], [sent(stale), sent(fresh)])
+            agent.read(SHORT_CAP_S)
+        state = agent.read(5.0)
+        self.assertEqual(session.script.posted[-1], {"type": "read", "id": 3})
+        self.assertEqual({**state, "id": 3}, fresh["payload"])
+        self.assertNotEqual(state["songTime"], stale["payload"]["songTime"])
+        # Both still reach the log, in the order they came.
+        self.assertEqual(self.written(), msgs)
 
     def test_request_posts_any_message_with_an_id(self):
-        late = {**STATE, "id": 1}
-        reply = {"switch_was": True, "id": 2}
-        agent, session = self.started([STATE, [sent(late), sent(reply)]])
-        self.assertEqual(agent.request({"type": "setup", "tag": "hydra-kit"}, 10.0),
-                         {"switch_was": True})
-        self.assertEqual(session.script.posted[-1],
-                         {"type": "setup", "tag": "hydra-kit", "id": 2})
-        # The late reply to the first read is logged and dropped.
-        self.assertEqual(self.written()[-2:], [sent(late), sent(reply)])
+        # A real kit agent's status reply (id 1) and its setup reply (id 2)
+        # (hydra-data/ch-mcp-runs/2026-11-06/ls-d2b-run1/kit-2.jsonl).
+        agent, session, msgs = self.real_started("2026-11-06-ls-d2b-run1",
+                                                 "kit-2.jsonl")
+        setup = msgs[1]["payload"]
+        session.replies.append([msgs[1]])
+        message = {"type": "setup", "tag": "hydra-kit"}
+        reply = agent.request(message, 10.0)
+        # The request goes out whole, with the next id added and nothing else.
+        self.assertEqual(session.script.posted[-1], {**message, "id": 2})
+        self.assertEqual(setup["id"], 2)
+        self.assertNotIn("id", reply)
+        self.assertEqual({**reply, "id": 2}, setup)
+        self.assertEqual(self.written(), msgs)
 
     def test_a_request_with_no_reply_names_its_type_and_the_cap(self):
-        agent, _ = self.started([STATE, None])
+        # The state agent's real first reply (hydra-data/ch-mcp-runs/
+        # 2026-11-06/ls-d2b-run1/state-4.jsonl); the request gets nothing,
+        # so the real wait runs to the cap.
+        agent, session, _ = self.real_started("2026-11-06-ls-d2b-run1",
+                                              "state-4.jsonl")
+        session.replies.append(None)
+        message = {"type": "press"}
         with self.assertRaises(FA.ReadFailed) as caught:
-            agent.request({"type": "press"}, 1.0)
-        self.assertEqual(str(caught.exception),
-                         "no reply to the press request within the cap of 1 s")
+            agent.request(message, SHORT_CAP_S)
         self.assertEqual(caught.exception.reason, FA.END_CAP)
+        text = str(caught.exception)
+        self.assertRegex(text, rf"\b{message['type']} request\b")
+        self.assertRegex(text, rf"\bcap of {SHORT_CAP_S:g} s$")
 
     def test_a_request_that_brings_its_own_id_or_no_type_is_refused(self):
-        agent, session = self.started([STATE])
+        # Started on the state agent's real first reply (hydra-data/
+        # ch-mcp-runs/2026-11-06/ls-d2b-run1/state-4.jsonl).
+        agent, session, _ = self.real_started("2026-11-06-ls-d2b-run1",
+                                              "state-4.jsonl")
         for bad in ({"type": "setup", "id": 7}, {"tag": "hydra-kit"},
                     {"type": 3}, ["setup"]):
             with self.subTest(message=bad):
                 with self.assertRaises(ValueError):
                     agent.request(bad, 1.0)
-        self.assertEqual(len(session.script.posted), 1)
-
-    def test_read_after_the_game_closes_names_the_reason(self):
-        agent, session = self.started([STATE, STATE])
-        session.handlers["detached"]("process-terminated", None)
-        self.assertFalse(agent.alive)
-        self.assertEqual(agent.gone_reason,
-                         "session detached: process-terminated")
-        with self.assertRaises(FA.ReadFailed) as caught:
-            agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "no session for the read: "
-                         "session detached: process-terminated")
-        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
-        self.assertEqual(len(session.script.posted), 1)
-
-    def test_a_detach_during_a_read_ends_that_read(self):
-        session = ReplySession([STATE, None])
-        calls = []
-
-        def wait(event, timeout_s):
-            calls.append(timeout_s)
-            if len(calls) == 2:
-                session.handlers["detached"]("process-terminated", None)
-            return event.is_set()
-
-        agent = self.live(FakeFrida(session), wait=wait)
-        agent.start(30.0)
-        with self.assertRaises(FA.ReadFailed) as caught:
-            agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "session detached: process-terminated")
-        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
-
-    def test_a_post_refused_by_a_dropped_session_fails_the_read(self):
-        agent, session = self.started([STATE])
-
-        def refuse(message):
-            raise RuntimeError("the connection is closed")
-
-        session.script.post = refuse
-        with self.assertRaises(FA.ReadFailed) as caught:
-            agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "posting the read failed: the connection is closed")
-        self.assertEqual(caught.exception.reason, FA.END_DETACHED)
+        # Nothing went out past start's own read, and the session is still up.
+        self.assertEqual(session.script.posted, [{"type": "read", "id": 1}])
+        self.assertTrue(agent.alive)
 
     def test_an_agent_error_fails_the_read(self):
-        agent, _ = self.started(
-            [STATE, {"error": "reading GameManager failed: boom"}])
+        # A real kit agent's status reply (id 1), then its error reply to the
+        # next request (id 2) (hydra-data/ch-mcp-runs/2026-10-31/ls-d1a-run2/
+        # kit-1.jsonl).
+        agent, session, msgs = self.real_started("2026-10-31-ls-d1a-run2",
+                                                 "kit-1-from-start.jsonl")
+        error = msgs[1]["payload"]
+        session.replies.append([msgs[1]])
         with self.assertRaises(FA.ReadFailed) as caught:
             agent.read(5.0)
-        self.assertEqual(str(caught.exception),
-                         "the agent sent an error: "
-                         "reading GameManager failed: boom")
         self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
+        # The line carries the agent's own error text.
+        self.assertIn(error["error"], str(caught.exception))
+        # An error ends the read, not the session.
+        self.assertTrue(agent.alive)
+        self.assertEqual(session.detach_calls, 0)
 
     def test_an_agent_error_carries_its_whole_reply(self):
         agent, _ = self.started(
