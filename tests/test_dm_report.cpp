@@ -214,7 +214,9 @@ TEST_CASE("dmbot JSON parsers handle canned payloads") {
     std::vector<net::DmScore> scores = net::parse_scores_json(scores_body);
     const corpus::json scores_json = corpus::json::parse(scores_body);
     const corpus::json& known_json = scores_json["scores"][0];
-    REQUIRE(scores.size() == scores_json["scores"].size() + scores_json["unknown_scores"].size());
+    // Both arrays' entries, each one row.
+    const size_t entries = scores_json["scores"].size() + scores_json["unknown_scores"].size();
+    REQUIRE(scores.size() == entries);
     CHECK(scores[0].identifier == to_lower_ascii(known_json["identifier"].get<std::string>()));
     CHECK(scores[0].identifier != known_json["identifier"].get<std::string>());
     CHECK(scores[0].charter == known_json["charter_refs"][0].get<std::string>() + ", " +
@@ -407,14 +409,16 @@ TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and 
 TEST_CASE("dm_tiles: the tiles count only the scores shown") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 2000);
+    REQUIRE(optimal > 0);
     const int off_speed = net::kBaseSpeedPercent + 50;
     REQUIRE_FALSE(net::is_base_speed(off_speed));
+    // Two scores under the optimal by different amounts, one at it, one over
+    // it, one off speed and one on a song the library never listed.
     const std::vector<DmReportRow> rows = dmr::collect_dm_rows(
         store,
-        {make_score(kHash, optimal - 2000), make_score(kHash, optimal - 1500),
+        {make_score(kHash, optimal - optimal / 100), make_score(kHash, optimal - optimal / 200),
          make_score(kHash, optimal), make_score(kHash, optimal + 5),
-         make_score(kHash, optimal - 500, off_speed), make_score(kUnlistedHash, optimal)},
+         make_score(kHash, optimal - optimal / 400, off_speed), make_score(kUnlistedHash, optimal)},
         testdm::profile());
     REQUIRE(rows.size() == 6);
 

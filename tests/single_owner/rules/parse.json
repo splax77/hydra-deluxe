@@ -361,6 +361,16 @@
           "file": "tests/test_model.cpp",
           "line_text": "REQUIRE(ends_with(n, tail));",
           "why": "checks that an activation's notation ends with its skip count and squeeze symbols, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));",
+          "why": "checks that the comparison's subtitle ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(one.subtitle, dmr::clone_hero_cap_phrase()));",
+          "why": "checks that the one-score comparison's subtitle ends with the cap phrase, not a file format"
         }
       ],
       "scope": [
