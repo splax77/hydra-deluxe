@@ -14,11 +14,14 @@
 #include <tuple>
 #include <vector>
 
+#include "app/analysis.h"
+#include "app/config.h"
 #include "core/model.h"
 #include "core/scoring.h"
 #include "core/timing.h"
 #include "core/backend_value.h"
 #include "core/rules.h"
+#include "corpus_util.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
 #include "search/graph.h"
@@ -26,15 +29,94 @@
 
 using namespace hydra;
 
-TEST_CASE("basescore matches ChordNote.basescore") {
-    CHECK(ChordNote{NoteColor::Red}.basescore() == 50);
-    CHECK(ChordNote{NoteColor::Yellow, NoteDynamicType::Normal,
-                    NoteCymbalType::Cymbal, false}
-              .basescore() == 65);
-    CHECK(ChordNote{NoteColor::Red, NoteDynamicType::Accent}.basescore() == 100);
-    CHECK(ChordNote{NoteColor::Yellow, NoteDynamicType::Ghost,
-                    NoteCymbalType::Cymbal, false}
-              .basescore() == 130);
+namespace {
+
+// The app's default analysis settings, the ones a fresh install runs.
+const app::AnalysisSettings& default_cfg() {
+    static const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    return cfg;
+}
+
+// One corpus chart's record under `cfg`.
+struct CorpusRecord {
+    std::string chart;
+    const HydraRecord* rec;
+};
+
+// Every corpus chart with notes, analyzed under `cfg`. corpus::analyzed keeps
+// each record for the whole run, so the pointers stay valid.
+std::vector<CorpusRecord> corpus_records(const app::AnalysisSettings& cfg) {
+    std::vector<CorpusRecord> out;
+    for (const std::string& chart : corpus::chart_paths()) {
+        if (corpus::song(chart, cfg.reading(), cfg.rules).is_empty()) continue;
+        out.push_back({chart, &corpus::analyzed(chart, cfg)});
+    }
+    if (out.empty()) throw std::runtime_error("no corpus chart has notes under " + corpus::root());
+    return out;
+}
+
+const std::vector<CorpusRecord>& default_records() {
+    static const std::vector<CorpusRecord> out = corpus_records(default_cfg());
+    return out;
+}
+
+// One path the engine wrote, with the chart and record it came from.
+struct CorpusPath {
+    std::string chart;
+    const HydraRecord* rec;
+    const Path* path;
+};
+
+// Every path in `records`: each record's paths with their variants, then its
+// all-0 paths with theirs.
+std::vector<CorpusPath> paths_of(const std::vector<CorpusRecord>& records) {
+    std::vector<CorpusPath> out;
+    for (const CorpusRecord& r : records) {
+        for (const Path* p : r.rec->all_paths()) out.push_back({r.chart, r.rec, p});
+        for (const Path* p : r.rec->all_allzero_paths()) out.push_back({r.chart, r.rec, p});
+    }
+    return out;
+}
+
+const std::vector<CorpusPath>& default_paths() {
+    static const std::vector<CorpusPath> out = paths_of(default_records());
+    return out;
+}
+
+// One activation the engine wrote, with the chart it came from.
+struct CorpusAct {
+    std::string chart;
+    const Activation* act;
+};
+
+const std::vector<CorpusAct>& default_acts() {
+    static const std::vector<CorpusAct> out = [] {
+        std::vector<CorpusAct> v;
+        for (const CorpusPath& cp : default_paths())
+            for (const Activation& a : cp.path->walk_activations()) v.push_back({cp.chart, &a});
+        return v;
+    }();
+    return out;
+}
+
+}  // namespace
+
+// A tom is worth the base points and a cymbal adds its bonus, both read from
+// their owners. A ghost or an accent is worth twice the same note played
+// plain.
+TEST_CASE("basescore: base points, the cymbal bonus, and a dynamic doubles the note") {
+    const ChordNote tom{NoteColor::Red};
+    const ChordNote cymbal{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal,
+                           false};
+    CHECK(tom.basescore() == kNoteBasePoints);
+    CHECK(cymbal.basescore() == kNoteBasePoints + kCymbalBonusPoints);
+    for (const NoteDynamicType dyn : {NoteDynamicType::Accent, NoteDynamicType::Ghost}) {
+        CAPTURE(static_cast<int>(dyn));
+        const ChordNote dyn_tom{NoteColor::Red, dyn};
+        const ChordNote dyn_cymbal{NoteColor::Yellow, dyn, NoteCymbalType::Cymbal, false};
+        CHECK(dyn_tom.basescore() == tom.basescore() * 2);
+        CHECK(dyn_cymbal.basescore() == cymbal.basescore() * 2);
+    }
 }
 
 // The kick and the green tie at 50, so the sort must keep their lane order:
@@ -122,26 +204,86 @@ TEST_CASE("category_scores: the squeeze-out cut is basescore at each note's mult
     }
 }
 
-// The copied path writes a needed timing with one decimal, as every screen
-// does (D265).
-TEST_CASE("notationstr_verbose: a 12.6 ms squeeze copies as 12.6 ms") {
-    Activation a;
-    test::set_skips(a, 0);
-    a.e_offset = 300.0;  // not e-critical
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 12.6});
-    CHECK(a.notationstr_verbose() == "0+ (12.6 ms)");
+// The copied path writes each timing of an activation the way every screen
+// writes a timing (format_ms, D265): the activation's short notation, then
+// its timings in badge order between brackets. Checked on every activation
+// the engine writes for the corpus.
+TEST_CASE("notationstr_verbose: each corpus activation's timings, as format_ms writes them") {
+    int timed = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        CAPTURE(ca.chart);
+        CAPTURE(a.timecode.ticks());
+        const std::vector<ActivationTiming> timings = a.badge_timings();
+        if (timings.empty()) {
+            CHECK(a.notationstr_verbose() == a.notationstr());
+            continue;
+        }
+        ++timed;
+        std::string inner;
+        for (size_t i = 0; i < timings.size(); ++i) {
+            if (i) inner += "/";
+            inner += format_ms(timings[i].ms);
+        }
+        CHECK(a.notationstr_verbose() == a.notationstr() + " (" + inner + ")");
+    }
+    // The corpus must give the copy text a timing to write, or this checks
+    // only the untimed form.
+    CHECK(timed > 0);
 }
 
-TEST_CASE("squeeze symbols, timing, difficulty") {
-    SPSqueeze sqin{SqueezeKind::SqIn, -5.0};
-    SPSqueeze sqout{SqueezeKind::SqOut, 3.0};
-    CHECK(std::string(sqin.symbol()) == "+");
-    CHECK(std::string(sqout.symbol()) == "-");
-    CHECK(sqin.difficulty() == -5.0);
-    CHECK(sqout.difficulty() == -3.0);
-    CHECK(sqin.timing() == 5.0);
-    CHECK(std::string(sqin.type_name()) == "SqIn");
-    CHECK(std::string(sqout.type_name()) == "SqOut");
+// The symbols the notation writes and the names the stored text reads back.
+TEST_CASE("squeeze symbols and names: one per kind, and each name reads back as its kind") {
+    const SPSqueeze sqin{SqueezeKind::SqIn, 0.0};
+    const SPSqueeze sqout{SqueezeKind::SqOut, 0.0};
+    CHECK(std::string(sqin.symbol()) != std::string(sqout.symbol()));
+    CHECK(std::string(sqin.type_name()) != std::string(sqout.type_name()));
+    CHECK(squeeze_kind_from_name(sqin.type_name()) == std::optional<SqueezeKind>(SqueezeKind::SqIn));
+    CHECK(squeeze_kind_from_name(sqout.type_name()) ==
+          std::optional<SqueezeKind>(SqueezeKind::SqOut));
+
+    // On every corpus activation, the notation ends with one symbol per
+    // squeeze in list order, after the skip count.
+    int squeezed = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        if (a.sqinouts.empty()) continue;
+        CAPTURE(ca.chart);
+        CAPTURE(a.timecode.ticks());
+        ++squeezed;
+        std::string syms;
+        for (const SPSqueeze& sq : a.sqinouts) syms += sq.symbol();
+        const std::string n = a.notationstr();
+        REQUIRE(n.size() > syms.size());
+        CHECK(n.substr(n.size() - syms.size()) == syms);
+        const std::string head = n.substr(0, n.size() - syms.size());
+        const std::string skips = std::to_string(a.skips());
+        REQUIRE(head.size() >= skips.size());
+        CHECK(head.substr(head.size() - skips.size()) == skips);
+    }
+    CHECK(squeezed > 0);
+}
+
+// What the code does with a squeeze's offset, on every squeeze the engine
+// writes for the corpus: its difficulty is squeeze_difficulty's for its
+// kind, its timing is the offset turned round, and it is difficult exactly
+// when that difficulty is past the floor.
+TEST_CASE("squeeze timing and difficulty follow the offset on every corpus squeeze") {
+    int sqins = 0, sqouts = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        for (const SPSqueeze& sq : ca.act->sqinouts) {
+            CAPTURE(ca.chart);
+            CAPTURE(sq.offset_ms);
+            const bool is_sqin = sq.kind == SqueezeKind::SqIn;
+            (is_sqin ? sqins : sqouts)++;
+            CHECK(sq.difficulty() == squeeze_difficulty(is_sqin, sq.offset_ms));
+            CHECK(sq.timing() == -sq.offset_ms + 0.0);
+            CHECK(sq.is_difficult() == past_difficult_floor(sq.difficulty()));
+            CHECK(sq.needs_no_timing() == !timing_needs_hitting(sq.difficulty()));
+        }
+    }
+    CHECK(sqins > 0);
+    CHECK(sqouts > 0);
 }
 
 TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model") {
@@ -181,21 +323,67 @@ TEST_CASE("allzero_activation: no skips, or an E1") {
     // One offset, two windows: 70 ms to spare is an E1 at 85 and a plain 1 at 60.
     CHECK(allzero_activation(70.0, 1, kHitWindowMs));
     CHECK_FALSE(allzero_activation(70.0, 1, kDefaultEarlyFillWindowMs));
+}
 
-    Path p;
-    Activation e1;
-    e1.e_offset = 10.0;
-    test::set_skips(e1, 1);
-    p.activations.push_back(e1);
-    CHECK(p.is_allzero());
-    p.activations.front().e_offset = e1.e_window_ms;
-    CHECK_FALSE(p.is_allzero());
-    // Path::is_allzero reads each activation's own window.
-    p.activations.front().e_offset = 70.0;
-    p.activations.front().e_window_ms = kHitWindowMs;
-    CHECK(p.is_allzero());
-    p.activations.front().e_window_ms = kDefaultEarlyFillWindowMs;
-    CHECK_FALSE(p.is_allzero());
+// Path::is_allzero on every path the engine writes for the corpus: a path is
+// all-0 exactly when it has activations and each one fits the rule at its
+// own window. Every path the all-0 pass writes is all-0.
+TEST_CASE("Path::is_allzero: every corpus path, and every path of the all-0 pass") {
+    int allzero = 0, other = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        const Path& p = *cp.path;
+        CAPTURE(cp.chart);
+        CAPTURE(p.pathstring());
+        bool each = p.has_activations();
+        for (const Activation& a : p.walk_activations())
+            each = each && allzero_activation(a.e_offset, a.skips(), a.e_window_ms);
+        CHECK(p.is_allzero() == each);
+        (p.is_allzero() ? allzero : other)++;
+    }
+    for (const CorpusRecord& r : default_records()) {
+        CAPTURE(r.chart);
+        for (const Path* p : r.rec->all_allzero_paths()) {
+            CAPTURE(p->pathstring());
+            CHECK(p->is_allzero());
+        }
+    }
+    // Both answers must turn up, or the comparison above checks only one.
+    CHECK(allzero > 0);
+    CHECK(other > 0);
+}
+
+// Every activation the engine writes carries the window its search ran
+// under, at the default and at the widest the setting allows, and its E
+// test reads that window. The widest window runs on the first few corpus
+// charts only: one more analysis per chart is the slow part.
+TEST_CASE("early-fill window: each corpus activation keeps its search's window") {
+    app::AnalysisSettings wide = default_cfg();
+    wide.early_fill_window_ms = kHitWindowMs;
+    std::vector<CorpusRecord> wide_records;
+    for (const CorpusRecord& r : default_records()) {
+        if (wide_records.size() == 5) break;
+        wide_records.push_back({r.chart, &corpus::analyzed(r.chart, wide)});
+    }
+    for (const auto& [window, records] :
+         {std::pair<double, std::vector<CorpusRecord>>{default_cfg().early_fill_window_ms,
+                                                       default_records()},
+          std::pair<double, std::vector<CorpusRecord>>{kHitWindowMs, wide_records}}) {
+        CAPTURE(window);
+        int critical = 0, not_critical = 0;
+        for (const CorpusPath& cp : paths_of(records)) {
+            for (const Activation& a : cp.path->walk_activations()) {
+                CAPTURE(cp.chart);
+                CAPTURE(a.timecode.ticks());
+                CHECK(a.e_window_ms == window);
+                CHECK(a.is_e_critical() == is_e0(a.e_offset, 0, window));
+                CHECK(a.is_E0() == is_e0(a.e_offset, a.skips(), window));
+                (a.is_e_critical() ? critical : not_critical)++;
+            }
+        }
+        // Both answers must turn up, or the E test is checked on one side only.
+        CHECK(critical > 0);
+        CHECK(not_critical > 0);
+    }
 }
 
 // The early-fill window has one owner: model.h states both sides of it, the
@@ -211,17 +399,9 @@ TEST_CASE("early-fill window: the refusal and the E0 edges") {
         CHECK(fill_refuses(-w - 0.1, w));  // a hair later refuses
         CHECK_FALSE(is_e0(w, 0, w));       // exactly the window to spare: no E
         CHECK(is_e0(w - 0.1, 0, w));       // a hair less: an E
-
-        Activation a;
-        a.e_window_ms = w;
-        a.e_offset = w - 0.1;  // SP ready just under the window before the deadline
-        test::set_skips(a, 1);
-        CHECK(a.is_e_critical());
-        CHECK(a.is_e_critical() == is_e0(a.e_offset, 0, w));
-        a.e_offset = w;  // exactly the window to spare: no E
-        CHECK_FALSE(a.is_e_critical());
-        CHECK(a.is_e_critical() == is_e0(a.e_offset, 0, w));
     }
+    // Activation::is_e_critical against is_e0 on real activations is
+    // "early-fill window: each corpus activation keeps its search's window".
     // Between the two windows the answers differ, so neither side can be a
     // fixed number: 70 ms late spawns at 85 and refuses at 60, and 70 ms to
     // spare is an E at 85 and not at 60.
@@ -284,30 +464,49 @@ TEST_CASE("early-fill window: every default is kDefaultEarlyFillWindowMs") {
     CHECK(kDefaultEarlyFillWindowMs <= kHitWindowMs);
 }
 
-TEST_CASE("Path::is_difficult: past the difficult floor, not at it") {
+// On every corpus path: a path is difficult when one of its activations is,
+// and an activation is difficult when a timing it must hit is warn-coloured
+// (ActivationTiming::required and ::difficult, badge_timings).
+TEST_CASE("Path::is_difficult: a corpus path is difficult when an activation's required timing is") {
     Path empty;
     CHECK_FALSE(empty.is_difficult());
 
-    Activation a;
-    test::set_skips(a, 0);
-    a.e_offset = 300.0;  // not e-critical
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -(kDifficultMs + 0.5)});
-    Path hard;
-    hard.activations.push_back(a);
-    CHECK(hard.is_difficult());
+    int difficult = 0, plain = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        const Path& p = *cp.path;
+        CAPTURE(cp.chart);
+        CAPTURE(p.pathstring_verbose({}));
+        bool any_act = false;
+        for (const Activation& a : p.walk_activations()) {
+            bool any_timing = false;
+            for (const ActivationTiming& t : a.badge_timings())
+                any_timing = any_timing || (t.required && t.difficult);
+            CHECK(a.is_difficult() == any_timing);
+            any_act = any_act || a.is_difficult();
+        }
+        CHECK(p.is_difficult() == any_act);
+        (p.is_difficult() ? difficult : plain)++;
+    }
+    // Both answers must turn up, or the comparison checks only one.
+    CHECK(difficult > 0);
+    CHECK(plain > 0);
+}
 
-    Path edge = hard;
-    edge.activations[0].sqinouts[0].offset_ms = -kDifficultMs;
-    CHECK_FALSE(edge.is_difficult());  // exactly at the floor is not past it
-
-    SUBCASE("past_difficult_floor: 2.0 ms is not past it") {
-        // D48 Q3: a timing exactly on an edge is inside it.
-        CHECK_FALSE(past_difficult_floor(2.0));
-        CHECK(past_difficult_floor(2.1));
-        CHECK_FALSE(SPSqueeze{SqueezeKind::SqIn, 2.0}.is_difficult());
-        CHECK(SPSqueeze{SqueezeKind::SqIn, 2.1}.is_difficult());
-        CHECK_FALSE(edge.activations[0].is_difficult());
-        CHECK(hard.activations[0].is_difficult());
+// D48 Q3: a timing exactly on the floor is inside it; the next value up is
+// past it. The floor is read from its owner.
+TEST_CASE("past_difficult_floor: kDifficultMs itself is not past it") {
+    const double above = std::nextafter(kDifficultMs, kDifficultMs + 1.0);
+    CHECK_FALSE(past_difficult_floor(kDifficultMs));
+    CHECK(past_difficult_floor(above));
+    for (const SqueezeKind kind : {SqueezeKind::SqIn, SqueezeKind::SqOut}) {
+        const bool is_sqin = kind == SqueezeKind::SqIn;
+        CAPTURE(is_sqin);
+        // The offset whose difficulty is the floor, and the one just past it.
+        const SPSqueeze on{kind, is_sqin ? kDifficultMs : -kDifficultMs};
+        const SPSqueeze past{kind, is_sqin ? above : -above};
+        REQUIRE(on.difficulty() == kDifficultMs);
+        CHECK_FALSE(on.is_difficult());
+        CHECK(past.is_difficult());
     }
 }
 
