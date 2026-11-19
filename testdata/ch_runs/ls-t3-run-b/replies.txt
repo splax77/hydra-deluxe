@@ -1,0 +1,1 @@
+machine recorder pid 28136. worker pid 24320, its parent pid 4320. game process id 28828. song length 62080 ms.
