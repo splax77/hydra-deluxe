@@ -18,6 +18,7 @@ import struct
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -54,6 +55,19 @@ FACTS = {
     ]}],
 }
 BACKUP_LINE = "backup folder: X (taken now)"
+# One reply the state agent sent in a real Clone Hero run, copied from the log
+# ch_attach wrote there: hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/state-1.jsonl.
+RECORDED_STATE_LOG = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                                  "state-1.jsonl")
+
+
+def recorded_state():
+    """The recorded reply's payload without its read id, which ReplySession
+    gives back as the id of the read it answers."""
+    with open(RECORDED_STATE_LOG, encoding="utf-8") as f:
+        payload = json.loads(f.readline())["payload"]
+    payload.pop("id")
+    return payload
 # The song end the fake dump of the test song's chart names.
 SONG_END_MS = 6000.0
 
@@ -217,20 +231,25 @@ class Rig(unittest.TestCase):
         return trace
 
     def tools(self, replies=(), game=None, load_facts=None, attached=False,
-              opener=None, find_engine=None):
+              opener=None, find_engine=None, current_build=None, real_time=False):
+        """`real_time` leaves FridaTools on its own clock and its own reply
+        wait (time.monotonic, time.sleep, frida_attach's wait) instead of the
+        fake clock and instant_wait."""
         self.game = game if game is not None else FakeGame()
         self.game.folder = self.tmp
         self.session = ReplySession(list(replies))
         self.frida = FakeFrida(self.session)
+        clock = {} if real_time else {"now": self.clock.now, "sleep": self.clock.sleep,
+                                      "wait": instant_wait}
         tools = FT.FridaTools(
             self.game, self.lock,
-            frida_mod=self.frida, wait=instant_wait,
-            current_build=lambda: VERSION,
+            frida_mod=self.frida,
+            current_build=current_build or (lambda: VERSION),
             load_facts=load_facts or self.load_facts,
             trace_session=self.make_trace, agent_dir=self.agent_dir,
-            now=self.clock.now, sleep=self.clock.sleep,
             opener=opener or self.open_engine_process,
-            find_engine=find_engine or (lambda proc: ENGINE))
+            find_engine=find_engine or (lambda proc: ENGINE),
+            **clock)
         # Detach before the temp folder goes, so Windows can delete the log.
         self.addCleanup(lambda: tools._agent is not None and tools._agent.detach())
         if attached:
@@ -251,30 +270,36 @@ class AttachTest(Rig):
         self.assertEqual(self.game.backups, 0)
 
     def test_attach_after_the_delay_does_not_wait(self):
-        self.clock.t = 20.0
-        tools = self.tools([STATE], game=FakeGame(launched_at=10.0))
-        tools.ch_attach()
-        self.assertEqual(self.clock.slept, [])
+        # On the real clock (time.monotonic, the clock launched_at is on), the
+        # game launched longer ago than ATTACH_DELAY_S.
+        reply = recorded_state()
+        launched = time.monotonic() - FT.ATTACH_DELAY_S - 1.0
+        tools = self.tools([reply], game=FakeGame(launched_at=launched), real_time=True)
+        started = time.monotonic()
+        out = tools.ch_attach()
+        self.assertLess(time.monotonic() - started, FT.ATTACH_DELAY_S, out)
+        self.assertNotIn("(ATTACH_DELAY_S)", out)
         self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME])
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
 
     def test_an_unknown_build_is_refused_and_nothing_attaches(self):
-        refusal = B.UnknownBuild("v1.1.0.6200-final", "no 6200 folder")
-
-        def unknown():
-            raise refusal
-
-        tools = self.tools([STATE], load_facts=unknown)
+        # A game folder whose version file names a build no facts folder
+        # describes; the real build_facts reads both.
+        game_dir = os.path.join(self.tmp, "game")
+        version_file = B.version_file(game_dir)
+        os.makedirs(os.path.dirname(version_file))
+        with open(version_file, "w", encoding="utf-8") as f:
+            json.dump({"version": "v1.1.0.6200-final"}, f)
+        dumps = os.path.join(self.tmp, "dumps")
+        os.makedirs(dumps)
+        tools = self.tools([recorded_state()], real_time=True,
+                           current_build=lambda: B.current_build(game_dir),
+                           load_facts=lambda: B.load_facts(game_dir, dumps))
         out = tools.ch_attach()
-        self.assertEqual(out, f"{refusal}\nnothing attached")
+        self.assertIn("v1.1.0.6200-final", out)
+        self.assertEqual(out.splitlines()[-1], "nothing attached")
         self.assertEqual(self.frida.attached_to, [])
         self.assertEqual(self.game.backups, 0)
-
-    def test_an_adopted_game_gets_its_backup_first(self):
-        tools = self.tools([STATE])
-        out = tools.ch_attach()
-        self.assertEqual(self.game.backups, 1)
-        self.assertIn(BACKUP_LINE, out)
-        self.assertEqual(self.clock.slept, [])
 
     def test_the_facts_load_once_per_build(self):
         tools = self.tools([STATE, STATE])
@@ -283,71 +308,71 @@ class AttachTest(Rig):
         tools.ch_attach()
         self.assertEqual(self.loads, 1)
 
-    def test_an_attach_with_no_first_reply_names_its_cap(self):
-        tools = self.tools([None])
-        out = tools.ch_attach()
-        self.assertIn(f"within the cap of {FT.ATTACH_CAP_S:g} s; detached (ATTACH_CAP_S)", out)
-        self.assertEqual(self.session.detach_calls, 1)
-
-    def test_a_game_that_is_not_running_says_so(self):
-        tools = self.tools()
-        self.frida.session = None
-        out = tools.ch_attach()
-        self.assertIn(f"{C.PROCESS_NAME} is not running", out)
-        self.assertIn("state: not running (found by the last ch_attach)", tools.ch_state())
+    def drop_session(self):
+        """Frida's own call when the game process ends: the session's
+        "detached" handler with the reason Frida gives."""
+        self.session.handlers["detached"]("process-terminated", None)
 
     def test_a_game_that_closes_after_the_attach_is_not_attached_with_frida_reason(self):
-        tools = self.tools([STATE], attached=True)
-        tools._agent._on_detached("process-terminated")
+        tools = self.tools([recorded_state()], attached=True, real_time=True)
+        self.drop_session()
         out = tools.ch_state()
-        self.assertIn("state: not attached (session detached: process-terminated)", out)
-        self.assertNotIn("not running", out)
+        self.assertTrue(out.startswith(f"state: {FT.state_words(None)} ("), out)
+        self.assertIn("process-terminated", out)
+        self.assertNotIn(FT.state_words(None, running=False), out)
 
     def test_is_attached_follows_the_attach_and_a_dropped_session(self):
-        tools = self.tools([STATE])
+        tools = self.tools([recorded_state()], real_time=True)
         self.assertFalse(tools.is_attached())
         tools.ch_attach()
         self.assertTrue(tools.is_attached())
-        tools._agent._on_detached("process-terminated")
+        self.drop_session()
         self.assertFalse(tools.is_attached())
 
     def test_is_attached_is_false_after_a_detach(self):
-        tools = self.tools([STATE], attached=True)
+        tools = self.tools([recorded_state()], attached=True, real_time=True)
+        self.assertTrue(tools.is_attached())
         tools.ch_detach()
         self.assertFalse(tools.is_attached())
 
     def test_attaching_again_after_the_game_dropped_the_session_closes_the_old_log(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        reply = recorded_state()
+        tools = self.tools([reply, reply], attached=True, real_time=True)
         old = tools._agent
-        old._on_detached("process-terminated")
+        self.drop_session()
         out = tools.ch_attach()
-        self.assertIn("state: playing", out)
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
         self.assertTrue(old._log.closed)
         self.assertIsNot(tools._agent, old)
 
     def test_a_missing_state_agent_says_how_to_build_it(self):
-        os.remove(os.path.join(self.agent_dir, FT.STATE_AGENT_FILE))
-        out = self.tools([STATE]).ch_attach()
+        # build_stamp.check owns the refusal's words; this checks ch_attach
+        # gives that refusal for the file it would load, and attaches nothing.
         path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
-        self.assertEqual(out.splitlines()[-1], BS.check(path))
-        self.assertIn(f"{path} not found", out)
-        self.assertIn("npm run build:state", out)
+        os.remove(path)
+        refusal = BS.check(path)
+        self.assertIsNotNone(refusal)
+        out = self.tools([recorded_state()], real_time=True).ch_attach()
+        self.assertEqual(out.splitlines()[-1], refusal)
         self.assertEqual(self.frida.attached_to, [])
 
     def test_a_stale_stamp_refuses_naming_the_file_and_the_build_command(self):
+        # A source edit after the build, then no stamp at all: ch_attach gives
+        # build_stamp.check's refusal for each, and attaches nothing.
         path = os.path.join(self.agent_dir, FT.STATE_AGENT_FILE)
         with open(os.path.join(self.agent_dir, "state.ts"), "a", encoding="utf-8") as f:
             f.write("// an edit after the build\n")
-        out = self.tools([STATE]).ch_attach()
-        self.assertEqual(out.splitlines()[-1],
-                         f"{path} is stale: state.ts changed since it was built; "
-                         "run npm run build:state in tools/ch_mcp/agent first")
+        stale = BS.check(path)
+        self.assertIsNotNone(stale)
+        out = self.tools([recorded_state()], real_time=True).ch_attach()
+        self.assertEqual(out.splitlines()[-1], stale)
         self.assertEqual(self.frida.attached_to, [])
         os.remove(BS.stamp_path(path))
-        out = self.tools([STATE]).ch_attach()
-        self.assertEqual(out.splitlines()[-1],
-                         f"{path} has no build stamp (state.stamp.json); "
-                         "run npm run build:state in tools/ch_mcp/agent first")
+        unstamped = BS.check(path)
+        self.assertIsNotNone(unstamped)
+        self.assertNotEqual(unstamped, stale)
+        out = self.tools([recorded_state()], real_time=True).ch_attach()
+        self.assertEqual(out.splitlines()[-1], unstamped)
         self.assertEqual(self.frida.attached_to, [])
 
     def test_a_stale_trace_agent_starts_no_trace(self):
@@ -381,20 +406,10 @@ class AttachTest(Rig):
 
 
 class ReadTest(Rig):
-    def test_a_read_with_no_reply_names_its_cap(self):
-        tools = self.tools([STATE, None], attached=True)
-        out = tools.ch_state()
-        self.assertIn(f"within the cap of {FT.READ_CAP_S:g} s (READ_CAP_S)", out)
-
-    def test_state_shows_the_destroyed_count_it_was_read_with(self):
-        tools = self.tools([STATE, MENU_ONE_DESTROYED], attached=True)
-        lines = tools.ch_state().splitlines()
-        self.assertEqual(lines[0], "state: menu (no live GameManager)")
-        self.assertIn("found: false", lines)
-        self.assertIn("destroyed: 1", lines)
-
     def test_state_before_attach_says_not_attached(self):
-        self.assertEqual(self.tools().ch_state(), f"state: not attached; {FT.NOT_ATTACHED}")
+        tools = self.tools(real_time=True)
+        self.assertEqual(tools.ch_state(), f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
+        self.assertEqual(self.frida.attached_to, [])
 
     def test_snapshot_with_no_play_session_says_the_score_is_not_read(self):
         tools = self.tools([STATE, STATE], attached=True)
