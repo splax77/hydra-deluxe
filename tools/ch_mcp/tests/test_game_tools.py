@@ -44,10 +44,18 @@ from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread  # noqa: E402
 from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
-    GAME_SAVES_IN_DOCUMENTS, GAME_SAVES_IN_LOCALLOW, ORIGINAL, PATCHED, FakeLaunchAgent, Rig,
-    StuckGame, _read, _write, wire_human)
+    GAME_SAVES_IN_DOCUMENTS, GAME_SAVES_IN_LOCALLOW, ORIGINAL, PATCHED, FakeGame, FakeLaunchAgent,
+    Rig, _read, _write, wire_human)
+from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 GAME_SAVES = GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW
+
+
+class StuckGame(FakeGame):
+    """A game that does not exit within the stop's wait."""
+
+    def stop(self) -> None:
+        raise subprocess.TimeoutExpired(PROCESS_NAME, B.EXIT_CHECK_S)
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
