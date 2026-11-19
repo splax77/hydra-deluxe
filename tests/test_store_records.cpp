@@ -85,7 +85,7 @@ const std::vector<std::string>& four_chart_ids() {
 }
 void save_four_charts(RecordStore& store) {
     store.save(prepare_record("ready", at4(), fixture().record));
-    store.save(failure_record("failed", at4(), ErrorKind::NoNotes, "No notes."));
+    store.save(failed_chart("failed", kNoNotesChart).prepared);
     store.save_under_build_for_test(prepare_record("build", at4(), fixture().record),
                                     hydra::test::kOldBuildStamp);
 }
@@ -119,12 +119,154 @@ bool can_delete(const std::string& path) {
     return removed && !ec;
 }
 
+// The fixture's search settings (store_fixtures.h, fixture()) with the SP cap
+// set to `cap`.
+app::AnalysisSettings fixture_settings(int cap = 4) {
+    app::AnalysisSettings settings;
+    settings.sp_cap = cap;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 0;
+    settings.ms_filter = std::nullopt;
+    return settings;
+}
+
+// The fixture's chart file.
+const std::string& fixture_chart() {
+    static const std::string path = corpus::first_chart_with_paths(fixture_settings()).chart;
+    return path;
+}
+
+// The fixture's chart analyzed at `cap` bars: a real record for another cap.
+HydraRecord analysis_at_cap(int cap) {
+    return corpus::analyzed(fixture_chart(), fixture_settings(cap));
+}
+
+// The fixture's chart analyzed under other_rules(), the rules a user's
+// hydra_rules.ini might set: the record a store running the defaults reads
+// Stale for "other rules".
+const HydraRecord& other_rules_analysis() {
+    static const HydraRecord record = [] {
+        app::AnalysisSettings settings = fixture_settings();
+        settings.rules = hydra::test::other_rules();
+        return corpus::analyzed(fixture_chart(), settings);
+    }();
+    return record;
+}
+
+// Two corpus charts' real records at 4 bars, both with paths, the first
+// keeping more path rows than the second, so a save of one over the other
+// is visible in every field and in the file's path rows.
+std::pair<HydraRecord, HydraRecord> more_and_fewer_paths() {
+    const std::vector<app::AnalysisResult> found =
+        corpus::analyzed_with_paths(fixture_settings(), 20);
+    for (const app::AnalysisResult& a : found) {
+        for (const app::AnalysisResult& b : found) {
+            if (record_of("x", a.record).paths.size() > record_of("x", b.record).paths.size())
+                return {a.record, b.record};
+        }
+    }
+    FAIL("no two corpus charts keep different numbers of path rows");
+    return {};
+}
+
+// What the app files for a chart its analysis refuses: analyze_chart_file
+// throws on the hand-written chart `file` in testdata/parse_edge, and
+// prepare_failed_chart turns that throw into the failure record. `kind` and
+// `text` are the throw's own kind and message, for checking what reads back.
+struct ChartFailure {
+    PreparedRecord prepared;
+    ErrorKind kind = ErrorKind::ChartUnreadable;
+    std::string text;
+};
+ChartFailure failed_chart(const std::string& song_id, const std::string& file,
+                          const Profile& profile = at4()) {
+    const std::string path = corpus::testdata_root() + "/parse_edge/" + file;
+    try {
+        app::analyze_chart_file(path, fixture_settings());
+    } catch (const KindedError& e) {
+        std::optional<PreparedRecord> prepared = app::prepare_failed_chart(song_id, profile, e);
+        REQUIRE(prepared.has_value());
+        return ChartFailure{*prepared, e.kind(), e.what()};
+    }
+    FAIL("analyze_chart_file did not refuse " << path);
+    return {};
+}
+
+// A chart with no Expert Pro Drums notes (NoNotes) and one with no header
+// (ChartUnreadable), from testdata/parse_edge/expected_expert.tsv.
+const char* const kNoNotesChart = "c15_unterminated_drums.chart";
+const char* const kUnreadableChart = "c25_bad_header.chart";
+
+// A copy of testdata/store/v2.12.1_library.db, the library a real v2.12.1
+// hydra_batch wrote (testdata/store/README.md). Its three records are another
+// build's, so they read Stale for that build; the store opens its copy in WAL
+// mode, which would change the checked-in file.
+struct OldLibrary {
+    std::string path;
+    explicit OldLibrary(const std::string& tag) {
+        const std::string source = corpus::testdata_root() + "/store/v2.12.1_library.db";
+        REQUIRE(std::filesystem::exists(std::filesystem::u8path(source)));
+        path = testtemp::temp_path(tag, ".db");
+        remove_files();
+        std::filesystem::copy_file(std::filesystem::u8path(source), std::filesystem::u8path(path));
+    }
+    ~OldLibrary() { remove_files(); }
+    void remove_files() const {
+        std::error_code ec;
+        for (const char* suffix : {"", "-wal", "-shm"})
+            std::filesystem::remove(std::filesystem::u8path(path + suffix), ec);
+    }
+    // The run's settings, as the README gives them.
+    static Profile profile() {
+        return Profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
+    }
+    // The settings a search under profile() runs with.
+    static app::AnalysisSettings settings() {
+        app::AnalysisSettings s;
+        s.sp_cap = 4;
+        s.depth_mode = DepthMode::Scores;
+        s.depth_value = 4;
+        s.ms_filter = 10.0;
+        return s;
+    }
+    // The song ids of its three records, as the README gives them.
+    static std::vector<std::string> song_ids() {
+        return {"0b647b1570475f18d463466f2c4d72a7", "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
+                "bef0759746740f9c1045f64e9a5a2938"};
+    }
+};
+
 }  // namespace
 
 TEST_CASE("the store's reader answers every lookup as the store does") {
-    RecordStore store(":memory:");
-    save_four_charts(store);
-    check_reader_answers_as_store(store);
+    // A real v2.12.1 library holds three records of another build; this build
+    // saves a real analysis and a real failure beside them.
+    OldLibrary old("reader_as_store");
+    RecordStore store(old.path);
+    const Profile profile = OldLibrary::profile();
+    store.save(prepare_record("ready", profile,
+                              corpus::analyzed(fixture_chart(), OldLibrary::settings())));
+    store.save(failed_chart("failed", kNoNotesChart, profile).prepared);
+
+    std::vector<std::string> ids = OldLibrary::song_ids();
+    ids.insert(ids.end(), {"ready", "failed", "never"});
+    const std::vector<RecordLookup> by_store = store.lookup(ids, profile);
+    // Every kind of answer is here: Stale, Ready, CantAnalyze and NotAnalyzed.
+    REQUIRE(by_store.size() == ids.size());
+    CHECK(by_store[0].status == RecordStatus::Stale);
+    CHECK(by_store[3].status == RecordStatus::Ready);
+    CHECK(by_store[4].status == RecordStatus::CantAnalyze);
+    CHECK(by_store[5].status == RecordStatus::NotAnalyzed);
+
+    StoreReads& reader = store.reader();
+    const std::vector<RecordLookup> by_reader = reader.lookup(ids, profile);
+    REQUIRE(by_reader.size() == by_store.size());
+    for (size_t i = 0; i < ids.size(); ++i) {
+        INFO(ids[i]);
+        CHECK(same_answer(by_reader[i], by_store[i]));
+        CHECK(same_answer(reader.lookup_one(ids[i], profile), store.lookup_one(ids[i], profile)));
+    }
+    CHECK(reader.settled_song_ids(profile) == store.settled_song_ids(profile));
 }
 
 TEST_CASE("an in-memory store reads through itself") {
@@ -650,44 +792,42 @@ TEST_CASE("store: every path of one analysis carries the same note count") {
 }
 
 TEST_CASE("store: a save under the same profile replaces the record and every path") {
-    RecordStore store(":memory:");
-    PreparedRecord first = prepare_record("h1", at4(), fixture().record);
-    // Five kept paths the first time, so none may linger after a smaller save.
-    first.record.paths.clear();
-    for (int rank = 1; rank <= kPathsPerRecord; ++rank) {
-        PathRow p;
-        p.rank = rank;
-        p.path = "p" + std::to_string(rank);
-        p.score = 1000 - rank;
-        first.record.paths.push_back(p);
-    }
+    // Two real charts' analyses filed under one chart id: more path rows the
+    // first time, so none may linger after the smaller save.
+    const auto [more, fewer] = more_and_fewer_paths();
+    const PreparedRecord first = prepare_record("h1", at4(), more);
+    const PreparedRecord second = prepare_record("h1", at4(), fewer);
+    StoreFile file("store_records");
+    RecordStore store(file.path);
     store.save(first);
-    REQUIRE(store.lookup_one("h1", at4()).record.paths.size() ==
-            static_cast<size_t>(kPathsPerRecord));
+    REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") ==
+            static_cast<int64_t>(first.record.paths.size()));
 
-    PreparedRecord second = first;
-    second.record.paths.resize(2);
     store.save(second);
     const RecordLookup got = store.lookup_one("h1", at4());
     REQUIRE(got.status == RecordStatus::Ready);
     CHECK(got.record == second.record);
+    CHECK(got.record.paths.size() < first.record.paths.size());
+    // The file holds the second save's path rows and nothing of the first's.
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") ==
+          static_cast<int64_t>(second.record.paths.size()));
+    CHECK(store.record_count() == 1);
 }
 
 TEST_CASE("store: a lookup after a second save reads the second record, not the first") {
     // lookup keeps its reads compiled between calls, so this pins that a
     // reused read carries no row or binding over from the last one.
     RecordStore store(":memory:");
-    const PreparedRecord first = prepare_record("h1", at4(), fixture().record);
+    // Two real charts' analyses filed under one chart id.
+    const auto [more, fewer] = more_and_fewer_paths();
+    const PreparedRecord first = prepare_record("h1", at4(), more);
     store.save(first);
     const RecordLookup got_first = store.lookup_one("h1", at4());
     REQUIRE(got_first.status == RecordStatus::Ready);
     CHECK(got_first.record == first.record);
 
-    PreparedRecord second = first;
-    second.record.pathcount = first.record.pathcount + 1;
-    second.record.notecount = first.record.notecount + 1;
-    second.record.paths.resize(1);
-    second.record.paths.front().path = "second";
+    const PreparedRecord second = prepare_record("h1", at4(), fewer);
+    REQUIRE_FALSE(second.record == first.record);
     store.save(second);
     const RecordLookup got_second = store.lookup_one("h1", at4());
     REQUIRE(got_second.status == RecordStatus::Ready);
