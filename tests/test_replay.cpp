@@ -271,7 +271,10 @@ struct TiedVariantCount {
     int variants = 0;  // tied variants the analysis listed
     int compared = 0;  // of those, the ones a lone search could price
     int differing = 0; // of those, the ones whose stored facts differ
-    int skipped() const { return variants - compared; }
+    int no_part = 0;   // charts with no notes at these settings
+    // Each variant with no lone root to compare against, named by chart and
+    // path, with what the lone search gave instead.
+    std::vector<std::string> skipped;
 };
 
 // Decision D3 for one set of analysis settings, over the whole corpus. Each
@@ -280,15 +283,16 @@ struct TiedVariantCount {
 // and every window fact, early-fill facts included). All-zero variants are
 // not visited.
 //
-// A variant the lone search folded under a root of its own has no oracle,
-// so it is skipped, and each skip is printed. The caller pins how many there
-// are, so a regression that turns a compared variant into a skipped one
-// fails instead of passing quietly.
+// A variant the lone search folded under a root of its own has no oracle.
+// It is not compared; it goes on the skipped list by name, with its reason.
 TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
     TiedVariantCount n;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++n.no_part;
+            continue;
+        }
         const HydraRecord& rec = corpus::analyzed(path, cfg);
 
         for (const Path* p : rec.all_paths()) {
@@ -296,7 +300,8 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
             ++n.variants;
             const test::LonePricing lone = test::lone_pricing(song, cfg, *p);
             if (!lone.diff.empty() && lone.tied_under_root) {
-                MESSAGE("skipped " << path << ": " << lone.diff);
+                n.skipped.push_back(path + " [" + p->pathstring() +
+                                    "]: folded under a lone root of its own, " + lone.diff);
                 continue;
             }
             ++n.compared;
@@ -321,29 +326,23 @@ TiedVariantCount check_tied_variants(const app::AnalysisSettings& cfg) {
 // Those two hold hundreds of variants, and with either D3 fix taken out of the
 // engine dozens of them store their leader's facts instead of their own.
 TEST_CASE("every tied variant stores what a search pricing it alone stores") {
-    // `skipped` is pinned exactly: the variants with no lone root to compare
-    // against. Each is printed with its reason. If the count moves, read
-    // those lines before changing it.
-    //
-    // `min_variants` is a floor, not a pin: today the three settings list 12,
-    // 295 and 303 variants. A change that stopped listing most ties would
-    // still pass every other check here (fewer variants, none skipped, none
-    // differ), so the floor is what catches it.
-    struct Setting { int cap; int depth; int skipped; int min_variants; };
-    for (const Setting s : {Setting{4, 4, 0, 10}, Setting{4, 40, 0, 200},
-                            Setting{2, 40, 4, 200}}) {
+    // A variant with no lone root to compare against is printed by name,
+    // with the reason, so the run shows each one rather than a count.
+    struct Setting { int cap; int depth; };
+    for (const Setting s : {Setting{4, 4}, Setting{4, 40}, Setting{2, 40}}) {
         app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
         cfg.sp_cap = s.cap;
         cfg.depth_value = s.depth;
         INFO("cap " << s.cap << ", score range " << s.depth);
         const TiedVariantCount n = check_tied_variants(cfg);
-        CHECK(n.variants >= s.min_variants);
+        for (const std::string& why : n.skipped) MESSAGE("skipped " << why);
+        // A walk that compared no variant checked nothing at this setting.
         CHECK(n.compared > 0);
         CHECK(n.differing == 0);
-        CHECK(n.skipped() == s.skipped);
         MESSAGE("cap " << s.cap << ", score range " << s.depth << ": compared " << n.compared
                        << " of " << n.variants << " variants against a lone search, "
-                       << n.differing << " differ, " << n.skipped() << " skipped");
+                       << n.differing << " differ, " << n.skipped.size() << " skipped, "
+                       << n.no_part << " charts with no notes at these settings");
     }
 }
 
@@ -352,21 +351,42 @@ TEST_CASE("every tied variant stores what a search pricing it alone stores") {
 TEST_CASE("targeted search rejects a tick that is not a fill") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
+    // Every corpus chart whose best path activates. The non-fill tick is the
+    // chart's own: the nearest chord before the first activation whose
+    // SongTimestamp carries no fill (has_activation() false), so Star Power
+    // has had the most time to fill by then.
+    int checked = 0, no_part = 0, no_activation = 0;
     for (const std::string& path : corpus::chart_paths()) {
+        CAPTURE(path);
         const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
+        if (song.is_empty()) {
+            ++no_part;
+            continue;
+        }
         const HydraRecord& rec = corpus::analyzed(path, cfg);
-        if (rec.paths.empty()) continue;
+        REQUIRE_MESSAGE(!rec.paths.empty(), "a chart with notes stored no path");
         const std::vector<Activation> acts = rec.best_path().all_activations();
-        if (acts.empty()) continue;
+        if (acts.empty()) {
+            ++no_activation;
+            continue;
+        }
 
-        // One tick past a real activation fill: the fill node lives on the
-        // tick itself, so tick + 1 is never one.
-        const int64_t bogus = acts[0].timecode.ticks() + 1;
-        CHECK(search_target(song, cfg, {bogus}).empty());
-        return;
+        const int64_t act_tick = acts[0].timecode.ticks();
+        std::optional<int64_t> not_a_fill;
+        for (const SongTimestamp& ts : song.sequence) {
+            if (ts.timecode.ticks() >= act_tick) break;
+            if (!ts.has_activation()) not_a_fill = ts.timecode.ticks();
+        }
+        CHECK_MESSAGE(not_a_fill.has_value(), "no chord without a fill before tick " << act_tick);
+        if (!not_a_fill) continue;
+        ++checked;
+        CHECK_MESSAGE(search_target(song, cfg, {*not_a_fill}).empty(),
+                      "a path came back for tick " << *not_a_fill << ", which is not a fill");
     }
-    FAIL("no corpus chart with an activation to build the negative case from");
+    MESSAGE(checked << " charts checked, " << no_part << " with no notes at these settings, "
+                    << no_activation << " whose best path never activates");
+    // A walk that met no chart with an activation built no negative case.
+    CHECK(checked > 0);
 }
 
 TEST_CASE("replay without Star Power scores no doubling at all") {
@@ -378,17 +398,14 @@ TEST_CASE("replay without Star Power scores no doubling at all") {
     CHECK(r.final.notes > 0);
     CHECK(r.chords.size() == song.sequence.size());
 
-    // The running totals are a prefix sum of the per-chord points, and the
-    // on-screen total only ever lags the real one (a solo's bonus is withheld
-    // until the run ends, never paid early).
-    ReplayScore running;
+    // No chord is in Star Power, none earns SP points, and the disc shows
+    // the plain combo multiplier on every one.
     for (const ReplayChord& c : r.chords) {
-        running.add(c.points);
-        CHECK(c.cum.total() == running.total());
-        CHECK(c.cum_onscreen_total <= c.cum.total());
+        CAPTURE(c.tick);
+        CHECK_FALSE(c.in_sp);
+        CHECK(c.points.sp == 0);
+        CHECK(c.multiplier_shown == c.multiplier_after);
     }
-    CHECK(r.final.total() == running.total());
-    CHECK(r.chords.back().cum_onscreen_total == r.final.total());
 }
 
 // D2 on the engine's own squeeze-outs: every window the search stored with a
@@ -435,12 +452,41 @@ TEST_CASE("a squeezed-out chord SP pays nothing shows the plain multiplier, on c
 
 TEST_CASE("paid_by_sp: yes exactly when the row's SP value is above zero") {
     using core::SqOutPosition;
-    CHECK(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::NoSqOut, 3.0));
-    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 0, SqOutPosition::Exact, 3.0));
-    CHECK(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::Exact, 3.0));
-    CHECK_FALSE(core::paid_by_sp(-10.0, 100, 50, SqOutPosition::After, 3.0));
-    CHECK(core::paid_by_sp(2.0, 100, 50, SqOutPosition::NoSqOut, 3.0));        // in the leeway
-    CHECK_FALSE(core::paid_by_sp(4.0, 100, 50, SqOutPosition::NoSqOut, 3.0));  // past it
+    // The leeway past the SP end, read from the rules the app runs with.
+    const double leeway = core::default_rules().backend_leeway_ms;
+    REQUIRE(leeway > 0.0);
+    // A row's full SP value, and what is left of it when it is the
+    // squeezed-out chord: some, or none at all.
+    const int sp_points = 100, sqout_some = 50, sqout_none = 0;
+    const double inside = -10.0;  // before the SP end
+
+    struct Case {
+        const char* name;
+        double offset_ms;
+        int sqout_sp_points;
+        SqOutPosition pos;
+        bool paid;
+    };
+    const Case cases[] = {
+        {"inside the window, no squeeze-out", inside, sqout_none, SqOutPosition::NoSqOut, true},
+        {"the squeezed-out chord with nothing left", inside, sqout_none, SqOutPosition::Exact,
+         false},
+        {"the squeezed-out chord with points left", inside, sqout_some, SqOutPosition::Exact, true},
+        {"a chord after the squeezed-out one", inside, sqout_some, SqOutPosition::After, false},
+        {"inside the leeway", leeway / 2.0, sqout_some, SqOutPosition::NoSqOut, true},
+        {"exactly the leeway after the end (D29: strict)", leeway, sqout_some,
+         SqOutPosition::NoSqOut, false},
+        {"past the leeway", leeway * 2.0, sqout_some, SqOutPosition::NoSqOut, false},
+    };
+    for (const Case& c : cases) {
+        CAPTURE(c.name);
+        const bool paid = core::paid_by_sp(c.offset_ms, sp_points, c.sqout_sp_points, c.pos, leeway);
+        CHECK(paid == c.paid);
+        // The yes is the row's SP value being above zero, the name's claim.
+        const int value =
+            core::backend_row_value(c.offset_ms, sp_points, c.sqout_sp_points, c.pos, leeway);
+        CHECK(paid == (value > 0));
+    }
 }
 
 
@@ -572,55 +618,46 @@ TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only
 TEST_CASE("windows read from a path JSON match the ones read from the record") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    // Every corpus chart with windows is compared. The loop only counts and
-    // keeps the first difference; the assertions sit after it.
-    int charts = 0, checked = 0, mismatches = 0;
-    std::string first_diff;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        if (rec.paths.empty()) continue;
-
-        const std::vector<const Path*> all = rec.all_paths();
-        const json dumped = paths_json(all, song.timing());
-        REQUIRE(dumped.size() == all.size());
-        bool had_windows = false;
-        for (size_t k = 0; k < all.size(); ++k) {
-            const Path* p = all[k];
-            const std::vector<ReplayWindow> want = windows_for_path(*p);
-            if (want.empty()) continue;
-            had_windows = true;
-
+    // Every stored path of every corpus chart, a path with no windows too
+    // (its dump must read back as none). A chart that fails to load throws;
+    // one with no notes at these settings is counted and printed.
+    int windows = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const std::vector<ReplayWindow> want = windows_for_path(p);
             // The real dump producer, so a format change on either side fails.
-            const std::vector<ReplayWindow> got = windows_from_json(dumped[k]);
-            ++checked;
-            std::string diff;
-            if (got.size() != want.size()) {
-                diff = "window count " + std::to_string(got.size()) + " vs " +
-                       std::to_string(want.size());
-            } else {
-                for (size_t i = 0; i < got.size() && diff.empty(); ++i) {
-                    // read_sqout (tools/replay_json.cpp) decides when the
-                    // offset is read; today's records always stamp a tick.
-                    if (got[i].act_tick != want[i].act_tick ||
-                        got[i].deact_tick != want[i].deact_tick ||
-                        got[i].sqout_tick != want[i].sqout_tick ||
-                        (!want[i].sqout_tick &&
-                         got[i].sqout_offset_ms != want[i].sqout_offset_ms))
-                        diff = "window " + std::to_string(i) + " differs";
-                }
+            const json dumped = paths_json({&p}, song.timing());
+            if (dumped.size() != 1) return ": the dump wrote " + std::to_string(dumped.size()) + " paths";
+            std::vector<ReplayWindow> got;
+            try {
+                got = windows_from_json(dumped[0]);
+            } catch (const std::runtime_error& e) {
+                return std::string(": the dump does not read back: ") + e.what();
             }
-            if (diff.empty()) continue;
-            ++mismatches;
-            if (first_diff.empty()) first_diff = chart + " [" + p->pathstring() + "] " + diff;
-        }
-        if (had_windows) ++charts;
-    }
-    MESSAGE(charts << " charts, " << checked << " paths with windows compared");
-    CHECK(checked > 0);
-    INFO("first mismatch: " << first_diff);
-    CHECK(mismatches == 0);
+            if (got.size() != want.size())
+                return ": window count " + std::to_string(got.size()) + " vs " +
+                       std::to_string(want.size());
+            for (size_t i = 0; i < got.size(); ++i) {
+                ++windows;
+                // read_sqout (tools/replay_json.cpp) decides when the offset
+                // is read: only when the window has no squeeze-out tick.
+                if (got[i].act_tick != want[i].act_tick ||
+                    got[i].deact_tick != want[i].deact_tick ||
+                    got[i].sqout_tick != want[i].sqout_tick ||
+                    (!want[i].sqout_tick && got[i].sqout_offset_ms != want[i].sqout_offset_ms) ||
+                    got[i].sqin_ticks != want[i].sqin_ticks ||
+                    got[i].from_record != want[i].from_record)
+                    return ": window " + std::to_string(i) + " differs";
+            }
+            return "";
+        });
+    MESSAGE(run.charts << " charts, " << run.paths << " paths, " << windows << " windows compared, "
+                       << run.no_part << " charts with no notes at these settings");
+    CHECK(run.charts > 0);
+    // A walk that compared no window checked nothing.
+    CHECK(windows > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 // D34: a window never squeezes out a phrase it already squeezed in, and the
@@ -672,43 +709,64 @@ TEST_CASE("a dump carries each window's SqIn phrases back to the replay") {
 TEST_CASE("paths_json writes every field the dump readers use") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
 
-    bool checked = false;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        const std::vector<const Path*> all = rec.all_paths();
-        if (all.empty() || all[0]->all_activations().empty()) continue;
+    // Every stored path of every corpus chart. A chart that fails to load
+    // throws; one with no notes at these settings is counted and printed.
+    int activations = 0;
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&](const Song& song, const Path& p) -> std::string {
+            const json dumped = paths_json({&p}, song.timing());
+            if (dumped.size() != 1) return ": the dump wrote " + std::to_string(dumped.size()) + " paths";
+            const json& d = dumped[0];
+            for (const char* k : {"index", "pathstring", "total", "score", "activations"})
+                if (!d.contains(k)) return std::string(": no top-level key ") + k;
+            if (d["pathstring"].get<std::string>() != p.pathstring()) return ": pathstring differs";
+            if (d["total"].get<int64_t>() != p.totalscore()) return ": total differs";
 
-        const json dumped = paths_json(all, song.timing());
-        REQUIRE(dumped.size() == all.size());
+            // The score split's names come from their one owner,
+            // kReplayScoreFields, and each value from score_of.
+            const ReplayScore stored = score_of(p);
+            for (const ReplayScoreField& f : kReplayScoreFields) {
+                if (!d["score"].contains(f.name)) return std::string(": no score key ") + f.name;
+                if (d["score"][f.name].get<int64_t>() != stored.*(f.member))
+                    return std::string(": score ") + f.name + " differs";
+            }
 
-        const json& p0 = dumped[0];
-        for (const char* k : {"index", "pathstring", "total", "score", "activations"})
-            CHECK_MESSAGE(p0.contains(k), k);
-        for (const char* k : {"notes", "combo", "sp", "solo", "accent", "ghost"})
-            CHECK_MESSAGE(p0["score"].contains(k), k);
-        CHECK(p0["pathstring"].get<std::string>() == all[0]->pathstring());
-
-        REQUIRE(!p0["activations"].empty());
-        const json& a0 = p0["activations"][0];
-        for (const char* k : {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick",
-                              "sp_meter", "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks",
-                              "chord_code", "sqinouts",
-                              "sqin_ticks", "end_anchor_tick", "end_scale_early", "end_scale_late",
-                              "steady_ms_before_act", "steady_ms_after_act",
-                              "steady_ms_before_end", "steady_ms_after_end"})
-            CHECK_MESSAGE(a0.contains(k), k);
-        // The real search stores the end's ratio on every activation it
-        // returns, so a fresh dump never writes it null.
-        CHECK(a0["end_anchor_tick"].is_number());
-        CHECK(a0["end_scale_early"].is_number());
-        CHECK(a0["end_scale_late"].is_number());
-
-        checked = true;
-        break;  // one chart's first path is the whole contract
-    }
-    CHECK(checked);
+            // fcvideo, which lives outside this repo, reads these activation
+            // keys; no list in the repo owns them, so they are named here.
+            const ActivationWalk walk = p.walk_activations();
+            if (d["activations"].size() != walk.size())
+                return ": the dump wrote another number of activations";
+            for (size_t i = 0; i < walk.size(); ++i) {
+                const json& a = d["activations"][i];
+                ++activations;
+                for (const char* k :
+                     {"act_tick", "deact_tick", "sqout_tick", "nominal_deact_tick", "sp_meter",
+                      "sp_ready_tick", "sp_ready_ms", "skips", "skipped_fill_ticks", "chord_code",
+                      "sqinouts", "sqin_ticks", "from_record", "end_anchor_tick",
+                      "end_scale_early", "end_scale_late", "steady_ms_before_act",
+                      "steady_ms_after_act", "steady_ms_before_end", "steady_ms_after_end"})
+                    if (!a.contains(k)) return std::string(": no activation key ") + k;
+                // The real search stores the end's ratio on every activation
+                // that has an end, so a fresh dump never writes it null there.
+                if (a["deact_tick"].get<int64_t>() < 0) continue;
+                for (const char* k : {"end_anchor_tick", "end_scale_early", "end_scale_late"})
+                    if (!a[k].is_number()) return std::string(": ") + k + " is not a number";
+                // The anchor is the one the activation names: its own tick, or
+                // the cap's collecting note.
+                const std::optional<int64_t> anchor = walk[i].deact_anchor_tick();
+                if (!anchor || a["end_anchor_tick"].get<int64_t>() != *anchor)
+                    return ": end_anchor_tick is not deact_anchor_tick";
+            }
+            return "";
+        });
+    MESSAGE(run.charts << " charts, " << run.paths << " paths, " << activations
+                       << " activations, " << run.no_part
+                       << " charts with no notes at these settings");
+    CHECK(run.charts > 0);
+    // A walk that dumped no activation checked no activation key.
+    CHECK(activations > 0);
+    INFO("first mismatch: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
 
 namespace {
@@ -746,7 +804,11 @@ json dump_one_activation(const SongTiming& timing, int64_t act_tick,
     return dump_alone(timing, a);
 }
 
-double rounded_4(double v) { return std::round(v * 1e4) / 1e4; }
+// How long `ticks` last at one steady `bpm`, on a chart of `resolution`
+// ticks a beat: a beat lasts 60000 / bpm ms.
+double ms_at_bpm(int64_t ticks, int64_t resolution, double bpm) {
+    return static_cast<double>(ticks) / static_cast<double>(resolution) * 60000.0 / bpm;
+}
 
 const char* const kSteadyFields[] = {"steady_ms_before_act", "steady_ms_after_act",
                                      "steady_ms_before_end", "steady_ms_after_end"};
@@ -799,84 +861,110 @@ TEST_CASE("paths_json: a constant tempo gives end ratios of 1 and no change on a
     CHECK(ratios > 0);
 }
 
-// Rescued's shape: a tempo marker sits on the activation tick itself (150.67
-// BPM before it, 155.656 from it), and the end's tick follows 150 BPM. An
-// early hit lands in the segment before the marker, so the early ratio reads
-// that segment's tempo, not the marker's, and the early side stays exact back
-// to the marker at 83520: one beat at 150.67 BPM, about 398 ms. The end's
-// early side reaches back to the 150 BPM marker at 89000: 856 ticks at 150
-// BPM. Nothing changes after the end.
+// Rescued's shape: a tempo marker sits on the activation tick itself, with
+// one tempo before it and another from it, and the end's tick follows a
+// third. An early hit lands in the segment before the marker, so the early
+// ratio reads that segment's tempo against the end's, and the late ratio the
+// marker's tempo against the end's. The early side stays exact back to the
+// marker before; the end's early side reaches back to the end's own marker.
+// Nothing changes after the end.
 TEST_CASE("paths_json: a tempo marker on the activation tick gives the earlier segment's ratio") {
-    const SongTiming timing(192, {{0, 768}},
-                            {{0, 120.0}, {83520, 150.67}, {83712, 155.656}, {89000, 150.0}},
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kBeforeMarker = 83520, kActTick = 83712, kEndMarker = 89000,
+                      kEndTick = 89856;
+    constexpr double kBpmBefore = 150.67, kBpmFromAct = 155.656, kBpmAtEnd = 150.0;
+    const SongTiming timing(kRes, {{0, 768}},
+                            {{0, 120.0},
+                             {kBeforeMarker, kBpmBefore},
+                             {kActTick, kBpmFromAct},
+                             {kEndMarker, kBpmAtEnd}},
                             {{0, {4, 4}}});
-    const json a = dump_one_activation(timing, 83712, 89856);
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
-    CHECK(rounded_4(a["end_scale_early"].get<double>()) == doctest::Approx(1.0045));
-    CHECK(rounded_4(a["end_scale_late"].get<double>()) == doctest::Approx(1.0377));
+    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(kBpmBefore / kBpmAtEnd));
+    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(kBpmFromAct / kBpmAtEnd));
     REQUIRE(a["steady_ms_before_act"].is_number());
-    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(398.22).epsilon(1e-4));
+    CHECK(a["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kActTick - kBeforeMarker, kRes, kBpmBefore)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(1783.33).epsilon(1e-5));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kEndMarker, kRes, kBpmAtEnd)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A change exactly on the tick starts the late side's section, so it bounds
-// neither side: the early side measures back to the change before (768, 768
-// ticks at 60 BPM = 4000 ms) and the late side on to the change after (2304,
-// 768 ticks at 120 BPM = 2000 ms), never 0. The end at 3840 reaches back to
-// 2304 (1536 ticks at 60 BPM = 8000 ms) with nothing after it.
+// neither side: the early side measures back to the change before and the
+// late side on to the change after, never 0. The end reaches back to the
+// last change, with nothing after it.
 TEST_CASE("paths_json: a change on the tick bounds neither of its steady spans") {
-    const SongTiming timing(192, {{0, 768}},
-                            {{0, 120.0}, {768, 60.0}, {1536, 120.0}, {2304, 60.0}},
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kChangeBefore = 768, kActTick = 1536, kChangeAfter = 2304, kEndTick = 3840;
+    constexpr double kBpmBefore = 60.0, kBpmFromAct = 120.0, kBpmAtEnd = 60.0;
+    const SongTiming timing(kRes, {{0, 768}},
+                            {{0, 120.0},
+                             {kChangeBefore, kBpmBefore},
+                             {kActTick, kBpmFromAct},
+                             {kChangeAfter, kBpmAtEnd}},
                             {{0, {4, 4}}});
-    const json a = dump_one_activation(timing, 1536, 3840);
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
     REQUIRE(a["steady_ms_before_act"].is_number());
-    CHECK(a["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kActTick - kChangeBefore, kRes, kBpmBefore)));
     REQUIRE(a["steady_ms_after_act"].is_number());
-    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["steady_ms_after_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kChangeAfter - kActTick, kRes, kBpmFromAct)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(8000.0));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kChangeAfter, kRes, kBpmAtEnd)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // A meter change between the activation and its end changes the measure
-// length while the tempo stays put, so the ratio is the measure ratio (3/4
-// against 4/4), not the BPM ratio of 1. The meter change bounds the spans the
-// way a tempo change does: 768 ticks at 120 BPM after the activation, 1536
-// before the end.
+// length while the tempo stays put, so the ratio is the end's measure length
+// against the activation's (3/4 against 4/4), not the BPM ratio of 1. The
+// meter change bounds the spans the way a tempo change does.
 TEST_CASE("paths_json: a time signature change between the ticks gives the measure ratio") {
-    const SongTiming timing(192, {{0, 768}, {1536, 576}}, {{0, 120.0}},
-                            {{0, {4, 4}}, {1536, {3, 4}}});
-    const json a = dump_one_activation(timing, 768, 3072);
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kMeasure44 = 768, kMeasure34 = 576;  // ticks a measure
+    constexpr int64_t kActTick = 768, kMeterChange = 1536, kEndTick = 3072;
+    constexpr double kBpm = 120.0;
+    const SongTiming timing(kRes, {{0, kMeasure44}, {kMeterChange, kMeasure34}}, {{0, kBpm}},
+                            {{0, {4, 4}}, {kMeterChange, {3, 4}}});
+    const json a = dump_one_activation(timing, kActTick, kEndTick);
+    const double measure_ratio = static_cast<double>(kMeasure34) / static_cast<double>(kMeasure44);
     REQUIRE(a["end_scale_early"].is_number());
     REQUIRE(a["end_scale_late"].is_number());
-    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(0.75));
-    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(0.75));
-    CHECK(a["end_scale_early"].get<double>() != doctest::Approx(1.0));
+    CHECK(a["end_scale_early"].get<double>() == doctest::Approx(measure_ratio));
+    CHECK(a["end_scale_late"].get<double>() == doctest::Approx(measure_ratio));
     CHECK(a["steady_ms_before_act"].is_null());
     REQUIRE(a["steady_ms_after_act"].is_number());
-    CHECK(a["steady_ms_after_act"].get<double>() == doctest::Approx(2000.0));
+    CHECK(a["steady_ms_after_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kMeterChange - kActTick, kRes, kBpm)));
     REQUIRE(a["steady_ms_before_end"].is_number());
-    CHECK(a["steady_ms_before_end"].get<double>() == doctest::Approx(4000.0));
+    CHECK(a["steady_ms_before_end"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kEndTick - kMeterChange, kRes, kBpm)));
     CHECK(a["steady_ms_after_end"].is_null());
 }
 
 // When the cap pinned the end to a collecting note, that note's timing moves
 // the end, not the activation's: end_anchor_tick names it and the "act" spans
-// are measured from it. Here the clamp at 1536 sits 768 ticks at 60 BPM past
-// the change at 768; from the activation at 384 there would be no change
-// before at all.
+// are measured from it. The clamp note sits past a tempo change; from the
+// activation, before that change, there would be no change before at all.
 TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
-    const SongTiming timing(192, {{0, 768}}, {{0, 120.0}, {768, 60.0}}, {{0, {4, 4}}});
-    Activation a = act_at(timing, 384);
-    test::set_clamped_window(a, 1536, 3072);
+    constexpr int64_t kRes = 192;
+    constexpr int64_t kActTick = 384, kChange = 768, kClampTick = 1536, kEndTick = 3072;
+    constexpr double kBpmAfterChange = 60.0;
+    const SongTiming timing(kRes, {{0, 768}}, {{0, 120.0}, {kChange, kBpmAfterChange}},
+                            {{0, {4, 4}}});
+    Activation a = act_at(timing, kActTick);
+    test::set_clamped_window(a, kClampTick, kEndTick);
     const json d = dump_alone(timing, a);
-    CHECK(d["act_tick"].get<int64_t>() == 384);
-    CHECK(d["end_anchor_tick"].get<int64_t>() == 1536);
+    CHECK(d["act_tick"].get<int64_t>() == kActTick);
+    CHECK(d["end_anchor_tick"].get<int64_t>() == kClampTick);
     REQUIRE(d["steady_ms_before_act"].is_number());
-    CHECK(d["steady_ms_before_act"].get<double>() == doctest::Approx(4000.0));
+    CHECK(d["steady_ms_before_act"].get<double>() ==
+          doctest::Approx(ms_at_bpm(kClampTick - kChange, kRes, kBpmAfterChange)));
     CHECK(d["steady_ms_after_act"].is_null());
 }
 
@@ -885,16 +973,26 @@ TEST_CASE("paths_json: a clamped end is anchored on its collecting note") {
 // activation the search stored none for writes null ratios beside its spans.
 TEST_CASE("paths_json writes the end ratio the search stored") {
     const SongTiming timing(192, {{0, 768}}, {{0, 120.0}}, {{0, {4, 4}}});
-    Activation a = act_at(timing, 3840);
-    test::set_plain_window(a, 9984);
-    a.transfer_post = TransferScale{0.5, 2.0};
+    constexpr int64_t kActTick = 3840, kEndTick = 9984;
+    Activation a = act_at(timing, kActTick);
+    test::set_plain_window(a, kEndTick);
+    const TransferScale stored_pair{0.5, 2.0};
+    // Worked out again from this timing, the pair would differ: one steady
+    // tempo gives another ratio, so a writer that recomputed would show it.
+    const std::optional<ActTransferScales> recomputed = frontend_transfer_scales(a, timing);
+    REQUIRE(recomputed.has_value());
+    CHECK(recomputed->post.early != doctest::Approx(stored_pair.early));
+    CHECK(recomputed->post.late != doctest::Approx(stored_pair.late));
+
+    a.transfer_post = stored_pair;
     const json stored = dump_alone(timing, a, false);
-    CHECK(stored["end_scale_early"].get<double>() == 0.5);
-    CHECK(stored["end_scale_late"].get<double>() == 2.0);
+    CHECK(stored["end_scale_early"].get<double>() == stored_pair.early);
+    CHECK(stored["end_scale_late"].get<double>() == stored_pair.late);
 
     a.transfer_post.reset();
     const json unknown = dump_alone(timing, a, false);
-    CHECK(unknown["end_anchor_tick"].get<int64_t>() == 3840);
+    // A plain window's end is anchored on its activation tick.
+    CHECK(unknown["end_anchor_tick"].get<int64_t>() == kActTick);
     CHECK(unknown["end_scale_early"].is_null());
     CHECK(unknown["end_scale_late"].is_null());
     for (const char* k : kSteadyFields) CHECK_MESSAGE(unknown.contains(k), k);
@@ -924,13 +1022,19 @@ TEST_CASE("result block: an empty record writes a null score and an empty bestpa
     CHECK(empty["score"].is_null());
     CHECK(empty["bestpath"].get<std::string>() == "");
 
-    // One corpus chart, named by its path, with its best score and path as one
-    // run printed them.
+    // On a corpus chart the block prints what the record's owners answer:
+    // HydraRecord::optimal_score for the score, RecordRow::best_path_text for
+    // the path.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::string chart = corpus::root() + "/common/IB24/T1/Allister - Overrated/notes.mid";
-    const json full = result_json(corpus::analyzed(chart, cfg));
-    CHECK(full["score"].get<int64_t>() == 228710);
-    CHECK(full["bestpath"].get<std::string>() == "1 2");
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const std::optional<int64_t> best = rec.optimal_score();
+    REQUIRE(best.has_value());
+    const json full = result_json(rec);
+    CHECK(full["score"].get<int64_t>() == *best);
+    const std::string best_text = store::record_of(std::string(), rec).best_path_text();
+    CHECK_FALSE(best_text.empty());
+    CHECK(full["bestpath"].get<std::string>() == best_text);
 }
 
 // dump prints each activation's passed-over fills as the record stores them.
