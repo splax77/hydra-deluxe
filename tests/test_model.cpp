@@ -2037,7 +2037,7 @@ TEST_CASE("squeeze_kind_from_name: type_name's two words and nothing else") {
     CHECK_FALSE(squeeze_kind_from_name("").has_value());
 }
 
-// The same six values "replay score fields: one list in schema order"
+// The same six values "replay score fields: each name reads its own member"
 // (tests/test_replay.cpp) assigns.
 TEST_CASE("score_total: the six categories in the stored order") {
     CHECK(score_total(1, 2, 3, 4, 5, 6) == 21);

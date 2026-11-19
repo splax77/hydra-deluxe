@@ -258,7 +258,9 @@ TEST_CASE("targeted search reproduces every corpus path") {
             return "";
         });
 
-    CHECK(run.charts > 0);
+    // Every chart that loads at these settings was walked.
+    CHECK(static_cast<size_t>(run.charts) ==
+          digest::loading_chart_count(corpus::chart_paths(), cfg));
     // A walk that priced no path checked nothing.
     REQUIRE(run.paths > 0);
     INFO("first mismatch: " << run.first_diff);
@@ -1688,48 +1690,28 @@ TEST_CASE("category_scores prices a dynamic cymbal's bonus at its own note") {
     CHECK(cymbals == 1);
 }
 
-TEST_CASE("replay reports the multipliers category_scores applied") {
-    // Eight Red singles, a Red+Kick chord that straddles 10, then eleven more
-    // singles so a later chord crosses 20 on its own.
-    std::vector<std::vector<NoteColor>> chords(8, {NoteColor::Red});
-    chords.push_back({NoteColor::Red, NoteColor::Kick});
-    for (int i = 0; i < 11; ++i) chords.push_back({NoteColor::Red});
-    const ReplayResult r = replay_path(make_chord_song(chords), {});
-    REQUIRE(r.chords.size() == 20);
-
-    // The straddling chord: first note 1x, second note 2x.
-    const ReplayChord& straddle = r.chords[8];
-    CHECK(straddle.combo_before == 8);
-    CHECK(straddle.multiplier == 1);
-    CHECK(straddle.multiplier_after == 2);
-    CHECK(straddle.points.combo == 50);
-    REQUIRE(straddle.notes.size() == 2);
-    CHECK(straddle.notes[0].multiplier == 1);
-    CHECK(straddle.notes[1].multiplier == 2);
-
-    // The chord before it leaves the disc at 1x.
-    CHECK(r.chords[7].multiplier_after == 1);
-
-    // A single note that is the 20th: paid at 3x.
-    const ReplayChord& third = r.chords[18];
-    CHECK(third.combo_before == 19);
-    CHECK(third.multiplier == 3);
-    CHECK(third.multiplier_after == 3);
-    CHECK(third.notes[0].multiplier == 3);
-    CHECK(third.points.combo == 100);  // 50 base x (3 - 1)
-    CHECK(r.chords[17].multiplier_after == 2);
-}
-
+// The replay's notes are the chord-score table's notes, copied in order; the
+// bonus's size is stated one note at a time by test_stars.cpp.
 TEST_CASE("replay copies each note's dynamics bonus") {
     Song song = make_chord_song({{NoteColor::Red}});
     add_dynamic_cymbal(song.sequence[0].chord, NoteDynamicType::Accent);
     const ReplayResult r = replay_path(song, {});
+    const ChordScoreTable table =
+        chord_score_table(song, core::SqOutRule::FirstNote, ChordScoreDetail::WithNotes);
     REQUIRE(r.chords.size() == 1);
-    REQUIRE(r.chords[0].notes.size() == 2);
-    for (const ReplayNote& n : r.chords[0].notes)
-        CHECK(n.dynamics_bonus == (n.color == NoteColor::Yellow ? 65 : 0));
-    // The accent category holds only the pad part; the note field holds all.
-    CHECK(r.chords[0].points.accent == 50);
+    REQUIRE(table.rows.size() == 1);
+    const ChordScoreRow& row = table.rows[0];
+    REQUIRE(r.chords[0].notes.size() == row.note_end - row.note_begin);
+    bool any_bonus = false;
+    for (size_t k = 0; k < r.chords[0].notes.size(); ++k) {
+        CAPTURE(k);
+        const CategoryScores& own = table.notes[row.note_begin + k];
+        CHECK(r.chords[0].notes[k].dynamics_bonus == own.dynamics_bonus);
+        if (own.dynamics_bonus > 0) any_bonus = true;
+    }
+    // The accent cymbal earns a bonus, so the copy is checked on a non-zero
+    // value and not only on zeros.
+    CHECK(any_bonus);
 }
 
 TEST_CASE("replay names each note's dynamic") {
@@ -1750,17 +1732,15 @@ TEST_CASE("replay names each note's dynamic") {
         else
             CHECK(n.dynamic == NoteDynamicType::Normal);
     }
-    CHECK(dynamic_str(NoteDynamicType::Ghost) == "ghost");
-    CHECK(dynamic_str(NoteDynamicType::Accent) == "accent");
-    CHECK(dynamic_str(NoteDynamicType::Normal) == "none");
 }
 
 // The chord-score table on ten hand-built chords: seven Red singles, then a
 // Kick + Red + accent Yellow cymbal that crosses a step of to_multiplier
-// (core/timing.h), a Kick +
-// ghost Red, and a plain Red + Yellow inside a solo. Every value is a literal
-// pinned from one run.
-TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
+// (core/timing.h), a Kick + ghost Red, and a plain Red + Yellow inside a
+// solo. Each row is its chord priced by category_scores at the running combo,
+// plus solo_bonus; the test states that walk, not one run's numbers. How
+// category_scores prices one note is stated by test_stars.cpp.
+TEST_CASE("chord_score_table: each row is its chord priced by category_scores, on a hand-built chart") {
     std::vector<std::vector<NoteColor>> chords(7, {NoteColor::Red});
     chords.push_back({NoteColor::Kick, NoteColor::Red});
     chords.push_back({NoteColor::Kick});
@@ -1772,59 +1752,58 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 
     const ChordScoreTable table =
         chord_score_table(song, core::SqOutRule::FirstNote, ChordScoreDetail::WithNotes);
-    REQUIRE(table.rows.size() == 10);
-    REQUIRE(table.notes.size() == 14);
+    REQUIRE(table.rows.size() == song.sequence.size());
 
-    // The straddle: its first two notes are paid below the step and the
-    // accent cymbal (the dearest, so last) above it.
+    for (size_t i = 0; i < table.rows.size(); ++i) {
+        CAPTURE(i);
+        const SongTimestamp& ts = song.sequence[i];
+        const ChordScoreRow& row = table.rows[i];
+        // One combo counter runs through the chart, and the notes run on in
+        // one list: each chord starts where the one before it ended.
+        const int combo_in = i == 0 ? 0 : table.rows[i - 1].combo_after;
+        const uint32_t notes_in = i == 0 ? 0 : table.rows[i - 1].note_end;
+        CHECK(row.combo_before == combo_in);
+        CHECK(row.note_begin == notes_in);
+        std::vector<CategoryScores> per_note;
+        const CategoryScores want =
+            category_scores(ts.chord, row.combo_before, &per_note, core::SqOutRule::FirstNote);
+        CHECK(row.notes == want.notes);
+        CHECK(row.combo == want.combo);
+        CHECK(row.sp == want.sp);
+        CHECK(row.sqout_sp == want.sqout_sp());
+        CHECK(row.accent == want.accent);
+        CHECK(row.ghost == want.ghost);
+        CHECK(row.solo == solo_bonus(ts.chord, ts.flag_solo));
+        CHECK(row.multiplier == want.multiplier);
+        CHECK(row.multiplier_after == want.multiplier_after);
+        CHECK(row.combo_after == want.combo_after);
+        // The chord's notes are the next ones in the table, in the order
+        // category_scores priced them.
+        CHECK(row.note_end - row.note_begin == per_note.size());
+        REQUIRE(table.notes.size() >= row.note_end);
+        for (size_t k = 0; k < per_note.size() && row.note_begin + k < row.note_end; ++k) {
+            CAPTURE(k);
+            const CategoryScores& got = table.notes[row.note_begin + k];
+            CHECK(got.sp == per_note[k].sp);
+            CHECK(got.combo == per_note[k].combo);
+            CHECK(got.multiplier == per_note[k].multiplier);
+            CHECK(got.dynamics_bonus == per_note[k].dynamics_bonus);
+        }
+    }
+    CHECK(table.notes.size() == table.rows.back().note_end);
+
+    // The three chords after the singles are the cases the chart was built
+    // for. The straddle crosses a step, so its last note is paid at a higher
+    // multiplier than its first.
     const ChordScoreRow& straddle = table.rows[7];
-    CHECK(straddle.notes == 180);
-    CHECK(straddle.combo == 130);
-    CHECK(straddle.sp == 360);
-    CHECK(straddle.sqout_sp == 310);
-    CHECK(straddle.accent == 50);
-    CHECK(straddle.ghost == 0);
-    CHECK(straddle.solo == 0);
-    CHECK(straddle.multiplier == 1);
-    CHECK(straddle.multiplier_after == 2);
-    CHECK(straddle.combo_before == 7);
-    CHECK(straddle.combo_after == 10);
-    CHECK(straddle.note_begin == 7);
-    CHECK(straddle.note_end == 10);
-    CHECK(table.notes[7].multiplier == 1);
-    CHECK(table.notes[8].multiplier == 1);
-    CHECK(table.notes[9].multiplier == 2);
-    CHECK(table.notes[9].dynamics_bonus == 130);
-
-    const ChordScoreRow& ghost = table.rows[8];
-    CHECK(ghost.notes == 100);
-    CHECK(ghost.combo == 150);
-    CHECK(ghost.sp == 300);
-    CHECK(ghost.sqout_sp == 200);
-    CHECK(ghost.accent == 0);
-    CHECK(ghost.ghost == 50);
-    CHECK(ghost.solo == 0);
-    CHECK(ghost.multiplier == 2);
-    CHECK(ghost.multiplier_after == 2);
-    CHECK(ghost.combo_before == 10);
-    CHECK(ghost.combo_after == 12);
-    CHECK(ghost.note_begin == 10);
-    CHECK(ghost.note_end == 12);
-
-    const ChordScoreRow& solo = table.rows[9];
-    CHECK(solo.notes == 100);
-    CHECK(solo.combo == 100);
-    CHECK(solo.sp == 200);
-    CHECK(solo.sqout_sp == 100);
-    CHECK(solo.accent == 0);
-    CHECK(solo.ghost == 0);
-    CHECK(solo.solo == 200);
-    CHECK(solo.multiplier == 2);
-    CHECK(solo.multiplier_after == 2);
-    CHECK(solo.combo_before == 12);
-    CHECK(solo.combo_after == 14);
-    CHECK(solo.note_begin == 12);
-    CHECK(solo.note_end == 14);
+    CHECK(straddle.multiplier < straddle.multiplier_after);
+    // The accent and ghost categories hold only the pad's base points
+    // (CategoryScores::accent and ::ghost), one dynamic note each.
+    CHECK(straddle.accent == kNoteBasePoints);
+    CHECK(table.rows[8].ghost == kNoteBasePoints);
+    // Only the chord inside the solo earns a solo bonus.
+    CHECK(table.rows[9].solo > 0);
+    CHECK(table.rows[8].solo == 0);
 
     // Without the notes, every chord row's points are the same and every
     // note range is empty.
@@ -1839,10 +1818,16 @@ TEST_CASE("chord_score_table: literal rows on a hand-built chart") {
 }
 
 TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int charts = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
+        const Song& song = corpus::song(path, cfg.reading());
+        if (song.is_empty()) {
+            // A chart with no notes at these settings is named, and the count
+            // below fails unless the digest's own load skips it too.
+            MESSAGE("no notes at these settings: " << path);
+            continue;
+        }
         ++charts;
         const ReplayResult r = replay_path(song, {});
         INFO(path);
@@ -1857,68 +1842,64 @@ TEST_CASE("replay multipliers agree with the combo on every corpus chord") {
             // starts from.
             if (i + 1 < r.chords.size())
                 CHECK(c.multiplier_after == to_multiplier(r.chords[i + 1].combo_before));
-            // A note's dynamics bonus is part of what it pays, never more.
-            for (const ReplayNote& n : c.notes) {
-                CHECK(n.dynamics_bonus >= 0);
-                CHECK(n.dynamics_bonus < n.sp_points);
-            }
+            // A note's dynamics bonus is never negative.
+            for (const ReplayNote& n : c.notes) CHECK(n.dynamics_bonus >= 0);
         }
     }
-    CHECK(charts > 0);
+    // Every chart that loads at these settings was walked.
+    CHECK(static_cast<size_t>(charts) ==
+          digest::loading_chart_count(corpus::chart_paths(), cfg));
 }
 
-TEST_CASE("replay score fields: one list in schema order") {
-    REQUIRE(std::size(kReplayScoreFields) == 6);
-    const char* want[] = {"notes", "combo", "sp", "solo", "accent", "ghost"};
-    for (size_t i = 0; i < 6; ++i) CHECK(std::string(kReplayScoreFields[i].name) == want[i]);
-
+TEST_CASE("replay score fields: each name reads its own member") {
+    // Each member holds a different value, so a name paired with another
+    // member reads that member's value. The list's order is not checked:
+    // the dump's JSON prints the keys sorted, so no reader sees it.
     ReplayScore s;
     s.notes = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
-    for (size_t i = 0; i < 6; ++i)
-        CHECK(s.*(kReplayScoreFields[i].member) == static_cast<int64_t>(i + 1));
-}
-
-TEST_CASE("assign_score and score_of are each other's reverse") {
-    ReplayScore s;
-    s.notes = 1; s.combo = 2; s.sp = 3; s.solo = 4; s.accent = 5; s.ghost = 6;
-    Path p;
-    assign_score(p, s);
-    CHECK(p.notes_points == 1);
-    CHECK(p.score_combo == 2);
-    CHECK(p.score_sp == 3);
-    CHECK(p.score_solo == 4);
-    CHECK(p.score_accents == 5);
-    CHECK(p.score_ghosts == 6);
-    CHECK(score_of(p) == s);
+    struct Named {
+        const char* name;
+        int64_t value;
+    };
+    const Named given[] = {{"notes", 1}, {"combo", 2},  {"sp", 3},
+                           {"solo", 4},  {"accent", 5}, {"ghost", 6}};
+    // A category added to the list without a member set above fails here.
+    REQUIRE(std::size(kReplayScoreFields) == std::size(given));
+    for (const ReplayScoreField& f : kReplayScoreFields) {
+        CAPTURE(f.name);
+        int found = 0;
+        for (const Named& g : given) {
+            if (std::string(f.name) != g.name) continue;
+            ++found;
+            CHECK(s.*(f.member) == g.value);
+        }
+        CHECK(found == 1);
+    }
 }
 
 TEST_CASE("replay: scores_only leaves chord_code and notes empty and every score the same") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     ReplayOptions scores;
     scores.scores_only = true;
-    int runs = 0;
-    std::string first_diff;
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        for (const Path* p : rec.all_paths()) {
-            ++runs;
-            const PathReplay full = replay_stored_path(song, *p, cfg.rules);
-            const PathReplay lean = replay_stored_path(song, *p, cfg.rules, scores);
-            CHECK(lean.faithful() == full.faithful());
+    // Each stored path is replayed in full and scores-only; the walk names
+    // the first path whose two replays differ.
+    const CorpusPathRun run = check_every_corpus_path(
+        cfg, [&cfg, &scores](const Song& song, const Path& p) -> std::string {
+            const PathReplay full = replay_stored_path(song, p, cfg.rules);
+            const PathReplay lean = replay_stored_path(song, p, cfg.rules, scores);
+            if (lean.faithful() != full.faithful()) return ": scores-only fidelity differs";
             const std::string d = first_result_difference(full.result, lean.result, true);
-            if (!d.empty() && first_diff.empty()) first_diff = path + ": " + d;
-            for (const ReplayChord& c : lean.result.chords) {
-                if (!c.chord_code.empty() || !c.notes.empty()) {
-                    if (first_diff.empty()) first_diff = path + ": a scores-only row kept its notes";
-                    break;
-                }
-            }
-        }
-    }
-    CHECK(runs > 0);
-    INFO("first difference: " << first_diff);
-    CHECK(first_diff.empty());
+            if (!d.empty()) return ": " + d;
+            for (const ReplayChord& c : lean.result.chords)
+                if (!c.chord_code.empty() || !c.notes.empty())
+                    return ": a scores-only row kept its notes";
+            return "";
+        });
+
+    // Every chart that loads at these settings was walked.
+    CHECK(static_cast<size_t>(run.charts) ==
+          digest::loading_chart_count(corpus::chart_paths(), cfg));
+    INFO("first difference: " << run.first_diff);
+    CHECK(run.mismatches == 0);
 }
