@@ -130,18 +130,23 @@ struct ChartFailure {
     ErrorKind kind = ErrorKind::ChartUnreadable;
     std::string text;
 };
-ChartFailure failed_chart(const std::string& song_id, const std::string& file,
-                          const Profile& profile = at4()) {
-    const std::string path = corpus::testdata_root() + "/parse_edge/" + file;
+// The same for the chart at `path`, analyzed under `settings`.
+ChartFailure failed_chart_at(const std::string& song_id, const std::string& path,
+                             const app::AnalysisSettings& settings, const Profile& profile) {
     try {
-        app::analyze_chart_file(path, store_fixture_settings());
+        app::analyze_chart_file(path, settings);
     } catch (const KindedError& e) {
         std::optional<PreparedRecord> prepared = app::prepare_failed_chart(song_id, profile, e);
-        REQUIRE(prepared.has_value());
+        REQUIRE_MESSAGE(prepared.has_value(), "no failure record for " << path << ": " << e.what());
         return ChartFailure{*prepared, e.kind(), e.what()};
     }
     FAIL("analyze_chart_file did not refuse " << path);
     return {};
+}
+ChartFailure failed_chart(const std::string& song_id, const std::string& file,
+                          const Profile& profile = at4()) {
+    return failed_chart_at(song_id, corpus::testdata_root() + "/parse_edge/" + file,
+                           store_fixture_settings(), profile);
 }
 
 // A chart with no Expert Pro Drums notes (NoNotes) and one with no header
@@ -181,6 +186,11 @@ void check_answers_as_store(RecordStore& store, StoreReads& reader) {
 // The store's window reader gives the store's own answers for the four charts.
 void check_reader_answers_as_store(RecordStore& store) {
     check_answers_as_store(store, store.reader());
+}
+
+// How many profile rows the file at `path` holds under chart mode `mode`.
+int64_t profiles_in_mode(const std::string& path, const std::string& mode) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE chartmode='" + mode + "'");
 }
 
 // Whether `path` can be deleted now, which on Windows means no connection
@@ -890,27 +900,33 @@ TEST_CASE("store: a lookup after a second save reads the second record, not the 
 
 TEST_CASE("store: a save purges the chart's unreadable records in every mode, and the next open "
           "deletes their emptied profiles") {
-    StoreFile file("store_records");
+    // The real v2.12.1 library: three records another build wrote, all in
+    // one profile of its chart mode. This build saves each of those charts
+    // in another chart mode.
+    OldLibrary old("purge_every_mode");
+    const Profile old_profile = OldLibrary::profile();
+    const Profile this_mode = at4("other mode");
+    REQUIRE(this_mode.chartmode != old_profile.chartmode);
+    REQUIRE(profiles_in_mode(old.path, old_profile.chartmode) == 1);
     {
-        RecordStore store(file.path);
-        // An old build's record in another mode, then a save in this one.
-        hydra::test::save_old_build_record(
-            store, prepare_record("h1", at4("other mode"), fixture().record));
-        REQUIRE(store.lookup_one("h1", at4("other mode")).status == RecordStatus::Stale);
-        store.save(prepare_record("h1", at4(), fixture().record));
-
-        CHECK(store.lookup_one("h1", at4("other mode")).status == RecordStatus::NotAnalyzed);
-        CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
-        CHECK(store.record_count() == 1);
+        RecordStore store(old.path);
+        for (const std::string& id : OldLibrary::song_ids()) {
+            INFO(id);
+            REQUIRE(store.lookup_one(id, old_profile).status == RecordStatus::Stale);
+            store.save(prepare_record(id, this_mode, fixture().record));
+            CHECK(store.lookup_one(id, old_profile).status == RecordStatus::NotAnalyzed);
+            CHECK(store.lookup_one(id, this_mode).status == RecordStatus::Ready);
+        }
+        CHECK(store.record_count() == static_cast<int64_t>(OldLibrary::song_ids().size()));
     }
-    { RecordStore reopened(file.path); }
+    { RecordStore reopened(old.path); }
+    // The old build's profile lost its last record, so the reopen deleted it,
+    // and no profile is left with no record.
     const std::string profiles_with_no_record =
         "SELECT COUNT(*) FROM profiles WHERE NOT EXISTS"
         " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)";
-    const std::string old_build_profiles = std::string("SELECT COUNT(*) FROM profiles WHERE hyversion='") +
-                                           hydra::test::kOldBuildStamp + "'";
-    CHECK(scalar_on_file(file.path, profiles_with_no_record) == 0);
-    CHECK(scalar_on_file(file.path, old_build_profiles) == 0);
+    CHECK(profiles_in_mode(old.path, old_profile.chartmode) == 0);
+    CHECK(scalar_on_file(old.path, profiles_with_no_record) == 0);
 }
 
 namespace {
@@ -982,16 +998,21 @@ TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the n
 
 TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
           "profiles, and a later open deletes them") {
+    const Profile gone_mode = at4("gone mode");
+    const Profile kept_mode = at4();
+    REQUIRE(gone_mode.chartmode != kept_mode.chartmode);
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library({library_row("kept", "Kept")});
         // Not in the library, so the next scan's purge empties its profile.
-        store.save(prepare_record("gone", at4("gone mode"), fixture().record));
-        store.save(prepare_record("kept", at4(), fixture().record));
+        store.save(prepare_record("gone", gone_mode, fixture().record));
+        store.save(prepare_record("kept", kept_mode, fixture().record));
         store.rebuild_chart_library({library_row("kept", "Kept")});
     }
-    REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    // The purge emptied the gone mode's profile; it is still in the file.
+    REQUIRE(profiles_in_mode(file.path, gone_mode.chartmode) == 1);
+    REQUIRE(profiles_in_mode(file.path, kept_mode.chartmode) == 1);
 
     // Another connection holds the write lock, as a batch's open save group
     // does; reading the file still works, as WAL allows.
@@ -1001,15 +1022,19 @@ TEST_CASE("store: an open while another connection holds the write lock keeps th
                          nullptr, nullptr) == SQLITE_OK);
     {
         RecordStore store(file.path);
-        CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
-        CHECK(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::NotAnalyzed);
+        CHECK(store.lookup_one("kept", kept_mode).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("gone", gone_mode).status == RecordStatus::NotAnalyzed);
     }
     sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr);
     sqlite3_close(holder);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    // The open under the lock deleted nothing.
+    CHECK(profiles_in_mode(file.path, gone_mode.chartmode) == 1);
+    CHECK(profiles_in_mode(file.path, kept_mode.chartmode) == 1);
 
+    // A later open deletes the emptied profile and keeps the other.
     { RecordStore reopened(file.path); }
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
+    CHECK(profiles_in_mode(file.path, gone_mode.chartmode) == 0);
+    CHECK(profiles_in_mode(file.path, kept_mode.chartmode) == 1);
 }
 
 TEST_CASE("store: a record saved under another build's stamp reads back Stale for that build") {
