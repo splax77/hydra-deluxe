@@ -756,51 +756,78 @@ class RowChecksTest(unittest.TestCase):
                          ("sp_amount_u32", "sp_max_u32"))
 
     def test_is_active_reads_the_flag_byte_only(self):
-        row = _row(1.0, 0, active=1)
-        self.assertTrue(sp_compare.is_active(row))
-        row["sp_active_u32"] = 257
-        row["sp_active_byte"] = 0
-        self.assertFalse(sp_compare.is_active(row))
+        # The game's real rows set bits above the flag byte in sp_active_u32:
+        # the rise piece (no Star Power) logs 16777216 with the byte 0, and
+        # the clamp piece (in Star Power) logs 16777217 with the byte 1.
+        off = [r for r in sp_compare.load_watch_rows(_RISE_CSV) if r["sp_active_u32"] != 0]
+        on = [r for r in sp_compare.load_watch_rows(_CLAMP_CSV)
+              if r["sp_active_u32"] not in (0, 1)]
+        self.assertTrue(off, "the rise piece should hold a row with the high bits set")
+        self.assertTrue(on, "the clamp piece should hold a row with the high bits set")
+        for row in off:
+            self.assertEqual(row["sp_active_byte"], 0, row)
+            self.assertFalse(sp_compare.is_active(row), row)
+        for row in on:
+            self.assertEqual(row["sp_active_byte"], 1, row)
+            self.assertTrue(sp_compare.is_active(row), row)
 
-    def test_a_flip_goes_to_its_own_chord_not_one_17_ms_after(self):
-        # Chord 1 is pressed at 998 ms and chord 2, 17.2 ms later, at 1002.2
-        # ms. A flip 1 ms after chord 1 belongs to chord 1; chord 2's earlier
-        # press must not take it.
-        chords = [{"index": 1, "tick": 100, "ms": 1000.0},
-                  {"index": 2, "tick": 200, "ms": 1017.2}]
-        reach = {1: sp_compare.PressReach(998.0, 998.0),
-                 2: sp_compare.PressReach(1002.2, 1002.2)}
+    def test_a_flip_goes_to_its_own_chord_not_the_next_ones_press(self):
+        # In Hydra's Bomber schedule, chord 147's first press comes 22.9 ms
+        # after chord 146's (both read from the file) and before 147's ms.
+        # A flip between the two presses belongs to 146; 147's early
+        # press must not take it. A flip at 147's first press is 147's.
+        reach = sp_compare.press_reach(_BOMBER[1])
+        chords = _fixture_chords(_BOMBER[0])
         chord_ms = [c["ms"] for c in chords]
-        got = sp_compare._landed_chord(chords, chord_ms, 1001.0, reach)
-        self.assertIs(got, chords[0])
-        # A flip at 1003 ms is after chord 2's press (1002.2).
-        got = sp_compare._landed_chord(chords, chord_ms, 1003.0, reach)
-        self.assertIs(got, chords[1])
+        k = next(i for i, c in enumerate(chords) if c["index"] == 146)
+        first, second = chords[k], chords[k + 1]
+        self.assertEqual(second["index"], 147)
+        lo, hi = reach[146].earliest_ms, reach[147].earliest_ms
+        self.assertLess(lo, hi)
+        self.assertLess(hi, second["ms"])
+        between = (lo + hi) / 2
+        self.assertIs(sp_compare._landed_chord(chords, chord_ms, between, reach), first)
+        self.assertIs(sp_compare._landed_chord(chords, chord_ms, hi, reach), second)
 
     def test_phrase_rises_gives_each_step_up(self):
-        rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 1536), _row(2.5, 3072),
-                _row(3.0, 0, active=1), _row(3.5, 1536, active=1)]
+        # The rise piece's meter steps from 3600 to 7200 on its data row
+        # 34 (0-based) and nowhere else; the act3 piece's meter only drains in
+        # Star Power and holds after it, so it has no rise.
+        rows = sp_compare.load_watch_rows(_RISE_CSV)
         rises = sp_compare.phrase_rises(rows, AMOUNT)
-        self.assertEqual(rises, [(1500.0, 0, 1536), (2500.0, 1536, 3072),
-                                 (3500.0, 0, 1536)])
-        self.assertEqual([r.size for r in rises], [1536, 1536, 1536])
+        self.assertEqual(rises, [sp_compare.Rise(sp_compare._ms(rows[34]), 3600, 7200)])
+        self.assertEqual(rows[33][AMOUNT], 3600)
+        self.assertEqual(rows[34][AMOUNT], 7200)
+        self.assertEqual(sp_compare.phrase_rises(sp_compare.load_watch_rows(_ACT3_CSV),
+                                                 AMOUNT), [])
 
     def test_phrase_rises_on_three_sizes(self):
-        rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 4608), _row(2.5, 6144)]
-        sizes = [r.size for r in sp_compare.phrase_rises(rows, AMOUNT)]
-        self.assertEqual(sizes, [1536, 3072, 1536])
+        # Three real rises, each read off its piece: a full quarter of the
+        # meter (rise piece, 3600 -> 7200), one cut short by the full meter
+        # (clamp piece, 10953 -> 14400) and one from 1 on the row Star Power
+        # ends (act2 edges piece, 1 -> 3600).
+        sizes = [[r.size for r in sp_compare.phrase_rises(sp_compare.load_watch_rows(p),
+                                                           AMOUNT)]
+                 for p in (_RISE_CSV, _CLAMP_CSV, _EARLY_END_CSV)]
+        self.assertEqual(sizes, [[3600], [3447], [3599]])
 
     def test_flips_between_keeps_only_the_flip_inside(self):
-        rows = [_row(1.0, 3072), _row(2.0, 0, active=1), _row(2.5, 0),
-                _row(4.0, 3072), _row(5.0, 0, active=1), _row(6.0, 0)]
-        flips = sp_compare.flips_between(rows, 1500.0, 3000.0)
-        self.assertEqual([(a.number, a.flip_row, a.drop_row) for a in flips],
-                         [(1, 1, 2)])
-        self.assertEqual(sp_compare.flips_between(rows, 2500.0, 4500.0), [])
+        # The act2 edges piece: row 0 before the flag sets, row 1 the flip,
+        # row 2 still set, row 3 the drop.
+        rows = sp_compare.load_watch_rows(_EARLY_END_CSV)
+        flip, drop = sp_compare._ms(rows[1]), sp_compare._ms(rows[3])
+        flips = sp_compare.flips_between(rows, sp_compare._ms(rows[0]), drop)
+        self.assertEqual([(a.number, a.flip_row, a.drop_row) for a in flips], [(1, 1, 3)])
+        # A window after the flip holds set rows but no flip.
+        self.assertEqual(sp_compare.flips_between(rows, math.nextafter(flip, math.inf),
+                                                  drop), [])
+        self.assertEqual(sp_compare.flips_between(rows, sp_compare._ms(rows[0]),
+                                                  math.nextafter(flip, -math.inf)), [])
 
     def test_flips_between_includes_both_ends(self):
-        rows = [_row(1.0, 3072), _row(2.0, 0, active=1), _row(2.5, 0)]
-        self.assertEqual(len(sp_compare.flips_between(rows, 2000.0, 2000.0)), 1)
+        rows = sp_compare.load_watch_rows(_EARLY_END_CSV)
+        flip = sp_compare._ms(rows[1])
+        self.assertEqual(len(sp_compare.flips_between(rows, flip, flip)), 1)
 
 
 def _fixture(name):
