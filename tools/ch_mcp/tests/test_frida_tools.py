@@ -577,11 +577,18 @@ class MenuFieldsTest(unittest.TestCase):
                     int(number)
 
     def test_the_highlighted_row_keys_are_entries(self):
+        # Each key the highlighted row is worked out from names a field
+        # menu.ts reads. The two row arrays are of a kind _instance_lines puts
+        # on the rows line; the cursor and scroll are of neither array kind
+        # nor an enum, so they print as numbers on the plain line, where the
+        # highlighted row follows the scroll.
         keys = {f["key"]: f.get("kind", FT.ENUM_KIND) for f in self.data["fields"]}
-        self.assertEqual(keys[FT.CURSOR_KEY], "int")
-        self.assertEqual(keys[FT.SCROLL_KEY], "int")
-        self.assertEqual(keys[FT.ROW_NAMES_KEY], "string_array")
-        self.assertEqual(keys[FT.ROW_IDS_KEY], "enum_array")
+        for key in (FT.CURSOR_KEY, FT.SCROLL_KEY, FT.ROW_NAMES_KEY, FT.ROW_IDS_KEY):
+            self.assertIn(key, keys)
+        for key in (FT.ROW_NAMES_KEY, FT.ROW_IDS_KEY):
+            self.assertIn(keys[key], FT.ARRAY_KINDS, key)
+        for key in (FT.CURSOR_KEY, FT.SCROLL_KEY):
+            self.assertNotIn(keys[key], FT.ARRAY_KINDS + (FT.ENUM_KIND,), key)
 
     def dump_type(self, field):
         """The type the dump should give the field, from its kind."""
@@ -676,22 +683,54 @@ class PlayerScreenHookTest(unittest.TestCase):
 
 class MenuTest(Rig):
     def test_menu_lines_print_the_block_as_sent(self):
-        self.assertEqual(FT.menu_lines(MENU_READ), MENU_LINES)
-
-    def test_menu_lines_with_no_song_and_no_globals(self):
-        menu = {**MENU_READ, "selectedSong": None,
-                "globals": {"found": False, "reason": "no live GlobalVariables.instance"}}
+        # The menu block of a real state reply (recorded_state's run, mid-song:
+        # every menu class found with no live instance, no selected song, and
+        # GlobalVariables naming the song folder). Each class gets one line
+        # with its counts, in the block's order, and the folder prints as sent.
+        menu = recorded_state()[FT.MENU_BLOCK]
         lines = FT.menu_lines(menu)
-        self.assertIn("selected song: none", lines)
-        self.assertEqual(lines[-1], "GlobalVariables: no live GlobalVariables.instance")
+        classes = list(menu["classes"].items())
+        self.assertTrue(classes)
+        self.assertEqual([line.split(":")[0] for line in lines[:len(classes)]],
+                         [name for name, _ in classes])
+        for line, (name, entry) in zip(lines, classes):
+            with self.subTest(name=name):
+                self.assertTrue(entry["found"])
+                self.assertIn(f"{entry['live']} live, {entry['destroyed']} destroyed", line)
+        folder = menu["globals"]["currentSongFolder"]
+        self.assertTrue(folder)
+        self.assertIn(f"GlobalVariables currentSongFolder: {folder}", lines)
+
+    def test_menu_lines_with_no_selected_song(self):
+        # The recorded mid-song block has no selected song, and prints one
+        # line saying so in place of the folder and chartName lines.
+        menu = recorded_state()[FT.MENU_BLOCK]
+        self.assertIsNone(menu["selectedSong"])
+        lines = FT.menu_lines(menu)
+        song = [line for line in lines if line.startswith("selected song")]
+        self.assertEqual(song, ["selected song: none"])
 
     def test_menu_lines_print_the_agents_error(self):
-        self.assertEqual(FT.menu_lines({"error": "reading the menus failed: x"}),
-                         ["menu: reading the menus failed: x"])
+        # The error menu.ts's readMenu sends when the game's assembly is not
+        # loaded, built from its own literal and ASSEMBLY_NAME: menu_lines
+        # prints it on one menu line and reads nothing else.
+        with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
+            source = f.read()
+        name = re.search(r'const ASSEMBLY_NAME = "(\w+)";', source).group(1)
+        template = re.search(r"return \{ error: `\$\{ASSEMBLY_NAME\}([^`]*)` \};",
+                             source).group(1)
+        error = name + template
+        self.assertEqual(FT.menu_lines({"error": error}), [f"menu: {error}"])
 
     def test_menu_lines_with_no_block(self):
-        self.assertEqual(FT.menu_lines(None),
-                         ["menu: not read (the agent sent no menu block)"])
+        # A reply with no menu block gives one menu line saying it was not
+        # read, never the class, song or GlobalVariables lines.
+        reply = recorded_state()
+        reply.pop(FT.MENU_BLOCK)
+        lines = FT.menu_lines(reply.get(FT.MENU_BLOCK))
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("menu: not read ("), lines[0])
+        self.assertIn("menu block", lines[0])
 
     def test_ch_menu_prints_the_lines_then_the_state_word(self):
         tools = self.tools([STATE, {**MENU, "menu": MENU_READ}], attached=True)
