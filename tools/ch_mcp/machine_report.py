@@ -68,6 +68,10 @@ PROCESS_OPTIONAL = ("name",)
 
 NO_ROWS_NAME = "(no rows)"
 NO_NAME = "(no name)"
+LATE_MARK = ("across late samples: the span counts the recorder's lateness, "
+             "so it is an upper bound on any wait")
+NO_THREAD_ROWS = "no thread rows in the window"
+NO_LONG_STEP = "no clock step has an excess that long, so none is listed"
 
 
 class Refused(Exception):
@@ -388,8 +392,7 @@ def _stretch_text(stretches: List[List[int]], walls: Dict[int, Fraction],
     longest = max(stretches, key=lambda run: walls[run[-1]] - walls[run[0]])
     # A sample's gain covers the slice before it, so the first one's came before the stretch.
     inside = sum(switches[number] for number in longest[1:])
-    late = (", across late samples: the span counts the recorder's lateness, "
-            "so it is an upper bound on any wait"
+    late = (f", {LATE_MARK}"
             if _across_late_samples(longest, walls, period_ms) else "")
     rows = [row for number in longest for row in by_sample.get(number, ())]
     gained = _gained(rows, slices, "cpu_ms")
@@ -414,7 +417,7 @@ def _thread_lines(rec: Recording, whole: Window, window: Window, pids: Sequence[
         label = " and ".join(roles[pid])
         rows = [row for row in rec.threads if row.pid == pid and row.sample in numbers]
         if not rows:
-            lines.append(f"  {label} pid {pid}: no thread rows in the window")
+            lines.append(f"  {label} pid {pid}: {NO_THREAD_ROWS}")
         for tid in sorted({row.tid for row in rows}):
             mine = [row for row in rows if row.tid == tid]
             running = sum(row.reads_as == READS_RUNNING for row in mine)
@@ -495,7 +498,7 @@ def _clock_lines(rec: Recording, window: Window) -> List[str]:
         lines.append("largest of those, as detail (one step's excess can be the measurement; "
                      "the lead above judges the game):")
     else:
-        lines.append("no clock step has an excess that long, so none is listed")
+        lines.append(NO_LONG_STEP)
     for pair in sorted(long_pairs, key=lambda p: -abs(p.excess_ms))[:LONGEST_LISTED]:
         lines.append(f"  wall {_wall(pair.later.wall_s)}: step {float(pair.step_ms):.1f} ms, "
                      f"wall gap {float(pair.wall_gap_ms):.1f} ms, "

@@ -457,14 +457,13 @@ class NoThreadRowsInARealRecording(RealRecordingCase):
         # The worker's threads first come in the excerpt's last sample, so a window
         # that ends one sample earlier holds none of them.
         self.assertEqual({int(row["sample"]) for row in self.thread_rows(worker)}, {last})
-        message = f"  worker pid {worker}: no thread rows in the window"
+        message = f"  worker pid {worker}: {R.NO_THREAD_ROWS}"
         self.assertIn(message, self.lines("--worker", str(worker), "--to", self.walls[last - 1]))
         self.assertNotIn(message, self.lines("--worker", str(worker)))
 
 
 class StretchesAcrossLateSamples(ReportCase):
-    LATE_MARK = ("across late samples: the span counts the recorder's lateness, "
-                 "so it is an upper bound on any wait")
+    LATE_MARK = R.LATE_MARK
 
     def ready_at(self, walls_ms, switches=None):
         """A thread ready in one sample at each of these times."""
@@ -478,7 +477,7 @@ class StretchesAcrossLateSamples(ReportCase):
 
     def test_normal_wobble_under_twice_the_period_carries_no_mark(self):
         line = self.stretch_line(self.ready_at((0, 25, 45, 85)))
-        self.assertNotIn("across late samples", line)
+        self.assertNotIn(self.LATE_MARK, line)
 
     def test_one_sample_prints_no_stretch_and_no_mark(self):
         fx = Fixture()
@@ -587,7 +586,7 @@ class CalmClockInARealRecording(ClockInARealRecording):
         self.assertTrue(all(abs(step - gap) <= limit for _, step, gap in steps))
         lines = self.lines()
         self.assertIn(f"clock steps with an excess over {float(limit):g} ms by size: 0", lines)
-        self.assertIn("no clock step has an excess that long, so none is listed", lines)
+        self.assertIn(R.NO_LONG_STEP, lines)
         self.assertFalse([line for line in lines if line.startswith("  wall ")])
 
 
