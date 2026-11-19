@@ -117,7 +117,7 @@ std::vector<const DrawCommand*> strips_over(const std::vector<DrawCommand>& cmds
     const double z2 = time_to_z(cfg, v.now, t2, v.speed);
     std::vector<const DrawCommand*> out;
     for (const DrawCommand& c : cmds) {
-        if (c.mesh != MeshId::Flat || c.depth != DepthMode::Always) continue;
+        if (c.mesh != MeshId::Flat || c.depth != hydra::render::DepthMode::Always) continue;
         if (!is_lane_tex(c.material.texture) && !is_lit_target_tex(c.material.texture)) continue;
         if (c.lo[0] == doctest::Approx(x1) && c.hi[0] == doctest::Approx(x2) &&
             c.lo[2] == doctest::Approx(z1) && c.hi[2] == doctest::Approx(z2))
@@ -261,7 +261,7 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
     size_t first_box = cmds.size(), first_always = cmds.size(), first_gem = cmds.size();
     for (size_t i = 0; i < cmds.size(); ++i) {
         if (cmds[i].mesh == MeshId::Box && first_box == cmds.size()) first_box = i;
-        if (cmds[i].depth == DepthMode::Always && first_always == cmds.size()) first_always = i;
+        if (cmds[i].depth == hydra::render::DepthMode::Always && first_always == cmds.size()) first_always = i;
         if ((cmds[i].mesh == MeshId::Tom || cmds[i].mesh == MeshId::Cymbal ||
              cmds[i].mesh == MeshId::Kick) && first_gem == cmds.size())
             first_gem = i;
@@ -269,7 +269,7 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
     CHECK(first_box < first_always);
     CHECK(first_always < first_gem);
     CHECK(cmds[0].mesh == MeshId::Flat);
-    CHECK(cmds[0].depth == DepthMode::Less);
+    CHECK(cmds[0].depth == hydra::render::DepthMode::Less);
     CHECK(cmds[0].material.kind == MaterialKind::Color);
 
     // Floor covers near..far: first flat starts at z_past (2), the last floor
@@ -298,7 +298,7 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
             ++bars;
             CHECK(c.lo[2] == doctest::Approx(0.05f));
             CHECK(c.hi[2] == doctest::Approx(-0.05f));
-            CHECK(c.depth == DepthMode::Always);
+            CHECK(c.depth == hydra::render::DepthMode::Always);
         }
         if (c.material.texture == TextureId::Line3) ++halves;
     }
@@ -742,7 +742,7 @@ void check_outline_line(const DrawCommand& c, const PreviewConfig& cfg, Pad pad,
                                  : pad == Pad::Blue   ? TextureId::LaneBlue
                                                       : TextureId::LaneGreen));
     CHECK(c.alpha == doctest::Approx(cfg.hydra.fill_offered_alpha));
-    CHECK(c.depth == DepthMode::Always);
+    CHECK(c.depth == hydra::render::DepthMode::Always);
     CHECK(c.lo[1] == doctest::Approx(cfg.track.y));
     CHECK(c.lo[0] == doctest::Approx(x1));
     CHECK(c.hi[0] == doctest::Approx(x2));
@@ -955,7 +955,7 @@ std::vector<DrawCommand> rail_boxes(const std::vector<DrawCommand>& cmds, bool r
 std::vector<DrawCommand> floor_flats(const std::vector<DrawCommand>& cmds) {
     std::vector<DrawCommand> out;
     for (const DrawCommand& c : cmds)
-        if (c.mesh == MeshId::Flat && c.depth == DepthMode::Less &&
+        if (c.mesh == MeshId::Flat && c.depth == hydra::render::DepthMode::Less &&
             c.material.kind == MaterialKind::Color)
             out.push_back(c);
     return out;
@@ -1207,7 +1207,7 @@ TEST_CASE("build_highway_draws: nothing marks the SP end on the lanes") {
     for (const DrawCommand& c : build_highway_draws(st, cfg, 1.0, 1.0)) {
         if (c.material.kind != MaterialKind::Color) continue;
         ++colored;
-        const bool floor = c.mesh == MeshId::Flat && c.depth == DepthMode::Less;
+        const bool floor = c.mesh == MeshId::Flat && c.depth == hydra::render::DepthMode::Less;
         CHECK((floor || c.mesh == MeshId::Box));
     }
     CHECK(colored > 0);
