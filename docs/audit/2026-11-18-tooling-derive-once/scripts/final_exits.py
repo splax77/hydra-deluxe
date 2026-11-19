@@ -134,9 +134,15 @@ ROW_ANSWERS = {
     "L-F01-08": [("exit 3", "minutes")],
     "L-F07-08": [("exit 3", "minutes")],
     "L-F01-02": [("exit 3", "warning")],
-    # The other four theme 16 rows (the 500K context text, the git exemption on a chained command, the
-    # stuck-agent nudge) are named by neither answer, so they are not listed here and stay exit 2.
+    # The other four theme 16 rows are named by neither answer; the main session folded them under
+    # earlier answers in late-folds.md.
+    "L-F01-04": [("exit 3", "merge")],
+    "L-F04-05": [("exit 3", "code")],
+    "L-F01-09": [("exit 4", None)],
+    "L-F28-02": [("exit 3", "merge")],
 }
+# Rows no stage gave an exit, folded in late-folds.md. L-F04-14 never reached exits.md.
+LATE = {"L-F04-14": [("exit 3", "merge")]}
 
 T6_ANSWER = {"A": "code", "B": "note", "C": "pointer"}
 
@@ -173,6 +179,11 @@ ORDER = ["still open", "exit 2", "Fix pending", "exit 3", "exit 1", "exit 4", "G
 final, parts, gaps, why = {}, {}, [], {}
 for i in sorted(set(ledger) | set(t6)):
     if i not in t6:
+        if i in LATE:
+            parts[i] = LATE[i]
+            final[i] = min((e for e, _ in LATE[i]), key=ORDER.index)
+            why[i] = "late-folds.md"
+            continue
         gaps.append((i, "in the ledger (%s) but not in exits.md or sorting/, so it never got a T6 exit" % ledger[i][1]))
         continue
     verdict, cat, _ = t6[i]
@@ -228,6 +239,16 @@ print("fold-T8.md: %d rows; verdicts after the closure check: " % len(fold) + ",
 fc = Counter(final.values())
 print("Final exit by row: " + ", ".join("%s %d" % (e, fc[e]) for e in ORDER if fc[e]) + "; gaps %d; total %d.\n" % (len(gaps), sum(fc.values()) + len(gaps)))
 print("Where each final exit came from: " + ", ".join("%s %d" % kv for kv in sorted(Counter(why[i] for i in final).items())) + ".\n")
+
+if "--theme-closures" in sys.argv:
+    # Closures that left by an answer by theme or a late fold, for a fresh closure check.
+    print("## Closures by theme answer\n")
+    print("| Row | Source | Exits |")
+    print("|---|---|---|")
+    for i in sorted(i for i in final if why[i].startswith("theme") or why[i] == "late-folds.md"):
+        ex = "; ".join(e + (", " + ANSWERS[a][0] if a in ANSWERS else "") for e, a in parts[i])
+        print("| %s | %s | %s |" % (i, why[i], ex))
+    sys.exit(0)
 
 print("## Gaps\n")
 for i, w in gaps:
