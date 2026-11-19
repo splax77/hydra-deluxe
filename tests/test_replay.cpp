@@ -566,7 +566,7 @@ TEST_CASE("a path JSON names the squeezed-out chord by its tick, the offset only
         R"({"activations": [{"act_tick": 480, "deact_tick": -1}]})")));
 }
 
-/ A path read from a file has to give the same windows as the same path read
+// A path read from a file has to give the same windows as the same path read
 // from the record it was dumped from, or `--path` would price something the
 // database does not agree with.
 TEST_CASE("windows read from a path JSON match the ones read from the record") {
