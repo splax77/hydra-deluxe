@@ -85,7 +85,8 @@ TEST_CASE("settings round-trip through an INI file") {
     s.mslimit_enabled = false;
     s.mslimit_value = 42;
     s.backendlimit_enabled = true;
-    s.backendlimit_value = 77;  // unlike mslimit_value, so a swap of the two shows
+    // Unlike mslimit_value, so a swap of the two shows.
+    s.backendlimit_value = s.mslimit_value + 1;
     s.preview_volume = 23;
     s.sp_cap = 16;
     s.legacy_fills = true;
