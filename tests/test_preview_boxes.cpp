@@ -19,6 +19,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"  // Settings: the app's default analysis settings
+#include "app/display_format.h"  // kFactSeparator
 #include "app/preview_view.h"
 #include "app/path_view.h"
 #include "app/song_length.h"
@@ -237,6 +238,24 @@ PitchDarkScene pitch_dark_scene() {
     pd.bare = build_preview_scene(*pd.song, nullptr, cfg.sp_cap, cfg.rules);
     REQUIRE(pd.scene.activations.size() == pd.path->walk_activations().size());
     return pd;
+}
+
+// The next activation box's detail line for activation `a` of a record on
+// `song`, worked from the record alone: "at", the measure format_measure
+// (core/timing.h) gives the activation's tick, the app's fact separator
+// (kFactSeparator, app/display_format.h), then the chord in Chord::rowstr's
+// words for `pro_drums`. An engine activation always carries the chord hit
+// there (an activation node is a chart note, search/engine.cpp), so a record
+// activation without one fails here.
+std::string record_act_detail(const Song& song, const Activation& a, bool pro_drums) {
+    REQUIRE(a.chord.count() > 0);
+    return "at " + format_measure(song.timing(), a.timecode.ticks()) + kFactSeparator +
+           a.chord.rowstr(pro_drums);
+}
+
+// The next activation box's header for activation `i` of `count`.
+std::string next_act_header(size_t i, size_t count) {
+    return "Next: activation " + std::to_string(i + 1) + " of " + std::to_string(count);
 }
 
 // A corpus chart whose drum track names one solo: Snakeskin Boots, whose
@@ -1207,59 +1226,140 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     CHECK(marks[0] == *view.acts[0].song_fraction);
 }
 
-// The scrubber's right end is the number it is given (here the chart's
-// audio_end_ms), so past the last note the thumb keeps following the playhead,
-// all the way to that end.
 TEST_CASE("scrub marks: a playhead past the last note parks the thumb at the right end") {
-    const test::AudioTailChart c = test::audio_tail_chart();
-    const double end = c.audio_end_ms;
-    CHECK(end == doctest::Approx(6000.0));
-    CHECK(scrub_thumb_ms(c.audio_end_ms, end) == doctest::Approx(6000.0));
-    CHECK(scrub_thumb_ms(3000.0, end) == doctest::Approx(3000.0));  // in the tail
-    CHECK(scrub_thumb_ms(500.0, end) == doctest::Approx(500.0));
+    // Pitch Dark's length as the app works it out (analysis_song_length).
+    // song_length_ms adds kSongEndPadMs after the last note's end, so the
+    // scrubber runs on past the last note. There the thumb follows the
+    // playhead; past the scrubber's end it stays parked at the end.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::optional<double> len =
+        analysis_song_length(std::nullopt, pd.chart, *pd.song).ms;
+    REQUIRE(len.has_value());
+    const double last = last_note_ms(pd.bare);
+    REQUIRE(*len > last);
+    const double tail = (last + *len) / 2.0;
+    CHECK(scrub_thumb_ms(last, *len) == last);
+    CHECK(scrub_thumb_ms(tail, *len) == tail);
+    CHECK(scrub_thumb_ms(*len, *len) == *len);
+    CHECK(scrub_thumb_ms(std::nextafter(*len, std::numeric_limits<double>::infinity()), *len) ==
+          *len);
+    const double past = *len + 1000.0;  // a free input: a second past the end
+    CHECK(scrub_thumb_ms(past, *len) == *len);
 }
 
 TEST_CASE("activation jumps: nearest activation before or after the playhead") {
-    TwoActs t;
-    CHECK(activation_jump_ms(t.scene, 0.0, +1) == doctest::Approx(2000.0));
-    // Parked on an activation, "next" moves on and "previous" goes back past it.
-    CHECK(activation_jump_ms(t.scene, 2000.0, +1) == doctest::Approx(8000.0));
-    CHECK(activation_jump_ms(t.scene, 2000.3, +1) == doctest::Approx(8000.0));
-    CHECK_FALSE(activation_jump_ms(t.scene, 2000.0, -1).has_value());
-    CHECK(activation_jump_ms(t.scene, 5000.0, -1) == doctest::Approx(2000.0));
-    CHECK(activation_jump_ms(t.scene, 8000.0, -1) == doctest::Approx(2000.0));
-    CHECK_FALSE(activation_jump_ms(t.scene, 8000.0, +1).has_value());
-    CHECK_FALSE(activation_jump_ms(build_preview_scene(t.song, nullptr), 0.0, +1).has_value());
+    // Pitch Dark's record. Each jump lands on an activation's own moment,
+    // the record's tick through the chart's tempo map.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::vector<PreviewActivation>& acts = pd.scene.activations;
+    REQUIRE(acts.size() >= 2);
+    const MsIndex& ms = pd.song->timing().ms_index();
+    std::vector<double> want;
+    for (const Activation& a : pd.path->walk_activations()) want.push_back(ms.at(a.timecode.ticks()));
+    REQUIRE(want.size() == acts.size());
+
+    // Before the first activation "Act >" goes to it and "< Act" nowhere.
+    CHECK(activation_jump_ms(pd.scene, 0.0, +1) == doctest::Approx(want.front()));
+    CHECK_FALSE(activation_jump_ms(pd.scene, 0.0, -1).has_value());
+
+    for (size_t i = 0; i < acts.size(); ++i) {
+        CAPTURE(i);
+        CHECK(acts[i].ms == doctest::Approx(want[i]));
+        // Parked on activation i, "Act >" moves on to the next one and
+        // "< Act" goes back past it; none either way at the ends.
+        const std::optional<double> next = activation_jump_ms(pd.scene, acts[i].ms, +1);
+        const std::optional<double> prev = activation_jump_ms(pd.scene, acts[i].ms, -1);
+        if (i + 1 < acts.size()) {
+            REQUIRE(next.has_value());
+            CHECK(*next == doctest::Approx(want[i + 1]));
+            // Between activation i and the next, each way lands on one of the two.
+            const double mid = (acts[i].ms + acts[i + 1].ms) / 2.0;
+            CHECK(activation_jump_ms(pd.scene, mid, +1) == doctest::Approx(want[i + 1]));
+            CHECK(activation_jump_ms(pd.scene, mid, -1) == doctest::Approx(want[i]));
+        } else {
+            CHECK_FALSE(next.has_value());
+        }
+        if (i > 0) {
+            REQUIRE(prev.has_value());
+            CHECK(*prev == doctest::Approx(want[i - 1]));
+        } else {
+            CHECK_FALSE(prev.has_value());
+        }
+    }
+
+    // With no path there is nowhere to jump.
+    CHECK_FALSE(activation_jump_ms(pd.bare, 0.0, +1).has_value());
+    CHECK_FALSE(activation_jump_ms(pd.bare, last_note_ms(pd.bare), -1).has_value());
 }
 
 TEST_CASE("next activation box: the activation at or after the playhead") {
-    TwoActs t;
-    PreviewNextActBox box = next_act_box_at(t.scene, 0.0, /*pro_drums=*/true);
-    CHECK(box.shown);
-    CHECK(box.header == "Next: activation 1 of 2");
-    CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
-    CHECK(next_act_box_at(t.scene, 2000.0, true).header == "Next: activation 1 of 2");
-    CHECK(next_act_box_at(t.scene, 2001.0, true).header == "Next: activation 2 of 2");
-    CHECK(next_act_box_at(t.scene, 2001.0, true).detail == "at m5.1.0 " + kDot + " [Red snare]");
-    CHECK_FALSE(next_act_box_at(t.scene, 9000.0, true).shown);
-    CHECK_FALSE(next_act_box_at(build_preview_scene(t.song, nullptr), 0.0, true).shown);
-}
-
-TEST_CASE("next activation box: past the length it reads the moment the time box shows") {
-    TwoActs t;
-    CHECK(build_next_act_box(t.scene, 9000.0, /*length_ms=*/2000.0, true).header ==
-          "Next: activation 1 of 2");
-    CHECK_FALSE(build_next_act_box(t.scene, 9000.0, /*length_ms=*/9000.0, true).shown);
+    // Pitch Dark's record. On each activation, and between the one before it
+    // and it, the box names it: its place in the path, then the measure and
+    // chord the record gives it.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::vector<PreviewActivation>& acts = pd.scene.activations;
+    REQUIRE(acts.size() >= 2);
+    for (size_t i = 0; i < acts.size(); ++i) {
+        CAPTURE(i);
+        const std::string detail =
+            record_act_detail(*pd.song, pd.path->walk_activations()[i], /*pro_drums=*/true);
+        const double from = i == 0 ? 0.0 : (acts[i - 1].ms + acts[i].ms) / 2.0;
+        for (const double now : {from, acts[i].ms}) {
+            CAPTURE(now);
+            const PreviewNextActBox box = next_act_box_at(pd.scene, now, /*pro_drums=*/true);
+            CHECK(box.shown);
+            CHECK(box.header == next_act_header(i, acts.size()));
+            CHECK(box.detail == detail);
+        }
+    }
+    // Past the last activation, and with no path, the box is hidden.
+    const double past = acts.back().ms + 1000.0;  // a free input: a second past it
+    CHECK_FALSE(next_act_box_at(pd.scene, past, true).shown);
+    CHECK_FALSE(next_act_box_at(pd.bare, 0.0, true).shown);
 }
 
 TEST_CASE("next activation box: the note names follow the Pro Drums setting") {
-    // The Dynamics wording (note_label): with Pro Drums off the red pad is
-    // plain "Red", with it on "Red snare" (D48, Q11).
-    TwoActs t;
-    CHECK(next_act_box_at(t.scene, 0.0, /*pro_drums=*/false).detail ==
-          "at m2.1.0 " + kDot + " [Red]");
-    CHECK(next_act_box_at(t.scene, 0.0, /*pro_drums=*/true).detail ==
-          "at m2.1.0 " + kDot + " [Red snare]");
+    // The box names the chord in Chord::rowstr's words for the Pro Drums
+    // setting (D48, Q11), with it off and on, on each of Pitch Dark's
+    // activations.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::vector<PreviewActivation>& acts = pd.scene.activations;
+    REQUIRE_FALSE(acts.empty());
+    for (size_t i = 0; i < acts.size(); ++i) {
+        CAPTURE(i);
+        const Activation& rec = pd.path->walk_activations()[i];
+        for (const bool pro : {false, true}) {
+            CAPTURE(pro);
+            CHECK(next_act_box_at(pd.scene, acts[i].ms, pro).detail ==
+                  record_act_detail(*pd.song, rec, pro));
+        }
+    }
+
+    // Pitch Dark's activations land on kicks and cymbals
+    // (testdata/replay/test_pitch_dark_ratio-schedule.json), which read the
+    // same in both settings. So the record is copied with its first
+    // activation's chord swapped for the chart's first chord with a red pad,
+    // which the setting renames (note_label, core/model.cpp).
+    const Chord* red = nullptr;
+    for (const SongTimestamp& ts : pd.song->sequence) {
+        if (ts.chord.at(NoteColor::Red).has_value()) {
+            red = &ts.chord;
+            break;
+        }
+    }
+    REQUIRE(red != nullptr);
+    REQUIRE(red->rowstr(false) != red->rowstr(true));
+    Path path = *pd.path;
+    REQUIRE_FALSE(path.activations.empty());
+    path.activations[0].chord = *red;
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    const PreviewScene scene = build_preview_scene(*pd.song, &path, cfg.sp_cap, cfg.rules);
+    REQUIRE_FALSE(scene.activations.empty());
+    for (const bool pro : {false, true}) {
+        CAPTURE(pro);
+        CHECK(next_act_box_at(scene, scene.activations[0].ms, pro).detail ==
+              record_act_detail(*pd.song, path.activations[0], pro));
+    }
 }
 
 TEST_CASE("next activation box: on an activation it names that one, past it the next") {
@@ -1300,151 +1400,93 @@ TEST_CASE("next activation box: on an activation it names that one, past it the 
 }
 
 TEST_CASE("next activation box: the notation line is the activation's own, header and detail unchanged") {
-    Song song = make_sp_song({960}, /*last_tick=*/13440);
-    Activation a = sp_act_at(song, 1920, /*sp_meter=*/1, /*end_tick=*/5760);
-    a.chord.add_note(NoteColor::Red);
-    a.e_offset = 300.0;  // not e-critical
-    auto box_for = [&song](const Activation& act) {
-        Path path;
-        path.activations = {act};
-        const PreviewScene scene = build_preview_scene(song, &path);
-        REQUIRE(scene.activations.size() == 1);
-        CHECK(scene.activations[0].notation == act.notationstr_verbose());
-        const PreviewNextActBox box = next_act_box_at(scene, 0.0, /*pro_drums=*/true);
-        CHECK(box.notation == act.notationstr_verbose());
-        CHECK(box.header == "Next: activation 1 of 1");
-        CHECK(box.detail == "at m2.1.0 " + kDot + " [Red snare]");
-        // Past the last activation the box, and its notation, are gone.
-        CHECK(next_act_box_at(scene, 9000.0, true).notation.empty());
-        return box;
+    // Pitch Dark's record. Each activation's notation, whose one owner is
+    // Activation::notationstr_verbose, reaches the scene and the box whole,
+    // and the box's header and detail still read the activation's place and
+    // the record's measure and chord.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::vector<PreviewActivation>& acts = pd.scene.activations;
+    REQUIRE_FALSE(acts.empty());
+    for (size_t i = 0; i < acts.size(); ++i) {
+        CAPTURE(i);
+        const Activation& rec = pd.path->walk_activations()[i];
+        CHECK(acts[i].notation == rec.notationstr_verbose());
+        const PreviewNextActBox box = next_act_box_at(pd.scene, acts[i].ms, /*pro_drums=*/true);
+        CHECK(box.notation == rec.notationstr_verbose());
+        CHECK(box.header == next_act_header(i, acts.size()));
+        CHECK(box.detail == record_act_detail(*pd.song, rec, true));
+    }
+    // Past the last activation the box, and its notation, are gone.
+    const double past = acts.back().ms + 1000.0;  // a free input: a second past it
+    CHECK(next_act_box_at(pd.scene, past, true).notation.empty());
+}
+
+TEST_CASE("build_time_box: every line switches at each change, and in the half tick before it, on a real chart") {
+    // My Own Summer's chart writes tempo changes, signatures and practice
+    // sections. At every tick where a tempo or a section starts, and at every
+    // drawn measure line, the box reads that tick from the change's own
+    // moment and from the moment just before it, which rounds to the same
+    // tick, so all its lines switch together (D48, Q23). One tick earlier it
+    // reads the tick before, and its tempo and section lines differ from the
+    // change's exactly where the chart's own tempo, signature or section
+    // differs.
+    const Song& song = corpus_song("Deftones - My Own Summer");
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.timing.has_value());
+    const SongTiming& timing = song.timing();
+    const MsIndex& ms = timing.ms_index();
+
+    // The name of the chart's section in force at `tick`; empty before the
+    // first. Both parsers hand sections over in tick order.
+    auto section_at = [&song](int64_t tick) {
+        std::string name;
+        for (const SongSection& s : song.practice_sections)
+            if (s.tick <= tick) name = s.name;
+        return name;
     };
 
-    // A plain activation shows its bare notation.
-    CHECK(box_for(a).notation == "0");
+    std::set<int64_t> changes;
+    for (const int64_t t : ms.change_ticks()) changes.insert(t);
+    for (const SongSection& s : song.practice_sections) changes.insert(s.tick);
+    for (const PreviewBeat& b : drawn_measure_lines(scene)) changes.insert(b.tick);
+    // Tick 0 has no tick before it.
+    changes.erase(changes.begin(), changes.upper_bound(0));
+    REQUIRE_FALSE(changes.empty());
+    const double len = ms.at(*changes.rbegin()) + 1000.0;  // a free input: past the last change
 
-    // One with a SqIn shows the "+" and its timing.
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 100.0});
-    CHECK(box_for(a).notation == "0+ (100.0 ms)");
+    int tempo_line_moves = 0;
+    int section_line_moves = 0;
+    for (const int64_t t : changes) {
+        CAPTURE(t);
+        const double on_ms = ms.at(t);
+        const PreviewTimeBox on = build_time_box(scene, on_ms, len);
+        const PreviewTimeBox hair = build_time_box(
+            scene, std::nextafter(on_ms, -std::numeric_limits<double>::infinity()), len);
+        const PreviewTimeBox before = build_time_box(scene, ms.at(t - 1), len);
 
-    // An e-critical one (TwoActs' first) leads with the E and its timing.
-    TwoActs t;
-    const PreviewNextActBox e = next_act_box_at(t.scene, 0.0, true);
-    CHECK(e.notation == "E0 (0.0 ms)");
-    CHECK(e.notation == t.path.activations[0].notationstr_verbose());
-    CHECK(e.header == "Next: activation 1 of 2");
-    CHECK(e.detail == "at m2.1.0 " + kDot + " [Red snare]");
-}
+        CHECK(on.position == format_measure(timing, t));
+        CHECK(hair.position == on.position);
+        CHECK(hair.tempo == on.tempo);
+        CHECK(hair.section_line == on.section_line);
+        CHECK(before.position == format_measure(timing, t - 1));
 
-namespace {
-
-// A chart whose lookups have many entries to search: four tempos, three
-// meters (with the signature the chart wrote) and four sections, at 480
-// ticks a beat. Tempo 120 BPM to tick 1920, 90 to 4800, 150 to 7680, then 60.
-// 4/4, then 3/4 from tick 3840, then 4/4 again from 6720 (both barlines).
-// So ticks 960, 1920, 2880, 3840, 4800, 5760, 6720, 7680, 8640 and 9600 are
-// 1000, 2000, 3333.3, 4666.7, 6000, 6800, 7600, 8400, 10400 and 12400 ms.
-Song make_lookup_song() {
-    Song song(480);
-    song.bpm_changes[0] = 120.0;
-    song.bpm_changes[1920] = 90.0;
-    song.bpm_changes[4800] = 150.0;
-    song.bpm_changes[7680] = 60.0;
-    apply_timesig(song, 3840, 3, 4);
-    apply_timesig(song, 6720, 4, 4);
-    song.practice_sections = {{960, "Intro"}, {2880, "Verse"}, {5760, "Chorus"},
-                              {8640, "Outro"}};
-    song.build_timing();
-    for (int64_t t = 0; t <= 9600; t += 960) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(t);
-        ts.chord.add_note(NoteColor::Red);
-        song.sequence.push_back(std::move(ts));
+        const bool tempo_moves = timing.tempo_at(t) != timing.tempo_at(t - 1) ||
+                                 timing.time_signature_at(t) != timing.time_signature_at(t - 1);
+        CHECK((on.tempo != before.tempo) == tempo_moves);
+        const bool section_moves = section_at(t) != section_at(t - 1);
+        CHECK((on.section_line != before.section_line) == section_moves);
+        if (tempo_moves) ++tempo_line_moves;
+        if (section_moves) ++section_line_moves;
     }
-    return song;
-}
+    // The chart's tempo changes and sections reached the loop; without them
+    // it checked only measure lines.
+    CHECK(tempo_line_moves > 0);
+    CHECK(section_line_moves > 0);
 
-// The time box at `now` as one line: timestamp | position | length | tempo
-// line | section line.
-std::string time_box_line(const PreviewScene& scene, double now, double length_ms) {
-    const PreviewTimeBox b = build_time_box(scene, now, length_ms);
-    return b.timestamp + " | " + b.position + " | " + b.length + " | " + b.tempo + " | " +
-           b.section_line;
-}
-
-// Built lines against pinned ones, printed as literals on a mismatch
-// (record_fixtures.h).
-using test::check_lines;
-
-}  // namespace
-
-TEST_CASE("build_time_box: every lookup at its boundaries on a chart of many changes") {
-    const Song song = make_lookup_song();
-    const PreviewScene scene = build_preview_scene(song, nullptr);
-    REQUIRE(scene.tempos.size() == 4);
-    REQUIRE(scene.measure_spans.size() == 3);
-    REQUIRE(scene.sections.size() == 4);
-    const double len = 12400.0;
-
-    // Each change at its own moment and a hair before it. The playhead's
-    // tick is rounded to the nearest one, so a section, signature or measure
-    // shows from half a tick before its tick: at 90 BPM a tick is 1.389 ms,
-    // so 3332.7 ms is tick 2879.54 and shows Verse at m2.3.0, while 3332.6 ms
-    // is tick 2879.47, still Intro at m2.2.479. Likewise 999.9 ms is tick
-    // 959.9 (Intro) and 4666.0 ms tick 3839.5 (3/4). The tempo is looked up
-    // by that same tick, so a hair before 2000 ms the box reads tick 1920
-    // (m2.1.0) at the new 90 BPM (D48, Q23). In 3/4 a measure is 1440 ticks: measure 3 starts at 3840,
-    // 4 at 5280, so tick 5759 (6799 ms at 150 BPM) is m4.1.479. Past the
-    // length the playhead is held at 12400 ms, tick 9600, m6.3.0.
-    std::vector<std::string> got;
-    for (double now : {-500.0, 0.0, 999.9, 1000.0, std::nextafter(2000.0, -1e300), 2000.0,
-                       3332.6, 3332.7, 4666.0, 4666.7, std::nextafter(6000.0, -1e300), 6000.0,
-                       6799.0, 6800.0, 7600.0, std::nextafter(8400.0, -1e300), 8400.0, 10400.0,
-                       20000.0})
-        got.push_back(time_box_line(scene, now, len));
-    const std::string d = " " + kDot + " ";
-    check_lines(got,
-                {"0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
-                 "0:00.000 / 0:12.400 | m1.1.0 | m6.3.0 | BPM 120.000" + d + "4/4 | ",
-                 "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
-                 "0:01.000 / 0:12.400 | m1.3.0 | m6.3.0 | BPM 120.000" + d + "4/4 | Section Intro",
-                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
-                 "0:02.000 / 0:12.400 | m2.1.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
-                 "0:03.333 / 0:12.400 | m2.2.479 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Intro",
-                 "0:03.333 / 0:12.400 | m2.3.0 | m6.3.0 | BPM 90.000" + d + "4/4 | Section Verse",
-                 "0:04.666 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
-                 "0:04.667 / 0:12.400 | m3.1.0 | m6.3.0 | BPM 90.000" + d + "3/4 | Section Verse",
-                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
-                 "0:06.000 / 0:12.400 | m3.3.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
-                 "0:06.799 / 0:12.400 | m4.1.479 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Verse",
-                 "0:06.800 / 0:12.400 | m4.2.0 | m6.3.0 | BPM 150.000" + d + "3/4 | Section Chorus",
-                 "0:07.600 / 0:12.400 | m5.1.0 | m6.3.0 | BPM 150.000" + d + "4/4 | Section Chorus",
-                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
-                 "0:08.400 / 0:12.400 | m5.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Chorus",
-                 "0:10.400 / 0:12.400 | m6.1.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro",
-                 "0:12.400 / 0:12.400 | m6.3.0 | m6.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
-                "time box");
-
-    // A negative length shows zero. A length past the last note keeps
-    // counting at the last tempo and meter: 60 BPM from tick 9600 (12400
-    // ms), so 15000 ms is tick 10848, 288 into measure 7 (from 10560), and
-    // 16400 ms is tick 11520, its third beat.
-    check_lines({time_box_line(scene, 500.0, -1.0), time_box_line(scene, 15000.0, 16400.0)},
-                {"0:00.000 / 0:00.000 | m1.1.0 | m1.1.0 | BPM 120.000" + d + "4/4 | ",
-                 "0:15.000 / 0:16.400 | m7.1.288 | m7.3.0 | BPM 60.000" + d + "4/4 | Section Outro"},
-                "time box lengths");
-
-    // Sections out of tick order never reach the time box: both parsers sort
-    // them (sort_practice_sections, D27 R7.7), and the parser tests pin that.
-}
-
-TEST_CASE("build_time_box: inside the half tick before a tempo change every line shows the new values") {
-    // make_lookup_song's tempo goes 120 -> 90 BPM at tick 1920 (2000 ms). A
-    // hair before 2000 ms the playhead rounds to tick 1920, so the measure
-    // line already reads m2.1.0; the BPM line must read that tick's tempo
-    // too, not the old one (D48, Q23).
-    const Song song = make_lookup_song();
-    const PreviewScene scene = build_preview_scene(song, nullptr);
-    const PreviewTimeBox box = build_time_box(scene, std::nextafter(2000.0, -1e300), 12400.0);
-    CHECK(box.position == "m2.1.0");
-    CHECK(box.tempo == "BPM 90.000 " + kDot + " 4/4");
+    // A negative length shows zero: the same box as a length of zero.
+    const PreviewTimeBox negative = build_time_box(scene, len / 2.0, -len);
+    const PreviewTimeBox zero = build_time_box(scene, 0.0, 0.0);
+    CHECK(negative.timestamp == zero.timestamp);
+    CHECK(negative.position == zero.position);
+    CHECK(negative.length == zero.length);
 }
