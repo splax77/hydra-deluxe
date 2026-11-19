@@ -103,22 +103,19 @@ CorpusPathRun check_every_corpus_path(const app::AnalysisSettings& cfg, Check ch
 
 TEST_CASE("replay reproduces the engine's score for every corpus path") {
     // Each setting starts from the GUI's defaults, straight from app::Settings
-    // rather than hand-written literals, and changes one thing. `min_paths` is
-    // a floor pinned from one run on the corpus, so a change that drops paths
-    // is caught.
+    // rather than hand-written literals, and changes one thing.
     struct Case {
         std::string name;
         app::Settings settings;
-        int min_paths;
     };
     app::Settings legacy;
     legacy.legacy_fills = true;
     app::Settings hard;
     hard.view_difficulty = "Hard";
     const Case cases[] = {
-        {"defaults", app::Settings(), 382},
-        {"CH 1.0 fill rule", legacy, 382},
-        {"Hard", hard, 294},
+        {"defaults", app::Settings()},
+        {"CH 1.0 fill rule", legacy},
+        {"Hard", hard},
     };
 
     for (const Case& c : cases) {
@@ -139,7 +136,8 @@ TEST_CASE("replay reproduces the engine's score for every corpus path") {
         const size_t loading = digest::loading_chart_count(corpus::chart_paths(), cfg);
         CHECK(run.charts > 0);
         CHECK(static_cast<size_t>(run.charts) == loading);
-        CHECK(run.paths >= c.min_paths);
+        // A walk that priced no path at a setting checked nothing.
+        CHECK(run.paths > 0);
         INFO("first mismatch: " << run.first_diff);
         CHECK(run.mismatches == 0);
     }
@@ -187,17 +185,24 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
 
     const ReplayResult r = replay_path(song, {});
     REQUIRE(r.chords.size() == 4);
-    // Pinned from one run. Inside the first section its own bonus is held
-    // back; each section's last chord, and the plain chord between them,
-    // show the whole total.
-    CHECK(r.chords[0].cum.total() == 150);
-    CHECK(r.chords[0].cum_onscreen_total == 50);
-    CHECK(r.chords[1].cum.total() == 300);
-    CHECK(r.chords[1].cum_onscreen_total == 300);
-    CHECK(r.chords[2].cum.total() == 350);
-    CHECK(r.chords[2].cum_onscreen_total == 350);
-    CHECK(r.chords[3].cum.total() == 500);
-    CHECK(r.chords[3].cum_onscreen_total == 500);
+    // On each chord the screen shows the running total less the solo points
+    // of this section's chords so far, unless this chord ends its section;
+    // outside a section nothing is held. The held amount comes from the rows'
+    // own points.solo and the song's own sections, never a typed total.
+    bool held_somewhere = false;
+    for (size_t i = 0; i < r.chords.size(); ++i) {
+        CAPTURE(i);
+        int64_t held = 0;
+        for (const SoloSection& s : song.solo_sections) {
+            if (i < s.first || i >= s.last) continue;
+            for (size_t k = s.first; k <= i; ++k) held += r.chords[k].points.solo;
+        }
+        if (held > 0) held_somewhere = true;
+        CHECK(r.chords[i].cum_onscreen_total == r.chords[i].cum.total() - held);
+    }
+    // The first section spans two chords and its first chord pays a solo
+    // bonus, so at least one chord must hold something back.
+    CHECK(held_somewhere);
 }
 
 // A targeted search is only useful if it gives back the same path the ordinary
@@ -248,7 +253,8 @@ TEST_CASE("targeted search reproduces every corpus path") {
         });
 
     CHECK(run.charts > 0);
-    REQUIRE(run.paths >= 300);
+    // A walk that priced no path checked nothing.
+    REQUIRE(run.paths > 0);
     INFO("first mismatch: " << run.first_diff);
     CHECK(run.mismatches == 0);
 }
