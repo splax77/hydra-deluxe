@@ -3,8 +3,7 @@
 // ready_records, the status rules a
 // lookup answers by (which stamps read Ready, why a record is Stale, what reads
 // Not analyzed), the store's readers (RecordStore::reader, StoreReader, and
-// RecordStore::open_own_reader, OwnReader, with its hold), plus
-// the path-row size measured on the corpus. How saved
+// RecordStore::open_own_reader, OwnReader, with its hold). How saved
 // records read back across caps, lenses and the corpus is in
 // test_store_results.cpp.
 #include "doctest.h"
@@ -18,6 +17,7 @@
 #include <set>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <thread>
 #include <unordered_map>
@@ -30,12 +30,12 @@
 #include "core/error_kind.h"
 #include "core/model.h"
 #include "core/rules.h"  // RulesStamp
-#include "core/winstr.h"  // os_path
 #include "corpus_util.h"
 #include "db_file_util.h"  // scalar_on_file, exec_on_file
 #include "display_fixtures.h"  // save_old_build_record, kOldBuildStamp, other_rules_record
 #include "library_fixtures.h"  // library_row
 #include "parse/song.h"
+#include "source_tree.h"  // sourcetree::root
 #include "store/chart_index.h"  // ChartIndex::song_ids
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
@@ -56,20 +56,6 @@ using hydra::test::no_paths_at_cap;
 using hydra::test::scalar_on_file;
 
 namespace {
-
-// Every corpus chart the engine analyzes, under the default search settings.
-std::vector<const HydraRecord*> corpus_analyses() {
-    std::vector<const HydraRecord*> out;
-    for (const std::string& path : corpus::chart_paths()) {
-        if (corpus::song(path, ChartReading{}).is_empty()) continue;
-        try {
-            out.push_back(&corpus::analyzed(path, SearchSettings{}));
-        } catch (const ChartFileError&) {
-            // a chart the engine rejects has no record to save
-        }
-    }
-    return out;
-}
 
 // Whether two lookups gave the same answer, field by field: RecordLookup has
 // no operator==.
@@ -130,18 +116,23 @@ struct ChartFailure {
     ErrorKind kind = ErrorKind::ChartUnreadable;
     std::string text;
 };
-ChartFailure failed_chart(const std::string& song_id, const std::string& file,
-                          const Profile& profile = at4()) {
-    const std::string path = corpus::testdata_root() + "/parse_edge/" + file;
+// The same for the chart at `path`, analyzed under `settings`.
+ChartFailure failed_chart_at(const std::string& song_id, const std::string& path,
+                             const app::AnalysisSettings& settings, const Profile& profile) {
     try {
-        app::analyze_chart_file(path, store_fixture_settings());
+        app::analyze_chart_file(path, settings);
     } catch (const KindedError& e) {
         std::optional<PreparedRecord> prepared = app::prepare_failed_chart(song_id, profile, e);
-        REQUIRE(prepared.has_value());
+        REQUIRE_MESSAGE(prepared.has_value(), "no failure record for " << path << ": " << e.what());
         return ChartFailure{*prepared, e.kind(), e.what()};
     }
     FAIL("analyze_chart_file did not refuse " << path);
     return {};
+}
+ChartFailure failed_chart(const std::string& song_id, const std::string& file,
+                          const Profile& profile = at4()) {
+    return failed_chart_at(song_id, corpus::testdata_root() + "/parse_edge/" + file,
+                           store_fixture_settings(), profile);
 }
 
 // A chart with no Expert Pro Drums notes (NoNotes) and one with no header
@@ -181,6 +172,11 @@ void check_answers_as_store(RecordStore& store, StoreReads& reader) {
 // The store's window reader gives the store's own answers for the four charts.
 void check_reader_answers_as_store(RecordStore& store) {
     check_answers_as_store(store, store.reader());
+}
+
+// How many profile rows the file at `path` holds under chart mode `mode`.
+int64_t profiles_in_mode(const std::string& path, const std::string& mode) {
+    return scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE chartmode='" + mode + "'");
 }
 
 // Whether `path` can be deleted now, which on Windows means no connection
@@ -890,27 +886,33 @@ TEST_CASE("store: a lookup after a second save reads the second record, not the 
 
 TEST_CASE("store: a save purges the chart's unreadable records in every mode, and the next open "
           "deletes their emptied profiles") {
-    StoreFile file("store_records");
+    // The real v2.12.1 library: three records another build wrote, all in
+    // one profile of its chart mode. This build saves each of those charts
+    // in another chart mode.
+    OldLibrary old("purge_every_mode");
+    const Profile old_profile = OldLibrary::profile();
+    const Profile this_mode = at4("other mode");
+    REQUIRE(this_mode.chartmode != old_profile.chartmode);
+    REQUIRE(profiles_in_mode(old.path, old_profile.chartmode) == 1);
     {
-        RecordStore store(file.path);
-        // An old build's record in another mode, then a save in this one.
-        hydra::test::save_old_build_record(
-            store, prepare_record("h1", at4("other mode"), fixture().record));
-        REQUIRE(store.lookup_one("h1", at4("other mode")).status == RecordStatus::Stale);
-        store.save(prepare_record("h1", at4(), fixture().record));
-
-        CHECK(store.lookup_one("h1", at4("other mode")).status == RecordStatus::NotAnalyzed);
-        CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
-        CHECK(store.record_count() == 1);
+        RecordStore store(old.path);
+        for (const std::string& id : OldLibrary::song_ids()) {
+            INFO(id);
+            REQUIRE(store.lookup_one(id, old_profile).status == RecordStatus::Stale);
+            store.save(prepare_record(id, this_mode, fixture().record));
+            CHECK(store.lookup_one(id, old_profile).status == RecordStatus::NotAnalyzed);
+            CHECK(store.lookup_one(id, this_mode).status == RecordStatus::Ready);
+        }
+        CHECK(store.record_count() == static_cast<int64_t>(OldLibrary::song_ids().size()));
     }
-    { RecordStore reopened(file.path); }
+    { RecordStore reopened(old.path); }
+    // The old build's profile lost its last record, so the reopen deleted it,
+    // and no profile is left with no record.
     const std::string profiles_with_no_record =
         "SELECT COUNT(*) FROM profiles WHERE NOT EXISTS"
         " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)";
-    const std::string old_build_profiles = std::string("SELECT COUNT(*) FROM profiles WHERE hyversion='") +
-                                           hydra::test::kOldBuildStamp + "'";
-    CHECK(scalar_on_file(file.path, profiles_with_no_record) == 0);
-    CHECK(scalar_on_file(file.path, old_build_profiles) == 0);
+    CHECK(profiles_in_mode(old.path, old_profile.chartmode) == 0);
+    CHECK(scalar_on_file(old.path, profiles_with_no_record) == 0);
 }
 
 namespace {
@@ -982,16 +984,21 @@ TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the n
 
 TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
           "profiles, and a later open deletes them") {
+    const Profile gone_mode = at4("gone mode");
+    const Profile kept_mode = at4();
+    REQUIRE(gone_mode.chartmode != kept_mode.chartmode);
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
         store.rebuild_chart_library({library_row("kept", "Kept")});
         // Not in the library, so the next scan's purge empties its profile.
-        store.save(prepare_record("gone", at4("gone mode"), fixture().record));
-        store.save(prepare_record("kept", at4(), fixture().record));
+        store.save(prepare_record("gone", gone_mode, fixture().record));
+        store.save(prepare_record("kept", kept_mode, fixture().record));
         store.rebuild_chart_library({library_row("kept", "Kept")});
     }
-    REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    // The purge emptied the gone mode's profile; it is still in the file.
+    REQUIRE(profiles_in_mode(file.path, gone_mode.chartmode) == 1);
+    REQUIRE(profiles_in_mode(file.path, kept_mode.chartmode) == 1);
 
     // Another connection holds the write lock, as a batch's open save group
     // does; reading the file still works, as WAL allows.
@@ -1001,15 +1008,19 @@ TEST_CASE("store: an open while another connection holds the write lock keeps th
                          nullptr, nullptr) == SQLITE_OK);
     {
         RecordStore store(file.path);
-        CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
-        CHECK(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::NotAnalyzed);
+        CHECK(store.lookup_one("kept", kept_mode).status == RecordStatus::Ready);
+        CHECK(store.lookup_one("gone", gone_mode).status == RecordStatus::NotAnalyzed);
     }
     sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr);
     sqlite3_close(holder);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    // The open under the lock deleted nothing.
+    CHECK(profiles_in_mode(file.path, gone_mode.chartmode) == 1);
+    CHECK(profiles_in_mode(file.path, kept_mode.chartmode) == 1);
 
+    // A later open deletes the emptied profile and keeps the other.
     { RecordStore reopened(file.path); }
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
+    CHECK(profiles_in_mode(file.path, gone_mode.chartmode) == 0);
+    CHECK(profiles_in_mode(file.path, kept_mode.chartmode) == 1);
 }
 
 TEST_CASE("store: a record saved under another build's stamp reads back Stale for that build") {
@@ -1070,23 +1081,48 @@ TEST_CASE("store: record_count counts every real record, under any profile, and 
 // ---- stored failures (REPORT-ALL-T1) ---------------------------------------
 
 TEST_CASE("store: the remembered failures are exactly the four the chart's content causes") {
-    // The user's answer 1 (2026-10-15).
-    const std::set<ErrorKind> remembered = {ErrorKind::NoNotes, ErrorKind::ChartTimingRefused,
-                                            ErrorKind::NoteShuffleFreezes,
-                                            ErrorKind::ChartUnreadable};
-    for (ErrorKind kind :
-         {ErrorKind::Cancelled, ErrorKind::DatabaseOpen, ErrorKind::DatabaseUpgrade,
-          ErrorKind::OldLibraryRefused, ErrorKind::OldLibrarySetAsideFailed,
-          ErrorKind::DatabaseWrite, ErrorKind::DatabaseRead, ErrorKind::SongFileMissing,
-          ErrorKind::HashFailed, ErrorKind::ChartUnreadable, ErrorKind::ChartTimingRefused,
-          ErrorKind::NoteShuffleFreezes, ErrorKind::NoNotes, ErrorKind::AlreadyPlain,
-          ErrorKind::SearchBroken, ErrorKind::NetUnreachable, ErrorKind::NetTimeout,
-          ErrorKind::NetHttpStatus, ErrorKind::NetBadReply, ErrorKind::NoScores,
-          ErrorKind::NoRecords, ErrorKind::ReportWrite, ErrorKind::RulesFile,
-          ErrorKind::SettingsFile, ErrorKind::AudioDecode, ErrorKind::PreviewAssets,
-          ErrorKind::UpdateUnverified, ErrorKind::PathTextRefused, ErrorKind::PathFileRefused,
-          ErrorKind::PathFileUnreadable, ErrorKind::PathFileWrite}) {
-        CAPTURE(static_cast<int>(kind));
+    // D249 item 1: "Every failure the chart's own content causes (option b):
+    // NoNotes, ChartTimingRefused, NoteShuffleFreezes and ChartUnreadable."
+    // One real chart fails each way, and its failure is stored and reads back
+    // as its kind.
+    const std::string edge = corpus::testdata_root() + "/parse_edge/";
+    app::AnalysisSettings shuffled = store_fixture_settings();
+    shuffled.noteshuffle = true;
+    const struct {
+        std::string path;
+        app::AnalysisSettings settings;
+        ErrorKind want;
+    } charts[] = {
+        {edge + kNoNotesChart, store_fixture_settings(), ErrorKind::NoNotes},
+        {edge + "m12_zero_tempo.mid", store_fixture_settings(), ErrorKind::ChartTimingRefused},
+        // The chart Clone Hero freezes on with Note Shuffle on
+        // (test_song_parse.cpp, "Note Shuffle switch").
+        {(sourcetree::root() /
+          "docs/audit/note-shuffle/game-tests/songs/NS C1 four colour then snare/notes.mid")
+             .u8string(),
+         shuffled, ErrorKind::NoteShuffleFreezes},
+        {edge + kUnreadableChart, store_fixture_settings(), ErrorKind::ChartUnreadable},
+    };
+    std::set<ErrorKind> remembered;
+    RecordStore store(":memory:");
+    for (const auto& c : charts) {
+        CAPTURE(c.path);
+        const ChartFailure failed = failed_chart_at(c.path, c.path, c.settings, at4());
+        CHECK(failed.kind == c.want);
+        store.save(failed.prepared);
+        const RecordLookup got = store.lookup_one(c.path, at4());
+        CHECK(got.status == RecordStatus::CantAnalyze);
+        CHECK(got.failure_kind == std::optional<ErrorKind>(c.want));
+        remembered.insert(c.want);
+    }
+    REQUIRE(remembered.size() == 4);
+
+    // Every kind the enum declares, from its first to its last
+    // (ErrorKind::PathFileWrite ends the list in error_kind.h).
+    for (int i = static_cast<int>(ErrorKind::Cancelled);
+         i <= static_cast<int>(ErrorKind::PathFileWrite); ++i) {
+        const ErrorKind kind = static_cast<ErrorKind>(i);
+        CAPTURE(i);
         const bool want = remembered.count(kind) == 1;
         CHECK(remembered_failure(kind) == want);
         // A remembered kind has a stored name that reads back as itself; any
@@ -1099,14 +1135,23 @@ TEST_CASE("store: the remembered failures are exactly the four the chart's conte
     CHECK_FALSE(failure_kind_from_name("NotAKind").has_value());
 }
 
-TEST_CASE("store: a chart with no notes throws NoNotes, worded as its own sentence") {
+TEST_CASE("store: a chart with no notes fails as NoNotes, shown as NoNotesError's sentence alone") {
+    // A real chart with no Expert Pro Drums notes, analyzed at Expert Pro
+    // Drums: the analysis throws NoNotesError, and the message the user reads
+    // is that error's own sentence for the asked difficulty, with no detail.
+    const app::AnalysisSettings settings = store_fixture_settings();
+    const std::string path = corpus::testdata_root() + "/parse_edge/" + kNoNotesChart;
+    bool threw = false;
     try {
-        throw NoNotesError(Difficulty::Expert, true);
-    } catch (const KindedError& e) {
+        app::analyze_chart_file(path, settings);
+    } catch (const NoNotesError& e) {
+        threw = true;
         CHECK(e.kind() == ErrorKind::NoNotes);
-        CHECK(app::plain_error(e) == "No Expert Pro Drums notes in this chart.");
+        const NoNotesError owner(settings.difficulty, settings.prodrums);
+        CHECK(app::plain_error(e) == std::string(owner.what()));
         CHECK(app::plain_error_detail(e).empty());
     }
+    CHECK(threw);
 }
 
 TEST_CASE("store: a failure saves and reads back CantAnalyze with its kind and text") {
@@ -1223,21 +1268,32 @@ TEST_CASE("store: settled_song_ids lists exactly lookup's Ready and CantAnalyze 
 }
 
 TEST_CASE("store: a profile whose only record is a failure is kept") {
+    // Two real song folders, scanned the app's way; one chart's only record
+    // is a real refusal, in a chart mode of its own.
+    TwoSongFolders folders("failure_kept");
+    const std::vector<app::ScanItem> scan = folders.scan();
+    REQUIRE(scan.size() == 2);
+    const std::string failed_id = scan[0].md5;
+    const std::string real_id = scan[1].md5;
+    const Profile failed_mode = at4("failed mode");
+    const Profile real_mode = at4();
+    REQUIRE(failed_mode.chartmode != real_mode.chartmode);
+
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
-        const std::vector<ChartLibraryEntry> library = {library_row("failed", "Failed"),
-                                                        library_row("real", "Real")};
-        store.rebuild_chart_library(library);
-        store.save(failure_record("failed", at4("failed mode"), ErrorKind::NoNotes, "No notes."));
-        store.save(prepare_record("real", at4(), fixture().record));
-        store.rebuild_chart_library(library);
-        CHECK(store.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
+        REQUIRE_FALSE(app::save_scan_as_library(store, scan).has_value());
+        store.save(failed_chart(failed_id, kNoNotesChart, failed_mode).prepared);
+        store.save(prepare_record(real_id, real_mode, fixture().record));
+        // The rescan's purge keeps both: each chart is still in the library.
+        REQUIRE_FALSE(app::save_scan_as_library(store, scan).has_value());
+        CHECK(store.lookup_one(failed_id, failed_mode).status == RecordStatus::CantAnalyze);
     }
     // The open's deletion of empty profiles counts a failure as a record.
     RecordStore reopened(file.path);
-    CHECK(reopened.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
+    CHECK(reopened.lookup_one(failed_id, failed_mode).status == RecordStatus::CantAnalyze);
+    CHECK(profiles_in_mode(file.path, failed_mode.chartmode) == 1);
+    CHECK(profiles_in_mode(file.path, real_mode.chartmode) == 1);
 }
 
 TEST_CASE("store: lookup's three answers against sibling profiles") {
@@ -1322,7 +1378,15 @@ TEST_CASE("store: a save inside a save group is one SAVEPOINT; a failed one undo
 
     store.begin_save_group();
     store.save(prepare_record("kept", at4(), fixture().record));
-    CHECK_THROWS(store.save(broken));
+    // The save fails as the store's own write failure, not any throw.
+    bool threw = false;
+    try {
+        store.save(broken);
+    } catch (const KindedError& e) {
+        threw = true;
+        CHECK_MESSAGE(e.kind() == ErrorKind::DatabaseWrite, e.what());
+    }
+    CHECK(threw);
     CHECK_FALSE(store.save_group_lost());
     store.save(prepare_record("after", at4(), fixture().record));
     store.commit_save_group();
@@ -1330,78 +1394,6 @@ TEST_CASE("store: a save inside a save group is one SAVEPOINT; a failed one undo
     CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
     CHECK(store.lookup_one("after", at4()).status == RecordStatus::Ready);
     CHECK(store.lookup_one("broken", at4()).status == RecordStatus::NotAnalyzed);
-}
-
-TEST_CASE("store: path rows measured on the corpus") {
-    // Every corpus chart under the default profile, saved through save into
-    // a file. The sizes come from compacted copies (VACUUM INTO): with the
-    // path rows (A), without them (B), and without the records too (C). The
-    // vendored SQLite has no dbstat, so a size is a difference of files.
-    // Nothing here is pinned but the read-back; the numbers are printed.
-    StoreFile file("store_records");
-    constexpr int kCopies = 10;
-    int64_t records = 0, path_rows = 0;
-    {
-        RecordStore store(file.path);
-        std::vector<PreparedRecord> saved;
-        for (const HydraRecord* analysis : corpus_analyses()) {
-            REQUIRE(analysis->sp_cap.has_value());
-            const Profile profile{"mode", CapQuery::at(*analysis->sp_cap), Lens{}};
-            // Each chart under kCopies ids, so page rounding weighs less. An
-            // id is 32 hex digits, the length of a real one (an md5).
-            for (int copy = 0; copy < kCopies; ++copy) {
-                char id[33];
-                std::snprintf(id, sizeof id, "%032llx",
-                              static_cast<unsigned long long>(saved.size()));
-                PreparedRecord prepared = prepare_record(id, profile, *analysis);
-                store.save(prepared);
-                ++records;
-                path_rows += static_cast<int64_t>(prepared.record.paths.size());
-                saved.push_back(std::move(prepared));
-            }
-        }
-        REQUIRE(records > 0);
-        int mismatches = 0;
-        for (const PreparedRecord& p : saved) {
-            const RecordLookup got = store.lookup_one(p.record.song_id, p.profile);
-            if ((got.status != RecordStatus::Ready || got.record != p.record) && ++mismatches <= 8)
-                CHECK_MESSAGE(false, "record " << p.record.song_id << " reads back different");
-        }
-        CHECK(mismatches == 0);
-    }
-
-    // Runs `sql` on the file at `db_path`.
-    const auto exec_on = [](const std::string& db_path, const std::string& sql) {
-        sqlite3* db = nullptr;
-        REQUIRE(open_sqlite(db_path, &db, SQLITE_OPEN_READWRITE) == SQLITE_OK);
-        char* err = nullptr;
-        const int rc = sqlite3_exec(db, sql.c_str(), nullptr, nullptr, &err);
-        if (err) MESSAGE(err);
-        sqlite3_free(err);
-        sqlite3_close(db);
-        REQUIRE(rc == SQLITE_OK);
-    };
-    // The size of a copy of the file after `del` ran on it and it was
-    // compacted at SQLite's smallest page (512 bytes), so a size moves in
-    // small steps.
-    const auto compacted_size = [&](const std::string& tag, const std::string& del) {
-        const std::string copy = file.path + "." + tag;
-        std::remove(copy.c_str());
-        exec_on(file.path, "VACUUM INTO '" + copy + "';");
-        exec_on(copy, "PRAGMA journal_mode=DELETE; PRAGMA page_size=512; " + del + "VACUUM;");
-        const auto size = static_cast<int64_t>(std::filesystem::file_size(hydra::os_path(copy)));
-        std::remove(copy.c_str());
-        return size;
-    };
-    const int64_t size_a = compacted_size("a", "");
-    const int64_t size_b = compacted_size("b", "DELETE FROM record_paths; ");
-    const int64_t size_c = compacted_size("c", "DELETE FROM record_paths; DELETE FROM records; ");
-
-    MESSAGE("records " << records << ", path rows " << path_rows << ", files A " << size_a
-                       << " B " << size_b << " C " << size_c << " bytes");
-    MESSAGE("bytes per path row " << static_cast<double>(size_a - size_b) / path_rows
-                                  << ", bytes per record "
-                                  << static_cast<double>(size_b - size_c) / records);
 }
 
 TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept no paths") {
@@ -1425,65 +1417,51 @@ TEST_CASE("store: a record's best path text is rank 1's, and empty when it kept 
 // Stale record is Stale, when other rules read Ready again, and what reads as
 // Not analyzed.
 
-TEST_CASE("store: every accepted results stamp reads Ready, others Stale") {
-    // The stamp is not the app version (ADR 0018). Only "3.1.2+efillwindow"
-    // reads Ready. Results stamped "1.8.2" (every release from 1.8.4 to
-    // 2.0.0) or "1.8.3" hold values the SP-end history changed (ADR 0021),
-    // earlier 2.1.0 builds' "2.1.0" can miss the all-0 path (D85),
-    // "2.1.0+allzero" predates the 2x kick merge (D105), "2.4.0" predates
-    // the measure-line fills and Star Power count (D115), "2.8.0" predates
-    // the 85 ms early fill (D250), "2.8.0+efill85" predates 1.0 fills on
-    // the shared grid, and "2.12.1+ch10grid" predates the coda skip of
-    // written fills (FL-08), and "2.14.1+coda" predates the five-lane drum
-    // conversion (D337), "2.14.1+fivelane" predates the all-toms step
-    // for a drum chart with neither track flag up, and "2.14.1+alltoms"
-    // predates the early-fill E mark reading the hit window (D344), and
-    // "3.1.2+efillhitwindow" was analyzed at 85 ms on both sides, before the
-    // early-fill window became a setting saved per result (the user's answer
-    // "Mark them Stale"), so they read Stale, through lookup and the skip list
-    // it backs (ready_song_ids).
-    CHECK(kResultsStamp.is_current("3.1.2+efillwindow"));
-    CHECK(std::string(kResultsStamp.written) == "3.1.2+efillwindow");
-    CHECK_FALSE(kResultsStamp.is_current("3.1.2+efillhitwindow"));
-    CHECK_FALSE(kResultsStamp.is_current("2.14.1+alltoms"));
-    CHECK_FALSE(kResultsStamp.is_current("2.14.1+fivelane"));
-    CHECK_FALSE(kResultsStamp.is_current("2.14.1+coda"));
-    CHECK_FALSE(kResultsStamp.is_current("2.12.1+ch10grid"));
-    CHECK_FALSE(kResultsStamp.is_current("2.8.0+efill85"));
-    CHECK_FALSE(kResultsStamp.is_current("2.8.0"));
-    CHECK_FALSE(kResultsStamp.is_current("2.4.0"));
-    CHECK_FALSE(kResultsStamp.is_current("2.1.0+allzero"));
-    CHECK_FALSE(kResultsStamp.is_current("2.1.0"));
-    CHECK_FALSE(kResultsStamp.is_current("2.0.0"));
-    CHECK_FALSE(kResultsStamp.is_current("1.8.2"));
-    CHECK_FALSE(kResultsStamp.is_current("1.8.3"));
+TEST_CASE("store: every stamp this build accepts reads Ready and a retired stamp reads Stale") {
+    // The stamp is not the app version (ADR 0018); kResultsStamp is its one
+    // owner. This build writes kResultsStamp.written, and that is a stamp
+    // it accepts.
+    CHECK(kResultsStamp.is_current(kResultsStamp.written));
     CHECK(current_record_version() == std::string(kResultsStamp.written));
 
+    // Every accepted stamp reads Ready, through lookup and the skip list it
+    // backs (ready_song_ids).
     RecordStore store(":memory:");
-    const struct {
-        const char* id;
-        const char* stamp;
-        RecordStatus want;
-    } cases[] = {{"a", "3.1.2+efillwindow", RecordStatus::Ready},
-                 {"n", "3.1.2+efillhitwindow", RecordStatus::Stale},
-                 {"m", "2.14.1+alltoms", RecordStatus::Stale},
-                 {"l", "2.14.1+fivelane", RecordStatus::Stale},
-                 {"k", "2.14.1+coda", RecordStatus::Stale},
-                 {"j", "2.12.1+ch10grid", RecordStatus::Stale},
-                 {"i", "2.8.0+efill85", RecordStatus::Stale},
-                 {"h", "2.8.0", RecordStatus::Stale},
-                 {"g", "2.4.0", RecordStatus::Stale},
-                 {"f", "2.1.0+allzero", RecordStatus::Stale},
-                 {"e", "2.1.0", RecordStatus::Stale},
-                 {"b", "1.8.3", RecordStatus::Stale},
-                 {"c", "1.8.2", RecordStatus::Stale},
-                 {"d", "0.0.0", RecordStatus::Stale}};
-    for (const auto& c : cases) {
-        CAPTURE(c.stamp);
-        store.save_under_build_for_test(prepare_record(c.id, at4(), fixture().record), c.stamp);
-        CHECK(store.lookup_one(c.id, at4()).status == c.want);
-        CHECK(store.ready_song_ids(at4()).count(c.id) == (c.want == RecordStatus::Ready ? 1u : 0u));
+    int n = 0;
+    for (const std::string_view stamp : kResultsStamp.accepted) {
+        const std::string stamp_text(stamp);
+        CAPTURE(stamp_text);
+        const std::string id = "accepted" + std::to_string(n++);
+        store.save_under_build_for_test(prepare_record(id, at4(), fixture().record), stamp_text);
+        CHECK(store.lookup_one(id, at4()).status == RecordStatus::Ready);
+        CHECK(store.ready_song_ids(at4()).count(id) == 1u);
     }
+
+    // kOldBuildStamp, a stamp this build does not accept, reads Stale.
+    REQUIRE_FALSE(kResultsStamp.is_current(hydra::test::kOldBuildStamp));
+    hydra::test::save_old_build_record(store, prepare_record("old", at4(), fixture().record));
+    CHECK(store.lookup_one("old", at4()).status == RecordStatus::Stale);
+    CHECK(store.ready_song_ids(at4()).count("old") == 0u);
+
+    // A real release's stamp: the v2.12.1 library's profile carries none
+    // this build accepts, so its records read Stale and none is on the skip
+    // list.
+    OldLibrary old("retired_stamp");
+    for (const std::string_view stamp : kResultsStamp.accepted) {
+        const std::string stamp_text(stamp);
+        CAPTURE(stamp_text);
+        CHECK(scalar_on_file(old.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='" +
+                                           stamp_text + "'") == 0);
+    }
+    RecordStore old_store(old.path);
+    const Profile profile = OldLibrary::profile();
+    for (const std::string& id : OldLibrary::song_ids()) {
+        CAPTURE(id);
+        const RecordLookup got = old_store.lookup_one(id, profile);
+        CHECK(got.status == RecordStatus::Stale);
+        CHECK(got.stale_build);
+    }
+    CHECK(old_store.ready_song_ids(profile).empty());
 }
 
 TEST_CASE("store: a record made under other rules reads Stale until the store runs those rules") {
