@@ -39,6 +39,15 @@ LATE_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-s
 # Samples 82 to 88 of the same run, copied the same way: the game's threads are in
 # from sample 83, and the worker's (pid 24320, the game's parent) first come at sample 88.
 RUN_START = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-82-88")
+# Samples 876 to 882 of the same run, copied the same way. The recorder first read
+# the game's clock at sample 878, so samples 876 and 877 have no clock.
+CLOCK_START = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-876-882")
+# Samples 2898 to 2904 of the same run, copied the same way. Sample 2900's clock
+# read took longer than one period, and the game's clock stood still throughout.
+DROPPED_READ = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-2898-2904")
+# Samples 9742 to 9746 of hydra-data/ch-mcp-runs/2026-11-11/ls-a2-run1/machine-2,
+# copied unchanged. Sample 9744's clock read took a little over one period.
+JUST_OVER_READ = os.path.join(REPO, "testdata", "ch_runs", "ls-a2-run1", "machine-2-samples-9742-9746")
 GAME_NAME = "Clone Hero.exe"
 
 
@@ -636,102 +645,182 @@ class ClockSteps(ReportCase):
         lines = self.lines(clock_fixture(self.SIX_PAIRS))
         self.assertFalse([line for line in lines if "wall 1000.260" in line])
 
-    def test_an_excess_just_over_the_limit_is_long(self):
-        lines = self.lines(clock_fixture(((61, 20), (20, 61))))
-        self.assertIn("clock steps with an excess over 40 ms by size: 2", lines)
 
-    def test_the_list_stops_at_ten_largest(self):
-        pairs = [(20 + 50 + i, 20) for i in range(12)]
-        lines = self.lines(clock_fixture(pairs))
-        self.assertIn("clock steps with an excess over 40 ms by size: 12", lines)
-        listed = [line for line in lines if line.startswith("  wall ")]
-        self.assertEqual(len(listed), 10)
-        self.assertIn("excess +61.0 ms", listed[0])
-        self.assertIn("excess +52.0 ms", listed[-1])
+class ClockRowsCase(RealRecordingCase):
+    """Works out from FOLDER's samples.csv what the clock section should print."""
+
+    def samples(self):
+        return {int(row["sample"]): row for row in self.rows(R.SAMPLES_FILE)}
+
+    def period_ms(self):
+        return Fraction(self.rows(R.SAMPLES_FILE)[0]["period_ms"])
+
+    @staticmethod
+    def read_ms(row):
+        """How far apart the clock read's two wall stamps are."""
+        return R._ms(Fraction(row["clock_wall_after_s"]) - Fraction(row["clock_wall_before_s"]))
+
+    def over_one_period(self):
+        """The samples whose clock read took longer than one period."""
+        return sorted(n for n, row in self.samples().items()
+                      if row["clock_s"] and self.read_ms(row) > self.period_ms())
+
+    def step(self, earlier, later):
+        """(clock step ms, wall gap ms) from sample `earlier` to sample `later`."""
+        rows = self.samples()
+        return (R._ms(Fraction(rows[later]["clock_s"]) - Fraction(rows[earlier]["clock_s"])),
+                R._ms(Fraction(rows[later]["wall_s"]) - Fraction(rows[earlier]["wall_s"])))
+
+    def steps_line(self, pairs):
+        steps = [self.step(a, b)[0] for a, b in pairs]
+        percentile = statistics.quantiles(steps, n=100, method="inclusive")[R.STEP_PERCENTILE - 1]
+        return (f"clock steps: count {len(steps)}, median {float(statistics.median(steps)):.1f}"
+                f" ms, {R.STEP_PERCENTILE}th percentile {float(percentile):.1f} ms")
+
+    def listed_line(self, earlier, later):
+        step, gap = self.step(earlier, later)
+        return (f"  wall {R._wall(Fraction(self.walls[later]))}: step {float(step):.1f} ms, "
+                f"wall gap {float(gap):.1f} ms, excess {float(step - gap):+.1f} ms")
+
+    def long_count_line(self, pairs):
+        limit = self.late_limit_ms()
+        count = sum(abs(step - gap) > limit for step, gap in (self.step(*p) for p in pairs))
+        return f"clock steps with an excess over {float(limit):g} ms by size: {count}"
+
+    def dropped_line(self, count):
+        return (f"clock reads dropped, their two stamps over one period "
+                f"({float(self.period_ms()):g} ms) apart: {count}")
+
+    def lead_line(self, numbers):
+        rows = self.samples()
+        offsets = [(R._ms(Fraction(rows[n]["clock_s"]) - Fraction(rows[n]["wall_s"])), n)
+                   for n in numbers]
+        middle = statistics.median(offset for offset, _ in offsets)
+        high, high_at = max(offsets, key=lambda item: item[0])
+        low, low_at = min(offsets, key=lambda item: item[0])
+        return ("clock lead over wall time, against its median offset: "
+                f"largest {float(high - middle):+.1f} ms at wall "
+                f"{R._wall(Fraction(self.walls[high_at]))}, "
+                f"lowest {float(low - middle):+.1f} ms at wall "
+                f"{R._wall(Fraction(self.walls[low_at]))}")
+
+
+class StepsInAWindowInARealRecording(ClockRowsCase):
+    FOLDER = LATE_RUN
 
     def test_steps_in_a_window_are_the_ones_ending_in_it(self):
-        lines = self.lines(clock_fixture(self.SIX_PAIRS),
-                           "--from", wall_text(60), "--to", wall_text(160))
-        self.assertIn("clock steps: count 2, median 185.0 ms, 99th percentile 297.7 ms", lines)
+        self.assertFalse(self.over_one_period())
+        numbers = sorted(self.walls)
+        self.assertTrue(all(self.samples()[n]["clock_s"] for n in numbers))
+        first, last = numbers[30], numbers[40]
+        pairs = [(a, b) for a, b in zip(numbers, numbers[1:]) if first <= b <= last]
+        # The step into the window's first sample ends inside it, so it counts.
+        self.assertEqual(pairs[0], (numbers[29], first))
+        lines = self.lines("--from", self.walls[first], "--to", self.walls[last])
+        self.assertIn(self.steps_line(pairs), lines)
+        self.assertNotIn(self.steps_line(pairs[1:]), lines)
 
-    def test_a_sample_with_no_clock_ends_the_run_of_pairs(self):
-        fx = Fixture()
-        fx.thread(fx.sample(0, 0))
-        fx.sample(20, 20)
-        fx.sample(40)
-        fx.sample(60, 500)
-        fx.sample(80, 520)
-        self.assertIn("clock steps: count 2, median 20.0 ms, 99th percentile 20.0 ms",
-                      self.lines(fx))
+
+class ClockStartInARealRecording(ClockRowsCase):
+    FOLDER = CLOCK_START
+
+    def test_a_sample_with_no_clock_pairs_with_nothing(self):
+        rows = self.samples()
+        without = [n for n in sorted(rows) if not rows[n]["clock_s"]]
+        clocked = [n for n in sorted(rows) if rows[n]["clock_s"]]
+        self.assertTrue(without)
+        self.assertLess(max(without), min(clocked))
+        self.assertFalse(self.over_one_period())
+        self.assertIn(self.steps_line(list(zip(clocked, clocked[1:]))), self.lines())
+
+
+class NoClockInARealRecording(RealRecordingCase):
+    FOLDER = RUN_START
 
     def test_no_clock(self):
-        fx = Fixture()
-        fx.steady(5)
-        fx.thread(1)
-        self.assertIn("no clock in this recording", self.lines(fx))
-
-    def test_a_clock_with_no_stamps_is_refused(self):
-        fx = clock_fixture(self.SIX_PAIRS)
-        fx.samples[2][7] = ""
-        code, lines = self.run_report(fx)
-        self.assertEqual(code, 1)
-        self.assertIn("sample 2 has a clock reading with no wall stamps", lines[0])
+        self.assertFalse([row for row in self.rows(R.SAMPLES_FILE) if row["clock_s"]])
+        lines = self.lines()
+        self.assertIn("no clock in this recording", lines)
+        self.assertFalse([line for line in lines if line.startswith("clock ")])
 
 
-class MatchedPair(ReportCase):
-    """A stall inside the clock read: the row's wall stamp comes 165 ms late, so
-    its excess is -165 ms and the next row's is +165 ms, as in LS-O2's watch."""
+class DroppedReadInARealRecording(ClockRowsCase):
+    FOLDER = DROPPED_READ
 
-    def fixture(self, read_ms):
-        fx = Fixture()
-        fx.thread(fx.sample(0, 0))
-        fx.sample(20, 20)
-        fx.sample(40 + 165, 40, read_ms=read_ms)
-        fx.sample(60 + 165, 60 + 165)
-        fx.sample(80 + 165, 80 + 165)
-        return fx
+    def dropped_and_kept(self):
+        """The one sample the guard drops, and the samples it keeps, in order."""
+        numbers = sorted(self.walls)
+        self.assertTrue(all(self.samples()[n]["clock_s"] for n in numbers))
+        dropped = self.over_one_period()
+        self.assertEqual(len(dropped), 1, dropped)
+        return dropped[0], [n for n in numbers if n not in dropped]
 
     def test_it_is_dropped_and_not_listed(self):
-        lines = self.lines(self.fixture(read_ms=166))
-        self.assertIn("clock reads dropped, their two stamps over one period (20 ms) apart: 1",
-                      lines)
-        self.assertIn("clock steps with an excess over 40 ms by size: 0", lines)
-        self.assertFalse([line for line in lines if "165.0 ms" in line])
-        self.assertIn("clock lead over wall time, against its median offset: "
-                      "largest +0.0 ms at wall 1000.000, lowest +0.0 ms at wall 1000.000", lines)
+        gone, kept = self.dropped_and_kept()
+        lines = self.lines()
+        self.assertIn(self.dropped_line(1), lines)
+        self.assertFalse([line for line in lines
+                          if line.startswith(f"  wall {R._wall(Fraction(self.walls[gone]))}:")])
+        # The dropped sample's reading would move the lead line, so leaving it out shows.
+        self.assertNotEqual(self.lead_line(kept), self.lead_line(sorted(self.walls)))
+        self.assertIn(self.lead_line(kept), lines)
 
     def test_the_neighbours_of_a_dropped_sample_pair_up(self):
-        self.assertIn("clock steps: count 3, median 20.0 ms, 99th percentile 201.3 ms",
-                      self.lines(self.fixture(read_ms=166)))
+        gone, kept = self.dropped_and_kept()
+        self.assertIn(gone - 1, kept)
+        self.assertIn(gone + 1, kept)
+        lines = self.lines()
+        self.assertIn(self.steps_line(list(zip(kept, kept[1:]))), lines)
+        # The step across the dropped sample is long, so it is listed.
+        step, gap = self.step(gone - 1, gone + 1)
+        self.assertGreater(abs(step - gap), self.late_limit_ms())
+        self.assertIn(self.listed_line(gone - 1, gone + 1), lines)
 
-    def test_with_tight_stamps_the_same_rows_are_kept(self):
-        lines = self.lines(self.fixture(read_ms=1))
-        self.assertIn("clock reads dropped, their two stamps over one period (20 ms) apart: 0",
-                      lines)
-        self.assertIn("clock steps with an excess over 40 ms by size: 2", lines)
-
-    def test_stamps_exactly_one_period_apart_are_kept(self):
-        self.assertIn("clock reads dropped, their two stamps over one period (20 ms) apart: 0",
-                      self.lines(self.fixture(read_ms=PERIOD_MS)))
-
-    def test_stamps_just_over_one_period_apart_are_dropped(self):
-        self.assertIn("clock reads dropped, their two stamps over one period (20 ms) apart: 1",
-                      self.lines(self.fixture(read_ms=PERIOD_MS + 1)))
+    def test_an_excess_just_over_the_limit_is_long(self):
+        _, kept = self.dropped_and_kept()
+        pairs = list(zip(kept, kept[1:]))
+        limit = self.late_limit_ms()
+        # Just over: past the limit by less than a tenth of a period.
+        just_over = [p for p in pairs
+                     if limit < abs(self.step(*p)[0] - self.step(*p)[1]) < limit + self.period_ms() / 10]
+        self.assertTrue(just_over, [self.step(*p) for p in pairs])
+        lines = self.lines()
+        self.assertIn(self.long_count_line(pairs), lines)
+        for pair in just_over:
+            self.assertIn(self.listed_line(*pair), lines)
 
     def test_only_drops_in_the_window_are_counted(self):
-        self.assertIn("clock reads dropped, their two stamps over one period (20 ms) apart: 0",
-                      self.lines(self.fixture(read_ms=166), "--from", wall_text(225)))
+        gone, _ = self.dropped_and_kept()
+        self.assertIn(self.dropped_line(0), self.lines("--from", self.walls[gone + 1]))
+
+
+class JustOverOnePeriodInARealRecording(ClockRowsCase):
+    FOLDER = JUST_OVER_READ
+
+    def test_stamps_just_over_one_period_apart_are_dropped(self):
+        period = self.period_ms()
+        dropped = self.over_one_period()
+        self.assertEqual(len(dropped), 1, dropped)
+        # Just over: past the period by less than a quarter of it.
+        self.assertLess(self.read_ms(self.samples()[dropped[0]]), period + period / 4)
+        self.assertIn(self.dropped_line(1), self.lines())
+
+
+class SampleGapsInARealRecording(RealRecordingCase):
+    FOLDER = LATE_RUN
+
+    def test_gaps_over_gap_ms_are_the_recorders_stalls(self):
+        numbers = sorted(self.walls)
+        gaps = [self.gap_ms(a, b) for a, b in zip(numbers, numbers[1:])]
+        over = [gap for gap in gaps if gap > R.GAP_MS]
+        self.assertTrue(over)
+        self.assertTrue([gap for gap in gaps if gap <= R.GAP_MS])
+        self.assertIn(f"gaps between samples: median {float(statistics.median(gaps)):.1f} ms, "
+                      f"worst {float(max(gaps)):.1f} ms, {len(over)} over {R.GAP_MS} ms "
+                      "(the recorder's own stalls)", self.lines())
 
 
 class SampleGaps(ReportCase):
-    def test_a_120_ms_gap(self):
-        fx = Fixture()
-        fx.thread(fx.sample(0))
-        for ms in (20, 40, 160, 180):
-            fx.sample(ms)
-        self.assertIn("gaps between samples: median 20.0 ms, worst 120.0 ms, 1 over 50 ms "
-                      "(the recorder's own stalls)", self.lines(fx))
-
     def test_a_gap_of_exactly_gap_ms_is_not_over(self):
         fx = Fixture()
         fx.thread(fx.sample(0))
