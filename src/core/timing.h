@@ -112,6 +112,20 @@ private:
     std::vector<double> elapsed_;
 };
 
+// Clone Hero's beat step for a signature's bottom number `denominator` (above
+// 0) at `resolution`: its truncated quarter-note share, in ticks. MeasureIndex
+// steps its grid by it.
+inline int64_t beat_step_ticks(int64_t resolution, int denominator) {
+    return resolution * 4 / static_cast<int64_t>(denominator);
+}
+
+// Whether that beat is shorter than one tick, which the grid cannot step
+// (user decision 2026-10-14). apply_timesig refuses such a chart with its
+// sentence; MeasureIndex throws as the backstop.
+inline bool beat_under_a_tick(int64_t resolution, int denominator) {
+    return beat_step_ticks(resolution, denominator) <= 0;
+}
+
 // Clone Hero's measure grid (its beat-line walk, 0x20DACA0): where the
 // measure lines and beat lines are, and the measure/beat/tick a screen shows.
 // Built from the chart's time signatures (tick -> numerator, denominator) and
