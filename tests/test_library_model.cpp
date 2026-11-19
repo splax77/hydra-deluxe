@@ -1402,6 +1402,22 @@ std::vector<ChartLibraryEntry> pinned_charts() {
     };
 }
 
+// The song folders behind the pinned search text and sort keys: song.ini
+// lines with tags, accents and full-width letters (the ideographic space is
+// U+3000), folders with accents and full-width letters, and one song.ini that
+// names nothing. Each holds a chart of its own.
+std::vector<SongFolder> pinned_song_folders() {
+    return {{"pack\\empty", ""},
+            {"common\\Tagged\\tags",
+             "name = <color=#ff0000>Red</color> Song\nartist = <b>The</b> Band\n"
+             "charter = <i>Hoph2o</i>\nalbum = <size=20>Big</size> Album\n"},
+            {"common\\Café\\accents",
+             "name = Beyoncé Æther\nartist = Motörhead\ncharter = Łukasz\nalbum = Straße\n"},
+            {"ｗｉｄｅ\\wide",
+             "name = ＢＵＲＮＯＵＴ！\nartist = Ｇｒｅｅｎ" "\xE3\x80\x80" "Ｄａｙ\n"
+             "charter = 東京事変\nalbum = Ａｌｂｕｍ" "\xE3\x80\x80" "\n"}};
+}
+
 // The row `entry` makes in a library of that one chart. set_charts builds a
 // library of one row on the calling thread, so this is the one-thread build.
 hydra::ui::LibraryRow one_thread_row(const ChartLibraryEntry& entry) {
@@ -1441,17 +1457,7 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
     // the scan stores its placeholders (title_or_unknown, artist_or_unknown,
     // charter_or_unknown). The rows that held spaces at the ends are not here:
     // the scan trims every field before it stores it.
-    const LibraryModel m = scanned_library(
-        "lm_pinned",
-        {{"pack\\empty", ""},
-         {"common\\Tagged\\tags",
-          "name = <color=#ff0000>Red</color> Song\nartist = <b>The</b> Band\n"
-          "charter = <i>Hoph2o</i>\nalbum = <size=20>Big</size> Album\n"},
-         {"common\\Café\\accents",
-          "name = Beyoncé Æther\nartist = Motörhead\ncharter = Łukasz\nalbum = Straße\n"},
-         {"ｗｉｄｅ\\wide",
-          "name = ＢＵＲＮＯＵＴ！\nartist = Ｇｒｅｅｎ" "\xE3\x80\x80" "Ｄａｙ\n"
-          "charter = 東京事変\nalbum = Ａｌｂｕｍ" "\xE3\x80\x80" "\n"}});
+    const LibraryModel m = scanned_library("lm_pinned", pinned_song_folders());
     struct Want {
         const char* folder;
         // By column: title, artist, album, charter, folder.
@@ -1493,11 +1499,12 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
 }
 
 TEST_CASE("library model: rows built on threads match the one-thread rows, in the same order") {
-    // Enough copies of the pinned rows for more rows than set_charts has
-    // threads, and a row count that is not a multiple of the threads, so the
-    // shares are uneven. Each copy gets its own hash.
+    // Enough copies of the pinned song folders for more rows than set_charts
+    // has threads, and a row count that is not a multiple of the threads, so
+    // the shares are uneven. Every folder holds a chart of its own, so each
+    // copy has its own hash; the rows are the store's listing of the scan.
     static constexpr int kThreads = static_cast<int>(hydra::store::kLibraryOpenThreads);
-    static constexpr int kPinned = 5;  // pinned_charts().size(), checked below
+    static constexpr int kPinned = 4;  // pinned_song_folders().size(), checked below
     constexpr int kCopies = [] {
         int copies = kThreads / kPinned + 1;
         while ((copies * kPinned) % kThreads == 0) ++copies;
@@ -1505,13 +1512,15 @@ TEST_CASE("library model: rows built on threads match the one-thread rows, in th
     }();
     static_assert(kCopies * kPinned > kThreads);
     static_assert((kCopies * kPinned) % kThreads != 0);
-    REQUIRE(pinned_charts().size() == static_cast<size_t>(kPinned));
-    std::vector<ChartLibraryEntry> charts;
+    REQUIRE(pinned_song_folders().size() == static_cast<size_t>(kPinned));
+    std::vector<SongFolder> folders;
     for (int copy = 0; copy < kCopies; ++copy)
-        for (ChartLibraryEntry e : pinned_charts()) {
-            e.md5 += std::to_string(copy);
-            charts.push_back(std::move(e));
+        for (SongFolder f : pinned_song_folders()) {
+            f.name = "copy " + std::to_string(copy) + "\\" + f.name;
+            folders.push_back(std::move(f));
         }
+    std::vector<ChartLibraryEntry> charts = scanned_entries("lm_threads", folders);
+    REQUIRE(charts.size() == folders.size());
     const std::vector<ChartLibraryEntry> given = charts;
 
     LibraryModel m;
@@ -1522,11 +1531,13 @@ TEST_CASE("library model: rows built on threads match the one-thread rows, in th
         INFO("row " << i << " " << given[i].md5);
         check_same_row(m.rows()[i], one_thread_row(given[i]));
     }
-    // The default sort, Title ascending: the pinned order, each title once per copy.
+    // The default sort, Title ascending: a library of one copy's order (the
+    // pinned test checks it), each title once per copy.
+    const LibraryModel one_copy = scanned_library("lm_threads_one", pinned_song_folders());
     std::vector<std::string> want;
-    for (const char* title :
-         {"(unknown)", "Beyoncé Æther", "ＢＵＲＮＯＵＴ！", "Red Song", "Spaced Out"})
-        want.insert(want.end(), static_cast<size_t>(kCopies), std::string(title));
+    for (const std::string& title : titles(one_copy))
+        want.insert(want.end(), static_cast<size_t>(kCopies), title);
+    REQUIRE(want.size() == given.size());
     CHECK(titles(m) == want);
 }
 
