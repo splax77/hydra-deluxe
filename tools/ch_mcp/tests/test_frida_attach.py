@@ -244,6 +244,14 @@ def recorded(run: str, name: str) -> list[dict]:
         return [json.loads(line) for line in fh]
 
 
+# The cap in frida_attach.py's usage line (`--cap 93`): a run that is meant to
+# end on its own gets this long, and no test here waits on it.
+RUN_CAP_S = 93.0
+# A cap short enough that the real wait reaches it at once. frida_attach's
+# command line takes any cap above 0 (`--cap must be more than 0 seconds`).
+SHORT_CAP_S = 0.05
+
+
 class Workspace(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -254,7 +262,7 @@ class Workspace(unittest.TestCase):
         self.out_path = os.path.join(self.tmp.name, "out.jsonl")
         self.lines = []
 
-    def run_agent(self, frida, cap_s=93.0, wait=instant_wait):
+    def run_agent(self, frida, cap_s=RUN_CAP_S, wait=instant_wait):
         return FA.run_agent(self.agent, cap_s, FA.ends_run, self.out_path,
                             frida_mod=frida, wait=wait,
                             out=self.lines.append)
@@ -285,7 +293,7 @@ class DetachTest(Workspace):
         # The log keeps every message the agent sent, in order.
         self.assertEqual(self.written(), msgs)
         self.assertEqual(session.script.posted,
-                         [{"type": "start", "cap_s": 93.0}])
+                         [{"type": "start", "cap_s": RUN_CAP_S}])
         with open(self.agent, encoding="utf-8") as fh:
             self.assertEqual(session.source, fh.read())
         self.assertEqual(self.lines, [])
@@ -295,7 +303,7 @@ class DetachTest(Workspace):
         # clock.jsonl). A sample ends no run, so the real wait runs to the cap.
         first = recorded("2026-10-28-l2", "clock.jsonl")[:1]
         session = FakeSession(first)
-        result = self.run_agent(FakeFrida(session), cap_s=0.05,
+        result = self.run_agent(FakeFrida(session), cap_s=SHORT_CAP_S,
                                 wait=FA._default_wait)
         self.assertEqual(result.reason, FA.END_CAP)
         self.assertIsNone(result.error)
@@ -303,7 +311,7 @@ class DetachTest(Workspace):
         self.assertEqual(self.written(), first)
         # One line, naming the cap that passed and how many messages came.
         self.assertEqual(len(self.lines), 1)
-        self.assertRegex(self.lines[0], r"\bcap of 0\.05 s\b")
+        self.assertRegex(self.lines[0], rf"\bcap of {SHORT_CAP_S:g} s\b")
         self.assertRegex(self.lines[0], r"\b1 messages seen\b")
 
     def test_attaches_to_the_game_by_process_name(self):
