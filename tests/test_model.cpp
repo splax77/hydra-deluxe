@@ -102,6 +102,36 @@ const std::vector<CorpusAct>& default_acts() {
     return out;
 }
 
+// How many backend rows a walk saw, and how many of them the search priced
+// apart (sqout_sp_points not equal to sp_points).
+struct BackendRowCounts {
+    int rows = 0;
+    int rows_priced_apart = 0;
+};
+
+// Runs `per_row(sp, sq)` once for every backend row of every corpus
+// activation, with that row's sp_points and sqout_sp_points. Each call runs
+// under CAPTURE of the chart, the row's tick and both prices, so a failing
+// check inside it names the row.
+template <class PerRow>
+BackendRowCounts for_each_backend_row(PerRow&& per_row) {
+    BackendRowCounts counts;
+    for (const CorpusAct& ca : default_acts()) {
+        for (const BackendSqueeze& b : ca.act->backends) {
+            ++counts.rows;
+            const int sp = b.sp_points;
+            const int sq = b.sqout_sp_points;
+            if (sp != sq) ++counts.rows_priced_apart;
+            CAPTURE(ca.chart);
+            CAPTURE(b.timecode.ticks());
+            CAPTURE(sp);
+            CAPTURE(sq);
+            per_row(sp, sq);
+        }
+    }
+    return counts;
+}
+
 }  // namespace
 
 // A tom is worth the base points and a cymbal adds its bonus, both read from
@@ -1302,46 +1332,33 @@ TEST_CASE("backend_row_value: every engine case") {
     const double last_counted = std::nextafter(lw, 0.0);
     const double past_leeway = 2 * lw;
 
-    int rows = 0;
-    int rows_priced_apart = 0;
-    for (const CorpusAct& ca : default_acts()) {
-        for (const BackendSqueeze& b : ca.act->backends) {
-            ++rows;
-            const int sp = b.sp_points;
-            const int sq = b.sqout_sp_points;
-            if (sp != sq) ++rows_priced_apart;
-            CAPTURE(ca.chart);
-            CAPTURE(b.timecode.ticks());
-            CAPTURE(sp);
-            CAPTURE(sq);
+    const auto [rows, rows_priced_apart] = for_each_backend_row([&](int sp, int sq) {
+        // No squeeze-out: full value inside SP or inside the leeway, else 0.
+        CHECK(backend_row_value(inside_sp, sp, sq, P::NoSqOut, lw) == sp);
+        CHECK(backend_row_value(0.0, sp, sq, P::NoSqOut, lw) == sp);
+        CHECK(backend_row_value(last_counted, sp, sq, P::NoSqOut, lw) == sp);
+        CHECK(backend_row_value(lw, sp, sq, P::NoSqOut, lw) == 0);
 
-            // No squeeze-out: full value inside SP or inside the leeway, else 0.
-            CHECK(backend_row_value(inside_sp, sp, sq, P::NoSqOut, lw) == sp);
-            CHECK(backend_row_value(0.0, sp, sq, P::NoSqOut, lw) == sp);
-            CHECK(backend_row_value(last_counted, sp, sq, P::NoSqOut, lw) == sp);
-            CHECK(backend_row_value(lw, sp, sq, P::NoSqOut, lw) == 0);
+        // Before the squeezed-out chord: same as no squeeze-out.
+        CHECK(backend_row_value(inside_sp, sp, sq, P::Before, lw) == sp);
+        CHECK(backend_row_value(in_leeway, sp, sq, P::Before, lw) == sp);
+        CHECK(backend_row_value(past_leeway, sp, sq, P::Before, lw) == 0);
 
-            // Before the squeezed-out chord: same as no squeeze-out.
-            CHECK(backend_row_value(inside_sp, sp, sq, P::Before, lw) == sp);
-            CHECK(backend_row_value(in_leeway, sp, sq, P::Before, lw) == sp);
-            CHECK(backend_row_value(past_leeway, sp, sq, P::Before, lw) == 0);
+        // The squeezed-out chord itself keeps only its reduced value, and
+        // only where it would have been counted at all.
+        CHECK(backend_row_value(inside_sp, sp, sq, P::Exact, lw) == sq);
+        CHECK(backend_row_value(in_leeway, sp, sq, P::Exact, lw) == sq);
+        CHECK(backend_row_value(lw, sp, sq, P::Exact, lw) == 0);
+        CHECK(backend_row_value(past_leeway, sp, sq, P::Exact, lw) == 0);
 
-            // The squeezed-out chord itself keeps only its reduced value, and
-            // only where it would have been counted at all.
-            CHECK(backend_row_value(inside_sp, sp, sq, P::Exact, lw) == sq);
-            CHECK(backend_row_value(in_leeway, sp, sq, P::Exact, lw) == sq);
-            CHECK(backend_row_value(lw, sp, sq, P::Exact, lw) == 0);
-            CHECK(backend_row_value(past_leeway, sp, sq, P::Exact, lw) == 0);
+        // After the squeezed-out chord nothing is under Star Power.
+        CHECK(backend_row_value(inside_sp, sp, sq, P::After, lw) == 0);
+        CHECK(backend_row_value(in_leeway, sp, sq, P::After, lw) == 0);
 
-            // After the squeezed-out chord nothing is under Star Power.
-            CHECK(backend_row_value(inside_sp, sp, sq, P::After, lw) == 0);
-            CHECK(backend_row_value(in_leeway, sp, sq, P::After, lw) == 0);
-
-            // The leeway is the user's rule (hydra_rules.ini), not a constant:
-            // a row exactly on this leeway counts under a wider one.
-            CHECK(backend_row_value(lw, sp, sq, P::NoSqOut, std::nextafter(lw, past_leeway)) == sp);
-        }
-    }
+        // The leeway is the user's rule (hydra_rules.ini), not a constant:
+        // a row exactly on this leeway counts under a wider one.
+        CHECK(backend_row_value(lw, sp, sq, P::NoSqOut, std::nextafter(lw, past_leeway)) == sp);
+    });
     // The anchor test above finds SqOut squeezes on the corpus, and set_sqout
     // throws unless such an activation holds a backend row, so rows exist.
     REQUIRE(rows > 0);
@@ -1889,27 +1906,16 @@ TEST_CASE("backend_value: sqout_cost is what the squeezed-out chord loses") {
     const double inside_sp = -lw;
     const double in_leeway = lw / 2;
     const double past_leeway = 2 * lw;
-    int rows = 0, rows_priced_apart = 0;
-    for (const CorpusAct& ca : default_acts()) {
-        for (const BackendSqueeze& b : ca.act->backends) {
-            ++rows;
-            const int sp = b.sp_points;
-            const int sq = b.sqout_sp_points;
-            if (sp != sq) ++rows_priced_apart;
-            CAPTURE(ca.chart);
-            CAPTURE(b.timecode.ticks());
-            CAPTURE(sp);
-            CAPTURE(sq);
-            CHECK(core::sqout_cost(inside_sp, sp, sq, lw) == sp - sq);
-            CHECK(core::sqout_cost(0.0, sp, sq, lw) == sp - sq);
-            CHECK(core::sqout_cost(in_leeway, sp, sq, lw) == sp - sq);
-            CHECK(core::sqout_cost(lw, sp, sq, lw) == sp);
-            CHECK(core::sqout_cost(past_leeway, sp, sq, lw) == sp);
-            // The leeway is the user's rule, not a constant: a row past this
-            // leeway is counted under a wider one.
-            CHECK(core::sqout_cost(lw, sp, sq, past_leeway) == sp - sq);
-        }
-    }
+    const auto [rows, rows_priced_apart] = for_each_backend_row([&](int sp, int sq) {
+        CHECK(core::sqout_cost(inside_sp, sp, sq, lw) == sp - sq);
+        CHECK(core::sqout_cost(0.0, sp, sq, lw) == sp - sq);
+        CHECK(core::sqout_cost(in_leeway, sp, sq, lw) == sp - sq);
+        CHECK(core::sqout_cost(lw, sp, sq, lw) == sp);
+        CHECK(core::sqout_cost(past_leeway, sp, sq, lw) == sp);
+        // The leeway is the user's rule, not a constant: a row past this
+        // leeway is counted under a wider one.
+        CHECK(core::sqout_cost(lw, sp, sq, past_leeway) == sp - sq);
+    });
     // "backend_row_value: every engine case" requires both on the corpus.
     REQUIRE(rows > 0);
     REQUIRE(rows_priced_apart > 0);
