@@ -8,6 +8,7 @@
 #include <array>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <iterator>
@@ -1138,6 +1139,92 @@ TEST_CASE("library model: Best path sorts a Can't analyze row after Not analyzed
                                                 "YYZ", cant_title});
 }
 
+// A result whose analysis kept no path is Analyzed, but it has no best path,
+// so a stars: or squeeze filter has nothing to test on it (D51 call 11). The
+// empty result is the one a batch saves for a chart (save_batch_record), read
+// back through the store; the scored result is a corpus chart's own.
+TEST_CASE("library model: a Ready row with no paths is Analyzed but has no facts") {
+    const CopiedChart& lib = copied_chart();
+    LibraryModel m = lib.model;
+    const hydra::store::Profile profile = hydra::app::Settings{}.batch_run().profile;
+    const std::string empty_md5 = row_in(m, "first").entry.md5;
+    hydra::store::RecordStore store(":memory:");
+    hydra::test::save_batch_record(store, empty_md5, profile);
+    const RecordLookup no_paths = store.lookup_one(empty_md5, profile);
+    REQUIRE(no_paths.status == RecordStatus::Ready);
+    REQUIRE_FALSE(no_paths.record.summary().has_scored_best_path());
+    const std::optional<int> stars = lib.ready.record.summary().stars;
+    REQUIRE(stars.has_value());
+    REQUIRE(m.set_summary_for(lib.md5, lib.ready) == 2);
+    REQUIRE(m.set_summary_for(empty_md5, no_paths) == 1);
+    const std::vector<std::string> scored{"Song", "Song"};
+    m.set_query("stars:" + std::to_string(*stars));
+    CHECK(titles(m) == scored);
+    m.set_query("squeeze<=100000");
+    CHECK(titles(m) == scored);
+    m.set_query("");
+    CHECK(m.counts().analyzed == 3);
+}
+
+// The saved figure is the engine's, sign included; the squeeze filters read it
+// through shown_timing (facts_of), so a figure below 0 needs no timing. The two
+// results are the first corpus charts whose best path's engine figure
+// (engine_hardest_ms) is below 0 and exactly 0.0, saved and read back through
+// the store.
+TEST_CASE("library model: the squeeze filters read the saved figure as shown") {
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    std::string inside_chart, on_end_chart;
+    const hydra::HydraRecord* inside = nullptr;
+    const hydra::HydraRecord* on_end = nullptr;
+    double inside_figure = 0.0;
+    for (const std::string& path : corpus::chart_paths()) {
+        if (inside && on_end) break;
+        try {
+            const hydra::HydraRecord& rec = corpus::analyzed(path, run.settings);
+            if (rec.paths.empty()) continue;
+            const std::optional<double> figure = hydra::engine_hardest_ms(rec.best_path());
+            if (!figure) continue;
+            if (!inside && *figure < 0.0) {
+                inside = &rec;
+                inside_chart = path;
+                inside_figure = *figure;
+            } else if (!on_end && *figure == 0.0) {
+                on_end = &rec;
+                on_end_chart = path;
+            }
+        } catch (const std::exception&) {
+            continue;
+        }
+    }
+    REQUIRE_MESSAGE(inside, "no corpus chart's best path has a figure below 0");
+    REQUIRE_MESSAGE(on_end, "no corpus chart's best path has a figure of exactly 0.0");
+    const ChartLibraryEntry inside_entry = corpus::scanned_entry(inside_chart, "Inside");
+    const ChartLibraryEntry on_end_entry = corpus::scanned_entry(on_end_chart, "On End");
+    REQUIRE(inside_entry.md5 != on_end_entry.md5);
+    hydra::store::RecordStore store(":memory:");
+    store.save(hydra::store::prepare_record(inside_entry.md5, run.profile, *inside));
+    store.save(hydra::store::prepare_record(on_end_entry.md5, run.profile, *on_end));
+    const RecordLookup inside_answer = store.lookup_one(inside_entry.md5, run.profile);
+    const RecordLookup on_end_answer = store.lookup_one(on_end_entry.md5, run.profile);
+    REQUIRE(inside_answer.record.summary().hardest_ms == std::optional<double>(inside_figure));
+    REQUIRE(on_end_answer.record.summary().hardest_ms == std::optional<double>(0.0));
+    LibraryModel m;
+    m.set_charts(std::vector<ChartLibraryEntry>{inside_entry, on_end_entry});
+    REQUIRE(m.set_summary_for(inside_entry.md5, inside_answer) == 1);
+    REQUIRE(m.set_summary_for(on_end_entry.md5, on_end_answer) == 1);
+    // A figure below 0 needs no timing, which reaches no floor; the raw figure
+    // would match a floor just under it.
+    m.set_query("squeeze>" + std::to_string(static_cast<long long>(std::floor(inside_figure)) - 1));
+    CHECK(titles(m) == std::vector<std::string>{"On End"});
+    // 0.0 is a timing to hit: it matches >=0 and <=0 and not the strict <0.
+    m.set_query("squeeze>=0");
+    CHECK(titles(m) == std::vector<std::string>{"On End"});
+    m.set_query("squeeze<=0");
+    CHECK(titles(m) == std::vector<std::string>{"Inside", "On End"});
+    m.set_query("squeeze<0");
+    CHECK(titles(m) == std::vector<std::string>{"Inside"});
+}
+
 TEST_CASE("library model: one chart in two folders gets both rows updated") {
     const CopiedChart& lib = copied_chart();
     LibraryModel m = lib.model;
@@ -1393,10 +1480,14 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
     // real scan of song folders whose song.ini lines hold tags, accents and
     // full-width letters (the ideographic space is U+3000), and whose folders
     // hold accents and full-width letters. The folder is where each song
-    // folder sits under the scan's root.
+    // folder sits under the scan's root. The "empty" song.ini names nothing, so
+    // the scan stores its placeholders (title_or_unknown, artist_or_unknown,
+    // charter_or_unknown). The rows that held spaces at the ends are not here:
+    // the scan trims every field before it stores it.
     const LibraryModel m = scanned_library(
         "lm_pinned",
-        {{"common\\Tagged\\tags",
+        {{"pack\\empty", ""},
+         {"common\\Tagged\\tags",
           "name = <color=#ff0000>Red</color> Song\nartist = <b>The</b> Band\n"
           "charter = <i>Hoph2o</i>\nalbum = <size=20>Big</size> Album\n"},
          {"common\\Café\\accents",
@@ -1412,6 +1503,9 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
         std::array<const char*, 5> search;
     };
     const Want want[] = {
+        {"empty",
+         {"(unknown)", "(unknown)", "", "(unknown)", "pack"},
+         {"(unknown)", "<unknown artist>", "", "<unknown charter>", "pack"}},
         {"tags",
          {"red song", "the band", "big album", "hoph2o", "common\\tagged"},
          {"red song", "the band", "big album", "hoph2o", "common\\tagged"}},
@@ -1437,7 +1531,8 @@ TEST_CASE("library model: each row's search text and sort keys are pinned") {
         CHECK(row.searchable.folder == want[i].search[4]);
     }
     // The default sort, Title ascending, on those keys.
-    CHECK(titles(m) == std::vector<std::string>{"Beyoncé Æther", "ＢＵＲＮＯＵＴ！", "Red Song"});
+    CHECK(titles(m) == std::vector<std::string>{"(unknown)", "Beyoncé Æther", "ＢＵＲＮＯＵＴ！",
+                                                "Red Song"});
 }
 
 TEST_CASE("library model: rows built on threads match the one-thread rows, in the same order") {
