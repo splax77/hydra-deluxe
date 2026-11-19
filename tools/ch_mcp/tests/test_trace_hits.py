@@ -40,6 +40,7 @@ from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE, _REAL_MAKE_DUMP  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import prep_inputs  # noqa: E402
+from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
 
 
 def setUpModule():
@@ -57,7 +58,7 @@ def tearDownModule():
 L3 = "2026-10-28-l3"
 # The song folder those runs played (C:\Clone Hero\songs\Hydra Probe\
 # Window Map): its manifest, chart and song.ini.
-WINDOW_MAP_SONG = os.path.join(CH_RUNS, L3, "Window Map")
+WINDOW_MAP_SONG = os.path.join(CH_RUNS, L3, WINDOW_MAP)
 WINDOW_MAP_CHART = os.path.join(WINDOW_MAP_SONG, "notes.chart")
 # Hydra's dump of that chart, the file hydra_end.make_dump writes for it.
 WINDOW_MAP_DUMP = os.path.join(_REPO_ROOT, "testdata", "replay", "window_map-dump.json")
