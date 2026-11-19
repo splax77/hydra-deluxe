@@ -1,0 +1,8 @@
+LS-D1a run 1, 2026-10-31, session 6e9d8be4. The ch server's replies, copied as they came back.
+
+== ch_start("C:\Clone Hero\songs\Hydra Probe\Window Map", human=True)
+starting: "C:\Clone Hero\1.1 june\Clone Hero\Clone Hero.exe" --song "C:\Clone Hero\songs\Hydra Probe\Window Map" --player Drums,Expert
+
+== ch_attach
+state: playing
+songLoaded: true

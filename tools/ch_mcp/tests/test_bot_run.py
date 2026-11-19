@@ -1,8 +1,10 @@
 """Tests for bot_run (the bot launcher) and install_chart.
 
-No game, no real game files and no real registry key: the launch, the clock
-and the process check are the fakes below, the user folders are temp
-folders, and Rig's Env has no reg.exe runner unless a test hands it
+No game, no real game files and no real registry key. The tests that use
+_real_env run bot_run's real launcher, clock and sleep on temp folders: its
+exe path names a file that is not there, so the real launch fails before any
+game starts. The rest use the fakes below. The user folders are temp
+folders, and no Env here has a reg.exe runner unless a test hands it
 test_game_files' FakeReg.
 """
 
@@ -11,6 +13,9 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
+import shlex
+import shutil
 import stat
 import subprocess
 import sys
@@ -34,8 +39,8 @@ from tools.ch_mcp import install_chart as I  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
-from tools.ch_probe import probe_songs  # noqa: E402
-from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
+from tools.ch_probe import prep_inputs, probe_songs  # noqa: E402
+from tools.ch_probe.constants import PROCESS_NAME, ms_to_s  # noqa: E402
 
 # The game's files, by folder; the run never backs up, restores, moves or
 # deletes any of them.
@@ -47,6 +52,81 @@ ORIGINAL = {name: f"original {name}".encode() for name in
 PREFIX = probe_songs.NAME_PREFIX.encode()
 NEW_STATS = json.dumps({"players": [{"is_bot": True}]}).encode()
 SONG_LENGTH_MS = 4000  # the fake song's song end in its fake dump
+
+_TESTDATA = os.path.join(_REPO_ROOT, "testdata")
+# A corpus chart folder: notes.mid, and a song.ini that says pro_drums = True
+# and has its own song_length.
+PITCH_DARK = os.path.join(_TESTDATA, "input", "test_pitch_dark_ratio")
+# hydra_replay's dump of PITCH_DARK's chart, for its song end. The main session
+# makes it with prep_inputs.dump_command's line (see _pitch_dark_dump).
+PITCH_DARK_DUMP = os.path.join(_TESTDATA, "replay", "test_pitch_dark_ratio-dump.json")
+_CH_RUNS = os.path.join(_TESTDATA, "ch_runs")
+# Cut from hydra-data\ch-mcp-runs\2026-10-31\ls-d1a-run1\replies.txt: the
+# command line start_run printed when the real game started, and the attach
+# that found the song loaded from it.
+RECORDED_REPLIES = os.path.join(_CH_RUNS, "ls-d1a-run1", "replies.txt")
+# Copied from hydra-data\ch-mcp-runs\2026-11-12\ls-g1-run1\backup-20261112-182956:
+# a real backup from before the rulings of 2026-11-13, so its manifest names
+# the game's files as well as the registry key, with the copies it took of
+# settings.ini and scorestats.json.
+REAL_BACKUP = os.path.join(_CH_RUNS, "ls-g1-run1", "backup-20261112-182956")
+# scorestats.json as it was before a run (REAL_BACKUP's copy), and as the game
+# wrote it after one (copied from hydra-data\ch-mcp-runs\2026-11-12\
+# pitch-dark-run1).
+STATS_BEFORE_A_RUN = os.path.join(REAL_BACKUP, G.SCORESTATS)
+STATS_AFTER_A_RUN = os.path.join(_CH_RUNS, "pitch-dark-run1",
+                                 "scorestats-CHON_-_Pitch_Dark_B-20261112-230618.json")
+
+
+def _real_env(tmp: str, lines: list) -> B.Env:
+    """bot_run's own Env (real launcher, clock and sleep) on temp folders. Its
+    exe is a path under `tmp` with no file there, so the real launch fails
+    before any game starts, and it has no reg.exe runner, so the user's
+    registry key is never read or written."""
+    docs = os.path.join(tmp, "docs")
+    os.makedirs(docs, exist_ok=True)
+    return B.Env(exe=os.path.join(tmp, os.path.basename(G.GAME_EXE)), documents_dir=docs,
+                 out=lines.append, run_reg=None)
+
+
+def _pitch_dark_dump(test: unittest.TestCase) -> str:
+    """PITCH_DARK_DUMP, or a failure naming the command that makes it."""
+    if not os.path.isfile(PITCH_DARK_DUMP):
+        cmd = prep_inputs.dump_command(prep_inputs.DEFAULT_EXE,
+                                       I.chart_file(PITCH_DARK), PITCH_DARK_DUMP)
+        test.fail(f"{PITCH_DARK_DUMP} is missing; make it with: {subprocess.list2cmdline(cmd)}")
+    return PITCH_DARK_DUMP
+
+
+def _pitch_dark_end(test: unittest.TestCase) -> tuple[float, str]:
+    """Hydra's song end for PITCH_DARK, read the way song_length_ms reads it,
+    for start_run's song_end."""
+    return (hydra_end.song_length_ms(_pitch_dark_dump(test)),
+            hydra_end.chart_source_text(I.chart_file(PITCH_DARK)))
+
+
+def _copy_real_backup(tmp: str) -> tuple[str, dict]:
+    """REAL_BACKUP copied into `tmp`, with each file entry's source moved to a
+    path under `tmp/sources`, so nothing a restore does can reach the user's
+    own files. Returns the folder and each entry's new source by name."""
+    folder = os.path.join(tmp, os.path.basename(REAL_BACKUP))
+    shutil.copytree(REAL_BACKUP, folder)
+    sources_dir = os.path.join(tmp, "sources")
+    os.makedirs(sources_dir)
+    manifest = os.path.join(folder, G.BACKUP_MANIFEST)
+    with open(manifest, encoding="utf-8") as f:
+        doc = json.load(f)
+    sources = {}
+    for entry in doc["files"]:
+        if "source" in entry:
+            entry["source"] = sources[entry["name"]] = os.path.join(sources_dir, entry["name"])
+    with open(manifest, "w", encoding="utf-8") as f:
+        json.dump(doc, f, indent=1)
+    return folder, sources
+
+
+def _folder_bytes(folder: str) -> dict:
+    return {name: _read(os.path.join(folder, name)) for name in sorted(os.listdir(folder))}
 
 
 def setUpModule():
@@ -173,25 +253,43 @@ class BotRunTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def test_the_command_line_has_song_and_player_only(self):
-        r = Rig(self.tmp, exits_at=10)
-        r.game_writes_stats_at(5)
-        self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
-        self.assertEqual(r.launch.commands,
-                         [B.launch_command(r.env.exe, r.song, B.DEFAULT_PLAYER)])
+        # The command line the real game was started with, which loaded its
+        # song (RECORDED_REPLIES), is launch_command's for that song and
+        # player: the same flags, and nothing else.
+        with open(RECORDED_REPLIES, encoding="utf-8") as f:
+            text = f.read()
+        self.assertIn("songLoaded: true", text)
+        commands = []
+        for line in text.splitlines():
+            tokens = [t.strip('"') for t in shlex.split(line.partition(": ")[2], posix=False)]
+            if tokens and os.path.basename(tokens[0]) == PROCESS_NAME:
+                commands.append(tokens)
+        self.assertEqual(len(commands), 1, text)
+        recorded = commands[0]
+        self.assertGreaterEqual(len(recorded), 5, recorded)
+        self.assertEqual(recorded, B.launch_command(recorded[0], recorded[2], recorded[4]))
 
     def test_a_relative_song_path_reaches_the_game_absolute(self):
         # The game starts in its own folder, so it must get the full path.
-        r = Rig(self.tmp, exits_at=10)
-        r.game_writes_stats_at(5)
+        # The real launch fails (_real_env), after start_run printed the
+        # command line it was given.
+        lines = []
+        env = _real_env(self.tmp, lines)
+        song_end = _pitch_dark_end(self)
         old = os.getcwd()
-        os.chdir(os.path.dirname(r.song))
+        os.chdir(os.path.dirname(PITCH_DARK))
         try:
-            B.run_bot(probe_songs.WINDOW_MAP, r.out_dir, env=r.env)
+            with self.assertRaises(OSError):
+                B.start_run(os.path.basename(PITCH_DARK), env=env, song_end=song_end,
+                            backup_root=os.path.join(self.tmp, "backups"))
         finally:
             os.chdir(old)
-        song_arg = r.launch.commands[0][2]
-        self.assertTrue(os.path.isabs(song_arg))
-        self.assertEqual(os.path.basename(song_arg), probe_songs.WINDOW_MAP)
+        absolute = subprocess.list2cmdline(
+            B.launch_command(env.exe, os.path.abspath(PITCH_DARK), B.DEFAULT_PLAYER))
+        relative = subprocess.list2cmdline(
+            B.launch_command(env.exe, os.path.basename(PITCH_DARK), B.DEFAULT_PLAYER))
+        self.assertTrue(any(line.endswith(absolute) for line in lines), lines)
+        self.assertFalse(any(line.endswith(relative) for line in lines), lines)
 
     def test_the_game_exe_name_is_the_probe_process_name(self):
         self.assertEqual(os.path.basename(G.GAME_EXE), PROCESS_NAME)
@@ -207,34 +305,29 @@ class BotRunTest(unittest.TestCase):
         self.assertEqual(cmd[-1], "Tester")
         self.assertNotIn("Tester", plain)
 
-    def test_poll_notices_the_change_copies_it_and_restores(self):
-        writes_at, exits_at = 5, 12
-        r = Rig(self.tmp, exits_at=exits_at)
-        r.game_writes_stats_at(writes_at)
-        self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
-        copy = os.path.join(r.out_dir, "scorestats-Window_Map-20261028-101500.json")
-        self.assertEqual(_read(copy), NEW_STATS)
-        self.assertIn(f"scorestats.json changed after {writes_at} s; copied to {copy}", r.lines)
-        # The exit check starts once the stats changed.
-        self.assertIn(f"game exited after {exits_at - writes_at} s", r.lines)
-        self.assertIn(f"backup folder: {r.backup_dir()}", r.lines)
-        r.assert_settings_untouched(self)
-        # The game's own saves stay as the game left them.
-        self.assertEqual(_read(r.path(G.SCORESTATS)), NEW_STATS)
-        self.assertEqual(_read(r.path("scoredata.bin")), b"game wrote this")
-        self.assertFalse(any(line.startswith((f"{G.SCORESTATS}:", "scoredata.bin:"))
-                             for line in r.lines))
-        self.assertFalse(r.game.stopped)
-
-    def test_the_exit_check_reports_a_game_that_stays(self):
-        r = Rig(self.tmp, exits_at=None)
-        r.game_writes_stats_at(5)
-        self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 0)
-        self.assertIn(f"game still running after {B.EXIT_CHECK_S:.0f} s (menu or results screen)",
-                      r.lines)
-        self.assertFalse(r.game.stopped)  # never closed without --stop
-        self.assertTrue(any("--restore" in line for line in r.lines))
-        r.assert_settings_untouched(self)
+    def test_the_poll_copies_a_changed_stats_file_and_leaves_the_games_own(self):
+        # scorestats.json as it was before a real run, then as the game wrote
+        # it after one; the poll runs on the real clock.
+        lines = []
+        env = _real_env(self.tmp, lines)
+        stats = os.path.join(env.documents_dir, G.SCORESTATS)
+        shutil.copyfile(STATS_BEFORE_A_RUN, stats)
+        before = B._file_state(stats)
+        shutil.copyfile(STATS_AFTER_A_RUN, stats)
+        out_dir = os.path.join(self.tmp, "out")
+        os.makedirs(out_dir)
+        # A cap of 0 s makes _poll_stats poll once: the change is already
+        # there, so a poll that misses it ends the wait at once with no copy.
+        copy = B._poll_stats(PITCH_DARK, out_dir, 0, before, env)
+        self.assertIsNotNone(copy, lines)
+        self.assertEqual(os.path.dirname(copy), out_dir)
+        self.assertEqual(_read(copy), _read(STATS_AFTER_A_RUN))
+        # The game's own file stays as the game wrote it.
+        self.assertEqual(_read(stats), _read(STATS_AFTER_A_RUN))
+        # One line, and it names the file that changed and the copy.
+        self.assertEqual(len(lines), 1, lines)
+        self.assertIn(G.SCORESTATS, lines[0])
+        self.assertIn(copy, lines[0])
 
     def test_run_bot_passes_stop_on_so_a_game_that_stays_is_closed(self):
         r = Rig(self.tmp, exits_at=None)
@@ -259,98 +352,117 @@ class BotRunTest(unittest.TestCase):
         self.assertIn(f"restoring the backup from {r.backup_dir()}", r.lines)
         self.assertFalse(any(line.startswith(f"{G.SETTINGS}:") for line in r.lines))
 
-    def test_a_restore_failure_stops_the_run_with_its_name(self):
-        r = Rig(self.tmp, exits_at=None)
-        r.game_writes_stats_at(5)
+    def test_a_restore_failure_stops_with_the_entry_name_and_the_backup_folder(self):
+        # A real backup that holds the registry key, restored with no reg.exe
+        # runner: restore_registry refuses it, as it does any key it cannot
+        # put back.
+        backup, _sources = _copy_real_backup(self.tmp)
+        with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
+            key_entries = [e["name"] for e in json.load(f)["files"] if "key" in e]
+        self.assertEqual(key_entries, [G.REGISTRY_BACKUP])
+        lines = []
+        self.assertNotEqual(B.restore_only(backup, env=B.Env(out=lines.append, run_reg=None)), 0)
+        # One line names the entry that failed, and the last line the folder
+        # the backup is still in.
+        self.assertEqual(len([line for line in lines if G.REGISTRY_BACKUP in line]), 1, lines)
+        self.assertNotIn(G.REGISTRY_BACKUP, lines[-1])
+        self.assertIn(backup, lines[-1])
+        self.assertFalse(any(G.REGISTRY_LINE_NAME in line for line in lines), lines)
 
-        def fail(backup_dir, **_kw):
-            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
-
-        with mock.patch.object(B.game_files, "restore_all", fail):
-            code = B.run_bot(r.song, r.out_dir, env=r.env)
-        # Neither the success code nor the no-stats code.
-        self.assertNotIn(code, (0, 1))
-        self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", r.lines)
-        self.assertIn(r.backup_dir(), r.lines[-1])
-
-    def test_a_restore_failure_on_the_cap_path_runs_no_exit_check(self):
-        r = Rig(self.tmp, exits_at=None)
-
-        def fail(backup_dir, **_kw):
-            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
-
-        with mock.patch.object(B.game_files, "restore_all", fail):
-            self.assertEqual(B.run_bot(r.song, r.out_dir, env=r.env), 2)
-        self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", r.lines)
-        self.assertFalse(any("game exited" in line or "still running after" in line
-                             for line in r.lines))
-
-    def test_no_wait_starts_the_game_polls_nothing_restores_nothing(self):
-        r = Rig(self.tmp, exits_at=None)
-        self.assertEqual(B.run_bot(r.song, r.out_dir, no_wait=True, env=r.env), 0)
-        self.assertEqual(len(r.launch.commands), 1)
-        self.assertEqual(r.clock.t, 0.0)  # never slept, so never polled
-        self.assertIn(f"backup folder: {r.backup_dir()}", r.lines)
-        self.assertIn(f"game process id: {r.game.pid}", r.lines)
-        # The last line names the restore to run afterwards, with the backup.
-        self.assertIn(f'--restore "{r.backup_dir()}"', r.lines[-1])
-        self.assertFalse(any(line.startswith("restoring") for line in r.lines))
-
-        # The step: the game rewrites every file, its own saves included.
-        for name in ORIGINAL:
-            _write(r.path(name), b"changed by the game")
-        restore_lines = []
-        env = B.Env(out=restore_lines.append)
-        self.assertEqual(B.restore_only(r.backup_dir(), env=env), 0)
-        self.assertEqual(restore_lines, [f"restoring the backup from {r.backup_dir()}"])
-        for name in ORIGINAL:
-            self.assertEqual(_read(r.path(name)), b"changed by the game", name)
-
-    def test_restore_command_line_leaves_settings_ini_changed(self):
-        r = Rig(self.tmp, exits_at=None)
-        B.run_bot(r.song, r.out_dir, no_wait=True, env=r.env)
-        _write(r.path("settings.ini"), b"changed")
-        buf = io.StringIO()
-        with redirect_stdout(buf):
-            self.assertEqual(B.main(["--restore", r.backup_dir()]), 0)
-        self.assertNotIn("settings.ini", buf.getvalue())
-        self.assertEqual(_read(r.path(G.SETTINGS)), b"changed")
+    def test_a_restore_leaves_settings_ini_as_the_run_left_it(self):
+        # A real backup that holds a copy of settings.ini; the file at its
+        # source is that copy with the run's one setting changed, the way
+        # set_game_setting changes it for a run.
+        backup, sources = _copy_real_backup(self.tmp)
+        settings = sources[G.SETTINGS]
+        shutil.copyfile(os.path.join(backup, G.SETTINGS), settings)
+        G.set_game_setting(settings, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        self.assertNotEqual(_read(settings), _read(os.path.join(backup, G.SETTINGS)))
+        run_left = _read(settings)
+        backup_before = _folder_bytes(backup)
+        lines = []
+        B.restore_only(backup, env=B.Env(out=lines.append, run_reg=None))
+        self.assertEqual(_read(settings), run_left)
+        self.assertEqual(G.get_game_setting(settings, G.PAUSE_ON_FOCUS_LOST),
+                         G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        self.assertEqual(_folder_bytes(backup), backup_before)
+        # Every other source is still absent: nothing was put back anywhere.
+        self.assertEqual(os.listdir(os.path.dirname(settings)), [G.SETTINGS])
+        settings_lines = [line for line in lines if G.SETTINGS in line]
+        self.assertEqual(len(settings_lines), 1, lines)
+        self.assertIn(G.LEFT_AS_SAVED, settings_lines[0])
 
     def test_the_length_is_hydras_end_from_a_dump_of_the_folders_chart(self):
-        # song.ini's own song_length is never read for it.
-        r = Rig(self.tmp, song_ini="[song]\nsong_length = 9999\n", length_ms=193934.0)
-        ms, source = B.song_length_ms(r.song)
-        self.assertEqual(ms, 193934.0)
-        self.assertEqual(FAKE.charts[-1], r.chart)
-        self.assertEqual(source, hydra_end.chart_source_text(r.chart))
+        # song.ini's own song_length is never read for it: a copy of the
+        # corpus folder whose song_length is doubled gets the dump's end.
+        song = os.path.join(self.tmp, os.path.basename(PITCH_DARK))
+        shutil.copytree(PITCH_DARK, song)
+        ini = os.path.join(song, G.SONG_INI)
+        with open(ini, encoding="utf-8") as f:
+            text, n = re.subn(r"(?m)^(song_length\s*=\s*)(\d+)",
+                              lambda m: f"{m.group(1)}{int(m.group(2)) * 2}", f.read())
+        self.assertEqual(n, 1)
+        with open(ini, "w", encoding="utf-8") as f:
+            f.write(text)
+        doubled = int(re.search(r"(?m)^song_length\s*=\s*(\d+)", text).group(1))
+        dump = _pitch_dark_dump(self)
+        made = []
 
-    def test_no_length_anywhere_starts_nothing(self):
-        # A dump whose song_length_ms is null: Hydra names no end.
-        r = Rig(self.tmp, length_ms=None)
-        with self.assertRaises(B.SongLengthMissing) as caught:
-            B.run_bot(r.song, r.out_dir, env=r.env)
-        self.assertIn(f"{hydra_end.FIELD} is null", str(caught.exception))
-        self.assertIn(r.song, str(caught.exception))
-        self.assertEqual(r.launch.commands, [])
-        self.assertFalse(os.path.exists(r.out_dir))
+        def dump_from_testdata(chart, out):
+            made.append(chart)
+            shutil.copyfile(dump, out)
+
+        with mock.patch.object(hydra_end, "make_dump", dump_from_testdata):
+            ms, source = B.song_length_ms(song)
+        chart = I.chart_file(song)
+        self.assertEqual(made, [chart])
+        self.assertEqual(ms, hydra_end.song_length_ms(dump))
+        self.assertNotEqual(ms, doubled)
+        self.assertEqual(source, hydra_end.chart_source_text(chart))
 
     def test_a_folder_with_no_chart_starts_nothing(self):
-        r = Rig(self.tmp)
-        os.remove(r.chart)
+        # A song folder holding only the corpus folder's song.ini.
+        song = os.path.join(self.tmp, "songs", os.path.basename(PITCH_DARK))
+        os.makedirs(song)
+        shutil.copyfile(os.path.join(PITCH_DARK, G.SONG_INI), os.path.join(song, G.SONG_INI))
+        lines = []
+        env = _real_env(self.tmp, lines)
+        out_dir = os.path.join(self.tmp, "out")
         with self.assertRaises(B.SongLengthMissing) as caught:
-            B.run_bot(r.song, r.out_dir, env=r.env)
-        self.assertIn(f"{r.song} has no {' or '.join(I.CHART_FILES)}", str(caught.exception))
-        self.assertEqual(r.launch.commands, [])
+            B.run_bot(song, out_dir, env=env)
+        # The message names the folder and every chart file it looked for.
+        self.assertIn(song, str(caught.exception))
+        for name in I.CHART_FILES:
+            self.assertIn(name, str(caught.exception))
+        # Nothing was backed up or started, and no line was printed.
+        self.assertEqual(lines, [])
+        self.assertFalse(os.path.exists(out_dir))
 
     def test_pro_drums_chart_with_a_drums_player_prints_a_note(self):
-        r = Rig(self.tmp, exits_at=10, song_ini="[song]\npro_drums = True\n")
-        r.game_writes_stats_at(5)
-        B.run_bot(r.song, r.out_dir, env=r.env)
-        # The first line, before the backup, names the player given and the
-        # instrument to pass instead.
-        self.assertTrue(r.lines[0].startswith("note: "), r.lines[0])
-        self.assertIn(B.DEFAULT_PLAYER, r.lines[0])
-        self.assertIn(f"--player {B.PRO_DRUMS_INSTRUMENT},", r.lines[0])
+        # The corpus folder's song.ini says pro_drums = True. A drums player
+        # gets one line before the backup's line, naming the player given
+        # and the instrument to pass instead; a pro drums player gets none.
+        # The real launch fails after both (_real_env).
+        self.assertTrue(G.song_ini_pro_drums(PITCH_DARK))
+        song_end = _pitch_dark_end(self)
+        difficulty = B.DEFAULT_PLAYER.split(",", 1)[1]
+        self.assertNotEqual(B.DEFAULT_PLAYER.split(",")[0], B.PRO_DRUMS_INSTRUMENT)
+        for player, notes in ((B.DEFAULT_PLAYER, 1),
+                              (f"{B.PRO_DRUMS_INSTRUMENT},{difficulty}", 0)):
+            with self.subTest(player=player):
+                tmp = os.path.join(self.tmp, str(notes))
+                lines = []
+                backup_root = os.path.join(tmp, "backups")
+                with self.assertRaises(OSError):
+                    B.start_run(PITCH_DARK, player=player, backup_root=backup_root,
+                                env=_real_env(tmp, lines), song_end=song_end)
+                backup_dir = os.path.join(backup_root, os.listdir(backup_root)[0])
+                first_backup_line = next(i for i, line in enumerate(lines) if backup_dir in line)
+                before_backup = lines[:first_backup_line]
+                self.assertEqual(len(before_backup), notes, lines)
+                for line in before_backup:
+                    self.assertIn(player, line)
+                    self.assertIn(B.PRO_DRUMS_INSTRUMENT, line)
 
     def test_a_drums_chart_with_a_drums_player_prints_no_note(self):
         r = Rig(self.tmp, exits_at=10)
@@ -417,7 +529,7 @@ class RunStepsTest(unittest.TestCase):
         # The song's seconds plus POLL_CAP_EXTRA_S, for any length.
         for length_ms in (0, 4000, 260504, 1):
             with self.subTest(length_ms=length_ms):
-                self.assertAlmostEqual(B.run_cap_s(length_ms) - length_ms / 1000,
+                self.assertAlmostEqual(B.run_cap_s(length_ms) - ms_to_s(length_ms),
                                        B.POLL_CAP_EXTRA_S)
 
     def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
