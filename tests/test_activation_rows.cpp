@@ -808,6 +808,23 @@ TEST_CASE("format_measure: one form for both tabs") {
     on_grid(1, 1, 0);
     on_grid(1, 1, 40);
     on_grid(2, 3, beat - 1);
+
+    // On every real chart, each of the first measure lines its own grid walk
+    // reports prints as the next measure number, beat 1, tick 0.
+    int lines_checked = 0;
+    for_each_corpus_chart([&](const std::string&, const Song& song, const HydraRecord&) {
+        const SongTiming& real = song.timing();
+        const MeasureIndex& grid = real.measure_index();
+        int64_t number = 0;
+        grid.walk(grid.measure_line_tick(30), [&](int64_t tick, MeasureIndex::Line line) {
+            if (line != MeasureIndex::Line::Measure) return;
+            CAPTURE(tick);
+            CHECK(format_measure(real, tick) == "m" + std::to_string(number + 1) + ".1.0");
+            ++number;
+            ++lines_checked;
+        });
+    });
+    CHECK(lines_checked > 0);
 }
 
 TEST_CASE("activation rows: each of Burnout's rows reads its activation") {
@@ -825,6 +842,12 @@ TEST_CASE("activation rows: each of Burnout's rows reads its activation") {
         CAPTURE(i);
         CHECK(av.number == static_cast<int>(i) + 1);
         CHECK(av.measure == format_measure(act.timecode));
+        CHECK(av.notation == act.notationstr());
+        CHECK(av.sp_bars == act.sp_meter());
+        CHECK(av.bars == bars_text(act.sp_meter()));
+        CHECK(av.chord == act.chord.rowstr(true));
+        CHECK(av.squeeze_sentences.size() == act.sqinouts.size());
+        CHECK(av.backends.size() == act.display_backends().size());
         // One badge per timing the activation lists, in its order, orange
         // exactly where the activation calls that timing difficult.
         const std::vector<ActivationTiming> timings = act.badge_timings();
@@ -1381,6 +1404,24 @@ TEST_CASE("build_activations: a near-1 multiplier prints its decimals and its ro
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning.empty());
     CHECK_FALSE(v.acts[0].scale_warn);
+    REQUIRE(v.acts[0].backends.size() == 1);
+    CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
+}
+
+// D4: an activation with no stored scale is a bug the row shows rather than
+// hides. Fresh records never reach it (the corpus case above requires a stored
+// scale on every activation), so this builds the state by hand.
+TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
+    HydraRecord rec;
+    Activation act = scale_base();
+    act.backends.push_back(backend_at(-40.0));
+    Path p;
+    p.activations.push_back(act);
+
+    ActivationsView v = build_activations(p, rec, nullptr);
+    REQUIRE(v.acts.size() == 1);
+    CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
+    CHECK(v.acts[0].scale_warn);  // Q6: orange
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].rating.find("eff.") == std::string::npos);
 }
