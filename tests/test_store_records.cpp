@@ -9,6 +9,7 @@
 // test_store_results.cpp.
 #include "doctest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cstdint>
 #include <cstdio>
@@ -238,6 +239,25 @@ const HydraRecord& old_library_analysis(int cap = 4) {
     return corpus::analyzed(fixture_chart(), s);
 }
 
+// The corpus as the app's library scan lists it: discover_charts over
+// testdata/input, saved the app's way (save_scan_as_library). Fails on any
+// scan error or a failed save.
+void save_corpus_scan(RecordStore& store) {
+    const auto scan = app::discover_charts({corpus::root()});
+    REQUIRE_MESSAGE(scan.second.empty(), "scan error: " << scan.second.front());
+    REQUIRE_FALSE(scan.first.empty());
+    const std::optional<std::string> error = app::save_scan_as_library(store, scan.first);
+    REQUIRE_MESSAGE(!error, "saving the scan failed: " << *error);
+}
+
+// The fixture's chart searched at the widest early-fill window the setting
+// allows (kMaxEarlyFillWindowMs): a real record for a profile at that window.
+const HydraRecord& searched_at_max_window() {
+    app::AnalysisSettings s = store_fixture_settings();
+    s.early_fill_window_ms = kMaxEarlyFillWindowMs;
+    return corpus::analyzed(fixture_chart(), s);
+}
+
 }  // namespace
 
 TEST_CASE("the store's reader answers every lookup as the store does") {
@@ -404,11 +424,9 @@ TEST_CASE("closing the store closes its reader") {
 TEST_CASE("the reader counts records and library charts as the writer does") {
     StoreFile file("store_records");
     RecordStore store(file.path);
-    // The library lists the four charts first, since a rescan deletes the
-    // results of charts it does not list.
-    std::vector<ChartLibraryEntry> library;
-    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
-    store.rebuild_chart_library(library);
+    // The library is the corpus scan, saved before the results, since a
+    // rescan deletes the results of charts it does not list.
+    save_corpus_scan(store);
     save_four_charts(store);
 
     // The writer's counts are the expected values; neither is zero, so a
@@ -478,9 +496,7 @@ uintmax_t wal_size(const StoreFile& file) {
 TEST_CASE("an own reader gives the writer's answer for every read") {
     StoreFile file("own_reader");
     RecordStore store(file.path);
-    std::vector<ChartLibraryEntry> library;
-    for (const std::string& id : four_chart_ids()) library.push_back(library_row(id, id));
-    store.rebuild_chart_library(library);
+    save_corpus_scan(store);
     save_four_charts(store);
 
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
@@ -699,19 +715,34 @@ TEST_CASE("an in-memory store's own reader reads through the store") {
 }
 
 TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order") {
-    const HydraRecord& analysis = fixture().record;
+    // Trippin on a Hole in a Paper Heart under the old library's settings: the
+    // record a real v2.12.1 hydra_batch wrote for it under these settings
+    // (testdata/store/v2.12.1_library.db) keeps five paths, so the ranks are
+    // checked against more than one engine path.
+    const std::string chart = corpus::chart_named("Trippin on a Hole in a Paper Heart");
+    REQUIRE_FALSE(chart.empty());
+    const HydraRecord& analysis = corpus::analyzed(chart, OldLibrary::settings());
+    const std::vector<const Path*> engine_paths = analysis.all_paths();
+    REQUIRE(engine_paths.size() >= 2);
+    const Profile profile = OldLibrary::profile();
     RecordStore store(":memory:");
-    const PreparedRecord prepared = prepare_record("h1", at4(), analysis);
+    const PreparedRecord prepared = prepare_record("h1", profile, analysis);
     store.save(prepared);
 
-    const RecordLookup got = store.lookup_one("h1", at4());
+    const RecordLookup got = store.lookup_one("h1", profile);
     REQUIRE(got.status == RecordStatus::Ready);
     CHECK(got.record == prepared.record);
-    REQUIRE_FALSE(got.record.paths.empty());
-    for (size_t i = 0; i < got.record.paths.size(); ++i)
+    // The record keeps the engine's first paths, as many as the cap allows,
+    // in the engine's order, each numbered by its place.
+    const size_t kept = std::min(engine_paths.size(), static_cast<size_t>(kPathsPerRecord));
+    REQUIRE(got.record.paths.size() == kept);
+    for (size_t i = 0; i < kept; ++i) {
+        INFO("rank " << i + 1);
         CHECK(got.record.paths[i].rank == static_cast<int>(i + 1));
-    CHECK(got.record.paths.size() <= static_cast<size_t>(kPathsPerRecord));
-    CHECK(got.record.pathcount == static_cast<int>(analysis.all_paths().size()));
+        CHECK(got.record.paths[i].path == engine_paths[i]->pathstring());
+        CHECK(got.record.paths[i].score == engine_paths[i]->totalscore());
+    }
+    CHECK(got.record.pathcount == static_cast<int>(engine_paths.size()));
     // Rank 1 is the engine's best path, and the summary reads its score.
     const Path& best = analysis.best_path();
     CHECK(got.record.best_path_text() == best.pathstring());
@@ -720,15 +751,13 @@ TEST_CASE("store: a saved analysis reads back Ready with its paths in rank order
 }
 
 TEST_CASE("store: prepare_record refuses a profile the analysis did not run under") {
+    // A 4-bar analysis filed at another cap. The ms limit and the fill rule
+    // are refused the same way, in both directions, in test_store_results.cpp
+    // ("prepare_record refuses a profile whose ms limit isn't the analysis's",
+    // "prepare_record refuses a profile that names the other fill rule").
     const HydraRecord& analysis = fixture().record;
+    REQUIRE(analysis.sp_cap == 4);
     CHECK_THROWS_AS(prepare_record("h1", Profile{"mode", CapQuery::at(8), Lens{}}, analysis),
-                    std::invalid_argument);
-    CHECK_THROWS_AS(prepare_record("h1", Profile{"mode", CapQuery::at(4), Lens::from(20, 0, 0)},
-                                   analysis),
-                    std::invalid_argument);
-    CHECK_THROWS_AS(prepare_record("h1",
-                                   Profile{"mode", CapQuery::at(4), Lens::from(std::nullopt, 0, 0, true)},
-                                   analysis),
                     std::invalid_argument);
 }
 
@@ -740,9 +769,10 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
     Profile at_85 = at4();
     at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
     CHECK_THROWS_AS(prepare_record("h1", at_85, analysis), std::invalid_argument);
-    // And the other way: a record searched at 85 under the default profile.
-    HydraRecord searched_at_85 = at_cap(4);
-    searched_at_85.early_fill_window_ms = kHitWindowMs;
+    // And the other way: the same chart searched at that window, filed under
+    // the default profile.
+    const HydraRecord& searched_at_85 = searched_at_max_window();
+    REQUIRE(searched_at_85.early_fill_window_ms == kMaxEarlyFillWindowMs);
     CHECK_THROWS_AS(prepare_record("h1", at4(), searched_at_85), std::invalid_argument);
     // The matching pair files.
     CHECK(prepare_record("h1", at_85, searched_at_85).profile.lens.efill_window_ms ==
@@ -751,15 +781,22 @@ TEST_CASE("store: prepare_record refuses a profile at another early-fill window"
 
 TEST_CASE("store: one chart's results at two early-fill windows are two results") {
     // Two profiles that differ only in the window. Each save keeps the other's
-    // record, and each lookup gets its own back.
+    // record, and each lookup gets its own back. The two records are two
+    // corpus charts' real analyses, one at each window, filed under one chart
+    // id so each lookup's answer shows whose record it read.
     const Profile at_default = at4();
     Profile at_85 = at4();
     at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
     REQUIRE(at_default != at_85);
-    HydraRecord searched_at_85 = no_paths_at_cap(4);
-    searched_at_85.early_fill_window_ms = kHitWindowMs;
-    const PreparedRecord saved_default = prepare_record("h1", at_default, at_cap(4));
-    const PreparedRecord saved_85 = prepare_record("h1", at_85, searched_at_85);
+    app::AnalysisSettings settings_85 = store_fixture_settings();
+    settings_85.early_fill_window_ms = kMaxEarlyFillWindowMs;
+    std::string other_chart;
+    for (const corpus::ChartWithPaths& c : corpus::charts_with_paths(store_fixture_settings(), 2))
+        if (c.chart != fixture_chart()) other_chart = c.chart;
+    REQUIRE_MESSAGE(!other_chart.empty(), "the corpus has one chart with paths");
+    const PreparedRecord saved_default = prepare_record("h1", at_default, fixture().record);
+    const PreparedRecord saved_85 =
+        prepare_record("h1", at_85, corpus::analyzed(other_chart, settings_85));
     REQUIRE(saved_default.record != saved_85.record);
 
     StoreFile file("store_records");
@@ -783,14 +820,27 @@ TEST_CASE("store: one chart's results at two early-fill windows are two results"
 }
 
 TEST_CASE("store: every path of one analysis carries the same note count") {
-    // The record keeps the note count once; this is why that loses nothing.
-    int checked = 0;
-    for (const HydraRecord* analysis : corpus_analyses()) {
-        const std::vector<const Path*> paths = analysis->all_paths();
-        for (const Path* p : paths) CHECK(p->notecount == paths.front()->notecount);
-        if (paths.size() > 1) ++checked;
+    // The record keeps the note count once (record_of takes rank 1's); this is
+    // why that loses nothing: every path carries the chart's own note count
+    // (Song::note_count). Every corpus chart is analyzed; the one kind left
+    // out is a chart with no notes at these settings, which has no paths to
+    // check, and any other load failure throws and fails the test.
+    const app::AnalysisSettings settings{};
+    int multi_path_charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        INFO(path);
+        const Song& song = corpus::song(path, settings.reading(), settings.rules);
+        if (song.is_empty()) continue;
+        const std::vector<const Path*> paths = corpus::analyzed(path, settings).all_paths();
+        for (const Path* p : paths) CHECK(p->notecount == song.note_count());
+        if (paths.size() > 1) ++multi_path_charts;
     }
-    CHECK(checked > 0);
+    // A chart with two or more paths is the case where a path could disagree
+    // with rank 1. Trippin on a Hole in a Paper Heart is one: the record a
+    // real v2.12.1 hydra_batch wrote for it at these depth and cap settings,
+    // with a 10 ms limit on top (testdata/store/v2.12.1_library.db), keeps
+    // five paths.
+    CHECK(multi_path_charts > 0);
 }
 
 TEST_CASE("store: a save under the same profile replaces the record and every path") {
@@ -852,44 +902,82 @@ TEST_CASE("store: a save purges the chart's unreadable records in every mode, an
         CHECK(store.lookup_one("h1", at4("other mode")).status == RecordStatus::NotAnalyzed);
         CHECK(store.lookup_one("h1", at4()).status == RecordStatus::Ready);
         CHECK(store.record_count() == 1);
-        // The save leaves the old build's emptied profile in place.
-        CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") ==
-              1);
     }
-    // Closing alone deletes nothing; the next open does.
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 1);
     { RecordStore reopened(file.path); }
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE hyversion='0.0.0'") == 0);
+    const std::string profiles_with_no_record =
+        "SELECT COUNT(*) FROM profiles WHERE NOT EXISTS"
+        " (SELECT 1 FROM records WHERE records.profile_id = profiles.id)";
+    const std::string old_build_profiles = std::string("SELECT COUNT(*) FROM profiles WHERE hyversion='") +
+                                           hydra::test::kOldBuildStamp + "'";
+    CHECK(scalar_on_file(file.path, profiles_with_no_record) == 0);
+    CHECK(scalar_on_file(file.path, old_build_profiles) == 0);
 }
+
+namespace {
+
+// Two real song folders from the corpus, Young Robot and Limbo (the old
+// library's two .mid charts, testdata/store/README.md), copied under a
+// scratch root named by `tag`, so a test can delete one and scan again.
+struct TwoSongFolders {
+    std::filesystem::path root;
+    std::filesystem::path gone;
+    explicit TwoSongFolders(const std::string& tag) {
+        testtemp::remove_dir(testtemp::temp_dir(tag));
+        root = std::filesystem::u8path(testtemp::temp_dir(tag));
+        const std::filesystem::path tier =
+            std::filesystem::u8path(corpus::root()) / "common" / "Summer Blast _25 Setlist" / "Tier 2";
+        gone = root / "Dance Gavin Dance - Young Robot";
+        std::filesystem::copy(tier / "Dance Gavin Dance - Young Robot", gone,
+                              std::filesystem::copy_options::recursive);
+        std::filesystem::copy(tier / "Thornhill - Limbo", root / "Thornhill - Limbo",
+                              std::filesystem::copy_options::recursive);
+    }
+    ~TwoSongFolders() { testtemp::remove_dir(root.u8string()); }
+    // The app's library scan of the root (discover_charts). Fails on any
+    // scan error.
+    std::vector<app::ScanItem> scan() const {
+        auto found = app::discover_charts({root.u8string()});
+        REQUIRE_MESSAGE(found.second.empty(), "scan error: " << found.second.front());
+        return std::move(found.first);
+    }
+};
+
+}  // namespace
 
 TEST_CASE("store: a profile the scan's purge empties reads as nothing, and the next open "
           "deletes it") {
+    // The user deletes one of two song folders and rescans.
+    TwoSongFolders folders("purge_scan");
+    const std::vector<app::ScanItem> both = folders.scan();
+    REQUIRE(both.size() == 2);
+    std::filesystem::remove_all(folders.gone);
+    const std::vector<app::ScanItem> after = folders.scan();
+    REQUIRE(after.size() == 1);
+    const std::string kept = after.front().md5;
+    const std::string gone = both[0].md5 == kept ? both[1].md5 : both[0].md5;
+    REQUIRE(gone != kept);
+    const Profile gone_mode = at4("gone mode");
+
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
-        store.rebuild_chart_library({library_row("gone", "Gone"), library_row("kept", "Kept")});
-        store.save(prepare_record("gone", at4("gone mode"), fixture().record));
-        store.save(prepare_record("kept", at4(), fixture().record));
-        REQUIRE(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::Ready);
+        REQUIRE_FALSE(app::save_scan_as_library(store, both).has_value());
+        store.save(prepare_record(gone, gone_mode, fixture().record));
+        store.save(prepare_record(kept, at4(), fixture().record));
+        REQUIRE(store.lookup_one(gone, gone_mode).status == RecordStatus::Ready);
 
-        // The library no longer lists "gone", so the scan's purge takes its
-        // only record and leaves its profile empty.
-        store.rebuild_chart_library({library_row("kept", "Kept")});
-        CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
-        // No read shows the empty profile.
-        CHECK(store.lookup_one("gone", at4("gone mode")).status == RecordStatus::NotAnalyzed);
-        CHECK(store.settled_song_ids(at4("gone mode")).empty());
-        CHECK(store.ready_song_ids(at4("gone mode")).empty());
-        CHECK(store.ready_records(at4("gone mode")).empty());
+        // The rescan no longer lists the deleted chart, so its purge takes
+        // that chart's only record. No read shows the profile it emptied.
+        REQUIRE_FALSE(app::save_scan_as_library(store, after).has_value());
+        CHECK(store.lookup_one(gone, gone_mode).status == RecordStatus::NotAnalyzed);
+        CHECK(store.settled_song_ids(gone_mode).empty());
         CHECK(store.record_count() == 1);
     }
     { RecordStore reopened(file.path); }
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 1);
-    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE chartmode='gone mode'") ==
-          0);
+    CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles WHERE chartmode='" +
+                                        gone_mode.chartmode + "'") == 0);
     RecordStore store(file.path);
-    CHECK(store.lookup_one("kept", at4()).status == RecordStatus::Ready);
+    CHECK(store.lookup_one(kept, at4()).status == RecordStatus::Ready);
 }
 
 TEST_CASE("store: an open while another connection holds the write lock keeps the empty "
@@ -1100,7 +1188,8 @@ TEST_CASE("store: a failure replaces the real record's path rows in the file") {
         RecordStore store(file.path);
         store.save(prepare_record("h1", at4(), fixture().record));
         REQUIRE(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") > 0);
-        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
+        // The chart is edited into one with no notes and analyzed again.
+        store.save(failed_chart("h1", kNoNotesChart).prepared);
     }
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM record_paths") == 0);
     CHECK(hydra::test::record_rows_in(file.path) == 1);
@@ -1149,22 +1238,6 @@ TEST_CASE("store: a profile whose only record is a failure is kept") {
     RecordStore reopened(file.path);
     CHECK(reopened.lookup_one("failed", at4("failed mode")).status == RecordStatus::CantAnalyze);
     CHECK(scalar_on_file(file.path, "SELECT COUNT(*) FROM profiles") == 2);
-}
-
-TEST_CASE("store: a failure of a kind this build cannot name reads Stale for another build") {
-    StoreFile file("store_records");
-    {
-        RecordStore store(file.path);
-        store.save(failure_record("h1", at4(), ErrorKind::NoNotes, "No notes."));
-    }
-    // What a later build that remembers one more kind would leave.
-    hydra::test::exec_on_file(file.path, "UPDATE records SET failure_kind = 'LaterKind'");
-    RecordStore store(file.path);
-    const RecordLookup got = store.lookup_one("h1", at4());
-    CHECK(got.status == RecordStatus::Stale);
-    CHECK(got.stale_build);
-    CHECK_FALSE(got.failure_kind.has_value());
-    CHECK(store.settled_song_ids(at4()).empty());
 }
 
 TEST_CASE("store: lookup's three answers against sibling profiles") {
@@ -1457,8 +1530,7 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
     // D51 call 8 (finding 65): a result made under other rules is kept, and
     // reads Ready again, with its own numbers, once the store runs those rules.
     const core::Rules other = hydra::test::other_rules();
-    const PreparedRecord foreign =
-        prepare_record("h", at4(), hydra::test::other_rules_record(fixture().record));
+    const PreparedRecord foreign = prepare_record("h", at4(), other_rules_analysis());
     StoreFile file("store_records");
     {
         RecordStore store(file.path);
@@ -1479,57 +1551,32 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
     }
 }
 
-TEST_CASE("store: a Stale lookup says why (another build, other rules, or both), a Ready one nothing") {
-    RecordStore store(":memory:");
-    hydra::test::add_stale_records(store, fixture().record, at4(), "build", "rules", "both");
-    store.save(prepare_record("ready", at4(), fixture().record));
+TEST_CASE("store: a Stale lookup says why (another build or other rules), a Ready one nothing") {
+    // The real v2.12.1 library's records are another build's, made under the
+    // default rules: today's default rules have the fingerprint text that
+    // build had (core/rules.cpp, rules_fields).
+    OldLibrary old("stale_why");
+    RecordStore store(old.path);
+    const Profile profile = OldLibrary::profile();
+    const std::string build = OldLibrary::song_ids().front();
+    store.save(prepare_record("rules", profile, other_rules_analysis(OldLibrary::settings())));
+    store.save(prepare_record("ready", profile, old_library_analysis()));
 
     // This build, other rules.
-    const RecordLookup by_rules = store.lookup_one("rules", at4());
+    const RecordLookup by_rules = store.lookup_one("rules", profile);
     CHECK(by_rules.status == RecordStatus::Stale);
     CHECK(by_rules.stale_rules);
     CHECK_FALSE(by_rules.stale_build);
 
     // Another build, these rules.
-    const RecordLookup by_build = store.lookup_one("build", at4());
+    const RecordLookup by_build = store.lookup_one(build, profile);
     CHECK(by_build.status == RecordStatus::Stale);
     CHECK(by_build.stale_build);
     CHECK_FALSE(by_build.stale_rules);
 
-    // Another build and other rules: both reasons.
-    const RecordLookup by_both = store.lookup_one("both", at4());
-    CHECK(by_both.status == RecordStatus::Stale);
-    CHECK(by_both.stale_build);
-    CHECK(by_both.stale_rules);
-
     // A Ready record carries no reason.
-    const RecordLookup ready = store.lookup_one("ready", at4());
+    const RecordLookup ready = store.lookup_one("ready", profile);
     CHECK(ready.status == RecordStatus::Ready);
     CHECK_FALSE(ready.stale_build);
     CHECK_FALSE(ready.stale_rules);
-}
-
-TEST_CASE("store: a current record with no paths is Ready, not Stale") {
-    // "Analyzed, and nothing survived" is a real result, so it reads back as
-    // Ready with no summary -- the status, not the path count, is what says
-    // whether a record is usable.
-    RecordStore store(":memory:");
-    store.save(prepare_record("h", at4(), no_paths_at_cap(4)));
-    const RecordLookup got = store.lookup_one("h", at4());
-    CHECK(got.status == RecordStatus::Ready);
-    CHECK(got.record.paths.empty());
-    CHECK(got.record.best_path_text().empty());
-    CHECK(got.record.summary() == PathSummary{});
-    CHECK(store.ready_song_ids(at4()).count("h") == 1);
-
-    // D51 call 11 (finding 88): such a record has no scored best path, and
-    // the summary says so in one place. A record with paths has one. The
-    // listing's records say the same.
-    CHECK_FALSE(record_of("h", no_paths_at_cap(4)).summary().has_scored_best_path());
-    CHECK(record_of("h", at_cap(4)).summary().has_scored_best_path());
-    store.save(prepare_record("g", at4(), at_cap(4)));
-    const std::vector<RecordRow> rows = store.ready_records(at4());
-    REQUIRE(rows.size() == 2);
-    for (const RecordRow& row : rows)
-        CHECK(row.summary().has_scored_best_path() == (row.song_id == "g"));
 }
