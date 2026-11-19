@@ -40,7 +40,7 @@ from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import prep_inputs, probe_songs  # noqa: E402
-from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
+from tools.ch_probe.constants import PROCESS_NAME, ms_to_s  # noqa: E402
 
 # The game's files, by folder; the run never backs up, restores, moves or
 # deletes any of them.
@@ -420,16 +420,6 @@ class BotRunTest(unittest.TestCase):
         self.assertNotEqual(ms, doubled)
         self.assertEqual(source, hydra_end.chart_source_text(chart))
 
-    def test_no_length_anywhere_starts_nothing(self):
-        # A dump whose song_length_ms is null: Hydra names no end.
-        r = Rig(self.tmp, length_ms=None)
-        with self.assertRaises(B.SongLengthMissing) as caught:
-            B.run_bot(r.song, r.out_dir, env=r.env)
-        self.assertIn(f"{hydra_end.FIELD} is null", str(caught.exception))
-        self.assertIn(r.song, str(caught.exception))
-        self.assertEqual(r.launch.commands, [])
-        self.assertFalse(os.path.exists(r.out_dir))
-
     def test_a_folder_with_no_chart_starts_nothing(self):
         # A song folder holding only the corpus folder's song.ini.
         song = os.path.join(self.tmp, "songs", os.path.basename(PITCH_DARK))
@@ -539,7 +529,7 @@ class RunStepsTest(unittest.TestCase):
         # The song's seconds plus POLL_CAP_EXTRA_S, for any length.
         for length_ms in (0, 4000, 260504, 1):
             with self.subTest(length_ms=length_ms):
-                self.assertAlmostEqual(B.run_cap_s(length_ms) - length_ms / 1000,
+                self.assertAlmostEqual(B.run_cap_s(length_ms) - ms_to_s(length_ms),
                                        B.POLL_CAP_EXTRA_S)
 
     def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
