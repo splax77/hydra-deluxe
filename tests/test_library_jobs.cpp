@@ -1216,6 +1216,14 @@ void check_same_results(const hydra::ui::LibraryModel& got, const hydra::ui::Lib
     for (size_t i = 0; i < want.rows().size(); ++i) check_same_result(got.rows()[i], want.rows()[i]);
 }
 
+// The row of `library` for the chart file at `notespath`.
+const hydra::ui::LibraryRow& row_at_path(const hydra::ui::LibraryModel& library,
+                                         const std::string& notespath) {
+    for (const hydra::ui::LibraryRow& r : library.rows())
+        if (r.entry.notespath == notespath) return r;
+    throw std::runtime_error("the library has no row for " + notespath);
+}
+
 // Reads the store's charts, then their results in slices of `slice_charts`,
 // into `sliced`. Returns the rows answered after each slice. `after_slice`, if
 // given, runs after each slice's report with the rows answered so far.
@@ -1268,15 +1276,19 @@ TEST_CASE("jobs: results read in slices match one read") {
         REQUIRE(scanned[i].md5 < scanned[late_at].md5);
         saved_at.push_back(i);
     }
-    const ChartLibraryEntry& late = scanned[late_at];
+    // The late chart's row has an empty title. The library reads back by
+    // title, then in the order the rows were written (LibraryOrder::ByName),
+    // and no title sorts before an empty one, so written first it reads first.
+    ChartLibraryEntry late = scanned[late_at];
+    late.title.clear();
     const ChartLibraryEntry& ready = scanned[saved_at[0]];
 
-    // The library a scan of the corpus writes, in this row order: the Ready
-    // chart, the late chart, every other scanned row, then a copy of the
-    // Ready chart in a second folder, so one chart has the first and the last
-    // row. A slice of one chart reads those two rows in different slices.
+    // The library a scan of the corpus writes: the late chart, the Ready
+    // chart, every other scanned row, then a copy of the Ready chart in a
+    // second folder, so one chart has two rows. Both rows have one hash, so
+    // a slice of one chart reads them in different slices.
     const ChartLibraryEntry copy = copied_row(ready, empty_dir("slices_copy"));
-    std::vector<ChartLibraryEntry> rows{ready, late};
+    std::vector<ChartLibraryEntry> rows{late, ready};
     for (const ChartLibraryEntry& e : corpus_scan())
         if (e.notespath != ready.notespath && e.notespath != late.notespath) rows.push_back(e);
     rows.push_back(copy);
@@ -1303,18 +1315,18 @@ TEST_CASE("jobs: results read in slices match one read") {
     whole.set_summaries(store.lookup(whole.hashes(), profile));
     const size_t n = whole.rows().size();
     REQUIRE(n == rows.size());
-    REQUIRE(whole.rows().front().entry.md5 == ready.md5);
-    REQUIRE(whole.rows()[1].entry.md5 == late.md5);
-    REQUIRE(whole.rows().back().entry.md5 == ready.md5);
-    REQUIRE(whole.rows().back().entry.notespath == copy.notespath);
+    REQUIRE(whole.rows().front().entry.md5 == late.md5);
+    REQUIRE(whole.rows().front().entry.notespath == late.notespath);
+    REQUIRE(row_at_path(whole, ready.notespath).entry.md5 == ready.md5);
+    REQUIRE(row_at_path(whole, copy.notespath).entry.md5 == ready.md5);
     // The one read shows each saved result as the store files it.
     const auto row_of = [&whole](const std::string& md5) -> const hydra::ui::LibraryRow& {
         for (const hydra::ui::LibraryRow& r : whole.rows())
             if (r.entry.md5 == md5) return r;
         throw std::runtime_error("the one read has no row for " + md5);
     };
-    REQUIRE(whole.rows().front().status == hydra::store::RecordStatus::Ready);
-    REQUIRE(whole.rows().back().status == hydra::store::RecordStatus::Ready);
+    REQUIRE(row_at_path(whole, ready.notespath).status == hydra::store::RecordStatus::Ready);
+    REQUIRE(row_at_path(whole, copy.notespath).status == hydra::store::RecordStatus::Ready);
     REQUIRE(row_of(scanned[saved_at[1]].md5).status == hydra::store::RecordStatus::Stale);
     REQUIRE(row_of(scanned[saved_at[1]].md5).stale_build);
     REQUIRE(row_of(scanned[saved_at[2]].md5).status == hydra::store::RecordStatus::Stale);
@@ -1329,8 +1341,8 @@ TEST_CASE("jobs: results read in slices match one read") {
         CHECK(answered == slice_ends(n, 1));
         check_same_results(sliced, whole);
         // The chart in two folders has its result in both rows.
-        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
-        CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, ready.notespath).status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, copy.notespath).status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("two charts per slice") {
         hydra::ui::LibraryModel sliced;
@@ -1338,16 +1350,16 @@ TEST_CASE("jobs: results read in slices match one read") {
         // One report per slice, two rows more each time, ending on every row.
         CHECK(answered == slice_ends(n, 2));
         check_same_results(sliced, whole);
-        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
-        CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, ready.notespath).status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, copy.notespath).status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the store is asked in hash order") {
         // The late chart gets its result after the first slice of two. Its
-        // row is second, so asked in row order it was in the first slice and
+        // row is first, so asked in row order it was in the first slice and
         // would read Not analyzed. Asked in hash order it comes after the
         // four saved charts' five rows, so it is not in the first slice and
         // its row reads that result.
-        REQUIRE(whole.rows()[1].status == hydra::store::RecordStatus::NotAnalyzed);
+        REQUIRE(whole.rows().front().status == hydra::store::RecordStatus::NotAnalyzed);
         const hydra::HydraRecord& late_record = charts[late_at].result.record;
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered =
@@ -1356,8 +1368,8 @@ TEST_CASE("jobs: results read in slices match one read") {
                     store.save(hydra::store::prepare_record(late.md5, profile, late_record));
             });
         CHECK(answered == slice_ends(n, 2));
-        REQUIRE(sliced.rows()[1].entry.md5 == late.md5);
-        CHECK(sliced.rows()[1].status == hydra::store::RecordStatus::Ready);
+        REQUIRE(sliced.rows().front().entry.md5 == late.md5);
+        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the real slice size") {
         hydra::ui::LibraryModel sliced;
