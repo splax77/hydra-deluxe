@@ -1,12 +1,14 @@
-"""The report over the machine recorder's files. The CPU share and ready stretch
-tests read a real recording's excerpt under testdata/ch_runs; the rest build
-their rows here from the three files' columns. No test reads the live settings.ini.
+"""The report over the machine recorder's files. The tests whose classes end in
+"InARealRecording" read excerpts of a real recording under testdata/ch_runs; the
+rest build their rows here from the three files' columns. No test reads the live
+settings.ini.
 """
 import contextlib
 import csv
 import io
 import os
 import re
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -22,7 +24,7 @@ from tools.ch_mcp import machine_recorder  # noqa: E402
 from tools.ch_mcp import machine_report as R  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 
-GAME, WORKER, RECORDER, COMPILER = 7, 8, 9, 11
+GAME, WORKER, RECORDER = 7, 8, 9
 GAME_TID = 70
 BASE_S = 1000
 PERIOD_MS = 20
@@ -31,23 +33,30 @@ PERIOD_MS = 20
 # hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/machine-1: Clone Hero played
 # while a build ran, so compilers, ready game threads and idle processes are all in it.
 REAL_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1")
+# Samples 1700 to 1760 of the same run, copied the same way. The build made the
+# recorder late here, so ready stretches cross late samples and the clock has long excesses.
+LATE_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-1700-1760")
+# Samples 82 to 88 of the same run, copied the same way: the game's threads are in
+# from sample 83, and the worker's (pid 24320, the game's parent) first come at sample 88.
+RUN_START = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1-samples-82-88")
 GAME_NAME = "Clone Hero.exe"
 
 
-def real_rows(file_name):
-    with open(os.path.join(REAL_RUN, file_name), newline="", encoding="utf-8") as f:
+def real_rows(file_name, folder=REAL_RUN):
+    with open(os.path.join(folder, file_name), newline="", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 
-def real_game_pid():
-    pids = {int(row["pid"]) for row in real_rows(R.PROCESSES_FILE) if row["name"] == GAME_NAME}
+def real_game_pid(folder=REAL_RUN):
+    pids = {int(row["pid"]) for row in real_rows(R.PROCESSES_FILE, folder)
+            if row["name"] == GAME_NAME}
     assert len(pids) == 1, pids
     return pids.pop()
 
 
-def real_walls():
+def real_walls(folder=REAL_RUN):
     """Each sample number's wall time, as the text samples.csv holds."""
-    return {int(row["sample"]): row["wall_s"] for row in real_rows(R.SAMPLES_FILE)}
+    return {int(row["sample"]): row["wall_s"] for row in real_rows(R.SAMPLES_FILE, folder)}
 
 
 def wall_text(ms):
@@ -156,28 +165,54 @@ class Constants(unittest.TestCase):
 
 
 class RealRecordingCase(unittest.TestCase):
-    """Runs the report on REAL_RUN, the excerpt of a real recording."""
+    """Runs the report on FOLDER, the excerpt of a real recording."""
 
+    FOLDER = REAL_RUN
     TABLE_ROW = re.compile(r"^\s+(\d+\.\d)%(?:\s+(\d+\.\d)%)?  (.*)$")
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.documents = tmp.name
-        self.game = real_game_pid()
-        self.walls = real_walls()
+        self.game = real_game_pid(self.FOLDER)
+        self.walls = real_walls(self.FOLDER)
 
     def report(self, *args):
         """(exit code, output lines) of main on the real recording."""
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            code = R.main([REAL_RUN, str(self.game), *args], documents_dir=self.documents)
+            code = R.main([self.FOLDER, str(self.game), *args], documents_dir=self.documents)
         return code, out.getvalue().splitlines()
 
     def lines(self, *args):
         code, lines = self.report(*args)
         self.assertEqual(code, 0, lines)
         return lines
+
+    def rows(self, file_name):
+        return real_rows(file_name, self.FOLDER)
+
+    def thread_rows(self, pid, tid=None):
+        return [row for row in self.rows(R.THREADS_FILE)
+                if int(row["pid"]) == pid and (tid is None or int(row["tid"]) == tid)]
+
+    def line_of(self, lines, pid, tid):
+        """The one thread line for this pid and thread, whatever its role label."""
+        found = [line for line in lines if re.match(rf"  [a-z ]+ pid {pid} thread {tid}:", line)]
+        self.assertEqual(len(found), 1, lines)
+        return found[0]
+
+    def counts_from_rows(self, rows):
+        """The line's "running N, ready M" for these threads.csv rows, by their word."""
+        running = sum(row["reads_as"] == R.READS_RUNNING for row in rows)
+        ready = sum(row["reads_as"] == R.READS_READY for row in rows)
+        return f"running {running}, ready {ready}, "
+
+    def gap_ms(self, earlier, later):
+        return R._ms(Fraction(self.walls[later]) - Fraction(self.walls[earlier]))
+
+    def late_limit_ms(self):
+        return R.LONG_STEP_FACTOR * Fraction(self.rows(R.SAMPLES_FILE)[0]["period_ms"])
 
     def table(self, lines):
         """The CPU share table, in its printed order, as (who, shares) pairs;
@@ -362,56 +397,73 @@ class ReadyStretchesInARealRecording(RealRecordingCase):
 
 
 class ReadyStretches(ReportCase):
-    def fixture(self):
-        """The game's thread is ready in samples 3 to 5 and its second thread
-        in sample 8 alone. Two processes gain CPU in samples 3 to 5, and one
-        of them again outside the stretch."""
-        fx = Fixture()
-        fx.steady(12)
-        for n in (3, 4, 5):
-            fx.thread(n, reads_as="ready")
-            fx.process(n, COMPILER, "cl.exe", cpu_ms=15)
-            fx.process(n, 12, "MsMpEng.exe", cpu_ms=4)
-        fx.process(9, 13, "later.exe", cpu_ms=20)
-        fx.thread(8, tid=71, reads_as="ready")
-        fx.thread(9)
-        return fx
-
     def test_a_gap_in_the_samples_breaks_a_stretch(self):
         self.assertEqual(R.ready_stretches([1, 2, 4, 6, 7, 8]), [[1, 2], [6, 7, 8]])
 
+
+class ThreadWordsInARealRecording(RealRecordingCase):
     def test_a_row_is_read_by_its_word_and_never_its_state_number(self):
-        fx = Fixture()
-        fx.steady(4)
-        for n in (1, 2):
-            fx.thread(n, reads_as="other")
-        self.assertIn("  game pid 7 thread 70: running 0, ready 0, no ready stretch", self.lines(fx))
+        tid = 4248
+        mine = self.thread_rows(self.game, tid)
+        # This thread's ready rows carry more than one state number, so a count by
+        # one state number would differ from the count by word.
+        ready_states = {row["state"] for row in mine if row["reads_as"] == R.READS_READY}
+        self.assertGreater(len(ready_states), 1, ready_states)
+        line = self.line_of(self.lines(), self.game, tid)
+        self.assertTrue(line.startswith(f"  game pid {self.game} thread {tid}: "
+                                        + self.counts_from_rows(mine)), line)
+
+
+def game_parent(case):
+    """The game's parent in processes.csv: the worker that launched it in this run."""
+    parents = {int(row["parent_pid"]) for row in case.rows(R.PROCESSES_FILE)
+               if int(row["pid"]) == case.game}
+    case.assertEqual(len(parents), 1, parents)
+    return parents.pop()
+
+
+class ThreadRolesInARealRecording(RealRecordingCase):
+    FOLDER = LATE_RUN
 
     def test_worker_and_recorder_threads_print_too(self):
-        fx = self.fixture()
-        fx.thread(2, pid=WORKER, tid=80)
-        fx.thread(2, pid=RECORDER, tid=90)
-        fx.process(2, WORKER, "python.exe", parent=6)
-        fx.process(2, 6, "py.exe", parent=5)
-        lines = self.lines(fx, "--worker", str(WORKER))
-        self.assertIn("  worker pid 8 thread 80: running 1, ready 0, no ready stretch", lines)
-        self.assertIn("  recorder pid 9 thread 90: running 1, ready 0, no ready stretch", lines)
-
-    def test_a_pid_with_no_rows_in_the_window_says_so(self):
-        self.assertIn("  recorder pid 9: no thread rows in the window", self.lines(self.fixture()))
+        worker = game_parent(self)
+        recorder = self.recorder_pid()
+        self.assertNotIn(recorder, (worker, self.game))
+        lines = self.lines("--worker", str(worker))
+        for label, pid in (("worker", worker), ("recorder", recorder)):
+            tids = sorted({int(row["tid"]) for row in self.thread_rows(pid)})
+            self.assertTrue(tids, pid)
+            for tid in tids:
+                expected = (f"  {label} pid {pid} thread {tid}: "
+                            + self.counts_from_rows(self.thread_rows(pid, tid)))
+                self.assertTrue(self.line_of(lines, pid, tid).startswith(expected), expected)
 
     def test_one_pid_in_two_roles_prints_once(self):
-        fx = self.fixture()
-        fx.process(2, GAME, "pwsh.exe", parent=6)
-        lines = self.lines(fx, "--worker", str(GAME))
-        self.assertEqual(sum("thread 71" in line for line in lines), 1)
-        self.assertIn("  game and worker pid 7 thread 71: running 0, ready 1, no ready stretch",
-                      lines)
+        lines = self.lines("--worker", str(self.game))
+        tids = sorted({int(row["tid"]) for row in self.thread_rows(self.game)})
+        self.assertTrue(tids)
+        for tid in tids:
+            # line_of finds exactly one line for the thread, whatever its label.
+            self.assertTrue(self.line_of(lines, self.game, tid).startswith(
+                f"  game and worker pid {self.game} thread {tid}: "))
+
+
+class NoThreadRowsInARealRecording(RealRecordingCase):
+    FOLDER = RUN_START
+
+    def test_a_pid_with_no_rows_in_the_window_says_so(self):
+        worker = game_parent(self)
+        last = max(self.walls)
+        # The worker's threads first come in the excerpt's last sample, so a window
+        # that ends one sample earlier holds none of them.
+        self.assertEqual({int(row["sample"]) for row in self.thread_rows(worker)}, {last})
+        message = f"  worker pid {worker}: {R.NO_THREAD_ROWS}"
+        self.assertIn(message, self.lines("--worker", str(worker), "--to", self.walls[last - 1]))
+        self.assertNotIn(message, self.lines("--worker", str(worker)))
 
 
 class StretchesAcrossLateSamples(ReportCase):
-    LATE_MARK = ("across late samples: the span counts the recorder's lateness, "
-                 "so it is an upper bound on any wait")
+    LATE_MARK = R.LATE_MARK
 
     def ready_at(self, walls_ms, switches=None):
         """A thread ready in one sample at each of these times."""
@@ -423,36 +475,9 @@ class StretchesAcrossLateSamples(ReportCase):
     def stretch_line(self, fx, *args):
         return next(line for line in self.lines(fx, *args) if "thread 70" in line)
 
-    def four_late_samples(self):
-        return self.ready_at((0, 206, 296, 632), (42, 41, 2, 82))
-
-    def test_four_late_samples(self):
-        self.assertEqual(self.stretch_line(self.four_late_samples()),
-                         "  game pid 7 thread 70: running 0, ready 4, longest ready stretch: "
-                         "ready in 4 consecutive samples spanning 632.0 ms from wall 1000.000, "
-                         f"125 context switches gained inside, {self.LATE_MARK}, "
-                         "CPU gained in those samples: by nobody")
-
-    def test_a_window_counts_switches_from_its_own_first_sample(self):
-        line = self.stretch_line(self.four_late_samples(), "--from", wall_text(206))
-        self.assertIn("ready in 3 consecutive samples spanning 426.0 ms", line)
-        self.assertIn("84 context switches gained inside", line)
-
-    def test_samples_exactly_twice_the_period_apart_carry_no_mark(self):
-        line = self.stretch_line(self.ready_at((0, 2 * PERIOD_MS, 4 * PERIOD_MS)))
-        self.assertIn("spanning 80.0 ms", line)
-        self.assertNotIn("across late samples", line)
-
-    def test_samples_just_over_twice_the_period_apart_carry_the_mark(self):
-        self.assertIn(self.LATE_MARK,
-                      self.stretch_line(self.ready_at((0, 2 * PERIOD_MS + 1))))
-
     def test_normal_wobble_under_twice_the_period_carries_no_mark(self):
         line = self.stretch_line(self.ready_at((0, 25, 45, 85)))
-        self.assertNotIn("across late samples", line)
-
-    def test_one_late_gap_among_on_time_ones_carries_the_mark(self):
-        self.assertIn(self.LATE_MARK, self.stretch_line(self.ready_at((0, 20, 40, 100))))
+        self.assertNotIn(self.LATE_MARK, line)
 
     def test_one_sample_prints_no_stretch_and_no_mark(self):
         fx = Fixture()
@@ -462,39 +487,154 @@ class StretchesAcrossLateSamples(ReportCase):
                          "  game pid 7 thread 70: running 0, ready 1, no ready stretch")
 
 
+class LateStretchesInARealRecording(RealRecordingCase):
+    FOLDER = LATE_RUN
+    LATE_MARK = StretchesAcrossLateSamples.LATE_MARK
+
+    def ready_in(self, tid, run):
+        """Checks that this game thread is ready in exactly the samples of `run`
+        within run's own bounds, and returns its rows there."""
+        rows = [row for row in self.thread_rows(self.game, tid)
+                if run[0] <= int(row["sample"]) <= run[-1]]
+        self.assertEqual([int(row["sample"]) for row in rows
+                          if row["reads_as"] == R.READS_READY], run)
+        return rows
+
+    def window_line(self, tid, run):
+        lines = self.lines("--from", self.walls[run[0]], "--to", self.walls[run[-1]])
+        return self.line_of(lines, self.game, tid)
+
+    def late_gaps(self, run):
+        return [self.gap_ms(a, b) > self.late_limit_ms() for a, b in zip(run, run[1:])]
+
+    def expected_stretch(self, tid, run):
+        """The stretch text for these consecutive ready samples, read off the three files."""
+        switches = {int(row["sample"]): int(row["switches"]) for row in self.thread_rows(self.game, tid)}
+        first = min(self.walls)
+        gained = {}
+        for row in self.rows(R.PROCESSES_FILE):
+            # The first sample's amounts cover a slice from before the recording's start.
+            if int(row["sample"]) in run and int(row["sample"]) != first:
+                key = (int(row["pid"]), row["name"])
+                gained[key] = gained.get(key, Fraction(0)) + Fraction(row["cpu_ms"])
+        who = [f"pid {pid} {name or R.NO_NAME} {float(ms):.1f} ms"
+               for (pid, name), ms in sorted(gained.items(), key=lambda kv: (-kv[1], kv[0]))
+               if ms > 0]
+        late = f", {self.LATE_MARK}" if any(self.late_gaps(run)) else ""
+        return (f"longest ready stretch: ready in {len(run)} consecutive samples spanning "
+                f"{float(self.gap_ms(run[0], run[-1])):.1f} ms "
+                f"from wall {R._wall(Fraction(self.walls[run[0]]))}, "
+                f"{sum(switches[n] for n in run[1:])} context switches gained inside{late}, "
+                f"CPU gained in those samples: {', '.join(who) or 'by nobody'}")
+
+    def test_a_stretch_across_late_samples(self):
+        tid, run = 4248, [1723, 1724, 1725, 1726, 1727]
+        rows = self.ready_in(tid, run)
+        self.assertTrue(any(self.late_gaps(run)))
+        self.assertEqual(self.window_line(tid, run),
+                         f"  game pid {self.game} thread {tid}: " + self.counts_from_rows(rows)
+                         + self.expected_stretch(tid, run))
+
+    def test_a_window_counts_switches_from_its_own_first_sample(self):
+        tid, run = 4248, [1723, 1724, 1725, 1726, 1727]
+        self.ready_in(tid, run)
+        switches = {int(row["sample"]): int(row["switches"]) for row in self.thread_rows(self.game, tid)}
+        # The window starts one sample into the stretch. That sample's switches came
+        # before the window's stretch, so the count drops by them.
+        self.assertGreater(switches[run[1]], 0)
+        line = self.window_line(tid, run[1:])
+        self.assertIn(self.expected_stretch(tid, run[1:]), line)
+        self.assertNotIn(f" {sum(switches[n] for n in run[1:])} context switches", line)
+
+    def test_samples_just_over_twice_the_period_apart_carry_the_mark(self):
+        tid, run = 4832, [1702, 1703]
+        self.ready_in(tid, run)
+        limit = self.late_limit_ms()
+        # Just over: past the limit by less than a tenth of a period.
+        self.assertTrue(limit < self.gap_ms(*run) < limit + limit / R.LONG_STEP_FACTOR / 10,
+                        float(self.gap_ms(*run)))
+        self.assertIn(self.LATE_MARK, self.window_line(tid, run))
+
+    def test_one_late_gap_among_on_time_ones_carries_the_mark(self):
+        tid, run = 19512, [1703, 1704, 1705]
+        self.ready_in(tid, run)
+        self.assertEqual(self.late_gaps(run).count(True), 1, self.late_gaps(run))
+        self.assertIn(self.LATE_MARK, self.window_line(tid, run))
+
+
+class ClockInARealRecording(RealRecordingCase):
+    def clock_steps(self):
+        """(later sample's row, step ms, wall gap ms) for each pair of neighbouring
+        samples. Checks first that every sample has a clock reading the guard keeps,
+        so every neighbouring pair is a step."""
+        samples = self.rows(R.SAMPLES_FILE)
+        period = Fraction(samples[0]["period_ms"])
+        for row in samples:
+            self.assertTrue(row["clock_s"], row)
+            read_ms = R._ms(Fraction(row["clock_wall_after_s"]) - Fraction(row["clock_wall_before_s"]))
+            self.assertLessEqual(read_ms, period, row)
+        return [(later, R._ms(Fraction(later["clock_s"]) - Fraction(earlier["clock_s"])),
+                 R._ms(Fraction(later["wall_s"]) - Fraction(earlier["wall_s"])))
+                for earlier, later in zip(samples, samples[1:])]
+
+
+class CalmClockInARealRecording(ClockInARealRecording):
+    def test_a_calm_run_says_none_is_listed(self):
+        steps = self.clock_steps()
+        limit = self.late_limit_ms()
+        self.assertTrue(steps)
+        self.assertTrue(all(abs(step - gap) <= limit for _, step, gap in steps))
+        lines = self.lines()
+        self.assertIn(f"clock steps with an excess over {float(limit):g} ms by size: 0", lines)
+        self.assertIn(R.NO_LONG_STEP, lines)
+        self.assertFalse([line for line in lines if line.startswith("  wall ")])
+
+
+class LateClockInARealRecording(ClockInARealRecording):
+    FOLDER = LATE_RUN
+
+    def test_clock_steps(self):
+        steps = self.clock_steps()
+        lines = self.lines()
+        period = Fraction(self.rows(R.SAMPLES_FILE)[0]["period_ms"])
+        self.assertIn(f"clock reads dropped, their two stamps over one period "
+                      f"({float(period):g} ms) apart: 0", lines)
+        sizes = [step for _, step, _ in steps]
+        percentile = statistics.quantiles(sizes, n=100, method="inclusive")[R.STEP_PERCENTILE - 1]
+        self.assertIn(f"clock steps: count {len(sizes)}, median {float(statistics.median(sizes)):.1f}"
+                      f" ms, {R.STEP_PERCENTILE}th percentile {float(percentile):.1f} ms", lines)
+        limit = self.late_limit_ms()
+        long_steps = sorted([s for s in steps if abs(s[1] - s[2]) > limit],
+                            key=lambda s: -abs(s[1] - s[2]))
+        # More long steps than the list holds, so the cut is checked too.
+        self.assertGreater(len(long_steps), R.LONGEST_LISTED)
+        at = lines.index(f"clock steps with an excess over {float(limit):g} ms by size: "
+                         f"{len(long_steps)}")
+        self.assertEqual([line for line in lines[at:] if line.startswith("  wall ")],
+                         [f"  wall {R._wall(Fraction(row['wall_s']))}: step {float(step):.1f} ms, "
+                          f"wall gap {float(gap):.1f} ms, excess {float(step - gap):+.1f} ms"
+                          for row, step, gap in long_steps[:R.LONGEST_LISTED]])
+
+    def test_the_lead_line(self):
+        self.clock_steps()
+        offsets = [(R._ms(Fraction(row["clock_s"]) - Fraction(row["wall_s"])), row)
+                   for row in self.rows(R.SAMPLES_FILE)]
+        middle = statistics.median(offset for offset, _ in offsets)
+        high, high_at = max(offsets, key=lambda item: item[0])
+        low, low_at = min(offsets, key=lambda item: item[0])
+        self.assertIn("clock lead over wall time, against its median offset: "
+                      f"largest {float(high - middle):+.1f} ms at wall "
+                      f"{R._wall(Fraction(high_at['wall_s']))}, "
+                      f"lowest {float(low - middle):+.1f} ms at wall "
+                      f"{R._wall(Fraction(low_at['wall_s']))}", self.lines())
+
+
 class ClockSteps(ReportCase):
     SIX_PAIRS =((20, 20), (20, 20), (70, 20), (300, 100), (100, 100), (20, 80))
-
-    def test_six_pairs(self):
-        lines = self.lines(clock_fixture(self.SIX_PAIRS))
-        self.assertIn("clock reads dropped, their two stamps over one period (20 ms) apart: 0",
-                      lines)
-        self.assertIn("clock steps: count 6, median 45.0 ms, 99th percentile 290.0 ms", lines)
-        self.assertIn("clock steps with an excess over 40 ms by size: 3", lines)
-        at = lines.index("clock steps with an excess over 40 ms by size: 3")
-        self.assertEqual(lines[at + 2:at + 5], [
-            "  wall 1000.160: step 300.0 ms, wall gap 100.0 ms, excess +200.0 ms",
-            "  wall 1000.340: step 20.0 ms, wall gap 80.0 ms, excess -60.0 ms",
-            "  wall 1000.060: step 70.0 ms, wall gap 20.0 ms, excess +50.0 ms"])
-
-    def test_a_calm_run_says_none_is_listed(self):
-        lines = self.lines(clock_fixture(((20, 20), (21, 20), (19, 20))))
-        self.assertIn("clock steps with an excess over 40 ms by size: 0", lines)
-        self.assertIn("no clock step has an excess that long, so none is listed", lines)
-        self.assertFalse([line for line in lines if line.startswith("  wall ")])
 
     def test_the_late_sample_is_not_listed(self):
         lines = self.lines(clock_fixture(self.SIX_PAIRS))
         self.assertFalse([line for line in lines if "wall 1000.260" in line])
-
-    def test_six_pairs_lead(self):
-        self.assertIn("clock lead over wall time, against its median offset: "
-                      "largest +200.0 ms at wall 1000.160, lowest -50.0 ms at wall 1000.000",
-                      self.lines(clock_fixture(self.SIX_PAIRS)))
-
-    def test_an_excess_of_exactly_the_limit_is_not_long(self):
-        lines = self.lines(clock_fixture(((60, 20), (20, 60))))
-        self.assertIn("clock steps with an excess over 40 ms by size: 0", lines)
 
     def test_an_excess_just_over_the_limit_is_long(self):
         lines = self.lines(clock_fixture(((61, 20), (20, 61))))
