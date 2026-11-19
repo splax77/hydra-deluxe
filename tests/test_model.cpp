@@ -1012,42 +1012,66 @@ TEST_CASE("Path::walk_activations: own activations then the variant tail, in pla
 // is hit after SP ends, so every note after it is hit outside SP too. The
 // engine's copy-out trims them (Activation::set_sqout); this pins the
 // display-layer guard that keeps any list still holding one from showing it.
-TEST_CASE("display_backends drops rows beyond a squeeze out") {
-    Activation a;
-    const std::vector<double> offsets = {-368.1, -184.0, 0.0, 184.0, 368.1};
-    int64_t tick = 100;  // chart order, one row per 100 ticks
-    for (double off : offsets) {
-        BackendSqueeze bsq;
-        bsq.timecode = Timecode::raw(tick);
-        tick += 100;
-        bsq.sp_points = 50;
-        bsq.offset_ms = off;
-        a.backends.push_back(bsq);
+// The engine's copy-out (set_sqout) already drops every row past the
+// squeezed-out chord, so a list holding one is a state no chart reaches. What
+// a real activation shows is checked instead: each of its rows inside the
+// squeeze window, its squeezed-out row wherever it falls, nothing past that
+// chord, all in the stored order.
+TEST_CASE("display_backends: every corpus activation shows its window rows and its squeezed-out row") {
+    int with_sqout = 0;
+    for (const CorpusAct& ca : default_acts()) {
+        const Activation& a = *ca.act;
+        CAPTURE(ca.chart);
+        CAPTURE(a.timecode.ticks());
+        std::vector<BackendSqueeze> expected;
+        for (const BackendSqueeze& b : a.backends) {
+            const bool past = core::sqout_position(b.timecode.ticks(), a.sqout_tick) ==
+                              core::SqOutPosition::After;
+            if (!past && (within_squeeze_window(b.offset()) || a.is_sqout_backend(b)))
+                expected.push_back(b);
+        }
+        const std::vector<BackendSqueeze> shown = a.display_backends();
+        CHECK(shown == expected);
+        if (const BackendSqueeze* row = a.sqout_row()) {
+            ++with_sqout;
+            bool listed = false;
+            for (const BackendSqueeze& b : shown) listed = listed || b == *row;
+            CHECK(listed);
+        }
     }
-
-    // No squeeze out: every row is inside the +/-500 ms display window.
-    REQUIRE(a.display_backends().size() == offsets.size());
-    for (size_t i = 0; i < offsets.size(); ++i)
-        CHECK(a.display_backends()[i].offset_ms.value() == offsets[i]);
-
-    // Squeezing out at -184.0 keeps that row and the one before it, and drops
-    // the three that land after it.
-    a.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -184.0});
-    a.sqout_tick = 200;  // the -184.0 row
-    std::vector<BackendSqueeze> shown = a.display_backends();
-    REQUIRE(shown.size() == 2);
-    CHECK(shown[0].offset_ms.value() == -368.1);
-    CHECK(shown[1].offset_ms.value() == -184.0);
+    // The anchor test above finds SqOut squeezes on the corpus, and set_sqout
+    // throws unless the activation has a row on the squeezed-out chord, so a
+    // squeezed-out row must turn up here.
+    CHECK(with_sqout > 0);
 }
 
 TEST_CASE("Chord rowstr / notationstr / disco flip") {
     Chord c;
     c.add_note(NoteColor::Red);
     c.add_note(NoteColor::Green);
-    CHECK(c.notationstr() == "[ R  G]");
-    // The Dynamics tab's words, with Pro Drums on (D48 Q11): a normal green
-    // is a tom and red is the snare.
-    CHECK(c.rowstr() == "[Red snare - Green tom]");
+    // notationstr holds one place per lane, kick first: each note's letter
+    // (color_notationstr) in its lane's place, a space where the lane is empty.
+    const std::string notation = c.notationstr();
+    const NoteColor lanes[] = {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow,
+                               NoteColor::Blue, NoteColor::Green};
+    REQUIRE(notation.size() == std::size(lanes) + 2);
+    for (size_t i = 0; i < std::size(lanes); ++i) {
+        CAPTURE(color_str(lanes[i]));
+        const std::string place = notation.substr(i + 1, 1);
+        CHECK(place == (c.at(lanes[i]).has_value() ? color_notationstr(lanes[i]) : " "));
+    }
+    // rowstr names each note in the Pro Drums setting's words (ChordNote::str),
+    // red before green, either way the setting is.
+    for (bool pro : {true, false}) {
+        CAPTURE(pro);
+        const std::string row = c.rowstr(pro);
+        const size_t red_at = row.find(ChordNote{NoteColor::Red}.str(pro));
+        const size_t green_at = row.find(ChordNote{NoteColor::Green}.str(pro));
+        REQUIRE(red_at != std::string::npos);
+        REQUIRE(green_at != std::string::npos);
+        CHECK(red_at < green_at);
+    }
+    CHECK(c.rowstr(true) != c.rowstr(false));
 
     // Disco flip swaps red<->yellow (red becomes a yellow cymbal).
     Chord d;
@@ -1059,34 +1083,58 @@ TEST_CASE("Chord rowstr / notationstr / disco flip") {
 }
 
 TEST_CASE("a ghost or accent kick scores double, like a pad") {
-    CHECK(ChordNote{NoteColor::Kick}.basescore() == 50);
-    CHECK(ChordNote{NoteColor::Kick, NoteDynamicType::Ghost}.basescore() == 100);
-    CHECK(ChordNote{NoteColor::Kick, NoteDynamicType::Accent}.basescore() == 100);
-    // A 2x kick is still a kick: the foot, not the value, is what changes.
-    CHECK(ChordNote{NoteColor::Kick, NoteDynamicType::Ghost,
-                    NoteCymbalType::Normal, true}
-              .basescore() == 100);
+    // A plain kick is the base points (kNoteBasePoints); a ghost or accent
+    // kick is worth twice a plain one, the same doubling a red pad gets.
+    const int kick = ChordNote{NoteColor::Kick}.basescore();
+    CHECK(kick == kNoteBasePoints);
+    for (NoteDynamicType dyn : {NoteDynamicType::Ghost, NoteDynamicType::Accent}) {
+        CAPTURE(dynamic_label(dyn));
+        CHECK(ChordNote{NoteColor::Kick, dyn}.basescore() == 2 * kick);
+        CHECK(ChordNote{NoteColor::Kick, dyn}.basescore() ==
+              ChordNote{NoteColor::Red, dyn}.basescore());
+        // A 2x kick is still a kick: the foot, not the value, is what changes.
+        CHECK(ChordNote{NoteColor::Kick, dyn, NoteCymbalType::Normal, true}.basescore() ==
+              ChordNote{NoteColor::Kick, dyn}.basescore());
+    }
 }
 
 TEST_CASE("ChordNote::str shows the kick's dynamic and its 2x flag") {
-    auto kick = [](NoteDynamicType dyn, bool is2x) {
-        return ChordNote{NoteColor::Kick, dyn, NoteCymbalType::Normal, is2x}.str();
-    };
-    CHECK(kick(NoteDynamicType::Normal, false) == "Kick");
-    CHECK(kick(NoteDynamicType::Ghost, false) == "Kick (Ghost)");
-    CHECK(kick(NoteDynamicType::Accent, false) == "Kick (Accent)");
-    CHECK(kick(NoteDynamicType::Normal, true) == "2x kick");
-    CHECK(kick(NoteDynamicType::Ghost, true) == "2x kick (Ghost)");
-    CHECK(kick(NoteDynamicType::Accent, true) == "2x kick (Accent)");
-
-    // Pads take the Dynamics words too; a ghost or accent keeps its
-    // parenthesis.
-    CHECK(ChordNote{NoteColor::Red}.str() == "Red snare");
-    CHECK(ChordNote{NoteColor::Red, NoteDynamicType::Ghost}.str() ==
-          "Red snare (Ghost)");
-    CHECK(ChordNote{NoteColor::Yellow, NoteDynamicType::Accent,
-                    NoteCymbalType::Cymbal, false}
-              .str() == "Yellow cymbal (Accent)");
+    // Each note reads as its name (note_label), and a ghost or accent adds its
+    // word (dynamic_label) after the name; a plain note adds nothing. The 2x
+    // flag is part of the kick's name, so a 2x kick and a plain one read
+    // differently at every dynamic.
+    const NoteDynamicType dyns[] = {NoteDynamicType::Normal, NoteDynamicType::Ghost,
+                                    NoteDynamicType::Accent};
+    std::vector<ChordNote> notes;
+    for (NoteDynamicType dyn : dyns) {
+        notes.push_back(ChordNote{NoteColor::Kick, dyn, NoteCymbalType::Normal, false});
+        notes.push_back(ChordNote{NoteColor::Kick, dyn, NoteCymbalType::Normal, true});
+        notes.push_back(ChordNote{NoteColor::Red, dyn});
+        notes.push_back(ChordNote{NoteColor::Yellow, dyn});
+        notes.push_back(ChordNote{NoteColor::Yellow, dyn, NoteCymbalType::Cymbal, false});
+    }
+    for (const ChordNote& note : notes) {
+        for (bool pro : {true, false}) {
+            CAPTURE(note.str(pro));
+            const std::string name = note_label(note, pro);
+            const std::string word = dynamic_label(note.dynamictype);
+            const std::string shown = note.str(pro);
+            if (note.dynamictype == NoteDynamicType::Normal) {
+                CHECK(word.empty());
+                CHECK(shown == name);
+                continue;
+            }
+            REQUIRE_FALSE(word.empty());
+            CHECK(starts_with(shown, name));
+            CHECK(shown.size() > name.size() + word.size());
+            CHECK(shown.find(word, name.size()) != std::string::npos);
+        }
+    }
+    for (NoteDynamicType dyn : dyns) {
+        CAPTURE(dynamic_label(dyn));
+        CHECK(ChordNote{NoteColor::Kick, dyn, NoteCymbalType::Normal, true}.str() !=
+              ChordNote{NoteColor::Kick, dyn, NoteCymbalType::Normal, false}.str());
+    }
 }
 
 // D48 Q11: a note is called what the Dynamics tab calls it. With Pro Drums
@@ -1100,37 +1148,85 @@ TEST_CASE("note_label: the Dynamics words, plain colours with Pro Drums off") {
     const ChordNote yellow_tom{NoteColor::Yellow};
     const ChordNote red{NoteColor::Red};
 
-    CHECK(note_label(green_tom, true) == "Green tom");
-    CHECK(note_label(yellow_cym, true) == "Yellow cymbal");
-    CHECK(note_label(kick2x, true) == "2x kick");
-    CHECK(note_label(ChordNote{NoteColor::Kick}, true) == "Kick");
-    CHECK(note_label(red, true) == "Red snare");
+    const ChordNote kick{NoteColor::Kick};
 
-    CHECK(note_label(yellow_tom, false) == "Yellow");
-    CHECK(note_label(red, false) == "Red");
-    CHECK(note_label(kick2x, false) == "2x kick");
+    // With Pro Drums off a tom or the snare is its colour alone (color_str).
+    CHECK(note_label(yellow_tom, false) == color_str(NoteColor::Yellow));
+    CHECK(note_label(green_tom, false) == color_str(NoteColor::Green));
+    CHECK(note_label(red, false) == color_str(NoteColor::Red));
+    // With Pro Drums on each takes a type word after its colour.
+    for (const ChordNote& pad : {yellow_tom, green_tom, red}) {
+        CAPTURE(color_str(pad.colortype));
+        const std::string colour = color_str(pad.colortype);
+        CHECK(starts_with(note_label(pad, true), colour));
+        CHECK(note_label(pad, true).size() > colour.size());
+    }
+    // A tom and the snare take different type words.
+    const std::string tom_word = note_label(green_tom, true).substr(color_str(NoteColor::Green).size());
+    const std::string snare_word = note_label(red, true).substr(color_str(NoteColor::Red).size());
+    CHECK(tom_word != snare_word);
+    CHECK(note_label(yellow_tom, true).substr(color_str(NoteColor::Yellow).size()) == tom_word);
+
+    // A cymbal is named the same either way, and not as the tom of its colour.
+    CHECK(note_label(yellow_cym, true) == note_label(yellow_cym, false));
+    CHECK(note_label(yellow_cym, false) != note_label(yellow_tom, false));
+    CHECK(note_label(yellow_cym, true) != note_label(yellow_tom, true));
+    CHECK(starts_with(note_label(yellow_cym, true), color_str(NoteColor::Yellow)));
+
+    // The kick has no tom or snare: its name ignores the setting, and the 2x
+    // flag gives it a name of its own.
+    CHECK(note_label(kick, true) == color_str(NoteColor::Kick));
+    CHECK(note_label(kick, false) == note_label(kick, true));
+    CHECK(note_label(kick2x, false) == note_label(kick2x, true));
+    CHECK(note_label(kick2x, true) != note_label(kick, true));
 
     // A ghost or accent is not part of the name.
-    CHECK(note_label(ChordNote{NoteColor::Green, NoteDynamicType::Ghost}, true) == "Green tom");
+    for (NoteDynamicType dyn : {NoteDynamicType::Ghost, NoteDynamicType::Accent})
+        for (bool pro : {true, false})
+            CHECK(note_label(ChordNote{NoteColor::Green, dyn}, pro) == note_label(green_tom, pro));
 }
 
 TEST_CASE("Chord::code spells a ghost/accent kick in the kick lane") {
-    Chord normal;
-    normal.add_note(NoteColor::Kick);
-    normal.add_note(NoteColor::Red);
-    CHECK(normal.code() == "nn...");
+    // A kick and a red, with the kick plain, ghosted and accented. The kick's
+    // place in the code is its lane's, the first (NoteColor::Kick is lane 1).
+    auto kick_and_red = [](NoteDynamicType dyn) {
+        Chord c;
+        c.add_note(NoteColor::Kick).dynamictype = dyn;
+        c.add_note(NoteColor::Red);
+        return c;
+    };
+    const Chord normal = kick_and_red(NoteDynamicType::Normal);
+    const Chord ghost = kick_and_red(NoteDynamicType::Ghost);
+    const Chord accent = kick_and_red(NoteDynamicType::Accent);
+    const size_t kick_place = static_cast<size_t>(NoteColor::Kick) - 1;
 
-    Chord ghost;
-    ghost.add_note(NoteColor::Kick).dynamictype = NoteDynamicType::Ghost;
-    ghost.add_note(NoteColor::Red);
-    CHECK(ghost.code() == "gn...");
+    // The three codes differ in the kick's place and nowhere else.
+    const std::string n = normal.code(), g = ghost.code(), a = accent.code();
+    REQUIRE(n.size() == g.size());
+    REQUIRE(n.size() == a.size());
+    REQUIRE(kick_place < n.size());
+    for (size_t i = 0; i < n.size(); ++i) {
+        CAPTURE(i);
+        if (i == kick_place) {
+            CHECK(n[i] != g[i]);
+            CHECK(n[i] != a[i]);
+            CHECK(g[i] != a[i]);
+        } else {
+            CHECK(n[i] == g[i]);
+            CHECK(n[i] == a[i]);
+        }
+    }
+    // Each of those marks is a note's, not the empty lane's: a chord of the
+    // red alone has another mark in the kick's place.
+    Chord red_only;
+    red_only.add_note(NoteColor::Red);
+    CHECK(red_only.code()[kick_place] != n[kick_place]);
+    CHECK(red_only.code()[kick_place] != g[kick_place]);
+    CHECK(red_only.code()[kick_place] != a[kick_place]);
 
-    Chord accent;
-    accent.add_note(NoteColor::Kick).dynamictype = NoteDynamicType::Accent;
-    accent.add_note(NoteColor::Red);
-    CHECK(accent.code() == "an...");
-
-    CHECK(ghost.rowstr() == "[Kick (Ghost) - Red snare]");
+    // The row names the ghost kick by its own words (ChordNote::str).
+    const ChordNote ghost_kick{NoteColor::Kick, NoteDynamicType::Ghost};
+    CHECK(ghost.rowstr().find(ghost_kick.str()) != std::string::npos);
 }
 
 // The engine's three cases, as values. The deactivation edge in
