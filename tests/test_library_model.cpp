@@ -366,7 +366,7 @@ struct FailedChart {
     std::string live_what;      // its raw text
 };
 
-FailedChart failed_chart(hydra::store::RecordStore& store, const std::string& tag,
+FailedChart kept_failure(hydra::store::RecordStore& store, const std::string& tag,
                          const std::string& file_name, const std::string& text) {
     testtemp::remove_dir(testtemp::temp_dir(tag));
     const std::string dir = testtemp::temp_dir(tag);
@@ -788,9 +788,9 @@ TEST_CASE("library model: a stored failure's hover reads as the live failure doe
     // text (stored_failure_text), as library_table.cpp words it.
     hydra::store::RecordStore store(":memory:");
     const FailedChart no_notes =
-        failed_chart(store, "lm_hover_none", "notes.chart", guitar_only_chart());
+        kept_failure(store, "lm_hover_none", "notes.chart", guitar_only_chart());
     const FailedChart unreadable =
-        failed_chart(store, "lm_hover_bad", "notes.chart", "this is not a chart\n");
+        kept_failure(store, "lm_hover_bad", "notes.chart", "this is not a chart\n");
     LibraryModel m;
     m.set_charts({no_notes.entry, unreadable.entry});
     REQUIRE(m.set_summary_for(no_notes.entry.md5, no_notes.lookup) == 1);
@@ -828,11 +828,11 @@ TEST_CASE("library model: a new failure text or kind changes the row") {
     // the first chart's real answer in one field, to another chart's value.
     hydra::store::RecordStore store(":memory:");
     const FailedChart bad_chart =
-        failed_chart(store, "lm_fail_chart", "notes.chart", "this is not a chart\n");
+        kept_failure(store, "lm_fail_chart", "notes.chart", "this is not a chart\n");
     const FailedChart bad_mid =
-        failed_chart(store, "lm_fail_mid", "notes.mid", "this is not a MIDI file\n");
+        kept_failure(store, "lm_fail_mid", "notes.mid", "this is not a MIDI file\n");
     const FailedChart no_notes =
-        failed_chart(store, "lm_fail_none", "notes.chart", guitar_only_chart());
+        kept_failure(store, "lm_fail_none", "notes.chart", guitar_only_chart());
     REQUIRE(bad_mid.lookup.failure_kind == bad_chart.lookup.failure_kind);
     REQUIRE(bad_mid.lookup.failure_text != bad_chart.lookup.failure_text);
     REQUIRE(no_notes.lookup.failure_kind != bad_chart.lookup.failure_kind);
