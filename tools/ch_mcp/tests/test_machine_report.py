@@ -1,26 +1,53 @@
-"""The report over the machine recorder's files. Every fixture is built here from
-the three files' columns; no test reads a real recording or the live settings.ini.
+"""The report over the machine recorder's files. The CPU share and ready stretch
+tests read a real recording's excerpt under testdata/ch_runs; the rest build
+their rows here from the three files' columns. No test reads the live settings.ini.
 """
 import contextlib
 import csv
 import io
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
-
-from tools.ch_mcp import machine_recorder
-from tools.ch_mcp import machine_report as R
-from tools.ch_probe import constants as C
+from fractions import Fraction
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+if REPO not in sys.path:
+    # Run as a script (py -I leaves the repo off sys.path).
+    sys.path.insert(0, REPO)
+
+from tools.ch_mcp import machine_recorder  # noqa: E402
+from tools.ch_mcp import machine_report as R  # noqa: E402
+from tools.ch_probe import constants as C  # noqa: E402
 
 GAME, WORKER, RECORDER, COMPILER = 7, 8, 9, 11
 GAME_TID = 70
 BASE_S = 1000
-COMPILER_SAMPLES = range(50, 60)
 PERIOD_MS = 20
+
+# Samples 1650 to 1700 of the three files, header rows kept, copied unchanged from
+# hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/machine-1: Clone Hero played
+# while a build ran, so compilers, ready game threads and idle processes are all in it.
+REAL_RUN = os.path.join(REPO, "testdata", "ch_runs", "ls-t3-run-b", "machine-1")
+GAME_NAME = "Clone Hero.exe"
+
+
+def real_rows(file_name):
+    with open(os.path.join(REAL_RUN, file_name), newline="", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
+
+
+def real_game_pid():
+    pids = {int(row["pid"]) for row in real_rows(R.PROCESSES_FILE) if row["name"] == GAME_NAME}
+    assert len(pids) == 1, pids
+    return pids.pop()
+
+
+def real_walls():
+    """Each sample number's wall time, as the text samples.csv holds."""
+    return {int(row["sample"]): row["wall_s"] for row in real_rows(R.SAMPLES_FILE)}
 
 
 def wall_text(ms):
@@ -122,73 +149,216 @@ class Constants(unittest.TestCase):
             self.assertIn(name, machine_recorder.SAMPLES_COLUMNS)
         for name in R.PROCESS_OPTIONAL:
             self.assertIn(name, machine_recorder.PROCESSES_COLUMNS)
-        self.assertEqual((R.READS_READY, R.READS_RUNNING), ("ready", "running"))
+        # The words the report counts are the ones a real recorder wrote.
+        words = {row["reads_as"] for row in real_rows(R.THREADS_FILE)}
+        self.assertIn(R.READS_READY, words)
+        self.assertIn(R.READS_RUNNING, words)
 
 
-class CpuShares(ReportCase):
-    def fixture(self):
-        """100 samples at 20 ms and four processes. The compiler runs only in
-        the COMPILER_SAMPLES, and the game drops to 5 ms a slice there."""
-        fx = Fixture()
-        fx.steady(100)
-        for n in range(100):
-            fx.thread(n)
-            busy = n in COMPILER_SAMPLES
-            fx.process(n, GAME, "Clone Hero.exe", cpu_ms=5 if busy else 10)
-            fx.process(n, WORKER, "python.exe", cpu_ms=2)
-            fx.process(n, RECORDER, "python.exe", cpu_ms=3)
-            if busy:
-                fx.process(n, COMPILER, "cl.exe", cpu_ms=20)
-        return fx
+class RealRecordingCase(unittest.TestCase):
+    """Runs the report on REAL_RUN, the excerpt of a real recording."""
 
+    TABLE_ROW = re.compile(r"^\s+(\d+\.\d)%(?:\s+(\d+\.\d)%)?  (.*)$")
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.documents = tmp.name
+        self.game = real_game_pid()
+        self.walls = real_walls()
+
+    def report(self, *args):
+        """(exit code, output lines) of main on the real recording."""
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = R.main([REAL_RUN, str(self.game), *args], documents_dir=self.documents)
+        return code, out.getvalue().splitlines()
+
+    def lines(self, *args):
+        code, lines = self.report(*args)
+        self.assertEqual(code, 0, lines)
+        return lines
+
+    def table(self, lines):
+        """The CPU share table, in its printed order, as (who, shares) pairs;
+        `who` is the row's text after its shares, label included."""
+        start = next(at for at, line in enumerate(lines) if line.startswith("CPU share of one core"))
+        rows = []
+        for line in lines[start + 1:]:
+            found = self.TABLE_ROW.match(line)
+            if not found:
+                break
+            shares = [float(found.group(1))] + ([float(found.group(2))] if found.group(2) else [])
+            rows.append((found.group(3), shares))
+        self.assertTrue(rows, lines)
+        return rows
+
+    @staticmethod
+    def who(pid, name):
+        return f"pid {pid} {name or R.NO_NAME}"
+
+    def shares_of(self, table, pid, name):
+        """The shares of one process's row, or None when it has no row."""
+        key = self.who(pid, name)
+        found = [shares for who, shares in table if who == key or who.startswith(key + " (")]
+        self.assertLessEqual(len(found), 1, key)
+        return found[0] if found else None
+
+    def recorder_pid(self):
+        return int(real_rows(R.SAMPLES_FILE)[0]["recorder_pid"])
+
+    def cpu_by_process(self, first_sample_too=True):
+        """Each (pid, name) in processes.csv and the CPU its rows hold."""
+        first = min(self.walls)
+        totals = {}
+        for row in real_rows(R.PROCESSES_FILE):
+            key = (int(row["pid"]), row["name"])
+            gained = Fraction(row["cpu_ms"])
+            if not first_sample_too and int(row["sample"]) == first:
+                gained = Fraction(0)
+            totals[key] = totals.get(key, Fraction(0)) + gained
+        return totals
+
+
+class CpuShares(RealRecordingCase):
     def test_whole_recording(self):
-        lines = self.lines(self.fixture())
+        lines = self.lines()
         self.assertIn("window: the whole recording", lines)
-        self.assertIn("    47.5%  pid 7 Clone Hero.exe (game)", lines)
-        self.assertIn("    10.1%  pid 11 cl.exe", lines)
-        self.assertIn("    15.0%  pid 9 python.exe (recorder)", lines)
+        table = self.table(lines)
+        self.assertIn(f"{self.who(self.game, GAME_NAME)} (game)", [who for who, _ in table])
+        recorder = self.recorder_pid()
+        recorder_row = [shares for who, shares in table
+                        if who.startswith(f"pid {recorder} ") and who.endswith("(recorder)")]
+        self.assertEqual(len(recorder_row), 1, table)
+        # The table and the recorder cost line are two prints of one share.
+        cost = next(line for line in lines if line.startswith(f"recorder cost: pid {recorder},"))
+        self.assertEqual(float(re.search(r", (\d+\.\d)% of one core", cost).group(1)),
+                         recorder_row[0][0])
+        shares = [shares[0] for _, shares in table]
+        self.assertEqual(shares, sorted(shares, reverse=True))
 
     def test_the_window_changes_the_shares(self):
-        lines = self.lines(self.fixture(), "--from", wall_text(COMPILER_SAMPLES[0] * 20),
-                           "--to", wall_text(COMPILER_SAMPLES[-1] * 20))
-        self.assertIn("window: wall 1001.000 to 1001.180, 200.0 ms of slices", lines)
-        self.assertIn("    47.5%   25.0%  pid 7 Clone Hero.exe (game)", lines)
-        self.assertIn("    10.1%  100.0%  pid 11 cl.exe", lines)
-        self.assertIn("    15.0%   15.0%  pid 9 python.exe (recorder)", lines)
+        whole = dict(self.table(self.lines()))
+        start, end = self.walls[1673], self.walls[1676]
+        lines = self.lines("--from", start, "--to", end)
+        self.assertTrue(any(line.startswith(f"window: wall {R._wall(Fraction(start))} to "
+                                            f"{R._wall(Fraction(end))}, ") for line in lines),
+                        lines)
+        windowed = self.table(lines)
+        self.assertEqual({who: shares[0] for who, shares in windowed},
+                         {who: shares[0] for who, shares in whole.items()})
+        self.assertTrue(all(len(shares) == 2 for _, shares in windowed))
+        self.assertTrue([who for who, shares in windowed if shares[0] != shares[1]])
 
     def test_a_process_stamped_on_the_window_edge_is_inside(self):
-        last = wall_text(COMPILER_SAMPLES[-1] * 20)
-        lines = self.lines(self.fixture(), "--from", last, "--to", last)
-        self.assertIn("    10.1%  100.0%  pid 11 cl.exe", lines)
+        edge = 1675
+        lines = self.lines("--from", self.walls[edge], "--to", self.walls[edge])
+        self.assertIn("threads in the window, out of 1 samples:", lines)
+        table = self.table(lines)
+        gained_there = {(int(row["pid"]), row["name"]) for row in real_rows(R.PROCESSES_FILE)
+                        if int(row["sample"]) == edge and Fraction(row["cpu_ms"]) > 0}
+        self.assertTrue(gained_there)
+        for pid, name in gained_there:
+            self.assertGreater(self.shares_of(table, pid, name)[1], 0, (pid, name))
+        elsewhere = [key for key, ms in self.cpu_by_process(first_sample_too=False).items()
+                     if ms > 0 and key not in gained_there]
+        self.assertTrue(elsewhere)
+        for pid, name in elsewhere:
+            self.assertEqual(self.shares_of(table, pid, name)[1], 0.0, (pid, name))
 
     def test_the_first_sample_ends_no_slice(self):
-        fx = self.fixture()
-        fx.process(0, GAME, "Clone Hero.exe", cpu_ms=100000)
-        self.assertIn("    47.5%  pid 7 Clone Hero.exe (game)", self.lines(fx))
+        rec = R.read_recording(REAL_RUN)
+        first, rest = rec.samples[0], rec.samples[1:]
+        self.assertEqual(R.window_of(rec.samples, None, None).slices,
+                         {sample.number for sample in rest})
+        # A window that holds only the first sample has no slice to report.
+        code, lines = self.report("--from", self.walls[first.number],
+                                  "--to", self.walls[first.number])
+        self.assertEqual(code, 1, lines)
+        second = self.walls[rest[0].number]
+        self.lines("--from", second, "--to", second)
 
     def test_always_listed_names_print_at_zero(self):
-        lines = self.lines(self.fixture())
-        for name in ("link", "MSBuild", "Spotify.exe", "MsMpEng.exe"):
-            self.assertIn(f"     0.0%  pid - {name}", lines)
-        self.assertNotIn("     0.0%  pid - cl", lines)
+        table = dict(self.table(self.lines()))
+        stems = {R._stem(row["name"]) for row in real_rows(R.PROCESSES_FILE)}
+        absent = [name for name in R.ALWAYS_LISTED_NAMES if R._stem(name) not in stems]
+        present = [name for name in R.ALWAYS_LISTED_NAMES if R._stem(name) in stems]
+        # This recording holds both kinds, so both halves of the rule are checked.
+        self.assertTrue(absent)
+        self.assertTrue(present)
+        for name in absent:
+            self.assertEqual(table.get(f"pid - {name}"), [0.0], name)
+        for name in present:
+            self.assertNotIn(f"pid - {name}", table, name)
 
     def test_a_listed_process_with_rows_but_no_cpu_keeps_its_pid(self):
-        fx = self.fixture()
-        fx.process(3, 44, "Spotify.exe", read=5)
-        lines = self.lines(fx)
-        self.assertIn("     0.0%  pid 44 Spotify.exe", lines)
-        self.assertNotIn("     0.0%  pid - Spotify.exe", lines)
+        table = self.table(self.lines())
+        idle_listed = [(pid, name) for (pid, name), ms in self.cpu_by_process().items()
+                       if ms == 0 and R._always_listed(name)]
+        self.assertTrue(idle_listed)
+        for pid, name in idle_listed:
+            self.assertEqual(self.shares_of(table, pid, name), [0.0], (pid, name))
 
     def test_a_process_that_gained_nothing_and_is_not_listed_stays_out(self):
-        fx = self.fixture()
-        fx.process(3, 45, "idle.exe", read=5)
-        self.assertFalse([line for line in self.lines(fx) if "%" in line and "idle.exe" in line])
+        table = self.table(self.lines())
+        roles = {self.game, self.recorder_pid()}
+        idle = [(pid, name) for (pid, name), ms in self.cpu_by_process().items()
+                if ms == 0 and not R._always_listed(name) and pid not in roles]
+        self.assertTrue(idle)
+        for pid, name in idle:
+            self.assertIsNone(self.shares_of(table, pid, name), (pid, name))
 
     def test_a_window_with_no_slice_is_refused(self):
-        code, lines = self.run_report(self.fixture(), "--from", "5000")
+        first, last = self.walls[min(self.walls)], self.walls[max(self.walls)]
+        code, lines = self.report("--from", str(Fraction(last) + 1))
         self.assertEqual(code, 1)
-        self.assertIn("refused: no slice ends in that window; the recording runs from "
-                      "wall 1000.000 to 1001.980", lines)
+        refusal = lines[-1]
+        self.assertTrue(refusal.startswith("refused: "), lines)
+        self.assertIn(R._wall(Fraction(first)), refusal)
+        self.assertIn(R._wall(Fraction(last)), refusal)
+        self.assertFalse([line for line in lines if line.startswith("CPU share")])
+
+
+class ReadyStretchesInARealRecording(RealRecordingCase):
+    def ready_samples(self, tid):
+        """The samples in which this game thread reads as ready, from threads.csv."""
+        return sorted(int(row["sample"]) for row in real_rows(R.THREADS_FILE)
+                      if int(row["pid"]) == self.game and int(row["tid"]) == tid
+                      and row["reads_as"] == R.READS_READY)
+
+    def thread_line(self, lines, tid):
+        found = [line for line in lines if line.startswith(f"  game pid {self.game} thread {tid}:")]
+        self.assertEqual(len(found), 1, lines)
+        return found[0]
+
+    def test_consecutive_ready_samples_are_one_stretch(self):
+        self.assertEqual(self.ready_samples(9856), [1673, 1674, 1675, 1676])
+        line = self.thread_line(self.lines(), 9856)
+        self.assertIn("ready 4, longest ready stretch: ready in 4 consecutive samples", line)
+        self.assertIn(f"from wall {R._wall(Fraction(self.walls[1673]))},", line)
+
+    def test_one_ready_sample_counts_but_is_no_stretch(self):
+        self.assertEqual(self.ready_samples(5080), [1681])
+        self.assertTrue(self.thread_line(self.lines(), 5080).endswith(
+            "ready 1, no ready stretch"))
+
+    def test_two_ready_samples_are_the_boundary(self):
+        self.assertEqual(self.ready_samples(23748), [1670, 1671, 1677, 1680])
+        # Its one run of consecutive samples, 1670 and 1671, is exactly the shortest stretch.
+        self.assertEqual(len([1670, 1671]), R.READY_STRETCH_MIN)
+        line = self.thread_line(self.lines(), 23748)
+        self.assertIn("ready 4, longest ready stretch: ready in 2 consecutive samples", line)
+        self.assertIn(f"from wall {R._wall(Fraction(self.walls[1670]))},", line)
+
+    def test_the_window_clips_a_stretch(self):
+        self.assertEqual(self.ready_samples(9856), [1673, 1674, 1675, 1676])
+        line = self.thread_line(self.lines("--from", self.walls[1675]), 9856)
+        self.assertIn("ready 2, longest ready stretch: ready in 2 consecutive samples", line)
+        self.assertIn(f"from wall {R._wall(Fraction(self.walls[1675]))},", line)
+        lines = self.lines("--from", self.walls[1676])
+        self.assertTrue(self.thread_line(lines, 9856).endswith("ready 1, no ready stretch"))
+        inside = sum(number >= 1676 for number in self.walls)
+        self.assertIn(f"threads in the window, out of {inside} samples:", lines)
 
 
 class ReadyStretches(ReportCase):
@@ -207,33 +377,8 @@ class ReadyStretches(ReportCase):
         fx.thread(9)
         return fx
 
-    def test_three_ready_samples_are_one_stretch(self):
-        self.assertIn("  game pid 7 thread 70: running 1, ready 3, longest ready stretch: "
-                      "ready in 3 consecutive samples spanning 40.0 ms from wall 1000.060, "
-                      "2 context switches gained inside, CPU gained in those samples: "
-                      "pid 11 cl.exe 45.0 ms, pid 12 MsMpEng.exe 12.0 ms", self.lines(self.fixture()))
-
-    def test_one_ready_sample_counts_but_is_no_stretch(self):
-        self.assertIn("  game pid 7 thread 71: running 0, ready 1, no ready stretch",
-                      self.lines(self.fixture()))
-
-    def test_two_ready_samples_are_the_boundary(self):
-        fx = Fixture()
-        fx.steady(6)
-        fx.thread(2, reads_as="ready")
-        fx.thread(3, reads_as="ready")
-        self.assertIn("  game pid 7 thread 70: running 0, ready 2, longest ready stretch: "
-                      "ready in 2 consecutive samples spanning 20.0 ms from wall 1000.040, "
-                      "1 context switches gained inside, CPU gained in those samples: by nobody",
-                      self.lines(fx))
-
     def test_a_gap_in_the_samples_breaks_a_stretch(self):
         self.assertEqual(R.ready_stretches([1, 2, 4, 6, 7, 8]), [[1, 2], [6, 7, 8]])
-
-    def test_the_window_clips_a_stretch(self):
-        lines = self.lines(self.fixture(), "--from", wall_text(100), "--to", wall_text(200))
-        self.assertIn("  game pid 7 thread 70: running 1, ready 1, no ready stretch", lines)
-        self.assertIn("threads in the window, out of 6 samples:", lines)
 
     def test_a_row_is_read_by_its_word_and_never_its_state_number(self):
         fx = Fixture()
