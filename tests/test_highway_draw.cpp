@@ -55,7 +55,7 @@ struct PitchDarkScenes {
     PreviewScene ghosted;  // the same path, with the record's best path as the ghost
 };
 
-const PitchDarkScenes& pitch_dark() {
+const PitchDarkScenes& pitch_dark_scenes() {
     static const PitchDarkScenes scenes = [] {
         const AnalysisSettings cfg = Settings().to_analysis_settings();
         const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
@@ -567,7 +567,7 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
 // activation lane names (PreviewLane Red..Green after Kick, Pad Red..Green).
 TEST_CASE("build_highway_draws: each taken fill lights its own lane over its stretch") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().path;
+    const PreviewScene& scene = pitch_dark_scenes().path;
     const TrackState st = build_track_state(scene, TrackStateOptions{});
     int checked = 0;
     for (size_t i = 0; i < scene.activations.size(); ++i) {
@@ -602,7 +602,7 @@ TEST_CASE("build_highway_draws: each taken fill lights its own lane over its str
 // no lit lane, since nothing activates there.
 TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().path;
+    const PreviewScene& scene = pitch_dark_scenes().path;
     const TrackState st = build_track_state(scene, TrackStateOptions{});
     int checked = 0;
     for (size_t i = 0; i < scene.fills.size(); ++i) {
@@ -629,7 +629,7 @@ TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
 // lane strip at all.
 TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().bare;
+    const PreviewScene& scene = pitch_dark_scenes().bare;
     REQUIRE(scene.drum_lanes.empty());
     REQUIRE_FALSE(scene.fills.empty());
     const TrackState st = build_track_state(scene, TrackStateOptions{});
@@ -814,7 +814,7 @@ OutlineSeen check_ghost_outline(const TrackState& ghosted, const TrackState& pla
 // far end passes the fill's end.
 TEST_CASE("build_highway_draws: a ghost fill draws the offered strip's outline, nothing else does") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PitchDarkScenes& pd = pitch_dark();
+    const PitchDarkScenes& pd = pitch_dark_scenes();
     REQUIRE_FALSE(pd.ghosted.ghost_fills.empty());
     const TrackState ghosted = build_track_state(pd.ghosted, TrackStateOptions{});
     const TrackState plain = build_track_state(pd.path, TrackStateOptions{});
@@ -835,7 +835,7 @@ TEST_CASE("build_highway_draws: a ghost fill draws the offered strip's outline, 
 // has no near edge; the sides stop at the cut.
 TEST_CASE("build_highway_draws: a ghost fill cut by the window has no edge at the cut") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PitchDarkScenes& pd = pitch_dark();
+    const PitchDarkScenes& pd = pitch_dark_scenes();
     REQUIRE_FALSE(pd.ghosted.ghost_fills.empty());
     const TrackState ghosted = build_track_state(pd.ghosted, TrackStateOptions{});
     const TrackState plain = build_track_state(pd.path, TrackStateOptions{});
@@ -900,7 +900,7 @@ std::vector<bool> chord_energy(const TrackState& st, const PreviewConfig& cfg, d
 // first chord after it draws every gem plain.
 TEST_CASE("build_highway_draws: the chord after a phrase ends draws plain") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().bare;
+    const PreviewScene& scene = pitch_dark_scenes().bare;
     REQUIRE_FALSE(scene.sp_phrases.empty());
     const TrackState st = build_track_state(scene, TrackStateOptions{});
     int checked = 0;
@@ -1056,7 +1056,7 @@ std::vector<ToggleSpan> check_rails_follow_sp(const TrackState& st, const Previe
 // rails turn the SP colour where SP starts and grey where it runs out.
 TEST_CASE("build_highway_draws: the railings turn the SP colour inside an active window") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().path;
+    const PreviewScene& scene = pitch_dark_scenes().path;
     const TrackState st = build_track_state(scene, TrackStateOptions{});
     int starts = 0, ends = 0;
     for (size_t i = 0; i < scene.activations.size(); ++i) {
@@ -1091,7 +1091,7 @@ TEST_CASE("build_highway_draws: the railings turn the SP colour inside an active
 // one grey box from the near end to the far end.
 TEST_CASE("build_highway_draws: no SP window in view leaves two grey railings") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().bare;
+    const PreviewScene& scene = pitch_dark_scenes().bare;
     REQUIRE(scene.activations.empty());
     REQUIRE_FALSE(scene.sp_phrases.empty());
     const TrackState st = build_track_state(scene, TrackStateOptions{});
@@ -1115,7 +1115,7 @@ TEST_CASE("build_highway_draws: no SP window in view leaves two grey railings") 
 // farthest is.
 TEST_CASE("build_highway_draws: an SP window clipped by the view shows no change at the clip") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PreviewScene& scene = pitch_dark().path;
+    const PreviewScene& scene = pitch_dark_scenes().path;
     const TrackState st = build_track_state(scene, TrackStateOptions{});
     // How far the far and near ends sit from the playhead at speed 1.
     const HighwayView at0 = view_at(cfg, 0.0);
@@ -1147,7 +1147,7 @@ TEST_CASE("build_highway_draws: an SP window clipped by the view shows no change
 // and end draw rails that follow active SP alone.
 TEST_CASE("build_highway_draws: a solo neither cuts nor colours the railings") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PitchDarkScenes& pd = pitch_dark();
+    const PitchDarkScenes& pd = pitch_dark_scenes();
     REQUIRE_FALSE(pd.bare.solos.empty());
     const TrackState bare = build_track_state(pd.bare, TrackStateOptions{});
     const TrackState path = build_track_state(pd.path, TrackStateOptions{});
@@ -1176,7 +1176,7 @@ TEST_CASE("build_highway_draws: a solo neither cuts nor colours the railings") {
 // coloured flats are the same draws either way.
 TEST_CASE("build_highway_draws: a ghost path's SP windows do not reach the highway") {
     const PreviewConfig cfg = shipped_preview_config();
-    const PitchDarkScenes& pd = pitch_dark();
+    const PitchDarkScenes& pd = pitch_dark_scenes();
     REQUIRE_FALSE(pd.ghosted.ghost_windows.empty());
     const TrackState ghosted = build_track_state(pd.ghosted, TrackStateOptions{});
     const TrackState plain = build_track_state(pd.path, TrackStateOptions{});
