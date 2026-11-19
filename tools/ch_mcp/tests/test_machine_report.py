@@ -8,6 +8,7 @@ import csv
 import io
 import os
 import re
+import shutil
 import statistics
 import subprocess
 import sys
@@ -732,6 +733,28 @@ class ClockStartInARealRecording(ClockRowsCase):
         self.assertLess(max(without), min(clocked))
         self.assertFalse(self.over_one_period())
         self.assertIn(self.steps_line(list(zip(clocked, clocked[1:]))), self.lines())
+
+
+class ClockWithoutStampsInARealRecording(RealRecordingCase):
+    """The real excerpt with one clocked sample's second wall stamp blanked."""
+    FOLDER = CLOCK_START
+
+    def test_a_clock_with_no_stamps_is_refused(self):
+        rows = self.rows(R.SAMPLES_FILE)
+        clocked = next(row for row in rows if row["clock_s"])
+        clocked["clock_wall_after_s"] = ""
+        folder = os.path.join(self.documents, "blanked")
+        shutil.copytree(self.FOLDER, folder)
+        with open(os.path.join(folder, R.SAMPLES_FILE), "w", newline="", encoding="utf-8") as f:
+            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
+            writer.writeheader()
+            writer.writerows(rows)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = R.main([folder, str(self.game)], documents_dir=self.documents)
+        self.assertEqual(code, 1)
+        self.assertIn(f"sample {clocked['sample']} has a clock reading with no wall stamps",
+                      out.getvalue())
 
 
 class NoClockInARealRecording(RealRecordingCase):
