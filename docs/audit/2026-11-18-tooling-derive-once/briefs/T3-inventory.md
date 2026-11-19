@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout.
 
 Task id: TOOL-AUDIT-T3-<scout>. Session id: f6a384b5-9eed-4607-95cb-681ec635d569. <scout> is the inventory scout name given in your dispatch (I1 to I10).
-You change no file in either repo. Write your report as one file: C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\TOOL-AUDIT-T3-<scout>.md, and hand back that path with a five-line summary. Status lines as the preamble says. Your call and time budget is the progress hook's; it tells you when to wrap up. When it warns you, stop taking new files, finish the one in hand, and list the files you did not reach.
+You change no file in either repo. Write your report as one file: the session's scratch folder (not kept; each report was copied to this audit's reports folder), and hand back that path with a five-line summary. Status lines as the preamble says. Your call and time budget is the progress hook's; it tells you when to wrap up. When it warns you, stop taking new files, finish the one in hand, and list the files you did not reach.
 
 ## The audit
 This is a derive-once audit of our own tooling: the hooks, helper tools, agent files, memory notes and agent docs. The rule is agent rule 15 in docs/agents/agent-rules.md: every question has one owner, and "A rule copied from a tool, a test or a comment is a second owner, never a source." Later stages search for copies. Your stage is a census: list every value your files decide or state as a rule.

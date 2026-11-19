@@ -68,7 +68,7 @@ Totals: 65 rows. CONFIRMED 35, CONFIRMED-CHANGED 12, REFUTED 1, NOT VERIFIED 17.
 ### L-F28-06: The wake watch timeout (660) and the plan file its comment cites
 - **Source:** I2-057, I2-059, I2-065, I2-066; F28 Q4; V28 verdicts 6 and 13.
 - **Kind:** K1, K8.
-- **Verdict:** CONFIRMED that settings.fragment.json:235 has `"timeout": 660` and that wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md, which V28 did not find in H/docs/superpowers/plans or ~/.claude/plans. "Pinned by a test" is NOT VERIFIED (V28 did not open test_wake.py).
+- **Verdict:** CONFIRMED that settings.fragment.json:235 has `"timeout": 660` and that wake.py:5 cites docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`), which V28 did not find in H/docs/superpowers/plans or ~/.claude/plans. "Pinned by a test" is NOT VERIFIED (V28 did not open test_wake.py).
 - **Homes:** G\settings.fragment.json:235 `"timeout": 660, "asyncRewake": true`; live settings.json:245 (finder only); wake.py:5 the plan path; check.py:34-35 "the supervisor plan" with no path.
 - **Splits:** None.
 - **Ruling quotes:** None found.

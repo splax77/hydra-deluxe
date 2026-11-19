@@ -68,7 +68,7 @@ Same as L-F25-19: build_facts.py:69-72 (installed version), dump_facts.py:381 "6
 
 ### L-F28-06
 **Verdict**: REAL.
-**Homes read**: G/wake.py:5-6 "The design is the Hydra repo's docs/superpowers/plans/2026-11-16-agent-supervisor.md, task W1"; G/stall.py:11 cites it too. H/docs/superpowers/plans/ on main has no such file (listing checked; `git ls-tree -r main` finds none). The file exists only on branch `plan/agent-supervisor` and in worktree H/.claude/worktrees/plan-agent-supervisor/docs/superpowers/plans/2026-11-16-agent-supervisor.md. I did not find check.py:34-35 (no check.py in G).
+**Homes read**: G/wake.py:5-6 "The design is the Hydra repo's docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`), task W1"; G/stall.py:11 cites it too. H/docs/superpowers/plans/ on main has no such file (listing checked; `git ls-tree -r main` finds none). The file exists only on branch `plan/agent-supervisor` and in worktree H/.claude/worktrees/plan-agent-supervisor/docs/superpowers/plans/2026-11-16-agent-supervisor.md. I did not find check.py:34-35 (no check.py in G).
 **Kind**: moved-pointer (the plan lives on an unmerged branch).
 **What changes**: a reader opening the cited path on main finds nothing.
 

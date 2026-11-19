@@ -101,9 +101,9 @@ Ruling: none found.
 
 ## Q4. The wake watch: wake rule, crash rule, who decides, how it is registered (I2-057, I2-059, I2-065, I2-066)
 
-Homes: G\wake.py:3-6 (asyncRewake, exit 2; points at tests\probe_results.md and the plan docs/superpowers/plans/2026-11-16-agent-supervisor.md "task W1"), :9-10 and :20 (decides nothing; stall.py owns the words), :66-80 (`_crash`), :104-105 (crash text). G\README.md:31 states the same: Stop hook, exit 2 wakes, "Every word it hands over is stall.py's", crash wakes once with the error. G\settings.fragment.json:235-236 `"timeout": 660, "asyncRewake": true`; live settings.json:245 `"timeout": 660`.
+Homes: G\wake.py:3-6 (asyncRewake, exit 2; points at tests\probe_results.md and the plan docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`) "task W1"), :9-10 and :20 (decides nothing; stall.py owns the words), :66-80 (`_crash`), :104-105 (crash text). G\README.md:31 states the same: Stop hook, exit 2 wakes, "Every word it hands over is stall.py's", crash wakes once with the error. G\settings.fragment.json:235-236 `"timeout": 660, "asyncRewake": true`; live settings.json:245 `"timeout": 660`.
 Test holding two homes equal: G\tests\test_wake.py:212-218 `test_registered_timeout_is_stall_seconds_plus_one_scan` pins the fragment's 660 to `stall.STALL_SECONDS + stall.SCAN_EVERY`; wake.py:8-9 names that test. test_docs_numbers.py:142 `test_live_settings_carry_the_fragment` holds the live settings equal to the fragment.
-Kinds: K1 (the 660 in two files, pinned by tests); K8 side note: wake.py:6 points at docs/superpowers/plans/2026-11-16-agent-supervisor.md, which is not in H\docs\superpowers\plans (listing grep for "supervisor" found nothing). The path is a pointer to a file that does not exist there now.
+Kinds: K1 (the 660 in two files, pinned by tests); K8 side note: wake.py:6 points at docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`), which is not in H\docs\superpowers\plans (listing grep for "supervisor" found nothing). The path is a pointer to a file that does not exist there now.
 Splits: none. Rulings: none.
 
 ---

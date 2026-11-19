@@ -10,7 +10,7 @@ Where `log.md` holds only the option text, and not the question as it was sent, 
 
 ## Before the audit started: the plan's three questions
 
-The plan, `docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md` (branch `claude/tooling-derive-once-audit-plan`, section "Questions and the user's answers"), asked three questions before any agent ran. The user answered on 2026-11-18. Question 1, on scope: "why is there a whole folder of retired hooks? delete that shit", plus the labels "Memory notes", "Skills and /handoff" and "Hydra tools and hook tests". Question 2, on size: "16". Question 3, on hook gaps in the records: "Keep steps out (Recommended)". The user then approved the plan with "Approve (Recommended)" (log.md, line 3).
+The plan, `docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md (`git show 1aa7bf5a:docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md`)` (branch `claude/tooling-derive-once-audit-plan`, section "Questions and the user's answers"), asked three questions before any agent ran. The user answered on 2026-11-18. Question 1, on scope: "why is there a whole folder of retired hooks? delete that shit", plus the labels "Memory notes", "Skills and /handoff" and "Hydra tools and hook tests". Question 2, on size: "16". Question 3, on hook gaps in the records: "Keep steps out (Recommended)". The user then approved the plan with "Approve (Recommended)" (log.md, line 3).
 
 These set the audit's scope and size. No ledger row leaves by them. They are recorded in the plan, and none of D345 to D350 holds them.
 

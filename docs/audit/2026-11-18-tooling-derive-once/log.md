@@ -1,6 +1,6 @@
 # Tooling derive-once audit: log
 
-The plan is `docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md` on branch `claude/tooling-derive-once-audit-plan`, at commit `1aa7bf5a` (reviewed at `caf35607`, then the user's three answers added). The user approved it on 2026-11-18 by choosing "Approve (Recommended)".
+The plan is `docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md (`git show 1aa7bf5a:docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md`)` on branch `claude/tooling-derive-once-audit-plan`, at commit `1aa7bf5a` (reviewed at `caf35607`, then the user's three answers added). The user approved it on 2026-11-18 by choosing "Approve (Recommended)".
 
 ## T0: what the scouts read
 
@@ -70,7 +70,7 @@ These are the user's answers in this session, not filed rulings under docs/agent
 
 ## T8: re-checking the remaining question rows (2026-11-18)
 
-- Handoff `docs/handoffs/2026-11-18-tooling-audit-t8-questions-handoff.md` (branch claude/handoff-tooling-audit-t8) checked against the files by session 57045e74: the branches, commits, log, theme file and the old hooks folder state all match.
+- Handoff `docs/handoffs/2026-11-18-tooling-audit-t8-questions-handoff.md (`git show 19670d07:docs/handoffs/2026-11-18-tooling-audit-t8-questions-handoff.md`)` (branch claude/handoff-tooling-audit-t8) checked against the files by session 57045e74: the branches, commits, log, theme file and the old hooks folder state all match.
 - T8 re-check launched: six fresh scouts (Sonnet) R1 to R6, brief briefs/T8-recheck.md. R1 themes 11 to 13, R2 themes 14, 15, 17, R3 themes 18, 19, R4 and R5 theme 20, R6 the 19 rows T7 reopened. Each says per row whether it is REAL, GONE or NOT A SPLIT in today's files, and what kind of split it is, so rows the user's answers already cover can be folded before any question goes out.
 - R2 marked L-F22-24 GONE because it looked for writer-brief.md in Hydra's docs. The file is C:\Users\Patrick\.claude\tools\session_cards\writer-brief.md. The main session read both homes: line 100 there gives the full status_append.ps1 command with a typed HH:MM, and ~\.claude\model-postures.md line 11 says "A brief names no status file and no id". Verdict corrected to REAL, doc-vs-doc; it belongs with the time-stamp fix.
 - T8 re-check returned: six reports, reports/TOOL-AUDIT-T8-R1.md to R6.md, all 115 ids reached. Counted by script over the report files (109 sections parsed; R6's verdict lines need a hand read): REAL 44, NOT A SPLIT 41, GONE 3, the rest unparsed. With the L-F22-24 correction, REAL is 45 and GONE 2. NOT A SPLIT and GONE are closures (exit 4) and get a fresh closure check before they leave; REAL rows whose kind one of the user's answers names get the same check.
@@ -88,7 +88,7 @@ These are the user's answers in this session, not filed rulings under docs/agent
 
 ## T8: the fold and its closure check (2026-11-19)
 
-- Handoff `docs/handoffs/2026-11-18-tooling-audit-t8-fold-handoff.md` (branch claude/handoff-tooling-audit-t8-fold) checked against the files by session 0e741144: branches, commits, paths, code lines and both tests match. Two numbers did not. The hook code is now 6,045 lines over 27 files by replay.py's line_total, because the Workflow-reviewer merge (d936ad3 in the hooks repo, 2026-11-18 23:04) landed after the 5,824 count. And the verdict counts were taken over report sections, not rows.
+- Handoff `docs/handoffs/2026-11-18-tooling-audit-t8-fold-handoff.md (`git show b23d4248:docs/handoffs/2026-11-18-tooling-audit-t8-fold-handoff.md`)` (branch claude/handoff-tooling-audit-t8-fold) checked against the files by session 0e741144: branches, commits, paths, code lines and both tests match. Two numbers did not. The hook code is now 6,045 lines over 27 files by replay.py's line_total, because the Workflow-reviewer merge (d936ad3 in the hooks repo, 2026-11-18 23:04) landed after the 5,824 count. And the verdict counts were taken over report sections, not rows.
 - R6 read by hand by the main session: its verdict lines parse like the others, and its 12 REAL and 7 NOT A SPLIT hold on reading, with three notes carried into the fold (L-F06-16's code side enforces nothing, L-F21-09 has sub-items nobody read, L-F27-27's two addresses may be different constants).
 - Recounted by row (scripts/parse.py): REAL 63, NOT A SPLIT 49, GONE 3 over 115 ids; with the L-F22-24 correction, REAL 64 and GONE 2. The earlier REAL 42, 44 and 45 are superseded.
 - Fold (fold-T8.md, scripts/fold.py): 54 REAL rows fold whole by the user's answers, L-F21-09 and L-F32-10 in part, 49 leave by exit 4 and 2 as gone. 8 go to the user: theme 17's budget (L-F04-07, L-F07-16, L-F21-06, ruling-vs-other, which no answer covers); render-check scrolling (L-F03-20, L-F14-10, same reason); the test_ skip in status relays (L-F26-04, with L-F32-10's memory half), where "Note is wrong" and "Give each a home" point opposite ways; and gh issue close --comment (L-F13-08, L-F16-08), where "The code wins" would keep an ungated way to post text.

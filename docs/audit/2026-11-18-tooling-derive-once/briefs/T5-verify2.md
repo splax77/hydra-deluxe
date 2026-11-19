@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: a second-round verifier.
 
 Task id: given in your dispatch (TOOL-AUDIT-T5-W<n>). Session id: f6a384b5-9eed-4607-95cb-681ec635d569.
-You change no file in either repo. Write your report as one file in C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\, named `<your task id>.md`. You must write that file; your hand-back is only its path and a five-line summary. Status lines as the preamble says. Your budget is the progress hook's. When it warns you, stop taking new rows, finish the one in hand, and list the ledger ids you did not reach.
+You change no file in either repo. Write your report as one file in the session's scratch folder (not kept; each report was copied to this audit's reports folder), named `<your task id>.md`. You must write that file; your hand-back is only its path and a five-line summary. Status lines as the preamble says. Your budget is the progress hook's. When it warns you, stop taking new rows, finish the one in hand, and list the ledger ids you did not reach.
 
 ## Your job
 A derive-once audit of our own tooling compiled a ledger of findings. Some rows were never checked by a verifier ("NOT VERIFIED"). Your dispatch names a ledger file and the exact ledger ids (L-Fxx-nn) you check. Read only those rows in that file. Read the "The kinds" section of C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\tooling-audit-records\docs\audit\2026-11-18-tooling-derive-once\briefs\T5-finder.md for K1 to K8.

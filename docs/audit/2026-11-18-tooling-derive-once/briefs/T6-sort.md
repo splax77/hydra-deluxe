@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: an exit sorter.
 
 Task id: given in your dispatch (TOOL-AUDIT-T6-S<n>). Session id: f6a384b5-9eed-4607-95cb-681ec635d569.
-You change no file in either repo. You must write one tab-separated file in C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\, named `<your task id>.tsv`; your hand-back is its path and a five-line summary. Status lines as the preamble says.
+You change no file in either repo. You must write one tab-separated file in the session's scratch folder (not kept; each report was copied to this audit's reports folder), named `<your task id>.tsv`; your hand-back is its path and a five-line summary. Status lines as the preamble says.
 
 ## Your input
 Your dispatch names one ledger file in C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\tooling-audit-records\docs\audit\2026-11-18-tooling-derive-once\ledger\. Read every row in it. Some rows were NOT VERIFIED in the ledger and were checked later by a second-round verifier: for those, read the matching `### <ledger id>` section in the W reports in ..\reports\TOOL-AUDIT-T5-W*.md (grep for the id). The W verdict replaces the ledger's NOT VERIFIED.

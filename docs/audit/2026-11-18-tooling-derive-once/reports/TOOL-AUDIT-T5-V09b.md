@@ -1,6 +1,6 @@
 # V09b: hand-back text, saved unchanged by the main session (no report file was found at the path it named)
 
-Report path: C:\Users\Patrick\AppData\Local\Temp\claude\e0d069fc77f655b4\f6a384b5-9eed-4607-95cb-681ec635d569\scratchpad\tooling-audit\TOOL-AUDIT-T5-V09b.md
+Report path: the session's scratch folder (not kept; each report was copied to this audit's reports folder)
 1. I6-205 CONFIRMED: ui-testing.md:195 "snapshot_library is the only code that knows the library folder's path" is contradicted by compare_db.py:51,87 and this-machine.md:77, which also name C:\Program Files\Hydra.
 2. I6-206 CONFIRMED: this-machine.md:81 says copy hydra.db plus -wal and -shm by hand. ui-testing.md:195 and compare_db.py:87 use SQLite's online backup and end with one file. That is a split on method.
 3. I5-190 CONFIRMED: the hook shared-code list is typed in gates README:156 and agent-rules.md:7. agent-rules.md:7 says precheck decides it, but tools\precheck holds nothing about gates or hooks. I5-176 CONFIRMED: gates README:71 "always exits 0" holds only for --session-start (check_pointers.py docstring line 16).

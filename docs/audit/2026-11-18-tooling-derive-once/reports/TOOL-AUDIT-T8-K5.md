@@ -23,7 +23,7 @@ So "The code wins" does not hold: the code side (constants.py) disagrees with th
 
 ### L-F28-06
 **Verdict**: PASS (fix without asking), with a caveat for the fix wording
-**Homes read**: G\wake.py:6 and G\stall.py:11 name docs/superpowers/plans/2026-11-16-agent-supervisor.md. H main has no such file (ls docs\superpowers\plans; git ls-tree main; no deleting commit). It exists on branch plan/agent-supervisor (head 80b310a9 "Supervisor plan: record the user's answers and approval") and in worktree H\.claude\worktrees\plan-agent-supervisor. check.py: none in G (searched gates\*.py for "agent-supervisor": only wake.py and stall.py).
+**Homes read**: G\wake.py:6 and G\stall.py:11 name docs/superpowers/plans/2026-11-16-agent-supervisor.md (`git show 80b310a9:docs/superpowers/plans/2026-11-16-agent-supervisor.md`). H main has no such file (ls docs\superpowers\plans; git ls-tree main; no deleting commit). It exists on branch plan/agent-supervisor (head 80b310a9 "Supervisor plan: record the user's answers and approval") and in worktree H\.claude\worktrees\plan-agent-supervisor. check.py: none in G (searched gates\*.py for "agent-supervisor": only wake.py and stall.py).
 **Why**: the thing is nameable (an unmerged branch). The fix is to say so in the pointer (or the plan merges, which fixes it). The caveat: if the plan is meant to land on main later, the pointer becomes right on its own, so the fix should not reword it blindly.
 
 ### L-F28-13
