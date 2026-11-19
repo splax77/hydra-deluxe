@@ -36,3 +36,15 @@ The plan is `docs/superpowers/plans/2026-11-18-tooling-derive-once-audit.md` on 
 - T5 second verification returned (workflow wf_1359a0a1-287, 16 agents, 973 tool calls, about 9 minutes, no errors): reports W01 to W16 in reports/, every one written to a file. Their verdicts override NOT VERIFIED in the ledger for the ids each names.
 - The hooks repo moved during the audit, by another session: 38f9649 to 091ef7a (the old-hooks removal from this session, then e50d819 to 091ef7a, review hooks: agent_stop, ref gate, percall, README, reviewer.md). W05 reports review_dispatch.py rewritten and gates README line numbers shifted. Ledger rows that cite review_dispatch.py, agent_stop.py, ref_judge.py, percall.py, gates README or reviewer.md read the old text; T7's closure checkers re-read those homes at the current commit before any closure.
 - T5 is complete: find, verify, re-send, ledger and second verification. Next is T6, the exits, which only the main session picks.
+
+## T6: the user's four answers on splits (2026-11-18)
+
+After the user said "every split? im not manually reviewing hundreds of questions" (258 ledger rows carry a split, counted by script), four questions were put. The user chose:
+
+- Doc vs hook: "The code wins (Recommended)". The question: when a doc, brief or CLAUDE.md line says something different from the hook or script that actually enforces it (example: rule 5 says the posture file comes "each prompt", but posture.py sends it on the first prompt, every 60 minutes and after compaction), which side wins? Option text: "The doc is fixed to point at the hook and stop restating it. Closes those splits as covered."
+- Memory notes: "Note is wrong (Recommended)". The question: when a memory note disagrees with the docs or the code (examples: a note names a different GitHub repo owner than CLAUDE.md and the repo; a note restates the 150-call cap), which side wins? Option text: "Memory notes are a session's notes, not yours; the note gets fixed or pruned."
+- Stale refs: "Fix without asking (Recommended)". The question: docs that cite a file, path or line number that has moved (examples: a call site cited at line 2009 that is now at 2204; a squeeze-window owner cited in graph.h that now lives in model.h): fix them to the current location without asking? Option text: "Mechanical: point at where the thing is now."
+- The rest: "Grouped by theme (Recommended)". Splits left after these (two hooks deciding one thing differently, two filed rulings that disagree, real behaviour choices) come as one question per theme, each listing its rows, a few at a time.
+
+These are the user's answers in this session, not filed rulings under docs/agents/rulings/. Exit 3 rows cite them by this section.
+- T6 sorting launched 2026-11-18 22:12: eleven sorters, one per ledger file, each proposes a category per row with the quotes that place it (brief briefs/T6-sort.md). The main session applies exits from the categories by script; T7's closure checkers check every exit 3 and Fix pending row against the files.
