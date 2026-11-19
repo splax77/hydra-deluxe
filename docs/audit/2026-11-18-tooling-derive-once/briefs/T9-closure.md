@@ -1,7 +1,7 @@
 Read C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\agents\brief-preamble.md first; it binds you. You are a read-only scout: a closure checker.
 
 Task id: given in your dispatch (TOOL-AUDIT-T9-K<n>). Session id: 0e741144-a798-4d71-b737-1b6149f84c1a.
-You change no file in either repo. Your report is your hand-back message: one section per id, as below, then the ids not reached. Status lines as the preamble says. When the hook warns you, stop taking new rows and list the ids you did not reach. Stop any background shell you start before you hand back.
+You change no file in either repo. You must write one file in C:\Users\Patrick\AppData\Local\Temp\claude\93dcc0835612bf87\0e741144-a798-4d71-b737-1b6149f84c1a\scratchpad\tooling-audit\, named `<your task id>.md`; your hand-back is its path and a five-line summary naming every REOPEN and GONE id. If the file write is refused, put the full report in your hand-back instead. Status lines as the preamble says. When the hook warns you, stop taking new rows and list the ids you did not reach. Stop any background shell you start before you hand back.
 
 ## Your job
 A derive-once audit of our own tooling closed 143 rows by answers the user gave for a whole theme at once. No fresh agent has checked those closures. You check each one against the files as they are now. A closure stands only if a fresh agent agrees with it.
