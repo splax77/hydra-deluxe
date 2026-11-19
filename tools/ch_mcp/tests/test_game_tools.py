@@ -1952,8 +1952,16 @@ class GameToolsTest(unittest.TestCase):
 
     def _server_tools(self) -> GT.GameTools:
         """The GameTools of a real server.Helper on this test's temp folder,
-        with its real run parts handed in."""
-        return server.Helper(scratch_root=os.path.join(self.tmp, "server")).game
+        with its real run parts handed in, except the attach, which fails the
+        test: ch_run_chart reaches the game only through it, and a unit test
+        must never attach to the user's running Clone Hero."""
+        helper = server.Helper(scratch_root=os.path.join(self.tmp, "server"))
+
+        def never_attach(*_args, **_kwargs):
+            raise AssertionError("a refusal stopped refusing: ch_run_chart reached the "
+                                 "attach, which would go to a running Clone Hero")
+        helper.frida.ch_attach = never_attach
+        return helper.game
 
     def _assert_started_nothing(self, tools: GT.GameTools):
         """No play, no press log and no builds record: the run never reached
