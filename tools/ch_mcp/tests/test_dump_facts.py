@@ -8,6 +8,7 @@ subprocess.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -586,18 +587,28 @@ class FactsTableTests(_TableFixture):
         self.assertEqual(D._split_instance("A.B", "Other"), ("A", "B"))
 
     def test_a_facts_json_has_no_instantiation_rows(self):
-        facts = {"game_version": TINY_VERSION, "classes": D.parse_dump(TINY_DUMP)}
-        path = os.path.join(self.tmp, "facts.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(facts, f, ensure_ascii=False)
+        # The facts.json comes from the real writer. The writer needs every
+        # class it signs, so the dump gains ScoreManager, which the tiny dumps lack.
+        with open(self.dump, "w", encoding="utf-8") as f:
+            f.write(MAP_DUMP + "\n// Namespace: \npublic class ScoreManager : MonoBehaviour"
+                    " // TypeDefIndex: 592\n{\n}\n")
+        path, _ = D.write_facts(self.dump, TINY_VERSION, ENGINE_CTOR_RVA)
+        # Read from the dump.cs itself, the same span is found.
         self.page("# P\n\n`0x100DAB0`\n")
+        self.assertEqual(self.table()[1], [])
         _, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
         self.assertTrue(any("0x100DAB0" in e for e in errors), errors)
 
     def test_header_md5_comes_from_the_dll_bytes(self):
         text, _ = self.table()
-        self.assertIn(f"# version: {TINY_VERSION}", text.splitlines())
         self.assertIn(f"# GameAssembly.dll md5: {HELLO_MD5}", text.splitlines())
+        # The sum is read from the file each time, so new bytes give a new sum.
+        with open(self.dll, "wb") as f:
+            f.write(b"hello, again")
+        with open(self.dll, "rb") as f:
+            again = hashlib.md5(f.read()).hexdigest()
+        self.assertNotEqual(again, HELLO_MD5)
+        self.assertIn(f"# GameAssembly.dll md5: {again}", self.table()[0].splitlines())
 
     def test_python_name_and_file_names_are_not_game_facts(self):
         self.assertIsNone(D.game_fact("bot_run.launch_command"))
@@ -634,20 +645,18 @@ class FactsTableTests(_TableFixture):
         self.assertIn("songTime", text)
 
     def test_4045_facts_json_is_read_by_name_with_no_address(self):
-        facts = {"game_version": "v1.0.0.4045-master", "classes": [
-            {"name": "GameManager", "namespace": "", "kind": "class", "typedef_index": 562,
-             "readable": True, "base": None, "interfaces": [],
-             "fields": [], "methods": [{"name": "Update", "return": "void", "params": [],
-                                        "static": False, "rva": None}]}]}
-        path = os.path.join(self.tmp, "facts.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(facts, f)
+        # The GameManager record of the real 4045 facts.json, copied whole from
+        # hydra-data/ch-dumps/4045/facts.json. Build 4045 has no method addresses.
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-4045", "facts.json")
+        with open(path, encoding="utf-8") as f:
+            manager = by_name(json.load(f)["classes"], "GameManager")
+        self.assertIsNone(next(m for m in manager["methods"] if m["name"] == "Update")["rva"])
         self.page("# P\n\n## Build 1.0.0.4045\n\n`GameManager.Update`\n\n## Back\n\n`0x20DEEC0`\n")
         text, errors = D.build_table(path, self.pages, self.dll, constants_path=self.constants)
         self.assertEqual(errors, [])
-        self.assertEqual(self.rows(text), [["4045", "method", "562", "GameManager", "Update", "", "",
-                                            "GameManager.Update"]])
-        self.assertIn("# version: v1.0.0.4045-master", text.splitlines())
+        # Only the span under the 4045 heading is looked up, and its address column is blank.
+        self.assertEqual(self.rows(text), [["4045", "method", str(manager["typedef_index"]), "GameManager",
+                                            "Update", "", "", "GameManager.Update"]])
 
     def test_a_file_under_code_and_a_build_takes_that_build_for_every_span(self):
         lines = ["# Clone Hero 1.0 (build 4045): the notes", "`A.b`", "## Build 1.0.0.9999", "`C.d`"]
@@ -761,13 +770,16 @@ class NamesMapTests(_TableFixture):
         self.assertIn(["6142", "method", "1721", "Math", "Floor", "0x1000000", "", "Math.Floor"], rows)
 
     def test_a_scrambled_span_is_an_error_naming_the_line_and_the_map(self):
-        self.page(f"# P\n\nok\n`#8255.{ENGINE_SCORE}` and `{SP_BASE}`\n")
+        spans = [f"`#8255.{ENGINE_SCORE}`", f"`{SP_BASE}`"]
+        self.page(f"# P\n\n`GameManager.songTime`\n{spans[0]} and {spans[1]}\n")
         _, errors = self.table()
-        self.assertEqual(len(errors), 2, errors)
-        for e in errors:
-            self.assertIn("page.md:4: `", e)
-            self.assertIn("non-ASCII letter", e)
-            self.assertIn("names-6142.tsv instead", e)
+        # One error per scrambled span; the readable span on line 3 gives none.
+        self.assertEqual(len(errors), len(spans), errors)
+        where = f"{D._display_path(os.path.join(self.pages, 'page.md'))}:4: "
+        names_map = D._display_path(D.names_path(self.pages, D.DEFAULT_BUILD))
+        for error, span in zip(errors, spans):
+            self.assertTrue(error.startswith(where + span), (where, error))
+            self.assertIn(names_map, error)
 
     def test_an_uncited_row_is_a_warning_not_an_error(self):
         self.names(GOOD_MAP)

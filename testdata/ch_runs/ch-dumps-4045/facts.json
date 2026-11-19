@@ -1,0 +1,848 @@
+{
+ "game_version": "v1.0.0.4045-master",
+ "dump_file": "Assembly-CSharp.dll, Assembly-CSharp-firstpass.dll, StrikeCore.dll, CHNet.Core.dll, CHNet.Server.dll",
+ "classes": [
+  {
+   "name": "GameManager",
+   "namespace": "",
+   "kind": "class",
+   "typedef_index": 562,
+   "readable": true,
+   "base": "MonoBehaviour",
+   "interfaces": [],
+   "fields": [
+    {
+     "name": "ʳʻʾʿʺʼʵˀʻʾʽ",
+     "type": "NoteAnimator",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʷʺʳʾʳʿʶʵˀˁˀ",
+     "type": "GlobalVariables",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʳʺˀˁʴˀʳˁʴʴʽ",
+     "type": "PracticeUI",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʲʷʳʲʶʹʽʴʲʴʷ",
+     "type": "MusicVideo",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʼʶʶʶʺʺʿʾʵʺʺ",
+     "type": "StarProgress",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʳʼʶˀʿʵˁʴʺʺˁ",
+     "type": "LyricDisplay",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʷʾˀʲʸˀʺˁʻʲʼ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʾʸˁʳʽʹʷʴʽʵʽ",
+     "type": "BasePlayer[]",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʿʻʽʼʹʸˀʶʲʶʲ",
+     "type": "float",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˀʾˁʽˀʼʻʴˁʳʹ",
+     "type": "float",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʳʴʵʺʳʾˁʷʷʿ",
+     "type": "float",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʵʲʵʲʷʴʶʿʾʶʻ",
+     "type": "float",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʲʻʺʹʺʲʷʾʻʺʹ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʷʴʺʵʵʸʾʵʳʵʻ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʺˁʾˀʿʲʹʼʴˁʴ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʺʿʵʴʷʸʳʶʷʾʻ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʵʾʺʿʷʻʲʼʵʴʾ",
+     "type": "Image",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˀˀʺʿʳʺʵʿʹʻʵ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʷʲʲʾʽʵʼˁˁˀ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʹʿʽˁʾʽʴʲʽˁ",
+     "type": "GameObject",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʴʼʿʼʺʹʸʲʽʾʽ",
+     "type": "ʷʽʻʻʿʵˀˁʽʳʶ",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʼˁʸʹʽʺˀʺˁʾʻ",
+     "type": "ʴʶʺˀˀʺʹʴʿʹʷ",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˀʼʺʳʹʸʸʳˀˀʳ",
+     "type": "ScoreManager",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˀʴʵʴʺʲʻʻʻʸʸ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˀʼʴʲʶʲʴʸʺʲˀ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʼˁʻʺˀʺʸʴʶʴʶ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˀʲʸʼʽʶʴʸʴʶʼ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʿˁˁʾʸʴʸʿʶʽʺ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˁʷʴʲʻʿʸʴʳʽʿ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʺʼʲʾʷˀʽʷʲʹʿ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʴʶʼʽʵˁʳʼʳʺ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʸʴʳʹʼʹʷʲʹʹ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʾʼʾˁʹʿʻˁʷʴʼ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˁʽʷʴʿʳˀʺʶʴˁ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʺʿʴˁʺʶʹʿˁʳ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʸʾʻʷʼʴʺʵʶʿʼ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˁʻʷʵˁʳʿʳʺʸʷ",
+     "type": "float",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʽʻʳʽʽʴʶʷʼʺ",
+     "type": "float",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʷˀʽʿʺʿʼʶʴʹʽ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʿʳˁʲʺʴʸʿʽˀʸ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʶʻʹʳʵʽʿʽʵʷʸ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʲʽʻʶʵʹʹʲʺˀʺ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʵʶʶʵʹʼʷʿʸʸˀ",
+     "type": "HashSet<Instrument>",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʿʶʾˁˁʹʺʵʻʳʽ",
+     "type": "HashSet<Difficulty>",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʺʲʵʲʶʿʷʶʿˀʷ",
+     "type": "double",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʶʵʴʲʹʶʸʶʹʷʶ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʿʶʺˀˀʼʴʹʻʳʻ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʲʷʸʳʾˀʴˀʵʻʷ",
+     "type": "uint",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʺʴʾʷʹˁʵʶʸʼ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʺʵʲʷʶʼʳʺʴʳ",
+     "type": "GameObject",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʵʺʴʺʶˁʻʾʶʼʾ",
+     "type": "GameObject",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʿʿʻʴˁʻʳʸˁʽʹ",
+     "type": "Coroutine",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʶʷʿˀʶʷʲʾˁʷˀ",
+     "type": "bool[]",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʻʸʲʼʴʴʾʶʼʴʴ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʼʿʵʵˀʿʼˀʵʴʾ",
+     "type": "bool",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʼʷʻʵʶʾʹʾʶʼʼ",
+     "type": "BasePlayer",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "<ˁʿʴʾʾʼʵʾʾʴʷ>k__BackingField",
+     "type": "ʻʳʿʼʵʷʺʹˀʸʾ",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʵʴʹˁʼˀʴʴʼʶʳ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʴʹʴʸʵʵʻʳʾʲʴ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʴʵʳʻʹʽʵʴʹʼʼ",
+     "type": "Coroutine",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ˁʳˀʿʼʵʵʲʹʵʻ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʲʾʽˁʺˁʸʸʴʶʶ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    },
+    {
+     "name": "ʳʷʻʴʼʳʵʹʽʳʲ",
+     "type": "int",
+     "offset": null,
+     "static": false
+    }
+   ],
+   "methods": [
+    {
+     "name": "ʳʷʺʼʺʲˁʳʻʼʾ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʻʶʼʾʷʵʴʶʳʾʻ",
+     "return": "ʻʳʿʼʵʷʺʹˀʸʾ",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʾʳʸʴʻʳʾʴʺˀʺ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʹʽʼˀʻʽʾʷʶˁʼ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʽʻˀʸˁʹʿʶʷʾˀ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʹʾʸʼˁʿˀʾʴʶʲ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "OnDestroy",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʽʼʴʹˀʾʲʼʼʲʵ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʹʲʸʾʻʶʴʷˀˀʲ",
+     "return": "string",
+     "params": [
+      "ˁʻʽʷʽʻʾʵʷˀʶ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʾʽʽʹʽʿʳʾʽʻʼ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʴʴˀʼʽʻʷʴʸʴʵ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʺʹʺʸʽʾʲʽʳʴʺ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʴʳʾʵʴʻʺʸʵʿʿ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʲʷʷʶʶʲʷʻʹʾʿ",
+     "return": "int",
+     "params": [
+      "IEnumerable<ʼˀˀʸʸʶʳʼʳʸʶ>"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʸʶʳʻʵʺʲʳˁʼʲ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʾʹʶʷˀʿʸʺʷʴʽ",
+     "return": "void",
+     "params": [
+      "bool"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʻˀʼʺʶʻʴʳʲʻʺ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʶʴʽʼʵʶʲʿʵʳʺ",
+     "return": "void",
+     "params": [
+      "bool"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "Start",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʷʺʹʳʳʳʼʵʼʹʲ",
+     "return": "IEnumerator",
+     "params": [
+      "int"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʸʿʽˁʸʹˀʵʺʿʵ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʶʴʸʹʼʵʸʴʳʻʶ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʺʶʵʺʸʶʸʿʾʺʻ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʲʶʶˁʲʲʴʶʴˀʻ",
+     "return": "float",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ˀˁʳʷˁʾʷʴˁʼʷ",
+     "return": "int",
+     "params": [
+      "ref int",
+      "bool"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʷʻʶˀʾʵʸˀʳˀʽ",
+     "return": "void",
+     "params": [
+      "ˁʻʽʷʽʻʾʵʷˀʶ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʽʷʲʾʷʽˁʾˁʹʷ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ˀʵʽˁˁʳʽʵʹˁʷ",
+     "return": "Vector3",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʺʷʶʶʴʶʲʹʽʽˁ",
+     "return": "Vector3",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʼʴʹʼʸʶʵʾˀʺʶ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʶʽʿʲʵʺʼʺʹʵʲ",
+     "return": "float",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʹˀʴʴˀʲʼʺʻʶʹ",
+     "return": "void",
+     "params": [
+      "int",
+      "int",
+      "bool"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʹʹʲʻʺʸʸʺʽʼʽ",
+     "return": "bool",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʼˁʷˀʽʽʾʵʴʷʹ",
+     "return": "Sprite",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʺʵʴˁʷʺʴʶʵʲʹ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʿʲʶˀʶʻʶʹʳʽʻ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʸʹʾʼʷʺʵʼʺʵʸ",
+     "return": "void",
+     "params": [
+      "ControllerStatusChangedEventArgs"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʴˀʻʻʳʽʵˀʸʲʷ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʶʻʶʼʹʳʹʿʽʼʲ",
+     "return": "List<Vector2>",
+     "params": [
+      "ˁʻʽʷʽʻʾʵʷˀʶ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ˀˀʴʸʾʴʶʵʴʽʷ",
+     "return": "void",
+     "params": [
+      "float",
+      "float"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʽʷʽʿʾʹʶˀʴʷʿ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "Awake",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʼʼʹʿʿˀˁʵʹʾʻ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʳʴʷʵʼʺʿʵʵʿʵ",
+     "return": "ʻʳʿʼʵʷʺʹˀʸʾ",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʴʷʶʺʺʹʵˀʲʽʵ",
+     "return": "List<Vector2>",
+     "params": [
+      "ˁʻʽʷʽʻʾʵʷˀʶ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʿʻʷʳʶʽʼʹˀˁʻ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʻʿʵʽʵʲˀʿʸʻʸ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʽʿˁʴʲʾʿʻʶʶʷ",
+     "return": "void",
+     "params": [
+      "ʻʳʿʼʵʷʺʹˀʸʾ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ˁʺʷʽʷʿʻʷʹʺʸ",
+     "return": "void",
+     "params": [
+      "ʻʳʿʼʵʷʺʹˀʸʾ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʴʽʿʽʻʼˀʼʺʵʴ",
+     "return": "void",
+     "params": [
+      "int"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʴʳʼʶʺʳʵʲʵˁˀ",
+     "return": "List<Vector2>",
+     "params": [
+      "ˁʻʽʷʽʻʾʵʷˀʶ"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "OnApplicationFocus",
+     "return": "void",
+     "params": [
+      "bool"
+     ],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʾˁʿʽʺʸʶʵʵʸʷ",
+     "return": "float",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": ".ctor",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ˀʿʻʶʶʴʵʽʽʿˁ",
+     "return": "ʵʹˁˀʷʽʾʲˁʲʶ",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʸʻˀʲʿʳʾʿʿʾʴ",
+     "return": "IEnumerator",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ˁʵʽʴʶʺʾʳʺʿʹ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "ʶˀˁʽˀʳʵʲʲʲʻ",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    },
+    {
+     "name": "Update",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": null
+    }
+   ]
+  }
+ ]
+}
