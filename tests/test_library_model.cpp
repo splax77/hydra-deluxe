@@ -159,8 +159,9 @@ std::vector<hydra::app::ScanItem> scan_song_folders(const std::string& tag,
         std::filesystem::create_directories(hydra::os_path(dir));
         audiochart::write_text_file(hydra::join_folder(dir, "song.ini"),
                                     "[song]\n" + folders[k].ini);
-        const int chart = folders[k].chart < 0 ? static_cast<int>(k) : folders[k].chart;
-        audiochart::write_text_file(hydra::join_folder(dir, "notes.chart"), own_drum_chart(chart));
+        const int chart_no = folders[k].chart < 0 ? static_cast<int>(k) : folders[k].chart;
+        audiochart::write_text_file(hydra::join_folder(dir, "notes.chart"),
+                                    own_drum_chart(chart_no));
     }
     std::pair<std::vector<hydra::app::ScanItem>, std::vector<std::string>> scan =
         hydra::app::discover_charts({root});
