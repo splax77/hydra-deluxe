@@ -23,6 +23,8 @@
 #include "core/timing.h"
 #include "core/backend_value.h"
 #include "core/rules.h"
+#include "core/strutil.h"
+#include "corpus_default_cfg.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -33,11 +35,7 @@ using namespace hydra;
 
 namespace {
 
-// The app's default analysis settings, the ones a fresh install runs.
-const app::AnalysisSettings& default_cfg() {
-    static const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    return cfg;
-}
+using corpus::default_cfg;
 
 // One corpus chart's record under `cfg`.
 struct CorpusRecord {
@@ -257,11 +255,8 @@ TEST_CASE("squeeze symbols and names: one per kind, and each name reads back as 
         for (const SPSqueeze& sq : a.sqinouts) syms += sq.symbol();
         const std::string n = a.notationstr();
         REQUIRE(n.size() > syms.size());
-        CHECK(n.substr(n.size() - syms.size()) == syms);
-        const std::string head = n.substr(0, n.size() - syms.size());
-        const std::string skips = std::to_string(a.skips());
-        REQUIRE(head.size() >= skips.size());
-        CHECK(head.substr(head.size() - skips.size()) == skips);
+        CHECK(ends_with(n, syms));
+        CHECK(ends_with(n.substr(0, n.size() - syms.size()), std::to_string(a.skips())));
     }
     CHECK(squeezed > 0);
 }
@@ -819,7 +814,7 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the corpus
         std::vector<int64_t> anchor(steps.size());
         int64_t latest = a.timecode.ticks();
         for (size_t s = 0; s < steps.size(); ++s) {
-            if (steps[s].kind == SpEndKind::Clamped) {
+            if (is_clamp_kind(steps[s].kind)) {
                 latest = steps[s].tick;
                 ++clamped;
             }
@@ -832,7 +827,7 @@ TEST_CASE("Activation: each end's anchor and each squeeze's end, from the corpus
         // The SqIn steps, in order, after the activation's own.
         std::vector<size_t> sqin_steps;
         for (size_t s = 1; s < steps.size(); ++s)
-            if (steps[s].kind == SpEndKind::SqIn) sqin_steps.push_back(s);
+            if (is_sqin_kind(steps[s].kind)) sqin_steps.push_back(s);
         size_t rank = 0;
         for (size_t k = 0; k < a.sqinouts.size(); ++k) {
             CAPTURE(k);
@@ -887,7 +882,7 @@ TEST_CASE("Activation notationstr: E prefix, skips, symbols") {
 }
 
 // The text of a list of pieces, each pair split by `sep`.
-static std::string joined(const std::vector<std::string>& parts, std::string_view sep) {
+static std::string pieces_joined(const std::vector<std::string>& parts, std::string_view sep) {
     std::string out;
     for (size_t i = 0; i < parts.size(); ++i) {
         if (i) out += sep;
@@ -937,7 +932,7 @@ TEST_CASE("Path pathstring and pathstring_verbose: every corpus path's sections"
         if (shorts.empty()) {
             CHECK(p.pathstring() == empty.pathstring());
         } else {
-            CHECK(p.pathstring() == joined(shorts, " "));
+            CHECK(p.pathstring() == pieces_joined(shorts, " "));
         }
 
         const std::vector<MultSqueeze>& mults = cp.rec->multsqueezes;
@@ -952,9 +947,9 @@ TEST_CASE("Path pathstring and pathstring_verbose: every corpus path's sections"
             ++with_mult;
             std::vector<std::string> ms;
             for (const MultSqueeze& m : mults) ms.push_back(m.notationstr());
-            CHECK(sections[0] == joined(ms, ", "));
+            CHECK(sections[0] == pieces_joined(ms, ", "));
         }
-        CHECK(sections[1] == (longs.empty() ? empty_sections[1] : joined(longs, " ")));
+        CHECK(sections[1] == (longs.empty() ? empty_sections[1] : pieces_joined(longs, " ")));
         CHECK(sections[2] == score_words + group_thousands(p.totalscore()));
     }
     // A record with multiplier squeezes and one without must both turn up.
