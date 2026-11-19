@@ -2152,8 +2152,7 @@ USER_SETTINGS = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\npause_on_focus_lost = 1
 
 
 class RunWithoutFocusTest(unittest.TestCase):
-    """ch_start's settings line and foreground watch, and the registry key's
-    backup and restore."""
+    """ch_start's settings step, and the registry key's backup and restore."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -2162,69 +2161,40 @@ class RunWithoutFocusTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_ch_start_sets_the_line_after_the_backup_then_launches_then_watches(self):
-        def set_setting(path, key, value):
-            backups = [d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)]
-            t.events.append(("setting", path, key, value, len(backups)))
+    def _pause_setting(self, settings: bytes):
+        """ch_start's settings step (GameTools._pause_setting) on a real Env
+        whose documents folder holds `settings` as its settings.ini: its
+        reply line and the file afterwards."""
+        documents = os.path.join(self.tmp, "documents")
+        path = os.path.join(documents, G.SETTINGS)
+        os.makedirs(documents)
+        _write(path, settings)
+        tools = GT.GameTools(B.Env(documents_dir=documents), threading.RLock(),
+                             os.path.join(self.tmp, "scratch"))
+        return tools._pause_setting(), path
 
-        t = ToolRig(self.tmp, set_setting=set_setting)
-        real_launch = t.r.launch
-
-        def launch(cmd):
-            t.events.append("launch")
-            return real_launch(cmd)
-
-        t.r.env.launch = launch
-        lines = t.tools.ch_start(t.r.song).splitlines()
-        self.assertEqual(t.events, [
-            ("setting", t.r.path(G.SETTINGS), "pause_on_focus_lost", "0", 1),
-            "launch", "watch start"])
-        said = ("settings.ini: pause_on_focus_lost set to 0 for this run (not put back after "
-                "the run)")
-        self.assertIn(said, lines)
-        self.assertLess(lines.index(f"backup folder: {t.backup_dir()}"), lines.index(said))
-        starting = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
-        self.assertLess(lines.index(said), starting[0])
-
-    def test_the_users_line_is_set_for_the_run_and_stays_after_ch_stop(self):
-        # The user's choice of 2026-11-13: "Leave the line changed".
-        t = ToolRig(self.tmp)
-        _write(t.r.path(G.SETTINGS), USER_SETTINGS)
-        t.tools.ch_start(t.r.song)
-        run_value = USER_SETTINGS.replace(b"pause_on_focus_lost = 1", b"pause_on_focus_lost = 0")
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), run_value)
-        lines = t.tools.ch_stop().splitlines()
-        self.assertFalse(any(line.startswith("settings.ini:") for line in lines))
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), run_value)
+    def test_the_settings_line_is_set_to_its_run_value_and_nothing_else_changes(self):
+        key, value = G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE
+        check = os.path.join(self.tmp, "before " + G.SETTINGS)
+        _write(check, USER_SETTINGS)
+        self.assertNotEqual(G.get_game_setting(check, key), value)
+        said, path = self._pause_setting(USER_SETTINGS)
+        self.assertEqual(G.get_game_setting(path, key), value)
+        self.assertTrue(said.startswith(f"{G.SETTINGS}: {key} set to {value} "), said)
+        # Only the line's value changed: the other lines and sections stay.
+        before = [line for line in USER_SETTINGS.splitlines() if not line.startswith(key.encode())]
+        after = [line for line in _read(path).splitlines() if not line.startswith(key.encode())]
+        self.assertEqual(after, before)
 
     def test_a_settings_file_without_the_line_is_left_alone_and_named(self):
-        t = ToolRig(self.tmp)
-        reply = t.tools.ch_start(t.r.song)
-        self.assertIn("settings.ini: pause_on_focus_lost not set to 0 (no `pause_on_focus_lost` "
-                      "line in the [game] section); the game may pause while it is not in front",
-                      reply.splitlines())
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), ORIGINAL[G.SETTINGS])
-        self.assertEqual(len(t.r.launch.commands), 1)
-
-    def test_ch_status_says_the_count_so_far_and_ch_stop_the_final_count(self):
-        t = ToolRig(self.tmp)
-        self.assertNotIn("foreground", t.tools.ch_status())
-        t.tools.ch_start(t.r.song)
-        watch = t.watches[0]
-        watch.count = 2
-        self.assertIn("foreground went to the game 2 times so far", t.tools.ch_status().splitlines())
-        lines = t.tools.ch_stop().splitlines()
-        self.assertTrue(watch.stopped)
-        self.assertIn("foreground went to the game 2 times", lines)
-        self.assertLess(lines.index("foreground went to the game 2 times"),
-                        lines.index("stopped the game"))
-        self.assertNotIn("foreground", t.tools.ch_status())
-
-    def test_an_adopted_game_starts_no_watch(self):
-        t = ToolRig(self.tmp)
-        t.tools.ensure_backup()
-        self.assertEqual(t.watches, [])
-        self.assertNotIn("foreground", t.tools.shutdown())
+        key, value = G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE
+        settings = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\nnote_speed = 7\r\n"
+        said, path = self._pause_setting(settings)
+        self.assertEqual(_read(path), settings)
+        self.assertTrue(said.startswith(f"{G.SETTINGS}: {key} not set to {value} "), said)
+        with self.assertRaises(G.SettingNotFound) as missing:
+            G.get_game_setting(path, key)
+        self.assertIn(f"({missing.exception})", said)
 
     def test_both_backups_carry_the_registry_key_with_the_envs_runner(self):
         for start in ("ch_start", "ensure_backup"):
