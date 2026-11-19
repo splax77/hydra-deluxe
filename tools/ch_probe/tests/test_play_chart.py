@@ -2116,7 +2116,8 @@ class MainExitTest(unittest.TestCase):
     def test_main_exits_nonzero_on_every_stop_but_the_song_end(self):
         cap_s = CallerHooksTest._CAP_S
         no_frame = {k: v for k, v in _e_replies()[0].items() if k != "down_frame"}
-        mid_ms = _RecordedGame(_F1_MID_SONG).read()[0] * 1000.0
+        from tools.ch_probe import constants as C
+        mid_ms = C.s_to_ms(_RecordedGame(_F1_MID_SONG).read()[0])
 
         def on(path, chords, **kwargs):
             return _play_recorded(path, chords=chords, **kwargs)[0]
@@ -2157,7 +2158,7 @@ class MainExitTest(unittest.TestCase):
         # The song end: the chords after the recording's first read whose
         # every press is due before its last read, so the run presses the
         # last of them while the recording still holds the game.
-        last_ms = _RecordedGame(_F1_MID_SONG).last_clock_s * 1000.0
+        last_ms = C.s_to_ms(_RecordedGame(_F1_MID_SONG).last_clock_s)
 
         def song_end(chords):
             window = [c for c in chords if c.ms > mid_ms
@@ -2211,10 +2212,11 @@ class StartLineTest(unittest.TestCase):
         # The Freak chords before the recorded mid-song clock's first read,
         # played on that clock: the run starts past its last note, plays
         # nothing and counts every chord with a press as skipped.
+        from tools.ch_probe import constants as C
         game = _RecordedGame(_F1_MID_SONG)
         with open(_F1_MID_SONG, encoding="utf-8", newline="") as f:
             clocks_s = [float(r["clock_s"]) for r in csv.DictReader(f)]
-        chords = [c for c in _freak_chords() if c.ms < clocks_s[0] * 1000.0]
+        chords = [c for c in _freak_chords() if c.ms < C.s_to_ms(clocks_s[0])]
         messages = play_chart.press_messages(play_chart.press_plan(chords))
         pressed = {p.index for head, later in messages for p in (head, *later)}
         self.assertTrue(pressed)
