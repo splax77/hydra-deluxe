@@ -132,6 +132,19 @@ def _pitch_dark_end(test: unittest.TestCase) -> tuple[float, str]:
             hydra_end.chart_source_text(I.chart_file(PITCH_DARK)))
 
 
+def _pitch_dark_dumps(test: unittest.TestCase, made: list):
+    """hydra_end.make_dump patched to write PITCH_DARK_DUMP for each chart it
+    is asked about, putting the chart into `made`. For a copy of PITCH_DARK's
+    chart, whose hydra_replay dump that file is."""
+    dump = _pitch_dark_dump(test)
+
+    def make_dump(chart, out):
+        made.append(chart)
+        shutil.copyfile(dump, out)
+
+    return mock.patch.object(hydra_end, "make_dump", make_dump)
+
+
 def _copy_real_backup(tmp: str) -> tuple[str, dict]:
     """REAL_BACKUP copied into `tmp`, with each file entry's source moved to a
     path under `tmp/sources`, so nothing a restore does can reach the user's
@@ -486,12 +499,7 @@ class BotRunTest(unittest.TestCase):
         doubled = int(re.search(r"(?m)^song_length\s*=\s*(\d+)", text).group(1))
         dump = _pitch_dark_dump(self)
         made = []
-
-        def dump_from_testdata(chart, out):
-            made.append(chart)
-            shutil.copyfile(dump, out)
-
-        with mock.patch.object(hydra_end, "make_dump", dump_from_testdata):
+        with _pitch_dark_dumps(self, made):
             ms, source = B.song_length_ms(song)
         chart = I.chart_file(song)
         self.assertEqual(made, [chart])
@@ -1414,20 +1422,31 @@ class InstallChartTest(unittest.TestCase):
         os.remove(os.path.join(self.src, G.SONG_INI))
         self.assertIn(f"has no {G.SONG_INI}", self.refused())
 
+    def corpus_copy(self) -> str:
+        """A copy of the corpus folder PITCH_DARK, to install from. Its
+        chart's dump is PITCH_DARK_DUMP (_pitch_dark_dumps)."""
+        src = os.path.join(self.tmp, "input", os.path.basename(PITCH_DARK))
+        shutil.copytree(PITCH_DARK, src)
+        return src
+
     def test_install_refuses_a_name_that_is_not_a_plain_folder_name(self):
+        # The real silent-audio writer: a refusal comes before it, so it never
+        # runs.
+        src = self.corpus_copy()
         outside = os.path.join(self.tmp, "outside")
-        for name in ("..", os.path.join("..", "outside"), "a/b", "a\\b", "", ".",
-                     os.path.join(self.tmp, "outside")):
-            with self.subTest(name=name):
-                with self.assertRaises(I.InstallRefused) as cm:
-                    I.install(self.src, dest_root=self.dest_root, name=name,
-                              write_ogg=self.fake_ogg)
-                # The refusal names the name it refused.
-                self.assertTrue(str(cm.exception).startswith(repr(name)), str(cm.exception))
+        made = []
+        with _pitch_dark_dumps(self, made):
+            for name in ("..", os.path.join("..", "outside"), "a/b", "a\\b", "", ".",
+                         os.path.join(self.tmp, "outside")):
+                with self.subTest(name=name):
+                    with self.assertRaises(I.InstallRefused) as cm:
+                        I.install(src, dest_root=self.dest_root, name=name)
+                    # The refusal is plain_name_refusal's for that name.
+                    self.assertEqual(str(cm.exception), I.plain_name_refusal(name))
+        # Nothing was made anywhere, and no dump of the chart was asked for.
         self.assertFalse(os.path.exists(self.dest_root))
         self.assertFalse(os.path.exists(outside))
-        self.assertEqual(self.oggs, [])
-        self.assertEqual(FAKE.charts.count(os.path.join(self.src, "notes.mid")), 0)
+        self.assertEqual(made, [])
 
     def test_install_refuses_a_name_as_a_refused_line(self):
         out = io.StringIO()
@@ -1438,14 +1457,25 @@ class InstallChartTest(unittest.TestCase):
                         out.getvalue())
 
     def test_install_copies_no_other_audio(self):
-        for name in (probe_songs.SONG_OGG, "drums.ogg", "guitar.opus", "song.mp3", "crowd.wav"):
-            _write(os.path.join(self.src, name), b"audio")
-        I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
-        dest = os.path.join(self.dest_root, "Some Song")
-        # The song.ogg there is the silent one write_ogg makes, which the fake
-        # here does not write; nothing of the source's audio is copied.
-        self.assertEqual(sorted(os.listdir(dest)), sorted([G.SONG_INI, "notes.mid"]))
-        self.assertEqual(self.oggs, [(os.path.join(dest, probe_songs.SONG_OGG), 90000)])
+        # A copy of the corpus folder with audio files of its own beside the
+        # chart, installed with the real silent-audio writer (ffmpeg).
+        src = self.corpus_copy()
+        source_audio = {name: f"the source's {name}".encode()
+                        for name in (probe_songs.SONG_OGG, "drums.ogg", "guitar.opus",
+                                     "song.mp3", "crowd.wav")}
+        for name, data in source_audio.items():
+            _write(os.path.join(src, name), data)
+        with _pitch_dark_dumps(self, []):
+            chart = I.install(src, dest_root=self.dest_root)
+        dest = os.path.dirname(chart)
+        # The copy holds the song.ini, the chart and the song.ogg the writer
+        # made; the source's own song.ogg is not it, and no other audio came.
+        self.assertEqual(sorted(os.listdir(dest)),
+                         sorted([G.SONG_INI, os.path.basename(I.chart_file(src)),
+                                 probe_songs.SONG_OGG]))
+        written = _read(os.path.join(dest, probe_songs.SONG_OGG))
+        self.assertTrue(written)
+        self.assertNotEqual(written, source_audio[probe_songs.SONG_OGG])
 
     # -- the copy's title -----------------------------------------------------------
 
@@ -1456,13 +1486,17 @@ class InstallChartTest(unittest.TestCase):
         return _read(os.path.join(self.dest_root, name or "Some Song", G.SONG_INI))
 
     def test_the_copys_title_gets_the_probe_prefix(self):
-        ini = self.installed_ini(b"[song]\nname = Ladies Talk [Kiyo Sen] (Drumeo Performance)\n"
-                                 b"song_length = 90000\n")
-        title = "Ladies Talk [Kiyo Sen] (Drumeo Performance)"
-        self.assertEqual(ini, b"[song]\nname = " + PREFIX + title.encode()
-                         + b"\nsong_length = 90000\n")
-        self.assertEqual(G.read_song_ini(os.path.join(self.dest_root, "Some Song"))["name"],
-                         probe_songs.NAME_PREFIX + title)
+        # A copy of the corpus folder, installed with the real silent-audio
+        # writer. The copy lists the source's title marked by full_name, and
+        # every other key of its song section stays.
+        src = self.corpus_copy()
+        source = G.read_song_ini(src)
+        self.assertTrue(source["name"])
+        self.assertFalse(source["name"].startswith(probe_songs.NAME_PREFIX))
+        with _pitch_dark_dumps(self, []):
+            chart = I.install(src, dest_root=self.dest_root)
+        copy = G.read_song_ini(os.path.dirname(chart))
+        self.assertEqual(copy, {**source, "name": probe_songs.full_name(source["name"])})
 
     def test_every_other_byte_of_the_song_ini_stays(self):
         ini = self.installed_ini(b"\xef\xbb\xbf; name = a comment\r\n"
@@ -1534,16 +1568,22 @@ class InstallChartTest(unittest.TestCase):
                          b"\xef\xbb\xbfsong_length = 90000\nname = Hydra Probe - Some Song")
 
     def test_a_read_only_song_ini_is_marked_in_the_copy_and_stays_read_only_at_the_source(self):
-        path = os.path.join(self.src, G.SONG_INI)
-        _write(path, b"[song]\nname = Real Title\nsong_length = 90000\n")
+        # A copy of the corpus folder whose song.ini is made read-only,
+        # installed with the real silent-audio writer.
+        src = self.corpus_copy()
+        path = os.path.join(src, G.SONG_INI)
+        source_bytes = _read(path)
+        title = G.read_song_ini(src)["name"]
         os.chmod(path, stat.S_IREAD)
         try:
-            I.install(self.src, dest_root=self.dest_root, write_ogg=self.fake_ogg)
+            with _pitch_dark_dumps(self, []):
+                chart = I.install(src, dest_root=self.dest_root)
             self.assertFalse(os.access(path, os.W_OK))
         finally:
             os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
-        self.assertEqual(_read(os.path.join(self.dest_root, "Some Song", G.SONG_INI)),
-                         b"[song]\nname = " + PREFIX + b"Real Title\nsong_length = 90000\n")
+        self.assertEqual(_read(path), source_bytes)
+        self.assertEqual(G.read_song_ini(os.path.dirname(chart))["name"],
+                         probe_songs.full_name(title))
 
     def test_a_failed_title_leaves_no_half_made_folder(self):
         with mock.patch.object(G, "set_song_title", side_effect=OSError("disk full")):
