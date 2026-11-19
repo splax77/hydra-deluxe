@@ -248,6 +248,15 @@ const Song& solo_song() {
     return song;
 }
 
+// The first moment a box timed off `from` reads as `since` ms on: from +
+// since, or the next double up when the sum's rounding leaves now - from
+// short of `since`.
+double moment_after(double from, double since) {
+    double t = from + since;
+    while (t - from < since) t = std::nextafter(t, std::numeric_limits<double>::infinity());
+    return t;
+}
+
 // The notes the engine's scoring counts in `s` (solo_note_count, core/scoring.h).
 int section_notes(const Song& song, const SoloSection& s) {
     int notes = 0;
@@ -945,66 +954,95 @@ TEST_CASE("drain box: an activation with no stored end stays idle") {
     CHECK(box.detail == idle.detail);
 }
 
-TEST_CASE("solo_percent: the game's float32 truncation") {
-    // 53 / 100 in float is just under 0.53, and times 100 just under 53, so
-    // the game shows 52 where whole-number math gives 53.
-    CHECK(solo_percent(53, 100) == 52);
-    CHECK(solo_percent(0, 120) == 0);
-    CHECK(solo_percent(102, 120) == 85);
-    CHECK(solo_percent(1, 3) == 33);
-    CHECK(solo_percent(120, 120) == 100);
-    CHECK(solo_percent(0, 0) == 0);
+TEST_CASE("solo_percent: truncated, never above the whole-number percent") {
+    // Snakeskin Boots' solo: at every count of notes hit the box shows, the
+    // percent is at most the exact share truncated and at most one below it
+    // (the game's sum is done in float); all notes read 100, none 0.
+    const Song& song = solo_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.solo_notes.size() == 1);
+    const PreviewSoloNotes& solo = scene.solo_notes[0];
+    REQUIRE(solo.notes > 0);
+    for (const PreviewSoloNotes::Step& s : solo.steps) {
+        INFO(s.notes_hit << " of " << solo.notes << " notes");
+        const int whole = s.notes_hit * 100 / solo.notes;
+        const int shown = solo_percent(s.notes_hit, solo.notes);
+        CHECK(shown <= whole);
+        CHECK(shown >= whole - 1);
+    }
+    CHECK(solo_percent(solo.notes, solo.notes) == 100);
+    CHECK(solo_percent(0, solo.notes) == 0);
 }
 
 TEST_CASE("solo box: from before the solo to its bonus, timed off the last chord") {
-    // Hand song: the solo is the one-note chords at 250 and 500 ms.
-    Song song = make_hand_song();
-    Path path = priced_path(song, {});
-    REQUIRE(path.score_solo == 200);
-    const PreviewScene scene = build_preview_scene(song, &path);
+    // Snakeskin Boots' one solo. Before its first chord the box is hidden;
+    // on each chord before the last it counts the notes hit so far; from the
+    // last chord it shows the end message for kSoloResultMs, then the bonus
+    // the engine's scoring pays for the solo for kSoloResultMs, then hides.
+    const Song& song = solo_song();
+    const SoloSection& sec = song.solo_sections.front();
+    REQUIRE(sec.last > sec.first);
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    const int notes = section_notes(song, sec);
+    const int64_t bonus = section_bonus(song, sec);
+    const double first_ms = song.sequence[sec.first].timecode.ms();
+    const double last_ms = song.sequence[sec.last].timecode.ms();
 
-    // Before the first chord: hidden.
-    CHECK_FALSE(solo_box_at(scene, 249.9).shown);
+    CHECK_FALSE(solo_box_at(scene, std::nextafter(first_ms, 0.0)).shown);
 
-    // On the first chord and between the two: one of two notes hit.
-    for (double t : {250.0, 400.0}) {
-        const PreviewSoloBox b = solo_box_at(scene, t);
+    int hit = 0;
+    for (size_t i = sec.first; i < sec.last; ++i) {
+        const SongTimestamp& ts = song.sequence[i];
+        hit += solo_note_count(ts.chord, ts.flag_solo);
+        const PreviewSoloBox b = solo_box_at(scene, ts.timecode.ms());
+        INFO("chord " << i << ", " << hit << " of " << notes << " notes");
         CHECK(b.shown);
-        CHECK(b.headline == "50%");
-        CHECK(b.detail == "1 / 2 notes");
+        CHECK(b.headline == std::to_string(solo_percent(hit, notes)) + "%");
+        CHECK(b.detail == group_thousands(hit) + " / " + counted(notes, "note", "notes"));
     }
 
     // On the last chord the solo is over: the end message, no count.
-    const PreviewSoloBox end = solo_box_at(scene, 500.0);
+    const PreviewSoloBox end = solo_box_at(scene, last_ms);
     CHECK(end.shown);
     CHECK(end.headline == "Perfect Solo!");
     CHECK(end.detail.empty());
-    CHECK(solo_box_at(scene, 500.0 + kSoloResultMs - 0.1).headline == "Perfect Solo!");
+    // A tenth of a millisecond is a free input: any moment just short of a
+    // boundary.
+    CHECK(solo_box_at(scene, last_ms + kSoloResultMs - 0.1).headline == "Perfect Solo!");
 
     // kSoloResultMs later: the bonus.
-    const PreviewSoloBox bonus = solo_box_at(scene, 500.0 + kSoloResultMs);
-    CHECK(bonus.shown);
-    CHECK(bonus.headline == "+200");
-    CHECK(bonus.detail.empty());
-    CHECK(solo_box_at(scene, 500.0 + kSoloTailMs - 0.1).headline == "+200");
+    const std::string bonus_text = "+" + group_thousands(bonus);
+    const PreviewSoloBox paid = solo_box_at(scene, moment_after(last_ms, kSoloResultMs));
+    CHECK(paid.shown);
+    CHECK(paid.headline == bonus_text);
+    CHECK(paid.detail.empty());
+    CHECK(solo_box_at(scene, last_ms + kSoloTailMs - 0.1).headline == bonus_text);
 
     // kSoloTailMs after the last chord: hidden.
-    CHECK_FALSE(solo_box_at(scene, 500.0 + kSoloTailMs).shown);
+    CHECK_FALSE(solo_box_at(scene, moment_after(last_ms, kSoloTailMs)).shown);
 }
 
-TEST_CASE("solo box: the count is notes, the bonus thousands-grouped") {
-    const Song song = two_solo_song();
+TEST_CASE("solo box: the count is notes, not chords") {
+    // Snakeskin Boots' solo holds more notes than chords (31 of its 66 chords
+    // have two or more pads), so a box that counted chords would read lower.
+    const Song& song = solo_song();
+    const SoloSection& sec = song.solo_sections.front();
     const PreviewScene scene = build_preview_scene(song, nullptr);
-    REQUIRE(scene.solo_notes.size() == 2);
-    CHECK(scene.solo_notes[0].notes == 4);
-    CHECK(scene.solo_notes[1].notes == 4);
+    REQUIRE(scene.solo_notes.size() == 1);
+    const int notes = section_notes(song, sec);
+    const size_t chords = sec.last - sec.first + 1;
+    REQUIRE(static_cast<size_t>(notes) > chords);
+    CHECK(scene.solo_notes[0].notes == notes);
+    CHECK(scene.solo_notes[0].steps.size() == chords);
 
-    // The first solo's middle chord has two notes: three of four hit.
-    const PreviewSoloBox mid = solo_box_at(scene, 750.0);
-    CHECK(mid.headline == "75%");
-    CHECK(mid.detail == "3 / 4 notes");
-    CHECK(solo_box_at(scene, 500.0).headline == "25%");
-    CHECK(solo_box_at(scene, 500.0).detail == "1 / 4 notes");
+    // On the chord before the last, the box counts every note of the chords
+    // struck so far, out of the solo's notes.
+    REQUIRE(sec.last > sec.first);
+    int hit = 0;
+    for (size_t i = sec.first; i < sec.last; ++i)
+        hit += solo_note_count(song.sequence[i].chord, song.sequence[i].flag_solo);
+    const PreviewSoloBox box = solo_box_at(scene, song.sequence[sec.last - 1].timecode.ms());
+    CHECK(box.detail == group_thousands(hit) + " / " + counted(notes, "note", "notes"));
 }
 
 TEST_CASE("solo box: a solo that starts during the last one's results takes over") {
@@ -1047,10 +1085,12 @@ TEST_CASE("solo box: a solo that starts during the last one's results takes over
 TEST_CASE("solo box: the same with or without a path") {
     const Song song = two_solo_song();
     const Path path = priced_path(song, {});
-    // Both solos' bonuses together are the path's solo score.
-    CHECK(path.score_solo == 800);
     const PreviewScene bare = build_preview_scene(song, nullptr);
     const PreviewScene with_path = build_preview_scene(song, &path);
+    // The boxes' bonuses together are the path's solo score.
+    int64_t bonuses = 0;
+    for (const PreviewSoloNotes& s : bare.solo_notes) bonuses += s.bonus;
+    CHECK(bonuses == path.score_solo);
     for (double t : {0.0, 500.0, 750.0, 1000.0, 1500.0, 2000.0, 3500.0, 5000.0}) {
         const PreviewSoloBox a = solo_box_at(bare, t);
         const PreviewSoloBox b = solo_box_at(with_path, t);
@@ -1060,67 +1100,81 @@ TEST_CASE("solo box: the same with or without a path") {
     }
 }
 
-TEST_CASE("solo box: a bonus over a thousand has a separator; none without solos") {
-    PreviewScene scene;
-    PreviewSoloNotes s;
-    s.steps = {{100.0, 60}, {200.0, 120}};
-    s.notes = 120;
-    s.bonus = 12000;
-    scene.solo_notes.push_back(s);
-    CHECK(solo_box_at(scene, 100.0).detail == "60 / 120 notes");
-    CHECK(solo_box_at(scene, 200.0 + kSoloResultMs).headline == "+12,000");
-
-    CHECK_FALSE(solo_box_at(build_preview_scene(make_fill_song(), nullptr), 600.0).shown);
-}
-
-TEST_CASE("solo box: past the length it reads the moment the time box shows") {
-    // Playback ends on the hand song's last solo chord: the playhead held
-    // there shows the end message, not the hidden box 4 s past it.
-    const PreviewScene scene = build_preview_scene(make_hand_song(), nullptr);
-    CHECK(build_solo_box(scene, 4500.0, /*length_ms=*/500.0).headline == "Perfect Solo!");
-    CHECK_FALSE(build_solo_box(scene, 4500.0, kNoPlaybackEnd).shown);
+TEST_CASE("solo box: none on a chart without solos") {
+    // The fill song names no solo, so at none of its chords is there a box.
+    const Song song = make_fill_song();
+    REQUIRE(song.solo_sections.empty());
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE_FALSE(song.sequence.empty());
+    for (const SongTimestamp& ts : song.sequence)
+        CHECK_FALSE(solo_box_at(scene, ts.timecode.ms()).shown);
 }
 
 TEST_CASE("solo box samples: each solo's widest boxes") {
-    const PreviewScene scene = build_preview_scene(two_solo_song(), nullptr);
+    // Per solo: the box on its first chord, on its chord before the last, on
+    // its last chord (the end message) and kSoloResultMs on (the bonus), in
+    // that order, each the box the playhead shows at that moment.
+    const Song& song = solo_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(scene.solo_notes.size() == 1);
+    const PreviewSoloNotes& solo = scene.solo_notes[0];
+    REQUIRE(solo.steps.size() >= 2);
+    const double last_ms = solo.steps.back().ms;
+    const std::vector<double> moments = {solo.steps.front().ms,
+                                         solo.steps[solo.steps.size() - 2].ms, last_ms,
+                                         moment_after(last_ms, kSoloResultMs)};
     const std::vector<PreviewSoloBox> samples = build_solo_box_samples(scene);
-    // Per solo: the first chord, the last before the end, the end message
-    // and the bonus.
-    REQUIRE(samples.size() == 8);
-    CHECK(samples[0].headline == "25%");
-    CHECK(samples[1].headline == "75%");
-    CHECK(samples[1].detail == "3 / 4 notes");
-    CHECK(samples[2].headline == "Perfect Solo!");
-    CHECK(samples[3].headline == "+400");
-    CHECK(samples[4].headline == "50%");
-    for (const PreviewSoloBox& b : samples) CHECK(b.shown);
+    REQUIRE(samples.size() == moments.size());
+    for (size_t i = 0; i < moments.size(); ++i) {
+        INFO("sample " << i << " at " << moments[i] << " ms");
+        const PreviewSoloBox at = solo_box_at(scene, moments[i]);
+        CHECK(samples[i].shown);
+        CHECK(samples[i].shown == at.shown);
+        CHECK(samples[i].headline == at.headline);
+        CHECK(samples[i].detail == at.detail);
+    }
 }
 
 TEST_CASE("scrub marks: each activation's onset over the scrubber's length") {
-    TwoActs t;
-    std::vector<double> marks = build_scrub_marks(t.scene, 10000.0);
-    REQUIRE(marks.size() == 2);
-    CHECK(marks[0] == doctest::Approx(0.2));
-    CHECK(marks[1] == doctest::Approx(0.8));
-    // Clamped into the bar when the length is shorter than the path.
-    CHECK(build_scrub_marks(t.scene, 4000.0)[1] == doctest::Approx(1.0));
-    CHECK(build_scrub_marks(t.scene, 0.0).empty());
-    CHECK(build_scrub_marks(build_preview_scene(t.song, nullptr), 10000.0).empty());
-}
+    // Pitch Dark's record over its length as the app works it out
+    // (analysis_song_length). Each mark is its activation's moment over that
+    // length; a shorter length clamps the marks past it to the bar's end.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::optional<double> len =
+        analysis_song_length(std::nullopt, pd.chart, *pd.song).ms;
+    REQUIRE(len.has_value());
+    const std::vector<PreviewActivation>& acts = pd.scene.activations;
+    REQUIRE(acts.size() >= 2);
 
-TEST_CASE("song_fraction: a clamped share, none without a length") {
-    // The scrub marks' numbers: 2000 ms of 10,000 ms, 8000 ms of 4000 ms.
-    REQUIRE(song_fraction(2000.0, 10000.0).has_value());
-    CHECK(*song_fraction(2000.0, 10000.0) == doctest::Approx(0.2));
-    REQUIRE(song_fraction(8000.0, 4000.0).has_value());
-    CHECK(*song_fraction(8000.0, 4000.0) == doctest::Approx(1.0));
-    CHECK_FALSE(song_fraction(2000.0, 0.0).has_value());
+    const std::vector<double> marks = build_scrub_marks(pd.scene, *len);
+    REQUIRE(marks.size() == acts.size());
+    for (size_t i = 0; i < acts.size(); ++i) {
+        INFO("activation at tick " << acts[i].tick);
+        CHECK(marks[i] == doctest::Approx(acts[i].ms / *len));
+    }
+
+    // A length that ends between the first and last activations.
+    const double short_len = (acts.front().ms + acts.back().ms) / 2.0;
+    const std::vector<double> clamped = build_scrub_marks(pd.scene, short_len);
+    REQUIRE(clamped.size() == acts.size());
+    CHECK(clamped.front() == doctest::Approx(acts.front().ms / short_len));
+    CHECK(clamped.back() == 1.0);
+
+    // No length, or no path: no marks.
+    CHECK(build_scrub_marks(pd.scene, 0.0).empty());
+    CHECK(build_scrub_marks(pd.bare, *len).empty());
 }
 
 TEST_CASE("song_fraction: has_song_length takes only a positive length") {
-    CHECK(has_song_length(10000.0));
+    // A real chart's length, as the app works it out, is one; no length (0)
+    // and a negative one are not.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const std::optional<double> len =
+        analysis_song_length(std::nullopt, pd.chart, *pd.song).ms;
+    REQUIRE(len.has_value());
+    CHECK(has_song_length(*len));
     CHECK_FALSE(has_song_length(0.0));
-    CHECK_FALSE(has_song_length(-1.0));
+    CHECK_FALSE(has_song_length(-*len));
 }
 
 // The audio-tail chart: the last note is at 1000 ms and the audio stops 5 s
@@ -1135,9 +1189,15 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     path.activations = {sp_act_at(c.song, 1440, /*sp_meter=*/1, /*end_tick=*/5280)};
     const PreviewScene scene = build_preview_scene(c.song, &path, kCloneHeroSpCap,
                                                    core::default_rules(), c.audio_end_ms);
+    // The case: the audio runs on past the last note.
+    REQUIRE(c.audio_end_ms > c.last_note_ms);
     const std::vector<double> marks = build_scrub_marks(scene, c.audio_end_ms);
     REQUIRE(marks.size() == 1);
-    CHECK(marks[0] == doctest::Approx(0.125));
+    REQUIRE(scene.activations.size() == 1);
+    // The mark is the activation's moment over the audio's end, not over the
+    // last note's.
+    CHECK(marks[0] == doctest::Approx(scene.activations[0].ms / c.audio_end_ms));
+    CHECK(marks[0] != doctest::Approx(scene.activations[0].ms / c.last_note_ms));
 
     const ActivationsView view =
         build_activations(path, HydraRecord{}, &c.song.timing(), std::nullopt,
