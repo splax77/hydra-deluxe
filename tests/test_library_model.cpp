@@ -23,7 +23,8 @@
 #include "chart_text.h"            // chart_text: the song folders' short drum charts
 #include "core/error_kind.h"
 #include "core/rules.h"
-#include "corpus_util.h"       // charts_with_paths, scanned_entry: corpus charts and their results
+#include "core/strutil.h"  // ends_with
+#include "corpus_util.h"      // charts_with_paths, scanned_entry: corpus charts and their results
 #include "display_fixtures.h"  // kTagOnlyTitle, add_stale_records, empty_analysis_under
 #include "temp_util.h"         // temp_dir, remove_dir: the scan's scratch root
 #include "parse/song.h"        // NoNotesError
@@ -182,9 +183,7 @@ LibraryModel scanned_library(const std::string& tag, const std::vector<SongFolde
 
 // True when `notespath` is the chart in the song folder named `name`.
 bool in_folder(const std::string& notespath, const std::string& name) {
-    const std::string tail = "\\" + name + "\\notes.chart";
-    return notespath.size() >= tail.size() &&
-           notespath.compare(notespath.size() - tail.size(), tail.size(), tail) == 0;
+    return hydra::ends_with(notespath, "\\" + name + "\\notes.chart");
 }
 
 // The row of the song folder named `name`.
