@@ -274,13 +274,17 @@ jobs:
     name: Coverage report (Windows, Release)
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        copy: [1, 2, 3, 4]
     # The caps here, the job's and each step's, are set from measured runs
     # with room to spare. "Continuous integration" in docs/development.md gives
     # the runs and their times. The build step starts from an empty folder
     # every night, and the sccache cache decides how long it takes. An empty
     # cache is the slow case, and a slow runner can add minutes to it, so the
     # build step's cap is sized for that case.
-    timeout-minutes: 60
+    timeout-minutes: 80
     defaults:
       run:
         shell: pwsh
@@ -294,6 +298,11 @@ jobs:
       SCCACHE_GHA_ENABLED: "true"
       SCCACHE_GHA_VERSION: coverage-1
     steps:
+      - name: Diag stop unless on the new image
+        run: |
+          "ImageVersion: $env:ImageVersion"
+          if ($env:ImageVersion -notlike '20261116*') { throw "old image $env:ImageVersion, nothing to learn here" }
+
       # The full history, for the precheck self-test's two real commit ranges;
       # the comment on build-and-test's checkout says why.
       - name: Check out the code
@@ -386,7 +395,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: diag-hydra-tests
+          name: diag-hydra-tests-${{ matrix.copy }}
           path: diag
 
       # Each test step runs its command inside "collect", which records every
@@ -404,6 +413,13 @@ jobs:
           & $env:CC collect --session-id $env:COVERAGE_SESSION --settings tools\coverage.settings.xml
           --output "$env:COVERAGE_OUT\hydra_tests.coverage" --nologo --
           ctest --test-dir build-coverage-ninja -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
+
+      - name: Diag normal build on this image
+        continue-on-error: true
+        timeout-minutes: 30
+        run: |
+          .\build_cpp.ps1 -Target hydra_tests
+          ctest --test-dir build-cpp -C Release -j 1 ${{ env.HOSTED_CTEST_FILTER }} --output-on-failure
 
       - name: Run hydra_uitest
         if: false
