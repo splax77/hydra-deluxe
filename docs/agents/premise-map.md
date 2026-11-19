@@ -49,7 +49,7 @@ Each word says what kind of thing the fact was read from.
 
 ## What counts as a source
 
-A premise about a file's own content is sourced by that file. "The planner's instructions say nothing about premises" is sourced by the planner's instruction file.
+A premise about a file's own content is sourced by the lines of that file that show it, cited as `path:N` or `path:A-B` (the Source rule in "Rules for the table"). "The planner's instructions say nothing about premises" is sourced by the lines of the planner's instruction file the author read to see that; a claim that a whole file holds nothing is sourced by a Read of the whole file, cited as its full line range.
 
 A premise about the world (the game, the code, a past run) is sourced by the thing itself. A file that only reports on it does not count. That means a handoff, another plan, a session card, a memory note, or a Clone Hero block with no proof label. A session card counts only as the place a `ruling`'s quoted words sit. A row whose only source is one of those, or nothing, is `unchecked`, and its Status must name a task in the plan, a question number or a live step.
 
