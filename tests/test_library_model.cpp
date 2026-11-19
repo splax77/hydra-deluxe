@@ -982,8 +982,8 @@ TEST_CASE("library model: rows built on threads match the one-thread rows, in th
     // Enough copies of the pinned rows for more rows than set_charts has
     // threads, and a row count that is not a multiple of the threads, so the
     // shares are uneven. Each copy gets its own hash.
-    constexpr int kThreads = static_cast<int>(hydra::store::kLibraryOpenThreads);
-    constexpr int kPinned = 5;  // pinned_charts().size(), checked below
+    static constexpr int kThreads = static_cast<int>(hydra::store::kLibraryOpenThreads);
+    static constexpr int kPinned = 5;  // pinned_charts().size(), checked below
     constexpr int kCopies = [] {
         int copies = kThreads / kPinned + 1;
         while ((copies * kPinned) % kThreads == 0) ++copies;
