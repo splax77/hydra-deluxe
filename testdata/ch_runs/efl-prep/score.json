@@ -1,0 +1,963 @@
+{
+ "activations": [
+  {
+   "act_ms": 24430.0,
+   "act_tick": 24430,
+   "deact_ms": 32110.0,
+   "deact_tick": 32110
+  },
+  {
+   "act_ms": 46800.0,
+   "act_tick": 46800,
+   "deact_ms": 54480.0,
+   "deact_tick": 54480
+  },
+  {
+   "act_ms": 69140.0,
+   "act_tick": 69140,
+   "deact_ms": 76820.0,
+   "deact_tick": 76820
+  },
+  {
+   "act_ms": 91470.0,
+   "act_tick": 91470,
+   "deact_ms": 99150.0,
+   "deact_tick": 99150
+  },
+  {
+   "act_ms": 113792.0,
+   "act_tick": 113792,
+   "deact_ms": 121472.0,
+   "deact_tick": 121472
+  }
+ ],
+ "chart": "C:\\Users\\Patrick\\Downloads\\Hydra\\hydra-data\\ch-mcp-runs\\2026-11-12\\efl-prep\\Early Fill Walk\\notes.chart",
+ "chartmode": "Expert Pro Drums, 2x Bass",
+ "chords": [
+  {
+   "chord_code": "n....",
+   "combo_before": 0,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0,
+    "total": 50
+   },
+   "cum_onscreen_total": 50,
+   "in_sp": false,
+   "index": 0,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 10.416666666666666,
+    "label": "m11.2.320"
+   },
+   "ms": 20000.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 20000
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 1,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 100,
+    "solo": 0,
+    "sp": 0,
+    "total": 100
+   },
+   "cum_onscreen_total": 100,
+   "in_sp": false,
+   "index": 1,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 11.458333333333334,
+    "label": "m12.2.400"
+   },
+   "ms": 22000.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 22000
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 2,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 150,
+    "solo": 0,
+    "sp": 50,
+    "total": 200
+   },
+   "cum_onscreen_total": 200,
+   "fill_start": 23950,
+   "in_sp": true,
+   "index": 2,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 12.723958333333334,
+    "label": "m13.3.430"
+   },
+   "ms": 24430.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 50
+   },
+   "tick": 24430
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 3,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 200,
+    "solo": 0,
+    "sp": 100,
+    "total": 300
+   },
+   "cum_onscreen_total": 300,
+   "fill_start": 29950,
+   "in_sp": true,
+   "index": 3,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 15.848958333333334,
+    "label": "m16.4.190"
+   },
+   "ms": 30430.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 50
+   },
+   "tick": 30430
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 4,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 250,
+    "solo": 0,
+    "sp": 100,
+    "total": 350
+   },
+   "cum_onscreen_total": 350,
+   "in_sp": false,
+   "index": 4,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 22.098958333333332,
+    "label": "m23.1.190"
+   },
+   "ms": 42430.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 42430
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 5,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 300,
+    "solo": 0,
+    "sp": 100,
+    "total": 400
+   },
+   "cum_onscreen_total": 400,
+   "in_sp": false,
+   "index": 5,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 23.140625,
+    "label": "m24.1.270"
+   },
+   "ms": 44430.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 44430
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 6,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 350,
+    "solo": 0,
+    "sp": 150,
+    "total": 500
+   },
+   "cum_onscreen_total": 500,
+   "fill_start": 46320,
+   "in_sp": true,
+   "index": 6,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 24.375,
+    "label": "m25.2.240"
+   },
+   "ms": 46800.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 50
+   },
+   "tick": 46800
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 7,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 400,
+    "solo": 0,
+    "sp": 200,
+    "total": 600
+   },
+   "cum_onscreen_total": 600,
+   "fill_start": 52320,
+   "in_sp": true,
+   "index": 7,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 27.5,
+    "label": "m28.3.0"
+   },
+   "ms": 52800.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 50
+   },
+   "tick": 52800
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 8,
+   "cum": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 450,
+    "solo": 0,
+    "sp": 200,
+    "total": 650
+   },
+   "cum_onscreen_total": 650,
+   "in_sp": false,
+   "index": 8,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 33.75,
+    "label": "m34.4.0"
+   },
+   "ms": 64800.0,
+   "multiplier": 1,
+   "multiplier_after": 1,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 1,
+     "sp_points": 50
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 0,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 64800
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 9,
+   "cum": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 500,
+    "solo": 0,
+    "sp": 200,
+    "total": 750
+   },
+   "cum_onscreen_total": 750,
+   "in_sp": false,
+   "index": 9,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 34.791666666666664,
+    "label": "m35.4.80"
+   },
+   "ms": 66800.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 66800
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 10,
+   "cum": {
+    "accent": 0,
+    "combo": 100,
+    "ghost": 0,
+    "notes": 550,
+    "solo": 0,
+    "sp": 300,
+    "total": 950
+   },
+   "cum_onscreen_total": 950,
+   "fill_start": 68660,
+   "in_sp": true,
+   "index": 10,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 36.010416666666664,
+    "label": "m37.1.20"
+   },
+   "ms": 69140.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 100
+   },
+   "tick": 69140
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 11,
+   "cum": {
+    "accent": 0,
+    "combo": 150,
+    "ghost": 0,
+    "notes": 600,
+    "solo": 0,
+    "sp": 400,
+    "total": 1150
+   },
+   "cum_onscreen_total": 1150,
+   "fill_start": 74660,
+   "in_sp": true,
+   "index": 11,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 39.135416666666664,
+    "label": "m40.1.260"
+   },
+   "ms": 75140.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 100
+   },
+   "tick": 75140
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 12,
+   "cum": {
+    "accent": 0,
+    "combo": 200,
+    "ghost": 0,
+    "notes": 650,
+    "solo": 0,
+    "sp": 400,
+    "total": 1250
+   },
+   "cum_onscreen_total": 1250,
+   "in_sp": false,
+   "index": 12,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 45.385416666666664,
+    "label": "m46.2.260"
+   },
+   "ms": 87140.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 87140
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 13,
+   "cum": {
+    "accent": 0,
+    "combo": 250,
+    "ghost": 0,
+    "notes": 700,
+    "solo": 0,
+    "sp": 400,
+    "total": 1350
+   },
+   "cum_onscreen_total": 1350,
+   "in_sp": false,
+   "index": 13,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 46.427083333333336,
+    "label": "m47.2.340"
+   },
+   "ms": 89140.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 89140
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 14,
+   "cum": {
+    "accent": 0,
+    "combo": 300,
+    "ghost": 0,
+    "notes": 750,
+    "solo": 0,
+    "sp": 500,
+    "total": 1550
+   },
+   "cum_onscreen_total": 1550,
+   "fill_start": 90990,
+   "in_sp": true,
+   "index": 14,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 47.640625,
+    "label": "m48.3.270"
+   },
+   "ms": 91470.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 100
+   },
+   "tick": 91470
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 15,
+   "cum": {
+    "accent": 0,
+    "combo": 350,
+    "ghost": 0,
+    "notes": 800,
+    "solo": 0,
+    "sp": 600,
+    "total": 1750
+   },
+   "cum_onscreen_total": 1750,
+   "fill_start": 96990,
+   "in_sp": true,
+   "index": 15,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 50.765625,
+    "label": "m51.4.30"
+   },
+   "ms": 97470.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 100
+   },
+   "tick": 97470
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 16,
+   "cum": {
+    "accent": 0,
+    "combo": 400,
+    "ghost": 0,
+    "notes": 850,
+    "solo": 0,
+    "sp": 600,
+    "total": 1850
+   },
+   "cum_onscreen_total": 1850,
+   "in_sp": false,
+   "index": 16,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 57.015625,
+    "label": "m58.1.30"
+   },
+   "ms": 109470.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 109470
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 17,
+   "cum": {
+    "accent": 0,
+    "combo": 450,
+    "ghost": 0,
+    "notes": 900,
+    "solo": 0,
+    "sp": 600,
+    "total": 1950
+   },
+   "cum_onscreen_total": 1950,
+   "in_sp": false,
+   "index": 17,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": true,
+   "measure": {
+    "decimal": 58.057291666666664,
+    "label": "m59.1.110"
+   },
+   "ms": 111470.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 111470
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 18,
+   "cum": {
+    "accent": 0,
+    "combo": 500,
+    "ghost": 0,
+    "notes": 950,
+    "solo": 0,
+    "sp": 700,
+    "total": 2150
+   },
+   "cum_onscreen_total": 2150,
+   "fill_start": 113312,
+   "in_sp": true,
+   "index": 18,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 59.266666666666666,
+    "label": "m60.2.32"
+   },
+   "ms": 113792.0,
+   "multiplier": 2,
+   "multiplier_after": 2,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 2,
+     "sp_points": 100
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 50,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 100
+   },
+   "tick": 113792
+  },
+  {
+   "chord_code": "n....",
+   "combo_before": 19,
+   "cum": {
+    "accent": 0,
+    "combo": 600,
+    "ghost": 0,
+    "notes": 1000,
+    "solo": 0,
+    "sp": 850,
+    "total": 2450
+   },
+   "cum_onscreen_total": 2450,
+   "fill_start": 119312,
+   "in_sp": true,
+   "index": 19,
+   "is_fill": true,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 62.391666666666666,
+    "label": "m63.2.272"
+   },
+   "ms": 119792.0,
+   "multiplier": 3,
+   "multiplier_after": 3,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 3,
+     "sp_points": 150
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 100,
+    "ghost": 0,
+    "notes": 50,
+    "solo": 0,
+    "sp": 150
+   },
+   "tick": 119792
+  }
+ ],
+ "final": {
+  "accent": 0,
+  "combo": 600,
+  "ghost": 0,
+  "notes": 1000,
+  "solo": 0,
+  "sp": 850,
+  "total": 2450
+ },
+ "path_source": {
+  "file": "C:\\Users\\Patrick\\Downloads\\Hydra\\hydra-data\\ch-mcp-runs\\2026-11-12\\efl-prep\\dump.json",
+  "index": 1
+ },
+ "sections": [],
+ "warnings": []
+}

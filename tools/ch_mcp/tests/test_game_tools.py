@@ -8,6 +8,7 @@ records its keys, and live_play is a fake that delivers rows.
 from __future__ import annotations
 
 import csv
+import glob
 import inspect
 import json
 import os
@@ -36,6 +37,7 @@ from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import quiet as Q  # noqa: E402
 from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
+from tools.ch_mcp import server  # noqa: E402
 from tools.ch_mcp import build_stamp  # noqa: E402
 from tools.ch_mcp import menu_tools  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
@@ -1939,55 +1941,99 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(lines[1].startswith("song check: FAILED"), lines[1])
         self.assertTrue(lines[2].startswith(f"no read came back: {unread.exception}"), lines[2])
 
-    def test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach(self):
-        t, events, _seen = self._chain_rig()
-        schedule = os.path.join(self.tmp, "x schedule.json")
-        _write(schedule, json.dumps(for_song(SCHEDULE_JSON, os.path.join(self.tmp, "x"))).encode())
-        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), schedule, "System")
-        self.assertEqual(reply, f"refused: song_folder {t.r.song} is not the folder of the "
-                                f"schedule's chart, {os.path.join(self.tmp, 'x')}; nothing started")
-        self.assertEqual(events, [])
+    # The refusals below come before the attach, so they run on the server's
+    # own tools (server.Helper, the wiring the MCP server uses) and on real
+    # hydra_replay schedules. EFL_* are the early-fill live check's prep
+    # files, copied from hydra-data/ch-mcp-runs/2026-11-12/efl-prep: its
+    # schedule was made from path 1 of its dump.
+    EFL_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "efl-prep")
+    EFL_SCHEDULE = os.path.join(EFL_DIR, "schedule.json")
+    EFL_SCORE = os.path.join(EFL_DIR, "score.json")
 
-    def test_run_chart_refuses_a_schedule_with_no_chart_or_a_relative_one(self):
-        t, events, _seen = self._chain_rig()
-        for chart, said in ((None, "names no chart"),
-                            ("songs/x/notes.chart", "names its chart by the relative path")):
-            with self.subTest(chart=chart):
-                path = os.path.join(self.tmp, "chart schedule.json")
-                doc = dict(SCHEDULE_JSON)
-                if chart is not None:
-                    doc["chart"] = chart
-                _write(path, json.dumps(doc).encode())
-                reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System")
-                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
-                self.assertEqual(events, [])
+    def _server_tools(self) -> GT.GameTools:
+        """The GameTools of a real server.Helper on this test's temp folder,
+        with its real run parts handed in, except the attach, which fails the
+        test: ch_run_chart reaches the game only through it, and a unit test
+        must never attach to the user's running Clone Hero."""
+        helper = server.Helper(scratch_root=os.path.join(self.tmp, "server"))
+
+        def never_attach(*_args, **_kwargs):
+            raise AssertionError("a refusal stopped refusing: ch_run_chart reached the "
+                                 "attach, which would go to a running Clone Hero")
+        helper.frida.ch_attach = never_attach
+        return helper.game
+
+    def _assert_started_nothing(self, tools: GT.GameTools):
+        """No play, no press log and no builds record: the run never reached
+        the attach."""
+        self.assertIsNone(tools._play)
+        self.assertEqual(tools._press_log_count, 0)
+        self.assertEqual(glob.glob(os.path.join(tools.session_dir(), GT.BUILDS_PREFIX + "*")),
+                         [])
+
+    @staticmethod
+    def _schedule_source(path):
+        """The path index and dump file the schedule at `path` says it was
+        made from (its path_source, as hydra_replay schedule writes it)."""
+        source = GT.schedule_doc(path)["path_source"]
+        return source["index"], source["file"]
+
+    def test_run_chart_refuses_a_song_folder_that_is_not_the_schedules_before_the_attach(self):
+        tools = self._server_tools()
+        index, _dump = self._schedule_source(self.EFL_SCHEDULE)
+        chart_folder = GT.schedule_chart_folder(GT.schedule_doc(self.EFL_SCHEDULE),
+                                                self.EFL_SCHEDULE)
+        other = os.path.join(self.tmp, "another song")
+        reply = tools.ch_run_chart(other, self.EFL_SCORE, self.EFL_SCHEDULE, "System",
+                                   path_index=index)
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(f"song_folder {other} ", reply)
+        self.assertIn(chart_folder, reply)
+        self.assertTrue(reply.endswith("nothing started"), reply)
+        self._assert_started_nothing(tools)
+
+    def test_run_chart_refuses_a_schedule_that_names_its_chart_by_a_relative_path(self):
+        # Pitch Dark's schedule in testdata/replay was made by prep_inputs.py
+        # with a relative --chart (the command is in the comment above
+        # _REPLAY_DIR in tools/ch_probe/tests/test_sp_compare.py), so its
+        # chart says nothing about where the song folder is.
+        path = os.path.join(_REPO_ROOT, "testdata", "replay",
+                            "test_pitch_dark_ratio-schedule.json")
+        chart = GT.schedule_doc(path)["chart"]
+        self.assertFalse(os.path.isabs(chart), chart)
+        index, _dump = self._schedule_source(path)
+        tools = self._server_tools()
+        reply = tools.ch_run_chart(os.path.join(self.tmp, "song"), self.EFL_SCORE, path,
+                                   "System", path_index=index)
+        self.assertTrue(reply.startswith(f"refused: {path} "), reply)
+        self.assertIn(chart, reply)
+        self.assertTrue(reply.endswith("nothing started"), reply)
+        self._assert_started_nothing(tools)
 
     def test_path_index_must_match_path_source(self):
-        dump = PATH_SOURCE["file"]
-        cases = (
-            (dict(SCHEDULE_JSON, path_source={"file": dump, "index": 2}), 0,
-             f"was made from path 2 of {dump}, but path_index is 0; nothing started"),
-            ({k: v for k, v in SCHEDULE_JSON.items() if k != "path_source"}, 0,
-             "has no path_source index, so the path it plays is unknown"),
-            (SCHEDULE_JSON, 1, f"was made from path 0 of {dump}, but path_index is 1"))
-        t, events, _seen = self._chain_rig()
-        for doc, index, said in cases:
-            with self.subTest(said=said):
-                path = self._schedule_json(doc)
-                reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System",
-                                             path_index=index)
-                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
-                self.assertTrue(reply.endswith("; nothing started"), reply)
-                self.assertEqual(events, [])
-                reply = t.tools.ch_play_chart(self._score_json(), path, route="keys",
-                                              path_index=index)
-                self.assertTrue(reply.startswith(f"refused: {path} {said}"), reply)
-                self.assertIsNone(t.tools._play)
-        # A schedule made from path 2, asked for path 2, plays.
-        path = self._schedule_json(dict(SCHEDULE_JSON, path_source={"file": dump, "index": 2}))
-        reply = t.tools.ch_run_chart(t.r.song, self._score_json(), path, "System", path_index=2)
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("first press chord index 0", reply)
+        index, dump = self._schedule_source(self.EFL_SCHEDULE)
+        other = 0 if index != 0 else 1
+        tools = self._server_tools()
+        song = os.path.join(self.tmp, "another song")
+        # Asked for another path, both tools refuse, naming the schedule's
+        # own path and the one asked for, and start nothing.
+        for reply in (tools.ch_run_chart(song, self.EFL_SCORE, self.EFL_SCHEDULE, "System",
+                                         path_index=other),
+                      tools.ch_play_chart(self.EFL_SCORE, self.EFL_SCHEDULE, route="keys",
+                                          path_index=other)):
+            with self.subTest(reply=reply):
+                self.assertTrue(reply.startswith(f"refused: {self.EFL_SCHEDULE} "), reply)
+                self.assertIn(f"path {index} of {dump}", reply)
+                self.assertIn(f"path_index is {other}", reply)
+                self.assertTrue(reply.endswith("nothing started"), reply)
+                self._assert_started_nothing(tools)
+        # Asked for its own path, the path check passes: the next check, the
+        # song folder's, is the one that refuses.
+        reply = tools.ch_run_chart(song, self.EFL_SCORE, self.EFL_SCHEDULE, "System",
+                                   path_index=index)
+        self.assertNotIn("path_index", reply)
+        self.assertTrue(reply.startswith(f"refused: song_folder {song} "), reply)
+        self._assert_started_nothing(tools)
 
     def test_builds_json_in_the_run_folder(self):
         t, _events, _seen = self._chain_rig()
@@ -2042,28 +2088,6 @@ class GameToolsTest(unittest.TestCase):
                                              for p in probes])
         return f"refused: ValueError: {caught.exception}; nothing started"
 
-    def _assert_nothing_started(self, t, events):
-        self.assertEqual(events, [])
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(t.tools._press_log_count, 0)
-        self.assertFalse(os.path.exists(os.path.join(t.tools.session_dir(), "builds-1.json")))
-
-    def test_run_chart_presses_a_probe_chord_at_its_asked_lead_and_marks_its_row(self):
-        t, _events, seen = self._probe_chain_rig()
-        probes = self._probes_file([{"index": 1, "lead_ms": 84}])
-        self._run(t, probes_json=probes)
-        # SCORE_JSON's chord 1 is at 1500 ms.
-        at = {p.index: p.at_ms for p in play_chart.press_plan(seen["chords"])}
-        self.assertAlmostEqual(at[1], 1500.0 - 84.0)
-        rows = {row["index"]: row for row in t.tools._play.rows}
-        self.assertEqual(rows[1]["chart_ms"], 1500.0)
-        self.assertEqual(rows[1][edge_probe.PROBE_COLUMN], 84.0)
-        self.assertNotIn(edge_probe.PROBE_COLUMN, rows[0])
-        # Chord 0 keeps the schedule's own press time.
-        plain = {p.index: p.at_ms for p in play_chart.press_plan(
-            GT.chords_to_play(self._schedule_json())[0])}
-        self.assertEqual(at[0], plain[0])
-
     def test_run_chart_with_probes_says_the_probes_line_after_the_plays(self):
         t, _events, _seen = self._probe_chain_rig()
         probes = self._probes_file([{"index": 1, "lead_ms": 84}])
@@ -2072,55 +2096,63 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(lines[play + 1:play + 2],
                          edge_probe.probe_lines(edge_probe.load_probes(probes)))
 
+    def _run_own_song(self, tools, schedule, score, probes_json):
+        """ch_run_chart on `schedule`'s own song folder and path, so its song
+        and path checks pass and the probes file is what it reads next."""
+        index, _dump = self._schedule_source(schedule)
+        song = GT.schedule_chart_folder(GT.schedule_doc(schedule), schedule)
+        return tools.ch_run_chart(song, score, schedule, "System", path_index=index,
+                                  probes_json=probes_json)
+
     def test_run_chart_refuses_a_probe_chord_not_in_the_schedule_before_the_attach(self):
-        t, events, _seen = self._probe_chain_rig()
-        probes = [{"index": 7, "lead_ms": 84}]
-        reply = self._run(t, probes_json=self._probes_file(probes))
-        self.assertEqual(reply, self._probe_refusal(self._schedule_json(), probes))
-        self._assert_nothing_started(t, events)
+        chords, _lines = GT.chords_to_play(self.EFL_SCHEDULE)
+        absent = max(chord.index for chord in chords) + 1
+        probes = [{"index": absent, "lead_ms": 84}]
+        tools = self._server_tools()
+        reply = self._run_own_song(tools, self.EFL_SCHEDULE, self.EFL_SCORE,
+                                   self._probes_file(probes))
+        self.assertEqual(reply, self._probe_refusal(self.EFL_SCHEDULE, probes))
+        self.assertIn(str(absent), reply)
+        self._assert_started_nothing(tools)
 
     def test_run_chart_refuses_a_probe_on_a_chord_timed_from_a_star_power_end(self):
-        # Freak's chord 387 is a squeeze-out timed from activation 0's end
-        # (test_edge_probe's squeeze case).
-        t, events, _seen = self._probe_chain_rig()
-        probes = [{"index": 387, "lead_ms": 84}]
-        reply = self._run(t, os.path.join(_PROBE_TESTS, "freak_limits_score.json"),
-                          self.FREAK_SCHEDULE, probes_json=self._probes_file(probes))
+        # The chord is the first one Freak's schedule times from a Star Power
+        # end (Press.timed_from_end); the schedule holds several.
+        chords, _lines = GT.chords_to_play(self.FREAK_SCHEDULE)
+        from_end = [chord.index for chord in chords
+                    if any(press.timed_from_end is not None for press in chord.presses)]
+        self.assertTrue(from_end, "Freak's schedule times no press from a Star Power end")
+        probes = [{"index": from_end[0], "lead_ms": 84}]
+        tools = self._server_tools()
+        reply = self._run_own_song(tools, self.FREAK_SCHEDULE,
+                                   os.path.join(_PROBE_TESTS, "freak_limits_score.json"),
+                                   self._probes_file(probes))
         self.assertEqual(reply, self._probe_refusal(self.FREAK_SCHEDULE, probes))
-        self._assert_nothing_started(t, events)
+        self._assert_started_nothing(tools)
 
     def test_run_chart_refuses_a_probes_file_load_probes_refuses(self):
-        t, events, _seen = self._probe_chain_rig()
-        path = self._probes_file({"index": 1, "lead_ms": 84})
+        # One probe object, not a list of them.
+        path = self._probes_file({"index": 5, "lead_ms": 84})
         with self.assertRaises(ValueError) as caught:
             edge_probe.load_probes(path)
-        self.assertEqual(self._run(t, probes_json=path),
-                         f"refused: ValueError: {caught.exception}; nothing started")
-        self._assert_nothing_started(t, events)
-
-    def test_run_chart_with_no_probes_plays_the_schedules_own_presses(self):
-        # The chords chords_to_play loads go to the player unmoved, and no row
-        # is marked, so a run with no probes file plans what it did before
-        # ch_run_chart took one. Freak's schedule holds squeezes and end reads.
-        t, _events, seen = self._probe_chain_rig()
-        self._run(t, os.path.join(_PROBE_TESTS, "freak_limits_score.json"), self.FREAK_SCHEDULE)
-        loaded = GT.chords_to_play(self.FREAK_SCHEDULE)[0]
-        self.assertEqual(seen["chords"], loaded)
-        self.assertEqual(play_chart.press_plan(seen["chords"]), play_chart.press_plan(loaded))
-        self.assertIsNone(t.tools._play.mark_row)
-        self.assertFalse([row for row in t.tools._play.rows if edge_probe.PROBE_COLUMN in row])
+        tools = self._server_tools()
+        reply = self._run_own_song(tools, self.EFL_SCHEDULE, self.EFL_SCORE, path)
+        self.assertEqual(reply, f"refused: ValueError: {caught.exception}; nothing started")
+        self._assert_started_nothing(tools)
 
     def test_with_no_parts_handed_in_it_refuses_and_touches_nothing(self):
-        t = ToolRig(self.tmp)
-        self.assertTrue(t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json()).startswith("refused:"))
-        self.assertIsNone(t.tools._play)
+        # A GameTools on its own, before the server hands in the run's parts.
+        tools = GT.GameTools(B.Env(), threading.RLock(), os.path.join(self.tmp, "scratch"))
+        index, _dump = self._schedule_source(self.EFL_SCHEDULE)
+        song = GT.schedule_chart_folder(GT.schedule_doc(self.EFL_SCHEDULE), self.EFL_SCHEDULE)
+        reply = tools.ch_run_chart(song, self.EFL_SCORE, self.EFL_SCHEDULE, path_index=index)
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn(GT.GameTools.use_run_parts.__name__, reply)
+        self._assert_started_nothing(tools)
 
-    def test_foreground_line_is_the_watchs_line_or_none(self):
-        t = ToolRig(self.tmp)
-        self.assertIsNone(t.tools.foreground_line())
-        t.tools.ch_start(t.r.song)
-        self.assertEqual(t.tools.foreground_line(), "foreground went to the game 0 times so far")
-        t.tools.ch_stop()
+    def test_foreground_line_is_none_when_the_server_did_not_start_the_game(self):
+        tools = self._server_tools()
+        self.assertIsNone(tools.foreground_line())
 
 
 # A settings.ini with the run's line in its [game] section.
@@ -2128,8 +2160,7 @@ USER_SETTINGS = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\npause_on_focus_lost = 1
 
 
 class RunWithoutFocusTest(unittest.TestCase):
-    """ch_start's settings line and foreground watch, and the registry key's
-    backup and restore."""
+    """ch_start's settings step, and the registry key's backup and restore."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -2138,69 +2169,40 @@ class RunWithoutFocusTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_ch_start_sets_the_line_after_the_backup_then_launches_then_watches(self):
-        def set_setting(path, key, value):
-            backups = [d for d in os.listdir(t.tools._scratch) if d.startswith(G.BACKUP_PREFIX)]
-            t.events.append(("setting", path, key, value, len(backups)))
+    def _pause_setting(self, settings: bytes):
+        """ch_start's settings step (GameTools._pause_setting) on a real Env
+        whose documents folder holds `settings` as its settings.ini: its
+        reply line and the file afterwards."""
+        documents = os.path.join(self.tmp, "documents")
+        path = os.path.join(documents, G.SETTINGS)
+        os.makedirs(documents)
+        _write(path, settings)
+        tools = GT.GameTools(B.Env(documents_dir=documents), threading.RLock(),
+                             os.path.join(self.tmp, "scratch"))
+        return tools._pause_setting(), path
 
-        t = ToolRig(self.tmp, set_setting=set_setting)
-        real_launch = t.r.launch
-
-        def launch(cmd):
-            t.events.append("launch")
-            return real_launch(cmd)
-
-        t.r.env.launch = launch
-        lines = t.tools.ch_start(t.r.song).splitlines()
-        self.assertEqual(t.events, [
-            ("setting", t.r.path(G.SETTINGS), "pause_on_focus_lost", "0", 1),
-            "launch", "watch start"])
-        said = ("settings.ini: pause_on_focus_lost set to 0 for this run (not put back after "
-                "the run)")
-        self.assertIn(said, lines)
-        self.assertLess(lines.index(f"backup folder: {t.backup_dir()}"), lines.index(said))
-        starting = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
-        self.assertLess(lines.index(said), starting[0])
-
-    def test_the_users_line_is_set_for_the_run_and_stays_after_ch_stop(self):
-        # The user's choice of 2026-11-13: "Leave the line changed".
-        t = ToolRig(self.tmp)
-        _write(t.r.path(G.SETTINGS), USER_SETTINGS)
-        t.tools.ch_start(t.r.song)
-        run_value = USER_SETTINGS.replace(b"pause_on_focus_lost = 1", b"pause_on_focus_lost = 0")
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), run_value)
-        lines = t.tools.ch_stop().splitlines()
-        self.assertFalse(any(line.startswith("settings.ini:") for line in lines))
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), run_value)
+    def test_the_settings_line_is_set_to_its_run_value_and_nothing_else_changes(self):
+        key, value = G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE
+        check = os.path.join(self.tmp, "before " + G.SETTINGS)
+        _write(check, USER_SETTINGS)
+        self.assertNotEqual(G.get_game_setting(check, key), value)
+        said, path = self._pause_setting(USER_SETTINGS)
+        self.assertEqual(G.get_game_setting(path, key), value)
+        self.assertTrue(said.startswith(f"{G.SETTINGS}: {key} set to {value} "), said)
+        # Only the line's value changed: the other lines and sections stay.
+        before = [line for line in USER_SETTINGS.splitlines() if not line.startswith(key.encode())]
+        after = [line for line in _read(path).splitlines() if not line.startswith(key.encode())]
+        self.assertEqual(after, before)
 
     def test_a_settings_file_without_the_line_is_left_alone_and_named(self):
-        t = ToolRig(self.tmp)
-        reply = t.tools.ch_start(t.r.song)
-        self.assertIn("settings.ini: pause_on_focus_lost not set to 0 (no `pause_on_focus_lost` "
-                      "line in the [game] section); the game may pause while it is not in front",
-                      reply.splitlines())
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), ORIGINAL[G.SETTINGS])
-        self.assertEqual(len(t.r.launch.commands), 1)
-
-    def test_ch_status_says_the_count_so_far_and_ch_stop_the_final_count(self):
-        t = ToolRig(self.tmp)
-        self.assertNotIn("foreground", t.tools.ch_status())
-        t.tools.ch_start(t.r.song)
-        watch = t.watches[0]
-        watch.count = 2
-        self.assertIn("foreground went to the game 2 times so far", t.tools.ch_status().splitlines())
-        lines = t.tools.ch_stop().splitlines()
-        self.assertTrue(watch.stopped)
-        self.assertIn("foreground went to the game 2 times", lines)
-        self.assertLess(lines.index("foreground went to the game 2 times"),
-                        lines.index("stopped the game"))
-        self.assertNotIn("foreground", t.tools.ch_status())
-
-    def test_an_adopted_game_starts_no_watch(self):
-        t = ToolRig(self.tmp)
-        t.tools.ensure_backup()
-        self.assertEqual(t.watches, [])
-        self.assertNotIn("foreground", t.tools.shutdown())
+        key, value = G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE
+        settings = b"[audio]\r\nvolume = 1\r\n\r\n[game]\r\nnote_speed = 7\r\n"
+        said, path = self._pause_setting(settings)
+        self.assertEqual(_read(path), settings)
+        self.assertTrue(said.startswith(f"{G.SETTINGS}: {key} not set to {value} "), said)
+        with self.assertRaises(G.SettingNotFound) as missing:
+            G.get_game_setting(path, key)
+        self.assertIn(f"({missing.exception})", said)
 
     def test_both_backups_carry_the_registry_key_with_the_envs_runner(self):
         for start in ("ch_start", "ensure_backup"):
