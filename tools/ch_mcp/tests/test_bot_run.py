@@ -152,6 +152,20 @@ def _copy_real_backup(tmp: str) -> tuple[str, dict]:
     return folder, sources
 
 
+def _assert_one_restore_after_the_launch(test: unittest.TestCase, lines: list,
+                                         backup_root: str, exe: str) -> None:
+    """A start_run of PITCH_DARK whose launch raised printed one line naming
+    its backup (the only folder in `backup_root`) after the launch's line:
+    the restore's. The first line naming it is the backup's own."""
+    backup_dir = os.path.join(backup_root, os.listdir(backup_root)[0])
+    launch_line = next(i for i, line in enumerate(lines)
+                       if line.endswith(subprocess.list2cmdline(
+                           B.launch_command(exe, PITCH_DARK, B.DEFAULT_PLAYER))))
+    restores = [i for i, line in enumerate(lines) if backup_dir in line][1:]
+    test.assertEqual(len(restores), 1, lines)
+    test.assertGreater(restores[0], launch_line, lines)
+
+
 def _folder_bytes(folder: str) -> dict:
     return {name: _read(os.path.join(folder, name)) for name in sorted(os.listdir(folder))}
 
@@ -766,13 +780,7 @@ class LaunchStepsTest(unittest.TestCase):
             B.start_run(PITCH_DARK, env=env, backup_root=backup_root,
                         song_end=_pitch_dark_end(self), before_launch=before_launch)
         # The restore ran on the run's backup, after the launch's line...
-        backup_dir = os.path.join(backup_root, os.listdir(backup_root)[0])
-        launch_line = next(i for i, line in enumerate(lines)
-                           if line.endswith(subprocess.list2cmdline(
-                               B.launch_command(env.exe, PITCH_DARK, B.DEFAULT_PLAYER))))
-        restores = [i for i, line in enumerate(lines) if backup_dir in line][1:]
-        self.assertEqual(len(restores), 1, lines)
-        self.assertGreater(restores[0], launch_line, lines)
+        _assert_one_restore_after_the_launch(self, lines, backup_root, env.exe)
         # ...and the setting before_launch changed stays changed.
         self.assertEqual(G.get_game_setting(settings, G.PAUSE_ON_FOCUS_LOST),
                          G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
@@ -1179,7 +1187,8 @@ class HumanLaunchTest(unittest.TestCase):
         pid = 0xFFFFFFF0
         with self.assertRaises(OSError) as cm:
             B.resume_main_thread(pid)
-        self.assertIn(f"process {pid} ", str(cm.exception))
+        # The refusal names the process it was asked about.
+        self.assertIn(str(pid), re.findall(r"\d+", str(cm.exception)))
 
     def test_the_toolhelp_and_thread_time_calls_find_this_processs_main_thread(self):
         # Read-only calls on the test's own process: they check the struct
@@ -1242,59 +1251,96 @@ class LoaderLineTest(unittest.TestCase):
         self.assertEqual([line for line in said_yes if line.startswith("warning")], [])
 
 class HumanStartRunTest(unittest.TestCase):
-    """start_run with human=True."""
+    """start_run with human=True, on PITCH_DARK with Hydra's end and bot_run's
+    real Env pieces. Only the Frida attach cannot run without the game, so
+    where a test needs one, the agent answers with the replies of a real
+    launch (LS_D0_LAUNCH_LOG)."""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
-        self.r = Rig(self.tmp, exits_at=None)
-        self.events = []
+        self.backup_root = os.path.join(self.tmp, "backups")
+        self.lines = []
 
     def tearDown(self):
         self._tmp.cleanup()
 
-    def start(self, song_dir, agent):
-        wire_human(self.r, agent)
-        return B.start_run(song_dir, player="ProDrums,Expert",
-                           backup_root=os.path.join(self.r.out_dir, "backups"),
-                           env=self.r.env, human=True)
+    def env(self) -> B.Env:
+        """_real_env with a built launch agent in a temp folder."""
+        env = _real_env(self.tmp, self.lines)
+        env.launch_agent_path = make_built_agent(os.path.join(self.tmp, "agent"), "launch")
+        return env
 
     def test_no_song_folder_is_refused_before_the_backup(self):
         with self.assertRaises(B.LaunchFailed) as cm:
-            self.start(None, FakeLaunchAgent(self.events))
+            B.start_run(None, backup_root=self.backup_root, env=self.env(), human=True)
         self.assertEqual(str(cm.exception), B.HUMAN_NEEDS_SONG)
         self.assertEqual(B.human_refusal(True, None), B.HUMAN_NEEDS_SONG)
-        self.assertIsNone(B.human_refusal(True, self.r.song))
+        self.assertIsNone(B.human_refusal(True, PITCH_DARK))
         self.assertIsNone(B.human_refusal(False, None))
-        self.assertFalse(os.path.exists(self.r.out_dir))
-        self.assertEqual(self.events, [])
+        # Nothing was backed up or started, and no line was printed.
+        self.assertFalse(os.path.exists(self.backup_root))
+        self.assertEqual(self.lines, [])
 
     def test_the_backup_comes_before_the_paused_start_and_the_run_keeps_the_launch(self):
-        agent = FakeLaunchAgent(self.events)
-        seen = []
-        attaches = wire_human(self.r, agent)
-        real_start = self.r.env.start_process
-        self.r.env.start_process = lambda cmd: (seen.append(os.path.isdir(self.r.backup_dir())),
-                                                real_start(cmd))[1]
-        run = B.start_run(self.r.song, player="ProDrums,Expert",
-                          backup_root=os.path.join(self.r.out_dir, "backups"),
-                          env=self.r.env, human=True)
-        self.assertEqual(seen, [True])
+        # The real paused start and resume, on whoami in place of the game:
+        # it refuses the game's flags and exits once resumed.
+        self.assertEqual(PATCH["launch"], B.LAUNCH_SUSPENDED)
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        events = []
+        agent = FakeLaunchAgent(events, statuses=[waiting, patched], arm_reply=arm_reply)
+        seen, games, attaches = [], [], []
+
+        def start(cmd):
+            events.append("start")
+            seen.append([os.path.join(self.backup_root, name)
+                         for name in os.listdir(self.backup_root)])
+            games.append(B._real_start_suspended(cmd))
+            return games[-1]
+
+        def attach(pid, path, log, out):
+            events.append("attach")
+            attaches.append((pid, path, log))
+            return agent
+
+        env = self.env()
+        env.exe = _WHOAMI
+        env.start_process = start
+        env.attach_agent = attach
+        try:
+            run = B.start_run(PITCH_DARK, backup_root=self.backup_root, env=env, human=True,
+                              song_end=_pitch_dark_end(self))
+        except BaseException:
+            for game in games:
+                game._p.kill()
+            raise
+        self.addCleanup(_reap, self, run.game)
+        # The paused start ran once, with the run's backup already made.
+        self.assertEqual(seen, [[run.backup_dir]])
+        self.assertEqual(events[0], "start")
         self.assertIs(run.launch.agent, agent)
-        self.assertIs(run.game, self.r.game)
-        self.assertEqual(run.command, B.launch_command(self.r.env.exe, self.r.song,
-                                                       "ProDrums,Expert"))
-        # The agent's log goes beside the backup folder.
-        self.assertEqual(attaches[0][2], os.path.join(self.r.out_dir, "backups",
-                                                      "launch-20261028-101500.jsonl"))
-        self.assertEqual(self.events[0], "start")
+        self.assertIs(run.game, games[0])
+        self.assertEqual(run.command, B.launch_command(_WHOAMI, os.path.abspath(PITCH_DARK),
+                                                       B.DEFAULT_PLAYER))
+        # The agent's log goes beside the backup folder, and a line names it.
+        log = attaches[0][2]
+        self.assertEqual(os.path.dirname(log), os.path.dirname(run.backup_dir))
+        self.assertNotEqual(log, run.backup_dir)
+        self.assertTrue(any(log in line for line in self.lines), self.lines)
 
     def test_a_failed_human_launch_restores_the_backup(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("refused")])
-        with self.assertRaises(B.LaunchFailed):
-            self.start(self.r.song, agent)
-        self.assertIn(f"restoring the backup from {self.r.backup_dir()}", self.r.lines)
-        self.r.assert_settings_untouched(self)
+        # The real paused start of an exe that is not there fails (_real_env).
+        # settings.ini is a real one from a run's backup.
+        env = self.env()
+        settings = os.path.join(env.documents_dir, G.SETTINGS)
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), settings)
+        before = _read(settings)
+        with self.assertRaises(OSError):
+            B.start_run(PITCH_DARK, backup_root=self.backup_root, env=env, human=True,
+                        song_end=_pitch_dark_end(self))
+        # The restore ran on the run's backup, after the launch's line.
+        _assert_one_restore_after_the_launch(self, self.lines, self.backup_root, env.exe)
+        self.assertEqual(_read(settings), before)
 
 
 class InstallChartTest(unittest.TestCase):
