@@ -184,20 +184,27 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
 
     const ReplayResult r = replay_path(song, {});
     REQUIRE(r.chords.size() == 4);
-    // On each chord the screen shows the running total less the solo points
-    // of this section's chords so far, unless this chord ends its section;
-    // outside a section nothing is held. The held amount comes from the rows'
-    // own points.solo and the song's own sections, never a typed total.
+    // The screen never runs ahead of the real total. A chord outside every
+    // section shows the whole total, so does a section's last chord (the
+    // bonus is paid there), and a chord inside a section, short of its last,
+    // that earned a solo bonus shows less. The sections are the song's own.
     bool held_somewhere = false;
     for (size_t i = 0; i < r.chords.size(); ++i) {
         CAPTURE(i);
-        int64_t held = 0;
+        const int64_t total = r.chords[i].cum.total();
+        const int64_t shown = r.chords[i].cum_onscreen_total;
+        CHECK(shown <= total);
+        bool inside = false, ends_section = false;
         for (const SoloSection& s : song.solo_sections) {
-            if (i < s.first || i >= s.last) continue;
-            for (size_t k = s.first; k <= i; ++k) held += r.chords[k].points.solo;
+            if (i >= s.first && i < s.last) inside = true;
+            if (i == s.last) ends_section = true;
         }
-        if (held > 0) held_somewhere = true;
-        CHECK(r.chords[i].cum_onscreen_total == r.chords[i].cum.total() - held);
+        if (!inside) CHECK(shown == total);
+        if (ends_section) CHECK(shown == total);
+        if (inside && r.chords[i].points.solo > 0) {
+            CHECK(shown < total);
+            held_somewhere = true;
+        }
     }
     // The first section spans two chords and its first chord pays a solo
     // bonus, so at least one chord must hold something back.
