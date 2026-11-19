@@ -882,14 +882,18 @@ class WallColumnsTest(unittest.TestCase):
         def press(lanes, _axes=None, then=()):
             pressed.append(list(lanes))
 
-        # The recording holds 1.59 s of wall time, and chord 134 comes 0.96 s
-        # into it; a 1.3 s cap ends the run between the two.
+        # The cap ends the run once the recording's clock passes chord 134's
+        # last send, which comes before the recording ends.
         from tools.ch_probe import constants as C
-        recording = _RecordedGame(_F1_DECLINED)
-        self.assertLess(next(c.ms for c in _freak_chords() if c.index == 134),
-                        C.s_to_ms(recording.last_clock_s))
+        last_send_s = C.ms_to_s(next(p.last_send_ms for p in _presses_of(_freak_chords())
+                                     if p.index == 134))
+        with open(_F1_DECLINED, encoding="utf-8", newline="") as f:
+            recorded = [(float(r["wall_s"]), float(r["clock_s"])) for r in csv.DictReader(f)]
+        past = [wall for wall, clock in recorded if clock >= last_send_s]
+        self.assertTrue(past)
+        cap_s = past[0] - recorded[0][0]
         result, _sent, _out, _took, _chords = _play_recorded(
-            _F1_DECLINED, press=press, cap_s=1.3)
+            _F1_DECLINED, press=press, cap_s=cap_s)
         self.assertEqual(result.stop, "cap")
         rows = _rows_of(result, 134)
         self.assertEqual(len(rows), 1)
