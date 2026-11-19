@@ -541,9 +541,22 @@ TEST_CASE("is_scaled: less than the tolerance from 1 is no scale") {
         const double unit = std::pow(10.0, digits);
         return std::round(v * unit) / unit;
     };
-    for (const double closest : {1.0 + kScaledMinDistance, 1.0 - kScaledMinDistance}) {
+    // 1 plus or minus kScaledMinDistance is not always scaled once stored as
+    // a double, so find the closest scaled double on each side by stepping
+    // one unit in the last place at a time. 64 steps is far more than the
+    // few that storage rounding can need, and the loop stops there.
+    auto closest_scaled = [](double start, double outward) {
+        double v = start;
+        for (int i = 0; i < 64 && is_scaled(v); ++i) v = std::nextafter(v, kIdentityScale);
+        for (int i = 0; i < 64 && !is_scaled(v); ++i) v = std::nextafter(v, outward);
+        return v;
+    };
+    for (const double closest : {closest_scaled(1.0 + kScaledMinDistance, 2.0),
+                                 closest_scaled(1.0 - kScaledMinDistance, 0.0)}) {
         CAPTURE(closest);
         REQUIRE(is_scaled(closest));
+        // One step toward 1 is no scale, so this really is the closest.
+        REQUIRE_FALSE(is_scaled(std::nextafter(closest, kIdentityScale)));
         CHECK(rounded(closest, kScaleIdentityDigits) != 1.0);
         CHECK(rounded(closest, kScaleIdentityDigits - 1) == 1.0);
     }
