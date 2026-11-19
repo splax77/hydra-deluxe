@@ -285,15 +285,22 @@ inline double squeeze_difficulty(bool is_sqin, double offset_ms) {
 }
 
 // The timing, in ms, the player needs for one Backend timings row: the one
-// figure its Rating word is banded on (D269). The squeezed-out row needs its
-// SqOut's squeeze_difficulty, measured from the one SP end (D269 call 4). At 0
-// that is still a timing to hit (timing_needs_hitting, D302), and the row reads
-// the first tier either way. A plain row the engine counts
+// figure its Rating word is banded on (D269). Every row is measured from the
+// one SP end (D269 call 4). The squeezed-out row needs how far it sits from
+// that end, on whichever side core::paid_by_sp_walk puts it. Inside SP that is
+// its SqOut's squeeze_difficulty, the late hit that pushes it out; at 0 that
+// is still a timing to hit (timing_needs_hitting, D302). Past the end it is
+// what a plain row there needs: nothing within the leeway, else its offset,
+// the early hit that would pull it back in. A plain row the engine counts
 // (core::counted_without_squeeze) needs nothing, and only there does 0 mean
 // nothing; one it does not count needs its offset, the early hit that would
-// win it. The leeway only decides which of those two a plain row is.
+// win it. The leeway only decides which of those two a plain row is. The
+// badges and the search read SPSqueeze::needs_no_timing, not this.
 inline double backend_row_timing(double offset_ms, bool squeezed_out, double leeway_ms) {
-    if (squeezed_out) return squeeze_difficulty(/*is_sqin=*/false, offset_ms);
+    if (squeezed_out)
+        return core::paid_by_sp_walk(offset_ms)
+                   ? squeeze_difficulty(/*is_sqin=*/false, offset_ms)
+                   : core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;
     return core::counted_without_squeeze(offset_ms, leeway_ms) ? 0.0 : offset_ms;
 }
 
@@ -455,11 +462,12 @@ struct BackendSqueeze {
     bool operator==(const BackendSqueeze& o) const;
     // The Rating word: backend_row_timing banded on the report's timing
     // tiers (timing_tiers, tier_for), one rule for every row (D269), and the
-    // "(uncounted)" tag where the engine does not count the row.
+    // "(uncounted)" tag where the engine does not count the row. Every row,
+    // squeezed out or not, is banded on its distance from the one SP end.
     // squeezed_out: this row is the activation's squeezed-out chord
     // (Activation::is_sqout_backend).
     // effective_ms: the row's eff. figure (NoteRating::effective_ms), banded
-    // in place of the raw one when the row needs a timing.
+    // in place of the raw one when backend_row_timing is above 0.
     // leeway_ms: the backend leeway edge (Rules::backend_leeway_ms).
     std::string summarystr(bool squeezed_out, std::optional<double> effective_ms,
                            double leeway_ms = core::default_rules().backend_leeway_ms) const;

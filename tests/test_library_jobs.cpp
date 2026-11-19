@@ -113,6 +113,14 @@ hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
     };
 }
 
+// Waits for a step the batch reaches on its way, and fails at once if the
+// batch finishes without reaching it (wait_until_or_gone in wait_util.h).
+template <class Done>
+void wait_for_batch_step(const BatchJob& job, Done done, const std::string& what) {
+    testwait::wait_until_or_gone(done, [&job] { return job.snapshot().finished; }, what,
+                                 "the batch has finished, so it can no longer reach this step");
+}
+
 }  // namespace
 
 // AOA-W3 V9-SN1: an exception out of the scan ends the job with the error as
@@ -199,10 +207,12 @@ TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers
     job.start();
 
     released = 1;
-    wait_until([&] { return job.snapshot().completed == 1; }, "the first chart to finish");
+    wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
+                        "the first chart to finish");
     CHECK_FALSE(job.snapshot().eta_s.has_value());
     released = 2;
-    wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
+    wait_for_batch_step(job, [&] { return job.snapshot().completed == 2; },
+                        "the second chart to finish");
     CHECK(job.snapshot().eta_s.has_value());
 
     released = 4;
@@ -218,18 +228,21 @@ TEST_CASE("jobs: time left leaves a pause out of its window") {
     BatchJob job(plan_of(fake_charts(4)), test_run(), store);
     job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);  // a window of 2
     job.start();
-    wait_until([&] { return job.snapshot().current_title == "fake 0"; }, "the first chart to start");
+    wait_for_batch_step(job, [&] { return job.snapshot().current_title == "fake 0"; },
+                        "the first chart to start");
 
     job.pause();
     released = 1;
-    wait_until([&] { return job.snapshot().completed == 1; }, "the chart in flight to finish");
+    wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
+                        "the chart in flight to finish");
     CHECK_FALSE(job.snapshot().eta_s.has_value());
     constexpr auto kPause = 1200ms;  // far longer than the run time that follows
     std::this_thread::sleep_for(kPause);
 
     job.resume();
     released = 2;
-    wait_until([&] { return job.snapshot().completed == 2; }, "the second chart to finish");
+    wait_for_batch_step(job, [&] { return job.snapshot().completed == 2; },
+                        "the second chart to finish");
     // Two charts left over a rate of 2 charts in the window's span: the span
     // in seconds. Counting the pause would make it kPause or more.
     const std::optional<double> eta = job.snapshot().eta_s;
@@ -248,11 +261,12 @@ TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
-    wait_until([&] { return started.load() == 1; }, "the first chart to start");
+    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
     job.pause();
     release = true;
-    wait_until([&] { return job.snapshot().completed == 1; }, "the chart in flight to finish");
+    wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
+                        "the chart in flight to finish");
     std::this_thread::sleep_for(200ms);
     CHECK(started.load() == 1);  // nothing new started while paused
     BatchJob::Snapshot paused = job.snapshot();
@@ -299,7 +313,7 @@ TEST_CASE("jobs: the snapshot names the chart being analyzed and freezes its clo
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
-    wait_until([&] { return started.load() == 1; }, "the first chart to start");
+    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
     BatchJob::Snapshot running = job.snapshot();
     CHECK(running.current_title == "fake 0");
@@ -327,7 +341,7 @@ TEST_CASE("jobs: the progress line's artist reads (unknown) when it is only tags
     job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
                               /*workers=*/1);
     job.start();
-    wait_until([&] { return started.load() == 1; }, "the first chart to start");
+    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
     CHECK(job.snapshot().current_artist == "(unknown)");
     release = true;
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
@@ -568,7 +582,7 @@ TEST_CASE("jobs: the tray is empty after it is taken, and a stopped run's tray h
     job.start();
 
     released = 1;
-    wait_until([&] { return job.answered_count() == 1; }, "the first chart's answer");
+    wait_for_batch_step(job, [&] { return job.answered_count() == 1; }, "the first chart's answer");
     job.stop();
     released = 2;  // the second chart finishes after the stop, so it is dropped
     wait_until([&] { return job.snapshot().finished; }, "the stopped batch to finish");
@@ -592,13 +606,14 @@ TEST_CASE("jobs: a paused batch job's tray keeps its answers") {
     BatchJob job(plan_of(fake_charts(2)), run, store);
     job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
     job.start();
-    wait_until([&] { return job.snapshot().current_title == "fake 0"; }, "the first chart to start");
+    wait_for_batch_step(job, [&] { return job.snapshot().current_title == "fake 0"; },
+                        "the first chart to start");
 
     // Paused with the first chart in flight: it finishes and is stored, and
     // the second never starts.
     job.pause();
     released = 2;
-    wait_until([&] { return job.answered_count() == 1; }, "the first chart's answer");
+    wait_for_batch_step(job, [&] { return job.answered_count() == 1; }, "the first chart's answer");
     std::this_thread::sleep_for(200ms);
     CHECK(job.answered_count() == 1);  // nothing added while paused
     CHECK(job.snapshot().paused);
@@ -637,7 +652,8 @@ TEST_CASE("jobs: a lookup that fails leaves its sentence in the tray and is trie
 
         released = 1;
         SavedRows failed;
-        wait_until(
+        wait_for_batch_step(
+            job,
             [&] {
                 SavedRows taken = job.take_saved_rows();
                 if (taken.problem.empty() && taken.answers.empty()) return false;
@@ -692,7 +708,7 @@ TEST_CASE("jobs: a frame's snapshot does not wait while the batch job waits on t
         wait_until([&go] { return go.load(); }, "the test to let the lookup go");
     });
     job.start();
-    wait_until([&] { return at_lookup.load(); }, "the batch to reach its lookup");
+    wait_for_batch_step(job, [&] { return at_lookup.load(); }, "the batch to reach its lookup");
 
     {
         StoreLockHolder holder(store);

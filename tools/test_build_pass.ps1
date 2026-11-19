@@ -11,8 +11,8 @@ build_slot.ps1, cmake_presets.ps1 and CMakePresets.json, with a find_cmake.ps1
 that hands back a fake cmake. The fake writes down its arguments and what the
 slot folder holds at that moment.
 
-tools/test_mutation_probe.ps1 covers the probe's one pass across rebuilds, and
-tools/test_hydra_ui_mcp.py covers the hydra_build_pass tool. A real compile,
+tools/test_hydra_ui_mcp.py covers the hydra_build_pass tool. Nothing here runs
+build_slot.ps1 -Hold, which holds one slot across several builds. A real compile,
 and whether MSBuild reads Directory.Build.targets at all, needs a real build,
 so the main session checks those.
 #>

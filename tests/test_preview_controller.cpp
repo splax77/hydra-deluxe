@@ -49,6 +49,7 @@ using hydra::ui::ViewJob;
 using hydra::ui::PreviewController;
 using hydra::ui::PreviewLoadJob;
 using testwait::wait_until;
+using testwait::wait_until_or_gone;
 
 namespace {
 
@@ -74,14 +75,18 @@ void settle(PreviewController& pc) {
 }
 
 // Polls until the overlay drawn is `path_key`'s (shows_path), or a failed
-// build set the error and nothing more will land.
+// build set the error and nothing more will land. It fails at once when every
+// Preview thread is done (busy() after the poll) and neither came: no job is
+// left to build that overlay, so it can no longer land.
 void wait_for_path(PreviewController& pc, const std::string& path_key) {
-    wait_until(
+    wait_until_or_gone(
         [&] {
             pc.poll();
             return pc.shows_path(path_key) || pc.has_error();
         },
-        "the overlay for " + path_key + " to land");
+        [&] { return !pc.busy(); }, "the overlay for " + path_key + " to land",
+        "every Preview thread finished without drawing that overlay or setting an error, so "
+        "nothing is left to draw it");
 }
 
 // An audio device factory that fails as a PC with no device would, so

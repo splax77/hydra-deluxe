@@ -79,6 +79,15 @@
         "HYDRA_ASAN": { "type": "BOOL", "value": "ON" },
         "HYDRA_FUZZ": { "type": "BOOL", "value": "ON" }
       }
+    },
+    {
+      "name": "mutation",
+      "displayName": "Planted-bug test build for tools/mutate (never ships)",
+      "inherits": "default",
+      "binaryDir": "${sourceDir}/build-mutation",
+      "cacheVariables": {
+        "HYDRA_MUTATION": { "type": "BOOL", "value": "ON" }
+      }
     }
   ],
   "buildPresets": [
@@ -122,6 +131,12 @@
       "configurePreset": "fuzz",
       "configuration": "Release",
       "targets": ["hydra_fuzz"]
+    },
+    {
+      "name": "mutation",
+      "configurePreset": "mutation",
+      "configuration": "Release",
+      "targets": ["hydra_tests"]
     }
   ]
 }

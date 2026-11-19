@@ -1,6 +1,6 @@
 # Session index
 
-7 sessions are kept locally and have no line here.
+8 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -288,7 +288,7 @@
 - 2026-10-10 99992f42 Documentation audit and AI writing review (2026-10-10) | docs, release, review, agents, hooks | The session ended with the rewrite finished and pushed: main moved from the old tip to 9ff1ea31 at 23:03 UTC, after the full suite passed (1,305 of 1,305 test cases).
 - 2026-10-10 6e5bdc1e Doc-review submit gate: accept CRLF review files (2026-10-10) | hooks, review, docs | The session ended after the merge: the fix is on main at 402eaa0, the fix commit is a0ad8b3, and the worktree and branch were removed.
 - 2026-10-10 35360d51 Tooltip style guide audit (2026-10-10) | ui-timings, review, agents, docs, preview | Ended with the approved tooltip wording and the wrap fix merged into local main, pushed to GitHub, and the main checkout rebuilt.
-- 2026-10-11 14ef4882 Lane support in preview (2026-10-11) | lane, preview, chart, release, squeeze | The session ended with Hydra Deluxe 2.6.0 released on GitHub at 03:50 UTC, after the drum lane work was merged to main as 918947c5. [failed]
+- 2026-10-11 14ef4882 Lane support in preview (2026-10-11) | lane, preview, chart, release, squeeze | The session ended with Hydra Deluxe 2.6.0 released on GitHub at 03:50 UTC, after the drum lane work was merged to main as 918947c5.
 - 2026-10-11 27bb17bc How Clone Hero's drum lanes change hitting (2026-10-11) | clone-hero, lane, library, docs | Ended at 04:07 UTC with the findings file complete and committed on main (not pushed), after the user's last table edit.
 - 2026-10-11 5a8caf72 Leftover worktrees and scratchpads cleanup (2026-10-11) | hooks, agents, docs, tests | Ended with the cleanup sweep hook live in the ~\.claude repo as commit 0efc2ba, after the worktree and scratch cleanup and a push of main.
 - 2026-10-11 18665965 Slowest starpower drain sections (2026-10-11) | library, scan, activation, sp-cap, chart-reading | Ended normally at 14:37 UTC with a top-10 list in which each stretch has Star Power running inside it.
@@ -493,20 +493,38 @@
 - 2026-11-13 375e58cd Dynamic hit window for notes (2026-11-13) | hit-window, squeeze, early-fill-e, path, planning, clone-hero | Ended with the row merged to main and pushed (ac916e0e), shown on every squeeze-in, squeeze-out and early fill badge. [write-back]
 - 2026-11-13 f7baa4ed Early fill live check handoff (2026-11-13) | clone-hero, planning, review, agents, tests | The session ended with LS-F0 passed (the probe chart is installed) and LS-F1 waiting for the user's go; no game run has started.
 - 2026-11-13 bed936f0 Pitch Dark in-game test (2026-11-13) | clone-hero, squeeze, review, planning, agents | Ended at 05:19 UTC when the user asked for a stop and a handoff; the handoff is committed on branch claude/handoff-schedule-ratios as 17118821d492f2775616f7d22d005c3ce23201b4 and not merged or pushed. [write-back]
-- 2026-11-13 e14f7e34 Schedule ratios and review gap handoff (2026-11-13) | clone-hero, squeeze, review, agents, hooks | Ended at 00:22 UTC after the user approved pushing the pointer fix; origin/main is at 73404b67, the same as local main, and nothing is left unpushed. [write-back]
-- 2026-11-14 6c7771c3 Release 3.0 (2026-11-14) | release, installer, docs, agents | Ended at 00:36 UTC with Hydra Deluxe 3.0.0 published as the latest GitHub release, after the user's yes to publish.
-- 2026-11-14 43fddb24 Clone Hero 1.1 changes for Hydra (2026-11-14) | clone-hero, release, planning, agents | Ended at 01:03 UTC with the plan settled and waiting for the user's go before seven executors start on it. [write-back]
-- 2026-11-14 938c53df Hydra performance issues (2026-11-14) | performance, analysis, library | Ended at 01:08 UTC with the cause not found, and the agent waiting on the user's answer about catching a slow run live on the real Hydra.
-- 2026-11-14 7d28ae9a Meaning of 85 and 53 numbers (2026-11-14) | squeeze, hit-window, backend-squeeze, agents, release, hooks | The session ended with release 3.0.1 published on GitHub, and one docs commit left unpushed.
-- 2026-11-14 958b1d85 Fix corpus squeeze-in test after new corpus chart (2026-11-14) | tests, library, docs, review | The session ended with the corpus-count fix merged to main as 944e627a, and the test passing on main's own build.
-- 2026-11-14 04fbfbab Frontend/backend switched (2026-11-14) | backend-squeeze, frontend-squeeze, agents, review, docs, release | The session ended with the label fix merged on main and release 3.0.2 published on GitHub.
+- 2026-11-13 e14f7e34 Schedule ratios and review gap handoff (2026-11-13) | clone-hero, squeeze, review, agents, hooks | Ended at 00:22 UTC after the user approved pushing the pointer fix; origin/main is at 73404b67, the same as local main, and nothing is left unpushed. [stale] [write-back]
+- 2026-11-14 6c7771c3 Release 3.0 (2026-11-14) | release, installer, docs, agents | Ended at 00:36 UTC with Hydra Deluxe 3.0.0 published as the latest GitHub release, after the user's yes to publish. [stale]
+- 2026-11-14 43fddb24 Clone Hero 1.1 changes for Hydra (2026-11-14) | clone-hero, release, planning, agents | Ended at 01:03 UTC with the plan settled and waiting for the user's go before seven executors start on it. [stale] [write-back]
+- 2026-11-14 938c53df Hydra performance issues (2026-11-14) | performance, analysis, library | Ended at 01:08 UTC with the cause not found, and the agent waiting on the user's answer about catching a slow run live on the real Hydra. [stale]
+- 2026-11-14 7d28ae9a Meaning of 85 and 53 numbers (2026-11-14) | squeeze, hit-window, backend-squeeze, agents, release, hooks | The session ended with release 3.0.1 published on GitHub, and one docs commit left unpushed. [stale]
+- 2026-11-14 958b1d85 Fix corpus squeeze-in test after new corpus chart (2026-11-14) | tests, library, docs, review | The session ended with the corpus-count fix merged to main as 944e627a, and the test passing on main's own build. [stale]
+- 2026-11-14 04fbfbab Frontend/backend switched (2026-11-14) | backend-squeeze, frontend-squeeze, agents, review, docs, release | The session ended with the label fix merged on main and release 3.0.2 published on GitHub. [stale]
 - 2026-11-14 ca29fda5 Ruling gate plan handoff (2026-11-14) | hooks, agents, docs, planning, review | The session ended with the ruling-gate plan approved on its branch, with nothing built and nothing merged. [stale]
-- 2026-11-14 a9505e36 Starpower end clarity design (2026-11-14) | note-highway, sp-bar, active-sp-window, preview, planning | The session ended with a handoff for option B, committed on its own branch and not merged into main.
-- 2026-11-14 ae1c19f5 Sprint end option B handoff (2026-11-14) | active-sp-window, preview, release, hooks, review, clone-hero | Option B was merged into main, and Hydra Deluxe 3.1.0 was published on GitHub with a signed installer and its signature file. [write-back]
-- 2026-11-15 00f515c4 Three failed runs (2026-11-15) | tests, agents, review, planning, docs | The session ended with a rubric, one good example test and two handoffs, each on its own branch, with nothing merged.
+- 2026-11-14 a9505e36 Starpower end clarity design (2026-11-14) | note-highway, sp-bar, active-sp-window, preview, planning | The session ended with a handoff for option B, committed on its own branch and not merged into main. [stale]
+- 2026-11-14 ae1c19f5 Sprint end option B handoff (2026-11-14) | active-sp-window, preview, release, hooks, review, clone-hero | Option B was merged into main, and Hydra Deluxe 3.1.0 was published on GitHub with a signed installer and its signature file. [stale] [write-back]
+- 2026-11-15 00f515c4 Three failed runs (2026-11-15) | tests, agents, review, planning, docs | The session ended with a rubric, one good example test and two handoffs, each on its own branch, with nothing merged. [stale]
 - 2026-11-15 99e8481e Preview draws engine handoff (2026-11-15) | preview, squeeze, active-sp-window, planning, agents, release | Ended with Hydra 3.1.1 published on GitHub, with the Preview fix in it, after the user approved the release.
-- 2026-11-15 8f4b57ab Analysis regression investigation (2026-11-15) | performance, library, tests, review, planning | The session ended with the slow save fixed and merged to main, two tests merged, and a window fix planned and handed off but not built.
-- 2026-11-15 5375d0bf Old worktrees and scratch folders (2026-11-15) | agents, transcripts | Ended with every worktree removed except the main checkout, and the old scratch folders cleared.
+- 2026-11-15 3ce6a405 Test suite audit handoff (2026-11-15) | tests, planning, docs, agents | Ended with the audit plan approved and merged to main, and its ready-to-run handoff written and committed on a branch. The audit itself did not start.
+- 2026-11-15 8f4b57ab Analysis regression investigation (2026-11-15) | performance, library, tests, review, planning | The session ended with the slow save fixed and merged to main, two tests merged, and a window fix planned and handed off but not built. [stale]
+- 2026-11-15 5375d0bf Old worktrees and scratch folders (2026-11-15) | agents, transcripts | Ended with every worktree removed except the main checkout, and the old scratch folders cleared. [stale]
+- 2026-11-15 5caaef5d Test suite audit handoff (2026-11-15) | tests, agents, review, docs | Ended with the capture gaps closed and committed on the audit branch, and the find-rounds handoff written, but the find rounds not started.
+- 2026-11-15 f893fd7e Batch rows execute handoff (2026-11-15) | library, performance, agents, review, tests, planning | The session ended with the batch-rows plan built, reviewed and merged to main, with nothing pushed.
+- 2026-11-15 a3ba79d1 Early fill reach and Slack handoff (2026-11-15) | activation, fill-rule, analysis-settings, tests, review | Ended with the Early fill window setting merged to main at 6c52c724 and the whole suite passing, 2,186 of 2,186 test cases. That merge is not pushed. [stale]
+- 2026-11-15 16892967 Test audit find rounds handoff (2026-11-15) | tests, agents, review, docs, hooks | The find and verify stage ended with all 92 slices audited and verified, and a handoff for the rest of the audit committed on the audit branch; nothing was merged to main.
+- 2026-11-15 e633f7f6 Test audit records handoff (2026-11-15) | tests, agents, review, docs, planning, early-fill-e | The session ended with a handoff at 20:18 UTC: the capture pass was stopped partway and saved to a handoff branch for the next session.
+- 2026-11-15 63c70014 Test audit capture handoff (2026-11-15) | tests, agents, docs, review | Ended on the user's stop-and-handoff request: the ready capture runs were done, a handoff was written on its own branch, and the session stopped. [stale]
+- 2026-11-15 f9b4f64e Test audit capture runs handoff (2026-11-15) | tests, agents, docs, review | Ended on the user's request for a handoff: every clean record was judged, and a handoff for the T8 exit plan was written on its own branch. [stale]
+- 2026-11-15 7a62df56 Test audit T8 exits plan handoff (2026-11-15) | tests, agents, planning, review | Ended on the user's request for a handoff: the T8 exits plan was written, reviewed and signed off on its own branch, and a handoff was written on another branch with the plan's questions to ask the user first. [stale]
+- 2026-11-15 88ea48bb Test audit T8 questions handoff (2026-11-15) | tests, agents, planning, review, ci | Ended with a handoff at the user's request, with the audit answers recorded and one ruling filed, and the mutation tool partly built.
+- 2026-11-15 08c1b347 Claude handoff skill invocation issue (2026-11-15) | agents, docs, hooks | Ended with the /handoff fix committed on main as fdd23c64, after the user asked for the working-tree changes to be committed. [stale]
+- 2026-11-16 a1f405c7 Squeeze outside Hydra range (2026-11-16) | squeeze, optimal-path, path, agents | Ended with the question answered: squeezing out there is not optimal.
+- 2026-11-16 872cc6f3 Mutation tool runner handoff (2026-11-16) | tests, agents, review, planning, performance | Ended with a handoff at the user's request, after the runner fix and the report were merged on the integration branch and the docs work was stopped partway. [stale]
+- 2026-11-16 60c3a576 Mutation tool report handoff (2026-11-16) | tests, performance, agents, review, docs | The session ended with the mutation tool merged to main as 1acf6a8f, and a next-steps handoff written and committed on its own branch. [stale]
+- 2026-11-16 899dc0dd Mutation tool next steps handoff (2026-11-16) | tests, planning, review, agents | The session ended after both reviewed plans were carried out: the hanging-test fixes went to main, and the audit's run evidence was joined onto the audit branch, with nothing pushed.
+- 2026-11-16 806af65c Dynamic hit window formula (2026-11-16) | clone-hero, hit-window, docs | The session ended with the formulas written out and the user's questions answered, and no file was changed or committed. [write-back]
+- 2026-11-17 cc5420d3 Squeeze badge and scaling UI changes (2026-11-17) | squeeze, sqin-sqout, tests, review | The session ended with the squeeze text change and the screenshot fix both merged into main, and nothing pushed.
+- 2026-11-17 f3bbb32b Test audit T8 E2 E6 handoff (2026-11-17) | tests, agents, review, docs | Steps E2 to E6 finished on the audit branch; in E7 the Investigate records got question groups and the exit rules were written, and the rules code was left for the next session.
 
 ## Proposed tags
 
@@ -521,6 +539,7 @@
 - derive-once (1)
 - login (1)
 - mimalloc (1)
+- mutation-testing (1)
 - remote-control (1)
 - repo-analysis (2)
 - scratch-folders (1)

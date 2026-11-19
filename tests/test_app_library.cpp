@@ -219,14 +219,16 @@ hydra::app::ChartAnalyzer gated_scores(std::shared_ptr<ChartGate> gate) {
 // them and has put the store's answer for each in its tray. A chart is counted
 // before its answer is made (BatchJob::answered_count), so the count alone
 // would let a tick run ahead of the tray.
+// It fails at once when the batch has finished short of that count.
 void let_through(AppState& app, ChartGate& gate, int charts) {
     gate.allowed.store(charts);
-    wait_until(
+    testwait::wait_until_or_gone(
         [&] {
             return app.batch_job->snapshot().completed == charts &&
                    app.batch_job->answered_count() == charts;
         },
-        "the batch to store its charts");
+        [&] { return app.batch_job->snapshot().finished; }, "the batch to store its charts",
+        "the batch finished before it stored and answered that many charts");
 }
 
 // A library under Best path whose batch has stored two charts and whose rows
@@ -708,7 +710,7 @@ TEST_CASE("any_job_running lists every background job") {
     ViewLatch latch;  // after the app: see ViewLatch
     app->select(song, hydra::ui::SelectionSource::Click);
     REQUIRE(app->view_job != nullptr);
-    latch.wait_entered(1);
+    latch.wait_entered(*app, 1);
     app->cancel_view();
     REQUIRE_FALSE(app->view_job->finished());
     CHECK(app->any_job_running());

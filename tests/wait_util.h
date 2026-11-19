@@ -50,6 +50,33 @@ void wait_until(Pred done, const std::string& what, std::chrono::milliseconds ca
     }
 }
 
+// What wait_until_or_gone throws when its wait can no longer end: `gone_what`
+// says why, so the failure names the cause rather than a timeout.
+[[noreturn]] inline void give_up_gone(const std::string& what, const std::string& gone_what) {
+    throw WaitTimeout("stopped waiting for " + what + ": " + gone_what);
+}
+
+// wait_until for a wait that can become impossible. `gone` says the awaited
+// thing can no longer happen (usually "the job has finished"), and
+// `gone_what` says that in a sentence. Once `gone` is true and `done` is
+// still false, it asks `done` once more, because the job may have reached the
+// step and finished between the two asks; if `done` is still false it throws
+// WaitTimeout at once, with `gone_what` in its text. Otherwise it is
+// wait_until, with the same cap as its backstop. The user's ruling it serves
+// is in docs/agents/rulings/tests-and-runs.md.
+template <class Done, class Gone>
+void wait_until_or_gone(Done done, Gone gone, const std::string& what, const std::string& gone_what,
+                        std::chrono::milliseconds cap = kWaitCap) {
+    wait_until(
+        [&] {
+            if (done()) return true;
+            if (!gone()) return false;
+            if (done()) return true;
+            give_up_gone(what, gone_what);
+        },
+        what, cap);
+}
+
 // Calls `owner.poll(args...)` until `owner.busy()` is false, by wait_until's
 // cap. The one wait for an object that takes its worker threads' answers in
 // through poll().

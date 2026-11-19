@@ -1,4 +1,4 @@
-Read `docs/agents/brief-preamble.md` first; its rules apply. Task id: EFF-SCORE-<task>. Session id: <session id>. Write a status line every 5 minutes with `gates\status_append.ps1`, as the preamble says.
+Read `docs/agents/brief-preamble.md` first; its rules apply. Task id: EFF-SCORE-<task>. Session id: <session id>. Write a status line every 5 minutes, with the exact call the preamble's "Status lines" section gives.
 
 You are scoring six finished attempts at one coding task. The attempts are named R1 to R6. The names say nothing about the attempts, and the order means nothing.
 

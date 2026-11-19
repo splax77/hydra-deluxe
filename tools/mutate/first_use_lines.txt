@@ -1,0 +1,86 @@
+# F1 first-use lines: the 62 disputed rows of the eight re-read files
+# (`git show 891ab424:docs/audit/2026-11-14-test-audit/mechanical/reread/{A3,A9,A30,C7,WN3,WN4a,WN4b,WN8}.md`, on branch claude/test-audit-t8-questions-handoff).
+# A row is disputed when its Verdict cell starts "does not hold" or "DNH" or contains "cannot tell".
+# Copied, not judged. The line is the first, unbracketed number in the row's line cell (the checkout's line).
+# A cell naming several lines or a range gives one entry per line, all with the same md line.
+# The file is from the cell when it names one, otherwise from the quoted words in the last column.
+# Columns (tab-separated): slice, re-read md line, test file, test line, source of the file.
+
+A3	10	tests/test_activation_rows.cpp	850	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	11	tests/test_activation_rows.cpp	851	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	12	tests/test_activation_rows.cpp	866	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	29	tests/test_activation_rows.cpp	942	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	60	tests/test_activation_rows.cpp	1319	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	60	tests/test_activation_rows.cpp	1320	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	65	tests/test_activation_rows.cpp	1346	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	66	tests/test_activation_rows.cpp	1347	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A3	74	tests/test_activation_rows.cpp	1423	opening sentence: "(22 records, tests/test_activation_rows.cpp)"
+A9	14	tests/test_config.cpp	56	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 1
+A9	23	tests/test_config.cpp	175	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 4
+A9	24	tests/test_config.cpp	176	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 4
+A9	37	tests/test_config.cpp	310	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 8
+A9	37	tests/test_config.cpp	311	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 8
+A9	38	tests/test_config.cpp	321	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 9
+A9	40	tests/test_config.cpp	325	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 9
+A9	85	tests/test_config.cpp	675	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 24
+A9	85	tests/test_config.cpp	676	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 24
+A9	85	tests/test_config.cpp	677	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 24
+A9	98	tests/test_config.cpp	791	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 31
+A9	98	tests/test_config.cpp	793	opening sentence: "tests/test_config.cpp 1-42"; table note: "Lines are current lines in tests/test_config.cpp unless the file is named."; record 31
+A30	25	tests/test_squeeze_rating.cpp	234	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	26	tests/test_squeeze_rating.cpp	237	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	33	tests/test_squeeze_rating.cpp	337	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	33	tests/test_squeeze_rating.cpp	338	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	44	tests/test_squeeze_rating.cpp	428	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	44	tests/test_squeeze_rating.cpp	429	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	48	tests/test_squeeze_rating.cpp	463	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	48	tests/test_squeeze_rating.cpp	464	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	48	tests/test_squeeze_rating.cpp	465	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	48	tests/test_squeeze_rating.cpp	466	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	58	tests/test_squeeze_rating.cpp	542	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	92	tests/test_squeeze_rating.cpp	912	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	98	tests/test_squeeze_rating.cpp	961	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	103	tests/test_squeeze_rating.cpp	989	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	103	tests/test_squeeze_rating.cpp	991	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+A30	104	tests/test_squeeze_rating.cpp	993	opening paragraph: "Test lines are in tests/test_squeeze_rating.cpp."
+C7	18	tests/test_pb_coach.cpp	118	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 3 is coach
+C7	39	tests/test_pb_coach.cpp	286	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 8 is coach
+C7	66	tests/test_pb_files.cpp	65	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 20 is files
+C7	66	tests/test_pb_files.cpp	66	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 20 is files
+C7	92	tests/test_phrase_end.cpp	87	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 41 is phrase_end
+C7	93	tests/test_phrase_end.cpp	88	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 41 is phrase_end
+C7	95	tests/test_phrase_end.cpp	96	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 42 is phrase_end
+C7	99	tests/test_phrase_end.cpp	121	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 44 is phrase_end
+C7	100	tests/test_phrase_end.cpp	122	opening paragraph: "checked against tests/test_pb_coach.cpp, test_pb_files.cpp, test_pb_state.cpp, test_perf_digest.cpp, test_phrase_end.cpp" and "records 1-19 coach, 20-27 files, 28-32 state, 33-40 digest, 41-44 phrase_end"; record 44 is phrase_end
+WN3	8	tests/test_engine_sweeps.cpp	174	cell: "test_engine_sweeps.cpp:174"
+WN3	9	tests/test_engine_sweeps.cpp	189	cell is bare ":189" under record 1; the record 1 row above (md line 8) names "test_engine_sweeps.cpp:174"; record file window-WN3.md heading: "Record 1. ... (tests/test_engine_sweeps.cpp:147)"
+WN3	19	tests/test_fills_and_skips.cpp	305	cell is bare ":305" under record 4; the record 4 row above (md line 18) names "test_fills_and_skips.cpp:292-299"; record file window-WN3.md heading: "Record 4. ... (tests/test_fills_and_skips.cpp:277)"
+WN3	39	tests/test_path_costs.cpp	155	cell is bare ":155" under record 13; the last file named above it (md line 35, record 12) is "test_path_costs.cpp:126"; record file window-WN3.md heading: "Record 13. cost list: no cost is below zero (tests/test_path_costs.cpp:130)"
+WN4a	6	tests/test_replay.cpp	142	slice summary (md line 49): "Cannot tell: test_replay.cpp:142, test_replay.cpp:141."
+WN4a	7	tests/test_replay.cpp	141	slice summary (md line 49): "Cannot tell: test_replay.cpp:142, test_replay.cpp:141."
+WN4a	8	tests/test_replay.cpp	253	cell: "test_replay.cpp:253"
+WN4a	9	tests/test_replay.cpp	251	slice summary (md line 49): "Does not hold: test_replay.cpp:253, test_replay.cpp:251, test_preview_controller.cpp:266-268."
+WN4a	38	tests/test_preview_controller.cpp	266	slice summary (md line 49): "Does not hold: test_replay.cpp:253, test_replay.cpp:251, test_preview_controller.cpp:266-268."
+WN4a	38	tests/test_preview_controller.cpp	267	slice summary (md line 49): "Does not hold: test_replay.cpp:253, test_replay.cpp:251, test_preview_controller.cpp:266-268."
+WN4a	38	tests/test_preview_controller.cpp	268	slice summary (md line 49): "Does not hold: test_replay.cpp:253, test_replay.cpp:251, test_preview_controller.cpp:266-268."
+WN4b	8	tests/test_pb_coach.cpp	69	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_coach"
+WN4b	9	tests/test_pb_coach.cpp	95	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_coach"
+WN4b	12	tests/test_pb_coach.cpp	145	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_coach"
+WN4b	24	tests/test_pb_coach.cpp	346	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_coach"
+WN4b	25	tests/test_pb_coach.cpp	361	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_coach"
+WN4b	34	tests/test_pb_coach.cpp	614	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_coach"
+WN4b	45	tests/test_pb_text.cpp	126	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_text"
+WN4b	46	tests/test_pb_text.cpp	139	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_text"
+WN4b	47	tests/test_pb_text.cpp	142	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_text"
+WN4b	51	tests/test_pb_text.cpp	196	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_text"
+WN4b	56	tests/test_pb_text.cpp	310	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "pb_text"
+WN4b	62	tests/test_saved_figure_fill.cpp	118	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "saved"
+WN4b	69	tests/test_saved_figure_fill.cpp	208	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "saved"
+WN4b	72	tests/test_saved_figure_fill.cpp	328	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "saved"
+WN4b	73	tests/test_saved_figure_fill.cpp	329	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "saved"
+WN4b	77	tests/test_saved_figure_fill.cpp	398	opening paragraph: "`git log a19b9cb2..HEAD` on test_pb_coach.cpp, test_pb_text.cpp, test_saved_figure_fill.cpp, dm_fixture.h is empty"; cell short name "saved"
+WN8	10	tests/test_dm_report.cpp	85	cell is bare ":85" under record 1 "(same)"; the record 1 row above (md line 9) names "tests/test_dm_report.cpp:91"; record file window-WN8.md C record: "collect_dm_rows joins scores to records and labels them (tests/test_dm_report.cpp:61)"
+WN8	12	tests/test_report_rows.cpp	419	cell: "tests/test_report_rows.cpp:419"
+
+# not placed: slice, re-read md line, reason
+WN3	10	the line cell is the sentence "at 60 fewer fills are E0 than at 85, so model_rejected can fall" and names no line number

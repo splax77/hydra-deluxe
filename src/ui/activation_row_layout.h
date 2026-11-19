@@ -46,8 +46,8 @@ struct ActivationRowLayout {
 // row's bars line up; `bars_w` this row's bars text width; `badge_ws` this
 // row's badge text widths in display order (empty: no badge); `pill_text_w`
 // the text width every pill is sized for (the caller measures
-// app::longest_activation_badge), grown to the widest of `badge_ws` if one is
-// wider, so a pill is never narrower than its text; `row_w` the row's width;
+// app::longest_activation_badge), which shared_pill_width grows to the widest
+// of `badge_ws` (badge_pill.h); `row_w` the row's width;
 // `line` the text line height; `scale` is px(1).
 inline ActivationRowLayout activation_row_layout(float widest_measure_w, float bars_w,
                                                  const std::vector<float>& badge_ws,
@@ -67,9 +67,9 @@ inline ActivationRowLayout activation_row_layout(float widest_measure_w, float b
     l.text_y = pad_y;
     l.row_h = line_h;
     const size_t n = badge_ws.size();
-    float widest = pill_text_w;
+    float widest = 0.0f;
     for (const float w : badge_ws) widest = (std::max)(widest, w);
-    l.pill_w = n == 0 ? 0.0f : pill_width(widest, scale);
+    l.pill_w = n == 0 ? 0.0f : shared_pill_width(pill_text_w, widest, scale);
     // One pill's step to the next: its width and the gap.
     const float step = l.pill_w + pad;
     l.pill_x.resize(n);
