@@ -52,3 +52,18 @@ These are the user's answers in this session, not filed rulings under docs/agent
 - T7 launched 2026-11-18 22:17: 23 closure checkers for the 415 A, B, C and P rows against the current files (brief briefs/T7-closure.md, batches of 25), and one grouper (T8-G1) to fold the 238 Q rows into at most 20 decision themes.
 - T7 returned (workflow wf_177f3f41-645, 24 agents, no errors): 422 closure verdicts over the 415 rows (some rows checked as bundles): PASS 400, REOPEN 19, GONE 3. REOPEN, now questions: L-F04-13, L-F04-18, L-F05-06, L-F06-16, L-F08-09, L-F09-12, L-F14-01, L-F14-06, L-F17-02, L-F18-14, L-F21-04, L-F21-09, L-F22-04, L-F22-09, L-F25-16, L-F25-18, L-F26-04, L-F27-27, L-F32-10. GONE (no longer in the files): L-F16-18, L-F17-06, L-F19-04. The per-row verdicts are in reports/TOOL-AUDIT-T7-C01 to C23.
 - T8 grouping (reports/TOOL-AUDIT-T8-G1.md): the 238 question rows in 20 themes, all ids placed once. The 19 reopened rows join the themes when questions are written.
+
+## T8: the user's answers, batch 1 (2026-11-18)
+
+- Claimed rulings (theme 1, 24 rows): "Drop the claim (Recommended)". Question: 24 places in code or docs say "the user ruled/answered" with no matching line under ## Confirmed (examples tools/ch_mcp/quiet.py:43 and gates/README.md:19). Option text: "The value stays as a default; the comment stops naming you. You file a line later only if you want it to bind."
+- Code vs code (themes 6 to 9, and the code half of 5 and 15): "Merge, I pick (Recommended)". Option text: "Each pair becomes one owner using the stricter or safer reading; every choice is listed in the fix plan, which still needs your yes."
+- Homeless rules (themes 2, 3): "Give each a home (Recommended)". Option text: "Move each into agent-rules.md or the preamble; add a hook only where a check is cheap and exact (like the scout write limit). Listed in the fix plan."
+- Status rule (theme 16, the two Confirmed lines review-and-hooks.md:33 and :34): "Minutes (line 34) (Recommended)". Option text: "Matches rule 7 and the hook; line 33 is retired."
+
+## T8: the user's answers, batch 2 (2026-11-18)
+
+- Your words (theme 10): "Confirmed only (Recommended)". Option text: "A card or chat quote can point to a ruling but never closes anything; the reviewer and premise-map pages are fixed to say so."
+- At the warning (theme 16): "Finish, report the rest (Recommended)". Option text: "Finish the item in hand, commit or sign off what passes, list what's left. The main session decides about a fresh agent; reviewers never hand on."
+- Worktree folders (theme 5): "Trust both". Option text: "The delete rule accepts both folders."
+- Library run (theme 4): the user asked "is this a real concern or an edge case you invented". Checked: src/cli/batch_scope.h makes hydra_batch refuse a run over the whole library unless its library flag is given (its own comment: a bare hydra_batch never starts one), so that flag is the only way to start one and the hook's flag check in percall.py covers it. The "compare over thousands of charts without the flag" in the question was the main session's own framing, not a case anyone found. Theme 4's runs half leaves by exit 4: the docs' "any run over the whole library" and the hook's flag check answer the same question, because the program makes the flag the only door. The phrase-tolerance half (review_rules.py accepts case and a trailing . or !) is a doc against code and follows the user's "The code wins" answer.
+- Side note for the audit: the library-run hook refused this log commit because the commit's text named the library flag; it reads command text, not just the program being run. Recorded as a hook false positive.
