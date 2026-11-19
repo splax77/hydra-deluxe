@@ -133,25 +133,6 @@ def run(rows, **kwargs):
     return sp_compare.compare(rows, SCORE, **kwargs)
 
 
-MATCHING_REPORT = """\
-Summary: 12 PASS, 0 FAIL
-Star Power comparison: 451 watcher rows, 8 chords, 1 path activations, width 64
-PASS run end: the run reached the song's end
-PASS phrase rise after chord 0 (tick 0, 1000.0 ms): +1440 (0 -> 1440) at 1010.0 ms, full
-PASS phrase rise after chord 2 (tick 384, 2000.0 ms): +1440 (1440 -> 2880) at 2010.0 ms, full
-PASS phrase rise after chord 5 (tick 960, 3500.0 ms): +1440 (0 -> 1440) at 3510.0 ms, full, during Star Power
-Full rises: all 1440 ticks; sp_max / 4 = 1440
-PASS sp_max 5760; the game's full meter 5760 (resolution 192 x 30); sp_bar_ticks 14400
-Activation 1 at clock 3010.0 ms:
-PASS   activation 1 multiplier doubles: 4 -> 8 at 3010.0 ms
-PASS   activation 1 end time ahead of the clock: end 4100.0 ms, clock 3010.0 ms
-PASS   activation 1 flag clears at Hydra's end: Hydra 4000.0 ms, flag 0 at 4100.0 ms
-PASS   activation 1 multiplier halves at the end: 8 -> 4 at 4100.0 ms
-PASS   activation 1 on the path's chord: chord 4 (tick 768, 3000.0 ms)
-PASS   activation 1 end chord: game end 4100.0 ms, the game's last chord inside: chord 6 (tick 1152, 4000.0 ms); Hydra's deactivation: chord 6 (tick 1152, 4000.0 ms), difference +100.0 ms
-PASS multiplier at each chord: 8 of 8 chords match (one chord of lag allowed)"""
-
-
 # --- Two real runs of one corpus chart -----------------------------------------
 #
 # Both runs had the auto-player play path 0 of CHON - Pitch Dark (B), whose
@@ -664,39 +645,80 @@ class FilesTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     self._main([csv_path, json_path, "--stop", "done"])
 
-    def test_main_reads_the_files_and_exits_0(self):
+    @staticmethod
+    def _real_main(csv_path, args, lead_ms=0.0):
+        """main on a real Pitch Dark watch piece, with path 0's hydra_replay
+        score held to the piece's span (_within) and its schedule; its exit
+        code, its printed text, and compare's own report on the same inputs
+        (stop and width read from `args` as main reads them)."""
+        score, reach = _path_files()
+        rows = sp_compare.load_watch_rows(csv_path)
+        piece = _within(score, rows, lead_ms)
+        resolution = _midi_resolution(_PITCH_DARK_CHART)
+        out = io.StringIO()
         with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows())
-            code, text = self._main([csv_path, json_path, "--resolution", "192",
-                                     "--sp-bar-ticks", "14400", "--stop", "done"])
-        self.assertEqual(code, 0)
-        self.assertEqual(text, MATCHING_REPORT + "\n")
+            json_path = os.path.join(folder, "score.json")
+            with open(json_path, "w", encoding="utf-8") as f:
+                json.dump(piece, f)
+            with contextlib.redirect_stdout(out):
+                code = sp_compare.main(
+                    [csv_path, json_path, "--resolution", str(resolution),
+                     "--schedule", _replay_file("test_pitch_dark_ratio-schedule.json")]
+                    + args)
+        return code, out.getvalue(), rows, piece, resolution, reach
+
+    @staticmethod
+    def _sp_bar_ticks():
+        """sp_bar_ticks from the game's scorestats.json after pitch-dark-run1
+        (copied from hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1), a run
+        of the same chart as the act3 piece."""
+        path = os.path.join(_RUNS_DIR, "pitch-dark-run1",
+                            "scorestats-CHON_-_Pitch_Dark_B-20261112-230618.json")
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)["players"][0]["sp_bar_ticks"]
+
+    def test_main_reads_the_files_and_exits_0(self):
+        ticks = self._sp_bar_ticks()
+        code, text, rows, piece, resolution, reach = self._real_main(
+            _ACT3_CSV, ["--sp-bar-ticks", str(ticks), "--stop", play_chart.STOP_DONE])
+        report = sp_compare.compare(rows, piece, resolution=resolution, sp_bar_ticks=ticks,
+                                    reach=reach, stop=play_chart.STOP_DONE)
+        self.assertEqual(report.fails, 0, report.text())
+        self.assertEqual(code, 0, text)
+        self.assertEqual(text, report.text() + "\n")
+        sp_max = _starting(report, "PASS sp_max ")
+        self.assertEqual(len(sp_max), 1, report.text())
+        self.assertTrue(sp_max[0].endswith(f"; sp_bar_ticks {ticks}"), sp_max[0])
 
     def test_main_exits_1_on_a_fail(self):
-        with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows(rise_skip={2}))
-            code, _ = self._main([csv_path, json_path, "--resolution", "192",
-                                  "--stop", "done"])
-        self.assertEqual(code, 1)
+        # pitch-dark-run1's third activation is off the path (see
+        # RealRunTest); the chords reach back as far as a flip may land.
+        code, text, *_ = self._real_main(_OFF_PATH_CSV, ["--stop", play_chart.STOP_DONE],
+                                         sp_compare.LANDING_WINDOW_MS)
+        self.assertEqual(code, 1, text)
+        self.assertIn("\nFAIL   activation 1 not on the path's chord: game tick ", text)
 
     def test_main_with_no_stop_fails(self):
-        with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows())
-            code, text = self._main([csv_path, json_path, "--resolution", "192"])
-        self.assertEqual(code, 1)
-        self.assertIn("FAIL run end: the run's stop reason was not given\n", text)
+        code, text, *_ = self._real_main(_ACT3_CSV, [])
+        self.assertEqual(code, 1, text)
+        ok, line = stop_check(None)
+        self.assertFalse(ok)
+        self.assertIn("\n" + line + "\n", text)
+        # The act3 piece passes every other check, so the stop is the one fail.
+        self.assertEqual(text.count("\nFAIL "), 1, text)
 
-    def test_width_defaults_to_64_and_32_reads_the_u32_columns(self):
-        with tempfile.TemporaryDirectory() as folder:
-            csv_path, json_path = self._write(folder, build_rows(u64_scale=2))
-            _, text64 = self._main([csv_path, json_path, "--resolution", "192",
-                                    "--stop", "done"])
-            _, text32 = self._main([csv_path, json_path, "--resolution", "192",
-                                    "--stop", "done", "--width", "32"])
-        self.assertIn("FAIL sp_max 11520; the game's full meter 5760 "
-                      "(resolution 192 x 30)\n", text64)
-        self.assertIn("PASS sp_max 5760; the game's full meter 5760 "
-                      "(resolution 192 x 30)\n", text32)
+    def test_width_defaults_to_its_owner_and_32_reads_the_same_real_meter(self):
+        # Every recorded watch log under hydra-data/ch-mcp-runs holds equal
+        # u32 and u64 amount and maximum columns, so both widths give one
+        # verdict on a real log; only the header names the width.
+        code64, text64, *_ = self._real_main(_ACT3_CSV, ["--stop", play_chart.STOP_DONE])
+        code32, text32, *_ = self._real_main(_ACT3_CSV, ["--stop", play_chart.STOP_DONE,
+                                                         "--width", "32"])
+        self.assertEqual((code64, code32), (0, 0), text64 + text32)
+        lines64, lines32 = text64.splitlines(), text32.splitlines()
+        self.assertTrue(lines64[1].endswith(f", width {sp_compare.DEFAULT_WIDTH}"), lines64[1])
+        self.assertTrue(lines32[1].endswith(", width 32"), lines32[1])
+        self.assertEqual(lines64[2:], lines32[2:])
 
     def test_missing_column_is_an_error(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -734,51 +756,78 @@ class RowChecksTest(unittest.TestCase):
                          ("sp_amount_u32", "sp_max_u32"))
 
     def test_is_active_reads_the_flag_byte_only(self):
-        row = _row(1.0, 0, active=1)
-        self.assertTrue(sp_compare.is_active(row))
-        row["sp_active_u32"] = 257
-        row["sp_active_byte"] = 0
-        self.assertFalse(sp_compare.is_active(row))
+        # The game's real rows set bits above the flag byte in sp_active_u32:
+        # the rise piece (no Star Power) logs 16777216 with the byte 0, and
+        # the clamp piece (in Star Power) logs 16777217 with the byte 1.
+        off = [r for r in sp_compare.load_watch_rows(_RISE_CSV) if r["sp_active_u32"] != 0]
+        on = [r for r in sp_compare.load_watch_rows(_CLAMP_CSV)
+              if r["sp_active_u32"] not in (0, 1)]
+        self.assertTrue(off, "the rise piece should hold a row with the high bits set")
+        self.assertTrue(on, "the clamp piece should hold a row with the high bits set")
+        for row in off:
+            self.assertEqual(row["sp_active_byte"], 0, row)
+            self.assertFalse(sp_compare.is_active(row), row)
+        for row in on:
+            self.assertEqual(row["sp_active_byte"], 1, row)
+            self.assertTrue(sp_compare.is_active(row), row)
 
-    def test_a_flip_goes_to_its_own_chord_not_one_17_ms_after(self):
-        # Chord 1 is pressed at 998 ms and chord 2, 17.2 ms later, at 1002.2
-        # ms. A flip 1 ms after chord 1 belongs to chord 1; chord 2's earlier
-        # press must not take it.
-        chords = [{"index": 1, "tick": 100, "ms": 1000.0},
-                  {"index": 2, "tick": 200, "ms": 1017.2}]
-        reach = {1: sp_compare.PressReach(998.0, 998.0),
-                 2: sp_compare.PressReach(1002.2, 1002.2)}
+    def test_a_flip_goes_to_its_own_chord_not_the_next_ones_press(self):
+        # In Hydra's Bomber schedule, chord 147's first press comes 22.9 ms
+        # after chord 146's (both read from the file) and before 147's ms.
+        # A flip between the two presses belongs to 146; 147's early
+        # press must not take it. A flip at 147's first press is 147's.
+        reach = sp_compare.press_reach(_BOMBER[1])
+        chords = _fixture_chords(_BOMBER[0])
         chord_ms = [c["ms"] for c in chords]
-        got = sp_compare._landed_chord(chords, chord_ms, 1001.0, reach)
-        self.assertIs(got, chords[0])
-        # A flip at 1003 ms is after chord 2's press (1002.2).
-        got = sp_compare._landed_chord(chords, chord_ms, 1003.0, reach)
-        self.assertIs(got, chords[1])
+        k = next(i for i, c in enumerate(chords) if c["index"] == 146)
+        first, second = chords[k], chords[k + 1]
+        self.assertEqual(second["index"], 147)
+        lo, hi = reach[146].earliest_ms, reach[147].earliest_ms
+        self.assertLess(lo, hi)
+        self.assertLess(hi, second["ms"])
+        between = (lo + hi) / 2
+        self.assertIs(sp_compare._landed_chord(chords, chord_ms, between, reach), first)
+        self.assertIs(sp_compare._landed_chord(chords, chord_ms, hi, reach), second)
 
     def test_phrase_rises_gives_each_step_up(self):
-        rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 1536), _row(2.5, 3072),
-                _row(3.0, 0, active=1), _row(3.5, 1536, active=1)]
+        # The rise piece's meter steps from 3600 to 7200 on its data row
+        # 34 (0-based) and nowhere else; the act3 piece's meter only drains in
+        # Star Power and holds after it, so it has no rise.
+        rows = sp_compare.load_watch_rows(_RISE_CSV)
         rises = sp_compare.phrase_rises(rows, AMOUNT)
-        self.assertEqual(rises, [(1500.0, 0, 1536), (2500.0, 1536, 3072),
-                                 (3500.0, 0, 1536)])
-        self.assertEqual([r.size for r in rises], [1536, 1536, 1536])
+        self.assertEqual(rises, [sp_compare.Rise(sp_compare._ms(rows[34]), 3600, 7200)])
+        self.assertEqual(rows[33][AMOUNT], 3600)
+        self.assertEqual(rows[34][AMOUNT], 7200)
+        self.assertEqual(sp_compare.phrase_rises(sp_compare.load_watch_rows(_ACT3_CSV),
+                                                 AMOUNT), [])
 
     def test_phrase_rises_on_three_sizes(self):
-        rows = [_row(1.0, 0), _row(1.5, 1536), _row(2.0, 4608), _row(2.5, 6144)]
-        sizes = [r.size for r in sp_compare.phrase_rises(rows, AMOUNT)]
-        self.assertEqual(sizes, [1536, 3072, 1536])
+        # Three real rises, each read off its piece: a full quarter of the
+        # meter (rise piece, 3600 -> 7200), one cut short by the full meter
+        # (clamp piece, 10953 -> 14400) and one from 1 on the row Star Power
+        # ends (act2 edges piece, 1 -> 3600).
+        sizes = [[r.size for r in sp_compare.phrase_rises(sp_compare.load_watch_rows(p),
+                                                           AMOUNT)]
+                 for p in (_RISE_CSV, _CLAMP_CSV, _EARLY_END_CSV)]
+        self.assertEqual(sizes, [[3600], [3447], [3599]])
 
     def test_flips_between_keeps_only_the_flip_inside(self):
-        rows = [_row(1.0, 3072), _row(2.0, 0, active=1), _row(2.5, 0),
-                _row(4.0, 3072), _row(5.0, 0, active=1), _row(6.0, 0)]
-        flips = sp_compare.flips_between(rows, 1500.0, 3000.0)
-        self.assertEqual([(a.number, a.flip_row, a.drop_row) for a in flips],
-                         [(1, 1, 2)])
-        self.assertEqual(sp_compare.flips_between(rows, 2500.0, 4500.0), [])
+        # The act2 edges piece: row 0 before the flag sets, row 1 the flip,
+        # row 2 still set, row 3 the drop.
+        rows = sp_compare.load_watch_rows(_EARLY_END_CSV)
+        flip, drop = sp_compare._ms(rows[1]), sp_compare._ms(rows[3])
+        flips = sp_compare.flips_between(rows, sp_compare._ms(rows[0]), drop)
+        self.assertEqual([(a.number, a.flip_row, a.drop_row) for a in flips], [(1, 1, 3)])
+        # A window after the flip holds set rows but no flip.
+        self.assertEqual(sp_compare.flips_between(rows, math.nextafter(flip, math.inf),
+                                                  drop), [])
+        self.assertEqual(sp_compare.flips_between(rows, sp_compare._ms(rows[0]),
+                                                  math.nextafter(flip, -math.inf)), [])
 
     def test_flips_between_includes_both_ends(self):
-        rows = [_row(1.0, 3072), _row(2.0, 0, active=1), _row(2.5, 0)]
-        self.assertEqual(len(sp_compare.flips_between(rows, 2000.0, 2000.0)), 1)
+        rows = sp_compare.load_watch_rows(_EARLY_END_CSV)
+        flip = sp_compare._ms(rows[1])
+        self.assertEqual(len(sp_compare.flips_between(rows, flip, flip)), 1)
 
 
 def _fixture(name):
@@ -822,11 +871,31 @@ class PressReachTest(unittest.TestCase):
         # 7.39399049700296 ms (squeeze_out_late).
         self.assertEqual(_rounded(reach[740]), (118403.34, 118433.34))
 
+    # Rows of hydra-data/ch-mcp-runs/2026-11-07/ls-r1-run1's sp_watch-1.csv,
+    # copied unchanged (data rows 26287 to 26301, clock 118.39 s to 118.46 s):
+    # a run of the same Mouths chart. Its press-1.csv shows chord 740 pressed
+    # twice, at clock 118412.5 ms and 118443.1 ms; the flag clears at
+    # 118431.0 ms and the meter rises 0 -> 1440 at 118449.2 ms.
+    _MOUTHS_RISE_CSV = os.path.join(_RUNS_DIR, "ls-r1-run1", "sp_watch-1-rise740.csv")
+
     def test_mouths_740_is_credited_at_its_second_press(self):
         reach = sp_compare.press_reach(_MOUTHS[1])
-        rows = [_row(118.300, 0), _row(118.412, 0), _row(118.441, 1536)]
-        self.assertIn("PASS phrase rise after chord 740 (tick 48480, 118426.0 ms): "
-                      "+1536 (0 -> 1536) at 118441.0 ms, full",
+        rows = sp_compare.load_watch_rows(self._MOUTHS_RISE_CSV)
+        rises = sp_compare.phrase_rises(rows, AMOUNT)
+        self.assertEqual(len(rises), 1, rises)
+        rise = rises[0]
+        # The rise shows after the chord's ms and after its last press.
+        chord = next(c for c in _fixture_chords(_MOUTHS[0]) if c["index"] == 740)
+        self.assertTrue(chord["is_sp_phrase_end"])
+        self.assertGreater(rise.ms, chord["ms"])
+        self.assertGreater(rise.ms, reach[740].latest_ms)
+        self.assertLess(rise.ms, max(chord["ms"], reach[740].latest_ms)
+                        + sp_compare.EVENT_WINDOW_MS)
+        risen = next(r for r in rows if sp_compare._ms(r) == rise.ms)
+        self.assertLess(rise.after, risen[MAX])
+        self.assertIn(f"PASS phrase rise after {sp_compare._chord_label(chord)}: "
+                      f"+{rise.size} ({rise.before} -> {rise.after}) at "
+                      f"{sp_compare.format_ms(rise.ms)}, full",
                       _rise_lines(_MOUTHS[0], reach, rows))
 
     def test_bomber_147_reaches_its_solved_early_press(self):
@@ -861,16 +930,6 @@ class PressReachTest(unittest.TestCase):
         self.assertEqual(_rounded(reach[268]), (31845.68, 31845.68))
         self.assertEqual(_rounded(reach[267]), (31757.33, 31757.33))
 
-    def test_a_schedule_that_refuses_its_path_is_refused(self):
-        doc = _schedule_of(SCORE)
-        doc["refusals"] = ["chord 3 is a squeeze the schedule could not split, so it is not pressed"]
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "schedule.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(doc, f)
-            with self.assertRaisesRegex(ValueError, "refuses to play this path"):
-                sp_compare.press_reach(path)
-
 
 def _samples(*pairs):
     """Rows holding only the two columns gap_summary reads, from (wall_s,
@@ -885,13 +944,15 @@ LS_O2_CSV = os.path.join(_REPO_ROOT, "testdata", "ch_watch", "ls-o2-run1-sp_watc
 
 class GapSummaryTest(unittest.TestCase):
     def test_two_gaps_give_the_count_the_longest_and_the_clocks_around_them(self):
-        got = sp_compare.gap_summary(
-            _samples((100.0, 1.0), (100.004, 1.004), (100.064, 1.064),
-                     (100.068, 1.068), (100.312, 1.312), (100.316, 1.316)), 50)
+        # The real ls-o2 run's first 165 rows. Its first two wall-time gaps
+        # over 50 ms are its data rows 162 -> 163 (73.576 ms, from clock
+        # 2146.834 ms) and 163 -> 164 (68.144 ms, to clock 2290.694 ms),
+        # read off the file (0-based rows).
+        got = sp_compare.gap_summary(self._ls_o2_rows()[:165], 50)
         self.assertEqual(got.count, 2)
-        self.assertAlmostEqual(got.longest_ms, 244.0, places=6)
-        self.assertAlmostEqual(got.from_ms, 1004.0, places=6)
-        self.assertAlmostEqual(got.to_ms, 1312.0, places=6)
+        self.assertAlmostEqual(got.longest_ms, 73.576, places=3)
+        self.assertAlmostEqual(got.from_ms, 2146.834, places=3)
+        self.assertAlmostEqual(got.to_ms, 2290.694, places=3)
 
     def test_rows_with_no_gap_over_give_0(self):
         rows = _samples((100.0, 1.0), (100.004, 1.004), (100.008, 1.008))
