@@ -71,12 +71,52 @@ const std::string kRunBase =
     "void run(Mode m) { if (m == Mode::A) a(); else b(); }\n"
     "void outer() { run(Mode::B); }\n";
 
+// Adds `count` test files to `files`, tests/test_<stem>100.cpp and up, each
+// calling `callee`, and returns their paths in byte order.
+std::vector<std::string> add_callers(std::map<std::string, std::string>& files, const std::string& stem,
+                                     const std::string& callee, int count) {
+    std::vector<std::string> paths;
+    for (int i = 0; i < count; ++i) {
+        const std::string id = stem + std::to_string(100 + i);
+        const std::string path = "tests/test_" + id + ".cpp";
+        files[path] = "int " + id + "() { return " + callee + "(); }\n";
+        paths.push_back(path);
+    }
+    std::sort(paths.begin(), paths.end());
+    return paths;
+}
+
+// A fixture where `count` test files each name one function of src/f.cpp,
+// with no function named by more than kCommonNameLimit of them, so the
+// common-name rule never fires and only the size limit can.
+struct ManyNames {
+    std::map<std::string, std::string> base;
+    std::string tip;                 // src/f.cpp with every function changed
+    std::vector<std::string> tests;  // every test file, in byte order
+};
+
+ManyNames many_names(int count) {
+    ManyNames m;
+    std::string base_src;
+    for (int done = 0, fn = 0; done < count; ++fn) {
+        const std::string name = "many" + std::to_string(fn);
+        const int take = (std::min)(kCommonNameLimit, count - done);
+        for (const std::string& t : add_callers(m.base, name, name, take)) m.tests.push_back(t);
+        base_src += "int " + name + "() { return 1; }\n";
+        m.tip += "int " + name + "() { return 2; }\n";
+        done += take;
+    }
+    m.base["src/f.cpp"] = base_src;
+    std::sort(m.tests.begin(), m.tests.end());
+    return m;
+}
+
 }  // namespace
 
-TEST_CASE("precheck pick: the three limits are the user's numbers") {
-    CHECK(kCommonNameLimit == 30);
-    CHECK(kPickSizeLimit == 40);
-    CHECK(kHeaderIncluderLimit == 20);
+// The exe picks with a default PickLimits, so its three limits must be the
+// picker's own constants. Cases (e) and (f) cross the first two at their real
+// values.
+TEST_CASE("precheck pick: the default limits are the picker's three constants") {
     const PickLimits d;
     CHECK(d.common_name == kCommonNameLimit);
     CHECK(d.pick_size == kPickSizeLimit);
@@ -311,6 +351,9 @@ TEST_CASE("precheck pick (c): a key only a comment in a helper header names pick
                  {"tests/test_c1.cpp", "#include \"calc_helpers.h\"\nint c1() { return twice(1); }\n"}});
     const TestPick p = fx.pick({{"src/calc.cpp", "int scale(int v) { return v * 3; }\n"}});
     REQUIRE_FALSE(p.whole_suite);
+    // The picker saw the change, so an empty pick means the comment was not
+    // counted, not that nothing was looked for.
+    REQUIRE(name_in(p, "scale") != nullptr);
     CHECK(p.tests.empty());
 }
 
@@ -334,67 +377,60 @@ TEST_CASE("precheck pick (d): a test file the range changes is picked") {
     CHECK(reasons_of(p, "tests/test_dh.cpp") == std::vector<std::string>{"tests/d_helpers.h " + direct.front()});
 }
 
+// Both cases run at the exe's own limits, kCommonNameLimit and
+// kPickSizeLimit, with one more test file than the limit or exactly as many.
 TEST_CASE("precheck pick (e): a common caller key picks nothing; a common changed name runs everything") {
     const std::string base = "int leaf() { return 1; }\nint hub() { return leaf(); }\n";
-    const std::map<std::string, std::string> files = {
-        {"src/w.cpp", base},
-        {"tests/test_e1.cpp", "int e1() { return hub(); }\n"},
-        {"tests/test_e2.cpp", "int e2() { return hub(); }\n"},
-        {"tests/test_e3.cpp", "int e3() { return hub(); }\n"},
-        {"tests/test_e4.cpp", "int e4() { return leaf(); }\n"}};
-    PickLimits tight;
-    tight.common_name = 2;
+    const std::string hub_changed = "int leaf() { return 1; }\nint hub() { return leaf() + 1; }\n";
+    std::map<std::string, std::string> files = {{"src/w.cpp", base},
+                                                {"tests/test_e4.cpp", "int e4() { return leaf(); }\n"}};
 
     SUBCASE("the common key is a caller") {
+        add_callers(files, "hub", "hub", kCommonNameLimit + 1);
         PickRepo fx("precheck_pick_e1", files);
-        const TestPick p = fx.pick({{"src/w.cpp", "int leaf() { return 2; }\nint hub() { return leaf(); }\n"}}, tight);
+        const TestPick p = fx.pick({{"src/w.cpp", "int leaf() { return 2; }\nint hub() { return leaf(); }\n"}});
         REQUIRE_FALSE(p.whole_suite);
         REQUIRE(p.common.size() == 1);
         CHECK(p.common[0].name == "hub");
-        CHECK(p.common[0].files == 3);
+        CHECK(p.common[0].files == kCommonNameLimit + 1);
         CHECK(picked_files(p) == std::vector<std::string>{"tests/test_e4.cpp"});
     }
     SUBCASE("the common key heads a changed definition") {
+        add_callers(files, "hub", "hub", kCommonNameLimit + 1);
         PickRepo fx("precheck_pick_e2", files);
-        const TestPick p =
-            fx.pick({{"src/w.cpp", "int leaf() { return 1; }\nint hub() { return leaf() + 1; }\n"}}, tight);
+        const TestPick p = fx.pick({{"src/w.cpp", hub_changed}});
         REQUIRE(p.whole_suite);
         CHECK(p.whole_suite->file == "src/w.cpp");
-        CHECK(p.whole_suite->count == 3);
+        CHECK(p.whole_suite->count == kCommonNameLimit + 1);
         CHECK(p.tests.empty());
     }
     SUBCASE("at the limit the key still picks") {
+        const std::vector<std::string> callers = add_callers(files, "hub", "hub", kCommonNameLimit);
         PickRepo fx("precheck_pick_e3", files);
-        tight.common_name = 3;
-        const TestPick p =
-            fx.pick({{"src/w.cpp", "int leaf() { return 1; }\nint hub() { return leaf() + 1; }\n"}}, tight);
+        const TestPick p = fx.pick({{"src/w.cpp", hub_changed}});
         REQUIRE_FALSE(p.whole_suite);
         CHECK(p.common.empty());
-        CHECK(picked_files(p).size() == 3);
+        CHECK(picked_files(p) == callers);
     }
 }
 
 TEST_CASE("precheck pick (f): more picked files than the size limit runs the whole suite") {
-    const std::map<std::string, std::string> files = {{"src/f.cpp", "int many() { return 1; }\n"},
-                                                      {"tests/test_f1.cpp", "int f1() { return many(); }\n"},
-                                                      {"tests/test_f2.cpp", "int f2() { return many(); }\n"},
-                                                      {"tests/test_f3.cpp", "int f3() { return many(); }\n"}};
-    PickLimits tight;
     SUBCASE("over") {
-        tight.pick_size = 2;
-        PickRepo fx("precheck_pick_f1", files);
-        const TestPick p = fx.pick({{"src/f.cpp", "int many() { return 2; }\n"}}, tight);
+        const ManyNames m = many_names(kPickSizeLimit + 1);
+        PickRepo fx("precheck_pick_f1", m.base);
+        const TestPick p = fx.pick({{"src/f.cpp", m.tip}});
+        REQUIRE(p.common.empty());
         REQUIRE(p.whole_suite);
         CHECK(p.whole_suite->file.empty());
-        CHECK(p.whole_suite->count == 3);
+        CHECK(p.whole_suite->count == kPickSizeLimit + 1);
         CHECK(p.tests.empty());
     }
     SUBCASE("at the limit") {
-        tight.pick_size = 3;
-        PickRepo fx("precheck_pick_f2", files);
-        const TestPick p = fx.pick({{"src/f.cpp", "int many() { return 2; }\n"}}, tight);
+        const ManyNames m = many_names(kPickSizeLimit);
+        PickRepo fx("precheck_pick_f2", m.base);
+        const TestPick p = fx.pick({{"src/f.cpp", m.tip}});
         REQUIRE_FALSE(p.whole_suite);
-        CHECK(picked_files(p).size() == 3);
+        CHECK(picked_files(p) == m.tests);
     }
 }
 
@@ -424,12 +460,14 @@ TEST_CASE("precheck pick (g): a header with more includers than the limit runs t
 
 namespace {
 
-// shared_code on one path in a repo that holds nothing that includes it.
-std::optional<WholeSuite> shared_code_of(const std::string& path) {
-    PickRepo fx("precheck_pick_h", {{"src/x.cpp", "int x;\n"}});
-    Repo repo(fx.dir);
-    return shared_code(repo, "HEAD", path);
-}
+// shared_code on paths in a repo that holds nothing that includes them.
+struct SharedProbe {
+    PickRepo fx{"precheck_pick_h", {{"src/x.cpp", "int x;\n"}}};
+    Repo repo{fx.dir};
+    std::optional<WholeSuite> of(const std::string& path) { return shared_code(repo, "HEAD", path); }
+};
+
+std::optional<WholeSuite> shared_code_of(const std::string& path) { return SharedProbe().of(path); }
 
 // git's answer to `args`, asked in the real repo the tests were built from.
 std::vector<std::string> real_git(const std::vector<std::string>& args) {
@@ -438,6 +476,11 @@ std::vector<std::string> real_git(const std::vector<std::string>& args) {
 
 // The real repo's committed text of `path`, one entry per line.
 std::vector<std::string> real_lines(const std::string& path) { return real_git({"show", "HEAD:" + path}); }
+
+// Every committed file under `dir` in the real repo.
+std::vector<std::string> files_in(const std::string& dir) {
+    return real_git({"ls-tree", "-r", "--name-only", "HEAD", "--", dir});
+}
 
 // What follows `call` on each line of `lines` that starts with it after its
 // indent.
@@ -454,18 +497,80 @@ std::vector<std::string> after_calls(const std::vector<std::string>& lines, cons
 std::string first_word(const std::string& rest) { return rest.substr(0, rest.find_first_of(" )")); }
 
 // The files GitHub Actions runs: every committed file in .github/workflows/.
-std::vector<std::string> real_workflows() {
-    return real_git({"ls-tree", "-r", "--name-only", "HEAD", "--", ".github/workflows"});
+std::vector<std::string> real_workflows() { return files_in(".github/workflows"); }
+
+// The line that gives a doctest harness its main(). It is split so this
+// file's own text never matches it.
+const std::string kImplementLine = std::string("#define DOCTEST_CONFIG_") + "IMPLEMENT";
+
+// The harness main files: each committed file under tests/ with a line that
+// is exactly kImplementLine. git grep has no whole-line switch, so the
+// pattern is anchored at both ends; its text holds no character a basic
+// regex treats as special.
+std::vector<std::string> harness_mains() {
+    return real_git({"grep", "-l", "--cached", "-e", "^" + kImplementLine + "$", "--", "tests"});
+}
+
+// The folders the root CMakeLists.txt adds to hydra_tests' include path: the
+// words of each target_include_directories(hydra_tests PRIVATE ...) call,
+// on its own line or on the lines up to its ")".
+std::vector<std::string> test_include_dirs() {
+    const std::string call = "target_include_directories(hydra_tests PRIVATE";
+    std::vector<std::string> dirs;
+    bool open = false;
+    for (const std::string& line : real_lines("CMakeLists.txt")) {
+        const std::string text = hydra::trim(line);
+        if (open) {
+            if (text == ")")
+                open = false;
+            else if (!text.empty())
+                dirs.push_back(first_word(text));
+            continue;
+        }
+        if (!hydra::starts_with(text, call)) continue;
+        const std::string rest = hydra::trim(text.substr(call.size()));
+        if (rest.empty())
+            open = true;
+        else
+            dirs.push_back(first_word(rest));
+    }
+    return dirs;
+}
+
+// The test framework's folders: for each harness main, the include folder of
+// hydra_tests that holds the header it includes on the line after
+// kImplementLine.
+std::vector<std::string> framework_dirs() {
+    const std::string include = "#include \"";
+    const std::vector<std::string> dirs = test_include_dirs();
+    std::vector<std::string> out;
+    for (const std::string& main_file : harness_mains()) {
+        CAPTURE(main_file);
+        const std::vector<std::string> lines = real_lines(main_file);
+        const auto define = std::find_if(lines.begin(), lines.end(),
+                                         [](const std::string& l) { return hydra::trim(l) == kImplementLine; });
+        REQUIRE(define != lines.end());
+        REQUIRE(define + 1 != lines.end());
+        const std::string next = hydra::trim(*(define + 1));
+        REQUIRE(hydra::starts_with(next, include));
+        const std::string header = next.substr(include.size(), next.find('"', include.size()) - include.size());
+        for (const std::string& dir : dirs) {
+            const std::vector<std::string> held = files_in(dir);
+            if (std::find(held.begin(), held.end(), dir + "/" + header) != held.end()) out.push_back(dir);
+        }
+    }
+    return out;
 }
 
 // Checks that `files` is not empty and that each is a real committed file the
 // picker counts as shared code.
 void check_real_shared(const std::vector<std::string>& files) {
     REQUIRE_FALSE(files.empty());
+    SharedProbe probe;
     for (const std::string& file : files) {
         CAPTURE(file);
         REQUIRE_FALSE(real_lines(file).empty());
-        CHECK(shared_code_of(file));
+        CHECK(probe.of(file));
     }
 }
 
@@ -519,12 +624,9 @@ TEST_CASE("precheck pick (h): the build script CI runs makes the whole suite run
 TEST_CASE("precheck pick (h): every real workflow file runs the whole suite") { check_real_shared(real_workflows()); }
 
 // The file that defines DOCTEST_CONFIG_IMPLEMENT gives every hydra_tests case
-// its main(). The pattern is split so this file's own line never matches it.
-// git grep has no whole-line switch, so the pattern is anchored at both ends;
-// its text holds no character a basic regex treats as special.
+// its main().
 TEST_CASE("precheck pick (h): the test harness's main file runs the whole suite") {
-    const std::string implement = std::string("^#define DOCTEST_CONFIG_") + "IMPLEMENT$";
-    check_real_shared(real_git({"grep", "-l", "--cached", "-e", implement, "--", "tests"}));
+    check_real_shared(harness_mains());
 }
 
 // The shard list is the file the root CMakeLists.txt reads line by line into
@@ -543,14 +645,43 @@ TEST_CASE("precheck pick (h): the shard list the build reads runs the whole suit
     }
     check_real_shared(sliced);
 }
-TEST_CASE("precheck pick (h): a file under third_party/doctest/ runs the whole suite") {
-    CHECK(shared_code_of("third_party/doctest/doctest.h"));
+
+// The test framework is the header the harness main includes for its main(),
+// and every file in its folder ships with it.
+TEST_CASE("precheck pick (h): every file of the test framework the harness includes runs the whole suite") {
+    const std::vector<std::string> dirs = framework_dirs();
+    REQUIRE_FALSE(dirs.empty());
+    for (const std::string& dir : dirs) check_real_shared(files_in(dir));
 }
+
+// Real files the build reads that are no build file, no harness file and no
+// header anything includes: the root folder's .md pages, every test .cpp but
+// the harness main, every .cpp under src/, and every file of hydra_tests'
+// include folders other than the framework's, none of which holds a build
+// file.
 TEST_CASE("precheck pick (h): other files are not shared code") {
-    CHECK_FALSE(shared_code_of("README.md"));
-    CHECK_FALSE(shared_code_of("src/x.cpp"));
-    CHECK_FALSE(shared_code_of("tests/test_cli.cpp"));
-    CHECK_FALSE(shared_code_of("third_party/json/json.hpp"));
+    const std::vector<std::string> mains = harness_mains();
+    const std::vector<std::string> framework = framework_dirs();
+    auto listed = [](const std::vector<std::string>& in, const std::string& f) {
+        return std::find(in.begin(), in.end(), f) != in.end();
+    };
+    std::vector<std::string> files;
+    for (const std::string& f : real_git({"ls-tree", "--name-only", "HEAD"}))
+        if (hydra::ends_with(f, ".md")) files.push_back(f);
+    for (const std::string& f : files_in("tests"))
+        if (is_cpp_implementation(f) && !listed(mains, f)) files.push_back(f);
+    for (const std::string& f : files_in("src"))
+        if (is_cpp_implementation(f)) files.push_back(f);
+    for (const std::string& dir : test_include_dirs()) {
+        if (listed(framework, dir)) continue;
+        for (const std::string& f : files_in(dir)) files.push_back(f);
+    }
+    REQUIRE_FALSE(files.empty());
+    SharedProbe probe;
+    for (const std::string& file : files) {
+        CAPTURE(file);
+        CHECK_FALSE(probe.of(file));
+    }
 }
 TEST_CASE("precheck pick (h): a changed build file makes the pick the whole suite") {
     PickRepo fx("precheck_pick_h_pick", {{"CMakeLists.txt", "project(x)\n"}, {"tests/test_h.cpp", "int h;\n"}});
@@ -707,9 +838,20 @@ TestPick pick_tool(const std::string& name, std::map<std::string, std::string> b
     return fx.pick({{"src/tool/main.cpp", tip}});
 }
 
-bool has_reason(const TestPick& p, const std::string& file, const std::string& reason) {
+// Checks that `file` was picked by the exe rule for the changed name run: its
+// reasons hold no plain "run" (it never names run), and one reason starts
+// with run and names the target kToolTarget declares. The picker's wording
+// of that reason has no public owner, so only its two parts are checked.
+void check_exe_reason(const TestPick& p, const std::string& file) {
+    const std::string open = "add_executable(";
+    REQUIRE(hydra::starts_with(kToolTarget, open));
+    const std::string target = first_word(kToolTarget.substr(open.size()));
+    REQUIRE_FALSE(target.empty());
     const std::vector<std::string> r = reasons_of(p, file);
-    return std::find(r.begin(), r.end(), reason) != r.end();
+    CHECK(std::find(r.begin(), r.end(), "run") == r.end());
+    CHECK(std::any_of(r.begin(), r.end(), [&](const std::string& s) {
+        return hydra::starts_with(s, "run ") && s.find(target) != std::string::npos;
+    }));
 }
 
 }  // namespace
@@ -720,7 +862,7 @@ TEST_CASE("precheck pick (k): a name in an exe's main picks only the tests namin
                                   {"tests/test_a.cpp", "const char* ta = HYDRA_TOOL_EXE;\n"}});
     REQUIRE_FALSE(p.whole_suite);
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_a.cpp"});
-    CHECK(has_reason(p, "tests/test_a.cpp", "run (runs hydra_tool)"));
+    check_exe_reason(p, "tests/test_a.cpp");
 }
 
 TEST_CASE("precheck pick (k): a test including a helper header naming the exe's constant is picked") {
@@ -730,7 +872,7 @@ TEST_CASE("precheck pick (k): a test including a helper header naming the exe's 
                                   {"tests/test_c.cpp", "#include \"tool_fixture.h\"\nint tc() { return 0; }\n"}});
     REQUIRE_FALSE(p.whole_suite);
     CHECK(picked_files(p) == std::vector<std::string>{"tests/test_c.cpp"});
-    CHECK(has_reason(p, "tests/test_c.cpp", "run (runs hydra_tool)"));
+    check_exe_reason(p, "tests/test_c.cpp");
 }
 
 TEST_CASE("precheck pick (k): an exe with no constant in CMakeLists.txt keeps the plain-name search") {
