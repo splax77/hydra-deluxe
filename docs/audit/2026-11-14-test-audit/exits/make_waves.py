@@ -10,6 +10,8 @@ and comes after the wave of the part before it. Waves are filled to an even shar
 open chunks, the first ones taking the remainder; check_waves.py checks the result.
 """
 import csv, sys
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from waves_common import (FIRST_WAVE, LAST_WAVE, read_tsv, is_done, has_file, repo_of, multi_part)
 
 chunks, repo, out = sys.argv[1:4]

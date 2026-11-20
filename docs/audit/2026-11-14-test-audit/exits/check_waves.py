@@ -9,6 +9,8 @@ one per wave in part order. Each row's repo, files and rows must match chunks.ts
 waves_common.py owns what open, has a file and repo mean. It prints a count per wave and per repo.
 """
 import sys, collections
+import os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from waves_common import (FIRST_WAVE, LAST_WAVE, MAX_PER_WAVE, read_tsv, is_done, has_file,
                           repo_of, part_no, multi_part)
 
