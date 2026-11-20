@@ -2,6 +2,8 @@
 
 Written at main c71f745a. Nothing here is built until the user answers question 1.
 
+**The user's answers (2026-11-20).** Question 1: the user first asked "is an hour long batch a real concern or an edge case you invented". It was an assumed example with no real case behind it (the whole library analyzes in about 12 s in the app), so the main session withdrew B's recommendation and asked again with C recommended. The user chose "C: average since start (Recommended)". Question 2: "Yes, one run on a copy". So T1 to T4 are built for answer C, T5 records C, and T6 runs.
+
 ## The plain version
 
 While a batch runs, the strip under the toolbar says how long is left. In the user's screenshot it said "about 2:19 left". The same strip said the batch had done 12,667 of 19,698 rows in 0:08. At that pace the 7,031 rows left needed about 4 or 5 seconds, not 2 minutes 19. So the figure was wrong by about thirty times. The user asked "how is estimated finish time calculated? why does it spike so high?" and then said "Yes, plan a fix".
