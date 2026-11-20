@@ -2008,6 +2008,10 @@ void test_version_bar(ImGuiTestContext* ctx) {
     auto phase_is = [&](Phase phase) { return h.app && h.app->update.phase == phase; };
     auto dot_is = [&](Dot dot) { return h.app && h.app->version_bar_status().dot == dot; };
     const std::string running = running_version_text();
+    // The app's name and a version as the bar reads them (core::named_version).
+    const std::string named_running = hydra::core::named_version(hydra::core::running_version());
+    const std::string named_release =
+        hydra::core::named_version(*hydra::core::parse_version("9.9.9"));
     const std::string name = hydra::core::named_version(hydra::core::running_version());
 
     // B4: a copy the installer didn't put in place never checks, and says so.
@@ -2067,7 +2071,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
     IM_CHECK(dot_is(Dot::UpToDate));
     IM_CHECK(phase_is(Phase::None));
-    IM_CHECK(!on_screen(h, "Hydra Deluxe " + running + " is the latest version."));
+    IM_CHECK(!on_screen(h, named_running + " is the latest version."));
     IM_CHECK(!ctx->ItemExists("**/OK##update"));
     IM_CHECK(!ctx->ItemExists("**/Update##update"));
     IM_CHECK(screenshot(ctx, "versionbar-uptodate.png"));
@@ -2087,7 +2091,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     seams.reply = update_fixtures::release_reply_at("v9.9.9");
     restart_app(ctx, h, {});
     if (ctx->IsError()) return;
-    const std::string offer = "Hydra Deluxe 9.9.9 is available.";
+    const std::string offer = named_release + " is available.";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, offer); }, 10));
     IM_CHECK(phase_is(Phase::Offered));
     IM_CHECK(dot_is(Dot::Available));
@@ -2112,7 +2116,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     // buttons back.
     seams.hold_download = true;
     ctx->ItemClick("**/Update##update");
-    const std::string downloading = "Downloading Hydra Deluxe 9.9.9...";
+    const std::string downloading = "Downloading " + named_release + "...";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, downloading); }, 5));
     IM_CHECK(ctx->ItemExists("**/Cancel##update"));
     IM_CHECK(!ctx->ItemExists("**/Skip this version"));
@@ -2176,7 +2180,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
         IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
         open_settings_panel(ctx);
         if (ctx->IsError()) return;
-        IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Stop the batch to change these."); }, 5));
+        IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::detail::kSettingsLockedText); }, 5));
         IM_CHECK(item_disabled(ctx, "**/##prodrums"));
         close_settings_panel(ctx);
         h.app->batch_job->stop();
@@ -2192,7 +2196,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
         s.skipped_update_version.clear();
     });
     if (ctx->IsError()) return;
-    const std::string updated = "Updated to Hydra Deluxe " + running + ".";
+    const std::string updated = "Updated to " + named_running + ".";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, updated); }, 5));
     IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running(); }, 10));
     ctx->ItemClick("**/OK##update");
@@ -2238,7 +2242,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     // The empty box shows its placeholder and no hint line.
     IM_CHECK(on_screen(h, "Search song, artist, album, charter, or folder"));
     IM_CHECK(!on_screen(h, "Narrow with"));
-    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
     IM_CHECK(!on_screen(h, note));
 
@@ -2259,7 +2263,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     ctx->ItemInputValue("**/##search", "stars:9");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->library.query().errors.empty(); }, 5));
     IM_CHECK(on_screen(h, h.app->library.query().errors[0]));
-    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
 
     // With a song open the library is narrow; the line, the link and the
     // popup still show, and the Escape that closes the popup leaves the song
@@ -2268,7 +2272,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "chair" && h.app->library_shown_count() > 0; }, 5));
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Folder"); }, 5));
-    IM_CHECK(on_screen(h, "Type any words, or narrow it down."));
+    IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
     ctx->ItemClick("**/Search tips##searchtips");
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, note); }, 5));
