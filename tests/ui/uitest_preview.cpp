@@ -515,6 +515,114 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     IM_CHECK(screenshot(ctx, "drain-box-active.png"));
 }
 
+// The readout under the SP gauge for a level of `bars`, in sp_meter_readout's
+// own format: a flat curve at that level, read anywhere.
+std::string readout_of(double bars, int cap) {
+    hydra::app::SpMeterCurve flat;
+    flat.cap = cap;
+    flat.segments.push_back({0.0, 0.0, bars, bars});
+    return hydra::app::sp_meter_readout(flat, 0.0);
+}
+
+// The gauge readout at a squeeze-out reads the record's level
+// (Activation::meter_bars_at). On an early squeeze-out Star Power ends on the
+// squeezed chord with a little still in the meter, so one tick before that
+// chord the readout is the record's level there. On a late one SP ends where
+// the meter runs out, so the readout there is empty.
+//
+// The charts are picked by reading each corpus chart's record in turn, never
+// by name: a chart is opened by searching its title, and the walk stops once
+// both kinds are checked. The early case must be one whose readout is above
+// "0.0", so it fails if the gauge drained to the squeezed chord instead.
+void test_preview_squeeze_out_gauge(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    std::vector<std::string> titles;
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i) {
+        const std::string& t = h.app->library_row_at(i).title;
+        if (std::find(titles.begin(), titles.end(), t) == titles.end()) titles.push_back(t);
+    }
+
+    bool early_checked = false, late_checked = false;
+    for (const std::string& title : titles) {
+        if (early_checked && late_checked) break;
+        const std::string why = open_titled_reason(ctx, title, title);
+        if (ctx->IsError()) return;
+        if (!why.empty()) {
+            std::fprintf(stderr, "skipped \"%s\": %s\n", title.c_str(), why.c_str());
+            continue;
+        }
+        set_panel_ref(ctx);
+        if (ctx->IsError()) return;
+        IM_CHECK(wait_until(ctx, [&] { return h.app->view_settled(); }, kSettleWaitSeconds));
+        if (!h.app->viewed.ready() || h.app->viewed.record->paths.empty()) continue;
+        const hydra::Path& best = h.app->viewed.record->best_path();
+        const hydra::ActivationWalk acts = best.walk_activations();
+
+        // The optimal path's squeeze-outs of each kind still unchecked. Early
+        // or late is the record's own answer: the window ends on the squeezed
+        // chord exactly when it is early (window_end_tick).
+        std::vector<const hydra::Activation*> earlies;
+        const hydra::Activation* late = nullptr;
+        for (const hydra::Activation& a : acts) {
+            if (!a.sqout_tick || !a.window_end_tick()) continue;
+            if (*a.window_end_tick() == *a.sqout_tick) {
+                if (!early_checked) earlies.push_back(&a);
+            } else if (!late_checked && !late) {
+                late = &a;
+            }
+        }
+        if (earlies.empty() && !late) continue;
+
+        ctx->ItemClick("##DetailsTabs/Preview");
+        IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+        auto& pc = *h.app->preview;
+        IM_CHECK(wait_until(ctx, [&] { return !pc.loading(); }, 120));
+        IM_CHECK_STR_EQ(pc.error().c_str(), "");
+        IM_CHECK(h.app->details_ui.selected_path == &best);
+        const std::string key = hydra::app::path_overlay_key(&best);
+        IM_CHECK(wait_until(ctx, [&] { return pc.shows_path(key); }, 30));
+        IM_CHECK(pc.scene().timing.has_value());
+        if (ctx->IsError()) return;
+        const hydra::SongTiming& timing = *pc.scene().timing;
+        const int cap = pc.sp_meter_cap();
+        pc.pause();
+
+        for (const hydra::Activation* early : earlies) {
+            const int64_t tick = *early->sqout_tick - 1;
+            const double level = *early->meter_bars_at(tick, timing);
+            const std::string want = readout_of(level, cap);
+            // A level that prints as empty cannot tell the record's level from
+            // a gauge drained to the chord; look on for another.
+            if (want == readout_of(0.0, cap)) continue;
+            pc.seek_ms(timing.ms_index().at(tick));
+            std::fprintf(stderr, "early squeeze-out on \"%s\", chord %lld: readout %s, record %s\n",
+                         title.c_str(), static_cast<long long>(*early->sqout_tick),
+                         pc.sp_meter_readout().c_str(), want.c_str());
+            IM_CHECK_STR_EQ(pc.sp_meter_readout().c_str(), want.c_str());
+            early_checked = true;
+            break;
+        }
+        if (late) {
+            const int64_t tick = *late->window_end_tick();
+            const double level = *late->meter_bars_at(tick, timing, /*just_before=*/true);
+            IM_CHECK_EQ(level, 0.0);
+            pc.seek_ms(timing.ms_index().at(tick));
+            std::fprintf(stderr, "late squeeze-out on \"%s\", meter end %lld, chord %lld: readout %s\n",
+                         title.c_str(), static_cast<long long>(tick),
+                         static_cast<long long>(*late->sqout_tick), pc.sp_meter_readout().c_str());
+            IM_CHECK_EQ(pc.sp_meter_bars(), 0.0);
+            IM_CHECK_STR_EQ(pc.sp_meter_readout().c_str(), readout_of(level, cap).c_str());
+            late_checked = true;
+        }
+        if (ctx->IsError()) return;
+    }
+    IM_CHECK(early_checked);
+    IM_CHECK(late_checked);
+}
+
 // Sets the harness display width for one test and puts it back however the
 // test ends, so a failed check cannot leave later tests on a narrow display.
 struct DisplayWidth {
@@ -1092,6 +1200,7 @@ const std::vector<TestEntry>& preview_tests() {
         {"preview-path-overlay", test_preview_path_overlay},
         {"preview-controls", test_preview_controls},
         {"preview-drain-box", test_preview_drain_box},
+        {"preview-squeeze-out-gauge", test_preview_squeeze_out_gauge},
         {"preview-solo-box", test_preview_solo_box},
         {"preview-overlay-fit", test_preview_overlay_fit},
         {"preview-buttons-keys", test_preview_buttons_keys},
