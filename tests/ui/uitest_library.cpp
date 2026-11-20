@@ -2240,7 +2240,7 @@ void test_library_search_tips(ImGuiTestContext* ctx) {
     };
 
     // The empty box shows its placeholder and no hint line.
-    IM_CHECK(on_screen(h, "Search song, artist, album, charter, or folder"));
+    IM_CHECK(on_screen(h, hydra::app::html::search_hint({"song", "artist", "album", "charter", "folder"})));
     IM_CHECK(!on_screen(h, "Narrow with"));
     IM_CHECK(on_screen(h, hydra::ui::detail::kSearchLineText));
     IM_CHECK(ctx->ItemExists("**/Search tips##searchtips"));
