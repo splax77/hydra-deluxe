@@ -609,45 +609,63 @@ TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal
 }
 
 // D55 item 5: one count per score must not bring back over-limit paths below
-// the best score. With no Path limit this chart keeps, below its top score, a
-// path over 10 ms that ties one inside it. Under a 10 ms limit the over one
-// is dropped, not filed under the inside one as a tie, and the inside one
-// stays.
+// the best score. The case needs a chart that, with no Path limit, keeps
+// below its top score a path over 10 ms that ties one inside it; no single
+// chart is known to have one, so this walks the corpus for them. Under a
+// 10 ms limit the over one is dropped, not filed under the inside one as a
+// tie, and the inside one stays.
+// The unlimited settings are the invariants sweep's deep ones
+// (test_engine_sweeps.cpp), so in a full run that record comes from the
+// corpus::analyzed cache; the deep search keeps many scores below the top,
+// which is where the case lives.
 TEST_CASE("rules: a path over the Path limit below the best score is dropped even as a tie") {
-    const std::string chart = corpus::chart_named("Unbound (The Wild Ride)");
-    REQUIRE_FALSE(chart.empty());
+    constexpr double kLimitMs = 10.0;
+    SearchSettings unlimited;
+    unlimited.sp_cap = 4;
+    unlimited.depth_mode = DepthMode::Scores;
+    unlimited.depth_value = 200;
+    unlimited.ms_filter = std::nullopt;
+    SearchSettings settings = unlimited;
+    settings.ms_filter = kLimitMs;
 
-    SearchSettings settings;
-    settings.ms_filter = 10.0;
-    const HydraRecord& limited = corpus::analyzed(chart, settings);
-    REQUIRE_FALSE(limited.paths.empty());
-    const int64_t top = limited.best_path().totalscore();
+    int walked = 0;
+    int found = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        if (corpus::song(chart, ChartReading{}).is_empty()) continue;
+        ++walked;
+        const HydraRecord& free_record = corpus::analyzed(chart, unlimited);
+        if (free_record.paths.empty()) continue;
+        const HydraRecord& limited = corpus::analyzed(chart, settings);
+        if (limited.paths.empty()) continue;
+        const int64_t top = limited.best_path().totalscore();
 
-    SearchSettings unlimited = settings;
-    unlimited.ms_filter.reset();
-    const HydraRecord& free_record = corpus::analyzed(chart, unlimited);
-    std::set<int64_t> inside_scores;
-    std::set<int64_t> over_scores;
-    for (const Path* p : free_record.all_paths()) {
-        if (p->totalscore() >= top) continue;
-        if (p->within_ms_limit(*settings.ms_filter)) inside_scores.insert(p->totalscore());
-        else over_scores.insert(p->totalscore());
+        std::set<int64_t> inside_scores;
+        std::set<int64_t> over_scores;
+        for (const Path* p : free_record.all_paths()) {
+            if (p->totalscore() >= top) continue;
+            if (p->within_ms_limit(kLimitMs)) inside_scores.insert(p->totalscore());
+            else over_scores.insert(p->totalscore());
+        }
+        std::vector<int64_t> tied_below;
+        std::set_intersection(inside_scores.begin(), inside_scores.end(), over_scores.begin(),
+                              over_scores.end(), std::back_inserter(tied_below));
+        if (tied_below.empty()) continue;
+        ++found;
+
+        CAPTURE(chart);
+        INFO("paths with no Path limit: ", kept_paths_text(free_record));
+        INFO("paths under the 10 ms limit: ", kept_paths_text(limited));
+        check_over_limit_paths_tie_the_top(limited);
+        for (const int64_t score : tied_below) {
+            CAPTURE(score);
+            bool inside_kept = false;
+            for (const Path* p : limited.all_paths())
+                if (p->totalscore() == score && !over_limit(limited, *p)) inside_kept = true;
+            CHECK(inside_kept);
+        }
     }
-    std::vector<int64_t> tied_below;
-    std::set_intersection(inside_scores.begin(), inside_scores.end(), over_scores.begin(),
-                          over_scores.end(), std::back_inserter(tied_below));
-    INFO("paths with no Path limit: ", kept_paths_text(free_record));
-    INFO("paths under the 10 ms limit: ", kept_paths_text(limited));
-    REQUIRE_FALSE(tied_below.empty());
-
-    check_over_limit_paths_tie_the_top(limited);
-    for (const int64_t score : tied_below) {
-        CAPTURE(score);
-        bool inside_kept = false;
-        for (const Path* p : limited.all_paths())
-            if (p->totalscore() == score && !over_limit(limited, *p)) inside_kept = true;
-        CHECK(inside_kept);
-    }
+    INFO("charts walked: ", walked);
+    REQUIRE(found > 0);
 }
 
 // Finding 179: the engine's running tie count (bookkeeping for the limit)
