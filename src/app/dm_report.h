@@ -97,6 +97,11 @@ std::string clone_hero_cap_phrase();
 // The library toolbar's Compare button tooltip when the gate lets it on.
 std::string compare_tooltip();
 
+// Puts the fetched players in the order the picker lists them: by name, A to
+// Z, in the Library table's text order (fold_for_search), so case and accents
+// don't split names apart. Equal names keep the server's order.
+void sort_users_by_name(std::vector<net::DmUser>& users);
+
 // Joins every fetched score against the store's Ready records under
 // `profile` (report::library_lookup), preferring the leaderboard's own
 // song/artist metadata and falling back to the library's names for the

@@ -322,6 +322,23 @@ TEST_CASE("dmbot JSON parsers handle canned payloads") {
     CHECK_THROWS_AS(net::parse_users_json("{\"a\":1}"), std::runtime_error);
 }
 
+TEST_CASE("sort_users_by_name lists players A to Z, ignoring case") {
+    // The server's order, as the picker used to show it.
+    std::vector<net::DmUser> users = net::parse_users_json(R"([
+        {"id":"1","username":"zucitys"},
+        {"id":"2","username":"Bandicat"},
+        {"id":"3","username":"__9084"},
+        {"id":"4","username":"creamist"},
+        {"id":"5","username":"bandicat"}
+    ])");
+    dmr::sort_users_by_name(users);
+    std::vector<std::string> ids;
+    for (const net::DmUser& u : users) ids.push_back(u.id);
+    // "__9084" sorts first by byte order of the folded text. "Bandicat" and
+    // "bandicat" fold to one name, so they keep the server's order.
+    CHECK(ids == std::vector<std::string>{"3", "2", "5", "4", "1"});
+}
+
 // D64.
 TEST_CASE("collect_dm_rows answers above-optimal beside the status") {
     // A score at another speed that beats the optimal keeps reading "+N

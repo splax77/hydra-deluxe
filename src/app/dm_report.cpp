@@ -1,10 +1,13 @@
 #include "app/dm_report.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <unordered_map>
+#include <utility>
 
 #include "app/config.h"          // Settings::with_known_chartmode, profile_at_clone_hero_cap
 #include "app/display_format.h"  // format_percent, percent_steps
+#include "app/library_query.h"   // fold_for_search
 #include "app/report.h"  // library_lookup, lacks_chart_library, kNoChartLibrary
 #include "core/error_kind.h"
 #include "core/model.h"  // counted, group_thousands
@@ -265,6 +268,16 @@ bool settings_change_touches(const Settings& before, const Settings& after) {
     // is at Clone Hero's SP cap whatever the cap setting, so the cap reaches
     // no row.
     return before.profile_at_clone_hero_cap() != after.profile_at_clone_hero_cap();
+}
+
+void sort_users_by_name(std::vector<net::DmUser>& users) {
+    std::vector<std::pair<std::string, net::DmUser>> keyed;
+    keyed.reserve(users.size());
+    for (net::DmUser& u : users) keyed.emplace_back(fold_for_search(u.username), std::move(u));
+    std::stable_sort(keyed.begin(), keyed.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
+    users.clear();
+    for (auto& k : keyed) users.push_back(std::move(k.second));
 }
 
 }  // namespace hydra::app::dm_report
