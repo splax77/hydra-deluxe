@@ -1,15 +1,19 @@
 """score_compare.py sets each chord's score step in a press log against
 Hydra's points for it.
 
-Every fixture is hand-written: six chords whose Hydra totals rise by 100,
-with a ghost note on the chord at index 2, and press logs that match them,
-fall short, or differ at the ghost chord. The rule each verdict follows is
-score_compare's; these tests pin its answers on these literals.
+Most tests read real press logs, or pieces of them, copied from Clone Hero
+runs under hydra-data/ch-mcp-runs into testdata/ch_runs, beside the
+hydra_replay score JSON of the chart the run played; each file's comment
+names the run. The tests that still build six chords and press logs by hand
+(_SCORE and _presses) are outside the audit rows this file's real-data
+tests replace.
 """
 
 from __future__ import annotations
 
+import csv
 import dataclasses
+import json
 import io
 import os
 import sys
@@ -24,6 +28,79 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe.experiments import overlay_logs, play_chart, score_compare  # noqa: E402
 
 KIT, KEYS = score_compare.ROUTE_KIT, score_compare.ROUTE_KEYS
+
+_RUNS_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs")
+_REPLAY_DIR = os.path.join(_REPO_ROOT, "testdata", "replay")
+
+# Hydra's score JSON for Window Map, path 0, the path the Window Map runs
+# below played (an all-kick chart with no activation). From the repo root:
+#   build-cpp\Release\hydra_replay.exe score
+#       --chart "testdata/ch_runs/2026-10-28-l3/Window Map/notes.chart"
+#       --path testdata/replay/window_map-dump.json --index 0
+#       --out testdata/replay/window_map-score.json
+_WINDOW_MAP_SCORE = os.path.join(_REPLAY_DIR, "window_map-score.json")
+# Hydra's score JSON for Pitch Dark, path 0, the path pitch-dark-run1
+# played; the comment above _REPLAY_DIR in test_sp_compare.py says how it
+# is made.
+_PITCH_DARK_SCORE = os.path.join(_REPLAY_DIR, "test_pitch_dark_ratio-score.json")
+
+# hydra-data/ch-mcp-runs/2026-11-07/ls-t2-run-a/press-1.csv, whole: a kit
+# run on Window Map that the game scored as Hydra did at every chord.
+_FULL_RUN_LOG = os.path.join(_RUNS_DIR, "ls-t2-run-a", "press-1.csv")
+# hydra-data/ch-mcp-runs/2026-11-07/ls-t3-run-b/press-1.csv, the rows of
+# chords 38 to 40: a kit run on Window Map that fell behind the chart. At
+# chord 39 the game's step is short of Hydra's points, and the read after
+# chord 40 shows no step at all.
+_BEHIND_LOG = os.path.join(_RUNS_DIR, "ls-t3-run-b", "press-1-chords-38-40.csv")
+# hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1/press-1.csv, the rows of
+# chords 143 to 145; the run pressed chord 144 as two presses.
+_SPLIT_LOG = os.path.join(_RUNS_DIR, "pitch-dark-run1", "press-1-chords-143-145.csv")
+# hydra-data/ch-mcp-runs/2026-11-11/ls-a2-run1/press-1.csv, the rows of
+# chords 137 and 138, and the chords 136 to 138 of the score JSON that run
+# played (hydra-data/ch-mcp-runs/2026-11-11/ls-a2-prep/The Who - Won't Get
+# Fooled Again (O)-score.json), each chord unchanged. Chord 137 holds a
+# ghost or accent note, and the game's step for it is short of Hydra's
+# points.
+_GHOST_LOG = os.path.join(_RUNS_DIR, "ls-a2-run1", "press-1-chords-137-138.csv")
+_GHOST_SCORE = os.path.join(_RUNS_DIR, "ls-a2-prep", "score-chords-136-138.json")
+
+
+def _data_file(path):
+    """`path`, a file under testdata; a missing one fails the test at once."""
+    if not os.path.isfile(path):
+        raise AssertionError(
+            f"{path} is missing; the comment beside its name in "
+            "tools/ch_probe/tests/test_score_compare.py says how it is made")
+    return path
+
+
+def _load_score(path):
+    with open(_data_file(path), encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _real_report(presses, score, route=KIT, stop=play_chart.STOP_DONE):
+    out = io.StringIO()
+    passed = score_compare.report(presses, score, out, route=route, stop=stop)
+    return passed, out.getvalue().splitlines()
+
+
+def _steps(presses):
+    """{chord index: the game's score step}, read straight from the rows: the
+    score after a chord's last row minus the score before its first."""
+    first, last = {}, {}
+    for p in presses:
+        first.setdefault(p.index, p.score_before)
+        last[p.index] = p.score_after
+    return {i: last[i] - first[i] for i in first}
+
+
+def _hydra_points(score):
+    """{chord index: Hydra's points}, read straight from the score JSON: a
+    chord's cum.total minus the chord's before it."""
+    chords = score["chords"]
+    return {c["index"]: c["cum"]["total"] - (chords[k - 1]["cum"]["total"] if k else 0)
+            for k, c in enumerate(chords)}
 
 
 def _note(dynamic="none"):
@@ -68,11 +145,21 @@ def _report(presses, route=KIT, stop=play_chart.STOP_DONE, message=""):
 
 class ScoreStepTest(unittest.TestCase):
     def test_a_matching_log_passes(self):
-        passed, text = _report(_presses([100, 200, 300, 400, 500, 600]))
+        presses = score_compare.load_press_log(_FULL_RUN_LOG)
+        score = _load_score(_WINDOW_MAP_SCORE)
+        # The run's every step equals Hydra's points, read from the two files.
+        steps, points = _steps(presses), _hydra_points(score)
+        self.assertEqual(sorted(steps), sorted(points))
+        self.assertEqual(steps, points)
+        passed, lines = _real_report(presses, score)
         self.assertTrue(passed)
-        self.assertIn("PASS score step: every chord's step equals Hydra's points", text)
-        self.assertIn("Final: game 600 after chord index 5; Hydra's whole-chart total 600",
-                      text)
+        self.assertEqual([l for l in lines if l.startswith("FAIL")], [])
+        # The final line sets the game's last score beside Hydra's total.
+        final = [l for l in lines if l.startswith("Final:")]
+        self.assertEqual(len(final), 1)
+        self.assertIn(f"game {presses[-1].score_after} after chord index {presses[-1].index}",
+                      final[0])
+        self.assertIn(str(score["final"]["total"]), final[0])
 
     def test_a_chord_passes_only_when_the_step_equals_hydras_points(self):
         # Chord 3 steps by 99, one point under Hydra's 100.
@@ -88,29 +175,66 @@ class ScoreStepTest(unittest.TestCase):
         self.assertNotIn(".hit", source)
         self.assertNotIn('row["hit"]', source)
 
-    def test_a_lagged_read_fails(self):
-        # The read after chord 2 lands before the game credits it: its step is 0.
-        self.assertEqual(_statuses([100, 200, 200, 400, 500, 600])[2], "FAIL")
+    def test_a_short_step_and_a_read_with_no_step_fail(self):
+        presses = score_compare.load_press_log(_BEHIND_LOG)
+        score = _load_score(_WINDOW_MAP_SCORE)
+        steps, points = _steps(presses), _hydra_points(score)
+        # In the log: chord 38 steps by Hydra's points, chord 39 by fewer,
+        # and the read after chord 40 shows the score unchanged.
+        self.assertEqual(steps[38], points[38])
+        self.assertLess(steps[39], points[39])
+        self.assertEqual(steps[40], 0)
+        self.assertGreater(points[40], 0)
+        verdicts = {v.index: v for v in score_compare.compare_scores(
+            presses, score_compare.chords_from_score(score), KIT)}
+        self.assertEqual({i: v.status for i, v in verdicts.items()},
+                         {38: "equal", 39: "FAIL", 40: "FAIL"})
+        self.assertEqual({i: (v.game, v.hydra) for i, v in verdicts.items()},
+                         {i: (steps[i], points[i]) for i in verdicts})
 
     def test_ghost_accent_forgiveness_applies_only_on_the_keys_route(self):
-        scores = [100, 200, 280, 380, 480, 580]
-        self.assertEqual(_statuses(scores, KEYS)[2], "ghost_accent")
-        self.assertEqual(_statuses(scores, KIT)[2], "FAIL")
-        self.assertTrue(_report(_presses(scores), KEYS)[0])
-        self.assertFalse(_report(_presses(scores), KIT)[0])
+        presses = score_compare.load_press_log(_GHOST_LOG)
+        score = _load_score(_GHOST_SCORE)
+        steps, points = _steps(presses), _hydra_points(score)
+        chord_137 = next(c for c in score["chords"] if c["index"] == 137)
+        self.assertTrue(any(n["dynamic"] in ("ghost", "accent") for n in chord_137["notes"]))
+        self.assertNotEqual(steps[137], points[137])
+        chords = score_compare.chords_from_score(score)
+        keys = {v.index: v.status for v in score_compare.compare_scores(presses, chords, KEYS)}
+        kit = {v.index: v.status for v in score_compare.compare_scores(presses, chords, KIT)}
+        self.assertEqual(keys[137], "ghost_accent")
+        self.assertEqual(kit[137], "FAIL")
+        # The kit route forgives nothing, and the keys route forgives only
+        # a chord the kit route fails.
+        self.assertNotIn("ghost_accent", kit.values())
+        self.assertEqual({i: s for i, s in keys.items() if s != "ghost_accent"},
+                         {i: kit[i] for i, s in keys.items() if s != "ghost_accent"})
+        self.assertEqual({kit[i] for i, s in keys.items() if s == "ghost_accent"}, {"FAIL"})
 
     def test_a_split_chord_is_one_step(self):
-        p = _presses([100, 200, 300, 400, 500, 600])
-        half = dataclasses.replace(p[3], score_after=350)
-        rest = dataclasses.replace(p[3], score_before=350)
-        rows = p[:3] + [half, rest] + p[4:]
-        self.assertEqual(_statuses_of(rows), ["equal"] * 6)
+        presses = score_compare.load_press_log(_SPLIT_LOG)
+        score = _load_score(_PITCH_DARK_SCORE)
+        self.assertEqual([p.index for p in presses], [143, 144, 144, 145])
+        verdicts = score_compare.compare_scores(
+            presses, score_compare.chords_from_score(score), KIT)
+        self.assertEqual([v.index for v in verdicts], [143, 144, 145])
+        split = verdicts[1]
+        # The step runs from the first press's score before to the second's after.
+        self.assertEqual(split.game, presses[2].score_after - presses[1].score_before)
+        self.assertEqual(split.hydra, _hydra_points(score)[144])
+        self.assertEqual(split.status, "equal")
 
     def test_a_chord_with_no_row_fails(self):
-        p = _presses([100, 200, 300, 400, 500, 600])[:5]
-        passed, text = _report(p)
+        # The full run's log without its last chord's row.
+        presses = score_compare.load_press_log(_FULL_RUN_LOG)
+        score = _load_score(_WINDOW_MAP_SCORE)
+        missing = presses[-1].index
+        self.assertEqual(missing, score["chords"][-1]["index"])
+        passed, lines = _real_report(presses[:-1], score)
         self.assertFalse(passed)
-        self.assertIn("FAIL chords with no press-log row: 1 of 6 (chord index 5)", text)
+        fails = [l for l in lines if l.startswith("FAIL")]
+        self.assertEqual(len(fails), 1)
+        self.assertIn(f"1 of {len(score['chords'])} (chord index {missing})", fails[0])
 
     def test_an_unknown_route_is_refused(self):
         with self.assertRaises(ValueError):
@@ -127,25 +251,23 @@ class ScoreStepTest(unittest.TestCase):
                 score_compare.chords_from_score(_SCORE), KIT)
 
 
-def _statuses_of(rows):
-    return [v.status for v in score_compare.compare_scores(
-        rows, score_compare.chords_from_score(_SCORE), KIT)]
-
-
 class RunEndTest(unittest.TestCase):
     def test_a_run_that_stopped_before_the_song_end_fails(self):
-        full = _presses([100, 200, 300, 400, 500, 600])
-        passed, text = _report(full, stop="cap", message="run cap of 240 s reached")
-        self.assertFalse(passed)
-        self.assertTrue(text.startswith(
-            "FAIL run end: the run stopped before the song's end (cap): "
-            "run cap of 240 s reached"))
-        passed, text = _report(full, stop=None)
-        self.assertFalse(passed)
-        self.assertTrue(text.startswith("FAIL run end: the run's stop reason was not given"))
-        passed, text = _report(full)
+        # The full run's log, whose every chord passes, under each stop.
+        presses = score_compare.load_press_log(_FULL_RUN_LOG)
+        score = _load_score(_WINDOW_MAP_SCORE)
+        passed, lines = _real_report(presses, score, stop=play_chart.STOP_DONE)
         self.assertTrue(passed)
-        self.assertTrue(text.startswith("PASS run end: the run reached the song's end"))
+        self.assertEqual(lines[0], score_compare.stop_check(play_chart.STOP_DONE)[1])
+        for stop in (play_chart.STOP_NO_ENGINE, None):
+            with self.subTest(stop=stop):
+                passed, lines = _real_report(presses, score, stop=stop)
+                self.assertFalse(passed)
+                # The run-end verdict is the report's first line and fails it.
+                self.assertTrue(lines[0].startswith("FAIL"))
+                self.assertEqual(lines[0], score_compare.stop_check(stop)[1])
+                if stop is not None:
+                    self.assertIn(f"({stop})", lines[0])
 
 
 class ClockLineTest(unittest.TestCase):
@@ -196,63 +318,53 @@ def _load_text(text):
         return score_compare.load_press_log(path)
 
 
+# The fields load_press_log turns from text into numbers, and how.
+_NUMBER_FIELDS = {"index": int, "chart_ms": float, "clock_ms_at_press": float,
+                  "score_before": int, "score_after": int}
+
+
 class PressLogHeaderTest(unittest.TestCase):
-    """Hand-written logs: each header load_press_log accepts, and headers it
+    """Real press logs of each header load_press_log accepts, and headers it
     refuses."""
 
-    def test_a_six_column_log_loads_with_blank_kit_fields(self):
-        rows = _load_text(
-            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit\n"
-            "0,3398.25,3398.75,0,115,1\n"
-            "1,4616.5,4617.5,115,115,0\n")
-        self.assertEqual(rows, [
-            score_compare.Press(0, 3398.25, 3398.75, 0, 115, "", "", "", ""),
-            score_compare.Press(1, 4616.5, 4617.5, 115, 115, "", "", "", ""),
-        ])
+    def assert_loads_as_written(self, path, header):
+        """load_press_log reads the real log at `path`, whose header is
+        `header`: each Press field holds its column's text as written (the
+        number fields as numbers), and a column the log lacks is blank.
+        Returns the Press rows."""
+        with open(path, encoding="utf-8", newline="") as f:
+            table = list(csv.reader(f))
+        self.assertEqual(tuple(table[0]), header)
+        self.assertTrue(table[1:], f"{path} holds no rows")
+        presses = score_compare.load_press_log(path)
+        self.assertEqual(len(presses), len(table) - 1)
+        for press, cells in zip(presses, table[1:]):
+            written = dict(zip(table[0], cells))
+            for field in dataclasses.fields(score_compare.Press):
+                text = written.get(field.name, "")
+                want = _NUMBER_FIELDS[field.name](text) if field.name in _NUMBER_FIELDS else text
+                self.assertEqual(getattr(press, field.name), want, (path, field.name))
+        return presses
 
-    def test_a_ten_column_log_loads(self):
-        rows = _load_text(
-            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
-            "down_frame,up_frame,down_ms,up_ms\n"
-            "2,2000.0,1998.5,200,280,1,812,813,1998.25,2014.75\n"
-            "3,2500.0,2501.0,280,380,1,,,,\n")
-        self.assertEqual(rows, [
-            score_compare.Press(2, 2000.0, 1998.5, 200, 280,
-                                "812", "813", "1998.25", "2014.75"),
-            score_compare.Press(3, 2500.0, 2501.0, 280, 380, "", "", "", ""),
-        ])
+    def test_a_six_column_log_loads_with_blank_kit_fields(self):
+        # hydra-data/ch-mcp-runs/2026-10-28/l3/keys/presses.csv, its first
+        # three rows: a keys-route run.
+        presses = self.assert_loads_as_written(
+            os.path.join(_RUNS_DIR, "2026-10-28-l3", "keys-presses-rows-1-3.csv"),
+            overlay_logs.KEYS_PRESS_COLUMNS)
+        self.assertEqual({p.down_frame for p in presses}, {""})
 
     def test_a_twelve_column_log_loads_with_the_wall_times(self):
-        rows = _load_text(
-            ",".join(overlay_logs.PRESS_LOG_COLUMNS) + "\n"
-            "2,2000.0,1998.5,200,280,1,812,813,1998.25,2014.75,1762500000.25,1762500000.5\n"
-            "3,2500.0,2501.0,280,380,1,,,,,1762500000.75,1762500000.75\n")
-        self.assertEqual(rows, [
-            score_compare.Press(2, 2000.0, 1998.5, 200, 280,
-                                "812", "813", "1998.25", "2014.75",
-                                "1762500000.25", "1762500000.5"),
-            score_compare.Press(3, 2500.0, 2501.0, 280, 380, "", "", "", "",
-                                "1762500000.75", "1762500000.75"),
-        ])
+        presses = self.assert_loads_as_written(
+            _FULL_RUN_LOG, overlay_logs.PRESS_COLUMNS_WITHOUT_PLAYER)
+        self.assertNotIn("", {p.wall_s_at_read for p in presses})
 
     def test_a_fifteen_column_log_from_before_the_retime_column_loads(self):
-        rows = _load_text(
-            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
-            "down_frame,up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,"
-            "scored_between,end_read_ms,probe\n"
-            "180,32583.33,32627.39,500,600,1,,,,,1.25,1.5,0,,\n")
-        self.assertEqual(rows, [
-            score_compare.Press(180, 32583.33, 32627.39, 500, 600, "", "", "", "",
-                                "1.25", "1.5", "0", "", "", "")])
-
-    def test_a_sixteen_column_log_keeps_the_retime_word(self):
-        rows = _load_text(
-            "index,chart_ms,clock_ms_at_press,score_before,score_after,hit,"
-            "down_frame,up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,"
-            "scored_between,end_read_ms,probe,retimed\n"
-            "180,32583.33,32624.39,500,600,1,,,,,1.25,1.5,0,,,inside\n"
-            "181,32666.67,32665.39,600,700,1,,,,,1.75,2.0,0,,,\n")
-        self.assertEqual([p.retimed for p in rows], ["inside", ""])
+        # hydra-data/ch-mcp-runs/2026-11-07/ls-f1-run1/press-2.csv, its first
+        # three rows.
+        self.assert_loads_as_written(
+            os.path.join(_RUNS_DIR, "ls-f1-run1", "press-2-rows-1-3.csv"),
+            overlay_logs.PRESS_COLUMNS_WITHOUT_RETIME)
 
     def test_the_retime_word_play_chart_writes_reads_back(self):
         rows = [{"index": 180, "chart_ms": 32583.33, "clock_ms_at_press": 32627.39,
@@ -271,14 +383,12 @@ class PressLogHeaderTest(unittest.TestCase):
                   if c != overlay_logs.SEND_COLUMN))
 
     def test_a_log_with_the_header_before_timing_still_loads(self):
-        # The header of LS-A2's press-1.csv (2026-11-11\ls-a2-run1), as written.
-        rows = _load_text(
-            "index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,"
-            "up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,"
-            "end_read_ms,probe,retimed\n"
-            "180,32583.33,32624.39,500,600,sent,,,,,1.25,1.5,0,,,inside\n")
-        self.assertEqual([(p.index, p.score_after, p.retimed, p.press_took_ms) for p in rows],
-                         [(180, 600, "inside", "")])
+        # hydra-data/ch-mcp-runs/2026-11-11/ls-a2-run1/press-1.csv, its first
+        # three rows and row 1906, the one row the run retimed.
+        presses = self.assert_loads_as_written(
+            os.path.join(_RUNS_DIR, "ls-a2-run1", "press-1-rows-1-3-1906.csv"),
+            overlay_logs.PRESS_COLUMNS_BEFORE_TIMING)
+        self.assertEqual([p.retimed for p in presses], ["", "", "", play_chart.RETIMED_LATE])
 
     def test_the_timing_columns_play_chart_writes_read_back(self):
         rows = [{"index": 180, "chart_ms": 32583.33, "clock_ms_at_press": 32627.39,
@@ -292,18 +402,13 @@ class PressLogHeaderTest(unittest.TestCase):
                          ("1.5", "212.4", ""))
 
     def test_a_log_with_the_header_before_the_in_game_columns_still_loads(self):
-        # The header play_chords wrote before the in-game columns (D339),
-        # LS-P3's press-1.csv among them, as written.
-        rows = _load_text(
-            "index,chart_ms,clock_ms_at_press,score_before,score_after,send,down_frame,"
-            "up_frame,down_ms,up_ms,wall_s_at_read,wall_s_at_reply,scored_between,"
-            "end_read_ms,probe,retimed,wait_read_max_ms,wait_oversleep_max_ms,"
-            "press_took_ms,reply_check_took_ms,end_read_took_ms,score_read_took_ms,"
-            "prev_handoff_took_ms\n"
-            "468,80000.0,80001.0,9000,9000,dropped,,,,,1.25,1.5,0,,,,87.3,,,,,,\n")
-        self.assertEqual([(p.index, p.score_after, p.wait_read_max_ms, p.frame_gap_ms,
-                           p.agent_note) for p in rows],
-                         [(468, 9000, "87.3", "", "")])
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1/press-1.csv, its first
+        # three rows.
+        presses = self.assert_loads_as_written(
+            os.path.join(_RUNS_DIR, "ls-p3-run1", "press-1-rows-1-3.csv"),
+            overlay_logs.PRESS_COLUMNS_BEFORE_IN_GAME)
+        self.assertNotIn("", {p.press_took_ms for p in presses})
+        self.assertEqual({(p.frame_gap_ms, p.agent_note) for p in presses}, {("", "")})
 
     def test_the_in_game_columns_play_in_game_writes_read_back(self):
         rows = [{"index": 180, "chart_ms": 32583.33, "clock_ms_at_press": 32627.39,
