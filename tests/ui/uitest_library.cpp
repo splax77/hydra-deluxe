@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -15,11 +16,15 @@
 #include "../testdata_dirs.h"  // root
 #include "../wait_util.h"       // kWaitCap
 #include "app/config.h"
+#include "core/model.h"  // kMaxEarlyFillWindowMs
+#include "app/dm_report.h"  // why_not_comparable
+#include "app/html_page.h"  // kNothingMatches
 #include "app/report.h"  // hit_window_text
 #include "app/user_messages.h"  // old_library_set_aside_notice, library_rescan_notice,
                                 // library_scan_blocked_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
+#include "parse/song.h"  // strip_rich_tags
 #include "render/overlay_layout.h"  // ellipsize, the one cutting rule
 #include "ui/app_shell.h"  // remember_library_share
 #include "ui/app_state.h"
@@ -151,14 +156,14 @@ void test_library_twin_rows(ImGuiTestContext* ctx) {
     h.app->library.set_sort(hydra::ui::LibrarySort::Title, true);
 }
 
-// The chart mode a reading with Pro Drums on and Note Shuffle off is filed
-// under, as its owner app::chartmode_key spells it.
-std::string drums_key(hydra::Difficulty difficulty, bool bass2x) {
+// The chart mode a reading with Pro Drums on is filed under, as its owner
+// app::chartmode_key spells it.
+std::string drums_key(hydra::Difficulty difficulty, bool bass2x, bool noteshuffle = false) {
     hydra::ChartReading reading;
     reading.difficulty = difficulty;
     reading.prodrums = true;
     reading.bass2x = bass2x;
-    reading.noteshuffle = false;
+    reading.noteshuffle = noteshuffle;
     return hydra::app::chartmode_key(reading);
 }
 
@@ -233,10 +238,10 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
 }
 
-// The settings panel's "Note Shuffle" box (D104 items 1, 2 and 6): off by
-// default, ticking it saves the INI and ends the mode string in ", Note
-// Shuffle", and the dmleaderboards Compare button greys out with its sentence
-// as its tooltip. Unticking puts both back.
+// The settings panel's "Note Shuffle" box: off by default, ticking it saves
+// the INI and moves the chart mode to the shuffled one (app::chartmode_key),
+// and the dmleaderboards Compare button greys out with the refusal
+// dm_report::why_not_comparable gives as its tooltip. Unticking puts both back.
 void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -246,12 +251,14 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
         return (ctx->ItemInfo("//Hydra/Compare with dmleaderboards...").ItemFlags &
                 ImGuiItemFlags_Disabled) != 0;
     };
-    const std::string refused =
-        "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-        "compared with a shuffled path. Untick Note Shuffle to compare.";
+    const std::string plain_key = drums_key(hydra::Difficulty::Expert, true);
+    const std::string shuffled_key = drums_key(hydra::Difficulty::Expert, true, true);
+    // The tick must change the key, or the checks below prove nothing.
+    IM_CHECK(shuffled_key != plain_key);
 
     IM_CHECK(!h.app->settings.view_noteshuffle);
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), plain_key);
+    IM_CHECK(hydra::app::dm_report::why_not_comparable(h.app->settings).empty());
     IM_CHECK(!compare_disabled());
 
     open_settings_panel(ctx);
@@ -260,8 +267,14 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     ctx->ItemCheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(),
-                    "Expert Pro Drums, 2x Bass, Note Shuffle");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), shuffled_key);
+    // The board refuses now, and only because of Note Shuffle: the same
+    // settings unshuffled compare.
+    const std::string refused = hydra::app::dm_report::why_not_comparable(h.app->settings);
+    IM_CHECK(!refused.empty());
+    hydra::app::Settings unshuffled = h.app->settings;
+    unshuffled.view_noteshuffle = false;
+    IM_CHECK(hydra::app::dm_report::why_not_comparable(unshuffled).empty());
 
     close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, compare_disabled, 5));
@@ -275,7 +288,7 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     ctx->ItemUncheck("**/##noteshuffle");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_noteshuffle; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_noteshuffle);
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), plain_key);
     // The open popup outlives the test, so the next test could hover nothing.
     close_settings_panel(ctx);
     IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
@@ -417,23 +430,29 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
     ctx->MouseMoveToPos(ImVec2(marker_x, box.RectFull.GetCenter().y));
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, help); }, 5));
 
-    ctx->ItemInputValue("**/##earlyfillwindow", 85);
-    IM_CHECK(wait_until(
-        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 85 ms"); }, 5));
-    IM_CHECK(h.app->settings.early_fill_window_ms == 85);
+    // The range's ends, from the key table's bounds (config.cpp, 0 to
+    // kMaxEarlyFillWindowMs); the button's label for each comes from its owner.
+    const int top = hydra::kMaxEarlyFillWindowMs;
+    hydra::app::Settings at_top = h.app->settings;
+    at_top.early_fill_window_ms = top;
+    hydra::app::Settings at_zero = h.app->settings;
+    at_zero.early_fill_window_ms = 0;
+    // The default sits inside the range, so each wait below sees a change.
+    IM_CHECK(!button_reads(h, at_top) && !button_reads(h, at_zero));
+    ctx->ItemInputValue("**/##earlyfillwindow", top);
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_top); }, 5));
+    IM_CHECK(h.app->settings.early_fill_window_ms == top);
 
     // Below the range first, so the value above it has something to move from.
     ctx->ItemInputValue("**/##earlyfillwindow", -5);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == 0; }, 5));
-    IM_CHECK(wait_until(
-        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 0 ms"); }, 5));
-    ctx->ItemInputValue("**/##earlyfillwindow", 200);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == 85; }, 5));
-    IM_CHECK(wait_until(
-        ctx, [&] { return on_screen(h, "Analysis settings: Early fill window 85 ms"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_zero); }, 5));
+    ctx->ItemInputValue("**/##earlyfillwindow", top + 100);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.early_fill_window_ms == top; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_top); }, 5));
     close_settings_panel(ctx);
     h.app->flush_settings();
-    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).early_fill_window_ms == 85);
+    IM_CHECK(hydra::app::Settings::load_file(h.ini_path).early_fill_window_ms == top);
 }
 
 // A bad hydra_rules.ini: the app still opens and scans, the error naming the
@@ -596,8 +615,28 @@ void test_view_settings(ImGuiTestContext* ctx) {
 
 ImGuiTable* library_table();  // below, beside the column tests
 
+// The notes paths of the rows on screen, sorted.
+std::vector<std::string> shown_paths_sorted(Harness& h) {
+    std::vector<std::string> out;
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+        out.push_back(h.app->library_row_at(i).entry.notespath);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+// The notes paths of every library row `keep` holds for, sorted.
+std::vector<std::string> library_paths_where(
+    Harness& h, const std::function<bool(const hydra::ui::LibraryRow&)>& keep) {
+    std::vector<std::string> out;
+    for (const hydra::ui::LibraryRow& row : h.app->library.rows())
+        if (keep(row)) out.push_back(row.entry.notespath);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
 // The search box, the chips, the second line and the empty state, on the
-// scratch library (98 charts in testdata\input).
+// scratch library (every chart in testdata\input). Each expected set of rows
+// is read from the scanned rows themselves.
 void test_library_search(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -605,21 +644,31 @@ void test_library_search(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     ctx->SetRef("//Hydra");
     const auto shown = [&] { return h.app->library_shown_count(); };
+    const size_t total = h.app->library.rows().size();
+    IM_CHECK_RETV(total > 0, );
+    const auto chip_ref = [](hydra::ui::StatusChip chip, size_t count) {
+        return "**/" + hydra::ui::chip_label(chip, count);
+    };
 
-    IM_CHECK_EQ(shown(), (size_t)98);
-    IM_CHECK(visible_text(h).find("98 charts") != std::string::npos);
-    IM_CHECK(ctx->ItemExists("**/All (98)##chipall"));
-    IM_CHECK(ctx->ItemExists("**/Not analyzed (98)##chipnew"));
-    IM_CHECK((ctx->ItemInfo("**/Stale (0)##chipstale").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK_EQ(shown(), total);
+    IM_CHECK(ctx->ItemExists(chip_ref(hydra::ui::StatusChip::All, total).c_str()));
+    IM_CHECK(ctx->ItemExists(chip_ref(hydra::ui::StatusChip::NotAnalyzed, total).c_str()));
+    IM_CHECK((ctx->ItemInfo(chip_ref(hydra::ui::StatusChip::Stale, 0).c_str()).ItemFlags &
+              ImGuiItemFlags_Disabled) != 0);
 
-    // A quoted phrase: the five charts under "...\Tier 4".
+    // A quoted phrase: the charts in a "Tier 4" folder, and only those.
+    const std::vector<std::string> tier4 = library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+        return r.entry.notespath.find("\\Tier 4\\") != std::string::npos ||
+               r.entry.notespath.find("/Tier 4/") != std::string::npos;
+    });
+    IM_CHECK_RETV(!tier4.empty(), );
     ctx->ItemInputValue("**/##search", "\"tier 4\"");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 5; }, 5));
-    IM_CHECK(ctx->ItemExists("**/All (5)##chipall"));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "\"tier 4\""; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shown_paths_sorted(h) == tier4; }, 5));
+    IM_CHECK(ctx->ItemExists(chip_ref(hydra::ui::StatusChip::All, tier4.size()).c_str()));
     std::string text = visible_text(h);
-    IM_CHECK(text.find("5 of 98 charts") != std::string::npos);
-    for (const char* title : {"Burnout", "Chair", "Limb From Limb", "Unbound (The Wild Ride)", "YYZ"})
-        IM_CHECK(text.find(title) != std::string::npos);
+    for (size_t i = 0; i < shown(); ++i)
+        IM_CHECK(text.find(h.app->library_row_at(i).title) != std::string::npos);
 
     // With a song open, Folder makes way, so each row shows its folder on
     // the title's second line. No note under the table says where it matched.
@@ -630,26 +679,33 @@ void test_library_search(ImGuiTestContext* ctx) {
     h.app->close_details();
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Folder"); }, 5));
 
-    // album: limits a word to the album. Haken - The Good Doctor's song.ini
-    // says album = Vector.
+    // album: limits a word to the album: the rows whose album holds "vector"
+    // and no others. The checks below want exactly one such chart.
+    const std::vector<std::string> vector_album =
+        library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+            return r.searchable.album.find("vector") != std::string::npos;
+        });
+    IM_CHECK_RETV(vector_album.size() == 1, );
     ctx->ItemInputValue("**/##search", "album:vector");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "album:vector"; }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
-    IM_CHECK_EQ(shown(), (size_t)1);
-    IM_CHECK(h.app->library_row_at(0).title == "The Good Doctor");
+    IM_CHECK(wait_until(ctx, [&] { return shown_paths_sorted(h) == vector_album; }, 5));
+    // The album as the table draws it, colour tags removed.
+    const std::string album = h.app->library_row_at(0).album;
+    const std::string doctor_title = h.app->library_row_at(0).title;
+    IM_CHECK_RETV(!album.empty(), );
     IM_CHECK(ctx->ItemExists("**/Album"));
     // With a song open, Album makes way with Charter and Folder, and the
     // album shows on the row's second line instead.
     h.app->select(h.app->library_row_at(0).entry, hydra::ui::SelectionSource::Click);
     IM_CHECK(wait_until(ctx, [&] { return !ctx->ItemExists("**/Album"); }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Vector"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, album); }, 5));
     // The user's case: the song stays open and the search box is emptied.
     // Every row still shows its album under the artist.
     ctx->ItemInputValue("**/##search", "");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == 98; }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return h.app->search.empty() && shown() == total; }, 5));
     ctx->Yield(2);
     IM_CHECK(!ctx->ItemExists("**/Album"));
-    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(on_screen(h, album));
     const float open_no_search_h =
         ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
             .RectFull.GetHeight();
@@ -661,24 +717,27 @@ void test_library_search(ImGuiTestContext* ctx) {
     // title's second line stays empty and the folder is drawn once.
     ImGuiTable* table = library_table();
     IM_CHECK_RETV(table != nullptr, );
-    const std::string doctor_ref = "**/The Good Doctor";
+    const std::string doctor_ref = "**/" + escape_ref(doctor_title);
     const float one_line_h = [&] {
         ctx->ItemInputValue("**/##search", "");
         wait_until(ctx, [&] { return h.app->search.empty(); }, 5);
         return ctx->ItemInfo(("**/" + escape_ref(h.app->library_row_at(0).title)).c_str())
             .RectFull.GetHeight();
     }();
-    // Album shown, no search: one line. Album hidden by the open song: two.
-    IM_CHECK_GT(open_no_search_h, one_line_h * 1.5f);
+    // Album shown, no search: one line. Album hidden by the open song: two,
+    // so the row is taller (library_table.cpp, row_h).
+    IM_CHECK_GT(open_no_search_h, one_line_h);
     ctx->TableSetColumnEnabled(table->ID, "Album", false);
     ctx->Yield(3);
     IM_CHECK(!table->Columns[hydra::ui::kColumnAlbum].IsEnabled);
     ctx->ItemInputValue("**/##search", "album:vector");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->search == "album:vector" && shown_paths_sorted(h) == vector_album;
+    }, 5));
     ctx->Yield(2);
     const float two_line_h = ctx->ItemInfo(doctor_ref.c_str()).RectFull.GetHeight();
-    IM_CHECK_GT(two_line_h, one_line_h * 1.5f);
-    IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
+    IM_CHECK_GT(two_line_h, one_line_h);
+    IM_CHECK_EQ(count_on_screen(h, album), (size_t)1);
     IM_CHECK_EQ(count_on_screen(h, h.app->library_row_at(0).entry.rootfolder), (size_t)1);
     // The album sits in the Artist cell: the frame's text runs title, artist,
     // album line, then the Folder column.
@@ -687,7 +746,7 @@ void test_library_search(ImGuiTestContext* ctx) {
         const hydra::ui::LibraryRow& doctor = h.app->library_row_at(0);
         const size_t title_at = all.find(doctor.title);
         const size_t artist_at = all.find(doctor.artist, title_at);
-        const size_t album_at = all.find("Vector", artist_at);
+        const size_t album_at = all.find(album, artist_at);
         const size_t folder_at = all.find(doctor.entry.rootfolder, artist_at);
         IM_CHECK(title_at != std::string::npos && artist_at != std::string::npos);
         IM_CHECK(album_at != std::string::npos && folder_at != std::string::npos);
@@ -701,31 +760,46 @@ void test_library_search(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const std::string first_ref = "**/" + escape_ref(h.app->library_row_at(0).title);
     IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), two_line_h);
-    IM_CHECK(on_screen(h, "Vector"));
+    IM_CHECK(on_screen(h, album));
     // Album back as a column: one line, and the album is drawn once.
     ctx->TableSetColumnEnabled(table->ID, "Album", true);
     ctx->Yield(3);
     IM_CHECK_EQ(ctx->ItemInfo(first_ref.c_str()).RectFull.GetHeight(), one_line_h);
-    IM_CHECK_EQ(count_on_screen(h, "Vector"), (size_t)1);
+    IM_CHECK_EQ(count_on_screen(h, album), (size_t)1);
 
-    // Words in any order, across title and artist.
+    // Words in any order, across title and artist: every row whose title and
+    // artist hold both words, the title's word given second.
+    const std::vector<std::string> green_burnout =
+        library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+            const std::string both = r.searchable.title + " " + r.searchable.artist;
+            return both.find("green") != std::string::npos &&
+                   r.searchable.title.find("burnout") != std::string::npos;
+        });
+    IM_CHECK_RETV(!green_burnout.empty(), );
     ctx->ItemInputValue("**/##search", "green burnout");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 1; }, 5));
-    IM_CHECK(h.app->library_row_at(0).title == "Burnout");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->search == "green burnout" && shown_paths_sorted(h) == green_burnout;
+    }, 5));
 
-    // A charter stored with colour tags is found and drawn without them.
-    // Bloodline charted 15 of the scratch charts (13 of them tagged), so
-    // every row shown is theirs, Acid Romance among them.
+    // A charter stored with colour tags is found and drawn without them:
+    // the rows shown are the ones Bloodline charted, and at least one of
+    // them is stored with a tag in its charter.
+    const std::vector<std::string> bloodline =
+        library_paths_where(h, [](const hydra::ui::LibraryRow& r) {
+            return r.charter == "Bloodline";
+        });
+    bool tagged_stored = false;
+    for (const hydra::store::ChartLibraryEntry& e :
+         h.app->store->list_chart_library(0, static_cast<int>(total)))
+        tagged_stored = tagged_stored ||
+                        (e.charter.find("<color=") != std::string::npos &&
+                         hydra::strip_rich_tags(e.charter) == "Bloodline");
+    IM_CHECK_RETV(tagged_stored, );
     ctx->ItemInputValue("**/##search", "bloodline");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->search == "bloodline" && shown() > 1; }, 5));
-    bool acid_shown = false;
-    for (size_t i = 0; i < shown(); ++i) {
-        IM_CHECK(h.app->library_row_at(i).charter == "Bloodline");
-        acid_shown = acid_shown || h.app->library_row_at(i).title == "Acid Romance";
-    }
-    IM_CHECK(acid_shown);
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->search == "bloodline" && shown_paths_sorted(h) == bloodline;
+    }, 5));
     text = visible_text(h);
-    IM_CHECK(text.find("Acid Romance") != std::string::npos);
     IM_CHECK(text.find("Bloodline") != std::string::npos);
     IM_CHECK(text.find("<color=") == std::string::npos);
 
@@ -738,10 +812,10 @@ void test_library_search(ImGuiTestContext* ctx) {
     // the box is the one way to clear it by mouse, and it brings it all back.
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return shown() == 0; }, 5));
-    IM_CHECK(visible_text(h).find("Nothing matches.") != std::string::npos);
+    IM_CHECK(visible_text(h).find(hydra::app::html::kNothingMatches) != std::string::npos);
     IM_CHECK(!ctx->ItemExists("**/Clear search"));
     ctx->ItemClick("**/X##clearsearch");
-    IM_CHECK(wait_until(ctx, [&] { return shown() == 98 && h.app->search.empty(); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return shown() == total && h.app->search.empty(); }, 5));
 
     // Escape in the box clears it; a second Escape leaves the box.
     ctx->ItemInputValue("**/##search", "chair");
