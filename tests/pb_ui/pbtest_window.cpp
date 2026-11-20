@@ -22,8 +22,12 @@
 
 #include "app/config.h"          // path_overrides
 #include "app/display_format.h"  // kFactSeparator
+#include "app/ini_errors.h"      // ini_bad_value_text, kWantWholeNumber
+#include "app/path_costs.h"      // CandidateCost
 #include "app/preview_view.h"
-#include "app/user_messages.h"  // kSettingsRefusedSentence, kRulesRefusedSentence
+#include "app/user_messages.h"  // kSettingsRefusedSentence, kRulesRefusedSentence, plain_error
+#include "core/error_kind.h"    // KindedError, cannot_open_file_text
+#include "core/model.h"         // group_thousands
 #include "core/rules.h"         // default_rules
 #include "core/winstr.h"
 #include "pathbuilder/pb_menu.h"  // kStartOverLabel
@@ -33,6 +37,8 @@
 #include "render/overlay_layout.h"    // project_to_image
 #include "render/preview_renderer.h"  // kPlaybackSpeed
 #include "ui/preview_controller.h"
+#include "ui/preview_timeline.h"  // timeline_fill_ms, timeline_ms_at
+#include "ui/timeline_view.h"     // open_view, readout and the window's moves
 
 namespace pbtest {
 
@@ -471,9 +477,13 @@ void test_file_open_error(ImGuiTestContext* ctx) {
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
     IM_CHECK(h.app->state.chart() == nullptr);
-    IM_CHECK(h.app->state.error() ==
-             "Hydra couldn't open the song file. It may have been moved or deleted.");
-    IM_CHECK(h.app->state.error_detail() == "cannot open file: " + h.chart_arg);
+    // The words are the owners': the sentence a missing song file reads as in
+    // the builder (plain_error, the runner being the Path Builder), and the
+    // details line naming the path that was asked for.
+    const hydra::KindedError missing(hydra::ErrorKind::SongFileMissing,
+                                     hydra::cannot_open_file_text(h.chart_arg));
+    IM_CHECK(h.app->state.error() == hydra::app::plain_error(missing));
+    IM_CHECK(h.app->state.error_detail() == hydra::cannot_open_file_text(h.chart_arg));
     IM_CHECK(on_screen(h, h.app->state.error()));
     IM_CHECK(on_screen(h, h.app->state.error_detail()));
 }
@@ -515,7 +525,10 @@ void test_bad_settings_refused(ImGuiTestContext* ctx) {
     // The volume line sits before the bad one, so a read that stopped part way
     // would have it.
     const std::string bad_settings = "preview_volume=7\nsp_cap=banana\n";
-    const std::string detail = h.ini_path + ": sp_cap = \"banana\" is not a whole number";
+    // The details line names the file, the key and the value, in the settings
+    // reader's words (ini_bad_value_text).
+    const std::string detail =
+        hydra::app::ini_bad_value_text(h.ini_path, "sp_cap", "banana", hydra::app::kWantWholeNumber);
     IM_CHECK_RETV(write_file(h.ini_path, bad_settings), );
     h.app->open(corpus::burnout_notes());
     IM_CHECK_RETV(wait_idle(ctx), );
@@ -551,7 +564,10 @@ void test_bad_rules_refused(ImGuiTestContext* ctx) {
     // The leeway line sits before the bad one, so a read that stopped part way
     // would have it.
     const std::string bad_rules = "backend_leeway_ms = 50\nmax_tied_paths = banana\n";
-    const std::string detail = rules.path + ": max_tied_paths = \"banana\" is not a whole number";
+    // The details line names the file, the key and the value, in the rules
+    // reader's words (ini_bad_value_text).
+    const std::string detail = hydra::app::ini_bad_value_text(rules.path, "max_tied_paths", "banana",
+                                                              hydra::app::kWantWholeNumber);
     IM_CHECK_RETV(rules.write(bad_rules), );
     h.app->open(corpus::burnout_notes());
     IM_CHECK_RETV(wait_idle(ctx), );
