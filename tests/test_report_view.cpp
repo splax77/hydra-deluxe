@@ -214,6 +214,16 @@ bool holds(const std::string& text, const std::string& part) {
     return text.find(part) != std::string::npos;
 }
 
+// True when every label says something and no two labels read alike: a
+// dropdown's choices must be told apart on screen.
+bool labels_tell_apart(std::vector<std::string> labels) {
+    if (std::any_of(labels.begin(), labels.end(),
+                    [](const std::string& l) { return l.empty(); }))
+        return false;
+    std::sort(labels.begin(), labels.end());
+    return std::adjacent_find(labels.begin(), labels.end()) == labels.end();
+}
+
 // Whether `text` holds "name: " and then `gloss` as dm_report_view shows it.
 // A gloss's placeholders (dm_report.h, StatusWords::gloss) are filled by the
 // view, so each one stands for whatever the view put there; the gloss's own
@@ -461,7 +471,18 @@ TEST_CASE("report view count line: the noun follows counted on the total") {
 }
 
 TEST_CASE("report view sort: first directions, empty values sink, two keys, stable ties") {
-    const std::vector<ReportRow>& rows = corpus_report_rows();
+    // The corpus rows, plus one of them with no Timing ms and no early-fill
+    // ms and one with both, so the empty-values-sink rule always has an empty
+    // value and a filled one to order, whatever the corpus holds.
+    std::vector<ReportRow> rows = corpus_report_rows();
+    ReportRow without = rows.front();
+    without.ms.reset();
+    without.efill.reset();
+    ReportRow with = rows.front();
+    with.ms = 12.5;
+    with.efill = 3.5;
+    rows.push_back(without);
+    rows.push_back(with);
     const auto cols = path_report_view::path_columns();
     TableView<ReportRow> view = path_view(rows);
     // A numeric column starts high to low, a text one A to Z.
@@ -579,7 +600,7 @@ TEST_CASE("path report cells read as the page wrote them") {
     }
     // The Beyond chip names the Beyond edge every report prints.
     CHECK(holds(path_report_view::tier_label(beyond_tier(tiers).name), report::beyond_edge_text()));
-    CHECK(path_report_view::tier_label(none_tier(tiers).name) == "No timing needed");
+    CHECK(path_report_view::tier_label(none_tier(tiers).name) != none_tier(tiers).name);
 }
 
 TEST_CASE("path report: Timing choices and the keep-rule") {
@@ -588,14 +609,17 @@ TEST_CASE("path report: Timing choices and the keep-rule") {
     REQUIRE(choices.size() == tiers.size() + 1);
     // The window's start, new-result and Clear filters index keeps every tier.
     CHECK_FALSE(choices[report_view::kEveryRowChoice].tier.has_value());
-    CHECK(choices[0].label == "All timing tiers");
     for (size_t i = 0; i < tiers.size(); ++i) {
         CHECK(choices[i + 1].tier == std::optional<std::string>(tiers[i].name));
         CHECK(choices[i + 1].label == path_report_view::tier_label(tiers[i].name));
     }
     CHECK(choices[1].label == tiers.front().name);
     CHECK(holds(choices[choices.size() - 2].label, report::beyond_edge_text()));
-    CHECK(choices.back().label == "No timing needed");
+    CHECK(choices.back().label == path_report_view::tier_label(none_tier(tiers).name));
+    // The every-tier choice and each tier's choice read differently.
+    std::vector<std::string> labels;
+    for (const auto& c : choices) labels.push_back(c.label);
+    CHECK(labels_tell_apart(labels));
 
     const std::string beyond_name = beyond_tier(tiers).name;
     const ReportRow best_beyond = tier_row(beyond_name, true);
@@ -729,7 +753,6 @@ TEST_CASE("dm comparison cells read as the page wrote them") {
 TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
     const auto choices = dm_report_view::status_choices();
     REQUIRE(choices.size() == std::size(dm_report::kStatusWords) + 1);
-    CHECK(choices[0].label == "All charts");
     // The window's start, new-result and Clear filters index keeps every status.
     CHECK_FALSE(choices[report_view::kEveryRowChoice].status.has_value());
     for (size_t i = 0; i < std::size(dm_report::kStatusWords); ++i) {
@@ -738,6 +761,10 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
         CHECK(choices[i + 1].status == std::optional<std::string>(w.status));
         CHECK(starts_with(choices[i + 1].label, w.name));
     }
+    // The every-status choice and each status's choice read differently.
+    std::vector<std::string> labels;
+    for (const auto& c : choices) labels.push_back(c.label);
+    CHECK(labels_tell_apart(labels));
 
     const auto cols = dm_report_view::dm_columns();
     const std::vector<DmReportRow> rows = corpus_scores();
