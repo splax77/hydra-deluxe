@@ -415,7 +415,7 @@ TEST_CASE("select_chart opens the first copy by name when the search hides every
     REQUIRE(a_later.md5 == b.md5);
     REQUIRE(a_later.notespath < a.notespath);
     std::unique_ptr<AppState> app = app_with(paths, {b, a, a_later});
-    REQUIRE(app->library_shown_count() == 3);
+    REQUIRE(app->library_shown_count() == size_t{3});
 
     app->set_search("zzqxj");  // in no row's text
     REQUIRE(app->library.order().empty());
