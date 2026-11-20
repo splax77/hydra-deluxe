@@ -732,9 +732,13 @@ TEST_CASE("build_highway_draws: drum lanes light their own pads in the lane text
 // first in the draw list: Onyx's drawLanes draws its roll lanes before its BRE
 // strips. Two corpus charts have a drum lane within a couple of beats of a
 // fill (White Mist, The Decade Of Statues); with no path, every fill is
-// Offered. For each lane and fill that fit in view together, with the playhead
-// 50 ms (a free input) before whichever starts first, every strip of the
-// track state's lit-lane stretches precedes every strip of its fill stretches.
+// Offered. A lane can be longer than the whole view (view_at's near_t to
+// far_t), so a pair is checked with each only partly in view. The
+// playhead sits 50 ms (a free input) before the earlier of the two ends, so
+// the earlier one still shows at the near end, and a pair counts when the
+// later one starts before the far end. In that frame every strip of the
+// track state's lit-lane stretches precedes every strip of its fill
+// stretches.
 TEST_CASE("build_highway_draws: drum lane strips come before the fill strips") {
     const PreviewConfig cfg = shipped_preview_config();
     const AnalysisSettings as = Settings().to_analysis_settings();
@@ -749,10 +753,15 @@ TEST_CASE("build_highway_draws: drum lane strips come before the fill strips") {
         for (const PreviewDrumLane& lane : scene.drum_lanes) {
             for (const PreviewFill& fill : scene.fills) {
                 if (fill.state != PreviewFillState::Offered) continue;
-                const double first = std::min(lane.span.start_ms, fill.span.start_ms) / 1000.0;
-                const HighwayView v = view_at(cfg, first - 0.05);
-                const double last = std::max(lane.span.end_ms, fill.span.end_ms) / 1000.0;
-                if (last > v.far_t) continue;  // not both whole in view at once
+                const bool lane_first = lane.span.start_ms <= fill.span.start_ms;
+                const PreviewSpan& earlier = lane_first ? lane.span : fill.span;
+                const PreviewSpan& later = lane_first ? fill.span : lane.span;
+                const HighwayView v = view_at(cfg, earlier.end_ms / 1000.0 - 0.05);
+                // Not in view together: the later one starts past the far
+                // end, or sits inside the earlier one and ends before the
+                // near end.
+                if (later.start_ms / 1000.0 >= v.far_t || later.end_ms / 1000.0 <= v.near_t)
+                    continue;
                 CAPTURE(lane.span.start_ms);
                 CAPTURE(fill.span.start_ms);
                 const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, v.now, v.speed);
