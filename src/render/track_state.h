@@ -129,6 +129,22 @@ private:
     std::vector<double> all_starts_, all_ends_;  // every interval's edges
 };
 
+// The sp_active field's state at time t, from the path's SP windows (each
+// activation's sp_window, in seconds). It keeps no rule of its own: each
+// window is asked app::sp_running_in at t and at the double just before t.
+// Those answers say whether t is inside a window, starts one or ends one,
+// and SpanSweep's Toggle order turns the three into the state.
+class SpRunSweep {
+public:
+    SpRunSweep() = default;  // no windows: Empty everywhere
+    explicit SpRunSweep(std::vector<std::pair<double, double>> windows)
+        : windows_(std::move(windows)) {}
+    Toggle at(double t) const;
+
+private:
+    std::vector<std::pair<double, double>> windows_;
+};
+
 // The instants one frame draws, near < t < far, as a view into the track
 // state: nothing is copied. When no instant falls inside, it holds one
 // synthesized instant at the window's midpoint instead (Onyx's zoomMap
@@ -227,7 +243,8 @@ private:
     // sweep_span_fields. The one answer to "the state of a span at t":
     // set_span_fields reads it for the instants and for synthesize.
     struct FieldSweep {
-        SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, sp_active, fill_lane;
+        SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, fill_lane;
+        SpRunSweep sp_active;  // asks the one SP-running rule, app::sp_running_in
         std::array<SpanSweep, kPads.size()> drum_lane;  // indexed by Pad
         LaneSweep lane_pad;
         LaneSweep fill_pick, fill_taken_pick;  // over fill_ and fill_taken_

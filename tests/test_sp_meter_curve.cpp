@@ -626,8 +626,9 @@ TEST_CASE("sp_window: the stored window, none without an end, none with no lengt
 }
 
 TEST_CASE("sp_running_at: on from the strike, off at the window's end, the next window runs at the join") {
-    // Two back-to-back windows, [1000, 2000) and [2000, 3000) ms. The scene of
-    // test_track_state's "the sp_active sweep agrees with sp_running_at".
+    // Two back-to-back windows, [1000, 2000) and [2000, 3000) ms. The highway
+    // asks the same rule (sp_running_in) through test_track_state's "the
+    // sp_active field reads sp_running_in" on these windows.
     PreviewActivation a;
     a.ms = 1000.0;
     a.has_sp_end = true;
