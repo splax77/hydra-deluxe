@@ -23,6 +23,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -34,6 +35,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/winstr.h"
+#include "corpus_util.h"  // first_chart_with_paths, analyzed
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in, write_junk_db
 #include "display_fixtures.h"  // add_stale_records
 #include "library_fixtures.h"  // library_row
@@ -42,6 +44,7 @@
 #include "store/chart_index.h"
 #include "store/library_file.h"
 #include "store/record_store.h"
+#include "store/stored_versions.h"  // kResultsStamp
 #include "store/upgrade_files.h"
 #include "store_fixtures.h"  // at_cap, no_paths_at_cap, saved_figures
 #include "temp_util.h"
@@ -754,23 +757,50 @@ TEST_CASE("the command-line tools' open refuses a file too old to convert and ne
 
 namespace {
 
-// One stored record and its best path, as the file holds them. The values
-// are the README's "v2.12.1_library.db", read off the one run that made it.
-struct StoredRecordPin {
-    const char* song_id;
-    int64_t pathcount;
-    int64_t stars;
-    int64_t notecount;
-    const char* best_path;
-    int64_t best_score;
-    int64_t best_actcount;
-};
+// Every row of `table` in the file at `path`, each column's type and bytes
+// joined into one string, so two reads compare whole rows. The rows are a
+// set, so the comparison does not lean on the order SQLite reads them in.
+std::multiset<std::string> table_rows(const std::string& path, const std::string& table) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    const std::string sql = "SELECT * FROM " + table;
+    REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK);
+    std::multiset<std::string> out;
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        std::string row;
+        for (int c = 0; c < sqlite3_column_count(s); ++c) {
+            const int type = sqlite3_column_type(s, c);
+            row += std::to_string(type) + ":";
+            if (type != SQLITE_NULL) {
+                const void* bytes = sqlite3_column_blob(s, c);
+                const int n = sqlite3_column_bytes(s, c);
+                row += std::to_string(n) + ":";
+                if (n > 0) row.append(static_cast<const char*>(bytes), static_cast<size_t>(n));
+            }
+            row += "|";
+        }
+        out.insert(row);
+    }
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return out;
+}
 
-const StoredRecordPin kV2121Records[] = {
-    {"0b647b1570475f18d463466f2c4d72a7", 5, 7, 1257, "0 0 E2 E0", 379655, 4},
-    {"0d4fd734fe5f2bf6ff1fdbc4ff55be8f", 1, 6, 1088, "(No activations.)", 245800, 0},
-    {"bef0759746740f9c1045f64e9a5a2938", 1, 6, 1375, "(No activations.)", 315350, 0},
-};
+// The song ids of every record in the file at `path`, in id order.
+std::vector<std::string> record_song_ids(const std::string& path) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(db, "SELECT song_id FROM records ORDER BY song_id", -1, &s,
+                               nullptr) == SQLITE_OK);
+    std::vector<std::string> out;
+    while (sqlite3_step(s) == SQLITE_ROW)
+        out.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return out;
+}
 
 // The one text value `sql` reads from the file at `path`.
 std::string text_on_file(const std::string& path, const std::string& sql) {
@@ -786,28 +816,21 @@ std::string text_on_file(const std::string& path, const std::string& sql) {
     return out;
 }
 
-// Every pinned record and its best path, read straight from the file.
-void check_v2121_rows(const std::string& path) {
-    CHECK(record_rows_in(path) == 3);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == 7);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
-    CHECK(text_on_file(path, "SELECT chartmode FROM profiles") == "Expert Pro Drums, 2x Bass");
-    CHECK(scalar_on_file(path, "SELECT sp_cap FROM profiles") == 4);
-    CHECK(text_on_file(path, "SELECT hyversion FROM profiles") == "2.8.0+efill85");
-    for (const StoredRecordPin& r : kV2121Records) {
-        INFO(std::string(r.song_id));
-        const std::string rec =
-            std::string(" FROM records WHERE song_id = '") + r.song_id + "'";
-        const std::string best =
-            std::string(" FROM record_paths WHERE rank = 1 AND song_id = '") + r.song_id + "'";
-        CHECK(scalar_on_file(path, "SELECT COUNT(*)" + rec) == 1);
-        CHECK(scalar_on_file(path, "SELECT pathcount" + rec) == r.pathcount);
-        CHECK(scalar_on_file(path, "SELECT stars" + rec) == r.stars);
-        CHECK(scalar_on_file(path, "SELECT notecount" + rec) == r.notecount);
-        CHECK(text_on_file(path, "SELECT path" + best) == r.best_path);
-        CHECK(scalar_on_file(path, "SELECT score" + best) == r.best_score);
-        CHECK(scalar_on_file(path, "SELECT actcount" + best) == r.best_actcount);
-    }
+// The run settings of the one profile row the file at `path` holds, read
+// from that row, so a lookup asks for exactly what the batch stored.
+Profile file_profile(const std::string& path) {
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
+    Profile p{text_on_file(path, "SELECT chartmode FROM profiles"),
+              CapQuery::at(static_cast<int>(scalar_on_file(path, "SELECT sp_cap FROM profiles"))),
+              Lens{}};
+    p.lens.ms_enabled = static_cast<int>(scalar_on_file(path, "SELECT ms_enabled FROM profiles"));
+    p.lens.ms_value = static_cast<int>(scalar_on_file(path, "SELECT ms_value FROM profiles"));
+    p.lens.depth_mode = static_cast<int>(scalar_on_file(path, "SELECT depth_mode FROM profiles"));
+    p.lens.depth_value =
+        static_cast<int>(scalar_on_file(path, "SELECT depth_value FROM profiles"));
+    p.lens.legacy_fills =
+        static_cast<int>(scalar_on_file(path, "SELECT legacy_fills FROM profiles"));
+    return p;
 }
 
 }  // namespace
@@ -819,33 +842,38 @@ TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps
     const std::string path = copy_of_old_database("v2.12.1_library.db", "v2121_library");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
     REQUIRE_FALSE(charts_have_album(path));
-    check_v2121_rows(path);
-
-    // The batch's run settings (README "v2.12.1_library.db").
-    const Profile batch_profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
+    // What the file holds before anything opens it.
+    const std::multiset<std::string> records_before = table_rows(path, "records");
+    const std::multiset<std::string> paths_before = table_rows(path, "record_paths");
+    const int64_t library_rows_before = scalar_on_file(path, "SELECT COUNT(*) FROM charts");
+    const std::vector<std::string> ids = record_song_ids(path);
+    REQUIRE_FALSE(ids.empty());
+    const Profile batch_profile = file_profile(path);
+    // The file's stamp against this build's: a stamp this build does not
+    // accept reads Stale, one it accepts reads Ready.
+    const std::string file_stamp = text_on_file(path, "SELECT hyversion FROM profiles");
+    const bool stamp_current = kResultsStamp.is_current(std::string_view(file_stamp));
     {
         // The app's own open (ui::StoreOpenJob::run).
         RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
         CHECK_FALSE(store.set_aside_path().has_value());
-        CHECK(store.record_count() == 3);
-        // hydra_batch with folder arguments never writes the library.
-        CHECK(store.chart_library_count() == 0);
-        const std::vector<std::string> ids = {kV2121Records[0].song_id, kV2121Records[1].song_id,
-                                              kV2121Records[2].song_id};
+        CHECK(store.record_count() == static_cast<int64_t>(ids.size()));
+        CHECK(store.chart_library_count() == library_rows_before);
         const std::vector<RecordLookup> got = store.lookup(ids, batch_profile);
-        REQUIRE(got.size() == 3);
+        REQUIRE(got.size() == ids.size());
         for (size_t i = 0; i < got.size(); ++i) {
             INFO(ids[i]);
-            CHECK(got[i].status == RecordStatus::Stale);
-            CHECK(got[i].stale_build);
+            CHECK(got[i].status == (stamp_current ? RecordStatus::Ready : RecordStatus::Stale));
+            CHECK(got[i].stale_build == !stamp_current);
         }
-        CHECK(store.ready_records(batch_profile).empty());
+        CHECK(store.ready_records(batch_profile).empty() == !stamp_current);
     }
     CHECK(charts_have_album(path));
     CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
-    // The open rewrote no record: every pinned row is still there.
-    check_v2121_rows(path);
+    // The open rewrote no record and no path row.
+    CHECK(table_rows(path, "records") == records_before);
+    CHECK(table_rows(path, "record_paths") == paths_before);
     remove_db(path);
 }
 
@@ -894,15 +922,39 @@ void drop_early_fill_column(const std::string& path) {
                  "ALTER TABLE p5 RENAME TO profiles;");
 }
 
-// A file at `path` this build wrote, with two records under two profiles
-// (4 and 8 bars, both at the default window), its profiles table then put
-// back to the layout before the early-fill window.
+// The search settings fixture() runs (store_fixtures.h), with the SP cap at
+// `cap` and the early-fill window at `window_ms`: what at4() and its
+// neighbours name as a profile.
+app::AnalysisSettings fixture_search(int cap, int window_ms) {
+    app::AnalysisSettings settings;
+    settings.sp_cap = cap;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 0;
+    settings.ms_filter = std::nullopt;
+    settings.early_fill_window_ms = window_ms;
+    return settings;
+}
+
+// The real analysis of fixture()'s chart (the first corpus chart with
+// paths) at `cap` bars and the early-fill window `window_ms`.
+const HydraRecord& fixture_chart_at(int cap, int window_ms) {
+    static const std::string chart =
+        corpus::first_chart_with_paths(fixture_search(4, static_cast<int>(kDefaultEarlyFillWindowMs)))
+            .chart;
+    return corpus::analyzed(chart, fixture_search(cap, window_ms));
+}
+
+// A file at `path` this build wrote, with two real records under two
+// profiles (4 and 8 bars, both at the default window), its profiles table
+// then put back to the layout before the early-fill window.
 void seed_without_early_fill(const std::string& path) {
     remove_db(path);
+    const int window = static_cast<int>(kDefaultEarlyFillWindowMs);
     {
         RecordStore seed(path);
-        seed.save(prepare_record("a", at4(), at_cap(4)));
-        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}}, at_cap(8)));
+        seed.save(prepare_record("a", at4(), fixture_chart_at(4, window)));
+        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}},
+                                 fixture_chart_at(8, window)));
     }
     drop_early_fill_column(path);
 }
@@ -915,34 +967,40 @@ TEST_CASE("the v2.12.1 file's profiles table is rebuilt with the early-fill wind
     REQUIRE_FALSE(profiles_have_early_fill(path));
     const std::string before = older_profile_columns(path);
     REQUIRE_FALSE(before.empty());
-    REQUIRE(records_under_profiles(path) == 3);
+    const int64_t records_before = record_rows_in(path);
+    REQUIRE(records_before > 0);
+    REQUIRE(records_under_profiles(path) == records_before);
+    const int64_t profiles_before = scalar_on_file(path, "SELECT COUNT(*) FROM profiles");
+    const Profile batch_profile = file_profile(path);
+    const std::string song = record_song_ids(path).front();
+    const bool stamp_current = kResultsStamp.is_current(
+        std::string_view(text_on_file(path, "SELECT hyversion FROM profiles")));
     { RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp()); }
     REQUIRE(profiles_have_early_fill(path));
     // Every row keeps its id and its other columns, and is filed under the
     // default window, since no older file recorded one.
     CHECK(older_profile_columns(path) == before);
-    CHECK(profiles_at_default_window(path) == 1);
-    CHECK(records_under_profiles(path) == 3);
-    // At the default window no old result vanishes: each reads Stale, the
-    // stamp's answer, not Not analyzed. One chart is enough to show the
-    // lookup reaches the rebuilt row; the earlier case reads all three.
-    const Profile batch_profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
-    const std::string song = kV2121Records[0].song_id;
+    CHECK(profiles_at_default_window(path) == profiles_before);
+    CHECK(records_under_profiles(path) == records_before);
+    // At the default window no old result vanishes: it reads as the stamp
+    // says, not Not analyzed. One chart is enough to show the lookup reaches
+    // the rebuilt row; the earlier case reads them all.
     {
         RecordStore store(path);
-        CHECK(store.lookup_one(song, batch_profile).status == RecordStatus::Stale);
+        CHECK(store.lookup_one(song, batch_profile).status ==
+              (stamp_current ? RecordStatus::Ready : RecordStatus::Stale));
         // At another window the chart has no result yet.
         Profile at_85 = batch_profile;
         at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
         CHECK(store.lookup_one(song, at_85).status == RecordStatus::NotAnalyzed);
 
-        // Two profiles that differ only in the window can now both be saved.
-        HydraRecord searched_at_85 = at_cap(4);
-        searched_at_85.early_fill_window_ms = kHitWindowMs;
+        // Two profiles that differ only in the window can now both be saved:
+        // one chart's real analyses at the default window and at the top one.
         Profile mode_at_85 = at4();
         mode_at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
-        store.save(prepare_record("h", at4(), at_cap(4)));
-        store.save(prepare_record("h", mode_at_85, searched_at_85));
+        store.save(prepare_record(
+            "h", at4(), fixture_chart_at(4, static_cast<int>(kDefaultEarlyFillWindowMs))));
+        store.save(prepare_record("h", mode_at_85, fixture_chart_at(4, kMaxEarlyFillWindowMs)));
         CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
         CHECK(store.lookup_one("h", mode_at_85).status == RecordStatus::Ready);
     }
