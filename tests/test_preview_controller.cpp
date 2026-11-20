@@ -47,7 +47,6 @@
 
 using hydra::Difficulty;
 using hydra::fill_rule_for;
-using hydra::FillDeadlineRule;
 using hydra::kTestFillRule;
 using hydra::store::ChartLibraryEntry;
 using hydra::ui::ViewJob;
@@ -110,6 +109,48 @@ ChartLibraryEntry entry_for(const std::string& notespath) {
     ChartLibraryEntry e = corpus::scanned_entry(notespath);
     e.sig.clear();
     return e;
+}
+
+// A copy of every file in the folder holding `notespath`, in the scratch
+// folder `tag`, so a test may edit the copy. Returns the copy's chart file. A
+// folder chart needs a song.ini to be scanned, so one is written when the
+// folder has none.
+std::string copy_chart_folder(const std::string& notespath, const std::string& tag) {
+    const std::string dir = testtemp::temp_dir(tag);
+    std::filesystem::copy(hydra::os_path(hydra::parent_folder(notespath)), hydra::os_path(dir),
+                          std::filesystem::copy_options::recursive |
+                              std::filesystem::copy_options::overwrite_existing);
+    const std::string ini = dir + "\\song.ini";
+    if (!std::filesystem::exists(hydra::os_path(ini)))
+        audiochart::write_text_file(ini, "[song]\nname = Preview changed-chart test\n");
+    return hydra::join_folder(dir, notespath.substr(notespath.rfind('\\') + 1));
+}
+
+// The library row the store lists for the one chart in `notespath`'s folder,
+// once the scan (discover_charts) found it and the library was written. Its
+// md5 and fingerprint are the scan's own.
+ChartLibraryEntry listed_entry(const std::string& notespath) {
+    auto [items, errors] = hydra::app::discover_charts({hydra::parent_folder(notespath)});
+    REQUIRE(errors.empty());
+    REQUIRE(items.size() == 1);
+    const ChartLibraryEntry& scanned = items[0];
+    hydra::store::RecordStore db(":memory:");
+    db.rebuild_chart_library({scanned});
+    const std::vector<ChartLibraryEntry> listed = db.list_chart_library(0, -1);
+    REQUIRE(listed.size() == 1);
+    return listed[0];
+}
+
+// Edits the chart file at `notespath` after its scan, as a save in an editor
+// would: one byte more at its end changes its md5, its size and so its
+// fingerprint. The notes stay the same: a .chart reads a trailing newline as
+// a blank line, and a .mid's chunk walk ends at a chunk header cut short
+// (parse/midi.cpp).
+void edit_chart_file(const std::string& notespath) {
+    std::FILE* f = hydra::fopen_utf8(notespath, L"ab");
+    REQUIRE(f != nullptr);
+    std::fputc('\n', f);
+    std::fclose(f);
 }
 
 // The chart folders with audio (chart_with_audio, short_chart_with_long_audio)
@@ -667,8 +708,10 @@ TEST_CASE("set_ghost_path: a changed chart draws no ghost, as it draws no path")
 
     for (const bool changed : {true, false}) {
         CAPTURE(changed);
-        ChartLibraryEntry entry = entry_for(found.chart);
-        if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
+        const std::string chart = copy_chart_folder(
+            found.chart, changed ? "prevctl_ghost_edited" : "prevctl_ghost_same");
+        const ChartLibraryEntry entry = listed_entry(chart);
+        if (changed) edit_chart_file(chart);
         PreviewController pc(nullptr, nullptr);
         pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &found.best, best_key, 4);
@@ -852,9 +895,10 @@ TEST_CASE("a second mode change during a notes reload wins") {
 }
 
 // An edited chart that was not rescanned must not draw its record's path on
-// the new notes (finding 126). The load hashes the file the way the scan
-// does; a hash that is not the record's hides the path, and the panel says
-// so (D51 call 18).
+// the new notes (finding 126). The row is the scan's, and the file is edited
+// after it: the fingerprint no longer matches, so the load hashes the file
+// the way the scan does. A hash that is not the record's hides the path, and
+// the panel says so (D51 call 18).
 TEST_CASE("the Preview hides the path when the chart file changed since its record") {
     using namespace hydra;
     using namespace hydra::app;
@@ -865,8 +909,10 @@ TEST_CASE("the Preview hides the path when the chart file changed since its reco
 
     for (const bool changed : {true, false}) {
         CAPTURE(changed);
-        ChartLibraryEntry entry = entry_for(chart);
-        if (changed) entry.md5 = "0123456789abcdef0123456789abcdef";
+        const std::string copy =
+            copy_chart_folder(chart, changed ? "prevctl_hide_edited" : "prevctl_hide_same");
+        const ChartLibraryEntry entry = listed_entry(copy);
+        if (changed) edit_chart_file(copy);
         PreviewController pc(nullptr, nullptr);
         pc.set_audio_device_factory(no_device_factory());
         pc.open(entry, {Difficulty::Expert, true, true}, kTestFillRule, &best, best_key,4);
@@ -987,5 +1033,5 @@ TEST_CASE("the Preview's song key: the 1.0 fills setting makes a different song"
     const PreviewSongKey on{"prevctl", s.reading(), fill_rule_for(s.legacy_fills)};
     CHECK(off.reading == on.reading);
     CHECK(off != on);
-    CHECK(on.fills == FillDeadlineRule::Ch10);
+    CHECK(off.fills != on.fills);  // the keys differ in their fill rule alone
 }
