@@ -269,11 +269,11 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     const std::vector<CompiledRule> compiled = compile_rules();
     const std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
     RowScan scan = start_row_scan(compiled, listed);
-    int files = 0;
+    std::vector<std::string> scanned;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             const std::optional<codelex::Lang> lang = walk_language(rel);
             if (!lang) return;
-            ++files;
+            scanned.push_back(rel);
             std::ifstream in(path);
             scan_rows(scan, rel, *lang == codelex::Lang::Python, in);
     });
@@ -295,7 +295,23 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
             CHECK(fs::is_regular_file(root / fs::u8path(s)));
         }
     }
-    CHECK(files > 100);  // the scan found the sources
+    // The scan read every file git lists under each walked folder that is on
+    // disk and that walk_language reads, and no other, so a folder or file the
+    // walk dropped names itself here.
+    std::set<std::string> expected;
+    for (const char* sub : sourcetree::kWalkedFolders)
+        for (const std::string& rel : sourcetree::git_listed(root, sub))
+            if (walk_language(rel) && fs::is_regular_file(root / fs::u8path(rel))) expected.insert(rel);
+    const std::set<std::string> read_once(scanned.begin(), scanned.end());
+    CHECK(read_once.size() == scanned.size());  // each file read once
+    for (const std::string& rel : expected) {
+        INFO("the scan never read " << rel);
+        CHECK(read_once.count(rel) == 1);
+    }
+    for (const std::string& rel : read_once) {
+        INFO("the scan read a file git does not list under a walked folder: " << rel);
+        CHECK(expected.count(rel) == 1);
+    }
     check_scan(scan.problems, listed, scan.used);
 }
 
@@ -493,34 +509,42 @@ TEST_CASE("single-owner: the walk reads committed and new files, never ignored o
     for (const std::string& p : scan.problems) seen << "flagged " << p << "\n";
     INFO(seen.str());
     CHECK(visited ==std::vector<std::string>{"tools/kept.py", "tools/new.py"});
-    CHECK(scan.problems ==
-          std::vector<std::string>{
-              "tools/kept.py:1: answers \"Is this a made-up question?\", which belongs to made_up in "
-              "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)",
-              "tools/new.py:1: answers \"Is this a made-up question?\", which belongs to made_up in "
-              "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)"});
+    // Each visited file's answer is flagged once, in the scan's own words
+    // (answers_message), at its file and line.
+    const std::string answer = hydra::trim(kWalkAnswer);
+    CHECK(scan.problems == std::vector<std::string>{answers_message(r, "tools/kept.py:1", answer),
+                                                    answers_message(r, "tools/new.py:1", answer)});
     testtemp::remove_dir(dir);
 
     // A folder outside any git repo, and a repo with no files to read, fail
-    // loudly, naming the folder.
+    // loudly, naming the folder. The walk passes on its lister's words: git's
+    // own failure from git_listed outside a repo, and source_files' refusal
+    // of an empty list in a repo where git_listed itself succeeds.
     const std::string plain = testtemp::temp_dir("single_owner_walk_plain");
     const fs::path plain_root = fs::path(hydra::os_path(plain));
     const auto walk_error = [&] {
-        std::string error;
-        try {
-            sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {});
-        } catch (const std::exception& e) {
-            error = e.what();
-        }
-        return error;
+        return thrown_message(
+            [&] { sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {}); });
     };
     const std::string outside = walk_error();
     INFO(outside);
-    CHECK(outside.rfind("the source walk could not ask git for the files in " + plain_root.u8string() + ": ",
-                        0) == 0);
+    CHECK_FALSE(outside.empty());
+    CHECK(outside ==
+          thrown_message([&] { (void)sourcetree::git_listed(plain_root, sourcetree::kWalkedFolders[0]); }));
+    CHECK(names_all(outside, {plain_root.u8string()}));
     precheck_fixture::fixture_git(plain, {"init", "-q", "-b", "main"});
-    CHECK(walk_error() ==
-          "the source walk found no files git knows under the walked folders in " + plain_root.u8string());
+    std::vector<std::string> listed_in_empty = {"not called"};
+    const std::string lister_error = thrown_message(
+        [&] { listed_in_empty = sourcetree::git_listed(plain_root, sourcetree::kWalkedFolders[0]); });
+    INFO(lister_error);
+    CHECK(lister_error.empty());
+    CHECK(listed_in_empty.empty());
+    const std::string no_files = walk_error();
+    INFO(no_files);
+    CHECK_FALSE(no_files.empty());
+    CHECK(no_files != outside);
+    CHECK(no_files == thrown_message([&] { (void)sourcetree::source_files(plain_root); }));
+    CHECK(names_all(no_files, {plain_root.u8string()}));
     testtemp::remove_dir(plain);
 }
 
@@ -577,6 +601,7 @@ void scan_single_file(const CompiledRule& c, const std::string& rel, std::istrea
 // verdict.
 TEST_CASE("single-owner rules hold in the single files outside the walk") {
     std::vector<std::string> problems;
+    int files_read = 0;
     for (const CompiledRule& c : compile_rules()) {
         for (const std::string& s : c.rule->scope) {
             if (s.find('/') == std::string::npos || walk_reads_for(*c.rule, s)) continue;
@@ -584,8 +609,15 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
             INFO(c.rule->question << ": scoped to " << s << rule_suffix(c.rule->rules_file));
             REQUIRE(in.good());
             scan_single_file(c, s, in, problems);
+            ++files_read;
         }
     }
+    // Real rows name such files (the installer script and the workflows in
+    // rules/root.json, the fuzz scripts in rules/parse.json), so a case that
+    // read none checked nothing: the rows lost those scopes, or the walk now
+    // claims files it never reads.
+    INFO("no row's single file outside the walk was read");
+    CHECK(files_read > 0);
     std::ostringstream report;
     for (const std::string& p : problems) report << p << "\n";
     INFO(report.str());
@@ -593,10 +625,12 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
 }
 
 TEST_CASE("single-owner: a row scoped to a file the walk does not read is read here") {
-    // The walk reads C++ and Python under its folders, each for rows in that
-    // language, and nothing else; the single-files case reads the rest. The
-    // rows are the first real row of each language, and every path is a real
-    // file.
+    // Every file git lists in the repo, against the walk's own list
+    // (source_files), for the first real row of each language. A file the
+    // walk reads for a row is one the walk visits, in the language its
+    // extension names (lexer_language), and it is read for the rows of exactly
+    // one language. A file the walk does not read is read for no row, so only
+    // the single-files case reads it.
     const OwnerRule* cpp_row = nullptr;
     const OwnerRule* py_row = nullptr;
     for (const OwnerRule& r : rules()) {
@@ -605,20 +639,33 @@ TEST_CASE("single-owner: a row scoped to a file the walk does not read is read h
     }
     REQUIRE(cpp_row != nullptr);
     REQUIRE(py_row != nullptr);
-    const std::string cpp_file = "src/core/winstr.cpp", ps1_file = "tools/fuzz_seeds.ps1",
-                      py_file = "tools/check_handoff.py", yml_file = ".github/workflows/ci.yml",
-                      own_folder_file = "tests/single_owner/scan.cpp";
-    for (const std::string& f : {cpp_file, ps1_file, py_file, yml_file, own_folder_file}) {
-        INFO(f);
-        CHECK(fs::is_regular_file(sourcetree::root() / fs::u8path(f)));
+    const fs::path root = sourcetree::root();
+    const std::vector<std::string> walked_list = sourcetree::source_files(root);
+    const std::set<std::string> walked(walked_list.begin(), walked_list.end());
+    std::ostringstream wrong;
+    bool cpp_read = false, py_read = false, not_read = false;
+    for (const std::string& f : sourcetree::git_listed(root, ".")) {
+        const std::optional<codelex::Lang> lang = walk_language(f);
+        const bool for_cpp = walk_reads_for(*cpp_row, f), for_py = walk_reads_for(*py_row, f);
+        if (!lang) {
+            not_read = true;
+            if (for_cpp || for_py) wrong << f << ": the walk does not read it, but a row is read there\n";
+            continue;
+        }
+        cpp_read = cpp_read || for_cpp;
+        py_read = py_read || for_py;
+        if (walked.count(f) == 0) wrong << f << ": read for a row, but the walk never visits it\n";
+        if (*lang != lexer_language(fs::u8path(f))) wrong << f << ": read in another language than its own\n";
+        if (for_cpp == for_py) wrong << f << ": not read for the rows of exactly one language\n";
+        if (for_py != (*lang == codelex::Lang::Python)) wrong << f << ": read for rows of the wrong language\n";
     }
-    CHECK(walk_reads_for(*cpp_row, cpp_file));
-    CHECK_FALSE(walk_reads_for(*cpp_row, ps1_file));
-    CHECK_FALSE(walk_reads_for(*cpp_row, py_file));
-    CHECK_FALSE(walk_reads_for(*cpp_row, yml_file));
-    CHECK_FALSE(walk_reads_for(*cpp_row, own_folder_file));
-    CHECK(walk_reads_for(*py_row, py_file));
-    CHECK_FALSE(walk_reads_for(*py_row, cpp_file));
+    INFO(wrong.str());
+    CHECK(wrong.str().empty());
+    // The repo holds each kind: C++ under src/, Python under tools/, and files
+    // the walk skips, such as the workflows under .github/.
+    CHECK(cpp_read);
+    CHECK(py_read);
+    CHECK(not_read);
 
     // C++ (and a file codelex does not know) skips "//" lines only; the other
     // languages skip what codelex calls a comment.
@@ -678,7 +725,31 @@ TEST_CASE("single-owner: a row scoped to a file the walk does not read is read h
 }
 
 TEST_CASE("single-owner: every row's owner is still where the row says") {
-    CHECK(rules().size() > 100);  // the loader found the rule files
+    // The loader read every rules file git lists in the rules folder, each
+    // with all of its rows, so a file or row it dropped names itself here.
+    const fs::path root = sourcetree::root();
+    const std::vector<std::pair<std::string, fs::path>> files = rule_files(root / fs::u8path(kRulesDir));
+    std::set<std::string> loaded_files;
+    for (const auto& f : files) loaded_files.insert(f.first);
+    const std::string rules_prefix = std::string(kRulesDir) + "/";
+    const std::vector<std::string> listed_rules = sourcetree::git_listed(root, kRulesDir);
+    REQUIRE_FALSE(listed_rules.empty());
+    for (const std::string& rel : listed_rules) {
+        INFO("a file in the rules folder the loader does not read: " << rel);
+        REQUIRE(rel.rfind(rules_prefix, 0) == 0);
+        CHECK(loaded_files.count("rules/" + rel.substr(rules_prefix.size())) == 1);
+    }
+    for (const auto& f : files) {
+        const json doc = json::parse(hydra::read_file_text(f.second.u8string()));
+        size_t loaded = 0;
+        for (const OwnerRule& r : rules()) loaded += r.rules_file == f.first ? 1 : 0;
+        INFO(f.first << ": rows in the file against rows loaded");
+        CHECK(loaded == doc.at("rules").size());
+    }
+    for (const OwnerRule& r : rules()) {
+        INFO(r.question << " comes from a file the loader does not list: " << r.rules_file);
+        CHECK(loaded_files.count(r.rules_file) == 1);
+    }
     std::ostringstream gone;
     for (const OwnerRule& r : rules()) {
         const std::string message = owner_gone(r, sourcetree::root());
@@ -916,24 +987,41 @@ TEST_CASE("single-owner: the baseline dates fail on a real owner line parked pas
     CHECK(names_all(missing_error, {"\"remove_by\""}));
 }
 
-TEST_CASE("single-owner: the anchor guard fails on a made-up row") {
-    OwnerRule r;
-    r.question = "Is this a made-up question?";
-    r.rules_file = "rules/made_up.json";
-    r.pattern = "made_up\\(|other_name\\(";
-    r.anchor = "made_up(";
-    r.must_match = {"x = made_up(1);"};
-    r.owner_lines = {{"src/a.cpp", "return made_up(2);", "the owner"}};
-    CHECK(anchor_misses(r).empty());
-    // The regex flags this line, but the anchor would skip it.
-    r.must_match.push_back("y = other_name(3);");
-    r.owner_lines.push_back({"src/a.cpp", "return other_name(4);", "the owner"});
-    const std::vector<std::string> misses = anchor_misses(r);
-    REQUIRE(misses.size() == 2);
-    CHECK(misses[0] ==
-          "rules/made_up.json: \"Is this a made-up question?\": anchor \"made_up(\" is not in its "
-          "own example: y = other_name(3);");
-    CHECK(misses[1] ==
-          "rules/made_up.json: \"Is this a made-up question?\": anchor \"made_up(\" is not in its "
-          "own example: return other_name(4);");
+TEST_CASE("single-owner: the anchor guard fails when a real row's example loses its anchor") {
+    // Each real row with an anchor, as it is and then with one more must_match
+    // line and one more owner line: its first of each with the anchor taken
+    // out. The scan skips such a line before the regex runs (flags_line), so
+    // the guard must name each added line, with the row's rules file,
+    // question and anchor.
+    int rows_checked = 0;
+    for (const OwnerRule& real : rules()) {
+        if (real.anchor.empty() || real.must_match.empty()) continue;
+        INFO(real.question << rule_suffix(real.rules_file) << ", anchor " << real.anchor);
+        CHECK(anchor_misses(real).empty());
+        OwnerRule r = real;
+        std::vector<std::string> added;
+        const std::string example = hydra::replace_all(real.must_match.front(), real.anchor, "");
+        if (example.find(real.anchor) != std::string::npos) continue;
+        r.must_match.push_back(example);
+        added.push_back(example);
+        if (!real.owner_lines.empty()) {
+            OwnerLine o = real.owner_lines.front();
+            o.line_text = hydra::replace_all(o.line_text, real.anchor, "");
+            if (o.line_text.find(real.anchor) == std::string::npos) {
+                r.owner_lines.push_back(o);
+                added.push_back(o.line_text);
+            }
+        }
+        const CompiledRule compiled = compile_rule(r);
+        const std::vector<std::string> misses = anchor_misses(r);
+        REQUIRE(misses.size() == added.size());
+        for (size_t i = 0; i < added.size(); ++i) {
+            INFO("added: " << added[i]);
+            CHECK_FALSE(flags_line(compiled, added[i]));
+            CHECK(names_all(misses[i], {real.rules_file, real.question, "\"" + real.anchor + "\"", added[i]}));
+        }
+        ++rows_checked;
+    }
+    // The real rows hold anchors (a row's "anchor" field in its rules file).
+    CHECK(rows_checked > 0);
 }
