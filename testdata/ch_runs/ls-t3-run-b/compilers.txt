@@ -1,0 +1,21 @@
+read at song_s 30.02: 42 processes
+34164 cmake.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --preset default
+14988 cmake.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build --preset default --config Release --parallel --target ALL_BUILD hydra_bench hydra_replay
+27444 MSBuild.exe "C:/Program Files (x86)/Microsoft Visual Studio/18/BuildTools/MSBuild/Current/Bin/amd64/MSBuild.exe" ALL_BUILD.vcxproj /p:Configuration=Release /p:Platform=x64 /p:VisualStudioVersion=18.0 /m /v:m
+33968 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34120 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34236 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34360 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34296 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34272 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34172 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+33992 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34432 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34136 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34684 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34688 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34324 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34372 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+34352 MSBuild.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\MSBuild\Current\Bin\amd64\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true /low:false
+36452 cl.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\bin\HostX64\x64\CL.exe" @C:\Users\player\AppData\Local\Temp\MSBuildTemp0d0bfa89ad094f018d70674f700558cc\tmpce894aac2e824cdf9cff630f239f37ec.rsp
+39348 cl.exe "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.51.36231\bin\HostX64\x64\CL.exe" @C:\Users\player\AppData\Local\Temp\MSBuildTemp95ce95397c2044598c3a5df5c24aba95\tmpf3b3a51d74cc4fafae7a74614570304d.rsp

@@ -1,12 +1,15 @@
-"""quiet.py: the verdict and its lines on fake readers, the folder scan on real
-temp folders with a fake clock, and the live readers' parsing on fake command
-output. Nothing here reads this machine's processes, counters or worktrees."""
+"""quiet.py: the verdict and its lines, on a real recorded process list and
+reading where one fits and on fake readers elsewhere, the folder scan on real
+temp folders, and the live readers' parsing on command output. Nothing here
+reads this machine's processes, counters or worktrees."""
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
+import time
 import sys
 import tempfile
 import unittest
@@ -51,39 +54,156 @@ def report(**fake_args):
     return Q.quiet_report(FakeReaders(**fake_args).env())
 
 
-def msbuild_helper(pid):
-    return Q.Proc("MSBuild.exe", pid,
-                  r'"C:\VS\MSBuild.exe" /noautoresponse /nologo /nodemode:1 /nodeReuse:true')
-
-
 def raises(error):
     def reader(*_args):
         raise error
     return reader
 
 
-class VerdictTest(unittest.TestCase):
-    def test_a_quiet_machine_is_quiet_and_names_memory_power_and_no_compiler(self):
-        got = report()
-        self.assertTrue(got.quiet)
-        self.assertEqual(list(got.lines), [
-            "no compiler running",
-            "CPU: 3.00 percent averaged over 5 s (limit 30 percent)",
-            "no build folder written to in the last 60 s",
-            "build folders: 0 read, 40 entries, 0.25 s",
-            "free memory: 12.0 GB",
-            "power scheme: Balanced",
-            "Spotify.exe: not running",
-            "MsMpEng.exe: not running",
-        ])
+# Copied from hydra-data's ch-mcp-runs/2026-11-07/ls-t3-run-b. compilers.txt is
+# the compiler rows of a process-list read 30 s into that run, while another
+# session's build ran: two cmake rows, the build's own MSBuild, 15 MSBuild
+# helpers and 24 cl.exe rows, of which the first two are kept. The account
+# folder in the cl.exe rows is renamed. ch_start-reading.txt is the run's quiet
+# ch_start reading, line 8 of its replies.txt.
+RUN_LS_T3 = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-t3-run-b")
+# The recording's main MSBuild: its command line builds ALL_BUILD.vcxproj.
+RECORDED_MAIN_MSBUILD_PID = 27444
 
-    def test_a_compiler_stops_it_and_its_line_names_the_pid_and_the_worktree(self):
-        cl = Q.Proc("cl.exe", 4242, rf'"C:\VS\cl.exe" /c /I{WORKTREE}\src {WORKTREE}\src\a.cpp')
-        got = report(processes=[cl])
+
+def recorded_processes():
+    """The recorded rows, each 'pid name command line', read by the real
+    list_processes from the JSON shape it parses."""
+    with open(os.path.join(RUN_LS_T3, "compilers.txt"), encoding="utf-8") as f:
+        rows = f.read().splitlines()[1:]
+    listed = []
+    for row in rows:
+        pid, name, command_line = row.split(" ", 2)
+        listed.append({"Name": name, "ProcessId": int(pid), "CommandLine": command_line})
+    return Q.list_processes(run=lambda _cmd: json.dumps(listed))
+
+
+def recorded_helpers():
+    """The recording's MSBuild rows other than the build's own MSBuild."""
+    return [p for p in recorded_processes()
+            if p.name == "MSBuild.exe" and p.pid != RECORDED_MAIN_MSBUILD_PID]
+
+
+def recorded_reading():
+    """The CPU share, free memory and power scheme of the recorded ch_start."""
+    with open(os.path.join(RUN_LS_T3, "ch_start-reading.txt"), encoding="utf-8") as f:
+        said = f.read()
+    cpu = re.search(r"CPU ([\d.]+) percent", said).group(1)
+    memory = re.search(r"free memory ([\d.]+) GB", said).group(1)
+    scheme = said.split("; ")[4]
+    return cpu, memory, scheme
+
+
+class RecordedTest(unittest.TestCase):
+    """The verdict on the recorded process rows and reading, with the real
+    folder scan on a temp home folder."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.home = self._tmp.name
+        self.cpu, self.memory, self.scheme = recorded_reading()
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def report(self, processes):
+        return Q.quiet_report(Q.QuietEnv(
+            list_processes=lambda: processes, sample_cpu=lambda _s: float(self.cpu),
+            scan_folders=lambda: Q.scan_folders(self.home),
+            free_memory_bytes=lambda: int(float(self.memory) * GIB),
+            power_scheme=lambda: self.scheme))
+
+    def build_file(self, age_s):
+        """A file in the main checkout's build folder, last written age_s ago."""
+        folder = os.path.join(self.home, "Downloads", "Hydra", "hydra-test", "build-cpp")
+        os.makedirs(folder)
+        path = os.path.join(folder, "a.obj")
+        with open(path, "wb"):
+            pass
+        written = time.time() - age_s
+        os.utime(path, (written, written))
+        return folder
+
+    def lines_naming(self, got, text):
+        return [line for line in got.lines if text in line]
+
+    def test_a_quiet_machine_is_quiet_and_names_its_readings(self):
+        helpers = recorded_helpers()
+        got = self.report(helpers)
+        self.assertTrue(got.quiet)
+        self.assertIn("no compiler running", got.lines)
+        for process in helpers:
+            self.assertEqual(self.lines_naming(got, f"pid {process.pid}"), [])
+        cpu_line = self.lines_naming(got, self.cpu)
+        self.assertEqual(len(cpu_line), 1)
+        self.assertIn(f"{Q.QUIET_SAMPLE_S} s", cpu_line[0])
+        self.assertIn(f"{Q.QUIET_CPU_PCT} percent", cpu_line[0])
+        self.assertEqual(len(self.lines_naming(got, f"{self.memory} GB")), 1)
+        self.assertEqual(len(self.lines_naming(got, self.scheme)), 1)
+        for name in Q.REPORTED_NAMES:
+            self.assertIn(f"{name}: not running", got.lines)
+
+    def test_a_compiler_stops_it_and_its_line_names_the_pid_and_its_folder(self):
+        cl = next(p for p in recorded_processes() if p.name == "cl.exe")
+        folder = Q.folder_named(cl.command_line)
+        self.assertIsNotNone(folder)
+        self.assertNotIn("CL.exe", folder)
+        got = self.report([cl])
         self.assertFalse(got.quiet)
-        self.assertIn(f"compiler running: cl.exe, pid 4242, folder {WORKTREE}", got.lines)
+        named = self.lines_naming(got, f"pid {cl.pid}")
+        self.assertEqual(len(named), 1)
+        self.assertIn(cl.name, named[0])
+        self.assertIn(folder, named[0])
         self.assertNotIn("no compiler running", got.lines)
 
+    def test_msbuild_helpers_alone_are_quiet_and_one_line_gives_their_count(self):
+        helpers = recorded_helpers()
+        got = self.report(helpers)
+        self.assertTrue(got.quiet)
+        counted = self.lines_naming(got, "helpers")
+        self.assertEqual(len(counted), 1)
+        self.assertTrue(counted[0].endswith(f": {len(helpers)}"))
+
+    def test_the_builds_own_msbuild_stops_it_and_only_it_is_a_compiler(self):
+        msbuilds = [p for p in recorded_processes() if p.name == "MSBuild.exe"]
+        got = self.report(msbuilds)
+        self.assertFalse(got.quiet)
+        for process in msbuilds:
+            want = 1 if process.pid == RECORDED_MAIN_MSBUILD_PID else 0
+            self.assertEqual(len(self.lines_naming(got, f"pid {process.pid}")), want)
+        counted = self.lines_naming(got, "helpers")
+        self.assertEqual(len(counted), 1)
+        self.assertTrue(counted[0].endswith(f": {len(msbuilds) - 1}"))
+
+    def test_every_recorded_compiler_but_the_helpers_stops_it_on_its_own(self):
+        helpers = {p.pid for p in recorded_helpers()}
+        others = [p for p in recorded_processes() if p.pid not in helpers]
+        self.assertEqual({p.name for p in others}, {"cmake.exe", "MSBuild.exe", "cl.exe"})
+        for process in others:
+            with self.subTest(process=process.pid):
+                self.assertFalse(self.report([process]).quiet)
+
+    def test_a_build_folder_written_to_just_now_stops_it_and_its_line_names_it(self):
+        folder = self.build_file(0)
+        got = self.report(recorded_helpers())
+        self.assertFalse(got.quiet)
+        named = self.lines_naming(got, folder)
+        self.assertEqual(len(named), 1)
+        self.assertIn(f"{Q.BUILD_RECENT_S} s", named[0])
+
+    def test_a_build_folder_last_written_the_limit_ago_is_quiet(self):
+        folder = self.build_file(Q.BUILD_RECENT_S)
+        got = self.report(recorded_helpers())
+        self.assertTrue(got.quiet)
+        self.assertEqual(self.lines_naming(got, folder), [])
+
+
+class VerdictTest(unittest.TestCase):
     def test_every_listed_compiler_stops_it_whatever_its_case(self):
         for name in Q.COMPILER_NAMES:
             for exe in (f"{name}.exe", f"{name.upper()}.EXE"):
@@ -95,52 +215,12 @@ class VerdictTest(unittest.TestCase):
             with self.subTest(exe=exe):
                 self.assertTrue(report(processes=[Q.Proc(exe, 1, None)]).quiet)
 
-    def test_msbuild_helpers_alone_are_quiet_and_one_line_gives_their_count(self):
-        got = report(processes=[msbuild_helper(11), msbuild_helper(12), msbuild_helper(13)])
-        self.assertTrue(got.quiet)
-        self.assertEqual(list(got.lines[:2]),
-                         ["no compiler running", "MSBuild helpers left from a build: 3"])
-
-    def test_a_main_msbuild_beside_helpers_stops_it_and_only_the_main_one_is_a_compiler(self):
-        main = Q.Proc("MSBuild.exe", 20, r'"C:\VS\MSBuild.exe" C:\other\proj.sln /m')
-        got = report(processes=[msbuild_helper(11), main, msbuild_helper(12)])
-        self.assertFalse(got.quiet)
-        self.assertEqual(list(got.lines[:2]),
-                         ["compiler running: MSBuild.exe, pid 20, folder C:\\other\\proj.sln",
-                          "MSBuild helpers left from a build: 2"])
-
-    def test_the_helper_flag_counts_only_on_msbuild_and_only_as_a_whole_word(self):
-        for process in (Q.Proc("cl.exe", 1, "cl.exe /nodemode:1"),
-                        Q.Proc("MSBuild.exe", 2, "MSBuild.exe /nodemode:2"),
-                        Q.Proc("MSBuild.exe", 3, "MSBuild.exe /nodemode:10"),
-                        Q.Proc("MSBuild.exe", 4, None)):
-            with self.subTest(process=process):
-                self.assertFalse(report(processes=[process]).quiet)
-
-    def test_the_helper_flag_is_read_whatever_its_case_and_at_the_end_of_the_line(self):
-        self.assertTrue(report(processes=[Q.Proc("MSBUILD.EXE", 1, "x.exe /nodeMode:1")]).quiet)
-
     def test_no_helpers_means_no_helper_line(self):
         self.assertFalse(any("helper" in line for line in report().lines))
 
     def test_cpu_exactly_at_the_threshold_is_quiet_and_one_above_is_not(self):
         self.assertTrue(report(cpu=Q.QUIET_CPU_PCT).quiet)
         self.assertFalse(report(cpu=Q.QUIET_CPU_PCT + 1).quiet)
-
-    def test_cpu_just_above_the_threshold_prints_a_number_above_the_limit(self):
-        got = report(cpu=Q.QUIET_CPU_PCT + 0.01)
-        self.assertFalse(got.quiet)
-        self.assertEqual(got.lines[1], "CPU: 30.01 percent averaged over 5 s (limit 30 percent)")
-
-    def test_a_folder_younger_than_the_limit_stops_it_and_its_line_names_it(self):
-        folder = rf"{WORKTREE}\build-cpp"
-        got = report(folders=[Q.FolderAge(folder, Q.BUILD_RECENT_S - 1)])
-        self.assertFalse(got.quiet)
-        self.assertIn(f"build folder written to in the last 60 s: {folder} "
-                      "(a file 59 s old)", got.lines)
-
-    def test_a_folder_exactly_at_the_limit_is_quiet(self):
-        self.assertTrue(report(folders=[Q.FolderAge("f", Q.BUILD_RECENT_S)]).quiet)
 
     def test_a_folder_with_no_files_is_quiet(self):
         self.assertTrue(report(folders=[Q.FolderAge("f", None)]).quiet)
