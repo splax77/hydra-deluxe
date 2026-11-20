@@ -101,22 +101,22 @@
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "target.target_act_ticks = std::vector<int64_t>{7680};",
+          "line_text": "target.target_act_ticks = std::vector<int64_t>{last_fill};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "a_then_late.target_act_ticks = std::vector<int64_t>{2304, 7680};",
+          "line_text": "a_then_late.target_act_ticks = std::vector<int64_t>{first_fill, last_fill};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{28800};",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{act_tick};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
           "file": "tests/test_fills_and_skips.cpp",
-          "line_text": "opts.target_act_ticks = std::vector<int64_t>{19200};",
+          "line_text": "opts.target_act_ticks = std::vector<int64_t>{kEfFillC};",
           "why": "drives the engine's target mode directly on a hand-built song, not search_target's filter"
         },
         {
