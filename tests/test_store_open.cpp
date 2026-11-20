@@ -707,12 +707,12 @@ TEST_CASE("another connection on an old file stops the set-aside, and the file s
 
 TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {
     // journal_size_limit is per connection, so the store sets it on every
-    // open. 4194304 bytes is the value D93 chose.
+    // open, the first on a new file and the second on the file it left.
     const std::string path = testtemp::temp_path("journal_size_limit", ".db");
     std::remove(path.c_str());
     for (int open = 0; open < 2; ++open) {
         RecordStore store(path);
-        CHECK(store.journal_size_limit_for_test() == 4194304);
+        CHECK(store.journal_size_limit_for_test() == kJournalSizeLimitBytes);
     }
     std::remove(path.c_str());
 }
@@ -1070,7 +1070,14 @@ TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgra
 // "SQLITE_ENABLE_FTS5=0" compiles full-text search in. Hydra never uses it,
 // so the build leaves that macro out.
 TEST_CASE("the vendored SQLite is built without FTS5") {
-    CHECK(sqlite3_compileoption_used("ENABLE_FTS5") == 0);
+    // Without FTS5, SQLite has no fts5 module: making a full-text table fails
+    // where a plain table on the same connection does not.
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(":memory:", &db) == SQLITE_OK);
+    CHECK(sqlite3_exec(db, "CREATE TABLE plain (x)", nullptr, nullptr, nullptr) == SQLITE_OK);
+    CHECK(sqlite3_exec(db, "CREATE VIRTUAL TABLE full_text USING fts5(x)", nullptr, nullptr,
+                       nullptr) == SQLITE_ERROR);
+    sqlite3_close(db);
 }
 
 // ---- store speed (2026-09-26 audit, Task 9) --------------------------------
@@ -1091,8 +1098,20 @@ TEST_CASE("a file store runs in WAL mode with an index on chart names") {
     sqlite3_finalize(s);
     sqlite3_close(db);
     CHECK(mode == "wal");
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master"
-                       " WHERE type='index' AND name='charts_by_name'") == 1);
+    // A read of the library in name order (LibraryOrder::ByName: by name,
+    // then scan order, which is rowid) walks an index, whatever it is called,
+    // instead of sorting the whole table first.
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN SELECT * FROM charts ORDER BY name, rowid",
+                               -1, &s, nullptr) == SQLITE_OK);
+    std::string plan;
+    while (sqlite3_step(s) == SQLITE_ROW)
+        plan += std::string(reinterpret_cast<const char*>(sqlite3_column_text(s, 3))) + "\n";
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    INFO(plan);
+    CHECK(plan.find("USING INDEX") != std::string::npos);
+    CHECK(plan.find("TEMP B-TREE") == std::string::npos);
     std::remove(path.c_str());
 }
 
@@ -1154,7 +1173,10 @@ TEST_CASE("a database another connection has locked fails to open as DatabaseOpe
         FAIL("a locked file opened");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::DatabaseOpen);
-        CHECK(std::string(e.what()) == "sqlite exec failed: database is locked");
+        // The error carries SQLite's own reason for a busy file, read from
+        // SQLite, so the message names the lock and not some other failure.
+        INFO(e.what());
+        CHECK(std::string(e.what()).find(sqlite3_errstr(SQLITE_BUSY)) != std::string::npos);
     }
     REQUIRE(sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     sqlite3_close(holder);
@@ -1245,8 +1267,33 @@ TEST_CASE("every store read throws a database read error when its step fails") {
 // and without shared cache, two options that trim its own CPU. A sibling of
 // the FTS5 case above.
 TEST_CASE("the vendored SQLite is built without memory counters or shared cache") {
-    CHECK(sqlite3_compileoption_used("DEFAULT_MEMSTATUS=0") == 1);
-    CHECK(sqlite3_compileoption_used("OMIT_SHARED_CACHE") == 1);
+    const std::string path = testtemp::temp_path("sqlite_build", ".db");
+    std::remove(path.c_str());
+    // Both connections ask for a shared cache; a build without it gives each
+    // its own.
+    const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE;
+    sqlite3* writer = nullptr;
+    REQUIRE(sqlite3_open_v2(path.c_str(), &writer, flags, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(writer, "CREATE TABLE t (x); BEGIN; INSERT INTO t VALUES (1);", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    // No memory counters: SQLite counted none of the allocations above.
+    CHECK(sqlite3_memory_used() == 0);
+    // No shared cache: a reader allowed to read uncommitted rows would see
+    // the writer's open insert through a shared cache. With its own cache it
+    // reads the file, which does not hold the insert yet.
+    sqlite3* reader = nullptr;
+    REQUIRE(sqlite3_open_v2(path.c_str(), &reader, flags, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(reader, "PRAGMA read_uncommitted = 1", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(reader, "SELECT COUNT(*) FROM t", -1, &s, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(s) == SQLITE_ROW);
+    CHECK(sqlite3_column_int64(s, 0) == 0);
+    sqlite3_finalize(s);
+    sqlite3_close(reader);
+    sqlite3_exec(writer, "ROLLBACK", nullptr, nullptr, nullptr);
+    sqlite3_close(writer);
+    std::remove(path.c_str());
 }
 
 // ---- the batch writer (D86 item 3, task W1) --------------------------------
