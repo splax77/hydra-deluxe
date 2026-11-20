@@ -546,6 +546,26 @@ TEST_CASE("struck_at: a chord exactly on the playhead counts as hit") {
     CHECK(struck_at(p.chord_ms, p.chord_ms));
     CHECK_FALSE(struck_at(p.chord_ms - 0.1, p.chord_ms));
     CHECK(struck_at(p.chord_ms + 0.1, p.chord_ms));
+
+    // The jump itself, on Pitch Dark's record: "Act >" from before each
+    // activation lands on a replay chord's own ms, so the box at the jump
+    // counts that chord as hit (its combo is the chord's) and the moment
+    // just before the jump does not.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const ReplayResult r = replay_stored_path(*pd.song, *pd.path).result;
+    REQUIRE_FALSE(pd.scene.activations.empty());
+    for (size_t i = 0; i < pd.scene.activations.size(); ++i) {
+        const double from = i == 0 ? 0.0 : pd.scene.activations[i - 1].ms;
+        const std::optional<double> jump = activation_jump_ms(pd.scene, from, +1);
+        REQUIRE(jump.has_value());
+        INFO("activation " << i << " at " << *jump << " ms");
+        const ReplayChord* c = struck_chord(r, *jump);
+        REQUIRE(c != nullptr);
+        CHECK(c->ms == doctest::Approx(*jump));
+        const std::string detail = score_box_at(pd.scene, *jump).detail;
+        CHECK(detail.find("combo " + std::to_string(c->combo_after)) != std::string::npos);
+        CHECK(struck_chord(r, std::nextafter(*jump, 0.0)) != c);
+    }
 }
 
 TEST_CASE("score box: the multiplier is the replay's, doubled on chords Star Power pays") {
@@ -698,14 +718,19 @@ TEST_CASE("score box: the analyzed chart ends on the path's total") {
 // ---- the score box's star counter ---------------------------------------
 
 TEST_CASE("score box stars: before the first chord no star is earned") {
-    // The fill song's first note is at tick 480, 500 ms.
-    Song song = make_fill_song();
-    Path path = priced_path(song, {});
-    PreviewScene scene = build_preview_scene(song, &path);
+    // Pitch Dark's record path. Halfway to its first chord nothing is struck
+    // yet, so the box counts no score and names the first cutoff in full.
+    const PitchDarkScene pd = pitch_dark_scene();
+    const PreviewScene& scene = pd.scene;
     REQUIRE(scene.score.state == PreviewScore::State::Ready);
-    PreviewScoreBox box = score_box_at(scene, 100.0);
+    REQUIRE_FALSE(scene.score.steps.empty());
+    const double first_ms = scene.score.steps.front().ms;
+    REQUIRE(first_ms > 0.0);
+    const double before = first_ms / 2.0;
+    REQUIRE_FALSE(struck_at(before, first_ms));
+    const PreviewScoreBox box = score_box_at(scene, before);
     CHECK(box.stars == 0);
-    CHECK(box.next_star == "star 1 in " + group_thousands(star_cutoffs(path).cutoffs[0]));
+    CHECK(box.next_star == "star 1 in " + group_thousands(star_cutoffs(*pd.path).cutoffs[0]));
 }
 
 TEST_CASE("score box stars: the analyzed chart ends on the path's own star count") {
@@ -720,10 +745,14 @@ TEST_CASE("score box stars: the analyzed chart ends on the path's own star count
 }
 
 TEST_CASE("score box stars: a solo's bonus raises the score but not the stars") {
-    // Hand song: chords at 0, 250, 500 and 750 ms. The solo is the chords at
-    // 250 and 500 ms, so its whole bonus is paid on the chord at 500 ms.
+    // The hand song's one solo section: its whole bonus is paid on the
+    // section's last chord.
     Song song = make_hand_song();
+    REQUIRE(song.solo_sections.size() == 1);
+    const SoloSection& sec = song.solo_sections.front();
+    REQUIRE(sec.last > 0);
     Path path = priced_path(song, {});
+    REQUIRE(path.score_solo == section_bonus(song, sec));
     REQUIRE(path.score_solo > 0);
     PreviewScene scene = build_preview_scene(song, &path);
     REQUIRE(scene.score.state == PreviewScore::State::Ready);
@@ -748,8 +777,8 @@ TEST_CASE("score box stars: a solo's bonus raises the score but not the stars") 
     // The solo's last chord: the on-screen score jumps by that chord's own
     // points plus the whole bonus; the score the stars read moves by the
     // chord's own points alone.
-    const PreviewScoreStep& s1 = scene.score.steps[1];
-    const PreviewScoreStep& s2 = scene.score.steps[2];
+    const PreviewScoreStep& s1 = scene.score.steps[sec.last - 1];
+    const PreviewScoreStep& s2 = scene.score.steps[sec.last];
     CHECK(s2.total - s1.total ==
           (s2.score_without_solo - s1.score_without_solo) + path.score_solo);
     // This song's solo bonus lifts the shown score across a star cutoff the
@@ -759,7 +788,7 @@ TEST_CASE("score box stars: a solo's bonus raises the score but not the stars") 
     CHECK(score_box_at(scene, s2.ms).stars == stars_for_score(cut, s2.score_without_solo));
 
     // At the end the box agrees with the path's own count (path_stars).
-    CHECK(score_box_at(scene, 1000.0).stars == path_stars(path));
+    CHECK(score_box_at(scene, last_note_ms(scene)).stars == path_stars(path));
 }
 
 // ---- SP drain box -------------------------------------------------------
@@ -817,20 +846,23 @@ TEST_CASE("drain box: the rate switches exactly at a tempo change") {
     CHECK(drain_box_at(scene, before_ms).rate == "1 bar / " + drain_seconds(bar_before) + " s");
     CHECK(drain_box_at(scene, change_ms).rate == "1 bar / " + drain_seconds(bar_after) + " s");
 
-    // "full meter" is the cap at the bar time in force, so it jumps with the
-    // rate, at the change and not before.
-    CHECK(drain_box_at(scene, 0.0).detail == "full meter " + drain_seconds(bar_before * cap) + " s");
-    CHECK(drain_box_at(scene, before_ms).detail ==
-          "full meter " + drain_seconds(bar_before * cap) + " s");
-    CHECK(drain_box_at(scene, change_ms).detail ==
-          "full meter " + drain_seconds(bar_after * cap) + " s");
+    // The engine's rule (engine_sp_ms) is the drain the box stands for. From
+    // tick 0 one bar ends before the change, so the engine's bar there is the
+    // old tempo's, the bar the box reads.
+    REQUIRE(sp_bars_to_measures(1) * song.tpm_changes.at(0) <= change_tick);
+    CHECK(engine_sp_ms(song, 0, 1) == doctest::Approx(bar_before));
+    CHECK(drain_box_at(scene, 0.0).rate == "1 bar / " + drain_seconds(engine_sp_ms(song, 0, 1)) + " s");
 
-    // From the change on the tempo stays put, so the engine's rule gives the
-    // same lengths there. Just before the change it does not: the engine
-    // counts the bar across the change, and the box reads only the tempo in
-    // force, so before a change its times are its own estimate.
+    // From the change on the tempo stays put, so the engine's bar and full
+    // meter there are the new tempo's, and the box reads both.
+    const int64_t full = scene.sp_meter.cap;
     CHECK(engine_sp_ms(song, change_tick, 1) == doctest::Approx(bar_after));
-    CHECK(engine_sp_ms(song, change_tick, scene.sp_meter.cap) == doctest::Approx(bar_after * cap));
+    CHECK(engine_sp_ms(song, change_tick, full) == doctest::Approx(bar_after * cap));
+    CHECK(drain_box_at(scene, change_ms).detail ==
+          "full meter " + drain_seconds(engine_sp_ms(song, change_tick, full)) + " s");
+    // Before the change a full meter's measures run across it, so the engine
+    // gives no one tempo's figure there, and this test pins no full meter
+    // before the change.
 }
 
 TEST_CASE("drain box: a 7/8 section drains faster at the same BPM") {
