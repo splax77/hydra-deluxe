@@ -647,7 +647,8 @@ TEST_CASE("single-owner: a row scoped to a file the walk does not read is read h
     int edited = 0;
     for (const OwnerRule& r : rules()) {
         for (const std::string& s : r.scope) {
-            if (s.find('/') == std::string::npos || walk_reads_for(r, s)) continue;
+            // A row that already reads comments has no comment-blind verdict to check.
+            if (s.find('/') == std::string::npos || walk_reads_for(r, s) || r.scan_comments) continue;
             const codelex::Lang lang = lexer_language(fs::u8path(s));
             const std::string mark = lang == codelex::Lang::Cpp ? "// " : "# ";
             OwnerRule with_comments = r;
