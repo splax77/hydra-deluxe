@@ -45,6 +45,12 @@ HYDRA_TEST_LOADER(load_songbytes_srb, const std::vector<uint8_t>&)
 
 #undef HYDRA_TEST_LOADER
 
+// A .chart's text read as the app reads a .chart file's bytes, with the
+// default reading.
+inline Song load_songtext_chart(const std::string& text) {
+    return load_songbytes_chart(std::vector<uint8_t>(text.begin(), text.end()), ChartReading{});
+}
+
 inline Song load_songpath_from_bytes(const std::string& path, const std::vector<uint8_t>& bytes,
                                      const ChartReading& reading, const core::Rules& rules) {
     return load_songpath_from_bytes(path, bytes, reading, rules, kTestFillRule);
