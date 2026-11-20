@@ -366,9 +366,9 @@ double BatchClock::elapsed_s(double now) const {
 
 namespace {
 
-// The batch's time-left clock for a run on `workers` workers (D283).
+// The batch's time-left clock for a run on `workers` workers (D352).
 app::TimeLeftClock batch_time_left(int workers) {
-    return app::TimeLeftClock::over_last_units(kTimeLeftWorkerRounds * workers);
+    return app::TimeLeftClock::since_start(kTimeLeftWorkerRounds * workers);
 }
 
 }  // namespace
@@ -485,7 +485,7 @@ BatchJob::Snapshot BatchJob::snapshot() const {
     std::lock_guard<std::mutex> lock(mu_);
     Snapshot s = snap_;
     s.elapsed_s = clock_.elapsed_s(steady_seconds());
-    if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);
+    if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.completed, s.total);
     return s;
 }
 
@@ -565,9 +565,6 @@ void BatchJob::run() {
         snap_.analyzed = p.analyzed;
         snap_.skipped = p.skipped;
         snap_.failed = p.failed;
-        // A save group's charts share the time their report lands, on the
-        // batch clock, which leaves paused time out.
-        time_left_.record(clock_.elapsed_s(steady_seconds()), p.completed);
     };
     callbacks.on_error = [this](const std::string& title, const std::string& sentence,
                                 const std::string& error) {
