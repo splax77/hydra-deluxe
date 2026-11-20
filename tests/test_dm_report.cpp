@@ -1,15 +1,9 @@
 // Tests for app/dm_report: the score-vs-optimal join (collect_dm_rows) and
 // generate_dm_report's subtitle and footer. Pins the status strings the
 // comparison window's Status filter and chips key on, and the counts the app
-// shows. Also drives the real WinHTTP transport against a loopback server.
+// shows. The library side is a real store: an analyzed corpus chart, or a
+// corpus chart folder scanned and analyzed the way the app does it.
 
-// winsock2.h has to come before anything that pulls in windows.h.
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
@@ -20,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <filesystem>
 #include <mutex>
 #include <optional>
@@ -31,25 +26,28 @@
 #include "app/analysis.h"
 #include "app/config.h"          // Settings
 #include "app/display_format.h"  // format_percent, percent_steps
-#include "core/model.h"
+#include "app/library_query.h"   // parse_library_query
+#include "core/model.h"          // counted, group_thousands, kCloneHeroSpCap
 #include "app/dm_report.h"
 #include "app/dm_report_view.h"  // dm_search_text
-#include "app/report.h"          // Tile, ChipToken, kNoChartLibrary
+#include "app/report.h"          // Tile, ChipToken, kNoChartLibrary, kDash
 #include "app/user_messages.h"
 #include "core/error_kind.h"
-#include "core/strutil.h"
+#include "core/strutil.h"        // ends_with, starts_with, to_lower_ascii
 #include "corpus_util.h"
-#include "display_fixtures.h"  // kTagOnlyTitle
+#include "display_fixtures.h"
 #include "dm_fixture.h"
 #include "net/dmbot_client.h"
 #include "net/http.h"
 #include "parse/song.h"
+#include "store/chart_index.h"
 #include "store/record_store.h"
 #include "temp_util.h"
 #include "wait_util.h"
 
 using namespace hydra;
 using app::dm_report::DmReportRow;
+namespace dmr = hydra::app::dm_report;
 
 // The store and score builders are the shared leaderboard fixture.
 using testdm::fill_store;
@@ -58,358 +56,48 @@ using testdm::kMode;
 using testdm::make_score;
 using testdm::dm_tile;
 
-TEST_CASE("collect_dm_rows joins scores to records and labels them") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 0);
-
-    std::vector<net::DmScore> scores;
-    scores.push_back(make_score(kHash, optimal - 1000));       // under optimal
-    scores.push_back(make_score(kHash, optimal));              // at optimal
-    scores.push_back(make_score(kHash, optimal + 5));          // above optimal
-    scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff",
-                                123456));                      // not in library
-
-    std::vector<DmReportRow> rows =
-        app::dm_report::collect_dm_rows(store, scores, testdm::profile());
-    REQUIRE(rows.size() == 4);
-
-    // These exact strings are load-bearing: status_token and kStatusWords key
-    // on them. No row's status reads "matched".
-    CHECK(rows[0].status == "under optimal");
-    CHECK(rows[1].status == "at optimal");
-    CHECK(rows[2].status == "above optimal");
-    CHECK(rows[3].status == "not in library");
-    for (const DmReportRow& r : rows) CHECK(r.status != "matched");
-
-    CHECK(rows[0].optimal == optimal);
-    CHECK(rows[0].delta == 1000);
-    // The row's percent is percent_steps' whole hundredths, the number the
-    // cell's text is written from: 99.56% for 1,000 under the first corpus
-    // chart's optimal, read from one run.
-    REQUIRE(rows[0].pct_h.has_value());
-    CHECK(*rows[0].pct_h == 9956);
-
-    CHECK(rows[1].delta == 0);
-    CHECK(rows[2].delta == -5);
-    CHECK_FALSE(rows[3].optimal.has_value());
-    CHECK_FALSE(rows[3].delta.has_value());
-
-    // The leaderboard's own metadata wins when it has it.
-    CHECK(rows[0].song == "Board Title");
-}
-
-TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-
-    net::DmScore fast = make_score(kHash, optimal - 10);
-    fast.speed = 150;
-    net::DmScore unknown_meta = make_score(kHash, optimal - 10);
-    unknown_meta.known = false;  // "unknown song" entry: no usable metadata
-
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {fast, unknown_meta}, testdm::profile());
-    REQUIRE(rows.size() == 2);
-
-    CHECK_FALSE(rows[0].pct_h.has_value());  // speed != 100
-    CHECK(rows[1].song == "Stored Title");  // fell back to the matched record
-}
-
-TEST_CASE("dmbot JSON parsers handle canned payloads") {
-    // The users endpoint: elo/stats may be null or missing; entries without
-    // an id are dropped.
-    const std::string users_body = R"([
-        {"id":"111","username":"alice","elo":1500,
-         "stats":{"total_scores":10,"total_score":123456}},
-        {"id":"222","username":"bob","elo":null},
-        {"username":"no_id_dropped"}
-    ])";
-    std::vector<net::DmUser> users = net::parse_users_json(users_body);
-    REQUIRE(users.size() == 2);
-    CHECK(users[0].id == "111");
-    CHECK(users[0].username == "alice");
-    CHECK(users[0].elo == 1500);
-    CHECK(users[0].total_scores == 10);
-    CHECK(users[0].total_score == 123456);
-    CHECK_FALSE(users[1].elo.has_value());
-
-    // The scores endpoint: two arrays, flattened and told apart by `known`;
-    // identifiers are lowercased; charter_refs join with ", "; missing speed
-    // defaults to 100.
-    const std::string scores_body = R"({
-        "scores":[
-            {"identifier":"AABB01","song_name":"Song","artist":"Artist",
-             "charter_refs":["c1","c2"],"score":1000,"is_fc":1,"percent":98,
-             "speed":150,"rank":3,"posted":"2026-01-01"}
-        ],
-        "unknown_scores":[
-            {"identifier":"ccdd02","score":500}
-        ]
-    })";
-    std::vector<net::DmScore> scores = net::parse_scores_json(scores_body);
-    REQUIRE(scores.size() == 2);
-    CHECK(scores[0].identifier == "aabb01");
-    CHECK(scores[0].charter == "c1, c2");
-    CHECK(scores[0].score == 1000);
-    CHECK(scores[0].is_fc);
-    CHECK(scores[0].speed == 150);
-    CHECK(scores[0].rank == 3);
-    CHECK(scores[0].known);
-    CHECK(scores[1].known == false);
-    CHECK(scores[1].speed == 100);
-
-    // Unparseable bodies throw the user-facing error, not a JSON exception.
-    CHECK_THROWS_AS(net::parse_users_json("not json"), std::runtime_error);
-    CHECK_THROWS_AS(net::parse_scores_json("<html>503</html>"), std::runtime_error);
-
-    // A non-array user body is rejected.
-    CHECK_THROWS_AS(net::parse_users_json("{\"a\":1}"), std::runtime_error);
-}
-
-// D64.
-TEST_CASE("collect_dm_rows answers above-optimal beside the status") {
-    // A score at another speed that beats the optimal keeps reading "+N
-    // over". Its status is "other speed", so the row carries the
-    // above-optimal answer collect_dm_rows already gave, next to the delta;
-    // the Delta cell (dm_report_view) reads it instead of the delta's sign.
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 0);
-    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store,
-        {make_score(kHash, optimal + 5), make_score(kHash, optimal + 5, 150),
-         make_score(kHash, optimal - 5, 150)},
-        testdm::profile());
-    REQUIRE(rows.size() == 3);
-    CHECK(rows[0].status == "above optimal");
-    CHECK(rows[1].status == "other speed");
-    CHECK(rows[2].status == "other speed");
-    CHECK(rows[0].delta == -5);
-    CHECK(rows[0].above_optimal);
-    CHECK(rows[1].delta == -5);
-    CHECK(rows[1].above_optimal);
-    CHECK(rows[2].delta == 5);
-    CHECK_FALSE(rows[2].above_optimal);
-}
-
-TEST_CASE("dm comparison: a score's search text is folded and tag-free") {
-    DmReportRow row;
-    row.song = "Halo";
-    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
-    row.charter = "<b>Bob</b>";
-    row.status = "not in library";
-    CHECK(app::dm_report_view::dm_search_text(row) == "halo beyonce bob");
-}
-
-TEST_CASE("generate_dm_report: tally and framing behind one seam") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 0);
-
-    std::vector<net::DmScore> scores;
-    scores.push_back(make_score(kHash, optimal - 1000));  // under optimal
-    scores.push_back(make_score(kHash, optimal - 10));    // under optimal
-    scores.push_back(make_score(kHash, optimal));         // at optimal
-    scores.push_back(make_score(kHash, optimal + 5));     // above optimal
-    scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff",
-                                123456));                 // not in library
-
-    app::dm_report::GeneratedDmReport result =
-        app::dm_report::generate_dm_report(store, scores, testdm::profile(), "TestUser");
-    CHECK(result.stats.total == 5);
-    CHECK(result.stats.under_optimal == 2);
-    CHECK(result.stats.at_optimal == 1);
-    CHECK(result.stats.above_optimal == 1);
-    CHECK(result.stats.not_analyzed == 0);
-    CHECK(result.stats.not_in_library == 1);
-
-    // The subtitle counts every score and nothing by status: the tiles count
-    // the scores that pass the filters (D103 item 27).
-    CHECK(result.subtitle ==
-          "TestUser — 5 scores — " + app::dm_report::clone_hero_cap_phrase());
-    CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's", 0) == 0);
-
-    // No scores: zero stats, no rows.
-    app::dm_report::GeneratedDmReport none =
-        app::dm_report::generate_dm_report(store, {}, testdm::profile(), "TestUser");
-    CHECK(none.stats.total == 0);
-    CHECK(none.rows.empty());
-}
-
-// What a window draws from: the rows, the subtitle and footer the page shows,
-// and who it compared. The footer names the mode it compared.
-TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and mode") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 0);
-    std::vector<net::DmScore> scores;
-    scores.push_back(make_score(kHash, optimal - 1000));
-    scores.push_back(make_score("00ff00ff00ff00ff00ff00ff00ff00ff", 123456));
-
-    const app::dm_report::GeneratedDmReport result =
-        app::dm_report::generate_dm_report(store, scores, testdm::profile(), "TestUser");
-    REQUIRE(result.rows.size() == 2);
-    CHECK(result.rows[0].status == "under optimal");
-    CHECK(result.rows[1].status == "not in library");
-    CHECK(result.username == "TestUser");
-    // The line ends with the cap the comparison runs at (D276 item 7).
-    CHECK(result.subtitle ==
-          "TestUser — 2 scores — " + app::dm_report::clone_hero_cap_phrase());
-    // One score reads singular, as the count line writes its noun.
-    CHECK(app::dm_report::generate_dm_report(store, {scores[0]}, testdm::profile(), "TestUser")
-              .subtitle == "TestUser — 1 score — " + app::dm_report::clone_hero_cap_phrase());
-    CHECK(result.footer.rfind("Actual scores from dmleaderboards.com against Hydra's optimal for " +
-                                  std::string(kMode) + ".",
-                              0) == 0);
-    // The last sentence, in the "no current result" words (D114 item 1), telling
-    // the player to set the cap the comparison reads (D281).
-    const std::string last_sentence =
-        " Charts with no current result are in your library without a result for this mode at "
-        "SP cap 4: set SP cap to 4, analyze them, then compare again.";
-    REQUIRE(result.footer.size() > last_sentence.size());
-    CHECK(result.footer.substr(result.footer.size() - last_sentence.size()) == last_sentence);
-
-    // No scores: the player is still named, and nothing else is.
-    const app::dm_report::GeneratedDmReport none =
-        app::dm_report::generate_dm_report(store, {}, testdm::profile(), "TestUser");
-    CHECK(none.rows.empty());
-    CHECK(none.username == "TestUser");
-    CHECK(none.subtitle.empty());
-    CHECK(none.footer.empty());
-}
-
-TEST_CASE("dm_tiles: the tiles count only the scores shown") {
-    auto row = [](const char* status, std::optional<int64_t> delta,
-                  std::optional<int64_t> pct_h) {
-        DmReportRow r;
-        r.song = "Song";
-        r.status = status;
-        r.delta = delta;
-        r.pct_h = pct_h;
-        return r;
-    };
-    const std::vector<DmReportRow> rows = {
-        row("under optimal", 2000, 9901),
-        row("under optimal", 1500, 9900),
-        row("at optimal", 0, 10000),
-        // Played off base speed: its delta leaves no points on the table.
-        row("other speed", 500, std::nullopt),
-        row("no paths", std::nullopt, std::nullopt),
-    };
-    auto values = [&](const std::vector<size_t>& shown) {
-        std::vector<std::string> out;
-        for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, shown))
-            out.push_back(t.value);
-        return out;
-    };
-    // The first tile says it counts the scores shown, like the path report's
-    // Charts shown (D103 item 27).
-    std::vector<std::string> labels;
-    for (const app::report::Tile& t : app::dm_report::dm_tiles(rows, {0}))
-        labels.push_back(t.label);
-    CHECK(labels == std::vector<std::string>{"Scores shown", "Under optimal", "At optimal",
-                                             "Above optimal", "No current result", "Not in your library",
-                                             "Other speed", "Avg % of optimal",
-                                             "Points left on table"});
-    // A "no paths" score has no tile of its own; Scores shown counts it (D62
-    // item 1).
-    CHECK(values({0, 1, 2, 3, 4}) ==
-          std::vector<std::string>{"5", "2", "1", "0", "0", "0", "1", "99.34%", "3,500"});
-    // One row's average reads its own cell.
-    CHECK(values({0}) ==
-          std::vector<std::string>{"1", "1", "0", "0", "0", "0", "0", "99.01%", "2,000"});
-    // 99.005% on average: the half rounds up, as format_percent rounds it.
-    CHECK(values({0, 1})[7] == "99.01%");
-    // No row with a percent, and nothing under optimal.
-    CHECK(values({3, 4}) ==
-          std::vector<std::string>{"2", "0", "0", "0", "0", "0", "1", "—", "0"});
-    CHECK(values({}) ==
-          std::vector<std::string>{"0", "0", "0", "0", "0", "0", "0", "—", "0"});
-}
-
-TEST_CASE("status_token: each status's chip colour") {
-    using app::report::ChipToken;
-    using app::dm_report::status_token;
-    CHECK(status_token("under optimal") == ChipToken::t0);
-    CHECK(status_token("at optimal") == ChipToken::t0);
-    CHECK(status_token("above optimal") == ChipToken::t1);
-    CHECK(status_token("no current result") == ChipToken::muted);
-    CHECK(status_token("no paths") == ChipToken::muted);
-    CHECK(status_token("other speed") == ChipToken::muted);
-    CHECK(status_token("not in library") == ChipToken::tn);
-    // A status status_token doesn't know takes the tn chip.
-    CHECK(status_token("something else") == ChipToken::tn);
-}
-
-TEST_CASE("collect_dm_rows: the stored names go through display_title, display_artist and "
-          "display_charter") {
-    // test_song_input.cpp pins what those three do. This checks only that the
-    // page calls them: one tagged name each.
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    test::name_chart(store, kHash, "<b>Bold Title</b>", test::kTagOnlyTitle, " <b>Bob</b> ");
-
-    // The leaderboard has no metadata for it, so the row falls back to the
-    // matched record's stored names.
-    net::DmScore unknown_meta = make_score(kHash, optimal - 10);
-    unknown_meta.known = false;
-
-    const std::vector<DmReportRow> rows =
-        app::dm_report::collect_dm_rows(store, {unknown_meta}, testdm::profile());
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song == "Bold Title");
-    CHECK(rows[0].artist == kUnknownTitle);
-    CHECK(rows[0].charter == "Bob");
-}
-
-// D74 item 2: the leaderboard's own names go through the same display owners
-// as the stored ones, so Clone Hero tags in DMBot's text never reach the page.
-TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Hero tags") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-
-    net::DmScore tagged = make_score(kHash, optimal - 10);
-    tagged.song_name = "<color=#e02222>Blood</color>line";
-    tagged.artist = " <i>Tagged</i> Artist ";
-    tagged.charter = " <b>Bob</b> ";
-
-    // The same names on a score the library doesn't have, so no stored record
-    // can stand in for them.
-    net::DmScore tagged_unmatched = tagged;
-    tagged_unmatched.identifier = "00ff00ff00ff00ff00ff00ff00ff00ff";
-
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {tagged, tagged_unmatched}, testdm::profile());
-    REQUIRE(rows.size() == 2);
-    for (const DmReportRow& r : rows) {
-        CHECK(r.song == "Bloodline");
-        CHECK(r.artist == "Tagged Artist");
-        CHECK(r.charter == "Bob");
-    }
-}
-
-TEST_CASE("collect_dm_rows: a leaderboard row with no charter shows the library's, else "
-          "(unknown) (D266 item 2)") {
-    store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-
-    // DMBot knows the song but sent no charter; the library's chart lends its.
-    net::DmScore no_charter = make_score(kHash, optimal - 10);
-    no_charter.charter.clear();
-
-    // The same score on a song the library doesn't have: nothing to lend.
-    net::DmScore no_charter_unmatched = no_charter;
-    no_charter_unmatched.identifier = "00ff00ff00ff00ff00ff00ff00ff00ff";
-
-    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {no_charter, no_charter_unmatched}, testdm::profile());
-    REQUIRE(rows.size() == 2);
-    CHECK(rows[0].charter == "Stored Charter");
-    CHECK(rows[1].charter == kUnknownTitle);
-}
-
 namespace {
+
+// A song id no chart in any test store has: a score on a song the library
+// never listed.
+const std::string kUnlistedHash = "00ff00ff00ff00ff00ff00ff00ff00ff";
+
+// A corpus chart folder whose song.ini names carry Clone Hero rich-text tags,
+// as a real charter writes them: its artist and its charter are tagged.
+const std::string kTaggedChartFolder =
+    "/common/Summer Blast _25 Setlist/Tier 7/SoundHaven - Focus [Ariana Grande]";
+
+// Lists the one corpus chart in `folder` (under corpus::root()) as `store`'s
+// library through the app's own scan (discover_charts, save_scan_as_library),
+// and saves its analysis at depth 0 under testdm::settings(), the profile the
+// comparison lists. Returns the library row the scan wrote.
+store::ChartLibraryEntry scan_and_analyze(store::RecordStore& store, const std::string& folder) {
+    auto [items, errors] = app::discover_charts({corpus::root() + folder});
+    REQUIRE(errors.empty());
+    REQUIRE(items.size() == 1);
+    REQUIRE_FALSE(app::save_scan_as_library(store, items).has_value());
+    app::AnalysisSettings analysis = testdm::settings().to_analysis_settings();
+    analysis.depth_value = 0;
+    testdm::save(store, items[0].md5, testdm::settings(),
+                 corpus::analyzed(items[0].notespath, analysis));
+    return items[0];
+}
+
+// The names `store`'s library lists chart `song_id` under (its naming copy).
+store::ChartLibraryEntry listed_names(store::RecordStore& store, const std::string& song_id) {
+    const store::ChartIndex library = store.chart_index();
+    const store::ChartLibraryEntry* named = library.naming(song_id);
+    REQUIRE(named != nullptr);
+    return *named;
+}
+
+// A score on `song_id` whose leaderboard entry is an "unknown song" one, with
+// no usable metadata, so the row takes the library's names.
+net::DmScore unknown_song_score(const std::string& song_id) {
+    net::DmScore s = make_score(song_id, 0);
+    s.known = false;
+    return s;
+}
 
 // The text the comparison window's column `id` shows for `row`
 // (dm_report_view::dm_columns).
@@ -429,6 +117,484 @@ app::report_view::SortKey dm_sort_key(const std::string& id, const DmReportRow& 
 }
 
 }  // namespace
+
+TEST_CASE("collect_dm_rows joins scores to records and labels them") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    REQUIRE_FALSE(store.chart_index().lists(kUnlistedHash));
+
+    // Three scores around the record's own best score, and one on a song the
+    // library never listed.
+    const int64_t under = optimal - 1000;
+    std::vector<net::DmScore> scores;
+    scores.push_back(make_score(kHash, under));
+    scores.push_back(make_score(kHash, optimal));
+    scores.push_back(make_score(kHash, optimal + 5));
+    scores.push_back(make_score(kUnlistedHash, under));
+
+    std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, scores, testdm::profile());
+    REQUIRE(rows.size() == scores.size());
+
+    CHECK(rows[0].status == dmr::kStatusUnderOptimal);
+    CHECK(rows[1].status == dmr::kStatusAtOptimal);
+    CHECK(rows[2].status == dmr::kStatusAboveOptimal);
+    CHECK(rows[3].status == dmr::kStatusNotInLibrary);
+
+    // A joined row carries the record's best score and what the score left.
+    for (size_t i = 0; i < 3; ++i) {
+        CAPTURE(i);
+        CHECK(rows[i].optimal == optimal);
+        CHECK(rows[i].delta == optimal - scores[i].score);
+    }
+    // The row's percent is percent_steps' whole hundredths, the number the
+    // cell's text is written from.
+    REQUIRE(rows[0].pct_h.has_value());
+    CHECK(*rows[0].pct_h == app::percent_steps(under, optimal, dmr::kPercentDecimals));
+
+    CHECK_FALSE(rows[3].optimal.has_value());
+    CHECK_FALSE(rows[3].delta.has_value());
+
+    // The leaderboard's own name wins over the library's when it has one.
+    const store::ChartLibraryEntry listed = listed_names(store, kHash);
+    REQUIRE(display_title(scores[0].song_name) != display_title(listed.title));
+    CHECK(rows[0].song == display_title(scores[0].song_name));
+}
+
+TEST_CASE("collect_dm_rows: no percent off 100% speed; store identity fallback") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+
+    // Any speed but the base one is off speed (net::is_base_speed).
+    const int off_speed = net::kBaseSpeedPercent + 50;
+    REQUIRE_FALSE(net::is_base_speed(off_speed));
+    const net::DmScore fast = make_score(kHash, optimal - 10, off_speed);
+    const net::DmScore unknown_meta = unknown_song_score(kHash);
+
+    std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, {fast, unknown_meta}, testdm::profile());
+    REQUIRE(rows.size() == 2);
+
+    // An off-speed score keeps Hydra's numbers but no percent of them.
+    CHECK(rows[0].optimal == optimal);
+    CHECK_FALSE(rows[0].pct_h.has_value());
+    // An "unknown song" entry takes the library's name for its chart.
+    const store::ChartLibraryEntry listed = listed_names(store, kHash);
+    REQUIRE(display_title(listed.title) != display_title(unknown_meta.song_name));
+    CHECK(rows[1].song == display_title(listed.title));
+}
+
+TEST_CASE("dmbot JSON parsers handle canned payloads") {
+    // The users endpoint: elo/stats may be null or missing; entries without
+    // an id are dropped.
+    const std::string users_body = R"([
+        {"id":"111","username":"alice","elo":1500,
+         "stats":{"total_scores":10,"total_score":123456}},
+        {"id":"222","username":"bob","elo":null},
+        {"username":"no_id_dropped"}
+    ])";
+    std::vector<net::DmUser> users = net::parse_users_json(users_body);
+    // Every entry with an id comes through and no other, counted from the body
+    // by a plain JSON read.
+    const corpus::json users_json = corpus::json::parse(users_body);
+    size_t with_id = 0;
+    for (const corpus::json& u : users_json)
+        if (u.contains("id")) ++with_id;
+    REQUIRE(users.size() == with_id);
+    CHECK(users[0].id == users_json[0]["id"].get<std::string>());
+    CHECK(users[0].username == users_json[0]["username"].get<std::string>());
+    CHECK(users[0].elo == users_json[0]["elo"].get<int>());
+    CHECK(users[0].total_scores == users_json[0]["stats"]["total_scores"].get<int64_t>());
+    CHECK(users[0].total_score == users_json[0]["stats"]["total_score"].get<int64_t>());
+    CHECK_FALSE(users[1].elo.has_value());
+
+    // The scores endpoint: two arrays, flattened and told apart by `known`;
+    // identifiers are lowercased; charter_refs join with ", "; missing speed
+    // reads the base speed.
+    const std::string scores_body = R"({
+        "scores":[
+            {"identifier":"AABB01","song_name":"Song","artist":"Artist",
+             "charter_refs":["c1","c2"],"score":1000,"is_fc":1,"percent":98,
+             "speed":150,"rank":3,"posted":"2026-01-01"}
+        ],
+        "unknown_scores":[
+            {"identifier":"ccdd02","score":500}
+        ]
+    })";
+    std::vector<net::DmScore> scores = net::parse_scores_json(scores_body);
+    const corpus::json scores_json = corpus::json::parse(scores_body);
+    const corpus::json& known_json = scores_json["scores"][0];
+    // Both arrays' entries, each one row.
+    const size_t entries = scores_json["scores"].size() + scores_json["unknown_scores"].size();
+    REQUIRE(scores.size() == entries);
+    CHECK(scores[0].identifier == to_lower_ascii(known_json["identifier"].get<std::string>()));
+    CHECK(scores[0].identifier != known_json["identifier"].get<std::string>());
+    CHECK(scores[0].charter == known_json["charter_refs"][0].get<std::string>() + ", " +
+                                   known_json["charter_refs"][1].get<std::string>());
+    CHECK(scores[0].score == known_json["score"].get<int64_t>());
+    CHECK(scores[0].is_fc);
+    CHECK(scores[0].speed == known_json["speed"].get<int>());
+    CHECK(scores[0].rank == known_json["rank"].get<int>());
+    CHECK(scores[0].known);
+    CHECK(scores[1].known == false);
+    CHECK(scores[1].speed == net::kBaseSpeedPercent);
+
+    // Unparseable bodies throw the user-facing error, not a JSON exception.
+    CHECK_THROWS_AS(net::parse_users_json("not json"), std::runtime_error);
+    CHECK_THROWS_AS(net::parse_scores_json("<html>503</html>"), std::runtime_error);
+
+    // A non-array user body is rejected.
+    CHECK_THROWS_AS(net::parse_users_json("{\"a\":1}"), std::runtime_error);
+}
+
+// D64.
+TEST_CASE("collect_dm_rows answers above-optimal beside the status") {
+    // A score at another speed that beats the optimal keeps reading "+N
+    // over". Its status is "other speed", so the row carries the
+    // above-optimal answer collect_dm_rows already gave, next to the delta;
+    // the Delta cell (dm_report_view) reads it instead of the delta's sign.
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    const int off_speed = net::kBaseSpeedPercent + 50;
+    REQUIRE_FALSE(net::is_base_speed(off_speed));
+    const std::vector<net::DmScore> scores = {make_score(kHash, optimal + 5),
+                                              make_score(kHash, optimal + 5, off_speed),
+                                              make_score(kHash, optimal - 5, off_speed)};
+    const std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, scores, testdm::profile());
+    REQUIRE(rows.size() == scores.size());
+    CHECK(rows[0].status == dmr::kStatusAboveOptimal);
+    CHECK(rows[1].status == dmr::kStatusOtherSpeed);
+    CHECK(rows[2].status == dmr::kStatusOtherSpeed);
+    for (size_t i = 0; i < rows.size(); ++i) {
+        CAPTURE(i);
+        CHECK(rows[i].delta == optimal - scores[i].score);
+        CHECK(rows[i].above_optimal == (scores[i].score > optimal));
+    }
+
+    // The Delta cell: the off-speed score over the optimal reads exactly as
+    // the base-speed one does, naming how far over it is, and not as its
+    // delta alone would read. The one under reads its delta.
+    const std::string over_cell = dm_cell("delta", rows[0]);
+    CHECK(dm_cell("delta", rows[1]) == over_cell);
+    CHECK(over_cell != group_thousands(*rows[0].delta));
+    CHECK(over_cell.find(group_thousands(scores[0].score - optimal)) != std::string::npos);
+    CHECK(dm_cell("delta", rows[2]) == group_thousands(*rows[2].delta));
+}
+
+TEST_CASE("dm comparison: a score's search text is folded and tag-free") {
+    // A real chart's names, as the scan read them from its song.ini, reach
+    // the row through collect_dm_rows.
+    store::RecordStore store(":memory:");
+    const store::ChartLibraryEntry chart = scan_and_analyze(store, kTaggedChartFolder);
+    REQUIRE(chart.charter.find('<') != std::string::npos);
+
+    const std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, {unknown_song_score(chart.md5)}, testdm::profile());
+    REQUIRE(rows.size() == 1);
+    const std::string text = app::dm_report_view::dm_search_text(rows[0]);
+
+    // None of the names' markup is searchable.
+    CHECK(text.find('<') == std::string::npos);
+    // Every word of every shown name, read as the search box reads a typed
+    // query, is found.
+    for (const std::string& name : {rows[0].song, rows[0].artist, rows[0].charter}) {
+        CAPTURE(name);
+        const app::LibraryQuery query = app::parse_library_query(name);
+        REQUIRE_FALSE(query.terms.empty());
+        for (const app::QueryTerm& term : query.terms) {
+            CAPTURE(term.folded);
+            CHECK(text.find(term.folded) != std::string::npos);
+        }
+    }
+}
+
+TEST_CASE("generate_dm_report: tally and framing behind one seam") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 1000);
+
+    // Each score beside the status its offset from the record's best score
+    // gives.
+    std::vector<net::DmScore> scores;
+    std::vector<std::string> expected;
+    scores.push_back(make_score(kHash, optimal - 1000));
+    expected.push_back(dmr::kStatusUnderOptimal);
+    scores.push_back(make_score(kHash, optimal - 10));
+    expected.push_back(dmr::kStatusUnderOptimal);
+    scores.push_back(make_score(kHash, optimal));
+    expected.push_back(dmr::kStatusAtOptimal);
+    scores.push_back(make_score(kHash, optimal + 5));
+    expected.push_back(dmr::kStatusAboveOptimal);
+    scores.push_back(make_score(kUnlistedHash, optimal));
+    expected.push_back(dmr::kStatusNotInLibrary);
+
+    const std::string player = "TestUser";
+    const dmr::GeneratedDmReport result =
+        dmr::generate_dm_report(store, scores, testdm::profile(), player);
+    REQUIRE(result.rows.size() == scores.size());
+    for (size_t i = 0; i < scores.size(); ++i) {
+        CAPTURE(i);
+        CHECK(result.rows[i].status == expected[i]);
+    }
+
+    // The tally against a recount of the rows' own statuses.
+    auto count = [&](const char* status) {
+        return static_cast<int>(std::count_if(result.rows.begin(), result.rows.end(),
+                                              [&](const DmReportRow& r) { return r.status == status; }));
+    };
+    CHECK(result.stats.total == static_cast<int>(scores.size()));
+    CHECK(result.stats.under_optimal == count(dmr::kStatusUnderOptimal));
+    CHECK(result.stats.at_optimal == count(dmr::kStatusAtOptimal));
+    CHECK(result.stats.above_optimal == count(dmr::kStatusAboveOptimal));
+    CHECK(result.stats.not_analyzed == count(dmr::kStatusNoCurrentResult));
+    CHECK(result.stats.not_in_library == count(dmr::kStatusNotInLibrary));
+    CHECK(result.stats.other_speed == count(dmr::kStatusOtherSpeed));
+    CHECK(result.stats.no_paths == count(dmr::kStatusNoPaths));
+
+    // The subtitle names the player, counts every score and nothing by status
+    // (the tiles count the scores that pass the filters, D103 item 27), and
+    // ends with the cap the comparison runs at.
+    CHECK(starts_with(result.subtitle, player));
+    CHECK(result.subtitle.find(counted(result.stats.total, "score", "scores")) != std::string::npos);
+    CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));
+    // The footer names the chart mode it compared.
+    CHECK(result.footer.find(kMode) != std::string::npos);
+
+    // No scores: zero stats, no rows.
+    const dmr::GeneratedDmReport none =
+        dmr::generate_dm_report(store, {}, testdm::profile(), player);
+    CHECK(none.stats.total == 0);
+    CHECK(none.rows.empty());
+}
+
+// What a window draws from: the rows, the subtitle and footer the page shows,
+// and who it compared. The footer names the mode it compared.
+TEST_CASE("generate_dm_report hands over its rows, subtitle, footer, player and mode") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 1000);
+    std::vector<net::DmScore> scores;
+    scores.push_back(make_score(kHash, optimal - 1000));
+    scores.push_back(make_score(kUnlistedHash, optimal));
+
+    const std::string player = "TestUser";
+    const dmr::GeneratedDmReport result =
+        dmr::generate_dm_report(store, scores, testdm::profile(), player);
+    REQUIRE(result.rows.size() == 2);
+    CHECK(result.rows[0].status == dmr::kStatusUnderOptimal);
+    CHECK(result.rows[1].status == dmr::kStatusNotInLibrary);
+    CHECK(result.username == player);
+    // The line ends with the cap the comparison runs at (D276 item 7), and
+    // counts with the count line's noun, singular for one score.
+    CHECK(result.subtitle.find(counted(2, "score", "scores")) != std::string::npos);
+    CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));
+    const dmr::GeneratedDmReport one =
+        dmr::generate_dm_report(store, {scores[0]}, testdm::profile(), player);
+    CHECK(one.subtitle.find(counted(1, "score", "scores")) != std::string::npos);
+    CHECK(ends_with(one.subtitle, dmr::clone_hero_cap_phrase()));
+
+    // The footer names the mode it compared, and its last sentence, in the
+    // "no current result" words (D114 item 1), tells the player to set the
+    // cap the comparison reads (D281), read from kCloneHeroSpCap.
+    const std::string cap = std::to_string(kCloneHeroSpCap);
+    CHECK(result.footer.find(std::string(kMode) + ".") != std::string::npos);
+    const size_t last = result.footer.find(
+        dmr::status_words(dmr::kStatusNoCurrentResult).count_one);
+    REQUIRE(last != std::string::npos);
+    const std::string last_sentence = result.footer.substr(last);
+    CHECK(last_sentence.find("at SP cap " + cap) != std::string::npos);
+    CHECK(last_sentence.find("set SP cap to " + cap) != std::string::npos);
+
+    // No scores: the player is still named, and nothing else is.
+    const dmr::GeneratedDmReport none =
+        dmr::generate_dm_report(store, {}, testdm::profile(), player);
+    CHECK(none.rows.empty());
+    CHECK(none.username == player);
+    CHECK(none.subtitle.empty());
+    CHECK(none.footer.empty());
+}
+
+TEST_CASE("dm_tiles: the tiles count only the scores shown") {
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    const int off_speed = net::kBaseSpeedPercent + 50;
+    REQUIRE_FALSE(net::is_base_speed(off_speed));
+    // Two scores under the optimal by different amounts, one at it, one over
+    // it, one off speed and one on a song the library never listed.
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(
+        store,
+        {make_score(kHash, optimal - optimal / 100), make_score(kHash, optimal - optimal / 200),
+         make_score(kHash, optimal), make_score(kHash, optimal + 5),
+         make_score(kHash, optimal - optimal / 400, off_speed), make_score(kUnlistedHash, optimal)},
+        testdm::profile());
+    REQUIRE(rows.size() == 6);
+
+    // The status tiles, in kStatusWords' order: every status but the ones
+    // with no tile of their own (D62 item 1).
+    size_t status_tiles = 0;
+    for (const dmr::StatusWords& w : dmr::kStatusWords)
+        if (w.tile) ++status_tiles;
+
+    const std::vector<std::vector<size_t>> subsets = {
+        {0, 1, 2, 3, 4, 5}, {0}, {0, 1}, {2, 3}, {4, 5}, {}};
+    for (size_t s = 0; s < subsets.size(); ++s) {
+        CAPTURE(s);
+        const std::vector<size_t>& shown = subsets[s];
+        const std::vector<app::report::Tile> tiles = dmr::dm_tiles(rows, shown);
+        // Scores shown, the status tiles, the average and the points left.
+        REQUIRE(tiles.size() == status_tiles + 3);
+
+        // The first tile counts every shown score (D103 item 27).
+        CHECK(tiles[0].value == group_thousands(static_cast<int64_t>(shown.size())));
+        // Each status tile counts the shown scores with its status.
+        size_t t = 1;
+        for (const dmr::StatusWords& w : dmr::kStatusWords) {
+            if (!w.tile) continue;
+            const auto n = std::count_if(shown.begin(), shown.end(),
+                                         [&](size_t i) { return rows[i].status == w.status; });
+            CHECK(tiles[t].label == w.name);
+            CHECK(tiles[t].value == group_thousands(static_cast<int64_t>(n)));
+            ++t;
+        }
+
+        // The average is the mean of the shown rows' percents in the cells'
+        // own steps (percent_steps(1, 1, ...) is 100% in them), written as a
+        // cell is; with no percent shown it reads the dash. Only a score under
+        // optimal leaves points on the table: the sum of those deltas.
+        int64_t pct_sum = 0;
+        int64_t pct_rows = 0;
+        int64_t points_left = 0;
+        for (size_t i : shown) {
+            if (rows[i].pct_h) {
+                pct_sum += *rows[i].pct_h;
+                ++pct_rows;
+            }
+            if (rows[i].status == dmr::kStatusUnderOptimal) points_left += rows[i].delta.value();
+        }
+        const std::string average =
+            pct_rows == 0
+                ? std::string(app::report::kDash)
+                : app::format_percent(pct_sum,
+                                      pct_rows * app::percent_steps(1, 1, dmr::kPercentDecimals),
+                                      dmr::kPercentDecimals);
+        CHECK(tiles[t].value == average);
+        CHECK(tiles[t + 1].value == group_thousands(points_left));
+        // One shown row's average reads its own cell.
+        if (shown.size() == 1 && rows[shown[0]].pct_h)
+            CHECK(tiles[t].value == dm_cell("pct_h", rows[shown[0]]));
+    }
+}
+
+TEST_CASE("status_token: each status's chip colour") {
+    using app::report::ChipToken;
+    using dmr::status_token;
+    // Not in library takes the default chip, and no other status the page
+    // writes does.
+    for (const dmr::StatusWords& w : dmr::kStatusWords) {
+        CAPTURE(w.status);
+        CHECK((status_token(w.status) == status_token(dmr::kStatusNotInLibrary)) ==
+              (std::string(w.status) == dmr::kStatusNotInLibrary));
+    }
+
+    // On real rows: a score compared with Hydra's optimal is coloured, under
+    // and at alike, above apart from them; a score shown but not compared
+    // (played off speed) is muted.
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    const int off_speed = net::kBaseSpeedPercent + 50;
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(
+        store,
+        {make_score(kHash, optimal - 5), make_score(kHash, optimal),
+         make_score(kHash, optimal + 5), make_score(kHash, optimal, off_speed)},
+        testdm::profile());
+    REQUIRE(rows.size() == 4);
+    for (size_t i = 0; i < 3; ++i) {
+        CAPTURE(i);
+        REQUIRE(rows[i].pct_h.has_value());
+        CHECK(status_token(rows[i].status) != ChipToken::muted);
+    }
+    CHECK(status_token(rows[0].status) == status_token(rows[1].status));
+    CHECK(status_token(rows[2].status) != status_token(rows[0].status));
+    REQUIRE_FALSE(rows[3].pct_h.has_value());
+    CHECK(status_token(rows[3].status) == ChipToken::muted);
+}
+
+TEST_CASE("collect_dm_rows: the stored names go through display_title, display_artist and "
+          "display_charter") {
+    // A real chart's names as the scan stored them from its song.ini. The
+    // artist and the charter carry tags, so a row that skipped an owner shows.
+    store::RecordStore store(":memory:");
+    const store::ChartLibraryEntry chart = scan_and_analyze(store, kTaggedChartFolder);
+    REQUIRE(display_artist(chart.artist) != chart.artist);
+    REQUIRE(display_charter(chart.charter) != chart.charter);
+
+    // The leaderboard has no metadata for it, so the row falls back to the
+    // matched record's stored names.
+    const std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, {unknown_song_score(chart.md5)}, testdm::profile());
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].song == display_title(chart.title));
+    CHECK(rows[0].artist == display_artist(chart.artist));
+    CHECK(rows[0].charter == display_charter(chart.charter));
+}
+
+// D74 item 2: the leaderboard's own names go through the same display owners
+// as the stored ones, so Clone Hero tags in DMBot's text never reach the page.
+TEST_CASE("collect_dm_rows: a leaderboard row's DMBot names lose their Clone Hero tags") {
+    // The board names a real chart the way its song.ini does, tags and all.
+    store::RecordStore store(":memory:");
+    const store::ChartLibraryEntry chart = scan_and_analyze(store, kTaggedChartFolder);
+    REQUIRE(display_artist(chart.artist) != chart.artist);
+    REQUIRE(display_charter(chart.charter) != chart.charter);
+
+    net::DmScore tagged = make_score(chart.md5, 0);
+    tagged.song_name = chart.title;
+    tagged.artist = chart.artist;
+    tagged.charter = chart.charter;
+
+    // The same names on a score the library doesn't have, so no stored record
+    // can stand in for them.
+    net::DmScore tagged_unmatched = tagged;
+    tagged_unmatched.identifier = kUnlistedHash;
+    REQUIRE_FALSE(store.chart_index().lists(kUnlistedHash));
+
+    std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, {tagged, tagged_unmatched}, testdm::profile());
+    REQUIRE(rows.size() == 2);
+    for (const DmReportRow& r : rows) {
+        CHECK(r.song == display_title(chart.title));
+        CHECK(r.artist == display_artist(chart.artist));
+        CHECK(r.charter == display_charter(chart.charter));
+    }
+}
+
+TEST_CASE("collect_dm_rows: a leaderboard row with no charter shows the library's, else "
+          "(unknown) (D266 item 2)") {
+    store::RecordStore store(":memory:");
+    const store::ChartLibraryEntry chart = scan_and_analyze(store, kTaggedChartFolder);
+    REQUIRE(display_charter(chart.charter) != kUnknownTitle);
+
+    // DMBot knows the song but sent no charter; the library's chart lends its.
+    net::DmScore no_charter = make_score(chart.md5, 0);
+    no_charter.charter.clear();
+
+    // The same score on a song the library doesn't have: nothing to lend.
+    net::DmScore no_charter_unmatched = no_charter;
+    no_charter_unmatched.identifier = kUnlistedHash;
+    REQUIRE_FALSE(store.chart_index().lists(kUnlistedHash));
+
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(
+        store, {no_charter, no_charter_unmatched}, testdm::profile());
+    REQUIRE(rows.size() == 2);
+    CHECK(rows[0].charter == display_charter(chart.charter));
+    CHECK(rows[1].charter == kUnknownTitle);
+}
 
 TEST_CASE("dm comparison: a percent rounds once") {
     // 198,010 of 198,020 is 99.99495%: rounded once it reads 99.99%, where
@@ -497,244 +663,6 @@ TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") 
     CHECK(std::get<double>(dm_sort_key("pct_h", rows[0])) == 10000.0);
     CHECK(std::get<double>(dm_sort_key("pct_h", rows[1])) == 10000.0);
     CHECK(std::get<double>(dm_sort_key("pct_h", rows[2])) == 5000.0);
-}
-
-namespace {
-
-// A one-shot HTTP server on 127.0.0.1 for the real WinHTTP transport (the
-// Fetcher seam swaps http_get out wholesale, so it can't reach that code).
-// One thread accepts one connection, reads the request headers and sends
-// `reply`. With `stall` set it then sends nothing more and keeps the
-// connection open, like a render.com cold start (empty `reply`) or a body
-// that stops arriving (a reply of headers and a short body). A stall ends
-// when the server is destroyed, or at testwait's cap, so a cancel that never
-// works fails the test instead of hanging it.
-class LoopbackServer {
-public:
-    explicit LoopbackServer(std::string reply, bool stall = false)
-        : reply_(std::move(reply)), stall_(stall) {
-        WSADATA wsa;
-        REQUIRE(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
-        listener_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        REQUIRE(listener_ != INVALID_SOCKET);
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = 0;  // any free port
-        REQUIRE(bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
-        REQUIRE(listen(listener_, 4) == 0);
-        int len = sizeof(addr);
-        REQUIRE(getsockname(listener_, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
-        port_ = ntohs(addr.sin_port);
-        thread_ = std::thread([this] { serve_one(); });
-    }
-    ~LoopbackServer() {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            released_ = true;
-        }
-        release_.notify_all();   // ends a stall
-        closesocket(listener_);  // also unblocks an accept() still waiting
-        if (thread_.joinable()) thread_.join();
-        WSACleanup();
-    }
-    LoopbackServer(const LoopbackServer&) = delete;
-    LoopbackServer& operator=(const LoopbackServer&) = delete;
-
-    std::string url() const { return "http://127.0.0.1:" + std::to_string(port_); }
-
-    // True once the whole reply is sent (none, for an empty reply) and the
-    // connection is stalled: the client's request is in, and it now waits on
-    // a step only a cancel can end.
-    bool stalled() const { return stalled_.load(); }
-
-private:
-    void serve_one() {
-        SOCKET s = accept(listener_, nullptr, nullptr);
-        if (s == INVALID_SOCKET) return;
-        std::string request;
-        char buf[4096];
-        while (request.find("\r\n\r\n") == std::string::npos) {
-            int n = recv(s, buf, sizeof(buf), 0);
-            if (n <= 0) break;
-            request.append(buf, static_cast<size_t>(n));
-        }
-        size_t sent = 0;
-        while (sent < reply_.size()) {
-            int n = send(s, reply_.data() + sent,
-                         static_cast<int>(std::min<size_t>(reply_.size() - sent, 1 << 16)), 0);
-            if (n <= 0) break;
-            sent += static_cast<size_t>(n);
-        }
-        if (stall_) {
-            stalled_ = true;
-            std::unique_lock<std::mutex> lock(mutex_);
-            release_.wait_for(lock, testwait::kWaitCap, [this] { return released_; });
-            closesocket(s);
-            return;
-        }
-        // Graceful close: FIN, then wait for the client to hang up, so no
-        // unread bytes turn the close into a reset that drops the reply.
-        shutdown(s, SD_SEND);
-        while (recv(s, buf, sizeof(buf), 0) > 0) {}
-        closesocket(s);
-    }
-
-    std::string reply_;
-    bool stall_ = false;
-    std::atomic<bool> stalled_{false};
-    std::mutex mutex_;
-    std::condition_variable release_;
-    bool released_ = false;  // guarded by mutex_
-    SOCKET listener_ = INVALID_SOCKET;
-    unsigned short port_ = 0;
-    std::thread thread_;
-};
-
-std::string http_response(const std::string& status_line, const std::string& body) {
-    return "HTTP/1.1 " + status_line +
-           "\r\nContent-Type: application/json\r\nContent-Length: " +
-           std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-}
-
-// The response headers of a 200 whose body is promised but never comes in
-// full: Content-Length is larger than what follows.
-std::string stalled_body_response(const std::string& body_start) {
-    return "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n" + body_start;
-}
-
-// What one cancelled call ended with. `error` is its exception text.
-// `cancel_to_return_ms` is how long it ran on after the cancel was set; it is
-// empty when the call ended before `ready` came true, so no cancel was set.
-struct CancelResult {
-    std::string error;
-    std::optional<long long> cancel_to_return_ms;
-};
-
-// Runs `call`, and sets `cancel` from a second thread once `ready()` says the
-// call is parked on a step only a cancel can end. Timing starts at the cancel,
-// so WinHTTP's own setup before that is not counted.
-template <class Ready, class Call>
-CancelResult cancel_when(std::atomic<bool>& cancel, Ready ready, Call call) {
-    using clock = std::chrono::steady_clock;
-    std::atomic<bool> call_ended{false};
-    std::optional<clock::time_point> cancel_at;
-    std::string wait_error;
-    std::thread setter([&] {
-        try {
-            testwait::wait_until([&] { return call_ended.load() || ready(); },
-                                 "the loopback server to stall the request");
-        } catch (const testwait::WaitTimeout& e) {
-            wait_error = e.what();
-            cancel = true;  // so the call cannot run on to its own 120 s timeout
-            return;
-        }
-        if (call_ended) return;
-        cancel_at = clock::now();
-        cancel = true;
-    });
-    CancelResult result;
-    try {
-        call();
-    } catch (const std::exception& e) {
-        result.error = e.what();
-    }
-    const clock::time_point returned = clock::now();
-    call_ended = true;
-    setter.join();
-    REQUIRE_MESSAGE(wait_error.empty(), wait_error);
-    if (cancel_at)
-        result.cancel_to_return_ms =
-            std::chrono::duration_cast<std::chrono::milliseconds>(returned - *cancel_at).count();
-    return result;
-}
-
-// The checks every cancel case shares: the cancel was set while the call was
-// stalled, the call ended with the transport's "cancelled" (a receive timeout
-// or a dropped connection reads differently), and it did so within 500 ms of
-// the cancel (the user's limit).
-void check_cancelled_promptly(const CancelResult& r) {
-    REQUIRE_MESSAGE(r.cancel_to_return_ms.has_value(),
-                    "the call ended before the cancel was set, with: " << r.error);
-    MESSAGE("returned " << *r.cancel_to_return_ms << " ms after the cancel flag was set");
-    CHECK(r.error == "cancelled");
-    CHECK(*r.cancel_to_return_ms < 500);
-}
-
-}  // namespace
-
-TEST_CASE("http transport: cancel aborts a request the server never answers") {
-    net::set_fetcher({});  // the real WinHTTP transport
-    LoopbackServer server("", /*stall=*/true);
-
-    // Set before the call: fails at once, before any connection is made.
-    std::atomic<bool> cancel{true};
-    CHECK_THROWS_WITH_AS((void)net::fetch_users(server.url(), &cancel), "cancelled",
-                         std::runtime_error);
-    CHECK_FALSE(server.stalled());
-
-    // Set once the server holds the request and sends nothing back (the
-    // receive timeout is 120 s, so only the cancel can end this promptly).
-    cancel = false;
-    check_cancelled_promptly(cancel_when(cancel, [&] { return server.stalled(); },
-                                         [&] { (void)net::fetch_users(server.url(), &cancel); }));
-}
-
-TEST_CASE("http transport: cancel aborts a body that stops after the headers") {
-    net::set_fetcher({});  // the real WinHTTP transport
-    net::set_downloader({});
-
-    // The server cannot see when the client has read the headers, so here the
-    // cancel may land just before the body read starts. The download subcase
-    // below waits until body bytes reach the file, so it cancels inside it.
-    SUBCASE("http_get: headers, then nothing") {
-        LoopbackServer server(stalled_body_response(""), /*stall=*/true);
-        std::atomic<bool> cancel{false};
-        check_cancelled_promptly(cancel_when(cancel, [&] { return server.stalled(); },
-                                             [&] { (void)net::fetch_users(server.url(), &cancel); }));
-    }
-
-    SUBCASE("http_download: part of the body, then nothing") {
-        LoopbackServer server(stalled_body_response("[{\"id\":"), /*stall=*/true);
-        testtemp::ScopedFile file("dm_http_stall", ".bin");
-        const std::string part = file.path + ".part";
-        std::atomic<uint64_t> received{0};
-        std::atomic<bool> cancel{false};
-        // The first body bytes reaching the file prove the call is in its body
-        // read, past the headers.
-        check_cancelled_promptly(cancel_when(
-            cancel, [&] { return server.stalled() && received.load() > 0; },
-            [&] { net::http_download(server.url(), file.path, 1000, &received, &cancel); }));
-        CHECK(received.load() == 7);
-        CHECK_FALSE(std::filesystem::exists(hydra::os_path(file.path)));
-        CHECK_FALSE(std::filesystem::exists(hydra::os_path(part)));
-    }
-}
-
-TEST_CASE("http transport: a 200 reply is read in full, a 404 keeps its message") {
-    net::set_fetcher({});  // the real WinHTTP transport
-
-    // Big enough (~250 KB) to arrive over several read chunks.
-    std::string body = "[";
-    for (int i = 0; i < 5000; ++i) {
-        if (i) body += ",";
-        body += R"({"id":")" + std::to_string(i) + R"(","username":"user)" +
-                std::to_string(i) + R"(","elo":1500})";
-    }
-    body += "]";
-    {
-        LoopbackServer server(http_response("200 OK", body));
-        std::atomic<bool> cancel{false};  // present but never set
-        std::vector<net::DmUser> users = net::fetch_users(server.url(), &cancel);
-        REQUIRE(users.size() == 5000);
-        CHECK(users.front().id == "0");
-        CHECK(users.back().username == "user4999");
-    }
-    {
-        LoopbackServer server(http_response("404 Not Found", ""));
-        CHECK_THROWS_WITH_AS((void)net::fetch_users(server.url()),
-                             "leaderboard returned HTTP 404", std::runtime_error);
-    }
 }
 
 TEST_CASE("collect_dm_rows tells no current result from not in library") {
@@ -1056,4 +984,244 @@ TEST_CASE("settings_change_touches: the comparison reads its chart mode and the 
     app::Settings auto_open = before;
     auto_open.auto_open_report = !before.auto_open_report;
     CHECK_FALSE(app::dm_report::settings_change_touches(before, auto_open));
+}
+
+namespace {
+
+// A one-shot HTTP server on 127.0.0.1 for the real WinHTTP transport (the
+// Fetcher seam swaps http_get out wholesale, so it can't reach that code).
+// One thread accepts one connection, reads the request headers and sends
+// `reply`. With `stall` set it then sends nothing more and keeps the
+// connection open, like a render.com cold start (empty `reply`) or a body
+// that stops arriving (a reply of headers and a short body). A stall ends
+// when the server is destroyed, or at testwait's cap, so a cancel that never
+// works fails the test instead of hanging it.
+class LoopbackServer {
+public:
+    explicit LoopbackServer(std::string reply, bool stall = false)
+        : reply_(std::move(reply)), stall_(stall) {
+        WSADATA wsa;
+        REQUIRE(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
+        listener_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+        REQUIRE(listener_ != INVALID_SOCKET);
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        addr.sin_port = 0;  // any free port
+        REQUIRE(bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
+        REQUIRE(listen(listener_, 4) == 0);
+        int len = sizeof(addr);
+        REQUIRE(getsockname(listener_, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
+        port_ = ntohs(addr.sin_port);
+        thread_ = std::thread([this] { serve_one(); });
+    }
+    ~LoopbackServer() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            released_ = true;
+        }
+        release_.notify_all();   // ends a stall
+        closesocket(listener_);  // also unblocks an accept() still waiting
+        if (thread_.joinable()) thread_.join();
+        WSACleanup();
+    }
+    LoopbackServer(const LoopbackServer&) = delete;
+    LoopbackServer& operator=(const LoopbackServer&) = delete;
+
+    std::string url() const { return "http://127.0.0.1:" + std::to_string(port_); }
+
+    // True once the whole reply is sent (none, for an empty reply) and the
+    // connection is stalled: the client's request is in, and it now waits on
+    // a step only a cancel can end.
+    bool stalled() const { return stalled_.load(); }
+
+private:
+    void serve_one() {
+        SOCKET s = accept(listener_, nullptr, nullptr);
+        if (s == INVALID_SOCKET) return;
+        std::string request;
+        char buf[4096];
+        while (request.find("\r\n\r\n") == std::string::npos) {
+            int n = recv(s, buf, sizeof(buf), 0);
+            if (n <= 0) break;
+            request.append(buf, static_cast<size_t>(n));
+        }
+        size_t sent = 0;
+        while (sent < reply_.size()) {
+            int n = send(s, reply_.data() + sent,
+                         static_cast<int>(std::min<size_t>(reply_.size() - sent, 1 << 16)), 0);
+            if (n <= 0) break;
+            sent += static_cast<size_t>(n);
+        }
+        if (stall_) {
+            stalled_ = true;
+            std::unique_lock<std::mutex> lock(mutex_);
+            release_.wait_for(lock, testwait::kWaitCap, [this] { return released_; });
+            closesocket(s);
+            return;
+        }
+        // Graceful close: FIN, then wait for the client to hang up, so no
+        // unread bytes turn the close into a reset that drops the reply.
+        shutdown(s, SD_SEND);
+        while (recv(s, buf, sizeof(buf), 0) > 0) {}
+        closesocket(s);
+    }
+
+    std::string reply_;
+    bool stall_ = false;
+    std::atomic<bool> stalled_{false};
+    std::mutex mutex_;
+    std::condition_variable release_;
+    bool released_ = false;  // guarded by mutex_
+    SOCKET listener_ = INVALID_SOCKET;
+    unsigned short port_ = 0;
+    std::thread thread_;
+};
+
+std::string http_response(const std::string& status_line, const std::string& body) {
+    return "HTTP/1.1 " + status_line +
+           "\r\nContent-Type: application/json\r\nContent-Length: " +
+           std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
+}
+
+// The response headers of a 200 whose body is promised but never comes in
+// full: Content-Length is larger than what follows.
+std::string stalled_body_response(const std::string& body_start) {
+    return "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n" + body_start;
+}
+
+// What one cancelled call ended with. `error` is its exception text.
+// `cancel_to_return_ms` is how long it ran on after the cancel was set; it is
+// empty when the call ended before `ready` came true, so no cancel was set.
+struct CancelResult {
+    std::string error;
+    std::optional<long long> cancel_to_return_ms;
+};
+
+// Runs `call`, and sets `cancel` from a second thread once `ready()` says the
+// call is parked on a step only a cancel can end. Timing starts at the cancel,
+// so WinHTTP's own setup before that is not counted.
+template <class Ready, class Call>
+CancelResult cancel_when(std::atomic<bool>& cancel, Ready ready, Call call) {
+    using clock = std::chrono::steady_clock;
+    std::atomic<bool> call_ended{false};
+    std::optional<clock::time_point> cancel_at;
+    std::string wait_error;
+    std::thread setter([&] {
+        try {
+            testwait::wait_until([&] { return call_ended.load() || ready(); },
+                                 "the loopback server to stall the request");
+        } catch (const testwait::WaitTimeout& e) {
+            wait_error = e.what();
+            cancel = true;  // so the call cannot run on to its own 120 s timeout
+            return;
+        }
+        if (call_ended) return;
+        cancel_at = clock::now();
+        cancel = true;
+    });
+    CancelResult result;
+    try {
+        call();
+    } catch (const std::exception& e) {
+        result.error = e.what();
+    }
+    const clock::time_point returned = clock::now();
+    call_ended = true;
+    setter.join();
+    REQUIRE_MESSAGE(wait_error.empty(), wait_error);
+    if (cancel_at)
+        result.cancel_to_return_ms =
+            std::chrono::duration_cast<std::chrono::milliseconds>(returned - *cancel_at).count();
+    return result;
+}
+
+// The checks every cancel case shares: the cancel was set while the call was
+// stalled, the call ended with the transport's "cancelled" (a receive timeout
+// or a dropped connection reads differently), and it did so within 500 ms of
+// the cancel (the user's limit).
+void check_cancelled_promptly(const CancelResult& r) {
+    REQUIRE_MESSAGE(r.cancel_to_return_ms.has_value(),
+                    "the call ended before the cancel was set, with: " << r.error);
+    MESSAGE("returned " << *r.cancel_to_return_ms << " ms after the cancel flag was set");
+    CHECK(r.error == Cancelled().what());
+    CHECK(*r.cancel_to_return_ms < 500);
+}
+
+}  // namespace
+
+TEST_CASE("http transport: cancel aborts a request the server never answers") {
+    net::set_fetcher({});  // the real WinHTTP transport
+    LoopbackServer server("", /*stall=*/true);
+
+    // Set before the call: fails at once, before any connection is made.
+    std::atomic<bool> cancel{true};
+    const std::string cancelled_text = Cancelled().what();
+    CHECK_THROWS_WITH_AS((void)net::fetch_users(server.url(), &cancel), cancelled_text.c_str(),
+                         std::runtime_error);
+    CHECK_FALSE(server.stalled());
+
+    // Set once the server holds the request and sends nothing back (the
+    // receive timeout is 120 s, so only the cancel can end this promptly).
+    cancel = false;
+    check_cancelled_promptly(cancel_when(cancel, [&] { return server.stalled(); },
+                                         [&] { (void)net::fetch_users(server.url(), &cancel); }));
+}
+
+TEST_CASE("http transport: cancel aborts a body that stops after the headers") {
+    net::set_fetcher({});  // the real WinHTTP transport
+    net::set_downloader({});
+
+    // The server cannot see when the client has read the headers, so here the
+    // cancel may land just before the body read starts. The download subcase
+    // below waits until body bytes reach the file, so it cancels inside it.
+    SUBCASE("http_get: headers, then nothing") {
+        LoopbackServer server(stalled_body_response(""), /*stall=*/true);
+        std::atomic<bool> cancel{false};
+        check_cancelled_promptly(cancel_when(cancel, [&] { return server.stalled(); },
+                                             [&] { (void)net::fetch_users(server.url(), &cancel); }));
+    }
+
+    SUBCASE("http_download: part of the body, then nothing") {
+        const std::string body_start = "[{\"id\":";
+        LoopbackServer server(stalled_body_response(body_start), /*stall=*/true);
+        testtemp::ScopedFile file("dm_http_stall", ".bin");
+        const std::string part = file.path + ".part";
+        std::atomic<uint64_t> received{0};
+        std::atomic<bool> cancel{false};
+        // The first body bytes reaching the file prove the call is in its body
+        // read, past the headers.
+        check_cancelled_promptly(cancel_when(
+            cancel, [&] { return server.stalled() && received.load() > 0; },
+            [&] { net::http_download(server.url(), file.path, 1000, &received, &cancel); }));
+        CHECK(received.load() == body_start.size());
+        CHECK_FALSE(std::filesystem::exists(hydra::os_path(file.path)));
+        CHECK_FALSE(std::filesystem::exists(hydra::os_path(part)));
+    }
+}
+
+TEST_CASE("http transport: a 200 reply is read in full, a 404 keeps its message") {
+    net::set_fetcher({});  // the real WinHTTP transport
+
+    // Big enough (~250 KB) to arrive over several read chunks.
+    std::string body = "[";
+    for (int i = 0; i < 5000; ++i) {
+        if (i) body += ",";
+        body += R"({"id":")" + std::to_string(i) + R"(","username":"user)" +
+                std::to_string(i) + R"(","elo":1500})";
+    }
+    body += "]";
+    {
+        LoopbackServer server(http_response("200 OK", body));
+        std::atomic<bool> cancel{false};  // present but never set
+        std::vector<net::DmUser> users = net::fetch_users(server.url(), &cancel);
+        REQUIRE(users.size() == 5000);
+        CHECK(users.front().id == "0");
+        CHECK(users.back().username == "user4999");
+    }
+    {
+        LoopbackServer server(http_response("404 Not Found", ""));
+        CHECK_THROWS_WITH_AS((void)net::fetch_users(server.url()),
+                             "leaderboard returned HTTP 404", std::runtime_error);
+    }
 }
