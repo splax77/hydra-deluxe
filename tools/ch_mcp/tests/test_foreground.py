@@ -1,15 +1,23 @@
-"""Tests for foreground.ForegroundWatch on scripted front windows.
+"""Tests for foreground.ForegroundWatch on this machine's real desktop.
 
-No real window is read: the front window and the game's window are scripts.
+The watch reads the real front window with foreground.foreground_window and
+stamps events with the real clock. The window it watches as "the game" is a
+real window each test creates and never shows, so it can never come to the
+front: no test brings a window forward or sends input, and none reaches
+Clone Hero. The count lines are checked against ch_stop replies recorded in
+real runs, under testdata/ch_runs.
 """
 
 from __future__ import annotations
 
+import ctypes
 import os
+import re
 import sys
 import threading
 import time
 import unittest
+from ctypes import wintypes
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -18,127 +26,119 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import foreground as F  # noqa: E402
 
-GAME = 0x1234
-USER = 0x0AAA
-OTHER = 0x0BBB
 # How long a test waits on the watch's thread before it fails instead of hanging.
 THREAD_CAP_S = 5.0
 
+_CH_RUNS = os.path.join(_REPO_ROOT, "testdata", "ch_runs")
+# The foreground lines of three real ch_stop replies, copied from the
+# replies.txt of the run folders of the same name under
+# hydra-data/ch-mcp-runs (2026-10-31/ls-d0-run1, 2026-10-31/ls-d1a-run2 and
+# 2026-11-07/ls-r4-run1).
+RECORDED_STOPS = [os.path.join(_CH_RUNS, run, "ch_stop-foreground.txt")
+                  for run in ("ls-r4-run1", "ls-d0-run1", "ls-d1a-run2")]
 
-class Script:
-    """Hands out the scripted front windows one per poll, then repeats the last."""
-
-    def __init__(self, handles):
-        self.handles = list(handles)
-        self.i = 0
-
-    def __call__(self) -> int:
-        handle = self.handles[min(self.i, len(self.handles) - 1)]
-        self.i += 1
-        return handle
-
-
-def _watch(handles, game=lambda: GAME):
-    clock = iter(range(1000))
-    return F.ForegroundWatch(game, Script(handles), lambda: float(next(clock)),
-                             lambda s: None)
+# A user32 of the tests' own, so the argument types set here do not change the
+# functions foreground.py calls through ctypes.windll.
+_user32 = ctypes.WinDLL("user32", use_last_error=True)
+_user32.CreateWindowExW.restype = wintypes.HWND
+_user32.CreateWindowExW.argtypes = [
+    wintypes.DWORD, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD,
+    ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+    wintypes.HWND, wintypes.HMENU, wintypes.HINSTANCE, wintypes.LPVOID]
+_user32.DestroyWindow.argtypes = [wintypes.HWND]
+_user32.DestroyWindow.restype = wintypes.BOOL
+_user32.IsWindowVisible.argtypes = [wintypes.HWND]
+_user32.IsWindowVisible.restype = wintypes.BOOL
 
 
 class ForegroundWatchTest(unittest.TestCase):
-    def test_the_poll_is_the_users_tenth_of_a_second(self):
-        self.assertEqual(F.FOREGROUND_POLL_S, 0.1)
-        self.assertEqual(_watch([USER]).poll_s, 0.1)
+    def _hidden_window(self) -> int:
+        """A real top-level window that is never shown, so it never comes to
+        the front. It is destroyed when the test ends."""
+        hwnd = _user32.CreateWindowExW(0, "STATIC", "hydra test_foreground", 0,
+                                       0, 0, 0, 0, None, None, None, None)
+        if not hwnd:
+            self.fail(f"CreateWindowExW failed: error {ctypes.get_last_error()}")
+        self.addCleanup(_user32.DestroyWindow, hwnd)
+        self.assertFalse(_user32.IsWindowVisible(hwnd))
+        return hwnd
 
-    def test_counts_two_changes_to_the_game_and_none_for_other_windows(self):
-        w = _watch([USER, GAME, GAME, OTHER, USER, GAME, GAME, OTHER])
-        for _ in range(8):
-            w.poll()
-        self.assertEqual(w.count, 2)
-        self.assertEqual([h for _t, h in w.events], [USER, GAME, OTHER, USER, GAME, OTHER])
+    def _running_watch(self, game: int, polls: int = 1):
+        """Start a watch the way ch_start does (the real front-window reader,
+        the real clock, the default poll time), on the window `game`, and
+        return it once its thread has polled `polls` times, with the poll
+        times it was asked to sleep. The wait fails at once when the thread
+        ends before that, since no more polls can come."""
+        slept = []
+        enough = threading.Event()
 
-    def test_other_windows_alone_count_nothing(self):
-        w = _watch([USER, OTHER, USER, OTHER])
-        for _ in range(4):
-            w.poll()
-        self.assertEqual(w.count, 0)
-        self.assertEqual(len(w.events), 4)
+        def sleep(s):
+            slept.append(s)
+            if len(slept) >= polls:
+                enough.set()
+            time.sleep(s)
 
-    def test_a_game_in_front_at_the_first_poll_counts(self):
-        w = _watch([GAME])
-        w.poll()
-        self.assertEqual(w.count, 1)
-
-    def test_a_game_window_found_one_poll_late_still_counts_once(self):
-        found = Script([0, GAME, GAME])
-        w = _watch([GAME, GAME, GAME], game=found)
-        for _ in range(3):
-            w.poll()
-        self.assertEqual(w.count, 1)
-
-    def test_no_game_window_never_counts_an_empty_front(self):
-        w = _watch([0, 0], game=lambda: 0)
-        w.poll()
-        w.poll()
-        self.assertEqual(w.count, 0)
-
-    def test_nothing_counts_after_stop(self):
-        w = _watch([USER, GAME])
-        w.poll()
-        w.stop()
-        w.poll()
-        self.assertEqual(w.count, 0)
-        self.assertEqual(w.events, [(0.0, USER)])
-
-    def test_the_thread_polls_until_stop_and_the_line_says_the_count(self):
-        handles = [USER, GAME, USER]
-        done = threading.Event()
-        script = Script(handles)
-
-        def sleep(_s):
-            if script.i >= len(handles):
-                done.set()
-            time.sleep(0.001)
-
-        w = F.ForegroundWatch(lambda: GAME, script, time.monotonic, sleep)
+        w = F.ForegroundWatch(lambda: game, F.foreground_window, time.monotonic, sleep)
         w.start()
-        self.assertTrue(done.wait(THREAD_CAP_S))
-        first, times = w.line().splitlines()
-        self.assertEqual(first, "foreground went to the game 1 time so far")
-        self.assertTrue(times.startswith("foreground went to the game at (since the watch started): "))
-        w.stop()
-        self.assertEqual(w.count, 1)
-        self.assertEqual(w.line().splitlines()[0], "foreground went to the game 1 time")
+        self.addCleanup(w.stop)
+        deadline = time.monotonic() + THREAD_CAP_S
+        while not enough.wait(0.01):
+            if not w._thread.is_alive():
+                self.fail(f"the watch's thread ended after {len(slept)} polls: {w.error}")
+            if time.monotonic() > deadline:
+                self.fail(f"the watch's thread polled {len(slept)} times in {THREAD_CAP_S} s")
+        return w, slept
 
-    def test_the_line_lists_when_the_game_came_forward_since_the_start(self):
-        now = iter([100.0, 100.5, 112.5, 130.0, 131.0])  # start, USER, GAME, OTHER, GAME
-        w = F.ForegroundWatch(lambda: GAME, Script([USER, GAME, OTHER, GAME]),
-                              lambda: next(now), lambda s: None)
-        w._started_at = w._now()  # what start() records
-        for _ in range(4):
-            w.poll()
-        self.assertEqual(w.game_times, [112.5, 131.0])
-        self.assertEqual(w.line().splitlines(), [
-            "foreground went to the game 2 times",
-            "foreground went to the game at (since the watch started): 12.5 s, 31.0 s"])
+    def test_the_watch_waits_the_poll_time_between_two_polls(self):
+        _w, slept = self._running_watch(self._hidden_window(), polls=2)
+        self.assertEqual(slept[:2], [F.FOREGROUND_POLL_S, F.FOREGROUND_POLL_S])
+
+    def test_a_game_window_that_stays_behind_counts_nothing(self):
+        game = self._hidden_window()
+        w, _slept = self._running_watch(game, polls=3)
+        w.stop()
+        self.assertEqual(w.count, 0)
+        self.assertEqual(w.game_times, [])
+        # The first poll records the real front window as a change.
+        self.assertGreaterEqual(len(w.events), 1)
+        self.assertNotIn(game, [h for _t, h in w.events])
+
+    def test_the_line_is_marked_unfinished_while_the_watch_runs(self):
+        w, _slept = self._running_watch(self._hidden_window())
+        running = w.line()
+        w.stop()
+        stopped = w.line()
+        self.assertEqual(stopped, F.count_line(w.count))
+        self.assertTrue(running.startswith(F.count_line(w.count)))
+        self.assertNotEqual(running, stopped)
 
     def test_the_line_has_no_times_while_the_game_never_came_forward(self):
-        w = _watch([USER, OTHER])
-        w.poll()
-        w.poll()
-        self.assertEqual(w.line(), "foreground went to the game 0 times")
+        w, _slept = self._running_watch(self._hidden_window(), polls=2)
+        w.stop()
+        self.assertEqual(w.line().splitlines(), [F.count_line(0)])
 
-    def test_a_poll_that_raises_ends_the_watch_and_the_line_says_why(self):
-        def broken():
-            raise OSError("no desktop")
+    def test_nothing_is_recorded_after_stop(self):
+        game = self._hidden_window()
+        polled = F.ForegroundWatch(lambda: game, F.foreground_window, time.monotonic,
+                                   time.sleep)
+        polled.poll()
+        # The first poll of a watch records the front window, whatever it is.
+        self.assertEqual(len(polled.events), 1)
+        stopped = F.ForegroundWatch(lambda: game, F.foreground_window, time.monotonic,
+                                    time.sleep)
+        stopped.stop()
+        stopped.poll()
+        self.assertEqual(stopped.events, [])
+        self.assertEqual(stopped.count, 0)
 
-        w = F.ForegroundWatch(lambda: GAME, broken, time.monotonic, lambda s: None)
-        w._loop()  # the thread's body, run here so the test needs no wait
-        self.assertEqual(w.line(), "foreground went to the game 0 times before the watch "
-                                   "failed: OSError: no desktop")
-
-    def test_count_line_words(self):
-        self.assertEqual(F.count_line(0), "foreground went to the game 0 times")
-        self.assertEqual(F.count_line(2), "foreground went to the game 2 times")
+    def test_the_count_line_reads_as_real_runs_recorded_it(self):
+        for path in RECORDED_STOPS:
+            with self.subTest(path=path):
+                with open(path, encoding="utf-8") as f:
+                    header, recorded = f.read().splitlines()
+                self.assertEqual(header, "== ch_stop")
+                count = int(re.search(r"\d+", recorded).group())
+                self.assertEqual(F.count_line(count), recorded)
 
 
 if __name__ == "__main__":
