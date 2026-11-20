@@ -73,11 +73,6 @@ std::set<NoteColor> kept_colours(const std::set<NoteColor>& colours) {
     return out;
 }
 
-// A side at the floor and at the cap: half of TM-21's whole window at a
-// summed gap of 75 and of 170 (TM-22 prints them as 48.15 and 85.72).
-const doctest::Approx kFloorSide = doctest::Approx(96.2931672 / 2);
-const doctest::Approx kCapSide = doctest::Approx(171.4313075 / 2);
-
 // Every stored path of every corpus chart that has notes under `cfg`:
 // replayed, and its schedule built by schedule::schedule_json.
 // `check` gets the chart's path, its song, the path's activations in walk
@@ -284,53 +279,54 @@ TEST_CASE("schedule: ends_sp marks the chord where each window's Star Power is o
 }
 
 TEST_CASE("schedule: the window constants are written") {
-    // The formula's own values are pinned in tests/test_note_window.cpp.
+    // The constants the file writes are the ones its presses use: the
+    // window's edges are core/note_window.h's, the game judges a press one
+    // frame after it is sent, a plain press aims press_lead_ms early, and a
+    // press's last send is its chord's side less one frame.
     const Song song = plain_song({0, 768});
     const ReplayResult r = replay_path(song, {});
-    const json c = schedule::schedule_json(song, {}, r, core::default_rules())["constants"];
-    CHECK(c["frame_ms"].get<double>() == 3.0);
-    CHECK(c["judge_early_ms"].get<double>() == 3.0);
-    CHECK_FALSE(c.contains("judge_late_ms"));  // one frame everywhere (D319 item 3)
-    CHECK(c["press_lead_ms"].get<double>() == 2.0);
-    CHECK(c["sp_end_lead_ms"].get<double>() == 15.0);
-    CHECK(c["sp_out_lag_ms"].get<double>() == 15.0);
-    CHECK(c["chord_order_gap_ms"].get<double>() == 8.0);
-    CHECK(c["room_margin_ms"].get<double>() == 3.0);
-    CHECK(c["window_front_ms"].get<double>() == 37.5);
-    CHECK(c["window_back_ms"].get<double>() == 85.0);
+    const json s = schedule::schedule_json(song, {}, r, core::default_rules());
+    const json& c = s["constants"];
+    CHECK(c["window_front_ms"].get<double>() == kWindowFrontMs);
+    CHECK(c["window_back_ms"].get<double>() == kWindowBackMs);
+    CHECK(c["judge_early_ms"].get<double>() == c["frame_ms"].get<double>());
+    CHECK_FALSE(c.contains("judge_late_ms"));
+    REQUIRE(s["presses"].size() == song.sequence.size());
+    for (const json& p : s["presses"]) {
+        const json& row = s["chords"][p["chord"].get<size_t>()];
+        CHECK(p["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
+        CHECK(p["last_send_ms"].get<double>() ==
+              doctest::Approx(row["ms"].get<double>() + row["side_ms"].get<double>() - c["frame_ms"].get<double>()));
+    }
 }
 
 TEST_CASE("schedule: sides come from the whole chart") {
-    // Chords 20 ticks (52.08 ms) apart: the middle one's half-gaps both
-    // clamp to the front, so its side is the floor, as Freak's chord 263
-    // gets from neighbours 56.18 ms away. The sides are read off the whole
-    // chord list the file writes, never a pruned one.
-    {
-        const Song song = plain_song({0, 20, 40});
+    // Each chord's side is core::chord_sides_ms over the whole chord list the
+    // file writes, never a pruned one. The floor is the side between two
+    // neighbours whose half-gaps both sit on the window's front edge, the cap
+    // the side between two on its back edge.
+    const double floor_side = window_side_ms(2 * kWindowFrontMs, 2 * kWindowFrontMs);
+    const double cap_side = window_side_ms(2 * kWindowBackMs, 2 * kWindowBackMs);
+    const auto middle_side = [](const Song& song) {
         const ReplayResult r = replay_path(song, {});
         const json s = schedule::schedule_json(song, {}, r, core::default_rules());
         REQUIRE(s["chords"].size() == 3);
-        CHECK(s["chords"][1]["side_ms"].get<double>() == kFloorSide);
-    }
-    // Chords 917 ticks (2,388 ms) and 2,999 ticks (7,810 ms) either side of
-    // the middle one: both half-gaps clamp to the back, so the side is the cap.
-    {
-        const Song song = plain_song({0, 917, 917 + 2999});
-        const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, core::default_rules());
-        REQUIRE(s["chords"].size() == 3);
-        CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
-    }
+        std::vector<double> ms;
+        for (const json& row : s["chords"]) ms.push_back(row["ms"].get<double>());
+        const double side = s["chords"][1]["side_ms"].get<double>();
+        CHECK(side == doctest::Approx(chord_sides_ms(ms)[1]));
+        return side;
+    };
+    // Chords 20 ticks (52.08 ms) apart: both half-gaps clamp to the front.
+    CHECK(middle_side(plain_song({0, 20, 40})) == doctest::Approx(floor_side));
+    // Chords 917 ticks (2,388 ms) and 2,999 ticks (7,810 ms) either side:
+    // both half-gaps clamp to the back.
+    CHECK(middle_side(plain_song({0, 917, 917 + 2999})) == doctest::Approx(cap_side));
     // A chord's own gems are not each other's neighbours (TM-51): a
     // two-gem chord between far neighbours still gets the cap.
-    {
-        Song song = plain_song({0, 917, 917 + 2999});
-        song.sequence[1].chord.add_note(NoteColor::Kick);
-        const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, core::default_rules());
-        REQUIRE(s["chords"][1]["gems"].size() == 2);
-        CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
-    }
+    Song two_gems = plain_song({0, 917, 917 + 2999});
+    two_gems.sequence[1].chord.add_note(NoteColor::Kick);
+    CHECK(middle_side(two_gems) == doctest::Approx(cap_side));
 }
 
 TEST_CASE("schedule: a missing --path refuses by name") {
