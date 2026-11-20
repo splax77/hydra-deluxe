@@ -272,15 +272,16 @@ listed once, in `search_tips()` in src/app/library_query.h; the library's
 Search tips popup draws that list.
 
 **Batch time left**:
-The batch strip's estimate of how long the rest of a batch will take: the
-charts still to go over the rate across the last 2W finished charts, W being
-the run's worker count (`kTimeLeftWorkerRounds` in src/ui/library_jobs.h). It
-shows nothing until that many have finished, and changes at most once a
-second. Paused time never counts inside the window, because the finishes are
-timed on the batch clock, which leaves pauses out. The rate, the window and
-the hold are `app::TimeLeftClock`'s (src/app/time_left.h), which the Song
-Preview's loading bar reads too, over its own last second of bytes (D271
-item 4, D276 item 8, D283).
+The batch strip's estimate of how long the rest of a batch will take. The
+speed is the rows done over the batch time so far, an average since the batch
+started. The time left is the rows still to go over that speed. Both are
+measured on the batch clock, which leaves paused time out. It shows nothing
+until 2W rows have finished, W being the run's worker count, and changes at
+most once a second. The user chose this rule: "C: average since start
+(Recommended)", decision D352. The speed, the gate and the hold are
+`app::TimeLeftClock`'s (src/app/time_left.h), which the Song Preview's
+loading bar reads too, over its own last second of bytes (D271 item 4, D276
+item 8).
 
 **Batch counts**:
 A batch's three counts: analyzed, failed, and skipped (rows that already had a
