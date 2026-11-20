@@ -843,22 +843,31 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     std::vector<corpus::ChartWithPaths> charts =
         corpus::charts_with_paths(legacy.batch_run().settings, 1);
     REQUIRE(charts.size() == 1);
-    store.rebuild_chart_library({library_entry_for_file("h0", "Title 0", charts[0].chart)});
-    testdm::save(store, "h0", legacy, charts[0].result.record);
+    const store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "Title 0");
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, legacy, charts[0].result.record);
 
     const report::GeneratedReport ch10 =
         report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
     CHECK(ch10.songs == 1);
     REQUIRE_FALSE(ch10.paths.empty());
-    for (const report::ReportRow& r : ch10.paths) CHECK(r.song == "Title 0");
-    CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
+    for (const report::ReportRow& r : ch10.paths) CHECK(r.hyhash == entry.md5);
+    // The subtitle names the 1.0 rule by the fill rule's one long name.
+    CHECK(hydra::ends_with(ch10.subtitle,
+                           std::string(fill_rule_name(FillDeadlineRule::Ch10,
+                                                      FillRuleNameStyle::Long)) +
+                               " fills"));
 
+    // Under the 1.1 rule the page is empty, and its sentence is the one
+    // nothing_under_settings builds from the page's own profile and rule.
     const report::GeneratedReport ch11 = report::generate_report(store, fixture_options(4));
     CHECK(ch11.paths.empty());
     CHECK(ch11.empty_reason == report::EmptyReason::NothingUnderSettings);
     CHECK(ch11.why_empty ==
-          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4, "
-          "Clone Hero 1.1 fills). Analyze with these settings, or change them.");
+          report::nothing_under_settings(
+              fixture_settings(4).profile().chartmode, 4,
+              std::string(fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long)) +
+                  " fills"));
 }
 
 TEST_CASE("collect_rows: the library names go through display_title, display_artist and "
@@ -912,26 +921,39 @@ TEST_CASE("fill_rule_for: the legacy_fills flag names one fill rule") {
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     using report::tier_for;
 
-    // The 85 ms window -> budget 170: bands 2 / 42.5 / 85 / 127.5 / 170.
-    // Each edge belongs to the band below it (D48 Q3): a timing on the
-    // difficult floor is not past it, so 2.0 ms reads Normal, and 170.0 ms is
-    // still inside the two-hit budget, so it reads Insane+.
-    CHECK(tier_for(std::nullopt).first == "None");
-    CHECK(tier_for(1.9).first == "Normal");
-    CHECK_FALSE(past_difficult_floor(2.0));
-    CHECK(tier_for(2.0).first == "Normal");
-    CHECK(past_difficult_floor(2.1));
-    CHECK(tier_for(2.1).first == "Hard");
-    CHECK(tier_for(42.5).first == "Hard");
-    CHECK(tier_for(42.6).first == "Extreme");
-    CHECK(tier_for(85.0).first == "Extreme");
-    CHECK(tier_for(85.1).first == "Insane");
-    CHECK(tier_for(127.5).first == "Insane");
-    CHECK(tier_for(127.6).first == "Insane+");
-    CHECK(tier_for(170.0).first == "Insane+");
-    CHECK(tier_for(170.0).second == "t4");
-    CHECK(tier_for(170.1).first == "Beyond");
-    CHECK(tier_for(170.1).second == "t5");
+    // The names and edges come from their owner, timing_tiers(). The ladder
+    // opens at the difficult floor past_difficult_floor tests and closes at
+    // the two-hit budget (nominal_budget_ms); each edge belongs to the band
+    // below it (D48 Q3).
+    const std::vector<TimingTier> tiers = timing_tiers();
+    REQUIRE(tiers.size() >= 3);
+    const TimingTier& none = hydra::none_tier(tiers);
+    const TimingTier& beyond = hydra::beyond_tier(tiers);
+    CHECK(tier_for(std::nullopt) == std::make_pair(std::string(none.name), std::string(none.tok)));
+
+    // The first band ends on the difficult floor: on it is not past it.
+    REQUIRE(tiers.front().cutoff.has_value());
+    const double difficult_floor = *tiers.front().cutoff;
+    CHECK_FALSE(past_difficult_floor(difficult_floor));
+    CHECK(past_difficult_floor(difficult_floor + 0.01));
+    CHECK(tier_for(difficult_floor).first == tiers.front().name);
+    CHECK(tier_for(difficult_floor + 0.01).first != tiers.front().name);
+
+    // The last banded edge is the two-hit budget: on it is still inside,
+    // just past it reads Beyond.
+    std::optional<double> last_edge;
+    std::string last_name;
+    for (const TimingTier& t : tiers) {
+        if (!t.cutoff) continue;
+        if (last_edge) CHECK(*t.cutoff > *last_edge);
+        last_edge = t.cutoff;
+        last_name = t.name;
+    }
+    REQUIRE(last_edge.has_value());
+    CHECK(*last_edge == nominal_budget_ms());
+    CHECK(tier_for(*last_edge).first == last_name);
+    CHECK(tier_for(*last_edge + 0.01) ==
+          std::make_pair(std::string(beyond.name), std::string(beyond.tok)));
 }
 
 TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
@@ -1025,13 +1047,16 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     // Only the sentinel reads "every path".
     report::ReportOptions options = fixture_options(4);
     options.max_paths = report::kEveryPathSentinel;
-    CHECK(report::generate_report(store, options).subtitle.find(" — every path — ") !=
-          std::string::npos);
+    const std::string every = report::generate_report(store, options).subtitle;
+    CHECK(every.find(" — every path — ") != std::string::npos);
+    // The sentinel is never printed as a count.
+    CHECK(every.find(counted(report::kEveryPathSentinel, "path", "paths")) == std::string::npos);
 
-    // A large max_paths below it lists at most that many, so it says so.
-    options.max_paths = 200000000;
+    // A large max_paths below it lists at most that many, so it names that
+    // count through the house count rule (hydra::counted).
+    options.max_paths = report::kEveryPathSentinel - 1;
     const std::string subtitle = report::generate_report(store, options).subtitle;
-    CHECK(subtitle.find("top 200,000,000 paths per chart") != std::string::npos);
+    CHECK(subtitle.find(counted(options.max_paths, "path", "paths")) != std::string::npos);
     CHECK(subtitle.find(" — every path") == std::string::npos);
 }
 
