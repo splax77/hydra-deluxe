@@ -2020,7 +2020,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
         ctx->Yield();
     }
     IM_CHECK(!ever_running);
-    const std::string not_installed = "Only the installed copy of Hydra Deluxe checks for updates.";
+    const std::string not_installed = hydra::ui::kOnlyInstalledChecksText;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, not_installed); }, 5));
     IM_CHECK(dot_is(Dot::Neutral));
 
@@ -2061,10 +2061,10 @@ void test_version_bar(ImGuiTestContext* ctx) {
     restart_app(ctx, h, {});
     if (ctx->IsError()) return;
     IM_CHECK(h.app->update_check_running());
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Checking for updates..."); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kCheckingForUpdatesText); }, 5));
     IM_CHECK(dot_is(Dot::Neutral));
     seams.hold_check = false;
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Up to date"); }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
     IM_CHECK(dot_is(Dot::UpToDate));
     IM_CHECK(phase_is(Phase::None));
     IM_CHECK(!on_screen(h, "Hydra Deluxe " + running + " is the latest version."));
@@ -2117,7 +2117,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(ctx->ItemExists("**/Cancel##update"));
     IM_CHECK(!ctx->ItemExists("**/Skip this version"));
     seams.hold_download = false;
-    const std::string declined = "The installer didn't start, so Hydra wasn't updated.";
+    const std::string declined = hydra::ui::kUpdateDeclinedText;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, declined); }, 10));
     IM_CHECK(ctx->ItemExists("**/Update##update"));
     IM_CHECK(ctx->ItemExists("**/Skip this version"));
@@ -2134,7 +2134,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running() && on_screen(h, offer); }, 10));
     ctx->Yield(2);
     IM_CHECK(phase_is(Phase::None));
-    IM_CHECK(on_screen(h, "Skipped."));
+    IM_CHECK(on_screen(h, hydra::ui::kSkippedText));
     IM_CHECK(dot_is(Dot::Available));
     IM_CHECK(!ctx->ItemExists("**/Update##update"));
     IM_CHECK(!ctx->ItemExists("**/Skip this version"));
@@ -2145,7 +2145,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     seams.reply = "this is not JSON";
     restart_app(ctx, h, {});
     if (ctx->IsError()) return;
-    const std::string could_not = "Hydra couldn't check for updates when it started.";
+    const std::string could_not = hydra::ui::kCouldNotCheckText;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, could_not); }, 10));
     ctx->Yield(2);
     const std::string reason = h.app->update.check_error;
@@ -2209,7 +2209,7 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(Settings::load_file(h.ini_path).last_run_version == running);
     ctx->ItemClick("**/OK##update");
     IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, updated); }, 5));
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Up to date"); }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
     restart_app(ctx, h, {});
     if (ctx->IsError()) return;
     ctx->Yield(3);
