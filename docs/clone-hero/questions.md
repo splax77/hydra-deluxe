@@ -4,7 +4,7 @@ This page lists every split between Clone Hero and Hydra that has no ruling yet,
 It describes build 1.1 (v1.1.0.6142) unless a question says otherwise.
 Last write-back: 2026-11-12.
 
-Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here. The docs test checks both directions.
+Each question gives the game's real rule, an example from each end, and what Hydra does today with its owner. Every question here is named by the `Ruling:` line of at least one rule block on the area pages, and every `Q-nn` a `Ruling:` line names has its heading here.
 
 Questions Q-76 to Q-79, and Q-72, are tool findings in `tools/ch_probe/constants.py`, not splits between the game and Hydra: no rule in src/ reads those values. Q-34 and Q-76 are the same finding, raised from page 3 and page 7.
 

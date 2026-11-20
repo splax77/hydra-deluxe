@@ -528,7 +528,7 @@ The full recipe, with the commands for each comparison, is in the header of
 
 `hydra_precheck --tests <range>` picks the test files a merge must run from
 the range's diff, and prints them as one `tests:` line of `-sf=` filters, plus
-the `always:` line of the three repo-wide checks. It was built so a merge
+the `always:` lines of the two repo-wide checks. It was built so a merge
 never misses a test that reaches changed code only through an enum value. Merge
 18a2c64f rewrote `Song::place_fills_ch10` and its hand-written test list missed
 `tests/test_preview_load_progress.cpp`, which reaches that function only

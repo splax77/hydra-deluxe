@@ -1,8 +1,8 @@
 """Check that the files the agent docs and memory notes point at still exist.
 
 A pointer is a name a document gives for a file: a path, or the bare name of a hook
-script. This script reads every pointer and lists the ones that no longer lead anywhere,
-the way the docs-vs-code test does for numbers. It never fixes a document.
+script. This script reads every pointer and lists the ones that no longer lead anywhere.
+It never fixes a document.
 
     py -I tools/check_pointers.py [--memory <folder>] [--gates <folder>] [--repo <root>] [--session-start]
 

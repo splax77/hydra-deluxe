@@ -38,14 +38,11 @@ Run the precheck with the main checkout's exe: `build-cpp\Release\hydra_precheck
 
 Then commit the last merge, with a body saying which task's change broke which line and how you fixed it. Your turn ends there.
 
-After you hand over, the main session builds the joined branch once with the target your brief names. It runs the scan test and the docs test with their filters, and any test case your brief names:
-
-- the scan test: `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`;
-- the docs test: `build-cpp\Release\hydra_tests.exe -sf=*docs_match_code*`.
+After you hand over, the main session builds the joined branch once with the target your brief names. It runs the scan test, `build-cpp\Release\hydra_tests.exe -tc="single-owner*"`, and any test case your brief names.
 
 The main session runs the merge's tests once, after the review: the ones `build-cpp\Release\hydra_precheck.exe --repo <worktree path> --tests main...<wave branch>` prints (`docs/agents/agent-rules.md`, rule 1).
 
-When the build, the scan test or the docs test fails, a fresh executor fixes it on the wave branch from the failure output. A common case is one task renaming or moving a name another task's rows or docs still use. Never loosen a scan row to make it pass.
+When the build or the scan test fails, a fresh executor fixes it on the wave branch from the failure output. A common case is one task renaming or moving a name another task's rows still use. Never loosen a scan row to make it pass.
 
 If a join break shows up only after an earlier merge is already committed, fix it in the next merge commit instead. Never amend.
 
@@ -53,7 +50,7 @@ If a join break shows up only after an earlier merge is already committed, fix i
 
 Stop changing the tree once the last merge is committed. The gate keys a review on the exact tree, so any later commit voids it.
 
-Report the wave branch's head commit hash and the range `main...<head>`. Once the branch builds and its scan and docs tests pass, the main session takes the exact key from the gate's message and hands the key, the range and your precheck output to a fresh Sonnet reviewer with `docs/agents/derive-once-review.md`. You are an author of the merge commits, so you cannot review this range yourself.
+Report the wave branch's head commit hash and the range `main...<head>`. Once the branch builds and its scan test passes, the main session takes the exact key from the gate's message and hands the key, the range and your precheck output to a fresh Sonnet reviewer with `docs/agents/derive-once-review.md`. You are an author of the merge commits, so you cannot review this range yourself.
 
 ## Your report
 
