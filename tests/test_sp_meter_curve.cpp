@@ -1,7 +1,7 @@
 // Tests for app/preview_view's SP meter: the gauge curve the Preview tab
 // draws, read back with sp_meter_bars_at and sp_meter_readout, plus
-// has_sp_gauge and the activation's sp_window. Hand-built songs pin the bank,
-// the drain and the cap exactly; the corpus case holds every stored path's
+// has_sp_gauge and the activation's sp_window. Hand-built songs pin a few
+// cases exactly; the corpus cases hold every stored path's
 // gauge to its record. The scene has its own file (test_preview_scene.cpp),
 // and so do the overlay boxes (test_preview_boxes.cpp).
 
@@ -60,7 +60,7 @@ bool early_sqout(const Activation& a) {
 }
 
 // A tick's ms from the song's one tick-to-ms index, the one the gauge reads.
-double ms_at(const Song& song, int64_t tick) { return song.timing().ms_index().at(tick); }
+double tick_ms(const Song& song, int64_t tick) { return song.timing().ms_index().at(tick); }
 
 // The settings the corpus cases analyze and draw with: the app's defaults.
 AnalysisSettings corpus_settings() { return Settings().to_analysis_settings(); }
@@ -146,7 +146,7 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
                 if (i < acts.size() && acts[i].timecode.ticks() == t) continue;
                 CAPTURE(t);
                 const double bars = static_cast<double>(std::count(rises.begin(), rises.end(), t));
-                CHECK(rise_at(c, ms_at(song, t)) == doctest::Approx(bars).epsilon(1e-6));
+                CHECK(rise_at(c, tick_ms(song, t)) == doctest::Approx(bars).epsilon(1e-6));
                 ++arrivals;
             }
         }
@@ -154,7 +154,7 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
             const Activation& a = acts[i];
             const std::optional<int64_t> end = a.window_end_tick();
             REQUIRE(end.has_value());
-            CHECK(sp_meter_bars_at(c, std::nextafter(ms_at(song, *end), -1e300)) < 1e-6);
+            CHECK(sp_meter_bars_at(c, std::nextafter(tick_ms(song, *end), -1e300)) < 1e-6);
             if (a.sp_end_steps.size() != 1) continue;
             const int64_t mid = (a.timecode.ticks() + *end) / 2;
             // A next activation inside this window would draw its own drain.
@@ -163,7 +163,7 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
             const double measures_left =
                 song.timing().measures_at_tick_f(static_cast<double>(*end)) -
                 song.timing().measures_at_tick_f(static_cast<double>(mid));
-            CHECK(sp_meter_bars_at(c, ms_at(song, mid)) ==
+            CHECK(sp_meter_bars_at(c, tick_ms(song, mid)) ==
                   doctest::Approx(measures_left / static_cast<double>(kMeasuresPerSpBar)));
             ++drains;
         }
@@ -201,7 +201,7 @@ TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a b
                 if (k + 1 < a.sp_end_steps.size() && a.sp_end_steps[k + 1].tick == step.tick)
                     continue;
                 CAPTURE(step.tick);
-                CHECK(std::fabs(rise_at(c, ms_at(song, step.tick)) - 1.0) <= 2.0 * one_tick + 1e-9);
+                CHECK(std::fabs(rise_at(c, tick_ms(song, step.tick)) - 1.0) <= 2.0 * one_tick + 1e-9);
                 ++collected;
             }
         }
@@ -238,7 +238,7 @@ TEST_CASE("sp meter curve: a squeezed-out phrase does not bank mid-drain") {
                 CAPTURE(m);
                 bool on_step = false;
                 for (const SpEndStep& step : a.sp_end_steps)
-                    if (ms_at(song, step.tick) == m) on_step = true;
+                    if (tick_ms(song, step.tick) == m) on_step = true;
                 CHECK(on_step);
             }
         }
@@ -398,7 +398,7 @@ TEST_CASE("sp meter curve: the bank stops at the cap") {
     auto banked = [&](double ms, int cap) {
         int ended = 0;
         for (int64_t t : phrase_ticks)
-            if (ms_at(song, t) <= ms) ++ended;
+            if (tick_ms(song, t) <= ms) ++ended;
         return static_cast<double>(std::min(ended, cap));
     };
 
@@ -504,41 +504,39 @@ TEST_CASE("sp meter curve: a late squeeze-in refills on the squeezed chord") {
     CHECK(sp_meter_bars_at(c, 9500.0) == doctest::Approx(0.0));   // collected: nothing banks after
 }
 
+// On every stored corpus path, an activation that squeezed out a chord
+// strictly before its stored end (Activation::sqout_tick before deact_tick)
+// ends its window on that chord. The squeezed-out bar is the first the next
+// window holds (Path::bank_arrivals), and the gauge gains it on the chord, not
+// at the stored end: across the stored end the gauge holds, unless the record
+// stamps a bar or an activation there. Burnout in the corpus has one.
 TEST_CASE("sp meter curve: a squeezed-out bar arrives on the squeezed chord") {
-    Song song = test::make_early_sqout_song();
-    ScoreGraph graph(song, 4);
-    // The best path collects 12960 instead and keeps SP running over the
-    // second fill, so search wide and pick the path that squeezed out.
-    EngineOptions opts = test::wide_search();
-    opts.target_act_ticks = std::vector<int64_t>{5760, 17280};
-    std::vector<Path> paths = run_search(graph, opts);
-    const Path* found = nullptr;
-    for (const Path& p : paths)
-        if (!p.activations.empty() && p.activations.front().sqout_tick) found = &p;
-    REQUIRE(found != nullptr);
-    REQUIRE(found->activations.size() == 2);
-    // The engine's record: the squeezed-out chord is 12960 (6750 ms), before
-    // the stored end 13440 (7000 ms), and the search stamped the bar on the
-    // stored end.
-    REQUIRE(found->activations[0].sqout_tick == std::optional<int64_t>(12960));
-    REQUIRE(found->activations[0].deact_tick() == std::optional<int64_t>(13440));
-    REQUIRE((found->activations[1].bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
-    PreviewScene scene = build_preview_scene(song, found);
-    // Star Power is over on the chord: the window ends there.
-    REQUIRE(scene.activations.size() == 2);
-    REQUIRE(scene.activations[0].sp_window().has_value());
-    CHECK(scene.activations[0].sp_window()->second ==
-          doctest::Approx(song.timecode(*found->activations[0].sqout_tick).ms()));
-    const SpMeterCurve& c = scene.sp_meter;
-    check_curve_well_formed(c);
-    // The activation drains toward the chord: (12960 - 5760) / 3840 bars.
-    CHECK(sp_meter_bars_at(c, 3000.0) == doctest::Approx(1.875));
-    CHECK(sp_meter_bars_at(c, 6750.0 - 1e-6) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 6750.0) == doctest::Approx(1.0));   // its bar, on the chord
-    CHECK(sp_meter_bars_at(c, 7000.0) == doctest::Approx(1.0));   // nothing at the stored end
-    CHECK(sp_meter_bars_at(c, 7500.0) == doctest::Approx(2.0));   // the next phrase
-    CHECK(sp_meter_bars_at(c, 9000.0) == doctest::Approx(2.0));   // the second activation
-    CHECK(sp_meter_bars_at(c, 11000.0) == doctest::Approx(1.0));
+    int strict = 0;
+    for_each_corpus_scene([&](const Song& song, const Path& p, const PreviewScene& scene) {
+        const SpMeterCurve& c = scene.sp_meter;
+        const ActivationWalk acts = p.walk_activations();
+        for (size_t i = 0; i < acts.size(); ++i) {
+            const Activation& a = acts[i];
+            if (!early_sqout(a)) continue;
+            const int64_t chord = *a.sqout_tick;
+            const int64_t stored_end = *a.deact_tick();
+            if (chord >= stored_end) continue;
+            CAPTURE(i);
+            ++strict;
+            CHECK(scene.activations[i].sp_end_tick == chord);
+            const std::vector<int64_t> next = p.bank_arrivals(i + 1);
+            REQUIRE_FALSE(next.empty());
+            CHECK(next.front() == chord);
+            const bool next_act_by_end =
+                i + 1 < acts.size() && acts[i + 1].timecode.ticks() <= stored_end;
+            if (!(i + 1 < acts.size() && acts[i + 1].timecode.ticks() == chord))
+                CHECK(rise_at(c, tick_ms(song, chord)) ==
+                      doctest::Approx(static_cast<double>(std::count(next.begin(), next.end(), chord))));
+            if (next_act_by_end || std::count(next.begin(), next.end(), stored_end) > 0) continue;
+            CHECK(rise_at(c, tick_ms(song, stored_end)) == 0.0);
+        }
+    });
+    CHECK(strict > 0);
 }
 
 TEST_CASE("sp meter curve: the drain follows the stored steps, not the collected list") {
@@ -559,28 +557,35 @@ TEST_CASE("sp meter curve: the drain follows the stored steps, not the collected
     CHECK(sp_meter_bars_at(c, 16000.0) == doctest::Approx(0.0));
 }
 
+// sp_meter_bars_at reads back every corpus path's gauge as its segments hold
+// it: nothing before the first, the last value after the last, a straight line
+// inside each, and on a boundary two segments share, the later one, so a step
+// reads as a step.
 TEST_CASE("sp_meter_bars_at: before the curve, after it, and on a shared boundary") {
     CHECK(sp_meter_bars_at(SpMeterCurve{}, 123.0) == doctest::Approx(0.0));
 
-    SpMeterCurve c;
-    c.segments = {{100.0, 200.0, 0.0, 0.0}, {200.0, 400.0, 1.0, 0.0}};
-
-    CHECK(sp_meter_bars_at(c, 50.0) == doctest::Approx(0.0));   // before the first
-    CHECK(sp_meter_bars_at(c, 100.0) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 150.0) == doctest::Approx(0.0));
-    // 200 ms is the boundary: the later segment's 1.0, not the earlier's 0.0.
-    CHECK(sp_meter_bars_at(c, 200.0) == doctest::Approx(1.0));
-    CHECK(sp_meter_bars_at(c, 300.0) == doctest::Approx(0.5));
-    CHECK(sp_meter_bars_at(c, 400.0) == doctest::Approx(0.0));
-    CHECK(sp_meter_bars_at(c, 99999.0) == doctest::Approx(0.0));  // holds the last value
-
-    // A zero-width final segment is how a curve carries its end value when the
-    // last step lands exactly at the end of the chart.
-    SpMeterCurve z;
-    z.segments = {{0.0, 100.0, 0.0, 1.0}, {100.0, 100.0, 3.0, 3.0}};
-    CHECK(sp_meter_bars_at(z, 50.0) == doctest::Approx(0.5));
-    CHECK(sp_meter_bars_at(z, 100.0) == doctest::Approx(3.0));
-    CHECK(sp_meter_bars_at(z, 500.0) == doctest::Approx(3.0));
+    int steps = 0;
+    for_each_corpus_scene([&](const Song&, const Path&, const PreviewScene& scene) {
+        const SpMeterCurve& c = scene.sp_meter;
+        const std::vector<SpMeterSegment>& segs = c.segments;
+        if (segs.empty()) return;
+        CHECK(sp_meter_bars_at(c, std::nextafter(segs.front().start_ms, -1e300)) == 0.0);
+        CHECK(sp_meter_bars_at(c, segs.back().end_ms + 1000.0) == segs.back().end_bars);
+        for (size_t i = 0; i < segs.size(); ++i) {
+            const SpMeterSegment& s = segs[i];
+            // The last segment to start at a moment is the one that owns it.
+            if (i + 1 < segs.size() && segs[i + 1].start_ms <= s.start_ms) continue;
+            CAPTURE(s.start_ms);
+            const double span = s.end_ms - s.start_ms;
+            CHECK(sp_meter_bars_at(c, s.start_ms) == (span > 0.0 ? s.start_bars : s.end_bars));
+            if (span > 0.0)
+                CHECK(sp_meter_bars_at(c, s.start_ms + span / 2.0) ==
+                      doctest::Approx((s.start_bars + s.end_bars) / 2.0));
+            if (i > 0 && segs[i - 1].end_ms == s.start_ms && segs[i - 1].end_bars != s.start_bars)
+                ++steps;
+        }
+    });
+    CHECK(steps > 0);
 }
 
 TEST_CASE("has_sp_gauge: every scene built from a song, Star Power or not") {
@@ -593,65 +598,58 @@ TEST_CASE("has_sp_gauge: every scene built from a song, Star Power or not") {
     REQUIRE(no_curve.sp_meter.segments.empty());
     CHECK(no_curve.has_sp_gauge());
 
-    // A curve but no timing.
-    PreviewScene no_timing;
-    no_timing.sp_meter.segments.push_back(SpMeterSegment{});
-    CHECK_FALSE(no_timing.has_sp_gauge());
-
-    // The scene of "drain box: active inside the stored SP window, idle outside it".
-    Song song = make_sp_song({960}, /*last_tick=*/13440);
-    Path path;
-    path.activations = {sp_act_at(song, 3840, /*sp_meter=*/2, /*end_tick=*/11520)};
-    CHECK(build_preview_scene(song, &path).has_sp_gauge());
+    // Every stored path of every corpus chart.
+    int scenes = 0;
+    for_each_corpus_scene([&](const Song&, const Path&, const PreviewScene& scene) {
+        CHECK(scene.has_sp_gauge());
+        ++scenes;
+    });
+    CHECK(scenes > 0);
 }
 
-TEST_CASE("sp_window: the stored window, none without an end, none with no length") {
-    // The numbers of test_track_state's "active SP window ends exactly at the
-    // deact node".
-    PreviewActivation a;
-    a.ms = 1000.0;
-    a.has_sp_end = true;
-    a.sp_end_ms = 3000.0;
-    const std::optional<std::pair<double, double>> w = a.sp_window();
-    REQUIRE(w.has_value());
-    CHECK(w->first == 1000.0);
-    CHECK(w->second == 3000.0);
-
-    PreviewActivation no_end = a;
-    no_end.has_sp_end = false;
-    CHECK_FALSE(no_end.sp_window().has_value());
-
-    PreviewActivation no_length = a;
-    no_length.sp_end_ms = 1000.0;
-    CHECK_FALSE(no_length.sp_window().has_value());
+// On every stored corpus path, each activation's window runs from its note to
+// the end the record gives it (Activation::window_end_tick).
+TEST_CASE("sp_window: the stored window, from the activation note to the record's window end") {
+    int windows = 0;
+    for_each_corpus_scene([&](const Song& song, const Path& p, const PreviewScene& scene) {
+        const ActivationWalk acts = p.walk_activations();
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            const Activation& a = acts[i];
+            const std::optional<int64_t> end = a.window_end_tick();
+            REQUIRE(end.has_value());
+            const std::optional<std::pair<double, double>> w = scene.activations[i].sp_window();
+            REQUIRE(w.has_value());
+            CHECK(w->first == doctest::Approx(song.timecode(a.timecode.ticks()).ms()));
+            CHECK(w->second == doctest::Approx(tick_ms(song, *end)));
+            ++windows;
+        }
+    });
+    CHECK(windows > 0);
 }
 
-TEST_CASE("sp_running_at: on from the strike, off at the window's end, the next window runs at the join") {
-    // Two back-to-back windows, [1000, 2000) and [2000, 3000) ms. The scene of
-    // test_track_state's "the sp_active sweep agrees with sp_running_at".
-    PreviewActivation a;
-    a.ms = 1000.0;
-    a.has_sp_end = true;
-    a.sp_end_ms = 2000.0;
-    PreviewActivation b = a;
-    b.ms = 2000.0;
-    b.sp_end_ms = 3000.0;
-
-    CHECK_FALSE(a.sp_running_at(500.0));   // before the start
-    CHECK(a.sp_running_at(1000.0));        // at the start: the chord is struck
-    CHECK(a.sp_running_at(1500.0));        // inside
-    CHECK_FALSE(a.sp_running_at(2000.0));  // at the end: not running
-    CHECK(b.sp_running_at(2000.0));        // the join: the second runs
-    CHECK_FALSE(b.sp_running_at(3000.0));  // at the second's end
-    CHECK_FALSE(b.sp_running_at(4000.0));  // after
-
-    // No window, no running: without a stored end, or with no length.
-    PreviewActivation no_end = a;
-    no_end.has_sp_end = false;
-    CHECK_FALSE(no_end.sp_running_at(1500.0));
-    PreviewActivation no_length = a;
-    no_length.sp_end_ms = 1000.0;
-    CHECK_FALSE(no_length.sp_running_at(1000.0));
+// On every stored corpus path, Star Power runs from the moment the activation
+// note is struck up to, and not at, the end the record gives the window.
+TEST_CASE("sp_running_at: on from the strike, off at the window's end") {
+    int windows = 0;
+    for_each_corpus_scene([&](const Song& song, const Path& p, const PreviewScene& scene) {
+        const ActivationWalk acts = p.walk_activations();
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            const Activation& a = acts[i];
+            const PreviewActivation& pa = scene.activations[i];
+            const std::optional<int64_t> end = a.window_end_tick();
+            REQUIRE(end.has_value());
+            const double start_ms = song.timecode(a.timecode.ticks()).ms();
+            const double end_ms = tick_ms(song, *end);
+            CHECK_FALSE(pa.sp_running_at(std::nextafter(start_ms, -1e300)));
+            CHECK(pa.sp_running_at(start_ms));
+            CHECK(pa.sp_running_at(std::nextafter(end_ms, -1e300)));
+            CHECK_FALSE(pa.sp_running_at(end_ms));
+            ++windows;
+        }
+    });
+    CHECK(windows > 0);
 }
 
 TEST_CASE("sp meter curve: a meter change inside the window changes the drain rate") {
@@ -815,14 +813,38 @@ TEST_CASE("sp meter curve: every corpus gauge starts at its spent bars and empti
     CHECK(windows > charts);
 }
 
+// The readout shows the gauge's bars over the cap the record was analyzed at.
+// On every stored corpus path, at each activation, mid-window and at each
+// window's end, the number before the slash is the gauge's reading to the
+// tenth it prints, and the number after it is the analysis cap.
 TEST_CASE("sp meter readout: bars banked over the cap") {
-    TwoActs t;
-    // The phrase at 1000 ms banks a bar; the activation at 2000 ms drains it
-    // to empty at its deact node, two measures later (6000 ms).
-    CHECK(sp_meter_readout(t.scene.sp_meter, 1500.0) == "1.0/4");
-    CHECK(sp_meter_readout(t.scene.sp_meter, 4000.0) == "0.5/4");
-    // No curve at all (a chart with no Star Power): an empty gauge.
-    CHECK(sp_meter_readout(SpMeterCurve{}, 0.0) == "0.0/4");
+    const std::string over_cap = "/" + std::to_string(corpus_settings().sp_cap);
+    // The readout prints one decimal, so it sits within half a tenth.
+    const double half_tenth = 0.05;
+    int readouts = 0;
+    for_each_corpus_scene([&](const Song&, const Path&, const PreviewScene& scene) {
+        for (const PreviewActivation& pa : scene.activations) {
+            for (double ms : {pa.ms, (pa.ms + pa.sp_end_ms) / 2.0, pa.sp_end_ms}) {
+                const std::string r = sp_meter_readout(scene.sp_meter, ms);
+                CAPTURE(r);
+                const size_t slash = r.find('/');
+                REQUIRE(slash != std::string::npos);
+                CHECK(r.substr(slash) == over_cap);
+                CHECK(std::fabs(std::stod(r.substr(0, slash)) -
+                                sp_meter_bars_at(scene.sp_meter, ms)) <= half_tenth + 1e-9);
+                ++readouts;
+            }
+        }
+    });
+    CHECK(readouts > 0);
+
+    // No curve at all (a chart with no Star Power): an empty gauge over
+    // Clone Hero's cap.
+    const std::string empty = sp_meter_readout(SpMeterCurve{}, 0.0);
+    const size_t slash = empty.find('/');
+    REQUIRE(slash != std::string::npos);
+    CHECK(std::stod(empty.substr(0, slash)) == 0.0);
+    CHECK(empty.substr(slash) == "/" + std::to_string(kCloneHeroSpCap));
 }
 
 // The Preview against the engine's record, squeeze by squeeze, on every
