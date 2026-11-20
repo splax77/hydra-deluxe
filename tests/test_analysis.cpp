@@ -19,6 +19,8 @@
 #include <map>
 #include <memory>
 #include <new>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -54,15 +56,17 @@ using hydra::app::Settings;
 TEST_CASE("discover_charts walks the corpus without throwing") {
     auto [items, errors] = discover_charts({corpus::root()});
     CHECK(errors.empty());
+    // The corpus is checked in, so a scan that lists nothing is a failure,
+    // never a quiet pass of the loop below.
+    REQUIRE_FALSE(items.empty());
 
     for (const ScanItem& item : items) {
-        CHECK_MESSAGE(file_exists_utf8(item.notespath), item.notespath);
-        CHECK(item.md5.size() == 32);
-        for (char c : item.md5)
-            CHECK((std::isxdigit(static_cast<unsigned char>(c)) != 0));
+        CAPTURE(item.notespath);
+        CHECK(file_exists_utf8(item.notespath));
+        // The scan's id is the one hash_chart_file gives for the same file.
+        CHECK(!item.md5.empty());
+        CHECK(item.md5 == hash_chart_file(item.notespath));
     }
-
-    MESSAGE("discovered " << items.size() << " chart(s)");
 }
 
 TEST_CASE("discover_charts returns nothing for an empty root list") {
@@ -84,38 +88,63 @@ ScanItem chart_item(const std::string& chart) {
 
 }  // namespace
 
-// The fixture is a checked-in scan result, so this pins the digests, metadata,
-// and discovery set across any scan implementation change.
-TEST_CASE("discover_charts output matches the checked-in scan snapshot") {
-    const std::string input = corpus::root();
-    std::ifstream f(corpus::testdata_root() + "/scan_snapshot.json",
-                    std::ios::binary);
-    REQUIRE_MESSAGE(bool(f), "missing testdata/scan_snapshot.json");
-    std::stringstream ss;
-    ss << f.rdbuf();
-    corpus::json snapshot = corpus::json::parse(ss.str());
+namespace {
 
+// The chart files a folder walk of `dir` holds, each keyed by its path below
+// the walk's root with forward slashes (as hydra::relative_slash_path keys a
+// scanned path), found by a plain recursive listing rather than the scan's
+// threaded walk. A folder holds a chart when pick_notes_file picks one of its
+// files and it has a song.ini (find_song_ini); every .sng or .srb file
+// (chart_format_of) is a chart of its own.
+void walk_chart_keys(const std::string& dir, const std::string& rel,
+                     std::set<std::string>& keys) {
+    const std::vector<hydra::DirEntry> listing = hydra::list_dir(dir);
+    std::vector<std::string> file_names;
+    for (const hydra::DirEntry& e : listing)
+        if (!e.is_dir) file_names.push_back(e.name);
+    const auto key_of = [&rel](const std::string& name) {
+        return rel.empty() ? name : rel + "/" + name;
+    };
+    const std::optional<hydra::NotesFilePick> pick = hydra::pick_notes_file(file_names);
+    if (pick && hydra::find_song_ini(listing)) keys.insert(key_of(file_names[pick->index]));
+    for (const std::string& name : file_names) {
+        const hydra::ChartFormat format = hydra::chart_format_of(name);
+        if (format == hydra::ChartFormat::Sng || format == hydra::ChartFormat::Srb)
+            keys.insert(key_of(name));
+    }
+    for (const hydra::DirEntry& e : listing)
+        if (e.is_dir) walk_chart_keys(hydra::join_folder(dir, e.name), key_of(e.name), keys);
+}
+
+}  // namespace
+
+// Every chart the corpus holds is listed once, and each row's names are what
+// read_chart_meta reads from the chart's own files, after the scan's one
+// stored fallback per field (title_or_unknown and its siblings, on the
+// trimmed text; the album is trimmed and has no fallback).
+TEST_CASE("discover_charts lists every corpus chart once, with the names its files give") {
+    const std::string input = corpus::root();
     auto [items, errors] = discover_charts({input});
     CHECK(errors.empty());
-    CHECK(items.size() == snapshot.size());
+    REQUIRE_FALSE(items.empty());
 
-    std::map<std::string, const ScanItem*> by_rel;
-    // Keyed as the snapshot keys it (hydra::relative_slash_path owns the rule).
+    std::set<std::string> expected;
+    walk_chart_keys(input, "", expected);
+    std::set<std::string> listed;
     for (const ScanItem& item : items)
-        by_rel[hydra::relative_slash_path(item.notespath, input)] = &item;
+        CHECK_MESSAGE(listed.insert(hydra::relative_slash_path(item.notespath, input)).second,
+                      "listed twice: " << item.notespath);
+    CHECK(listed == expected);
 
-    for (const auto& row : snapshot) {
-        const std::string rel = row["path"].get<std::string>();
-        auto it = by_rel.find(rel);
-        REQUIRE_MESSAGE(it != by_rel.end(), "not discovered: " << rel);
-        const ScanItem& item = *it->second;
-        CHECK_MESSAGE(item.md5 == row["md5"].get<std::string>(), rel);
-        CHECK_MESSAGE(item.title == row["title"].get<std::string>(), rel);
-        CHECK_MESSAGE(item.artist == row["artist"].get<std::string>(), rel);
-        CHECK_MESSAGE(item.charter == row["charter"].get<std::string>(), rel);
-        CHECK_MESSAGE(hydra::relative_slash_path(item.rootfolder, "") ==
-                          row["folder"].get<std::string>(),
-                      rel);
+    for (const ScanItem& item : items) {
+        CAPTURE(item.notespath);
+        const ChartMeta meta = read_chart_meta(item.notespath);
+        CHECK(item.title == hydra::title_or_unknown(hydra::trim(meta.title)));
+        CHECK(item.artist == hydra::artist_or_unknown(hydra::trim(meta.artist)));
+        CHECK(item.charter == hydra::charter_or_unknown(hydra::trim(meta.charter)));
+        CHECK(item.album == hydra::trim(meta.album));
+        REQUIRE(item.timing.has_value());
+        CHECK(*item.timing == meta.timing);
     }
 }
 
@@ -154,6 +183,8 @@ TEST_CASE("rescan cache reproduces the scan without reading chart files") {
         CHECK(items2[i].notespath == items[i].notespath);
         CHECK(items2[i].rootfolder == items[i].rootfolder);
         CHECK(items2[i].sig == items[i].sig);
+        CHECK(items2[i].album == items[i].album);
+        CHECK(items2[i].timing == items[i].timing);
     }
 }
 
@@ -186,12 +217,17 @@ TEST_CASE("run_batch saves a record with its top paths through the one save") {
         const hydra::store::RecordLookup found = store.lookup_one(items[i].md5, run.profile);
         REQUIRE(found.status == hydra::store::RecordStatus::Ready);
         const std::vector<hydra::store::PathRow>& paths = found.record.paths;
-        REQUIRE_FALSE(paths.empty());
-        CHECK(paths.size() <= static_cast<size_t>(hydra::store::kPathsPerRecord));
-        // Rank 1 is the engine's best path.
-        CHECK(paths.front().rank == 1);
-        CHECK(paths.front().path == engine.best_path().pathstring());
-        CHECK(paths.front().score == engine.best_path().totalscore());
+        // The engine's paths in its own order, as many as a record keeps.
+        const std::vector<const hydra::Path*> all = engine.all_paths();
+        REQUIRE_FALSE(all.empty());
+        REQUIRE(paths.size() ==
+                (std::min)(all.size(), static_cast<size_t>(hydra::store::kPathsPerRecord)));
+        for (size_t p = 0; p < paths.size(); ++p) {
+            CAPTURE(p);
+            CHECK(paths[p].rank == static_cast<int>(p + 1));
+            CHECK(paths[p].path == all[p]->pathstring());
+            CHECK(paths[p].score == all[p]->totalscore());
+        }
     }
 }
 
