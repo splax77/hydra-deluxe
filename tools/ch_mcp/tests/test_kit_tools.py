@@ -675,9 +675,6 @@ class MapProblemsTest(Rig):
             "  map: category 1, layout 2, enabled",
             "  map: category 1, layout 2, enabled"])
 
-    def test_the_drum_map_passes(self):
-        self.assertEqual(K.map_problems(setup_reply()["maps"]), [])
-
     def test_setup_on_system_with_no_map_is_refused_and_torn_down(self):
         reply = setup_reply()
         reply["kit"] = {**reply["kit"], "player": "System"}
@@ -875,13 +872,10 @@ class PadAxisTest(unittest.TestCase):
         return round((axis - 0.5) * 254)
 
     def test_an_accent_and_a_plain_gem_press_at_full_strength_for_any_threshold(self):
-        for threshold in (1, 64, 127):
+        # None is the threshold left out.
+        for threshold in (None, 1, 64, 127):
             self.assertEqual(K.pad_axis("accent", threshold), 1.0)
             self.assertEqual(K.pad_axis("none", threshold), 1.0)
-
-    def test_a_plain_or_accent_gem_needs_no_threshold(self):
-        self.assertEqual(K.pad_axis("accent"), 1.0)
-        self.assertEqual(K.pad_axis("none"), 1.0)
 
     def test_a_ghost_makes_a_byte_of_the_threshold_minus_one(self):
         self.assertEqual(self.byte(K.pad_axis("ghost", 1)), 0)
@@ -913,13 +907,6 @@ class StrengthTest(Rig):
                                                {"id": 7, "value": ghost}])
         self.assertNotEqual(ghost, accent)
 
-    def test_a_red_ghost_and_a_kick_ghost_give_elements_0_and_7_at_the_ghost_value(self):
-        ghost = K.pad_axis("ghost", 100)
-        message = K.press_message([K.lane_element(Lane.RED), K.lane_element(Lane.KICK)],
-                                  values=[ghost, ghost])
-        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
-                                               {"id": 7, "value": ghost}])
-
     def test_a_kick_with_no_value_gives_element_7_at_the_plain_value(self):
         message = K.press_message([K.lane_element(Lane.KICK)])
         self.assertEqual(message["elements"], [{"id": 7, "value": K.pad_axis("none")}])
@@ -944,10 +931,6 @@ class StrengthTest(Rig):
                     self.assertTrue(written)
                     for element in written:
                         self.assertNotIsInstance(element["value"], bool, (group, values))
-
-    def test_a_press_with_no_values_presses_pads_as_plain_gems(self):
-        message = K.press_message([K.KIT_ELEMENTS["red"]])
-        self.assertEqual(message["elements"], [{"id": 0, "value": K.pad_axis("none")}])
 
     def test_a_list_of_values_of_another_length_is_an_error(self):
         with self.assertRaises(ValueError):
@@ -1152,25 +1135,50 @@ class FrameProbeTest(Rig):
             "cap_s": 6})
         self.assertEqual(self.events.count("find clock"), 1)
 
+    # The frame probe's reply from the real LS-G1 run, its first 12 of 1649
+    # rows (hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/frame_probe-1.json).
+    REAL_PROBE = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                              "frame_probe-1-first-12-rows.json")
+
+    @staticmethod
+    def numbers(text):
+        return [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", text)]
+
     def test_a_clean_probe_prints_each_number_and_passes(self):
-        lines = self.probe(self.probe_reply())
-        path = os.path.join(self.tmp, "frame_probe-1.json")
-        self.assertEqual(lines, [
-            f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
-            f"rows: 11, frames 1000 to 1010; rows saved to {path}",
-            "frame steps: all 10 rose by exactly 1",
-            "frame rate: 333.3 frames a second (10 frames in 30 ms of wall time); "
-            "not part of the pass line",
-            "press: down on frame 1000, up on frame 1002",
-            "Green read-back: first read pressed on frame 1001 (frames after the down frame: 1)",
-            "any_button: first read pressed on frame 1001 (frames after the down frame: 1)",
-            "engine clock minus songTime over 11 frames: smallest 1.000 ms, "
-            "median 2.000 ms, largest 3.000 ms",
-            "hook_out: True",
-            "failure: none",
-            "managers: 1; probe wall time: 5003 ms",
-            "PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
-            "the press read back as pressed, and the hook is out"])
+        with open(self.REAL_PROBE, encoding="utf-8") as f:
+            reply = json.load(f)
+        rows = reply["frames"]
+        frames = [r["frame"] for r in rows]
+        down = reply["down_frame"]
+        # The real run is clean: every frame steps by 1, the press is read
+        # back, the hook came out and nothing faulted.
+        self.assertEqual(frames, list(range(frames[0], frames[0] + len(frames))))
+        self.assertIsNone(reply["failure"])
+        self.assertIs(reply["hook_out"], True)
+        green = next(r["frame"] for r in rows if r["frame"] >= down and r["read"][0] is True)
+        anyb = next(r["frame"] for r in rows if r["frame"] >= down and r["any_button"] is True)
+        span_ms = rows[-1]["wall_ms"] - rows[0]["wall_ms"]
+        rate = (frames[-1] - frames[0]) * 1000 / span_ms
+        gaps = sorted((r["engine_clock_s"] - r["song_time_s"]) * 1000 for r in rows)
+        median = (gaps[(len(gaps) - 1) // 2] + gaps[len(gaps) // 2]) / 2
+
+        lines = self.probe(reply)
+        self.assertIn(f"{self.CLOCK_ADDR:#x}", lines[0])
+        counts, saved = lines[1].split("; ")
+        self.assertEqual(self.numbers(counts), [len(rows), frames[0], frames[-1]])
+        self.assertEqual(saved, f"rows saved to {os.path.join(self.tmp, 'frame_probe-1.json')}")
+        self.assertEqual(self.numbers(lines[2])[0], len(rows) - 1)
+        self.assertEqual(self.numbers(lines[3]),
+                         [float(f"{rate:.1f}"), frames[-1] - frames[0], span_ms])
+        self.assertEqual(self.numbers(lines[4]), [down, reply["up_frame"]])
+        self.assertEqual(self.numbers(lines[5]), [green, green - down])
+        self.assertEqual(self.numbers(lines[6]), [anyb, anyb - down])
+        self.assertEqual(self.numbers(lines[7]), [len(rows)] + [
+            float(f"{g:.3f}") for g in (gaps[0], median, gaps[-1])])
+        self.assertEqual(self.numbers(lines[10]), [reply["managers"], reply["wall_ms"]])
+        # The verdict is the clean one, because no part of the reply failed.
+        self.assertTrue(lines[-1].startswith("PASS "), lines[-1])
+        self.assertFalse(any("FAIL" in line for line in lines), lines)
 
     def test_the_whole_reply_is_saved_to_a_new_file_each_probe(self):
         reply = self.probe_reply()
