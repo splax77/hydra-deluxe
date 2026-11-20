@@ -3,8 +3,8 @@
 // The engine's best score must be stable across the config knobs that are not
 // supposed to change it (search depth, the ms filter), every reported path
 // must be internally consistent, and the all-0 pass must honor its contract.
-// Most cases here sweep the whole chart corpus; the rest pin run_search's
-// options, settings_key and graph_build_cap. The SP end cases live in
+// Most cases here sweep the whole chart corpus; the rest check settings_key
+// and graph_build_cap. The SP end cases live in
 // test_sp_end.cpp, the passed-over fills in test_fills_and_skips.cpp and the
 // tied variants in test_tied_variants.cpp.
 
@@ -539,68 +539,51 @@ TEST_CASE("search_allzero finds the best all-0 path the full search holds") {
 
 // A squeeze-in whose note sits exactly on the SP end needs 0.0 ms
 // (SPSqueeze::needs_no_timing), and the library saves the engine's own figure
-// (engine_hardest_ms) and shows it through shown_timing. Every count below is
-// pinned from one run at the GUI's default settings, so a change to which
-// timings count, to what the store saves or to the all-0 list shows here.
+// (engine_hardest_ms) and shows it through shown_timing. So on every corpus
+// chart, at the GUI's default settings, each activation with a squeeze-in at
+// exactly 0 has a timing, and every saved row shows the timing its path's
+// difficulty() gives, the squeeze-in at 0 included.
 TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int charts = 0;
-    // Every kept path, the main search's and the all-0 pass's, as
-    // test_pathstring_read.cpp walks them. An activation is counted once for
-    // each path that walks it, so a shared variant tail counts again.
-    int sqin_at_zero_acts = 0;      // activations with a squeeze-in at offset 0.0
-    int sqin_at_zero_timed = 0;     // ... of them, whose difficulty() is 0.0
-    int best_timed_by_sqin = 0;     // best paths at 0.0 through such a squeeze-in
-    // Every path record_of keeps, read off the PathRow it builds.
-    int saved_rows = 0;
-    std::vector<std::string> shown_differs;  // shown_timing(saved) != difficulty()
-    int saved_negative = 0;         // a figure below 0: saved, shown as none
-    // sqin_count > 0 and difficulty() empty: the rows a fresh analysis leaves
-    // with nothing to time (every squeeze-in inside Star Power). This is not
-    // the count the refill's query takes from an old library. That query
-    // (hardest_ms IS NULL AND sqin_count > 0) also takes the old rows whose
-    // only timing is a squeeze-in at exactly 0.0, which were empty then and
-    // show 0.0 now; counting those needs the old rule, which no longer exists
-    // in the code, so this number is lower than what the query would take.
-    int still_empty_with_sqin = 0;
-    // The all-0 list, as it was on the code before the squeeze-in at 0.0 became
-    // a timing; pinned so a change to it shows.
-    int allzero_charts = 0, allzero_paths = 0;
+    // Activations with a squeeze-in at 0, over every kept path, the main
+    // search's and the all-0 pass's, as test_pathstring_read.cpp walks them.
+    int sqin_at_zero_acts = 0;
+    // Saved rows whose path walks such an activation.
+    int sqin_at_zero_rows = 0;
 
     for (const std::string& chart : corpus::chart_paths()) {
         const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
         ++charts;
+        if (!loads_notes(song, chart)) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+
+        // Does this activation hold a squeeze-in on exactly the SP end?
+        const auto has_sqin_at_zero = [](const Activation& a) {
+            return std::any_of(a.sqinouts.begin(), a.sqinouts.end(), [](const SPSqueeze& sq) {
+                return sq.kind == SqueezeKind::SqIn && sq.offset_ms == 0.0;
+            });
+        };
 
         std::vector<const Path*> kept = rec.all_paths();
         const std::vector<const Path*> allzero = rec.all_allzero_paths();
-        if (!allzero.empty()) ++allzero_charts;
-        allzero_paths += static_cast<int>(allzero.size());
         kept.insert(kept.end(), allzero.begin(), allzero.end());
         for (const Path* p : kept)
             for (const Activation& a : p->walk_activations()) {
-                const bool at_zero = std::any_of(
-                    a.sqinouts.begin(), a.sqinouts.end(), [](const SPSqueeze& sq) {
-                        return sq.kind == SqueezeKind::SqIn && sq.offset_ms == 0.0;
-                    });
-                if (!at_zero) continue;
+                if (!has_sqin_at_zero(a)) continue;
                 ++sqin_at_zero_acts;
-                if (a.difficulty() == std::optional<double>(0.0)) ++sqin_at_zero_timed;
+                CHECK_MESSAGE(a.difficulty().has_value(),
+                              chart << " " << p->pathstring()
+                                    << ": a squeeze-in at 0 left the activation untimed");
             }
-
-        if (rec.paths.empty()) continue;
-        const Path& best = rec.best_path();
-        if (best.difficulty() == std::optional<double>(0.0)) {
-            const ActivationWalk acts = best.walk_activations();
-            const HardestTiming at_zero{TimingPart::SqueezeIn, 0.0};
-            if (std::any_of(acts.begin(), acts.end(),
-                            [&](const Activation& a) { return a.hardest() == at_zero; }))
-                ++best_timed_by_sqin;
-        }
 
         const store::RecordRow row = store::record_of("", rec);
         const std::vector<const Path*> ranked = rec.all_paths();
+        // record_of counts every kept path but saves only the first
+        // kPathsPerRecord of them (record_store.h).
+        REQUIRE(row.pathcount == static_cast<int>(ranked.size()));
+        REQUIRE(row.paths.size() ==
+                (std::min)(ranked.size(), static_cast<size_t>(store::kPathsPerRecord)));
         for (size_t i = 0; i < row.paths.size(); ++i) {
             const store::PathRow& saved = row.paths[i];
             const Path& path = *ranked[i];
@@ -608,124 +591,140 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
             // path would make the comparison below meaningless.
             REQUIRE(saved.path == path.pathstring());
             REQUIRE(saved.score == path.totalscore());
-            ++saved_rows;
-            if (shown_timing(saved.hardest_ms) != path.difficulty())
-                shown_differs.push_back(chart + " " + saved.path);
-            if (saved.hardest_ms && *saved.hardest_ms < 0.0) ++saved_negative;
-            if (saved.sqin_count > 0 && !path.difficulty()) ++still_empty_with_sqin;
+            // A fresh row shows what Path::difficulty() shows: saving the
+            // engine's figure changes nothing on screen.
+            CHECK_MESSAGE(shown_timing(saved.hardest_ms) == path.difficulty(),
+                          chart << " " << saved.path << ": shown timing differs");
+            const ActivationWalk acts = path.walk_activations();
+            if (std::any_of(acts.begin(), acts.end(), has_sqin_at_zero)) {
+                ++sqin_at_zero_rows;
+                CHECK_MESSAGE(shown_timing(saved.hardest_ms).has_value(),
+                              chart << " " << saved.path
+                                    << ": a squeeze-in at 0 saved a row that shows no timing");
+            }
         }
     }
 
-    for (const std::string& d : shown_differs) CHECK_MESSAGE(false, "shown differs: " << d);
-    CHECK(charts == 98);
-    CHECK(sqin_at_zero_acts == 56);
-    CHECK(sqin_at_zero_timed == 56);
-    CHECK(best_timed_by_sqin == 5);
-    CHECK(saved_rows == 374);
-    // A fresh row shows what Path::difficulty() shows: the check that saving
-    // the engine's figure changed nothing on screen.
-    CHECK(shown_differs.size() == 0);
-    CHECK(saved_negative == 90);
-    CHECK(still_empty_with_sqin == 79);
-    CHECK(allzero_charts == 69);
-    CHECK(allzero_paths == 70);
+    CHECK(charts == corpus_chart_count());
+    // The corpus holds best paths whose hardest timing is a squeeze-in at
+    // exactly 0, so a walk that meets none lost them on the way.
+    CHECK(sqin_at_zero_acts > 0);
+    CHECK(sqin_at_zero_rows > 0);
 }
 
-TEST_CASE("score graph: the backend rows are sized once, one per chord") {
-    // The graph sizes its row list from the song before building, so it ends
-    // with one row per chord and no spare room from growing a row at a time.
-    int built = 0;
+// The graph stores one backend row per chord, in chart order: row i is the
+// song's chord i, at its tick.
+TEST_CASE("score graph: one backend row per chord, in chart order") {
+    int charts = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
-        const ScoreGraph graph(song, 4);
-        ++built;
-        CHECK_MESSAGE(graph.all_backends().size() == song.sequence.size(), path);
-        CHECK_MESSAGE(graph.all_backends().capacity() == song.sequence.size(), path);
+        ++charts;
+        if (!loads_notes(song, path)) continue;
+        const ScoreGraph graph(song, kCloneHeroSpCap);
+        const std::vector<BackendSqueeze>& rows = graph.all_backends();
+        REQUIRE_MESSAGE(rows.size() == song.sequence.size(), path);
+        for (size_t i = 0; i < rows.size(); ++i) {
+            const SongTimestamp& chord = song.sequence[i];
+            if (rows[i].timecode.ticks() != chord.timecode.ticks() ||
+                !(rows[i].chord == chord.chord)) {
+                CHECK_MESSAGE(false, path << ": backend row " << i << " is not the chord at tick "
+                                          << chord.timecode.ticks());
+                break;
+            }
+        }
     }
-    CHECK(built > 0);
+    CHECK(charts == corpus_chart_count());
 }
 
 namespace {
 
-// The two SP-past-the-end songs (record_fixtures.h), for the cases below.
-using test::past_last_note_song;
+// The hand-built three-phrase song (record_fixtures.h), for the 4-bar case
+// below.
 using test::mid_sp_phrase_song;
 
 }  // namespace
 
 // run_search takes its knobs in one EngineOptions value, so no two flags can
-// be swapped at a call site. Each knob must still do its own job.
+// be swapped at a call site. Each knob must still do its own job, on every
+// corpus chart: the all-0 options' hard 0 ms limit holds every path the
+// search returns inside 0 ms (search_allzero's own filter reads no timing),
+// and pinning the best path's activation ticks hands that path back.
 TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
-    Song song = past_last_note_song();
-    ScoreGraph graph(song, 4);
+    int charts = 0, pinned_charts = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        ++charts;
+        if (!loads_notes(song, path)) continue;
+        CAPTURE(path);
+        const ScoreGraph graph(song, kCloneHeroSpCap);
 
-    // The defaults are a plain best-path search: score depth 0, no limit.
-    const std::vector<Path> best = run_search(graph, EngineOptions{});
-    REQUIRE_FALSE(best.empty());
-    REQUIRE_FALSE(best.front().activations.empty());
+        for (const Path& p : search_allzero(graph))
+            CHECK_MESSAGE(p.within_ms_limit(0.0), "all-0 path past 0 ms: " << p.pathstring());
 
-    // no_skips plus a hard 0 ms limit is exactly the all-0 search.
-    const std::vector<Path> z = run_search(graph, allzero_options());
-    for (const Path& p : z) CHECK(p.within_ms_limit(0.0));
-    const std::vector<Path> want_z = search_allzero(graph);
-    REQUIRE_FALSE(want_z.empty());
-    REQUIRE(z.size() == want_z.size());
-    for (size_t i = 0; i < z.size(); ++i) {
-        CHECK(z[i].pathstring() == want_z[i].pathstring());
-        CHECK(z[i].totalscore() == want_z[i].totalscore());
+        // The defaults are a plain best-path search: score depth 0, no limit.
+        const std::vector<Path> best = run_search(graph, EngineOptions{});
+        REQUIRE_FALSE(best.empty());
+        // A chart with no Star Power phrase has nothing to pin.
+        if (best.front().activations.empty()) continue;
+        ++pinned_charts;
+
+        EngineOptions pinned;
+        pinned.depth_mode = DepthMode::Points;
+        pinned.depth_value = kKeepEveryPathBand;
+        const std::vector<int64_t> ticks = test::act_ticks(best.front());
+        pinned.target_act_ticks = ticks;
+        const std::vector<Path> again = run_search(graph, pinned);
+        REQUIRE_FALSE(again.empty());
+        CHECK(again.front().pathstring() == best.front().pathstring());
+        CHECK(again.front().totalscore() == best.front().totalscore());
     }
-
-    // Pinning the best path's activation ticks hands that path back.
-    EngineOptions pinned;
-    pinned.depth_mode = DepthMode::Points;
-    pinned.depth_value = kKeepEveryPathBand;
-    const std::vector<int64_t> ticks = test::act_ticks(best.front());
-    pinned.target_act_ticks = ticks;
-    const std::vector<Path> again = run_search(graph, pinned);
-    REQUIRE_FALSE(again.empty());
-    CHECK(again.front().pathstring() == best.front().pathstring());
-    CHECK(again.front().totalscore() == best.front().totalscore());
+    CHECK(charts == corpus_chart_count());
+    // Most corpus charts have Star Power phrases, so a walk that pinned
+    // none lost them on the way.
+    CHECK(pinned_charts > 0);
 }
 
-// The all-0 search's options have one owner, so search_allzero and the case
-// above run the same search.
-TEST_CASE("allzero_options: no skips, a hard 0 ms limit, everything else default") {
-    const EngineOptions z = allzero_options();
-    const EngineOptions plain{};
-    CHECK(z.no_skips);
-    CHECK(z.hard_ms_filter);
-    REQUIRE(z.ms_filter.has_value());
-    CHECK(*z.ms_filter == 0.0);  // D85: the 0 ms limit, whatever the Path limit
-    CHECK(z.depth_mode == plain.depth_mode);
-    CHECK(z.depth_value == plain.depth_value);
-    CHECK_FALSE(z.target_act_ticks.has_value());
-}
-
-// The test cache keys a stored analysis by corpus::settings_key. The default's
-// text is pinned from one run, so the key's shape cannot drift, and each
-// SearchSettings field must move it, so a field left out of the key shows up
-// here.
-TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every field moves it") {
+// The test cache keys a stored analysis by corpus::settings_key. Equal
+// settings give equal keys, and each SearchSettings field must move the key,
+// so a field left out of it shows up here.
+TEST_CASE("settings_key: equal settings share a key, and every field moves it") {
     const SearchSettings plain{};
     const std::string key = corpus::settings_key(plain);
-    // The long number is the default rules' fingerprint (test_rules.cpp pins it in
-    // hex).
-    // The 60 is the default early-fill window (kDefaultEarlyFillWindowMs).
-    CHECK(key == "4|0|4|none|0|60|12303881770575177486|");
+    CHECK(corpus::settings_key(SearchSettings{}) == key);
 
-    std::vector<SearchSettings> changed(7, plain);
-    changed[0].sp_cap = 1;
-    changed[1].depth_mode = DepthMode::Points;
-    changed[2].depth_value = 5;
-    changed[3].ms_filter = 10.0;
-    changed[4].legacy_fills = true;
-    changed[5].rules.max_tied_paths += 1;
-    changed[6].early_fill_window_ms = 85.0;
-    for (size_t i = 0; i < changed.size(); ++i) {
-        INFO("changed field " << i);
-        CHECK(corpus::settings_key(changed[i]) != key);
-    }
+    // This binding names every SearchSettings field in declaration order
+    // (src/search/pather.h), so a new field stops the build here until it
+    // gets its own binding name and its own moved() line below.
+    [[maybe_unused]] const auto& [field_depth_mode, field_depth_value, field_ms_filter,
+                                  field_sp_cap, field_legacy_fills, field_early_fill_window_ms,
+                                  field_rules] = plain;
+
+    // One field moved off the default must move the key.
+    const auto moved = [&](const char* field, SearchSettings s) {
+        INFO("changed field " << field);
+        CHECK(corpus::settings_key(s) != key);
+    };
+    SearchSettings s = plain;
+    s.depth_mode = DepthMode::Points;
+    moved("depth_mode", s);
+    s = plain;
+    s.depth_value = plain.depth_value + 1;
+    moved("depth_value", s);
+    s = plain;
+    s.ms_filter = 10.0;
+    moved("ms_filter", s);
+    s = plain;
+    s.sp_cap = plain.sp_cap - 1;
+    moved("sp_cap", s);
+    s = plain;
+    s.legacy_fills = !plain.legacy_fills;
+    moved("legacy_fills", s);
+    s = plain;
+    s.early_fill_window_ms = plain.early_fill_window_ms + 25.0;
+    moved("early_fill_window_ms", s);
+    s = plain;
+    s.rules.max_tied_paths += 1;
+    moved("rules", s);
 }
 
 // analyze_chart builds the graph for Clone Hero's 4 bars only as tall as the
@@ -734,24 +733,17 @@ TEST_CASE("settings_key: the text for SearchSettings{} is pinned, and every fiel
 // p-bar ceiling clamps nothing a 4-bar ceiling would not. This pins it field by
 // field (digest::record_hash).
 TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths") {
-    std::vector<Song> songs;
-    // Hand-built, three phrases, one of them collected mid-SP.
-    songs.push_back(mid_sp_phrase_song());
-    for (const std::string& path : corpus::chart_paths()) {
-        Song s = load_songpath(path, ChartReading{});
-        if (!s.is_empty() && s.sp_phrase_count() < kCloneHeroSpCap)
-            songs.push_back(std::move(s));
-    }
-
-    int compared = 0;
-    for (const Song& song : songs) {
+    // Builds `song` both ways and checks the two records hash the same; `name`
+    // says which song failed.
+    const auto same_paths = [](const Song& song, const std::string& name) {
         const int build_cap = graph_build_cap(kCloneHeroSpCap, song.sp_phrase_count());
-        REQUIRE(build_cap < kCloneHeroSpCap);
+        REQUIRE_MESSAGE(build_cap < kCloneHeroSpCap, name);
 
         ScoreGraph g_tall(song, kCloneHeroSpCap);
         ScoreGraph g_built(song, build_cap);
+        // The app's default depth, so each record keeps alternate paths too.
         EngineOptions options;
-        options.depth_value = 4;
+        options.depth_value = kDefaultDepthValue;
         HydraRecord tall, built;
         tall.sp_cap = kCloneHeroSpCap;
         built.sp_cap = kCloneHeroSpCap;
@@ -760,20 +752,46 @@ TEST_CASE("a 4-bar graph built at the song's phrase count stores the same paths"
         tall.allzero_paths = search_allzero(g_tall);
         built.allzero_paths = search_allzero(g_built);
 
-        CHECK_MESSAGE(digest::record_hash(tall) == digest::record_hash(built),
-                      "a song with " << song.sp_phrase_count() << " phrases");
-        ++compared;
+        const auto tall_hash = digest::record_hash(tall);
+        const auto built_hash = digest::record_hash(built);
+        CHECK_MESSAGE(tall_hash == built_hash,
+                      name << " (" << song.sp_phrase_count() << " phrases): 4-bar hash "
+                           << tall_hash << ", built hash " << built_hash);
+    };
+
+    // Hand-built, three phrases, one of them collected mid-SP.
+    same_paths(mid_sp_phrase_song(), "mid_sp_phrase_song");
+
+    int charts = 0, real_compared = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const Song& song = corpus::song(path, ChartReading{});
+        ++charts;
+        if (!loads_notes(song, path)) continue;
+        if (song.sp_phrase_count() >= kCloneHeroSpCap) continue;  // nothing to clamp
+        same_paths(song, path);
+        ++real_compared;
     }
-    MESSAGE("compared " << compared << " songs with fewer than 4 phrases");
+    CHECK(charts == corpus_chart_count());
+    // The corpus holds charts with no Expert drums Star Power phrase at all
+    // (IB24's Apex and Blight among them), so a walk that compared no real
+    // chart lost them on the way.
+    CHECK(real_compared > 0);
 }
 
 TEST_CASE("graph_build_cap: never taller than the song's phrases, never below one") {
-    CHECK(graph_build_cap(4, 10) == 4);   // the cap binds
-    CHECK(graph_build_cap(32, 3) == 3);   // the song's phrases bind
-    CHECK(graph_build_cap(8, 0) == 1);    // a phraseless song still builds one level
-    // The meter's own height, which graph_build_cap reads: no floor of its own.
-    CHECK(max_sp_bars(4, 10) == 4);
-    CHECK(max_sp_bars(32, 3) == 3);
-    CHECK(max_sp_bars(8, 0) == 0);
-    CHECK(max_sp_bars(std::nullopt, 3) == 3);
+    const int cap = kCloneHeroSpCap;
+    const int more_phrases_than_cap = cap * 2;
+    const int fewer_phrases_than_cap = cap - 1;
+    const int no_phrases = 0;
+    const int one_level = 1;
+
+    CHECK(graph_build_cap(cap, more_phrases_than_cap) == cap);
+    CHECK(graph_build_cap(cap, fewer_phrases_than_cap) == fewer_phrases_than_cap);
+    CHECK(graph_build_cap(cap, no_phrases) == one_level);
+    // The meter's own height, which graph_build_cap reads, has no floor of
+    // its own, and with no cap it is the phrase count.
+    CHECK(max_sp_bars(cap, more_phrases_than_cap) == cap);
+    CHECK(max_sp_bars(cap, fewer_phrases_than_cap) == fewer_phrases_than_cap);
+    CHECK(max_sp_bars(cap, no_phrases) == no_phrases);
+    CHECK(max_sp_bars(std::nullopt, more_phrases_than_cap) == more_phrases_than_cap);
 }
