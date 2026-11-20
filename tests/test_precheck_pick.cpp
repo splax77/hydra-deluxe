@@ -11,11 +11,13 @@
 #include <string>
 #include <vector>
 
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "precheck/git_text.h"
 #include "precheck/range.h"
 #include "precheck/test_pick.h"
 #include "precheck_fixture.h"
+#include "source_tree.h"
 #include "temp_util.h"
 
 namespace fs = std::filesystem;
@@ -312,13 +314,24 @@ TEST_CASE("precheck pick (c): a key only a comment in a helper header names pick
     CHECK(p.tests.empty());
 }
 
+// The picker's reason wording has no public owner, so this case reads it from
+// the picker's own output: a changed test file's one reason is the range
+// change, and the includer of a changed helper header gives the same reason
+// with that header's path in front.
 TEST_CASE("precheck pick (d): a test file the range changes is picked") {
     PickRepo fx("precheck_pick_d", {{"tests/test_d.cpp", "int d1() { return 1; }\n"},
+                                    {"tests/d_helpers.h", "#pragma once\n// one\n"},
+                                    {"tests/test_dh.cpp", "#include \"d_helpers.h\"\nint dh1() { return 1; }\n"},
                                     {"tests/test_e.cpp", "int e1() { return 1; }\n"}});
-    const TestPick p = fx.pick({{"tests/test_d.cpp", "int d1() { return 2; }\n"}});
+    const TestPick p = fx.pick({{"tests/test_d.cpp", "int d1() { return 2; }\n"},
+                                {"tests/d_helpers.h", "#pragma once\n// two\n"}});
     REQUIRE_FALSE(p.whole_suite);
-    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_d.cpp"});
-    CHECK(reasons_of(p, "tests/test_d.cpp") == std::vector<std::string>{"changed in range"});
+    CHECK(picked_files(p) == std::vector<std::string>{"tests/test_d.cpp", "tests/test_dh.cpp"});
+    const std::vector<std::string> direct = reasons_of(p, "tests/test_d.cpp");
+    REQUIRE(direct.size() == 1);
+    CHECK_FALSE(direct.front().empty());
+    CHECK(name_in(p, direct.front()) == nullptr);
+    CHECK(reasons_of(p, "tests/test_dh.cpp") == std::vector<std::string>{"tests/d_helpers.h " + direct.front()});
 }
 
 TEST_CASE("precheck pick (e): a common caller key picks nothing; a common changed name runs everything") {
@@ -418,18 +431,118 @@ std::optional<WholeSuite> shared_code_of(const std::string& path) {
     return shared_code(repo, "HEAD", path);
 }
 
+// git's answer to `args`, asked in the real repo the tests were built from.
+std::vector<std::string> real_git(const std::vector<std::string>& args) {
+    return run_git(sourcetree::root().u8string(), args);
+}
+
+// The real repo's committed text of `path`, one entry per line.
+std::vector<std::string> real_lines(const std::string& path) { return real_git({"show", "HEAD:" + path}); }
+
+// What follows `call` on each line of `lines` that starts with it after its
+// indent.
+std::vector<std::string> after_calls(const std::vector<std::string>& lines, const std::string& call) {
+    std::vector<std::string> out;
+    for (const std::string& line : lines) {
+        const std::string text = hydra::trim(line);
+        if (hydra::starts_with(text, call)) out.push_back(text.substr(call.size()));
+    }
+    return out;
+}
+
+// `rest` up to its first space or ")".
+std::string first_word(const std::string& rest) { return rest.substr(0, rest.find_first_of(" )")); }
+
+// The files GitHub Actions runs: every committed file in .github/workflows/.
+std::vector<std::string> real_workflows() {
+    return real_git({"ls-tree", "-r", "--name-only", "HEAD", "--", ".github/workflows"});
+}
+
+// Checks that `files` is not empty and that each is a real committed file the
+// picker counts as shared code.
+void check_real_shared(const std::vector<std::string>& files) {
+    REQUIRE_FALSE(files.empty());
+    for (const std::string& file : files) {
+        CAPTURE(file);
+        REQUIRE_FALSE(real_lines(file).empty());
+        CHECK(shared_code_of(file));
+    }
+}
+
 }  // namespace
 
-TEST_CASE("precheck pick (h): a CMakeLists.txt in any folder runs the whole suite") {
+// The cases below find each file from the real build that reads it, so none
+// of them restates the picker's table of shared paths.
+
+// CMake starts at the root CMakeLists.txt and reads the CMakeLists.txt of
+// every folder it adds.
+TEST_CASE("precheck pick (h): every CMakeLists.txt the real build reads runs the whole suite") {
+    const std::vector<std::string> root = real_lines("CMakeLists.txt");
+    REQUIRE_FALSE(root.empty());
     CHECK(shared_code_of("CMakeLists.txt"));
-    CHECK(shared_code_of("third_party/foo/CMakeLists.txt"));
+    std::vector<std::string> added;
+    for (const std::string& rest : after_calls(root, "add_subdirectory("))
+        added.push_back(first_word(rest) + "/CMakeLists.txt");
+    check_real_shared(added);
 }
-TEST_CASE("precheck pick (h): CMakePresets.json runs the whole suite") { CHECK(shared_code_of("CMakePresets.json")); }
-TEST_CASE("precheck pick (h): a file under cmake/ runs the whole suite") { CHECK(shared_code_of("cmake/flags.cmake")); }
-TEST_CASE("precheck pick (h): build_cpp.ps1 runs the whole suite") { CHECK(shared_code_of("build_cpp.ps1")); }
-TEST_CASE("precheck pick (h): a workflow file runs the whole suite") { CHECK(shared_code_of(".github/workflows/ci.yml")); }
-TEST_CASE("precheck pick (h): tests/test_main.cpp runs the whole suite") { CHECK(shared_code_of("tests/test_main.cpp")); }
-TEST_CASE("precheck pick (h): tests/shards.txt runs the whole suite") { CHECK(shared_code_of("tests/shards.txt")); }
+
+// The presets file is the one the build's preset reader opens.
+TEST_CASE("precheck pick (h): the presets file the build reads runs the whole suite") {
+    const std::string opens = "Join-Path $Repo \"";
+    std::vector<std::string> files;
+    for (const std::string& line : real_lines("tools/cmake_presets.ps1")) {
+        const size_t at = line.find(opens);
+        if (at == std::string::npos) continue;
+        const size_t from = at + opens.size();
+        files.push_back(line.substr(from, line.find('"', from) - from));
+    }
+    check_real_shared(files);
+}
+
+// The build script is the one every workflow step that builds hydra_tests
+// runs.
+TEST_CASE("precheck pick (h): the build script CI runs makes the whole suite run") {
+    std::vector<std::string> scripts;
+    for (const std::string& workflow : real_workflows())
+        for (const std::string& line : real_lines(workflow)) {
+            if (line.find("-Target hydra_tests") == std::string::npos) continue;
+            const size_t at = line.find(".\\");
+            REQUIRE(at != std::string::npos);
+            const size_t end = line.find(".ps1", at);
+            REQUIRE(end != std::string::npos);
+            scripts.push_back(hydra::replace_all(line.substr(at + 2, end + 4 - (at + 2)), "\\", "/"));
+        }
+    check_real_shared(scripts);
+}
+
+// GitHub Actions runs every file in .github/workflows/.
+TEST_CASE("precheck pick (h): every real workflow file runs the whole suite") { check_real_shared(real_workflows()); }
+
+// The file that defines DOCTEST_CONFIG_IMPLEMENT gives every hydra_tests case
+// its main(). The pattern is split so this file's own line never matches it.
+// git grep has no whole-line switch, so the pattern is anchored at both ends;
+// its text holds no character a basic regex treats as special.
+TEST_CASE("precheck pick (h): the test harness's main file runs the whole suite") {
+    const std::string implement = std::string("^#define DOCTEST_CONFIG_") + "IMPLEMENT$";
+    check_real_shared(real_git({"grep", "-l", "--cached", "-e", implement, "--", "tests"}));
+}
+
+// The shard list is the file the root CMakeLists.txt reads line by line into
+// a list it loops over to register the hydra_tests slices.
+TEST_CASE("precheck pick (h): the shard list the build reads runs the whole suite") {
+    const std::vector<std::string> root = real_lines("CMakeLists.txt");
+    std::vector<std::string> sliced;
+    for (const std::string& rest : after_calls(root, "file(STRINGS ${CMAKE_SOURCE_DIR}/")) {
+        const size_t gap = rest.find(' ');
+        if (gap == std::string::npos) continue;
+        const std::string file = first_word(rest);
+        const std::string loop = "IN LISTS " + first_word(rest.substr(gap + 1)) + ")";
+        if (std::any_of(root.begin(), root.end(),
+                        [&](const std::string& line) { return line.find(loop) != std::string::npos; }))
+            sliced.push_back(file);
+    }
+    check_real_shared(sliced);
+}
 TEST_CASE("precheck pick (h): a file under third_party/doctest/ runs the whole suite") {
     CHECK(shared_code_of("third_party/doctest/doctest.h"));
 }
