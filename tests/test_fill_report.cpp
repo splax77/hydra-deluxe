@@ -344,14 +344,17 @@ TEST_CASE("collect_fill_rows: a chart with a record under one rule only still ge
 }
 
 // The page reads report::library_lookup's Ready records, so a stored failure
-// is no record: a corpus chart with no Expert Pro Drums notes fails under
-// both rules, its failures are filed as the batch files them
+// is no record. Every chart in testdata/input has Expert Pro Drums notes, so
+// the failing chart is the checked-in edge chart whose Expert drums section
+// never closes: testdata/parse_edge/expected_expert.tsv pins it as a
+// NoNotesError, and the fill rule never changes what the chart's notes are.
+// Its failures under both rules are filed as the batch files them
 // (app::prepare_failed_chart), and it gets no row.
 TEST_CASE("collect_fill_rows: a chart that failed under both rules gets no row") {
     store::RecordStore store(":memory:");
     const ScoredChart& scored = scored_charts()[0];
     const store::ChartLibraryEntry failing =
-        scan_row(corpus::first_chart_without_notes(Difficulty::Expert));
+        scan_row(corpus::testdata_root() + "\\parse_edge\\c15_unterminated_drums.chart");
     store.rebuild_chart_library({scored.entry, failing});
     file_under(store, FillDeadlineRule::Ch10, scored.entry.md5, scored.ch10);
     for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11}) {
