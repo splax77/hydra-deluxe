@@ -1476,12 +1476,12 @@
       "note": "The Preview loader shows a time-left line; it checks only its own step and hands its age and its gate to the owner, which never names the gate itself."
     },
     {
-      "question": "How long does a job have left, from the rate over its recent work?",
+      "question": "How long does a job have left, from the rate of its work?",
       "owner": "app::TimeLeftClock in src/app/time_left.h",
       "owner_file": "src/app/time_left.h",
       "owner_symbol": "TimeLeftClock",
       "date": "2026-10-31",
-      "decision": "D283",
+      "decision": "D283, D352",
       "added_by": "aoa-t4-build",
       "pattern": "\\b\\w*total\\w*\\s*-\\s*(\\w+(\\.|->))*\\w*(done|completed|finished)\\w*\\)?.*/|/.*\\b\\w*total\\w*\\s*-\\s*(\\w+(\\.|->))*\\w*(done|completed|finished)",
       "anchor": "total",
@@ -1506,7 +1506,7 @@
         "src",
         "tools"
       ],
-      "note": "Time left is the work still to go over the rate in the job's own window: the last 2W finished charts for the batch strip (D283), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division. A left-over worked out on one line and divided on the next is not caught, because a line scan cannot join the two. A count of what is left with no division is not a time and passes."
+      "note": "Time left is the work still to go over the job's own rate: the charts done over the batch time so far for the batch strip (D352), the last second of bytes for the Preview (D271 item 4). The pattern looks for what is left (a total minus what is done) on the same line as a division. A left-over worked out on one line and divided on the next is not caught, because a line scan cannot join the two. A count of what is left with no division is not a time and passes."
     },
     {
       "question": "Has a job run long enough for its progress to show?",

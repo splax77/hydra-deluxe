@@ -268,9 +268,9 @@ private:
     double paused_total_ = 0.0;
 };
 
-// The batch's time-left window is this many rounds of its workers: the last
-// kTimeLeftWorkerRounds * W finished charts, W being the run's worker count
-// (D283). app::TimeLeftClock does the rest.
+// The batch's time left shows once this many rounds of its workers have
+// finished, W charts a round, W being the run's worker count.
+// app::TimeLeftClock::since_start does the rest (D352).
 inline constexpr int kTimeLeftWorkerRounds = 2;
 
 class BatchJob : public JobBase {
@@ -318,9 +318,9 @@ public:
         bool paused = false;
         // Wall time since start(), paused time left out; frozen once finished.
         double elapsed_s = 0.0;
-        // Seconds left (app::TimeLeftClock over the last
-        // kTimeLeftWorkerRounds rounds of workers). Empty until that window
-        // is full, while paused, and once finished.
+        // Seconds left (app::TimeLeftClock::since_start, on the batch
+        // clock). Empty until kTimeLeftWorkerRounds rounds of workers have
+        // finished, while paused, and once finished.
         std::optional<double> eta_s;
         // The chart a worker started most recently. Empty once finished.
         std::string current_title;
@@ -405,9 +405,8 @@ private:
     mutable std::mutex mu_;
     Snapshot snap_;     // guarded by mu_
     BatchClock clock_;  // guarded by mu_
-    // Fed each finish on clock_'s time, so paused stretches never count in
-    // its window; read by snapshot(). Its window follows workers_ (see
-    // kTimeLeftWorkerRounds). Guarded by mu_.
+    // Read by snapshot() on clock_'s time, so paused stretches never count.
+    // Its gate follows workers_ (see kTimeLeftWorkerRounds). Guarded by mu_.
     mutable app::TimeLeftClock time_left_;
 
     // Saved charts still waiting for their answer, and the charts already
