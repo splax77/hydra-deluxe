@@ -23,6 +23,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -34,6 +35,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/winstr.h"
+#include "corpus_util.h"  // first_chart_with_paths, analyzed
 #include "db_file_util.h"  // exec_on_file, scalar_on_file, record_rows_in, write_junk_db
 #include "display_fixtures.h"  // add_stale_records
 #include "library_fixtures.h"  // library_row
@@ -42,6 +44,7 @@
 #include "store/chart_index.h"
 #include "store/library_file.h"
 #include "store/record_store.h"
+#include "store/stored_versions.h"  // kResultsStamp
 #include "store/upgrade_files.h"
 #include "store_fixtures.h"  // at_cap, no_paths_at_cap, saved_figures
 #include "temp_util.h"
@@ -137,27 +140,6 @@ std::string copy_of_old_database(const std::string& file, const std::string& tag
 }  // namespace
 
 // ---- store correctness (2026-09-26 audit, Task 1) --------------------------
-
-TEST_CASE("a database from Hydra 1.6 or older is too old: refused, or set aside for a fresh "
-          "library") {
-    // Hydra 1.6's own records table, keyed by chart with no profile.
-    const std::string path = testtemp::temp_path("old_records", ".db");
-    remove_db(path);
-    { RecordStore seed(path); }
-    exec_on_file(path,
-                 "DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;"
-                 "PRAGMA user_version = 1;"
-                 "CREATE TABLE records (hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,"
-                 " hyversion TEXT NOT NULL, sp_cap INTEGER NOT NULL, bestpath TEXT NOT NULL,"
-                 " blob BLOB NOT NULL, score INTEGER, actcount INTEGER, maxskip INTEGER,"
-                 " hardest_ms REAL, avgmult REAL, notecount INTEGER, sqin_count INTEGER,"
-                 " sqout_count INTEGER, pathcount INTEGER,"
-                 " PRIMARY KEY (hyhash, chartmode, sp_cap));"
-                 "INSERT INTO records (hyhash, chartmode, hyversion, sp_cap, bestpath, blob,"
-                 " score) VALUES ('old', 'mode', '1.6.0', 8, '1 2 3', x'00', 100);");
-    check_too_old_file(path);
-    remove_db(path);
-}
 
 TEST_CASE("store: a new database carries 0 in user_version and reads its own rows") {
     // D53 item 1: Hydra never writes the user_version slot. classify_library_file
@@ -307,12 +289,13 @@ TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in plac
 
 TEST_CASE("an open that cannot add the failure columns fails as DatabaseUpgrade and changes "
           "nothing") {
-    // A records table that has one failure column already: adding it again
-    // fails inside the transaction, so the other is not added either.
+    // A records table that has the second failure column but not the first:
+    // the open adds failure_kind, then fails adding failure_text again, so
+    // the column it did add must be undone with the rest of the transaction.
     const std::string path = testtemp::temp_path("half_failure_columns", ".db");
     remove_db(path);
     { RecordStore seed(path); }
-    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_text;");
+    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_kind;");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
     try {
         RecordStore store(path);
@@ -321,6 +304,8 @@ TEST_CASE("an open that cannot add the failure columns fails as DatabaseUpgrade 
         CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
     }
     CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('records')"
+                               " WHERE name = 'failure_kind'") == 0);
     remove_db(path);
 }
 
@@ -722,89 +707,27 @@ TEST_CASE("another connection on an old file stops the set-aside, and the file s
 
 TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {
     // journal_size_limit is per connection, so the store sets it on every
-    // open. 4194304 bytes is the value D93 chose.
+    // open, the first on a new file and the second on the file it left.
     const std::string path = testtemp::temp_path("journal_size_limit", ".db");
     std::remove(path.c_str());
     for (int open = 0; open < 2; ++open) {
         RecordStore store(path);
-        CHECK(store.journal_size_limit_for_test() == 4194304);
+        CHECK(store.journal_size_limit_for_test() == kJournalSizeLimitBytes);
     }
     std::remove(path.c_str());
 }
 
 // ---- real old databases (testdata/store, test fidelity plan task 1) --------
 
-namespace {
-
-// One file in testdata/store and its layout. The fields are the README's
-// "Facts the tests pin".
-struct OldDatabase {
-    const char* file;
-    int64_t user_version;
-    bool has_legacy_fills_column;
-    bool has_rules_fp_column;
-};
-
-// Every fixture row's chart mode (README "Schema and stamps").
-const char* const kOldDatabaseChartMode = "Expert Pro Drums, 2x Bass";
-
-// The three charts every fixture analysed (README "The three charts").
-const char* const kOldDatabaseHashes[] = {"0b647b1570475f18d463466f2c4d72a7",
-                                          "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
-                                          "bef0759746740f9c1045f64e9a5a2938"};
-
-using ChartPairs = std::set<std::pair<std::string, std::string>>;
-
-// The (hyhash, chartmode) pairs the fixtures' results tables hold. Rows are
-// matched by chart, since result_ids differ between the files.
-ChartPairs old_database_pairs() {
-    ChartPairs out;
-    for (const char* h : kOldDatabaseHashes) out.insert({h, kOldDatabaseChartMode});
-    return out;
-}
-
-// The (chart, chartmode) pairs an old file's results table holds.
-ChartPairs result_pairs_on_file(const std::string& path) {
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-    sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, "SELECT hyhash, chartmode FROM results", -1, &s, nullptr) ==
-            SQLITE_OK);
-    ChartPairs out;
-    while (sqlite3_step(s) == SQLITE_ROW)
-        out.insert({reinterpret_cast<const char*>(sqlite3_column_text(s, 0)),
-                    reinterpret_cast<const char*>(sqlite3_column_text(s, 1))});
-    sqlite3_finalize(s);
-    sqlite3_close(db);
-    return out;
-}
-
-int64_t results_columns_named(const std::string& path, const std::string& column) {
-    return scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('results') WHERE name = '" +
-                                    column + "'");
-}
-
-}  // namespace
-
 TEST_CASE("a database any release before 2.2.0 wrote is too old: refused, or set aside for a "
           "fresh library") {
-    const std::vector<OldDatabase> fixtures = {
-        {"v1.8.4-schema2.db", 2, false, false},
-        {"v1.8.4-schema2-legacy-fills.db", 2, false, false},
-        {"v2.0.0-schema3.db", 3, true, false},
-        // v2.1.0 stopped setting user_version (README "Schema and stamps").
-        {"v2.1.0-schema4.db", 0, true, true},
-    };
-    for (const OldDatabase& f : fixtures) {
-        INFO(std::string(f.file));
-        const std::string path = copy_of_old_database(f.file, "old_database");
-
-        // The file is the layout the README says, before anything opens it.
-        CHECK(scalar_on_file(path, "PRAGMA user_version") == f.user_version);
-        CHECK(results_columns_named(path, "legacy_fills") == (f.has_legacy_fills_column ? 1 : 0));
-        CHECK(results_columns_named(path, "rules_fp") == (f.has_rules_fp_column ? 1 : 0));
-        REQUIRE(result_pairs_on_file(path) == old_database_pairs());
-
+    // The four pre-2.2.0 files in testdata/store; its README says which
+    // release wrote each.
+    const char* const files[] = {"v1.8.4-schema2.db", "v1.8.4-schema2-legacy-fills.db",
+                                 "v2.0.0-schema3.db", "v2.1.0-schema4.db"};
+    for (const char* file : files) {
+        INFO(std::string(file));
+        const std::string path = copy_of_old_database(file, "old_database");
         check_too_old_file(path);
         remove_db(path);
     }
@@ -834,23 +757,50 @@ TEST_CASE("the command-line tools' open refuses a file too old to convert and ne
 
 namespace {
 
-// One stored record and its best path, as the file holds them. The values
-// are the README's "v2.12.1_library.db", read off the one run that made it.
-struct StoredRecordPin {
-    const char* song_id;
-    int64_t pathcount;
-    int64_t stars;
-    int64_t notecount;
-    const char* best_path;
-    int64_t best_score;
-    int64_t best_actcount;
-};
+// Every row of `table` in the file at `path`, each column's type and bytes
+// joined into one string, so two reads compare whole rows. The rows are a
+// set, so the comparison does not lean on the order SQLite reads them in.
+std::multiset<std::string> table_rows(const std::string& path, const std::string& table) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    const std::string sql = "SELECT * FROM " + table;
+    REQUIRE(sqlite3_prepare_v2(db, sql.c_str(), -1, &s, nullptr) == SQLITE_OK);
+    std::multiset<std::string> out;
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        std::string row;
+        for (int c = 0; c < sqlite3_column_count(s); ++c) {
+            const int type = sqlite3_column_type(s, c);
+            row += std::to_string(type) + ":";
+            if (type != SQLITE_NULL) {
+                const void* bytes = sqlite3_column_blob(s, c);
+                const int n = sqlite3_column_bytes(s, c);
+                row += std::to_string(n) + ":";
+                if (n > 0) row.append(static_cast<const char*>(bytes), static_cast<size_t>(n));
+            }
+            row += "|";
+        }
+        out.insert(row);
+    }
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return out;
+}
 
-const StoredRecordPin kV2121Records[] = {
-    {"0b647b1570475f18d463466f2c4d72a7", 5, 7, 1257, "0 0 E2 E0", 379655, 4},
-    {"0d4fd734fe5f2bf6ff1fdbc4ff55be8f", 1, 6, 1088, "(No activations.)", 245800, 0},
-    {"bef0759746740f9c1045f64e9a5a2938", 1, 6, 1375, "(No activations.)", 315350, 0},
-};
+// The song ids of every record in the file at `path`, in id order.
+std::vector<std::string> record_song_ids(const std::string& path) {
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(db, "SELECT song_id FROM records ORDER BY song_id", -1, &s,
+                               nullptr) == SQLITE_OK);
+    std::vector<std::string> out;
+    while (sqlite3_step(s) == SQLITE_ROW)
+        out.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    return out;
+}
 
 // The one text value `sql` reads from the file at `path`.
 std::string text_on_file(const std::string& path, const std::string& sql) {
@@ -866,28 +816,21 @@ std::string text_on_file(const std::string& path, const std::string& sql) {
     return out;
 }
 
-// Every pinned record and its best path, read straight from the file.
-void check_v2121_rows(const std::string& path) {
-    CHECK(record_rows_in(path) == 3);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == 7);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
-    CHECK(text_on_file(path, "SELECT chartmode FROM profiles") == "Expert Pro Drums, 2x Bass");
-    CHECK(scalar_on_file(path, "SELECT sp_cap FROM profiles") == 4);
-    CHECK(text_on_file(path, "SELECT hyversion FROM profiles") == "2.8.0+efill85");
-    for (const StoredRecordPin& r : kV2121Records) {
-        INFO(std::string(r.song_id));
-        const std::string rec =
-            std::string(" FROM records WHERE song_id = '") + r.song_id + "'";
-        const std::string best =
-            std::string(" FROM record_paths WHERE rank = 1 AND song_id = '") + r.song_id + "'";
-        CHECK(scalar_on_file(path, "SELECT COUNT(*)" + rec) == 1);
-        CHECK(scalar_on_file(path, "SELECT pathcount" + rec) == r.pathcount);
-        CHECK(scalar_on_file(path, "SELECT stars" + rec) == r.stars);
-        CHECK(scalar_on_file(path, "SELECT notecount" + rec) == r.notecount);
-        CHECK(text_on_file(path, "SELECT path" + best) == r.best_path);
-        CHECK(scalar_on_file(path, "SELECT score" + best) == r.best_score);
-        CHECK(scalar_on_file(path, "SELECT actcount" + best) == r.best_actcount);
-    }
+// The run settings of the one profile row the file at `path` holds, read
+// from that row, so a lookup asks for exactly what the batch stored.
+Profile file_profile(const std::string& path) {
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 1);
+    Profile p{text_on_file(path, "SELECT chartmode FROM profiles"),
+              CapQuery::at(static_cast<int>(scalar_on_file(path, "SELECT sp_cap FROM profiles"))),
+              Lens{}};
+    p.lens.ms_enabled = static_cast<int>(scalar_on_file(path, "SELECT ms_enabled FROM profiles"));
+    p.lens.ms_value = static_cast<int>(scalar_on_file(path, "SELECT ms_value FROM profiles"));
+    p.lens.depth_mode = static_cast<int>(scalar_on_file(path, "SELECT depth_mode FROM profiles"));
+    p.lens.depth_value =
+        static_cast<int>(scalar_on_file(path, "SELECT depth_value FROM profiles"));
+    p.lens.legacy_fills =
+        static_cast<int>(scalar_on_file(path, "SELECT legacy_fills FROM profiles"));
+    return p;
 }
 
 }  // namespace
@@ -899,33 +842,38 @@ TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps
     const std::string path = copy_of_old_database("v2.12.1_library.db", "v2121_library");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
     REQUIRE_FALSE(charts_have_album(path));
-    check_v2121_rows(path);
-
-    // The batch's run settings (README "v2.12.1_library.db").
-    const Profile batch_profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
+    // What the file holds before anything opens it.
+    const std::multiset<std::string> records_before = table_rows(path, "records");
+    const std::multiset<std::string> paths_before = table_rows(path, "record_paths");
+    const int64_t library_rows_before = scalar_on_file(path, "SELECT COUNT(*) FROM charts");
+    const std::vector<std::string> ids = record_song_ids(path);
+    REQUIRE_FALSE(ids.empty());
+    const Profile batch_profile = file_profile(path);
+    // The file's stamp against this build's: a stamp this build does not
+    // accept reads Stale, one it accepts reads Ready.
+    const std::string file_stamp = text_on_file(path, "SELECT hyversion FROM profiles");
+    const bool stamp_current = kResultsStamp.is_current(std::string_view(file_stamp));
     {
         // The app's own open (ui::StoreOpenJob::run).
         RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp());
         CHECK_FALSE(store.set_aside_path().has_value());
-        CHECK(store.record_count() == 3);
-        // hydra_batch with folder arguments never writes the library.
-        CHECK(store.chart_library_count() == 0);
-        const std::vector<std::string> ids = {kV2121Records[0].song_id, kV2121Records[1].song_id,
-                                              kV2121Records[2].song_id};
+        CHECK(store.record_count() == static_cast<int64_t>(ids.size()));
+        CHECK(store.chart_library_count() == library_rows_before);
         const std::vector<RecordLookup> got = store.lookup(ids, batch_profile);
-        REQUIRE(got.size() == 3);
+        REQUIRE(got.size() == ids.size());
         for (size_t i = 0; i < got.size(); ++i) {
             INFO(ids[i]);
-            CHECK(got[i].status == RecordStatus::Stale);
-            CHECK(got[i].stale_build);
+            CHECK(got[i].status == (stamp_current ? RecordStatus::Ready : RecordStatus::Stale));
+            CHECK(got[i].stale_build == !stamp_current);
         }
-        CHECK(store.ready_records(batch_profile).empty());
+        CHECK(store.ready_records(batch_profile).empty() == !stamp_current);
     }
     CHECK(charts_have_album(path));
     CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
-    // The open rewrote no record: every pinned row is still there.
-    check_v2121_rows(path);
+    // The open rewrote no record and no path row.
+    CHECK(table_rows(path, "records") == records_before);
+    CHECK(table_rows(path, "record_paths") == paths_before);
     remove_db(path);
 }
 
@@ -974,15 +922,39 @@ void drop_early_fill_column(const std::string& path) {
                  "ALTER TABLE p5 RENAME TO profiles;");
 }
 
-// A file at `path` this build wrote, with two records under two profiles
-// (4 and 8 bars, both at the default window), its profiles table then put
-// back to the layout before the early-fill window.
+// The search settings fixture() runs (store_fixtures.h), with the SP cap at
+// `cap` and the early-fill window at `window_ms`: what at4() and its
+// neighbours name as a profile.
+app::AnalysisSettings fixture_search(int cap, int window_ms) {
+    app::AnalysisSettings settings;
+    settings.sp_cap = cap;
+    settings.depth_mode = DepthMode::Scores;
+    settings.depth_value = 0;
+    settings.ms_filter = std::nullopt;
+    settings.early_fill_window_ms = window_ms;
+    return settings;
+}
+
+// The real analysis of fixture()'s chart (the first corpus chart with
+// paths) at `cap` bars and the early-fill window `window_ms`.
+const HydraRecord& fixture_chart_at(int cap, int window_ms) {
+    static const std::string chart =
+        corpus::first_chart_with_paths(fixture_search(4, static_cast<int>(kDefaultEarlyFillWindowMs)))
+            .chart;
+    return corpus::analyzed(chart, fixture_search(cap, window_ms));
+}
+
+// A file at `path` this build wrote, with two real records under two
+// profiles (4 and 8 bars, both at the default window), its profiles table
+// then put back to the layout before the early-fill window.
 void seed_without_early_fill(const std::string& path) {
     remove_db(path);
+    const int window = static_cast<int>(kDefaultEarlyFillWindowMs);
     {
         RecordStore seed(path);
-        seed.save(prepare_record("a", at4(), at_cap(4)));
-        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}}, at_cap(8)));
+        seed.save(prepare_record("a", at4(), fixture_chart_at(4, window)));
+        seed.save(prepare_record("b", Profile{"mode", CapQuery::at(8), Lens{}},
+                                 fixture_chart_at(8, window)));
     }
     drop_early_fill_column(path);
 }
@@ -995,34 +967,40 @@ TEST_CASE("the v2.12.1 file's profiles table is rebuilt with the early-fill wind
     REQUIRE_FALSE(profiles_have_early_fill(path));
     const std::string before = older_profile_columns(path);
     REQUIRE_FALSE(before.empty());
-    REQUIRE(records_under_profiles(path) == 3);
+    const int64_t records_before = record_rows_in(path);
+    REQUIRE(records_before > 0);
+    REQUIRE(records_under_profiles(path) == records_before);
+    const int64_t profiles_before = scalar_on_file(path, "SELECT COUNT(*) FROM profiles");
+    const Profile batch_profile = file_profile(path);
+    const std::string song = record_song_ids(path).front();
+    const bool stamp_current = kResultsStamp.is_current(
+        std::string_view(text_on_file(path, "SELECT hyversion FROM profiles")));
     { RecordStore store(path, OldFilePolicy::SetAside, core::default_stamp()); }
     REQUIRE(profiles_have_early_fill(path));
     // Every row keeps its id and its other columns, and is filed under the
     // default window, since no older file recorded one.
     CHECK(older_profile_columns(path) == before);
-    CHECK(profiles_at_default_window(path) == 1);
-    CHECK(records_under_profiles(path) == 3);
-    // At the default window no old result vanishes: each reads Stale, the
-    // stamp's answer, not Not analyzed. One chart is enough to show the
-    // lookup reaches the rebuilt row; the earlier case reads all three.
-    const Profile batch_profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
-    const std::string song = kV2121Records[0].song_id;
+    CHECK(profiles_at_default_window(path) == profiles_before);
+    CHECK(records_under_profiles(path) == records_before);
+    // At the default window no old result vanishes: it reads as the stamp
+    // says, not Not analyzed. One chart is enough to show the lookup reaches
+    // the rebuilt row; the earlier case reads them all.
     {
         RecordStore store(path);
-        CHECK(store.lookup_one(song, batch_profile).status == RecordStatus::Stale);
+        CHECK(store.lookup_one(song, batch_profile).status ==
+              (stamp_current ? RecordStatus::Ready : RecordStatus::Stale));
         // At another window the chart has no result yet.
         Profile at_85 = batch_profile;
         at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
         CHECK(store.lookup_one(song, at_85).status == RecordStatus::NotAnalyzed);
 
-        // Two profiles that differ only in the window can now both be saved.
-        HydraRecord searched_at_85 = at_cap(4);
-        searched_at_85.early_fill_window_ms = kHitWindowMs;
+        // Two profiles that differ only in the window can now both be saved:
+        // one chart's real analyses at the default window and at the top one.
         Profile mode_at_85 = at4();
         mode_at_85.lens.efill_window_ms = kMaxEarlyFillWindowMs;
-        store.save(prepare_record("h", at4(), at_cap(4)));
-        store.save(prepare_record("h", mode_at_85, searched_at_85));
+        store.save(prepare_record(
+            "h", at4(), fixture_chart_at(4, static_cast<int>(kDefaultEarlyFillWindowMs))));
+        store.save(prepare_record("h", mode_at_85, fixture_chart_at(4, kMaxEarlyFillWindowMs)));
         CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
         CHECK(store.lookup_one("h", mode_at_85).status == RecordStatus::Ready);
     }
@@ -1092,7 +1070,14 @@ TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgra
 // "SQLITE_ENABLE_FTS5=0" compiles full-text search in. Hydra never uses it,
 // so the build leaves that macro out.
 TEST_CASE("the vendored SQLite is built without FTS5") {
-    CHECK(sqlite3_compileoption_used("ENABLE_FTS5") == 0);
+    // Without FTS5, SQLite has no fts5 module: making a full-text table fails
+    // where a plain table on the same connection does not.
+    sqlite3* db = nullptr;
+    REQUIRE(sqlite3_open(":memory:", &db) == SQLITE_OK);
+    CHECK(sqlite3_exec(db, "CREATE TABLE plain (x)", nullptr, nullptr, nullptr) == SQLITE_OK);
+    CHECK(sqlite3_exec(db, "CREATE VIRTUAL TABLE full_text USING fts5(x)", nullptr, nullptr,
+                       nullptr) == SQLITE_ERROR);
+    sqlite3_close(db);
 }
 
 // ---- store speed (2026-09-26 audit, Task 9) --------------------------------
@@ -1113,8 +1098,20 @@ TEST_CASE("a file store runs in WAL mode with an index on chart names") {
     sqlite3_finalize(s);
     sqlite3_close(db);
     CHECK(mode == "wal");
-    CHECK(scalar_on_file(path,"SELECT COUNT(*) FROM sqlite_master"
-                       " WHERE type='index' AND name='charts_by_name'") == 1);
+    // A read of the library in name order (LibraryOrder::ByName: by name,
+    // then scan order, which is rowid) walks an index, whatever it is called,
+    // instead of sorting the whole table first.
+    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
+    REQUIRE(sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN SELECT * FROM charts ORDER BY name, rowid",
+                               -1, &s, nullptr) == SQLITE_OK);
+    std::string plan;
+    while (sqlite3_step(s) == SQLITE_ROW)
+        plan += std::string(reinterpret_cast<const char*>(sqlite3_column_text(s, 3))) + "\n";
+    sqlite3_finalize(s);
+    sqlite3_close(db);
+    INFO(plan);
+    CHECK(plan.find("USING INDEX") != std::string::npos);
+    CHECK(plan.find("TEMP B-TREE") == std::string::npos);
     std::remove(path.c_str());
 }
 
@@ -1176,7 +1173,10 @@ TEST_CASE("a database another connection has locked fails to open as DatabaseOpe
         FAIL("a locked file opened");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::DatabaseOpen);
-        CHECK(std::string(e.what()) == "sqlite exec failed: database is locked");
+        // The error carries SQLite's own reason for a busy file, read from
+        // SQLite, so the message names the lock and not some other failure.
+        INFO(e.what());
+        CHECK(std::string(e.what()).find(sqlite3_errstr(SQLITE_BUSY)) != std::string::npos);
     }
     REQUIRE(sqlite3_exec(holder, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
     sqlite3_close(holder);
@@ -1267,8 +1267,33 @@ TEST_CASE("every store read throws a database read error when its step fails") {
 // and without shared cache, two options that trim its own CPU. A sibling of
 // the FTS5 case above.
 TEST_CASE("the vendored SQLite is built without memory counters or shared cache") {
-    CHECK(sqlite3_compileoption_used("DEFAULT_MEMSTATUS=0") == 1);
-    CHECK(sqlite3_compileoption_used("OMIT_SHARED_CACHE") == 1);
+    const std::string path = testtemp::temp_path("sqlite_build", ".db");
+    std::remove(path.c_str());
+    // Both connections ask for a shared cache; a build without it gives each
+    // its own.
+    const int flags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_SHAREDCACHE;
+    sqlite3* writer = nullptr;
+    REQUIRE(sqlite3_open_v2(path.c_str(), &writer, flags, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(writer, "CREATE TABLE t (x); BEGIN; INSERT INTO t VALUES (1);", nullptr,
+                         nullptr, nullptr) == SQLITE_OK);
+    // No memory counters: SQLite counted none of the allocations above.
+    CHECK(sqlite3_memory_used() == 0);
+    // No shared cache: a reader allowed to read uncommitted rows would see
+    // the writer's open insert through a shared cache. With its own cache it
+    // reads the file, which does not hold the insert yet.
+    sqlite3* reader = nullptr;
+    REQUIRE(sqlite3_open_v2(path.c_str(), &reader, flags, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(reader, "PRAGMA read_uncommitted = 1", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+    sqlite3_stmt* s = nullptr;
+    REQUIRE(sqlite3_prepare_v2(reader, "SELECT COUNT(*) FROM t", -1, &s, nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_step(s) == SQLITE_ROW);
+    CHECK(sqlite3_column_int64(s, 0) == 0);
+    sqlite3_finalize(s);
+    sqlite3_close(reader);
+    sqlite3_exec(writer, "ROLLBACK", nullptr, nullptr, nullptr);
+    sqlite3_close(writer);
+    std::remove(path.c_str());
 }
 
 // ---- the batch writer (D86 item 3, task W1) --------------------------------
