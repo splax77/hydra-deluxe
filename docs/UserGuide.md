@@ -301,9 +301,9 @@ Sometimes a phrase collected during Star Power would push the meter past the SP 
 
 ### Below the activations
 
-Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Both start open. If you close one, it stays closed for every path and song you open after that, until you open it again or close Hydra Deluxe.
+Under the activation rows are two folds, `Multiplier squeeze` and `Score breakdown`. Click a fold's arrow or name to open or close it. Both start open. If you close one, it stays closed for every path and song you open after that, until you open it again or close Hydra Deluxe.
 
-`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on.
+`Multiplier squeeze` lists the multiplier squeezes in the song. When the combo multiplier goes up on a multi-note chord, hitting the more valuable notes (cymbals, dynamics) a little later scores them on the higher multiplier. This is why two FCs of the same song can differ by 15<!-- default: kCymbalBonusPoints --> points. `2x` means it happens as the multiplier reaches 2x (10<!-- default: to_multiplier:x2 --> notes in), and so on. Beside the name are the points the squeezes add, like `+15`, with the count first when there are several, like `3 · +45`. A song with none shows `Multiplier squeeze · none` in gray, with no arrow, because there's nothing to open.
 
 `Score breakdown` shows the score this path should get, in the same categories as Clone Hero's results screen. It includes multiplier, frontend and backend squeezes. `Notes`, `Accent Notes` and `Ghost Notes` together make the `Base score` on the Stars tab. The accent and ghost lines hold only the extra 50<!-- default: kNoteBasePoints --> points each of those notes adds, and a cymbal's extra points stay in `Notes`. A backend note that lands after the SP end still counts under Star Power only when it lands less than a small leeway after it, 3 ms<!-- default: Rules::backend_leeway_ms --> by default (`backend_leeway_ms` in `hydra_rules.ini`).
 
