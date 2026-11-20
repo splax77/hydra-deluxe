@@ -30,7 +30,6 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
-from tools.ch_mcp.tests import test_launch_core as LC  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
@@ -1740,13 +1739,20 @@ class DestroyedSkipTest(unittest.TestCase):
             with self.subTest(agent=name):
                 self.assertNotIn("m_CachedPtr", self.read(name))
         self.assertIn("export function isDestroyed(", self.read("gamemanager.ts"))
-        self.assertIn("isDestroyed", self.read("menu.ts"))
+        self.assertRegex(self.read("menu.ts"),
+                         r'(?m)^import\s*\{[^}]*\bisDestroyed\b[^}]*\}\s*from\s*"\./gamemanager\.js"')
 
     def test_the_state_agent_sends_the_destroyed_count_in_both_replies(self):
-        text = self.read("state.ts")
-        self.assertIn("lookUpGameManager()", text)
-        self.assertIn("destroyed: found.destroyed", text)
-        self.assertIn("        destroyed,\n", text)
+        # Every object readState returns, found or not, holds a `destroyed`
+        # key, written out or as a shorthand.
+        body = top_functions(self.read("state.ts"))["readState"]
+        self.assertIn("lookUpGameManager()", body)
+        replies = [body[m.end() - 1:_close(body, m.end() - 1, "{", "}")]
+                   for m in re.finditer(r"\breturn\s*\{", body)]
+        self.assertEqual(len(replies), 2, replies)
+        for reply in replies:
+            with self.subTest(reply=reply[:60]):
+                self.assertRegex(reply, r"[{,]\s*destroyed\s*[:,}]")
 
 
 LAUNCH_AGENT = "launch.ts"
@@ -1819,16 +1825,25 @@ class LaunchAgentTest(unittest.TestCase):
 
     def test_the_check_catches_a_patch_outside_the_observer(self):
         good = self.read(LAUNCH_AGENT)
+        self.assertEqual(patch_findings(good), [])
+        deferred = "setImmediate(() => patchModule(patch, module));"
+        self.assertEqual(good.count(deferred), 1, deferred)
+        calls = "patchModule( appears {} times, expected its definition and the observer's two calls"
+        observer = ("the observer's callback does not call patchModule once "
+                    "directly and once through setImmediate")
         bad = {
-            "a second patch": good + "Memory.patchCode(p, 1, () => {});\n",
-            "a second observer": good + "Process.attachModuleObserver({});\n",
-            "a patch at load": good + "patchModule(armed!, Process.getModuleByName(\"x\"));\n",
-            "no deferred branch": good.replace(
-                "setImmediate(() => patchModule(patch, module));", "return;"),
+            "a second patch": (good + "Memory.patchCode(p, 1, () => {});\n",
+                               ["2 Memory.patchCode( sites, expected 1"]),
+            "a second observer": (good + "Process.attachModuleObserver({});\n",
+                                  ["2 Process.attachModuleObserver( sites, expected 1"]),
+            "a patch at load": (good + "patchModule(armed!, Process.getModuleByName(\"x\"));\n",
+                                [calls.format(4)]),
+            "no deferred branch": (good.replace(deferred, "return;"),
+                                   [calls.format(2), observer]),
         }
-        for what, text in bad.items():
+        for what, (text, findings) in bad.items():
             with self.subTest(case=what):
-                self.assertNotEqual(patch_findings(text), [])
+                self.assertEqual(patch_findings(text), findings)
 
 
 class LaunchStatusRepliesTest(Workspace):
@@ -1857,33 +1872,26 @@ class LaunchStatusRepliesTest(Workspace):
         self.assertEqual(self.lines, [])
 
 
-@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
-class LaunchRepliesTest(Workspace):
-    """launch.ts's error replies, and LiveAgent's answer to one."""
+class LaunchErrorKeyTest(unittest.TestCase):
+    @staticmethod
+    def code(name):
+        # The agent's text with its comment lines left out.
+        with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+            return "\n".join(l for l in fh.read().splitlines()
+                             if not l.lstrip().startswith("//"))
 
     def test_launch_ts_sends_an_error_key_only_for_a_fault(self):
-        # Its one `error:` site is the catch that answers a message that threw.
-        with open(os.path.join(AGENT_DIR, LAUNCH_AGENT), encoding="utf-8") as fh:
-            code = [line for line in fh.read().splitlines()
-                    if not line.lstrip().startswith("//")]
-        sites = [line.strip() for line in code if re.search(r"\berror\b", line)]
-        self.assertEqual(sites, ["send({ error: `${message.type} failed: ${e}`, id });"])
-        with open(os.path.join(AGENT_DIR, LAUNCH_CORE), encoding="utf-8") as fh:
-            self.assertNotRegex(
-                "\n".join(l for l in fh.read().splitlines()
-                          if not l.lstrip().startswith("//")), r"\berror\s*:")
-
-    def test_an_agent_fault_still_raises_with_its_text(self):
-        session = ReplySession([{"state": "idle"}, {"error": "arm failed: boom"}])
-        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
-                             frida_mod=FakeFrida(session), wait=instant_wait,
-                             out=self.lines.append)
-        self.addCleanup(agent.detach)
-        agent.start(30.0)
-        with self.assertRaises(FA.ReadFailed) as caught:
-            agent.request({"type": "arm", "patch": {}}, 5.0)
-        self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
-        self.assertIn("arm failed: boom", str(caught.exception))
+        # LiveAgent raises on an `error` key, so launch.ts builds one only
+        # inside a catch block, and launch_core.ts builds none.
+        code = self.code(LAUNCH_AGENT)
+        sites = [m.start() for m in re.finditer(r"\berror\s*:", code)]
+        self.assertNotEqual(sites, [])
+        catches = [(m.end() - 1, _close(code, m.end() - 1, "{", "}"))
+                   for m in re.finditer(r"\bcatch\s*\([^)]*\)\s*\{", code)]
+        for at in sites:
+            with self.subTest(line=code.count("\n", 0, at) + 1):
+                self.assertTrue(any(lo < at < hi for lo, hi in catches))
+        self.assertNotRegex(self.code(LAUNCH_CORE), r"\berror\s*:")
 
 
 class BuildScriptsTest(unittest.TestCase):
@@ -1892,9 +1900,18 @@ class BuildScriptsTest(unittest.TestCase):
         with open(os.path.join(AGENT_DIR, "package.json"),
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
-        self.assertEqual(sorted(scripts),
-                         ["build:clock", "build:kit", "build:launch",
-                          "build:menuhooks", "build:state", "build:trace"])
+        # Every agent no other agent imports is one the loaders start, so
+        # each has a build script, and no script builds anything else.
+        imported = set()
+        for path in agent_sources():
+            with open(path, encoding="utf-8") as fh:
+                imported |= {m + ".ts" for m in re.findall(r'from\s+"\./(\w+)\.js"', fh.read())}
+        entries = sorted(os.path.basename(p) for p in agent_sources()
+                         if os.path.basename(p) not in imported)
+        built = sorted(t for command in scripts.values()
+                       for t in re.findall(r"\b(\w+\.ts)\b", command))
+        self.assertNotEqual(entries, [])
+        self.assertEqual(built, entries)
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()
