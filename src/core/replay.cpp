@@ -322,7 +322,7 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     if (!best) {
         std::snprintf(buf, sizeof(buf),
                       "%s has a SqOut offset of %.2f ms but no Star Power "
-                      "phrase chord within %.0f ms of its SP end",
+                      "phrase chord within %.0f ms of its deact node",
                       where.c_str(), *w.sqout_offset_ms, kSqueezeWindowMs);
         throw std::runtime_error(buf);
     }
@@ -392,9 +392,9 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
         std::snprintf(
             buf, sizeof(buf),
             "%s: the SqOut offset %.2f ms lands on the phrase chord at tick "
-            "%lld (%.2f ms from the SP end), which the engine never squeezes "
+            "%lld (%.2f ms from the deact node), which the engine never squeezes "
             "out. A window squeezes out only its newest phrase chord at or "
-            "before the SP end or the first one after it%s%s. Not priced.",
+            "before the deact node or the first one after it%s%s. Not priced.",
             where.c_str(), *w.sqout_offset_ms, (long long)typed.tick, typed.offset_ms,
             can.empty() ? "; here neither is left" : ": here ", can.c_str());
         throw std::runtime_error(buf);
