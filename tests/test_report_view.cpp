@@ -214,6 +214,36 @@ bool holds(const std::string& text, const std::string& part) {
     return text.find(part) != std::string::npos;
 }
 
+// Whether `text` holds "name: " and then `gloss` as dm_report_view shows it.
+// A gloss's placeholders (dm_report.h, StatusWords::gloss) are filled by the
+// view, so each one stands for whatever the view put there; the gloss's own
+// words around them must all follow, in order.
+bool holds_gloss(const std::string& text, const std::string& name, const std::string& gloss) {
+    size_t at = text.find(name + ": ");
+    if (at == std::string::npos) return false;
+    at += name.size() + 2;
+    size_t from = 0;
+    bool first = true;
+    while (true) {
+        const size_t open = gloss.find("__", from);
+        const std::string piece =
+            gloss.substr(from, open == std::string::npos ? std::string::npos : open - from);
+        if (first) {
+            if (text.compare(at, piece.size(), piece) != 0) return false;
+        } else {
+            const size_t found = text.find(piece, at);
+            if (found == std::string::npos) return false;
+            at = found;
+        }
+        at += piece.size();
+        first = false;
+        if (open == std::string::npos) return true;
+        const size_t close = gloss.find("__", open + 2);
+        if (close == std::string::npos) return false;
+        from = close + 2;
+    }
+}
+
 // The indices of the rows of `rows` a search for `typed` keeps, in row
 // order: search_matches over each row's own search text.
 std::vector<size_t> matching(const std::vector<ReportRow>& rows, const std::string& typed) {
@@ -611,10 +641,12 @@ TEST_CASE("dm comparison columns: one id each and the definitions' game numbers"
                 std::to_string(net::kBaseSpeedPercent) + "%"));
     const std::string status_definition = column_named(cols, "status").definition;
     for (const dm_report::StatusWords& w : dm_report::kStatusWords) {
-        INFO(w.status);
+        INFO(std::string(w.status));
         CHECK(holds(status_definition, w.name));
-        if (*w.gloss) CHECK(holds(status_definition, w.gloss));
+        if (*w.gloss) CHECK(holds_gloss(status_definition, w.name, w.gloss));
     }
+    // The view filled every placeholder a gloss brought in.
+    CHECK_FALSE(holds(status_definition, "__"));
 
     // The window starts sorted on a number column, high to low.
     const SortSpec first = dm_report_view::dm_first_sort();
