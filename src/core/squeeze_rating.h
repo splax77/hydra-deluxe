@@ -153,10 +153,10 @@ struct NoteRating {
     std::optional<double> effective_ms;  // set exactly when is_scaled(scale)
 };
 
-// offset_ms: the note's ms minus the SP end's ms (negative = before it).
+// offset_ms: the note's ms minus the deact node's ms (negative = before it).
 // inside: whether the note is inside SP on this path, by the counting rule
 // that owns it (core/backend_value.h). at_end: the multipliers stored for
-// the SP end that offset is measured from.
+// the deact node that offset is measured from.
 NoteRating rate_note(double offset_ms, bool inside, const TransferScale& at_end);
 
 // ---- rate_activation ------------------------------------------------------
@@ -219,7 +219,7 @@ struct ActivationRating {
 // rows are judged at the post (deact-node) end, each SqIn phrase note at
 // its own end's scale.
 // backend_leeway_ms: Rules::backend_leeway_ms. A plain row less than this
-// past the SP end is counted by the engine, so it is not a late squeeze.
+// past the deact node is counted by the engine, so it is not a late squeeze.
 ActivationRating rate_activation(
     const Activation& act,
     double backend_leeway_ms = core::default_rules().backend_leeway_ms);
