@@ -139,13 +139,13 @@ class TypedReadTest(GameBytesCase):
         for off in range(0, len(GAME_BYTES), _SLOT):
             with self.subTest(rva=hex(FIRST_RVA + off)):
                 self.assertEqual(self.proc.read_double(self.addr + off),
-                                 struct.unpack_from("<d", GAME_BYTES, off)[0])
+                                 process.decode_double(GAME_BYTES[off:off + _SLOT]))
 
     def test_read_u32_reads_each_game_word(self):
         for off in range(0, len(GAME_BYTES), 4):
             with self.subTest(off=off):
                 self.assertEqual(self.proc.read_u32(self.addr + off),
-                                 struct.unpack_from("<I", GAME_BYTES, off)[0])
+                                 process.decode_u32(GAME_BYTES[off:off + 4]))
 
     def test_read_const_double_resolves_then_reads(self):
         # read_const_double takes an RVA, resolves it, then reads the double:
