@@ -187,10 +187,12 @@ std::vector<float> read_after_seek(StemReader& r, int64_t frame, int64_t frames)
 void check_seek_lands(StemReader& r, const DecodedAudio& full, int64_t frame, int64_t frames) {
     CAPTURE(frame);
     const std::vector<float> got = read_after_seek(r, frame, frames);
-    const int64_t left = full.frames() - frame;
-    REQUIRE(static_cast<int64_t>(got.size()) == (std::min)(frames, left) * full.channels);
-    const std::ptrdiff_t from = static_cast<std::ptrdiff_t>(frame) * full.channels;
-    CHECK(std::equal(got.begin(), got.end(), full.samples.begin() + from));
+    // The straight decode's frames from `frame`: `frames` of them, or as many
+    // as are left before the end.
+    const int64_t count = (std::min)(frames, full.frames() - frame);
+    const auto from = full.samples.begin() + static_cast<std::ptrdiff_t>(frame) * full.channels;
+    const std::vector<float> want(from, from + static_cast<std::ptrdiff_t>(count) * full.channels);
+    CHECK(got == want);
 }
 
 // One packet of an Ogg stream and the index of the stream's page that
@@ -246,19 +248,24 @@ int64_t opus_samples(const std::vector<unsigned char>& packet) {
                                       48000);
 }
 
+// The little-endian 16-bit field at bytes i and i + 1 of an Opus header
+// packet; at() fails the test on a header too short to hold it.
+uint16_t opus_head_u16(const std::vector<unsigned char>& head, std::size_t i) {
+    const uint8_t two[2] = {head.at(i), head.at(i + 1)};
+    return core::read_le_u16(two);
+}
+
 // The pre-skip an OpusHead packet states (bytes 10-11).
 int64_t opus_preskip(const std::vector<unsigned char>& head) {
-    REQUIRE(head.size() >= 12);
-    return core::read_le_u16(head.data() + 10);
+    return opus_head_u16(head, 10);
 }
 
 // Writes `q78` into an OpusHead packet's output gain field (bytes 16-17,
 // a signed Q7.8 dB value).
 void set_opus_head_gain(std::vector<unsigned char>& head, int16_t q78) {
-    REQUIRE(head.size() >= 18);
     const uint16_t u = static_cast<uint16_t>(q78);
-    head[16] = static_cast<unsigned char>(u & 0xFF);
-    head[17] = static_cast<unsigned char>(u >> 8);
+    head.at(16) = static_cast<unsigned char>(u & 0xFF);
+    head.at(17) = static_cast<unsigned char>(u >> 8);
 }
 
 // The linear output gain the OpusHead of `file`'s first stream asks for: its
@@ -267,13 +274,12 @@ void set_opus_head_gain(std::vector<unsigned char>& head, int16_t q78) {
 float opus_head_gain(const std::vector<uint8_t>& file) {
     const std::vector<std::vector<unsigned char>> pk = opus_packets(file);
     REQUIRE(!pk.empty());
-    REQUIRE(pk[0].size() >= 18);
-    const int16_t q78 = static_cast<int16_t>(core::read_le_u16(pk[0].data() + 16));
+    const int16_t q78 = static_cast<int16_t>(opus_head_u16(pk[0], 16));
     return q78 == 0 ? 1.0f : static_cast<float>(std::pow(10.0, q78 / (20.0 * 256.0)));
 }
 
 // Every sample of `x` times `gain`, the multiply the reader applies.
-std::vector<float> scaled(const std::vector<float>& x, float gain) {
+std::vector<float> times_gain(const std::vector<float>& x, float gain) {
     std::vector<float> out(x.size());
     std::transform(x.begin(), x.end(), out.begin(), [gain](float s) { return s * gain; });
     return out;
@@ -435,7 +441,7 @@ TEST_CASE("StemReader: Opus header gain is applied") {
     REQUIRE(x.size() == y.size());
     CHECK(x == old_full_decode(read_fixture("sine220.opus")).samples);  // re-paging is lossless
     // The same packets through the same decoder, times the header's gain.
-    CHECK(y == scaled(x, gain));
+    CHECK(y == times_gain(x, gain));
 }
 
 TEST_CASE("StemReader: a chained Opus file plays as one stream") {
@@ -461,7 +467,7 @@ TEST_CASE("StemReader: a chained Opus file plays as one stream") {
     want.channels = full.channels;
     want.sample_rate = full.sample_rate;
     want.samples = full.samples;
-    const std::vector<float> louder = scaled(full.samples, gain);
+    const std::vector<float> louder = times_gain(full.samples, gain);
     want.samples.insert(want.samples.end(), louder.begin(), louder.end());
 
     auto r = open_stem_reader(StemBytes{chained, nullptr});
