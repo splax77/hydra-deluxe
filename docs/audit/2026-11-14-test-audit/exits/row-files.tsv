@@ -3293,13 +3293,13 @@ L-R17	record	records/E4.md:488	S-snapshot	~/.claude/gates/tests/test_shell_outpu
 L-R17	record	records/E4.md:491	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
 L-R17	record	records/E4.md:494	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
 L-R17	record	records/E4.md:588	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
-L-R17	record	records/E4.md:591	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1	heading-base
+L-R17	record	records/E4.md:591	P-message	~/.claude/tools/session_cards/check.py	base
 L-R17	record	records/E4.md:600	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:603	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:606	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:660	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:669	K-floor	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
-L-R17	record	records/E4.md:675	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1	heading-base
+L-R17	record	records/E4.md:675	P-message	~/.claude/tools/session_cards/batch.py	base
 L-R17	record	records/E4.md:690	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:711	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:750	K-partial	~/.claude/gates/tests/test_h52_cleanup_sweep.ps1|~/.claude/hooks/tests/test_h52_cleanup_sweep.ps1	ambiguous
