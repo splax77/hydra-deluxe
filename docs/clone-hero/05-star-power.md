@@ -2,7 +2,7 @@
 
 This page covers Star Power phrases, the meter, activation, drain, the Star Power end and squeezes.
 It describes build 1.1 (v1.1.0.6142).
-Last write-back: 2026-11-13.
+Last write-back: 2026-11-19.
 
 The live-run files named below are the `run1_cal0_*` files under tools/ch_probe/experiments/results/overlay-spike/. "Run 1" is the key-press auto-player run on the probe chart Trippin SP Spike (resolution 192), stamped 2026-10-29 00:39 UTC. The engine fields are those of the base engine class #8288, which the drum engine #8255 inherits. `ghidra_decompile_all.txt` and "the decompile" mean Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
 
@@ -264,15 +264,15 @@ Hydra: `ScoreGraph::add_deact_edge` in src/search/graph.cpp
 Ruling: none needed: same rule
 Found: 2026-10-30, session b02ab3e6 (the reference build)
 
-### SP-26 The Preview gauge drains to the stored end
+### SP-26 The Preview gauge drains at the meter's rate until Star Power ends
 
-Rule: Hydra's Preview gauge fills one bar per phrase, drains to the stored deactivation tick, and uses the record's cap as full scale. This is Hydra's display, not a game rule.
+Rule: Hydra's Preview gauge fills one bar at each bar arrival the record stamps, and uses the record's cap as full scale. While Star Power runs, the gauge drains at the meter's own rate: at each moment it shows the bars left before the meter would run out, under the end in force at that moment. It drains that way until Star Power ends, and then drops whatever is left to empty, as the game does (SP-25). With no squeeze-out, or with a late one, the meter runs out at the moment Star Power ends, so nothing is left to drop. On an early squeeze-out Star Power ends on the squeezed-out chord while the meter still holds a little, and the gauge drops that remainder on the chord. SP-37 works one case of each kind. This is Hydra's display, not a game rule.
 Label: Hydra assumes it, never checked
-Evidence: `build_sp_meter_curve` in src/app/preview_view.cpp line 125. No game check exists.
+Evidence: `build_sp_meter_curve` in src/app/preview_view.cpp reads every level inside a window from `Activation::meter_bars_at`, and draws the window only up to `Activation::window_end_tick`, where Star Power ends. No game check exists.
 Game code (6142): none (a display)
-Hydra: `build_sp_meter_curve` in src/app/preview_view.cpp
-Ruling: none needed: a display that reads the engine's end (cards 13441c5f and a28ef5f2 hold the user's derive-from-the-engine rule)
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Hydra: `Activation::meter_bars_at` in src/core/model.h gives the bars left at a tick, from the record's stored SP-end steps; `Activation::window_end_tick` in src/core/model.h gives where Star Power ends; `build_sp_meter_curve` in src/app/preview_view.cpp draws the gauge from the two
+Ruling: none needed: a display that reads the engine's level and end (cards 13441c5f and a28ef5f2 hold the user's derive-from-the-engine rule; the filed ruling in docs/agents/rulings/code-and-engine.md says "there should never be two different answers for where star power ends. ever.")
+Found: 2026-10-30, session b02ab3e6 (the reference build); the drain until Star Power ends and the dropped remainder 2026-11-19, session d85370f4 (the one SP end owner plan)
 
 ## The Star Power end
 
@@ -402,13 +402,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); the +0x10 field 2026-
 
 ### SP-37 Squeeze-in and squeeze-out, and their timing budget
 
-Rule: A squeeze-in hits a phrase's last note early so it is collected inside Star Power. A squeeze-out hits it late so Star Power has ended and the phrase stays for a later activation. Hydra's timing budget is the hit window times (1 + r), with r from SP-39.
+Rule: A squeeze-in hits a phrase's last note early so it is collected inside Star Power. A squeeze-out hits it late so Star Power has ended and the phrase stays for a later activation. Hydra's timing budget is the hit window times (1 + r), with r from SP-39. Hydra reads both kinds of squeeze-out with one rule: Star Power ends, then the squeezed-out chord is hit, and its bar is saved on that hit (SP-35). An early squeeze-out has its chord before the point where the meter would run out; a late one has it after. Hydra reads two charts this way. Early, on Hail The Sun - Blight, activation 1: Star Power starts at tick 57600 and the meter would run out at tick 65280, but the squeezed-out chord is at tick 64800, 444.444 ms before that. So Star Power ends on the chord at tick 64800, with 0.125 bars still in the meter (480 ticks left, at 3840 ticks a bar). That remainder is dropped (SP-25), and the saved bar arrives on the same chord. Late, on Mutemath - Allies, activation 1: Star Power starts at tick 9984 and the meter runs out at tick 13056, and the squeezed-out chord is at tick 13104, 157.9 ms after that. So Star Power ends at tick 13056 with the meter empty (SP-28), and the saved bar arrives on the chord at tick 13104, hit with Star Power off.
 Label: Hydra assumes it, never checked
-Evidence: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 126 and `kHitWindowMs` (85 ms) in src/core/model.h line 105. The meaning of squeeze-in and squeeze-out was checked only against Hydra's code and full-combo videos, never against the game's code; one such video case is session 93d37c20 (2026-08-29, Enigma Machine, card only). Hydra shows a row's "effective" timing as the offset times 2 / (1 + r), which puts the real budget of 85 x (1 + r) ms onto the plain two-window scale (`effective_backend_ms` in src/core/squeeze_rating.cpp line 117). Card 700792ed (docs/sessions/2026-08-29-700792ed.md) gives a case: a free squeeze-out 331.3 ms past the end with late r = 4.45, about 122 ms effective. That the chart was Thick as a Brick comes from that session's own record, which is not kept. The game side is the frame rule of SP-29.
+Evidence: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 126 and `kHitWindowMs` (85 ms) in src/core/model.h line 105. Which kind a squeeze-out is comes from `after_sp_end` in src/core/backend_value.h (a chord exactly on the end is not after it), and where Star Power ends from `Activation::window_end_tick` in src/core/model.h. The two worked cases are Hydra's record of each chart's first path, read 2026-11-19 from a `hydra_replay dump` that was not kept: Blight's first path, from its notes.mid in the user's Clone Hero song folder (Sync Charts, Hail The Sun - cut. turn. fade. back), and Allies's path 0- 1- 1 0, from testdata/input/common/Summer Blast _25 Setlist/Tier 3/Mutemath - Allies/notes.chart. Neither was checked in the game. The meaning of squeeze-in and squeeze-out was checked only against Hydra's code and full-combo videos, never against the game's code; one such video case is session 93d37c20 (2026-08-29, Enigma Machine, card only). Hydra shows a row's "effective" timing as the offset times 2 / (1 + r), which puts the real budget of 85 x (1 + r) ms onto the plain two-window scale (`effective_backend_ms` in src/core/squeeze_rating.cpp line 117). Card 700792ed (docs/sessions/2026-08-29-700792ed.md) gives a case: a free squeeze-out 331.3 ms past the end with late r = 4.45, about 122 ms effective. That the chart was Thick as a Brick comes from that session's own record, which is not kept. The game side is the frame rule of SP-29.
 Game code (6142): RVA `0x20F63F0` (SP-36), `0x20F4550` (SP-29)
 Hydra: `squeeze_budget_ms` in src/core/squeeze_rating.cpp line 126; `kHitWindowMs` in src/core/model.h line 105
 Ruling: card c73697df: "the hit window is +/- 85ms, the 70ms is an outdated figure. we can change that." (02:08 UTC; the window's value only)
-Found: 2026-10-30, session b02ab3e6 (the reference build)
+Found: 2026-10-30, session b02ab3e6 (the reference build); the two worked squeeze-out cases 2026-11-19, session d85370f4 (the one SP end owner plan)
 
 ### SP-38 Hydra looks for squeezes only within 500 ms of the end
 
