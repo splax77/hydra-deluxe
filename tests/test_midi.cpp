@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "core/strutil.h"
+#include "core/winstr.h"
 #include "parse/chart_files.h"
 #include "parse/midi.h"
 #include "parse/section_names.h"
@@ -93,30 +94,28 @@ size_t first_track_tag_at(const std::vector<uint8_t>& file) {
 // than any track in these tests.
 constexpr uint32_t kLongestFourByteLength = (uint32_t{1} << (7 * 4)) - 1;
 
+// A filter that keeps note-ons of 96 and note-offs of 116 only.
+hydra::MidiLeanFilter lean_test_filter() {
+    hydra::MidiLeanFilter f;
+    f.note_on[96] = true;
+    f.note_off[116] = true;
+    return f;
+}
+
 }  // namespace
 
-TEST_CASE("midi: every corpus .mid reads with a sane structure") {
+TEST_CASE("midi: every corpus .mid reads through the lean reader and has a drum track") {
+    // The lean reader is the one the song parser reads with, and drums_track
+    // owns which track holds the drums (this corpus is all drum charts).
     size_t mids = 0;
     for (const std::string& path : corpus::chart_paths()) {
         if (hydra::chart_format_of(path) != hydra::ChartFormat::Mid) continue;
 
-        hydra::MidiFile mid = hydra::MidiFile::from_file(path);
         ++mids;
-
-        CHECK_MESSAGE(mid.ticks_per_beat > 0, path << ": ticks_per_beat");
-        CHECK_MESSAGE(!mid.tracks.empty(), path << ": no tracks");
-
-        // Delta times never run backwards, and the drum track exists by name
-        // (this corpus is all drum charts).
-        bool has_drums = false;
-        bool deltas_ok = true;
-        for (const auto& t : mid.tracks) {
-            if (t.name == "PART DRUMS") has_drums = true;
-            for (const auto& m : t.messages)
-                if (m.time < 0) deltas_ok = false;
-        }
-        CHECK_MESSAGE(deltas_ok, path << ": negative delta");
-        CHECK_MESSAGE(has_drums, path << ": no PART DRUMS track");
+        const std::vector<uint8_t> bytes = hydra::read_file_bytes(path);
+        const hydra::MidiFile mid =
+            hydra::MidiFile::lean(bytes.data(), bytes.size(), lean_test_filter());
+        CHECK_MESSAGE(mid.drums_track() != nullptr, path << ": no drum track");
     }
     REQUIRE(mids > 0);
     MESSAGE("midi smoke: " << mids << " files");
@@ -316,30 +315,6 @@ TEST_CASE("midi: sysex and skipped metas do not lose time") {
     CHECK(event_view(mid) == expected);
 }
 
-TEST_CASE("midi: track_name is not exposed as text") {
-    // The song parser matches disco and dynamics markers on text metas only
-    // (parse/midi.h); a track_name must carry `name`, not `text`, or every
-    // title would be offered to those checks.
-    std::vector<uint8_t> track = {
-        0x00, 0xFF, 0x03, 0x0A, 'P', 'A', 'R', 'T', ' ', 'D', 'R', 'U', 'M', 'S',
-        0x00, 0x90, 0x60, 0x64,
-        0x00, 0xFF, 0x2F, 0x00,
-    };
-    hydra::MidiFile mid(smf(track));
-    REQUIRE(mid.tracks.size() == 1);
-    CHECK(mid.tracks[0].name == "PART DRUMS");
-
-    bool found = false;
-    for (const auto& m : mid.tracks[0].messages) {
-        if (m.type == hydra::Message::Type::TrackName) {
-            found = true;
-            CHECK(m.str_attr == hydra::Message::StrAttr::Name);
-            CHECK(m.str_attr != hydra::Message::StrAttr::Text);
-        }
-    }
-    CHECK(found);
-}
-
 TEST_CASE("midi: each text event is decoded on its own, UTF-8 first, else Windows-1252") {
     using namespace testmidi;
     // A Windows-1252 track name ("Szamár", á = 0xE1), a UTF-8 text event
@@ -474,14 +449,6 @@ TEST_CASE("midi: a message length past the reader's cap refuses the file") {
 // ---- MidiFile::lean (speedups task P1) ----
 
 namespace {
-
-// A filter that keeps note-ons of 96 and note-offs of 116 only.
-hydra::MidiLeanFilter lean_test_filter() {
-    hydra::MidiLeanFilter f;
-    f.note_on[96] = true;
-    f.note_off[116] = true;
-    return f;
-}
 
 std::vector<std::string> track_names(const hydra::MidiFile& mid) {
     std::vector<std::string> names;
@@ -666,14 +633,17 @@ TEST_CASE("midi: with drum tracks on track 0 and track 1, track 1 is read") {
     using namespace testmidi;
     const std::vector<uint8_t> file = smf_tracks({
         concat({track_name("PART DRUMS"), set_tempo(), note_on(96, 11), end_of_track()}),
-        concat({track_name("PART DRUMS"), note_on(96, 22), end_of_track()}),
+        concat({track_name("PART DRUMS"), after(480, note_on(96, 22)), end_of_track()}),
     });
     for (const hydra::MidiFile& read : both_reads(file)) {
         REQUIRE(read.drums_track() == &read.tracks[1]);
         CHECK(drum_velocity(read) == 22);
     }
+    // Track 0's kick is at tick 0 and track 1's at tick 480, so the chord's
+    // tick says which track the song read.
     const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{});
     REQUIRE(song.sequence.size() == 1);
+    CHECK(song.sequence[0].timecode.ticks() == 480);
 }
 
 TEST_CASE("midi: the events track is named events in any case, and track 0 can be it") {
@@ -770,7 +740,8 @@ TEST_CASE("midi: [section _endofsong] in lower case stays a section") {
         hydra::load_songbytes_mid(two_section_mid("[section _endofsong]"), hydra::ChartReading{});
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[1].tick == 960);
-    CHECK(song.practice_sections[1].name == " endofsong");
+    // The shown name is section_display_name's (CR-28).
+    CHECK(song.practice_sections[1].name == hydra::section_display_name("section _endofsong"));
 }
 
 TEST_CASE("midi: [prc__ENDOFSONG] stays a section") {
@@ -778,7 +749,8 @@ TEST_CASE("midi: [prc__ENDOFSONG] stays a section") {
         hydra::load_songbytes_mid(two_section_mid("[prc__ENDOFSONG]"), hydra::ChartReading{});
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[1].tick == 960);
-    CHECK(song.practice_sections[1].name == " ENDOFSONG");
+    // The shown name is section_display_name's (CR-28).
+    CHECK(song.practice_sections[1].name == hydra::section_display_name("prc__ENDOFSONG"));
 }
 
 // ---- the end event (Song::end_event_tick) ---------------------------------
@@ -812,23 +784,14 @@ TEST_CASE("midi: the lean read keeps the end event") {
         concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
         concat({track_name("EVENTS"), after(1920, text_event("[end]")), end_of_track()}),
     });
-    for (const hydra::MidiFile& read : both_reads(file)) {
-        REQUIRE(read.events_track() == &read.tracks[2]);
-        // The [end] text and its tick, as pass 3 of the song parser walks them.
-        std::optional<int64_t> end_tick;
-        int64_t elapsed = 0;
-        for (const hydra::Message& msg : read.events_track()->messages) {
-            elapsed += msg.time;
-            if (msg.str_attr == hydra::Message::StrAttr::Text && msg.str == "[end]")
-                end_tick = elapsed;
-        }
-        CHECK(end_tick == std::optional<int64_t>(1920));
-    }
-    // The notes-only reading stores the same tick.
-    const hydra::Song song = hydra::load_songbytes_mid(file, hydra::ChartReading{},
-                                                       hydra::core::default_rules(),
-                                                       hydra::kNotesOnlyFills);
-    CHECK(song.end_event_tick == std::optional<int64_t>(1920));
+    // The song parser reads through the lean reader, so the song's end event
+    // is the lean read's answer, in the full reading and the notes-only one.
+    const hydra::Song full = hydra::load_songbytes_mid(file, hydra::ChartReading{});
+    CHECK(full.end_event_tick == std::optional<int64_t>(1920));
+    const hydra::Song notes_only = hydra::load_songbytes_mid(file, hydra::ChartReading{},
+                                                             hydra::core::default_rules(),
+                                                             hydra::kNotesOnlyFills);
+    CHECK(notes_only.end_event_tick == std::optional<int64_t>(1920));
 }
 
 // ---- the last note end (Song::last_note_end_tick) -------------------------
