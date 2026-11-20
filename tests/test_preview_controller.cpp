@@ -9,6 +9,7 @@
 #endif
 #include <windows.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <filesystem>
@@ -16,6 +17,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -141,15 +143,32 @@ ChartLibraryEntry listed_entry(const std::string& notespath) {
     return listed[0];
 }
 
-// Edits the chart file at `notespath` after its scan, as a save in an editor
-// would: one byte more at its end changes its md5, its size and so its
-// fingerprint. The notes stay the same: a .chart reads a trailing newline as
-// a blank line, and a .mid's chunk walk ends at a chunk header cut short
-// (parse/midi.cpp).
+// Edits the chart file at `notespath` after its scan, so its md5, its size
+// and so its fingerprint change while its notes stay the same. A .chart's
+// song is renamed in its [Song] section, as a chart editor's save would. A
+// newline at a .chart's end would not do: that is a line outside every
+// section, which the .chart reader refuses (ChartParser::load_sections). A
+// .mid gets one byte more at its end, where its chunk walk ends at a chunk
+// header cut short (parse/midi.cpp).
 void edit_chart_file(const std::string& notespath) {
-    std::FILE* f = hydra::fopen_utf8(notespath, L"ab");
+    std::vector<uint8_t> bytes = hydra::read_file_bytes(notespath);
+    if (hydra::chart_format_of(notespath) == hydra::ChartFormat::Chart) {
+        const std::string_view text(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+        const size_t song = text.find("[Song]");
+        REQUIRE(song != std::string_view::npos);
+        const std::string_view name = "Name = \"";
+        const size_t at = text.find(name, song);
+        REQUIRE(at != std::string_view::npos);
+        const std::string_view added = "Edited ";
+        const uint8_t* first = reinterpret_cast<const uint8_t*>(added.data());
+        bytes.insert(bytes.begin() + static_cast<std::ptrdiff_t>(at + name.size()), first,
+                     first + added.size());
+    } else {
+        bytes.push_back('\n');
+    }
+    std::FILE* f = hydra::fopen_utf8(notespath, L"wb");
     REQUIRE(f != nullptr);
-    std::fputc('\n', f);
+    REQUIRE(std::fwrite(bytes.data(), 1, bytes.size(), f) == bytes.size());
     std::fclose(f);
 }
 
