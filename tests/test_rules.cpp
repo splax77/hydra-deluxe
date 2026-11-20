@@ -26,12 +26,16 @@
 #include "core/rules.h"
 #include "core/scoring.h"
 #include "core/squeeze_rating.h"
+#include "core/strutil.h"
 #include "corpus_util.h"
+#include "db_file_util.h"  // scalar_on_file
 #include "parse/song.h"
 #include "search/engine.h"
 #include "search/graph.h"
 #include "search/pather.h"
+#include "store/record_store.h"
 #include "temp_util.h"
+#include "testdata_dirs.h"  // testdata_root
 
 using namespace hydra;
 
@@ -686,21 +690,24 @@ TEST_CASE("rules: the retired Auto keys are read and ignored") {
     CHECK(r.fingerprint() == expected.fingerprint());
 }
 
-TEST_CASE("rules: the fingerprint text is pinned") {
-    // Pinned from one run. Every stored result carries one of these, so a
-    // change to the text's names, number form or line order would read every
-    // row Stale.
-    CHECK(core::default_rules().fingerprint() == 0xaac02b481589a70eull);
-    // Every field moved off its default, so each line's name and number form
-    // (whole numbers, fractions, the whole_chord word) is in the hash.
-    core::Rules all;
-    all.backend_leeway_ms = 5.0;
-    all.sqout_rule = core::SqOutRule::WholeChord;
-    all.max_tied_paths = 2;
-    all.fill_cooldown_measures = 3;
-    all.fill_max_distance_beats = 0.25;
-    all.fill_land_slop_beats = 0.1;
-    CHECK(all.fingerprint() == 0x3ea9ab5620beca19ull);
+// Every stored result carries the rules fingerprint, so a change to the
+// fingerprint text's names, number form or line order would read every row
+// of a player's library Stale. testdata/store/v2.12.1_library.db is a real
+// library an earlier Hydra wrote under the default rules: each of its
+// profiles must still carry the fingerprint the store asks of a Ready row
+// today (store::ready_rules_fp).
+TEST_CASE("rules: a library an earlier Hydra wrote still matches the default rules") {
+    const std::string source = corpus::testdata_root() + "/store/v2.12.1_library.db";
+    REQUIRE(std::filesystem::exists(hydra::os_path(source)));
+    const testtemp::ScopedFile db("rules_v2121_library", ".db");
+    std::filesystem::copy_file(hydra::os_path(source), hydra::os_path(db.path),
+                               std::filesystem::copy_options::overwrite_existing);
+    const std::vector<uint8_t> want = store::ready_rules_fp(core::default_stamp());
+    const std::string blob = "X'" + hex_lower(want.data(), want.size()) + "'";
+    const int64_t profiles = test::scalar_on_file(db.path, "SELECT COUNT(*) FROM profiles");
+    REQUIRE(profiles > 0);
+    CHECK(test::scalar_on_file(db.path, "SELECT COUNT(*) FROM profiles WHERE rules_fp = " +
+                                            blob) == profiles);
 }
 
 TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
