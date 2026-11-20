@@ -749,6 +749,10 @@ class ChCallTest(FrontCase):
         self.assertEqual(front.call("ch_call", {"tool": "ch_state", "args": {}}), front.call("ch_state"))
         echoed = front.text("ch_call", {"tool": "echo_args", "args": {"text": "é", "numbers": [1]}})
         self.assertEqual(json.loads(echoed), {"text": "é", "numbers": [1], "nested": None})
+        # The same arguments sent straight to the front arrive unchanged too,
+        # with a newline, quotes and a nested object.
+        arguments = {"text": "é\n\"q\"", "numbers": [1, 2], "nested": {"k": ["v", {"n": 1}]}}
+        self.assertEqual(json.loads(front.text("echo_args", arguments)), arguments)
 
     def test_an_unknown_name_is_refused_with_the_list(self) -> None:
         front = self.front(worker_command("plain"))
