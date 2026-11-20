@@ -285,7 +285,7 @@ const ScreenRect& kRightMonitor = kUserTwoMonitors.back();
 const ScreenRect kSavedOnRight{2600, 60, 4400, 1000};
 
 // True when `inner` lies wholly inside `outer`.
-bool contains(const ScreenRect& outer, const ScreenRect& inner) {
+bool rect_inside(const ScreenRect& outer, const ScreenRect& inner) {
     return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right &&
            inner.bottom <= outer.bottom;
 }
@@ -333,7 +333,7 @@ TEST_CASE("app_shell: a first open with the main window maximized uses the main 
 
 TEST_CASE("app_shell: a saved report is fitted into the monitor holding its title bar") {
     // A saved report whose outer window fits the right-hand monitor stays.
-    REQUIRE(contains(kRightMonitor, outer_of(kSavedOnRight, kFrame96)));
+    REQUIRE(rect_inside(kRightMonitor, outer_of(kSavedOnRight, kFrame96)));
     const ReportPlacement fits = report_placement(kSavedOnRight, false, false, kMainClient,
                                                   kUserTwoMonitors, kFrame96);
     CHECK(fits.client == kSavedOnRight);
@@ -352,7 +352,7 @@ TEST_CASE("app_shell: a saved report is fitted into the monitor holding its titl
     // Its outer window, frame included, now lies inside the right-hand
     // monitor, cut to that monitor's height.
     const ScreenRect big_outer = outer_of(big.client, kFrame96);
-    CHECK(contains(kRightMonitor, big_outer));
+    CHECK(rect_inside(kRightMonitor, big_outer));
     CHECK(big_outer.height() == kRightMonitor.height());
     CHECK_FALSE(big.maximized);
 }
@@ -524,7 +524,7 @@ TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
 namespace {
 
 // The lines of `text`, without their line ends.
-std::vector<std::string> lines_of(const std::string& text) {
+std::vector<std::string> text_lines(const std::string& text) {
     std::vector<std::string> lines;
     std::istringstream in(text);
     for (std::string line; std::getline(in, line);) lines.push_back(line);
@@ -543,8 +543,8 @@ std::string key_of(const std::string& line) {
 TEST_CASE("app_shell: the [Hydra][Layout] text round-trips and refuses junk") {
     const hydra::ui::Layout shown{0.35f, false};
     const hydra::ui::Layout hidden{0.35f, true};
-    const std::vector<std::string> shown_lines = lines_of(hydra::ui::format_layout(shown));
-    const std::vector<std::string> hidden_lines = lines_of(hydra::ui::format_layout(hidden));
+    const std::vector<std::string> shown_lines = text_lines(hydra::ui::format_layout(shown));
+    const std::vector<std::string> hidden_lines = text_lines(hydra::ui::format_layout(hidden));
     REQUIRE(shown_lines.size() == 2);
     REQUIRE(hidden_lines.size() == 2);
     // format_layout writes the share line first, then the hidden line.
