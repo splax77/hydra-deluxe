@@ -87,9 +87,8 @@ void for_each_best_activation(const std::function<void(const ChartCase&, const A
         for (const Activation& act : c.rec->best_path().all_activations()) fn(c, act);
 }
 
-// The pieces of a line the screen joins with app::kFactSeparator.
-std::vector<std::string> split_facts(const std::string& text) {
-    const std::string sep = app::kFactSeparator;
+// The pieces of `text` between each `sep`.
+std::vector<std::string> split_on(const std::string& text, const std::string& sep) {
     std::vector<std::string> out;
     size_t from = 0;
     for (size_t at = text.find(sep); at != std::string::npos; at = text.find(sep, from)) {
@@ -98,6 +97,11 @@ std::vector<std::string> split_facts(const std::string& text) {
     }
     out.push_back(text.substr(from));
     return out;
+}
+
+// The pieces of a line the screen joins with app::kFactSeparator.
+std::vector<std::string> split_facts(const std::string& text) {
+    return split_on(text, app::kFactSeparator);
 }
 
 // The Paths tab's badge words for `act` (app::activation_badges), in order.
@@ -142,6 +146,13 @@ const std::string kEndsWord = "ends ";
 // pb_text.cpp the same way.
 const std::string kSpanArrow = " \xE2\x86\x92 ";
 
+// The measure an end piece names after kEndsWord; none when the piece does
+// not start with that word.
+std::optional<std::string> end_measure(const std::string& piece) {
+    if (piece.compare(0, kEndsWord.size(), kEndsWord) != 0) return std::nullopt;
+    return piece.substr(kEndsWord.size());
+}
+
 }  // namespace
 
 TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill") {
@@ -171,7 +182,7 @@ TEST_CASE("candidate row: the clock, phrases, end and squeeze of a priced fill")
             CHECK(row[0] == clock);
             CHECK(row[1] == phrases);
             // The window ends on the squeezed-out chord, not the stored end.
-            CHECK(row[2] == kEndsWord + *chord_m);
+            CHECK(end_measure(row[2]) == *chord_m);
             // Then the Paths tab's badge words, one for one.
             CHECK(std::vector<std::string>(row.begin() + 3, row.end()) == badge_texts(act));
             // Before its search lands, the end reads kPendingText.
@@ -293,8 +304,9 @@ TEST_CASE("step short: start, end and phrases") {
         const SongTiming& timing = c.song->timing();
         const StepShort s = step_short(timing, act);
         REQUIRE(act.window_end_tick().has_value());
-        CHECK(s.span == measure_of(timing, act.timecode.ticks()) + kSpanArrow +
-                            measure_of(timing, *act.window_end_tick()));
+        CHECK(split_on(s.span, kSpanArrow) ==
+              std::vector<std::string>{measure_of(timing, act.timecode.ticks()),
+                                       measure_of(timing, *act.window_end_tick())});
         CHECK(s.saved == counted(act.sp_meter(), "phrase", "phrases"));
     });
 }
@@ -313,7 +325,7 @@ TEST_CASE("step short: the row carries the Paths tab's badge words") {
         else CHECK(split_facts(s.squeezes) == badges);
         if (const std::optional<std::string> chord = earlier_squeezed_measure(timing, act)) {
             ++squeezed;
-            CHECK(s.span == measure_of(timing, act.timecode.ticks()) + kSpanArrow + *chord);
+            CHECK(split_on(s.span, kSpanArrow).back() == *chord);
         }
     });
     CHECK(squeezed > 0);
@@ -329,11 +341,11 @@ TEST_CASE("end choice text: the end measure and the Paths tab's badge words") {
         const SongTiming& timing = c.song->timing();
         const std::vector<std::string> parts = split_facts(end_choice_text(timing, act));
         REQUIRE(act.window_end_tick().has_value());
-        CHECK(parts[0] == kEndsWord + measure_of(timing, *act.window_end_tick()));
+        CHECK(end_measure(parts[0]) == measure_of(timing, *act.window_end_tick()));
         CHECK(std::vector<std::string>(parts.begin() + 1, parts.end()) == badge_texts(act));
         if (const std::optional<std::string> chord = earlier_squeezed_measure(timing, act)) {
             ++squeezed;
-            CHECK(parts[0] == kEndsWord + *chord);
+            CHECK(end_measure(parts[0]) == *chord);
         }
     });
     CHECK(squeezed > 0);
