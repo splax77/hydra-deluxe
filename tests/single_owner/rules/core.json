@@ -2652,6 +2652,64 @@
         "return same_folder(here, wide_to_utf8(registered));"
       ],
       "note": "Two folders spelled with another letter case, slash direction, trailing separator or long-path prefix are one folder. A second comparison of two paths worked out by hand can disagree with the scan. The test helper is_under_temp in tests/temp_util.h asks whether a path lies below the temp folder, a different question, and is outside this row's scope."
+    },
+    {
+      "question": "Which code reads the deact node D?",
+      "owner": "Activation::deact_tick in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "deact_tick",
+      "date": "2026-11-19",
+      "decision": "SPE-P plan (docs/superpowers/plans/2026-11-19-one-sp-end-owner.md), task T5 criterion 5",
+      "added_by": "SPE-T5",
+      "pattern": "\\bdeact_tick\\(\\)",
+      "anchor": "deact_tick()",
+      "owner_files": [
+        "src/core/model.h",
+        "src/core/model.cpp"
+      ],
+      "exempt": [
+        {
+          "file": "src/core/replay.cpp",
+          "why": "Owner map rows T5-1, T5-2 and T5-3: the replay window copies D as the node each chord's offset is measured from, the squeeze-out warning asks which chords could be squeezed out at this D, and a typed SqOut offset is an offset from D"
+        },
+        {
+          "file": "src/search/engine.cpp",
+          "why": "Owner map row T5-5: the record check compares the finished window's D with the node the search's graph offered"
+        },
+        {
+          "file": "src/search/pather.cpp",
+          "why": "Owner map row T5-6: a pin names a window by its D and its squeezed chord"
+        },
+        {
+          "file": "src/pathbuilder/pb_coach.cpp",
+          "why": "Owner map row T5-6: end_key tells two ends of one window apart by D and the squeezed chord"
+        },
+        {
+          "file": "src/core/squeeze_rating.cpp",
+          "why": "Owner map row T5-7: every offset the squeeze rating judges is measured from D"
+        },
+        {
+          "file": "tools/replay_schedule.cpp",
+          "why": "Owner map row T5-8: the press timing covers the gap from the squeezed chord to D; the ends_sp label reads Activation::window_end_tick instead"
+        },
+        {
+          "file": "tools/replay_json.cpp",
+          "why": "Owner map row T5-9: the dump prints D under the name deact_tick"
+        },
+        {
+          "file": "tools/replay.cpp",
+          "why": "Owner map row T5-9: the failure line prints D under the name deact"
+        }
+      ],
+      "must_match": [
+        "const std::optional<int64_t> end = pa.act->deact_tick();",
+        "if (act.deact_tick() == tick) draw_end_marker(tick);"
+      ],
+      "must_not_match": [
+        "const bool past_deact = core::after_sp_end(row.tick, w.deact_tick);",
+        "if (const std::optional<int64_t> e = act.window_end_tick()) sp_ends.insert(*e);"
+      ],
+      "note": "D is the deactivation node: the last stored SP-end step, where Star Power would end with nothing squeezed out. Where Star Power ends as played is Activation::window_end_tick, so a screen, or any file not listed here, that calls deact_tick() is asking the wrong question or is a new reader of D that needs its own Owner map row. model.cpp is the owner's file and also holds path_identity (Owner map row T5-4), which keys a path on D. Tests are out of scope: they read D to check these readers."
     }
   ]
 }

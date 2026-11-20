@@ -24,7 +24,7 @@
       "note": "A squeeze test named is_free. \"Free\" is not a word on screen (the Rating cell reads the report's timing tiers), so the squeeze's own test is named for what it asks."
     },
     {
-      "question": "Where does this activation's Star Power end (its deactivation tick)?",
+      "question": "Which code reads the last stored SP-end step (the deact node D)?",
       "owner": "Activation::deact_tick in src/core/model.cpp",
       "owner_file": "src/core/model.cpp",
       "owner_symbol": "deact_tick",
@@ -52,7 +52,7 @@
         "src",
         "tools"
       ],
-      "note": "A second reader of the last SP-end step. Call Activation::deact_tick. Tests are out of scope because a few of them move the last step's end on purpose to make a different path."
+      "note": "A second reader of the last SP-end step. Call Activation::deact_tick. Where Star Power ends as played is Activation::window_end_tick, not this node. Tests are out of scope because a few of them move the last step's end on purpose to make a different path."
     },
     {
       "question": "What does squeezing out this row cost?",

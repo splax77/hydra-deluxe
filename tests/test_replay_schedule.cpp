@@ -264,6 +264,34 @@ TEST_CASE("schedule: declined chords are the skipped fill ticks") {
     CHECK(declined_rows > 0);
 }
 
+TEST_CASE("schedule: ends_sp marks the chord where each window's Star Power is over") {
+    // On the corpus: the rows marked ends_sp are exactly the chords whose tick
+    // is some activation's Activation::window_end_tick(), read from the record.
+    // An early squeeze-out is the case where that chord is not the
+    // deactivation node, so the sweep must meet at least one.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int early_sqouts = 0;
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song&,
+                                      const std::vector<const Activation*>& acts, const PathReplay& pr,
+                                      const json& s) {
+        std::set<int64_t> chord_ticks;
+        for (const ReplayChord& c : pr.result.chords) chord_ticks.insert(c.tick);
+        std::set<int64_t> want;
+        for (const Activation* a : acts) {
+            const std::optional<int64_t> end = a->window_end_tick();
+            if (end && chord_ticks.count(*end) > 0) want.insert(*end);
+            if (a->sqout_tick && end == a->sqout_tick && a->deact_tick() != a->sqout_tick)
+                ++early_sqouts;
+        }
+        std::set<int64_t> marked;
+        for (const json& row : s["chords"])
+            if (row["ends_sp"].get<bool>()) marked.insert(row["tick"].get<int64_t>());
+        INFO(path);
+        CHECK(marked == want);
+    });
+    CHECK(early_sqouts > 0);
+}
+
 TEST_CASE("schedule: the window constants are written") {
     // The formula's own values are pinned in tests/test_note_window.cpp.
     const Song song = plain_song({0, 768});
