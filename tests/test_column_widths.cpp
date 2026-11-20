@@ -132,7 +132,8 @@ TEST_CASE("column_widths: a chip's padding is added to its cells, not its header
     const Rows rows = {{"Beyond"}, {"Hit"}};
     const MeasuredWidths m = hydra::ui::measure_widths({spec(header, false, padding)}, 2, cells(rows));
     const std::size_t widest = 0;  // "Beyond", wider than "Hit" and the header
-    CHECK(m.widths == std::vector<float>{ten_px(rows[widest][0]) + padding});
+    const float widest_text = ten_px(rows[widest][0]);
+    CHECK(m.widths == std::vector<float>{widest_text + padding});
     CHECK(m.header_widths == std::vector<float>{ten_px(header)});
     CHECK(m.widest_row[0] == widest);
 }
@@ -256,7 +257,9 @@ TEST_CASE("column_widths: a number column takes its widest and the text columns 
     CHECK(l.inner_width == num + song + artist + spacing);
     // The narrowest the table can be: the number column whole, each text
     // column at its header.
-    CHECK(l.min_inner_width == num + ten_px(kSpecs[1].header) + ten_px(kSpecs[2].header) + spacing);
+    const float song_header = ten_px(kSpecs[1].header);
+    const float artist_header = ten_px(kSpecs[2].header);
+    CHECK(l.min_inner_width == num + song_header + artist_header + spacing);
 }
 
 TEST_CASE("column_widths: the text in a text column does not change the layout") {
