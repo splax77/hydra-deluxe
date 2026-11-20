@@ -69,6 +69,45 @@ void check_sweep_tally(const SweepTally& tally) {
     CHECK(tally.rejected == 0);
 }
 
+// The number of charts the corpus scan lists: every sweep below visits each
+// one, so a sweep that checked fewer lost a chart on the way.
+int corpus_chart_count() { return static_cast<int>(corpus::chart_paths().size()); }
+
+// Does the corpus chart at `path` load with notes? Every chart the corpus scan
+// lists has Expert drum notes, so one that loads empty fails here by name
+// rather than being passed over.
+bool loads_notes(const Song& song, const std::string& path) {
+    CHECK_MESSAGE(!song.is_empty(), path << " loads with no notes");
+    return !song.is_empty();
+}
+
+// A depth far past the app's default (kDefaultDepthValue), in scores below
+// the best, so a sweep's record keeps many alternate paths for the checks
+// below to walk.
+constexpr int kSweepDepthScores = 200;
+
+// The Path limit the sweeps search under, in ms: one player-pickable limit
+// that every sweep shares, so the limit-walk case reuses the invariants
+// case's cached records.
+constexpr double kSweepLimitMs = 20.0;
+
+// The settings every sweep searches with: Clone Hero's SP cap, a depth in
+// scores below the best and an optional Path limit.
+SearchSettings sweep_settings(int depth_scores, std::optional<double> limit_ms) {
+    SearchSettings cfg;
+    cfg.sp_cap = kCloneHeroSpCap;
+    cfg.depth_mode = DepthMode::Scores;
+    cfg.depth_value = depth_scores;
+    cfg.ms_filter = limit_ms;
+    return cfg;
+}
+
+// Adds `why` to a list of what went wrong, so a chart reports every reason.
+void add_reason(std::string& d, const std::string& why) {
+    if (!d.empty()) d += "; ";
+    d += why;
+}
+
 }  // namespace
 
 TEST_CASE("search invariants hold across the corpus and config knobs") {
@@ -77,55 +116,45 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
         ++charts;
+        if (!loads_notes(song, path)) continue;
 
         sweep_chart(tally, path, [&]() -> std::string {
             std::string d;
             // Depth asks for more alternate paths and must not move the
-            // optimum; the ms filter is a constraint, so its best can only
-            // be at or below the unconstrained best.
-            SearchSettings cfg;
-            cfg.sp_cap = 4;
-            cfg.depth_mode = DepthMode::Scores;
-            cfg.depth_value = 0;
-            cfg.ms_filter = std::nullopt;
-            const HydraRecord& shallow = corpus::analyzed(path, cfg);
-            cfg.depth_value = 200;
-            const HydraRecord& deep = corpus::analyzed(path, cfg);
-            cfg.ms_filter = 20.0;
-            const HydraRecord& filtered = corpus::analyzed(path, cfg);
+            // optimum; the ms filter is a constraint, so a path it keeps
+            // can tie the unconstrained best but never score above it.
+            const HydraRecord& shallow = corpus::analyzed(path, sweep_settings(0, std::nullopt));
+            const HydraRecord& deep =
+                corpus::analyzed(path, sweep_settings(kSweepDepthScores, std::nullopt));
+            const HydraRecord& filtered =
+                corpus::analyzed(path, sweep_settings(kSweepDepthScores, kSweepLimitMs));
 
-            if (shallow.paths.empty()) {
-                d = "no paths";
-            } else {
-                const int64_t best = shallow.paths.front().totalscore();
-                if (deep.paths.front().totalscore() != best)
-                    d = "depth changed the best score";
-                else if (!filtered.paths.empty() &&
-                         filtered.paths.front().totalscore() > best)
-                    d = "ms filter scored above the unconstrained best";
-                else if (deep.paths.size() < shallow.paths.size())
-                    d = "deeper search returned fewer paths";
+            if (shallow.paths.empty()) add_reason(d, "no paths");
+            if (deep.paths.empty()) add_reason(d, "no paths at the sweep depth");
+            if (!d.empty()) return d;
 
-                // Paths come out best-first, and every path in a record
-                // reports the same chart notecount.
-                int64_t prev = INT64_MAX;
-                const int notecount = deep.paths.front().notecount;
-                for (const Path& p : deep.paths) {
-                    if (p.totalscore() > prev) {
-                        d = "paths not sorted by score";
-                        break;
-                    }
-                    prev = p.totalscore();
-                    if (p.notecount != notecount) {
-                        d = "notecount varies between paths";
-                        break;
-                    }
-                    if (p.tied_pathcount() < 1) {
-                        d = "tied_pathcount below 1";
-                        break;
-                    }
+            const int64_t best = shallow.paths.front().totalscore();
+            if (deep.paths.front().totalscore() != best)
+                add_reason(d, "depth changed the best score");
+            if (!filtered.paths.empty() && filtered.paths.front().totalscore() > best)
+                add_reason(d, "ms filter scored above the unconstrained best");
+            if (deep.paths.size() < shallow.paths.size())
+                add_reason(d, "deeper search returned fewer paths");
+
+            // Paths come out best-first, and every path in a record
+            // reports the same chart notecount.
+            int64_t prev = INT64_MAX;
+            const int notecount = deep.paths.front().notecount;
+            for (const Path& p : deep.paths) {
+                std::string bad;
+                if (p.totalscore() > prev) add_reason(bad, "paths not sorted by score");
+                prev = p.totalscore();
+                if (p.notecount != notecount) add_reason(bad, "notecount varies between paths");
+                if (p.tied_pathcount() < 1) add_reason(bad, "tied_pathcount below 1");
+                if (!bad.empty()) {
+                    add_reason(d, p.pathstring() + ": " + bad);
+                    break;
                 }
             }
             return d;
@@ -133,7 +162,7 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
     }
 
     check_sweep_tally(tally);
-    REQUIRE(charts > 0);
+    CHECK(charts == corpus_chart_count());
     MESSAGE("checked " << charts << " charts");
 }
 
@@ -145,25 +174,21 @@ TEST_CASE("search invariants hold across the corpus and config knobs") {
 // that ties the unconstrained optimum is exempt on purpose, D51 call 2), and
 // no path the model's walk passes outscores the engine's filtered best.
 TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
-    constexpr double kLimitMs = 20.0;  // the invariants case's ms_filter
+    constexpr double kLimitMs = kSweepLimitMs;
     int charts = 0, kept_checked = 0, model_rejected = 0;
     SweepTally tally;
 
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
+        if (!loads_notes(song, path)) continue;
 
         sweep_chart(tally, path, [&]() -> std::string {
             std::string d;
-            SearchSettings cfg;
-            cfg.sp_cap = 4;
-            cfg.depth_mode = DepthMode::Scores;
-            cfg.depth_value = 200;
-            cfg.ms_filter = std::nullopt;
-            const HydraRecord& deep = corpus::analyzed(path, cfg);
-            cfg.ms_filter = kLimitMs;
-            const HydraRecord& filtered = corpus::analyzed(path, cfg);
-            if (deep.paths.empty()) return d;
+            const HydraRecord& deep =
+                corpus::analyzed(path, sweep_settings(kSweepDepthScores, std::nullopt));
+            const HydraRecord& filtered =
+                corpus::analyzed(path, sweep_settings(kSweepDepthScores, kLimitMs));
+            if (deep.paths.empty()) return "no paths at the sweep depth";
             ++charts;
             const int64_t optimum = deep.paths.front().totalscore();
 
@@ -193,7 +218,7 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
     }
 
     check_sweep_tally(tally);
-    REQUIRE(charts > 0);
+    CHECK(charts == corpus_chart_count());
     // Both walks must have had something to say no to and yes to, or the
     // case proves nothing.
     CHECK(kept_checked > 0);
@@ -203,17 +228,6 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
 }
 
 namespace {
-
-// The invariants case's deep settings above (depth 200, cap 4), so the
-// 2x Bass on runs below reuse its cached records, and a chart has many paths.
-SearchSettings note_total_settings() {
-    SearchSettings cfg;
-    cfg.sp_cap = 4;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = 200;
-    cfg.ms_filter = std::nullopt;
-    return cfg;
-}
 
 // Every stored path of `rec`, variants included, in walk order.
 void each_stored_path(const std::vector<Path>& paths, const std::function<void(const Path&)>& f) {
@@ -225,34 +239,20 @@ void each_stored_path(const std::vector<Path>& paths, const std::function<void(c
 
 }  // namespace
 
-TEST_CASE("note total: every path of How You Remind Me stores the Song's note count") {
-    // Finding 255: the Notes column is the chart's note total, one fact about
-    // the chart, so every path and variant stores the same number.
-    const std::string chart = corpus::root() +
-                              "/common/Summer Blast _25 Setlist/Tier 1/Nickelback - How You Remind Me/"
-                              "notes.chart";
-    const Song& song = corpus::song(chart, ChartReading{});
-    CHECK(song.note_count() == 905);
-    const HydraRecord& rec = corpus::analyzed(chart, note_total_settings());
-    int paths = 0;
-    each_stored_path(rec.paths, [&](const Path& p) {
-        ++paths;
-        CHECK(p.notecount == 905);
-    });
-    CHECK(paths > 1);
-}
-
+// The Notes column is the chart's note total, one fact about the chart, so
+// every path and variant stores the same number.
 TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every corpus chart") {
-    // Finding 255. Under each 2x Bass setting: the Song's note count, every
-    // stored path's notecount, and the Dynamics tab's Totals (counted from its
-    // own 2x-kept parse, then played_total for the setting) are one number.
+    // Under each 2x Bass setting: the Song's note count, every stored path's
+    // notecount, and the Dynamics tab's Totals (counted from its own 2x-kept
+    // parse, then played_total for the setting) are one number. The sweep
+    // depth keeps many paths and variants for the check to walk.
     int checked = 0, rejected = 0;
     for (const std::string& path : corpus::chart_paths()) {
         for (const bool bass2x : {false, true}) {
             CAPTURE(path);
             CAPTURE(bass2x);
             const Song& song = corpus::song(path, ChartReading{Difficulty::Expert, true, bass2x});
-            if (song.is_empty()) continue;
+            if (!loads_notes(song, path)) continue;
             const int total = song.note_count();
 
             const app::DynamicsBreakdown bd =
@@ -261,7 +261,7 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
             CHECK(bd.played_total(bass2x).all() == total);
 
             app::AnalysisSettings a;
-            static_cast<SearchSettings&>(a) = note_total_settings();
+            static_cast<SearchSettings&>(a) = sweep_settings(kSweepDepthScores, std::nullopt);
             a.bass2x = bass2x;
             const HydraRecord* rec = nullptr;
             try {
@@ -276,7 +276,8 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
         }
     }
     CHECK(rejected == 0);
-    REQUIRE(checked > 0);
+    // Each listed chart, once with 2x Bass off and once on.
+    CHECK(checked == 2 * corpus_chart_count());
     MESSAGE("checked " << checked << " chart and 2x Bass pairs");
 }
 
