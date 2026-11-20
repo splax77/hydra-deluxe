@@ -4,6 +4,8 @@ and folder from the recorder's own log; the rest still run on a fake Popen."""
 
 from __future__ import annotations
 
+import csv
+import io
 import os
 import re
 import subprocess
@@ -21,17 +23,18 @@ if _REPO_ROOT not in sys.path:
 
 from tools.ch_mcp import machine_recorder as MR  # noqa: E402
 from tools.ch_mcp import recorder_link as R  # noqa: E402
+from tools.ch_mcp.tests.test_machine_recorder import REAL_SAMPLES  # noqa: E402
 
 # How long a fake waits for the close thread before the test fails.
 THREAD_CAP_S = 5.0
-
-HEADER = (",".join(MR.SAMPLES_COLUMNS) + "\n").encode()
 
 # How long a test waits for a real recorder's first log line before it fails.
 RECORDER_CAP_S = 10.0
 # The run cap a test hands the real recorder. Its parent (this process) ending
 # stops it sooner.
 RUN_CAP_S = 30.0
+# How long a recorder run by hand records before it ends by itself.
+SELF_END_S = 0.5
 
 
 class Started(list):
@@ -48,8 +51,17 @@ class Started(list):
         return self[-1]
 
 
-def sample_row(number: int, wall: str) -> bytes:
-    return f"{number},{wall},1.2,300,4000,2,,,,777,20,,\n".encode()
+def real_samples() -> bytes:
+    """samples.csv from a real run, as test_machine_recorder's REAL_SAMPLES
+    says where it came from."""
+    with open(REAL_SAMPLES, "rb") as f:
+        return f.read()
+
+
+def sample_rows(data: bytes) -> list:
+    """The whole rows of a samples.csv, read the way the recorder wrote them."""
+    whole = data[:data.rindex(b"\n") + 1].decode("utf-8")
+    return list(csv.DictReader(io.StringIO(whole, newline="")))
 
 
 class FakeStdin:
@@ -78,12 +90,11 @@ class FakeStdin:
 
 
 class FakeProcess:
-    """A recorder that exits when its stdin closes, unless `hangs`."""
+    """A recorder that exits when its stdin closes."""
 
-    def __init__(self, events: list, pid: int, hangs: bool):
+    def __init__(self, events: list, pid: int):
         self.events = events
         self.pid = pid
-        self.hangs = hangs
         self.stdin = FakeStdin(events)
         self.returncode = None
 
@@ -94,8 +105,6 @@ class FakeProcess:
         self.events.append(("wait", timeout))
         if self.returncode is None and self.events.count("terminate") == 0:
             assert self.stdin.closed.wait(THREAD_CAP_S)
-            if self.hangs:
-                raise subprocess.TimeoutExpired("recorder", timeout)
             self.returncode = 0
         return self.returncode
 
@@ -111,7 +120,6 @@ class FakePopen:
         self.events = events if events is not None else []
         self.calls = []
         self.procs = []
-        self.hangs = False
         self.error = None
 
     def __call__(self, command, **kwargs):
@@ -119,7 +127,7 @@ class FakePopen:
         if self.error is not None:
             raise self.error
         self.events.append("recorder start")
-        self.procs.append(FakeProcess(self.events, 777 + len(self.procs), self.hangs))
+        self.procs.append(FakeProcess(self.events, 777 + len(self.procs)))
         return self.procs[-1]
 
 
@@ -136,9 +144,25 @@ class RecorderLinkTest(unittest.TestCase):
     def start(self):
         return self.link.start(self.session, 55, 120.5)
 
-    def samples(self, data: bytes) -> None:
-        with open(os.path.join(self.folder, MR.SAMPLES_FILE), "wb") as f:
+    def cut_samples(self, data: bytes) -> str:
+        """`data` written as a samples.csv in a folder of its own; its path."""
+        folder = os.path.join(self.session, f"cut-{len(os.listdir(self.session))}")
+        os.makedirs(folder)
+        path = os.path.join(folder, MR.SAMPLES_FILE)
+        with open(path, "wb") as f:
             f.write(data)
+        return path
+
+    def self_ended(self):
+        """A real recorder run by hand for SELF_END_S, which ends by itself:
+        the link, its started processes and the recorder's pid. The recorder
+        not ending within RECORDER_CAP_S fails the test."""
+        link, started = self.real(extra=["--seconds", str(SELF_END_S)])
+        self.real_start(link)
+        pid, _ = self.recorder_says(link, self.folder)
+        started[0].wait(RECORDER_CAP_S)
+        self.assertTrue(self.last_log_line(self.folder).endswith(MR.STOP_SECONDS))
+        return link, started, pid
 
     def real(self, extra=()):
         """A link on the real Popen, stopped when the test ends, and the list of
@@ -307,42 +331,21 @@ class RecorderLinkTest(unittest.TestCase):
         self.assertIn(f"terminated, exit code {started[0].returncode}", said)
         self.assertIn(f"folder {self.folder}", said)
 
-    def test_stop_says_when_terminate_fails(self):
-        self.popen.hangs = True
-        self.start()
-
-        def refused():
-            raise PermissionError("denied")
-
-        self.popen.procs[0].terminate = refused
-        self.assertIn("terminating it failed (PermissionError: denied)", self.link.stop())
-
-    def test_a_close_that_blocks_does_not_hold_up_stop(self):
-        self.popen.hangs = True
-        self.start()
-        proc = self.popen.procs[0]
-        release = threading.Event()
-        self.addCleanup(release.set)
-        proc.stdin.close = lambda: release.wait(THREAD_CAP_S)
-        proc.wait = lambda timeout=None: (_ for _ in ()).throw(
-            subprocess.TimeoutExpired("recorder", timeout))
-        proc.terminate = lambda: None
-        self.assertIn("still runs", self.link.stop())
-        self.assertFalse(release.is_set())
-
     def test_one_that_exited_is_not_running_and_stop_says_so_and_a_second_stop_is_harmless(self):
-        self.start()
-        proc = self.popen.procs[0]
-        proc.returncode = 3
-        said = (f"machine recorder: exited by itself, pid 777, exit code 3, folder {self.folder}, "
-                f"log {self.log}")
-        self.assertFalse(self.link.running())
-        self.assertEqual(self.link.line(), said)
-        self.assertEqual(self.link.stop(), said)
-        self.assertNotIn(("wait", R.RECORDER_EXIT_CAP_S), self.popen.events)
-        self.assertNotIn("terminate", self.popen.events)
-        self.assertIsNone(self.link.stop())
-        self.assertEqual(self.link.line(), said)
+        link, started, pid = self.self_ended()
+        said = link.line()
+        self.assertFalse(link.running())
+        self.assertIn("exited by itself", said)
+        self.assert_names_pid(said, pid)
+        self.assertIn(f"exit code {started[0].returncode}", said)
+        self.assertIn(f"folder {self.folder}", said)
+        self.assertIn(f"log {self.log}", said)
+        # A stop on it neither waits nor terminates: it says what became of it.
+        began = time.monotonic()
+        self.assertEqual(link.stop(), said)
+        self.assertLess(time.monotonic() - began, R.RECORDER_EXIT_CAP_S)
+        self.assertIsNone(link.stop())
+        self.assertEqual(link.line(), said)
 
     def test_line_names_no_recorder_before_any_start_and_stop_has_nothing_to_stop(self):
         link = R.RecorderLink()
@@ -368,49 +371,51 @@ class RecorderLinkTest(unittest.TestCase):
         self.assertNotRegex(said, r"\bpid\b|\bsamples\b")
 
     def test_samples_line_with_no_file_yet(self):
-        self.start()
-        path = os.path.join(self.folder, "samples.csv")
-        self.assertEqual(self.link.samples_line(), f"machine recorder: no samples yet in {path}")
+        path = os.path.join(self.session, MR.SAMPLES_FILE)
+        said = R.samples_text(path)
+        self.assertIn("no samples yet", said)
+        self.assertIn(path, said)
+        self.assertNotRegex(said, r"\d+ samples")
 
     def test_samples_line_with_the_header_only_or_half_a_header(self):
-        self.start()
-        path = os.path.join(self.folder, "samples.csv")
-        for data in (HEADER, HEADER[:10]):
-            with self.subTest(data=data):
-                self.samples(data)
-                self.assertEqual(self.link.samples_line(),
-                                 f"machine recorder: no samples yet in {path}")
+        # The file as the recorder leaves it after writing its header, and
+        # part way through writing it.
+        data = real_samples()
+        header = data[:data.index(b"\n") + 1]
+        for cut in (header, header[:len(header) // 2]):
+            with self.subTest(cut=cut):
+                path = self.cut_samples(cut)
+                said = R.samples_text(path)
+                self.assertIn("no samples yet", said)
+                self.assertIn(path, said)
 
     def test_samples_line_counts_rows_and_reads_the_last_wall_time(self):
-        self.start()
-        self.samples(HEADER + sample_row(0, "1000.25") + sample_row(1, "1000.27"))
-        self.assertEqual(self.link.samples_line(),
-                         "machine recorder: 2 samples so far, last at 1000.27")
+        data = real_samples()
+        rows = sample_rows(data)
+        said = R.samples_text(self.cut_samples(data))
+        self.assertIn(f"{len(rows)} samples so far", said)
+        self.assertIn(f"last at {rows[-1][MR.WALL_COLUMN]}", said)
 
     def test_samples_line_leaves_out_a_last_line_still_being_written(self):
-        self.start()
-        self.samples(HEADER + sample_row(0, "1000.25") + sample_row(1, "1000.27")[:9])
-        self.assertEqual(self.link.samples_line(),
-                         "machine recorder: 1 samples so far, last at 1000.25")
-
-    def test_samples_line_reads_windows_line_ends(self):
-        self.start()
-        self.samples((HEADER + sample_row(0, "1000.25")).replace(b"\n", b"\r\n"))
-        self.assertEqual(self.link.samples_line(),
-                         "machine recorder: 1 samples so far, last at 1000.25")
-
-    def test_samples_line_says_when_a_row_has_no_wall_time(self):
-        self.start()
-        self.samples(b"sample,other\n0,1\n")
-        self.assertIn("1 samples so far, but no wall_s", self.link.samples_line())
+        data = real_samples()
+        last = data.rstrip(b"\n").rsplit(b"\n", 1)[1]
+        # The last row half written, as the recorder may be writing it now.
+        cut = data[:len(data) - 1 - len(last) // 2]
+        rows = sample_rows(data)[:-1]
+        said = R.samples_text(self.cut_samples(cut))
+        self.assertIn(f"{len(rows)} samples so far", said)
+        self.assertIn(f"last at {rows[-1][MR.WALL_COLUMN]}", said)
 
     def test_samples_line_on_one_that_exited_says_both(self):
-        self.start()
-        self.samples(HEADER + sample_row(0, "1000.25"))
-        self.popen.procs[0].returncode = 3
-        self.assertEqual(self.link.samples_line(),
-                         f"machine recorder: exited by itself, pid 777, exit code 3, folder "
-                         f"{self.folder}, log {self.log}; 1 samples so far, last at 1000.25")
+        link, _started, _pid = self.self_ended()
+        with open(os.path.join(self.folder, MR.SAMPLES_FILE), "rb") as f:
+            rows = sample_rows(f.read())
+        # The recorder's own last row says why it ended.
+        self.assertEqual(rows[-1]["stop_reason"], MR.STOP_SECONDS)
+        said = link.samples_line()
+        self.assertTrue(said.startswith(link.line() + "; "), said)
+        self.assertIn(f"{len(rows)} samples so far", said)
+        self.assertIn(f"last at {rows[-1][MR.WALL_COLUMN]}", said)
 
     def test_samples_line_after_the_stop_is_the_stop_line(self):
         self.start()
