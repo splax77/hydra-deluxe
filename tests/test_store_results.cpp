@@ -18,6 +18,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -83,6 +84,15 @@ Profile profile_at(int cap, const Lens& lens = {}, const std::string& mode = "mo
     return Profile{mode, CapQuery::at(cap), lens};
 }
 
+// The profile a chart analyzed under `cfg` is saved under: its cap, and its
+// ms limit (prepare_record refuses a profile whose ms limit isn't the
+// record's).
+Profile config_profile(const Config& cfg) {
+    const Lens lens = Lens::from(
+        cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0);
+    return profile_at(cfg.cap, lens);
+}
+
 // Saves `analysis` for chart `id` under `profile`, the way every caller saves.
 void save_record(RecordStore& store, const std::string& id, const Profile& profile,
                  const HydraRecord& analysis) {
@@ -130,67 +140,78 @@ HydraRecord second_chart_at(int cap, std::optional<double> ms = std::nullopt) {
 }  // namespace
 
 TEST_CASE("a saved record reads back whole across the corpus and config matrix") {
+    // Every corpus chart under every setting is saved and read back. A chart
+    // the engine refuses is not skipped: it goes through the app's own
+    // failure path (app::prepare_failed_chart), and what that path stores is
+    // read back too. A refusal the store does not remember reads back as
+    // never analyzed.
     RecordStore store(":memory:");
+    const std::vector<std::string>& paths = corpus::chart_paths();
+    // The corpus is this test's input; with no chart there is nothing to read.
+    REQUIRE_FALSE(paths.empty());
 
-    int checks = 0, mismatches = 0;
-    // Every record saved, by setting: all are saved first, then each setting's
+    // One chart saved under one setting: its record as saved or, for a
+    // refused chart, the failure record the app stores (none when the store
+    // does not remember that kind of failure).
+    struct Saved {
+        std::string id;
+        std::optional<PreparedRecord> prepared;
+        bool refused = false;
+    };
+    // Every chart saved, by setting: all are saved first, then each setting's
     // are read back in one lookup, so every record is read after every save.
-    std::vector<std::vector<PreparedRecord>> saved(kMatrix.size());
+    std::vector<std::vector<Saved>> saved(kMatrix.size());
 
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
-
+    for (const std::string& path : paths) {
         for (size_t c = 0; c < kMatrix.size(); ++c) {
             const Config& cfg = kMatrix[c];
-            const HydraRecord* record = nullptr;
+            Saved entry;
+            entry.id = path + "|" + cfg.key;
             try {
                 SearchSettings settings;
                 settings.sp_cap = cfg.cap;
                 settings.depth_mode = cfg.dmode;
                 settings.depth_value = cfg.dvalue;
                 settings.ms_filter = cfg.ms;
-                record = &corpus::analyzed(path, settings);
-            } catch (const ChartFileError&) {
-                continue;  // charts the engine rejects have no record to store
+                const HydraRecord& record = corpus::analyzed(path, settings);
+                entry.prepared = prepare_record(entry.id, config_profile(cfg), record);
+            } catch (const ChartFileError& e) {
+                entry.refused = true;
+                entry.prepared = app::prepare_failed_chart(entry.id, config_profile(cfg), e);
+                MESSAGE(entry.id << " refused: " << e.what());
             }
-            REQUIRE(record->sp_cap.has_value());
-
-            const std::string id = path + "|" + cfg.key;
-            // prepare_record refuses a profile whose ms limit isn't the record's.
-            const Lens lens = Lens::from(
-                cfg.ms ? std::optional<int>(static_cast<int>(*cfg.ms)) : std::nullopt, 0, 0);
-            const Profile profile = profile_at(*record->sp_cap, lens);
-            PreparedRecord prepared = prepare_record(id, profile, *record);
-            store.save(prepared);
-            // One lookup per setting asks under one profile.
-            if (!saved[c].empty()) REQUIRE(prepared.profile == saved[c].front().profile);
-            saved[c].push_back(std::move(prepared));
+            if (entry.prepared) store.save(*entry.prepared);
+            saved[c].push_back(std::move(entry));
         }
     }
 
+    size_t checks = 0;
     for (size_t c = 0; c < kMatrix.size(); ++c) {
-        if (saved[c].empty()) continue;
         std::vector<std::string> ids;
         ids.reserve(saved[c].size());
-        for (const PreparedRecord& p : saved[c]) ids.push_back(p.record.song_id);
-        const std::vector<RecordLookup> found = store.lookup(ids, saved[c].front().profile);
+        for (const Saved& s : saved[c]) ids.push_back(s.id);
+        const std::vector<RecordLookup> found = store.lookup(ids, config_profile(kMatrix[c]));
         REQUIRE(found.size() == saved[c].size());
         for (size_t i = 0; i < found.size(); ++i) {
-            const PreparedRecord& prepared = saved[c][i];
+            const Saved& s = saved[c][i];
             const RecordLookup& got = found[i];
+            INFO(s.id);
             ++checks;
-            std::string d;
-            if (got.status != RecordStatus::Ready) d = "no record after save";
-            else if (got.record != prepared.record) d = "record";
-            if (!d.empty() && ++mismatches <= 8)
-                CHECK_MESSAGE(false, prepared.record.song_id << " [" << kMatrix[c].key << "] " << d);
+            if (!s.prepared) {
+                CHECK(got.status == RecordStatus::NotAnalyzed);
+            } else if (s.refused) {
+                CHECK(got.status == RecordStatus::CantAnalyze);
+                CHECK(got.failure_kind == s.prepared->record.failure_kind);
+                CHECK(got.failure_text == s.prepared->record.failure_text);
+            } else {
+                CHECK(got.status == RecordStatus::Ready);
+                CHECK(got.record == s.prepared->record);
+            }
         }
     }
 
-    CHECK(mismatches == 0);
-    REQUIRE(checks > 0);
-    MESSAGE("checked " << checks << " saved records");
+    // Every chart was read back under every setting, refused or not.
+    CHECK(checks == paths.size() * kMatrix.size());
 }
 
 TEST_CASE("RecordStore maintenance: a lookup, the Ready list and the record count") {
@@ -542,48 +563,52 @@ TEST_CASE("lookups on one thread and saves on another share one store without er
     CHECK(reads > 0);
 }
 
-TEST_CASE("ready_song_ids names exactly the charts lookup reads as Ready, profile by profile") {
-    RecordStore store(":memory:");
-    const std::vector<std::string> charts = {"ready", "stale", "other_lens", "other_cap",
-                                             "other_mode"};
-    save_record(store, "ready", profile_at(4), at_cap(4));
-    save_old_build(store, "stale", profile_at(4), at_cap(4));
-    save_record(store, "other_lens", profile_at(4, kLensB), at_cap(4));
-    save_record(store, "other_cap", profile_at(8), at_cap(8));
-    save_record(store, "other_mode", profile_at(4, Lens{}, "other"), at_cap(4));
-
-    for (int cap : {4, 8}) {
-        const std::unordered_set<std::string> got = store.ready_song_ids(profile_at(cap));
-        const std::vector<RecordLookup> found = store.lookup(charts, profile_at(cap));
-        for (size_t i = 0; i < charts.size(); ++i) {
-            INFO(charts[i] << " at " << cap);
-            CHECK((got.count(charts[i]) == 1) == (found[i].status == RecordStatus::Ready));
-        }
-    }
-    CHECK(store.ready_song_ids(profile_at(4)) == std::unordered_set<std::string>{"ready"});
-}
-
-// D79: the batch's skip list is the library's Analyzed chip. Every kind of
-// record a chart can hold is here, including a chart with a Ready record
-// beside one made under other rules, and a repeated library id.
-TEST_CASE("ready_song_ids names exactly the charts a library page reads as Ready") {
+// D79: the batch's skip list (settled_song_ids, which app::charts_with_result
+// reads) is the library's chip. Every kind of record a chart can hold is
+// here: a Ready record, a stored failure, stale records, a Ready record beside
+// one made under other rules, a record under another chart mode, and a
+// repeated library id.
+TEST_CASE("settled_song_ids names exactly the charts a library page reads as Ready or Can't analyze") {
     RecordStore store(":memory:");
     const Profile at8 = profile_at(8);
-    const std::vector<std::string> charts = {"ready", "build", "rules", "both", "mixed", "none"};
+    const std::vector<std::string> charts = {"ready", "failed", "build", "rules",
+                                             "both",  "mixed",  "other_mode", "none"};
     save_record(store, "ready", at8, at_cap(8));
     test::add_stale_records(store, at_cap(8), at8, "build", "rules", "both");
     save_record(store, "mixed", at8, at_cap(8));
     save_record(store, "mixed", at8, test::other_rules_record(at_cap(8)));
+    save_record(store, "other_mode", profile_at(8, Lens{}, "other"), at_cap(8));
+
+    // A chart the analysis refuses, stored the app's way: the hand-written
+    // parse_edge chart with no Expert Pro Drums notes (expected_expert.tsv).
+    const std::string no_notes =
+        corpus::testdata_root() + "/parse_edge/c15_unterminated_drums.chart";
+    std::optional<PreparedRecord> failure;
+    try {
+        app::analyze_chart_file(no_notes, store_fixture_settings(8));
+    } catch (const KindedError& e) {
+        failure = app::prepare_failed_chart("failed", at8, e);
+    }
+    REQUIRE_MESSAGE(failure.has_value(), "no failure record for " << no_notes);
+    store.save(*failure);
 
     std::vector<std::string> library = charts;
     library.push_back("ready");  // a second folder's copy
     const std::vector<RecordLookup> chips = store.lookup(library, at8);
-    const std::unordered_set<std::string> skip = store.ready_song_ids(at8);
+    REQUIRE(chips.size() == library.size());
+    const std::unordered_map<std::string, RecordStatus> settled = store.settled_song_ids(at8);
     for (size_t i = 0; i < library.size(); ++i) {
         INFO(library[i]);
-        CHECK((chips[i].status == RecordStatus::Ready) == (skip.count(library[i]) == 1));
+        const RecordStatus chip = chips[i].status;
+        const bool chip_settled = chip == RecordStatus::Ready || chip == RecordStatus::CantAnalyze;
+        const auto it = settled.find(library[i]);
+        CHECK((it != settled.end()) == chip_settled);
+        if (it != settled.end()) CHECK(it->second == chip);
     }
-    CHECK(skip == std::unordered_set<std::string>{"ready", "mixed"});
+    CHECK(settled == std::unordered_map<std::string, RecordStatus>{
+                         {"ready", RecordStatus::Ready},
+                         {"mixed", RecordStatus::Ready},
+                         {"failed", RecordStatus::CantAnalyze}});
 }
 
 TEST_CASE("lookup answers a page the same as lookup_one chart by chart") {
