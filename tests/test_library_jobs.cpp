@@ -415,6 +415,134 @@ TEST_CASE("jobs: time left leaves a pause out of its window") {
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 }
 
+// The batch driven the way it really runs: 8 workers, and save groups of
+// store::kSaveGroupSize whose charts are reported together once the group
+// commits. The batch thread is held at its lookup after each group's last
+// chart, for a little over the time-left step, so each reading is a fresh one
+// and nothing lands while it is held. A stand-in analyzer returns one real
+// result at once, so the pace of the groups is the holds' alone.
+//
+// The first chart to start runs alone and lands as a group of its own; the
+// rest wait until the batch is held after it. While the batch is held
+// after it, and after each later group, the workers fill the pool's waiting
+// line (app::kWorkPoolWaitingPerWorker per worker) and each hold one result
+// more, so the next group fills from the line without the line ever running
+// empty, which is what closes a group early (run_batch's flush_group).
+TEST_CASE("jobs: a running batch's time left neither collapses after a group nor climbs in a gap") {
+    using Clock = std::chrono::steady_clock;
+    const auto seconds = [](Clock::duration d) { return std::chrono::duration<double>(d).count(); };
+    constexpr int kWorkers = 8;
+    constexpr int kGroup = hydra::store::kSaveGroupSize;
+    REQUIRE(hydra::app::kWorkPoolWaitingPerWorker * static_cast<size_t>(kWorkers) ==
+            static_cast<size_t>(kGroup));
+    constexpr int kGroups = 6;
+    constexpr int kCharts = 1 + kGroups * kGroup;  // the first chart's group, then six full ones
+    // The hold whose gap is read at both ends: in the second half of the
+    // batch, with two groups still to come.
+    constexpr int kGapRow = 1 + 4 * kGroup;
+    REQUIRE(kGapRow > kCharts / 2);
+    REQUIRE(kCharts - kGapRow == 2 * kGroup);
+    // A test margin, not an app number: a hold this much over the time-left
+    // step makes each reading a fresh one.
+    const double gap_s = hydra::app::kTimeLeftStepSeconds + 0.1;
+    const auto gap = std::chrono::duration<double>(gap_s);
+    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+
+    struct Reading {
+        int row = 0;  // the chart whose lookup the batch was held at
+        int completed = 0;
+        std::optional<double> eta;
+        Clock::time_point before, after;  // around the snapshot
+    };
+    std::atomic<int> begun{0};
+    std::atomic<int> produced{0};  // results the analyzer has handed back
+    std::atomic<bool> go{false};
+    std::atomic<int> holds{0};
+    std::atomic<bool> fill_timed_out{false};
+    std::vector<Reading> readings;  // the batch thread's; read once the batch has finished
+    RecordStore store(":memory:");
+    BatchJob job(plan_of(fake_charts(kCharts)), test_run(), store);
+    job.set_analyzer_for_test(
+        [&](const std::string&, const AnalysisSettings&,
+            const std::function<void(float)>&) -> AnalysisResult {
+            if (begun++ > 0) wait_until([&go] { return go.load(); }, "the first chart's group to land");
+            AnalysisResult r = real;
+            ++produced;
+            return r;
+        },
+        kWorkers);
+    const auto take_reading = [&](int row) {
+        Reading r;
+        r.row = row;
+        r.before = Clock::now();
+        const BatchJob::Snapshot s = job.snapshot();
+        r.after = Clock::now();
+        r.completed = s.completed;
+        r.eta = s.eta_s;
+        readings.push_back(r);
+    };
+    // One lookup per chart, each right after the chart's row is reported.
+    job.set_lookup_hold_for_test([&] {
+        const int row = ++holds;
+        if ((row - 1) % kGroup != 0 || row == kCharts) return;  // not a group's last chart
+        take_reading(row);
+        go = true;
+        try {
+            // Every worker holds a result and the line is full, or every
+            // chart is done.
+            wait_until([&] { return produced.load() >= (std::min)(kCharts, row + kGroup + kWorkers); },
+                       "the workers to fill the pool's line");
+        } catch (const std::exception&) {
+            fill_timed_out = true;
+        }
+        std::this_thread::sleep_until(readings.back().after + gap);
+        if (row == kGapRow) take_reading(row);
+    });
+    job.start();
+    wait_until([&] { return holds.load() == kCharts; }, "every chart's lookup");
+    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+
+    const BatchJob::Snapshot done = job.snapshot();
+    CHECK(done.completed == kCharts);
+    CHECK(done.failed == 0);
+    CHECK_FALSE(fill_timed_out.load());
+    // A hold after each group but the last, and one more at the gap's end.
+    REQUIRE(readings.size() == static_cast<size_t>(kGroups + 1));
+    for (const Reading& r : readings) {
+        INFO("held after chart " << r.row);
+        // The strip's count at each hold is every chart up to it: the group
+        // that just landed was whole.
+        CHECK(r.completed == r.row);
+    }
+
+    // The two readings at kGapRow: as the batch is held, and at the gap's end.
+    std::vector<const Reading*> at_gap;
+    for (const Reading& r : readings)
+        if (r.row == kGapRow) at_gap.push_back(&r);
+    REQUIRE(at_gap.size() == 2);
+    const Reading& gap_start = *at_gap[0];
+    const Reading& gap_end = *at_gap[1];
+
+    // Right after a group lands, with at least two groups to come, the figure
+    // is at least one gap: two more groups cannot land in less. The first
+    // chart's group lands before the figure shows.
+    for (const Reading& r : readings) {
+        if (r.row == 1 || kCharts - r.row < 2 * kGroup || &r == &gap_end) continue;
+        INFO("held after chart " << r.row);
+        REQUIRE(r.eta.has_value());
+        CHECK(*r.eta >= gap_s);
+    }
+
+    // Across the gap at kGapRow nothing lands, and the figure rises by less
+    // than the gap itself.
+    CHECK(gap_end.completed == gap_start.completed);
+    REQUIRE(gap_start.eta.has_value());
+    REQUIRE(gap_end.eta.has_value());
+    const double span_s = seconds(gap_end.after - gap_start.before);
+    CHECK(span_s >= gap_s);
+    CHECK(*gap_end.eta - *gap_start.eta < span_s);
+}
+
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     std::atomic<int> started{0};
     std::atomic<int> released{0};
