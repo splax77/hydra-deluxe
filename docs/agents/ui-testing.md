@@ -182,7 +182,7 @@ Claude reaches live mode through the project's MCP server, `hydra`. MCP (Model C
 
 ### Setting it up
 
-The helper needs Python's `mcp` package, installed once with `py -m pip install mcp`. Claude Code asks the user to approve the server the first time it is used. The helper runs the exes in `build-cpp\Release` and never builds them. When one is missing, its reply says to ask the main session, which makes it with `build_cpp.ps1`. The helper starts `hydra_uitest.exe`, so the server is the main session's too (agent rule 14).
+The helper needs Python's `mcp` package, installed once with `py -m pip install mcp`. Claude Code asks the user to approve the server the first time it is used. The helper runs the exes in `build-cpp\Release` of its own checkout, or of the worktree `hydra_start` names (see "A branch's check from the main checkout" below), and never builds them. When one is missing, its reply says to ask the main session, which makes it with `build_cpp.ps1`. The helper starts `hydra_uitest.exe`, so the server is the main session's too (agent rule 14).
 
 ### The two modes
 
@@ -210,7 +210,7 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 | Tool | Sends | Notes |
 |---|---|---|
-| `hydra_start(mode, library_dir=None, keep=False)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode. The helper's scratch folder is `hydra_live_<tag>` in the `claude` folder of the Windows temp folder. `keep=True` keeps it after `hydra_stop`. The SessionStart cleanup sweep removes a kept folder after a week with no writes |
+| `hydra_start(mode, library_dir=None, keep=False, worktree=None)` | launches the exe | `mode` is `headless` or `window`. Stops any running session first. `worktree` runs that worktree's build instead of the helper's own (see "A branch's check from the main checkout" below). The reply gives the pid, the engine's scratch folder, the wait cap, the log file and the helper's scratch folder, plus the snapshot list in window mode, and a `tree:` line naming the worktree and its commit when one was given. The helper's scratch folder is `hydra_live_<tag>` in the `claude` folder of the Windows temp folder. `keep=True` keeps it after `hydra_stop`. The SessionStart cleanup sweep removes a kept folder after a week with no writes |
 | `hydra_stop(keep_window=False)` | `quit` | waits for Hydra to exit, kills it if it does not, and returns the exit code. Then deletes the helper's scratch folder unless `keep` was set (see `hydra_start`). In window mode the reply adds a line naming the real-app record and its commit (see "The real-app record" below), or saying why none was written |
 | `hydra_reset()` | `reset` | a fresh library in the same process |
 | `hydra_open_song(title)` | `open <title>` | the way to open a song. Clicking a row's title with the search box empty is refused (see the first guard above) |
@@ -234,15 +234,15 @@ Each tool sends one command line and returns Hydra's reply text, unchanged excep
 
 A window session leaves a record that says which commit was checked in the real app. It exists so a gate on merges that change `src/ui/` can tell a real-app check that happened from one that did not. The field names below are that gate's contract, so a change to them is a change to the gate too. Headless sessions write no record.
 
-The helper appends one JSON line per window session to a file named realapp.jsonl in the repo's git common dir. That is the `.git` folder of the main checkout (what `git rev-parse --git-common-dir` prints), so every worktree of the repo writes to the same file and git never tracks it. The "repo" here is the checkout the helper's own code sits in: the one whose `build-cpp\Release` exes it runs.
+The helper appends one JSON line per window session to a file named realapp.jsonl in the repo's git common dir. That is the `.git` folder of the main checkout (what `git rev-parse --git-common-dir` prints), so every worktree of the repo writes to the same file and git never tracks it. The record names the session's tree: the checkout the helper's own code sits in, or the worktree `hydra_start` named. That is always the tree whose `build-cpp\Release` exes the session ran.
 
 A line has seven fields:
 
 | Field | What it holds |
 |---|---|
 | `kind` | always `"realapp"` |
-| `commit` | the full hash of that checkout's HEAD when the session ended |
-| `dirty` | `true` when `git status --porcelain` printed anything, untracked files included, so the build may hold changes the commit does not |
+| `commit` | the full hash of that tree's HEAD when the session ended |
+| `dirty` | `true` when `git status --porcelain` in that tree printed anything, untracked files included, so the build may hold changes the commit does not |
 | `commands` | how many command lines Hydra answered in the session, screenshots and the `timeout` lines of a one-call timeout included |
 | `shots` | how many of those answers were a saved screenshot |
 | `started` | when the session started, local time with its UTC offset, to the second |
@@ -251,6 +251,14 @@ A line has seven fields:
 Four endings write the record: `hydra_stop` when Hydra exits with code 0, `hydra_stop(keep_window=True)`, the stop a new `hydra_start` makes first, and the user closing the window (Hydra exits with code 0 and the next tool call notices). The helper's own exit writes one too, for a window session still open then (or one that already exited with code 0). A crash, a nonzero exit, a silent Hydra the helper killed, or a window that would not quit writes nothing, because a session that died is not a check. The reply says "no real-app record written" in those cases, and also when git cannot say what HEAD is. `realapp_record` in `tools/hydra_ui_mcp.py` writes the line; `REALAPP_FILE` there names the file.
 
 The record has three limits. `Hydra.exe` carries no commit of its own, so the record names the tree's HEAD, not the build: a stale exe is recorded under the current commit. The record shows that a window was opened and used on that commit, not what anyone looked at. And when the user checks a copy of the exe by hand, no helper session runs, so no record is written.
+
+### A branch's check from the main checkout
+
+The `hydra` server Claude Code starts runs from the main checkout. Without a worktree, its sessions run main's build and record main's HEAD. The main checkout also always reads dirty, because the `worktrees` folder and other untracked files sit in it. So a main session whose branches live in worktrees could never leave a record the ref gate accepts for a branch.
+
+`hydra_start("window", worktree=<folder>)` fixes that. Give it the absolute path of the branch's worktree, after the main session has built that worktree's `Hydra.exe`. The session runs that worktree's `build-cpp\Release` exes, and its record names that worktree's HEAD and that worktree's own `git status`. The record still goes to the one realapp.jsonl in the repo's git common dir. Headless mode takes the option too and runs the worktree's `hydra_uitest.exe`, but it writes no record, as without it. The option holds for that one session; the next `hydra_start` without it goes back to the helper's own checkout.
+
+The helper refuses the folder, and says what was wrong and what to pass, unless it is exactly the top folder of a git worktree whose git common dir is the helper's own repo's. That rules out a relative or empty path, a missing folder, a folder git does not know, a folder inside a worktree, and a worktree of another repo, whose record would land where the gate never reads. A worktree with the exe not built gets the same "is not built" reply as the helper's own folder, naming the folder it looked in. `session_tree` in `tools/hydra_ui_mcp.py` owns these checks.
 
 ### An open dialog
 
