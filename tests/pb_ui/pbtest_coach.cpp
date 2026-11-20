@@ -1,8 +1,7 @@
 // The Path Builder's steps panel, driven headless: a step's ending lines, "Finish the rest for me", the tight-window note, and a click
 // on a fill the player cannot activate on; then the Preview's clock under a hover, a drag and a click. The tests read
 // each path, figure and sentence from its owner (the engine's record, the decision list, pb_text.h, the Preview's time
-// box). fill-click-moves-clock, fill-card and row-click-moves-clock still pin figures from one run under the GUI
-// tests' settings (tests/scratch_settings.h).
+// box, the fill's dot, the fill card).
 
 // First: its Windows headers come before the test engine's, which undefine
 // their Yield() macro (uitest_engine.h says why).
@@ -476,12 +475,6 @@ void test_choose_an_ending(ImGuiTestContext* ctx) {
         IM_CHECK(!on_screen(h, gone));
 }
 
-// The first fill's dot as the clock reads it, where a click on it parks the
-// Preview: the moment its card heading names, "m20 · 0:25.123" (from one run).
-constexpr const char* kFirstFillDot = "0:25.123";
-// How long a check waits for a card whose search is still running.
-constexpr double kCardWaitSeconds = 60.0;
-
 // The Preview's clock as its time box words it at `ms` on the open song
 // (app::build_time_box, the text the panel draws), "0:10.000 / 2:10.088".
 std::string expected_clock(Harness& h, double ms) {
@@ -509,6 +502,16 @@ std::string burnout_clock(Harness& h) {
     size_t from = tail;
     while (from > 0 && text[from - 1] != ' ' && text[from - 1] != '\n' && text[from - 1] != '\r') --from;
     return text.substr(from, tail + tail_text.size() - from);
+}
+
+// The clock the Preview shows stopped on the fill at chord tick `tick`: the
+// time box at the fill's dot (ui::timeline_fill_ms, the moment
+// PbApp::click_fill seeks to). Empty when the scene has no fill on that chord.
+std::string clock_on_fill(Harness& h, int64_t tick) {
+    const hydra::app::PreviewScene& scene = h.app->preview()->scene();
+    const std::optional<size_t> i = hydra::app::fill_index_on_chord(scene, tick);
+    if (!i) return std::string();
+    return expected_clock(h, hydra::ui::timeline_fill_ms(scene.fills[*i]));
 }
 
 // The moment these tests park the paused Preview on, a test input.
@@ -705,81 +708,140 @@ void test_activations_row_never_drags(ImGuiTestContext* ctx) {
     move_off_timeline(ctx);
 }
 
-// A click on a fill leaves the clock on that fill's dot with the pointer still
-// on it, and it stays when the pointer leaves: on an offered fill, on the
-// taken fill it made, and on a fill clicked while the Preview plays, which
-// stops there.
+// A click on a fill leaves the clock on that fill's dot (clock_on_fill) with
+// the pointer still on it, and it stays when the pointer leaves: on the first
+// fill the player can activate on, on the taken fill the click made, and on
+// the next fill the player can activate on, clicked while the Preview plays,
+// which stops there.
 void test_fill_click_moves_clock(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_burnout_parked(ctx), );
-    const std::string first_dot = std::string(kFirstFillDot) + clock_tail(h);
-    ctx->ItemClick(fill_ref(kFirstFillTick).c_str());
+    const std::optional<int64_t> first = first_open_fill_tick(h);
+    IM_CHECK_RETV(first.has_value(), );
+    const std::string first_dot = clock_on_fill(h, *first);
+    IM_CHECK_RETV(!first_dot.empty(), );
+    // A click that left the clock parked would not pass.
+    IM_CHECK_RETV(first_dot != expected_clock(h, kParkedMs), );
+    ctx->ItemClick(fill_ref(*first).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
     move_off_timeline(ctx);
     IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
 
+    // The same fill, taken now.
     h.app->preview()->seek_ms(kParkedMs);
     ctx->Yield(2);
-    ctx->ItemClick(fill_ref(kFirstFillTick).c_str());
+    ctx->ItemClick(fill_ref(*first).c_str());
     ctx->Yield(2);
     IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
     move_off_timeline(ctx);
     IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());
 
+    const std::optional<int64_t> second = first_open_fill_tick(h);
+    IM_CHECK_RETV(second.has_value() && *second != *first, );
+    const std::string second_dot = clock_on_fill(h, *second);
+    IM_CHECK_RETV(!second_dot.empty() && second_dot != first_dot, );
     ctx->ItemClick(any_ref("Play").c_str());
     ctx->Yield(2);
     IM_CHECK_RETV(reads_playing(h), );
-    ctx->ItemClick(fill_ref(kSecondFillTick).c_str());
+    ctx->ItemClick(fill_ref(*second).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     move_off_timeline(ctx);
-    // From one run: the second fill's dot, as row-click-moves-clock pins it.
-    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:51.421 / 2:10.088");
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), second_dot.c_str());
     IM_CHECK(reads_paused(h));
 }
 
-// The card on Burnout's first fill once its search has landed: the heading,
-// the three rows and the two grey lines (the figures pbtest_build.cpp's
-// build-a-path-by-clicking pins, from one run).
+// The numbers the fill card gives the fill at chord tick `tick` once its
+// price has landed: the decision list's candidate for it, its ladder's BF(n)
+// and the name of the fill that costs nothing. pb_window.cpp's draw_preview
+// fills FillHoverNumbers from these, in its own file's helpers (best_candidate,
+// best_fill_name), which no header gives. None while any of them is missing.
+std::optional<hydra::pathbuilder::FillHoverNumbers> card_numbers(const PbState& s,
+                                                                 const hydra::app::PreviewScene& scene,
+                                                                 int64_t tick) {
+    const hydra::pathbuilder::DecisionList& d = s.decisions();
+    const hydra::app::LadderRun* run = d.run();
+    if (!run || !run->complete || run->ladder.bf.empty()) return std::nullopt;
+    const std::vector<hydra::app::CandidateCost>& cands = d.candidates();
+    std::optional<size_t> mine;
+    std::optional<size_t> best;
+    for (size_t i = 0; i < cands.size(); ++i) {
+        if (!mine && cands[i].act_tick == tick) mine = i;
+        if (!best && hydra::app::costs_nothing(cands[i].cost)) best = i;
+    }
+    if (!mine || !best) return std::nullopt;
+    const std::optional<size_t> best_fill = hydra::app::fill_index_on_chord(scene, cands[*best].act_tick);
+    if (!best_fill) return std::nullopt;
+    hydra::pathbuilder::FillHoverNumbers n;
+    n.best_finish = cands[*mine].best_finish;
+    n.best_now = run->ladder.bf.back();
+    n.cost = cands[*mine].cost;
+    n.tier = cands[*mine].tier;
+    n.best_fill = hydra::pathbuilder::fill_name(scene, scene.fills[*best_fill]);
+    n.hydra_end = d.candidate_end(*mine);
+    return n;
+}
+
+// The card on Burnout's first fill the player can activate on, once its
+// price has landed: fill_hover_card's heading, each of its rows with the
+// figure on its label's line, and its grey lines, from the engine's numbers
+// for that fill (card_numbers). Pinning that fill never scores above the best
+// finish now. The old six sentences are gone, and the card goes with the
+// pointer.
 void test_fill_card(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
+    // Every price has landed once the builder is idle, so a card with no
+    // numbers then can no longer get them.
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
     ctx->SetRef(h.home_ref.c_str());
-    ctx->MouseMove(fill_ref(kFirstFillTick).c_str());
-    const std::string best_line = "Best choice now is m32 (378,315).";
-    IM_CHECK_RETV(uitest::wait_until(ctx, [&] { return on_screen(h, best_line); }, kCardWaitSeconds), );
-    IM_CHECK(on_screen(h, "m20 · 0:25.123"));
-    IM_CHECK(on_screen(h, "Phrases saved"));
-    IM_CHECK(on_screen(h, "Best finish here"));
-    IM_CHECK(on_screen(h, "378,175"));
-    IM_CHECK(on_screen(h, "Cost"));
-    IM_CHECK(on_screen(h, "−140"));
-    IM_CHECK(on_screen(h, "Hydra would end it at m24."));
-    // Each figure sits on its label's row: ImGui's text log writes a table
-    // row's cells on one line, each after a "|".
-    IM_CHECK(on_screen(h, "Phrases saved | 2"));
-    IM_CHECK(on_screen(h, "Best finish here | 378,175"));
-    IM_CHECK(on_screen(h, "Cost | −140"));
-    // The old six sentences are gone.
+    move_off_timeline(ctx);
+    const std::optional<int64_t> tick = first_open_fill_tick(h);
+    IM_CHECK_RETV(tick.has_value(), );
+    const hydra::app::PreviewScene& scene = h.app->preview()->scene();
+    const std::optional<size_t> index = hydra::app::fill_index_on_chord(scene, *tick);
+    IM_CHECK_RETV(index.has_value(), );
+    const std::optional<hydra::pathbuilder::FillHoverNumbers> numbers =
+        card_numbers(h.app->state, scene, *tick);
+    IM_CHECK_RETV(numbers.has_value(), );
+    IM_CHECK_GE(numbers->best_now, numbers->best_finish);
+    const hydra::pathbuilder::FillHoverCard card = hydra::pathbuilder::fill_hover_card(scene, *index, numbers);
+    IM_CHECK_RETV(!card.rows.empty() && !card.grey.empty(), );
+
+    ctx->MouseMove(fill_ref(*tick).c_str());
+    IM_CHECK_RETV(uitest::wait_until(ctx, [&] { return on_screen(h, card.heading); }, 5.0), );
+    // ImGui's text log writes a table row's cells on one line, each after a
+    // "|".
+    for (const hydra::pathbuilder::CardRow& row : card.rows)
+        IM_CHECK(on_screen(h, row.label + " | " + row.value));
+    for (const std::string& line : card.grey) IM_CHECK(on_screen(h, line));
     IM_CHECK(!on_screen(h, "If you activate here"));
     move_off_timeline(ctx);
-    IM_CHECK(!on_screen(h, best_line));
+    IM_CHECK(!on_screen(h, card.grey.front()));
 }
 
-// One activation on Burnout, then a click on the second fill's list row: once
-// the pointer leaves the list, the clock stays on that fill's dot (bar
-// question 7: a row click moves the Preview's clock, like a fill click).
+// One activation on Burnout, then a click on the list row of the next fill
+// the player can activate on: once the pointer leaves the list, the clock
+// stays on that fill's dot (clock_on_fill), as a click on the fill leaves it.
 void test_row_click_moves_clock(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     IM_CHECK_RETV(open_chart(ctx, corpus::burnout_notes()), );
-    IM_CHECK_RETV(click_fill(ctx, kFirstFillTick), );
+    const std::optional<int64_t> first = first_open_fill_tick(h);
+    IM_CHECK_RETV(first.has_value(), );
+    IM_CHECK_RETV(click_fill(ctx, *first), );
+    const std::optional<int64_t> second = first_open_fill_tick(h);
+    IM_CHECK_RETV(second.has_value() && *second != *first, );
+    const std::string second_dot = clock_on_fill(h, *second);
+    IM_CHECK_RETV(!second_dot.empty(), );
+    // A click that left the clock where it was would not pass.
+    IM_CHECK_RETV(burnout_clock(h) != second_dot, );
     ctx->SetRef(h.home_ref.c_str());
-    ctx->ItemClick(choice_ref(kSecondFillTick).c_str());
+    IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(*second)), );
+    ctx->ItemClick(choice_ref(*second).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     move_off_timeline(ctx);
-    // From one run: the second fill's dot, the moment its row names
-    // ("m40 0:51.421").
-    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), "0:51.421 / 2:10.088");
+    IM_CHECK_STR_EQ(burnout_clock(h).c_str(), second_dot.c_str());
 }
 
 }  // namespace
