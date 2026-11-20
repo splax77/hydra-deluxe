@@ -2,7 +2,10 @@
 
 No game, no keys and no real game files: the launch, the clock and the game
 are test_bot_run's fakes, the user folders are temp folders, the input driver
-records its keys, and live_play is a fake that delivers rows.
+records its keys, and live_play is a fake that delivers rows. Tests on the
+real tools run the real play thread only while Clone Hero is not running, so
+its open of the game fails before any press; such a test fails at once when
+the game is running.
 """
 
 from __future__ import annotations
@@ -56,6 +59,7 @@ from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
+from tools.ch_probe.process import ProcessNotFoundError, open_process  # noqa: E402
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
@@ -959,12 +963,78 @@ class GameToolsTest(unittest.TestCase):
         play.thread.join(THREAD_CAP_S)
         self.assertFalse(play.running())
 
+    def _fail_if_game_runs(self) -> str:
+        """The real open_process, which a keys-route run calls first. With
+        Clone Hero running, a run here would read its memory and press keys
+        into it, so the test fails at once. With it not running, returns the
+        open's refusal, the words the run's thread reports."""
+        try:
+            open_process(read_only=True)
+        except ProcessNotFoundError as e:
+            return str(e)
+        self.fail("Clone Hero is running; close it to run this test")
+
+    def _run_with_no_game(self, score=None, schedule=None, log=None):
+        """ch_play_chart on the keys route of real tools, with Clone Hero not
+        running: the real play thread runs the real live_play, whose open of
+        the game fails, so the run ends before any press. `score` and
+        `schedule` default to Pitch Dark's hydra_replay files
+        (PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE). Returns the tools, the start
+        reply and the open's refusal."""
+        refusal = self._fail_if_game_runs()
+        tools = self.real_tools()
+        reply = tools.ch_play_chart(score or PITCH_DARK_SCORE, schedule or PITCH_DARK_SCHEDULE,
+                                    log=log, route=GT.ROUTE_KEYS)
+        self.assertIsNotNone(tools._play, reply)
+        tools._play.thread.join(THREAD_CAP_S)
+        self.assertFalse(tools._play.running())
+        return tools, reply, refusal
+
+    def _running_session(self, tools, rows):
+        """A real play session on `tools` holding the press rows `rows`,
+        whose thread runs until the session's stop is set, as a run's thread
+        does once ch_play_stop or ch_stop sets it."""
+        play = GT._PlaySession(score_json=PITCH_DARK_SCORE, chord_count=len(rows),
+                               log_path=None, rows=list(rows))
+        play.thread = threading.Thread(target=play.stop.wait, args=(THREAD_CAP_S,),
+                                       daemon=True)
+        play.thread.start()
+        tools._play = play
+        return play
+
     def test_the_status_says_when_no_chord_was_pressed(self):
-        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
+        tools, reply, _refusal = self._run_with_no_game()
+        # The start reply names the chords the schedule plays and the score.
+        chords, _plan = GT.chords_to_play(PITCH_DARK_SCHEDULE)
+        started = [line for line in reply.splitlines()
+                   if line.startswith("play session started:")]
+        self.assertEqual(len(started), 1, reply)
+        self.assertIn(f" {len(chords)} chords ", started[0])
+        self.assertTrue(started[0].endswith(PITCH_DARK_SCORE), started[0])
+        self.assertEqual(tools._play.rows, [])
         self.assertIn("first press: none, no chord was pressed",
-                      t.tools.ch_play_status().splitlines())
+                      tools.ch_play_status().splitlines())
+
+    def test_a_run_that_cannot_open_the_game_reports_why(self):
+        tools, _reply, refusal = self._run_with_no_game()
+        lines = tools.ch_play_status().splitlines()
+        ended = [line for line in lines if line.startswith("ended: ")]
+        self.assertEqual(len(ended), 1, lines)
+        self.assertIn(ProcessNotFoundError.__name__, ended[0])
+        self.assertIn(refusal, ended[0])
+        snapshot = tools.play_snapshot()
+        self.assertIn(refusal, snapshot["stop"])
+        self.assertEqual((snapshot["last_row"], snapshot["press_count"], snapshot["message"]),
+                         (None, 0, ""))
+
+    def test_the_press_log_of_a_run_with_no_press_is_its_header(self):
+        tools, _reply, _refusal = self._run_with_no_game(log="press.csv")
+        log = os.path.join(tools.session_dir(), "press.csv")
+        first = tools.ch_play_status().splitlines()[0]
+        self.assertTrue(first.startswith(f"press log: {log} "), first)
+        self.assertIn("0 rows", first)
+        with open(log, encoding="utf-8", newline="") as f:
+            self.assertEqual(list(csv.reader(f)), [list(PRESS_LOG_COLUMNS)])
 
     # -- the auto-player ------------------------------------------------------------------
 
@@ -983,147 +1053,95 @@ class GameToolsTest(unittest.TestCase):
         return path
 
     def test_a_second_ch_play_chart_is_refused_while_one_runs(self):
-        t = ToolRig(self.tmp)
-        score = self._score_json()
-        first = t.tools.ch_play_chart(score, self._schedule_json(), route="keys")
-        self.assertIn("play session started: 2 chords", first)
-        self.assertIn("waiting for a moving clock (cap 120 s)", first)
-        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
-        self.assertEqual(t.tools.ch_play_chart(score, self._schedule_json()),
-                         "a play session is already running; call ch_play_stop first")
-        self.assertEqual(len(t.live_play.calls), 1)
-        t.tools.ch_play_stop()
-        t.tools._play.thread.join(THREAD_CAP_S)
+        tools = self.real_tools()
+        play = self._running_session(
+            tools, _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv"))
+        self.assertEqual(tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE,
+                                             route=GT.ROUTE_KEYS),
+                         GT.PLAY_ALREADY_RUNNING)
+        # The running session is kept, and the refusal came before the backup.
+        self.assertIs(tools._play, play)
+        self.assert_nothing_held(tools)
+        tools.ch_play_stop()
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
 
-    def test_ch_play_stop_sets_the_flag_and_ch_play_status_reports_the_result(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log="press.csv", route="keys")
-        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
-        snapshot = t.tools.play_snapshot()
-        self.assertEqual(snapshot, {"last_row": ROWS[-1], "press_count": 2, "stop": None,
-                                    "message": ""})
-        self.assertIn("running: 2 presses so far", t.tools.ch_play_status())
+    def test_ch_play_stop_sets_the_flag_and_the_session_ends(self):
+        tools = self.real_tools()
+        # Four rows of a real run's press log (PITCH_DARK_RUN).
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        play = self._running_session(tools, rows)
+        self.assertEqual(tools.play_snapshot(), {"last_row": rows[-1],
+                                                 "press_count": len(rows), "stop": None,
+                                                 "message": ""})
+        self.assertEqual(tools.ch_play_stop().splitlines()[-1], "stopped")
+        self.assertTrue(play.stop.is_set())
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
+        snapshot = tools.play_snapshot()
+        self.assertIsNotNone(snapshot["stop"])
+        self.assertEqual((snapshot["last_row"], snapshot["press_count"]),
+                         (rows[-1], len(rows)))
 
-        stop_reply = t.tools.ch_play_stop()
-        self.assertTrue(t.tools._play.stop.is_set())
-        self.assertEqual(stop_reply.splitlines()[-1], "stopped")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertFalse(t.tools._play.running())
-
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("ended: stopped", lines)
-        self.assertIn("sent 2", lines)
-        log = os.path.join(t.tools._scratch, "press.csv")
-        self.assertIn(f"press log: {log} (2 rows)", lines)
-        self.assertEqual(lines[-2:], ["  1, 1500.0, 1499.0, 50, 50, sent",
-                                      "  0, 1000.0, 998.0, 0, 50, sent"])
-        self.assertTrue(os.path.isfile(log))
-        self.assertEqual(t.tools.play_snapshot(),
-                         {"last_row": ROWS[-1], "press_count": 2, "stop": "stopped",
-                          "message": ""})
+    def test_the_status_of_an_ended_run_lists_its_rows_newest_first(self):
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        result = play_chart.RunResult(stop="stopped", sent=len(rows), rows=list(rows))
+        lines = self._ended_status(rows, result)
+        self.assertIn(f"ended: {result.stop}", lines)
+        header = next(i for i, line in enumerate(lines) if line.startswith("rows, newest first"))
+        listed = lines[header + 1:]
+        self.assertEqual([line.split(",")[0].strip() for line in listed],
+                         [str(row["index"]) for row in reversed(rows)])
 
     def test_play_snapshot_is_none_with_no_play_session(self):
-        t = ToolRig(self.tmp)
-        self.assertIsNone(t.tools.play_snapshot())
-        self.assertEqual(t.tools.ch_play_status(), "no play session has run")
-
-    def test_a_run_with_no_engine_reports_the_finders_message(self):
-        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(
-            stop=play_chart.STOP_NO_ENGINE, message="no song started within 120 s"))
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertIn(f"ended: {play_chart.STOP_NO_ENGINE}", lines)
-        self.assertIn("no song started within 120 s", lines)
-        self.assertEqual(t.tools.play_snapshot()["message"], "no song started within 120 s")
+        tools = self.real_tools()
+        self.assertIsNone(tools.play_snapshot())
+        self.assertEqual(tools.ch_play_status(), "no play session has run")
 
     def test_ch_stop_tells_a_running_play_session_to_stop(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
-        reply = t.tools.ch_stop()
-        self.assertIn("play session told to stop", reply)
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(t.tools.play_snapshot()["stop"], "stopped")
-        # The play run took the adopted game's backup, and ch_stop restored it.
-        self.assertIn("rewired registry: unchanged", reply)
+        tools = self.real_tools()
+        play = self._running_session(
+            tools, _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv"))
+        reply = tools.ch_stop()
+        self.assertIn("play session told to stop", reply.splitlines())
+        self.assertTrue(play.stop.is_set())
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
 
-    # -- the kit route ----------------------------------------------------------------------
-
-    def _kit_rig(self, kit: bool):
-        """A rig whose play fake records its keywords; with `kit` the kit is
-        set up (ToolRig's `kit`), and without it no kit agent is there."""
-        seen = []
-
-        def live_play(chords, **kw):
-            seen.append(kw)
-            return play_chart.RunResult(stop="done", rows=[])
-
-        t = ToolRig(self.tmp, kit=kit, live_play=live_play)
-        if not kit:
-            t.tools.use_run_parts(GT.RunParts(None, FakeKitPart(None), None))
-        return t, seen
-
-    def test_play_chart_on_the_kit_route_plays_in_game_on_the_kits_player(self):
-        t, seen = self._kit_rig(True)
-        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="kit")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(t.live_in_game.players, [t.player])
-        self.assertNotIn("driver", seen[0])
-        self.assertTrue(t.player.closed)
-        self.assertIsNone(t.tools._play.error)
-        self.assertIn("route: kit (presses through the virtual kit inside the game)",
-                      reply.splitlines())
-
-    def test_no_route_picks_the_kit_once_it_is_set_up(self):
-        t, seen = self._kit_rig(True)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json())
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(t.live_in_game.players, [t.player])
-        self.assertIsNone(t.tools._play.error)
-
-    def test_play_chart_on_the_keys_route_presses_keys_and_leaves_the_kit_alone(self):
-        t = ToolRig(self.tmp)
-        t.tools.use_run_parts(GT.RunParts(None, FakeKitPart(t.player), None))
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(t.live_play.calls[0][1], t.driver)
-        self.assertEqual(t.live_in_game.players, [])
-        self.assertFalse(t.player.closed)
-
-    NO_ROUTE_REFUSED = ("refused: no route given and the kit is not set up; "
-                        "call ch_kit_setup first")
+    # -- the route ----------------------------------------------------------------------
 
     def test_no_route_is_refused_while_the_kit_is_not_set_up(self):
-        t, seen = self._kit_rig(False)
-        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json()), self.NO_ROUTE_REFUSED)
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
+        # The server's own tools, whose real kit tools have no kit set up.
+        tools = self._server_tools()
+        self.assertEqual(tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE),
+                         GT.NO_ROUTE_NO_KIT)
+        self.assertIsNone(tools._play)
 
     def test_no_route_is_refused_with_no_kit_tools_and_presses_no_key(self):
-        t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json()), self.NO_ROUTE_REFUSED)
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(t.live_play.calls, [])
-        self.assertEqual(t.driver.events, [])
+        # Real tools with no run parts handed in.
+        tools = self.real_tools()
+        self.assertEqual(tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE),
+                         GT.NO_ROUTE_NO_KIT)
+        self.assertIsNone(tools._play)
+        self.assert_nothing_held(tools)
 
-    def test_route_keys_presses_keys_through_the_driver(self):
-        t, seen = self._kit_rig(False)
-        reply = t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIs(seen[-1]["driver"], t.driver)
-        self.assertNotIn("press", seen[-1])
-        self.assertIn("route: keys (keys to the focused game window)", reply.splitlines())
+    def test_route_keys_plays_on_the_key_driver_with_no_kit_player(self):
+        tools, reply, _refusal = self._run_with_no_game()
+        routes = [line for line in reply.splitlines() if line.startswith("route: ")]
+        self.assertEqual(len(routes), 1, reply)
+        self.assertTrue(routes[0].startswith(f"route: {GT.ROUTE_KEYS} ("), routes[0])
+        # With no kit player, the play thread presses through the key driver.
+        self.assertIsNone(tools._play.player)
 
     def test_route_kit_without_a_kit_and_an_unknown_route_are_refused(self):
-        t, seen = self._kit_rig(False)
-        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="kit"),
-                         'route kit: the kit is not set up; call ch_kit_setup first, '
-                         'or pass route="keys"')
-        self.assertEqual(t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="pads"),
-                         'unknown route "pads"; routes: kit, keys')
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
+        tools = self._server_tools()
+        kit = tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE, route=GT.ROUTE_KIT)
+        self.assertTrue(kit.startswith(f"route {GT.ROUTE_KIT}: "), kit)
+        self.assertIn(f'route="{GT.ROUTE_KEYS}"', kit)
+        unknown = tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE, route="pads")
+        self.assertIn('"pads"', unknown)
+        self.assertTrue(unknown.endswith(", ".join(GT.ROUTES)), unknown)
+        self.assertIsNone(tools._play)
 
     # -- declining a fill ---------------------------------------------------------------
 
@@ -1159,22 +1177,41 @@ class GameToolsTest(unittest.TestCase):
 
         return ToolRig(self.tmp, live_play=live_play), seen
 
+    def _freak_declines(self):
+        """Freak's hydra_replay schedule (FREAK_SCHEDULE): the chords the
+        play tools read from it, each declined chord by index, its kept gems
+        by index, and the reply of a keys-route run on it."""
+        with open(self.FREAK_SCHEDULE, encoding="utf-8") as f:
+            doc = json.load(f)
+        kept = {row["index"]: row["kept_gems"] for row in doc["chords"] if row["declined"]}
+        chords, _plan = GT.chords_to_play(self.FREAK_SCHEDULE)
+        declined = {chord.index: chord for chord in chords if chord.declined}
+        self.assertEqual(set(declined), set(kept))
+        _tools, reply, _refusal = self._run_with_no_game(
+            os.path.join(_PROBE_TESTS, "freak_limits_score.json"), self.FREAK_SCHEDULE)
+        line = GT.declined_line(chords, doc)
+        self.assertIn(line, reply.splitlines())
+        return declined, kept, line
+
     def test_a_declined_chord_sends_its_kept_gems_and_the_reply_names_them(self):
-        t, seen = self._decline_rig()
-        score, schedule = self._decline_files(kept=(0,))
-        reply = t.tools.ch_play_chart(score, schedule, route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual([c.declined for c in seen[0]], [False, True])
-        self.assertEqual([p.lanes for p in seen[0][1].presses], [[Lane.KICK]])
-        self.assertIn("declined: chords 1 (kick)", reply.splitlines())
+        declined, kept, line = self._freak_declines()
+        sending = [index for index in kept if kept[index]]
+        self.assertTrue(sending, kept)
+        for index in sending:
+            chord = declined[index]
+            with self.subTest(chord=index):
+                self.assertEqual(sorted(lane for p in chord.presses for lane in p.lanes),
+                                 sorted(chord.lanes[k] for k in kept[index]))
+                self.assertNotIn(f"{index} (nothing sent)", line)
 
     def test_a_declined_chord_that_keeps_no_gem_says_nothing_sent(self):
-        t, seen = self._decline_rig()
-        score, schedule = self._decline_files(kept=())
-        reply = t.tools.ch_play_chart(score, schedule, route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual([p.lanes for p in seen[0][1].presses], [[]])
-        self.assertIn("declined: chords 1 (nothing sent)", reply.splitlines())
+        declined, kept, line = self._freak_declines()
+        silent = [index for index in kept if not kept[index]]
+        self.assertTrue(silent, kept)
+        for index in silent:
+            with self.subTest(chord=index):
+                self.assertEqual([lane for p in declined[index].presses for lane in p.lanes], [])
+                self.assertIn(f"{index} (nothing sent)", line)
 
     def test_a_schedule_with_no_declined_chord_says_none(self):
         t, seen = self._decline_rig()
@@ -3182,6 +3219,9 @@ class AtexitFactTest(unittest.TestCase):
 PITCH_DARK_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "replay",
                                    "test_pitch_dark_ratio-schedule.json")
 PITCH_DARK_RUN = ("pitch-dark-ratios-run1",)
+# Hydra's score JSON of the same chart, path 0, beside its schedule.
+PITCH_DARK_SCORE = os.path.join(_REPO_ROOT, "testdata", "replay",
+                                "test_pitch_dark_ratio-score.json")
 # A hydra_replay dump of the Bomber refine chart under tools/ch_probe/tests,
 # written by a hydra_replay older than the song end: it has no song_length_ms.
 NO_SONG_END_DUMP = os.path.join(_PROBE_TESTS, "bomber_refine_dump.json")
