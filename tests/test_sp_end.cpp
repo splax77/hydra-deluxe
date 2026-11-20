@@ -339,107 +339,100 @@ TEST_CASE("graph: the tick and ms tests of 'after the SP end' agree across a tem
 
 // ---- SP cap overfill: a phrase collected mid-SP can clamp the end ------
 //
-// The meter holds a fixed number of bars. Once it's full, a phrase you
-// collect while SP is active can't push the end out by a plain 2 measures
-// any more -- it gets capped at 2*cap measures past that phrase's own note.
-// When the cap wins, the note that pinned the end (not the activation) is
-// what the timing warning has to point at, so the search stamps that note's
-// tick onto the activation as clamp_tick.
+// The game's rule for a phrase collected under a full meter is SP-24 in
+// docs/clone-hero/05-star-power.md; which note the end is then anchored on is
+// SP-40. The game's cap is always the full bar, so the cap of 2 here is a
+// what-if setting with no game counterpart (SP-24); it keeps the songs short.
 
-// Every row below shares one activation. Cap 2 bars. Two SP phrases fill the
-// meter before the activation at tick 2304 (meter 2), whose plain end is 4
-// measures later at 5376. Each row then adds mid-SP phrases and pins where
-// the end lands and which note, if any, clamped it. A row with steps also
-// pins the end's history and the note each step's end is anchored on.
+namespace {
+
+constexpr int kOverfillCap = 2;
+constexpr int64_t kOverfillActTick = 2304;
+
+// Every row below shares one activation: two SP phrases fill the meter
+// before the fill at kOverfillActTick. Each row lists its mid-SP phrases and
+// the step kind each one makes, which is the shape the row's name describes.
 struct OverfillCase {
     const char* name;
-    const char* why;
     std::vector<TailNote> notes;
-    int64_t deact;
-    std::optional<int64_t> clamp;  // unset: no step clamped the end
-    std::vector<SpEndStep> steps;  // empty: this row does not pin the history
-    std::vector<int64_t> anchors;  // end_anchor_tick of each step in `steps`
+    std::vector<int64_t> mid_sp_phrases;
+    std::vector<SpEndKind> kinds;  // the step each mid-SP phrase makes
 };
+
+// The SP-end history SP-24 gives for a full meter of `cap` bars: each mid-SP
+// phrase moves the end to the earlier of one bar past the end in force and
+// a full meter past the phrase itself. Only a strictly earlier ceiling is a
+// clamp: on a tie the plain bar step is what moved the end (graph.cpp,
+// extend_deacts).
+std::vector<SpEndStep> overfill_steps(const Song& song, int cap,
+                                      const std::vector<int64_t>& phrases) {
+    int64_t end = end_after_bars(song, kOverfillActTick, cap);
+    std::vector<SpEndStep> steps{{kOverfillActTick, end, SpEndKind::Activation}};
+    for (int64_t p : phrases) {
+        const int64_t plain = end_after_bars(song, end, 1);
+        const int64_t ceiling = end_after_bars(song, p, cap);
+        const bool clamped = ceiling < plain;
+        end = clamped ? ceiling : plain;
+        steps.push_back({p, end, clamped ? SpEndKind::Clamped : SpEndKind::Collected});
+    }
+    return steps;
+}
+
+}  // namespace
 
 TEST_CASE("SP cap overfill: where the end lands and which note clamped it") {
     const std::vector<OverfillCase> cases = {
         {"a mid-SP phrase that clamps records the collecting note",
-         "The phrase collected at 3072, mid-SP, moves the pending end to "
-         "min(prev_end + 2 measures, 3072 + 2*cap measures). prev_end + 2 "
-         "measures is 5376 + 1536 = 6912; the cap ceiling is 3072 + 4*768 = "
-         "6144. The ceiling is smaller, so it wins: the end is pinned to 6144, "
-         "and clamp_tick records the note that pinned it, 3072.",
-         {{0, true, false}, {768, true, false}, {2304, false, true},
+         {{0, true, false}, {768, true, false}, {kOverfillActTick, false, true},
           {3072, true, false}, {3840}, {4608}, {5376}, {6000}},
-         6144, 3072, {}, {}},
+         {3072},
+         {SpEndKind::Clamped}},
         {"a mid-SP phrase that only ties the cap does not clamp",
-         "Same cap and activation as above, but the mid-SP phrase lands at 3840 "
-         "instead of 3072. Now both options land on the same tick: prev_end + 2 "
-         "measures is 5376 + 1536 = 6912, and the cap ceiling is 3840 + 4*768 = "
-         "6912 too. A tie means the plain extension wins, not the cap -- so this "
-         "is not a clamp, and clamp_tick stays unset.",
-         {{0, true, false}, {768, true, false}, {2304, false, true},
+         {{0, true, false}, {768, true, false}, {kOverfillActTick, false, true},
           {3840, true, false}, {4608}, {5376}, {6000}, {6500}},
-         6912, std::nullopt, {}, {}},
+         {3840},
+         {SpEndKind::Collected}},
+        // The chart ends at 7500, before the SP end, so this is also the "SP
+        // outlasts the chart" case of the tests above.
         {"a later unclamped extension keeps the earlier clamp_tick",
-         "Same cap and activation, but SP is extended twice. The first mid-SP "
-         "phrase, at 3072, clamps exactly as in the first case above: the end is "
-         "pinned to 6144, with clamp_tick 3072. The second phrase, at 5760, "
-         "wants to move the end again -- the cap ceiling from THAT note would be "
-         "5760 + 4*768 = 8832, but the plain +2-measure step from the current "
-         "end (6144 + 1536 = 7680) is smaller and wins instead. Because this "
-         "second extension is not itself a clamp, the note that pinned the "
-         "window stays the first one: clamp_tick is still 3072, even though the "
-         "end has moved again. The chart ends at 7500, before the SP end at "
-         "7680, so this is the same \"SP outlasts the chart\" case as the tests "
-         "above: the tail rows are synthesized against the tracked end rather "
-         "than a real deactivation.",
-         {{0, true, false}, {768, true, false}, {2304, false, true},
+         {{0, true, false}, {768, true, false}, {kOverfillActTick, false, true},
           {3072, true, false}, {3840}, {4608}, {5376}, {5760, true, false},
           {6000}, {6768}, {7500}},
-         7680, 3072, {}, {}},
+         {3072, 5760},
+         {SpEndKind::Clamped, SpEndKind::Collected}},
         {"a second clamp in the same window replaces clamp_tick, and each "
          "clamp is a step the anchor follows",
-         "Same cap and activation. The phrase at 3072 clamps as in the first "
-         "case: the end is pinned to 6144. The phrase at 3840 then clamps again: "
-         "the plain step from the current end is 6144 + 1536 = 7680, but the "
-         "cap ceiling from 3840 is 3840 + 4*768 = 6912, which is smaller. The "
-         "end is now pinned by the later note, so clamp_tick moves to 3840.",
          double_clamp_notes(),
-         6912, 3840,
-         {{2304, 5376, SpEndKind::Activation},
-          {3072, 6144, SpEndKind::Clamped},
-          {3840, 6912, SpEndKind::Clamped}},
-         {2304, 3072, 3840}},
+         {3072, 3840},
+         {SpEndKind::Clamped, SpEndKind::Clamped}},
     };
 
     for (const OverfillCase& c : cases) {
         SUBCASE(c.name) {
-            INFO(c.why);
             Song song = build_tail_song(c.notes);
-            ScoreGraph graph(song, 2);
+            const std::vector<SpEndStep> want = overfill_steps(song, kOverfillCap, c.mid_sp_phrases);
+            // The row is the shape its name says.
+            std::vector<SpEndKind> want_kinds;
+            for (size_t i = 1; i < want.size(); ++i) want_kinds.push_back(want[i].kind);
+            REQUIRE(want_kinds == c.kinds);
+
+            ScoreGraph graph(song, kOverfillCap);
             const std::vector<Path> paths = run_search(graph, EngineOptions{});
-
             const Activation& act = last_act(paths);
-            CHECK(act.sp_meter() == 2);
-            CHECK(act.timecode.ticks() == 2304);
+            CHECK(act.sp_meter() == kOverfillCap);
+            CHECK(act.timecode.ticks() == kOverfillActTick);
+            CHECK(act.sp_end_steps == want);
 
-            const std::optional<int64_t> deact = act.deact_tick();
-            REQUIRE(deact.has_value());
-            CHECK(*deact == c.deact);
-
-            if (c.clamp) {
-                REQUIRE(act.clamp_tick().has_value());
-                CHECK(*act.clamp_tick() == *c.clamp);
-            } else {
-                CHECK_FALSE(act.clamp_tick().has_value());
+            // The clamp note is the last phrase whose step clamped, and each
+            // step's end is anchored on the last clamp at or before it, or on
+            // the activation before any clamp (SP-40).
+            std::optional<int64_t> last_clamp;
+            for (size_t i = 0; i < want.size(); ++i) {
+                CAPTURE(i);
+                if (want[i].kind == SpEndKind::Clamped) last_clamp = want[i].tick;
+                CHECK(act.end_anchor_tick(i) == last_clamp.value_or(kOverfillActTick));
             }
-
-            if (!c.steps.empty()) {
-                CHECK(act.sp_end_steps == c.steps);
-                for (size_t i = 0; i < c.anchors.size(); ++i)
-                    CHECK(act.end_anchor_tick(i) == c.anchors[i]);
-            }
+            CHECK(act.clamp_tick() == last_clamp);
         }
     }
 }
