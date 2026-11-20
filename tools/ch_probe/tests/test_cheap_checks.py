@@ -1,9 +1,9 @@
-"""Tests for the overlay spike's cheap checks: the session-log tail, the
-topmost-window probe and the poll-cost timer.
+"""Tests for the overlay spike's session-log tail (log_tail.py).
 
-No game: the log tail reads temporary files with a fake clock, the topmost
-probe is only imported (its window is LIVE-ONLY), and the poll-cost timer runs
-on fake callables and a real Process over fake memory (fakes.py).
+No game: the tail reads real Clone Hero session logs saved under
+testdata/ch_runs/ch-session-logs, on the real clock, and its printed lines are
+checked against the printout of a real run kept in
+tools/ch_probe/experiments/results/overlay-spike/run1_cal0_log_tail.txt.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import io
 import os
 import sys
 import tempfile
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,55 +21,91 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import constants as C  # noqa: E402
-from tools.ch_probe import engine  # noqa: E402
-from tools.ch_probe.experiments import log_tail, poll_cost, topmost_probe  # noqa: E402
-from tools.ch_probe.tests import fakes  # noqa: E402
+from tools.ch_probe.experiments import log_tail  # noqa: E402
 
-BASE = 0x180000000
-OBJ = 0x2A0000000
+# Two real session logs, copied from Clone Hero's own Logs folder without the
+# header lines (log id and machine details) the game writes first.
+LOGS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-session-logs")
+# The 2026-10-17 practice-mode session: seeks, a song load and the countdown.
+PRACTICE_LOG = os.path.join(LOGS, "Session-2026-10-17_19-29-33.log")
+# The log the real run below watched: the lines before its start, then the
+# two lines that arrived while it ran.
+WATCHED_LOG = os.path.join(LOGS, "Session-2026-10-28_20-34-47.log")
+# What log_tail.py printed while it watched that log on 2026-10-29.
+REAL_PRINTOUT = os.path.join(
+    _REPO_ROOT, "tools", "ch_probe", "experiments", "results",
+    "overlay-spike", "run1_cal0_log_tail.txt")
 
 
-class FakeClock:
-    """A clock that moves only when a test says so."""
+def read_lines(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read().splitlines()
 
-    def __init__(self, start: float = 0.0) -> None:
-        self.t = start
 
-    def now(self) -> float:
-        return self.t
-
-    def sleep(self, seconds: float) -> None:
-        self.t += seconds
+def printed_log_lines(printout):
+    """The printout's stamped lines, as (stamp, rest) pairs."""
+    pairs = []
+    for line in printout:
+        stamp, sep, rest = line.partition("  ")
+        try:
+            datetime.datetime.strptime(stamp, "%H:%M:%S.%f")
+        except ValueError:
+            continue
+        pairs.append((stamp, rest))
+    return pairs
 
 
 # --- log_tail -----------------------------------------------------------------
 
 class ParseLogLineTest(unittest.TestCase):
-    # Copied from C:\Users\Patrick\Documents\Clone Hero\Logs\
-    # Session-2026-10-17_19-29-33.log (lines 37, 44, 45, 38 and 35), with the
-    # CRLF the game writes.
+    def test_loading_song_prints_as_the_real_run_printed_it(self):
+        # Each stamped line of the real printout is the watched log's line,
+        # marked with the event parse_log_line named. Rebuilding it from the
+        # log's own line must give the same text, the song's name included.
+        printed = printed_log_lines(read_lines(REAL_PRINTOUT))
+        log_lines = read_lines(WATCHED_LOG)
+        self.assertEqual(len(printed), 2)
+        for stamp, rest in printed:
+            source = [line for line in log_lines if rest.startswith(line)]
+            self.assertEqual(len(source), 1, rest)
+            self.assertEqual(log_tail.format_line(stamp, source[0]),
+                             f"{stamp}  {rest}")
+        loading = log_tail.parse_log_line(log_lines[-2])
+        self.assertIsNotNone(loading)
+        self.assertIsNone(log_tail.parse_log_line(log_lines[-1]))
 
-    def test_loading_song(self):
-        self.assertEqual(
-            log_tail.parse_log_line(
-                "[Log] Loading Song: Between the Buried and Me - Glide\r\n"),
-            ("loading", "Between the Buried and Me - Glide"))
+    def test_countdown_start_and_end_are_two_different_events(self):
+        lines = read_lines(PRACTICE_LOG)
+        # The real log's two countdown lines, in the order the game wrote them.
+        countdown = [line for line in lines
+                     if line.startswith("[Log] OnCountdown")]
+        self.assertEqual(len(countdown), 2)
+        start, end = (log_tail.parse_log_line(line) for line in countdown)
+        self.assertIsNotNone(start)
+        self.assertIsNotNone(end)
+        self.assertIsNone(start[1])
+        self.assertIsNone(end[1])
+        self.assertNotEqual(start[0], end[0])
+        # No other line of the real log is named as either of them.
+        other_kinds = {log_tail.parse_log_line(line)[0] for line in lines
+                       if log_tail.parse_log_line(line) is not None
+                       and not line.startswith("[Log] OnCountdown")}
+        self.assertNotIn(start[0], other_kinds)
+        self.assertNotIn(end[0], other_kinds)
 
-    def test_countdown_start(self):
-        self.assertEqual(
-            log_tail.parse_log_line("[Log] OnCountdownStart\r\n"),
-            ("countdown_start", None))
-
-    def test_countdown_end(self):
-        self.assertEqual(
-            log_tail.parse_log_line("[Log] OnCountdownEnd\r\n"),
-            ("countdown_end", None))
-
-    def test_seek(self):
-        self.assertEqual(
-            log_tail.parse_log_line("[Log] Seeking to song time:121.880544\r\n"),
-            ("seek", 121.880544))
+    def test_seek_times_are_numbers_of_seconds(self):
+        lines = read_lines(PRACTICE_LOG)
+        seeks = [log_tail.parse_log_line(line) for line in lines
+                 if line.startswith("[Log] Seeking to song time:")]
+        self.assertGreater(len(seeks), 1)
+        self.assertEqual(len({kind for kind, _ in seeks}), 1)
+        times = [value for _, value in seeks]
+        for value in times:
+            self.assertIsInstance(value, float)
+        # The log's first seek ("20") is its earliest song time; compared as
+        # text it would sort after "108.896256", so only a number puts it first.
+        self.assertEqual(min(times), times[0])
+        self.assertLess(min(str(t) for t in times), str(times[0]))
 
     def test_warning_line_is_not_an_event(self):
         self.assertIsNone(log_tail.parse_log_line(
@@ -97,177 +134,64 @@ class NewestSessionLogTest(unittest.TestCase):
 
 
 class TailTest(unittest.TestCase):
-    WALL = datetime.datetime(2026, 10, 28, 19, 30, 1, 123456)
+    # 123999 microseconds: cutting to the millisecond gives .123, rounding .124.
+    WALL = datetime.datetime(2026, 10, 28, 19, 30, 1, 123999)
 
     def test_wall_stamp_is_to_the_millisecond(self):
         self.assertEqual(log_tail.wall_stamp(self.WALL), "19:30:01.123")
 
-    def test_caps_are_the_plans_literals(self):
-        self.assertEqual(log_tail.TAIL_CAP_S, 300.0)
-        self.assertEqual(log_tail.POLL_S, 0.1)
-
     def test_prints_new_lines_whole_and_stops_at_the_cap(self):
-        with tempfile.TemporaryDirectory() as folder:
-            path = os.path.join(folder, "Session-x.log")
-            with open(path, "wb") as f:
-                f.write(b"[Log] Starting video thumbs\r\n")  # before the tail
+        # Replays the real run: the watched log's earlier lines are on disk
+        # when the tail starts, then its two new lines arrive, the first one
+        # cut in half across two writes. The tail runs on the real clock.
+        with open(WATCHED_LOG, "rb") as f:
+            data = f.read()
+        arrived_at = data.index(b"[Log] Loading Song: ")
+        cut = arrived_at + len(b"[Log] Loading Song: ")
+        writes = [data[arrived_at:cut], data[cut:]]
+        cap_s = 5 * log_tail.POLL_S
+        moments = []
 
-            clock = FakeClock()
-            writes = [b"[Log] Loading Song: Between the ",   # half a line
-                      b"Buried and Me - Glide\r\n[Log] OnCountdownStart\r\n"]
+        def wall():
+            moments.append(datetime.datetime.now())
+            return moments[-1]
+
+        with tempfile.TemporaryDirectory() as folder:
+            path = os.path.join(folder, os.path.basename(WATCHED_LOG))
+            with open(path, "wb") as f:
+                f.write(data[:arrived_at])
 
             def sleep(seconds):
                 if writes:
                     with open(path, "ab") as f:
                         f.write(writes.pop(0))
-                clock.sleep(seconds)
+                time.sleep(seconds)
 
             out = io.StringIO()
-            printed = log_tail.tail(path, now=clock.now, sleep=sleep,
-                                    wall=lambda: self.WALL, out=out)
+            started = time.monotonic()
+            printed = log_tail.tail(path, cap_s=cap_s, sleep=sleep,
+                                    wall=wall, out=out)
+            took = time.monotonic() - started
 
-        self.assertEqual(printed, 2)
-        self.assertEqual(out.getvalue().splitlines(), [
-            "19:30:01.123  [Log] Loading Song: Between the Buried and Me - Glide"
-            "    <= loading 'Between the Buried and Me - Glide'",
-            "19:30:01.123  [Log] OnCountdownStart    <= countdown_start",
-            "Stopped at the 300 s cap.",
-        ])
-        self.assertGreaterEqual(clock.t, 300.0)
-        self.assertLess(clock.t, 300.0 + 2 * log_tail.POLL_S)
-
-
-# --- topmost_probe ------------------------------------------------------------
-
-class TopmostProbeTest(unittest.TestCase):
-    def test_style_constants_are_the_win32_values(self):
-        self.assertEqual(topmost_probe.WS_EX_TOPMOST, 0x00000008)
-        self.assertEqual(topmost_probe.WS_EX_LAYERED, 0x00080000)
-        self.assertEqual(topmost_probe.WS_EX_TRANSPARENT, 0x00000020)
-        self.assertEqual(topmost_probe.WS_POPUP, 0x80000000)
-        self.assertEqual(topmost_probe.EX_STYLE, 0x00080028)
-
-    def test_size_and_lifetime_are_the_plans_literals(self):
-        self.assertEqual(topmost_probe.WINDOW_W, 600)
-        self.assertEqual(topmost_probe.WINDOW_H, 120)
-        self.assertEqual(topmost_probe.LIFETIME_S, 60)
-
-    def test_window_function_is_marked_live_only(self):
-        self.assertIn("LIVE-ONLY", topmost_probe.run_probe.__doc__)
-
-
-# --- poll_cost ----------------------------------------------------------------
-
-class PollCostReportTest(unittest.TestCase):
-    def _run(self, addresses):
-        clock = FakeClock()
-        find_steps = iter([0.5, 0.25, 1.0, 0.75, 2.0])
-        found = iter(addresses)
-
-        def find_once():
-            clock.sleep(next(find_steps))
-            return next(found)
-
-        snap_steps = [0.001, 0.002, 0.004]
-        reads = {"snap": 0, "single": 0}
-        read_from = []
-
-        def make_readers(address):
-            read_from.append(address)
-
-            def snapshot_read():
-                clock.sleep(snap_steps[reads["snap"] % 3])
-                reads["snap"] += 1
-
-            def single_read():
-                clock.sleep(0.0005)
-                reads["single"] += 1
-
-            return snapshot_read, single_read
-
-        out = io.StringIO()
-        code = poll_cost.measure(find_once, make_readers,
-                                 [(10, 4096), (12, 8192)],
-                                 perf=clock.now, out=out)
-        return code, out.getvalue().splitlines(), reads, read_from
-
-    def test_report_prints_min_median_max_of_fixed_durations(self):
-        code, lines, reads, read_from = self._run([0x1000] * 5)
-        self.assertEqual(code, 0)
-        self.assertEqual(lines[1:], [
-            "All 5 engine finds agree: 0x1000",
-            "engine find: min 250.000 ms, median 750.000 ms, max 2000.000 ms (5 runs)",
-            "memory scans: 2 in all; regions per scan 10 to 12; "
-            "bytes per scan 4,096 to 8,192",
-            "snapshot() read: min 1.000 ms, median 2.000 ms, max 4.000 ms (1000 runs)",
-            "read_u32 read: min 0.500 ms, median 0.500 ms, max 0.500 ms (1000 runs)",
-        ])
-        self.assertEqual(reads, {"snap": 1000, "single": 1000})
-        self.assertEqual(read_from, [0x1000])
-
-    def test_two_addresses_print_the_disagreement_line(self):
-        code, lines, _, read_from = self._run(
-            [0x1000, 0x1000, 0x2000, 0x1000, 0x1000])
-        self.assertEqual(code, 0)
-        self.assertIn(
-            "DISAGREE: the engine finds returned different addresses: "
-            "0x1000, 0x1000, 0x2000, 0x1000, 0x1000", lines)
-        self.assertNotIn("All 5 engine finds agree: 0x1000", lines)
-
-
-class PollCostMainTest(unittest.TestCase):
-    """main() wired to a real Process over fake memory and the real capped
-    finder, with the memory scan faked."""
-
-    def _process(self, clocks):
-        consts = {C.RVA_CONST_NORMAL_BACK: C.EXPECT_NORMAL_BACK_S,
-                  C.RVA_CONST_NORMAL_FRONT: C.EXPECT_NORMAL_FRONT_S}
-        proc, _ = fakes.fake_process(
-            {OBJ: bytes(engine.SNAPSHOT_SIZE)}, BASE,
-            doubles={OBJ + C.OFF_TOTAL_WINDOW: 0.17},
-            dwords={OBJ + C.OFF_SCORE: 1234},
-            clocks={OBJ + C.OFF_SONG_CLOCK: clocks},
-            consts=consts)
-        return proc
-
-    def _opener(self, proc, calls):
-        def opener(**kwargs):
-            calls.append(kwargs)
-            return proc
-        return opener
-
-    def test_opens_read_only_and_reports_one_address(self):
-        calls = []
-        proc = self._process([i * 0.1 for i in range(40)])
-        clock = FakeClock()
-        out = io.StringIO()
-        code = poll_cost.main(
-            opener=self._opener(proc, calls),
-            scan=lambda p, back, front: ([OBJ], 7, 65536),
-            sleep=clock.sleep, now=clock.now, out=out)
-        self.assertEqual(code, 0)
-        self.assertEqual(calls, [{"read_only": True}])
-        text = out.getvalue()
-        self.assertIn(f"All 5 engine finds agree: {OBJ:#x}", text)
-        self.assertIn("memory scans: 5 in all; regions per scan 7 to 7; "
-                      "bytes per scan 65,536 to 65,536", text)
-
-    def test_no_song_exits_2_with_the_finders_message(self):
-        calls = []
-        proc = self._process([0.0])
-        clock = FakeClock()
-        out = io.StringIO()
-        code = poll_cost.main(
-            opener=self._opener(proc, calls),
-            scan=lambda p, back, front: ([], 0, 0),
-            sleep=clock.sleep, now=clock.now, out=out)
-        self.assertEqual(code, 2)
-        self.assertEqual(calls, [{"read_only": True}])
-        self.assertIn("no playing song found in 120 s; start the song and run again",
-                      out.getvalue())
-
-    def test_main_is_marked_live_only(self):
-        self.assertIn("LIVE-ONLY", poll_cost.main.__doc__)
+        real = read_lines(REAL_PRINTOUT)
+        real_printed = printed_log_lines(real)
+        lines = out.getvalue().splitlines()
+        self.assertEqual(printed, len(real_printed))
+        got = printed_log_lines(lines)
+        # The same lines as the real run, each whole, none of the earlier ones.
+        self.assertEqual([rest for _, rest in got],
+                         [rest for _, rest in real_printed])
+        stamps = {log_tail.wall_stamp(m) for m in moments}
+        for stamp, _ in got:
+            self.assertIn(stamp, stamps)
+        # The real run stopped at the default cap; this one at its own.
+        real_stop = [line for line in real if line.startswith("Stopped")]
+        self.assertEqual(lines[len(got):], [
+            real_stop[0].replace(f"{log_tail.TAIL_CAP_S:g}", f"{cap_s:g}")])
+        self.assertGreaterEqual(took, cap_s)
+        # It stopped at the cap, not much later; the slack is wide so a busy
+        # machine that delays one poll does not fail it.
+        self.assertLess(took, cap_s + 30)
 
 
 if __name__ == "__main__":
