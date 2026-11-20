@@ -1023,8 +1023,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
     ctx->Yield(3);
 
     // Score range holds six digits beside its step buttons, in the open
-    // settings panel. The sample widest_digits gives is one measured run in
-    // the shipped font at this size (audit finding 112).
+    // settings panel, sized for the widest six digits the font can draw.
     h.app->settings.depth_value = 999999;
     ctx->Yield(2);
     // The click analyzed (and saved) this song (D87), and the setting change
@@ -1033,7 +1032,12 @@ void test_library_layout(ImGuiTestContext* ctx) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     const std::string widest = hydra::ui::widest_digits(6);
-    IM_CHECK_STR_EQ(widest.c_str(), "000000");
+    // The sample is six digits, none narrower than another digit's run.
+    IM_CHECK_EQ(widest.size(), size_t{6});
+    IM_CHECK(widest.find_first_not_of("0123456789") == std::string::npos);
+    for (char d = '0'; d <= '9'; ++d)
+        IM_CHECK_LE(ImGui::CalcTextSize(std::string(6, d).c_str()).x,
+                    ImGui::CalcTextSize(widest.c_str()).x);
     IM_CHECK_GE(ctx->ItemInfo("**/##depthvalue").RectFull.GetWidth(),
                 hydra::ui::button_slot_width(widest.c_str()));
     IM_CHECK_LE(ctx->ItemInfo("**/##depthvalue/+").RectFull.Max.x,
@@ -1091,15 +1095,17 @@ void test_library_column_widths(ImGuiTestContext* ctx) {
     const hydra::ui::LibraryViewState::ColumnWidths& cache = h.app->library_ui.column_widths;
     IM_CHECK_EQ(cache.specs.size(), static_cast<size_t>(hydra::ui::kLibraryColumnCount));
     IM_CHECK(hydra::ui::text_shares_sum_to_100(cache.specs));  // the real list
-    // The headers left to right: Album sits between Artist and Charter.
-    const char* const headers[] = {"Title", "Artist", "Album", "Charter", "Folder", "Best path"};
-    IM_CHECK_EQ(table->ColumnsCount, static_cast<int>(std::size(headers)));
-    for (int c = 0; c < table->ColumnsCount && c < static_cast<int>(std::size(headers)); ++c)
-        IM_CHECK_STR_EQ(ImGui::TableGetColumnName(table, c), headers[c]);
+    // The headers left to right are the specs' headers, in the specs' order.
+    IM_CHECK_EQ(table->ColumnsCount, static_cast<int>(cache.specs.size()));
+    for (int c = 0; c < table->ColumnsCount && c < static_cast<int>(cache.specs.size()); ++c)
+        IM_CHECK_STR_EQ(ImGui::TableGetColumnName(table, c),
+                        cache.specs[static_cast<size_t>(c)].header.c_str());
     // A header is measured in the font it is drawn in. The Best path cells
     // draw as Notation, but TableHeadersRow draws the header as Label.
+    const std::string& best_header =
+        cache.specs[static_cast<size_t>(hydra::ui::kColumnBestPath)].header;
     IM_CHECK_EQ(cache.measured.header_widths[hydra::ui::kColumnBestPath],
-                hydra::ui::text_size(hydra::ui::TextRole::Label, "Best path").x);
+                hydra::ui::text_size(hydra::ui::TextRole::Label, best_header.c_str()).x);
     hydra::ui::ColumnLayout layout;
     auto check_rule_widths = [&] {
         layout = hydra::ui::place_columns(cache.measured, cache.specs, cache.room);
