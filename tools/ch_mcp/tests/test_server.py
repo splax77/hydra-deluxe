@@ -21,10 +21,36 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import bot_run  # noqa: E402
+from tools.ch_mcp import front as F  # noqa: E402
+from tools.ch_mcp import game_files  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
+from tools.ch_mcp import kit_tools as KT  # noqa: E402
 from tools.ch_mcp import server as S  # noqa: E402
 from tools.ch_mcp import sp_tools as SP  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
+
+# A real worker: the real server on a real Helper, over stdio, as the front
+# runs server.py. argv gives the repo root, the game exe, the documents folder,
+# the scratch root and "backup" or "none". Its Env has no registry runner, so a
+# backup is the code's own temp-folder form, and nothing it does starts a game.
+# Its lines go to stderr, because stdout carries the replies.
+WORKER_CHILD = """
+import sys
+sys.path.insert(0, sys.argv[1])
+from tools.ch_mcp import bot_run as B, server as S
+env = B.Env(exe=sys.argv[2], documents_dir=sys.argv[3], run_reg=None,
+            out=lambda line: print(line, file=sys.stderr))
+helper = S.Helper(env=env, scratch_root=sys.argv[4])
+if sys.argv[5] == "backup":
+    helper.game.ensure_backup()
+S.build_server(helper).run("stdio")
+"""
+
+
+def backup_folders(root: str) -> list[str]:
+    """Every backup folder game_files.backup made anywhere under `root`."""
+    return [os.path.join(top, name) for top, dirs, _files in os.walk(root)
+            for name in dirs if name.startswith(game_files.BACKUP_PREFIX)]
 
 # The eighteen tools of the server plan's "The tools" table, then the eleven
 # of the Star Power and song start plan's (task T5), then the five kit tools
@@ -55,10 +81,13 @@ class ServerTest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
+        self.tmp = tmp.name
         self.printed = []
+        # No registry runner: a backup is the code's own temp-folder form and
+        # never reads the user's Rewired key.
         env = bot_run.Env(exe=os.path.join(tmp.name, "game.exe"),
                           documents_dir=os.path.join(tmp.name, "docs"),
-                          launch=_no_launch, out=self.printed.append)
+                          launch=_no_launch, out=self.printed.append, run_reg=None)
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
@@ -71,52 +100,43 @@ class ServerTest(unittest.TestCase):
         return result.content[0].text
 
     def test_ch_open_items_says_so_when_nothing_is_open(self):
-        self.assertEqual(self._open_items(), "nothing open")
-
-    def test_ch_open_items_names_the_run_with_its_backup_folder(self):
-        self.helper.game._run = SimpleNamespace(game=SimpleNamespace(pid=7), backup_dir="the-backup")
-        self.assertEqual(self._open_items(), "run: game pid 7, backup folder the-backup")
+        # The front's word for "nothing" is the one the worker must say.
+        self.assertEqual(self._open_items(), F.NOTHING_OPEN)
 
     def test_ch_open_items_names_an_adopted_backup(self):
-        self.helper.game._adopted_backup = "the-backup"
-        self.assertEqual(self._open_items(), "adopted backup: the-backup")
+        # A real backup, taken the way ch_attach takes one for a game the
+        # server did not start.
+        self.assertEqual(backup_folders(self.tmp), [])
+        self.helper.game.ensure_backup()
+        [folder] = backup_folders(self.tmp)
+        self.assertTrue(os.path.isfile(os.path.join(folder, game_files.BACKUP_MANIFEST)))
+        [line] = self._open_items().splitlines()
+        self.assertTrue(line.startswith("adopted backup"), line)
+        self.assertTrue(line.endswith(folder), line)
 
-    def _front_reads(self):
-        """What the front's own reader makes of the real ch_open_items reply."""
-        from tools.ch_mcp import front as F
-        text = self._open_items()
-        message = {"result": {"content": [{"type": "text", "text": text}]}}
-        link = SimpleNamespace(request=lambda method, params, cap_s=None: message)
-        return F.open_items(link, 1.0)
+    def _front_reads_a_real_worker(self, take_backup: bool) -> tuple[list, list]:
+        """What the front's own reader makes of a real worker's ch_open_items
+        reply over the real pipe, and the backup folders under the worker's
+        scratch root. The worker is the real server.py code, started by the
+        front's own WorkerLink."""
+        scratch = os.path.join(self.tmp, "worker scratch")
+        os.makedirs(scratch)
+        link = F.WorkerLink([sys.executable, "-I", "-c", WORKER_CHILD, _REPO_ROOT,
+                             self.helper.env.exe, self.helper.env.documents_dir, scratch,
+                             "backup" if take_backup else "none"])
+        link.start()
+        self.addCleanup(link.stop, F.WORKER_EXIT_CAP_S)
+        return F.open_items(link, F.WORKER_START_CAP_S), backup_folders(scratch)
 
     def test_the_front_reads_the_real_nothing_open_as_nothing_open(self):
-        self.assertEqual(self._front_reads(), [])
+        self.assertEqual(self._front_reads_a_real_worker(take_backup=False), ([], []))
 
     def test_the_front_reads_the_real_adopted_backup_line_as_open(self):
-        self.helper.game._adopted_backup = "the-backup"
-        self.assertEqual(self._front_reads(), ["adopted backup: the-backup"])
-
-    def test_ch_open_items_lists_each_running_thing_on_its_own_line(self):
-        alive = SimpleNamespace(is_alive=lambda: True)
-        self.helper.frida._agent = SimpleNamespace(alive=True)
-        self.helper.kit._agent = object()
-        self.helper.game._play = GT._PlaySession("s.json", 2, None, thread=alive, rows=[{}])
-        self.helper.sp._watch = SP._Watch("w.csv", 1.0, thread=alive)
-        self.helper.method_watch._session = SimpleNamespace(ended=lambda: False)
-        self.helper.frida._trace = SimpleNamespace(ended=lambda: False)
-        self.assertEqual(self._open_items().splitlines(), [
-            "play session: running, 1 presses so far", "frida: state agent attached",
-            "kit: kit agent attached", "star power watch: running", "method watch: running",
-            "trace: running"])
-
-    def test_ch_open_items_leaves_out_what_has_ended(self):
-        dead = SimpleNamespace(is_alive=lambda: False)
-        self.helper.frida._agent = SimpleNamespace(alive=False)
-        self.helper.game._play = GT._PlaySession("s.json", 2, None, thread=dead)
-        self.helper.sp._watch = SP._Watch("w.csv", 1.0, thread=dead)
-        self.helper.method_watch._session = SimpleNamespace(ended=lambda: True)
-        self.helper.frida._trace = SimpleNamespace(ended=lambda: True)
-        self.assertEqual(self._open_items(), "nothing open")
+        lines, folders = self._front_reads_a_real_worker(take_backup=True)
+        self.assertEqual(len(folders), 1, folders)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith("adopted backup"), lines)
+        self.assertTrue(lines[0].endswith(folders[0]), lines)
 
     def test_open_items_uses_public_checks(self):
         # A field of another tool read here would be a second copy of the
