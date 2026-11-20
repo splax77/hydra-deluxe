@@ -1,12 +1,16 @@
-"""RecorderLink: the worker's end of the machine recorder, on a fake Popen."""
+"""RecorderLink: the worker's end of the machine recorder. Where a test can run
+the real recorder (tools/ch_mcp/machine_recorder.py) it does, and reads the pid
+and folder from the recorder's own log; the rest still run on a fake Popen."""
 
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from unittest import mock
 
@@ -22,6 +26,26 @@ from tools.ch_mcp import recorder_link as R  # noqa: E402
 THREAD_CAP_S = 5.0
 
 HEADER = (",".join(MR.SAMPLES_COLUMNS) + "\n").encode()
+
+# How long a test waits for a real recorder's first log line before it fails.
+RECORDER_CAP_S = 10.0
+# The run cap a test hands the real recorder. Its parent (this process) ending
+# stops it sooner.
+RUN_CAP_S = 30.0
+
+
+class Started(list):
+    """The real subprocess.Popen, keeping each process it starts so a test can
+    read its exit code. `extra` is added to the command, the way a person who
+    runs the recorder by hand adds --seconds."""
+
+    def __init__(self, extra=()):
+        super().__init__()
+        self.extra = list(extra)
+
+    def __call__(self, command, **kwargs):
+        self.append(subprocess.Popen(command + self.extra, **kwargs))
+        return self[-1]
 
 
 def sample_row(number: int, wall: str) -> bytes:
@@ -116,8 +140,44 @@ class RecorderLinkTest(unittest.TestCase):
         with open(os.path.join(self.folder, MR.SAMPLES_FILE), "wb") as f:
             f.write(data)
 
-    def test_the_exit_cap_is_the_users_two_seconds(self):
-        self.assertEqual(R.RECORDER_EXIT_CAP_S, 2)
+    def real(self, extra=()):
+        """A link on the real Popen, stopped when the test ends, and the list of
+        the real processes it started."""
+        started = Started(extra)
+        link = R.RecorderLink(popen=started)
+        self.addCleanup(link.stop)
+        return link, started
+
+    def real_start(self, link):
+        return link.start(self.session, os.getpid(), RUN_CAP_S)
+
+    def recorder_says(self, link, folder):
+        """The pid and folder the real recorder's first log line names. The
+        recorder ending before it writes the line fails at once, and so does the
+        cap passing."""
+        log = os.path.join(folder, R.LOG_NAME)
+        deadline = time.monotonic() + RECORDER_CAP_S
+        while True:
+            alive = link.running()
+            with open(log, encoding="utf-8", errors="replace") as f:
+                first = f.readline()
+            if first.endswith("\n"):
+                said = re.match(r"machine recorder: pid (\d+), sampling thread \d+, folder (.+)$",
+                                first.rstrip("\r\n"))
+                self.assertIsNotNone(said, first)
+                return int(said[1]), said[2]
+            if not alive:
+                self.fail(f"the recorder in {folder} ended before its first log line")
+            if time.monotonic() > deadline:
+                self.fail(f"no first log line in {log} within {RECORDER_CAP_S} s")
+            time.sleep(1 / MR.RATE_PER_S)
+
+    def last_log_line(self, folder):
+        with open(os.path.join(folder, R.LOG_NAME), encoding="utf-8", errors="replace") as f:
+            return f.read().strip().splitlines()[-1]
+
+    def assert_names_pid(self, line, pid):
+        self.assertRegex(line, rf"\bpid {pid}\b")
 
     def test_the_command_line_is_the_fixed_contract(self):
         self.start()
@@ -136,35 +196,59 @@ class RecorderLinkTest(unittest.TestCase):
         self.assertTrue(kwargs["stdout"].closed)
 
     def test_start_neither_sleeps_nor_waits_and_names_the_pid_and_folder(self):
+        link, _started = self.real()
         with mock.patch("time.sleep") as sleep:
-            lines = self.start()
+            lines = self.real_start(link)
         sleep.assert_not_called()
-        self.assertEqual(self.popen.events, ["recorder start"])
-        self.assertEqual(lines, [f"machine recorder: started, pid 777, folder {self.folder}"])
+        # start came back while the recorder still runs: it did not wait for it.
+        self.assertTrue(link.running())
+        pid, folder = self.recorder_says(link, self.folder)
+        self.assertEqual(folder, self.folder)
+        self.assertEqual(len(lines), 1)
+        self.assertIn("started", lines[0])
+        self.assert_names_pid(lines[0], pid)
+        self.assertIn(f"folder {folder}", lines[0])
 
     def test_a_second_start_stops_the_first_and_takes_the_next_folder(self):
-        self.start()
-        lines = self.start()
-        self.assertTrue(self.popen.procs[0].stdin.closed.is_set())
-        self.assertEqual(lines, [
-            f"machine recorder: stopped, pid 777, exit code 0, folder {self.folder}",
-            "machine recorder: started, pid 778, folder "
-            + os.path.join(self.session, "machine-2")])
-        self.assertTrue(self.link.running())
+        link, started = self.real()
+        self.real_start(link)
+        first_pid, _ = self.recorder_says(link, self.folder)
+        stopped, second_started = self.real_start(link)
+        second = os.path.join(self.session, "machine-2")
+        second_pid, folder = self.recorder_says(link, second)
+        self.assertEqual(folder, second)
+        # The first recorder ended on its stdin closing, not on a terminate.
+        self.assertTrue(self.last_log_line(self.folder).endswith(MR.STOP_STDIN))
+        self.assertIn("stopped", stopped)
+        self.assert_names_pid(stopped, first_pid)
+        self.assertIn(f"exit code {started[0].returncode}", stopped)
+        self.assertIn(f"folder {self.folder}", stopped)
+        self.assertIn("started", second_started)
+        self.assert_names_pid(second_started, second_pid)
+        self.assertIn(f"folder {second}", second_started)
+        self.assertTrue(link.running())
 
     def test_a_folder_that_already_holds_a_recording_is_skipped(self):
-        os.makedirs(os.path.join(self.session, "machine-1"))
-        self.assertEqual(self.start(), [
-            f"machine recorder: started, pid 777, folder {os.path.join(self.session, 'machine-2')}"])
+        os.makedirs(self.folder)
+        link, _started = self.real()
+        lines = self.real_start(link)
+        second = os.path.join(self.session, "machine-2")
+        _pid, folder = self.recorder_says(link, second)
+        self.assertEqual(folder, second)
+        self.assertIn(f"folder {second}", lines[0])
+        self.assertEqual(os.listdir(self.folder), [])
 
     def test_a_start_that_raises_says_so_in_line_and_samples_line(self):
-        self.popen.error = OSError("no python")
-        with self.assertRaises(OSError):
-            self.start()
-        said = "machine recorder: not started (OSError: no python); the run goes on with no recording"
-        self.assertEqual(self.link.line(), said)
-        self.assertEqual(self.link.samples_line(), said)
-        self.assertFalse(self.link.running())
+        link, started = self.real()
+        no_python = os.path.join(self.session, "no-python", "python.exe")
+        with mock.patch.object(sys, "executable", no_python):
+            with self.assertRaises(OSError) as raised:
+                self.real_start(link)
+        self.assertEqual(started, [])
+        said = R.start_failed_line(raised.exception)
+        self.assertEqual(link.line(), said)
+        self.assertEqual(link.samples_line(), said)
+        self.assertFalse(link.running())
 
     def test_send_writes_one_flushed_line_and_never_waits(self):
         self.start()
@@ -174,40 +258,54 @@ class RecorderLinkTest(unittest.TestCase):
                          [("stdin", b"pid 7\n"), ("stdin", b"engine 0x1000\n")])
 
     def test_a_failed_write_is_a_line_not_an_exception(self):
-        self.start()
-        self.popen.procs[0].stdin.fail = True
-        self.assertEqual(self.link.send("pid 7"),
-                         'machine recorder: "pid 7" not sent (OSError: the pipe is closed); '
-                         "the run goes on")
+        # A recorder that died leaves its stdin pipe with no reader, so the
+        # write fails for real.
+        link, started = self.real()
+        self.real_start(link)
+        self.recorder_says(link, self.folder)
+        started[0].terminate()
+        started[0].wait(RECORDER_CAP_S)
+        said = link.send("pid 7")
+        self.assertIsInstance(said, str)
+        self.assertIn('"pid 7" not sent', said)
+        # The run goes on: the link still answers, naming the recorder's end.
+        self.assertIn(f"exit code {started[0].returncode}", link.line())
 
     def test_send_with_no_recorder_has_nothing_to_say(self):
         self.assertIsNone(self.link.send("pid 7"))
 
-    def test_stop_closes_stdin_and_waits_the_cap(self):
-        self.start()
-        said = self.link.stop()
-        self.assertEqual(said, f"machine recorder: stopped, pid 777, exit code 0, folder {self.folder}")
-        self.assertIn(("wait", R.RECORDER_EXIT_CAP_S), self.popen.events)
-        self.assertNotIn("terminate", self.popen.events)
-        self.assertFalse(self.link.running())
-        self.assertEqual(self.link.line(), said)
+    def test_stop_closes_stdin_and_the_recorder_exits_on_it(self):
+        link, started = self.real()
+        self.real_start(link)
+        pid, _ = self.recorder_says(link, self.folder)
+        began = time.monotonic()
+        said = link.stop()
+        # It ended inside the cap, on its stdin closing, with no terminate.
+        self.assertLess(time.monotonic() - began, R.RECORDER_EXIT_CAP_S)
+        self.assertTrue(self.last_log_line(self.folder).endswith(MR.STOP_STDIN))
+        self.assertEqual(started[0].returncode, 0)
+        self.assertIn("stopped", said)
+        self.assert_names_pid(said, pid)
+        self.assertIn(f"exit code {started[0].returncode}", said)
+        self.assertIn(f"folder {self.folder}", said)
+        self.assertFalse(link.running())
+        self.assertEqual(link.line(), said)
 
-    def test_stop_terminates_one_that_does_not_exit_and_says_so(self):
-        self.popen.hangs = True
-        self.start()
-        self.assertEqual(self.link.stop(),
-                         "machine recorder: pid 777 did not exit within RECORDER_EXIT_CAP_S (2 s) "
-                         f"of its stdin closing; terminated, exit code 1, folder {self.folder}")
-        self.assertEqual([e for e in self.popen.events if e == "terminate"], ["terminate"])
-
-    def test_stop_says_when_terminate_does_not_end_it(self):
-        self.popen.hangs = True
-        self.start()
-        proc = self.popen.procs[0]
-        proc.terminate = lambda: None
-        self.assertEqual(self.link.stop(),
-                         "machine recorder: pid 777 did not exit within RECORDER_EXIT_CAP_S (2 s) "
-                         "of its stdin closing; terminated, but it still runs 2 s later")
+    def test_stop_terminates_one_that_does_not_exit_within_the_cap_and_says_so(self):
+        # A recorder run by hand for a fixed time leaves its stdin unread, so
+        # closing it does not end the recorder.
+        link, started = self.real(extra=["--seconds", str(RUN_CAP_S)])
+        self.real_start(link)
+        pid, _ = self.recorder_says(link, self.folder)
+        began = time.monotonic()
+        said = link.stop()
+        self.assertGreaterEqual(time.monotonic() - began, R.RECORDER_EXIT_CAP_S)
+        self.assertIsNotNone(started[0].returncode)
+        self.assertFalse(self.last_log_line(self.folder).endswith(MR.STOP_STDIN))
+        self.assert_names_pid(said, pid)
+        self.assertIn(f"({R.RECORDER_EXIT_CAP_S} s)", said)
+        self.assertIn(f"terminated, exit code {started[0].returncode}", said)
+        self.assertIn(f"folder {self.folder}", said)
 
     def test_stop_says_when_terminate_fails(self):
         self.popen.hangs = True
@@ -246,16 +344,28 @@ class RecorderLinkTest(unittest.TestCase):
         self.assertIsNone(self.link.stop())
         self.assertEqual(self.link.line(), said)
 
-    def test_line_says_none_before_any_start_and_stop_has_nothing_to_stop(self):
-        self.assertEqual(self.link.line(), "machine recorder: none")
-        self.assertIsNone(self.link.stop())
+    def test_line_names_no_recorder_before_any_start_and_stop_has_nothing_to_stop(self):
+        link = R.RecorderLink()
+        line = link.line()
+        self.assertTrue(line.startswith(R._LINE_PREFIX))
+        self.assertNotRegex(line, r"\bpid\b|\bfolder\b|\brunning\b")
+        self.assertFalse(link.running())
+        self.assertIsNone(link.stop())
+        self.assertEqual(link.line(), line)
 
     def test_line_names_a_running_recorders_pid(self):
-        self.start()
-        self.assertEqual(self.link.line(), "machine recorder: running, pid 777")
+        link, _started = self.real()
+        self.real_start(link)
+        pid, _ = self.recorder_says(link, self.folder)
+        self.assertIn("running", link.line())
+        self.assert_names_pid(link.line(), pid)
 
     def test_samples_line_says_the_run_is_not_recorded_when_no_start_was_tried(self):
-        self.assertEqual(self.link.samples_line(), "machine recorder: none; this run is not recorded")
+        link = R.RecorderLink()
+        said = link.samples_line()
+        self.assertTrue(said.startswith(link.line()))
+        self.assertIn("not recorded", said)
+        self.assertNotRegex(said, r"\bpid\b|\bsamples\b")
 
     def test_samples_line_with_no_file_yet(self):
         self.start()
