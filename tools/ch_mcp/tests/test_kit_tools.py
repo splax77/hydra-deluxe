@@ -30,7 +30,7 @@ from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
-from tools.ch_probe.constants import ms_to_s  # noqa: E402
+from tools.ch_probe.constants import ms_to_s, s_to_ms  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     FakeFrida, ReplySession, instant_wait, recorded)
 from tools.ch_mcp import menu_tools as MT  # noqa: E402
@@ -1158,8 +1158,8 @@ class FrameProbeTest(Rig):
         green = next(r["frame"] for r in rows if r["frame"] >= down and r["read"][0] is True)
         anyb = next(r["frame"] for r in rows if r["frame"] >= down and r["any_button"] is True)
         span_ms = rows[-1]["wall_ms"] - rows[0]["wall_ms"]
-        rate = (frames[-1] - frames[0]) * 1000 / span_ms
-        gaps = sorted((r["engine_clock_s"] - r["song_time_s"]) * 1000 for r in rows)
+        rate = (frames[-1] - frames[0]) / ms_to_s(span_ms)
+        gaps = sorted(s_to_ms(r["engine_clock_s"] - r["song_time_s"]) for r in rows)
         median = (gaps[(len(gaps) - 1) // 2] + gaps[len(gaps) // 2]) / 2
 
         lines = self.probe(reply)
