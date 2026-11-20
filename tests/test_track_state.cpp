@@ -272,8 +272,9 @@ TEST_CASE("build_track_state: the sp_active field reads sp_running_in") {
     // The highway's sp_active field asks the one SP-running rule
     // (app::sp_running_in, through SpRunSweep) on each activation's
     // sp_window. Two back-to-back windows, [1000, 2000) and [2000, 3000) ms,
-    // the scene of test_sp_meter_curve's sp_running_at case: SP runs from
-    // the first strike, through the join, and stops at the second's end.
+    // hand-built here (test_sp_meter_curve's sp_running_at case reads the
+    // corpus paths' windows instead): SP runs from the first strike, through
+    // the join, and stops at the second's end.
     PreviewScene scene;
     scene.notes = {note(0.0, PreviewLane::Red), note(5000.0, PreviewLane::Red)};
     PreviewActivation a;
