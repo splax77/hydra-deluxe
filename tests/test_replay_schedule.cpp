@@ -330,23 +330,31 @@ TEST_CASE("schedule: sides come from the whole chart") {
 }
 
 TEST_CASE("schedule: a missing --path refuses by name") {
+    // hydra_replay schedule reads its path from the file its --path flag
+    // names (cmd_schedule, tools/replay.cpp): no file named is refused with
+    // one line naming that flag, and a real dump file named is not.
     const std::optional<std::string> r = schedule::path_flag_refusal("");
     REQUIRE(r.has_value());
     CHECK(r->find("--path") != std::string::npos);
     CHECK(r->find('\n') == std::string::npos);  // main prints it as one "error:" line
-    CHECK_FALSE(schedule::path_flag_refusal("dump.json").has_value());
+    CHECK_FALSE(schedule::path_flag_refusal(corpus::testdata_root() + "/replay/window_map-dump.json").has_value());
 }
 
 TEST_CASE("schedule: a chart with no path refuses by name") {
-    const json empty{{"paths", json::array()}};
-    const std::optional<std::string> r = schedule::no_path_refusal(empty, "freak_dump.json");
+    // A real dump (hydra_replay dump of the Window Map chart) holds a
+    // path, so it plans. The same dump with its paths taken out is refused
+    // in one line that names the file it was read from.
+    const std::string file = corpus::testdata_root() + "/replay/window_map-dump.json";
+    json doc = corpus::load_json(file);
+    REQUIRE(!doc["paths"].empty());
+    CHECK_FALSE(schedule::no_path_refusal(doc, file).has_value());
+    doc["paths"] = json::array();
+    const std::optional<std::string> r = schedule::no_path_refusal(doc, file);
     REQUIRE(r.has_value());
-    CHECK(r->find("freak_dump.json") != std::string::npos);
-    CHECK(r->find("no path") != std::string::npos);
+    CHECK(r->find(file) != std::string::npos);
     CHECK(r->find('\n') == std::string::npos);
-    CHECK(schedule::no_path_refusal(json::object(), "x.json").has_value());
-    const json one{{"paths", json::array({json::object()})}};
-    CHECK_FALSE(schedule::no_path_refusal(one, "x.json").has_value());
+    doc.erase("paths");
+    CHECK(schedule::no_path_refusal(doc, file).has_value());
 }
 
 TEST_CASE("schedule: nothing under src/ reads the schedule") {
@@ -643,31 +651,36 @@ TEST_CASE("schedule: an activation that needs both directions is refused naming 
     std::vector<std::string> refusals;
     CHECK_FALSE(schedule::anchor_lead_ms({out, in}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
-    CHECK(refusals[0].find("anchor chord 5") != std::string::npos);
-    CHECK(refusals[0].find("early for chord 17") != std::string::npos);
-    CHECK(refusals[0].find("late for chord 23") != std::string::npos);
+    // The line names the anchor, the chord it would go early for and the one
+    // it would go late for.
+    CHECK(refusals[0].find("anchor chord " + std::to_string(out.anchor_chord)) != std::string::npos);
+    CHECK(refusals[0].find("early for chord " + std::to_string(out.squeeze_chord)) != std::string::npos);
+    CHECK(refusals[0].find("late for chord " + std::to_string(in.squeeze_chord)) != std::string::npos);
 }
 
 TEST_CASE("schedule: a lead across a steady span is refused naming the span") {
-    // Freak 387's split leads the anchor 24.82 ms early; a tempo change 10 ms
-    // before the anchor breaks the ratio.
+    // A squeeze-out whose anchor leads early by the equal-room split: a tempo
+    // change nearer the anchor than that lead breaks the ratio, one farther
+    // away does not.
     schedule::SqueezeGeometry g = sqout(48.15, 60545.26, 53.59, 60573.35, 1.0);
-    g.steady.before_anchor_ms = 10.0;
+    const double lead = schedule::equal_room_lead_ms(g);
+    REQUIRE(lead > 0.0);
+    g.steady.before_anchor_ms = lead / 2;
     std::vector<std::string> refusals;
     CHECK_FALSE(schedule::anchor_lead_ms({g}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
+    // The line names the span that was crossed and how long it is.
     CHECK(refusals[0].find("before_anchor_ms") != std::string::npos);
-    CHECK(refusals[0].find("tempo or time signature change") != std::string::npos);
-    // One the lead stays inside passes.
-    g.steady.before_anchor_ms = 30.0;
+    CHECK(refusals[0].find(std::to_string(*g.steady.before_anchor_ms)) != std::string::npos);
+    g.steady.before_anchor_ms = lead * 2;
     refusals.clear();
     CHECK(schedule::anchor_lead_ms({g}, refusals).has_value());
     CHECK(refusals.empty());
 }
 
 TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused naming both chords") {
-    // The Edge Walk Pair shape: two kicks 100 ms apart, chords 10 and 11,
-    // each side 76.57 ms (TM-50's run).
+    // Two kick chords 100 ms apart, each with the side core::chord_sides_ms
+    // gives it.
     const std::vector<double> sides = chord_sides_ms({1000.0, 1100.0});
     std::vector<schedule::PadChord> pair(2);
     const schedule::Pad kick_pad{NoteColor::Kick, false};
@@ -678,33 +691,39 @@ TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused nami
         pair[i].chart_pads = {kick_pad};
     }
     const std::vector<schedule::Pad> kick = {kick_pad};
-    // Chord 10 pressed on time, at 998: chord 11 pressed 60 ms early lands
-    // inside chord 10's window after 10 is hit, so it passes.
-    pair[0].sends = {{kick_pad, 998.0}};
-    CHECK_FALSE(schedule::far_press_refusal(pair, 1, 1040.0, kick).has_value());
-    // Chord 10 not pressed: chord 11's press would take it. Refused.
+    // The first chord pressed 2 ms early: the second pressed 60 ms early
+    // lands inside the first's window after the first is hit, so it passes.
+    pair[0].sends = {{kick_pad, pair[0].ms - 2.0}};
+    const double early_send = pair[1].ms - 60.0;
+    CHECK_FALSE(schedule::far_press_refusal(pair, 1, early_send, kick).has_value());
+    // The first chord not pressed: the second's press would take it. Refused,
+    // naming both chords.
     pair[0].sends.clear();
-    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, 1040.0, kick);
+    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, early_send, kick);
     REQUIRE(r.has_value());
-    CHECK(r->find("chord 11") != std::string::npos);
-    CHECK(r->find("chord 10") != std::string::npos);
-    CHECK(r->find("no press") != std::string::npos);
+    CHECK(r->find("chord " + std::to_string(pair[1].index)) != std::string::npos);
+    CHECK(r->find("chord " + std::to_string(pair[0].index)) != std::string::npos);
 }
 
 TEST_CASE("schedule: a late gem that pays less than an inside gem is refused") {
+    // Place 0 is late at x1, place 1 inside at x2: no press order pays that.
+    const int chord = 7;
+    const std::vector<int> mults = {1, 2};
     std::vector<std::string> refusals;
-    CHECK_FALSE(schedule::squeeze_out_inside_groups(7, {1, 2}, {0, 1}, {0}, refusals).has_value());
+    CHECK_FALSE(schedule::squeeze_out_inside_groups(chord, mults, {0, 1}, {0}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
-    CHECK(refusals[0].find("chord 7") != std::string::npos);
-    CHECK(refusals[0].find("late gem pays x1 and an inside gem x2") != std::string::npos);
+    // The line names the chord and both multipliers.
+    CHECK(refusals[0].find("chord " + std::to_string(chord)) != std::string::npos);
+    CHECK(refusals[0].find("x" + std::to_string(mults[0])) != std::string::npos);
+    CHECK(refusals[0].find("x" + std::to_string(mults[1])) != std::string::npos);
     refusals.clear();
-    const auto ok = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, {0, 1, 2}, {0}, refusals);
+    const auto ok = schedule::squeeze_out_inside_groups(chord, {2, 2, 1}, {0, 1, 2}, {0}, refusals);
     REQUIRE(ok.has_value());
     CHECK(refusals.empty());
     CHECK(*ok == std::vector<std::vector<size_t>>{{2}, {1}});
     // Only the gems the player sends go inside: a declined chord that keeps
     // places 0 and 2 presses place 2 alone inside.
-    const auto kept = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, {0, 2}, {0}, refusals);
+    const auto kept = schedule::squeeze_out_inside_groups(chord, {2, 2, 1}, {0, 2}, {0}, refusals);
     REQUIRE(kept.has_value());
     CHECK(*kept == std::vector<std::vector<size_t>>{{2}});
 }
@@ -806,18 +825,28 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
 }
 
 TEST_CASE("schedule: moving_side reads the anchor's press, not the squeeze's kind") {
-    // Dead on Arrival activation 3's stored scale (the Dynamic Hit Window
-    // plan's figures): early 1.0044, late 0.9970. The two sides differ, so a
-    // wrong pick shows.
-    const TransferScale scale{1.0044, 0.9970};
-    CHECK(schedule::moving_side(Press::Early, scale) == 1.0044);
-    CHECK(schedule::moving_side(Press::Late, scale) == 0.9970);
-    // A geometry's ratio follows its anchor's press the same way.
-    schedule::SqueezeGeometry g = hand_built_squeeze_in();
-    g.ratio = scale;
-    CHECK(schedule::moving_ratio(g) == 0.9970);
-    g.anchor_press = Press::Early;
-    CHECK(schedule::moving_ratio(g) == 1.0044);
+    // On every scale the corpus stores (Activation::transfer_post): the side
+    // an anchor moves the end by is the one core::transfer_side gives its
+    // press, and a geometry's ratio follows its anchor's press the same way.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int unequal = 0;
+    for_each_corpus_activation(cfg, [&](const std::string& path, const Activation& act, const json&,
+                                        const std::vector<std::string>&) {
+        if (!act.transfer_post) return;
+        const TransferScale& scale = *act.transfer_post;
+        if (scale.early != scale.late) ++unequal;
+        INFO(path << ": the activation at tick " << act.timecode.ticks());
+        schedule::SqueezeGeometry g = hand_built_squeeze_in();
+        g.ratio = scale;
+        for (const Press press : {Press::Early, Press::Late}) {
+            CHECK(schedule::moving_side(press, scale) == transfer_side(scale, press));
+            g.anchor_press = press;
+            CHECK(schedule::moving_ratio(g) == transfer_side(scale, press));
+        }
+    });
+    // A wrong pick shows only on a scale whose two sides differ; a corpus
+    // with none would make every check above pass whichever side was read.
+    CHECK(unequal > 0);
 }
 
 // ---- F1: the song end, the ready point, the late gems and the build -------
