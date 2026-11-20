@@ -7,6 +7,7 @@
 
 #include <atomic>
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <functional>
 #include <map>
@@ -88,6 +89,27 @@ store::ChartLibraryEntry library_entry_for_file(const std::string& md5, const st
     e.charter = "Charter";
     e.notespath = notespath;
     e.rootfolder = "C:\\songs";
+    return e;
+}
+
+// A second copy of the corpus chart `chart` in another folder, as a scan
+// lists it: the chart file, and its song.ini when it has one, copied into the
+// scratch folder testtemp::temp_dir(tag), and the copy's own scanned row
+// titled `title` (corpus::scanned_entry). The scan's own hash of the copy
+// must be the original's, or the two rows are not one chart.
+store::ChartLibraryEntry scanned_copy(const std::string& chart, const std::string& tag,
+                                      const std::string& title) {
+    const size_t slash = chart.rfind('\\');
+    REQUIRE(slash != std::string::npos);
+    const std::string dir = testtemp::temp_dir(tag);
+    const std::string copied = dir + chart.substr(slash);
+    testtemp::write_bytes(copied, hydra::read_file_bytes(chart));
+    const std::string ini = chart.substr(0, slash) + "\\song.ini";
+    if (std::filesystem::exists(hydra::os_path(ini)))
+        testtemp::write_bytes(dir + "\\song.ini", hydra::read_file_bytes(ini));
+    store::ChartLibraryEntry e = corpus::scanned_entry(copied, title);
+    REQUIRE(e.md5 == app::hash_chart_file(chart));
+    REQUIRE(e.rootfolder != chart.substr(0, slash));
     return e;
 }
 
@@ -203,30 +225,64 @@ void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>
 
 }  // namespace
 
+// Every corpus chart with paths under the default settings, each listed once
+// by its scanned row with its record saved: a row is optimal exactly when its
+// score is its record's best. The case "HydraRecord::is_optimal: every corpus
+// path tied at the top score" in test_model.cpp shows that under these same
+// settings some corpus chart has a second path at the top score. all_paths
+// lists paths best first, so that path sits among the kPathsPerRecord a record
+// keeps.
 TEST_CASE("report rows: a tied top-score variant is optimal too") {
     store::RecordStore store(":memory:");
+    const Settings settings;
+    const BatchRun run = settings.batch_run();
     std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "tied", 4);
+    std::vector<const HydraRecord*> records;
+    std::map<std::string, int64_t> best_score;
+    for (const std::string& chart : corpus::chart_paths()) {
+        if (corpus::song(chart, run.settings.reading(), run.settings.rules).is_empty()) continue;
+        const HydraRecord& record = corpus::analyzed(chart, run.settings);
+        if (record.paths.empty()) continue;
+        store::ChartLibraryEntry entry =
+            corpus::scanned_entry(chart, "Title " + std::to_string(library.size()));
+        // Two corpus files with one md5 are one chart: list it once.
+        if (!best_score.emplace(entry.md5, record.best_path().totalscore()).second) continue;
+        library.push_back(std::move(entry));
+        records.push_back(&record);
+    }
+    REQUIRE(library.size() > 1);
+    store.rebuild_chart_library(library);
+    for (size_t i = 0; i < library.size(); ++i)
+        testdm::save(store, library[i].md5, settings, *records[i]);
 
-    report::ReportOptions options = fixture_options(4);
-    options.max_paths = 100;
+    report::ReportOptions options;
+    options.run = run;
+    options.max_paths = report::kEveryPathSentinel;
     const std::vector<report::ReportRow> rows = report::collect_rows(store, options).rows;
-    REQUIRE(rows.size() == 3);
-    // Best score first: the root and its tied variant, then the lower root.
-    CHECK(rows[0].score == rows[1].score);
-    CHECK(rows[2].score < rows[1].score);
-    CHECK(rows[0].optimal);
-    CHECK(rows[1].optimal);
-    CHECK_FALSE(rows[2].optimal);
+    std::map<std::string, int> optimal_rows;
+    int below = 0;
+    for (const report::ReportRow& r : rows) {
+        INFO(r.hyhash << " path " << r.path);
+        const auto best = best_score.find(r.hyhash);
+        REQUIRE(best != best_score.end());
+        CHECK(r.optimal == (r.score == best->second));
+        if (r.optimal) ++optimal_rows[r.hyhash];
+        else ++below;
+    }
+    // Both sides of the rule turn up: a chart with two optimal rows, and a
+    // row below its chart's best.
+    CHECK(std::any_of(optimal_rows.begin(), optimal_rows.end(),
+                      [](const std::pair<const std::string, int>& c) { return c.second > 1; }));
+    CHECK(below > 0);
 
-    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
-    // The subtitle still counts one chart, however many paths tie.
-    CHECK(page.songs == 1);
-    // The report hands both tied paths over as optimal, and the lower one not.
-    REQUIRE(page.paths.size() == 3);
-    CHECK(std::count_if(page.paths.begin(), page.paths.end(),
-                        [](const report::ReportRow& r) { return r.optimal; }) == 2);
-    CHECK_FALSE(page.paths[2].optimal);
+    const report::GeneratedReport page = report::generate_report(store, options);
+    // The subtitle counts each chart once, however many of its paths tie.
+    CHECK(page.songs == static_cast<int64_t>(library.size()));
+    // The report hands over the same optimal rows.
+    REQUIRE(page.paths.size() == rows.size());
+    const auto is_optimal = [](const report::ReportRow& r) { return r.optimal; };
+    CHECK(std::count_if(page.paths.begin(), page.paths.end(), is_optimal) ==
+          std::count_if(rows.begin(), rows.end(), is_optimal));
 }
 
 TEST_CASE("report rows list every stored record (4 bars)") { check_cap(4); }
@@ -404,29 +460,36 @@ TEST_CASE("all_paths lists paths best first on every corpus chart") {
 }
 
 TEST_CASE("report counts every library copy of a chart, and leaves out a chart the library dropped") {
-    // D76: chart h0 sits in two library folders, so it counts twice, like
-    // the library counts it. D87 item 4: chart h1 has a result but no library
-    // row, so the page leaves it out.
+    // D76: the first chart sits in two library folders, the corpus's and a
+    // real copy's, so it counts twice, like the library counts it. D87 item
+    // 4: the second chart has a result but no library row, so the page leaves
+    // it out.
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    REQUIRE(fill_store(store, library, 4, 2).size() == 2);
-    store::ChartLibraryEntry first = library[0];
-    store::ChartLibraryEntry copy = first;
-    copy.rootfolder = "C:\\other";
+    const Settings settings = fixture_settings(4);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.batch_run().settings, 2);
+    REQUIRE(charts.size() == 2);
+    const store::ChartLibraryEntry first = corpus::scanned_entry(charts[0].chart, "First");
+    const store::ChartLibraryEntry copy = scanned_copy(charts[0].chart, "report_rows_copy", "First");
+    const std::string dropped = app::hash_chart_file(charts[1].chart);
+    REQUIRE_FALSE(dropped.empty());
+    REQUIRE(dropped != first.md5);
     store.rebuild_chart_library({first, copy});
+    testdm::save(store, first.md5, settings, charts[0].result.record);
+    testdm::save(store, dropped, settings, charts[1].result.record);
 
     const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
     CHECK(out.songs == 2);
-    CHECK(out.subtitle.rfind("2 charts — ", 0) == 0);
-    // Every row is h0's; h1 is left out.
+    CHECK(out.subtitle.rfind(counted(2, "chart", "charts") + " — ", 0) == 0);
+    // Every row is the first chart's; the dropped one is left out.
     REQUIRE_FALSE(out.paths.empty());
     for (const report::ReportRow& r : out.paths) {
-        CHECK(r.hyhash == "h0");
-        CHECK(r.song != "Title 1");
+        CHECK(r.hyhash == first.md5);
+        CHECK(r.song == display_title(first.title));
     }
     // The report keeps no chart index (D282): each row carries its chart's
-    // copies, so one shown row of h0 still counts both copies, and every h0
-    // row together counts them once.
+    // copies, so one shown row of the first chart still counts both copies,
+    // and all its rows together count them once.
     REQUIRE(out.paths.size() > 1);
     for (const report::ReportRow& r : out.paths) CHECK(r.copies == 2);
     CHECK(report::path_tiles(out.paths, {0}, out.library_charts)[0].value ==
@@ -896,19 +959,22 @@ TEST_CASE("collect_rows: the library names go through display_title, display_art
 
 TEST_CASE("the report names a chart the scan found twice by its first copy") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    REQUIRE(fill_store(store, library, 4, 1).size() == 1);
-    // The scan listed the real file first, as "Zed", then a copy of the same
-    // md5 as "Alpha". Alpha sorts first by name, but the first row names it.
-    library[0].title = "Zed";
-    store::ChartLibraryEntry other = library[0];
-    other.title = "Alpha";
-    other.rootfolder = "C:\\other";
-    store.rebuild_chart_library({library[0], other});
+    const Settings settings = fixture_settings(4);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    // The scan listed the corpus file first, as "Zed", then a real copy of it
+    // in another folder as "Alpha". Alpha sorts first by name, but the first
+    // row names the chart.
+    const store::ChartLibraryEntry zed = corpus::scanned_entry(charts[0].chart, "Zed");
+    const store::ChartLibraryEntry alpha =
+        scanned_copy(charts[0].chart, "report_rows_first_copy", "Alpha");
+    store.rebuild_chart_library({zed, alpha});
+    testdm::save(store, zed.md5, settings, charts[0].result.record);
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     REQUIRE_FALSE(page.paths.empty());
-    for (const report::ReportRow& r : page.paths) CHECK(r.song == "Zed");
+    for (const report::ReportRow& r : page.paths) CHECK(r.song == display_title(zed.title));
     CHECK(page.songs == 2);  // both copies count (D76)
 }
 
