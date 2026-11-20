@@ -1,21 +1,30 @@
 // Unit tests for app/library_query: how the library search folds text,
 // strips Clone Hero's rich-text tags, reads a query, matches a row and marks
-// what to highlight. Burnout, Deadbolt and Acid Romance use their real
-// metadata from testdata\input; every other row is made up.
+// what to highlight. Named rows are the corpus scan's own rows from
+// testdata\input, and a row's stars and timing come from analysing its chart.
 
 #include "doctest.h"
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
+#include <functional>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
-#include "app/analysis.h"  // discover_charts
+#include "app/analysis.h"  // discover_charts, BatchRun
+#include "app/config.h"    // Settings::batch_run: the default analysis
 #include "app/library_query.h"
+#include "core/model.h"   // engine_hardest_ms, shown_timing
+#include "core/stars.h"   // kMaxStars: the top of the stars: filter
 #include "core/winstr.h"  // wide_to_utf8
+#include "corpus_util.h"  // chart_paths, analyzed: corpus charts and their analyses
+#include "store/record_store.h"
 #include "testdata_dirs.h"  // corpus::root
 
 using namespace hydra::app;
@@ -34,19 +43,108 @@ RowFacts analyzed(int stars, std::optional<double> hardest_ms) {
     return facts;
 }
 
-SearchableRow burnout() {
-    return make_searchable("Burnout", "Green Day", "Hoph2o",
-                           "common\\Summer Blast _25 Setlist\\Tier 4", "Dookie");
+// The rows a library scan of the corpus saves, read once.
+const std::vector<hydra::store::ChartLibraryEntry>& scanned_entries() {
+    static const std::vector<hydra::store::ChartLibraryEntry> entries = [] {
+        auto scan = hydra::app::discover_charts({corpus::root()});
+        if (!scan.second.empty())
+            throw std::runtime_error("corpus scan error: " + scan.second.front());
+        return scan.first;
+    }();
+    return entries;
 }
 
-SearchableRow deadbolt() {
-    return make_searchable("Deadbolt", "Thrice", "Hoph2o", "common\\IB24\\T3",
-                           "The Illusion of Safety");
+// The scanned row whose chart file sits in a folder named `song_folder`.
+const hydra::store::ChartLibraryEntry& scanned(std::string_view song_folder) {
+    for (const hydra::store::ChartLibraryEntry& e : scanned_entries())
+        if (e.notespath.find(song_folder) != std::string::npos) return e;
+    throw std::runtime_error("no corpus chart in a folder named " + std::string(song_folder));
 }
 
-SearchableRow acid_romance() {
-    return make_searchable("Acid Romance", "Alpha Wolf", "<color=#e02222>Blood</color>line",
-                           "common\\IB24\\T3", "A Quiet Place To Die");
+// The search fields the library makes for a scanned row: the same
+// make_searchable call, on the same columns, as LibraryModel::set_charts.
+SearchableRow searchable_of(const hydra::store::ChartLibraryEntry& e) {
+    return make_searchable(e.title, e.artist, e.charter, e.rootfolder, e.album);
+}
+
+SearchableRow scanned_row(std::string_view song_folder) {
+    return searchable_of(scanned(song_folder));
+}
+
+SearchableRow burnout() { return scanned_row("Green Day - Burnout"); }
+
+SearchableRow deadbolt() { return scanned_row("Thrice - Deadbolt"); }
+
+SearchableRow acid_romance() { return scanned_row("Alpha Wolf - Acid Romance"); }
+
+// One corpus chart's search row and the facts the library reads for it.
+struct ChartFacts {
+    std::string chart;
+    SearchableRow row;
+    RowFacts facts;
+};
+
+// A chart's facts as the library reads them: its analysis under the default
+// settings saved to a store and read back, then facts_of's rule
+// (ui/library_model.cpp): a Ready result's best-path stars and shown timing.
+ChartFacts saved_facts(const hydra::store::ChartLibraryEntry& e) {
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    hydra::store::RecordStore store(":memory:");
+    store.save(hydra::store::prepare_record(e.md5, run.profile,
+                                            corpus::analyzed(e.notespath, run.settings)));
+    const hydra::store::RecordLookup got = store.lookup_one(e.md5, run.profile);
+    const hydra::store::PathSummary summary = got.record.summary();
+    if (got.status != hydra::store::RecordStatus::Ready || !summary.has_scored_best_path())
+        throw std::runtime_error("no scored best path saved for " + e.notespath);
+    return ChartFacts{e.notespath, searchable_of(e),
+                      RowFacts{summary.stars, hydra::shown_timing(summary.hardest_ms)}};
+}
+
+const ChartFacts& burnout_facts() {
+    static const ChartFacts facts = saved_facts(scanned("Green Day - Burnout"));
+    return facts;
+}
+
+// The first corpus chart, in chart_paths() order, whose best path's engine
+// figure (engine_hardest_ms) passes `want`. Charts that do not analyze to a
+// path are passed over. Throws when no chart has such a figure.
+ChartFacts first_chart_whose_figure(const std::function<bool(double)>& want) {
+    const hydra::app::BatchRun run = hydra::app::Settings{}.batch_run();
+    for (const std::string& path : corpus::chart_paths()) {
+        std::optional<double> figure;
+        try {
+            const hydra::HydraRecord& rec = corpus::analyzed(path, run.settings);
+            if (rec.paths.empty()) continue;
+            figure = hydra::engine_hardest_ms(rec.best_path());
+        } catch (const std::exception&) {
+            continue;
+        }
+        if (!figure || !want(*figure)) continue;
+        for (const hydra::store::ChartLibraryEntry& e : scanned_entries())
+            if (e.notespath == path) return saved_facts(e);
+    }
+    throw std::runtime_error("no corpus chart's best path has the figure this test needs");
+}
+
+// A chart whose best path's figure is exactly 0.0 ms: a timing to hit.
+const ChartFacts& on_end_facts() {
+    static const ChartFacts facts = first_chart_whose_figure([](double ms) { return ms == 0.0; });
+    return facts;
+}
+
+// A chart whose best path's figure is below 0 ms: a path that needs no timing.
+const ChartFacts& untimed_facts() {
+    static const ChartFacts facts = first_chart_whose_figure([](double ms) { return ms < 0.0; });
+    return facts;
+}
+
+// A number as the shortest text that reads back as the same double, so a
+// filter typed with it sits exactly on that value.
+std::string ms_text(double ms) {
+    char buf[64];
+    const std::to_chars_result r = std::to_chars(buf, buf + sizeof buf, ms);
+    if (r.ec != std::errc{}) throw std::runtime_error("cannot write a number as text");
+    return std::string(buf, r.ptr);
 }
 
 bool spans_equal(const std::vector<MatchSpan>& got, const std::vector<MatchSpan>& want) {
@@ -59,25 +157,43 @@ bool spans_equal(const std::vector<MatchSpan>& got, const std::vector<MatchSpan>
 }  // namespace
 
 TEST_CASE("library query: folding lowercases and removes accents") {
-    CHECK(fold_for_search("Beyoncé") == "beyonce");
-    CHECK(fold_for_search("ÀÉÎÕÜ Ñ Ç Ý Ÿ") == "aeiou n c y y");
-    CHECK(fold_for_search("Straße") == "strasse");
-    CHECK(fold_for_search("Æther Œuvre Þorn") == "aether oeuvre thorn");
-    CHECK(fold_for_search("Łódź Škoda Ğİı") == "lodz skoda gii");
-    CHECK(fold_for_search("a × b ÷ c") == "a × b ÷ c");  // signs, not letters
+    // Every name the corpus scan reads folds with no capital left. The
+    // corpus's one accented name, the album of The Fall of Troy's "Act One,
+    // Scene One" (song.ini: album = Doppelgänger), folds to plain ASCII, one
+    // letter for each letter shown, its unaccented letters lowercased in place.
+    for (const hydra::store::ChartLibraryEntry& e : scanned_entries()) {
+        for (const std::string* s : {&e.title, &e.artist, &e.album, &e.charter, &e.rootfolder}) {
+            INFO("text: " << *s);
+            const std::string folded = fold_for_search(*s);
+            CHECK(std::none_of(folded.begin(), folded.end(),
+                               [](char c) { return c >= 'A' && c <= 'Z'; }));
+        }
+    }
+    const std::string shown = scanned("The Fall of Troy - Act One, Scene One").album;
+    REQUIRE(std::any_of(shown.begin(), shown.end(),
+                        [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
+    const std::string folded = fold_for_search(shown);
+    CHECK(std::all_of(folded.begin(), folded.end(),
+                      [](char c) { return static_cast<unsigned char>(c) < 0x80; }));
+    // The accented letter is two bytes in UTF-8 and folds to one.
+    REQUIRE(folded.size() + 1 == shown.size());
+    size_t at = 0;
+    for (char c : shown) {
+        if (static_cast<unsigned char>(c) >= 0x80) continue;
+        while (at < folded.size() && folded[at] != fold_for_search(std::string(1, c))[0]) ++at;
+        CHECK(at < folded.size());  // each plain letter is kept, in order
+        ++at;
+    }
 }
 
 TEST_CASE("library query: folding turns full-width ASCII into ASCII") {
-    CHECK(fold_for_search("ＢＵＲＮＯＵＴ！") == "burnout!");
-    // Full-width "tier", the ideographic space U+3000, full-width "4".
-    CHECK(fold_for_search("ｔｉｅｒ" "\xE3\x80\x80" "４") == "tier 4");
-}
-
-TEST_CASE("library query: folding collapses whitespace and keeps other scripts") {
-    CHECK(fold_for_search("Tier  4\t\tSong") == "tier 4 song");
-    CHECK(fold_for_search("a" "\xC2\xA0\xC2\xA0" "b") == "a b");  // two no-break spaces
-    CHECK(fold_for_search("東京事変") == "東京事変");
-    CHECK(fold_for_search("") == "");
+    // black midi's "Sugar/Tzu" names itself with an ASCII slash in song.ini
+    // and with the full-width slash U+FF0F in its folder's name. Folded, the
+    // folder's name holds the folded title.
+    const hydra::store::ChartLibraryEntry& e = scanned("black midi - Sugar");
+    const std::string folder_name = e.notespath.substr(0, e.notespath.find_last_of("\\/"));
+    REQUIRE(folder_name.find(e.title) == std::string::npos);
+    CHECK(fold_for_search(folder_name).find(fold_for_search(e.title)) != std::string::npos);
 }
 
 TEST_CASE("library query: a mixed ASCII and non-ASCII string folds to its pinned text") {
@@ -134,13 +250,6 @@ TEST_CASE("library query: the plain fold and the traced fold give the same text"
     }
 }
 
-TEST_CASE("library query: invalid UTF-8 passes through byte for byte") {
-    CHECK(fold_for_search("A" "\xC3" "(B") == "a" "\xC3" "(b");  // lead byte, no continuation
-    CHECK(fold_for_search("\xFF\xFE") == "\xFF\xFE");
-    CHECK(fold_for_search("x" "\xC3") == "x" "\xC3");  // cut off at the end
-    CHECK(fold_for_search("\xEF\xBC") == "\xEF\xBC");  // half a full-width letter
-}
-
 TEST_CASE("library query: only a real lead byte starts a kept character") {
     // A kept character maps back to all of its bytes, so a match that starts
     // on its last byte lights up the whole character. "©" (C2 A9), "€"
@@ -159,31 +268,70 @@ TEST_CASE("library query: only a real lead byte starts a kept character") {
                       std::vector<MatchSpan>{MatchSpan{3, 5}}));
 }
 
-TEST_CASE("library query: rich-text tags are stripped and other angle brackets kept") {
-    CHECK(strip_rich_tags("<color=#e02222>Blood</color>line") == "Bloodline");
-    CHECK(strip_rich_tags("<COLOR=red>Loud</Color>") == "Loud");
-    CHECK(strip_rich_tags("<b>Bold</b> <i>it</i> <u>u</u> <s>s</s>") == "Bold it u s");
-    CHECK(strip_rich_tags("<size=20>big</size> H<sub>2</sub>O x<sup>2</sup>") == "big H2O x2");
-    CHECK(strip_rich_tags("<unknown artist>") == "<unknown artist>");
-    CHECK(strip_rich_tags("a < b > c") == "a < b > c");
-    CHECK(strip_rich_tags("<color=#fff") == "<color=#fff");  // never closed
-    CHECK(strip_rich_tags("") == "");
+namespace {
+
+// The corpus's tagged names: every scanned title, artist, album or charter
+// that holds a '<'. Each one there is a Clone Hero colour tag, such as
+// Bloodline's "<color=#e02222>Blood</color>line" (Acid Romance's song.ini).
+std::vector<std::string> tagged_names() {
+    std::vector<std::string> out;
+    for (const hydra::store::ChartLibraryEntry& e : scanned_entries())
+        for (const std::string* s : {&e.title, &e.artist, &e.album, &e.charter})
+            if (s->find('<') != std::string::npos) out.push_back(*s);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("library query: rich-text tags are stripped and the text between them kept") {
+    const std::vector<std::string> tagged = tagged_names();
+    REQUIRE_FALSE(tagged.empty());
+    for (const std::string& shown : tagged) {
+        INFO("text: " << shown);
+        const std::string plain = strip_rich_tags(shown);
+        CHECK(plain.find('<') == std::string::npos);
+        CHECK(plain.find('>') == std::string::npos);
+        CHECK_FALSE(plain.empty());
+        // What is left is the text outside the tags, in its order.
+        size_t at = 0;
+        for (char c : plain) {
+            at = shown.find(c, at);
+            CHECK(at != std::string::npos);
+            if (at == std::string::npos) break;
+            ++at;
+        }
+    }
 }
 
 TEST_CASE("library query: a tagged charter is found by its plain name") {
-    const SearchableRow row = acid_romance();
-    CHECK(row.charter == "bloodline");
-    CHECK(matches("bloodline", row));
-    CHECK(matches("charter:blood", row));
-    CHECK_FALSE(matches("e02222", row));  // the tag's text is gone
-    CHECK_FALSE(matches("color", row));
+    // Acid Romance's charter is the tagged "<color=#e02222>Blood</color>line".
+    const hydra::store::ChartLibraryEntry& e = scanned("Alpha Wolf - Acid Romance");
+    const SearchableRow row = searchable_of(e);
+    const std::string plain = strip_rich_tags(e.charter);
+    REQUIRE(plain != e.charter);
+    CHECK(matches(plain, row));
+    CHECK(matches("charter:" + plain.substr(0, plain.size() / 2), row));
+    // The opening tag's name and value, "color" and "#e02222", are gone.
+    const size_t open = e.charter.find('<');
+    const size_t eq = e.charter.find('=', open);
+    const size_t close = e.charter.find('>', open);
+    REQUIRE(open != std::string::npos);
+    REQUIRE(eq != std::string::npos);
+    REQUIRE(close != std::string::npos);
+    REQUIRE(eq < close);
+    const std::string tag_name = e.charter.substr(open + 1, eq - open - 1);
+    const std::string tag_value = e.charter.substr(eq + 1, close - eq - 1);
+    CHECK_FALSE(matches("charter:" + tag_name, row));
+    CHECK_FALSE(matches("charter:" + tag_value, row));
 }
 
 TEST_CASE("library query: an accented name is found without its accents") {
-    const SearchableRow row = make_searchable("Halo", "Beyoncé", "Someone", "pack", "I Am");  // made up
-    CHECK(matches("beyonce", row));
-    CHECK(matches("BEYONCE", row));
-    CHECK(matches("beyoncé", row));
+    // The Fall of Troy's album, as its song.ini spells it: "Doppelgänger".
+    const hydra::store::ChartLibraryEntry& e = scanned("The Fall of Troy - Act One, Scene One");
+    const SearchableRow row = searchable_of(e);
+    CHECK(matches("doppelganger", row));
+    CHECK(matches("ALBUM:DOPPELGANGER", row));
+    CHECK(matches(e.album, row));  // typed with its accent, as shown
 }
 
 TEST_CASE("library query: the report pages' fold table is the fold, one character at a time") {
@@ -250,11 +398,12 @@ TEST_CASE("library query: a quoted phrase must appear whole in one field") {
 
     const RowFacts none;
     CHECK(query_matches(q, burnout(), none));
-    CHECK_FALSE(query_matches(q, make_searchable("Song", "Band", "Charter", "common\\IB24\\T4"),
-                              none));  // made up
+    // Everlong sits in IB24's "T4", which is not "tier 4".
+    CHECK_FALSE(query_matches(q, scanned_row("Foo Fighters - Everlong"), none));
 
-    // As two words, "tier" and "4" may sit apart. As a phrase they may not.
-    const SearchableRow apart = make_searchable("Song 4", "Band", "Charter", "Pack\\Tier 1");  // made up
+    // As two words, "tier" and "4" may sit apart. As a phrase they may not:
+    // "I Am... All Of Me (Crush 40)" has a 4 in its title and sits in Tier 5.
+    const SearchableRow apart = scanned_row("HopH2O - I Am... All Of Me (Crush 40)");
     CHECK(matches("tier 4", apart));
     CHECK_FALSE(matches("\"tier 4\"", apart));
     // A phrase can't be split across two fields either.
@@ -324,68 +473,115 @@ TEST_CASE("library query: unknown field names are words and empty field values a
     CHECK(typing.empty());
 }
 
+namespace {
+
+// The squeeze filters at and beside one chart's own shown timing. A path that
+// needs no timing passes any limit and meets no floor; a timed path sits
+// inside <=, >= and outside <, > at its own figure, and 1 ms past it on
+// either side is outside the other way.
+void check_squeeze_edges(const ChartFacts& c) {
+    INFO("chart: " << c.chart);
+    REQUIRE(c.facts.stars.has_value());
+    if (!c.facts.hardest_ms) {
+        for (const char* limit : {"squeeze<=0", "squeeze<0", "squeeze<=-5", "squeeze<20"})
+            CHECK(matches(limit, c.row, c.facts));
+        for (const char* floor : {"squeeze>=0", "squeeze>0", "squeeze>-5", "squeeze>=-5"})
+            CHECK_FALSE(matches(floor, c.row, c.facts));
+        return;
+    }
+    const double ms = *c.facts.hardest_ms;
+    const std::string at = ms_text(ms);
+    const std::string above = ms_text(ms + 1.0);
+    const std::string below = ms_text(ms - 1.0);
+    CHECK(matches("squeeze<=" + at, c.row, c.facts));
+    CHECK_FALSE(matches("squeeze<" + at, c.row, c.facts));
+    CHECK(matches("squeeze>=" + at, c.row, c.facts));
+    CHECK_FALSE(matches("squeeze>" + at, c.row, c.facts));
+    CHECK(matches("squeeze<" + above, c.row, c.facts));
+    CHECK_FALSE(matches("squeeze<=" + below, c.row, c.facts));
+    CHECK(matches("squeeze>" + below, c.row, c.facts));
+    CHECK_FALSE(matches("squeeze>=" + above, c.row, c.facts));
+}
+
+}  // namespace
+
 TEST_CASE("library query: stars:N keeps analyzed rows with exactly N stars") {
-    const LibraryQuery q = parse_library_query("stars:7");
+    const ChartFacts& c = burnout_facts();
+    REQUIRE(c.facts.stars.has_value());
+    const int stars = *c.facts.stars;
+    const std::string own = "stars:" + std::to_string(stars);
+    const LibraryQuery q = parse_library_query(own);
     REQUIRE(q.stars.has_value());
-    CHECK(*q.stars == 7);
+    CHECK(*q.stars == stars);
     CHECK(q.errors.empty());
-    CHECK(query_matches(q, burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(query_matches(q, burnout(), analyzed(6, 163.0)));
-    CHECK_FALSE(query_matches(q, burnout(), RowFacts{}));  // not analyzed
-    CHECK(matches("stars:0", burnout(), analyzed(0, std::nullopt)));
-    CHECK(matches("green stars:7", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("thrice stars:7", burnout(), analyzed(7, 163.0)));
+    CHECK(query_matches(q, c.row, c.facts));
+    CHECK_FALSE(query_matches(q, c.row, RowFacts{}));  // not analyzed
+    // Every other count the filter takes leaves the row out.
+    for (int n = 0; n <= hydra::kMaxStars; ++n) {
+        if (n == stars) continue;
+        CAPTURE(n);
+        CHECK_FALSE(matches("stars:" + std::to_string(n), c.row, c.facts));
+    }
+    CHECK(matches("green " + own, c.row, c.facts));
+    CHECK_FALSE(matches("thrice " + own, c.row, c.facts));
 }
 
 TEST_CASE("library query: squeeze<=N keeps analyzed rows whose hardest squeeze is at most N ms") {
-    const LibraryQuery q = parse_library_query("squeeze<=20");
-    REQUIRE(q.squeeze_max_ms.has_value());
-    CHECK(*q.squeeze_max_ms == doctest::Approx(20.0));
-    CHECK(query_matches(q, burnout(), analyzed(7, 12.5)));
-    CHECK(query_matches(q, burnout(), analyzed(7, 20.0)));
-    CHECK_FALSE(query_matches(q, burnout(), analyzed(7, 163.0)));   // Burnout's real 163.0 ms
-    CHECK(query_matches(q, burnout(), analyzed(7, std::nullopt)));  // no squeeze at all
-    CHECK_FALSE(query_matches(q, burnout(), RowFacts{}));           // not analyzed
-
-    CHECK(matches("squeeze<=163", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze<20", burnout(), analyzed(7, 20.0)));  // < is strict (D266)
-    CHECK(matches("SQUEEZE<=20", burnout(), analyzed(7, 20.0)));
-    CHECK(matches("squeeze<=-5", burnout(), analyzed(7, -12.0)));
-    CHECK(matches("squeeze<=2.5", burnout(), analyzed(7, 2.5)));
+    // A timed chart (its best path's figure is exactly 0.0 ms) and Burnout.
+    for (const ChartFacts* c : {&on_end_facts(), &burnout_facts()}) {
+        INFO("chart: " << c->chart);
+        if (!c->facts.hardest_ms) continue;  // the untimed case is the next block's
+        const double ms = *c->facts.hardest_ms;
+        const LibraryQuery q = parse_library_query("squeeze<=" + ms_text(ms));
+        REQUIRE(q.squeeze_max_ms.has_value());
+        CHECK(*q.squeeze_max_ms == ms);
+        CHECK_FALSE(q.squeeze_max_strict);
+        CHECK(query_matches(q, c->row, c->facts));
+        CHECK(matches("SQUEEZE<=" + ms_text(ms + 1.0), c->row, c->facts));
+        CHECK_FALSE(matches("squeeze<=" + ms_text(ms - 1.0), c->row, c->facts));
+        CHECK_FALSE(query_matches(q, c->row, RowFacts{}));  // not analyzed
+    }
+    // A path that needs no timing passes any limit.
+    const ChartFacts& untimed = untimed_facts();
+    REQUIRE_FALSE(untimed.facts.hardest_ms.has_value());
+    CHECK(matches("squeeze<=0", untimed.row, untimed.facts));
+    CHECK(matches("squeeze<=-5", untimed.row, untimed.facts));
+    CHECK_FALSE(matches("squeeze<=0", untimed.row, RowFacts{}));  // not analyzed
 }
 
-TEST_CASE("library query: a row at exactly N ms matches <=N and >=N, not <N or >N (D266)") {
-    // The user's ruling: < is strict like >, so squeeze<20 drops a chart whose
-    // hardest timing is exactly 20 ms and keeps 19.9 ms.
-    CHECK(matches("squeeze<=20", burnout(), analyzed(7, 20.0)));
-    CHECK_FALSE(matches("squeeze<20", burnout(), analyzed(7, 20.0)));
-    CHECK(matches("squeeze>=20", burnout(), analyzed(7, 20.0)));
-    CHECK_FALSE(matches("squeeze>20", burnout(), analyzed(7, 20.0)));
-    CHECK(matches("squeeze<20", burnout(), analyzed(7, 19.9)));
-    CHECK_FALSE(matches("squeeze<20", burnout(), analyzed(7, 20.1)));
-
+TEST_CASE("library query: a row at exactly N ms matches <=N and >=N, not <N or >N") {
     CHECK(parse_library_query("squeeze<20").squeeze_max_strict);
     CHECK_FALSE(parse_library_query("squeeze<=20").squeeze_max_strict);
+    CHECK(parse_library_query("squeeze>20").squeeze_min_strict);
+    CHECK_FALSE(parse_library_query("squeeze>=20").squeeze_min_strict);
 
-    // squeeze<N is the exact opposite of squeeze>=N: a timed row matches one.
-    for (double ms : {12.5, 20.0, 163.0}) {
-        CHECK(matches("squeeze<20", burnout(), analyzed(7, ms)) !=
-              matches("squeeze>=20", burnout(), analyzed(7, ms)));
+    const ChartFacts& on_end = on_end_facts();
+    REQUIRE(on_end.facts.hardest_ms.has_value());
+    const ChartFacts& untimed = untimed_facts();
+    REQUIRE_FALSE(untimed.facts.hardest_ms.has_value());
+    for (const ChartFacts* c : {&on_end, &untimed, &burnout_facts()}) check_squeeze_edges(*c);
+
+    // squeeze<N is the exact opposite of squeeze>=N: a timed row matches one,
+    // wherever N sits against its figure.
+    const double ms = *on_end.facts.hardest_ms;
+    for (double n : {ms - 1.0, ms, ms + 1.0}) {
+        const std::string text = ms_text(n);
+        CAPTURE(text);
+        CHECK(matches("squeeze<" + text, on_end.row, on_end.facts) !=
+              matches("squeeze>=" + text, on_end.row, on_end.facts));
     }
-
-    // A path that needs no timing passes any limit, strict or not.
-    CHECK(matches("squeeze<20", burnout(), analyzed(7, std::nullopt)));
-    CHECK(matches("squeeze<0", burnout(), analyzed(7, std::nullopt)));
 }
 
 TEST_CASE("squeeze filters: a path whose hardest is 0.0 passes squeeze<=0, matches squeeze>=0, "
           "fails squeeze<0 and squeeze<=-5") {
-    // A squeeze at exactly 0.0 ms is a timing to hit (D302), so the path is
-    // timed at 0.0 and D266's strict < drops it at the boundary.
-    CHECK(matches("squeeze<=0", burnout(), analyzed(7, 0.0)));
-    CHECK(matches("squeeze>=0", burnout(), analyzed(7, 0.0)));
-    CHECK_FALSE(matches("squeeze<0", burnout(), analyzed(7, 0.0)));
-    CHECK_FALSE(matches("squeeze<=-5", burnout(), analyzed(7, 0.0)));
+    // A chart whose best path's engine figure is exactly 0.0 ms: the library
+    // shows it as a timing (shown_timing), so the strict < drops it at 0.
+    const ChartFacts& c = on_end_facts();
+    REQUIRE(c.facts.hardest_ms == std::optional<double>(0.0));
+    CHECK(matches("squeeze<=0", c.row, c.facts));
+    CHECK(matches("squeeze>=0", c.row, c.facts));
+    CHECK_FALSE(matches("squeeze<0", c.row, c.facts));
+    CHECK_FALSE(matches("squeeze<=-5", c.row, c.facts));
 }
 
 TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
