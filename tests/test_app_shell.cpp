@@ -11,6 +11,7 @@
 #endif
 #include <windows.h>  // VirtualQuery, to see the fonts are file-mapped
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -277,59 +278,82 @@ TEST_CASE("app_shell: a report saved maximized reopens maximized") {
     CHECK(p.maximized);
 }
 
-// The user's decision of 2026-10-10: a report saved maximized reopens
-// maximized on the monitor it was saved on, not the main window's.
+namespace {
+
+// The right-hand monitor of kUserTwoMonitors, and a report saved on it.
+const ScreenRect& kRightMonitor = kUserTwoMonitors.back();
+const ScreenRect kSavedOnRight{2600, 60, 4400, 1000};
+
+// True when `inner` lies wholly inside `outer`.
+bool rect_inside(const ScreenRect& outer, const ScreenRect& inner) {
+    return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right &&
+           inner.bottom <= outer.bottom;
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: a report saved maximized on a second monitor reopens maximized there") {
-    // Saved on the right-hand monitor: outer {2592, 29, 4408, 1008}, title band
-    // all on that monitor. The main window is on the left-hand one. The client
-    // is the right-hand work area less the frame: {2560+8, 0+31, 4480-8, 1040-8}.
-    const ReportPlacement p = report_placement(ScreenRect{2600, 60, 4400, 1000}, true, false,
-                                               kMainClient, kUserTwoMonitors, kFrame96);
-    CHECK(p.client == ScreenRect{2568, 31, 4472, 1032});
+    // Its title bar can be reached on the right-hand monitor, not the left one.
+    REQUIRE(placement_on_screen(kSavedOnRight, {kRightMonitor}));
+    REQUIRE_FALSE(placement_on_screen(kSavedOnRight, {kUserTwoMonitors.front()}));
+    const ScreenRect on_right = inside_frame(kRightMonitor, kFrame96);
+    // The main window is a normal one on the left-hand monitor.
+    const ReportPlacement p = report_placement(kSavedOnRight, true, false, kMainClient,
+                                               kUserTwoMonitors, kFrame96);
+    CHECK(p.client == on_right);
     CHECK(p.maximized);
 
-    // The main window maximized on the left-hand monitor does not pull it over.
-    const ReportPlacement main_max = report_placement(ScreenRect{2600, 60, 4400, 1000}, true, true,
-                                                      ScreenRect{0, 23, 2560, 1392},
+    // The main window maximized on the left-hand monitor, covering its work
+    // area, does not pull it over.
+    const ScreenRect main_maximized_client = kUserTwoMonitors.front();
+    const ReportPlacement main_max = report_placement(kSavedOnRight, true, true, main_maximized_client,
                                                       kUserTwoMonitors, kFrame96);
-    CHECK(main_max.client == ScreenRect{2568, 31, 4472, 1032});
+    CHECK(main_max.client == on_right);
     CHECK(main_max.maximized);
 }
 
 TEST_CASE("app_shell: a report saved maximized on a monitor that is gone opens on the main window's") {
-    // The same saved rectangle with only the left-hand monitor left: it fails
-    // placement_on_screen, so the client is that work area less the frame.
-    const ReportPlacement p = report_placement(ScreenRect{2600, 60, 4400, 1000}, true, false,
-                                               kMainClient, kUserMonitor, kFrame96);
-    CHECK(p.client == ScreenRect{8, 31, 2552, 1384});
+    // Only the left-hand monitor is left, so the saved rectangle is off screen.
+    REQUIRE_FALSE(placement_on_screen(kSavedOnRight, kUserMonitor));
+    const ReportPlacement p = report_placement(kSavedOnRight, true, false, kMainClient, kUserMonitor,
+                                               kFrame96);
+    CHECK(p.client == inside_frame(kUserMonitor.front(), kFrame96));
     CHECK(p.maximized);
 }
 
 TEST_CASE("app_shell: a first open with the main window maximized uses the main window's monitor") {
-    // The main window maximized on the right-hand monitor, no saved placement:
-    // the right-hand work area less the frame.
-    const ReportPlacement p = report_placement(std::nullopt, false, true,
-                                               ScreenRect{2560, 23, 4480, 1040}, kUserTwoMonitors,
-                                               kFrame96);
-    CHECK(p.client == ScreenRect{2568, 31, 4472, 1032});
+    // The main window maximized on the right-hand monitor covers its work
+    // area; there is no saved placement.
+    const ScreenRect main_maximized_client = kRightMonitor;
+    const ReportPlacement p = report_placement(std::nullopt, false, true, main_maximized_client,
+                                               kUserTwoMonitors, kFrame96);
+    CHECK(p.client == inside_frame(kRightMonitor, kFrame96));
     CHECK(p.maximized);
 }
 
 TEST_CASE("app_shell: a saved report is fitted into the monitor holding its title bar") {
-    // Fits on the right-hand monitor: outer {2592, 29, 4408, 1008}. Unchanged.
-    const ReportPlacement fits = report_placement(ScreenRect{2600, 60, 4400, 1000}, false, false,
-                                                  kMainClient, kUserTwoMonitors, kFrame96);
-    CHECK(fits.client == ScreenRect{2600, 60, 4400, 1000});
+    // A saved report whose outer window fits the right-hand monitor stays.
+    REQUIRE(rect_inside(kRightMonitor, outer_of(kSavedOnRight, kFrame96)));
+    const ReportPlacement fits = report_placement(kSavedOnRight, false, false, kMainClient,
+                                                  kUserTwoMonitors, kFrame96);
+    CHECK(fits.client == kSavedOnRight);
     CHECK_FALSE(fits.maximized);
 
-    // That monitor's whole height below a 23-pixel band. Outer
-    // {2552, -8, 4488, 1088}; its title band is 1,920 wide on the right-hand
-    // monitor and 8 wide on the left one, so the right-hand one holds it.
-    // Capped to 1,920 x 1,040 it is {2552, -8, 4472, 1032}; moved 8 right and
-    // 8 down it is {2560, 0, 4480, 1040}; the client is {2568, 31, 4472, 1032}.
-    const ReportPlacement big = report_placement(ScreenRect{2560, 23, 4480, 1080}, false, false,
-                                                 kMainClient, kUserTwoMonitors, kFrame96);
-    CHECK(big.client == ScreenRect{2568, 31, 4472, 1032});
+    // A saved report taller than the right-hand monitor. Its outer window
+    // also reaches a few pixels onto the left-hand monitor, but nearly all
+    // of its title bar is on the right-hand one.
+    const ScreenRect tall{kRightMonitor.left, kRightMonitor.top + 23, kRightMonitor.right,
+                          kRightMonitor.bottom + 40};
+    const ScreenRect tall_outer = outer_of(tall, kFrame96);
+    REQUIRE(tall_outer.left < kRightMonitor.left);
+    REQUIRE(tall_outer.height() > kRightMonitor.height());
+    const ReportPlacement big = report_placement(tall, false, false, kMainClient, kUserTwoMonitors,
+                                                 kFrame96);
+    // Its outer window, frame included, now lies inside the right-hand
+    // monitor, cut to that monitor's height.
+    const ScreenRect big_outer = outer_of(big.client, kFrame96);
+    CHECK(rect_inside(kRightMonitor, big_outer));
+    CHECK(big_outer.height() == kRightMonitor.height());
     CHECK_FALSE(big.maximized);
 }
 
@@ -369,38 +393,40 @@ TEST_CASE("app_shell: a report's placement key is its window's ### ID") {
     CHECK(hydra::ui::report_placement_key(no_id) == no_id);
 }
 
-TEST_CASE("app_shell: the [Hydra][Window:pathreport] text round-trips") {
+namespace {
+
+// A [Hydra][Window] section's body in hydra_ui.ini for the rectangle `r`, in
+// the text format_window_placement writes.
+std::string placement_text(const ScreenRect& r, bool maximized) {
     WindowPlacement p;
     p.valid = true;
-    p.normal = {8, 31, 2552, 1384};
-    p.maximized = true;
-    const std::string text = hydra::ui::format_window_placement(p);
-    CHECK(text == "Pos=8,31\nSize=2544,1353\nMaximized=1\n");
-
-    WindowPlacement back;
-    std::istringstream lines(text);
-    for (std::string line; std::getline(lines, line);)
-        hydra::ui::parse_window_placement_line(line, back);
-    CHECK(back == p);
+    p.normal = r;
+    p.maximized = maximized;
+    return hydra::ui::format_window_placement(p);
 }
+
+}  // namespace
 
 TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own section") {
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_reports"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
+    const ScreenRect main_rect{100, 100, 1380, 820};
+    // The pathreport client maximized on kUserMonitor, inside the frame.
+    const ScreenRect path_rect = inside_frame(kUserMonitor.front(), kFrame96);
     {
         std::ofstream f(ini);
-        f << "[Hydra][Window]\nPos=100,100\nSize=1280,720\nMaximized=0\n\n"
-             "[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n\n";
+        f << "[Hydra][Window]\n" << placement_text(main_rect, false) << "\n"
+          << "[Hydra][Window:pathreport]\n" << placement_text(path_rect, true) << "\n";
     }
 
     ImGuiOnIni imgui(ini.string());
     const WindowPlacement path = hydra::ui::report_window_placement("pathreport");
     CHECK(path.valid);
-    CHECK(path.normal == ScreenRect{8, 31, 2552, 1384});
+    CHECK(path.normal == path_rect);
     CHECK(path.maximized);
     CHECK_FALSE(hydra::ui::report_window_placement("dmreport").valid);
     // The main window's section is still its own.
-    CHECK(hydra::ui::window_placement().normal == ScreenRect{100, 100, 1380, 820});
+    CHECK(hydra::ui::window_placement().normal == main_rect);
 
     // Remembering the same placement leaves the ini alone; a new one marks it
     // for saving.
@@ -410,7 +436,7 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
     CHECK(g.SettingsDirtyTimer <= 0.0f);
     WindowPlacement dm;
     dm.valid = true;
-    dm.normal = {2600, 60, 4400, 1000};
+    dm.normal = kSavedOnRight;
     hydra::ui::remember_report_placement("dmreport", dm);
     CHECK(g.SettingsDirtyTimer > 0.0f);
     imgui.end();  // DestroyContext writes the ini
@@ -418,9 +444,9 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
     std::ifstream f(ini);
     std::stringstream text;
     text << f.rdbuf();
-    CHECK(text.str().find("[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n") !=
+    CHECK(text.str().find("[Hydra][Window:pathreport]\n" + placement_text(path_rect, true)) !=
           std::string::npos);
-    CHECK(text.str().find("[Hydra][Window:dmreport]\nPos=2600,60\nSize=1800,940\nMaximized=0\n") !=
+    CHECK(text.str().find("[Hydra][Window:dmreport]\n" + placement_text(dm.normal, false)) !=
           std::string::npos);
     f.close();
     std::filesystem::remove_all(dir);
@@ -437,32 +463,48 @@ TEST_CASE("app_shell: the UI scale for a monitor DPI") {
     CHECK(hydra::ui::ui_scale_for_dpi(0) == doctest::Approx(1.0f));  // no reading: unscaled
 }
 
+namespace {
+
+// `size` at `scale` the way ImGuiStyle::ScaleAllSizes sizes it: multiplied,
+// then cut to a whole pixel.
+float scaled_size(float size, float scale) { return std::trunc(size * scale); }
+
+}  // namespace
+
 TEST_CASE("app_shell: scaling always starts from the unscaled style") {
-    const ImGuiStyle base;
-    const ImGuiStyle once = hydra::ui::scaled_style(base, 1.5f);
-    const ImGuiStyle again = hydra::ui::scaled_style(base, 1.5f);
-    CHECK(once.FramePadding.x == again.FramePadding.x);
-    CHECK(once.ItemSpacing.y == again.ItemSpacing.y);
-    CHECK(once.FontScaleDpi == doctest::Approx(1.5f));
-    const ImGuiStyle doubled = hydra::ui::scaled_style(base, 2.0f);
-    CHECK(doubled.FramePadding.x == 8.0f);  // pinned from one run
-    const ImGuiStyle unscaled = hydra::ui::scaled_style(base, 1.0f);
-    CHECK(unscaled.FramePadding.x == base.FramePadding.x);
-    CHECK(unscaled.ScrollbarSize == base.ScrollbarSize);
+    ImGuiOnIni imgui("-");
+    const ImGuiStyle base = ImGui::GetStyle();
+    REQUIRE(base.FramePadding.x > 0.0f);
+    REQUIRE(base.ItemSpacing.y > 0.0f);
+
+    // Scale 2 set twice is still twice the base, not four times.
+    hydra::ui::set_ui_scale(2.0f);
+    hydra::ui::set_ui_scale(2.0f);
+    CHECK(ImGui::GetStyle().FramePadding.x == scaled_size(base.FramePadding.x, 2.0f));
+    CHECK(ImGui::GetStyle().ItemSpacing.y == scaled_size(base.ItemSpacing.y, 2.0f));
+    CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(2.0f));
+
+    // Scale 1.5 after it is 1.5 times the base, not 1.5 times the doubled style.
+    hydra::ui::set_ui_scale(1.5f);
+    CHECK(ImGui::GetStyle().FramePadding.x == scaled_size(base.FramePadding.x, 1.5f));
+    CHECK(ImGui::GetStyle().ItemSpacing.y == scaled_size(base.ItemSpacing.y, 1.5f));
+    CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(1.5f));
 }
 
 TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
+    // A window on the left-hand monitor of kTwoMonitors, saved maximized.
+    const ScreenRect saved_rect{-1700, 40, -300, 940};
     {
         std::ofstream f(ini);
-        f << "[Hydra][Window]\nPos=-1700,40\nSize=1400,900\nMaximized=1\n\n";
+        f << "[Hydra][Window]\n" << placement_text(saved_rect, true) << "\n";
     }
 
-    hydra::ui::setup_imgui(test_options(ini.string()));
+    ImGuiOnIni imgui(ini.string());
     const WindowPlacement read = hydra::ui::window_placement();
     CHECK(read.valid);
-    CHECK(read.normal == ScreenRect{-1700, 40, -300, 940});
+    CHECK(read.normal == saved_rect);
     CHECK(read.maximized);
 
     WindowPlacement moved;
@@ -470,36 +512,72 @@ TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
     moved.normal = {200, 150, 1480, 870};
     moved.maximized = false;
     hydra::ui::remember_window_placement(moved);
-    hydra::ui::shutdown_imgui();  // DestroyContext writes the ini
+    imgui.end();  // DestroyContext writes the ini
 
     std::ifstream f(ini);
     std::stringstream text;
     text << f.rdbuf();
-    CHECK(text.str().find("[Hydra][Window]\nPos=200,150\nSize=1280,720\nMaximized=0\n") !=
+    CHECK(text.str().find("[Hydra][Window]\n" + placement_text(moved.normal, false)) !=
           std::string::npos);
     f.close();
     std::filesystem::remove_all(dir);
 }
 
+namespace {
+
+// The lines of `text`, without their line ends.
+std::vector<std::string> text_lines(const std::string& text) {
+    std::vector<std::string> lines;
+    std::istringstream in(text);
+    for (std::string line; std::getline(in, line);) lines.push_back(line);
+    return lines;
+}
+
+// A "key=value" line's "key=" part.
+std::string key_of(const std::string& line) {
+    const std::size_t eq = line.find('=');
+    REQUIRE(eq != std::string::npos);
+    return line.substr(0, eq + 1);
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: the [Hydra][Layout] text round-trips and refuses junk") {
-    CHECK(hydra::ui::format_layout({0.35f, false}) == "LibraryShare=0.3500\nLibraryHidden=0\n");
-    CHECK(hydra::ui::format_layout({0.35f, true}) == "LibraryShare=0.3500\nLibraryHidden=1\n");
+    const hydra::ui::Layout shown{0.35f, false};
+    const hydra::ui::Layout hidden{0.35f, true};
+    const std::vector<std::string> shown_lines = text_lines(hydra::ui::format_layout(shown));
+    const std::vector<std::string> hidden_lines = text_lines(hydra::ui::format_layout(hidden));
+    REQUIRE(shown_lines.size() == 2);
+    REQUIRE(hidden_lines.size() == 2);
+    // format_layout writes the share line first, then the hidden line.
+    const std::string share_key = key_of(hidden_lines[0]);
+    const std::string hidden_key = key_of(hidden_lines[1]);
+    CHECK(key_of(shown_lines[0]) == share_key);
+    CHECK(key_of(shown_lines[1]) == hidden_key);
+
+    // Each line format_layout writes reads back into a default layout.
     hydra::ui::Layout layout;
-    hydra::ui::parse_layout_line("LibraryShare=0.3500", layout);
-    CHECK(layout.library_share == doctest::Approx(0.35f));
-    CHECK_FALSE(layout.library_hidden);
-    hydra::ui::parse_layout_line("LibraryHidden=1", layout);
-    CHECK(layout.library_hidden);
+    REQUIRE(layout.library_share != doctest::Approx(hidden.library_share));
+    REQUIRE(layout.library_hidden != hidden.library_hidden);
+    for (const std::string& line : hidden_lines) hydra::ui::parse_layout_line(line, layout);
+    CHECK(layout.library_share == doctest::Approx(hidden.library_share));
+    CHECK(layout.library_hidden == hidden.library_hidden);
+
     // Anything else leaves both alone.
-    for (const char* line : {"LibraryShare=abc", "LibraryShare=0", "LibraryShare=1",
-                             "LibraryShare=1.5", "LibraryShare=-0.2", "LibraryShare=0.3x",
-                             "LibraryShare=", "Colour=blue", "LibraryHidden=2",
-                             "LibraryHidden=", "LibraryHidden=yes"})
+    const std::vector<std::string> junk = {
+        share_key + "abc", share_key + "0",   share_key + "1",   share_key + "1.5",
+        share_key + "-0.2", share_key + "0.3x", share_key,        "Colour=blue",
+        hidden_key + "2",  hidden_key,        hidden_key + "yes"};
+    for (const std::string& line : junk) {
+        CAPTURE(line);
         hydra::ui::parse_layout_line(line, layout);
-    CHECK(layout.library_share == doctest::Approx(0.35f));
-    CHECK(layout.library_hidden);
-    hydra::ui::parse_layout_line("LibraryHidden=0", layout);
-    CHECK_FALSE(layout.library_hidden);
+        CHECK(layout.library_share == doctest::Approx(hidden.library_share));
+        CHECK(layout.library_hidden == hidden.library_hidden);
+    }
+
+    // The shown layout's hidden line turns hiding back off.
+    hydra::ui::parse_layout_line(shown_lines[1], layout);
+    CHECK(layout.library_hidden == shown.library_hidden);
 }
 
 TEST_CASE("app_shell: share_is_valid takes only the open interval") {
@@ -509,30 +587,52 @@ TEST_CASE("app_shell: share_is_valid takes only the open interval") {
     CHECK_FALSE(hydra::ui::share_is_valid(std::numeric_limits<float>::quiet_NaN()));
 }
 
+namespace {
+
+// The name ImGui gives the library child, and so its [Window] section in
+// hydra_ui.ini: library_view.cpp begins it as "##library" inside the main
+// window, which it begins as "Hydra". ImGui adds the child's ID hash to it.
+std::string library_child_window_name() {
+    const hydra::test::HeadlessImGui imgui;
+    ImGui::NewFrame();
+    ImGui::Begin("Hydra");
+    ImGui::BeginChild("##library");
+    const std::string name = ImGui::GetCurrentWindow()->Name;
+    ImGui::EndChild();
+    ImGui::End();
+    ImGui::EndFrame();
+    return name;
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: hydra_ui.ini remembers the library split, not the child's own width") {
+    const std::string child = library_child_window_name();
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_split"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
     {
         // A saved library child at the largest split, with no share.
         std::ofstream f(ini);
-        f << "[Window][Hydra/##library_06E76512]\nSize=2064,1313\n\n";
+        f << "[Window][" << child << "]\nSize=2064,1313\n\n";
     }
-    hydra::ui::setup_imgui(test_options(ini.string()));
-    CHECK(hydra::ui::library_share() == doctest::Approx(hydra::ui::kDefaultLibraryShare));
-    CHECK_FALSE(hydra::ui::library_hidden());
-    hydra::ui::remember_library_share(0.25f);
-    hydra::ui::remember_library_hidden(true);
-    hydra::ui::shutdown_imgui();  // DestroyContext writes the ini
+    {
+        ImGuiOnIni imgui(ini.string());
+        CHECK(hydra::ui::library_share() == doctest::Approx(hydra::ui::kDefaultLibraryShare));
+        CHECK_FALSE(hydra::ui::library_hidden());
+        hydra::ui::remember_library_share(0.25f);
+        hydra::ui::remember_library_hidden(true);
+    }  // DestroyContext writes the ini
 
-    hydra::ui::setup_imgui(test_options(ini.string()));
-    CHECK(hydra::ui::library_share() == doctest::Approx(0.25f));
-    CHECK(hydra::ui::library_hidden());
-    hydra::ui::shutdown_imgui();
+    {
+        ImGuiOnIni imgui(ini.string());
+        CHECK(hydra::ui::library_share() == doctest::Approx(0.25f));
+        CHECK(hydra::ui::library_hidden());
+    }
 
     std::ifstream f(ini);
     std::stringstream text;
     text << f.rdbuf();
-    CHECK(text.str().find("[Hydra][Layout]\nLibraryShare=0.2500\nLibraryHidden=1\n") !=
+    CHECK(text.str().find("[Hydra][Layout]\n" + hydra::ui::format_layout({0.25f, true})) !=
           std::string::npos);
     f.close();
     std::filesystem::remove_all(dir);
@@ -544,7 +644,7 @@ TEST_CASE("app_shell: set_ui_scale rescales sizes, fonts and px() together") {
     const float before = base.FramePadding.x;
 
     hydra::ui::set_ui_scale(2.0f);
-    CHECK(ImGui::GetStyle().FramePadding.x == hydra::ui::scaled_style(base, 2.0f).FramePadding.x);
+    CHECK(ImGui::GetStyle().FramePadding.x == scaled_size(before, 2.0f));
     CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(2.0f));
     CHECK(hydra::ui::g_ui_scale == doctest::Approx(2.0f));
     CHECK(hydra::ui::px(10.0f) == doctest::Approx(20.0f));
