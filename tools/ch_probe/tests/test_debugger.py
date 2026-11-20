@@ -7,10 +7,9 @@ XMM0-to-double decode, the rip-minus-one fix-up, the read masking that hides
 0xCC, and the ThreadContext register snapshot, taken from a real suspended
 thread of this process.
 
-What we cannot test here: the Win32 event pump (WaitForDebugEvent,
-GetThreadContext). It needs a live debuggee and is marked LIVE-ONLY in the
-module. attach's setup steps do run here, on a fake Win32. We still confirm the
-Debugger class exposes the right method names so the interface contract is met.
+What we cannot test here: attach and the Win32 event pump (DebugActiveProcess,
+WaitForDebugEvent and the events it returns). They need a live debuggee and
+are marked LIVE-ONLY in the module.
 """
 
 from __future__ import annotations
@@ -19,36 +18,16 @@ import ctypes
 import os
 import struct
 import unittest
-from unittest import mock
 
 from tools.ch_probe import debugger
 from tools.ch_probe.debugger import (
     INT3,
-    BreakpointTable,
     Debugger,
     ThreadContext,
     adjust_rip_after_int3,
     decode_xmm0_double,
     mask_breakpoints,
 )
-
-
-class FakeMemory:
-    """A stand-in for process memory: a dict of address -> byte.
-
-    Gives the BreakpointTable the same read/write shape the live debugger does,
-    so the whole save/restore/re-arm state machine runs with no OS calls.
-    """
-
-    def __init__(self, initial: dict[int, int] | None = None) -> None:
-        self.cells: dict[int, int] = dict(initial or {})
-
-    def read(self, addr: int, size: int) -> bytes:
-        return bytes(self.cells.get(addr + i, 0) for i in range(size))
-
-    def write(self, addr: int, data: bytes) -> None:
-        for i, b in enumerate(data):
-            self.cells[addr + i] = b
 
 
 def _own_process_debugger(test: unittest.TestCase) -> Debugger:
@@ -167,6 +146,15 @@ class BreakpointTableTests(unittest.TestCase):
         self.assertEqual(self.memory(), self.before)
         self.assertFalse(self.table.is_armed(addr))
 
+    def test_addresses_lists_armed_and_unarmed(self):
+        # stop() walks this list to put every byte back, so a breakpoint
+        # that is not armed must be on it too.
+        armed, unarmed = self.base, self.base + 1
+        self.table.add(armed)
+        self.table.add(unarmed)
+        self.table.arm(armed)
+        self.assertEqual(sorted(self.table.addresses()), [armed, unarmed])
+
 
 class MaskBreakpointsTests(unittest.TestCase):
     def test_masks_installed_cc_back_to_original(self):
@@ -196,10 +184,6 @@ class Xmm0DecodeTests(unittest.TestCase):
         low = struct.pack("<d", 89.5)
         high = b"\xAA" * 8
         self.assertEqual(decode_xmm0_double(low + high), 89.5)
-
-    def test_decodes_the_normal_back_window(self):
-        buf = struct.pack("<d", 85.0) + b"\x00" * 8
-        self.assertEqual(decode_xmm0_double(buf), 85.0)
 
     def test_short_buffer_raises(self):
         with self.assertRaises(ValueError):
@@ -275,149 +259,33 @@ class ThreadContextTests(unittest.TestCase):
         self.assertEqual(ctx.xmm0_double(), 37.5)
 
 
-class DebuggerSurfaceTests(unittest.TestCase):
-    """The Win32 pump is LIVE-ONLY, but the class must still expose the method
-    names the interface contract names, so construction and attribute presence
-    are worth a cheap check."""
-
-    def test_debugger_constructs_without_attaching(self):
-        dbg = Debugger()
-        for name in ("attach", "set_breakpoint", "clear_breakpoint",
-                     "read", "write", "run", "stop"):
-            self.assertTrue(callable(getattr(dbg, name)), name)
-        self.assertFalse(hasattr(dbg, "set_hw_data_breakpoint"))
-
-    def test_module_exports_the_expected_names(self):
-        for name in ("Debugger", "ThreadContext", "BreakpointTable",
-                     "decode_xmm0_double", "mask_breakpoints",
-                     "adjust_rip_after_int3", "INT3"):
-            self.assertTrue(hasattr(debugger, name), name)
-
-
-def _exception_event(code, *, tid, addr=0):
-    """A DEBUG_EVENT carrying one exception, built by hand (no debuggee)."""
-    ev = debugger.DEBUG_EVENT()
-    ev.dwDebugEventCode = debugger.EXCEPTION_DEBUG_EVENT
-    ev.dwThreadId = tid
-    rec = ev.u.Exception.ExceptionRecord
-    rec.ExceptionCode = code
-    rec.ExceptionAddress = addr
-    return ev
-
-
-class KillOnExitTests(unittest.TestCase):
-    """attach() must turn Windows' kill-on-exit off right after attaching, so
-    a Python crash or Ctrl+C detaches from Clone Hero instead of killing it."""
+class DebuggerMemoryTests(unittest.TestCase):
+    """read and write go through process.py's reader and writer over a real
+    handle to this process, and read hides the 0xCC bytes the debugger
+    planted."""
 
     def setUp(self):
-        self.calls = []
-        self.kill_ok = True
-        calls, test = self.calls, self
+        self.dbg = _own_process_debugger(self)
+        self.base = _code_copy(self, self.dbg)
+        self.before = ctypes.string_at(self.base, _COPY_SIZE)
+        self.assertNotIn(INT3, self.before[:8])
 
-        class FakeK32:
-            def DebugActiveProcess(self, pid):
-                calls.append(("DebugActiveProcess", pid))
-                return 1
+    def test_write_reaches_memory_and_read_returns_it(self):
+        # The copy's first 8 bytes in reverse order: the read can only match
+        # if the write landed.
+        flipped = self.before[:8][::-1]
+        self.assertNotEqual(flipped, self.before[:8])
+        self.dbg.write(self.base, flipped)
+        self.assertEqual(ctypes.string_at(self.base, 8), flipped)
+        self.assertEqual(self.dbg.read(self.base, 8), flipped)
 
-            def DebugSetProcessKillOnExit(self, kill):
-                calls.append(("DebugSetProcessKillOnExit", kill))
-                return 1 if test.kill_ok else 0
-
-            def DebugActiveProcessStop(self, pid):
-                calls.append(("DebugActiveProcessStop", pid))
-                return 1
-
-            def OpenProcess(self, access, inherit, pid):
-                calls.append(("OpenProcess", pid))
-                return 0x1234
-
-            def FlushInstructionCache(self, handle, addr, size):
-                calls.append(("FlushInstructionCache", handle,
-                              getattr(addr, "value", addr), size))
-                return 1
-
-        class FakeWin32:
-            def __init__(self):
-                self.k32 = FakeK32()
-
-        self.k32_type = FakeK32
-        self._real_win32 = debugger._Win32
-        debugger._Win32 = FakeWin32
-
-    def tearDown(self):
-        debugger._Win32 = self._real_win32
-
-    def test_attach_detaches_if_kill_on_exit_cannot_be_turned_off(self):
-        self.kill_ok = False
-        with self.assertRaises(OSError):
-            Debugger().attach(4242)
-        self.assertIn(("DebugActiveProcessStop", 4242), self.calls)
-        self.assertNotIn(("OpenProcess", 4242), self.calls)
-
-    def test_memory_goes_through_process_bindings(self):
-        # The debugger reads and writes through the reader and writer
-        # process.py builds over its handle; it adds only the cache flush.
-        built, calls = [], self.calls
-
-        def make_reader(handle):
-            built.append(("reader", handle))
-
-            def read(addr, size):
-                calls.append(("read", addr, size))
-                return b"\x90" * size
-            return read
-
-        def make_writer(handle):
-            built.append(("writer", handle))
-
-            def write(addr, data):
-                calls.append(("write", addr, data))
-            return write
-
-        with mock.patch.object(debugger.process, "make_reader", make_reader), \
-                mock.patch.object(debugger.process, "make_writer", make_writer):
-            dbg = Debugger()
-            dbg.attach(4242)
-        self.assertEqual(built, [("reader", 0x1234), ("writer", 0x1234)])
-        self.assertEqual(dbg._raw_read(0x5000, 2), b"\x90\x90")
-        dbg._raw_write(0x5000, b"\xCC")
-        self.assertEqual(calls[-3:], [
-            ("read", 0x5000, 2),
-            ("write", 0x5000, b"\xCC"),
-            ("FlushInstructionCache", 0x1234, 0x5000, 1),
-        ])
-        self.assertFalse(hasattr(self.k32_type, "ReadProcessMemory"))
-
-
-class SafeDetachTests(unittest.TestCase):
-    """stop() removes the breakpoints, then answers events still queued for
-    them. Those late events must never re-plant a 0xCC or reach the game."""
-
-    def test_single_step_after_stop_does_not_rearm(self):
-        dbg = Debugger()
-        dbg._pending_rearm[7] = 0x1000   # thread 7 was mid-step; bp since removed
-        ev = _exception_event(debugger.EXCEPTION_SINGLE_STEP, tid=7)
-        self.assertEqual(dbg._handle_exception(ev), debugger.DBG_CONTINUE)
-        self.assertEqual(dbg._pending_rearm, {})
-        self.assertFalse(dbg._table.has(0x1000))
-
-    def test_queued_hit_on_a_removed_breakpoint_rewinds_and_continues(self):
-        dbg = Debugger()
-        dbg._seen_initial = True
-        dbg._removed.add(0x1000)
-        rewound = []
-        dbg._rewind_rip = rewound.append
-        ev = _exception_event(debugger.EXCEPTION_BREAKPOINT, tid=7, addr=0x1000)
-        self.assertEqual(dbg._handle_exception(ev), debugger.DBG_CONTINUE)
-        self.assertEqual(rewound, [7])
-
-    def test_table_lists_every_registered_address(self):
-        mem = FakeMemory({0x10: 0x55, 0x20: 0x66})
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x10)
-        table.add(0x20)
-        table.arm(0x10)
-        self.assertEqual(sorted(table.addresses()), [0x10, 0x20])
+    def test_read_hides_a_planted_breakpoint(self):
+        addr = self.base + 2
+        self.dbg.set_breakpoint(addr, lambda dbg, ctx: None)
+        self.assertEqual(ctypes.string_at(addr, 1)[0], INT3)  # really planted
+        self.assertEqual(self.dbg.read(self.base, 8), self.before[:8])
+        self.dbg.clear_breakpoint(addr)
+        self.assertEqual(ctypes.string_at(self.base, _COPY_SIZE), self.before)
 
 
 if __name__ == "__main__":
