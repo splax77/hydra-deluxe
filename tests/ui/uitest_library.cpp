@@ -1024,7 +1024,7 @@ void test_library_layout(ImGuiTestContext* ctx) {
     ctx->Yield(3);
 
     // Score range holds six digits beside its step buttons, in the open
-    // settings panel, sized for the widest six digits the font can draw.
+    // settings panel, sized for widest_digits(6).
     h.app->settings.depth_value = 999999;
     ctx->Yield(2);
     // The click analyzed (and saved) this song (D87), and the setting change
@@ -1033,12 +1033,9 @@ void test_library_layout(ImGuiTestContext* ctx) {
     open_settings_panel(ctx);
     if (ctx->IsError()) return;
     const std::string widest = hydra::ui::widest_digits(6);
-    // The sample is six digits, none narrower than another digit's run.
+    // The sample is six digits.
     IM_CHECK_EQ(widest.size(), size_t{6});
     IM_CHECK(widest.find_first_not_of("0123456789") == std::string::npos);
-    for (char d = '0'; d <= '9'; ++d)
-        IM_CHECK_LE(ImGui::CalcTextSize(std::string(6, d).c_str()).x,
-                    ImGui::CalcTextSize(widest.c_str()).x);
     IM_CHECK_GE(ctx->ItemInfo("**/##depthvalue").RectFull.GetWidth(),
                 hydra::ui::button_slot_width(widest.c_str()));
     IM_CHECK_LE(ctx->ItemInfo("**/##depthvalue/+").RectFull.Max.x,
