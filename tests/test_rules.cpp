@@ -6,6 +6,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -15,6 +16,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -23,6 +25,7 @@
 #include "core/model.h"
 #include "core/rules.h"
 #include "core/scoring.h"
+#include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/engine.h"
@@ -90,6 +93,46 @@ core::Rules with_field_moved(core::Rules r, const core::RulesField& f) {
 // The line hydra_rules.ini takes to set field f to its value in r.
 std::string field_line(const core::Rules& r, const core::RulesField& f) {
     return std::string(f.name) + " = " + field_value_text(r, f) + "\n";
+}
+
+// One Backend timings row the search kept, rated as the Paths tab rates it,
+// with the chart file it came from.
+struct RealRow {
+    std::string chart;
+    BackendRating rating;
+};
+
+// Every Backend timings row on every path the search keeps
+// (HydraRecord::all_paths), under the app's default settings, for every
+// chart library discovery lists (corpus::chart_paths). A chart with no notes
+// under those settings has no rows. Built once per run.
+const std::vector<RealRow>& real_backend_rows() {
+    static const std::vector<RealRow> all = [] {
+        const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+        std::vector<RealRow> out;
+        for (const std::string& chart : corpus::chart_paths()) {
+            if (corpus::song(chart, cfg.reading(), cfg.rules).is_empty()) continue;
+            for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
+                for (const Activation& a : p->all_activations())
+                    for (const BackendRating& br :
+                         rate_activation(a, cfg.rules.backend_leeway_ms).backends)
+                        out.push_back({chart, br});
+        }
+        return out;
+    }();
+    return all;
+}
+
+// The next double above ms: a hair past an edge that a <= or < test draws.
+double just_above(double ms) {
+    return std::nextafter(ms, std::numeric_limits<double>::infinity());
+}
+
+// What follows the tier name `band` in a Rating word: empty when the word is
+// the band alone, nothing when the word does not start with it.
+std::optional<std::string> tag_after(const std::string& word, const std::string& band) {
+    if (word.compare(0, band.size(), band) != 0) return std::nullopt;
+    return word.substr(band.size());
 }
 
 int fill_count(const Song& song) {
@@ -223,150 +266,252 @@ TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") 
     CHECK(whole > per_note[0].sqout_reduction);
 }
 
-// The leeway decides only whether a plain row is counted (D269 call 4).
+// The leeway decides only whether a plain row is counted (D269 call 4). On
+// every real plain row past its SP end, a leeway just above its offset counts
+// it, so it needs nothing and reads the first tier with no tag; a leeway on
+// its offset leaves it uncounted, banded on that offset and tagged.
 TEST_CASE("rules: the leeway decides whether a plain backend row is counted") {
-    BackendSqueeze b;
-    b.offset_ms = 4.0;
-    CHECK(b.summarystr(false, std::nullopt) == "Hard (uncounted)");
-    CHECK(b.summarystr(false, std::nullopt, 5.0) == "Normal");
+    const std::vector<TimingTier> tiers = timing_tiers();
+    std::set<std::string> tags;
+    int past_end = 0;
+    for (const RealRow& rr : real_backend_rows()) {
+        const double off = rr.rating.row.offset();
+        if (rr.rating.squeezed_out || core::paid_by_sp_walk(off)) continue;
+        ++past_end;
+        CAPTURE(rr.chart);
+        CAPTURE(off);
+        CHECK(rr.rating.row.summarystr(false, std::nullopt, just_above(off)) == tiers.front().name);
+        const std::optional<std::string> tag = tag_after(
+            rr.rating.row.summarystr(false, std::nullopt, off), tier_for(off, tiers).first);
+        REQUIRE(tag.has_value());
+        CHECK_FALSE(tag->empty());
+        tags.insert(*tag);
+    }
+    REQUIRE(past_end > 0);
+    CHECK(tags.size() == 1);
 }
 
 // D269: the timing the player needs for each row. The SP end is one point
 // (call 4). Inside SP a squeezed-out row needs its distance from that end;
-// past the end it needs what a plain row there needs.
+// past the end it needs what a plain row there needs. Every edge is placed
+// from the leeway's owner, Rules::backend_leeway_ms.
 TEST_CASE("backend_row_timing: the timing the player needs for each row") {
     const double lw = core::default_rules().backend_leeway_ms;
-    REQUIRE(lw == 3.0);
+    REQUIRE(lw > 0.0);
+    // The last offset the strict edge (D29) still counts.
+    const double just_inside = std::nextafter(lw, 0.0);
     // A plain row the engine counts needs nothing.
-    for (double off : {-100.0, -5.0, 0.0, 2.999}) {
+    for (double off : {-100.0, -5.0, 0.0, lw / 2, just_inside}) {
         CAPTURE(off);
+        REQUIRE(core::counted_without_squeeze(off, lw));
         CHECK(backend_row_timing(off, false, lw) == 0.0);
     }
     // A plain row it does not count needs its offset early.
-    CHECK(backend_row_timing(3.0, false, lw) == 3.0);
-    CHECK(backend_row_timing(50.0, false, lw) == 50.0);
-    // Inside SP the squeezed-out row needs its SqOut's late hit.
-    CHECK(backend_row_timing(-163.0, true, lw) == 163.0);
-    CHECK(backend_row_timing(-5.0, true, lw) == 5.0);
+    for (double off : {lw, lw + 50.0}) {
+        CAPTURE(off);
+        REQUIRE_FALSE(core::counted_without_squeeze(off, lw));
+        CHECK(backend_row_timing(off, false, lw) == off);
+    }
+    // Inside SP the squeezed-out row needs its SqOut's late hit: how far it
+    // sits before the end.
+    for (double off : {-163.0, -5.0}) {
+        CAPTURE(off);
+        CHECK(backend_row_timing(off, true, lw) == -off);
+    }
     // On the end it needs a 0 ms hit, printed as +0.0, never -0.0.
     CHECK(backend_row_timing(0.0, true, lw) == 0.0);
     CHECK_FALSE(std::signbit(backend_row_timing(0.0, true, lw)));
     // Past the end but within the leeway it needs nothing, as a counted plain
     // row does.
-    for (double off : {2.0, 2.999}) {
+    for (double off : {lw / 2, just_inside}) {
         CAPTURE(off);
         CHECK(backend_row_timing(off, true, lw) == 0.0);
         CHECK(backend_row_timing(off, true, lw) == backend_row_timing(off, false, lw));
     }
     // At or past the leeway it needs its offset, the early hit that would
     // pull it back into SP: the same figure an uncounted plain row needs.
-    for (double off : {3.0, 50.0, 478.7}) {
+    for (double off : {lw, lw + 50.0, lw + 478.7}) {
         CAPTURE(off);
         CHECK(backend_row_timing(off, true, lw) == off);
         CHECK(backend_row_timing(off, true, lw) == backend_row_timing(off, false, lw));
     }
     // Every past-end row follows the plain rule whatever the leeway.
-    for (double off : {2.0, 3.0, 50.0, 478.7}) {
+    for (double off : {lw / 2, lw, lw + 50.0, lw + 478.7}) {
         CAPTURE(off);
         CHECK(backend_row_timing(off, true, 0.0) == backend_row_timing(off, false, 0.0));
     }
-    // At +2 ms the squeezed-out row needs nothing, so it reads Normal, and
-    // the engine still counts the chord, so the word carries no tag.
-    CHECK(core::counted_without_squeeze(2.0, lw));
+    // Within the leeway the squeezed-out row needs nothing, so it reads the
+    // first tier, and the engine still counts the chord, so the word carries
+    // no tag.
     BackendSqueeze b;
-    b.offset_ms = 2.0;
-    CHECK(b.summarystr(true, std::nullopt, lw) == "Normal");
+    b.offset_ms = lw / 2;
+    CHECK(b.summarystr(true, std::nullopt, lw) == timing_tiers().front().name);
 }
 
-// D276 item 2: every counted plain row reads Normal.
+// D276 item 2: every counted plain row reads the first tier, Normal, with
+// the eff. figure the Paths tab shows beside it. The rows are every plain row
+// the search keeps on the corpus that the engine counts.
 TEST_CASE("BackendSqueeze::summarystr: every counted plain row reads Normal") {
-    BackendSqueeze b;
-    for (double off : {-100.0, -5.0, 2.999}) {
+    const double lw = core::default_rules().backend_leeway_ms;
+    const std::string first = timing_tiers().front().name;
+    int counted = 0;
+    for (const RealRow& rr : real_backend_rows()) {
+        const double off = rr.rating.row.offset();
+        if (rr.rating.squeezed_out || !core::counted_without_squeeze(off, lw)) continue;
+        ++counted;
+        CAPTURE(rr.chart);
         CAPTURE(off);
-        b.offset_ms = off;
-        CHECK(b.summarystr(false, std::nullopt) == "Normal");
+        CHECK(rr.rating.row.summarystr(false, rr.rating.note.effective_ms, lw) == first);
     }
+    REQUIRE(counted > 0);
 }
 
 // D269 call 1: one rule for every row, so a squeezed-out row and a plain row
-// at the same offset differ only by what each needs. Inside SP only the
-// squeezed-out row needs a timing; past the leeway both need the same one.
+// at the same offset differ only by what each needs. On every real row read
+// both ways: inside SP only the squeezed-out reading needs a timing, its
+// distance from the end; past the leeway both need the same one.
 TEST_CASE("BackendSqueeze::summarystr: one rule for the squeezed-out and the plain row") {
-    BackendSqueeze b;
-    b.offset_ms = -50.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Extreme");
-    CHECK(b.summarystr(false, std::nullopt) == "Normal");
-    b.offset_ms = 150.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Insane+ (uncounted)");
-    CHECK(b.summarystr(false, std::nullopt) == "Insane+ (uncounted)");
+    const double lw = core::default_rules().backend_leeway_ms;
+    const std::vector<TimingTier> tiers = timing_tiers();
+    int inside = 0, past = 0;
+    for (const RealRow& rr : real_backend_rows()) {
+        const double off = rr.rating.row.offset();
+        CAPTURE(rr.chart);
+        CAPTURE(off);
+        const std::string as_sqout = rr.rating.row.summarystr(true, std::nullopt, lw);
+        const std::string as_plain = rr.rating.row.summarystr(false, std::nullopt, lw);
+        if (core::paid_by_sp_walk(off)) {
+            ++inside;
+            CHECK(as_plain == tiers.front().name);
+            CHECK(as_sqout == tier_for(-off, tiers).first);
+        } else if (!core::counted_without_squeeze(off, lw)) {
+            ++past;
+            CHECK(as_sqout == as_plain);
+        }
+    }
+    REQUIRE(inside > 0);
+    REQUIRE(past > 0);
 }
 
 // Finding 33, D48 Q6: a row the engine does not count says so, squeezed out
-// or not, under the same test (counted_without_squeeze). Within the leeway
-// past the end, a squeezed-out row needs nothing, as a plain row does.
+// or not, under the same test (counted_without_squeeze), and the same tag.
+// Once the leeway is past it, the engine counts it and the tag goes. The
+// real squeezed-out rows carry the tag exactly when the engine does not
+// count them.
 TEST_CASE("BackendSqueeze::summarystr: an uncounted squeezed-out row carries the tag") {
-    BackendSqueeze b;
-    b.offset_ms = 50.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Extreme (uncounted)");
-    b.offset_ms = 4.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Hard (uncounted)");
-    CHECK(b.summarystr(true, std::nullopt, 5.0) == "Normal");
-    b.offset_ms = 2.5;
-    CHECK(b.summarystr(true, std::nullopt) == "Normal");
-    b.offset_ms = -5.0;
-    CHECK(b.summarystr(true, std::nullopt) == "Hard");
+    const double lw = core::default_rules().backend_leeway_ms;
+    const std::vector<TimingTier> tiers = timing_tiers();
+    std::set<std::string> tags;
+    int uncounted = 0, squeezed = 0;
+    for (const RealRow& rr : real_backend_rows()) {
+        const BackendSqueeze& row = rr.rating.row;
+        const double off = row.offset();
+        CAPTURE(rr.chart);
+        CAPTURE(off);
+        const bool counted = core::counted_without_squeeze(off, lw);
+        if (rr.rating.squeezed_out) {
+            ++squeezed;
+            const std::optional<std::string> tag =
+                tag_after(row.summarystr(true, std::nullopt, lw),
+                          tier_for(backend_row_timing(off, true, lw), tiers).first);
+            REQUIRE(tag.has_value());
+            CHECK(tag->empty() == counted);
+        }
+        if (counted) continue;
+        ++uncounted;
+        for (bool squeezed_out : {true, false}) {
+            CAPTURE(squeezed_out);
+            const std::optional<std::string> tag =
+                tag_after(row.summarystr(squeezed_out, std::nullopt, lw),
+                          tier_for(backend_row_timing(off, squeezed_out, lw), tiers).first);
+            REQUIRE(tag.has_value());
+            CHECK_FALSE(tag->empty());
+            tags.insert(*tag);
+        }
+        CHECK(row.summarystr(true, std::nullopt, just_above(off)) == tiers.front().name);
+    }
+    REQUIRE(squeezed > 0);
+    REQUIRE(uncounted > 0);
+    CHECK(tags.size() == 1);
 }
 
 // D269 call 3, D48 Q3: the rows band on the report's timing tiers, and a
-// timing exactly on an edge reads the band below it. The plain rows use a
-// 0 ms leeway so that every offset past the end is uncounted and needs
-// itself, which puts the first edge within reach.
+// timing exactly on an edge reads the band below it. Every edge is read from
+// the tiers' owner, timing_tiers: on the edge a row reads that tier, and a
+// hair past it the next one (Beyond past the last edge). The plain rows use
+// a 0 ms leeway so that every offset past the end is uncounted and needs
+// itself, which puts the first edge within reach; each carries the same tag.
 TEST_CASE("BackendSqueeze::summarystr: the tier edges for both row kinds") {
-    const struct {
-        double ms;
-        const char* word;
-    } kEdges[] = {
-        {2.0, "Normal"},     {2.001, "Hard"},      {42.5, "Hard"},
-        {85.0, "Extreme"},   {127.5, "Insane"},    {170.0, "Insane+"},
-        {170.001, "Beyond"},
-    };
+    const std::vector<TimingTier> tiers = timing_tiers();
+    std::set<std::string> plain_tags;
+    int edges = 0;
     BackendSqueeze b;
-    for (const auto& e : kEdges) {
-        CAPTURE(e.ms);
-        b.offset_ms = -e.ms;
-        CHECK(b.summarystr(true, std::nullopt) == e.word);
-        b.offset_ms = e.ms;
-        CHECK(b.summarystr(false, std::nullopt, 0.0) == std::string(e.word) + " (uncounted)");
-    }
-}
-
-TEST_CASE("rules: the leeway changes what the engine counts") {
-    // A wider leeway can only add backend points and a zero leeway can only
-    // remove them. Somewhere in the corpus at least one chart must move.
-    core::Rules none = core::default_rules();
-    none.backend_leeway_ms = 0.0;
-    core::Rules wide = core::default_rules();
-    wide.backend_leeway_ms = 50.0;
-
-    bool any_moved = false;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
-        auto best = [&](const core::Rules& r) {
-            ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, r);
-            return run_search(graph, EngineOptions{}).front().totalscore();
+    for (size_t i = 0; i < tiers.size(); ++i) {
+        if (!tiers[i].cutoff) continue;
+        ++edges;
+        const double edge = *tiers[i].cutoff;
+        const bool next_banded = i + 1 < tiers.size() && tiers[i + 1].cutoff.has_value();
+        const std::string next = next_banded ? tiers[i + 1].name : beyond_tier(tiers).name;
+        const std::vector<std::pair<double, std::string>> cases = {
+            {edge, std::string(tiers[i].name)},
+            {just_above(edge), next},
         };
-        const int64_t s_none = best(none);
-        const int64_t s_default = best(core::default_rules());
-        const int64_t s_wide = best(wide);
-        CHECK(s_none <= s_default);
-        CHECK(s_default <= s_wide);
-        if (s_none != s_default || s_default != s_wide) {
-            any_moved = true;
-            break;
+        for (const std::pair<double, std::string>& c : cases) {
+            CAPTURE(c.first);
+            b.offset_ms = -c.first;
+            CHECK(b.summarystr(true, std::nullopt) == c.second);
+            b.offset_ms = c.first;
+            const std::optional<std::string> tag =
+                tag_after(b.summarystr(false, std::nullopt, 0.0), c.second);
+            REQUIRE(tag.has_value());
+            CHECK_FALSE(tag->empty());
+            plain_tags.insert(*tag);
         }
     }
-    CHECK(any_moved);
+    REQUIRE(edges > 0);
+    CHECK(plain_tags.size() == 1);
+}
+
+// The leeway reaches the search. Pitch Dark (testdata/input/
+// test_pitch_dark_ratio) keeps plain rows past its SP ends, beyond the
+// default leeway, on its best path: the Paths tab reads them "(uncounted)".
+// A leeway just past the farthest of them makes the engine count them all.
+// That same path is still there, now worth more, and the search keeps the
+// best path, so the best score must rise. A zero leeway counts less, so its
+// best score is never higher than the default's.
+TEST_CASE("rules: the leeway changes what the engine counts") {
+    const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, ChartReading{});
+    REQUIRE_FALSE(song.is_empty());
+    auto best = [&](const core::Rules& r) {
+        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, r);
+        std::vector<Path> paths = run_search(graph, EngineOptions{});
+        REQUIRE_FALSE(paths.empty());
+        return paths.front();
+    };
+    const core::Rules& defaults = core::default_rules();
+    const Path by_default = best(defaults);
+
+    // The best path's plain rows the default leeway leaves uncounted, with
+    // the SP points each would add once counted.
+    double farthest = 0.0;
+    int uncounted = 0;
+    for (const Activation& a : by_default.all_activations())
+        for (const BackendSqueeze& b : a.display_backends()) {
+            if (a.is_sqout_backend(b) || b.sp_points <= 0) continue;
+            if (core::counted_without_squeeze(b.offset(), defaults.backend_leeway_ms)) continue;
+            ++uncounted;
+            farthest = std::max(farthest, b.offset());
+        }
+    REQUIRE(uncounted > 0);
+
+    core::Rules wide = defaults;
+    wide.backend_leeway_ms = just_above(farthest);
+    core::Rules none = defaults;
+    none.backend_leeway_ms = 0.0;
+    CHECK(best(wide).totalscore() > by_default.totalscore());
+    CHECK(best(none).totalscore() <= by_default.totalscore());
 }
 
 TEST_CASE("rules: max_tied_paths caps the tied paths the engine keeps") {
