@@ -114,6 +114,26 @@ TableRoom room_of(float available, std::vector<bool> shown = {},
     return room;
 }
 
+// Pins for `count` columns: column `c` dragged to `width`, the others not.
+std::vector<std::optional<float>> dragged(std::size_t count, std::size_t c, float width) {
+    std::vector<std::optional<float>> pins(count);
+    pins[c] = width;
+    return pins;
+}
+
+// The widths place_columns gives kSpecs when Num is `num` wide and Song and
+// Artist split the rest of `available` by their shares, each at or above its
+// header. The pixels lost to rounding go to Artist, the last text column.
+std::vector<float> kspecs_split(float available, float spacing, float num) {
+    const float leftover = available - spacing - num;
+    const int total = kSpecs[1].share + kSpecs[2].share;
+    const float song = split_px(leftover, kSpecs[1].share, total);
+    const float artist = split_px(leftover, kSpecs[2].share, total);
+    REQUIRE(song >= ten_px(kSpecs[1].header));
+    REQUIRE(artist >= ten_px(kSpecs[2].header));
+    return {num, song, artist + (leftover - (song + artist))};
+}
+
 }  // namespace
 
 TEST_CASE("column_widths: a header wider than every cell sets the width") {
@@ -278,89 +298,137 @@ TEST_CASE("column_widths: the text in a text column does not change the layout")
 
 TEST_CASE("column_widths: a dragged text column keeps its width and the others re-split") {
     const MeasuredWidths m = library_measure();
-    SUBCASE("Folder dragged to 200") {
-        // 1,000 px, panel closed. Folder is fixed at 200, which leaves 800
-        // for Title, Artist, Charter and Best path, shares 17, 10, 9 and 25
-        // of 61:
-        //   Title     800 x 17 / 61 = 222.95 -> 222
-        //   Artist    800 x 10 / 61 = 131.15 -> 131
-        //   Charter   800 x  9 / 61 = 118.03 -> 118
-        //   Best path 800 x 25 / 61 = 327.87 -> 327
-        // 222 + 131 + 118 + 327 = 798; Best path takes the 2 lost: 329.
+    const float room = 1000.0f;
+    SUBCASE("Folder dragged wider than its header holds the drag") {
+        // Panel closed. Folder holds its drag; the other four split what is
+        // left by their own shares, and the lost pixels go to Best path.
+        const float drag = 200.0f;
+        REQUIRE(drag >= header_px(kFolder));
+        const float left = room - drag;
+        const int rest = shown_shares({}) - share_of(kFolder);
+        std::vector<float> expected;
+        float given = 0.0f;
+        for (std::size_t c = 0; c < kLibrarySpecs.size(); ++c) {
+            const float w = c == kFolder ? drag : split_px(left, share_of(c), rest);
+            REQUIRE(w >= header_px(c));  // no column stops at its header
+            if (c != kFolder) given += w;
+            expected.push_back(w);
+        }
+        expected[kBestPath] += left - given;
         const ColumnLayout l = hydra::ui::place_columns(
-            m, kLibrarySpecs,
-            room_of(1000.0f, {}, {std::nullopt, std::nullopt, std::nullopt, 200.0f, std::nullopt}));
-        CHECK(l.widths == std::vector<float>{222.0f, 131.0f, 118.0f, 200.0f, 329.0f});
-        CHECK(l.inner_width == 1000.0f);
+            m, kLibrarySpecs, room_of(room, {}, dragged(kLibrarySpecs.size(), kFolder, drag)));
+        CHECK(l.widths == expected);
+        CHECK(l.inner_width == room);
     }
     SUBCASE("Artist dragged below its header stays at its header") {
-        // Panel open, 1,000 px. Artist dragged to 20 sits at its header, 60.
-        // Title and Best path split the 940 left by 17 and 25 of 42:
-        //   Title 940 x 17 / 42 = 380.5 -> 380, Best path 940 x 25 / 42 =
-        //   559.5 -> 559, plus the 1 lost pixel: 560. 380 + 60 + 560 = 1,000.
+        // Panel open. Artist sits at its header; Title and Best path split
+        // what is left by their own shares, and the lost pixels go to Best
+        // path. The hidden columns keep their measured width, their header's.
+        const float drag = 20.0f;
+        REQUIRE(drag < header_px(kArtist));
+        const float left = room - header_px(kArtist);
+        const int rest = share_of(kTitle) + share_of(kBestPath);
+        const float title = split_px(left, share_of(kTitle), rest);
+        const float best_path = split_px(left, share_of(kBestPath), rest);
+        REQUIRE(title >= header_px(kTitle));
+        REQUIRE(best_path >= header_px(kBestPath));
+        const float lost = left - (title + best_path);
         const ColumnLayout l = hydra::ui::place_columns(
             m, kLibrarySpecs,
-            room_of(1000.0f, kPanelOpen, {std::nullopt, 20.0f, std::nullopt, std::nullopt, std::nullopt}));
-        CHECK(l.widths == std::vector<float>{380.0f, 60.0f, 70.0f, 60.0f, 560.0f});
-        CHECK(l.inner_width == 1000.0f);
+            room_of(room, kPanelOpen, dragged(kLibrarySpecs.size(), kArtist, drag)));
+        CHECK(l.widths == std::vector<float>{title, header_px(kArtist), header_px(kCharter),
+                                             header_px(kFolder), best_path + lost});
+        CHECK(l.inner_width == room);
     }
 }
 
 TEST_CASE("column_widths: a dragged number column never goes below its widest") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    SUBCASE("dragged narrower: it stays at its widest, 50") {
-        // As with no drag: Num 50, leftover 200, Song 120, Artist 80.
-        const ColumnLayout l =
-            hydra::ui::place_columns(m, kSpecs, TableRoom{260.0f, 10.0f, {}, {}, {20.0f, {}, {}}});
-        CHECK(l.widths == std::vector<float>{50.0f, 120.0f, 80.0f});
+    const float available = 260.0f;
+    const float spacing = 10.0f;
+    const float num = ten_px(kRows[0][0]);  // "12345", Num's widest cell
+    SUBCASE("dragged narrower: it stays at its widest") {
+        const float drag = 20.0f;
+        REQUIRE(drag < num);
+        const ColumnLayout l = hydra::ui::place_columns(
+            m, kSpecs, TableRoom{available, spacing, {}, {}, dragged(kSpecs.size(), 0, drag)});
+        CHECK(l.widths == kspecs_split(available, spacing, num));
+        CHECK(l.inner_width == available);
     }
-    SUBCASE("dragged wider: it keeps the drag, 90") {
-        // Num 90. Leftover 260 - 10 - 90 = 160: Song 60% = 96, Artist 40% = 64.
-        const ColumnLayout l =
-            hydra::ui::place_columns(m, kSpecs, TableRoom{260.0f, 10.0f, {}, {}, {90.0f, {}, {}}});
-        CHECK(l.widths == std::vector<float>{90.0f, 96.0f, 64.0f});
-        CHECK(l.inner_width == 260.0f);
+    SUBCASE("dragged wider: it keeps the drag") {
+        const float drag = 90.0f;
+        REQUIRE(drag > num);
+        const ColumnLayout l = hydra::ui::place_columns(
+            m, kSpecs, TableRoom{available, spacing, {}, {}, dragged(kSpecs.size(), 0, drag)});
+        CHECK(l.widths == kspecs_split(available, spacing, drag));
+        CHECK(l.inner_width == available);
     }
 }
 
 TEST_CASE("column_widths: when the headers don't fit, the inner width is their sum") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    // Available 100, spacing 10: leftover 100 - 10 - 50 = 40. Song 40 x 60%
-    // = 24 is below its 40 and Artist 16 below its 60, so both sit at their
-    // headers. Inner width 50 + 40 + 60 + 10 = 160, more than 100: the table
-    // scrolls.
-    const ColumnLayout l = hydra::ui::place_columns(m, kSpecs, TableRoom{100.0f, 10.0f, {}});
-    CHECK(l.widths == std::vector<float>{50.0f, 40.0f, 60.0f});
-    CHECK(l.inner_width == 160.0f);
-    CHECK(l.min_inner_width == 160.0f);
+    const float available = 100.0f;
+    const float spacing = 10.0f;
+    const float num = ten_px(kRows[0][0]);  // "12345", Num's widest cell
+    const float song_header = ten_px(kSpecs[1].header);
+    const float artist_header = ten_px(kSpecs[2].header);
+    // Both text columns' splits of the leftover fall below their headers.
+    const float leftover = available - spacing - num;
+    const int total = kSpecs[1].share + kSpecs[2].share;
+    REQUIRE(split_px(leftover, kSpecs[1].share, total) < song_header);
+    REQUIRE(split_px(leftover, kSpecs[2].share, total) < artist_header);
+    const ColumnLayout l = hydra::ui::place_columns(m, kSpecs, TableRoom{available, spacing, {}});
+    CHECK(l.widths == std::vector<float>{num, song_header, artist_header});
+    CHECK(l.inner_width == num + song_header + artist_header + spacing);
+    CHECK(l.inner_width > available);  // the table scrolls
 }
 
 TEST_CASE("column_widths: a header drawn wider than its text (the sort arrow) lifts the floor") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    // Artist's header is drawn 80 wide: its text 60 plus 20 for the sort
-    // arrow. Available 170, spacing 10: leftover 110. Song 110 x 60% = 66,
-    // Artist 110 x 40% = 44, below its floor of 80, so Artist sits at 80.
-    // Song gets the 30 left, below its own header's 40, so Song sits at 40.
-    // Inner width 50 + 40 + 80 + 10 = 180, more than 170: scrolls.
-    const ColumnLayout l =
-        hydra::ui::place_columns(m, kSpecs, TableRoom{170.0f, 10.0f, {}, {0.0f, 0.0f, 80.0f}});
-    CHECK(l.widths == std::vector<float>{50.0f, 40.0f, 80.0f});
-    CHECK(l.inner_width == 180.0f);
-    CHECK(l.min_inner_width == 180.0f);
+    const float available = 240.0f;
+    const float spacing = 10.0f;
+    const float arrow = 20.0f;  // the room the sort arrow takes beside the text
+    const float num = ten_px(kRows[0][0]);  // "12345", Num's widest cell
+    const float song_header = ten_px(kSpecs[1].header);
+    const float artist_header = ten_px(kSpecs[2].header);
+    const float artist_drawn = artist_header + arrow;
+    // Artist's split clears its text but not its drawn header, so only the
+    // drawn width stops it.
+    const float leftover = available - spacing - num;
+    const int total = kSpecs[1].share + kSpecs[2].share;
+    const float artist_split = split_px(leftover, kSpecs[2].share, total);
+    REQUIRE(artist_split >= artist_header);
+    REQUIRE(artist_split < artist_drawn);
+    // Artist sits at its drawn header, and Song, the one text column left,
+    // takes the rest.
+    const float song = leftover - artist_drawn;
+    REQUIRE(song >= song_header);
+    const ColumnLayout l = hydra::ui::place_columns(
+        m, kSpecs, TableRoom{available, spacing, {}, {0.0f, 0.0f, artist_drawn}});
+    CHECK(l.widths == std::vector<float>{num, song, artist_drawn});
+    CHECK(l.inner_width == available);
+    // The narrowest the table gets counts Artist at its drawn header too.
+    CHECK(l.min_inner_width == num + song_header + artist_drawn + spacing);
 }
 
 TEST_CASE("column_widths: a column that never cuts is at least as wide as its drawn header") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    // Num's cells are 50 and its text header 30, but it is drawn 70 wide.
-    // Available 1000, spacing 10: Num 70, leftover 1000 - 10 - 70 = 920,
-    // Song 60% = 552, Artist 40% = 368. Inner width 70 + 552 + 368 + 10 =
-    // 1000. Minimum: 70 + 40 + 60 + 10 = 180. A drawn width under the text's
-    // (Song's 20 against 40) changes nothing.
+    const float available = 1000.0f;
+    const float spacing = 10.0f;
+    const float num_widest = ten_px(kRows[0][0]);  // "12345", Num's widest cell
+    const float song_header = ten_px(kSpecs[1].header);
+    const float artist_header = ten_px(kSpecs[2].header);
+    // Num is drawn wider than its widest cell; Song is drawn narrower than its
+    // header's text, which must change nothing.
+    const float num_drawn = num_widest + 20.0f;
+    const float song_drawn = song_header - 20.0f;
+    REQUIRE(num_drawn > num_widest);
+    REQUIRE(song_drawn < song_header);
     const ColumnLayout l = hydra::ui::place_columns(
-        m, kSpecs, TableRoom{1000.0f, 10.0f, {}, {70.0f, 20.0f, 0.0f}});
-    CHECK(l.widths == std::vector<float>{70.0f, 552.0f, 368.0f});
-    CHECK(l.inner_width == 1000.0f);
-    CHECK(l.min_inner_width == 180.0f);
+        m, kSpecs, TableRoom{available, spacing, {}, {num_drawn, song_drawn, 0.0f}});
+    CHECK(l.widths == kspecs_split(available, spacing, num_drawn));
+    CHECK(l.inner_width == available);
+    CHECK(l.min_inner_width == num_drawn + song_header + artist_header + spacing);
 }
 
 TEST_CASE("column_widths: table_room reads a sorted header's drawn width from the last frame") {
@@ -394,28 +462,42 @@ TEST_CASE("column_widths: table_room reads a sorted header's drawn width from th
 }
 
 TEST_CASE("column_widths: a table with no cut columns is as wide as its columns") {
-    // "Points" header 60, cell "1234567" 70. "Ms" header 20, cell "12345" 50.
-    // Spacing 10. Inner width 70 + 50 + 10 = 130 whatever the room.
+    // Two number columns, each with a cell wider than its header.
     const std::vector<ColumnSpec> specs = {spec("Points", false), spec("Ms", false)};
     const Rows rows = {{"1234567", "12345"}};
-    const MeasuredWidths m = hydra::ui::measure_widths(specs, 1, cells(rows));
-    const ColumnLayout l = hydra::ui::place_columns(m, specs, TableRoom{500.0f, 10.0f, {}});
-    CHECK(l.widths == std::vector<float>{70.0f, 50.0f});
-    CHECK(l.inner_width == 130.0f);
-    CHECK(l.min_inner_width == 130.0f);
+    const float spacing = 10.0f;
+    const float points = ten_px(rows[0][0]);
+    const float ms = ten_px(rows[0][1]);
+    REQUIRE(points > ten_px(specs[0].header));
+    REQUIRE(ms > ten_px(specs[1].header));
+    const float columns = points + ms + spacing;
+    const MeasuredWidths m = hydra::ui::measure_widths(specs, rows.size(), cells(rows));
+    // Less room than the columns, exactly their room, and far more.
+    for (const float available : {columns / 2.0f, columns, columns * 4.0f}) {
+        CAPTURE(available);
+        const ColumnLayout l = hydra::ui::place_columns(m, specs, TableRoom{available, spacing, {}});
+        CHECK(l.widths == std::vector<float>{points, ms});
+        CHECK(l.inner_width == columns);
+        CHECK(l.min_inner_width == columns);
+    }
 }
 
 TEST_CASE("column_widths: a hidden column takes no room") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    // Artist hidden. Available 260, spacing 10: leftover 200, all for Song,
-    // the one shown text column. Inner width 50 + 200 + 10 = 260. Artist
-    // keeps its measured width, its header's 60, for when it is shown again.
-    // Minimum: 50 + 40 + 10 = 100.
+    const float available = 260.0f;
+    const float spacing = 10.0f;
+    const float num = ten_px(kRows[0][0]);  // "12345", Num's widest cell
+    const float song_header = ten_px(kSpecs[1].header);
+    constexpr std::size_t kArtistColumn = 2;
+    // Artist hidden: Song, the one shown text column, takes all the leftover.
+    const float leftover = available - spacing - num;
+    REQUIRE(leftover >= song_header);
     const ColumnLayout l =
-        hydra::ui::place_columns(m, kSpecs, TableRoom{260.0f, 10.0f, {true, true, false}});
-    CHECK(l.widths == std::vector<float>{50.0f, 200.0f, 60.0f});
-    CHECK(l.inner_width == 260.0f);
-    CHECK(l.min_inner_width == 100.0f);
+        hydra::ui::place_columns(m, kSpecs, TableRoom{available, spacing, {true, true, false}});
+    // Artist keeps its measured width, for when it is shown again.
+    CHECK(l.widths == std::vector<float>{num, leftover, m.widths[kArtistColumn]});
+    CHECK(l.inner_width == num + leftover + spacing);
+    CHECK(l.min_inner_width == num + song_header + spacing);
 }
 
 namespace {
@@ -499,12 +581,13 @@ TEST_CASE("column_widths: a width ImGui changed by itself is put back") {
 }
 
 TEST_CASE("column_widths: a column list's shares sum to 100, or it has no text column") {
-    // Fake lists in the pretend font: 60 + 40 is well formed, 60 + 30 is not,
-    // and a list of number columns alone has nothing to sum.
+    // Lists in the pretend font: 60 + 40 is well formed, 60 + 30 is not, and
+    // a list of number columns alone has nothing to sum. The Library's real
+    // list is checked in tests/ui/uitest_library.cpp, which reads the specs
+    // the drawn table holds; library_column_specs itself is not public.
     CHECK(hydra::ui::text_shares_sum_to_100({spec("Num", false), text_spec("Song", 60), text_spec("Artist", 40)}));
     CHECK_FALSE(hydra::ui::text_shares_sum_to_100({text_spec("Song", 60), text_spec("Artist", 30)}));
     CHECK(hydra::ui::text_shares_sum_to_100({spec("Num", false), spec("Ms", false)}));
-    CHECK(hydra::ui::text_shares_sum_to_100(kLibrarySpecs));
 }
 
 TEST_CASE("column_widths: the report views' real column lists have shares that sum to 100") {
