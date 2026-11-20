@@ -243,13 +243,6 @@ private:
 // How many times `s` appears in visible_text(h).
 size_t count_on_screen(Harness& h, const std::string& s);
 
-// The dmleaderboards API's canned answers, which reset_app serves and the
-// tests that serve their own variant build from: the one user (alice), one
-// score row, and the scores reply that wraps a list of rows.
-std::string canned_dm_users();
-std::string canned_dm_score(const std::string& identifier, int points);
-std::string canned_dm_scores(const std::vector<std::string>& score_rows);
-
 // The key AppState fields, one per line, each ending in a newline. The
 // state verb's text (EngineHooks::state_text).
 std::string state_text(Harness& h);

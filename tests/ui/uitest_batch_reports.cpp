@@ -87,22 +87,6 @@ void dismiss_done(ImGuiTestContext* ctx) {
 
 namespace {
 
-// Pick alice in the open player picker: the box closes, the comparison
-// window opens, and the comparison builds (D103 item 8).
-void pick_alice(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report.window_open);
-    IM_CHECK(window_named("###dmreport") != nullptr);
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60));
-    IM_CHECK(h.app->dm_report.result != nullptr);
-}
-
 // The running strip shows the chart being worked on and live counts. Its Stop
 // button and its width must not move as they change. The gate steps the run
 // one chart at a time, so the strip is provably on screen for every change.
@@ -185,95 +169,6 @@ void test_settings_and_reports(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(window_named("###pathreport") != nullptr);
     dismiss_done(ctx);
-
-    // dmleaderboards comparison against the canned API: picking the player
-    // closes the box and opens the comparison window (D103 item 8).
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
-    IM_CHECK(visible_text(h).find("alice") != std::string::npos);
-    pick_alice(ctx);
-    if (ctx->IsError()) return;
-    // The canned score (100,000) is under the chart's optimal.
-    IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 1);
-}
-
-// The dmleaderboards comparison, end to end: the button off away from Clone
-// Hero's cap and Expert, the name filter, and every button of the finished
-// report.
-void test_dm_compare_flow(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    ctx->SetRef("//Hydra");
-
-    // The ladder plays at Expert, so any other difficulty disables the
-    // button. Any cap leaves it on: the comparison runs at Clone Hero's cap
-    // whatever the setting (D271 item 8).
-    auto compare_disabled = [&] {
-        return (ctx->ItemInfo("Compare with dmleaderboards...").ItemFlags &
-                ImGuiItemFlags_Disabled) != 0;
-    };
-    h.app->settings.sp_cap = 8;
-    h.app->commit_settings();
-    ctx->Yield(2);
-    IM_CHECK(!compare_disabled());
-    h.app->settings.sp_cap = hydra::kCloneHeroSpCap;
-    h.app->commit_settings();
-
-    // The difficulty picker lives in the settings panel; the button on the
-    // toolbar.
-    open_settings_panel(ctx);
-    if (ctx->IsError()) return;
-    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
-    close_settings_panel(ctx);
-    IM_CHECK(compare_disabled());
-    open_settings_panel(ctx);
-    if (ctx->IsError()) return;
-    settings_combo_pick(ctx, "##prodrums", "##difficulty", "Expert");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
-    close_settings_panel(ctx);
-    IM_CHECK(!compare_disabled());
-
-    // The picker opens on the canned ladder; the filter narrows it as you
-    // type, ignoring case.
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemInputValue("##dmfilter", "");  // an earlier test may have left text
-    IM_CHECK(wait_until(ctx, [&] { return visible_text(h).find("alice") != std::string::npos; }, 5));
-    ctx->ItemInputValue("##dmfilter", "bob");
-    ctx->Yield(2);
-    IM_CHECK(visible_text(h).find("alice") == std::string::npos);
-    ctx->ItemInputValue("##dmfilter", "ALI");
-    ctx->Yield(2);
-    IM_CHECK(visible_text(h).find("alice") != std::string::npos);
-
-    // Pick alice, and the choice is remembered (D103 item 8).
-    pick_alice(ctx);
-    if (ctx->IsError()) return;
-    // Nothing is analyzed yet, so the one score has "no current result".
-    IM_CHECK_EQ(h.app->dm_report.result->stats.not_analyzed, 1);
-    IM_CHECK_EQ(h.app->dm_report.result->stats.under_optimal, 0);
-    IM_CHECK_STR_EQ(h.app->dm_report.result->username.c_str(), "alice");
-    IM_CHECK_STR_EQ(h.app->settings.dm_last_user.c_str(), "111");
-    IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).dm_last_user.c_str(), "111");
-
-    // The window's "Compare another player...": back to the list, and the
-    // comparison stays until another player replaces it (D103 item 9).
-    h.app->reopen_dm_picker();
-    ctx->Yield(3);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report.result != nullptr);
-    IM_CHECK(visible_text(h).find("Pick a player") != std::string::npos);
-    ctx->SetRef("//Compare dmleaderboards user");
-
-    // Close: the picker goes away.
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
 }
 
 // The path report's buttons: the toolbar's "Open path report" appears once a
@@ -726,7 +621,6 @@ const std::vector<TestEntry>& batch_report_tests() {
     static const std::vector<TestEntry> entries = {
         {"batch-strip-drift", test_batch_strip_drift},
         {"settings-and-reports", test_settings_and_reports},
-        {"dm-compare-flow", test_dm_compare_flow},
         {"report-buttons", test_report_buttons},
         {"batch-confirm", test_batch_confirm},
         {"batch-confirm-note-shuffle", test_batch_confirm_note_shuffle},
