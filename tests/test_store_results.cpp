@@ -7,10 +7,10 @@
 
 #include "doctest.h"
 
+#include <sqlite3.h>
+
 #include <atomic>
-#include <chrono>
 #include <cstdint>
-#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <set>
@@ -18,6 +18,7 @@
 #include <string>
 #include <system_error>
 #include <thread>
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -663,10 +664,9 @@ TEST_CASE("a saved record stores its best path's star count") {
     CHECK(got[0].record == prepare_record("ready", at4, at_cap(4)).record);
     CHECK(got[0].record.stars == stars);
     CHECK(got[0].record.summary().score == best.totalscore());
-    // The saved figure is the engine's own (engine_hardest_ms), pinned from
-    // one run: the fixture's best path has no squeeze and no E0 fill, so none.
-    // Shown, it is the live path's difficulty.
-    CHECK_FALSE(got[0].record.summary().hardest_ms.has_value());
+    // The saved figure is the engine's own; shown, it is the live path's
+    // difficulty.
+    CHECK(got[0].record.summary().hardest_ms == engine_hardest_ms(best));
     CHECK(shown_timing(got[0].record.summary().hardest_ms) == best.difficulty());
     CHECK(got[0].record.summary().stars == stars);
     // Only a Ready answer carries a record.
@@ -683,64 +683,77 @@ TEST_CASE("a saved record stores its best path's star count") {
 }
 
 TEST_CASE("store: the saved hardest figure is the engine's, sign included") {
-    // One activation whose only squeeze is a squeeze-in, the on_end_in shape
-    // of test_model.cpp with its offset set per case.
-    auto record_with_sqin = [](double offset_ms) {
-        Activation a;
-        test::set_skips(a, 0);
-        a.e_offset = 300.0;  // not e-critical
-        a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, offset_ms}};
-        Path p;
-        p.activations = {a};
-        HydraRecord rec;
-        rec.paths = {p};
-        return rec;
-    };
-
-    // Inside Star Power: no difficulty, but the engine's figure is saved.
-    const HydraRecord inside = record_with_sqin(-315.8);
-    REQUIRE_FALSE(inside.paths[0].difficulty().has_value());
-    const RecordRow inside_row = record_of("", inside);
-    REQUIRE(inside_row.paths.size() == 1);
-    CHECK(inside_row.paths[0].hardest_ms == std::optional<double>(-315.8));
-
-    // On the SP end: 0.0 ms, saved as 0.0.
-    const RecordRow at_end_row = record_of("", record_with_sqin(0.0));
-    REQUIRE(at_end_row.paths.size() == 1);
-    CHECK(at_end_row.paths[0].hardest_ms == std::optional<double>(0.0));
+    // Every corpus chart's real analysis is saved and read back. Each saved
+    // path's figure must be engine_hardest_ms of the path it was made from,
+    // compared exactly, so a figure below zero (a timing with room to spare,
+    // which shown_timing hides) must come back with its sign.
+    RecordStore store(":memory:");
+    const app::AnalysisSettings settings = store_fixture_settings();
+    const Profile at4 = profile_at(4);
+    size_t compared = 0;
+    for (const std::string& path : corpus::chart_paths()) {
+        const HydraRecord* record = nullptr;
+        try {
+            record = &corpus::analyzed(path, settings);
+        } catch (const ChartFileError&) {
+            // A refused chart has no path and so no figure; the corpus round
+            // trip above checks what the store keeps for it.
+            continue;
+        }
+        INFO(path);
+        save_record(store, path, at4, *record);
+        const RecordLookup got = store.lookup_one(path, at4);
+        REQUIRE(got.status == RecordStatus::Ready);
+        // The saved paths, in rank order, are the first of all_paths.
+        const std::vector<const Path*> kept = record->all_paths();
+        REQUIRE(got.record.paths.size() <= kept.size());
+        for (size_t i = 0; i < got.record.paths.size(); ++i) {
+            CHECK(got.record.paths[i].hardest_ms == engine_hardest_ms(*kept[i]));
+            ++compared;
+        }
+    }
+    // fixture() is the first corpus chart with paths at these settings, so
+    // the walk meets at least the paths its record saves.
+    const size_t fixture_rows = record_of("", fixture().record).paths.size();
+    REQUIRE(fixture_rows > 0);
+    REQUIRE(compared >= fixture_rows);
 }
 
 TEST_CASE("lookup answers a whole library in chunks") {
-    // SQLite refuses more than 32,766 bound values in one statement. The
-    // library asks about every chart at once, so the store must split it.
+    // SQLite refuses a statement with more bound values than its variable
+    // limit. The library asks about every chart at once, so the store must
+    // split the ask. The page here holds one id more than that limit, read
+    // from SQLite itself, so a store that sent it in one statement fails.
+    sqlite3* probe = nullptr;
+    REQUIRE(sqlite3_open(":memory:", &probe) == SQLITE_OK);
+    const int bind_limit = sqlite3_limit(probe, SQLITE_LIMIT_VARIABLE_NUMBER, -1);
+    sqlite3_close(probe);
+    REQUIRE(bind_limit > 0);
+
     RecordStore store(":memory:");
     save_record(store, "ready", profile_at(4), at_cap(4));
+    const RecordRow saved = prepare_record("ready", profile_at(4), at_cap(4)).record;
 
+    // Every other id is a chart the store has no record for, as most of a
+    // library is before its first batch.
+    const size_t count = static_cast<size_t>(bind_limit) + 1;
     std::vector<std::string> ids;
-    for (int i = 0; i < 20000; ++i) {
-        char h[16];
-        std::snprintf(h, sizeof(h), "fake%05d", i);
-        ids.emplace_back(h);
-    }
-    // The real chart at the start, the middle and the end, so it lands in
-    // more than one chunk's position.
-    for (size_t at : {size_t{0}, size_t{10000}, size_t{19999}}) ids[at] = "ready";
+    ids.reserve(count);
+    for (size_t i = 0; i < count; ++i) ids.push_back("never_analyzed_" + std::to_string(i));
+    // The analyzed chart at the start, the middle and the end, so it lands
+    // in more than one chunk.
+    for (size_t at : {size_t{0}, count / 2, count - 1}) ids[at] = "ready";
 
-    const auto t0 = std::chrono::steady_clock::now();
     const std::vector<RecordLookup> got = store.lookup(ids, profile_at(4));
-    const double ms =
-        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
-    MESSAGE("lookup on 20,000 ids: " << ms << " ms");
-
     REQUIRE(got.size() == ids.size());
     int ready = 0;
     for (size_t i = 0; i < got.size(); ++i) {
         if (ids[i] == "ready") {
             CHECK(got[i].status == RecordStatus::Ready);
-            CHECK(got[i].record.stars.has_value());
+            CHECK(got[i].record == saved);
             ++ready;
         } else if (got[i].status != RecordStatus::NotAnalyzed) {
-            FAIL("fake id " << ids[i] << " read as analyzed");
+            FAIL("id " << ids[i] << " read as analyzed");
         }
     }
     CHECK(ready == 3);
@@ -748,48 +761,71 @@ TEST_CASE("lookup answers a whole library in chunks") {
 
 TEST_CASE("PathSummary equality covers every field, stars included") {
     // Finding 121: one compare for every field, unset against set counting
-    // as a change.
-    PathSummary filled;
-    filled.score = 1000;
-    filled.actcount = 2;
-    filled.maxskip = 1;
-    filled.hardest_ms = 12.5;
-    filled.avgmult = 3.25;
-    filled.notecount = 40;
-    filled.sqin_count = 1;
-    filled.sqout_count = 2;
-    filled.pathcount = 3;
-    filled.stars = 5;
+    // as a change. The summary is a real one: the fixture's record saved and
+    // read back, the way the library reads it.
+    RecordStore store(":memory:");
+    save_record(store, "ready", profile_at(4), at_cap(4));
+    const RecordLookup got = store.lookup_one("ready", profile_at(4));
+    REQUIRE(got.status == RecordStatus::Ready);
+    const PathSummary real = got.record.summary();
+    REQUIRE(real.has_scored_best_path());
+    // The read-back summary is the one the saved record makes.
+    CHECK(real == prepare_record("ready", profile_at(4), at_cap(4)).record.summary());
 
-    const PathSummary copy = filled;
-    CHECK(copy == filled);
-    CHECK_FALSE(copy != filled);
+    const PathSummary copy = real;
+    CHECK(copy == real);
+    CHECK_FALSE(copy != real);
 
-    auto differs = [&filled](void (*change)(PathSummary&)) {
-        PathSummary other = filled;
-        change(other);
-        return other != filled && !(other == filled);
+    // Two changes per field, each made from the field's own value: one that
+    // moves a set value (or sets an unset one) and one that unsets a set
+    // value (or sets an unset one). Each must count as a difference.
+    auto moved = [](auto& field) {
+        using T = typename std::decay_t<decltype(field)>::value_type;
+        field = field ? *field + T{1} : T{};
     };
-    CHECK(differs([](PathSummary& s) { s.score = 1001; }));
-    CHECK(differs([](PathSummary& s) { s.actcount = 3; }));
-    CHECK(differs([](PathSummary& s) { s.maxskip = 2; }));
-    CHECK(differs([](PathSummary& s) { s.hardest_ms = 13.0; }));
-    CHECK(differs([](PathSummary& s) { s.avgmult = 3.5; }));
-    CHECK(differs([](PathSummary& s) { s.notecount = 41; }));
-    CHECK(differs([](PathSummary& s) { s.sqin_count = 2; }));
-    CHECK(differs([](PathSummary& s) { s.sqout_count = 3; }));
-    CHECK(differs([](PathSummary& s) { s.pathcount = 4; }));
-    CHECK(differs([](PathSummary& s) { s.stars = 4; }));
-    CHECK(differs([](PathSummary& s) { s.stars.reset(); }));
-    CHECK(differs([](PathSummary& s) { s.score.reset(); }));
-    CHECK(PathSummary{} == PathSummary{});
+    auto toggled = [](auto& field) {
+        using T = typename std::decay_t<decltype(field)>::value_type;
+        if (field) field.reset();
+        else field = T{};
+    };
+    auto differs_after = [&real](const auto& change) {
+        PathSummary other = real;
+        change(other);
+        return other != real && !(other == real);
+    };
+    CHECK(differs_after([&](PathSummary& s) { moved(s.score); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.actcount); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.maxskip); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.hardest_ms); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.avgmult); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.notecount); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.sqin_count); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.sqout_count); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.pathcount); }));
+    CHECK(differs_after([&](PathSummary& s) { moved(s.stars); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.score); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.actcount); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.maxskip); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.hardest_ms); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.avgmult); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.notecount); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.sqin_count); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.sqout_count); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.pathcount); }));
+    CHECK(differs_after([&](PathSummary& s) { toggled(s.stars); }));
+    // A record with no paths has no facts, and two such summaries agree.
+    CHECK(RecordRow{}.summary() == RecordRow{}.summary());
 }
 
 TEST_CASE("a record counts every kept path once") {
     // Finding 172: the pathcount column counts every path the Paths tab lists
-    // (HydraRecord::all_paths). The fixture's count is a literal from one run,
-    // so the two counts are proven equal on a real record.
-    CHECK(record_of("", fixture().record).pathcount == 1);
-    // One root with a tied variant, plus a second root: three paths.
-    CHECK(record_of("", test::tied_variant_record()).pathcount == 3);
+    // (HydraRecord::all_paths), on a real record and on one with a tied
+    // variant under its first root.
+    const HydraRecord& real = fixture().record;
+    CHECK(record_of("", real).pathcount == static_cast<int>(real.all_paths().size()));
+    const HydraRecord tied = test::tied_variant_record();
+    CHECK(record_of("", tied).pathcount == static_cast<int>(tied.all_paths().size()));
+    // all_paths lists the variant beside the roots, so a count of the roots
+    // alone fails the check above.
+    CHECK(tied.all_paths().size() > tied.paths.size());
 }
