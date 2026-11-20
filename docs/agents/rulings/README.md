@@ -27,7 +27,7 @@ A Confirmed line has one of two shapes and nothing else on it.
 
 The first holds words the user typed: `- **2026-11-13** "change the display text to frontend and backend" (session 7d28ae9a)`.
 
-The second holds a label the user clicked in a question box, with the whole question: `- **2026-11-13** chose "Keep frontend/backend" to "Keep the words?" (session 7d28ae9a)`. A clicked label means nothing without its question, so the question is always there.
+The second holds a label the user clicked in a question box, with the whole question: `- **2026-11-13** chose "Keep frontend/backend" to "Keep the words?" (session 7d28ae9a)`. A clicked label means nothing without its question, so the question is always there. The second shape also covers a button the user clicked in the desktop app's next-step box, with that box's question. Such a button can send hidden text the user never saw, so the text a button sends is never quoted as words the user typed.
 
 One line holds one quote, copied letter for letter, typos included. The session is the first eight characters of its id, or the whole id. The line holds no reading, no context, no "So ...", no "As the note records it:", no note name and no pointer to the page it backs.
 
