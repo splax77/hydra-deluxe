@@ -61,7 +61,8 @@ from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.process import ProcessNotFoundError, _find_pid_by_name  # noqa: E402
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
-from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
+from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
+    KIT_PRESS_COLUMNS, PRESS_LOG_COLUMNS, TIMING_PRESS_COLUMNS)
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
     _GHOST_SCHEDULE, _FakeGame, _FakeSongClock, _FakeTime, _RecordedThresholdEngine,
     _schedule_of)
@@ -1148,26 +1149,14 @@ class GameToolsTest(unittest.TestCase):
 
     # Which gems a declined chord keeps is the schedule's (tools/
     # replay_schedule.cpp); these tests only carry its file through the tool.
-    # A chord 1 of a kick and a green cymbal, declined in the schedule with
-    # `kept` as its kept gems.
-    DECLINE_SCORE = {"chords": [
-        {"index": 0, "ms": 1000.0, "tick": 480,
-         "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]},
-        {"index": 1, "ms": 1500.0, "tick": 960,
-         "notes": [{"color": "Kick", "cymbal": False, "dynamic": "none"},
-                   {"color": "Green", "cymbal": True, "dynamic": "none"}]},
-    ]}
 
-    def _decline_files(self, kept=(0,)):
-        schedule = schedule_of(self.DECLINE_SCORE)
-        if kept is not None:
-            schedule["chords"][1].update(declined=True, kept_gems=list(kept))
-            schedule["presses"][1]["gems"] = list(kept)
-        score = os.path.join(self.tmp, "decline-score.json")
-        path = os.path.join(self.tmp, "decline-schedule.json")
-        _write(score, json.dumps(self.DECLINE_SCORE).encode())
-        _write(path, json.dumps(for_song(schedule, self._song())).encode())
-        return score, path
+    # Edge Walk Pair's hydra_replay schedule, path 0 (a probe chart; the
+    # fixture's git log names the command): it declines no chord, holds no
+    # squeeze and presses every chord whole.
+    EDGE_WALK_SCHEDULE = os.path.join(_PROBE_TESTS, "edge_walk_pair_schedule.json")
+    # Senri Kawaguchi's hydra_replay schedule, path 0: it presses eight chords
+    # in order groups, more than the reply could ever fit on a short line.
+    SENRI_SCHEDULE = os.path.join(_PROBE_TESTS, "senri_schedule.json")
 
     def _decline_rig(self):
         seen = []
@@ -1215,46 +1204,45 @@ class GameToolsTest(unittest.TestCase):
                 self.assertIn(f"{index} (nothing sent)", line)
 
     def test_a_schedule_with_no_declined_chord_says_none(self):
-        t, seen = self._decline_rig()
-        score, schedule = self._decline_files(kept=None)
-        reply = t.tools.ch_play_chart(score, schedule, route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual([c.declined for c in seen[0]], [False, False])
-        self.assertEqual([len(p.lanes) for c in seen[0] for p in c.presses], [1, 2])
-        self.assertIn("declined: chords none", reply.splitlines())
-        self.assertNotIn("squeezes", reply)
+        with open(self.EDGE_WALK_SCHEDULE, encoding="utf-8") as f:
+            doc = json.load(f)
+        self.assertFalse([row["index"] for row in doc["chords"] if row["declined"]])
+        _tools, reply, _refusal = self._run_with_no_game(schedule=self.EDGE_WALK_SCHEDULE)
+        chords, _plan = GT.chords_to_play(self.EDGE_WALK_SCHEDULE)
+        self.assertFalse([chord.index for chord in chords if chord.declined])
+        # The no-decline wording is its owner's, declined_line, given no chord.
+        self.assertIn(GT.declined_line([], doc), reply.splitlines())
+        self.assertEqual(GT.declined_line(chords, doc), GT.declined_line([], doc))
+        # A file with no squeeze gives the reply no squeeze line.
+        self.assertEqual(GT.squeeze_lines(chords, doc), [])
+        self.assertFalse([line for line in reply.splitlines() if line.startswith("squeezes")],
+                         reply)
 
     def test_decline_mode_and_dump_json_are_no_longer_arguments(self):
         # D324 item 2 of docs/audit/2026-10-03-fix-decisions.md and question 6
         # of docs/superpowers/plans/2026-11-08-replay-press-schedule.md: a
-        # call that still passes either fails at once.
-        t, seen = self._decline_rig()
-        score, schedule = self._decline_files()
-        for extra in ({"decline_mode": "nothing"}, {"dump_json": schedule}):
-            with self.assertRaises(TypeError):
-                t.tools.ch_play_chart(score, schedule, route="keys", **extra)
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
-
-    def test_a_schedule_with_a_refusal_is_refused_in_its_words(self):
-        t, seen = self._decline_rig()
-        score, path = self._decline_files()
-        schedule = schedule_of(self.DECLINE_SCORE)
-        schedule["refusals"] = ["chord 1 is two squeezes; no rule times both"]
-        _write(path, json.dumps(schedule).encode())
-        self.assertEqual(t.tools.ch_play_chart(score, path, route="keys"),
-                         f"{path} refuses to play this path: "
-                         "chord 1 is two squeezes; no rule times both")
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
+        # call that still passes either fails at once, before any backup.
+        tools = self.real_tools()
+        for extra in ({"decline_mode": "nothing"}, {"dump_json": PITCH_DARK_SCHEDULE}):
+            with self.subTest(argument=next(iter(extra))):
+                with self.assertRaises(TypeError):
+                    tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE,
+                                        route=GT.ROUTE_KEYS, **extra)
+        self.assertIsNone(tools._play)
+        self.assert_nothing_held(tools)
 
     def test_a_missing_schedule_is_refused(self):
-        t, seen = self._decline_rig()
-        score, _schedule = self._decline_files()
+        tools = self.real_tools()
         missing = os.path.join(self.tmp, "no such schedule.json")
-        reply = t.tools.ch_play_chart(score, missing, route="keys")
-        self.assertTrue(reply.startswith(f"could not read {missing}: FileNotFoundError"), reply)
-        self.assertIsNone(t.tools._play)
+        reply = tools.ch_play_chart(PITCH_DARK_SCORE, missing, route=GT.ROUTE_KEYS)
+        # The refusal is the schedule reader's own, naming the missing file.
+        with self.assertRaises(GT.ChordsRefused) as refused:
+            GT.schedule_doc(missing)
+        self.assertEqual(reply, str(refused.exception))
+        self.assertIn(missing, reply)
+        self.assertIn(FileNotFoundError.__name__, reply)
+        self.assertIsNone(tools._play)
+        self.assert_nothing_held(tools)
 
     # -- the squeezes, on the two fixtures of the 2026-11-07 player plan --------------
 
@@ -1267,15 +1255,77 @@ class GameToolsTest(unittest.TestCase):
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply, t
 
+    # An anchor line of the reply: the anchor chord, how far and which way
+    # it is pressed, the squeeze's kind and chord, and the planned end.
+    _ANCHOR_LINE = re.compile(r"chord (\d+) pressed ([\d.]+) ms (early|late) for the "
+                              r"squeeze-(in|out) at chord (\d+) \(end planned ([\d,.]+) ms, ")
+
+    def _squeeze_reply(self, name):
+        """The reply of a keys-route run, with Clone Hero not running, on the
+        hydra_replay schedule fixture `name` under tools/ch_probe/tests (path
+        0 of its chart): the schedule as JSON, its chords, and the reply's
+        lines from its declined line on."""
+        schedule = os.path.join(_PROBE_TESTS, f"{name}_schedule.json")
+        with open(schedule, encoding="utf-8") as f:
+            doc = json.load(f)
+        _tools, reply, _refusal = self._run_with_no_game(
+            os.path.join(_PROBE_TESTS, f"{name}_score.json"), schedule)
+        chords, _plan = GT.chords_to_play(schedule)
+        lines = reply.splitlines()
+        return doc, chords, lines[lines.index(GT.declined_line(chords, doc)):]
+
+    def _assert_squeezes_named(self, doc, chords, lines):
+        """The line after the declined line names every squeeze of `doc` in
+        its order, each landing on its side of the end it squeezes, and one
+        anchor line per timed squeeze follows it with the file's numbers."""
+        squeezes = [q for act in doc["activations"] for q in act["squeezes"]]
+        self.assertTrue(squeezes, "the fixture holds no squeeze")
+        squeeze_line = lines[1]
+        named = re.findall(r"chord (\d+) (in|out) \(", squeeze_line)
+        self.assertEqual(named, [(str(q["chord"]), GT._SQUEEZE_WORDS[q["kind"]][0])
+                                 for q in squeezes], squeeze_line)
+        presses = {}
+        for press in play_chart.press_plan(chords):
+            presses.setdefault(press.index, []).append(press)
+        items = squeeze_line.split(": ", 1)[1].split(", chord ")
+        timed = [q for q in squeezes if not q["needs_no_timing"]]
+        for q, item in zip(squeezes, items):
+            if q["needs_no_timing"]:
+                continue
+            with self.subTest(squeeze=q["chord"]):
+                gaps = [p.own_end_ms - p.at_ms for p in presses[q["chord"]]]
+                if q["kind"] == "SqIn":
+                    # A squeeze-in's presses all land before the end.
+                    self.assertTrue(all(gap > 0 for gap in gaps), gaps)
+                    self.assertNotIn("after", item)
+                else:
+                    # A squeeze-out's last press lands after the end.
+                    self.assertLess(gaps[-1], 0, gaps)
+                    self.assertIn("after", item)
+        anchors = [self._ANCHOR_LINE.match(line) for line in lines[2:2 + len(timed)]]
+        self.assertTrue(all(anchors), lines[2:2 + len(timed)])
+        self.assertEqual(
+            [m.groups() for m in anchors],
+            [(str(q["anchor_chord"]), f"{abs(q['anchor_aim_ms']):.1f}",
+              "early" if q["anchor_aim_ms"] < 0 else "late",
+              GT._SQUEEZE_WORDS[q["kind"]][0], str(q["chord"]), f"{q['planned_end_ms']:,.1f}")
+             for q in timed])
+
     def test_the_freak_reply_names_both_anchors_off_the_schedule(self):
-        lines = self._refine_play("freak_limits")[0].splitlines()
-        start = lines.index(FREAK_DECLINED)
-        self.assertEqual(lines[start + 1:start + 4], [FREAK_SQUEEZES] + FREAK_ANCHORS)
+        doc, chords, lines = self._squeeze_reply("freak_limits")
+        self._assert_squeezes_named(doc, chords, lines)
 
     def test_the_mouths_reply_names_the_squeezes_and_the_declined_fills(self):
-        lines = self._refine_play("mouths_refine")[0].splitlines()
-        start = lines.index(MOUTHS_DECLINED)
-        self.assertEqual(lines[start + 1:start + 5], [MOUTHS_SQUEEZES] + MOUTHS_ANCHORS)
+        doc, chords, lines = self._squeeze_reply("mouths_refine")
+        # The declined line names each chord the file declines, and says
+        # "nothing sent" exactly for those that keep no gem.
+        kept = {row["index"]: row["kept_gems"] for row in doc["chords"] if row["declined"]}
+        self.assertTrue(kept)
+        items = re.findall(r"(\d+) \(([^)]*)\)", lines[0])
+        self.assertEqual([int(index) for index, _gems in items], sorted(kept))
+        self.assertEqual([gems == "nothing sent" for _index, gems in items],
+                         [not kept[index] for index in sorted(kept)])
+        self._assert_squeezes_named(doc, chords, lines)
 
     def test_the_bomber_reply_names_the_early_anchor(self):
         lines = self._refine_play("bomber_refine")[0].splitlines()
@@ -1293,165 +1343,134 @@ class GameToolsTest(unittest.TestCase):
         self.assertTrue(line.startswith(BOMBER_ORDER), line[:200])
 
     def test_a_long_order_line_names_every_split_chord(self):
-        # Twelve made-up chords, a second apart, each a green cymbal then a
-        # kick 8 ms later: two presses per chord, hand-built.
-        schedule = schedule_of({"chords": [
-            {"index": i, "ms": 1000.0 * (i + 1), "notes": [
-                {"color": "Kick", "cymbal": False, "dynamic": "none"},
-                {"color": "Green", "cymbal": True, "dynamic": "none"}]}
-            for i in range(12)]})
-        presses = []
-        for press in schedule["presses"]:
-            presses.append({**press, "gems": [1]})
-            presses.append({**press, "gems": [0], "after_ms": 8.0, "aim_ms": press["aim_ms"] + 8.0})
-        schedule["presses"] = presses
-        chords, lines = GT.chords_to_play(self._schedule_file(schedule))
-        self.assertEqual(GT.order_lines(chords, schedule),
-                         ["order: chords "
-                          + ", ".join(f"{i} (green cymbal, then kick 8 ms later)"
-                                      for i in range(12))])
-        self.assertEqual(lines, ["declined: chords none"] + GT.order_lines(chords, schedule))
+        with open(self.SENRI_SCHEDULE, encoding="utf-8") as f:
+            doc = json.load(f)
+        # The chords the file presses in order groups (a press with an
+        # `after_ms`), less its timed squeeze-outs, whose presses the
+        # squeeze line names, and how many presses each one takes.
+        squeeze_outs = {q["chord"] for act in doc["activations"] for q in act["squeezes"]
+                        if q["kind"] == "SqOut" and not q["needs_no_timing"]}
+        presses_of = {}
+        for press in doc["presses"]:
+            presses_of[press["chord"]] = presses_of.get(press["chord"], 0) + 1
+        split = sorted({press["chord"] for press in doc["presses"]
+                        if press["after_ms"] is not None} - squeeze_outs)
+        self.assertTrue(split)
+        chords, lines = GT.chords_to_play(self.SENRI_SCHEDULE)
+        order = GT.order_lines(chords, doc)
+        self.assertEqual(len(order), 1, order)
+        self.assertIn(order[0], lines)
+        items = order[0].split(": ", 1)[1].split("), ")
+        self.assertEqual([int(item.split(" (", 1)[0].split()[-1]) for item in items], split)
+        for index, item in zip(split, items):
+            with self.subTest(chord=index):
+                # One "then" per press after the first.
+                self.assertEqual(item.count("then "), presses_of[index] - 1, item)
 
     def test_a_chart_with_no_split_chord_gives_no_order_line(self):
-        schedule = schedule_of({"chords": [
-            {"index": 0, "ms": 1000.0, "notes": [
-                {"color": "Kick", "cymbal": False, "dynamic": "none"},
-                {"color": "Green", "cymbal": True, "dynamic": "none"}]}]})
-        chords, _lines = GT.chords_to_play(self._schedule_file(schedule))
-        self.assertEqual(GT.order_lines(chords, schedule), [])
-
-    def _schedule_file(self, schedule):
-        path = os.path.join(self.tmp, "order schedule.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(schedule, f)
-        return path
-
-    def test_an_infeasible_squeeze_is_refused_naming_it(self):
-        # Freak's schedule with its first squeeze marked not feasible:
-        # load_schedule's refusal comes back whole, and no run starts.
-        with open(os.path.join(_PROBE_TESTS, "freak_limits_schedule.json"),
-                  encoding="utf-8") as f:
-            schedule = json.load(f)
-        schedule["activations"][0]["squeezes"][0]["feasible"] = False
-        path = self._schedule_file(schedule)
-        t, seen = self._decline_rig()
-        reply = t.tools.ch_play_chart(os.path.join(_PROBE_TESTS, "freak_limits_score.json"),
-                                      path, route="keys")
-        self.assertTrue(reply.startswith(
-            f"{path} holds a squeeze the game cannot make at 100% speed: chord 387 "
-            "(activation 0, SqOut, "), reply)
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, [])
-
-    def test_the_status_says_presses_and_chords_when_a_chord_is_split(self):
-        # Two press rows of chord 740, as press_plan splits it.
-        rows = [{**ROWS[0], "index": 740}, {**ROWS[1], "index": 740, "send": play_chart.SENT}]
-
-        def live_play(chords, *, on_press, **kw):
-            for row in rows:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("sent 2 presses for 1 chord",
-                      t.tools.ch_play_status().splitlines())
+        with open(self.EDGE_WALK_SCHEDULE, encoding="utf-8") as f:
+            doc = json.load(f)
+        self.assertFalse([press["chord"] for press in doc["presses"]
+                          if press["after_ms"] is not None])
+        chords, lines = GT.chords_to_play(self.EDGE_WALK_SCHEDULE)
+        self.assertEqual(GT.order_lines(chords, doc), [])
+        self.assertEqual(lines, [GT.declined_line(chords, doc)])
 
     def test_the_status_of_a_chord_sent_as_one_message_is_no_clock_jump(self):
-        # play_chords sends a split chord's two order groups as one message:
-        # two rows, one `sent`.
-        rows = [{**ROWS[0], "index": 740, "send": play_chart.SENT}, {**ROWS[1], "index": 740, "send": play_chart.SENT}]
-
-        def live_play(chords, *, on_press, **kw):
-            for row in rows:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=1,
-                                        rows=list(rows))
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("sent 1 messages (2 presses) for 1 chord",
-                      lines)
+        # pitch-dark-run1's rows of chords 143 to 145 (testdata/ch_runs/
+        # pitch-dark-run1, copied from hydra-data/ch-mcp-runs/2026-11-12/
+        # pitch-dark-run1): the in-game player sent chord 144's two order
+        # groups as one message and logged a row per group. The result counts
+        # the rows as play_chords counts them, a message per chord.
+        rows = _press_rows("pitch-dark-run1", "press-1-chords-143-145.csv")
+        sent_rows = [r for r in rows if r["send"] == play_chart.SENT]
+        messages = len({r["index"] for r in sent_rows})
+        self.assertLess(messages, len(sent_rows))
+        lines = self._ended_status(rows, play_chart.RunResult(
+            stop="done", sent=messages, rows=list(rows)))
+        self.assertIn(f"sent {messages} messages ({len(sent_rows)} presses) for "
+                      f"{messages} chords", lines)
         self.assertFalse([line for line in lines if "jumped back" in line])
 
     def test_every_lane_has_a_word_in_the_reply(self):
         self.assertEqual(set(GT._LANE_WORDS), set(Lane))
 
+    def _row_fields(self, lines):
+        """The status's rows, newest first, each as {column: field}."""
+        header = next(i for i, line in enumerate(lines) if line.startswith("rows, newest first"))
+        columns = lines[header].split("(", 1)[1].rstrip("):").split(", ")
+        return columns, [dict(zip(columns, line[2:].split(", ")))
+                         for line in lines[header + 1:]]
+
     def test_the_status_counts_a_declined_chord_apart_from_the_misses(self):
-        row = {**ROWS[1], "send": play_chart.DECLINED}
-
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[0])
-            on_press(row)
-            return play_chart.RunResult(stop="done", sent=1, declined=1)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("sent 1, declined 1", lines)
-        self.assertIn("  1, 1500.0, 1499.0, 50, 50, declined", lines)
+        # pitch-dark-ratios-run1's rows of chords 61 to 64 (PITCH_DARK_RUN):
+        # the player declined chord 62. The result counts them as play_chords
+        # does.
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        declined = [r["index"] for r in rows if r["send"] == play_chart.DECLINED]
+        sent = [r["index"] for r in rows if r["send"] == play_chart.SENT]
+        self.assertEqual(declined, [62])
+        lines = self._ended_status(rows, play_chart.RunResult(
+            stop="done", sent=len(sent), declined=len(declined), rows=list(rows)))
+        self.assertIn(f"sent {len(sent)}, declined {len(declined)}", lines)
         self.assertFalse([line for line in lines if "jumped back" in line])
+        # The declined chord's row says so, and every other row says sent.
+        _columns, listed = self._row_fields(lines)
+        self.assertEqual({int(f["index"]): f["send"] for f in listed},
+                         {r["index"]: r["send"] for r in rows})
 
     def test_the_running_status_does_not_count_a_declined_row_as_a_hit(self):
-        release = threading.Event()
+        # The same four rows while the run goes on: the running line counts
+        # every press, the declined one too, and no sent count shows yet.
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        self.assertIn(play_chart.DECLINED, [r["send"] for r in rows])
+        tools = self.real_tools()
+        play = self._running_session(tools, rows)
+        lines = tools.ch_play_status().splitlines()
+        self.assertIn(f"running: {len(rows)} presses so far", lines)
+        self.assertFalse([line for line in lines if line.startswith("sent ")], lines)
+        self.assertEqual(tools.ch_play_stop().splitlines()[-1], "stopped")
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
 
-        def live_play(chords, *, on_press, **kw):
-            on_press({**ROWS[1], "send": play_chart.DECLINED})
-            delivered.set()
-            release.wait(THREAD_CAP_S)
-            return play_chart.RunResult(stop="done")
-
-        delivered = threading.Event()
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        self.assertTrue(delivered.wait(THREAD_CAP_S))
-        self.assertIn("running: 1 presses so far", t.tools.ch_play_status())
-        release.set()
-        t.tools._play.thread.join(THREAD_CAP_S)
+    def _held_rows(self):
+        """ls-p3-run1's first three rows (testdata/ch_runs/ls-p3-run1, copied
+        from hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1) as play_chords held
+        them: the press log's writer leaves a column blank when the row has
+        no such key, so a blank field is a key the row did not carry."""
+        return [{k: v for k, v in row.items() if v != ""}
+                for row in _press_rows("ls-p3-run1", "press-1-rows-1-3.csv")]
 
     def test_the_status_rows_show_the_kit_columns_only_when_rows_carry_them(self):
-        rows = [{**ROWS[0], "down_frame": 10, "up_frame": 12, "down_ms": 100, "up_ms": 113}]
-
-        def live_play(chords, *, on_press, **kw):
-            for row in rows:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=1, rows=rows)
-
-        t = ToolRig(self.tmp, kit=True, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json())
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertEqual(lines[-2:], [
-            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
-            "send, down_frame, up_frame, down_ms, up_ms):",
-            "  0, 1000.0, 998.0, 0, 50, sent, 10, 12, 100, 113"])
+        rows = self._held_rows()
+        self.assertTrue(all(c in r for r in rows for c in KIT_PRESS_COLUMNS))
+        columns, listed = self._row_fields(self._ended_status(
+            rows, play_chart.RunResult(stop="done", sent=len(rows), rows=list(rows))))
+        # The kit columns show, in the press log's order, each field the row's.
+        self.assertEqual([c for c in columns if c in KIT_PRESS_COLUMNS], list(KIT_PRESS_COLUMNS))
+        self.assertEqual([[f[c] for c in KIT_PRESS_COLUMNS] for f in listed],
+                         [[r[c] for c in KIT_PRESS_COLUMNS] for r in reversed(rows)])
+        # The same presses on the keys route: play_chords takes the kit
+        # columns only from a kit press's reply, so its rows carry none.
+        keys_rows = [{k: v for k, v in r.items() if k not in KIT_PRESS_COLUMNS} for r in rows]
+        columns, _listed = self._row_fields(self._ended_status(
+            keys_rows, play_chart.RunResult(stop="done", sent=len(rows), rows=list(keys_rows))))
+        self.assertFalse([c for c in columns if c in KIT_PRESS_COLUMNS], columns)
 
     def test_the_status_rows_show_the_timing_columns(self):
         # D335 item 2: the timing columns go into the status rows as well as
-        # the file. No row reads an end, so end_read_took_ms is left out, as
-        # every column no row carries is.
-        rows = [{**ROWS[0], "wait_read_max_ms": 0.4, "wait_oversleep_max_ms": 1.2,
-                 "press_took_ms": 7.6, "reply_check_took_ms": 0.1,
-                 "score_read_took_ms": 0.3, "prev_handoff_took_ms": 0.05}]
-
-        def live_play(chords, *, on_press, **kw):
-            for row in rows:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=1, rows=rows)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertEqual(lines[-2:], [
-            "rows, newest first (index, chart_ms, clock_ms_at_press, score_before, score_after, "
-            "send, wait_read_max_ms, wait_oversleep_max_ms, press_took_ms, reply_check_took_ms, "
-            "score_read_took_ms, prev_handoff_took_ms):",
-            "  0, 1000.0, 998.0, 0, 50, sent, 0.4, 1.2, 7.6, 0.1, 0.3, 0.05"])
+        # the file. These rows read no end, so they carry no end_read_took_ms,
+        # and the status leaves out that column as it does every column no
+        # row carries.
+        rows = self._held_rows()
+        carried = [c for c in TIMING_PRESS_COLUMNS if any(c in r for r in rows)]
+        self.assertTrue(carried)
+        self.assertFalse([r for r in rows if "end_read_took_ms" in r])
+        columns, listed = self._row_fields(self._ended_status(
+            rows, play_chart.RunResult(stop="done", sent=len(rows), rows=list(rows))))
+        self.assertEqual([c for c in columns if c in TIMING_PRESS_COLUMNS], carried)
+        self.assertEqual([[f[c] for c in carried] for f in listed],
+                         [[r.get(c, "") for c in carried] for r in reversed(rows)])
 
     # -- the chained start --------------------------------------------------------------
 
