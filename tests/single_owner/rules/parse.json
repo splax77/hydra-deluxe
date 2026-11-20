@@ -293,11 +293,6 @@
       ],
       "owner_lines": [
         {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(four.subtitle, \"SP cap 4 bars\"));",
-          "why": "checks a report subtitle's tail, not a file format"
-        },
-        {
           "file": "tests/test_model.cpp",
           "line_text": "CHECK(ends_with(n, syms));",
           "why": "checks that an activation's notation ends with its squeeze symbols, not a file format"
@@ -309,22 +304,7 @@
         },
         {
           "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, \"SP cap 1 bar\"));",
-          "why": "checks a report subtitle's tail, not a file format"
-        },
-        {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,",
-          "why": "checks a report subtitle's tail, not a file format"
-        },
-        {
-          "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))",
-          "why": "checks a report subtitle's tail, not a file format"
-        },
-        {
-          "file": "tests/test_report_rows.cpp",
-          "line_text": "CHECK(hydra::ends_with(ch10.subtitle, \"SP cap 4 bars — Clone Hero 1.0 fills\"));",
           "why": "checks a report subtitle's tail, not a file format"
         },
         {
@@ -381,6 +361,16 @@
           "file": "tests/test_dm_report.cpp",
           "line_text": "CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));",
           "why": "the second test's check that the comparison's subtitle ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_report_rows.cpp",
+          "line_text": "CHECK(hydra::ends_with(four.subtitle, \"SP cap \" + bars_text(4)));",
+          "why": "checks that a report subtitle ends with its SP cap in bars, not a file format"
+        },
+        {
+          "file": "tests/test_report_rows.cpp",
+          "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(cap)).subtitle,",
+          "why": "checks that a report subtitle ends with its SP cap in bars, not a file format"
         }
       ],
       "scope": [
