@@ -33,6 +33,7 @@
 #include "record_fixtures.h"
 #include "search/graph.h"
 #include "search/pather.h"
+#include "text_split.h"  // split_on
 
 using namespace hydra;
 
@@ -967,16 +968,6 @@ static std::string pieces_joined(const std::vector<std::string>& parts, std::str
         if (i) out += sep;
         out += parts[i];
     }
-    return out;
-}
-
-// The pieces of `text` between each `sep`.
-static std::vector<std::string> split_on(const std::string& text, std::string_view sep) {
-    std::vector<std::string> out;
-    size_t from = 0;
-    for (size_t at; (at = text.find(sep, from)) != std::string::npos; from = at + sep.size())
-        out.push_back(text.substr(from, at - from));
-    out.push_back(text.substr(from));
     return out;
 }
 

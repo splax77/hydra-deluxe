@@ -27,6 +27,7 @@
 #include "pathbuilder/pb_coach.h"  // start_window
 #include "pathbuilder/pb_text.h"
 #include "search/pather.h"
+#include "text_split.h"  // split_on
 
 using namespace hydra;
 using namespace hydra::pathbuilder;
@@ -85,18 +86,6 @@ void for_each_best_activation(const std::function<void(const ChartCase&, const A
     REQUIRE_FALSE(charts_with_activations().empty());
     for (const ChartCase& c : charts_with_activations())
         for (const Activation& act : c.rec->best_path().all_activations()) fn(c, act);
-}
-
-// The pieces of `text` between each `sep`.
-std::vector<std::string> split_on(const std::string& text, const std::string& sep) {
-    std::vector<std::string> out;
-    size_t from = 0;
-    for (size_t at = text.find(sep); at != std::string::npos; at = text.find(sep, from)) {
-        out.push_back(text.substr(from, at - from));
-        from = at + sep.size();
-    }
-    out.push_back(text.substr(from));
-    return out;
 }
 
 // The pieces of a line the screen joins with app::kFactSeparator.
