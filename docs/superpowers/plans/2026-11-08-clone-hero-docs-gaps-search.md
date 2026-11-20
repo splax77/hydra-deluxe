@@ -54,7 +54,7 @@ The decision log `docs/audit/2026-10-03-fix-decisions.md` (402 KB): 76 lines nam
 
 Hydra's own code and tests: 253 lines in 68 files under `src/`, 283 lines in 57 files under `tests/`, and 902 lines in 105 files under `tools/`, match "Clone Hero", "CH", "the game" or a seven-digit address. A comment that asserts what the game does is a claim with no block, or an "assumes" block's home.
 
-The tools' own docs: `tools/ch_probe/constants.py` (359 lines, the one home of method addresses and field offsets), `tools/ch_probe/SPEC.md` (16 KB), `tools/ch_probe/README.md`, `tools/ch_mcp/README.md` (18 KB) and `tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md` (33 KB of game fields). The docs test already ties every `constants.py` address to the facts table, but not to a block.
+The tools' own docs: `tools/ch_probe/constants.py` (359 lines, the one home of method addresses and field offsets), `tools/ch_probe/SPEC.md` (16 KB), `tools/ch_probe/README.md`, `tools/ch_mcp/README.md` (18 KB) and `tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md` (33 KB of game fields).
 
 Agent pages: `docs/agents/clone-hero-mcp.md` (74 lines) and `docs/agents/this-machine.md` (79 lines, the only agents page that names addresses).
 
@@ -152,7 +152,7 @@ Acceptance: every held row has an exit and evidence; every exit 3 and 4 row has 
 
 The user gets one list, grouped by page and then by block id, with "new" rows at each page's end. Each row shows the seven cells, the verifier's mark and the exit. The splits come first, in messages of five or fewer, each written as the audit method's "How to write a question" says: both sides quoted as the page and the source have them, the user's own words if a ruling exists, and no purpose nobody wrote down. The plain write-backs follow as one table. The list also carries three closing lines: the sources read in full, the sources read in part with what was skipped, and the sources not read. The list is committed as question 3 proposes, on a branch, and goes past a fresh reviewer before the user sees it (the plans-reviewed rule), because it is the document the write-back step will be built from.
 
-No page under `docs/clone-hero/` changes in this plan. The write-back step is a later plan, after the user's yes, and it carries the docs test (`hydra_tests.exe "-tc=docs match code*"`, run by the main session) and one review per page change.
+No page under `docs/clone-hero/` changes in this plan. The write-back step is a later plan, after the user's yes, and it carries one review per page change.
 
 Acceptance: the committed list exists with every held row; each split sits in a chat message with four or fewer other splits; `git log -- docs/clone-hero` on the search's branches shows no commit from this plan.
 

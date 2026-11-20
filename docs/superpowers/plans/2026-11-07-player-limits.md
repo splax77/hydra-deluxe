@@ -261,7 +261,7 @@ Uses rows P24, P25, P26, P30. Reads, in order. First: the kit setup line accepts
 | The page line names the new charts if Q8 (a); the runs' facts reach pages 03, 05 and 07 in the runs' merges | T6; Q8 | T6 | the page lines after the merges |
 | `QUIET_CPU_PCT` is unchanged unless the user picks otherwise | design 11; Q10 | none (a check) | the reviewer's grep of `quiet.py` at the final merge |
 | Nothing builds or runs before the user's yes; no whole-library run | the plain version | all | the first line; each `Calls:` line names one folder |
-| The plan leaves the repo in the merge that finishes its work | CLAUDE.md doc review | T6 | the docs check at that merge |
+| The plan leaves the repo in the merge that finishes its work | CLAUDE.md doc review | T6 | `git grep` for the plan path finds nothing at that merge |
 
 ## Premise map
 

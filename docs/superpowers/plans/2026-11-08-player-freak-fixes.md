@@ -122,12 +122,12 @@ Design points 1 to 4 and 6. Acceptance:
 Owns: `docs/clone-hero/05-star-power.md`, `docs/clone-hero/03-timing.md` (TM-50's rule text only), `docs/clone-hero/live-checks.md`, `docs/clone-hero/README.md` (the count table and its date), the `ch_kit_press` docstring in `tools/ch_mcp/server.py`. Checks each is stale before changing it, and reports any that is not.
 
 - Page 05: a new block (next free SP id) "The end is stamped from the frame that reads the press", Label "Proven in a live run": the end came 2.98 ms (Bomber 147, `ls-r2ab-run1\replies.txt`) and 3.03 ms on each of Freak 232, 633 and 1062 (`ls-f1-run1\press-2.csv`: the judged time is `end_read_ms` less the dump's stored end plus `chart_ms`; subtract `clock_ms_at_press`) after the song clock the player read at the send, one frame at TM-49's rate; r read as 1.0 at these; Hydra line `retime_from_end`; Found this session and d0a3868c. SP-39's label stays (r was 1.0 everywhere, which checks nothing about r); the block's evidence line says so.
-- Page 03 TM-50: question 5's answer; cite `machine-2\threads.csv` samples 1974 to 1978 and press rows 152 and 153. The docs test's shape rules hold (seven lines, labels, backticked names exist).
+- Page 03 TM-50: question 5's answer; cite `machine-2\threads.csv` samples 1974 to 1978 and press rows 152 and 153. The page's shape holds (seven lines, labels, backticked names exist).
 - live-checks.md lines 81 and 83 (TM-22/TM-27 and TM-26) are answered by LS-E; move them to the page's answered form, or strike them the way the page strikes answered rows, and bump its write-back date.
 - README count table: recount every page's `###` headings and labels (TM-50 and the new SP block change two rows and the total), and the "Last write-back" line.
 - `server.py` `ch_kit_press` docstring: compare with `kit_tools.ch_kit_press`'s parameters and reply; if nothing is stale, the report says so and the file is untouched.
 
-Acceptance: `hydra_precheck.exe` from the main checkout passes on the branch; the main session runs `hydra_tests.exe "-tc=docs match code*"`; each changed line is quoted in the report with its source.
+Acceptance: `hydra_precheck.exe` from the main checkout passes on the branch; each changed line is quoted in the report with its source.
 
 ## The live steps
 
@@ -174,7 +174,7 @@ After LS-F2b passes, the limits plan's LS-R1a/b and LS-G1a/b run as written ther
 | After the read the late press keeps its place only with two frames of room, else question 3's answer; the row says which | design 4; Q3 | T2 | the two `retime_from_end` tests; LS-F2b fourth read |
 | The reply names bare need, frames and margin | design 6 | T2 | the string test |
 | The margin is the chosen value and only a margin | Q2 | T2 | the pin test with this plan named |
-| Page 05 holds the frame-read fact as a proven block; TM-50 names the game's stall; live-checks, the README table and `ch_kit_press`'s text are checked and fixed only where stale | design, write-backs; Q5 | T3 | the docs test at merge; each changed line quoted with its source in T3's report |
+| Page 05 holds the frame-read fact as a proven block; TM-50 names the game's stall; live-checks, the README table and `ch_kit_press`'s text are checked and fixed only where stale | design, write-backs; Q5 | T3 | each changed line quoted with its source in T3's report |
 | Every live step has a cap and a stop line; no step repeats on its own | the live steps | LS-F2a, LS-F2b | each step's first and last sentence |
 | Freak run 2 passes at 531,685 with 5 activations, or fails with the named read | LS-F2b | LS-F2b | the sixth read |
 

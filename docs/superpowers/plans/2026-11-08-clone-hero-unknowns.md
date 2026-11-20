@@ -195,7 +195,7 @@ Every agent brief starts with `docs/agents/brief-preamble.md` and carries what `
 
 Nobody writes an area page until the user has seen the moves that touch a Hydra rule. After each round, the main session groups the proposed moves into two lists: moves on blocks whose Hydra line says "no owner", and moves on blocks that name a Hydra owner. The second list goes to the user with each block's old and new label and the proof. Any result that shows the game differing from Hydra goes in the same message as its own question, written to audit-method's "How to write a question", and is never folded into a label move.
 
-Then one executor on Opus per page set writes the pages: set A is pages 01 and 03, set B is page 02, set C is pages 04 and 05, set D is pages 06 and 07. Each also updates the README's counts table, `live-checks.md` (a check that a run settled leaves the page) and `questions.md` (new Q-ids). The executor runs `tools/ch_mcp/dump_facts.py --check` for the facts table, and the main session runs the docs test on the branch.
+Then one executor on Opus per page set writes the pages: set A is pages 01 and 03, set B is page 02, set C is pages 04 and 05, set D is pages 06 and 07. Each also updates the README's counts table, `live-checks.md` (a check that a run settled leaves the page) and `questions.md` (new Q-ids). The executor runs `tools/ch_mcp/dump_facts.py --check` for the facts table.
 
 A fresh agent on Sonnet then checks every label move, per audit-method stage 6: it opens the listing lines or the run file the new Evidence line names and returns PASS, REOPEN or GONE for each move. A move with REOPEN goes back to Unknown before merge. The checker never checked a block it found or wrote.
 
@@ -271,7 +271,7 @@ Fallback live steps for NL-12, NL-13, NL-39, SP-06, SP-15, SP-18, SP-30, SC-29 a
 | A fresh agent checks every label move. | "Who writes the pages" | the checker | The checker's file has one verdict per moved block. |
 | Live runs run one at a time, never needing focus, never over the library. | "The live steps" | LS-U1 to LS-U5 | Each step's Calls line holds only kit-route tools; no step names the whole-library flag or the key route. |
 | Each agent stays inside 100 calls and 20 minutes, about eight blocks. | "Workstreams" | W1 to W11 | The progress hook's status files; a workstream list of nine or fewer blocks. |
-| Every new listing is committed with its `.md` and its facts rowed. | "Routes" (b) | W1 to W10 | `tools/ch_mcp/dump_facts.py --check` and the docs test's listing check. |
+| Every new listing is committed with its `.md` and its facts rowed. | "Routes" (b) | W1 to W10 | `tools/ch_mcp/dump_facts.py --check`. |
 | A block that cannot be checked goes to the user. | first section | questions 2 to 13 | Each such row's Route cell names its question number. |
 | Each live step has a cap of two runs. | "The live steps" | LS-U1 to LS-U5 | The go message names the run number; a third is refused. |
 
@@ -298,7 +298,6 @@ The 30 "Hydra assumes it, never checked" blocks (the user chose "Unknown only").
 | P12: the Colors (BTBAM) run's `refs.json` entry exists in the video-tools folder. | unchecked | `docs/clone-hero/04-fills.md` FL-45 names the entry; no file was opened | question 1 |
 | P13: `tools/ch_mcp/dump_facts.py --check` rebuilds the facts table and reports differences. | code | `docs/clone-hero/README.md` line 94 | checked 2026-11-08 |
 | P14: the `rea` MCP server offers cross-reference tools for native binaries. | unchecked | the server's instructions text as this session lists it, which names `GameAssembly.dll` nowhere; no tool was called | question 14 |
-| P15: a plan dated on or after 2026-11-01 under `docs/superpowers/plans/` is held to the Premise map shape by the docs test. | code | `tests/test_docs_match_code.cpp` lines 1516 to 1537 | checked 2026-11-08 |
 | P16: the user chose "Unknown only" for this plan's scope. | ruling | `docs/agents/rulings/clone-hero.md` line 5, which holds the user's words "every claim labeled unknown should be checked" and their choice "Unknown only" | checked 2026-11-08 |
 | P17: writes to game fields through setters were allowed by the user on 2026-10-30 ("Allow writes too"). | ruling | `docs/agents/rulings/clone-hero.md` line 12 | checked 2026-11-08 |
 | P18: runs must not need the window in front ("yes we need to do autonomous runs. that waws the whole point of this"). | ruling | `docs/agents/rulings/clone-hero.md` line 11 | checked 2026-11-08 |
