@@ -113,17 +113,15 @@ struct PreviewActivation {
     // Empty without a stored end, or when the end is not after the start (a
     // window of no length is no window). The drain box, the score box and
     // the highway's tinted floor and lit railings (through the track state's
-    // sp_active intervals) all read it; the drain and score boxes ask
-    // sp_running_at.
+    // sp_active intervals) all read it. Whether SP runs at a moment of it is
+    // sp_running_in's answer, for the boxes and the highway alike.
     std::optional<std::pair<double, double>> sp_window() const {
         if (!has_sp_end || !(sp_end_ms > ms)) return std::nullopt;
         return std::make_pair(ms, sp_end_ms);
     }
     // Is this activation's Star Power running with the playhead at `now`
-    // (ms)? The one home of that rule (M48), defined after struck_at below.
-    // The drain and score boxes ask it through running_activation; the
-    // highway's sp_active sweep answers it separately, and test_track_state
-    // pins the two together.
+    // (ms)? Defined after struck_at below, through sp_running_in, the rule's
+    // one home. The drain and score boxes ask it through running_activation.
     bool sp_running_at(double now) const;
     // Where this window's SP end changed, copied off the record as stored:
     // each step's tick (SpEndStep::tick) and the end after it. The first
@@ -402,12 +400,21 @@ PreviewScoreBox build_score_box(const PreviewScene& scene, double now_ms, double
 // this.
 inline bool struck_at(double now_ms, double note_ms) { return note_ms <= now_ms; }
 
+// Is Star Power running at `now` in the window `w`, {start, end}? The one
+// home of that rule (M48): SP is entered when the window's chord is struck
+// (struck_at) and left at the window's end. `now` and `w` share one unit.
+// PreviewActivation::sp_running_at asks it in ms on its sp_window; the
+// highway's sp_active field (render::SpRunSweep) asks it in seconds on the
+// same windows.
+inline bool sp_running_in(const std::pair<double, double>& w, double now) {
+    return struck_at(now, w.first) && now < w.second;
+}
+
 // PreviewActivation::sp_running_at, declared in the struct above: the
-// activation's sp_window, entered when its chord is struck (struck_at) and
-// left at the window's end.
+// activation's sp_window, asked through sp_running_in.
 inline bool PreviewActivation::sp_running_at(double now) const {
     const std::optional<std::pair<double, double>> w = sp_window();
-    return w && struck_at(now, w->first) && now < w->second;
+    return w && sp_running_in(*w, now);
 }
 
 // The Star Power drain box the Preview draws beside the SP gauge, at the
