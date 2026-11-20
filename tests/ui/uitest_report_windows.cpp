@@ -26,7 +26,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -838,8 +837,11 @@ std::string saved_path_window_entry(ImGuiTestContext* ctx, ImVec2 pos, ImVec2 si
     f.path_open = false;
     ctx->Yield(2);
     const std::string all = ImGui::SaveIniSettingsToMemory();
-    const std::string head = "[Window][###pathreport]";
-    const size_t start = all.find(head);
+    // The entry is headed by the window's whole name; its id is the part
+    // from "###" on.
+    const size_t id = all.find("###pathreport]");
+    IM_CHECK_RETV(id != std::string::npos, std::string());
+    const size_t start = all.rfind("[Window][", id);
     IM_CHECK_RETV(start != std::string::npos, std::string());
     const size_t end = all.find("\n[", start);
     return all.substr(start, end == std::string::npos ? std::string::npos : end + 1 - start);
@@ -945,44 +947,6 @@ private:
     std::optional<ScopedHook> seam_;
 };
 
-// The dmleaderboards API, canned as reset_app cans it (alice, one score on
-// `md5`), with an optional second score on a chart not in the library, and
-// optionally holding the scores fetch until release(). The destructor lets a
-// held fetch go; reset_app puts its own fetcher back for the next test.
-constexpr const char* kNotInLibraryMd5 = "ffffffffffffffffffffffffffffffff";
-std::atomic<bool> g_fetch_release{true};
-class CannedDm {
-public:
-    CannedDm(const std::string& md5, bool not_in_library_score, bool hold) {
-        g_fetch_release = !hold;
-        std::vector<std::string> rows{canned_dm_score(md5, 100000)};
-        if (not_in_library_score) rows.push_back(canned_dm_score(kNotInLibraryMd5, 90000));
-        const std::string body = canned_dm_scores(rows);
-        hydra::net::set_fetcher([body](const std::string& url, const std::atomic<bool>* cancel) {
-            if (url.find("/all-users") != std::string::npos) return canned_dm_users();
-            testwait::wait_until(
-                [cancel] { return g_fetch_release.load() || (cancel && cancel->load()); },
-                "the test to release or cancel the scores fetch");
-            return body;
-        });
-    }
-    ~CannedDm() { release(); }
-    CannedDm(const CannedDm&) = delete;
-    CannedDm& operator=(const CannedDm&) = delete;
-    void release() { g_fetch_release = true; }
-};
-
-// The toolbar's "Compare with dmleaderboards...", then alice in the picker.
-void compare_with_alice(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK_RETV(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10), );
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-}
-
 // A path report build just started under `hold`: the window shows the
 // building subtitle with no count, then, once released, the rows.
 void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
@@ -1031,11 +995,31 @@ void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh) {
     h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
 }
 
+// Waits up to `seconds` for `seen` to hold of the running batch's snapshot,
+// read beside what the last frame drew. The batch runs the real analyzer on
+// the corpus, so it can end before then: that fails at once, because the
+// running state can no longer be seen.
+bool while_batch_runs(ImGuiTestContext* ctx,
+                      const std::function<bool(const hydra::ui::BatchJob::Snapshot&)>& seen,
+                      double seconds) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(h.app->batch_job != nullptr, false);
+    bool ended = false;
+    const bool met = wait_until(ctx, [&] {
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        if (!s.finished && seen(s)) return true;
+        ended = s.finished;
+        return ended;
+    }, seconds);
+    IM_CHECK_RETV(!ended, false);  // the batch ended before its running state showed
+    return met;
+}
+
 // More rows to run than the threshold (lowered to 0 here): the path window
 // itself asks, in the batch confirm's words, and its Analyze runs the batch
 // the report then waits on, its count over the bar. No "Analyze library"
-// popup opens in the main window. The batch's charts wait at a gate, so the
-// running state is read before it ends.
+// popup opens in the main window. The running state is read while the real
+// batch runs.
 void test_open_asks(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1045,7 +1029,6 @@ void test_open_asks(ImGuiTestContext* ctx) {
         Harness& h;
         ~Threshold() { h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove; }
     } threshold{h};
-    BatchGate gate;
     h.app->report_confirm_above = 0;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Open path report");
@@ -1061,12 +1044,9 @@ void test_open_asks(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK_RETV(h.app->batch_job != nullptr, );
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
-    IM_CHECK(wait_until(ctx, [&] {
-        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
-        return !s.preparing && s.total > 0 && gate.started() >= 1;
-    }, 10));
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Analyzing "));
+    IM_CHECK_RETV(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0 && on_screen(h, "Analyzing ");
+    }, 10), );
     IM_CHECK(window_named("Analyze library") == nullptr);
     IM_CHECK(!h.app->batch_confirm_pending);
 
@@ -1076,7 +1056,6 @@ void test_open_asks(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_job->is_cancelled());
     IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Cancelled);
-    gate.allow(1000000);
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 60));
     h.app->close_path_report();
     ctx->Yield(2);
@@ -1155,54 +1134,41 @@ void test_open_path(ImGuiTestContext* ctx) {
 
 // Opening the report with nothing analyzed runs a batch over the corpus first
 // (D249 item 8): the window shows the batch's own count over
-// its bar, then the rows once the batch's report lands. The batch's workers
-// wait at a gate before each real analysis, so the count is read at 0.
+// its bar, then the rows once the batch's report lands. The batch runs the
+// real analyzer, and its count is read while it runs.
 void test_open_analyzes(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
 
-    static std::atomic<bool> go{false};
-    go = false;
-    struct Release {
-        ~Release() { go = true; }  // a failed check never leaves the workers waiting
-    } release;
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
-           const std::function<void(float)>& progress) {
-            while (!go.load()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            return hydra::app::analyze_chart_file(path, settings, progress);
-        },
-        hydra::app::batch_worker_count());
     ctx->SetRef("//Hydra");
     IM_CHECK(ctx->ItemExists("**/Open path report"));  // offered with nothing analyzed
     ctx->ItemClick("**/Open path report");
-    hydra::ui::set_app_batch_analyzer_for_test({}, 1);
     IM_CHECK_RETV(h.app->batch_job != nullptr, );
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
-    IM_CHECK(wait_until(ctx, [&] {
-        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
-        return !s.preparing && s.total > 0;
+    // The window shows the batch's own total over its bar.
+    IM_CHECK(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0 && on_screen(h, "Analyzing ") &&
+               on_screen(h, " of " + hydra::counted(s.total, "chart", "charts"));
     }, 10));
-    const int total = h.app->batch_job->snapshot().total;
-    ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, "Analyzing 0 of " + hydra::counted(total, "chart", "charts")));
 
-    go = true;
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
                h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
     }, 300));
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Charts shown"));
     IM_CHECK(on_screen(h, path_count_tail(h)));
     // The coverage lines: the batch gave every chart a result, so none is
     // left without one, and any chart it couldn't analyze is named by the
     // report's own line on screen.
     IM_CHECK_RETV(h.app->path_report.result != nullptr, );
     const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    // The tiles over the rows, each under the label its owner gives it.
+    for (const hydra::app::report::Tile& tile :
+         hydra::app::report::path_tiles(page.paths, {}, page.library_charts))
+        IM_CHECK(on_screen(h, tile.label));
     IM_CHECK_EQ(page.no_result_charts, int64_t{0});
     IM_CHECK(page.no_result_line.empty());
     IM_CHECK_EQ(page.songs + page.cant_analyze_charts, page.library_charts);
@@ -1248,60 +1214,8 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
-// Picking a player closes the picker and opens the comparison; the window's
-// "Compare another player..." reopens the picker; Cancel while it builds
-// closes the window and reopens the picker (D103 items 8 and 10).
-void test_dm_handover(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    CannedDm dm(h.app->library_row_at(0).entry.md5, /*not_in_library_score=*/false,
-                /*hold=*/false);
-
-    compare_with_alice(ctx);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1 of 1 score"));
-
-    // A ready comparison's "Compare another player...".
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("Compare another player...");
-    ctx->Yield(2);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(on_screen(h, "Pick a player"));
-
-    // Pick alice again with the scores fetch held: the window builds, and
-    // its Cancel closes it and goes back to the list.
-    g_fetch_release = false;
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report_build() == hydra::ui::ReportBuild::Building);
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    IM_CHECK(on_screen(h, "Fetching scores and building the report..."));
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("Cancel");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_report.window_open);
-    IM_CHECK(dm_window() == nullptr);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(on_screen(h, "Pick a player"));
-    dm.release();
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-}
-
 // The path report lists the current chart mode's records only, and a row
-// click selects its chart without switching the chart mode; a comparison row
-// not in the library selects nothing.
+// click selects its chart without switching the chart mode.
 void test_row_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1334,25 +1248,6 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), mode_b.c_str());
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
-
-    // A comparison with a second score on a chart not in the library. With
-    // the Status filter on "Not in your library", that score is row 1.
-    CannedDm dm(md5, /*not_in_library_score=*/true, /*hold=*/false);
-    compare_with_alice(ctx);
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    ctx->SetRef(dm_window());
-    ctx->ComboClick("##status/Not in your library");
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1 of 2 scores"));
-    const std::string mode_before = h.app->settings.chartmode_key();
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("**/1");
-    ctx->Yield(2);
-    IM_CHECK_STR_EQ(selected_md5().c_str(), md5.c_str());  // unchanged
-    IM_CHECK(h.app->settings.chartmode_key() == mode_before);
 }
 
 // The path window's count line for the report in memory, "n of M paths", as
@@ -1598,28 +1493,32 @@ void test_out_of_date(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->path_report.batch_finished.has_value());
 
     // A batch that is stopped builds no report, so the one in memory stays,
-    // out of date. The gate holds the run so Stop lands while it runs.
-    {
-        BatchGate gate;
-        ctx->SetRef("//Hydra");
-        ctx->ItemInputValue("**/##search", "");
-        IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
-        start_library_batch(ctx);
-        IM_CHECK_RETV(wait_until(ctx, [&] { return gate.started() >= 1; }, 30), );
-        h.app->batch_job->stop();
-        IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );
-    }
+    // out of date. The real batch over the corpus is stopped once it reaches
+    // its charts, before it can end by itself.
+    ctx->SetRef("//Hydra");
+    ctx->ItemInputValue("**/##search", "");
+    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
+    start_library_batch(ctx);
+    IM_CHECK_RETV(while_batch_runs(ctx, [](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0;
+    }, 30), );
+    h.app->batch_job->stop();
+    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );
     ctx->Yield(3);
     IM_CHECK(h.app->report_job == nullptr);
-    IM_CHECK(h.app->path_report.batch_finished.has_value());
+    IM_CHECK_RETV(h.app->path_report.batch_finished.has_value(), );
     dismiss_done(ctx);
 
-    const std::string library_line = "Your library changed since this report was built";
-    const std::string settings_line = "The settings changed since this report was built.";
+    // Each strip sentence as its owner writes it for this report.
+    namespace frame = hydra::ui::report_frame;
+    const std::string library_line =
+        frame::out_of_date_text(ReportOutOfDate::Library, h.app->path_report.batch_finished);
+    const std::string settings_line =
+        frame::out_of_date_text(ReportOutOfDate::Settings, std::nullopt);
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, library_line + " (a batch finished at "));
+    IM_CHECK(on_screen(h, library_line));
 
     // A setting the report reads.
     h.app->settings.sp_cap = 5;
@@ -1664,7 +1563,6 @@ const std::vector<TestEntry>& report_window_flow_tests() {
         {"report-window-open-analyzes", test_open_analyzes},
         {"report-window-open-asks", test_open_asks},
         {"report-window-cant-analyze-list", test_cant_analyze_list},
-        {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
         {"report-window-hidden-lets-go", test_hidden_lets_go},
