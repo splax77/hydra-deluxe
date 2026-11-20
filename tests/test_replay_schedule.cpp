@@ -830,24 +830,30 @@ TEST_CASE("schedule: press groups") {
 
     // In the file: an activation chord of Red, Green and Kick at one
     // multiplier presses Green (its activation note) first, then the rest
-    // 8 ms after.
+    // chord_order_gap_ms after.
     Overfill o = overfill();
     o.song.sequence[1].chord.add_note(NoteColor::Green);
     o.song.sequence[1].chord.add_note(NoteColor::Kick);
     const ReplayResult r = replay_path(o.song, {});
     const json s = schedule::schedule_json(o.song, {&o.act}, r, core::default_rules());
+    const json& c = s["constants"];
+    const double gap = c["chord_order_gap_ms"].get<double>();
     const std::vector<json> act = presses_of(s, 1, "plain");
     REQUIRE(act.size() == 2);
     const json& gems = s["chords"][1]["gems"];
     CHECK(gems[act[0]["gems"][0].get<size_t>()]["color"] == "Green");
     CHECK(act[0]["after_ms"].is_null());
-    CHECK(act[1]["after_ms"].get<double>() == 8.0);
-    CHECK(act[1]["aim_ms"].get<double>() == doctest::Approx(-2.0 + 8.0));
-    // The two-gem squeeze-out: the inside gem 15 ms before the assumed end
-    // (8,005.52 - 15 - 8,000 = -9.48), the late gem last.
+    CHECK(act[0]["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
+    CHECK(act[1]["after_ms"].get<double>() == gap);
+    CHECK(act[1]["aim_ms"].get<double>() == doctest::Approx(act[0]["aim_ms"].get<double>() + gap));
+    // The two-gem squeeze-out: the inside gem sp_end_lead_ms before the end
+    // the late gem's aim assumes, the late gem last.
     const std::vector<json> inside = presses_of(s, 4, "squeeze_out_inside");
+    const std::vector<json> late = presses_of(s, 4, "squeeze_out_late");
     REQUIRE(inside.size() == 1);
-    CHECK(within_cent(inside[0]["aim_ms"].get<double>(), -9.48));
+    REQUIRE(late.size() == 1);
+    CHECK(s["chords"][4]["ms"].get<double>() + inside[0]["aim_ms"].get<double>() ==
+          doctest::Approx(late[0]["aim_end_ms"].get<double>() - c["sp_end_lead_ms"].get<double>()));
     size_t inside_at = 0, late_at = 0;
     for (size_t k = 0; k < s["presses"].size(); ++k) {
         const json& p = s["presses"][k];
@@ -858,7 +864,9 @@ TEST_CASE("schedule: press groups") {
 }
 
 TEST_CASE("schedule: the planned end counts one frame") {
-    // A plain activation: the nominal end plus one frame less the 2 ms lead.
+    // A plain activation: the read after its chord is the step's stored end
+    // (tick 3000), planned later by the step's late scale times one frame
+    // (judge_early_ms) less the plain press's lead (press_lead_ms).
     const Song song = plain_song({0, 768, 1536});
     Activation act;
     act.timecode = song.timecode(768);
@@ -866,13 +874,14 @@ TEST_CASE("schedule: the planned end counts one frame") {
     act.transfer_post = TransferScale{1.0, 1.0};
     const ReplayResult r = replay_path(song, {});
     const json s = schedule::schedule_json(song, {&act}, r, core::default_rules());
+    const json& c = s["constants"];
     const json& reads = s["chords"][1]["reads"];
     REQUIRE(reads.size() == 1);
-    CHECK(within_cent(reads[0]["stored_end_ms"].get<double>(), 7812.5));
-    CHECK(within_cent(reads[0]["planned_end_ms"].get<double>(), 7813.5));
-    // A led anchor: the stored end moved by ratio x (lead - one frame);
-    // Freak 263's 21.825 ms lead at ratio 1.0 plans 60,554.525.
-    CHECK(within_cent(schedule::split_squeeze(sqout(48.15, 60545.26, 53.59, 60573.35, 1.0)).planned_end_ms, 60554.525));
+    const std::optional<TransferScale> scale = step_transfer_scale(act, 0, song.timing());
+    REQUIRE(scale.has_value());
+    CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(song.timecode(3000).ms()));
+    CHECK(reads[0]["planned_end_ms"].get<double>() - reads[0]["stored_end_ms"].get<double>() ==
+          doctest::Approx(scale->late * (c["judge_early_ms"].get<double>() - c["press_lead_ms"].get<double>())));
 }
 
 namespace {
@@ -896,23 +905,24 @@ schedule::SqueezeGeometry hand_built_squeeze_in() {
 }  // namespace
 
 TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squeeze-out's") {
-    // No chart in the corpus has a timed squeeze-in, so this is hand-built: the
-    // anchor (side 60) goes late for a chord (side 50) 40 ms past the end at
-    // 1,000 ms, ratio 1.0 on the late side (the early side, 2.0, is one a
-    // squeeze-in never reads). Worked by hand from the split rule in
-    // replay_schedule.cpp, one frame (3 ms) on each press:
-    // L = (60 - 50 + 40 + 15 - 3 - 3) / 2 = 29.5; the end lands at
-    // 1,000 + 1 x (29.5 + 3) = 1,032.5; the chord is pressed at
-    // 1,032.5 - 15 - 1,040 = -22.5; both rooms are 27.5.
+    // The hand-built squeeze-in (an anchor late for a chord 40 ms past the
+    // end, its early ratio one a squeeze-in never reads): the split keeps the
+    // rule (check_equal_room_split) with the anchor going late and the end
+    // moving later. Its squeeze-out mirror, the same sides and gap on the
+    // other side of the end, goes early. Pitch Dark's own squeeze-ins are
+    // checked the same way in its test further down.
+    const json c = schedule_constants();
     const schedule::SqueezeGeometry g = hand_built_squeeze_in();
     const schedule::SqueezeSplit s = schedule::split_squeeze(g);
-    CHECK(s.anchor_aim_ms == doctest::Approx(29.5));
-    CHECK(s.squeeze_aim_ms == doctest::Approx(-22.5));
-    CHECK(s.anchor_room_ms == doctest::Approx(27.5));
-    CHECK(s.squeeze_room_ms == doctest::Approx(27.5));
-    CHECK(s.planned_end_ms == doctest::Approx(1032.5));
-    CHECK(s.aim_end_ms == doctest::Approx(1032.5));
+    check_equal_room_split(g, s, c);
+    CHECK(s.anchor_aim_ms > 0.0);
     CHECK(s.feasible);
+    schedule::SqueezeGeometry mirror = g;
+    mirror.anchor_press = Press::Early;
+    mirror.squeeze_ms = g.end_ms - (g.squeeze_ms - g.end_ms);
+    const schedule::SqueezeSplit m = schedule::split_squeeze(mirror);
+    check_equal_room_split(mirror, m, c);
+    CHECK(m.anchor_aim_ms < 0.0);
 }
 
 TEST_CASE("schedule: moving_side reads the anchor's press, not the squeeze's kind") {
@@ -957,12 +967,14 @@ core::Rules rules_with(core::SqOutRule rule) {
 TEST_CASE("schedule: song_length_ms is app::song_length_ms") {
     // On the corpus, the field is the owner's answer for the chart's own
     // metadata, the call `hydra_replay schedule` and `dump` make.
+    // Every corpus chart is asked, none skipped.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int with_length = 0;
-    for (const std::string& path : corpus::chart_paths()) {
+    const std::vector<std::string> paths = corpus::chart_paths();
+    size_t asked = 0;
+    for (const std::string& path : paths) {
         const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
         INFO(path);
+        ++asked;
         const store::ChartTimingMeta meta = app::chart_timing_meta(std::nullopt, path);
         const std::optional<double> want = app::song_length_ms(meta, song);
         const json got = schedule::song_length_json(meta, song);
@@ -970,11 +982,20 @@ TEST_CASE("schedule: song_length_ms is app::song_length_ms") {
             CHECK(got.is_null());
             continue;
         }
-        ++with_length;
         REQUIRE(got.is_number());
         CHECK(got.get<double>() == *want);
     }
-    CHECK(with_length > 0);
+    CHECK(asked == paths.size());
+    // The number half is met on a chart known to have a length: Pitch Dark's
+    // schedule (testdata/replay/test_pitch_dark_ratio-schedule.json, written
+    // by hydra_replay schedule) carries one.
+    const std::string pitch = corpus::chart_named("test_pitch_dark_ratio");
+    REQUIRE_FALSE(pitch.empty());
+    const Song& pitch_song = corpus::song(pitch, cfg.reading());
+    const store::ChartTimingMeta pitch_meta = app::chart_timing_meta(std::nullopt, pitch);
+    REQUIRE(corpus::load_json(corpus::testdata_root() + "/replay/test_pitch_dark_ratio-schedule.json")["song_length_ms"]
+                .is_number());
+    CHECK(schedule::song_length_json(pitch_meta, pitch_song).is_number());
 
     // A hand-built song with no notes' end, no end event and no stated
     // length has no length: null, never a guess.
