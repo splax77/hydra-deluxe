@@ -14,6 +14,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <ogg/ogg.h>
@@ -24,7 +25,6 @@
 #include "stb_vorbis.c"
 
 #include "app/preview_source.h"
-#include "app/user_messages.h"
 #include "audio/decode.h"
 #include "audio/stem_reader.h"
 #include "core/little_endian.h"
@@ -37,7 +37,6 @@ using namespace hydra::audio;
 
 using testaudio::fixture_path;
 using testaudio::id3_tag;
-using testaudio::max_diff;
 using testaudio::read_fixture;
 
 namespace {
@@ -161,9 +160,52 @@ std::vector<float> read_to_end(StemReader& r, int64_t chunk = 997) {
     return got;
 }
 
-// Every Opus packet of the file's first stream, in order (headers included).
-std::vector<std::vector<unsigned char>> opus_packets(const std::vector<uint8_t>& b) {
-    std::vector<std::vector<unsigned char>> out;
+// Seeks to `frame` and reads up to `frames` frames from there (fewer at the
+// end of the stem).
+std::vector<float> read_after_seek(StemReader& r, int64_t frame, int64_t frames) {
+    r.seek(frame);
+    std::vector<float> got;
+    std::vector<float> buf(static_cast<std::size_t>(frames) * r.channels());
+    int64_t n = 0;
+    while (n < frames) {
+        const int64_t k = r.read(buf.data(), frames - n);
+        if (k == 0) break;
+        got.insert(got.end(), buf.begin(), buf.begin() + k * r.channels());
+        n += k;
+    }
+    return got;
+}
+
+// Seeks `r` to `frame`, reads `frames` frames, and checks they are the
+// straight decode's frames from `frame` on, sample for sample, with no
+// warm-up left out. Each reader settles its decoder before the target
+// itself: ma_decoder's WAV and FLAC seeks are exact, each MP3 seek point
+// decodes two whole frames before the target (both in ma_reader.cpp), the
+// Opus reader decodes a pre-roll first (kPreRoll, opus_reader.cpp),
+// and stb_vorbis_seek decodes the packet before the target's packet for its
+// overlap (stb_vorbis_seek_frame in third_party/stb/stb_vorbis.c).
+void check_seek_lands(StemReader& r, const DecodedAudio& full, int64_t frame, int64_t frames) {
+    CAPTURE(frame);
+    const std::vector<float> got = read_after_seek(r, frame, frames);
+    // The straight decode's frames from `frame`: `frames` of them, or as many
+    // as are left before the end.
+    const int64_t count = (std::min)(frames, full.frames() - frame);
+    const auto from = full.samples.begin() + static_cast<std::ptrdiff_t>(frame) * full.channels;
+    const std::vector<float> want(from, from + static_cast<std::ptrdiff_t>(count) * full.channels);
+    CHECK(got == want);
+}
+
+// One packet of an Ogg stream and the index of the stream's page that
+// completed it.
+struct PagedPacket {
+    std::vector<unsigned char> bytes;
+    int page = 0;
+};
+
+// Every Opus packet of the file's first stream, in order (headers included),
+// each with the page that completed it.
+std::vector<PagedPacket> opus_paged_packets(const std::vector<uint8_t>& b) {
+    std::vector<PagedPacket> out;
     ogg_sync_state oy;
     ogg_sync_init(&oy);
     char* buf = ogg_sync_buffer(&oy, static_cast<long>(b.size()));
@@ -171,19 +213,103 @@ std::vector<std::vector<unsigned char>> opus_packets(const std::vector<uint8_t>&
     ogg_sync_wrote(&oy, static_cast<long>(b.size()));
     ogg_stream_state os;
     bool ready = false;
+    int page = 0;
     ogg_page og;
     while (ogg_sync_pageout(&oy, &og) == 1) {
         if (!ready) {
             ogg_stream_init(&os, ogg_page_serialno(&og));
             ready = true;
         }
-        ogg_stream_pagein(&os, &og);
+        if (ogg_stream_pagein(&os, &og) != 0) continue;  // a later link's page
         ogg_packet op;
-        while (ogg_stream_packetout(&os, &op) == 1)
-            out.emplace_back(op.packet, op.packet + op.bytes);
+        while (ogg_stream_packetout(&os, &op) == 1) {
+            PagedPacket p;
+            p.bytes.assign(op.packet, op.packet + op.bytes);
+            p.page = page;
+            out.push_back(std::move(p));
+        }
+        ++page;
     }
     if (ready) ogg_stream_clear(&os);
     ogg_sync_clear(&oy);
+    return out;
+}
+
+// Every Opus packet of the file's first stream, in order (headers included).
+std::vector<std::vector<unsigned char>> opus_packets(const std::vector<uint8_t>& b) {
+    std::vector<std::vector<unsigned char>> out;
+    for (PagedPacket& p : opus_paged_packets(b)) out.push_back(std::move(p.bytes));
+    return out;
+}
+
+// The samples one Opus audio packet decodes to, from its TOC byte.
+int64_t opus_samples(const std::vector<unsigned char>& packet) {
+    return opus_packet_get_nb_samples(packet.data(), static_cast<opus_int32>(packet.size()),
+                                      48000);
+}
+
+// The little-endian 16-bit field at bytes i and i + 1 of an Opus header
+// packet; at() fails the test on a header too short to hold it.
+uint16_t opus_head_u16(const std::vector<unsigned char>& head, std::size_t i) {
+    const uint8_t two[2] = {head.at(i), head.at(i + 1)};
+    return core::read_le_u16(two);
+}
+
+// The pre-skip an OpusHead packet states (bytes 10-11).
+int64_t opus_preskip(const std::vector<unsigned char>& head) {
+    return opus_head_u16(head, 10);
+}
+
+// Writes `q78` into an OpusHead packet's output gain field (bytes 16-17,
+// a signed Q7.8 dB value).
+void set_opus_head_gain(std::vector<unsigned char>& head, int16_t q78) {
+    const uint16_t u = static_cast<uint16_t>(q78);
+    head.at(16) = static_cast<unsigned char>(u & 0xFF);
+    head.at(17) = static_cast<unsigned char>(u >> 8);
+}
+
+// The linear output gain the OpusHead of `file`'s first stream asks for: its
+// Q7.8 dB field as 10^(dB / 20), in float, as OpusReader::start_link
+// (opus_reader.cpp) computes it. That owner is private to the reader.
+float opus_head_gain(const std::vector<uint8_t>& file) {
+    const std::vector<std::vector<unsigned char>> pk = opus_packets(file);
+    REQUIRE(!pk.empty());
+    const int16_t q78 = static_cast<int16_t>(opus_head_u16(pk[0], 16));
+    return q78 == 0 ? 1.0f : static_cast<float>(std::pow(10.0, q78 / (20.0 * 256.0)));
+}
+
+// Every sample of `x` times `gain`, the multiply the reader applies.
+std::vector<float> times_gain(const std::vector<float>& x, float gain) {
+    std::vector<float> out(x.size());
+    std::transform(x.begin(), x.end(), out.begin(), [gain](float s) { return s * gain; });
+    return out;
+}
+
+// An Opus audio packet of the file's first stream that its page holds whole
+// and not first, so the packet starts strictly inside the page: its first
+// stem frame (after the pre-skip) and its length in frames.
+struct PacketSpan {
+    int64_t start = 0;
+    int64_t frames = 0;
+};
+
+std::vector<PacketSpan> opus_mid_page_packets(const std::vector<uint8_t>& b) {
+    const std::vector<PagedPacket> pk = opus_paged_packets(b);
+    REQUIRE(pk.size() > 2);
+    const int64_t preskip = opus_preskip(pk[0].bytes);
+    std::vector<PacketSpan> out;
+    int64_t g = 0;  // link samples before packet i
+    for (std::size_t i = 2; i < pk.size(); ++i) {
+        const int64_t n = opus_samples(pk[i].bytes);
+        REQUIRE(n > 0);
+        if (pk[i].page == pk[i - 1].page && g >= preskip) {
+            PacketSpan s;
+            s.start = g - preskip;
+            s.frames = n;
+            out.push_back(s);
+        }
+        g += n;
+    }
     return out;
 }
 
@@ -207,8 +333,7 @@ void page_opus(const std::vector<std::vector<unsigned char>>& pk, int serial,
         op.b_o_s = i == 0;
         op.e_o_s = i + 1 == pk.size();
         op.packetno = static_cast<ogg_int64_t>(i);
-        if (i >= 2) g += opus_packet_get_nb_samples(pk[i].data(),
-                                                     static_cast<opus_int32>(pk[i].size()), 48000);
+        if (i >= 2) g += opus_samples(pk[i]);
         op.granulepos = g;
         ogg_stream_packetin(&os, &op);
         if (i < 2)
@@ -250,30 +375,16 @@ TEST_CASE("StemReader: straight-through read equals the full decode") {
     }
 }
 
-TEST_CASE("StemReader: a seek lands on the same audio within tolerance") {
+TEST_CASE("StemReader: a seek lands on the straight decode's frames") {
     for (const char* name : kFixtures) {
         CAPTURE(std::string(name));
         std::vector<uint8_t> bytes = read_fixture(name);
         DecodedAudio full = old_full_decode(bytes);
         auto r = open_stem_reader(StemBytes{bytes, nullptr});
         const int64_t len = r->length_frames();
-        const int ch = r->channels();
-        const int64_t settle = r->sample_rate() / 50;  // 20 ms warm-up
         // len / 3 last: a backward seek after reading near the end.
-        for (int64_t f : {int64_t{0}, int64_t{1}, len / 2, len - 100, len / 3}) {
-            CAPTURE(f);
-            r->seek(f);
-            std::vector<float> buf(4800 * static_cast<std::size_t>(ch));
-            int64_t n = 0;
-            while (n < 4800) {
-                int64_t k = r->read(buf.data() + n * ch, 4800 - n);
-                if (k == 0) break;
-                n += k;
-            }
-            CHECK(n == std::min<int64_t>(4800, len - f));
-            CHECK(max_diff(buf, full.samples.data() + f * ch, static_cast<std::size_t>(settle * ch),
-                           static_cast<std::size_t>(n * ch)) <= 1e-3f);
-        }
+        for (int64_t f : {int64_t{0}, int64_t{1}, len / 2, len - 100, len / 3})
+            check_seek_lands(*r, full, f, 4800);
     }
 }
 
@@ -290,28 +401,25 @@ TEST_CASE("StemReader: seeking past the end reads nothing; seeking to 0 restarts
         r->seek(r->length_frames());
         CHECK(r->read(buf.data(), 4096) == 0);
 
-        read_to_end(*r);  // drain, then start over
+        // Drain, then start over: the replay is the first full read again.
+        read_to_end(*r);
         r->seek(0);
-        std::vector<float> again = read_to_end(*r);
-        REQUIRE(again.size() == full.samples.size());
-        CHECK(max_diff(again, full.samples.data(), 0, again.size()) <= 1e-3f);
+        CHECK(read_to_end(*r) == full.samples);
     }
 }
 
-TEST_CASE("StemReader: an Opus seek mid-page matches the straight decode") {
-    // Opus decodes from a reset state through a pre-roll before the target
-    // (kPreRoll in src/audio/opus_reader.cpp); odd targets land inside a packet
-    // and inside a page.
+TEST_CASE("StemReader: an Opus seek inside a page and a packet lands on the straight decode") {
+    // Each target is the middle of an audio packet that its page holds whole
+    // and not first (read from the file's own pages), so the seek resumes on
+    // an earlier page and throws samples away up to a point inside a packet.
     std::vector<uint8_t> bytes = read_fixture("sine220.opus");
     DecodedAudio full = old_full_decode(bytes);
     auto r = open_stem_reader(StemBytes{bytes, nullptr});
-    for (int64_t f : {int64_t{48000}, int64_t{100001}, int64_t{200000}}) {
-        CAPTURE(f);
-        r->seek(f);
-        std::vector<float> buf(2000);
-        REQUIRE(r->read(buf.data(), 2000) == 2000);
-        // After the first 20 ms.
-        CHECK(max_diff(buf, full.samples.data() + f, 960, 2000) <= 1e-3f);
+    const std::vector<PacketSpan> spans = opus_mid_page_packets(bytes);
+    REQUIRE(spans.size() >= 3);
+    for (std::size_t k : {spans.size() / 4, spans.size() / 2, spans.size() - 1}) {
+        const PacketSpan& s = spans[k];
+        check_seek_lands(*r, full, s.start + s.frames / 2, 2000);
     }
 }
 
@@ -320,10 +428,11 @@ TEST_CASE("StemReader: Opus header gain is applied") {
     REQUIRE(pk.size() > 2);
     std::vector<uint8_t> plain;
     page_opus(pk, 7, plain);
-    pk[0][16] = static_cast<unsigned char>(1541 & 0xFF);  // +6.02 dB in Q7.8
-    pk[0][17] = static_cast<unsigned char>(1541 >> 8);
+    set_opus_head_gain(pk[0], 1541);  // the test's input: +6.02 dB in Q7.8
     std::vector<uint8_t> loud;
     page_opus(pk, 7, loud);
+    const float gain = opus_head_gain(loud);
+    REQUIRE(gain != 1.0f);
 
     auto a = open_stem_reader(StemBytes{plain, nullptr});
     auto b = open_stem_reader(StemBytes{loud, nullptr});
@@ -331,52 +440,42 @@ TEST_CASE("StemReader: Opus header gain is applied") {
     std::vector<float> y = read_to_end(*b);
     REQUIRE(x.size() == y.size());
     CHECK(x == old_full_decode(read_fixture("sine220.opus")).samples);  // re-paging is lossless
-    std::vector<float> doubled(x.size());
-    std::transform(x.begin(), x.end(), doubled.begin(), [](float s) { return 2.0f * s; });
-    CHECK(max_diff(y, doubled.data(), 0, y.size()) <= 1e-3f);
+    // The same packets through the same decoder, times the header's gain.
+    CHECK(y == times_gain(x, gain));
 }
 
 TEST_CASE("StemReader: a chained Opus file plays as one stream") {
     std::vector<uint8_t> one = read_fixture("sine220.opus");
     DecodedAudio full = old_full_decode(one);
+    REQUIRE(opus_head_gain(one) == 1.0f);
     std::vector<std::vector<unsigned char>> pk = opus_packets(one);
     std::vector<uint8_t> chained;
     page_opus(pk, 1, chained);
-    page_opus(pk, 2, chained);
+    // The second link's header asks for its own output gain, so a reader that
+    // kept the first link's header for the second would play it unscaled.
+    set_opus_head_gain(pk[0], 1541);
+    std::vector<uint8_t> second;
+    page_opus(pk, 2, second);
+    const float gain = opus_head_gain(second);
+    REQUIRE(gain != 1.0f);
+    chained.insert(chained.end(), second.begin(), second.end());
+
+    // What the chain plays: the single file, then the single file times the
+    // second link's gain. Each link starts from a fresh decoder and drops its
+    // own pre-skip.
+    DecodedAudio want;
+    want.channels = full.channels;
+    want.sample_rate = full.sample_rate;
+    want.samples = full.samples;
+    const std::vector<float> louder = times_gain(full.samples, gain);
+    want.samples.insert(want.samples.end(), louder.begin(), louder.end());
 
     auto r = open_stem_reader(StemBytes{chained, nullptr});
-    CHECK(r->length_frames() == 2 * full.frames());
-    std::vector<float> got = read_to_end(*r);
-    REQUIRE(static_cast<int64_t>(got.size()) == 2 * full.frames());
-    // Each link starts from a fresh decoder and drops its own pre-skip, so
-    // each half is the single file exactly.
-    CHECK(std::equal(full.samples.begin(), full.samples.end(), got.begin()));
-    CHECK(std::equal(full.samples.begin(), full.samples.end(), got.begin() + full.samples.size()));
+    CHECK(r->length_frames() == want.frames());
+    CHECK(read_to_end(*r) == want.samples);
 
     // A seek into the second link lands in it.
-    const int64_t f = full.frames() + 100000;
-    r->seek(f);
-    std::vector<float> buf(2000);
-    REQUIRE(r->read(buf.data(), 2000) == 2000);
-    CHECK(max_diff(buf, full.samples.data() + 100000, 960, 2000) <= 1e-3f);
-}
-
-TEST_CASE("StemReader: Opus end trimming stops at the last granule") {
-    // The fixture's last page says 240312 samples with a 312 pre-skip, so
-    // 240000 frames are real audio; the decoder emits 648 more of padding,
-    // which the Preview plays (trim_end off, the default).
-    std::vector<uint8_t> bytes = read_fixture("sine220.opus");
-    detail::OpusReaderOptions trim;
-    trim.trim_end = true;
-    auto t = detail::open_opus_reader(StemBytes{bytes, nullptr}, nullptr, trim);
-    CHECK(t->length_frames() == 240000);
-    std::vector<float> got = read_to_end(*t);
-    CHECK(got.size() == 240000u);
-    DecodedAudio full = old_full_decode(bytes);
-    CHECK(std::equal(got.begin(), got.end(), full.samples.begin()));
-
-    auto u = open_stem_reader(StemBytes{bytes, nullptr});
-    CHECK(u->length_frames() == 240648);
+    check_seek_lands(*r, want, full.frames() + full.frames() / 2, 2000);
 }
 
 TEST_CASE("StemReader: Opus open reports progress and can be cancelled") {
@@ -400,66 +499,39 @@ TEST_CASE("StemReader: Opus open reports progress and can be cancelled") {
     CHECK(last_done == bytes.size());
 }
 
-TEST_CASE("StemReader: unrecognized bytes throw a decode_audio error") {
+TEST_CASE("StemReader: unrecognized bytes and a missing file throw their error kinds") {
+    // The kind is the contract (stem_reader.h): plain_error picks the
+    // player's sentence from it alone.
     std::vector<uint8_t> junk = {0x89, 'P', 'N', 'G', 0, 0, 0, 0};
     try {
         open_stem_reader(StemBytes{junk, nullptr});
         FAIL("expected a throw");
-    } catch (const std::runtime_error& e) {
-        CHECK(std::string(e.what()).rfind("decode_audio:", 0) == 0);
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::AudioDecode);
     }
     app::PreviewAudioStem missing;
     missing.path = fixture_path("no_such_file.opus");
-    CHECK_THROWS_AS(open_stem_reader(missing), std::runtime_error);
-}
-
-TEST_CASE("StemReader: an unrecognized container reads as damaged audio") {
-    std::vector<uint8_t> junk = {0x89, 'P', 'N', 'G', 0, 0, 0, 0};
     try {
-        open_stem_reader(StemBytes{junk, nullptr});
+        open_stem_reader(missing);
         FAIL("expected a throw");
-    } catch (const std::exception& e) {
-        CHECK(app::plain_error(e) ==
-              "Hydra couldn't decode this song's audio files. They may be damaged; try "
-              "downloading the song again.");
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::SongFileMissing);
     }
 }
 
 namespace {
 
-// Seeks to every `stride`-th frame (in an order that jumps back and forth),
-// reads 4800 frames, and returns the worst difference from the straight
-// decode after the first 20 ms. Also checks each read is full length.
-float mp3_seek_sweep(StemReader& r, const DecodedAudio& full, int64_t stride) {
-    const int64_t len = r.length_frames();
-    const int ch = r.channels();
-    const int64_t settle = r.sample_rate() / 50;
+// Seeks to every `stride`-th frame, in an order that jumps from one end to
+// the other (every seek a long jump, half of them backward), and checks each
+// lands on the straight decode (check_seek_lands).
+void seek_sweep(StemReader& r, const DecodedAudio& full, int64_t stride) {
     std::vector<int64_t> targets;
-    for (int64_t f = 0; f < len; f += stride) targets.push_back(f);
-    // Interleave from both ends: every seek is a long jump, half backward.
-    std::vector<int64_t> order;
+    for (int64_t f = 0; f < r.length_frames(); f += stride) targets.push_back(f);
+    REQUIRE(targets.size() > 1);  // a stem with nothing to seek would pass vacuously
     for (std::size_t a = 0, b = targets.size(); a < b;) {
-        order.push_back(targets[a++]);
-        if (a < b) order.push_back(targets[--b]);
+        check_seek_lands(r, full, targets[a++], 4800);
+        if (a < b) check_seek_lands(r, full, targets[--b], 4800);
     }
-    std::vector<float> buf(4800 * static_cast<std::size_t>(ch));
-    float worst = 0.0f;
-    for (int64_t f : order) {
-        CAPTURE(f);
-        r.seek(f);
-        int64_t n = 0;
-        while (n < 4800) {
-            const int64_t k = r.read(buf.data() + n * ch, 4800 - n);
-            if (k == 0) break;
-            n += k;
-        }
-        CHECK(n == std::min<int64_t>(4800, len - f));
-        worst = std::max(worst, static_cast<float>(max_diff(
-                                    buf, full.samples.data() + f * ch,
-                                    static_cast<std::size_t>(settle * ch),
-                                    static_cast<std::size_t>(n * ch))));
-    }
-    return worst;
 }
 
 // Byte size of the MPEG-1 Layer III frame whose header starts at `h`.
@@ -469,9 +541,27 @@ std::size_t mp3_l3_frame_size(const uint8_t* h) {
     return static_cast<std::size_t>(144000 * kbps[h[2] >> 4] / hz[(h[2] >> 2) & 3] + ((h[2] >> 1) & 1));
 }
 
-// A ~2 minute MP3 with no ID3 or Xing tag: the fixture's audio frames, 24 times
-// over. With no tag dr_mp3 counts every frame and skips no encoder delay, and
-// a stream this long exercises many seek points.
+// The MPEG audio frames of a stream that holds nothing else, walked by their
+// headers from byte 0 to the end.
+int64_t mp3_frame_count(const std::vector<uint8_t>& b) {
+    int64_t n = 0;
+    std::size_t pos = 0;
+    while (pos < b.size()) {
+        REQUIRE(pos + 4 <= b.size());
+        REQUIRE(b[pos] == 0xFF);
+        const std::size_t size = mp3_l3_frame_size(&b[pos]);
+        REQUIRE(size > 0);
+        pos += size;
+        ++n;
+    }
+    REQUIRE(pos == b.size());
+    return n;
+}
+
+// The fixture's audio frames with no ID3 or Xing tag, 24 times over. With no
+// tag dr_mp3 counts every frame and skips no encoder delay, and the stream
+// spans many of the reader's seek points (about one each half second,
+// Mp3Reader::build_seek_points in ma_reader.cpp).
 std::vector<uint8_t> long_untagged_mp3() {
     std::vector<uint8_t> b = read_fixture("sine220.mp3");
     std::size_t pos = id3v2_tag_length(b.data(), b.size());
@@ -490,39 +580,43 @@ TEST_CASE("StemReader: an MP3 seek anywhere lands on the straight decode") {
     DecodedAudio full = old_full_decode(bytes);
     auto r = open_stem_reader(StemBytes{bytes, nullptr});
     REQUIRE(r->length_frames() == full.frames());
-    CHECK(mp3_seek_sweep(*r, full, 1777) <= 1e-3f);
+    seek_sweep(*r, full, 1777);
 }
 
 TEST_CASE("StemReader: MP3 seeks through the seek points on a long stream") {
     std::vector<uint8_t> bytes = long_untagged_mp3();
     DecodedAudio full = old_full_decode(bytes);
-    REQUIRE(full.frames() > 40 * 44100 / 2);
+    // Every frame decodes to the same number of samples, so the frame length
+    // is the decode's length over the frames the headers count.
+    const int64_t frames = mp3_frame_count(bytes);
+    REQUIRE(frames > 0);
+    const int64_t per_frame = full.frames() / frames;
+    REQUIRE(per_frame * frames == full.frames());
     auto r = open_stem_reader(StemBytes{bytes, nullptr});
     REQUIRE(r->length_frames() == full.frames());
     CHECK(read_to_end(*r) == full.samples);  // straight read still bit for bit
-    CHECK(mp3_seek_sweep(*r, full, 1777) <= 1e-3f);
-    // Odd targets right around frame boundaries and seek points.
-    for (int64_t f : {int64_t{1151}, int64_t{1152}, int64_t{1153}, int64_t{22050}, int64_t{22051},
-                      full.frames() / 2 + 1, full.frames() - 1153, full.frames() - 1}) {
-        CAPTURE(f);
-        r->seek(f);
-        const int ch = r->channels();
-        std::vector<float> buf(static_cast<std::size_t>(ch) * 2048);
-        const int64_t n = r->read(buf.data(), 2048);
-        CHECK(n == std::min<int64_t>(2048, full.frames() - f));
-        // Seek points decode two whole frames before the target, so the
-        // audio matches from the very first frame, no warm-up.
-        CHECK(max_diff(buf, full.samples.data() + f * ch, 0, static_cast<std::size_t>(n * ch)) <=
-              1e-3f);
-    }
+    seek_sweep(*r, full, 1777);
+    // Targets on and beside the first frame boundary, on and just past half a
+    // second (where the reader's seek points are spaced), past the middle,
+    // one frame and one sample before the end, and the last frame.
+    const int64_t half_second = r->sample_rate() / 2;
+    const int64_t len = full.frames();
+    for (int64_t f : {per_frame - 1, per_frame, per_frame + 1, half_second, half_second + 1,
+                      len / 2 + 1, len - per_frame - 1, len - 1})
+        check_seek_lands(*r, full, f, 2048);
 }
 
 TEST_CASE("StemReader: a FLAC whose header says 0 frames is counted on open") {
     std::vector<uint8_t> original = read_fixture("sine220.flac");
+    const DecodedAudio ref = old_full_decode(original);
     auto o = open_stem_reader(StemBytes{original, nullptr});
     // A wrong byte offset would change the rate or channel count instead of
-    // the length, so the unmodified file is checked first.
-    REQUIRE(o->length_frames() == 44100);
+    // the length, so the unmodified file is checked against the independent
+    // decode first.
+    REQUIRE(ref.frames() > 0);
+    REQUIRE(o->channels() == ref.channels);
+    REQUIRE(o->sample_rate() == ref.sample_rate);
+    REQUIRE(o->length_frames() == ref.frames());
     const std::vector<float> want = read_to_end(*o);
 
     std::vector<uint8_t> zeroed = testaudio::flac_with_unknown_length();
@@ -530,7 +624,7 @@ TEST_CASE("StemReader: a FLAC whose header says 0 frames is counted on open") {
     CHECK(r->channels() == o->channels());
     CHECK(r->sample_rate() == o->sample_rate());
     CHECK(r->length_frames() == o->length_frames());
-    CHECK(r->length_frames() == old_full_decode(original).frames());
+    CHECK(r->length_frames() == ref.frames());
     CHECK(read_to_end(*r) == want);
     CHECK_FALSE(r->failed());
     r->seek(0);
@@ -578,6 +672,11 @@ TEST_CASE("StemReader: a damaged Opus stem plays again after a seek to before th
     const std::size_t bad = pk.size() / 2;
     REQUIRE(bad >= 2);
     REQUIRE(bad + 1 < pk.size());
+    // The stem ends where the damaged packet starts: the samples of the audio
+    // packets before it, less the pre-skip.
+    int64_t before = -opus_preskip(pk[0]);
+    for (std::size_t i = 2; i < bad; ++i) before += opus_samples(pk[i]);
+    REQUIRE(before > 0);
     pk[bad] = {static_cast<unsigned char>(pk[bad][0] | 0x03), 0};
     std::vector<uint8_t> damaged;
     page_opus(pk, 7, damaged);
@@ -585,16 +684,17 @@ TEST_CASE("StemReader: a damaged Opus stem plays again after a seek to before th
     auto r = open_stem_reader(StemBytes{damaged, nullptr});
     const int ch = r->channels();
     const std::vector<float> first = read_to_end(*r);
-    const int64_t first_frames = static_cast<int64_t>(first.size()) / ch;
-    CHECK(first_frames < r->length_frames());
+    REQUIRE(static_cast<int64_t>(first.size()) == before * ch);
+    CHECK(before < r->length_frames());
     CHECK(r->failed());
+    // Up to the damage the stem is the straight decode of the good file.
+    REQUIRE(first.size() <= full.samples.size());
+    CHECK(std::equal(first.begin(), first.end(), full.samples.begin()));
 
+    // The replay from frame 0 is the first read again: same bytes, same
+    // decoder, the same stop at the damage.
     r->seek(0);
-    const std::vector<float> again = read_to_end(*r);
-    CHECK(static_cast<int64_t>(again.size()) / ch == first_frames);
-    REQUIRE(static_cast<int64_t>(again.size()) >= 2 * 960 * ch);
-    CHECK(max_diff(again, full.samples.data(), 960 * static_cast<std::size_t>(ch),
-                   2 * 960 * static_cast<std::size_t>(ch)) <= 1e-3f);
+    CHECK(read_to_end(*r) == first);
     CHECK(r->failed());  // the error is still remembered
 
     // The whole-file path keeps failing loudly on the same bytes.
