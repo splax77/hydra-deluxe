@@ -131,6 +131,13 @@ const hydra::app::PathButtonsView& shown_buttons(hydra::ui::AppState& app) {
                                             app.settings.depth_mode, app.settings.depth_value);
 }
 
+// Whether activation row `i` (0-based) is open and every other row is closed.
+bool only_row_open(const hydra::app::PathsTabUi& ui, size_t i) {
+    for (size_t r = 0; r < ui.act_open.size(); ++r)
+        if ((ui.act_open[r] != 0) != (r == i)) return false;
+    return i < ui.act_open.size();
+}
+
 // The ImGui id of path button `i` (path_button in paths_tab.cpp).
 std::string path_button_ref(size_t i) {
     return "**/##path" + std::to_string(i);
@@ -187,14 +194,7 @@ void test_paths_list(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->details_ui.selected_path == &rec.best_path());
     ctx->ItemClick("**/##act2");  // a row open on this path
     ctx->Yield(2);
-    {
-        const std::vector<char>& open = h.app->details_ui.paths_tab.ui().act_open;
-        IM_CHECK_GE(open.size(), static_cast<size_t>(2));
-        if (open.size() < 2) return;
-        std::vector<char> want(open.size(), 0);
-        want[1] = 1;
-        IM_CHECK(open == want);
-    }
+    IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), 1));
     ctx->ItemClick(path_button_ref(within).c_str());
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.selected_path == list.buttons[within].path);
@@ -1273,11 +1273,7 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     IM_CHECK(!has_window_row(burnout.acts[1]));
     ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
     ctx->Yield(2);
-    {
-        std::vector<char> want(h.app->details_ui.paths_tab.ui().act_open.size(), 0);
-        want[1] = 1;
-        IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == want);
-    }
+    IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), 1));
     IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));
 
     // Tapped Out's activation 4 has a squeeze with a window row and an early
