@@ -58,18 +58,18 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 
 # ---- the allowed-calls check ----------------------------------------------
 # Every game method an agent calls is named in that file's own ALLOWED_CALLS
-# literal. CALL_SITES is how many `.invoke(` sites each agent holds; a file
-# with no entry holds none. LISTED_AGENTS are the files allowed a list, and
-# each one's list is pinned by a test below: menu.ts's to its names, kit.ts's
-# to KIT_METHODS.
+# literal. A method is found by name with `.method(...)` or `.tryMethod(...)`,
+# and each such lookup must name a literal from the file's list. Each
+# `.invoke(`, and each `new NativeFunction` (built on a method's
+# virtualAddress), must then be on such a lookup, so a call can reach only a
+# method the file listed; `_traced_name` says what "on a lookup" covers. A
+# file with no list may look up nothing, so it may call nothing. kit.ts calls
+# LoadMap through a NativeFunction because .invoke cannot call it
+# (docs/clone-hero/07-internals.md, IN-76). LISTED_AGENTS are the files
+# allowed a list, and each one's list is pinned by a test below: menu.ts's to
+# its names, kit.ts's to KIT_METHODS.
 MENU_AGENT = "menu.ts"
 KIT_AGENT = "kit.ts"
-CALL_SITES = {MENU_AGENT: 1, KIT_AGENT: 43}
-# How many `new NativeFunction` sites each agent holds; a file with no entry
-# holds none. kit.ts's one is setup's LoadMap, which .invoke cannot call
-# (docs/clone-hero/07-internals.md, IN-76); its method is still looked up by
-# a literal name from ALLOWED_CALLS.
-NATIVE_SITES = {KIT_AGENT: 1}
 LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
 KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
@@ -78,6 +78,15 @@ _METHOD_LOOKUP = re.compile(r"\.(?:method|tryMethod)\s*(?:<[^>]*>)?\s*\(\s*(?:([
 _INVOKE = re.compile(r"\.invoke\(")
 _NATIVE_FUNCTION = re.compile(r"new\s+NativeFunction\b")
 _ALLOWED_LIST = re.compile(r"ALLOWED_CALLS\s*=\s*\[([^\]]*)\]")
+# An expression that ends in a lookup by a literal name, with any
+# `.overload(...)` after it. Before the lookup it may hold only names, dots,
+# calls and type arguments, so no operator can pick some other value. Group 2
+# is the looked-up name.
+_LOOKUP_CHAIN = re.compile(
+    r"\s*\w+(?:\s*\([^()]*\))?(?:\s*\.\s*\w+(?:\s*<[^<>]*>)?(?:\s*\([^()]*\))?)*?"
+    r"\s*\.\s*(?:method|tryMethod)\s*(?:<[^<>]*>)?\s*\(\s*([\"'])(\w+)\1[^()]*\)"
+    r"(?:\s*\.\s*overload\s*\([^()]*\))*\s*")
+_FUNCTION = re.compile(r"\bfunction\s+(\w+)\s*(?:<[^()]*?>)?\s*\(")
 
 
 def allowed_calls(agent_text: str) -> list[str]:
@@ -88,21 +97,106 @@ def allowed_calls(agent_text: str) -> list[str]:
     return re.findall(r"[\"'](\w+)[\"']", match.group(1))
 
 
+def _close(text: str, start: int, open_ch: str, close_ch: str) -> int:
+    """The index just past the bracket that closes the one at `start`, or
+    len(text) when none does."""
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == open_ch:
+            depth += 1
+        elif text[i] == close_ch:
+            depth -= 1
+            if depth == 0:
+                return i + 1
+    return len(text)
+
+
+def _enclosing_function(text: str, at: int):
+    """The innermost `function` declaration whose body holds `at`, as (its
+    name, its parameter text, the body's start, the body's end), or None at
+    the top level."""
+    best = None
+    for m in _FUNCTION.finditer(text, 0, at):
+        params_end = _close(text, m.end() - 1, "(", ")")
+        body = text.find("{", params_end)
+        if body == -1 or body > at:
+            continue
+        end = _close(text, body, "{", "}")
+        if at < end:
+            best = (m.group(1), text[m.end():params_end - 1], body, end)
+    return best
+
+
+def _statement_end(text: str, start: int) -> int:
+    """The index of the `;` that ends the statement running from `start`,
+    outside any bracket, or len(text)."""
+    depth = 0
+    for i in range(start, len(text)):
+        c = text[i]
+        if c in "([{":
+            depth += 1
+        elif c in ")]}":
+            depth -= 1
+            if depth < 0:
+                return i
+        elif c == ";" and depth == 0:
+            return i
+    return len(text)
+
+
+def _traced_name(text: str, at: int) -> str | None:
+    """The literal name the value ending at `at` was looked up by, or None
+    when it was not looked up by a literal name. The value counts as looked
+    up when it is itself a lookup chain (`_LOOKUP_CHAIN`), or when it is a
+    plain name and every source of that name is one: each place its own
+    function sets it, and, when it is that function's first parameter, each
+    call of the function in the file. A name with no source is not looked
+    up."""
+    head = text[max(0, at - 400):at]
+    direct = re.search(_LOOKUP_CHAIN.pattern + r"$", head)
+    if direct is not None:
+        return direct.group(2)
+    var = re.search(r"(?<![\w.$])(\w+)\s*$", head)
+    if var is None:
+        return None
+    name = var.group(1)
+    scope = _enclosing_function(text, at)
+    lo, hi = (scope[2], scope[3]) if scope else (0, len(text))
+    names = []
+    for m in re.finditer(rf"(?<![\w.$]){name}\s*(?::[^=;()]*)?=(?![=>])",
+                         text[lo:hi]):
+        rhs_start = lo + m.end()
+        chain = _LOOKUP_CHAIN.fullmatch(text[rhs_start:_statement_end(text, rhs_start)])
+        if chain is None:
+            return None
+        names.append(chain.group(2))
+    if scope is not None and re.match(rf"\s*{name}\b\s*[:,)]?", scope[1]):
+        func = scope[0]
+        for m in re.finditer(rf"(?<![\w.$]){func}\s*(?:<[^<>()]*>)?\s*\(", text):
+            if text[:m.start()].rstrip().endswith("function"):
+                continue
+            arg = text[m.end():_close(text, m.end() - 1, "(", ")") - 1]
+            chain = _LOOKUP_CHAIN.fullmatch(arg)
+            if chain is None:
+                return None
+            names.append(chain.group(2))
+    return names[0] if names else None
+
+
 def call_findings(texts: dict[str, str]) -> list[str]:
     """Every call in `texts` (agent file name -> its text) that the file's
     own allowed list does not cover: a method looked up by a name outside
-    that file's ALLOWED_CALLS or by a name that is not a literal, a
-    NativeFunction past the count NATIVE_SITES gives the file, or a count of
-    `.invoke(` sites other than CALL_SITES gives the file."""
+    that file's ALLOWED_CALLS or by a name that is not a literal, an
+    `.invoke(` on anything but such a lookup, or a NativeFunction built on
+    anything but such a lookup's virtualAddress."""
     found = []
     for name, text in sorted(texts.items()):
         allowed = set(allowed_calls(text))
         if _ALLOWED_LIST.search(text) and name not in LISTED_AGENTS:
             found.append(f"{name}: holds an ALLOWED_CALLS list, and only "
                          f"{', '.join(LISTED_AGENTS)} may")
-        invokes = 0
-        natives = 0
-        for n, line in enumerate(text.splitlines(), start=1):
+        lines = text.splitlines()
+        for n, line in enumerate(lines, start=1):
             for m in _METHOD_LOOKUP.finditer(line):
                 if m.group(2) is None:
                     found.append(f"{name}:{n}: a method looked up by a name "
@@ -110,14 +204,19 @@ def call_findings(texts: dict[str, str]) -> list[str]:
                 elif m.group(2) not in allowed:
                     found.append(f"{name}:{n}: {m.group(2)} is not in "
                                  f"{name}'s ALLOWED_CALLS")
-            for _ in _NATIVE_FUNCTION.finditer(line):
-                natives += 1
-                if natives > NATIVE_SITES.get(name, 0):
-                    found.append(f"{name}:{n}: calls a game function: {line.strip()}")
-            invokes += len(_INVOKE.findall(line))
-        if invokes != CALL_SITES.get(name, 0):
-            found.append(f"{name}: {invokes} .invoke( sites, expected "
-                         f"{CALL_SITES.get(name, 0)}")
+        # A lookup by an unlisted name is already a finding above, so these
+        # ask only whether each call is on a lookup by a literal name.
+        for m in _INVOKE.finditer(text):
+            if _traced_name(text, m.start()) is None:
+                n = text.count("\n", 0, m.start()) + 1
+                found.append(f"{name}:{n}: .invoke( on a method not looked up "
+                             f"by a literal name: {lines[n - 1].strip()}")
+        for m in _NATIVE_FUNCTION.finditer(text):
+            n = text.count("\n", 0, m.start()) + 1
+            address = re.match(r"\s*\(\s*(\w+)\s*\.\s*virtualAddress\s*,", text[m.end():])
+            if address is None or _traced_name(
+                    text, m.end() + address.start(1) + len(address.group(1))) is None:
+                found.append(f"{name}:{n}: calls a game function: {lines[n - 1].strip()}")
     return found
 
 
@@ -1281,7 +1380,7 @@ class AllowedCallsTest(unittest.TestCase):
     def test_kit_load_map_passes_the_method_pointer(self):
         # docs/clone-hero/07-internals.md, IN-76: the LoadMap stub writes the
         # slot of its hidden method pointer, which the bridge's .invoke does
-        # not pass for a non-generic method. The call is the one NativeFunction
+        # not pass for a non-generic method. The call is a NativeFunction
         # in kit.ts; it ends with the overload's own handle and is no .invoke.
         # Each check matches on names and punctuation only, so laying the
         # source out another way changes nothing.
@@ -1291,9 +1390,8 @@ class AllowedCallsTest(unittest.TestCase):
         self.assertIsNotNone(lookup, "no LoadMap lookup in kit.ts")
         method, chain = lookup.group(1), lookup.group(2)
         self.assertNotIn(".invoke(", chain)
-        # The one NativeFunction is on that method's own code address, and
-        # takes the bridge's types with one more pointer at the end.
-        self.assertEqual(len(_NATIVE_FUNCTION.findall(kit)), 1)
+        # A NativeFunction is on that method's own code address, and takes
+        # the bridge's types with one more pointer at the end.
         native = re.search(rf"const\s+(\w+)\s*=\s*new\s+NativeFunction\(\s*"
                            rf"{method}\.virtualAddress\s*,[^,]*,\s*(\w+)\s*\)", kit)
         self.assertIsNotNone(native, f"no NativeFunction on {method}.virtualAddress")
@@ -1305,26 +1403,73 @@ class AllowedCallsTest(unittest.TestCase):
         self.assertRegex(kit, rf"\b{call}\(\s*\w+\.handle\s*,[^;]*,\s*"
                               rf"{method}\.handle\s*\)\s*;")
 
-    def test_one_more_invoke_in_kit_ts_fails(self):
-        texts = {KIT_AGENT: self.real_texts()[KIT_AGENT] + "m.invoke();\n"}
-        self.assertEqual(call_findings(texts), [
-            f"{KIT_AGENT}: {CALL_SITES[KIT_AGENT] + 1} .invoke( sites, "
-            f"expected {CALL_SITES[KIT_AGENT]}"])
-
-    def test_an_invoke_in_a_second_file_fails(self):
-        # The real agents, with one `.invoke(` added to clock.ts, which
-        # CALL_SITES does not name and which so may hold none.
-        texts = self.real_texts()
-        self.assertNotIn("clock.ts", CALL_SITES)
-        texts["clock.ts"] += "m.invoke();\n"
+    def one_finding(self, texts, file, added_at, *parts):
+        # The checker gives exactly one finding, on the added line, and it
+        # holds each of `parts`.
         findings = call_findings(texts)
         self.assertEqual(len(findings), 1, findings)
-        self.assertTrue(findings[0].startswith("clock.ts: 1 .invoke("), findings[0])
+        self.assertTrue(findings[0].startswith(f"{file}:{added_at}:"), findings[0])
+        for part in parts:
+            self.assertIn(part, findings[0])
+
+    def test_an_invoke_on_a_handle_from_elsewhere_in_kit_ts_fails(self):
+        # The real kit.ts with an `.invoke(` added on a handle no lookup made.
+        kit = self.real_texts()[KIT_AGENT]
+        added = "const m = Il2Cpp.domain.assembly(GAME); m.invoke();"
+        texts = {KIT_AGENT: kit + added + "\n"}
+        self.one_finding(texts, KIT_AGENT, len(kit.splitlines()) + 1,
+                         ".invoke( on a method not looked up", added)
+
+    def test_an_invoke_on_a_set_handle_in_kit_ts_fails(self):
+        # A name set from a real lookup, then set again from elsewhere, is
+        # no longer known to hold a listed method.
+        kit = self.real_texts()[KIT_AGENT]
+        added = ('function stray(o: Il2Cpp.Object) { let m = o.method("get_Count"); '
+                 'm = other; m.invoke(); }')
+        texts = {KIT_AGENT: kit + added + "\n"}
+        self.one_finding(texts, KIT_AGENT, len(kit.splitlines()) + 1,
+                         ".invoke( on a method not looked up")
+
+    def test_an_invoke_in_a_second_file_fails(self):
+        # The real agents, with one `.invoke(` on a lookup added to clock.ts,
+        # which holds no ALLOWED_CALLS list and so may look up nothing. The
+        # one finding is the lookup's unlisted name.
+        texts = self.real_texts()
+        self.assertEqual(allowed_calls(texts["clock.ts"]), [])
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        texts["clock.ts"] += 'go.method("SetActive", 1).invoke(true);\n'
+        self.one_finding(texts, "clock.ts", added_at, "SetActive is not in")
+
+    def test_a_bare_invoke_in_a_second_file_fails(self):
+        texts = self.real_texts()
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        texts["clock.ts"] += "m.invoke();\n"
+        self.one_finding(texts, "clock.ts", added_at,
+                         ".invoke( on a method not looked up")
 
     def test_a_second_invoke_in_menu_ts_fails(self):
-        texts = {MENU_AGENT: self.MENU_TEXT + "m.invoke();\n"}
-        self.assertEqual(call_findings(texts),
-                         [f"{MENU_AGENT}: 2 .invoke( sites, expected 1"])
+        # The real menu.ts, with its one `.invoke(` site (on the parameter of
+        # its `call` helper) handed a method that no lookup made, from a new
+        # line: the finding is on the `.invoke(` line, since `call` can no
+        # longer promise a listed method.
+        menu = self.real_texts()[MENU_AGENT]
+        invoke_at = next(n for n, l in enumerate(menu.splitlines(), start=1)
+                         if _INVOKE.search(l))
+        texts = {MENU_AGENT: menu + "const stray = call(other);\n"}
+        self.one_finding(texts, MENU_AGENT, invoke_at, ".invoke( on a method not looked up")
+
+    def test_a_listed_name_passes_in_menu_ts(self):
+        # The same added call, on a lookup of a name menu.ts lists, passes.
+        menu = self.real_texts()[MENU_AGENT]
+        name = allowed_calls(menu)[0]
+        texts = {MENU_AGENT: menu + f'const ok = call(o.method("{name}"));\n'}
+        self.assertEqual(call_findings(texts), [])
+
+    def test_an_unlisted_name_in_menu_ts_fails(self):
+        menu = self.real_texts()[MENU_AGENT]
+        texts = {MENU_AGENT: menu + 'const stray = call(o.method("SetActive"));\n'}
+        self.one_finding(texts, MENU_AGENT, len(menu.splitlines()) + 1,
+                         f"SetActive is not in {MENU_AGENT}'s ALLOWED_CALLS")
 
     def test_a_lookup_by_a_name_that_is_not_a_literal_fails(self):
         texts = {MENU_AGENT: self.MENU_TEXT,
@@ -1337,11 +1482,11 @@ class AllowedCallsTest(unittest.TestCase):
         self.assertEqual(len(call_findings(texts)), 1)
 
     def test_a_second_native_function_in_kit_ts_fails(self):
-        # The real kit.ts with its own LoadMap NativeFunction line added again
-        # at the end: the one finding names kit.ts, the added line's number
-        # and the line itself.
+        # The real kit.ts with a NativeFunction added at the end on an
+        # address no lookup gave: the one finding names kit.ts, the added
+        # line's number and the line itself.
         kit = self.real_texts()[KIT_AGENT]
-        line = next(l.strip() for l in kit.splitlines() if _NATIVE_FUNCTION.search(l))
+        line = "const f = new NativeFunction(p.virtualAddress, 'void', []);"
         texts = {KIT_AGENT: kit + line + "\n"}
         added_at = len(texts[KIT_AGENT].splitlines())
         findings = call_findings(texts)
@@ -1582,12 +1727,13 @@ class LaunchAgentTest(unittest.TestCase):
 
     def test_the_launch_files_are_scanned_with_the_other_agents(self):
         # The by-name and allowed-calls tests above read every agent_sources
-        # file, so these two get them too, with no .invoke( site allowed.
+        # file, so these two get them too. Neither holds an ALLOWED_CALLS
+        # list, so neither may look up or call a game method.
         names = [os.path.basename(p) for p in agent_sources()]
         self.assertIn(LAUNCH_AGENT, names)
         self.assertIn(LAUNCH_CORE, names)
-        self.assertNotIn(LAUNCH_AGENT, CALL_SITES)
-        self.assertNotIn(LAUNCH_CORE, CALL_SITES)
+        self.assertEqual(allowed_calls(self.read(LAUNCH_AGENT)), [])
+        self.assertEqual(allowed_calls(self.read(LAUNCH_CORE)), [])
 
     def test_neither_launch_file_holds_an_address(self):
         # Every RVA arrives in the arm message, from launch_patch.json.
