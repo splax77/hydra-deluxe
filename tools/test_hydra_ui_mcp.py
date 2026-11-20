@@ -235,15 +235,31 @@ class TransportLayer(unittest.TestCase):
         real = self.helper.command
         self.helper.command = lambda line: (sent.append(line), real(line))[1]
         # ASCII separators only: the stand-in logs each line to a console
-        # that may not encode the Unicode ones; test_a_cut_reply_keeps_a_line_whole
+        # that may not encode the Unicode ones; test_a_cut_reply_keeps_a_line_whole_and_ends_with_the_hint
         # covers those.
         self.helper.run("type **/##search | a\x0cb\x0bc\x1cd\x1de\x1ef\r\nstate\rtext\n")
         self.assertEqual(sent, ["type **/##search | a\x0cb\x0bc\x1cd\x1de\x1ef", "state", "text"])
 
-    def test_a_cut_reply_keeps_a_line_whole(self):
-        out = hm.cap_reply("a\x0cb\x85c d e\n" + "c" * 2000 + "\n", cap=200)
-        self.assertEqual(out, "a\x0cb\x85c d e\n[cut at 200 characters: 1 of 2 lines dropped;"
-                              " contains= narrows hydra_text and hydra_dump]")
+    def assert_cut(self, out, text, cap, hint):
+        """`out` is `text` cut by cap_reply: at most `cap` characters, the
+        first lines of `text` whole, and a last line that names the cap, how
+        many of the lines were dropped and `hint`."""
+        self.assertLessEqual(len(out), cap)
+        lines = hm.split_lines(text)
+        *body, note = out.split("\n")
+        self.assertGreater(len(body), 0, out)
+        self.assertEqual(body, lines[:len(body)])
+        self.assertIn(f"{cap:,} characters", note)
+        self.assertIn(f"{len(lines) - len(body)} of {len(lines)} lines dropped", note)
+        self.assertTrue(note.endswith(f"{hint}]"), note)
+
+    def test_a_cut_reply_keeps_a_line_whole_and_ends_with_the_hint(self):
+        # The first line holds a form feed, a next-line and the Unicode line
+        # and paragraph separators, which str.splitlines would cut at; the
+        # cut keeps it one line.
+        text = "a\x0cb\x85c\u2028d\u2029e\n" + "c" * 2000 + "\n"
+        self.assert_cut(hm.cap_reply(text, cap=200), text, 200, hm.CAP_HINT)
+        self.assert_cut(hm.cap_reply(text, cap=200, hint="ask for less"), text, 200, "ask for less")
 
     # -- the four transport failures ----------------------------------------
 
@@ -286,16 +302,8 @@ class TransportLayer(unittest.TestCase):
     def test_long_reply_is_cut_at_the_cap(self):
         self.helper.start("headless")
         out = self.helper.send("fake-big")
-        self.assertLessEqual(len(out), hm.REPLY_CAP_CHARS)
-        last = out.splitlines()[-1]
-        kept = len(out.splitlines()) - 1
-        self.assertEqual(
-            last, f"[cut at 12,000 characters: {1000 - kept} of 1000 lines dropped;"
-                  " contains= narrows hydra_text and hydra_dump]")
-
-    def test_a_cut_reply_ends_with_the_given_hint(self):
-        out = hm.cap_reply("a\n" + "b" * 2000 + "\n", cap=200, hint="ask for less")
-        self.assertEqual(out, "a\n[cut at 200 characters: 1 of 2 lines dropped; ask for less]")
+        # fake.BIG_TEXT is what the stand-in answers fake-big with.
+        self.assert_cut(out, fake.BIG_TEXT, hm.REPLY_CAP_CHARS, hm.CAP_HINT)
 
     def test_one_long_line_is_cut_too(self):
         out = hm.cap_reply("y" * 50_000, cap=1000)
@@ -800,7 +808,13 @@ class BuildPassTool(unittest.TestCase):
     def test_the_reply_is_a_pass_and_the_command_to_build_with(self):
         out = self.ask("session-a")
         token = re.match(r"pass: (\w+)\n", out).group(1)
-        self.assertIn(f"$env:HYDRA_BUILD_PASS='{token}'; .\\build_cpp.ps1 -Target hydra_tests", out)
+        # The pass the first line names is the one the slot holds, and a
+        # later line sets HYDRA_BUILD_PASS to it, which build_cpp.ps1 claims.
+        self.assertIn(f"pass={token}", (self.slots / "slot1.lock").read_text().split("\n"))
+        command = [ln for ln in out.split("\n")[1:] if "HYDRA_BUILD_PASS" in ln]
+        self.assertEqual(len(command), 1, out)
+        self.assertIn(f"HYDRA_BUILD_PASS='{token}'", command[0])
+        self.assertIn("build_cpp.ps1", command[0])
 
     def test_the_lock_holds_this_session_and_this_server(self):
         self.ask("session-a")
@@ -821,16 +835,20 @@ class BuildPassTool(unittest.TestCase):
             self.assertIn(name, out)
 
     def test_no_session_id_refuses_and_hands_out_nothing(self):
-        for value in ("", "   "):
+        # Blank, all spaces, or not set at all: each refusal names the
+        # variable and leaves no slot taken.
+        unset = None
+        for value in ("", "   ", unset):
             with self.subTest(value=value):
-                out = self.ask(value)
-                self.assertRegex(out, r"^no pass: CLAUDE_CODE_SESSION_ID is not set")
+                if value is unset:
+                    with mock.patch.dict(os.environ, {"HYDRA_BUILD_SLOT_DIR": str(self.slots)}):
+                        os.environ.pop(hm.SESSION_ENV, None)
+                        out = hm.build_pass()
+                else:
+                    out = self.ask(value)
+                self.assertTrue(out.startswith("no pass: "), out)
+                self.assertIn(hm.SESSION_ENV, out)
                 self.assertEqual(list(self.slots.iterdir()), [])
-
-    def test_a_missing_variable_refuses_too(self):
-        with mock.patch.dict(os.environ, {"HYDRA_BUILD_SLOT_DIR": str(self.slots)}):
-            os.environ.pop(hm.SESSION_ENV, None)
-            self.assertRegex(hm.build_pass(), r"^no pass: CLAUDE_CODE_SESSION_ID is not set")
 
     def test_no_pwsh_refuses_loudly(self):
         with mock.patch.object(hm.shutil, "which", return_value=None):
