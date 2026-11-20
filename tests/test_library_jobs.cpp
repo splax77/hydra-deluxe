@@ -4,9 +4,10 @@
 // saved paths, and its counted read of the library's charts and results. One
 // opt-in case times the startup library read on a library file the caller
 // names.
-// The analyzer and the network are fakes; the counts case, the batch hand-back
-// case and the startup open's cases read one corpus chart each, for a result
-// the store can save.
+// The batch cases run the real analyzer on corpus charts, or hold it at a gate
+// and then run it. The cases that need a chart to fail or a result of a
+// chosen size use a stand-in analyzer, and the network is a fake. The startup
+// open's cases read libraries a scan of the corpus writes.
 
 #include "doctest.h"
 
@@ -1356,9 +1357,13 @@ TEST_CASE("jobs: results read in slices match one read") {
     SUBCASE("the store is asked in hash order") {
         // The late chart gets its result after the first slice of two. Its
         // row is first, so asked in row order it was in the first slice and
-        // would read Not analyzed. Asked in hash order it comes after the
-        // four saved charts' five rows, so it is not in the first slice and
-        // its row reads that result.
+        // would read Not analyzed. Asked in hash order it has at least two
+        // smaller hashes before it (checked here), so it is not in the first
+        // slice and its row reads that result.
+        size_t smaller = 0;
+        for (const ChartLibraryEntry& e : rows)
+            if (e.md5 < late.md5) ++smaller;
+        REQUIRE(smaller >= 2);
         REQUIRE(whole.rows().front().status == hydra::store::RecordStatus::NotAnalyzed);
         const hydra::HydraRecord& late_record = charts[late_at].result.record;
         hydra::ui::LibraryModel sliced;
