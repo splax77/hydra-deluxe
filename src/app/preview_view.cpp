@@ -150,9 +150,9 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const Path& path,
     // The scene's activations are the path's, in walk order
     // (apply_preview_overlay builds one per walked activation).
     const ActivationWalk records = path.walk_activations();
-    for (size_t i = 0; i < scene.activations.size(); ++i) {
-        const PreviewActivation& act = scene.activations[i];
-        const Activation& rec = records[i];
+    for (size_t n = 0; n < scene.activations.size(); ++n) {
+        const PreviewActivation& act = scene.activations[n];
+        const Activation& rec = records[n];
         bank_bars(act.bank_rise_ticks);
         push_segment(curve, cursor_ms, act.ms, bank, bank);
         cursor_ms = std::max(cursor_ms, act.ms);
@@ -192,8 +192,8 @@ SpMeterCurve build_sp_meter_curve(const PreviewScene& scene, const Path& path,
         for (size_t i = next_tempo; i < tempos.size() && tempos[i].tick < act.sp_end_tick; ++i)
             cuts.push_back({tempos[i].tick, tempos[i].ms});
         // The meter changes are the continuous count's span starts, because
-        // the record's level reads that count. They carry only ticks; their ms comes
-        // from the same index every other time in the scene does.
+        // the record's level reads that count. They carry only ticks; their
+        // ms comes from the same index every other time in the scene does.
         const std::vector<PreviewMeasureSpan>& spans = scene.measure_spans;
         while (next_meter < spans.size() && spans[next_meter].tick <= act.tick) ++next_meter;
         for (size_t i = next_meter; i < spans.size() && spans[i].tick < act.sp_end_tick; ++i)
