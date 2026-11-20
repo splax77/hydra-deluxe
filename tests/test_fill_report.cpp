@@ -130,26 +130,17 @@ app::AnalysisSettings analysis_under(FillDeadlineRule rule) {
     return a;
 }
 
-// The library rows the app's library scan (app::discover_charts) writes for
-// the corpus, in notespath order.
-const std::vector<store::ChartLibraryEntry>& corpus_library() {
-    static const std::vector<store::ChartLibraryEntry> rows = [] {
-        auto [items, errors] = app::discover_charts({corpus::root()});
-        if (!errors.empty()) throw std::runtime_error("corpus discovery error: " + errors.front());
-        std::sort(items.begin(), items.end(),
-                  [](const store::ChartLibraryEntry& a, const store::ChartLibraryEntry& b) {
-                      return a.notespath < b.notespath;
-                  });
-        return items;
-    }();
-    return rows;
-}
-
-// The scan's library row for the corpus chart at `notespath`.
-const store::ChartLibraryEntry& scanned(const std::string& notespath) {
-    for (const store::ChartLibraryEntry& e : corpus_library())
-        if (e.notespath == notespath) return e;
-    throw std::runtime_error("the corpus scan lists no chart at " + notespath);
+// The library row the scan writes for the corpus chart at `notespath`: its id
+// and fingerprint from corpus::scanned_entry, and its names from
+// app::read_chart_meta, the reader the scan names a chart with.
+store::ChartLibraryEntry scan_row(const std::string& notespath) {
+    store::ChartLibraryEntry e = corpus::scanned_entry(notespath);
+    const app::ChartMeta meta = app::read_chart_meta(notespath);
+    e.title = meta.title;
+    e.artist = meta.artist;
+    e.charter = meta.charter;
+    e.album = meta.album;
+    return e;
 }
 
 // One corpus chart as the scan lists it, analyzed under each fill rule.
@@ -159,33 +150,28 @@ struct ScoredChart {
     HydraRecord ch11;
 };
 
-// The first three corpus charts, in notespath order, that analyze to at least
-// one path under both fill rules. A chart that fails to analyze under either
-// rule is passed over. Throws, naming the corpus, when fewer than three do.
+// The first three corpus charts with paths under 1.1
+// (corpus::charts_with_paths), each analyzed under 1.0 too. Throws, naming
+// the corpus, when fewer than three have paths, and naming the chart when one
+// fails or keeps no path under 1.0.
 const std::vector<ScoredChart>& scored_charts() {
     static const std::vector<ScoredChart> charts = [] {
-        constexpr size_t kWant = 3;
-        std::vector<ScoredChart> out;
-        for (const store::ChartLibraryEntry& e : corpus_library()) {
-            if (out.size() == kWant) break;
-            try {
-                app::AnalysisResult old_r =
-                    app::analyze_chart_file(e.notespath, analysis_under(FillDeadlineRule::Ch10));
-                app::AnalysisResult new_r =
-                    app::analyze_chart_file(e.notespath, analysis_under(FillDeadlineRule::Ch11));
-                if (old_r.record.paths.empty() || new_r.record.paths.empty()) continue;
-                ScoredChart c;
-                c.entry = e;
-                c.ch10 = std::move(old_r.record);
-                c.ch11 = std::move(new_r.record);
-                out.push_back(std::move(c));
-            } catch (const std::exception&) {
-                continue;
-            }
-        }
-        if (out.size() < kWant)
+        std::vector<corpus::ChartWithPaths> found =
+            corpus::charts_with_paths(analysis_under(FillDeadlineRule::Ch11), 3);
+        if (found.size() < 3)
             throw std::runtime_error("fewer than three charts under " + corpus::root() +
-                                     " analyze to a path under both fill rules");
+                                     " analyze to a path under 1.1");
+        std::vector<ScoredChart> out;
+        for (corpus::ChartWithPaths& f : found) {
+            ScoredChart c;
+            c.entry = scan_row(f.chart);
+            c.ch10 =
+                app::analyze_chart_file(f.chart, analysis_under(FillDeadlineRule::Ch10)).record;
+            if (c.ch10.paths.empty())
+                throw std::runtime_error(f.chart + " has a path under 1.1 and none under 1.0");
+            c.ch11 = std::move(f.result.record);
+            out.push_back(std::move(c));
+        }
         return out;
     }();
     return charts;
@@ -274,7 +260,7 @@ std::vector<store::ChartLibraryEntry> file_copies(store::RecordStore& store) {
 
 // Each status's count against the library rows of the charts `rows` give that
 // status, and the total against every row the library holds.
-void check_tally(const app::fill_report::FillCompareStats& s,
+void check_fill_tally(const app::fill_report::FillCompareStats& s,
                  const std::vector<FillCompareRow>& rows,
                  const std::vector<store::ChartLibraryEntry>& library) {
     auto rows_of = [&](const char* status) {
@@ -364,8 +350,8 @@ TEST_CASE("collect_fill_rows: a chart with a record under one rule only still ge
 TEST_CASE("collect_fill_rows: a chart that failed under both rules gets no row") {
     store::RecordStore store(":memory:");
     const ScoredChart& scored = scored_charts()[0];
-    const store::ChartLibraryEntry& failing =
-        scanned(corpus::first_chart_without_notes(Difficulty::Expert));
+    const store::ChartLibraryEntry failing =
+        scan_row(corpus::first_chart_without_notes(Difficulty::Expert));
     store.rebuild_chart_library({scored.entry, failing});
     file_under(store, FillDeadlineRule::Ch10, scored.entry.md5, scored.ch10);
     for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11}) {
@@ -410,7 +396,7 @@ TEST_CASE("tally_fill_rows counts every status by its charts' library rows") {
     const std::vector<store::ChartLibraryEntry> library = file_copies(store);
     const std::vector<FillCompareRow> rows = compare(store);
     REQUIRE(rows.size() == scored_charts().size());
-    check_tally(app::fill_report::tally_fill_rows(rows, store.chart_index()), rows, library);
+    check_fill_tally(app::fill_report::tally_fill_rows(rows, store.chart_index()), rows, library);
 }
 
 // D79 item 3 and D115: a chart the scan finds in several folders counts each
@@ -427,7 +413,7 @@ TEST_CASE("collect_fill_rows and generate_fill_report count each chart's library
     const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(store, testdm::settings());
     CHECK(result.reason.empty());
-    check_tally(result.stats, rows, library);
+    check_fill_tally(result.stats, rows, library);
 }
 
 // The page's chart tiles add up each row's "k", so each row's data carries its
