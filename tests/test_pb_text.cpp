@@ -253,6 +253,38 @@ TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason'
     CHECK(fill_reason(one, fill_index(one, 156960)) == kBeforeLastActivationText);
 }
 
+// The Path Builder's choice rows are the fills the path passed after its last
+// activation (draw_choices reads trailing_skipped_fill_ticks), and each row
+// prints the phrases saved there (candidate_row_text, through bars_saved_at).
+// Inside a running window that figure would be the meter while SP drains, not
+// phrases saved, so no row may sit there: the engine passes a fill only off
+// Star Power, and fill_reason's SpRunning test is the screen's word for
+// "inside a running window". Checked on every corpus path.
+TEST_CASE("candidate rows: no fill the path passed sits inside a running window") {
+    int rows_checked = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, default_cfg().reading(), default_cfg().rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, default_cfg());
+        for (const Path* p : rec.all_paths()) {
+            if (p->trailing_skipped_fill_ticks.empty()) continue;
+            const app::PreviewScene scene = scene_for(song, *p);
+            for (const int64_t tick : p->trailing_skipped_fill_ticks) {
+                const std::optional<size_t> idx = app::fill_index_on_chord(scene, tick);
+                INFO(chart << " | path " << p->pathstring() << " | passed fill " << tick);
+                REQUIRE(idx.has_value());
+                ++rows_checked;
+                if (fill_refusal(scene, *idx) == FillRefusal::SpRunning)
+                    MESSAGE("row inside a window: " << candidate_row_text(scene, *idx, nullptr)
+                                                    << " | " << fill_reason(scene, *idx));
+                CHECK(fill_refusal(scene, *idx) != FillRefusal::SpRunning);
+            }
+        }
+    }
+    MESSAGE("choice rows checked: " << rows_checked);
+    CHECK(rows_checked > 0);
+}
+
 namespace {
 
 // Allister "Overrated" with no activation, and the candidate numbers for the
