@@ -14,6 +14,7 @@
 #include <optional>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -29,6 +30,7 @@
 #include "midi_util.h"
 #include "multidiff_chart.h"
 #include "parse/chart_files.h"
+#include "parse/midi.h"
 #include "parse/song.h"
 #include "song_digest.h"
 #include "source_tree.h"
@@ -75,58 +77,98 @@ void check_invariants(const Song& song, const std::string& what,
 
 }  // namespace
 
+namespace {
+
+// The corpus as the scan lists it. A missing or empty corpus is a broken
+// tree, so a sweep over it fails at once instead of passing on nothing.
+const std::vector<std::string>& corpus_sweep() {
+    const std::vector<std::string>& paths = corpus::chart_paths();
+    REQUIRE_MESSAGE(!paths.empty(), "the corpus scan found no chart under " << corpus::root());
+    return paths;
+}
+
+}  // namespace
+
 TEST_CASE("song parse holds its invariants over the corpus") {
-    int charts = 0, nonempty = 0;
-    for (const std::string& path : corpus::chart_paths()) {
+    // Every corpus chart is a drum chart (each .chart has an [ExpertDrums]
+    // section and each .mid a PART DRUMS track), so an empty song at Expert is
+    // a parse that lost the notes, not a chart to pass over.
+    for (const std::string& path : corpus_sweep()) {
         const Song& song = corpus::song(path, ChartReading{});
-        ++charts;
-        if (song.is_empty()) continue;
-        ++nonempty;
+        CHECK_MESSAGE(!song.is_empty(), path << ": no Expert notes parsed");
         check_invariants(song, path);
     }
-
-    CHECK(nonempty > 0);
-    MESSAGE("checked " << charts << " charts (" << nonempty << " non-empty)");
 }
 
-TEST_CASE("a parsed song keeps no spare room in its chord list") {
+TEST_CASE("memory: a loaded song's chord list holds no spare capacity") {
     // Every loader ends at load_songbytes_mid or load_songbytes_chart, so the
     // corpus covers .mid, .chart and the containers alike. Parsed fresh here,
-    // not through corpus::song's cache.
-    int nonempty = 0;
-    for (const std::string& path : corpus::chart_paths()) {
+    // not through corpus::song's cache. An empty song is checked too: its list
+    // must hold no spare room either.
+    for (const std::string& path : corpus_sweep()) {
         const Song song = load_songpath(path, ChartReading{});
-        if (song.is_empty()) continue;
-        ++nonempty;
         CHECK_MESSAGE(song.sequence.capacity() == song.sequence.size(), path);
     }
-    CHECK(nonempty > 0);
 }
 
+namespace {
+
+// Whether a .chart's own text holds an N line in `section`, read from the
+// file's lines and not through the parser.
+bool chart_text_has_notes(const std::string& path, const std::string& section) {
+    std::istringstream in(corpus::read_bytes(path));
+    const std::string header = "[" + section + "]";
+    bool inside = false;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        const size_t first = line.find_first_not_of(" \t");
+        const std::string trimmed = first == std::string::npos ? "" : line.substr(first);
+        if (!trimmed.empty() && trimmed.front() == '[') {
+            inside = trimmed == header;
+            continue;
+        }
+        if (inside && trimmed.find(" = N ") != std::string::npos) return true;
+    }
+    return false;
+}
+
+// Whether a .mid's drum track holds a note-on of one of `difficulty`'s drum
+// pitches: its kick, its 2x kick and the four pads after the kick
+// (DifficultyChartCodes), read with the file reader and not the song parser.
+bool mid_track_has_notes(const std::string& path, Difficulty difficulty) {
+    const MidiFile file = MidiFile::from_file(path);
+    const MidiTrack* drums = file.drums_track();
+    if (drums == nullptr) return false;
+    const DifficultyChartCodes& codes = difficulty_chart_codes(difficulty);
+    const int lowest = codes.kick2x_pitch();
+    const int highest = codes.kick_pitch + 4;
+    for (const Message& m : drums->messages)
+        if (m.is_note_on() && m.note >= lowest && m.note <= highest) return true;
+    return false;
+}
+
+}  // namespace
+
 TEST_CASE("song parse holds its invariants at Hard too") {
-    // Same sweep at Hard. Not every chart has Hard charting (an empty song is
-    // the honest answer there), but plenty do, and whatever parses must hold
-    // exactly the same structure Expert does.
-    int charts = 0, nonempty = 0, mids = 0, mids_nonempty = 0;
-    for (const std::string& path : corpus::chart_paths()) {
+    // Same sweep at Hard. A chart parses to Hard notes exactly when its own
+    // file holds Hard notes: an N line in the .chart's Hard section, or a
+    // note-on at a Hard pitch in the .mid's drum track.
+    for (const std::string& path : corpus_sweep()) {
         const Song& song = corpus::song(path, ChartReading{Difficulty::Hard});
-        ++charts;
-        const bool is_mid = chart_format_of(path) == ChartFormat::Mid;
-        if (is_mid) ++mids;
-        if (song.is_empty()) continue;
-        ++nonempty;
-        if (is_mid) ++mids_nonempty;
+        const ChartFormat format = chart_format_of(path);
+        REQUIRE_MESSAGE((format == ChartFormat::Mid || format == ChartFormat::Chart),
+                        path << ": a corpus chart in a format this test cannot read by itself");
+        const bool file_has_hard =
+            format == ChartFormat::Mid
+                ? mid_track_has_notes(path, Difficulty::Hard)
+                : chart_text_has_notes(path, difficulty_chart_codes(Difficulty::Hard).chart_section());
+        CHECK_MESSAGE(song.is_empty() == !file_has_hard,
+                      path << ": the file " << (file_has_hard ? "has" : "has no")
+                           << " Hard notes, but the parsed song "
+                           << (song.is_empty() ? "is empty" : "has notes"));
         check_invariants(song, path + " [Hard]");
     }
-
-    // The corpus has 18 .chart files with a [HardDrums] section, so this is a
-    // real sweep and not a silently-empty one.
-    CHECK(nonempty > 0);
-    // .mid charts keep every difficulty in the one "PART DRUMS" track, so a
-    // corpus .mid with Hard notes proves the pitch base works end to end.
-    CHECK(mids_nonempty > 0);
-    MESSAGE("checked " << charts << " charts at Hard (" << nonempty << " non-empty, "
-                       << mids_nonempty << "/" << mids << " .mid)");
 }
 
 namespace {
@@ -141,13 +183,23 @@ bool has_cymbal(const Song& song) {
 }  // namespace
 
 TEST_CASE("cymbal_counts: a cymbal marker counts only under Pro Drums") {
-    CHECK(cymbal_counts(NoteColor::Yellow, true));
-    CHECK_FALSE(cymbal_counts(NoteColor::Red, true));
-    CHECK_FALSE(cymbal_counts(NoteColor::Yellow, false));
-    CHECK_FALSE(cymbal_counts(NoteColor::Kick, true));
+    // With Pro Drums off no pad's marker counts; with it on, exactly the pads
+    // that can carry a cymbal at all (allows_cymbals, the owner of that list).
+    for (const NoteColor pad : {NoteColor::Kick, NoteColor::Red, NoteColor::Yellow,
+                                NoteColor::Blue, NoteColor::Green}) {
+        CAPTURE(color_str(pad));
+        CHECK_FALSE(cymbal_counts(pad, false));
+        CHECK(cymbal_counts(pad, true) == allows_cymbals(pad));
+    }
 
-    // Both readers ask it: the first corpus .mid and .chart that hold a
-    // cymbal under Pro Drums hold none with Pro Drums off.
+    // Both readers ask it: every cymbal a corpus chart parses to under Pro
+    // Drums sits on a pad whose marker counts, and the first corpus .mid and
+    // .chart that hold a cymbal under Pro Drums hold none with Pro Drums off.
+    for (const std::string& path : corpus::chart_paths())
+        for (const SongTimestamp& ts : corpus::song(path, ChartReading{}).sequence)
+            for (const ChordNote& n : ts.chord.notes())
+                if (n.cymbaltype != NoteCymbalType::Normal)
+                    CHECK_MESSAGE(cymbal_counts(n.colortype, true), path);
     bool mid_seen = false, chart_seen = false;
     for (const std::string& path : corpus::chart_paths()) {
         const ChartFormat format = chart_format_of(path);
@@ -205,30 +257,32 @@ TEST_CASE(".chart: each difficulty reads its own section") {
     check_invariants(easy, "multidiff [Easy]");
 }
 
-TEST_CASE(".mid: each difficulty reads its own pitch base") {
-    // Corpus .mid files that carry Hard notes parse to a different sequence
-    // than their Expert one — the pitch base is what selects the difficulty.
-    int compared = 0, differed = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        if (chart_format_of(path) != ChartFormat::Mid) continue;
-        Song expert = load_songpath_mid(path, ChartReading{});
-        Song hard = load_songpath_mid(path, ChartReading{Difficulty::Hard});
-        if (hard.is_empty()) continue;
-        ++compared;
-        if (hard.sequence.size() != expert.sequence.size()) ++differed;
-        check_invariants(hard, path + " [Hard]");
-        // Medium and Easy sit at their own bases and must not throw either.
-        check_invariants(load_songpath_mid(path, ChartReading{Difficulty::Medium}),
-                         path + " [Medium]");
-        check_invariants(load_songpath_mid(path, ChartReading{Difficulty::Easy}),
-                         path + " [Easy]");
-        if (compared >= 5) break;  // a handful is enough; the sweep covers the rest
+TEST_CASE(".mid: each difficulty reads only the kick at its own pitch") {
+    // One kick per difficulty in one drum track, each a beat after the one
+    // before, at that difficulty's kick pitch (difficulty_chart_codes). Each
+    // difficulty reads its own kick and none of the other three.
+    using namespace testmidi;
+    constexpr uint32_t kBeat = 480;  // midi_util's division, one quarter note
+    std::vector<std::vector<uint8_t>> parts = {track_name("PART DRUMS")};
+    bool first = true;
+    for (const Difficulty d : kAllDifficulties) {
+        const uint8_t kick = static_cast<uint8_t>(difficulty_chart_codes(d).kick_pitch);
+        parts.push_back(first ? note_on(kick, 100) : after(kBeat, note_on(kick, 100)));
+        first = false;
     }
-    CHECK(compared > 0);
-    // Hard is a reduction of Expert, so the two streams are not the same one
-    // read twice. (Per-chart the counts could coincide; across the sample they
-    // cannot all coincide.)
-    CHECK(differed > 0);
+    parts.push_back(end_of_track());
+    const std::vector<uint8_t> data = smf_drums(concat(parts));
+
+    int64_t want_tick = 0;
+    for (const Difficulty d : kAllDifficulties) {
+        CAPTURE(difficulty_name(d));
+        const Song song = load_songbytes_mid(data, ChartReading{d});
+        REQUIRE(song.sequence.size() == 1);
+        CHECK(song.sequence[0].timecode.ticks() == want_tick);
+        REQUIRE(song.sequence[0].chord.notes().size() == 1);
+        CHECK(song.sequence[0].chord.notes()[0].colortype == NoteColor::Kick);
+        want_tick += kBeat;
+    }
 }
 
 TEST_CASE(".chart: [Events] section markers become practice sections") {
@@ -317,22 +371,30 @@ TEST_CASE(".chart: E \"end\" and E \"[end]\" in [Events] are the end event") {
 }
 
 TEST_CASE(".chart: the last note end is the latest N line's tick plus sustain in any section") {
-    // The drum section's last note sits at tick 768; a guitar sustain that
-    // starts at 600 runs to 600 + 900 = 1500, and a Hard bass note ends at
-    // 1000. Events and phrase (S) lines are not notes.
+    // The drum section's last note sits at tick 768, a guitar sustain runs
+    // past it, and a Hard bass note ends at 1000. Events and phrase (S) lines
+    // are not notes, even the ones at later ticks.
+    constexpr int64_t kGuitarTick = 600, kGuitarSustain = 900;
     const std::vector<uint8_t> data = testchart::chart_bytes(
         testchart::section("Events", "  5000 = E \"section Outro\"\n") +
         testchart::section("ExpertDrums", "  0 = N 0 0\n  768 = N 1 0\n  700 = S 2 4000\n") +
-        testchart::section("ExpertSingle", "  0 = N 0 0\n  600 = N 2 900\n") +
+        testchart::section("ExpertSingle", "  0 = N 0 0\n" +
+                                               testchart::line(kGuitarTick, "N 2 " +
+                                                               std::to_string(kGuitarSustain))) +
         testchart::section("HardDoubleBass", "  1000 = N 1 0\n"));
     const Song song = load_songbytes_chart(data, ChartReading{});
-    CHECK(song.last_note_end_tick == std::optional<int64_t>(1500));
+    const int64_t guitar_sustain_end = kGuitarTick + kGuitarSustain;
+    CHECK(song.last_note_end_tick == std::optional<int64_t>(guitar_sustain_end));
 
     // Drums only: the last drum note's own sustain counts too.
+    constexpr int64_t kDrumTick = 192, kDrumSustain = 48;
     const Song drums = load_songbytes_chart(
-        testchart::chart_bytes(testchart::section("ExpertDrums", "  0 = N 0 0\n  192 = N 1 48\n")),
+        testchart::chart_bytes(testchart::section(
+            "ExpertDrums", "  0 = N 0 0\n" + testchart::line(kDrumTick, "N 1 " +
+                                                              std::to_string(kDrumSustain)))),
         ChartReading{});
-    CHECK(drums.last_note_end_tick == std::optional<int64_t>(240));
+    const int64_t drum_sustain_end = kDrumTick + kDrumSustain;
+    CHECK(drums.last_note_end_tick == std::optional<int64_t>(drum_sustain_end));
 
     // No N line anywhere: unset.
     const Song none = load_songbytes_chart(
@@ -404,14 +466,18 @@ TEST_CASE(".chart: the note on the solo end tick is in the solo") {
 // The parser keeps each time signature as the chart wrote it, beside the
 // measure length the engine reads. The length alone cannot tell 6/8 from 3/4.
 TEST_CASE(".chart: time signatures are kept as written") {
+    constexpr int64_t kQuarter = 192;  // the chart's resolution, ticks per quarter note
     const std::vector<uint8_t> data = testchart::chart_bytes(
-        testchart::section("ExpertDrums", "  0 = N 0 0\n  1536 = N 1 0\n"), 192, "",
+        testchart::section("ExpertDrums", "  0 = N 0 0\n  1536 = N 1 0\n"), kQuarter, "",
         testchart::kSync44At120 + "  768 = TS 6 3\n  1344 = TS 3\n");
     Song song = load_songbytes_chart(data, ChartReading{});
 
-    // 6/8 and 3/4 are both 576 ticks at 192 per quarter note.
-    CHECK(song.tpm_changes.at(768) == 576);
-    CHECK(song.tpm_changes.at(1344) == 576);
+    // A 6/8 measure is six eighth notes and a 3/4 measure three quarter
+    // notes, the same length.
+    const int64_t six_eighths = 6 * (kQuarter / 2);
+    const int64_t three_quarters = 3 * kQuarter;
+    CHECK(song.tpm_changes.at(768) == six_eighths);
+    CHECK(song.tpm_changes.at(1344) == three_quarters);
     CHECK(song.timesig_changes.at(0) == std::make_pair(4, 4));
     CHECK(song.timesig_changes.at(768) == std::make_pair(6, 8));
     CHECK(song.timesig_changes.at(1344) == std::make_pair(3, 4));
