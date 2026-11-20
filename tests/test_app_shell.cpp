@@ -395,12 +395,14 @@ TEST_CASE("app_shell: a report's placement key is its window's ### ID") {
 
 namespace {
 
-// A [Hydra][Window] section's body in hydra_ui.ini for the rectangle `r`:
-// Pos is its top-left corner, Size its width and height.
+// A [Hydra][Window] section's body in hydra_ui.ini for the rectangle `r`, in
+// the text format_window_placement writes.
 std::string placement_text(const ScreenRect& r, bool maximized) {
-    return "Pos=" + std::to_string(r.left) + "," + std::to_string(r.top) + "\nSize=" +
-           std::to_string(r.width()) + "," + std::to_string(r.height()) + "\nMaximized=" +
-           (maximized ? "1" : "0") + "\n";
+    WindowPlacement p;
+    p.valid = true;
+    p.normal = r;
+    p.maximized = maximized;
+    return hydra::ui::format_window_placement(p);
 }
 
 }  // namespace
