@@ -11,6 +11,7 @@
 #endif
 #include <windows.h>  // VirtualQuery, to see the fonts are file-mapped
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <limits>
@@ -392,23 +393,38 @@ TEST_CASE("app_shell: a report's placement key is its window's ### ID") {
     CHECK(hydra::ui::report_placement_key(no_id) == no_id);
 }
 
+namespace {
+
+// A [Hydra][Window] section's body in hydra_ui.ini for the rectangle `r`:
+// Pos is its top-left corner, Size its width and height.
+std::string placement_text(const ScreenRect& r, bool maximized) {
+    return "Pos=" + std::to_string(r.left) + "," + std::to_string(r.top) + "\nSize=" +
+           std::to_string(r.width()) + "," + std::to_string(r.height()) + "\nMaximized=" +
+           (maximized ? "1" : "0") + "\n";
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own section") {
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_reports"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
+    const ScreenRect main_rect{100, 100, 1380, 820};
+    // The pathreport client maximized on kUserMonitor, inside the frame.
+    const ScreenRect path_rect = inside_frame(kUserMonitor.front(), kFrame96);
     {
         std::ofstream f(ini);
-        f << "[Hydra][Window]\nPos=100,100\nSize=1280,720\nMaximized=0\n\n"
-             "[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n\n";
+        f << "[Hydra][Window]\n" << placement_text(main_rect, false) << "\n"
+          << "[Hydra][Window:pathreport]\n" << placement_text(path_rect, true) << "\n";
     }
 
     ImGuiOnIni imgui(ini.string());
     const WindowPlacement path = hydra::ui::report_window_placement("pathreport");
     CHECK(path.valid);
-    CHECK(path.normal == ScreenRect{8, 31, 2552, 1384});
+    CHECK(path.normal == path_rect);
     CHECK(path.maximized);
     CHECK_FALSE(hydra::ui::report_window_placement("dmreport").valid);
     // The main window's section is still its own.
-    CHECK(hydra::ui::window_placement().normal == ScreenRect{100, 100, 1380, 820});
+    CHECK(hydra::ui::window_placement().normal == main_rect);
 
     // Remembering the same placement leaves the ini alone; a new one marks it
     // for saving.
@@ -418,7 +434,7 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
     CHECK(g.SettingsDirtyTimer <= 0.0f);
     WindowPlacement dm;
     dm.valid = true;
-    dm.normal = {2600, 60, 4400, 1000};
+    dm.normal = kSavedOnRight;
     hydra::ui::remember_report_placement("dmreport", dm);
     CHECK(g.SettingsDirtyTimer > 0.0f);
     imgui.end();  // DestroyContext writes the ini
@@ -426,9 +442,9 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
     std::ifstream f(ini);
     std::stringstream text;
     text << f.rdbuf();
-    CHECK(text.str().find("[Hydra][Window:pathreport]\nPos=8,31\nSize=2544,1353\nMaximized=1\n") !=
+    CHECK(text.str().find("[Hydra][Window:pathreport]\n" + placement_text(path_rect, true)) !=
           std::string::npos);
-    CHECK(text.str().find("[Hydra][Window:dmreport]\nPos=2600,60\nSize=1800,940\nMaximized=0\n") !=
+    CHECK(text.str().find("[Hydra][Window:dmreport]\n" + placement_text(dm.normal, false)) !=
           std::string::npos);
     f.close();
     std::filesystem::remove_all(dir);
@@ -445,32 +461,48 @@ TEST_CASE("app_shell: the UI scale for a monitor DPI") {
     CHECK(hydra::ui::ui_scale_for_dpi(0) == doctest::Approx(1.0f));  // no reading: unscaled
 }
 
+namespace {
+
+// `size` at `scale` the way ImGuiStyle::ScaleAllSizes sizes it: multiplied,
+// then cut to a whole pixel.
+float scaled_size(float size, float scale) { return std::trunc(size * scale); }
+
+}  // namespace
+
 TEST_CASE("app_shell: scaling always starts from the unscaled style") {
-    const ImGuiStyle base;
-    const ImGuiStyle once = hydra::ui::scaled_style(base, 1.5f);
-    const ImGuiStyle again = hydra::ui::scaled_style(base, 1.5f);
-    CHECK(once.FramePadding.x == again.FramePadding.x);
-    CHECK(once.ItemSpacing.y == again.ItemSpacing.y);
-    CHECK(once.FontScaleDpi == doctest::Approx(1.5f));
-    const ImGuiStyle doubled = hydra::ui::scaled_style(base, 2.0f);
-    CHECK(doubled.FramePadding.x == 8.0f);  // pinned from one run
-    const ImGuiStyle unscaled = hydra::ui::scaled_style(base, 1.0f);
-    CHECK(unscaled.FramePadding.x == base.FramePadding.x);
-    CHECK(unscaled.ScrollbarSize == base.ScrollbarSize);
+    ImGuiOnIni imgui("-");
+    const ImGuiStyle base = ImGui::GetStyle();
+    REQUIRE(base.FramePadding.x > 0.0f);
+    REQUIRE(base.ItemSpacing.y > 0.0f);
+
+    // Scale 2 set twice is still twice the base, not four times.
+    hydra::ui::set_ui_scale(2.0f);
+    hydra::ui::set_ui_scale(2.0f);
+    CHECK(ImGui::GetStyle().FramePadding.x == scaled_size(base.FramePadding.x, 2.0f));
+    CHECK(ImGui::GetStyle().ItemSpacing.y == scaled_size(base.ItemSpacing.y, 2.0f));
+    CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(2.0f));
+
+    // Scale 1.5 after it is 1.5 times the base, not 1.5 times the doubled style.
+    hydra::ui::set_ui_scale(1.5f);
+    CHECK(ImGui::GetStyle().FramePadding.x == scaled_size(base.FramePadding.x, 1.5f));
+    CHECK(ImGui::GetStyle().ItemSpacing.y == scaled_size(base.ItemSpacing.y, 1.5f));
+    CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(1.5f));
 }
 
 TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
+    // A window on the left-hand monitor of kTwoMonitors, saved maximized.
+    const ScreenRect saved_rect{-1700, 40, -300, 940};
     {
         std::ofstream f(ini);
-        f << "[Hydra][Window]\nPos=-1700,40\nSize=1400,900\nMaximized=1\n\n";
+        f << "[Hydra][Window]\n" << placement_text(saved_rect, true) << "\n";
     }
 
-    hydra::ui::setup_imgui(test_options(ini.string()));
+    ImGuiOnIni imgui(ini.string());
     const WindowPlacement read = hydra::ui::window_placement();
     CHECK(read.valid);
-    CHECK(read.normal == ScreenRect{-1700, 40, -300, 940});
+    CHECK(read.normal == saved_rect);
     CHECK(read.maximized);
 
     WindowPlacement moved;
@@ -478,12 +510,12 @@ TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
     moved.normal = {200, 150, 1480, 870};
     moved.maximized = false;
     hydra::ui::remember_window_placement(moved);
-    hydra::ui::shutdown_imgui();  // DestroyContext writes the ini
+    imgui.end();  // DestroyContext writes the ini
 
     std::ifstream f(ini);
     std::stringstream text;
     text << f.rdbuf();
-    CHECK(text.str().find("[Hydra][Window]\nPos=200,150\nSize=1280,720\nMaximized=0\n") !=
+    CHECK(text.str().find("[Hydra][Window]\n" + placement_text(moved.normal, false)) !=
           std::string::npos);
     f.close();
     std::filesystem::remove_all(dir);
@@ -552,7 +584,7 @@ TEST_CASE("app_shell: set_ui_scale rescales sizes, fonts and px() together") {
     const float before = base.FramePadding.x;
 
     hydra::ui::set_ui_scale(2.0f);
-    CHECK(ImGui::GetStyle().FramePadding.x == hydra::ui::scaled_style(base, 2.0f).FramePadding.x);
+    CHECK(ImGui::GetStyle().FramePadding.x == scaled_size(before, 2.0f));
     CHECK(ImGui::GetStyle().FontScaleDpi == doctest::Approx(2.0f));
     CHECK(hydra::ui::g_ui_scale == doctest::Approx(2.0f));
     CHECK(hydra::ui::px(10.0f) == doctest::Approx(20.0f));
