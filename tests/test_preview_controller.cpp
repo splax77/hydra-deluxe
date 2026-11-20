@@ -22,6 +22,7 @@
 #include "app/config.h"  // Settings: the Preview volume's owner
 #include "chart_text.h"
 #include "app/preview_view.h"
+#include "app/song_length.h"  // kSongEndPadMs
 #include "audio/device.h"
 #include "audio_chart_fixtures.h"
 #include "audio_util.h"  // fixture_path
@@ -113,7 +114,8 @@ using audiochart::chart_with_audio;
 using audiochart::copy_file_utf8;
 using audiochart::short_chart_with_long_audio;
 
-// Every field of two timelines, instant by instant.
+// Every field of two timelines, instant by instant: each field TrackInstant
+// and TrackGem declare (render/track_state.h), in their declared order.
 void check_same_track(const hydra::render::TrackState& got,
                       const hydra::render::TrackState& want) {
     const auto& g = got.instants();
@@ -131,8 +133,13 @@ void check_same_track(const hydra::render::TrackState& got,
         }
         CHECK(g[i].overdrive == w[i].overdrive);
         CHECK(g[i].solo == w[i].solo);
+        CHECK(g[i].drum_lane_red == w[i].drum_lane_red);
+        CHECK(g[i].drum_lane_yellow == w[i].drum_lane_yellow);
+        CHECK(g[i].drum_lane_blue == w[i].drum_lane_blue);
+        CHECK(g[i].drum_lane_green == w[i].drum_lane_green);
         CHECK(g[i].fill == w[i].fill);
         CHECK(g[i].fill_taken == w[i].fill_taken);
+        CHECK(g[i].fill_ghost == w[i].fill_ghost);
         CHECK(g[i].sp_active == w[i].sp_active);
         CHECK(g[i].fill_lane == w[i].fill_lane);
         CHECK(g[i].fill_lane_pad == w[i].fill_lane_pad);
@@ -191,53 +198,48 @@ TEST_CASE("the Preview load builds the highway timeline on its worker") {
 }
 
 // The beat lines stop where playback stops, at the song's length, even when
-// the music plays on (D266). The chart's audio is the 5 s sine; a beat is 192
-// ticks (100 ms) and a measure 768 ticks (400 ms).
+// the music plays on (D266). The song's length is the stated song_length plus
+// app::kSongEndPadMs (D255). The chart's audio is the 5 s sine. The chart is
+// 600 BPM, so a beat line falls every 100 ms, and each stated length below
+// puts the song's end on one.
+namespace {
+
+// Loads `notes` with a song.ini stating `stated_ms`, and checks the beat-line
+// rule on the scene the job hands back. The end is the stated length plus the
+// pad, the same end the analysis saves. No line runs past it. The last line
+// is exactly on it, since the end falls on a beat. The renderer's timeline is
+// built from that same scene.
+void check_beats_end_at_song_length(const std::string& notes, int stated_ms) {
+    audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
+                                "[song]\nsong_length = " + std::to_string(stated_ms) + "\n");
+    PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
+                       std::nullopt, 4);
+    job.start();
+    wait_finished(job);
+    REQUIRE(job.ok());
+    PreviewLoadJob::Result r = job.take_result();
+    const double song_end_ms = static_cast<double>(stated_ms) + hydra::app::kSongEndPadMs;
+    CHECK(r.scene.song_length_ms == song_end_ms);
+    REQUIRE(r.song_length_ms.has_value());
+    CHECK(*r.song_length_ms == song_end_ms);
+    CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == song_end_ms);
+    REQUIRE_FALSE(r.scene.beats.empty());
+    for (const hydra::app::PreviewBeat& b : r.scene.beats) CHECK(b.ms <= r.scene.song_length_ms);
+    CHECK(r.scene.beats.back().ms == doctest::Approx(song_end_ms));
+    check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+}
+
+}  // namespace
+
 TEST_CASE("the Preview load stops the beat lines at the song's length, not the audio's end") {
     SUBCASE("the audio outlasts the song") {
-        const std::string notes = short_chart_with_long_audio("prevctl_grid_len");
-        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                    "[song]\nsong_length = 3000\n");
-        PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
-                           std::nullopt, 4);
-        job.start();
-        wait_finished(job);
-        REQUIRE(job.ok());
-        PreviewLoadJob::Result r = job.take_result();
-        // The song's length is the one analysis saves for this chart (D255:
-        // the stated 3 s plus app::kSongEndPadMs), a second before the audio
-        // stops.
-        CHECK(r.scene.song_length_ms == 4000.0);
-        REQUIRE(r.song_length_ms.has_value());
-        CHECK(*r.song_length_ms == 4000.0);
-        CHECK(hydra::app::analysis_song_length(std::nullopt, notes, r.song).ms == 4000.0);
-        // The last line is the barline at tick 7680, exactly on the length;
-        // none runs into the last second of music.
-        REQUIRE_FALSE(r.scene.beats.empty());
-        CHECK(r.scene.beats.back().tick == 7680);
-        CHECK(r.scene.beats.back().ms == doctest::Approx(4000.0));
-        for (const hydra::app::PreviewBeat& b : r.scene.beats)
-            CHECK(b.ms <= r.scene.song_length_ms);
-        // The timeline the renderer draws is built from that same scene.
-        check_same_track(r.track_state, hydra::render::build_track_state(r.scene, r.track_opts));
+        // A stated 3 s ends the song a second before the 5 s sine stops.
+        check_beats_end_at_song_length(short_chart_with_long_audio("prevctl_grid_len"), 3000);
     }
 
     SUBCASE("the song's length and the audio's end agree") {
-        // A stated 4 s plus the pad is 5000 ms, where the sine stops: the grid
-        // ends on tick 9600.
-        const std::string notes = short_chart_with_long_audio("prevctl_grid_agree");
-        audiochart::write_text_file(hydra::parent_folder(notes) + "\\song.ini",
-                                    "[song]\nsong_length = 4000\n");
-        PreviewLoadJob job(entry_for(notes), {Difficulty::Expert, true, true}, kTestFillRule,
-                           std::nullopt, 4);
-        job.start();
-        wait_finished(job);
-        REQUIRE(job.ok());
-        PreviewLoadJob::Result r = job.take_result();
-        CHECK(r.scene.song_length_ms == 5000.0);
-        REQUIRE_FALSE(r.scene.beats.empty());
-        CHECK(r.scene.beats.back().tick == 9600);
-        CHECK(r.scene.beats.back().ms == doctest::Approx(5000.0));
+        // A stated 4 s ends the song where the 5 s sine stops.
+        check_beats_end_at_song_length(short_chart_with_long_audio("prevctl_grid_agree"), 4000);
     }
 }
 
