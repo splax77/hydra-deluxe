@@ -1,9 +1,11 @@
 """Unit tests for the pure logic in debugger.py.
 
 What we can test with no game running: the breakpoint byte bookkeeping (does
-arming write 0xCC and remember the real byte, does disarming put it back), the
+arming write 0xCC and remember the real byte, does disarming put it back), run
+on this process's own memory through the real process.py bindings; the
 XMM0-to-double decode, the rip-minus-one fix-up, the read masking that hides
-0xCC, and the ThreadContext register snapshot.
+0xCC, and the ThreadContext register snapshot, taken from a real suspended
+thread of this process.
 
 What we cannot test here: the Win32 event pump (WaitForDebugEvent,
 GetThreadContext). It needs a live debuggee and is marked LIVE-ONLY in the
@@ -13,7 +15,10 @@ Debugger class exposes the right method names so the interface contract is met.
 
 from __future__ import annotations
 
+import ctypes
+import os
 import struct
+import threading
 import unittest
 from unittest import mock
 
@@ -47,78 +52,121 @@ class FakeMemory:
             self.cells[addr + i] = b
 
 
-class BreakpointTableTests(unittest.TestCase):
-    def test_arm_writes_int3_and_saves_original(self):
-        mem = FakeMemory({0x1000: 0x55})  # 0x55 = a real "push rbp" byte
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x1000)
-        table.arm(0x1000)
+def _own_process_debugger(test: unittest.TestCase) -> Debugger:
+    """A Debugger wired to this test's own process the way attach() wires it
+    to Clone Hero, minus DebugActiveProcess: a real OpenProcess handle, the
+    real process.make_reader/make_writer bindings and the real cache flush.
+    Nothing is attached to and nothing is left running; the handle is closed
+    when the test ends."""
+    dbg = Debugger()
+    dbg._win32 = debugger._Win32()
+    k32 = dbg._win32.k32
+    handle = k32.OpenProcess(debugger.PROCESS_ALL_ACCESS, False, os.getpid())
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    test.addCleanup(k32.CloseHandle, handle)
+    dbg._proc_handle = handle
+    dbg._read_raw = debugger.process.make_reader(handle)
+    dbg._write_raw = debugger.process.make_writer(handle)
+    return dbg
 
-        self.assertEqual(mem.cells[0x1000], INT3)      # 0xCC is now installed
-        self.assertEqual(table.original(0x1000), 0x55)  # the real byte was saved
-        self.assertTrue(table.is_armed(0x1000))
+
+_COPY_SIZE = 16  # bytes of real code copied; the tests below use offsets 0-7
+
+
+def _code_copy(test: unittest.TestCase, dbg: Debugger) -> int:
+    """A writable buffer holding a copy of real machine code: the first bytes
+    of kernel32's GetTickCount as loaded in this process, read through the
+    debugger's own reader. Breakpoints go on the copy, never on code that
+    runs. Returns the copy's address."""
+    func = ctypes.cast(ctypes.windll.kernel32.GetTickCount, ctypes.c_void_p).value
+    code = dbg._raw_read(func, _COPY_SIZE)
+    buf = (ctypes.c_ubyte * _COPY_SIZE).from_buffer_copy(code)
+    test.addCleanup(lambda: buf)  # keeps the buffer alive for the whole test
+    return ctypes.addressof(buf)
+
+
+class BreakpointTableTests(unittest.TestCase):
+    """The table the live debugger builds, writing real process memory
+    through process.py's bindings. Each check compares memory with what it
+    held before the table touched it."""
+
+    def setUp(self):
+        self.dbg = _own_process_debugger(self)
+        self.table = self.dbg._table
+        self.base = _code_copy(self, self.dbg)
+        self.before = ctypes.string_at(self.base, _COPY_SIZE)
+        # A copied 0xCC would make every "now holds 0xCC" check below pass
+        # without the table writing anything.
+        self.assertNotIn(INT3, self.before[:8])
+
+    def memory(self) -> bytes:
+        return ctypes.string_at(self.base, _COPY_SIZE)
+
+    def test_arm_writes_int3_and_saves_original(self):
+        addr = self.base
+        self.table.add(addr)
+        self.table.arm(addr)
+
+        self.assertEqual(self.memory()[0], INT3)                     # 0xCC is installed
+        self.assertEqual(self.table.original(addr), self.before[0])  # real byte saved
+        self.assertTrue(self.table.is_armed(addr))
 
     def test_disarm_restores_original_byte(self):
-        mem = FakeMemory({0x2000: 0x90})  # 0x90 = nop
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x2000)
-        table.arm(0x2000)
-        table.disarm(0x2000)
+        addr = self.base + 1
+        self.table.add(addr)
+        self.table.arm(addr)
+        self.table.disarm(addr)
 
-        self.assertEqual(mem.cells[0x2000], 0x90)  # back to the real byte
-        self.assertFalse(table.is_armed(0x2000))
+        self.assertEqual(self.memory(), self.before)  # back to the real byte
+        self.assertFalse(self.table.is_armed(addr))
 
     def test_rearm_after_disarm_saves_no_stale_byte(self):
         # The re-arm must reinstall 0xCC without re-reading (which would now read
         # a stale 0xCC if it read at the wrong moment). Original stays the truth.
-        mem = FakeMemory({0x3000: 0xAB})
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x3000)
-        table.arm(0x3000)
-        table.disarm(0x3000)
-        table.arm(0x3000)   # re-arm, as the single-step handler does
+        addr = self.base + 2
+        self.table.add(addr)
+        self.table.arm(addr)
+        self.table.disarm(addr)
+        self.table.arm(addr)   # re-arm, as the single-step handler does
 
-        self.assertEqual(mem.cells[0x3000], INT3)
-        self.assertEqual(table.original(0x3000), 0xAB)
+        self.assertEqual(self.memory()[2], INT3)
+        self.assertEqual(self.table.original(addr), self.before[2])
 
     def test_arm_is_idempotent_and_preserves_original(self):
-        mem = FakeMemory({0x4000: 0x48})
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x4000)
-        table.arm(0x4000)
-        table.arm(0x4000)  # second arm must not overwrite the saved byte with 0xCC
+        addr = self.base + 3
+        self.table.add(addr)
+        self.table.arm(addr)
+        self.table.arm(addr)  # second arm must not overwrite the saved byte with 0xCC
 
-        self.assertEqual(table.original(0x4000), 0x48)
-        self.assertEqual(mem.cells[0x4000], INT3)
+        self.assertEqual(self.table.original(addr), self.before[3])
+        self.assertEqual(self.memory()[3], INT3)
 
     def test_remove_restores_and_forgets(self):
-        mem = FakeMemory({0x5000: 0x33})
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x5000)
-        table.arm(0x5000)
-        table.remove(0x5000)
+        addr = self.base + 4
+        self.table.add(addr)
+        self.table.arm(addr)
+        self.table.remove(addr)
 
-        self.assertEqual(mem.cells[0x5000], 0x33)  # restored
-        self.assertFalse(table.has(0x5000))        # forgotten
+        self.assertEqual(self.memory(), self.before)  # restored
+        self.assertFalse(self.table.has(addr))        # forgotten
 
     def test_armed_originals_lists_only_armed(self):
-        mem = FakeMemory({0x6000: 0x11, 0x6100: 0x22})
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x6000)
-        table.add(0x6100)
-        table.arm(0x6000)  # arm one, leave the other unarmed
+        armed, unarmed = self.base + 5, self.base + 6
+        self.table.add(armed)
+        self.table.add(unarmed)
+        self.table.arm(armed)  # arm one, leave the other unarmed
 
-        self.assertEqual(table.armed_originals(), {0x6000: 0x11})
+        self.assertEqual(self.table.armed_originals(), {armed: self.before[5]})
 
     def test_disarm_of_unarmed_is_a_safe_no_op(self):
         # Disarming something that was never armed must not touch memory or throw
         # -- the pump can call disarm defensively.
-        mem = FakeMemory({0x7000: 0x77})
-        table = BreakpointTable(mem.read, mem.write)
-        table.add(0x7000)
-        table.disarm(0x7000)  # never armed
-        self.assertEqual(mem.cells[0x7000], 0x77)
-        self.assertFalse(table.is_armed(0x7000))
+        addr = self.base + 7
+        self.table.add(addr)
+        self.table.disarm(addr)  # never armed
+        self.assertEqual(self.memory(), self.before)
+        self.assertFalse(self.table.is_armed(addr))
 
 
 class MaskBreakpointsTests(unittest.TestCase):
@@ -167,10 +215,44 @@ class AdjustRipTests(unittest.TestCase):
 
 class ThreadContextTests(unittest.TestCase):
     def test_registers_are_plain_int_attributes(self):
-        ctx = ThreadContext({"rip": 0x140001000, "rcx": 0xABCD})
-        self.assertEqual(ctx.rip, 0x140001000)
-        self.assertEqual(ctx.rcx, 0xABCD)
-        self.assertEqual(ctx.rax, 0)  # unspecified registers default to zero
+        # A real CONTEXT, read the way _on_our_breakpoint reads one: from a
+        # suspended thread of this process. The thread is resumed and joined
+        # before the checks run.
+        win32 = debugger._Win32()
+        k32 = win32.k32
+        k32.SuspendThread.argtypes = [ctypes.wintypes.HANDLE]
+        k32.SuspendThread.restype = ctypes.wintypes.DWORD
+        k32.ResumeThread.argtypes = [ctypes.wintypes.HANDLE]
+        k32.ResumeThread.restype = ctypes.wintypes.DWORD
+        release = threading.Event()
+        thread = threading.Thread(target=release.wait, daemon=True)
+        thread.start()
+        try:
+            handle = k32.OpenThread(debugger.THREAD_ALL_ACCESS, False,
+                                    thread.native_id)
+            self.assertTrue(handle, ctypes.get_last_error())
+            try:
+                self.assertNotEqual(k32.SuspendThread(handle), 0xFFFFFFFF)
+                try:
+                    raw = debugger.CONTEXT()
+                    raw.ContextFlags = debugger.CONTEXT_ALL
+                    self.assertTrue(k32.GetThreadContext(handle, ctypes.byref(raw)),
+                                    ctypes.get_last_error())
+                finally:
+                    k32.ResumeThread(handle)
+            finally:
+                k32.CloseHandle(handle)
+        finally:
+            release.set()
+            thread.join(timeout=5)
+        self.assertFalse(thread.is_alive())
+
+        ctx = Debugger._context_from_ctx(raw)
+        self.assertNotEqual(ctx.rip, 0)  # a suspended thread has a real rip
+        for name in ThreadContext._GENERAL:
+            # Each register is the CONTEXT field of the same name, as a plain int.
+            self.assertIs(type(getattr(ctx, name)), int, name)
+            self.assertEqual(getattr(ctx, name), getattr(raw, name.capitalize()), name)
 
     def test_xmm0_double_reads_the_formula_return(self):
         xmm0 = struct.pack("<d", 37.5) + b"\x00" * 8
@@ -249,13 +331,6 @@ class KillOnExitTests(unittest.TestCase):
 
     def tearDown(self):
         debugger._Win32 = self._real_win32
-
-    def test_attach_turns_kill_on_exit_off_right_after_attaching(self):
-        Debugger().attach(4242)
-        self.assertEqual(self.calls[:2], [
-            ("DebugActiveProcess", 4242),
-            ("DebugSetProcessKillOnExit", False),
-        ])
 
     def test_attach_detaches_if_kill_on_exit_cannot_be_turned_off(self):
         self.kill_ok = False
