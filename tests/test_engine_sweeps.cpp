@@ -667,7 +667,8 @@ TEST_CASE("run_search: EngineOptions carries each knob to the engine") {
         EngineOptions pinned;
         pinned.depth_mode = DepthMode::Points;
         pinned.depth_value = kKeepEveryPathBand;
-        pinned.target_act_ticks = test::act_ticks(best.front());
+        const std::vector<int64_t> ticks = test::act_ticks(best.front());
+        pinned.target_act_ticks = ticks;
         const std::vector<Path> again = run_search(graph, pinned);
         REQUIRE_FALSE(again.empty());
         CHECK(again.front().pathstring() == best.front().pathstring());
