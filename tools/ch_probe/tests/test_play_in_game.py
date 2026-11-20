@@ -6,10 +6,13 @@ Run from the repo root with:
 
 from __future__ import annotations
 
+import csv
 import io
+import json
 import os
 import queue
 import sys
+import tempfile
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -98,6 +101,39 @@ class FakePlayer:
         return {"ok": True}
 
 
+class RecordedPlayer:
+    """kit_tools.GamePlayer's three parts over a kit agent's recorded
+    messages (a run's kit-N.jsonl). The first play message posted queues
+    every play_events event the file holds, in its order, keeping the sent
+    and dropped events of `seqs` only; a later post queues nothing. Once the
+    queue is empty the session reads as gone, so a run that waits for an
+    event the recording lacks ends at once as "lost"."""
+
+    def __init__(self, path, seqs):
+        keep = set(seqs)
+        self.recorded = []
+        with open(path, encoding="utf-8") as f:
+            for line in f:
+                payload = json.loads(line)["payload"]
+                if payload.get("type") != "play_events":
+                    continue
+                self.recorded.extend(
+                    e for e in payload["events"]
+                    if e["kind"] not in (K.EVENT_SENT, K.EVENT_DROPPED) or e["seq"] in keep)
+        self.events = queue.Queue()
+        self.posted = []
+
+    def alive(self):
+        return not self.events.empty()
+
+    def post(self, message):
+        self.posted.append(message)
+        if message["type"] == K.PLAY_TYPE and len(self.posted) == 1:
+            for event in self.recorded:
+                self.events.put(event)
+        return {"ok": True}
+
+
 def run(chords, player, **kw):
     return P.play_in_game(chords, player, clock_addr=0x100, score_addr=0x200,
                           out=io.StringIO(), **kw)
@@ -137,20 +173,34 @@ class PlayInGameTest(unittest.TestCase):
         self.assertEqual([r[SEND_COLUMN] for r in result.rows], [P.SENT, P.DROPPED])
         self.assertEqual(result.rows[1]["score_after"], 50)
 
-    def test_a_sent_row_carries_frame_gap_ms_and_a_missed_retime_carries_agent_note(self):
-        chords = [chord(0, 1000.0, press(0, 1000.0, [Lane.RED])),
-                  chord(1, 1100.0, press(1, 1100.0, [Lane.BLUE], end_read_after=0,
-                                         aim_end_ms=1500.0))]
-        player = FakePlayer({K.PLAY_TYPE: [[
-            started(), sent_event(0, 0, 1001.0, 0, 50),
-            sent_event(1, 1, 1101.0, 50, 100, note=K.NOTE_RETIME_MISSED),
-            stopped(K.STOP_REASON_DONE)]]})
+    def test_a_real_runs_agent_events_write_the_press_log_that_run_wrote(self):
+        # The kit agent's events of the first three chords of a real run, and
+        # the run's stop, read back through play_in_game and write_press_log,
+        # give the press log rows that run wrote. Both files are copied from
+        # hydra-data/ch-mcp-runs/2026-11-12/ls-g3-run1: kit-1-head.jsonl is
+        # kit-1.jsonl's lines 4 to 7 (the skipped event and seqs 0 to 2) and
+        # its line holding the stop; press-1-head.csv is press-1.csv's header
+        # and first three rows.
+        folder = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1")
+        with open(os.path.join(folder, "press-1-head.csv"), encoding="utf-8") as f:
+            recorded_log = f.read().splitlines()
+        reader = csv.DictReader(recorded_log)
+        recorded_rows = list(reader)
+        # The schedule is the run's own chart times; a chord's lanes reach
+        # only the play message, which no row reads.
+        chords = [chord(int(r["index"]), float(r["chart_ms"]),
+                        press(int(r["index"]), float(r["chart_ms"]), [Lane.RED]))
+                  for r in recorded_rows]
+        player = RecordedPlayer(os.path.join(folder, "kit-1-head.jsonl"),
+                                seqs=range(len(chords)))
         result = run(chords, player)
-        self.assertEqual(result.rows[0]["frame_gap_ms"], 3.0)
-        self.assertEqual(result.rows[0]["agent_note"], "")
-        self.assertEqual(result.rows[1]["agent_note"], K.NOTE_RETIME_MISSED)
-        self.assertIn(K.NOTE_RETIME_MISSED, result.message)
-        self.assertIn("chords 1", result.message)
+        self.assertEqual(result.stop, P.STOP_DONE, result.message)
+        scratch = tempfile.TemporaryDirectory()
+        self.addCleanup(scratch.cleanup)
+        written = os.path.join(scratch.name, "press.csv")
+        P.write_press_log(written, result.rows)
+        with open(written, encoding="utf-8") as f:
+            self.assertEqual(f.read().splitlines(), recorded_log)
 
     def test_an_end_read_posts_one_retime_of_retime_from_ends_output(self):
         head = press(0, 1000.0, [Lane.RED], planned_end_ms=1500.0, seq=0)
