@@ -368,6 +368,11 @@
           "why": "checks that the comparison's subtitle ends with the cap phrase, not a file format"
         },
         {
+          "file": "tests/test_report_rows.cpp",
+          "line_text": "CHECK(hydra::ends_with(ch10.subtitle,",
+          "why": "checks that a report subtitle ends with the fill rule's long name, not a file format"
+        },
+        {
           "file": "tests/test_dm_report.cpp",
           "line_text": "CHECK(ends_with(one.subtitle, dmr::clone_hero_cap_phrase()));",
           "why": "checks that the one-score comparison's subtitle ends with the cap phrase, not a file format"
