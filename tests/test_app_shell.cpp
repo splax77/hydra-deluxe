@@ -320,28 +320,40 @@ TEST_CASE("app_shell: a saved report is fitted into the monitor holding its titl
     CHECK_FALSE(big.maximized);
 }
 
-TEST_CASE("app_shell: with no frame and no monitor list a report keeps the main window's rectangle") {
-    // The GUI test runner's case for the frame: zero insets, so a maximized
-    // report's client is the whole work area.
-    const ReportPlacement runner = report_placement(std::nullopt, false, true,
-                                                    ScreenRect{0, 0, 1280, 800},
-                                                    {{0, 0, 1280, 800}}, hydra::ui::FrameInsets{});
-    CHECK(runner.client == ScreenRect{0, 0, 1280, 800});
-    CHECK(runner.maximized);
+TEST_CASE("app_shell: in the GUI test runner a report opens over the main window, no frame added") {
+    // The runner has no platform backend: main.cpp never sets a frame, and
+    // ImGui's stand-in monitor is the main viewport. This runs
+    // place_report_window, the code a report runs there, on a headless ImGui.
+    const hydra::test::HeadlessImGui imgui;
+    ImGui::NewFrame();
+    ImGuiViewport* viewport = ImGui::GetMainViewport();
+    const char* name = "Placement test###placement_test";
+    hydra::ui::place_report_window(name);
+    ImGui::Begin(name);
+    ImGui::End();
+    ImGui::EndFrame();
 
-    // No monitors known: nothing to fit into.
-    const ReportPlacement none = report_placement(std::nullopt, false, false, kMainClient, {},
-                                                  kFrame96);
-    CHECK(none.client == kMainClient);
-    CHECK_FALSE(none.maximized);
+    const ScreenRect main_rect{static_cast<int>(viewport->Pos.x), static_cast<int>(viewport->Pos.y),
+                               static_cast<int>(viewport->Pos.x + viewport->Size.x),
+                               static_cast<int>(viewport->Pos.y + viewport->Size.y)};
+    REQUIRE(main_rect.width() > 0);
+    REQUIRE(main_rect.height() > 0);
+    const ImGuiWindow* report = ImGui::FindWindowByName(name);
+    REQUIRE(report != nullptr);
+    const ScreenRect report_rect{static_cast<int>(report->Pos.x), static_cast<int>(report->Pos.y),
+                                 static_cast<int>(report->Pos.x + report->Size.x),
+                                 static_cast<int>(report->Pos.y + report->Size.y)};
+    CHECK(report_rect == main_rect);
 }
 
 TEST_CASE("app_shell: a report's placement key is its window's ### ID") {
-    CHECK(hydra::ui::report_placement_key("Path report \xE2\x80\x94 Hydra###pathreport") ==
-          "pathreport");
-    CHECK(hydra::ui::report_placement_key("dmleaderboards: someone \xE2\x80\x94 Hydra###dmreport") ==
-          "dmreport");
-    CHECK(hydra::ui::report_placement_key("plain") == "plain");
+    // Whatever the title in front, the key is the ID after "###"; a title's
+    // own "##" does not end it.
+    const std::string id = "anyreport";
+    CHECK(hydra::ui::report_placement_key("Any report \xE2\x80\x94 Hydra###" + id) == id);
+    CHECK(hydra::ui::report_placement_key("Any##report###" + id) == id);
+    const std::string no_id = "plain";
+    CHECK(hydra::ui::report_placement_key(no_id) == no_id);
 }
 
 TEST_CASE("app_shell: the [Hydra][Window:pathreport] text round-trips") {
@@ -402,10 +414,13 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
 }
 
 TEST_CASE("app_shell: the UI scale for a monitor DPI") {
-    CHECK(hydra::ui::ui_scale_for_dpi(96) == doctest::Approx(1.0f));
-    CHECK(hydra::ui::ui_scale_for_dpi(120) == doctest::Approx(1.25f));
-    CHECK(hydra::ui::ui_scale_for_dpi(144) == doctest::Approx(1.5f));
-    CHECK(hydra::ui::ui_scale_for_dpi(192) == doctest::Approx(2.0f));
+    // The scale is the monitor's DPI over Windows' default DPI, which is 1.0.
+    CHECK(hydra::ui::ui_scale_for_dpi(USER_DEFAULT_SCREEN_DPI) == doctest::Approx(1.0f));
+    for (const unsigned dpi : {120u, 144u, 192u}) {
+        CAPTURE(dpi);
+        CHECK(hydra::ui::ui_scale_for_dpi(dpi) ==
+              doctest::Approx(static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)));
+    }
     CHECK(hydra::ui::ui_scale_for_dpi(0) == doctest::Approx(1.0f));  // no reading: unscaled
 }
 
@@ -531,7 +546,13 @@ TEST_CASE("app_shell: set_ui_scale rescales sizes, fonts and px() together") {
 TEST_CASE("app_shell: the atlas reads every UI font from a file map it does not own") {
     const hydra::test::HeadlessImGui imgui;
     const ImFontAtlas* atlas = ImGui::GetIO().Fonts;
-    REQUIRE(atlas->Sources.Size >= 2);
+    // Both fonts Hydra draws with, the UI font and the mono one, loaded, so
+    // the loop below sees them.
+    const ImFont* ui_font = ImGui::GetIO().FontDefault;
+    const ImFont* mono_font = hydra::ui::g_mono_font;
+    REQUIRE(ui_font != nullptr);
+    REQUIRE(mono_font != nullptr);
+    REQUIRE(ui_font != mono_font);
     // Every source, the merged Japanese fallback too when this machine has one.
     for (int i = 0; i < atlas->Sources.Size; ++i) {
         const ImFontConfig& source = atlas->Sources[i];
