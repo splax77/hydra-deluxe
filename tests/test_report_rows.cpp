@@ -22,6 +22,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/display_format.h"
+#include "app/library_query.h"  // fold_for_search
 #include "app/path_report_view.h"
 #include "app/report.h"
 #include "app/user_messages.h"
@@ -213,7 +214,8 @@ std::map<std::string, std::vector<std::pair<int64_t, int>>> ranks_by_chart(
 // Stores test::tied_variant_record() for chart `hyhash` under
 // fixture_settings(cap, legacy_fills), with a library row (kTiedFile), so the
 // report has three paths to list: two tied at the top score and a lower one.
-void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
+// No case calls it now; C130 decides whether it stays.
+[[maybe_unused]] void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
                 const std::string& hyhash, int cap, bool legacy_fills = false) {
     library.push_back(library_entry_for_file(hyhash, "Tied " + hyhash, kTiedFile));
     store.rebuild_chart_library(library);
@@ -858,41 +860,50 @@ TEST_CASE("path report coverage: no Ready chart but a stored failure reads Nothi
 
 TEST_CASE("report lists only the wanted cap and names it") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    const std::vector<std::string> files = fill_store(store, library, 4, 1);
-    REQUIRE(files.size() == 1);
-    // The same chart again at 8 bars.
-    const BatchRun eight = fixture_settings(8).batch_run();
-    testdm::save(store, "h0", fixture_settings(8),
-                 analyze_chart_file(files[0], eight.settings).record);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(fixture_settings(4).batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    const store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "Title 0");
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, fixture_settings(4), charts[0].result.record);
+    // The same chart analyzed again under fixture_settings(cap, legacy_fills).
+    const auto save_at = [&store, &entry](int cap, bool legacy_fills) {
+        const Settings settings = fixture_settings(cap, legacy_fills);
+        const AnalysisResult result =
+            analyze_chart_file(entry.notespath, settings.batch_run().settings);
+        REQUIRE_FALSE(result.record.paths.empty());
+        testdm::save(store, entry.md5, settings, result.record);
+    };
+    save_at(8, false);
     REQUIRE(store.ready_records(fixture_settings(8).profile()).size() == 1);
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
-    CHECK(hydra::ends_with(four.subtitle, "SP cap 4 bars"));
+    CHECK(hydra::ends_with(four.subtitle, "SP cap " + bars_text(4)));
     // The subtitle counts what the report lists: the one chart at 4 bars, not
     // the 8-bar record the database also holds for the same chart.
     CHECK(four.songs == 1);
-    CHECK(four.subtitle.rfind("1 chart — ", 0) == 0);
+    CHECK(four.subtitle.rfind(counted(1, "chart", "charts") + " — ", 0) == 0);
     int rank1 = 0;
     options.max_paths = 100;
     for (const report::ReportRow& row : report::collect_rows(store, options).rows)
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
 
-    // The cap reads through the house count rule: one bar, and commas from
-    // 1,000 (D48 Q12).
-    store_tied(store, library, "one", 1);
-    store_tied(store, library, "thousand", 1000);
-    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, "SP cap 1 bar"));
-    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,
-                           "SP cap 1,000 bars"));
+    // The cap reads through the house count rule (bars_text, D48 Q12), at
+    // the one-bar and the thousand-bar ends.
+    for (const int cap : {1, 1000}) {
+        INFO("cap " << cap);
+        save_at(cap, false);
+        CHECK(hydra::ends_with(report::generate_report(store, fixture_options(cap)).subtitle,
+                               "SP cap " + bars_text(cap)));
+    }
 
     // A 1.0 report names its rule by the fill rule's one long name.
-    store_tied(store, library, "legacy", 4, /*legacy_fills=*/true);
+    save_at(4, true);
     CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))
                                .subtitle,
-                           std::string("SP cap 4 bars — ") +
+                           "SP cap " + bars_text(4) + " — " +
                                fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
                                " fills"));
 }
@@ -936,24 +947,31 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
 TEST_CASE("collect_rows: the library names go through display_title, display_artist and "
           "display_charter") {
     // test_song_input.cpp pins what those three do. This checks only that the
-    // page calls them: one tagged name each. The page names a chart by its
-    // library row (ChartIndex::naming), so a rescan's names replace
-    // store_tied's own.
+    // page calls them: one tagged name each, on a corpus chart's scanned row
+    // over its real record. The page names a chart by its library row
+    // (ChartIndex::naming).
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "u0", 4);
-    library[0].title = "<b>Bold Title</b>";
-    library[0].artist = test::kTagOnlyTitle;
-    library[0].charter = " <b>Bob</b> ";
-    store.rebuild_chart_library(library);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(fixture_settings(4).batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "<b>Bold Title</b>");
+    entry.artist = test::kTagOnlyTitle;
+    entry.charter = " <b>Bob</b> ";
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, fixture_settings(4), charts[0].result.record);
 
     const std::vector<report::ReportRow> rows =
         report::collect_rows(store, fixture_options(4)).rows;
     REQUIRE(!rows.empty());
     for (const report::ReportRow& row : rows) {
-        CHECK(row.song == "Bold Title");
-        CHECK(row.artist == kUnknownTitle);
-        CHECK(row.charter == "Bob");
+        CHECK(row.song == display_title(entry.title));
+        CHECK(row.artist == display_artist(entry.artist));
+        CHECK(row.charter == display_charter(entry.charter));
+        // Each name is changed by its cleaner, so a page that skipped one
+        // would show the raw name and fail here.
+        CHECK(row.song != entry.title);
+        CHECK(row.artist != entry.artist);
+        CHECK(row.charter != entry.charter);
     }
 }
 
@@ -1037,15 +1055,37 @@ TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
     }
 }
 
+// A corpus chart's real rows, listed under names with a tag and an accent:
+// each row's search text is already folded and holds no tag, and a search for
+// any shown name or the path finds the row.
 TEST_CASE("path report: a row's search text is folded and tag-free") {
-    report::ReportRow row;
-    row.song = "Halo";
-    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
-    row.charter = "<b>Bob</b>";
-    row.path = "1";
-    row.tier = "None";
-    row.tok = "tn";
-    CHECK(path_report_view::path_search_text(row) == "halo beyonce bob 1");
+    store::RecordStore store(":memory:");
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(fixture_settings(4).batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "<i>Halo</i>");
+    entry.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    entry.charter = "<b>Bob</b>";
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, fixture_settings(4), charts[0].result.record);
+
+    const std::vector<report::ReportRow> rows =
+        report::collect_rows(store, fixture_options(4)).rows;
+    REQUIRE_FALSE(rows.empty());
+    for (const report::ReportRow& row : rows) {
+        INFO("path " << row.path);
+        const std::string text = path_report_view::path_search_text(row);
+        // Folded: folding it again changes nothing, and it differs from the
+        // shown artist, which the fold changes.
+        CHECK(fold_for_search(text) == text);
+        CHECK(text.find(row.artist) == std::string::npos);
+        // Tag-free: no tag's opening bracket is left.
+        CHECK(text.find('<') == std::string::npos);
+        for (const std::string& shown : {row.song, row.artist, row.charter, row.path}) {
+            INFO("search for " << shown);
+            CHECK(report_view::search_matches(report_view::search_words(shown), text));
+        }
+    }
 }
 
 TEST_CASE("generate_report: one seam frames the report for every entry point") {
