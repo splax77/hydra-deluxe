@@ -116,15 +116,6 @@ def window_map_dumps(test: unittest.TestCase, made: list):
     with unittest.mock.patch.object(hydra_end, "make_dump", make_dump):
         yield
 
-ENGINE = {"name": "Eng", "image": "StrikeCore", "parent": "Base<Inputs>",
-          "shape": {"sealed": True, "generic_base": True,
-                    "round_start_double": True, "ctor_rva": True}}
-
-
-def entry(names, count, owner="engine", rva="0x1000"):
-    return {"names": names, "owner": owner, "rva": rva, "params": ["uint"],
-            "count": count, "args": []}
-
 
 def notes_at(*times_ms):
     return [{"index": i, "time_ms": t} for i, t in enumerate(times_ms)]
@@ -206,14 +197,29 @@ class LineUpTest(unittest.TestCase):
 
 
 class CapTest(unittest.TestCase):
-    # A song end of 60,080 ms, as a dump of the Window Map chart could name.
-    END_MS = 60080.0
+    def setUp(self):
+        # Hydra's own song end for the Window Map chart the recorded runs played.
+        self.end_ms = hydra_end.song_length_ms(window_map_dump(self))
 
     def test_the_song_cap_is_hydras_end_plus_the_margin(self):
-        self.assertAlmostEqual(TH.trace_cap_s(self.END_MS), 90.08)
+        # The cap is later than the song's end by a positive margin, and is
+        # the song's end itself when the margin is zero.
+        end_s = C.ms_to_s(self.end_ms)
+        self.assertGreater(TH.TRACE_CAP_MARGIN_S, 0.0)
+        self.assertAlmostEqual(TH.trace_cap_s(self.end_ms) - end_s,
+                               TH.TRACE_CAP_MARGIN_S)
+        with unittest.mock.patch.object(TH, "TRACE_CAP_MARGIN_S", 0.0):
+            self.assertAlmostEqual(TH.trace_cap_s(self.end_ms), end_s)
 
     def test_the_wall_cap_is_the_song_cap_plus_the_pause_room(self):
-        self.assertAlmostEqual(TH.wall_cap_s(self.END_MS), 210.08)
+        # The wall cap is later than the song cap by the pause room, and is
+        # the song cap itself when there is no pause room.
+        song_cap = TH.trace_cap_s(self.end_ms)
+        self.assertGreater(TH.WALL_CAP_PAUSE_S, 0.0)
+        self.assertAlmostEqual(TH.wall_cap_s(self.end_ms) - song_cap,
+                               TH.WALL_CAP_PAUSE_S)
+        with unittest.mock.patch.object(TH, "WALL_CAP_PAUSE_S", 0.0):
+            self.assertAlmostEqual(TH.wall_cap_s(self.end_ms), song_cap)
 
 
 class SongEndTest(unittest.TestCase):
@@ -295,38 +301,51 @@ class CommandLineTest(unittest.TestCase):
         self.enterContext(window_map_dumps(self, []))
         return hydra_end.song_length_ms(WINDOW_MAP_DUMP)
 
-    def test_count_mode_posts_the_settings_and_prints_the_table(self):
-        table = {"done": "song over", "mode": "count", "calls": 9,
-                 "not_hooked": [], "no_code": ["base Abs"],
-                 "methods": [entry(["Tick"], 6, rva="0x2000"),
-                             entry(["Hit", "Hit2"], 3, owner="base")]}
-        session = FakeSession([sent({"engine": ENGINE, "hooked": 2,
-                                     "no_code": ["base Abs"]}), sent(table)])
-        code = self.run_main(["--mode", "count"], session)
+    def run_window_map_count(self) -> tuple[float, list[dict], FakeSession, int]:
+        """The real count run on Window Map (trace-wm-count.jsonl), played
+        through the real runner and wait with that run's engine class.
+        Returns Hydra's end, the messages, the session and the exit code."""
+        end_ms = self.use_window_map()
+        msgs = recorded(L3, "trace-wm-count.jsonl")
+        engine = msgs[0]["payload"]["engine"]["name"]
+        session = FakeSession(msgs)
+        code = self.run_main(["--mode", "count"], session, engine=engine,
+                             wait=FA._default_wait)
+        return end_ms, msgs, session, code
+
+    def test_count_mode_posts_the_settings(self):
+        # The agent gets trace_settings for Hydra's end of the song with no
+        # methods, and the wall cap for that end.
+        end_ms, msgs, session, code = self.run_window_map_count()
         self.assertEqual(code, 0)
-        # The fake dump's song end of 6,000 ms + 30 s margin = 36 s song cap;
-        # plus 120 s of pause room = 156 s wall-clock cap.
+        engine = msgs[0]["payload"]["engine"]["name"]
         self.assertEqual(session.script.posted, [{
-            "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
-            "mode": "count", "engine_class": "Eng",
-            "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
-            "round_start_offset": C.OFF_ROUND_START, "methods": []}])
+            **TH.trace_settings(end_ms, TH.MODE_COUNT, engine,
+                                C.RVA_DRUMS_ENGINE_CTOR, []),
+            "type": "start", "cap_s": TH.wall_cap_s(end_ms)}])
         self.assertEqual(session.detach_calls, 1)
-        self.assertEqual(self.lines, [
-            "ended: done (agent: song over)",
-            "engine: Eng in StrikeCore, base Base<Inputs>",
-            "shape: sealed yes, generic_base yes, round_start_double yes, "
-            "ctor_rva yes",
-            f"notes in {self.manifest}: 3",
-            "hooked: 2 code addresses, 9 calls; no code: 1 methods; "
-            "not hooked: 0",
-            "once per note (count 3): Hit / Hit2 (base 0x1000)",
-            "off by one (count 2 or 4): none",
-            "all methods by count:",
-            "        6  Tick (engine 0x2000)  (uint)",
-            "        3  Hit / Hit2 (base 0x1000)  (uint)",
-            f"messages written to {self.out_path}",
-        ])
+
+    def test_count_mode_prints_the_table_the_real_run_printed(self):
+        # Every line of the count run's own report comes back, in its order,
+        # but for the two lines that named that run's own files
+        # (testdata/ch_runs/2026-10-28-l3/trace-wm-count.txt, copied from
+        # hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt).
+        _, _, _, code = self.run_window_map_count()
+        self.assertEqual(code, 0)
+        report = self.assert_printed_the_report("trace-wm-count.txt")
+        # And nothing else: the two file lines are the only lines added.
+        self.assertEqual(len(self.lines), len(report) + 2, self.lines)
+
+    def assert_printed_the_report(self, name: str) -> list[str]:
+        """Every line of a recorded run's own report `name` is in self.lines,
+        in its order, but for the lines that named that run's own files; those
+        name this run's manifest and log. Returns the report's other lines."""
+        report = [line for line in recorded_report(name) if "\\" not in line]
+        wanted = set(report)
+        self.assertEqual([line for line in self.lines if line in wanted], report)
+        self.assertEqual(len([line for line in self.lines if self.manifest in line]), 1)
+        self.assertTrue(self.lines[-1].endswith(self.out_path), self.lines[-1])
+        return report
 
     def test_args_mode_reports_a_real_run_as_that_run_did(self):
         # The args run's messages, played through the real runner and wait
@@ -350,13 +369,7 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(session.detach_calls, 1)
         # Every line of the run's own report comes back, in its order, but
         # for the two lines that named that run's own files.
-        report = [line for line in recorded_report("trace-wm-args.txt")
-                  if "\\" not in line]
-        wanted = set(report)
-        self.assertEqual([line for line in self.lines if line in wanted], report)
-        # The lines that name files name this run's manifest and log.
-        self.assertEqual(len([line for line in self.lines if self.manifest in line]), 1)
-        self.assertTrue(self.lines[-1].endswith(self.out_path), self.lines[-1])
+        self.assert_printed_the_report("trace-wm-args.txt")
         with open(self.out_path, encoding="utf-8") as fh:
             self.assertEqual([json.loads(line) for line in fh], msgs)
 
@@ -411,11 +424,18 @@ class CommandLineTest(unittest.TestCase):
     def test_a_stale_agent_runs_nothing(self):
         with open(os.path.join(self.tmp.name, "trace.ts"), "a", encoding="utf-8") as fh:
             fh.write("// an edit after the build\n")
-        code = self.run_main(["--mode", "count"], FakeSession([]))
+        session = FakeSession([])
+        code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [
-            f"{self.agent} is stale: trace.ts changed since it was built; "
-            "run npm run build:trace in tools/ch_mcp/agent first"])
+        # The one line is build_stamp's refusal for this agent: it names the
+        # edited source and the command that rebuilds the agent.
+        refusal = BS.check(self.agent)
+        self.assertIsNotNone(refusal)
+        self.assertEqual(self.lines, [refusal])
+        self.assertIn(self.agent, refusal)
+        self.assertIn("trace.ts", refusal)
+        self.assertIn(BS.build_command(self.agent), refusal)
+        self.assertIsNone(session.script)  # no agent was loaded
 
     def test_the_modes_refuse_the_wrong_method_flags(self):
         for extra in (["--mode", "args"], ["--mode", "count", "--method", "X"]):
@@ -431,15 +451,29 @@ class TraceAgentTest(unittest.TestCase):
             self.assertEqual(by_name_only_findings(fh.read()), [])
 
     def test_only_gamemanager_ts_looks_up_the_game_manager(self):
-        # One owner: gamemanager.ts holds the lookup. These two agents call its
-        # findGameManager and neither repeats the lookup.
-        for name in ("clock.ts", "trace.ts"):
+        # One owner: gamemanager.ts looks the GameManager class up by its
+        # CLASS_NAME. No other agent file holds that class name as a string or
+        # looks up the class gamemanager.ts exports as GAME_MANAGER, so any
+        # other agent reaches the game manager through gamemanager.ts.
+        def read(name):
+            with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+                return fh.read()
+
+        owner = read("gamemanager.ts")
+        found = re.search(r'^const CLASS_NAME = "(\w+)";$', owner, re.MULTILINE)
+        self.assertIsNotNone(found, "gamemanager.ts names no CLASS_NAME")
+        self.assertIn("tryClass(CLASS_NAME)", owner)
+        self.assertIn("export const GAME_MANAGER = CLASS_NAME;", owner)
+        quoted = (f'"{found.group(1)}"', f"'{found.group(1)}'")
+        others = sorted(n for n in os.listdir(AGENT_DIR)
+                        if n.endswith(".ts") and n != "gamemanager.ts")
+        self.assertIn("trace.ts", others)
+        for name in others:
             with self.subTest(agent=name):
-                with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
-                    text = fh.read()
-                self.assertIn("findGameManager()", text)
-                self.assertNotIn("gc.choose", text)
-                self.assertNotIn("tryAssembly", text)
+                text = read(name)
+                for literal in quoted:
+                    self.assertNotIn(literal, text)
+                self.assertNotIn("tryClass(GAME_MANAGER)", text)
 
     def test_ended_line_is_the_line_each_real_run_printed(self):
         # Two real runs of trace.ts and the first line of each one's own
@@ -469,14 +503,25 @@ class TraceAgentTest(unittest.TestCase):
 
 
 class HookRvaTest(unittest.TestCase):
-    # The literals are the study's: docs/research/
-    # 2026-10-28-clone-hero-mcp-feasibility.md, "Test 3: the hit method".
-    def test_the_two_engine_methods_are_the_studys_addresses(self):
-        self.assertEqual(C.RVA_NOTE_SCORE_ADD, 0x20DEEC0)
-        self.assertEqual(C.RVA_NOTE_DYNAMICS, 0x20DE770)
+    def setUp(self):
+        # The once-per-note methods of the count run that played Window Map
+        # to its end: the study's run of trace.ts.
+        entries = recorded_table("trace-wm-count.jsonl")
+        self.exact = TH.once_per_note(entries, len(window_map_notes()))[0]
 
-    def test_the_default_hooks_only_the_score_method(self):
-        self.assertEqual(C.PER_NOTE_DEFAULT_RVAS, (C.RVA_NOTE_SCORE_ADD,))
+    def test_the_two_engine_methods_are_the_studys_addresses(self):
+        # The engine's own methods that ran once per note in that run are
+        # exactly the score and dynamics methods' addresses.
+        self.assertEqual({int(e["rva"], 16) for e in self.exact if e["owner"] == "engine"},
+                         {C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS})
+
+    def test_the_default_hooks_only_once_per_note_methods(self):
+        # Every method ch_trace_start hooks by default ran once per note in
+        # that run, and the dynamics method is left to its with_dynamics option.
+        self.assertTrue(C.PER_NOTE_DEFAULT_RVAS)
+        self.assertLessEqual(set(C.PER_NOTE_DEFAULT_RVAS),
+                             {int(e["rva"], 16) for e in self.exact})
+        self.assertNotIn(C.RVA_NOTE_DYNAMICS, C.PER_NOTE_DEFAULT_RVAS)
 
 
 class SongNotesTest(unittest.TestCase):
@@ -571,16 +616,34 @@ class TraceSessionTest(unittest.TestCase):
         fake_session.script.handlers["message"](sent(payload), None)
 
     def test_the_agent_gets_mains_args_mode_settings(self):
-        fake = FakeSession([sent({"done": "song over", "calls": 0})])
-        s = self.session(fake)
+        # main in args mode and a session, each on the Window Map song with
+        # the real args run's engine class and methods, post the same start.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        engine = msgs[0]["payload"]["engine"]["name"]
+        methods = list(dict.fromkeys(m["payload"]["call"] for m in msgs
+                                     if "call" in m["payload"]))
+        song = os.path.join(self.tmp.name, "Song")
+        os.mkdir(song)
+        copy_window_map(song)
+        by_main = FakeSession(msgs)
+        with window_map_dumps(self, []):
+            code = TH.main(["--song", song, "--engine-class", engine,
+                            "--mode", "args", "--agent", self.agent,
+                            "--out", os.path.join(self.tmp.name, "main.jsonl")]
+                           + [arg for m in methods for arg in ("--method", m)],
+                           frida_mod=FakeFrida(by_main), wait=FA._default_wait,
+                           out=lambda _line: None)
+        self.assertEqual(code, 0)
+        by_session = FakeSession(msgs)
+        s = TH.TraceSession(window_map_notes(), engine, methods, self.out_path,
+                            song_end_ms=hydra_end.song_length_ms(WINDOW_MAP_DUMP),
+                            agent_path=self.agent, frida_mod=FakeFrida(by_session),
+                            wait=self.blocking_wait)
+        self.addCleanup(s.stop, THREAD_CAP_S)
+        s.start()
         self.assertTrue(s.stop(THREAD_CAP_S))
-        # The song end of 6,000 ms + 30 s margin = 36 s song cap; plus 120 s
-        # of pause room = 156 s wall-clock cap.
-        self.assertEqual(fake.script.posted, [{
-            "type": "start", "cap_s": 156.0, "song_cap_s": 36.0,
-            "mode": "args", "engine_class": "Eng",
-            "engine_ctor_rva": C.RVA_DRUMS_ENGINE_CTOR,
-            "round_start_offset": C.OFF_ROUND_START, "methods": ["Hit"]}])
+        self.assertEqual(len(by_main.script.posted), 1)
+        self.assertEqual(by_session.script.posted, by_main.script.posted)
 
     def test_stop_ends_a_run_that_never_ends_and_detaches_once(self):
         # A real trace that caught one call and sent no end: the run goes on
@@ -646,7 +709,11 @@ class TraceSessionTest(unittest.TestCase):
 
     def test_an_agent_end_that_lands_as_stop_is_seen_keeps_its_reason(self):
         # The agent's end arrives between the wait's check of `ended` and its
-        # check of the stop event: the run is already over as "done".
+        # check of the stop event: the run is already over as "done". The end
+        # is the real args run's own, and the session's line is the one that
+        # run's own report printed.
+        end = recorded(L3, "trace-wm-args.jsonl")[-1]["payload"]
+        self.assertEqual(FA.ends_run(end), FA.END_DONE)
         fake = FakeSession([])
         s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
                             song_end_ms=self.END_MS, agent_path=self.agent,
@@ -658,34 +725,54 @@ class TraceSessionTest(unittest.TestCase):
             flag = real_is_set()
             if flag and not delivered:
                 delivered.append(True)
-                self.deliver(fake, {"done": "song over", "calls": 0})
+                self.deliver(fake, end)
             return flag
 
         s._stop.is_set = is_set_after_agent_ends
         s.start()
         self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
         self.assertTrue(s.stop(THREAD_CAP_S))
-        self.assertEqual(s.ended_line(), "ended: done (agent: song over)")
+        self.assertEqual(delivered, [True])
+        self.assertEqual(s.result.reason, FA.END_DONE)
+        self.assertEqual(s.ended_line(), recorded_report("trace-wm-args.txt")[0])
         self.assertEqual(fake.detach_calls, 1)
 
     def test_the_wall_cap_still_ends_a_run_nobody_stops(self):
-        # The clock reads 0 when the wait starts, then past the 156 s cap.
-        clock = iter([0.0, 157.0])
+        # The clock reads 0 when the wait starts, then one second past the
+        # session's wall cap for its song end.
+        cap_s = TH.wall_cap_s(self.END_MS)
+        clock = iter([0.0, cap_s + 1.0])
         fake = FakeSession([])
         s = self.session(fake, now=lambda: next(clock))
         s._thread.join(THREAD_CAP_S)
         self.assertTrue(s.ended())
-        self.assertEqual(s.ended_line(), "ended: cap")
+        self.assertEqual(s.result.reason, FA.END_CAP)
+        self.assertEqual(s.result.cap_s, cap_s)
+        self.assertEqual(s.ended_line(), TH.ended_line(s.result))
         self.assertEqual(fake.detach_calls, 1)
-        self.assertEqual(s.lines, [
-            "cap of 156 s reached before the agent finished; 0 messages seen"])
+        # The runner's one line names that cap and the messages it saw.
+        self.assertEqual(len(s.lines), 1, s.lines)
+        self.assertIn(f"{cap_s:g} s", s.lines[0])
+        self.assertIn(f"{len(s.payloads())} messages", s.lines[0])
 
     def test_a_runner_that_raises_ends_as_failed(self):
-        fake = FakeSession([], load_raises=RuntimeError("script broke"))
-        s = self.session(fake)
+        # The runner's own open of the out log fails for real: its folder is
+        # not there. The run ends as failed, keeps that error's own text and
+        # still detaches once.
+        missing_out = os.path.join(self.tmp.name, "no-such-folder", "trace.jsonl")
+        with self.assertRaises(OSError) as opened:
+            open(missing_out, "w", encoding="utf-8")
+        fake = FakeSession([])
+        s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], missing_out,
+                            song_end_ms=self.END_MS, agent_path=self.agent,
+                            frida_mod=FakeFrida(fake), wait=self.blocking_wait)
+        self.addCleanup(s.stop, THREAD_CAP_S)
+        s.start()
         self.assertTrue(s.stop(THREAD_CAP_S))
         self.assertEqual(s.result.reason, TH.END_FAILED)
-        self.assertEqual(s.result.error, "RuntimeError: script broke")
+        self.assertIn(type(opened.exception).__name__, s.result.error)
+        self.assertIn(str(opened.exception), s.result.error)
+        self.assertIsNone(fake.script)  # no agent was loaded
         self.assertEqual(fake.detach_calls, 1)
 
     def test_a_missing_agent_says_how_to_build_it(self):
@@ -693,8 +780,12 @@ class TraceSessionTest(unittest.TestCase):
         with self.assertRaises(TH.AgentMissing) as raised:
             TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
                             song_end_ms=self.END_MS, agent_path=self.agent)
-        self.assertEqual(str(raised.exception), BS.check(self.agent))
-        self.assertTrue(str(raised.exception).startswith(f"{self.agent} not found; "))
+        # The refusal is build_stamp's: it names the missing agent and the
+        # command that builds it.
+        refusal = str(raised.exception)
+        self.assertEqual(refusal, BS.check(self.agent))
+        self.assertIn(self.agent, refusal)
+        self.assertIn(BS.build_command(self.agent), refusal)
 
     def test_a_session_needs_a_method(self):
         with self.assertRaises(ValueError):
