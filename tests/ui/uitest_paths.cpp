@@ -589,8 +589,10 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     IM_CHECK(built != nullptr && !built->squeezes.empty());
     if (built == nullptr || built->squeezes.empty()) return;
     const std::vector<hydra::app::MultSqueezeView> squeezes = built->squeezes;
-    // beside the Multiplier squeeze fold
-    IM_CHECK(on_screen(h, hydra::app::multsqueeze_summary(squeezes)));
+    // beside the Multiplier squeeze fold, which has squeezes to unfold, so it
+    // is a fold and not plain text
+    IM_CHECK(on_screen(h, "\xC2\xB7 " + hydra::app::multsqueeze_summary(squeezes)));
+    IM_CHECK(ctx->ItemExists("**/Multiplier squeeze##mult"));
     for (const hydra::app::MultSqueezeView& sq : squeezes) {
         IM_CHECK(on_screen(h, sq.label));
         IM_CHECK(on_screen(h, sq.howto));
@@ -646,6 +648,13 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
     IM_CHECK(!on_screen(h, "Total Score:"));
+    // The Multiplier squeeze heading is a fold only when the song has
+    // squeezes; with none it is plain text that says "none" once.
+    const hydra::app::PathsTabCache::Details* tap = h.app->details_ui.paths_tab.built_details();
+    IM_CHECK(tap != nullptr);
+    if (tap == nullptr) return;
+    IM_CHECK_EQ(ctx->ItemExists("**/Multiplier squeeze##mult"), !tap->squeezes.empty());
+    IM_CHECK(on_screen(h, "\xC2\xB7 " + hydra::app::multsqueeze_summary(tap->squeezes)));
 }
 
 // Every squeezed-out backend row on Tapestry's optimal path, against the
