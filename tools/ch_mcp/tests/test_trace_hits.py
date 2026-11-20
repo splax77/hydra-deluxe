@@ -41,6 +41,7 @@ from tools.ch_mcp.tests.test_hydra_end import FAKE, _REAL_MAKE_DUMP  # noqa: E40
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import prep_inputs  # noqa: E402
 from tools.ch_probe.probe_songs import WINDOW_MAP  # noqa: E402
+from tools.ch_probe.tests.test_sp_compare import _replay_file  # noqa: E402
 
 
 def setUpModule():
@@ -435,15 +436,31 @@ class TraceAgentTest(unittest.TestCase):
                 self.assertNotIn("gc.choose", text)
                 self.assertNotIn("tryAssembly", text)
 
-    def test_ended_line_names_the_song_cap(self):
-        result = FA.RunResult(reason=FA.END_DONE, cap_s=212.08,
-                              payloads=[{"done": "song cap", "methods": []}])
-        self.assertEqual(TH.ended_line(result), "ended: done (agent: song cap)")
+    def test_ended_line_is_the_line_each_real_run_printed(self):
+        # Two real runs of trace.ts and the first line of each one's own
+        # report: the args run the song ended, and the keys count run the
+        # agent's cap ended (testdata/ch_runs/2026-10-28-l3/
+        # trace-keys-count.txt is that line, copied from hydra-data/
+        # ch-mcp-runs/2026-10-28/l3/keys/trace-keys-count.txt). The result
+        # carries the end ends_run reads from the run's last payload.
+        for log, report in (("trace-wm-args.jsonl", "trace-wm-args.txt"),
+                            ("trace-keys-count.jsonl", "trace-keys-count.txt")):
+            with self.subTest(run=log):
+                payloads = [m["payload"] for m in recorded(L3, log)]
+                result = FA.RunResult(reason=FA.ends_run(payloads[-1]),
+                                      cap_s=0.0, payloads=payloads)
+                self.assertEqual(TH.ended_line(result), recorded_report(report)[0])
 
     def test_the_end_reasons_are_the_runners(self):
-        # trace.ts ends with a `done` payload, which ends_run reads.
-        self.assertEqual(FA.ends_run({"done": "song over", "methods": []}),
-                         FA.END_DONE)
+        # Every real trace.ts log: only its last payload, the agent's `done`,
+        # ends the run, and ends_run reads it as the runner's done.
+        for log in ("trace-wm-args.jsonl", "trace-wm-count.jsonl",
+                    "trace-keys-count.jsonl", "trace-ew-count.jsonl"):
+            with self.subTest(run=log):
+                payloads = [m["payload"] for m in recorded(L3, log)]
+                self.assertEqual([FA.ends_run(p) for p in payloads[:-1]],
+                                 [None] * (len(payloads) - 1))
+                self.assertEqual(FA.ends_run(payloads[-1]), FA.END_DONE)
 
 
 class HookRvaTest(unittest.TestCase):
@@ -457,57 +474,63 @@ class HookRvaTest(unittest.TestCase):
         self.assertEqual(C.PER_NOTE_DEFAULT_RVAS, (C.RVA_NOTE_SCORE_ADD,))
 
 
-def write_json(path, data):
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(data, fh)
-
-
-def score_chord(index, ms):
-    return {"index": index, "ms": ms,
-            "notes": [{"color": "Red", "cymbal": False, "dynamic": "none"}]}
-
-
 class SongNotesTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.song = os.path.join(self.tmp.name, "Song")
         os.mkdir(self.song)
-        self.score = os.path.join(self.tmp.name, "score.json")
-        write_json(self.score, {"chords": [score_chord(0, 1000.0),
-                                           score_chord(1, 1250.5),
-                                           score_chord(2, 2000.0)]})
+        # Hydra's own score JSON for Pitch Dark (testdata/input/
+        # test_pitch_dark_ratio/notes.mid), made by hydra_replay score; the
+        # comment above _REPLAY_DIR in tools/ch_probe/tests/test_sp_compare.py
+        # gives the command.
+        self.score = _replay_file("test_pitch_dark_ratio-score.json")
+        with open(self.score, encoding="utf-8") as fh:
+            self.chords = json.load(fh)["chords"]
 
     def test_a_score_json_becomes_notes_in_the_manifest_shape(self):
-        self.assertEqual(TH.notes_from_score(self.score), [
-            {"index": 0, "time_ms": 1000.0},
-            {"index": 1, "time_ms": 1250.5},
-            {"index": 2, "time_ms": 2000.0}])
+        notes = TH.notes_from_score(self.score)
+        # One note per chord, each with only keys a real probe song's
+        # manifest note also has, so line_up reads either the same way.
+        self.assertEqual(len(notes), len(self.chords))
+        manifest_keys = set.intersection(*(set(n) for n in window_map_notes()))
+        for note in notes:
+            self.assertLessEqual(set(note), manifest_keys, note)
+        self.assertEqual([(n["index"], n["time_ms"]) for n in notes],
+                         [(c["index"], c["ms"]) for c in self.chords])
+        # A call at a chord's time lines up with that chord's note, no gap.
+        chord = self.chords[len(self.chords) // 2]
+        hit = TH.line_up([{"songTime": C.ms_to_s(chord["ms"])}], notes)[0]
+        self.assertEqual(hit.note_index, chord["index"])
+        self.assertAlmostEqual(hit.diff_ms, 0.0, places=6)
 
     def test_the_manifest_wins_when_the_folder_has_one(self):
-        manifest = os.path.join(self.song, "manifest.json")
-        write_json(manifest, {"song": "Song", "notes": notes_at(500, 900)})
-        self.assertEqual(TH.song_notes(self.song, self.score),
-                         (manifest, notes_at(500, 900)))
+        # The Window Map song folder has its real manifest; the Pitch Dark
+        # score JSON holds other notes, and the manifest's are used.
+        manifest, notes = TH.load_manifest(WINDOW_MAP_SONG)
+        self.assertNotEqual(len(notes), len(self.chords))
+        self.assertEqual(TH.song_notes(WINDOW_MAP_SONG, self.score),
+                         (manifest, notes))
 
     def test_the_score_json_is_used_when_there_is_no_manifest(self):
-        path, notes = TH.song_notes(self.song, self.score)
-        self.assertEqual(path, self.score)
-        self.assertEqual([n["time_ms"] for n in notes], [1000.0, 1250.5, 2000.0])
+        self.assertEqual(TH.song_notes(self.song, self.score),
+                         (self.score, TH.notes_from_score(self.score)))
 
     def test_no_source_names_both(self):
+        # The refusal names the manifest it looked for, and the score JSON
+        # that was missing, or says none was given.
         missing = os.path.join(self.tmp.name, "nope.json")
-        manifest = os.path.join(self.song, "manifest.json")
+        manifest = TH.manifest_path(self.song)
         with self.assertRaises(TH.NotesMissing) as given:
             TH.song_notes(self.song, missing)
-        self.assertEqual(str(given.exception),
-                         "no notes to line the calls up with: no manifest at "
-                         f"{manifest}, and no score JSON at {missing}")
         with self.assertRaises(TH.NotesMissing) as none:
             TH.song_notes(self.song)
-        self.assertEqual(str(none.exception),
-                         "no notes to line the calls up with: no manifest at "
-                         f"{manifest}, and no score JSON was given")
+        for refusal in (str(given.exception), str(none.exception)):
+            with self.subTest(refusal=refusal):
+                self.assertIn(manifest, refusal)
+        self.assertIn(missing, str(given.exception))
+        self.assertNotIn(missing, str(none.exception))
+        self.assertNotEqual(str(given.exception), str(none.exception))
 
 
 # How long a test waits for the session's thread. Only a hang reaches it.
