@@ -579,7 +579,11 @@ TEST_CASE("corpus: squeeze-ins at exactly 0 and what they change") {
 
         const store::RecordRow row = store::record_of("", rec);
         const std::vector<const Path*> ranked = rec.all_paths();
-        REQUIRE(row.paths.size() == ranked.size());
+        // record_of counts every kept path but saves only the first
+        // kPathsPerRecord of them (record_store.h).
+        REQUIRE(row.pathcount == static_cast<int>(ranked.size()));
+        REQUIRE(row.paths.size() ==
+                (std::min)(ranked.size(), static_cast<size_t>(store::kPathsPerRecord)));
         for (size_t i = 0; i < row.paths.size(); ++i) {
             const store::PathRow& saved = row.paths[i];
             const Path& path = *ranked[i];
