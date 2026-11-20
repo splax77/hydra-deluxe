@@ -4,7 +4,8 @@ Usage: check_chunks.py <row-files.tsv> <chunks.tsv> <earlier chunks.tsv> <repo>
 
 It checks that every row is in exactly one chunk, that each chunk's rows count matches its row_ids,
 that each row's chunk names the row's file, that no done chunk (its claude/tf-<chunk> branch merged
-into main) lost or gained a row except T5-KR1 rows 45-52 going from C191 to C192, and that a file in
+into main) lost or gained a row except T5-KR1 rows 45-52 going from C191 to C192 (an earlier file
+from before that move shows it, one from after shows no change), and that a file in
 more than one open chunk is only in single-file parts numbered 1..m that run one after another.
 """
 import csv, sys, subprocess, collections
@@ -59,7 +60,7 @@ for cid in done:
         continue
     lost, gained = E.get(cid, set()) - ids_now[cid], ids_now[cid] - E.get(cid, set())
     ok_lost, ok_gained = (q if cid == 'C191' else set()), (q if cid == 'C192' else set())
-    if lost != ok_lost or gained != ok_gained:
+    if (lost, gained) not in ((ok_lost, ok_gained), (set(), set())):
         fails.append('done chunk %s lost %s and gained %s' % (cid, sorted(lost), sorted(gained)))
 
 open_of = collections.defaultdict(list)
