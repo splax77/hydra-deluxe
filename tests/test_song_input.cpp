@@ -245,7 +245,7 @@ TEST_CASE(".chart: malformed lines keep their handling") {
     CHECK(parse(song + sync + "[ExpertDrums]\n{\n  0 = N 1 0\n").sequence.empty());
 
     // A repeated section replaces the earlier one.
-    const std::string song480 = "[Song]\n{\n  Resolution = 480\n}\n";
+    const std::string song480 = testchart::section("Song", "  Resolution = 480\n");
     reads_as(song + song480 + sync +
                  "[ExpertDrums]\n{\n  0 = N 1 0\n}\n[ExpertDrums]\n{\n  0 = N 2 0\n}\n",
              song480 + sync + "[ExpertDrums]\n{\n  0 = N 2 0\n}\n");
