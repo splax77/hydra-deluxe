@@ -1508,29 +1508,28 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
 }
 
 // A window's state goes with its AppState (D308 item 3): a new AppState, as
-// the runner builds one per test, opens the path window fresh. The fixture
-// draws each AppState's own window state over the real report a batch of the
-// corpus's first chart built. The second AppState's window gets back the
-// very report the first one showed, because a new report starts a window
-// over by itself and would prove nothing.
+// the runner builds one per test, opens the path window fresh. The app draws
+// its own window over the real report a batch of the corpus's first chart
+// built. The second AppState gets back the very report the first one showed,
+// because a new report starts a window over by itself and would prove nothing.
 void test_fresh_state(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    if (!real_path_fixture(ctx)) return;
-    Fixture& f = fixture();
-    f.path_state = h.app->path_window_ui;
+    if (!open_batch_report(ctx)) return;
     const std::shared_ptr<hydra::ui::PathWindow> first_path = h.app->path_window_ui;
     const std::shared_ptr<hydra::ui::DmWindow> first_dm = h.app->dm_window_ui;
-    const std::shared_ptr<const GeneratedReport> report = f.path.result;
-    const std::string typed = report->paths.front().song;
+    const std::shared_ptr<const GeneratedReport> report = h.app->path_report.result;
+    const std::string default_count = shown_count(h);
+    const std::string typed = boxed(report->paths.front().song);
 
-    open_path_all_rows(ctx);
-    if (ctx->IsError()) return;
-    ctx->ItemInputValue("##search", typed.c_str());
+    ctx->SetRef(path_window());
+    ctx->ItemClick("Optimal paths only");
     ctx->Yield(2);
-    IM_CHECK_RETV(shows(boxed(typed)), );
+    ctx->SetRef(path_window());
+    ctx->ItemInputValue("##search", report->paths.front().song.c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(on_screen(h, typed), );
     IM_CHECK_RETV(!best_only_ticked(ctx), );
-    f.path_open = false;
-    ctx->Yield(2);
+    press_escape_on(ctx, path_window());
 
     // The runner's step between tests: the old AppState goes and a new one
     // comes. The first one's window states are kept alive here, so the new
@@ -1538,16 +1537,18 @@ void test_fresh_state(ImGuiTestContext* ctx) {
     reset_app(h);
     IM_CHECK(h.app->path_window_ui != first_path);
     IM_CHECK(h.app->dm_window_ui != first_dm);
-    f.path_state = h.app->path_window_ui;
-    f.path.result = report;
-    f.path_open = true;
+    // The report the first AppState held, landed as a build lands it.
+    h.app->path_report.result = report;
+    h.app->path_report.last = ReportBuild::Ready;
+    h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(shows("Search song, artist, charter, or path notation"));
-    IM_CHECK(!shows(boxed(typed)));
+    IM_CHECK(h.app->report_job == nullptr);
+    IM_CHECK(on_screen(h, "Search song, artist, charter, or path notation"));
+    IM_CHECK(!on_screen(h, typed));
     IM_CHECK(best_only_ticked(ctx));
-    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
-    f.path_open = false;
+    IM_CHECK_STR_EQ(shown_count(h).c_str(), default_count.c_str());
+    h.app->close_path_report();
     ctx->Yield(2);
 }
 
@@ -1639,6 +1640,7 @@ const std::vector<TestEntry>& report_window_flow_tests() {
         {"report-window-hidden-lets-go", test_hidden_lets_go},
         {"report-window-reopen-keeps-filters", test_reopen_keeps_filters},
         {"report-window-out-of-date", test_out_of_date},
+        {"report-window-fresh-state", test_fresh_state},
     };
     return entries;
 }
@@ -1658,7 +1660,6 @@ void register_report_window_tests(Harness& h) {
         {"report-window-cells-left", test_cells_left},
         {"report-window-header-narrow", test_header_narrow},
         {"report-window-fits-screen", test_fits_screen},
-        {"report-window-fresh-state", test_fresh_state},
     };
     for (const TestEntry& e : kTests) {
         ImGuiTest* t = IM_REGISTER_TEST(h.engine, "hydra", e.name);
