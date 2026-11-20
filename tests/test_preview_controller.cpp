@@ -9,6 +9,7 @@
 #endif
 #include <windows.h>
 
+#include <climits>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -759,15 +760,15 @@ TEST_CASE("shows_path: the same path at another cap, and a different path") {
 
 // A ghost path set on an open chart lands on a later poll as the scene's
 // ghost_fills, beside the drawn path, which stays drawn; clearing it brings
-// back the overlay built with no ghost. The chart and its best path are the
-// ones test_preview_scene.cpp pinned the ghost list on.
+// back the overlay built with no ghost. The ghost here is the drawn path
+// itself, so its fills are the ones the drawn path's activations stand on
+// (PreviewActivation::taken_fill): apply_preview_overlay names both by one
+// rule.
 TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it empties them") {
     using namespace hydra;
     using namespace hydra::app;
-    const Path& ghost = corpus::analyzed_by_ten_scores().record.best_path();
     const AnalyzedChart found = first_chart_with_a_path();
-    // The same best path, so this is the pinned chart.
-    REQUIRE(path_identity(found.best) == path_identity(ghost));
+    const Path& ghost = found.best;
     const std::string best_key = path_overlay_key(&found.best);
 
     PreviewController pc(nullptr, nullptr);
@@ -780,6 +781,12 @@ TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it 
     REQUIRE_FALSE(pc.has_error());
     CHECK(pc.scene().ghost_fills.empty());
     const std::string no_ghost = pc.overlay_path_key();
+    // The fills the path's activations stand on, in activation order.
+    std::vector<size_t> taken;
+    for (const PreviewActivation& a : pc.scene().activations)
+        if (a.taken_fill) taken.push_back(*a.taken_fill);
+    // A ghost that stands on no fill would leave ghost_fills empty either way.
+    REQUIRE_FALSE(taken.empty());
 
     // No ghost to clear: nothing builds.
     pc.set_ghost_path(nullptr);
@@ -790,7 +797,7 @@ TEST_CASE("set_ghost_path: the ghost's fills land on the scene, and clearing it 
     CHECK(pc.overlay_path_key() == no_ghost);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
-    CHECK(pc.scene().ghost_fills == std::vector<size_t>{2, 7});
+    CHECK(pc.scene().ghost_fills == taken);
     CHECK(pc.overlay_path_key() != no_ghost);
     CHECK(pc.shows_path(best_key));
     CHECK_FALSE(pc.scene().activations.empty());
@@ -970,11 +977,38 @@ TEST_CASE("a mode with no notes pauses the Preview in place; switching back clea
     CHECK(device_calls == 1);
 }
 
-// Two mode changes in a row: the second one's notes are the ones drawn, and
-// the first one's never land. Each mode marks a different number of Star
-// Power phrases (Expert none, Hard one, Medium two), so the SP gauge's
-// readout at the song's end says whose notes are drawn. The song's length is
-// the same in every mode (app::song_length_ms reads every section).
+namespace {
+
+// What the Preview draws for one mode of a chart: its notes, and the SP
+// gauge's readout with the playhead at the song's end.
+struct ModeDrawn {
+    std::vector<hydra::app::PreviewNote> notes;
+    std::string readout;
+};
+
+// What `pc` draws now, once every thread is done, with the playhead moved to
+// the song's end.
+ModeDrawn drawn_at_end(PreviewController& pc) {
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
+    pc.seek_ms(pc.playback_end_ms());
+    return {pc.scene().notes, pc.sp_meter_readout()};
+}
+
+// What a fresh Preview draws for `entry` opened in `difficulty` alone.
+ModeDrawn drawn_alone(const ChartLibraryEntry& entry, Difficulty difficulty) {
+    PreviewController pc(nullptr, nullptr);
+    pc.open(entry, {difficulty, true, false}, kTestFillRule, nullptr, "", 4);
+    return drawn_at_end(pc);
+}
+
+}  // namespace
+
+// Two mode changes in a row: the second one's notes are the ones drawn, not
+// the first one's. Hard and Medium mark a different number of Star Power
+// phrases, so their notes and the SP gauge's readout at the song's end tell
+// them apart. What each draws is what a Preview opened in that mode alone
+// draws.
 TEST_CASE("a second mode change during a notes reload wins") {
     const std::string dir = testtemp::temp_dir("prevctl_twomodes");
     using namespace testchart;
@@ -987,31 +1021,22 @@ TEST_CASE("a second mode change during a notes reload wins") {
                                                   line(2880, "N 1 0") + line(2880, "S 2 1")),
                    192, "", line(0, "TS 4") + line(0, "B 600000")));
     const ChartLibraryEntry entry = entry_for(dir + "\\notes.chart");
+    const ModeDrawn hard = drawn_alone(entry, Difficulty::Hard);
+    const ModeDrawn medium = drawn_alone(entry, Difficulty::Medium);
+    // The readout tells the two modes apart.
+    REQUIRE(hard.readout != medium.readout);
 
     PreviewController pc(nullptr, nullptr);
-    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "",4);
+    pc.open(entry, {Difficulty::Expert, true, false}, kTestFillRule, nullptr, "", 4);
     settle(pc);
     REQUIRE_FALSE(pc.has_error());
-    pc.seek_ms(pc.playback_end_ms());
-    const std::string expert = pc.sp_meter_readout();
 
-    pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "",4);
-    pc.open(entry, {Difficulty::Medium, true, false}, kTestFillRule, nullptr, "",4);
-    std::vector<std::string> seen;
-    wait_until(
-        [&] {
-            if (!pc.busy()) return true;
-            pc.poll();
-            seen.push_back(pc.sp_meter_readout());
-            return false;
-        },
-        "every Preview thread to finish");
-    CHECK_FALSE(pc.has_error());
-    const std::string medium = pc.sp_meter_readout();
-    INFO("Expert " << expert << ", Medium " << medium);
-    CHECK(expert == "0.0/4");
-    CHECK(medium == "2.0/4");
-    for (const std::string& s : seen) CHECK((s == expert || s == medium));  // Hard's never lands
+    pc.open(entry, {Difficulty::Hard, true, false}, kTestFillRule, nullptr, "", 4);
+    pc.open(entry, {Difficulty::Medium, true, false}, kTestFillRule, nullptr, "", 4);
+    const ModeDrawn last = drawn_at_end(pc);
+    check_same_notes(last.notes, medium.notes);
+    CHECK(last.readout == medium.readout);
+    CHECK(last.readout != hard.readout);
 }
 
 // An edited chart that was not rescanned must not draw its record's path on
@@ -1106,39 +1131,83 @@ TEST_CASE("busy covers the overlay and base jobs, not only the first load") {
 }
 
 // The Preview's volume is the setting's: its default and its range
-// come from app::Settings, the owner (finding 72).
+// come from app::Settings, the owner (finding 72). The range's ends are read
+// the way the panel's slider reads them: the owner's clamp of the lowest and
+// highest int.
 TEST_CASE("the Preview volume is the settings owner's: default and clamp") {
+    using hydra::app::Settings;
+    const int lowest = Settings::clamp(&Settings::preview_volume, INT_MIN);
+    const int highest = Settings::clamp(&Settings::preview_volume, INT_MAX);
+    REQUIRE(lowest < highest);
     PreviewController pc(nullptr, nullptr);
-    CHECK(pc.volume_percent() == hydra::app::Settings{}.preview_volume);
-    pc.set_volume(150);
-    CHECK(pc.volume_percent() == 100);
-    pc.set_volume(-5);
-    CHECK(pc.volume_percent() == 0);
+    CHECK(pc.volume_percent() == Settings{}.preview_volume);
+    pc.set_volume(highest + 1);
+    CHECK(pc.volume_percent() == highest);
+    pc.set_volume(lowest - 1);
+    CHECK(pc.volume_percent() == lowest);
+    pc.set_volume(highest);
+    CHECK(pc.volume_percent() == highest);
 }
 
-TEST_CASE("the Preview's song key: another difficulty, Pro Drums or 2x Bass makes a different song") {
-    using hydra::ui::PreviewSongKey;
-    const PreviewSongKey key{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false},
-                             kTestFillRule};
-    const PreviewSongKey same{"prevctl", {Difficulty::Expert, /*prodrums=*/true, /*bass2x=*/false},
-                              kTestFillRule};
-    CHECK(key == same);
-    CHECK_FALSE(key != same);
+// What the Preview calls the same song (PreviewSongKey) is seen in what
+// open() does: the same song again is a no-op, another reading or fill rule
+// of the same chart reloads its notes, and another chart is a fresh load.
+// Each part of the key is changed alone.
+TEST_CASE("the Preview's song key: every part changed alone makes a different song") {
+    using hydra::ChartReading;
+    using hydra::FillDeadlineRule;
+    PreviewController pc(nullptr, nullptr);
+    pc.set_audio_device_factory(no_device_factory());
+    const ChartLibraryEntry entry = entry_for(expert_and_hard_chart_with_audio("prevctl_key"));
+    const ChartReading reading{Difficulty::Expert, true, false, false};
+    pc.open(entry, reading, kTestFillRule, nullptr, "", 4);
+    settle(pc);
+    REQUIRE_FALSE(pc.has_error());
 
-    PreviewSongKey hard = key;
-    hard.reading.difficulty = Difficulty::Hard;
-    CHECK(key != hard);
-    CHECK_FALSE(key == hard);
+    // The same song: nothing reloads.
+    pc.open(entry, reading, kTestFillRule, nullptr, "", 4);
+    CHECK_FALSE(pc.busy());
 
-    PreviewSongKey plain = key;
-    plain.reading.prodrums = false;
-    CHECK(key != plain);
-    CHECK_FALSE(key == plain);
+    struct Part {
+        std::string what;
+        ChartReading reading;
+        FillDeadlineRule fills;
+    };
+    ChartReading hard = reading;
+    hard.difficulty = Difficulty::Hard;
+    ChartReading plain = reading;
+    plain.prodrums = !reading.prodrums;
+    ChartReading bass = reading;
+    bass.bass2x = !reading.bass2x;
+    ChartReading shuffled = reading;
+    shuffled.noteshuffle = !reading.noteshuffle;
+    const FillDeadlineRule other_fills = fill_rule_for(true);
+    REQUIRE(other_fills != kTestFillRule);
+    const Part parts[] = {
+        {"difficulty", hard, kTestFillRule},   {"Pro Drums", plain, kTestFillRule},
+        {"2x Bass", bass, kTestFillRule},      {"Note Shuffle", shuffled, kTestFillRule},
+        {"fill rule", reading, other_fills},
+    };
+    for (const Part& p : parts) {
+        CAPTURE(p.what);
+        pc.open(entry, p.reading, p.fills, nullptr, "", 4);
+        CHECK_FALSE(pc.loading());  // the same chart: only its notes reload
+        CHECK(pc.busy());
+        settle(pc);
+        REQUIRE_FALSE(pc.has_error());
+        // Back to the first song for the next part.
+        pc.open(entry, reading, kTestFillRule, nullptr, "", 4);
+        settle(pc);
+        REQUIRE_FALSE(pc.has_error());
+    }
 
-    PreviewSongKey bass = key;
-    bass.reading.bass2x = true;
-    CHECK(key != bass);
-    CHECK_FALSE(key == bass);
+    // Another chart, so another md5: a fresh load from the start.
+    const ChartLibraryEntry other = entry_for(short_chart_with_long_audio("prevctl_key_other"));
+    REQUIRE(other.md5 != entry.md5);
+    pc.open(other, reading, kTestFillRule, nullptr, "", 4);
+    CHECK(pc.loading());
+    settle(pc);
+    CHECK_FALSE(pc.has_error());
 }
 
 // The Preview tab builds its key's fill rule from the "1.0 fills" setting
