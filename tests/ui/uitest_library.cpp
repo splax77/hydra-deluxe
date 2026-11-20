@@ -31,6 +31,7 @@
 #include "ui/column_widths.h"
 #include "ui/details_view.h"  // kMinLibraryW
 #include "ui/fonts.h"  // px()
+#include "ui/library_jobs.h"  // set_scan_hold_for_test
 #include "ui/library_model.h"
 #include "ui/library_parts.h"  // analyze_shown_label
 #include "ui/preview_controller.h"
@@ -1715,19 +1716,28 @@ void test_old_library_set_aside(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->startup_notice().empty());
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
-    IM_CHECK(h.app->scan_job->snapshot().charts_found > 0);
+    // The scan found every chart the ini's folders hold, as the scan's own
+    // discovery reads them, and the fresh library shows each of them.
+    const size_t in_folders =
+        hydra::app::discover_charts(h.app->settings.chartfolders).first.size();
+    IM_CHECK_RETV(in_folders > 0, );  // the harness's ini names the corpus
+    IM_CHECK_EQ(static_cast<size_t>(h.app->scan_job->snapshot().charts_found), in_folders);
     ctx->SetRef("//Scanning charts");
     ctx->ItemClick("Continue");
     ctx->Yield(2);
     IM_CHECK(h.app->scan_job == nullptr);
-    IM_CHECK(h.app->library_shown_count() > 0);
+    IM_CHECK_EQ(h.app->library.rows().size(), in_folders);
+    IM_CHECK_EQ(h.app->library_shown_count(), in_folders);
 }
 
 // Scans the corpus, then restarts the app on a copy of that library as an
 // older Hydra left it: the scan stamp is one this build does not accept and
 // no row has an album. Returns how many rows the library showed, or 0 when a
-// step failed. The open has finished when it returns.
-size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h) {
+// step failed. The open has finished when it returns. `before_restart` runs
+// after the first scan and before the restart, so a test can set a seam that
+// only the open's scan meets.
+size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h,
+                                      const std::function<void()>& before_restart = {}) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return 0;
@@ -1741,6 +1751,7 @@ size_t restart_on_out_of_date_library(ImGuiTestContext* ctx, Harness& h) {
                       seed, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';"
                             "UPDATE charts SET album = '';"),
                   0);
+    if (before_restart) before_restart();
     const std::string seed_before = h.seed_db;
     h.seed_db = seed;
     reset_app(h);
@@ -1782,34 +1793,71 @@ void test_rescan_on_open(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->scan_started_by_open);
 }
 
+// Holds every scan job built while it lives on its own thread, before the
+// scan reads anything, until release(). The job copies the hold when it is
+// made; the destructor lets a held scan go and removes the seam, so a check
+// that fails early leaves nothing stuck.
+std::atomic<bool> g_scan_released{true};
+std::atomic<int> g_scans_held{0};
+class ScanHold {
+public:
+    ScanHold() {
+        g_scan_released = false;
+        g_scans_held = 0;
+        seam_.emplace(hydra::ui::set_scan_hold_for_test, [] {
+            ++g_scans_held;
+            testwait::wait_until([] { return g_scan_released.load(); },
+                                 "the test to release the held scan");
+        });
+    }
+    ~ScanHold() { release(); }
+    ScanHold(const ScanHold&) = delete;
+    ScanHold& operator=(const ScanHold&) = delete;
+    void release() {
+        g_scan_released = true;
+        seam_.reset();
+    }
+    // Scans that have reached the hold (1 = the first is held there).
+    int held() const { return g_scans_held.load(); }
+
+private:
+    std::optional<ScopedHook> seam_;
+};
+
 // Cancel on the scan the app started leaves the library as it was, and the
-// library is still out of date, so the next open asks again.
+// library is still out of date, so the next open asks again. The open's scan
+// is held before it reads anything, so the Cancel click lands on a scan still
+// running and the scan window stays still under the mouse.
 void test_rescan_on_open_cancel(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const size_t rows = restart_on_out_of_date_library(ctx, h);
+    std::optional<ScanHold> hold;
+    const size_t rows = restart_on_out_of_date_library(ctx, h, [&] { hold.emplace(); });
     if (rows == 0) return;
+    IM_CHECK_RETV(hold.has_value(), );
 
-    IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job != nullptr; }, 5));
+    // The scan is held, or it ended without reaching the hold, and the
+    // cancel below can no longer happen.
+    IM_CHECK(wait_until(ctx, [&] {
+        return hold->held() > 0 ||
+               (h.app->scan_job != nullptr && h.app->scan_job->snapshot().finished);
+    }, 5));
+    IM_CHECK_RETV(hold->held() == 1 && h.app->scan_job != nullptr, );
+    IM_CHECK(!h.app->scan_job->snapshot().finished);
+    ctx->Yield(3);  // the scan window opens and settles
     ctx->SetRef("//Scanning charts");
-    // The corpus scan can end before the click lands, and nothing holds it;
-    // the unit test cancels deterministically. Here the Cancel button is
-    // pressed when it is still there, and the test checks whichever end the
-    // scan reached.
-    ctx->ItemClick("Cancel", 0, ImGuiTestOpFlags_NoError);
+    ctx->ItemClick("Cancel");
+    hold->release();
     IM_CHECK(wait_until(ctx, [&] { return h.app->scan_job->snapshot().finished; }, 60));
-    const bool cancelled = h.app->scan_job->snapshot().cancelled;
+    IM_CHECK(h.app->scan_job->snapshot().cancelled);
     ctx->Yield(2);
-    if (cancelled)
-        IM_CHECK(on_screen(h, "Scan cancelled. The library was left unchanged."));
-    else
-        IM_CHECK(on_screen(h, "Done: "));
+    IM_CHECK(on_screen(h, "Scan cancelled. The library was left unchanged."));
     ctx->ItemClick("Continue");
     ctx->Yield(2);
     ctx->SetRef("//Hydra");
     IM_CHECK(h.app->scan_job == nullptr);
     IM_CHECK(!h.app->scan_started_by_open);
     IM_CHECK(h.app->library_shown_count() == rows);
-    IM_CHECK(h.app->store->chart_library_out_of_date() == cancelled);
+    IM_CHECK(h.app->store->chart_library_out_of_date());
 }
 
 // D266 (user ruling "Refuse, like on open"): a click on Scan library with a
