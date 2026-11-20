@@ -215,35 +215,52 @@ class AdjustRipTests(unittest.TestCase):
 class ThreadContextTests(unittest.TestCase):
     def test_registers_are_plain_int_attributes(self):
         # A real CONTEXT, read the way _on_our_breakpoint reads one: from a
-        # suspended thread of this process. The thread is resumed and ended
-        # when the test ends.
+        # suspended thread of this process.
+        #
+        # The thread is a native one, created suspended, whose start routine
+        # is kernel32's Sleep(0). Why each part:
+        # - Created suspended, it has run no instruction when its registers
+        #   are read, so it holds no lock: not the interpreter's lock (it never
+        #   runs Python) and not the loader lock. A thread suspended or killed
+        #   while it starts up can hold the loader lock, and then every later
+        #   thread start, DLL load and the process's own exit block forever.
+        # - A Python thread is no safer: between its start and its blocking
+        #   wait it runs bytecode holding the interpreter's lock, and CPython
+        #   releases that lock only inside the blocking call itself. Suspended
+        #   there, it would stall this thread's next return from a ctypes call.
+        # - It is never terminated. Resumed, it sleeps 0 ms and returns, and
+        #   the test waits a bounded time for that exit, so no thread or
+        #   handle outlives the test even when a check fails.
         win32 = debugger._Win32()
         k32 = win32.k32
-        k32.SuspendThread.argtypes = [ctypes.wintypes.HANDLE]
-        k32.SuspendThread.restype = ctypes.wintypes.DWORD
         k32.ResumeThread.argtypes = [ctypes.wintypes.HANDLE]
         k32.ResumeThread.restype = ctypes.wintypes.DWORD
-        # A native thread asleep in kernel32's Sleep: it runs no Python, so
-        # suspending it can never freeze the interpreter's lock.
         k32.CreateThread.argtypes = [
             ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p,
             ctypes.wintypes.DWORD, ctypes.c_void_p]
         k32.CreateThread.restype = ctypes.wintypes.HANDLE
-        k32.TerminateThread.argtypes = [ctypes.wintypes.HANDLE, ctypes.wintypes.DWORD]
+        k32.WaitForSingleObject.argtypes = [ctypes.wintypes.HANDLE, ctypes.wintypes.DWORD]
+        k32.WaitForSingleObject.restype = ctypes.wintypes.DWORD
         k32.CloseHandle.argtypes = [ctypes.wintypes.HANDLE]
+        create_suspended = 0x4  # CREATE_SUSPENDED, from the CreateThread docs
+        wait_object_0 = 0x0     # WaitForSingleObject's "the thread has ended"
         sleep_addr = ctypes.cast(k32.Sleep, ctypes.c_void_p).value
-        handle = k32.CreateThread(None, 0, sleep_addr, 30000, 0, None)
+        handle = k32.CreateThread(None, 0, sleep_addr, 0, create_suspended, None)
         self.assertTrue(handle, ctypes.get_last_error())
         self.addCleanup(k32.CloseHandle, handle)
-        self.addCleanup(k32.TerminateThread, handle, 0)  # runs before CloseHandle
-        self.assertNotEqual(k32.SuspendThread(handle), 0xFFFFFFFF)
         try:
             raw = debugger.CONTEXT()
             raw.ContextFlags = debugger.CONTEXT_ALL
-            self.assertTrue(k32.GetThreadContext(handle, ctypes.byref(raw)),
-                            ctypes.get_last_error())
+            got_context = k32.GetThreadContext(handle, ctypes.byref(raw))
+            context_error = ctypes.get_last_error()
         finally:
-            k32.ResumeThread(handle)
+            resumed = k32.ResumeThread(handle)
+            # 5 s is far past a Sleep(0) thread's life; a timeout fails the
+            # test instead of blocking.
+            ended = k32.WaitForSingleObject(handle, 5000)
+        self.assertNotEqual(resumed, 0xFFFFFFFF, ctypes.get_last_error())
+        self.assertEqual(ended, wait_object_0, "the Sleep(0) thread did not end")
+        self.assertTrue(got_context, context_error)
 
         ctx = Debugger._context_from_ctx(raw)
         self.assertNotEqual(ctx.rip, 0)  # a suspended thread has a real rip
