@@ -643,9 +643,8 @@ struct Activation {
     // Where each bar this activation spends arrived, since the previous window
     // closed (or the chart began), in order. A phrase hit at the cap gains
     // nothing and is not here. A squeezed-out phrase's bar is the first
-    // entry, stamped where the search's own bookkeeping puts it
-    // (search/engine.cpp, the SqOut branch); Path::bank_arrivals gives the
-    // arrival as played. Stamped by the search. sp_meter() is its size.
+    // entry (search/engine.cpp, the SqOut branch). Stamped by the search.
+    // sp_meter() is its size.
     std::vector<int64_t> bank_rise_ticks;
 
     // Bars of SP this activation spends: one per stored arrival.
@@ -866,14 +865,10 @@ struct Path {
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
 
-    // Where the bars spent by activation i (walk_activations order) arrived
-    // as played; i equal to the activation count means the trailing bars,
-    // and i is never more than that.
-    // The stored list (Activation::bank_rise_ticks, trailing_bank_ticks),
-    // with its first entry on the previous activation's sqout_tick when that
-    // activation squeezed out: the search banks that bar when the player hits
-    // the phrase, and starts a fresh list for it (search/engine.cpp, the SqOut
-    // branch). An empty list is returned as it is.
+    // Where the bars spent by activation i (walk_activations order) arrived;
+    // i equal to the activation count means the trailing bars, and i is never
+    // more than that. The stored list as the search stamped it
+    // (Activation::bank_rise_ticks, trailing_bank_ticks), unchanged.
     std::vector<int64_t> bank_arrivals(size_t i) const;
 
     int64_t notes_points = 0;
