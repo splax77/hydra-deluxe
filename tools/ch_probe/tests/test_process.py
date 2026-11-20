@@ -1,40 +1,85 @@
 """Unit tests for the process/address layer.
 
-These test the parts that do NOT need a running game: the byte decoding, the
-RVA-to-address math, and the build-drift check's pass/fail decision. Every test
-drives the logic through a fake reader that returns bytes we chose by hand, so
-no Clone Hero, no debugger, and no Windows API are involved.
+These test the parts that do not need a running game: the byte decoding, the
+RVA-to-address math, the typed reads and writes, and the build-drift check.
 
-What is deliberately NOT tested here (the live-only seams, see process.py):
-  - open_process(), _find_pid_by_name(), _find_module_base(): these read the
-    real OS process and module tables, so they only run against a live game.
-  - make_reader()/make_writer(): they wrap ReadProcessMemory/
-    WriteProcessMemory and need a real open process handle.
-Those are exercised by hand against a running Clone Hero, not in this file.
-The fake memory comes from the shared builder in fakes.py.
+The reads and writes run through the real backend (process.make_reader and
+make_writer, so ReadProcessMemory and WriteProcessMemory) on a handle to this
+test's own process. The bytes they read are real game bytes: a slice of
+.rdata copied out of the installed game's GameAssembly.dll, laid into a page
+this test allocates at the spot its RVAs resolve to. Clone Hero is never
+started or touched, and nothing is left running.
+
+What is not tested here: open_process(), _find_pid_by_name() and
+_find_module_base() look the game up by name, so they need it running.
 
 Run from the repo root with:
-    python -m pytest tools/ch_probe/tests/test_process.py -q
-or, if pytest is not installed:
-    python -m unittest tools.ch_probe.tests.test_process
+    py -m unittest tools.ch_probe.tests.test_process
 """
 
 from __future__ import annotations
 
+import os
 import struct
 import unittest
 
-from .. import constants, process
+from .. import constants, interfaces, process
 from .fakes import fake_process
+from .test_find_checksum import _REPO_ROOT, _k32, OwnMemoryCase, PAGE
+
+# The .rdata doubles around the normal and precision window constants, one
+# 8-byte slot per line as "<rva> <bytes in hex>". Copied from GameAssembly.dll
+# in the installed game folder (tools/ch_mcp/game_files.py, GAME_DIR), whose
+# Clone Hero_Data/version.json reads v1.1.0.6142-final, the build
+# constants.py was made from. .rdata is not relocated, so a loaded game holds
+# these same bytes at module base + RVA.
+_RDATA_SLOTS = os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                            "gameassembly-6142-rdata", "window-constants.txt")
+_SLOT = 8  # bytes per double
+
+
+def _rdata_slots():
+    """The slice's first RVA and its bytes. Fails if the slots are not one
+    unbroken run, since the tests place them as one block."""
+    with open(_RDATA_SLOTS, encoding="ascii") as f:
+        rows = [line.split() for line in f if line.strip()]
+    first = int(rows[0][0], 16)
+    for i, (rva, _) in enumerate(rows):
+        if int(rva, 16) != first + _SLOT * i:
+            raise ValueError(f"{_RDATA_SLOTS}: slot {rva} breaks the run")
+    return first, b"".join(bytes.fromhex(raw) for _, raw in rows)
+
+
+FIRST_RVA, GAME_BYTES = _rdata_slots()
+
+
+def _game_double(rva: int) -> float:
+    """The double the game stores at `rva`, decoded by the probe's decoder."""
+    off = rva - FIRST_RVA
+    return process.decode_double(GAME_BYTES[off:off + _SLOT])
+
+
+class GameBytesCase(OwnMemoryCase):
+    """A page of this process holding the real .rdata slice, read through the
+    real reader. game() gives a Process whose module base puts each RVA in
+    the slice on its own bytes, so resolve() and the reads run as they do on
+    the live game."""
+
+    def setUp(self):
+        super().setUp()
+        self.addr = self.page()
+        self.put(self.addr, GAME_BYTES)
+
+    def game(self, shift: int = 0) -> process.Process:
+        """A Process over the slice. `shift` moves the module base by that
+        many bytes, the way a wrong base would."""
+        return process.Process(self.addr - FIRST_RVA + shift,
+                               process.make_reader(self.proc.handle),
+                               process.read_only_writer)
 
 
 class DecodeHelpersTest(unittest.TestCase):
     """The pure byte-to-number decoders."""
-
-    def test_decode_double_known_pattern(self):
-        # 85.0 as a little-endian IEEE double is a fixed 8-byte pattern.
-        raw = struct.pack("<d", 85.0)
-        self.assertEqual(process.decode_double(raw), 85.0)
 
     def test_decode_double_endianness(self):
         # Feed the exact bytes for 37.5 and make sure we read little-endian,
@@ -86,108 +131,148 @@ class ResolveMathTest(unittest.TestCase):
         self.assertEqual(proc.resolve(0), 0x7FF000000000)
 
 
-class TypedReadTest(unittest.TestCase):
-    """The typed reads pull the right number of bytes and decode them."""
+class TypedReadTest(GameBytesCase):
+    """The typed reads pull the right number of bytes from real memory and
+    decode them."""
 
-    def test_read_double_through_fake_memory(self):
-        base = 0x140000000
-        addr = base + 0x30
-        proc, _ = fake_process({addr: struct.pack("<d", 85.0)}, base)
-        self.assertEqual(proc.read_double(addr), 85.0)
+    def test_read_double_reads_each_game_slot(self):
+        for off in range(0, len(GAME_BYTES), _SLOT):
+            with self.subTest(rva=hex(FIRST_RVA + off)):
+                self.assertEqual(self.proc.read_double(self.addr + off),
+                                 struct.unpack_from("<d", GAME_BYTES, off)[0])
 
-    def test_read_u32_through_fake_memory(self):
-        base = 0x140000000
-        addr = base + 0x8C
-        proc, _ = fake_process({addr: struct.pack("<I", 512)}, base)
-        self.assertEqual(proc.read_u32(addr), 512)
+    def test_read_u32_reads_each_game_word(self):
+        for off in range(0, len(GAME_BYTES), 4):
+            with self.subTest(off=off):
+                self.assertEqual(self.proc.read_u32(self.addr + off),
+                                 struct.unpack_from("<I", GAME_BYTES, off)[0])
 
     def test_read_const_double_resolves_then_reads(self):
-        # read_const_double takes an RVA, resolves it, then reads the double.
-        rva = constants.RVA_CONST_NORMAL_BACK
-        proc, _ = fake_process({}, 0x140000000, consts={rva: 85.0})
-        self.assertEqual(proc.read_const_double(rva), 85.0)
+        # read_const_double takes an RVA, resolves it, then reads the double:
+        # the game's two normal constants come out as constants.py expects.
+        game = self.game()
+        self.assertEqual(game.read_const_double(constants.RVA_CONST_NORMAL_BACK),
+                         constants.EXPECT_NORMAL_BACK_S)
+        self.assertEqual(game.read_const_double(constants.RVA_CONST_NORMAL_FRONT),
+                         constants.EXPECT_NORMAL_FRONT_S)
 
-    def test_read_rejects_short_read(self):
-        # The fake returns fewer bytes than asked; read() must flag it rather
-        # than hand back a truncated buffer.
-        base = 0x140000000
-        addr = base + 0x100
-        proc, _ = fake_process({addr: b"\x01\x02\x03"}, base)
+    def test_read_past_readable_memory_raises(self):
+        # A double that starts 4 bytes before the end of a committed page runs
+        # into a page that is reserved but not committed. The read must fail
+        # rather than hand back the 4 bytes it could reach.
+        addr = self.reserve(2)
+        self.commit(addr, 1)
         with self.assertRaises(OSError):
-            proc.read(addr, 8)
+            self.proc.read(addr + PAGE - 4, _SLOT)
 
-    def test_write_goes_through_writer(self):
-        proc, mem = fake_process({}, 0x140000000)
-        proc.write(0x140001000, b"\xde\xad")
-        self.assertEqual(mem.writes[0x140001000], b"\xde\xad")
+
+class WriteTest(GameBytesCase):
+    """Process.write puts bytes into the process's memory through the real
+    WriteProcessMemory binding."""
+
+    def test_written_constants_pass_the_build_check(self):
+        handle = _k32.OpenProcess(process.access_mask(False), False, os.getpid())
+        if not handle:
+            self.fail("OpenProcess on this process with write rights failed")
+        blank = self.page()
+        proc = process.Process(blank - FIRST_RVA, process.make_reader(handle),
+                               process.make_writer(handle), handle=handle)
+        self.addCleanup(proc.close)
+        # A zeroed page holds no constants, so the check refuses it.
+        with self.assertRaises(process.BuildMismatchError):
+            proc.verify_targets()
+        for rva in (constants.RVA_CONST_NORMAL_BACK, constants.RVA_CONST_NORMAL_FRONT):
+            off = rva - FIRST_RVA
+            proc.write(proc.resolve(rva), GAME_BYTES[off:off + _SLOT])
+        # The game's two slots, written in, are what the check now reads.
+        self.assertIsNone(proc.verify_targets())
 
 
 class CheckNormalConstantsTest(unittest.TestCase):
-    """The pure pass/fail decision behind verify_targets."""
+    """The pure pass/fail decision behind verify_targets. The game stores the
+    constants in seconds, so the check takes seconds."""
 
-    # The game stores the constants in seconds, so the check takes seconds.
+    TOL_S = constants.ms_to_s(constants.CONST_MATCH_TOLERANCE_MS)
 
-    def test_exact_values_pass(self):
-        # 0.085 / 0.0375 s -> no error.
-        process.check_normal_constants(0.085, 0.0375)
+    def test_game_values_pass(self):
+        # The two doubles the installed game stores at the normal RVAs.
+        process.check_normal_constants(
+            _game_double(constants.RVA_CONST_NORMAL_BACK),
+            _game_double(constants.RVA_CONST_NORMAL_FRONT))
 
     def test_within_tolerance_passes(self):
         # A read a hair under the tolerance is still accepted.
-        tol = constants.ms_to_s(constants.CONST_MATCH_TOLERANCE_MS)
-        process.check_normal_constants(0.085 + tol * 0.9, 0.0375 - tol * 0.9)
+        process.check_normal_constants(
+            constants.EXPECT_NORMAL_BACK_S + self.TOL_S * 0.9,
+            constants.EXPECT_NORMAL_FRONT_S - self.TOL_S * 0.9)
 
-    def test_back_off_by_one_fails(self):
-        # 0.084 s is a full millisecond off, well past tolerance.
+    def test_back_off_by_one_ms_fails(self):
+        one_ms_s = constants.ms_to_s(1.0)
+        self.assertGreater(one_ms_s, self.TOL_S)
         with self.assertRaises(process.BuildMismatchError):
-            process.check_normal_constants(0.084, 0.0375)
+            process.check_normal_constants(
+                constants.EXPECT_NORMAL_BACK_S - one_ms_s,
+                constants.EXPECT_NORMAL_FRONT_S)
 
-    def test_front_off_fails(self):
+    def test_front_reading_the_precision_back_fails(self):
+        # A front read that lands on the game's precision-mode back constant.
+        precision_back_s = _game_double(constants.RVA_CONST_PRECISION_BACK)
+        self.assertGreater(abs(precision_back_s - constants.EXPECT_NORMAL_FRONT_S),
+                           self.TOL_S)
         with self.assertRaises(process.BuildMismatchError):
-            process.check_normal_constants(0.085, 0.040)
+            process.check_normal_constants(constants.EXPECT_NORMAL_BACK_S,
+                                           precision_back_s)
 
     def test_just_past_tolerance_fails(self):
-        tol = constants.ms_to_s(constants.CONST_MATCH_TOLERANCE_MS)
         with self.assertRaises(process.BuildMismatchError):
-            process.check_normal_constants(0.085 + tol * 2, 0.0375)
+            process.check_normal_constants(
+                constants.EXPECT_NORMAL_BACK_S + self.TOL_S * 2,
+                constants.EXPECT_NORMAL_FRONT_S)
 
     def test_values_in_ms_are_refused(self):
         # The check reads seconds: a build-drift guard that accepted ms would be wrong.
         with self.assertRaises(process.BuildMismatchError):
-            process.check_normal_constants(85.0, 37.5)
+            process.check_normal_constants(
+                constants.s_to_ms(constants.EXPECT_NORMAL_BACK_S),
+                constants.s_to_ms(constants.EXPECT_NORMAL_FRONT_S))
 
 
-class VerifyTargetsTest(unittest.TestCase):
-    """verify_targets reads the two constants live, then applies the check."""
+class VerifyTargetsTest(GameBytesCase):
+    """verify_targets reads the two constants from memory, then applies the
+    check."""
 
-    def _proc_with_constants(self, back: float, front: float):
-        proc, _ = fake_process({}, 0x140000000, consts={
-            constants.RVA_CONST_NORMAL_BACK: back,
-            constants.RVA_CONST_NORMAL_FRONT: front,
-        })
-        return proc
+    def _assert_drift_caught(self, game: process.Process, rva: int,
+                             expect_s: float) -> None:
+        read_s = game.read_const_double(rva)
+        self.assertGreater(abs(read_s - expect_s), CheckNormalConstantsTest.TOL_S)
+        with self.assertRaises(process.BuildMismatchError):
+            game.verify_targets()
 
     def test_good_build_passes(self):
-        # The proof-of-life case: 0.085 / 0.0375 s read back clean.
-        self.assertIsNone(self._proc_with_constants(0.085, 0.0375).verify_targets())
+        self.assertIsNone(self.game().verify_targets())
 
-    def test_drifted_back_constant_raises(self):
-        with self.assertRaises(process.BuildMismatchError):
-            self._proc_with_constants(0.084, 0.0375).verify_targets()
+    def test_base_one_slot_late_raises(self):
+        # One double past the normal back constant holds a different number.
+        self._assert_drift_caught(self.game(shift=_SLOT),
+                                  constants.RVA_CONST_NORMAL_BACK,
+                                  constants.EXPECT_NORMAL_BACK_S)
 
-    def test_drifted_front_constant_raises(self):
-        with self.assertRaises(process.BuildMismatchError):
-            self._proc_with_constants(0.085, 0.025).verify_targets()
+    def test_precision_pair_raises(self):
+        # A base that lands each normal read on its precision-mode constant.
+        shift = constants.RVA_CONST_PRECISION_FRONT - constants.RVA_CONST_NORMAL_FRONT
+        self.assertEqual(
+            shift, constants.RVA_CONST_PRECISION_BACK - constants.RVA_CONST_NORMAL_BACK)
+        self._assert_drift_caught(self.game(shift=shift),
+                                  constants.RVA_CONST_NORMAL_FRONT,
+                                  constants.EXPECT_NORMAL_FRONT_S)
 
 
-class ProtocolShapeTest(unittest.TestCase):
+class ProtocolShapeTest(OwnMemoryCase):
     """Process must satisfy the ProcessHandle Protocol so the other modules can
     rely on its method names."""
 
     def test_process_is_a_process_handle(self):
-        from .. import interfaces
-
-        proc, _ = fake_process({}, 0x140000000)
-        self.assertIsInstance(proc, interfaces.ProcessHandle)
+        self.assertIsInstance(self.proc, interfaces.ProcessHandle)
 
 
 if __name__ == "__main__":
