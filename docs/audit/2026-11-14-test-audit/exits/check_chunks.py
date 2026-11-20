@@ -41,6 +41,8 @@ for name, lst in (('in no chunk', missing), ('in two or more chunks', twice), ('
 
 for c in C:
     ids = c['row_ids'].split()
+    if len(ids) > 16:
+        fails.append('%s holds %d rows, more than 16' % (c['chunk'], len(ids)))
     if int(c['rows']) != len(ids):
         fails.append('%s says %s rows but lists %d' % (c['chunk'], c['rows'], len(ids)))
     for rid in ids:

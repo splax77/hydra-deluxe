@@ -1126,22 +1126,22 @@ L-C14	count	counts/T5-IR4.md:56	E-echo	~/.claude/gates/tests/test_review_dispatc
 L-C14	count	counts/T5-IR4.md:57	E-echo	~/.claude/gates/tests/test_review_dispatch.py	legend-base
 L-C14	count	counts/T5-IR4.md:58	E-echo	~/.claude/gates/tests/test_review_dispatch.py	legend-base
 L-C14	count	counts/T5-IR4.md:60	E-echo	~/.claude/gates/tests/test_review_dispatch.py	legend-base
-L-C14	count	counts/T5-IR4.md:61	C-gate, P-message	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:64	C-gate	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:65	C-gate, P-message	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:66	C-gate	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:67	C-gate, P-message	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:70	C-gate, P-message	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:71	C-gate, P-message	~/.claude/gates/review_rules.py	base
+L-C14	count	counts/T5-IR4.md:61	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:64	C-gate	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:65	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:66	C-gate	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:67	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:70	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:71	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:72	P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:73	P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
-L-C14	count	counts/T5-IR4.md:75	C-gate, P-message	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:76	C-gate	~/.claude/gates/review_rules.py	base
+L-C14	count	counts/T5-IR4.md:75	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:76	C-gate	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:77	C-gate, E-echo	~/.claude/gates/tests/test_ref_judge.py	legend-base
-L-C14	count	counts/T5-IR4.md:78	C-gate	~/.claude/gates/review_rules.py	base
+L-C14	count	counts/T5-IR4.md:78	C-gate	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:79	C-gate, E-echo	~/.claude/gates/tests/test_ref_judge.py	legend-base
-L-C14	count	counts/T5-IR4.md:80	C-gate, P-message	~/.claude/gates/review_rules.py	base
-L-C14	count	counts/T5-IR4.md:81	O-transcript, C-gate, E-echo, P-message	~/.claude/gates/ruling_rules.py	base
+L-C14	count	counts/T5-IR4.md:80	C-gate, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
+L-C14	count	counts/T5-IR4.md:81	O-transcript, C-gate, E-echo, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:82	O-transcript, C-gate, E-echo, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:83	O-transcript, C-gate, E-echo, P-message	~/.claude/gates/tests/test_ref_judge.py	legend-base
 L-C14	count	counts/T5-IR4.md:84	O-transcript, C-gate, E-echo	~/.claude/gates/tests/test_ref_judge.py	legend-base
@@ -1447,7 +1447,7 @@ L-C17	count	counts/T5-IR7.md:85	O-gamemem, C-clock, P-message	tools/ch_probe/tes
 L-C17	count	counts/T5-IR7.md:86	C-stub, C-clock, O-gamemem	tools/ch_probe/tests/test_play_chart.py	legend-exact
 L-C17	count	counts/T5-IR7.md:87	P-message	tools/ch_probe/tests/test_play_chart.py	legend-exact
 L-C17	count	counts/T5-IR7.md:88	P-message	tools/ch_probe/tests/test_play_chart.py	legend-exact
-L-C17	count	counts/T5-IR7.md:89	P-message	schedule.js	notinrepo
+L-C17	count	counts/T5-IR7.md:89	P-message	tools/ch_probe/tests/test_play_chart.py	legend-base
 L-C17	count	counts/T5-IR7.md:90	P-message	tools/ch_probe/tests/test_play_chart.py	legend-exact
 L-C17	count	counts/T5-IR7.md:91	C-stub, P-message	tools/ch_probe/tests/test_play_chart.py	legend-exact
 L-C17	count	counts/T5-IR7.md:92	C-clock, O-gamemem, P-message	tools/ch_probe/tests/test_play_chart.py	legend-exact
@@ -1643,7 +1643,7 @@ L-C20	count	counts/T5-KR1.md:23	P-other, C-rig	tools/ch_mcp/tests/test_method_wa
 L-C20	count	counts/T5-KR1.md:24	O-payload, P-name, C-rig	tools/ch_mcp/tests/test_method_watch.py	legend-base
 L-C20	count	counts/T5-KR1.md:25	O-gamemem, P-message	tools/ch_mcp/tests/test_method_watch.py	legend-base
 L-C20	count	counts/T5-KR1.md:28	P-other	tools/ch_mcp/tests/test_method_watch.py	legend-base
-L-C20	count	counts/T5-KR1.md:29	O-toolout, P-message	tools/ch_mcp/mono_reader.ps1	base
+L-C20	count	counts/T5-KR1.md:29	O-toolout, P-message	tools/ch_mcp/tests/test_mono_facts.py	legend-base
 L-C20	count	counts/T5-KR1.md:30	O-toolout, P-message, E-echo, C-stub	tools/ch_mcp/tests/test_mono_facts.py	legend-base
 L-C20	count	counts/T5-KR1.md:33	O-gamemem, F-schedule	tools/ch_mcp/tests/test_press_schedule.py	legend-base
 L-C20	count	counts/T5-KR1.md:45	O-process, C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
@@ -1684,7 +1684,7 @@ L-C20	count	counts/T5-KR1.md:94	O-reply, C-stub	tools/ch_mcp/tests/test_server.p
 L-C20	count	counts/T5-KR1.md:95	O-reply, P-message, E-echo, C-stub	tools/ch_mcp/tests/test_server.py	legend-base
 L-C20	count	counts/T5-KR1.md:96	C-session, P-message, C-stub	tools/ch_mcp/tests/test_server.py	legend-base
 L-C20	count	counts/T5-KR1.md:97	C-session, C-stub	tools/ch_mcp/tests/test_server.py	legend-base
-L-C20	count	counts/T5-KR1.md:98	E-echo, C-stub	s.js	notinrepo
+L-C20	count	counts/T5-KR1.md:98	E-echo, C-stub	tools/ch_mcp/tests/test_server.py	legend-base
 L-C20	count	counts/T5-KR1.md:99	E-echo, C-stub	tools/ch_mcp/tests/test_server.py	legend-base
 L-C20	count	counts/T5-KR1.md:100	E-echo, C-stub	tools/ch_mcp/tests/test_server.py	legend-base
 L-C20	count	counts/T5-KR1.md:102	P-setting, E-echo, C-stub	tools/ch_mcp/tests/test_server.py	legend-base

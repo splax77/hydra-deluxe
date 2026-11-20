@@ -181,6 +181,11 @@ with open(os.path.join(A, 'exits/labels/labels.tsv'), encoding='utf-8') as fh:
             m = PAT.search(test) or PAT.search(ln)
             if cont and m and not PAT.search(test) and not is_test(resolve(m.group(1).split(':')[0])[0]):
                 m = None
+            # A test cell that begins with a legend code ("RJ:136") names that code's file, even
+            # when the reason column names another file ("fake review_rules.py").
+            lead = re.match(r'(%s|[a-z]\w*)\s*:\s*\d' % CODE, test)
+            if lead and not PAT.search(test) and lead.group(1) in legend2(lines):
+                m = None
             above = table_file(lines, int(n) - 2, i, col) if cont and not m else None
             test = test if test else ln
             if above:
