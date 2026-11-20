@@ -526,11 +526,6 @@
           "file": "tools/ch_probe/input_driver.py",
           "line_text": "KEY_HOLD_S = 0.003",
           "why": "KEY_HOLD_S, the owner"
-        },
-        {
-          "file": "tools/ch_probe/tests/test_input_driver.py",
-          "line_text": "self.assertEqual(input_driver.KEY_HOLD_S, 0.003)",
-          "why": "the test pin of D54's recorded value"
         }
       ],
       "scope": [
