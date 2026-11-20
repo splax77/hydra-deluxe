@@ -62,7 +62,7 @@ class TaintTest(unittest.TestCase):
         listed, _ = self.run_script([call], **run)
         self.assertEqual(listed, [])
 
-    def test_plan_acceptance_lists_first_and_third_only(self):
+    def test_a_ref_to_main_and_a_checkout_path_are_listed_and_the_keyed_range_is_not(self):
         first = bash("git show main:src/a.cpp")
         second = bash("git diff main...%s" % KEY)
         third = read(CHECKOUT + "\\src\\a.cpp")
