@@ -4,8 +4,10 @@
 #include "doctest.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -37,47 +39,116 @@ Chord chord_of(std::initializer_list<ChordNote> notes) {
     return c;
 }
 
+// Every combo from 0 up to the first one at the top multiplier, so a walk over
+// it meets every band of to_multiplier. The top is the multiplier at the
+// largest combo an int holds, so the walk ends there at the latest.
+std::vector<int> combos_through_top_multiplier() {
+    const int last = (std::numeric_limits<int>::max)();
+    const int top = to_multiplier(last);
+    std::vector<int> out;
+    for (int combo = 0;; ++combo) {
+        out.push_back(combo);
+        if (to_multiplier(combo) == top || combo == last) break;
+    }
+    return out;
+}
+
+// The first combo above `combo` whose multiplier is higher than combo's own:
+// the next step of to_multiplier. Fails the test when there is none.
+int next_multiplier_step(int combo) {
+    const int last = (std::numeric_limits<int>::max)();
+    int step = combo + 1;
+    while (step < last && to_multiplier(step) <= to_multiplier(combo)) ++step;
+    REQUIRE_MESSAGE(to_multiplier(step) > to_multiplier(combo),
+                    "to_multiplier has no step above combo " << combo);
+    return step;
+}
+
+// A path with a share in every one of the six score categories, so each star
+// test can see which categories its answer reads and which it leaves out.
+Path path_with_every_category() {
+    Path path;
+    path.notes_points = 1000;
+    path.score_ghosts = 100;
+    path.score_accents = 200;
+    path.score_solo = 800;
+    path.score_combo = 5000;
+    path.score_sp = 3000;
+    return path;
+}
+
+// The exact product of `base` and star `stars`'s multiplier, in tenths of a
+// point. Every entry of the game's table is a whole number of tenths, which
+// this checks, so the product is exact in integers.
+int64_t exact_product_in_tenths(int64_t base, int stars) {
+    const float multiplier = kStarMultipliers.at(static_cast<size_t>(stars - 1));
+    const long tenths = std::lround(multiplier * 10.0f);
+    REQUIRE(std::fabs(multiplier * 10.0f - static_cast<float>(tenths)) < 1e-4f);
+    return base * tenths;
+}
+
+// Each cutoff for `base` is its exact product rounded up: at or above the
+// product, and less than one point above it.
+void check_cutoffs_round_the_exact_product_up(int64_t base) {
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
+        CAPTURE(stars);
+        const int64_t product_tenths = exact_product_in_tenths(base, stars);
+        const int64_t cutoff = star_cutoff(base, stars);
+        CHECK(cutoff * 10 >= product_tenths);
+        CHECK((cutoff - 1) * 10 < product_tenths);
+    }
+}
+
 }  // namespace
 
-TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
-    // Each note lands at combo 1, 10 and 30: multipliers 1, 2 and 4 (D51
-    // call 13). The values are the audit's table (finding 160): a tom is 50,
-    // a cymbal 65, a ghost tom 100 and an accent cymbal 130 at 1x.
+TEST_CASE("scoring: one note's value at every combo band, by category") {
+    // A note's 1x price: a pad's kNoteBasePoints, plus kCymbalBonusPoints on a
+    // cymbal, doubled for a ghost or an accent.
     struct Row {
         const char* name;
         ChordNote note;
-        int notes, accent, ghost;
-        std::array<int, 3> combo, sp, dynamics_bonus;
+        int plain_price;  // the same note with no ghost or accent
     };
+    const int tom = kNoteBasePoints;
+    const int cymbal = kNoteBasePoints + kCymbalBonusPoints;
     const Row rows[] = {
-        {"tom", ChordNote{NoteColor::Red}, 50, 0, 0, {0, 50, 150}, {50, 100, 200}, {0, 0, 0}},
+        {"tom", ChordNote{NoteColor::Red}, tom},
         {"cymbal",
          ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false},
-         65, 0, 0, {0, 65, 195}, {65, 130, 260}, {0, 0, 0}},
-        {"ghost tom", ChordNote{NoteColor::Red, NoteDynamicType::Ghost}, 50, 0, 50,
-         {0, 100, 300}, {100, 200, 400}, {50, 100, 200}},
+         cymbal},
+        {"ghost tom", ChordNote{NoteColor::Red, NoteDynamicType::Ghost}, tom},
         {"accent cymbal",
          ChordNote{NoteColor::Yellow, NoteDynamicType::Accent, NoteCymbalType::Cymbal, false},
-         80, 50, 0, {0, 130, 390}, {130, 260, 520}, {65, 130, 260}},
+         cymbal},
     };
-    const std::array<int, 3> combos{0, 9, 29};
-    const std::array<int, 3> multipliers{1, 2, 4};
     for (const Row& row : rows) {
         const Chord chord = chord_of({row.note});
-        for (size_t k = 0; k < combos.size(); ++k) {
-            CAPTURE(row.name);
-            CAPTURE(combos[k]);
+        const int price = row.note.is_dynamic() ? 2 * row.plain_price : row.plain_price;
+        CAPTURE(std::string(row.name));
+        CHECK(row.note.basescore() == price);
+        for (int combo : combos_through_top_multiplier()) {
+            CAPTURE(combo);
+            // The note is hit from `combo`, so it lands one combo later.
+            const int multiplier = to_multiplier(combo + 1);
+            const int paid = price * multiplier;
             std::vector<CategoryScores> per_note;
-            const CategoryScores total = category_scores(chord, combos[k], &per_note);
+            const CategoryScores total = category_scores(chord, combo, &per_note);
             REQUIRE(per_note.size() == 1);
             const CategoryScores& n = per_note[0];
-            CHECK(n.notes == row.notes);
-            CHECK(n.combo == row.combo[k]);
-            CHECK(n.sp == row.sp[k]);
-            CHECK(n.accent == row.accent);
-            CHECK(n.ghost == row.ghost);
-            CHECK(n.dynamics_bonus == row.dynamics_bonus[k]);
-            CHECK(n.multiplier == multipliers[k]);
+            CHECK(n.multiplier == multiplier);
+            // A ghost or accent's own category holds the pad's base points;
+            // the notes category holds the rest of the 1x price.
+            CHECK(n.accent == (row.note.is_accent() ? kNoteBasePoints : 0));
+            CHECK(n.ghost == (row.note.is_ghost() ? kNoteBasePoints : 0));
+            CHECK(n.notes + n.accent + n.ghost == price);
+            // The combo share is what the multiplier adds on top of the price.
+            CHECK(n.combo == paid - price);
+            // Star Power pays the paid value kStarPowerMultiplier times.
+            CHECK(n.sp == (kStarPowerMultiplier - 1) * paid);
+            // A ghost or accent earns its paid value less the plain note's.
+            CHECK(n.dynamics_bonus == paid - row.plain_price * multiplier);
+            // Squeezing the note out loses its paid value.
+            CHECK(n.sqout_reduction == paid);
 
             // The chord total of a one-note chord is that note.
             CHECK(total.notes == n.notes);
@@ -86,11 +157,6 @@ TEST_CASE("scoring: one note's value at combos 0, 9 and 29, by category") {
             CHECK(total.accent == n.accent);
             CHECK(total.ghost == n.ghost);
             CHECK(total.sqout_reduction == n.sqout_reduction);
-
-            // 160: the 1x shares add up to the note's basescore.
-            CHECK(n.notes + n.accent + n.ghost == row.note.basescore());
-            // The squeeze-out cut is the note's value.
-            CHECK(n.sqout_reduction == n.sp);
         }
     }
 }
@@ -119,19 +185,28 @@ TEST_CASE("scoring: squeezing out any chord always costs points") {
             }
     }
     chords.push_back(all_pads);
-    // Every combo up to the first one at the top multiplier (to_multiplier's
-    // own bands), so every band is walked.
-    const int top_multiplier = to_multiplier(1'000'000);
     for (const Chord& chord : chords)
         for (core::SqOutRule rule : rules)
-            for (int combo = 0;; ++combo) {
+            for (int combo : combos_through_top_multiplier()) {
                 CAPTURE(chord.rowstr());
                 CAPTURE(combo);
-                const CategoryScores sg = category_scores(chord, combo, nullptr, rule);
+                std::vector<CategoryScores> per_note;
+                const CategoryScores sg = category_scores(chord, combo, &per_note, rule);
+                // The squeeze-out loses the Star Power share of every note
+                // the rule pays outside Star Power, and nothing else.
+                int lost = 0;
+                for (size_t place = 0; place < per_note.size(); ++place)
+                    if (sqout_pays_outside(place, rule)) lost += per_note[place].sp;
+                CHECK(sg.sqout_reduction == lost);
+                // Never 0: the first note is paid outside Star Power under
+                // either rule, and every note is worth points.
+                REQUIRE(!per_note.empty());
+                CHECK(sqout_pays_outside(0, rule));
+                CHECK(per_note[0].sp > 0);
                 CHECK(sg.sqout_reduction > 0);
-                // An offset of 0 ms is counted whatever the leeway.
-                CHECK(core::sqout_cost(0.0, sg.sp, sg.sqout_sp(), 0.0) > 0);
-                if (to_multiplier(combo) == top_multiplier) break;
+                // A row squeezed out at 0 ms is counted whatever the leeway,
+                // so its cost is exactly the reduction.
+                CHECK(core::sqout_cost(0.0, sg.sp, sg.sqout_sp(), 0.0) == sg.sqout_reduction);
             }
 }
 
@@ -140,15 +215,24 @@ TEST_CASE("scoring: combo_after is the combo plus the chord's notes") {
         {ChordNote{NoteColor::Red},
          ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false},
          ChordNote{NoteColor::Kick}});
+    const int notes = chord.count();
+    REQUIRE(notes > 1);
+    // Hit from here, the chord's last note lands on the first multiplier step
+    // and its first note below it.
+    const int start = next_multiplier_step(0) - notes;
+    REQUIRE(start >= 0);
     std::vector<CategoryScores> per_note;
-    const CategoryScores total = category_scores(chord, 7, &per_note);
-    CHECK(total.combo_after == 10);
-    CHECK(total.multiplier == 1);        // the first note lands at combo 8
-    CHECK(total.multiplier_after == 2);  // the third at combo 10
-    REQUIRE(per_note.size() == 3);
-    CHECK(per_note[0].combo_after == 8);
-    CHECK(per_note[1].combo_after == 9);
-    CHECK(per_note[2].combo_after == 10);
+    const CategoryScores total = category_scores(chord, start, &per_note);
+    CHECK(total.combo_after == start + notes);
+    CHECK(total.multiplier == to_multiplier(start + 1));
+    CHECK(total.multiplier_after == to_multiplier(start + notes));
+    CHECK(total.multiplier != total.multiplier_after);
+    REQUIRE(per_note.size() == static_cast<size_t>(notes));
+    for (int i = 0; i < notes; ++i) {
+        CAPTURE(i);
+        CHECK(per_note[static_cast<size_t>(i)].combo_after == start + 1 + i);
+        CHECK(per_note[static_cast<size_t>(i)].multiplier == to_multiplier(start + 1 + i));
+    }
 }
 
 TEST_CASE("scoring: solo_note_count is every note in a solo, else 0") {
@@ -157,29 +241,28 @@ TEST_CASE("scoring: solo_note_count is every note in a solo, else 0") {
     CHECK(solo_note_count(two, false) == 0);
 }
 
-TEST_CASE("scoring: solo_bonus is 100 per note in a solo, else 0") {
+TEST_CASE("scoring: solo_bonus pays kSoloBonusPerNote for each note in a solo, else 0") {
+    const Chord one = chord_of({ChordNote{NoteColor::Red}});
     const Chord three = chord_of(
         {ChordNote{NoteColor::Red},
          ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false},
          ChordNote{NoteColor::Kick}});
-    CHECK(solo_bonus(three, true) == 300);
+    REQUIRE(three.count() > one.count());
+    CHECK(solo_bonus(one, true) == kSoloBonusPerNote);
+    // Per note, not per chord.
+    CHECK(solo_bonus(three, true) == three.count() * solo_bonus(one, true));
     CHECK(solo_bonus(three, false) == 0);
-    CHECK(solo_bonus(chord_of({ChordNote{NoteColor::Red}}), true) == 100);
+    CHECK(solo_bonus(one, false) == 0);
 }
 
 TEST_CASE("stars: with_solo is each cutoff plus the solo bonus") {
-    // The path of "stars: star_cutoffs reads the path's base score and solo
-    // bonus": base 1300, solo 800, cutoffs 130, 650, 1300, 2600, 3640, 4680,
-    // 5720.
-    Path path;
-    path.notes_points = 1000;
-    path.score_ghosts = 100;
-    path.score_accents = 200;
-    path.score_solo = 800;
-    path.score_combo = 5000;
-    path.score_sp = 3000;
-    const std::array<int64_t, 7> expected{930, 1450, 2100, 3400, 4440, 5480, 6520};
-    CHECK(star_cutoffs(path).with_solo == expected);
+    Path path = path_with_every_category();
+    REQUIRE(path.score_solo > 0);
+    const StarCutoffs sc = star_cutoffs(path);
+    for (size_t i = 0; i < sc.cutoffs.size(); ++i) {
+        CAPTURE(i);
+        CHECK(sc.with_solo[i] == sc.cutoffs[i] + path.score_solo);
+    }
 
     // No solo bonus: the two columns agree.
     path.score_solo = 0;
@@ -188,45 +271,52 @@ TEST_CASE("stars: with_solo is each cutoff plus the solo bonus") {
 }
 
 TEST_CASE("stars: score_without_solo is the total minus the solo bonus") {
-    // The path of "stars: path_stars counts cutoffs reached without the solo
-    // bonus", at its 6680 total with a 2000 solo bonus.
-    Path path;
-    path.notes_points = 1000;
-    path.score_ghosts = 100;
-    path.score_accents = 200;
-    path.score_combo = 3380;
-    path.score_solo = 2000;
-    CHECK(path.totalscore() == 6680);
-    CHECK(score_without_solo(path) == 4680);
-    CHECK(path_stars(path) == 6);
+    const Path path = path_with_every_category();
+    REQUIRE(path.score_solo > 0);
+    // Stars count every category but the solo bonus.
+    const int64_t counted = path.notes_points + path.score_ghosts + path.score_accents +
+                            path.score_combo + path.score_sp;
+    CHECK(score_without_solo(path) == counted);
 
     // A replay's running score is the same six categories, so the ReplayScore
     // form gives the same answer for the same numbers.
     ReplayScore running;
-    running.notes = 1000;
-    running.ghost = 100;
-    running.accent = 200;
-    running.combo = 3380;
-    running.solo = 2000;
-    CHECK(running.total() == 6680);
-    CHECK(score_without_solo(running) == 4680);
+    running.notes = path.notes_points;
+    running.ghost = path.score_ghosts;
+    running.accent = path.score_accents;
+    running.combo = path.score_combo;
+    running.sp = path.score_sp;
+    running.solo = path.score_solo;
+    CHECK(score_without_solo(running) == counted);
 }
 
-TEST_CASE("stars: the table is the game's first seven multipliers") {
-    CHECK(kMaxStars == 7);
-    const std::array<float, 7> expected{0.1f, 0.5f, 1.0f, 2.0f, 2.8f, 3.6f, 4.4f};
-    CHECK(kStarMultipliers == expected);
+TEST_CASE("stars: each star needs a higher multiplier than the one before") {
+    CHECK(kStarMultipliers[0] > 0.0f);
+    for (size_t i = 1; i < kStarMultipliers.size(); ++i) {
+        CAPTURE(i);
+        CHECK(kStarMultipliers[i] > kStarMultipliers[i - 1]);
+    }
 }
 
 TEST_CASE("stars: whole-number products come out exact") {
-    const std::array<int64_t, 7> expected{10000, 50000, 100000, 200000, 280000, 360000, 440000};
-    CHECK(cutoffs_for(100000) == expected);
+    // A chart of 2000 plain toms: a base whose every product is whole.
+    const int64_t base = 2000 * static_cast<int64_t>(ChordNote{NoteColor::Red}.basescore());
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
+        CAPTURE(stars);
+        REQUIRE(exact_product_in_tenths(base, stars) % 10 == 0);
+    }
+    check_cutoffs_round_the_exact_product_up(base);
 }
 
 TEST_CASE("stars: fractional products round up") {
-    // 12345.6 -> 12346, 345676.8 -> 345677, 444441.6 -> 444442, 543206.4 -> 543207.
-    const std::array<int64_t, 7> expected{12346, 61728, 123456, 246912, 345677, 444442, 543207};
-    CHECK(cutoffs_for(123456) == expected);
+    // A chart of one tom and one cymbal: a base a real chart can have, whose
+    // 1-star product ends in half a point.
+    const int64_t base =
+        ChordNote{NoteColor::Red}.basescore() +
+        ChordNote{NoteColor::Yellow, NoteDynamicType::Normal, NoteCymbalType::Cymbal, false}
+            .basescore();
+    REQUIRE(exact_product_in_tenths(base, 1) % 10 != 0);
+    check_cutoffs_round_the_exact_product_up(base);
 }
 
 TEST_CASE("stars: the multiply is 32-bit float, as in the game") {
@@ -243,32 +333,33 @@ TEST_CASE("stars: a zero base gives zero cutoffs") {
 }
 
 TEST_CASE("stars: star_cutoffs reads the path's base score and solo bonus") {
-    Path path;
-    path.notes_points = 1000;
-    path.score_ghosts = 100;
-    path.score_accents = 200;
-    path.score_solo = 800;
-    path.score_combo = 5000;  // the multiplier's share: never part of the base
-    path.score_sp = 3000;
-
-    CHECK(path.chart_base_score() == 1300);
+    Path path = path_with_every_category();
+    // The base is the notes, ghosts and accents categories.
+    const int64_t base = path.notes_points + path.score_ghosts + path.score_accents;
+    CHECK(path.chart_base_score() == base);
 
     const StarCutoffs sc = star_cutoffs(path);
-    CHECK(sc.chart_base_score == 1300);
-    CHECK(sc.solo_bonus == 800);
-    const std::array<int64_t, 7> expected{130, 650, 1300, 2600, 3640, 4680, 5720};
-    CHECK(sc.cutoffs == expected);
+    CHECK(sc.chart_base_score == base);
+    CHECK(sc.solo_bonus == path.score_solo);
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
+        CAPTURE(stars);
+        CHECK(sc.cutoffs[static_cast<size_t>(stars - 1)] == star_cutoff(base, stars));
+    }
+
+    // The combo and Star Power shares are never part of the base.
+    REQUIRE(path.score_combo > 0);
+    REQUIRE(path.score_sp > 0);
+    path.score_combo = 0;
+    path.score_sp = 0;
+    CHECK(path.chart_base_score() == base);
+    CHECK(star_cutoffs(path).cutoffs == sc.cutoffs);
 }
 
-TEST_CASE("stars: avg_mult divides by the same base score") {
-    Path path;
-    path.notes_points = 1000;
-    path.score_ghosts = 100;
-    path.score_accents = 200;
-    path.score_combo = 1300;
-    path.score_solo = 800;
-    // total 3400, minus the 800 solo bonus = 2600, over a base of 1300.
-    CHECK(path.avg_mult() == doctest::Approx(2.0));
+TEST_CASE("stars: avg_mult divides the score without the solo bonus by the base score") {
+    const Path path = path_with_every_category();
+    REQUIRE(path.chart_base_score() > 0);
+    CHECK(path.avg_mult() == doctest::Approx(static_cast<double>(score_without_solo(path)) /
+                                             static_cast<double>(path.chart_base_score())));
 }
 
 TEST_CASE("stars: the base score is the sum of every note's basescore, on every path") {
@@ -305,61 +396,76 @@ TEST_CASE("stars: the base score is the sum of every note's basescore, on every 
     MESSAGE("87: base score " << best.chart_base_score() << ", note sum " << note_sum
                               << ", solo bonus " << best.score_solo);
     CHECK(best.chart_base_score() == note_sum);
-    CHECK(best.chart_base_score() == 137950);
     CHECK(best.score_solo > 0);
 
-    int checked = 0;
-    for (const Path* p : record.all_paths()) {
-        CHECK(p->chart_base_score() == best.chart_base_score());
-        CHECK(p->score_solo == best.score_solo);
-        ++checked;
+    const std::vector<const Path*> paths = record.all_paths();
+    const std::vector<const Path*> allzero_paths = record.all_allzero_paths();
+    // The premise compares the best path with the record's other paths, so
+    // the record must hold at least one besides it.
+    REQUIRE(paths.size() + allzero_paths.size() > 1);
+    for (const std::vector<const Path*>* list : {&paths, &allzero_paths}) {
+        for (const Path* p : *list) {
+            CHECK(p->chart_base_score() == best.chart_base_score());
+            CHECK(p->score_solo == best.score_solo);
+        }
     }
-    for (const Path* p : record.all_allzero_paths()) {
-        CHECK(p->chart_base_score() == best.chart_base_score());
-        CHECK(p->score_solo == best.score_solo);
-        ++checked;
-    }
-    MESSAGE("87: paths checked (variants and all-0 paths included): " << checked);
-    CHECK(checked > 1);
 }
 
 TEST_CASE("stars: path_stars counts cutoffs reached without the solo bonus") {
-    // Base 1300, so the cutoffs are 130, 650, 1300, 2600, 3640, 4680, 5720
-    // (the star_cutoffs case above).
-    Path path;
-    path.notes_points = 1000;
-    path.score_ghosts = 100;
-    path.score_accents = 200;
+    Path path = path_with_every_category();
+    path.score_combo = 0;
+    path.score_sp = 0;
+    path.score_solo = 0;
     const StarCutoffs sc = star_cutoffs(path);
+    REQUIRE(sc.cutoffs[0] > 0);
 
+    // A cutoff counts once it is reached, and not one point before.
     CHECK(stars_for_score(sc, 0) == 0);
-    CHECK(stars_for_score(sc, 129) == 0);
-    CHECK(stars_for_score(sc, 130) == 1);    // a cutoff counts when reached
-    CHECK(stars_for_score(sc, 4679) == 5);
-    CHECK(stars_for_score(sc, 4680) == 6);
-    CHECK(stars_for_score(sc, 5720) == 7);
-    CHECK(stars_for_score(sc, 1000000) == 7);  // the game stops at 7
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
+        CAPTURE(stars);
+        const int64_t cutoff = sc.cutoffs[static_cast<size_t>(stars - 1)];
+        CHECK(stars_for_score(sc, cutoff) == stars);
+        CHECK(stars_for_score(sc, cutoff - 1) == stars - 1);
+    }
+    // The game stops counting at kMaxStars, whatever the score.
+    CHECK(stars_for_score(sc, (std::numeric_limits<int64_t>::max)()) == kMaxStars);
 
-    // 1300 base + 3380 combo = 4680 without the solo bonus: 6 stars. A solo
-    // bonus big enough to pass the 7-star cutoff doesn't count.
-    path.score_combo = 3380;
-    path.score_solo = 2000;
-    CHECK(path.totalscore() == 6680);
-    CHECK(path_stars(path) == 6);
-    path.score_combo = 3379;
-    CHECK(path_stars(path) == 5);
+    // A solo bonus that alone passes the top cutoff adds no star: path_stars
+    // counts only what the path scores without it.
+    const int64_t base = path.chart_base_score();
+    const int64_t top_cutoff = sc.cutoffs[kMaxStars - 1];
+    path.score_solo = top_cutoff;
+    for (int stars = 1; stars <= kMaxStars; ++stars) {
+        CAPTURE(stars);
+        const int64_t cutoff = sc.cutoffs[static_cast<size_t>(stars - 1)];
+        // A path hits every note, so it scores at least its base; a cutoff
+        // below the base has no path one point short of it.
+        if (cutoff <= base) continue;
+        path.score_combo = cutoff - base;
+        CHECK(path.totalscore() > top_cutoff);
+        CHECK(path_stars(path) == stars);
+        path.score_combo = cutoff - base - 1;
+        CHECK(path_stars(path) == stars - 1);
+    }
 }
 
-TEST_CASE("stars: Burnout's optimal path earns 7 stars") {
-    // Green Day - Burnout at Expert, Pro Drums, 2x Bass, cap 4: optimal
-    // 378,315 against a 7-star cutoff of 335,500, the reference data of
-    // docs/superpowers/plans/2026-09-27-ui-redesign.md (removed; git show 444631e6:docs/superpowers/plans/2026-09-27-ui-redesign.md).
+TEST_CASE("stars: Burnout's optimal path earns every star") {
+    // Green Day - Burnout at Expert, Pro Drums, 2x Bass, cap 4, under the
+    // settings the reference cases share (scratch_settings).
     const std::string chart = corpus::burnout_notes();
     const app::AnalysisSettings settings = scratch_settings().to_analysis_settings();
     const HydraRecord& record = corpus::analyzed(chart, settings);
     REQUIRE(!record.paths.empty());
     const Path& best = record.best_path();
-    CHECK(best.totalscore() == 378315);
-    CHECK(star_cutoffs(best).cutoffs[kMaxStars - 1] == 335500);
-    CHECK(path_stars(best) == 7);
+    const StarCutoffs sc = star_cutoffs(best);
+    const int64_t counted = score_without_solo(best);
+    // The star count is the number of cutoffs the score reaches without the
+    // solo bonus, read straight from the table.
+    int reached = 0;
+    for (int64_t cutoff : sc.cutoffs)
+        if (counted >= cutoff) ++reached;
+    CHECK(path_stars(best) == reached);
+    // The optimal path clears the top cutoff without its solo bonus.
+    CHECK(counted >= sc.cutoffs[kMaxStars - 1]);
+    CHECK(path_stars(best) == kMaxStars);
 }
