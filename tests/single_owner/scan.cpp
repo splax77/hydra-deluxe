@@ -20,7 +20,9 @@
 // answers a row is the engine's (engine.cpp); this file holds the cases.
 #include "doctest.h"
 
+#include <algorithm>
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -125,6 +127,45 @@ std::string answers_message(const OwnerRule& rule, const std::string& where, con
            rule_suffix(rule.rules_file);
 }
 
+// The message for line `t` at `where` that copies a listed line word for word
+// after earlier lines used up every entry that lists it.
+std::string used_up_message(const OwnerRule& rule, const std::string& where, const std::string& t) {
+    return where + ": a second copy of a listed line (each entry covers one line) answers \"" +
+           rule.question + "\": " + t + rule_suffix(rule.rules_file);
+}
+
+// Whether any entry of `listed` names this question, file and line text.
+bool lists_line(const std::vector<ListedLine>& listed, const std::string& question, const std::string& file,
+                const std::string& text) {
+    for (const ListedLine& l : listed)
+        if (l.question == question && l.file == file && l.line_text == text) return true;
+    return false;
+}
+
+// What `run` throws, or empty when it throws nothing.
+template <typename Run>
+std::string thrown_message(Run&& run) {
+    try {
+        run();
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+    return {};
+}
+
+// Whether `message` names each of `parts`.
+bool names_all(const std::string& message, const std::vector<std::string>& parts) {
+    for (const std::string& p : parts)
+        if (message.find(p) == std::string::npos) return false;
+    return true;
+}
+
+// How the scan names a baseline entry in its failures: the baseline file's
+// name, then the entry (copy_entry_name or clone_entry_name).
+std::string baseline_where(const std::string& entry) {
+    return fs::u8path(kBaselineFile).filename().u8string() + ": " + entry;
+}
+
 // The engine's scan state plus the failures the cases report.
 struct RowScan : ScanState {
     std::vector<std::string> problems;
@@ -142,9 +183,7 @@ void scan_rows(RowScan& s, const std::string& rel, bool py, std::istream& in) {
         const OwnerRule& rule = *s.compiled[h.rule_index].rule;
         const std::string where = rel + ":" + std::to_string(h.line);
         if (h.take == Take::used_up)
-            s.problems.push_back(where + ": a second copy of a listed line (each "
-                                 "entry covers one line) answers \"" +
-                                 rule.question + "\": " + h.text + rule_suffix(rule.rules_file));
+            s.problems.push_back(used_up_message(rule, where, h.text));
         else
             s.problems.push_back(answers_message(rule, where, h.text));
     });
@@ -153,18 +192,44 @@ void scan_rows(RowScan& s, const std::string& rel, bool py, std::istream& in) {
 }  // namespace
 
 TEST_CASE("single-owner listed lines each cover one line of source") {
-    const std::vector<ListedLine> listed = {{"Q?", "src/a.cpp", "x();", "stale"},
-                                            {"Q?", "src/a.cpp", "y();", "stale"},
-                                            {"Q?", "src/a.cpp", "y();", "stale"}};
+    // The real rows' listed lines. Some rows list one line twice, because the
+    // owner holds it twice; the first entry is listed once more, as a row that
+    // names its owner line twice would list it, so a repeat is always there.
+    std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
+    REQUIRE_FALSE(listed.empty());
+    const ListedLine repeated = listed.front();
+    listed.push_back(repeated);
     std::vector<bool> used(listed.size(), false);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "x();") == Take::taken);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "x();") == Take::used_up);
-    // Two identical entries cover two identical lines, and no third.
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::taken);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::taken);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::used_up);
-    CHECK(take_listed_line(listed, used, "Q?", "src/b.cpp", "x();") == Take::unlisted);
-    CHECK(take_listed_line(listed, used, "Other?", "src/a.cpp", "x();") == Take::unlisted);
+    // N identical entries cover N identical lines, and no more.
+    for (size_t i = 0; i < listed.size(); ++i) {
+        if (used[i]) continue;  // taken with an earlier identical entry
+        const ListedLine& l = listed[i];
+        size_t entries = 0;
+        for (const ListedLine& m : listed)
+            if (m.question == l.question && m.file == l.file && m.line_text == l.line_text) ++entries;
+        INFO(l.question << " in " << l.file << ": " << l.line_text << " (" << entries << " entries)");
+        for (size_t k = 0; k < entries; ++k)
+            CHECK(take_listed_line(listed, used, l.question, l.file, l.line_text) == Take::taken);
+        CHECK(take_listed_line(listed, used, l.question, l.file, l.line_text) == Take::used_up);
+    }
+    // The same text in another real file, or under another real question, is
+    // no entry's line.
+    const ListedLine& first = listed.front();
+    bool other_file = false, other_question = false;
+    for (const ListedLine& l : listed) {
+        if (lists_line(listed, first.question, l.file, first.line_text)) continue;
+        CHECK(take_listed_line(listed, used, first.question, l.file, first.line_text) == Take::unlisted);
+        other_file = true;
+        break;
+    }
+    for (const OwnerRule& r : rules()) {
+        if (lists_line(listed, r.question, first.file, first.line_text)) continue;
+        CHECK(take_listed_line(listed, used, r.question, first.file, first.line_text) == Take::unlisted);
+        other_question = true;
+        break;
+    }
+    CHECK(other_file);
+    CHECK(other_question);
 }
 
 TEST_CASE("single-owner rules match their own examples") {
@@ -236,48 +301,140 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
 
 namespace {
 
-// The made-up row both made-up file cases scan with: two owner lines, the
-// second of which no line of kMadeUpFile uses.
-OwnerRule made_up_owner_row() {
-    OwnerRule r;
-    r.question = "Is this a made-up question?";
-    r.owner = "made_up in src/a.cpp";
-    r.rules_file = "rules/made_up.json";
-    r.pattern = "made_up\\(";
-    r.anchor = "made_up(";
-    r.owner_lines = {{"src/a.cpp", "return made_up(1);", "the owner"},
-                     {"src/a.cpp", "return made_up(9);", "the owner, gone"}};
-    return r;
-}
+// A real row's owner file, as it is, with the edit a coder might make: a
+// word-for-word copy of the row's first owner line, then one of the row's own
+// must_match lines, both added at the end.
+struct OwnerFileEdit {
+    const OwnerRule* rule;
+    std::string file;         // the first owner line's file, repo-relative
+    bool py;                  // the walk reads it as Python
+    std::string owner_line;   // that owner line, trimmed
+    std::string answer_line;  // the must_match line, as the row gives it
+    std::string text;         // the file as it is, ending in a newline
+    int lines;                // the lines `text` holds
+};
 
-// The made-up src/a.cpp: an owner line, a comment, an unlisted answer and a
-// second copy of the owner line.
-const char* const kMadeUpFile = "int f() {\n  return made_up(1);\n}\n// made_up(2) in a comment\n"
-                                "x = made_up(3);\n  return made_up(1);\n";
+// The edit for every real row it fits: a row with owner lines and no
+// function, whose first owner line sits in a file the walk reads for the
+// row and in its scope, and which has a must_match line the scan reads (not a
+// skipped comment) that no entry lists for that file.
+std::vector<OwnerFileEdit> owner_file_edits(const std::vector<ListedLine>& listed) {
+    std::vector<OwnerFileEdit> out;
+    for (const OwnerRule& r : rules()) {
+        if (r.owner_lines.empty() || !r.function.empty()) continue;
+        const std::string& file = r.owner_lines.front().file;
+        bool reads_freely = false;
+        for (const std::string& o : r.owner_files) reads_freely = reads_freely || o == file;
+        for (const Exempt& x : r.exempt) reads_freely = reads_freely || x.file == file;
+        if (reads_freely || !walk_reads_for(r, file) || !in_scope(r, file.substr(0, file.find('/')), file))
+            continue;
+        const codelex::Lang lang = lexer_language(fs::u8path(file));
+        const std::string& owner_line = r.owner_lines.front().line_text;
+        if (skipped_comment_line(owner_line, lang) && !r.scan_comments) continue;
+        std::string answer_line;
+        for (const std::string& m : r.must_match) {
+            const std::string t = hydra::trim(m);
+            if (skipped_comment_line(t, lang) && !r.scan_comments) continue;
+            if (lists_line(listed, r.question, file, t)) continue;
+            answer_line = m;
+            break;
+        }
+        if (answer_line.empty()) continue;
+        std::string text = hydra::read_file_text((sourcetree::root() / fs::u8path(file)).u8string());
+        if (!text.empty() && text.back() != '\n') text += '\n';
+        int lines = 0;
+        for (const char ch : text) lines += ch == '\n' ? 1 : 0;
+        out.push_back({&r, file, lang == codelex::Lang::Python, owner_line, answer_line, text, lines});
+    }
+    return out;
+}
 
 }  // namespace
 
-TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
-    const OwnerRule r = made_up_owner_row();
-    const std::vector<CompiledRule> compiled = {compile_rule(r)};
-    std::vector<ListedLine> listed;
-    for (const OwnerLine& o : r.owner_lines)
-        listed.push_back({r.question, o.file, o.line_text, "owner line no longer matches (update it)",
-                          r.rules_file});
-    RowScan scan = start_row_scan(compiled, listed);
-    std::istringstream in(kMadeUpFile);
-    scan_rows(scan, "src/a.cpp", false, in);
-    REQUIRE(scan.problems.size() == 2);
-    CHECK(scan.problems[0] ==
-          "src/a.cpp:5: answers \"Is this a made-up question?\", which belongs to made_up in "
-          "src/a.cpp: x = made_up(3); (rule: rules/made_up.json)");
-    CHECK(scan.problems[1] ==
-          "src/a.cpp:6: a second copy of a listed line (each entry covers one line) answers \"Is "
-          "this a made-up question?\": return made_up(1); (rule: rules/made_up.json)");
-    CHECK_FALSE(scan.used[1]);
-    CHECK(stale_message(listed[1]) ==
-          "owner line no longer matches (update it): src/a.cpp: return made_up(9); (rule: "
-          "rules/made_up.json)");
+// The hit sink and the row scan's messages, on real owner files: every line
+// of the file as it is takes an entry; the copy finds every entry that lists
+// it used up; the must_match line is unlisted. With the owner line deleted
+// instead, an entry that lists it is left unused, which the scan's end
+// (check_scan) reports as stale.
+TEST_CASE("single-owner: the row scan flags a copied owner line and a new answer in a real owner file") {
+    const std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
+    const std::vector<OwnerFileEdit> edits = owner_file_edits(listed);
+    CHECK_FALSE(edits.empty());
+    for (const OwnerFileEdit& e : edits) {
+        const OwnerRule& rule = *e.rule;
+        INFO(rule.question << " in " << e.file << rule_suffix(rule.rules_file));
+        const std::vector<CompiledRule> compiled = {compile_rule(rule)};
+        const std::string edited = e.text + e.owner_line + "\n" + e.answer_line + "\n";
+        const std::string answer = hydra::trim(e.answer_line);
+
+        ScanState state = start_scan(compiled, listed);
+        std::istringstream in(edited);
+        std::vector<RowHit> hits;
+        scan_file(state, e.file, e.py, in, [&](const RowHit& h) { hits.push_back(h); });
+        REQUIRE(hits.size() >= 3);  // the owner line itself, the copy, the answer
+        for (size_t i = 0; i + 2 < hits.size(); ++i) {
+            const RowHit& h = hits[i];
+            INFO("line " << h.line << ": " << h.text);
+            CHECK(h.rule_index == 0);
+            CHECK(h.line <= e.lines);
+            CHECK(h.take == Take::taken);
+            REQUIRE(h.listed_index.has_value());
+            const ListedLine& l = listed[*h.listed_index];
+            CHECK(l.question == rule.question);
+            CHECK(l.file == e.file);
+            CHECK(l.line_text == h.text);
+        }
+        const RowHit& copy = hits[hits.size() - 2];
+        CHECK(copy.line == e.lines + 1);
+        CHECK(copy.text == e.owner_line);
+        CHECK(copy.take == Take::used_up);
+        CHECK_FALSE(copy.listed_index.has_value());
+        const RowHit& added = hits.back();
+        CHECK(added.line == e.lines + 2);
+        CHECK(added.text == answer);
+        CHECK(added.take == Take::unlisted);
+        CHECK_FALSE(added.listed_index.has_value());
+
+        // The same edit through the scan's own sink gives exactly two
+        // failures, each naming the file and line, the row's question, the
+        // line's text and the rules file.
+        RowScan scan = start_row_scan(compiled, listed);
+        std::istringstream again(edited);
+        scan_rows(scan, e.file, e.py, again);
+        const std::string copy_at = e.file + ":" + std::to_string(e.lines + 1);
+        const std::string answer_at = e.file + ":" + std::to_string(e.lines + 2);
+        CHECK(scan.problems == std::vector<std::string>{used_up_message(rule, copy_at, e.owner_line),
+                                                        answers_message(rule, answer_at, answer)});
+        if (scan.problems.size() == 2) {
+            CHECK(names_all(scan.problems[0], {copy_at + ":", rule.question, e.owner_line, rule.rules_file}));
+            CHECK(names_all(scan.problems[1], {answer_at + ":", rule.question, answer, rule.rules_file}));
+        }
+
+        std::istringstream lines_in(e.text);
+        std::string without, line;
+        bool dropped = false;
+        while (std::getline(lines_in, line)) {
+            if (!dropped && hydra::trim(line) == e.owner_line) {
+                dropped = true;
+                continue;
+            }
+            without += line + "\n";
+        }
+        REQUIRE(dropped);
+        ScanState after = start_scan(compiled, listed);
+        std::istringstream without_in(without);
+        scan_file(after, e.file, e.py, without_in, [](const RowHit&) {});
+        int unused = 0;
+        for (size_t i = 0; i < listed.size(); ++i) {
+            const ListedLine& l = listed[i];
+            if (l.question == rule.question && l.file == e.file && l.line_text == e.owner_line && !after.used[i])
+            {
+                ++unused;
+                CHECK(names_all(stale_message(l), {l.stale, e.file, e.owner_line, rule.rules_file}));
+            }
+        }
+        CHECK(unused == 1);
+    }
 }
 
 namespace {
@@ -394,30 +551,6 @@ TEST_CASE("single-owner: the committed-only listing holds committed and staged f
     testtemp::remove_dir(dir);
 }
 
-TEST_CASE("single-owner: the hit sink reports taken, used-up and unlisted lines") {
-    const OwnerRule r = made_up_owner_row();
-    const std::vector<CompiledRule> compiled = {compile_rule(r)};
-    const std::vector<ListedLine> listed = listed_lines({r}, {});
-    ScanState scan = start_scan(compiled, listed);
-    std::istringstream in(kMadeUpFile);
-    std::vector<RowHit> hits;
-    scan_file(scan, "src/a.cpp", false, in, [&](const RowHit& h) { hits.push_back(h); });
-    REQUIRE(hits.size() == 3);
-    CHECK(hits[0].rule_index == 0);
-    CHECK(hits[0].line == 2);
-    CHECK(hits[0].text == "return made_up(1);");
-    CHECK(hits[0].take == Take::taken);
-    CHECK(hits[0].listed_index == std::optional<size_t>(0));
-    CHECK(hits[1].line == 5);
-    CHECK(hits[1].text == "x = made_up(3);");
-    CHECK(hits[1].take == Take::unlisted);
-    CHECK_FALSE(hits[1].listed_index.has_value());
-    CHECK(hits[2].line == 6);
-    CHECK(hits[2].text == "return made_up(1);");
-    CHECK(hits[2].take == Take::used_up);
-    CHECK_FALSE(hits[2].listed_index.has_value());
-}
-
 TEST_CASE("single-owner: select_rule_files picks the rules files from a path list") {
     // An area file, a file one folder down, a .txt and a file two folders
     // down, given out of order; the names come back in byte order, so an
@@ -475,50 +608,88 @@ TEST_CASE("single-owner rules hold in the single files outside the walk") {
 }
 
 TEST_CASE("single-owner: a row scoped to a file the walk does not read is read here") {
-    OwnerRule r;
-    r.question = "Is this a made-up question?";
-    r.owner = "made_up in src/a.cpp";
-    r.rules_file = "rules/made_up.json";
-    r.pattern = "made_up\\(";
-    r.anchor = "made_up(";
     // The walk reads C++ and Python under its folders, each for rows in that
-    // language, and nothing else; the single-files case reads the rest.
-    CHECK(walk_reads_for(r, "src/core/winstr.cpp"));
-    CHECK_FALSE(walk_reads_for(r, "tools/fuzz_seeds.ps1"));
-    CHECK_FALSE(walk_reads_for(r, "tools/made_up.py"));
-    CHECK_FALSE(walk_reads_for(r, ".github/workflows/ci.yml"));
-    CHECK_FALSE(walk_reads_for(r, "tests/single_owner/scan.cpp"));
-    r.language = "py";
-    CHECK(walk_reads_for(r, "tools/made_up.py"));
-    CHECK_FALSE(walk_reads_for(r, "src/core/winstr.cpp"));
-    r.language.clear();
+    // language, and nothing else; the single-files case reads the rest. The
+    // rows are the first real row of each language, and every path is a real
+    // file.
+    const OwnerRule* cpp_row = nullptr;
+    const OwnerRule* py_row = nullptr;
+    for (const OwnerRule& r : rules()) {
+        if (r.language.empty() && cpp_row == nullptr) cpp_row = &r;
+        if (r.language == "py" && py_row == nullptr) py_row = &r;
+    }
+    REQUIRE(cpp_row != nullptr);
+    REQUIRE(py_row != nullptr);
+    const std::string cpp_file = "src/core/winstr.cpp", ps1_file = "tools/fuzz_seeds.ps1",
+                      py_file = "tools/check_handoff.py", yml_file = ".github/workflows/ci.yml",
+                      own_folder_file = "tests/single_owner/scan.cpp";
+    for (const std::string& f : {cpp_file, ps1_file, py_file, yml_file, own_folder_file}) {
+        INFO(f);
+        CHECK(fs::is_regular_file(sourcetree::root() / fs::u8path(f)));
+    }
+    CHECK(walk_reads_for(*cpp_row, cpp_file));
+    CHECK_FALSE(walk_reads_for(*cpp_row, ps1_file));
+    CHECK_FALSE(walk_reads_for(*cpp_row, py_file));
+    CHECK_FALSE(walk_reads_for(*cpp_row, yml_file));
+    CHECK_FALSE(walk_reads_for(*cpp_row, own_folder_file));
+    CHECK(walk_reads_for(*py_row, py_file));
+    CHECK_FALSE(walk_reads_for(*py_row, cpp_file));
 
-    // A .ps1 is read with PowerShell's comments and a .yml with YAML's: only
-    // the code lines are flagged, unless the row reads comments too.
-    const std::string ps1 = "# made_up(1)\n<# made_up(2) #>\n$x = made_up(3)  # trailing\n";
-    const std::string yml = "# made_up(1)\n  run: made_up(2)\n";
-    std::vector<std::string> problems;
-    std::istringstream ps1_in(ps1), yml_in(yml);
-    scan_single_file(compile_rule(r), "tools/made_up.ps1", ps1_in, problems);
-    scan_single_file(compile_rule(r), ".github/workflows/made_up.yml", yml_in, problems);
-    CHECK(problems == std::vector<std::string>{
-                          "tools/made_up.ps1:3: answers \"Is this a made-up question?\", which "
-                          "belongs to made_up in src/a.cpp: $x = made_up(3)  # trailing (rule: "
-                          "rules/made_up.json)",
-                          ".github/workflows/made_up.yml:2: answers \"Is this a made-up "
-                          "question?\", which belongs to made_up in src/a.cpp: run: made_up(2) "
-                          "(rule: rules/made_up.json)"});
     // C++ (and a file codelex does not know) skips "//" lines only; the other
     // languages skip what codelex calls a comment.
     CHECK(skipped_comment_line("// x", codelex::Lang::Cpp));
     CHECK_FALSE(skipped_comment_line("/* x */", codelex::Lang::Cpp));
     CHECK(skipped_comment_line("# x", codelex::Lang::PowerShell));
     CHECK_FALSE(skipped_comment_line("x # y", codelex::Lang::Yaml));
-    r.scan_comments = true;
-    problems.clear();
-    std::istringstream ps1_again(ps1);
-    scan_single_file(compile_rule(r), "tools/made_up.ps1", ps1_again, problems);
-    CHECK(problems.size() == 3);
+
+    // Each real row scoped to a real file outside the walk, on that file as
+    // it is with two lines added at the end: one of the row's must_match lines
+    // as code, then the same line behind the file's comment mark. Only the
+    // code line is a new failure, unless the row reads comments too; then
+    // both are.
+    int edited = 0;
+    for (const OwnerRule& r : rules()) {
+        for (const std::string& s : r.scope) {
+            // A row that already reads comments has no comment-blind verdict to check.
+            if (s.find('/') == std::string::npos || walk_reads_for(r, s) || r.scan_comments) continue;
+            const codelex::Lang lang = lexer_language(fs::u8path(s));
+            const std::string mark = lang == codelex::Lang::Cpp ? "// " : "# ";
+            OwnerRule with_comments = r;
+            with_comments.scan_comments = true;
+            const CompiledRule plain = compile_rule(r), comments = compile_rule(with_comments);
+            std::string code_line;
+            for (const std::string& m : r.must_match) {
+                const std::string t = hydra::trim(m);
+                if (skipped_comment_line(t, lang) || !flags_line(plain, mark + t)) continue;
+                code_line = m;
+                break;
+            }
+            if (code_line.empty()) continue;
+            const std::string code = hydra::trim(code_line), commented = mark + code;
+            INFO(r.question << ": scoped to " << s << rule_suffix(r.rules_file) << ", adding: " << code);
+            REQUIRE(skipped_comment_line(commented, lang));
+            std::string text = hydra::read_file_text((sourcetree::root() / fs::u8path(s)).u8string());
+            if (!text.empty() && text.back() != '\n') text += '\n';
+            int lines = 0;
+            for (const char ch : text) lines += ch == '\n' ? 1 : 0;
+            const std::string added = text + code_line + "\n" + commented + "\n";
+            const auto problems_in = [&](const CompiledRule& c, const std::string& body) {
+                std::vector<std::string> problems;
+                std::istringstream in(body);
+                scan_single_file(c, s, in, problems);
+                return problems;
+            };
+            std::vector<std::string> expected = problems_in(plain, text);
+            expected.push_back(answers_message(r, s + ":" + std::to_string(lines + 1), code));
+            CHECK(problems_in(plain, added) == expected);
+            expected = problems_in(comments, text);
+            expected.push_back(answers_message(r, s + ":" + std::to_string(lines + 1), code));
+            expected.push_back(answers_message(r, s + ":" + std::to_string(lines + 2), commented));
+            CHECK(problems_in(comments, added) == expected);
+            ++edited;
+        }
+    }
+    CHECK(edited > 0);
 }
 
 TEST_CASE("single-owner: every row's owner is still where the row says") {
@@ -532,78 +703,142 @@ TEST_CASE("single-owner: every row's owner is still where the row says") {
     CHECK(gone.str().empty());
 }
 
-TEST_CASE("single-owner: the owner-gone guard and the loader fail on a made-up row") {
-    OwnerRule r;
-    r.question = "Is this a made-up question?";
-    r.rules_file = "rules/made_up.json";
-    r.owner_file = "src/core/winstr.cpp";
-    r.owner_symbol = "fits_shell";
-    CHECK(owner_gone(r, sourcetree::root()).empty());
-    r.owner_symbol = "fits_she";  // part of a word is not the word
-    CHECK(owner_gone(r, sourcetree::root()) ==
-          "rules/made_up.json: \"Is this a made-up question?\": owner gone: name the new owner "
-          "or retire the row (src/core/winstr.cpp, fits_she)");
-    r.owner_symbol = "no_such_owner_symbol";
-    CHECK(owner_gone(r, sourcetree::root()) ==
-          "rules/made_up.json: \"Is this a made-up question?\": owner gone: name the new owner "
-          "or retire the row (src/core/winstr.cpp, no_such_owner_symbol)");
-    r.owner_symbol = "fits_shell";
-    r.owner_file = "src/core/no_such_file.cpp";
-    CHECK_FALSE(owner_gone(r, sourcetree::root()).empty());
-    // A name only in a comment, trailing or whole-line, is not the owner.
-    const codelex::Lang cpp = codelex::Lang::Cpp, py = codelex::Lang::Python;
-    CHECK(names_outside_comments("bool fits_shell(int n);\n", "fits_shell", cpp));
-    CHECK_FALSE(names_outside_comments("int n = 1;  // fits_shell\n", "fits_shell", cpp));
-    CHECK_FALSE(names_outside_comments("/* fits_shell */ int n;\n", "fits_shell", cpp));
-    CHECK(names_outside_comments("def fits_shell(n):\n", "fits_shell", py));
-    CHECK_FALSE(names_outside_comments("n = 1  # fits_shell\n", "fits_shell", py));
-    CHECK_FALSE(names_outside_comments("int fits_shell_x;\n", "fits_shell", cpp));
+TEST_CASE("single-owner: the owner-gone guard fails when a real owner file loses its name") {
+    // A real row of each language, its owner file copied into a scratch
+    // checkout. Only the file as it is keeps the owner; the same file with
+    // every line commented out, or with the name only part of a longer word,
+    // and a checkout without the file, each fail naming the row and its owner.
+    const std::string dir = testtemp::temp_dir("single_owner_owner_gone");
+    testtemp::remove_dir(dir);
+    const fs::path scratch_root = fs::path(hydra::os_path(dir));
+    for (const bool python : {false, true}) {
+        const OwnerRule* found = nullptr;
+        for (const OwnerRule& r : rules())
+            if (!r.owner_symbol.empty() &&
+                (lexer_language(fs::u8path(r.owner_file)) == codelex::Lang::Python) == python) {
+                found = &r;
+                break;
+            }
+        REQUIRE(found != nullptr);
+        const OwnerRule& r = *found;
+        INFO(r.question << rule_suffix(r.rules_file) << ": " << r.owner_file << ", " << r.owner_symbol);
+        const codelex::Lang lang = lexer_language(fs::u8path(r.owner_file));
+        const std::string text = hydra::read_file_text((sourcetree::root() / fs::u8path(r.owner_file)).u8string());
+        CHECK(owner_gone(r, sourcetree::root()).empty());
+        CHECK(names_outside_comments(text, r.owner_symbol, lang));
 
-    json row = json::parse(R"({"question": "Is this a made-up question?", "owner": "x in y",
-        "owner_file": "src/core/winstr.cpp", "owner_symbol": "fits_shell", "date": "2026-10-10",
-        "decision": "D0", "added_by": "so-t1b", "pattern": "x"})");
-    CHECK(parse_rule(row, "rules/made_up.json", 0).question == "Is this a made-up question?");
+        const std::string mark = python ? "# " : "// ";
+        std::string commented, line;
+        std::istringstream in(text);
+        while (std::getline(in, line)) commented += mark + line + "\n";
+        const std::vector<std::string> without_name = {
+            commented, hydra::replace_all(text, r.owner_symbol, r.owner_symbol + "_x"),
+            hydra::replace_all(text, r.owner_symbol, "x_" + r.owner_symbol)};
+
+        const fs::path copied = scratch_root / fs::u8path(r.owner_file);
+        fs::create_directories(copied.parent_path());
+        const std::string copied_utf8 = dir + "\\" + r.owner_file;
+        audiochart::write_text_file(copied_utf8, text);
+        CHECK(owner_gone(r, scratch_root).empty());
+        const std::vector<std::string> names = {r.rules_file, r.question, r.owner_file, r.owner_symbol};
+        for (const std::string& edited : without_name) {
+            CHECK_FALSE(names_outside_comments(edited, r.owner_symbol, lang));
+            audiochart::write_text_file(copied_utf8, edited);
+            const std::string gone = owner_gone(r, scratch_root);
+            INFO(gone);
+            CHECK(names_all(gone, names));
+        }
+        fs::remove(copied);
+        const std::string gone = owner_gone(r, scratch_root);
+        INFO(gone);
+        CHECK(names_all(gone, names));
+    }
+    testtemp::remove_dir(dir);
+}
+
+TEST_CASE("single-owner: the loader refuses a real row with a field missing, misspelled or wrong") {
+    // The first row of the first real rules file, then the same row with one
+    // edit each. Each failure names the rules file, the row and the field.
+    const std::vector<std::pair<std::string, fs::path>> files =
+        rule_files(sourcetree::root() / fs::u8path(kRulesDir));
+    REQUIRE_FALSE(files.empty());
+    const std::string& name = files.front().first;
+    const json doc = json::parse(hydra::read_file_text(files.front().second.u8string()));
+    REQUIRE_FALSE(doc.at("rules").empty());
+    const json& row = doc.at("rules").at(0);
+    const std::string question = row.at("question").get<std::string>();
+    INFO(name << ": " << question);
+    CHECK(parse_rule(row, name, 0).question == question);
+
     json missing = row;
     missing.erase("date");
-    CHECK_THROWS_WITH(parse_rule(missing, "rules/made_up.json", 0),
-                      "rules/made_up.json: \"Is this a made-up question?\": missing field \"date\"");
+    CHECK(names_all(thrown_message([&] { parse_rule(missing, name, 0); }), {name, question, "\"date\""}));
     json typo = row;
     typo["must_macth"] = json::array();
-    CHECK_THROWS_WITH(parse_rule(typo, "rules/made_up.json", 0),
-                      "rules/made_up.json: \"Is this a made-up question?\": unknown field \"must_macth\"");
+    CHECK(names_all(thrown_message([&] { parse_rule(typo, name, 0); }), {name, question, "\"must_macth\""}));
     json language = row;
     language["language"] = "rb";
-    CHECK_THROWS_WITH(parse_rule(language, "rules/made_up.json", 0),
-                      "rules/made_up.json: \"Is this a made-up question?\": unknown language \"rb\"");
+    CHECK(names_all(thrown_message([&] { parse_rule(language, name, 0); }), {name, question, "\"rb\""}));
+    // A row with no question is named by its place in the file, counted from 1.
     json no_question = row;
     no_question.erase("question");
-    CHECK_THROWS_WITH(parse_rule(no_question, "rules/made_up.json", 2),
-                      "rules/made_up.json: row 3: missing field \"question\"");
+    CHECK(names_all(thrown_message([&] { parse_rule(no_question, name, 2); }),
+                    {name, "row 3", "\"question\""}));
 }
 
 TEST_CASE("single-owner: a row in an area's folder is loaded and named by its path") {
+    // A real area file (rules/<area>.json) and a real topic file
+    // (rules/<area>/<topic>.json), copied to the same places in a scratch
+    // rules folder.
+    const std::vector<std::pair<std::string, fs::path>> files =
+        rule_files(sourcetree::root() / fs::u8path(kRulesDir));
+    const std::pair<std::string, fs::path>* area = nullptr;
+    const std::pair<std::string, fs::path>* topic = nullptr;
+    for (const auto& f : files) {
+        const auto slashes = std::count(f.first.begin(), f.first.end(), '/');
+        if (slashes == 1 && area == nullptr) area = &f;
+        if (slashes == 2 && topic == nullptr) topic = &f;
+    }
+    REQUIRE(area != nullptr);
+    REQUIRE(topic != nullptr);
+    const std::string prefix = "rules/";
+    REQUIRE(area->first.rfind(prefix, 0) == 0);
+    REQUIRE(topic->first.rfind(prefix, 0) == 0);
     const std::string dir = testtemp::temp_dir("single_owner_rules");
     testtemp::remove_dir(dir);
-    fs::create_directories(hydra::os_path(dir + "\\made_up"));
-    const std::string row = R"({"owner": "x in y", "owner_file": "src/core/winstr.cpp",
-        "owner_symbol": "fits_shell", "decision": "D0", "added_by": "rl-glob", "pattern": "x", )";
-    audiochart::write_text_file(dir + "\\made_up.json",
-        R"({"rules": [)" + row + R"("question": "Is this an area row?", "date": "2026-10-10"}]})");
-    audiochart::write_text_file(dir + "\\made_up\\topic.json",
-        R"({"rules": [)" + row + R"("question": "Is this a topic row?", "date": "2026-10-10"}]})");
-    audiochart::write_text_file(dir + "\\made_up\\notes.txt", "not a rules file");
+    // Each copied file's rows, by question, in the order the loader gives
+    // them: by name, so the two files come back in byte order.
+    std::vector<std::pair<std::string, std::string>> expected;  // rules file, question
+    const std::string topic_rel = topic->first.substr(prefix.size());
+    json topic_doc;
+    for (const auto* f : {area, topic}) {
+        const std::string rel = f->first.substr(prefix.size());
+        const std::string text = hydra::read_file_text(f->second.u8string());
+        fs::create_directories((fs::path(hydra::os_path(dir)) / fs::u8path(rel)).parent_path());
+        audiochart::write_text_file(dir + "\\" + rel, text);
+        const json doc = json::parse(text);
+        if (f == topic) topic_doc = doc;
+        for (const json& row : doc.at("rules"))
+            expected.emplace_back(f->first, row.at("question").get<std::string>());
+    }
+    std::stable_sort(expected.begin(), expected.end(),
+                     [](const auto& a, const auto& b) { return a.first < b.first; });
 
     const std::vector<OwnerRule> rows = load_rules(hydra::os_path(dir));
-    REQUIRE(rows.size() == 2);
-    CHECK(rows[0].question == "Is this an area row?");
-    CHECK(rows[0].rules_file == "rules/made_up.json");
-    CHECK(rows[1].question == "Is this a topic row?");
-    CHECK(rows[1].rules_file == "rules/made_up/topic.json");
+    REQUIRE(rows.size() == expected.size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+        CHECK(rows[i].rules_file == expected[i].first);
+        CHECK(rows[i].question == expected[i].second);
+    }
 
-    audiochart::write_text_file(dir + "\\made_up\\topic.json",
-        R"({"rules": [)" + row + R"("question": "Is this a topic row?"}]})");
-    CHECK_THROWS_WITH(load_rules(hydra::os_path(dir)),
-                      "rules/made_up/topic.json: \"Is this a topic row?\": missing field \"date\"");
+    // The topic file with its first row's date taken out fails, naming the
+    // topic file by its path, the row and the field.
+    REQUIRE_FALSE(topic_doc.at("rules").empty());
+    const std::string question = topic_doc.at("rules").at(0).at("question").get<std::string>();
+    topic_doc.at("rules").at(0).erase("date");
+    audiochart::write_text_file(dir + "\\" + topic_rel, topic_doc.dump(2));
+    CHECK(names_all(thrown_message([&] { load_rules(hydra::os_path(dir)); }),
+                    {topic->first, question, "\"date\""}));
     testtemp::remove_dir(dir);
 }
 
@@ -611,42 +846,89 @@ TEST_CASE("single-owner: no baseline entry is past its remove_by date") {
     const std::string today = today_iso();
     std::ostringstream due;
     for (const KnownCopy& k : known_copies()) {
-        const std::string m = baseline_due("baseline.json: " + copy_entry_name(k), k.dates, today);
+        const std::string m = baseline_due(baseline_where(copy_entry_name(k)), k.dates, today);
         if (!m.empty()) due << m << "\n";
     }
     for (const KnownClone& k : known_clones()) {
-        const std::string m = baseline_due("baseline.json: " + clone_entry_name(k), k.dates, today);
+        const std::string m = baseline_due(baseline_where(clone_entry_name(k)), k.dates, today);
         if (!m.empty()) due << m << "\n";
     }
     INFO(due.str());
     CHECK(due.str().empty());
 }
 
-TEST_CASE("single-owner: the baseline dates fail on a made-up entry") {
+TEST_CASE("single-owner: the baseline dates fail on a real owner line parked past its date") {
     CHECK(iso_plus_days("2026-10-05", 14) == "2026-10-19");
     CHECK(iso_plus_days("2026-12-25", 14) == "2027-01-08");
     CHECK(iso_plus_days("2026-02-30", 0) == "2026-03-02");  // not a real date
     CHECK(iso_plus_days("2026-1-05", 0).empty());
 
-    const KnownClone clone{"src/a.cpp", "src/b.cpp", 9, "x = 1;", {"2026-10-05", "MR1", "2026-10-19"}};
-    const std::string name = "baseline.json: " + clone_entry_name(clone);
-    CHECK(baseline_due(name, clone.dates, "2026-10-19").empty());  // the last allowed day
-    CHECK(baseline_due(name, clone.dates, "2026-10-20") ==
-          "baseline.json: known_clones src/a.cpp and src/b.cpp, 9 lines from: x = 1;: past its "
-          "remove_by date 2026-10-19 (added by MR1 on 2026-10-05): fix it and delete the entry");
+    // A baseline entry that parks a real row's first owner line, as a session
+    // that copied the line would add it: the row's own date and author, the
+    // row's decision as the fix, and the latest remove_by the cap allows.
+    const OwnerRule* row = nullptr;
+    for (const OwnerRule& r : rules())
+        if (!r.owner_lines.empty()) {
+            row = &r;
+            break;
+        }
+    REQUIRE(row != nullptr);
+    const std::string cap = iso_plus_days(row->date, kBaselineMaxDays);
+    INFO(row->question << rule_suffix(row->rules_file) << ", dated " << row->date);
+    REQUIRE_FALSE(cap.empty());
+    json entry = json::object();
+    entry["question"] = row->question;
+    entry["file"] = row->owner_lines.front().file;
+    entry["line_text"] = row->owner_lines.front().line_text;
+    entry["removed_by"] = row->decision;
+    entry["date"] = row->date;
+    entry["added_by"] = row->added_by;
+    entry["remove_by"] = cap;
+    const auto baseline_with = [](const json& e) {
+        json doc = json::object();
+        doc["known_copies"] = json::array();
+        doc["known_copies"].push_back(e);
+        doc["known_clones"] = json::array();
+        return doc.dump(2);
+    };
+    const RuleTables parsed = parse_baseline(baseline_with(entry));
+    REQUIRE(parsed.copies.size() == 1);
+    const KnownCopy& copy = parsed.copies.front();
+    CHECK(copy.dates.date == row->date);
+    CHECK(copy.dates.added_by == row->added_by);
+    CHECK(copy.dates.remove_by == cap);
 
-    json entry = json::parse(R"({"date": "2026-10-05", "added_by": "MR1", "remove_by": "2026-10-19"})");
-    CHECK(parse_dates(entry, "made-up entry").remove_by == "2026-10-19");
-    entry["remove_by"] = "2026-10-20";
-    CHECK_THROWS_WITH(parse_dates(entry, "made-up entry"),
-                      "made-up entry: remove_by 2026-10-20 is more than 14 days after its date "
-                      "2026-10-05 (2026-10-19 at most)");
-    entry["remove_by"] = "2026-13-01";
-    CHECK_THROWS_WITH(parse_dates(entry, "made-up entry"),
-                      "made-up entry: \"2026-13-01\" is not a YYYY-MM-DD date");
-    entry.erase("remove_by");
-    CHECK_THROWS_WITH(parse_dates(entry, "made-up entry"),
-                      "made-up entry: missing field \"remove_by\"");
+    // It may stay through its remove_by day, and fails the day after, naming
+    // the entry and its dates.
+    const std::string where = baseline_where(copy_entry_name(copy));
+    CHECK(baseline_due(where, copy.dates, cap).empty());
+    const std::string due = baseline_due(where, copy.dates, iso_plus_days(cap, 1));
+    INFO(due);
+    CHECK(due.rfind(where + ": ", 0) == 0);
+    CHECK(names_all(due, {cap, row->date, row->added_by}));
+
+    // The loader refuses a remove_by past the cap, one that is not a date, and
+    // none at all, each time naming the entry and what is wrong.
+    json late = entry;
+    const std::string past_cap = iso_plus_days(row->date, kBaselineMaxDays + 1);
+    late["remove_by"] = past_cap;
+    const std::string late_error = thrown_message([&] { parse_baseline(baseline_with(late)); });
+    INFO(late_error);
+    CHECK(late_error.rfind(where + ": ", 0) == 0);
+    CHECK(names_all(late_error, {past_cap, row->date, cap, std::to_string(kBaselineMaxDays)}));
+    json not_a_date = entry;
+    const std::string month_13 = row->date.substr(0, 5) + "13" + row->date.substr(7);
+    not_a_date["remove_by"] = month_13;
+    const std::string date_error = thrown_message([&] { parse_baseline(baseline_with(not_a_date)); });
+    INFO(date_error);
+    CHECK(date_error.rfind(where + ": ", 0) == 0);
+    CHECK(names_all(date_error, {"\"" + month_13 + "\""}));
+    json no_remove_by = entry;
+    no_remove_by.erase("remove_by");
+    const std::string missing_error = thrown_message([&] { parse_baseline(baseline_with(no_remove_by)); });
+    INFO(missing_error);
+    CHECK(missing_error.rfind(where + ": ", 0) == 0);
+    CHECK(names_all(missing_error, {"\"remove_by\""}));
 }
 
 TEST_CASE("single-owner: the anchor guard fails on a made-up row") {
