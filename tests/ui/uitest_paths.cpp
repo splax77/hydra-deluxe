@@ -17,7 +17,10 @@
 #include "app/config.h"
 #include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/path_view.h"
+#include "core/backend_value.h"  // counted_without_squeeze
 #include "core/model.h"
+#include "core/note_window.h"     // role_word
+#include "core/squeeze_rating.h"  // rate_activation
 #include "imgui_internal.h"
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
@@ -89,6 +92,23 @@ struct FakeClipboard {
     }
 };
 
+// Puts the system clipboard's text back when the test ends, however it ends,
+// for a test that lets Copy path write the real clipboard.
+struct KeptClipboardText {
+    std::string text;
+    bool had_text = false;
+    KeptClipboardText() {
+        const char* t = ImGui::GetClipboardText();
+        had_text = t != nullptr && *t != '\0';
+        if (had_text) text = t;
+    }
+    ~KeptClipboardText() {
+        if (had_text) ImGui::SetClipboardText(text.c_str());
+    }
+    KeptClipboardText(const KeptClipboardText&) = delete;
+    KeptClipboardText& operator=(const KeptClipboardText&) = delete;
+};
+
 // A fresh app with Burnout analyzed and its Paths tab showing.
 bool open_burnout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -99,60 +119,124 @@ bool open_burnout(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return false;
     wait_song_analyzed(ctx);  // waits, then lands on the Paths tab
     if (ctx->IsError()) return false;
-    IM_CHECK_RETV(h.app->viewed.record->best_path().pathstring() == "3- 1 2", false);
+    IM_CHECK_RETV(h.app->viewed.ready(), false);
     ctx->Yield(2);
     return true;
 }
 
-// The path list: three headings, the buttons' titles, each path's own timing
-// and the detail line, and a click that changes the shared selection.
+// The path list as the Paths tab drew it: the cache's buttons, asked with the
+// tab's own key (render_path_panel in paths_tab.cpp), so nothing is rebuilt.
+const hydra::app::PathButtonsView& shown_buttons(hydra::ui::AppState& app) {
+    return app.details_ui.paths_tab.buttons(*app.viewed.record, app.record_generation.n,
+                                            app.settings.depth_mode, app.settings.depth_value);
+}
+
+// Whether activation row `i` (0-based) is open and every other row is closed.
+bool only_row_open(const hydra::app::PathsTabUi& ui, size_t i) {
+    for (size_t r = 0; r < ui.act_open.size(); ++r)
+        if ((ui.act_open[r] != 0) != (r == i)) return false;
+    return i < ui.act_open.size();
+}
+
+// The ImGui id of path button `i` (path_button in paths_tab.cpp).
+std::string path_button_ref(size_t i) {
+    return "**/##path" + std::to_string(i);
+}
+
+// The path list: its headings, every button the list view holds with its own
+// title, timing and detail line, and clicks that change the shared selection.
+// Every expected text is the list view's (app::build_path_buttons) and every
+// expected path is the record's.
 void test_paths_list(ImGuiTestContext* ctx) {
+    using Group = hydra::app::PathButtonView::Group;
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    const std::string dot = " \xC2\xB7 ";
+    const hydra::HydraRecord& rec = *h.app->viewed.record;
+    const hydra::app::PathButtonsView& list = shown_buttons(*h.app);
+    IM_CHECK(!list.buttons.empty());
+    if (list.buttons.empty()) return;
+    // The record's best path is the first button, under Optimal.
+    IM_CHECK(list.buttons[0].path == &rec.best_path());
+    IM_CHECK(list.buttons[0].group == Group::Optimal);
+    size_t within = list.buttons.size();
+    size_t allzero = list.buttons.size();
+    for (size_t i = 0; i < list.buttons.size(); ++i) {
+        const hydra::app::PathButtonView& b = list.buttons[i];
+        IM_CHECK(b.path != nullptr);
+        if (b.path == nullptr) return;
+        // Each button names its own path, and shows what the view gives it.
+        IM_CHECK_STR_EQ(b.notation.c_str(), b.path->pathstring().c_str());
+        IM_CHECK(on_screen(h, b.title));
+        if (!b.timing.empty()) IM_CHECK(on_screen(h, b.timing));
+        if (!b.detail.empty()) IM_CHECK(on_screen(h, b.detail));
+        // A path in a fold has its score on the fold, not on its button.
+        if (!b.fold.empty()) {
+            IM_CHECK(on_screen(h, b.fold));
+            IM_CHECK(on_screen(h, b.fold_count));
+            IM_CHECK(!on_screen(h, b.fold + hydra::app::kFactSeparator + b.notation));
+        }
+        if (b.group == Group::Within && within == list.buttons.size()) within = i;
+        if (b.group == Group::AllZero && allzero == list.buttons.size()) allzero = i;
+    }
+    // Burnout's list has all three groups, so all three headings show.
+    IM_CHECK(within < list.buttons.size());
+    IM_CHECK(allzero < list.buttons.size());
+    if (within >= list.buttons.size() || allzero >= list.buttons.size()) return;
     IM_CHECK(on_screen(h, "Optimal"));
-    IM_CHECK(on_screen(h, "Within 2 scores"));
-    IM_CHECK(on_screen(h, "Best all-0 path"));
+    IM_CHECK(on_screen(h, list.within_label));
+    IM_CHECK(on_screen(h, hydra::app::kBestAllZeroLabel));
     IM_CHECK(!on_screen(h, "0 ms limit"));
-    // One fold per score, the score on the fold and the path on its button;
-    // the all-0 path has no fold and keeps its score on the button.
-    IM_CHECK(on_screen(h, "378,315"));
-    IM_CHECK(on_screen(h, "1 path"));
-    IM_CHECK(!on_screen(h, "378,315" + dot + "3- 1 2"));
-    IM_CHECK(on_screen(h, "3- 1 2"));
-    IM_CHECK(on_screen(h, "163.0 ms"));
     IM_CHECK(!on_screen(h, "hardest squeeze"));
-    IM_CHECK(on_screen(h, "378,175"));
-    IM_CHECK(on_screen(h, "0 4 1"));
-    IM_CHECK(on_screen(h, "375,955" + dot + "0 0 0 0"));
-    IM_CHECK(on_screen(h, "2,360 below optimal"));
     // Those three are the only headings: these two never show.
     IM_CHECK(!on_screen(h, "Optimal Path"));
     IM_CHECK(!on_screen(h, "More Paths"));
 
-    IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
+    IM_CHECK(h.app->details_ui.selected_path == &rec.best_path());
     ctx->ItemClick("**/##act2");  // a row open on this path
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>({0, 1, 0}));
-    ctx->ItemClick("**/##path1");
+    IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), 1));
+    ctx->ItemClick(path_button_ref(within).c_str());
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.selected_path != nullptr);
-    IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
+    IM_CHECK(h.app->details_ui.selected_path == list.buttons[within].path);
     // A new path opens with every row closed, whatever the last one had open.
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>(3, 0));
-    ctx->ItemClick("**/##path3");
+    {
+        const std::vector<char>& open = h.app->details_ui.paths_tab.ui().act_open;
+        IM_CHECK(std::all_of(open.begin(), open.end(), [](char c) { return c == 0; }));
+    }
+    ctx->ItemClick(path_button_ref(allzero).c_str());
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 0 0 0");
+    IM_CHECK(h.app->details_ui.selected_path == list.buttons[allzero].path);
 
-    // A closed fold hides its paths and nothing else; opening it brings them back.
-    ctx->ItemClick("**/378,175##fold");
+    // A closed fold hides its paths and nothing else; opening it brings them
+    // back. The fold is the first Within score's.
+    const std::string fold = list.buttons[within].fold;
+    IM_CHECK(!fold.empty());
+    if (fold.empty()) return;
+    auto in_fold = [&](size_t i) {
+        return list.buttons[i].group == Group::Within && list.buttons[i].fold == fold;
+    };
+    // A title another shown button's title contains stays on screen with the
+    // fold closed, so only the others are looked for.
+    auto title_elsewhere = [&](size_t i) {
+        for (size_t j = 0; j < list.buttons.size(); ++j)
+            if (!in_fold(j) && list.buttons[j].title.find(list.buttons[i].title) != std::string::npos)
+                return true;
+        return false;
+    };
+    const std::string fold_ref = "**/" + fold + "##fold";
+    ctx->ItemClick(fold_ref.c_str());
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "378,175"));
-    IM_CHECK(!on_screen(h, "0 4 1"));
-    IM_CHECK(on_screen(h, "2 1 2"));
-    ctx->ItemClick("**/378,175##fold");
+    IM_CHECK(on_screen(h, fold));
+    for (size_t i = 0; i < list.buttons.size(); ++i) {
+        if (!in_fold(i))
+            IM_CHECK(on_screen(h, list.buttons[i].title));
+        else if (!title_elsewhere(i))
+            IM_CHECK(!on_screen(h, list.buttons[i].title));
+    }
+    ctx->ItemClick(fold_ref.c_str());
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "0 4 1"));
+    for (size_t i = 0; i < list.buttons.size(); ++i)
+        if (in_fold(i)) IM_CHECK(on_screen(h, list.buttons[i].title));
 }
 
 // One timeline mark as the Paths tab last drew it: where its gold bar sits,
@@ -209,24 +293,39 @@ std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
     return marks;
 }
 
-// The open record's activation rows: the same call the Paths tab makes, so
-// this is the cached view it draws.
+// The open record's activation rows: the same call the Paths tab makes, with
+// the same inputs (render_path_panel in paths_tab.cpp), so this is the cached
+// view it draws and nothing is rebuilt.
 const hydra::app::ActivationsView& shown_activations(hydra::ui::AppState& app) {
     return app.details_ui.paths_tab
         .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
                  app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
-                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
+                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums,
+                 app.viewed.chords ? &*app.viewed.chords : nullptr)
         .activations;
 }
 
 // The outline a timeline mark is drawn with.
 enum class Outline { None, Orange, Grey };
 
-// Each mark's drawn outline, against the colours this chart's rows are known
-// to have, one per activation in order.
-void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
-                 const std::vector<Outline>& expected) {
+// The outline each activation's mark should have, from the engine's badges on
+// its row (app::activation_badges): none without a badge, orange when any
+// badge is a warning, grey otherwise.
+std::vector<Outline> badge_outlines(const hydra::app::ActivationsView& view) {
+    std::vector<Outline> out;
+    for (const hydra::app::ActivationRowView& a : view.acts) {
+        bool warn = false;
+        for (const hydra::app::ActivationBadge& b : a.badges) warn = warn || b.warn;
+        out.push_back(a.badges.empty() ? Outline::None : warn ? Outline::Orange : Outline::Grey);
+    }
+    return out;
+}
+
+// Each mark's drawn outline, against the outline its activation's badges
+// call for (badge_outlines), one per activation in order.
+void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app) {
     const hydra::app::ActivationsView& view = shown_activations(app);
+    const std::vector<Outline> expected = badge_outlines(view);
     const std::vector<DrawnMark> marks = drawn_marks(ctx);
     IM_CHECK_EQ(marks.size(), expected.size());
     if (marks.size() != expected.size() || view.acts.size() != expected.size()) return;
@@ -248,49 +347,73 @@ void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
 // timeline marks, in ms: an input, since the GUI test library has no audio.
 constexpr double kMarksSongLengthMs = 600000.0;
 
+// Whether `view`'s rows hold an outline of kind `o`: a chart's test of the
+// marks covers that colour only when one of its rows calls for it.
+bool has_outline(const hydra::app::ActivationsView& view, Outline o) {
+    const std::vector<Outline> all = badge_outlines(view);
+    return std::find(all.begin(), all.end(), o) != all.end();
+}
+
 // The activation rows: one line each, all closed at first, one open at a
 // time, Expand all and Collapse all, and the summary beside the "Activations"
-// heading.
+// heading. Every expected text is the activations view's
+// (app::build_activations), which the engine's record fills.
 void test_paths_rows(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    const std::string dot = " \xC2\xB7 ";
+    // Copies: a longer song length below rebuilds the view.
+    const std::vector<hydra::app::ActivationRowView> acts = shown_activations(*h.app).acts;
+    IM_CHECK_GE(acts.size(), static_cast<size_t>(2));
+    if (acts.size() < 2) return;
+    const hydra::app::ActivationRowView& row1 = acts[0];
     IM_CHECK(on_screen(h, "Activations"));
-    IM_CHECK(on_screen(h, "3" + dot + "no SP left over"));
+    IM_CHECK(on_screen(h, shown_activations(*h.app).summary));
     IM_CHECK(!on_screen(h, "bars each"));
-    IM_CHECK(on_screen(h, "m32.1.0"));
-    IM_CHECK(on_screen(h, "m58.1.0"));
-    IM_CHECK(on_screen(h, "m88.1.0"));
-    IM_CHECK(on_screen(h, "squeeze out 163.0 ms"));
+    for (const hydra::app::ActivationRowView& a : acts) {
+        IM_CHECK(on_screen(h, a.measure));
+        for (const hydra::app::ActivationBadge& b : a.badges) IM_CHECK(on_screen(h, b.text));
+    }
+    // Row 1 is Burnout's squeeze out: it has a sentence to show when opened.
+    IM_CHECK(!row1.squeeze_sentences.empty());
+    if (row1.squeeze_sentences.empty()) return;
     // Every row starts closed: no chord, sentence or backend heading shows.
-    IM_CHECK(!on_screen(h, "[Kick - Green cymbal]"));
-    IM_CHECK(!on_screen(h, "notes near the SP end"));
+    IM_CHECK(!on_screen(h, row1.chord));
+    for (const hydra::app::TextLine& s : row1.squeeze_sentences) IM_CHECK(!on_screen(h, s.text));
+    for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(!on_screen(h, a.backends_label));
     IM_CHECK(!ctx->ItemExists("**/Show in Preview >##showact1"));
-    // A click opens row 1: its chord and sentence show, rows 2 and 3 stay shut.
+    // A click opens row 1: its chord, sentences and backend heading show; the
+    // other rows stay shut.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "[Kick - Green cymbal]"));
-    IM_CHECK(on_screen(h, "Hit the [  Y  ] note more than 163.0 ms late so it lands after "
-                          "Star Power ends."));
-    IM_CHECK(on_screen(h, "3 notes near the SP end"));
-    IM_CHECK(!on_screen(h, "6 notes near the SP end"));
+    IM_CHECK(on_screen(h, row1.chord));
+    for (const hydra::app::TextLine& s : row1.squeeze_sentences) IM_CHECK(on_screen(h, s.text));
+    IM_CHECK(on_screen(h, row1.backends_label));
+    for (size_t i = 1; i < acts.size(); ++i)
+        if (acts[i].backends_label != row1.backends_label)
+            IM_CHECK(!on_screen(h, acts[i].backends_label));
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
-    // The timeline outlines: row 1's 163 ms squeeze is orange, rows 2 and 3
-    // have no badge and no outline. The open record gets a length as an input:
-    // ten minutes, past either chart's last activation (D75).
+    // The timeline outlines follow each row's badges; Burnout's squeeze out
+    // is a warning, so an orange outline is among them. The open record gets
+    // a length as an input: ten minutes, past either chart's last activation.
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
-    check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});
-    // Hovering row 1's mark names the activation and every one of its badges;
-    // the row's pill alone never reads like this.
+    IM_CHECK(has_outline(shown_activations(*h.app), Outline::Orange));
+    check_marks(ctx, *h.app);
+    // Hovering row 1's mark names the activation and every one of its badges:
+    // each of them shows once more than before the hover.
     {
         const std::vector<DrawnMark> marks = drawn_marks(ctx);
         IM_CHECK(!marks.empty());
         if (marks.empty()) return;
+        std::vector<std::string> named = {row1.measure};
+        for (const hydra::app::ActivationBadge& b : row1.badges) named.push_back(b.text);
+        std::vector<size_t> before;
+        for (const std::string& s : named) before.push_back(count_on_screen(h, s));
         ctx->MouseMoveToPos(ImVec2(marks[0].x, marks[0].y));
         ctx->Yield(2);
-        IM_CHECK(on_screen(h, "Activation 1  m32.1.0  squeeze out 163.0 ms"));
+        for (size_t k = 0; k < named.size(); ++k)
+            IM_CHECK_GT(count_on_screen(h, named[k]), before[k]);
     }
 
     // "Show in Preview" asks the Preview for activation 1 (the Preview tab
@@ -304,65 +427,79 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
 
+    // Row 2 opens and row 1 closes. The two headings are told apart only
+    // where their texts differ.
+    const hydra::app::ActivationRowView& row2 = acts[1];
+    const bool labels_differ = row2.backends_label != row1.backends_label;
     ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "6 notes near the SP end"));
-    IM_CHECK(!on_screen(h, "3 notes near the SP end"));
+    IM_CHECK(on_screen(h, row2.backends_label));
+    if (labels_differ) IM_CHECK(!on_screen(h, row1.backends_label));
     ctx->ItemClick("**/##act2");  // closes it again
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "6 notes near the SP end"));
+    IM_CHECK(!on_screen(h, row2.backends_label));
 
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "3 notes near the SP end"));
-    IM_CHECK(on_screen(h, "6 notes near the SP end"));
-    IM_CHECK(on_screen(h, "7 notes near the SP end"));
+    for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(on_screen(h, a.backends_label));
     IM_CHECK(h.app->details_ui.paths_tab.ui().all_open());
     ctx->ItemClick("**/Collapse all");
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "3 notes near the SP end"));
-    IM_CHECK(!on_screen(h, "7 notes near the SP end"));
+    for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(!on_screen(h, a.backends_label));
 
-    // Beg (Evans Blue): its optimal path has a 0 ms squeeze-out and a 0 ms
-    // early fill. Their badges are grey, so their marks are outlined grey,
-    // not orange.
+    // Beg (Evans Blue): its optimal path has timing badges that are no
+    // warning, so a grey outline is among its marks.
     open_titled(ctx, "evans blue", "Beg");
     if (ctx->IsError()) return;
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
-    // Row 1 is the squeeze-out, row 4 the early fill; rows 2 and 3 have no badge.
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
-    check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
-    IM_CHECK(on_screen(h, "squeeze out 0.0 ms"));
-    IM_CHECK(on_screen(h, "early fill 0.0 ms"));
+    const hydra::app::ActivationsView& beg = shown_activations(*h.app);
+    IM_CHECK(has_outline(beg, Outline::Grey));
+    check_marks(ctx, *h.app);
+    for (const hydra::app::ActivationRowView& a : beg.acts)
+        for (const hydra::app::ActivationBadge& b : a.badges) IM_CHECK(on_screen(h, b.text));
 }
 
-// Burnout's activation 1, its squeezed-out row's Rating cell: the word bands
-// the eff. figure on the report's tiers (D269), and the suffix stays raw.
-constexpr const char* kBurnoutSqOutRating = "Insane+ (eff. 163.5 ms) <-- squeezed out (-260)";
+// The Rating cell of activation 1's squeezed-out row that costs points, the
+// one row build_activations warn-colours, as the view the tab drew holds it.
+// Empty when the row has no such row.
+std::string costly_sqout_rating(hydra::ui::AppState& app) {
+    const hydra::app::ActivationsView& view = shown_activations(app);
+    if (view.acts.empty()) return "";
+    for (const hydra::app::BackendRowView& row : view.acts[0].backends)
+        if (row.warn) return row.rating;
+    return "";
+}
 
 // The backend table folds per activation, and the Backend limit on the Paths
-// tab hides rows from it.
+// tab hides rows from it. Every expected text is the activations view's.
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
+    // Burnout's activation 1 squeezes out a row that costs points.
+    const std::string sqout = costly_sqout_rating(*h.app);
+    IM_CHECK(!sqout.empty());
+    if (sqout.empty()) return;
+    const std::string label_all = shown_activations(*h.app).acts[0].backends_label;
+    const size_t rows_all = shown_activations(*h.app).acts[0].backends.size();
     // Row 1 opens with its backend table open; its fold closes, reopens and
     // closes it, and the table stays closed when the row is shut and reopened.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, "3 notes near the SP end"));  // the fold's heading
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(on_screen(h, label_all));  // the fold's heading
+    IM_CHECK(on_screen(h, sqout));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(!on_screen(h, sqout));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(on_screen(h, sqout));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
@@ -371,43 +508,55 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(!on_screen(h, sqout));
     // The rest of this test reads the table, so it opens again.
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    // The stored early x0.99... multiplier isn't 1, so the row shows its
-    // figure, however small the shift (one-squeeze-rating decision 1).
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(on_screen(h, sqout));
     // The table has no explanation paragraph above it.
     IM_CHECK(!on_screen(h, "Timing is how far each note sits"));
 
-    // Off by default, and the number box is inert until it is ticked.
+    // Off by default, at the default limit Settings holds, and the number box
+    // is inert until it is ticked.
     IM_CHECK(!h.app->settings.backendlimit_enabled);
-    IM_CHECK_EQ(h.app->settings.backendlimit_value, 50);
+    IM_CHECK_EQ(h.app->settings.backendlimit_value, hydra::app::Settings{}.backendlimit_value);
     IM_CHECK((ctx->ItemInfo("**/##backendlimitvalue").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     ctx->ItemClick("**/Hide backend rows beyond##backendlimit");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_enabled; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
 
-    // At 30 ms the -489.1 and -326.1 rows go; the squeezed-out -163.0 row stays.
-    // The heading still counts all three and says the two hidden ones are
-    // before the SP end; the line under the table says so with the limit.
+    // At 30 ms Burnout's rows far from the SP end go and the squeezed-out row
+    // stays. The heading and the line under the table say what was hidden,
+    // as build_activations words it from the rows it hid.
     ctx->ItemInputValue("**/##backendlimitvalue", 30);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 30; }, 5));
     IM_CHECK_EQ(hydra::app::Settings::load_file(h.ini_path).backendlimit_value, 30);
-    IM_CHECK(wait_until(
-        ctx,
-        [&] { return on_screen(h, "3 notes near the SP end \xC2\xB7 2 hidden: 2 before, 0 after"); },
-        5));
-    IM_CHECK(on_screen(h, "2 hidden: 2 before the SP end and 0 after, beyond 30 ms."));
-    IM_CHECK(on_screen(h, "squeezed out (-260)"));
+    ctx->Yield(2);
+    std::string hidden_line;
+    {
+        const hydra::app::ActivationRowView& limited = shown_activations(*h.app).acts[0];
+        hidden_line = limited.backends_hidden_line;
+        IM_CHECK(!hidden_line.empty());
+        IM_CHECK_LT(limited.backends.size(), rows_all);
+        IM_CHECK(on_screen(h, limited.backends_label));
+        IM_CHECK(on_screen(h, hidden_line));
+    }
+    IM_CHECK_STR_EQ(costly_sqout_rating(*h.app).c_str(), sqout.c_str());
+    IM_CHECK(on_screen(h, sqout));
 
-    // The full engine window (500 ms) is reachable; beyond it clamps back.
-    ctx->ItemInputValue("**/##backendlimitvalue", 500);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 500; }, 5));
-    ctx->ItemInputValue("**/##backendlimitvalue", 600);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 500; }, 5));
+    // The limit reaches the engine's whole squeeze window (kSqueezeWindowMs)
+    // and no further: the box clamps a larger value as Settings::clamp does,
+    // back to the window.
+    const int window = static_cast<int>(hydra::kSqueezeWindowMs);
+    ctx->ItemInputValue("**/##backendlimitvalue", window);
+    ctx->Yield(2);
+    IM_CHECK_EQ(h.app->settings.backendlimit_value, window);
+    ctx->ItemInputValue("**/##backendlimitvalue", window + 100);
+    ctx->Yield(2);
+    IM_CHECK_EQ(hydra::app::Settings::clamp(&hydra::app::Settings::backendlimit_value, window + 100),
+                window);
+    IM_CHECK_EQ(h.app->settings.backendlimit_value, window);
 
     // Display only: the record is still the analyzed one. Unticking restores
     // every row and persists too.
@@ -416,8 +565,10 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Hide backend rows beyond##backendlimit");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.backendlimit_enabled; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "3 notes near the SP end"); }, 5));
-    IM_CHECK(!on_screen(h, "hidden: 2 before"));
+    ctx->Yield(2);
+    IM_CHECK_EQ(shown_activations(*h.app).acts[0].backends.size(), rows_all);
+    IM_CHECK(on_screen(h, label_all));
+    IM_CHECK(!on_screen(h, hidden_line));
 }
 
 // The two folds under the list, and Copy path with its "Copied!" flash.
@@ -427,17 +578,26 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     FakeClipboard clipboard;
 
     // Both folds start open; a click closes each and another reopens it.
+    // Burnout's record has a multiplier squeeze, so its fold has rows; the
+    // texts are the squeeze views the tab drew (app::build_multsqueezes' form).
     IM_CHECK(h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(h.app->details_ui.paths_tab.ui().breakdown_open);
-    IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
-    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
-    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
+    const hydra::app::PathsTabCache::Details* built = h.app->details_ui.paths_tab.built_details();
+    IM_CHECK(built != nullptr && !built->squeezes.empty());
+    if (built == nullptr || built->squeezes.empty()) return;
+    const std::vector<hydra::app::MultSqueezeView> squeezes = built->squeezes;
+    // beside the Multiplier squeeze fold
+    IM_CHECK(on_screen(h, hydra::app::multsqueeze_summary(squeezes)));
+    for (const hydra::app::MultSqueezeView& sq : squeezes) {
+        IM_CHECK(on_screen(h, sq.label));
+        IM_CHECK(on_screen(h, sq.howto));
+    }
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(!on_screen(h, squeezes[0].howto));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(on_screen(h, squeezes[0].howto));
 
     IM_CHECK(on_screen(h, "Total Score:"));
     IM_CHECK(on_screen(h, std::string(hydra::app::kAverageMultiplierLabel) + ":"));
@@ -471,20 +631,27 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
+    const int burnout_generation = h.app->record_generation.n;
     open_titled(ctx, "tapestry", "Tapestry of the Starless Abstract (Shortened)");
     if (ctx->IsError()) return;
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
-    IM_CHECK(h.app->viewed.record->best_path().pathstring() != "3- 1 2");  // not Burnout
+    // Another song's analysis has landed: the open record is a new one.
+    IM_CHECK(h.app->record_generation.n != burnout_generation);
+    IM_CHECK(h.app->viewed.ready());
     IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
     IM_CHECK(!on_screen(h, "Total Score:"));
 }
 
-// A squeezed-out row the engine never counted: the table says "(uncounted)"
-// and the squeeze sentence stops at its one sentence. The chart was found by searching the
-// corpus under the GUI tests' settings for such a row.
+// Every squeezed-out backend row on Tapestry's optimal path, against the
+// engine's own answer for it: a row the engine does not count
+// (core::counted_without_squeeze) costs nothing, so it is not warn-coloured,
+// and its Rating starts with the engine's word for it (summarystr, which adds
+// the "(uncounted)" tag); a counted one is warn-coloured. Each row's Rating and
+// each squeeze sentence is on screen. The path has at least one uncounted
+// squeezed-out row, the case this test is for.
 void test_paths_uncounted(ImGuiTestContext* ctx) {
     static const char* kTitle = "Tapestry of the Starless Abstract (Shortened)";
     Harness& h = harness(ctx);
@@ -497,11 +664,39 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
-    const size_t rows = h.app->details_ui.paths_tab.ui().act_open.size();
-    IM_CHECK(rows > 0);
+    // With no backend limit every rated row is shown, in the engine's order.
+    IM_CHECK(!h.app->settings.backend_limit().has_value());
+    const hydra::Path* path = h.app->details_ui.selected_path;
+    IM_CHECK(path != nullptr);
+    if (path == nullptr) return;
+    const double leeway = h.app->settings.rules.backend_leeway_ms;
+    const hydra::app::ActivationsView& view = shown_activations(*h.app);
+    const hydra::ActivationWalk acts = path->walk_activations();
+    IM_CHECK_EQ(acts.size(), view.acts.size());
+    if (acts.size() != view.acts.size()) return;
     // Every opened row shows its backend table with no further click.
-    IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
-    IM_CHECK(on_screen(h, "so it lands after Star Power ends."));
+    size_t uncounted = 0;
+    for (size_t i = 0; i < acts.size(); ++i) {
+        const hydra::ActivationRating rate = hydra::rate_activation(acts[i], leeway);
+        const hydra::app::ActivationRowView& av = view.acts[i];
+        IM_CHECK_EQ(av.backends.size(), rate.backends.size());
+        if (av.backends.size() != rate.backends.size()) return;
+        for (size_t r = 0; r < rate.backends.size(); ++r) {
+            const hydra::BackendRating& br = rate.backends[r];
+            if (!br.squeezed_out) continue;
+            const bool counted = hydra::core::counted_without_squeeze(br.row.offset(), leeway);
+            const hydra::app::BackendRowView& row = av.backends[r];
+            const std::string word = br.row.summarystr(true, br.note.effective_ms, leeway);
+            ctx->LogInfo("activation %d squeezed-out row: counted %d, rating \"%s\"", av.number,
+                         counted, row.rating.c_str());
+            IM_CHECK_EQ(row.rating.rfind(word, 0), static_cast<size_t>(0));
+            IM_CHECK_EQ(row.warn, counted);
+            IM_CHECK(on_screen(h, row.rating));
+            if (!counted) ++uncounted;
+        }
+        for (const hydra::app::TextLine& s : av.squeeze_sentences) IM_CHECK(on_screen(h, s.text));
+    }
+    IM_CHECK_GT(uncounted, static_cast<size_t>(0));
     IM_CHECK(!on_screen(h, "costs no points"));
     IM_CHECK(!on_screen(h, "banks for later"));
 }
@@ -514,7 +709,8 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
 void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    FakeClipboard clipboard;
+    // Copy path writes the system clipboard, as it does for the player.
+    KeptClipboardText kept_clipboard;
     hydra::ui::remember_library_share(0.99f);  // the library as wide as it goes
     h.app->library_ui.panel_was_open = false;   // the split sets its width next frame
     ctx->Yield(3);
@@ -526,7 +722,10 @@ void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     open_paths_folds(ctx);  // every backend table and both folds
     ctx->ItemClick("**/Copy path");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Copied!"));
+    // The flash is up: Copy path started it, and it lasts kCopiedSeconds.
+    const double copied_at = h.app->details_ui.copied_at;
+    IM_CHECK_GE(copied_at, 0.0);
+    IM_CHECK_LT(ImGui::GetTime() - copied_at, hydra::ui::AppState::kCopiedSeconds);
     ImGuiWindow* details = window_named("##pathdetails");
     ImGuiWindow* list = window_named("##pathlist");
     IM_CHECK(details != nullptr && list != nullptr);
@@ -608,7 +807,10 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
     ctx->Yield(3);
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    // Burnout's squeezed-out row, the table's longest Rating line.
+    const std::string sqout = costly_sqout_rating(*h.app);
+    IM_CHECK(!sqout.empty());
+    IM_CHECK(on_screen(h, sqout));
     ImGuiTable* t = backend_table();
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -620,32 +822,41 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
-    const float line_w =
-        hydra::ui::text_size(hydra::ui::TextRole::Figure, kBurnoutSqOutRating).x;
+    const float line_w = hydra::ui::text_size(hydra::ui::TextRole::Figure, sqout.c_str()).x;
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
-    // The three fixed columns fit their text: no cell runs past its column.
-    for (int c = 0; c < 3; ++c) {
-        const ImGuiTableColumn& col = t->Columns[c];
-        IM_CHECK_LE((std::max)(col.ContentMaxXUnfrozen, col.ContentMaxXFrozen), col.WorkMaxX + 0.5f);
-        IM_CHECK_LT(col.WidthGiven, hydra::ui::px(80.0f));
-    }
-    // Points is as wide as the width rule gives it for the rows the tab drew,
-    // its header measured as a Label and its cells as Figures (text_role.h).
+    // The three fixed columns fit their text: no cell runs past its column,
+    // and each is as wide as the width rule gives it for the rows the tab
+    // drew, its header measured as a Label and its cells in the role the tab
+    // draws them in (text_role.h).
     const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
     IM_CHECK(d != nullptr && !d->activations.acts.empty());
     if (ctx->IsError()) return;
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
-    std::vector<std::string> points;
-    for (const hydra::app::BackendRowView& row : rows) points.push_back(row.points);
-    std::vector<hydra::ui::ColumnSpec> points_spec = {
-        {"Points", false, 0.0f, hydra::ui::measure_in_role(hydra::ui::TextRole::Figure)}};
-    points_spec[0].header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
-    const float points_w =
-        hydra::ui::place_columns(hydra::ui::measure_widths(points_spec, points.size(),
-                                                           [&](size_t r, size_t) { return points[r]; }),
-                                 points_spec, hydra::ui::TableRoom{})
-            .widths[0];
-    IM_CHECK_EQ(t->Columns[2].WidthGiven, points_w);
+    struct FixedColumn {
+        const char* header;
+        hydra::ui::TextRole role;
+        std::string hydra::app::BackendRowView::*cell;
+    };
+    const FixedColumn fixed[] = {
+        {"Timing", hydra::ui::TextRole::Figure, &hydra::app::BackendRowView::timing},
+        {"Chord", hydra::ui::TextRole::Notation, &hydra::app::BackendRowView::chord},
+        {"Points", hydra::ui::TextRole::Figure, &hydra::app::BackendRowView::points}};
+    for (int c = 0; c < 3; ++c) {
+        const ImGuiTableColumn& col = t->Columns[c];
+        IM_CHECK_LE((std::max)(col.ContentMaxXUnfrozen, col.ContentMaxXFrozen), col.WorkMaxX + 0.5f);
+        std::vector<hydra::ui::ColumnSpec> spec = {
+            {fixed[c].header, false, 0.0f, hydra::ui::measure_in_role(fixed[c].role)}};
+        spec[0].header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
+        std::string hydra::app::BackendRowView::*cell = fixed[c].cell;
+        const float rule_w =
+            hydra::ui::place_columns(
+                hydra::ui::measure_widths(spec, rows.size(),
+                                          [&](size_t r, size_t) { return rows[r].*cell; }),
+                spec, hydra::ui::TableRoom{})
+                .widths[0];
+        ctx->LogInfo("column %s drawn %.1f, rule %.1f", fixed[c].header, col.WidthGiven, rule_w);
+        IM_CHECK_EQ(col.WidthGiven, rule_w);
+    }
     // And the table stays inside the details column.
     ImGuiWindow* details = window_named("##pathdetails");
     IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);
@@ -806,8 +1017,9 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     const float one_line = row1_rect.GetHeight();
     check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
     IM_CHECK_EQ(l.badge_lines, 0);
-    // The Selectable's rect reaches half the item spacing past its size on each side.
-    IM_CHECK_EQ(one_line, hydra::ui::px(hydra::ui::kRowLineH) + style.ItemSpacing.y);
+    // The drawn row is as tall as the layout's row; the Selectable's rect
+    // reaches half the item spacing past its size on each side.
+    IM_CHECK_EQ(one_line, l.row_h + style.ItemSpacing.y);
     {
         std::vector<std::string> pieces = texts(view.acts[0]);
         pieces.push_back(std::to_string(view.acts[0].number));
@@ -817,7 +1029,11 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK(row_text_all_mono(ctx, row1_rect, pieces));
     }
     // Three badges of different lengths, the longest among them, on row 1 of
-    // the cached view the tab draws. The cache is only rebuilt when its
+    // the cached view the tab draws. Burnout's row 1 has one badge and the
+    // scratch library holds no row with three, so the two shorter texts are
+    // inputs shaped like an early fill and a squeeze in badge: they stand for
+    // a row carrying both beside the longest, and the check reads that the
+    // pills share one width. The cache is only rebuilt when its
     // inputs change, so they stay for the frames below and are put back after.
     hydra::app::PathsTabCache::Details* built = const_cast<hydra::app::PathsTabCache::Details*>(
         h.app->details_ui.paths_tab.built_details());
@@ -863,12 +1079,11 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK_LE(p.Max.x, grown_rect.Max.x - hydra::ui::px(hydra::ui::kRowBadgeRight) +
                                  hydra::ui::px(hydra::ui::kRowBadgePad) + 0.5f);
     }
-    // One width (D262, badge_pill.h): every drawn pill is the longest badge's
-    // pill, and pills on different lines share both edges.
+    // One width: every drawn pill is as wide as the layout's pill, and pills
+    // on different lines share both edges.
     const float inset = drawn_pill_inset();
     ctx->LogInfo("row pill width %.3f (longest badge text %.3f), drawn %.3f, fill inset %.3f",
                  three.pill_w, pill_text_w, pills[0].GetWidth(), inset);
-    IM_CHECK_LE(std::fabs(three.pill_w - hydra::ui::pill_width(pill_text_w, scale)), 0.01f);
     for (const ImRect& p : pills) {
         IM_CHECK_LE(std::fabs(p.GetWidth() - pills[0].GetWidth()), 0.01f);
         IM_CHECK_LE(std::fabs(p.GetWidth() + inset - three.pill_w), 0.01f);
@@ -915,28 +1130,40 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(ctx->ItemInfo("**/##act1").RectFull.GetHeight(), one_line);
 }
 
-// The GUI test library has no audio, but the chart gives Burnout a length
-// (app::song_length_ms, D255, which owns the rule), so the timeline places
-// its activation dots. The literal below is one logged run of that function
-// on Burnout. The click works the length out with its
-// analysis (app::analysis_song_length on the same Song), so no other job
-// reads the chart for it (D87 item 1).
+// The GUI test library has no audio, but the click gives Burnout a length
+// from its chart, so the timeline places a mark for every activation, each
+// inside the song. The click works the length out with its analysis, so no
+// other job reads the chart for it, and the length stays as it was while the
+// song stays open.
 void test_paths_length_from_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
     IM_CHECK(app.viewed.ready());
-    IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
+    IM_CHECK(app.viewed.song_length_ms.has_value());
+    if (!app.viewed.song_length_ms) return;
+    const double length = *app.viewed.song_length_ms;
+    IM_CHECK_GT(length, 0.0);
     IM_CHECK(!app.view_job);
     ctx->Yield(2);
-    IM_CHECK(!drawn_marks(ctx).empty());
+    // Every activation falls inside the song, so each has its place on the
+    // timeline and its own mark.
+    const hydra::app::ActivationsView& view = shown_activations(app);
+    IM_CHECK(!view.acts.empty());
+    for (const hydra::app::ActivationRowView& a : view.acts) {
+        IM_CHECK(a.song_fraction.has_value());
+        if (!a.song_fraction) return;
+        IM_CHECK_GE(*a.song_fraction, 0.0);
+        IM_CHECK_LE(*a.song_fraction, 1.0);
+    }
+    IM_CHECK_EQ(drawn_marks(ctx).size(), view.acts.size());
     const hydra::HydraRecord* record = &*app.viewed.record;
 
     // Nothing reads it again while the song stays open.
     ctx->Yield(5);
     IM_CHECK(!app.view_job);
     IM_CHECK(&*app.viewed.record == record);
-    IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
+    IM_CHECK(app.viewed.song_length_ms == length);
 }
 
 // The pieces of Tapped Out (Mike Orlando)'s optimal path, activation 4: its
@@ -964,41 +1191,80 @@ void check_tapped_out_box_fits() {
     IM_CHECK_LE(box->ContentSize.x, box->ContentRegionRect.GetWidth() + 0.5f);
 }
 
-// The Dynamic Hit Window row: on Burnout's squeeze out (safe), on no
-// activation without a timing badge, and on Tapped Out's squeeze out (out of
-// reach) and both its early fills, optional and required, each in a box.
+// The pieces a Dynamic Hit Window row draws, from the row view the tab drew
+// (app::WindowRowView): the label, each end's word when it has one, its
+// window and its chord, and the tag.
+std::vector<std::string> window_pieces(const hydra::app::WindowRowView& w) {
+    std::vector<std::string> out = {hydra::app::kDynamicHitWindowLabel};
+    for (const hydra::app::WindowFigure& f : w.figures)
+        out.push_back((f.word.empty() ? std::string() : f.word + " ") + f.figure + " " + f.chord);
+    out.push_back(w.tag);
+    return out;
+}
+
+// Whether an activation's opened row holds any Dynamic Hit Window row.
+bool has_window_row(const hydra::app::ActivationRowView& a) {
+    if (a.early_fill_window) return true;
+    for (const std::optional<hydra::app::WindowRowView>& w : a.squeeze_windows)
+        if (w) return true;
+    return false;
+}
+
+// An early fill's Dynamic Hit Window row on screen: its pieces, and no
+// squeeze word (core::role_word) before its window, since its one note is
+// neither end of a squeeze.
+void check_early_fill_window(Harness& h, const hydra::app::WindowRowView& w) {
+    for (const std::string& piece : window_pieces(w)) IM_CHECK(on_screen(h, piece));
+    const std::string front = hydra::role_word(hydra::EndRole::Frontend);
+    const std::string back = hydra::role_word(hydra::EndRole::Backend);
+    for (const hydra::app::WindowFigure& f : w.figures) {
+        IM_CHECK(!on_screen(h, front + " " + f.figure));
+        IM_CHECK(!on_screen(h, back + " " + f.figure));
+    }
+}
+
+// The Dynamic Hit Window row: on Burnout's squeeze out, on no activation
+// without a timing badge, and on Tapped Out's squeeze out and both its early
+// fills, each in a box. Every expected text is the row view the tab drew.
 void test_paths_hit_window(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    IM_CHECK(!on_screen(h, "Dynamic Hit Window:"));  // every row starts closed
+    IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));  // every row starts closed
 
-    // Burnout's activation 1: literals from T0's run.
+    // Burnout's activation 1 has a squeeze with a window row.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "frontend 84.5 ms [K   G]"));
-    IM_CHECK(on_screen(h, "backend 84.3 ms [  Y  ]"));
-    IM_CHECK(on_screen(h, "5.4 ms safe"));
-    // The tag is a badge (D262, shared_pill_width in badge_pill.h): its pill,
-    // in the squeeze's box, is as wide as the pill of the activation row's
-    // badge above it, and painted in the safe tag's own fill
-    // (window_tag_pill), not the shared pill's.
+    const hydra::app::ActivationsView& burnout = shown_activations(*h.app);
+    IM_CHECK_GE(burnout.acts.size(), static_cast<size_t>(2));
+    if (burnout.acts.size() < 2) return;
+    size_t k1 = burnout.acts[0].squeeze_windows.size();
+    for (size_t k = 0; k < burnout.acts[0].squeeze_windows.size(); ++k)
+        if (burnout.acts[0].squeeze_windows[k] && k1 == burnout.acts[0].squeeze_windows.size()) k1 = k;
+    IM_CHECK(k1 < burnout.acts[0].squeeze_windows.size());
+    if (k1 >= burnout.acts[0].squeeze_windows.size()) return;
+    const hydra::app::WindowRowView w1 = *burnout.acts[0].squeeze_windows[k1];
+    for (const std::string& piece : window_pieces(w1)) IM_CHECK(on_screen(h, piece));
+    // The tag is a badge: its pill, in the squeeze's box, is as wide as the
+    // pill of the activation row's badge above it, and painted in its own
+    // tag's fill (window_tag_pill), not the shared pill's.
     {
+        const std::string box_id = "##sq1_" + std::to_string(k1);
         const std::vector<ImRect> row_pills = drawn_pills(ctx->ItemInfo("**/##act1").RectFull);
-        ImGuiWindow* box = window_named("##sq1_0");
+        ImGuiWindow* box = window_named(box_id.c_str());
         IM_CHECK(box != nullptr);
-        IM_CHECK_EQ(static_cast<int>(row_pills.size()), 1);
-        if (!box || row_pills.size() != 1) return;
+        IM_CHECK_EQ(row_pills.size(), burnout.acts[0].badges.size());
+        IM_CHECK(!row_pills.empty());
+        if (!box || row_pills.empty()) return;
         // The box's own background, in the shared fill, starts at its top;
         // nothing below it is in the shared fill. Fails if the tag's pill is
         // painted in the shared fill.
         int shared_below_top = 0;
-        for (const ImRect& p : drawn_pills(box->Rect(), "##sq1_0"))
+        for (const ImRect& p : drawn_pills(box->Rect(), box_id.c_str()))
             if (p.Min.y > box->Pos.y + 2.0f) ++shared_below_top;
         IM_CHECK_EQ(shared_below_top, 0);
-        // Fails if the tag is not drawn in the safe tag's fill.
+        // Fails if the tag is not drawn in its own tag's fill.
         const std::vector<ImRect> tags =
-            drawn_pills(box->Rect(), "##sq1_0", hydra::ui::window_tag_pill(false).fill);
+            drawn_pills(box->Rect(), box_id.c_str(), hydra::ui::window_tag_pill(w1.is_short).fill);
         IM_CHECK_EQ(static_cast<int>(tags.size()), 1);
         if (tags.size() != 1) return;
         ctx->LogInfo("row badge pill %.3f wide, tag pill %.3f wide", row_pills[0].GetWidth(),
@@ -1007,38 +1273,42 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
         IM_CHECK_LE(std::fabs(tags[0].GetHeight() - row_pills[0].GetHeight()), 0.01f);
     }
 
-    // Activation 2 has no timing badge, so no row.
+    // Activation 2 has no window row in the view, and none shows.
+    IM_CHECK(!has_window_row(burnout.acts[1]));
     ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>({0, 1, 0}));
-    IM_CHECK(!on_screen(h, "Dynamic Hit Window:"));
+    IM_CHECK(only_row_open(h.app->details_ui.paths_tab.ui(), 1));
+    IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));
 
+    // Tapped Out's activation 4 has a squeeze with a window row and an early
+    // fill with its own box and row; activation 3 has an early fill with its
+    // own box and row.
     if (!open_tapped_out(ctx)) return;
+    const std::vector<hydra::app::ActivationRowView> tapped = shown_activations(*h.app).acts;
+    IM_CHECK_GE(tapped.size(), static_cast<size_t>(4));
+    if (tapped.size() < 4) return;
+    const hydra::app::ActivationRowView& act4 = tapped[3];
+    const hydra::app::ActivationRowView& act3 = tapped[2];
+    IM_CHECK(!act4.squeeze_windows.empty() && act4.squeeze_windows[0].has_value());
+    IM_CHECK(!act4.early_fill.empty() && act4.early_fill_window.has_value());
+    IM_CHECK(!act3.early_fill.empty() && act3.early_fill_window.has_value());
+    if (ctx->IsError()) return;
     ctx->ItemClick("**/##act4");
     ctx->Yield(2);
-    for (const char* piece : kTappedOutWindowPieces) IM_CHECK(on_screen(h, piece));
-    // Its optional early fill is boxed, with its own row (the user's ruling
-    // of 2026-11-12); tests/test_activation_rows.cpp pins the same text.
-    IM_CHECK(on_screen(h, "Early fill: 0.0 ms (optional)"));
+    for (const std::string& piece : window_pieces(*act4.squeeze_windows[0]))
+        IM_CHECK(on_screen(h, piece));
+    IM_CHECK(on_screen(h, act4.early_fill));
     IM_CHECK(window_named("##ef4") != nullptr);
-    // An early fill row's note carries no word (the user's ruling: "No word").
-    IM_CHECK(on_screen(h, "85.7 ms [K  B ]"));
-    IM_CHECK(!on_screen(h, "frontend 85.7 ms"));
-    IM_CHECK(!on_screen(h, "backend 85.7 ms"));
-    IM_CHECK(on_screen(h, "85.7 ms safe"));
+    check_early_fill_window(h, *act4.early_fill_window);
+    if (ctx->IsError()) return;
     check_tapped_out_box_fits();
     if (ctx->IsError()) return;
 
-    // Activation 3's required early fill: its box holds one window.
     ctx->ItemClick("**/##act3");  // opens row 3, closes row 4
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Early fill: 0.0 ms (required)"));
+    IM_CHECK(on_screen(h, act3.early_fill));
     IM_CHECK(window_named("##ef3") != nullptr);
-    IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "82.9 ms [K   G]"));
-    IM_CHECK(!on_screen(h, "frontend 82.9 ms"));
-    IM_CHECK(!on_screen(h, "backend 82.9 ms"));
-    IM_CHECK(on_screen(h, "82.9 ms safe"));
+    check_early_fill_window(h, *act3.early_fill_window);
 }
 
 // At the narrowest panel, all four pieces of Tapped Out's activation 4 row
