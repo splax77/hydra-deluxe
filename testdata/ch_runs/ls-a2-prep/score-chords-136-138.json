@@ -1,0 +1,147 @@
+{
+ "chords": [
+  {
+   "chord_code": "n.N..",
+   "combo_before": 246,
+   "cum": {
+    "accent": 0,
+    "combo": 40220,
+    "ghost": 900,
+    "notes": 13555,
+    "solo": 0,
+    "sp": 0,
+    "total": 54675
+   },
+   "cum_onscreen_total": 54675,
+   "in_sp": false,
+   "index": 136,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 36.375,
+    "label": "m37.2.240"
+   },
+   "ms": 64654.29199999998,
+   "multiplier": 4,
+   "multiplier_after": 4,
+   "notes": [
+    {
+     "color": "Kick",
+     "cymbal": false,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 4,
+     "sp_points": 200
+    },
+    {
+     "color": "Yellow",
+     "cymbal": true,
+     "dynamic": "none",
+     "dynamics_bonus": 0,
+     "multiplier": 4,
+     "sp_points": 260
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 345,
+    "ghost": 0,
+    "notes": 115,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 69840
+  },
+  {
+   "chord_code": ".g...",
+   "combo_before": 248,
+   "cum": {
+    "accent": 0,
+    "combo": 40520,
+    "ghost": 950,
+    "notes": 13605,
+    "solo": 0,
+    "sp": 0,
+    "total": 55075
+   },
+   "cum_onscreen_total": 55075,
+   "in_sp": false,
+   "index": 137,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 36.4375,
+    "label": "m37.2.360"
+   },
+   "ms": 64765.48499999998,
+   "multiplier": 4,
+   "multiplier_after": 4,
+   "notes": [
+    {
+     "color": "Red",
+     "cymbal": false,
+     "dynamic": "ghost",
+     "dynamics_bonus": 200,
+     "multiplier": 4,
+     "sp_points": 400
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 300,
+    "ghost": 50,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 69960
+  },
+  {
+   "chord_code": ".g...",
+   "combo_before": 249,
+   "cum": {
+    "accent": 0,
+    "combo": 40820,
+    "ghost": 1000,
+    "notes": 13655,
+    "solo": 0,
+    "sp": 0,
+    "total": 55475
+   },
+   "cum_onscreen_total": 55475,
+   "in_sp": false,
+   "index": 138,
+   "is_fill": false,
+   "is_solo": false,
+   "is_sp_phrase_end": false,
+   "measure": {
+    "decimal": 36.46875,
+    "label": "m37.2.420"
+   },
+   "ms": 64821.08149999998,
+   "multiplier": 4,
+   "multiplier_after": 4,
+   "notes": [
+    {
+     "color": "Red",
+     "cymbal": false,
+     "dynamic": "ghost",
+     "dynamics_bonus": 200,
+     "multiplier": 4,
+     "sp_points": 400
+    }
+   ],
+   "points": {
+    "accent": 0,
+    "combo": 300,
+    "ghost": 50,
+    "notes": 50,
+    "solo": 0,
+    "sp": 0
+   },
+   "tick": 70020
+  }
+ ]
+}

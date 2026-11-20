@@ -3,6 +3,7 @@
 
 #include "doctest.h"
 
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <optional>
@@ -156,6 +157,26 @@ TEST_CASE("SpanSweep: Onyx makeToggle truth table") {
     CHECK(sweep.at(3.5) == Toggle::Empty);
 }
 
+TEST_CASE("SpRunSweep: the sp_active states, overlaps and the window just past an edge") {
+    // Two back-to-back windows and one inside the first: an edge inside a
+    // window is no edge of the running SP, which simply goes on.
+    SpRunSweep sweep({{1.0, 2.0}, {2.0, 3.0}, {1.2, 1.4}});
+    CHECK(sweep.at(0.5) == Toggle::Empty);
+    CHECK(sweep.at(1.0) == Toggle::Start);
+    CHECK(sweep.at(1.2) == Toggle::On);
+    CHECK(sweep.at(1.4) == Toggle::On);
+    CHECK(sweep.at(1.5) == Toggle::On);
+    CHECK(sweep.at(2.0) == Toggle::Restart);  // one ends, the next starts
+    CHECK(sweep.at(3.0) == Toggle::End);
+    CHECK(sweep.at(3.5) == Toggle::Empty);
+    // The double just inside each edge is On; the one just outside is Empty.
+    CHECK(sweep.at(std::nextafter(1.0, 2.0)) == Toggle::On);
+    CHECK(sweep.at(std::nextafter(1.0, 0.0)) == Toggle::Empty);
+    CHECK(sweep.at(std::nextafter(3.0, 2.0)) == Toggle::On);
+    CHECK(sweep.at(std::nextafter(3.0, 4.0)) == Toggle::Empty);
+    CHECK(SpRunSweep{}.at(1.0) == Toggle::Empty);
+}
+
 TEST_CASE("toggle_on_after: on after Start, Restart and On; off after End and Empty") {
     CHECK(toggle_on_after(Toggle::Start));
     CHECK(toggle_on_after(Toggle::Restart));
@@ -247,12 +268,13 @@ TEST_CASE("build_track_state: active SP window ends exactly at the deact node") 
                   "3.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
 }
 
-TEST_CASE("build_track_state: the sp_active sweep agrees with sp_running_at") {
-    // The highway's sweep keeps its own walk (it serves six span kinds), so
-    // this pins its sp_active answer to the owner, PreviewActivation::
-    // sp_running_at, at every edge of two back-to-back windows: [1000, 2000)
-    // and [2000, 3000) ms, the scene of test_sp_meter_curve's sp_running_at
-    // case.
+TEST_CASE("build_track_state: the sp_active field reads sp_running_in") {
+    // The highway's sp_active field asks the one SP-running rule
+    // (app::sp_running_in, through SpRunSweep) on each activation's
+    // sp_window. Two back-to-back windows, [1000, 2000) and [2000, 3000) ms,
+    // hand-built here (test_sp_meter_curve's sp_running_at case reads the
+    // corpus paths' windows instead): SP runs from the first strike, through
+    // the join, and stops at the second's end.
     PreviewScene scene;
     scene.notes = {note(0.0, PreviewLane::Red), note(5000.0, PreviewLane::Red)};
     PreviewActivation a;
@@ -270,16 +292,21 @@ TEST_CASE("build_track_state: the sp_active sweep agrees with sp_running_at") {
 
     const TrackState st = build_track_state(scene, TrackStateOptions{});
     // Before, at the start, inside, at the join, at the end, after.
-    for (const double t_ms : {500.0, 1000.0, 1500.0, 2000.0, 3000.0, 4000.0}) {
-        INFO("t = " << t_ms << " ms");
-        // The sweep's state at t: the instant at t when an edge puts one
-        // there, else the one window() synthesizes at t.
-        const double t_s = t_ms / 1000.0;
+    struct Want {
+        double t_ms;
+        Toggle state;
+    };
+    for (const Want& w : {Want{500.0, Toggle::Empty}, Want{1000.0, Toggle::Start},
+                          Want{1500.0, Toggle::On}, Want{2000.0, Toggle::Restart},
+                          Want{3000.0, Toggle::End}, Want{4000.0, Toggle::Empty}}) {
+        INFO("t = " << w.t_ms << " ms");
+        // The field at t: the instant at t when an edge puts one there, else
+        // the one window() synthesizes at t.
+        const double t_s = w.t_ms / 1000.0;
         const TrackWindow win = st.window(t_s - 0.1, t_s + 0.1);
         REQUIRE(win.size() == 1);
         CHECK(win[0].t == doctest::Approx(t_s));
-        const bool owner = a.sp_running_at(t_ms) || b.sp_running_at(t_ms);
-        CHECK(toggle_on_after(win[0].sp_active) == owner);
+        CHECK(win[0].sp_active == w.state);
     }
 }
 

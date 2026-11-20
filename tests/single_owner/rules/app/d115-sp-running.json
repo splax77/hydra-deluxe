@@ -2,30 +2,54 @@
   "rules": [
     {
       "question": "Is Star Power running at this moment?",
-      "owner": "PreviewActivation::sp_running_at in src/app/preview_view.h",
+      "owner": "app::sp_running_in in src/app/preview_view.h",
       "owner_file": "src/app/preview_view.h",
-      "owner_symbol": "sp_running_at",
-      "date": "2026-10-14",
-      "decision": "D115 (M48, code-only); D115, concept audit M48 (plan question 6).",
+      "owner_symbol": "sp_running_in",
+      "date": "2026-11-19",
+      "decision": "D115 (M48, code-only); D115, concept audit M48 (plan question 6); SPE-T7 (\"Merge them now\"): the highway's sp_active field asks the same rule.",
       "added_by": "D115-B1-5",
-      "pattern": "struck_at\\(\\s*now\\s*,\\s*\\w+->first\\s*\\)\\s*&&\\s*now\\s*<\\s*\\w+->second",
+      "pattern": "struck_at\\(\\s*\\w+\\s*,\\s*\\w+(->|\\.)first\\s*\\)\\s*&&\\s*\\w+\\s*<\\s*\\w+(->|\\.)second",
       "anchor": "struck_at",
       "must_match": [
-        "if (w && struck_at(now, w->first) && now < w->second) return &a;"
+        "if (w && struck_at(now, w->first) && now < w->second) return &a;",
+        "const bool a = struck_at(t, w.first) && t < w.second;"
       ],
       "must_not_match": [
         "if (a.sp_running_at(now)) return &a;",
+        "return w && sp_running_in(*w, now);",
+        "const bool a = app::sp_running_in(w, t);",
         "return struck_at(now, s.ms);",
         "if (const std::optional<std::pair<double, double>> w = a.sp_window())"
       ],
       "owner_lines": [
         {
           "file": "src/app/preview_view.h",
-          "line_text": "return w && struck_at(now, w->first) && now < w->second;",
-          "why": "PreviewActivation::sp_running_at, the owner"
+          "line_text": "return struck_at(now, w.first) && now < w.second;",
+          "why": "app::sp_running_in, the owner"
         }
       ],
-      "note": "The playhead tested against an activation's sp_window by hand instead of through sp_running_at. The highway's sp_active sweep is a generic interval walk shared by six span kinds, so it keeps its own walk; test_track_state's \"the sp_active sweep agrees with sp_running_at\" pins it to the owner."
+      "note": "A playhead or instant tested against a Star Power window by hand instead of through sp_running_in. PreviewActivation::sp_running_at (the drain and score boxes) and render::SpRunSweep (the highway's sp_active field) both ask it."
+    },
+    {
+      "question": "Is Star Power running at an instant of the highway?",
+      "owner": "render::SpRunSweep in src/render/track_state.h and src/render/track_state.cpp",
+      "owner_file": "src/render/track_state.h",
+      "owner_symbol": "SpRunSweep",
+      "date": "2026-11-19",
+      "decision": "SPE-T7 (\"Merge them now\"): one owner for SP running; the highway's sp_active field asks app::sp_running_in through SpRunSweep.",
+      "added_by": "SPE-T7",
+      "pattern": "SpanSweep\\s*\\(\\s*(\\w+\\.)?sp_active_\\s*\\)|SpanSweep\\b[^;]*\\bsp_active\\b",
+      "anchor": "SpanSweep",
+      "must_match": [
+        "sweep_.sp_active = SpanSweep(sp_active_);",
+        "SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, sp_active, fill_lane;"
+      ],
+      "must_not_match": [
+        "sweep_.sp_active = SpRunSweep(sp_active_);",
+        "SpanSweep overdrive, solo, fill, fill_taken, fill_ghost, fill_lane;",
+        "sweep_.overdrive = SpanSweep(overdrive_);"
+      ],
+      "note": "The highway's sp_active field built with the generic span sweep, which keeps its own edge rule, instead of SpRunSweep, which asks app::sp_running_in."
     }
   ]
 }

@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -16,6 +17,7 @@
 #include "core/model.h"
 #include "corpus_default_cfg.h"
 #include "corpus_util.h"
+#include "pathbuilder/pb_coach.h"  // start_window
 #include "pathbuilder/pb_text.h"
 #include "search/pather.h"
 
@@ -251,6 +253,81 @@ TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason'
     // A chord on the end tick is still under Star Power (core::after_sp_end).
     CHECK(fill_reason(one, at_end) == "Star Power is already on here. Activation 1 runs until m102.");
     CHECK(fill_reason(one, fill_index(one, 156960)) == kBeforeLastActivationText);
+}
+
+// The Path Builder's choice rows are the fills the path passed after its last
+// activation (draw_choices reads trailing_skipped_fill_ticks), and each row
+// prints the phrases saved there (candidate_row_text, through bars_saved_at).
+// Inside a running window that figure would be the meter while SP drains, not
+// phrases saved, so no row may sit there. fill_reason's SpRunning test is the
+// screen's word for "inside a running window".
+//
+// The rows are built for the player's path, not for Hydra's stored paths: the
+// screen's path is PbState's empty path or a click's ClickResult::path
+// (PbApp::shown_path). So each case here builds the path the screen would
+// show, and reads the rows from that path's scene as draw_choices does.
+namespace {
+
+// Checks every choice row of `scene` and returns how many there were.
+int check_choice_rows(const app::PreviewScene& scene, const std::string& where) {
+    int rows = 0;
+    for (const int64_t tick : scene.trailing_skipped_fill_ticks) {
+        const std::optional<size_t> idx = app::fill_index_on_chord(scene, tick);
+        INFO(where << " | passed fill " << tick);
+        REQUIRE(idx.has_value());
+        ++rows;
+        if (fill_refusal(scene, *idx) == FillRefusal::SpRunning)
+            MESSAGE("row inside a window: " << candidate_row_text(scene, *idx, nullptr) << " | "
+                                            << fill_reason(scene, *idx));
+        CHECK(fill_refusal(scene, *idx) != FillRefusal::SpRunning);
+    }
+    return rows;
+}
+
+}  // namespace
+
+TEST_CASE("candidate rows: no fill the path passed sits inside a running window") {
+    // Every corpus chart with Star Power, after the player's first click on
+    // the fill Hydra's best path activates first (start_window, the screen's
+    // click). Only the last window can hold a row, since every row is after
+    // it, so one window per chart is enough to put each chart's rows beside a
+    // running window.
+    int rows_checked = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, default_cfg().reading(), default_cfg().rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, default_cfg());
+        if (rec.paths.empty() || rec.best_path().walk_activations().empty()) continue;
+        const int64_t first = rec.best_path().walk_activations()[0].timecode.ticks();
+        const ScoreGraph graph = search_graph(song, default_cfg());
+        const ClickResult click = start_window(graph, default_cfg(), {}, first);
+        INFO(chart << " | click at " << first << " | " << click.message);
+        REQUIRE(click.message.empty());
+        REQUIRE(click.path.has_value());
+        rows_checked += check_choice_rows(scene_for(song, *click.path),
+                                          chart + " | path " + click.path->pathstring());
+    }
+    MESSAGE("choice rows checked: " << rows_checked);
+    CHECK(rows_checked > 0);
+}
+
+TEST_CASE("candidate rows: a fill on the window's end tick is not a choice row") {
+    // Trivium "Feast of Fire" with one window at 180000 that ends at 195360,
+    // and a fill exactly on 195360. A chord on the end tick is still under
+    // Star Power (core::after_sp_end), so the engine must not list that fill
+    // as passed, and so it is no row.
+    const Song& song = song_named("Trivium - Feast of Fire");
+    const app::PreviewScene one = scene_for(song, player_path(song, {180000}));
+    REQUIRE(one.activations.size() == 1);
+    REQUIRE(one.activations[0].sp_end_tick == 195360);
+    const size_t at_end = fill_index(one, 195360);
+    REQUIRE(fill_refusal(one, at_end) == FillRefusal::SpRunning);
+    const std::vector<int64_t>& rows = one.trailing_skipped_fill_ticks;
+    CHECK(std::find(rows.begin(), rows.end(), int64_t{195360}) == rows.end());
+    CHECK(one.fills[at_end].state != app::PreviewFillState::Offered);
+    // The path does pass fills after the window, so the rows are there to
+    // check, and none of them is inside it.
+    CHECK(check_choice_rows(one, "Feast of Fire | one window at 180000") > 0);
 }
 
 namespace {

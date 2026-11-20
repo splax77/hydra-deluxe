@@ -371,6 +371,11 @@
           "file": "tests/test_report_rows.cpp",
           "line_text": "CHECK(hydra::ends_with(report::generate_report(store, fixture_options(cap)).subtitle,",
           "why": "checks that a report subtitle ends with its SP cap in bars, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(dmr::compare_tooltip(), phrase + \".\"));",
+          "why": "checks that the Compare button's tooltip ends with the cap phrase, not a file format"
         }
       ],
       "scope": [

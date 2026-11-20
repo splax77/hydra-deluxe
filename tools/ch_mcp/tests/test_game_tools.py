@@ -46,6 +46,7 @@ from tools.ch_mcp import menu_tools  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp.frida_tools import MENU_BLOCK, StateUnread  # noqa: E402
 from tools.ch_mcp.tests.test_recorder_link import FakePopen  # noqa: E402
+from tools.ch_mcp.tests.test_machine_recorder import complete_rows  # noqa: E402
 from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
     ORIGINAL, REAL_BACKUP, STATS_AFTER_A_RUN, FakeGame, Rig, _read, _write)
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
@@ -2789,10 +2790,8 @@ class MarkerTest(unittest.TestCase):
 
 
 class RecorderTest(unittest.TestCase):
-    """How ch_start, ch_run_chart and the stops drive the machine recorder.
+    """How ch_start and the stops drive the machine recorder.
     test_recorder_link.py covers the link itself."""
-
-    ENGINE = 0x2_0000_1000
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -2802,38 +2801,6 @@ class RecorderTest(unittest.TestCase):
 
     def folder(self, n: int = 1) -> str:
         return os.path.join(self.t.tools._scratch, f"machine-{n}")
-
-    def running_line(self, pid: int = 777) -> str:
-        return f"machine recorder: running, pid {pid}"
-
-    def stdin_lines(self) -> list:
-        return [e[1] for e in self.popen.events if isinstance(e, tuple) and e[0] == "stdin"]
-
-    def chain(self, events: list) -> GT.GameTools:
-        """Set up ch_run_chart's fakes, with the parts' calls going into `events`."""
-        def played(chords, *, on_press, **_kw):
-            events.append("play")
-            on_press(ROWS[0])
-            return play_chart.RunResult(stop="done")
-
-        self.t.tools._live_in_game = FakeLiveInGame(played)
-        self.t.tools._live_play = live_play_never
-        self.t.tools.use_run_parts(GT.RunParts(
-            GameToolsTest.ChainFrida(events, loaded=self.t.r.song),
-            GameToolsTest.ChainKit(events, lambda lanes, axes=None: {}),
-            GameToolsTest.ChainSp(events, self.ENGINE)))
-        return self.t.tools
-
-    def run_chart(self) -> str:
-        score = os.path.join(self._tmp.name, "score.json")
-        with open(score, "w", encoding="utf-8") as f:
-            json.dump(SCORE_JSON, f)
-        schedule = os.path.join(self._tmp.name, "schedule.json")
-        with open(schedule, "w", encoding="utf-8") as f:
-            json.dump(for_song(SCHEDULE_JSON, self.t.r.song), f)
-        reply = self.t.tools.ch_run_chart(self.t.r.song, score, schedule, "System")
-        self.t.tools._play.thread.join(THREAD_CAP_S)
-        return reply
 
     # -- ch_start -------------------------------------------------------------------
 
@@ -2937,149 +2904,161 @@ class RecorderTest(unittest.TestCase):
         self.assertIn(f'"{sent}"', lines[0])
         self.assertIn(f"({type(closed.exception).__name__}: {closed.exception})", lines[0])
 
+    def real_tools_keeping_procs(self) -> tuple:
+        """real_tools whose recorder is the real program, started by the real
+        Popen; the processes it started are kept in the list it returns, so a
+        test can read one after the tools have let it go."""
+        procs: list = []
+
+        def popen(*args, **kwargs):
+            procs.append(subprocess.Popen(*args, **kwargs))
+            return procs[-1]
+
+        self.addCleanup(lambda: [p.kill() for p in procs if p.poll() is None])
+        exe, documents = real_game_paths(self._tmp.name)
+        tools = GT.GameTools(B.Env(exe=exe, documents_dir=documents, run_reg=None),
+                             threading.RLock(), os.path.join(self._tmp.name, "real scratch"),
+                             make_recorder=lambda: R.RecorderLink(popen=popen))
+        return tools, procs
+
+    def recorder_lines(self, lines: list, proc: subprocess.Popen) -> list:
+        """The lines of `lines` that name `proc`'s pid as a whole word and its folder."""
+        folder = proc.args[proc.args.index("--out") + 1]
+        return [line for line in lines if re.search(rf"\b{proc.pid}\b", line) and folder in line]
+
     def test_a_launch_that_fails_stops_the_recorder_before_ch_start_returns(self):
-        for error in (B.SongLengthMissing("no length"), B.LaunchFailed("refused"),
-                      OSError("no exe")):
-            with self.subTest(error=error):
-                before = len(self.popen.procs)
-                with mock.patch.object(B, "start_run", side_effect=error):
-                    reply = self.t.tools.ch_start(self.t.r.song)
-                proc = self.popen.procs[before]
-                self.assertTrue(proc.stdin.closed.is_set())
-                self.assertEqual(proc.returncode, 0)
-                self.assertIn(f"machine recorder: stopped, pid {proc.pid}", reply)
-                self.assertEqual(self.t.tools.open_lines(), [])
+        tools, procs = self.real_tools_keeping_procs()
+        # The launch fails for real: the game exe is not there.
+        reply = tools.ch_start()
+        self.assertIsNone(tools._run)
+        self.assertEqual(len(procs), 1)
+        proc = procs[0]
+        # It ended through its stdin closing, not a terminate, before the reply.
+        self.assertEqual(proc.poll(), 0)
+        said = [line for line in self.recorder_lines(reply.splitlines(), proc)
+                if f"exit code {proc.returncode}" in line]
+        self.assertEqual(len(said), 1, reply)
+        self.assertEqual(tools.open_lines(), [])
 
-    def test_a_second_ch_start_ends_the_first_recorder(self):
-        self.t.tools.ch_start(self.t.r.song)
-        self.t.tools.ch_start(self.t.r.song)
-        first, second = self.popen.procs
-        self.assertEqual(first.returncode, 0)
-        self.assertIsNone(second.returncode)
+    def test_a_second_start_ends_the_first_recorder(self):
+        tools = self.real_tools()
+        self.start_real_recorder(tools)
+        first = tools._recorder._proc
+        lines = self.start_real_recorder(tools)
+        second = tools._recorder._proc
+        self.assertIsNot(first, second)
+        self.assertEqual(first.poll(), 0)
+        self.assertIsNone(second.poll())
+        said = [line for line in self.recorder_lines(lines, first)
+                if f"exit code {first.returncode}" in line]
+        self.assertEqual(len(said), 1, lines)
 
-    # -- ch_run_chart ---------------------------------------------------------------
+    def test_the_samples_line_counts_a_real_recordings_rows_and_names_its_last_time(self):
+        tools = self.real_tools()
+        self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        folder = proc.args[proc.args.index("--out") + 1]
+        deadline = time.monotonic() + CHILD_CAP_S
+        while len(complete_rows(folder, MR.SAMPLES_FILE)) < 2:
+            if proc.poll() is not None:
+                self.fail(f"the recorder ended before two samples, exit code {proc.returncode}")
+            if time.monotonic() > deadline:
+                self.fail(f"no two samples within {CHILD_CAP_S} s")
+            time.sleep(1 / MR.RATE_PER_S)
+        # Ended, so its file no longer grows while the line and the rows are read.
+        proc.terminate()
+        proc.wait(CHILD_CAP_S)
+        rows = complete_rows(folder, MR.SAMPLES_FILE)
+        line = tools._recorder.samples_line()
+        self.assertRegex(line, rf"\b{len(rows)} samples\b")
+        self.assertTrue(line.endswith(rows[-1][MR.WALL_COLUMN]), line)
 
-    def test_the_engine_goes_out_after_the_watch_and_before_the_play(self):
-        events = self.popen.events
-        self.chain(events)
-        self.t.tools.ch_start(self.t.r.song)
-        self.run_chart()
-        steps = [e[0] if isinstance(e, tuple) and e[0] != "stdin" else e for e in events]
-        engine = ("stdin", b"engine 0x200001000\n")
-        self.assertLess(steps.index("watch"), steps.index(engine))
-        self.assertLess(steps.index(engine), steps.index("play"))
-
-    def test_the_reply_holds_the_samples_line_after_the_watch_line(self):
-        self.chain([])
-        self.t.tools.ch_start(self.t.r.song)
-        with open(os.path.join(self.folder(), MR.SAMPLES_FILE), "wb") as f:
-            f.write(b"sample,wall_s\n0,1000.25\n1,1000.27\n")
-        lines = self.run_chart().splitlines()
-        at = lines.index("machine recorder: 2 samples so far, last at 1000.27")
-        self.assertTrue(lines[at - 1].startswith("watch: ok"), lines)
-
-    def test_a_recorder_that_wrote_nothing_is_a_line_and_the_play_goes_on(self):
-        events = []
-        self.chain(events)
-        self.t.tools.ch_start(self.t.r.song)
-        reply = self.run_chart()
-        self.assertIn("machine recorder: no samples yet in", reply)
-        self.assertIn("play", events)
-
-    def test_a_recorder_that_never_started_is_a_line_and_the_play_goes_on(self):
-        events = []
-        self.chain(events)
-        self.popen.error = OSError("no python")
-        self.t.tools.ch_start(self.t.r.song)
-        lines = self.run_chart().splitlines()
-        self.assertIn(R.start_failed_line(self.popen.error), lines)
-        self.assertIn("play", events)
-
-    def test_a_failed_engine_write_is_one_line_and_the_play_still_starts(self):
-        events = []
-        self.chain(events)
-        self.t.tools.ch_start(self.t.r.song)
-        self.popen.procs[0].stdin.fail = True
-        reply = self.run_chart()
-        self.assertIn('machine recorder: "engine 0x200001000" not sent (OSError: the pipe is closed)',
-                      reply)
-        self.assertIn("play", events)
-        self.assertIn(GT.first_press_line(ROWS), reply)
+    def test_a_recorder_that_never_started_says_so_in_the_samples_line_and_is_told_nothing(self):
+        tools = self.real_tools()
+        # A file where the session folder goes, so the real recorder's folder
+        # cannot be made.
+        session = os.path.join(self._tmp.name, "a file")
+        _write(session, b"")
+        lines: list = []
+        tools._start_recorder(session, GT.cap_for_end(None), lines)
+        self.assertIn(tools._recorder.samples_line(), lines)
+        told: list = []
+        tools._tell_recorder(f"pid {os.getpid()}", told)
+        self.assertEqual(told, [])
 
     # -- the stops ------------------------------------------------------------------
 
-    def test_ch_stop_and_shutdown_close_stdin_and_wait_the_cap(self):
+    def test_ch_stop_and_shutdown_end_the_recorder_by_closing_its_stdin(self):
+        tools = self.real_tools()
         for stop in ("ch_stop", "shutdown"):
             with self.subTest(stop=stop):
-                self.t.tools.ch_start(self.t.r.song)
-                proc = self.popen.procs[-1]
-                folder = self.folder(len(self.popen.procs))
-                self.popen.events.clear()
-                lines = getattr(self.t.tools, stop)().splitlines()
-                self.assertTrue(proc.stdin.closed.is_set())
-                self.assertIn(("wait", R.RECORDER_EXIT_CAP_S), self.popen.events)
-                self.assertNotIn("terminate", self.popen.events)
-                self.assertEqual(lines[0], f"machine recorder: stopped, pid {proc.pid}, "
-                                           f"exit code 0, folder {folder}")
-
-    def test_ch_stop_and_shutdown_terminate_one_that_does_not_exit_and_say_so(self):
-        self.popen.hangs = True
-        for stop in ("ch_stop", "shutdown"):
-            with self.subTest(stop=stop):
-                self.t.tools.ch_start(self.t.r.song)
-                proc = self.popen.procs[-1]
-                self.popen.events.clear()
-                reply = getattr(self.t.tools, stop)()
-                self.assertIn(("wait", R.RECORDER_EXIT_CAP_S), self.popen.events)
-                self.assertEqual(self.popen.events.count("terminate"), 1)
-                self.assertIn(f"machine recorder: pid {proc.pid} did not exit within "
-                              f"RECORDER_EXIT_CAP_S ({R.RECORDER_EXIT_CAP_S} s) of its stdin "
-                              "closing; terminated", reply)
+                self.start_real_recorder(tools)
+                proc = tools._recorder._proc
+                folder = proc.args[proc.args.index("--out") + 1]
+                lines = getattr(tools, stop)().splitlines()
+                self.assertEqual(proc.poll(), 0)
+                # The recorder's own last row names why it ended.
+                rows = complete_rows(folder, MR.SAMPLES_FILE)
+                self.assertEqual(rows[-1]["stop_reason"], MR.STOP_STDIN)
+                self.assertEqual(self.recorder_lines(lines[:1], proc), lines[:1], lines)
+                self.assertIn(f"exit code {proc.returncode}", lines[0])
 
     def test_the_stop_ends_the_recorder_before_the_hooks_run(self):
-        self.t.tools.ch_start(self.t.r.song)
-        self.t.tools.add_stop_hook(lambda: self.popen.events.append("hook"))
-        self.t.tools.ch_stop()
-        self.assertLess(self.popen.events.index("stdin closed"), self.popen.events.index("hook"))
-
-    def test_a_stop_that_raises_still_restores_the_key(self):
-        self.t.tools.ch_start(self.t.r.song)
-
-        def broken():
-            raise RuntimeError("broken")
-
-        self.t.tools._recorder.stop = broken
-        reply = self.t.tools.ch_stop()
-        self.assertIn("stopping the machine recorder failed: RuntimeError: broken", reply)
-        self.assertIn("rewired registry: unchanged", reply)
+        tools = self.real_tools()
+        self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        seen: list = []
+        tools.add_stop_hook(lambda: seen.append(proc.poll()))
+        tools.ch_stop()
+        self.assertEqual(seen, [0])
 
     def test_open_lines_list_a_running_recorder_and_not_a_stopped_one(self):
-        self.t.tools.ch_start(self.t.r.song)
-        self.assertIn(self.running_line(), self.t.tools.open_lines())
-        self.t.tools.ch_stop()
-        self.assertEqual(self.t.tools.open_lines(), [])
+        tools = self.real_tools()
+        self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        opened = tools.open_lines()
+        self.assertEqual(opened, [tools._recorder.line()])
+        self.assertRegex(opened[0], rf"\b{proc.pid}\b")
+        tools.ch_stop()
+        self.assertEqual(tools.open_lines(), [])
 
     def test_ch_status_prints_the_recorders_line(self):
-        self.assertIn("machine recorder: none", self.t.tools.ch_status().splitlines())
-        self.t.tools.ch_start(self.t.r.song)
-        self.assertIn(self.running_line(), self.t.tools.ch_status().splitlines())
+        tools = self.real_tools()
+        self.assertIn(tools._recorder.line(), tools.ch_status().splitlines())
+        self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        status = tools.ch_status().splitlines()
+        self.assertIn(tools._recorder.line(), status)
+        self.assertEqual(len([line for line in status if re.search(rf"\b{proc.pid}\b", line)]), 1,
+                         status)
 
     def test_one_that_exited_by_itself_leaves_open_lines_and_is_said_once_more(self):
-        self.t.tools.ch_start(self.t.r.song)
-        folder = self.folder()
-        self.popen.procs[0].returncode = 3
-        said = (f"machine recorder: exited by itself, pid 777, exit code 3, folder {folder}, "
-                f"log {os.path.join(folder, R.LOG_NAME)}")
-        self.assertNotIn(said, self.t.tools.open_lines())
-        self.assertEqual(len(self.t.tools.open_lines()), 1)
-        self.assertIn(said, self.t.tools.ch_status().splitlines())
-        self.assertIn(said, self.t.tools.ch_stop().splitlines())
-        self.assertIsNone(self.t.tools._recorder.stop())
-        self.assertNotIn("terminate", self.popen.events)
+        tools = self.real_tools()
+        self.start_real_recorder(tools)
+        proc = tools._recorder._proc
+        folder = proc.args[proc.args.index("--out") + 1]
+        # It ends with no word from the tools, as a recorder that dies does.
+        proc.terminate()
+        proc.wait(CHILD_CAP_S)
+        self.assertEqual(tools.open_lines(), [])
+
+        def exited(lines: list) -> list:
+            return [line for line in self.recorder_lines(lines, proc)
+                    if f"exit code {proc.returncode}" in line
+                    and os.path.join(folder, R.LOG_NAME) in line]
+
+        status = tools.ch_status().splitlines()
+        self.assertEqual(len(exited(status)), 1, status)
+        stopped = tools.ch_stop().splitlines()
+        self.assertEqual(exited(stopped), exited(status), stopped)
+        self.assertIsNone(tools._recorder.stop())
 
     def test_a_stop_with_no_recorder_adds_no_line(self):
-        self.assertEqual(self.t.tools.ch_stop(),
-                         "no run is open and no backup was taken; nothing to restore")
+        tools = self.real_tools()
+        reply = tools.ch_stop()
+        self.assertEqual([line for line in reply.splitlines() if line.startswith(R._LINE_PREFIX)],
+                         [], reply)
+        self.assertIsNone(tools._recorder.stop())
 
 
 class PidRunningTest(unittest.TestCase):
