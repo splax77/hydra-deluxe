@@ -75,6 +75,6 @@ The planner writes the map and the call lists as it writes the plan.
 
 The plan reviewer checks the facts three times. First it opens each `checked` row's source and confirms the fact is there; a row whose source does not say what the row says is a finding. Then, with the map closed, it reads each live step and each task cold and writes down every fact it depends on. A fact with no row is a finding, fixed by adding the row, as `unchecked` when the reviewer cannot source it. Last, it tries each `unchecked` row against the code and the Clone Hero pages, the way "Settle what a read can settle" asks the planner to. A row a read could have settled, in whole or in part, is a finding.
 
-A test can tell that a file exists but not what a line in it means, so whether a source says what its row says is the reviewer's job. The shape is also held by the docs test, `tests/test_docs_match_code.cpp`. That check reads the shape only, and the comment above it says which plans count.
+A test can tell that a file exists but not what a line in it means, so whether a source says what its row says is the reviewer's job.
 
 Before a live run, the main session shows the user the step's call list. "The shape of a live run" on `docs/agents/clone-hero-mcp.md` says what that go request holds.

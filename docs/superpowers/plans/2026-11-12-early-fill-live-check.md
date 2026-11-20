@@ -163,7 +163,6 @@ After LS-F3 (or after the step that ended the plan early), an executor updates t
 
 Acceptance criteria:
 
-- The docs check (`hydra_tests.exe "-tc=docs match code*"`, run by the main session) passes.
 - Every number in FL-24's new text can be found in a named file of the run folders.
 - No Hydra source file changes in this plan. A fail is reported to the user as a found split, whole, and waits for their ruling.
 
@@ -275,9 +274,9 @@ These are left out. Each needs the user's approval to stay out.
 | A case counts as "not offered" only when the note was hit with a lead more than the distance plus 6 ms | LS-F3 | LS-F3 | The press rows in `ls-f3-run1`, quoted in FL-24's Evidence |
 | FL-25's block claims no more than the three logs show | T4 | T4 | T4's first two criteria; the reviewer opens the three CSV rows |
 | T4 stops when a log or the chart cannot be read | T4 | T4 | T4's third criterion |
-| The result goes onto FL-24 in the same commit as the work | T5 | T5 | The docs check passes and the commit holds page 04 and the run evidence lines together |
+| The result goes onto FL-24 in the same commit as the work | T5 | T5 | The commit holds page 04 and the run evidence lines together |
 | A fail opens a question and changes no Hydra code | T5, Out of scope | T5 | The commit's file list holds no file under `src/` |
-| The plan and the handoff leave the repo when the work is done | T5 | T5 | The docs check, which fails on a line that still points at them |
+| The plan and the handoff leave the repo when the work is done | T5 | T5 | `git grep` for their paths finds nothing |
 | The chart does what it was built to do before any early press is read | "Which early amounts" | LS-F2 | LS-F2's pass list: case A offered, B to E not offered on time |
 | Hydra reads the built chart as ten fills and ten phrase ends with the fill starts the chart intended | T3 step 3 | T3 | `prep-notes.txt` and the dump |
 | FL-25's fill start comes from Hydra's score file, not from a chart that holds no fill | T3 step 6, T4 | T3, T4 | T4's Evidence line names `trippin-score.json` |

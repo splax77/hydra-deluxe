@@ -1413,7 +1413,7 @@
       "scope": [
         "tests"
       ],
-      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it (test_docs_match_code.cpp) answer other questions."
+      "note": "The same pattern as \"Is a value inside the squeeze window?\", over tests/. That row's scope stays src and tools; rows are append-only. Arithmetic and == on the constant (test_squeeze_rating.cpp) and storing it answer other questions."
     },
     {
       "question": "Which meter section is a tick measured in?",

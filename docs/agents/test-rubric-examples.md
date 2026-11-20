@@ -321,8 +321,7 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
             different question: what a chord's first and last notes pay.
             tests/test_stars.cpp:124 and tests/test_replay.cpp:1613 call
             to_multiplier for a value and do not state where the steps
-            sit. tests/test_docs_match_code.cpp:345 reads the first x2
-            combo out of the code to check a page, and states no rule.
+            sit.
 11 Real:    Yes. Pitch Dark reaches all three steps in its first 20
             chords. A combo as long as the last line's input cannot
             happen; the line says why it is used (no combo, however long).

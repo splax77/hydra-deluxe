@@ -1,18 +1,14 @@
 // The repo's own source tree, as the tests that read it see it. This is the
 // one place a test reads HYDRA_SOURCE_DIR (the repo root CMakeLists.txt passes
-// in) and the one place a test lists the repo's files: the code under the
-// walked folders (source_files) and the markdown files (markdown_files).
-// The scans in tests/single_owner/ and the docs check in
-// tests/test_docs_match_code.cpp both come here, so a third test that reads
-// the tree calls these instead of growing its own walker.
+// in) and the one place a test lists the repo's code under the walked folders
+// (source_files). The scans in tests/single_owner/ come here, so another test
+// that reads the tree calls these instead of growing its own walker.
 //
-// Both lists come from git (git_listed), not from the disk. A folder git
+// The list comes from git (git_listed), not from the disk. A folder git
 // ignores, such as a node_modules an npm install put under tools/, holds
-// vendored code the repo never ships, so no test reads it. Each caller picks
-// one of two lists (Listing below). The single-owner and clone scans read
-// committed and new files, so they catch a copied rule in a file before its
-// first commit. The docs check reads committed and staged files only, so a
-// draft nobody has added to git never fails it.
+// vendored code the repo never ships, so no test reads it. The list holds
+// committed and new files, so the single-owner and clone scans catch a copied
+// rule in a file before its first commit.
 #pragma once
 
 #include <algorithm>
@@ -47,35 +43,18 @@ inline bool walk_visits(const std::string& rel) {
     return false;
 }
 
-// Which files a listing below holds.
-enum class Listing {
-    // The files git tracks (committed or staged) and the new files it would
-    // add. The single-owner and clone scans read this list.
-    CommittedAndNew,
-    // The files git tracks (committed or staged) and nothing else. The docs
-    // check in tests/test_docs_match_code.cpp reads this list.
-    CommittedOnly,
-};
-
-// The repo-relative paths (forward slashes) in the listing `which` that match
-// the git pathspec `pathspec`. A file git ignores is in neither listing. In
-// byte order, each once. Throws std::runtime_error naming `root` when git
-// fails there.
-inline std::vector<std::string> git_listed(const std::filesystem::path& root, const std::string& pathspec,
-                                           Listing which = Listing::CommittedAndNew) {
+// The repo-relative paths (forward slashes) that match the git pathspec
+// `pathspec`: the files git tracks (committed or staged) and the new files it
+// would add. A file git ignores is not listed. In byte order, each once.
+// Throws std::runtime_error naming `root` when git fails there.
+inline std::vector<std::string> git_listed(const std::filesystem::path& root, const std::string& pathspec) {
     const std::string where = root.u8string();
     std::vector<std::string> lines;
     try {
         // -z: names end in a NUL and come unquoted, so a space, a quote or a
         // non-ASCII byte in a name arrives as written.
-        std::vector<std::string> args = {"ls-files", "-z", "--cached"};
-        if (which == Listing::CommittedAndNew) {
-            args.push_back("--others");
-            args.push_back("--exclude-standard");
-        }
-        args.push_back("--");
-        args.push_back(pathspec);
-        lines = precheck::run_git(where, args);
+        lines = precheck::run_git(where, {"ls-files", "-z", "--cached", "--others", "--exclude-standard", "--",
+                                          pathspec});
     } catch (const precheck::GitError& e) {
         throw std::runtime_error("the source walk could not ask git for the files in " + where + ": " +
                                  e.what());
@@ -98,27 +77,15 @@ inline std::vector<std::string> git_listed(const std::filesystem::path& root, co
     return out;
 }
 
-// Every markdown file in the repo in the listing `which`, in byte order.
-// Throws std::runtime_error naming `root` when git fails there or lists
-// nothing, so a scan can never pass by reading no files.
-inline std::vector<std::string> markdown_files(const std::filesystem::path& root,
-                                               Listing which = Listing::CommittedAndNew) {
-    std::vector<std::string> out = git_listed(root, "*.md", which);
-    if (out.empty())
-        throw std::runtime_error("the source walk found no markdown files git knows in " + root.u8string());
-    return out;
-}
-
-// The paths in the listing `which` under the walked folders. Folder by folder
-// in kWalkedFolders order, each in byte order. Throws std::runtime_error
-// naming `root` when git fails there or lists nothing, so a scan can never
-// pass by reading no files.
-inline std::vector<std::string> source_files(const std::filesystem::path& root,
-                                             Listing which = Listing::CommittedAndNew) {
+// The paths git lists under the walked folders. Folder by folder in
+// kWalkedFolders order, each in byte order. Throws std::runtime_error naming
+// `root` when git fails there or lists nothing, so a scan can never pass by
+// reading no files.
+inline std::vector<std::string> source_files(const std::filesystem::path& root) {
     const std::string where = root.u8string();
     std::vector<std::string> out;
     for (const char* sub : kWalkedFolders)
-        for (std::string& rel : git_listed(root, sub, which))
+        for (std::string& rel : git_listed(root, sub))
             if (walk_visits(rel)) out.push_back(std::move(rel));
     if (out.empty())
         throw std::runtime_error("the source walk found no files git knows under the walked folders in " +
@@ -126,25 +93,18 @@ inline std::vector<std::string> source_files(const std::filesystem::path& root,
     return out;
 }
 
-// Calls visit(path, rel) for every file source_files lists under `root` in
-// the listing `which` that is a regular file on disk (a tracked file deleted
-// in the work tree is skipped), in that order. rel is the file's
-// repo-relative path with forward slashes, such as "src/core/winstr.cpp"; its
-// first part is the top folder.
+// Calls visit(path, rel) for every file source_files lists under `root` that
+// is a regular file on disk (a tracked file deleted in the work tree is
+// skipped), in that order. rel is the file's repo-relative path with forward
+// slashes, such as "src/core/winstr.cpp"; its first part is the top folder.
 template <typename Visit>
-void for_each_source_file(const std::filesystem::path& root, Listing which, Visit&& visit) {
+void for_each_source_file(const std::filesystem::path& root, Visit&& visit) {
     namespace fs = std::filesystem;
-    for (const std::string& rel : source_files(root, which)) {
+    for (const std::string& rel : source_files(root)) {
         const fs::path path = root / fs::u8path(rel);
         if (!fs::is_regular_file(path)) continue;
         visit(path, rel);
     }
-}
-
-// The same walk of the committed and new files.
-template <typename Visit>
-void for_each_source_file(const std::filesystem::path& root, Visit&& visit) {
-    for_each_source_file(root, Listing::CommittedAndNew, std::forward<Visit>(visit));
 }
 
 // The same walk of the repo at root().

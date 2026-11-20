@@ -16,7 +16,6 @@ from pathlib import Path
 from PIL import Image
 
 # The user's limits (D300 in docs/audit/2026-10-03-fix-decisions.md).
-# tests/test_docs_match_code.cpp checks the same two at merge.
 MAX_FILE_BYTES = 500 * 1024
 MAX_FOLDER_BYTES = 4 * 1024 * 1024
 

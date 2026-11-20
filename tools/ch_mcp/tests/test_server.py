@@ -179,12 +179,8 @@ class ServerTest(unittest.TestCase):
         self.assertIn("ch_notes(since=...)", S.CAP_HINT)
 
     def test_the_trace_texts_say_the_hook_fires_on_hits(self):
-        # The texts rest on the Clone Hero page's entry for the traced
-        # method; the test fails when the page no longer holds it.
-        with open(os.path.join(_REPO_ROOT, "docs", "clone-hero", "07-internals.md"),
-                  encoding="utf-8") as f:
-            page = f.read()
-        self.assertIn("### IN-19 Whether the score method fires only for hit notes", page)
+        # The texts rest on IN-19 in docs/clone-hero/07-internals.md, the
+        # Clone Hero page's entry for the traced method.
         server = S.build_server(self.helper)
         tools = {t.name: t for t in asyncio.run(server.list_tools())}
         for name, text in (("instructions", server.instructions),

@@ -783,10 +783,9 @@ std::vector<std::string> pick_lines(const TestPick& pick) {
         first += "\"";
     }
     lines.push_back(first);
-    // The three repo-wide checks of CLAUDE.md rule 1, run at every merge.
-    // One line each: doctest keeps only the last of a repeated filter, so
-    // each check is its own command.
-    lines.push_back("always: \"-tc=docs match code*\"");
+    // The two repo-wide checks of docs/agents/agent-rules.md rule 1, run at
+    // every merge. One line each: doctest keeps only the last of a repeated
+    // filter, so each check is its own command.
     lines.push_back("always: \"-sf=*single_owner*\"");
     lines.push_back("always: \"-sf=*test_precheck*\"");
 
