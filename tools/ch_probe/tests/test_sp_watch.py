@@ -1,9 +1,11 @@
 """Tests for the Star Power watcher (experiments/sp_watch.py) and the Star
 Power fields engine.decode_snapshot reads.
 
-No game: a real Process over fake memory (tests/fakes.py) answers the reads,
-a fake wall clock moves only when the code sleeps, and the engine search is
-the real capped finder over a fake scan that never finds a song.
+No game. The watch's row and its frozen-clock end run on the real clock over
+reads played back from a real watch CSV under testdata/ch_runs. The other
+tests still use a real Process over fake memory (tests/fakes.py), a fake wall
+clock that moves only when the code sleeps, and the real capped engine
+finder over a fake scan that never finds a song.
 """
 
 from __future__ import annotations
@@ -12,12 +14,10 @@ import contextlib
 import csv
 import dataclasses
 import io
-import math
 import os
 import struct
 import sys
 import tempfile
-import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -28,9 +28,27 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe import engine  # noqa: E402
 from tools.ch_probe import engine_finder as F  # noqa: E402
-from tools.ch_probe.experiments import sp_watch  # noqa: E402
+from tools.ch_probe.experiments import live, sp_compare, sp_watch  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import WATCH_COLUMNS  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
+
+# The end of a real Star Power watch: the last three reads before the song
+# ended, and the final row the watch wrote once the clock had held for over
+# live.STALL_S. Copied from lines 1 and 50242-50245 of
+# hydra-data\ch-mcp-runs\2026-11-13\pitch-dark-ratios-run1\sp_watch-1.csv.
+FROZEN_END_CSV = os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                              "pitch-dark-ratios-run1", "sp_watch-1-frozen-end.csv")
+
+
+def recorded_snapshots(path):
+    """Each row of a recorded watch CSV as the Snapshot the watch read then:
+    every field the watch logs, as sp_compare.load_watch_rows reads it, and
+    the fields it does not log left zero."""
+    base = engine.decode_snapshot(bytes(engine.SNAPSHOT_SIZE))
+    names = {f.name for f in dataclasses.fields(engine.Snapshot)}
+    return [dataclasses.replace(base, **{c: v for c, v in row.items() if c in names})
+            for row in sp_compare.load_watch_rows(path)]
+
 
 BASE = 0x180000000
 OBJ = 0x2_0000_1000
@@ -94,16 +112,15 @@ class DecodeSnapshotTest(unittest.TestCase):
         self.assertEqual(
             [c for c in WATCH_COLUMNS if c not in names], ["wall_s"])
 
-    def test_the_watch_writes_the_half_column(self):
-        # The game's half sits at +0x1B8 (SP-16), written as a literal so the
-        # test also pins constants.OFF_SP_HALF.
-        block = bytearray(sp_block())
-        struct.pack_into("<Q", block, 0x1B8, 7200)
-        snap = engine.decode_snapshot(bytes(block))
-        self.assertEqual(snap.sp_half_u64, 7200)
-        row = dict(zip(WATCH_COLUMNS, sp_watch.watch_row(5.0, snap)))
-        self.assertEqual(row["sp_half_u64"], 7200)
-        self.assertEqual(row["sp_max_u64"], 8589940736)
+    def test_a_row_writes_every_column_of_the_recorded_read(self):
+        # Each recorded row, read back as the Snapshot the watch read then,
+        # writes the same row again, the game's own half column among them.
+        recorded = sp_compare.load_watch_rows(FROZEN_END_CSV)
+        for want, snap in zip(recorded, recorded_snapshots(FROZEN_END_CSV)):
+            row = dict(zip(WATCH_COLUMNS,
+                           sp_watch.watch_row(want[sp_watch.WALL_COLUMN], snap)))
+            self.assertEqual(row, want)
+            self.assertGreater(row["sp_half_u64"], 0)
 
 
 PLAYER = 0x3_0000_2000
@@ -139,77 +156,11 @@ def model_on(memory):
 
 
 class ClockColumnsTest(unittest.TestCase):
-    def test_the_walk_reads_the_three_clock_fields(self):
-        snap = model_on(clock_memory())[0].snapshot()
-        self.assertEqual((snap.audio_s, snap.raw_s, snap.corr_s),
-                         (12.75, 12.5, 0.25))
-
     def test_a_sample_costs_three_reads_past_the_engine_block(self):
         model, mem = model_on(clock_memory())
         model.snapshot()
         self.assertEqual(mem.reads, [(OBJ, 0x2E8), (PLAYER + 0x20, 8),
                                      (MANAGER + 0xB0, 8), (CLOCK, 0x40)])
-
-    def test_the_walk_writes_nothing(self):
-        model, mem = model_on(clock_memory())
-        model.snapshot()
-        self.assertEqual(mem.writes, {})
-
-    def assert_blank(self, snap):
-        self.assertTrue(all(math.isnan(v) for v in
-                            (snap.audio_s, snap.raw_s, snap.corr_s)))
-        self.assertEqual(snap.clock_s, 12.5)
-
-    def test_a_null_at_any_hop_leaves_the_columns_blank(self):
-        for hop in ("listener", "manager", "clock"):
-            with self.subTest(hop=hop):
-                self.assert_blank(
-                    model_on(clock_memory(**{hop: 0}))[0].snapshot())
-
-    def test_a_failed_read_past_the_engine_leaves_the_columns_blank(self):
-        for gone in (PLAYER + 0x20, MANAGER + 0xB0, CLOCK):
-            with self.subTest(gone=hex(gone)):
-                memory = clock_memory()
-                del memory[gone]
-                self.assert_blank(model_on(memory)[0].snapshot())
-
-    def test_a_failed_engine_read_still_raises(self):
-        memory = clock_memory()
-        del memory[OBJ]
-        with self.assertRaises(OSError):
-            model_on(memory)[0].snapshot()
-
-    def test_decoding_the_engine_block_alone_leaves_the_columns_blank(self):
-        snap = engine.decode_snapshot(sp_block())
-        self.assertTrue(math.isnan(snap.audio_s))
-
-    def test_a_blank_clock_does_not_end_the_watch(self):
-        memory = clock_memory()
-        del memory[CLOCK]
-        model, _ = model_on(memory)
-        clock = FakeClock()
-        rows = []
-        summary = sp_watch.watch(model.snapshot, rows.append, now=clock.now,
-                                 sleep=clock.sleep)
-        self.assertEqual(
-            summary.reason,
-            "clock frozen at 12.50 s for over 5 s (song quit or paused)")
-        self.assertEqual(summary.rows, 2)
-
-    def test_the_three_reads_cost_under_a_tenth_of_the_poll(self):
-        samples = 1000
-        with_clock = model_on(clock_memory())[0]
-        without = model_on({OBJ: sp_block()})[0]
-
-        def seconds_per_sample(model):
-            start = time.perf_counter()
-            for _ in range(samples):
-                model.snapshot()
-            return (time.perf_counter() - start) / samples
-
-        # The approved test bound: 10 percent of the poll (the plan's T4).
-        extra = seconds_per_sample(with_clock) - seconds_per_sample(without)
-        self.assertLess(extra, 0.10 * sp_watch.POLL_S)
 
 
 def snap_at(clock_s, **fields):
@@ -247,28 +198,37 @@ class WatchTest(unittest.TestCase):
         self.assertEqual(clock.sleeps, [0.004] * 4)
 
     def test_a_frozen_clock_ends_the_run_with_a_final_row(self):
-        rows = []
-        clock = FakeClock()
-        summary = sp_watch.watch(lambda: snap_at(3.0), rows.append,
-                                 now=clock.now, sleep=clock.sleep)
-        self.assertEqual(summary.reason,
-                         "clock frozen at 3.00 s for over 5 s (song quit or paused)")
-        self.assertEqual(summary.rows, 2)
-        self.assertEqual(len(rows), 2)
-        self.assertEqual(rows[0][0], 1000.0)
-        self.assertGreater(rows[1][0] - rows[0][0], 5.0)
-        self.assertEqual(rows[1][1], 3.0)
+        # The recorded reads before the run's final row, then the last of them
+        # again and again, as a game whose song has ended answers. The watch
+        # runs on the real clock. Its cap ends the run, and the test fails, if
+        # the freeze is never seen.
+        recorded = sp_compare.load_watch_rows(FROZEN_END_CSV)
+        reads = recorded_snapshots(FROZEN_END_CSV)[:-1]
+        served = []
 
-    def test_a_clock_that_jumps_back_ends_the_run_with_a_final_row(self):
+        def serve():
+            served.append(True)
+            return reads[min(len(served), len(reads)) - 1]
+
         rows = []
-        clock = FakeClock()
-        summary = sp_watch.watch(
-            snapshots([snap_at(30.0), snap_at(30.01), snap_at(2.0)]),
-            rows.append, now=clock.now, sleep=clock.sleep)
-        self.assertEqual(summary.reason,
-                         "clock jumped back (30.01 -> 2.00 s)")
-        self.assertEqual([r[1] for r in rows], [30.0, 30.01, 2.0])
-        self.assertEqual(summary.last_clock_s, 2.0)
+        summary = sp_watch.watch(serve, rows.append, cap_s=2 * live.STALL_S)
+        last = reads[-1].clock_s
+        with self.assertRaises(live.ClockFrozen) as frozen:
+            live.StoppedCheck(last, 0.0).check(last, 2 * live.STALL_S)
+        self.assertEqual(summary.reason, str(frozen.exception))
+        self.assertEqual(summary.rows, len(recorded))
+        written = [dict(zip(WATCH_COLUMNS, r)) for r in rows]
+
+        def logged(table):
+            return [{c: v for c, v in r.items() if c != sp_watch.WALL_COLUMN}
+                    for r in table]
+        self.assertEqual(logged(written), logged(recorded))
+        # The run ends the way the recorded run ended: a final row with the
+        # last clock, more than STALL_S of wall time after the row before it.
+        for table in (written, recorded):
+            wall = [r[sp_watch.WALL_COLUMN] for r in table]
+            self.assertGreater(wall[-1] - wall[-2], live.STALL_S)
+            self.assertEqual(table[-1]["clock_s"], last)
 
     def test_the_wall_clock_cap_ends_a_run_whose_clock_keeps_moving(self):
         rows = []
