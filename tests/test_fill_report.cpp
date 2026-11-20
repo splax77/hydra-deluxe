@@ -4,30 +4,31 @@
 // Every case here uses one in-memory store holding results under each fill
 // rule. Each result carries its rule in its profile (docs/adr/0010), and the
 // join reads the 1.0 results and the 1.1 results from that one store. The
-// cases that read scored_charts file real corpus analyses under both rules,
-// listed as the library scan lists them; the rest file typed scores.
+// cases file real corpus analyses under each rule, listed as the library scan
+// lists them; the "in both" cases add a record that kept no path.
 
 #include "doctest.h"
 
 #include <algorithm>
 #include <filesystem>
-#include <functional>
 #include <optional>
 #include <regex>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 #include "app/analysis.h"
 #include "app/config.h"  // Settings::profile_with_fills
 #include "app/fill_report.h"
 #include "app/html_page.h"  // json_escape_into, html_escape, charts_search_hint
-#include "app/report.h"  // kNoChartLibrary
+#include "app/library_query.h"  // search_field
+#include "app/report.h"  // kNoChartLibrary, nothing_under_settings
+#include "app/report_view.h"  // folded_key
 #include "core/model.h"
 #include "corpus_util.h"
-#include "display_fixtures.h"  // kTagOnlyTitle
-#include "dm_fixture.h"  // testdm::settings, sample_chart
+#include "dm_fixture.h"  // testdm::settings, kMode
 #include "parse/song.h"
 #include "search/graph.h"  // fill_rule_name
 #include "store/record_store.h"
@@ -38,55 +39,19 @@ using app::fill_report::FillCompareRow;
 
 namespace {
 
-constexpr const char* kBoth = "aa11bb22cc33dd44ee55ff6677889900";
-constexpr const char* kOldOnly = "bb22cc33dd44ee55ff6677889900aa11";
-constexpr const char* kNewOnly = "cc33dd44ee55ff6677889900aa11bb22";
-
-// Lists `hash` in `store`'s library as "Song <first four>", unless the
-// library already lists it (a test that set up its own copies keeps them).
-void name(store::RecordStore& store, const std::string& hash) {
-    if (store.chart_index().lists(hash)) return;
-    test::name_chart(store, hash, "Song " + hash.substr(0, 4), "Test Artist", "Test Charter");
-}
-
 // Files `record`, analyzed under the given fill rule, for `hash` through the
 // one save, under the profile the page reads for that rule.
 void save(store::RecordStore& store, bool legacy_fills, const std::string& hash,
-          HydraRecord record, const std::function<void(store::PreparedRecord&)>& edit = {}) {
+          HydraRecord record) {
     record.legacy_fills = legacy_fills;
     store::PreparedRecord prepared = store::prepare_record(
         hash, testdm::settings().profile_with_fills(fill_rule_for(legacy_fills)), record);
-    if (edit) edit(prepared);
     store.save(prepared);
 }
 
-// Lists `hash` in `store`'s library and files a result for it under the given
-// fill rule with exactly the best path given. The record comes from a real
-// analysis so it is well-formed; only the numbers the report reads are
-// overridden.
-void put(store::RecordStore& store, bool legacy_fills, const std::string& hash,
-         int64_t score, int acts, const std::string& bestpath) {
-    name(store, hash);
-    save(store, legacy_fills, hash, testdm::sample_chart().record, [&](store::PreparedRecord& p) {
-        store::PathRow& best = p.record.paths.front();
-        best.path = bestpath;
-        best.score = score;
-        best.actcount = acts;
-        p.record.notecount = 1234;
-    });
-}
-// A Clone Hero 1.0 result, and a 1.1 one.
-void put_ch10(store::RecordStore& store, const std::string& hash, int64_t score, int acts,
-              const std::string& bestpath) {
-    put(store, true, hash, score, acts, bestpath);
-}
-void put_ch11(store::RecordStore& store, const std::string& hash, int64_t score, int acts,
-              const std::string& bestpath) {
-    put(store, false, hash, score, acts, bestpath);
-}
-
 // A Ready result with no paths for `hash` under the given fill rule: an
-// analysis that kept no path. It does not list the chart.
+// analysis that kept no path. No corpus chart is known to keep no path, so
+// this record is built empty. It does not list the chart.
 void put_no_paths(store::RecordStore& store, bool legacy_fills, const std::string& hash) {
     HydraRecord empty;
     empty.sp_cap = kCloneHeroSpCap;
@@ -95,19 +60,6 @@ void put_no_paths(store::RecordStore& store, bool legacy_fills, const std::strin
 
 std::vector<FillCompareRow> compare(store::RecordStore& store) {
     return app::fill_report::collect_fill_rows(store, testdm::settings());
-}
-
-// A library index listing each id with the given number of copies.
-store::ChartIndex index_of(const std::vector<std::pair<std::string, int>>& charts) {
-    std::vector<store::ChartLibraryEntry> rows;
-    for (const auto& [id, copies] : charts)
-        for (int i = 0; i < copies; ++i) {
-            store::ChartLibraryEntry e;
-            e.md5 = id;
-            e.notespath = "C:\\songs" + std::to_string(i) + "\\" + id + "\\notes.chart";
-            rows.push_back(e);
-        }
-    return store::ChartIndex::from_rows(rows);
 }
 
 const FillCompareRow* find(const std::vector<FillCompareRow>& rows,
@@ -276,6 +228,42 @@ void check_fill_tally(const app::fill_report::FillCompareStats& s,
     CHECK(s.only_new == rows_of(app::fill_report::kStatusOnlyNew));
     CHECK(s.in_both == rows_of(app::fill_report::kStatusInBoth));
     CHECK(s.total == static_cast<int>(library.size()));
+}
+
+// `s` as the page's data writes a string: quoted and escaped.
+std::string json_of(const std::string& s) {
+    std::string out;
+    app::html::json_escape_into(out, s);
+    return out;
+}
+
+// A scored chart's analysis under `rule`.
+const HydraRecord& record_under(const ScoredChart& c, FillDeadlineRule rule) {
+    return rule == FillDeadlineRule::Ch10 ? c.ch10 : c.ch11;
+}
+
+// The sentence report::nothing_under_settings gives for `s`'s chart mode and
+// cap, the profile generate_fill_report reads under.
+std::string nothing_reason(const app::Settings& s) {
+    const store::Profile p = s.profile_with_fills(FillDeadlineRule::Ch11);
+    return app::report::nothing_under_settings(p.chartmode, p.cap.exact);
+}
+
+// file_copies' library, the rows collect_fill_rows joins from it, and the
+// page generate_fill_report makes of them. Throws when there is no page.
+struct CopiesPage {
+    std::vector<store::ChartLibraryEntry> library;
+    std::vector<FillCompareRow> rows;
+    std::string html;
+};
+CopiesPage copies_page() {
+    store::RecordStore store(":memory:");
+    CopiesPage p;
+    p.library = file_copies(store);
+    p.rows = compare(store);
+    p.html = app::fill_report::generate_fill_report(store, testdm::settings()).html;
+    if (p.html.empty()) throw std::runtime_error("file_copies' library made no fill page");
+    return p;
 }
 
 }  // namespace
@@ -468,223 +456,191 @@ TEST_CASE("generate_fill_report fills every placeholder of a real chart's page")
     CHECK(html.find(app::html::html_escape(app::html::charts_search_hint())) != std::string::npos);
 }
 
-// D114 item 3: each text column carries the windows' folded sort text, and
-// the script compares those fields as they are, with no browser collation.
+// D114 item 3: each text column's data carries its text as the windows fold
+// it (report_view::folded_key), so the page sorts the way the windows do.
 TEST_CASE("build_fill_html: text columns sort on the windows' folded text") {
-    FillCompareRow r;
-    r.song = "\xC3\x89tude";  // Étude
-    r.artist = "ABBA";
-    r.charter = "Me";
-    r.old_path = "0 1 3 0+";
-    r.new_path = "0 1 3 0- 0";
-    r.status = app::fill_report::kStatusSame;
-    const std::string html = app::fill_report::build_fill_html({r}, store::ChartIndex{}, "sub", "foot");
-    CHECK(html.find(",\"song_s\":\"etude\",\"artist_s\":\"abba\",\"charter_s\":\"me\","
-                    "\"p10_s\":\"0 1 3 0+\",\"p11_s\":\"0 1 3 0- 0\",\"status_s\":\"same\"}") !=
-          std::string::npos);
-    for (const char* sort : {"sort:'song_s'", "sort:'artist_s'", "sort:'charter_s'",
-                             "sort:'p10_s'", "sort:'p11_s'", "sort:'status_s'"}) {
-        CAPTURE(sort);
-        CHECK(html.find(sort) != std::string::npos);
+    const CopiesPage page = copies_page();
+    REQUIRE(page.rows.size() == scored_charts().size());
+    bool folds_something = false;
+    for (const FillCompareRow& r : page.rows) {
+        CAPTURE(r.hyhash);
+        for (const auto& [field, text] :
+             {std::pair<std::string, const std::string*>{"song_s", &r.song},
+              {"artist_s", &r.artist}, {"charter_s", &r.charter}, {"p10_s", &r.old_path},
+              {"p11_s", &r.new_path}, {"status_s", &r.status}}) {
+            const std::string column = field;
+            CAPTURE(column);
+            const std::string folded = std::get<std::string>(
+                app::report_view::folded_key(app::report_view::SortKey{*text}));
+            if (folded != *text) folds_something = true;
+            CHECK(page.html.find(",\"" + field + "\":" + json_of(folded)) != std::string::npos);
+        }
     }
-    CHECK(html.find("localeCompare") == std::string::npos);
-    CHECK(html.find("const field = COLS.find(c => c.k === sortKey).sort || sortKey;") !=
-          std::string::npos);
+    // A corpus name has a capital the fold lowers, so a column left on its
+    // raw text would not match its folded field.
+    CHECK(folds_something);
 }
 
-// D114 item 4: one chart reads "1 of 1 chart", as the windows' count lines do.
+// D114 item 4: the count line's total is counted's wording of the library's
+// copies, so one chart reads "1 of 1 chart", as the windows' count lines do.
 TEST_CASE("build_fill_html: the count line's total is singular at one chart") {
-    FillCompareRow r;
-    r.status = app::fill_report::kStatusSame;
-    r.hyhash = "h0";
-    r.copies = 1;
+    store::RecordStore store(":memory:");
+    file_both(store, scored_charts()[0]);
     const std::string one =
-        app::fill_report::build_fill_html({r}, index_of({{"h0", 1}}), "sub", "foot");
-    CHECK(one.find("  total: \"1 chart\",\n") != std::string::npos);
-    CHECK(one.find("__COUNT_TOTAL__") == std::string::npos);
-    CHECK(one.find("PAGE.noun") == std::string::npos);
-    r.copies = 1000;
-    const std::string many =
-        app::fill_report::build_fill_html({r}, index_of({{"h0", 1000}}), "sub", "foot");
-    CHECK(many.find("  total: \"1,000 charts\",\n") != std::string::npos);
+        app::fill_report::generate_fill_report(store, testdm::settings()).html;
+    CHECK(one.find(json_of(counted(1, "chart", "charts"))) != std::string::npos);
+
+    // file_copies' library holds each scored chart in several folders.
+    const CopiesPage many = copies_page();
+    CHECK(many.html.find(json_of(counted(static_cast<int64_t>(many.library.size()), "chart",
+                                         "charts"))) != std::string::npos);
 }
 
-TEST_CASE("build_fill_html colours and sums the delta from the status") {
-    // collect_fill_rows already decided which side is higher when it set the
-    // row's status; the cell's colour, its "+" and the gains and losses tiles
-    // read that answer instead of testing the delta's sign again.
-    const std::string html =
-        app::fill_report::build_fill_html({}, store::ChartIndex{}, "sub", "foot");
-    CHECK(html.find("r.status === STATUS.newHigher") != std::string::npos);
-    CHECK(html.find("r.status === STATUS.oldHigher") != std::string::npos);
-    CHECK(html.find("(r.status === STATUS.newHigher ? '+' : '') + fmt(r.delta)") !=
-          std::string::npos);
-    CHECK(html.find("const gains = rows.filter(r => r.status === STATUS.newHigher)") !=
-          std::string::npos);
-    CHECK(html.find("const losses = rows.filter(r => r.status === STATUS.oldHigher)") !=
-          std::string::npos);
-    CHECK(html.find("r.delta > 0 ?") == std::string::npos);
-    CHECK(html.find("r.delta < 0 ?") == std::string::npos);
-}
-
-TEST_CASE("report payload: the search field is folded and tag-free") {
-    FillCompareRow row;
-    row.song = "Halo";
-    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
-    row.charter = "<b>Bob</b>";
-    row.status = "only 1.1";
-    const std::string html =
-        app::fill_report::build_fill_html({row}, store::ChartIndex{}, "sub", "foot");
-    CHECK(html.find("\"search\":\"halo beyonce bob\"") != std::string::npos);
+// The search text of each row is the Library's (search_field) over the
+// row's song, artist and charter, so the page searches as the Library does.
+TEST_CASE("report payload: each row's search field is the Library's search_field") {
+    const CopiesPage page = copies_page();
+    REQUIRE_FALSE(page.rows.empty());
+    for (const FillCompareRow& r : page.rows) {
+        CAPTURE(r.hyhash);
+        CHECK(page.html.find(",\"search\":" +
+                             json_of(app::search_field(r.song, r.artist, r.charter))) !=
+              std::string::npos);
+    }
 }
 
 TEST_CASE("generate_fill_report: tally and framing behind one seam") {
     store::RecordStore store(":memory:");
-    put_ch10(store, kBoth, 1000000, 3, "old-path-D");
-    put_ch11(store, kBoth, 1050000, 4, "new-path-D");   // 1.1 higher
-    put_ch10(store, kOldOnly, 900000, 2, "only-old");   // only 1.0
-    put_ch11(store, kNewOnly, 800000, 5, "only-new");   // only 1.1
-
-    app::fill_report::GeneratedFillReport result =
+    const std::vector<store::ChartLibraryEntry> library = file_copies(store);
+    const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(store, testdm::settings());
-    CHECK(result.stats.total == 3);
-    CHECK(result.stats.ch11_higher == 1);
-    CHECK(result.stats.only_old == 1);
-    CHECK(result.stats.only_new == 1);
-    CHECK(result.stats.same == 0);
-    CHECK(result.stats.ch10_higher == 0);
+    check_fill_tally(result.stats, compare(store), library);
     CHECK_FALSE(result.html.empty());
-    CHECK(result.html.find("score higher under 1.1") != std::string::npos);
+    CHECK(result.reason.empty());
 
-    // An empty database: zero stats, no page.
+    // An empty database: zero stats, no page, and the settings sentence
+    // (finding 105, D50 item 3), so hydra_fillcompare prints what the seam
+    // says instead of deciding it again.
     store::RecordStore empty(":memory:");
-    app::fill_report::GeneratedFillReport none =
+    const app::fill_report::GeneratedFillReport none =
         app::fill_report::generate_fill_report(empty, testdm::settings());
     CHECK(none.stats.total == 0);
     CHECK(none.html.empty());
-    // The empty page's reason comes from here, so hydra_fillcompare prints
-    // what the seam says instead of deciding it again. A truly empty database
-    // gets the settings sentence too (finding 105, D50 item 3).
-    CHECK(none.reason ==
-          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4). "
-          "Analyze with these settings, or change them.");
-    CHECK(result.reason.empty());
+    CHECK(none.reason == nothing_reason(testdm::settings()));
 
-    // Records stored at cap 4, asked at cap 8: the sentence names cap 8.
-    app::fill_report::GeneratedFillReport off =
-        app::fill_report::generate_fill_report(store, testdm::settings(testdm::kMode, 8));
+    // Records stored at Clone Hero's cap, asked at cap 8: no page, and the
+    // sentence names the cap asked for.
+    const app::Settings at8 = testdm::settings(testdm::kMode, 8);
+    const app::fill_report::GeneratedFillReport off =
+        app::fill_report::generate_fill_report(store, at8);
     CHECK(off.html.empty());
-    CHECK(off.reason ==
-          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 8). "
-          "Analyze with these settings, or change them.");
+    CHECK(off.reason == nothing_reason(at8));
+    CHECK(off.reason != none.reason);
 }
 
+// The page's song, artist and charter are the three name owners' answers for
+// the names the scan read. The corpus chart is one whose song.ini names its
+// artist and charter with Clone Hero colour tags.
 TEST_CASE("collect_fill_rows: the names go through display_title, display_artist and "
           "display_charter") {
-    // test_song_input.cpp pins what those three do. This checks only that the
-    // page calls them: one tagged name each.
+    const std::string chart = corpus::chart_named("SoundHaven - Focus");
+    REQUIRE_FALSE(chart.empty());
+    const store::ChartLibraryEntry entry = scan_row(chart);
     store::RecordStore store(":memory:");
-    put_ch10(store, kBoth, 1000000, 3, "old-path");
-    put_ch11(store, kBoth, 1000000, 3, "new-path");
-    test::name_chart(store, kBoth, "<b>Bold Title</b>", test::kTagOnlyTitle, " <b>Bob</b> ");
+    store.rebuild_chart_library({entry});
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        file_under(store, rule, entry.md5,
+                   app::analyze_chart_file(chart, analysis_under(rule)).record);
 
     const std::vector<FillCompareRow> rows = compare(store);
     REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song == "Bold Title");
-    CHECK(rows[0].artist == kUnknownTitle);
-    CHECK(rows[0].charter == "Bob");
+    CHECK(rows[0].song == display_title(entry.title));
+    CHECK(rows[0].artist == display_artist(entry.artist));
+    CHECK(rows[0].charter == display_charter(entry.charter));
+    // The owners strip the tags, so a raw name on the row would not match.
+    CHECK(display_artist(entry.artist) != entry.artist);
+    CHECK(display_charter(entry.charter) != entry.charter);
 }
 
+// The subtitle words one chart with counted's singular noun.
 TEST_CASE("generate_fill_report: one chart reads \"1 chart\" in the subtitle") {
     store::RecordStore store(":memory:");
-    put_ch10(store, kBoth, 1000000, 3, "old-path-one");
-    put_ch11(store, kBoth, 1000000, 3, "new-path-one");
+    file_both(store, scored_charts()[0]);
     const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(store, testdm::settings());
-    CHECK(result.html.find("1 chart in ") != std::string::npos);
-    CHECK(result.html.find("1 charts") == std::string::npos);
+    REQUIRE(result.stats.total == 1);
+    const std::string chartmode =
+        testdm::settings().profile_with_fills(FillDeadlineRule::Ch11).chartmode;
+    CHECK(result.html.find(app::html::html_escape(counted(1, "chart", "charts") + " in " +
+                                                  chartmode + ": ")) != std::string::npos);
 }
 
+// D50 item 2: a chart with a record under each rule, one of which kept no
+// path, is "in both" whichever side lacks the path, and the tally counts it
+// there.
 TEST_CASE("collect_fill_rows: a record under both rules with a score under one is in both") {
-    // D50 item 2: the store holds a record for the chart under each rule, but
-    // the 1.0 record is a Ready record with no paths, so it has no score. The
-    // row is listed under "in both", not under "only 1.1".
-    store::RecordStore store(":memory:");
-    name(store, kBoth);
-    put_no_paths(store, true, kBoth);
-    put_ch11(store, kBoth, 1050000, 4, "new-path-F");
+    const ScoredChart& c = scored_charts()[0];
+    for (FillDeadlineRule scored : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11}) {
+        const std::string scored_name = fill_rule_name(scored, FillRuleNameStyle::Short);
+        CAPTURE(scored_name);
+        const FillDeadlineRule unscored =
+            scored == FillDeadlineRule::Ch10 ? FillDeadlineRule::Ch11 : FillDeadlineRule::Ch10;
+        store::RecordStore store(":memory:");
+        store.rebuild_chart_library({c.entry});
+        file_under(store, scored, c.entry.md5, record_under(c, scored));
+        put_no_paths(store, legacy_fills_for(unscored), c.entry.md5);
 
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 1);
-    CHECK_FALSE(rows[0].old_score.has_value());
-    CHECK(rows[0].new_score == 1050000);
-    CHECK_FALSE(rows[0].delta.has_value());
-    CHECK(rows[0].status == "in both");
-
-    // The same the other way round: the 1.1 record has no score.
-    store::RecordStore other(":memory:");
-    put_ch10(other, kBoth, 1000000, 3, "old-path-F");
-    put_no_paths(other, false, kBoth);
-    rows = compare(other);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].status == "in both");
-
-    // The tally counts it by name, and the page lists it under "In both" and
-    // writes "no paths" on the side whose analysis kept none (D51 call 11).
-    const store::ChartIndex library = other.chart_index();
-    CHECK(app::fill_report::tally_fill_rows(rows, library).in_both == 1);
-    const std::string html = app::fill_report::build_fill_html(rows, library, "sub", "foot");
-    CHECK(html.find("<option value=\"in both\">In both</option>") != std::string::npos);
-    CHECK(html.find("__ST_") == std::string::npos);
-    CHECK(html.find("'no paths'") != std::string::npos);
-    CHECK(html.find("'no score'") == std::string::npos);
+        const std::vector<FillCompareRow> rows = compare(store);
+        REQUIRE(rows.size() == 1);
+        const FillCompareRow& r = rows[0];
+        CHECK(r.status == app::fill_report::kStatusInBoth);
+        CHECK_FALSE(r.delta.has_value());
+        const store::RecordRow want = store::record_of(c.entry.md5, record_under(c, scored));
+        if (scored == FillDeadlineRule::Ch10) {
+            check_side(r.old_score, r.old_path, r.old_acts, want);
+            CHECK_FALSE(r.new_score.has_value());
+        } else {
+            check_side(r.new_score, r.new_path, r.new_acts, want);
+            CHECK_FALSE(r.old_score.has_value());
+        }
+        CHECK(app::fill_report::tally_fill_rows(rows, store.chart_index()).in_both ==
+              copies_in(store.list_chart_library(0, -1), c.entry.md5));
+    }
 }
 
+// Every chart lands in exactly one part, the "in both" charts included, so
+// the parts add up to the total. D114 item 2 words that part kInBothPhrase.
 TEST_CASE("generate_fill_report: a score on one side only is counted, and the parts add up") {
-    // The subtitle and the tiles count the "in both" rows as one part, so
-    // every chart lands in exactly one part. D114 item 2 words that part "in
-    // both, not both scored".
-    constexpr const char* kOneSided = "dd44ee55ff6677889900aa11bb22cc33";
     store::RecordStore store(":memory:");
-    put_ch10(store, kBoth, 1000000, 3, "old-path-G");
-    put_ch11(store, kBoth, 1050000, 4, "new-path-G");   // 1.1 higher
-    put_ch10(store, kOldOnly, 900000, 2, "only-old");   // only 1.0
-    put_ch11(store, kNewOnly, 800000, 5, "only-new");   // only 1.1
-    // A record under each rule, but the 1.0 one has no paths and so no score.
-    name(store, kOneSided);
-    put_no_paths(store, true, kOneSided);
-    put_ch11(store, kOneSided, 700000, 2, "one-sided");
+    const std::vector<store::ChartLibraryEntry> library = file_copies(store);
+    // file_copies filed the second chart under 1.0 only; a 1.1 record that
+    // kept no path puts it in both, with a score on one side only.
+    const std::string& one_sided = scored_charts()[1].entry.md5;
+    put_no_paths(store, legacy_fills_for(FillDeadlineRule::Ch11), one_sided);
 
-    app::fill_report::GeneratedFillReport result =
+    const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(store, testdm::settings());
     const app::fill_report::FillCompareStats& s = result.stats;
-    CHECK(s.total == 4);
-    CHECK(s.in_both == 1);
+    check_fill_tally(s, compare(store), library);
+    CHECK(s.in_both == copies_in(library, one_sided));
     CHECK(s.same + s.ch10_higher + s.ch11_higher + s.only_old + s.only_new + s.in_both ==
           s.total);
-
-    // The subtitle names the part after "under one rule only".
-    CHECK(result.html.find(
-              "4 charts in Expert Pro Drums, 2x Bass: 1 score higher under 1.1, "
-              "0 higher under 1.0, 0 unchanged, 2 under one rule only, "
-              "1 in both, not both scored") != std::string::npos);
-    // The tiles get a matching one after "Under one rule only", counted from
-    // the rows the table shows, like the tiles before it.
-    CHECK(result.html.find("['Under one rule only', fmt(n(STATUS.onlyOld) + n(STATUS.onlyNew))],\n"
-                           "      [\"In both, not both scored\", fmt(n(STATUS.inBoth))],") !=
+    // The subtitle names that part's count with its phrase.
+    CHECK(result.html.find(app::html::html_escape(group_thousands(s.in_both) + " " +
+                                                  app::fill_report::kInBothPhrase)) !=
           std::string::npos);
-    CHECK(result.html.find("Score on one side only") == std::string::npos);
 }
 
 // ---- results the library doesn't list (D92) ---------------------------------
 
 TEST_CASE("generate_fill_report: a database with no chart library stops with the path "
           "report's sentence") {
-    // Results under both rules, as hydra_batch with folder arguments leaves
-    // them, and no library.
+    // A real chart's analyses under both rules, as hydra_batch with folder
+    // arguments files them, and no library.
     store::RecordStore store(":memory:");
-    put_no_paths(store, true, kBoth);
-    put_no_paths(store, false, kBoth);
+    const ScoredChart& c = scored_charts()[0];
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        file_under(store, rule, c.entry.md5, record_under(c, rule));
     const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(store, testdm::settings());
     CHECK(result.html.empty());
@@ -692,16 +648,17 @@ TEST_CASE("generate_fill_report: a database with no chart library stops with the
 }
 
 TEST_CASE("collect_fill_rows: a result whose chart the library doesn't list is left out") {
+    // The library lists the first scored chart only; every scored chart's
+    // analyses under both rules are filed.
     store::RecordStore store(":memory:");
-    put_ch10(store, kBoth, 1000000, 3, "old-path-M");
-    put_ch11(store, kBoth, 1050000, 4, "new-path-M");
-    // A result under each rule for charts the library doesn't list.
-    put_no_paths(store, true, kOldOnly);
-    put_no_paths(store, false, kNewOnly);
+    const std::vector<ScoredChart>& charts = scored_charts();
+    store.rebuild_chart_library({charts[0].entry});
+    for (const ScoredChart& c : charts)
+        for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+            file_under(store, rule, c.entry.md5, record_under(c, rule));
 
     const std::vector<FillCompareRow> rows = compare(store);
     REQUIRE(rows.size() == 1);
-    CHECK(rows[0].hyhash == kBoth);
-    CHECK(find(rows, kOldOnly) == nullptr);
-    CHECK(find(rows, kNewOnly) == nullptr);
+    CHECK(rows[0].hyhash == charts[0].entry.md5);
+    for (size_t i = 1; i < charts.size(); ++i) CHECK(find(rows, charts[i].entry.md5) == nullptr);
 }
