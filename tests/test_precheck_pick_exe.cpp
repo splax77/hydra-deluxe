@@ -27,12 +27,11 @@ using namespace precheck_fixture;
 namespace {
 
 const std::vector<std::string> kAlways = {
-    "always: \"-tc=docs match code*\"",
     "always: \"-sf=*single_owner*\"",
     "always: \"-sf=*test_precheck*\"",
 };
 
-// The printed lines: the tests line, the three always lines, then `rest`.
+// The printed lines: the tests line, the two always lines, then `rest`.
 std::vector<std::string> expected_lines(const std::string& tests_line, const std::vector<std::string>& rest) {
     std::vector<std::string> out{tests_line};
     out.insert(out.end(), kAlways.begin(), kAlways.end());
@@ -40,10 +39,10 @@ std::vector<std::string> expected_lines(const std::string& tests_line, const std
     return out;
 }
 
-// Lines 1 to 3 of a printed run, the always lines.
+// Lines 1 and 2 of a printed run, the always lines.
 std::vector<std::string> always_of(const std::vector<std::string>& lines) {
-    REQUIRE(lines.size() >= 4);
-    return {lines.begin() + 1, lines.begin() + 4};
+    REQUIRE(lines.size() >= 3);
+    return {lines.begin() + 1, lines.begin() + 3};
 }
 
 const std::string kRunBase =
@@ -194,9 +193,9 @@ TEST_CASE("precheck pick lines: patterns sort by name, kinds and counts print, w
     TestPick whole;
     whole.whole_suite = WholeSuite{"src/core/model.h", "header with more direct includers than 20", 94};
     const std::vector<std::string> lines = pick_lines(whole);
-    REQUIRE(lines.size() == 8);
+    REQUIRE(lines.size() == 7);
     CHECK(lines[0] == "tests: whole suite");
-    CHECK(lines[7] == "why: src/core/model.h  header with more direct includers than 20 (94)");
+    CHECK(lines[6] == "why: src/core/model.h  header with more direct includers than 20 (94)");
 
     TestPick size;
     size.whole_suite = WholeSuite{"", "more picked test files than 40", 45};

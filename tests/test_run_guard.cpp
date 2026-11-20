@@ -43,7 +43,7 @@ TEST_CASE("run guard: two spellings of one filter are both kept by doctest, so t
 TEST_CASE("run guard: well-formed command lines pass the argument check") {
     CHECK(refuse_arguments(Args{}) == std::nullopt);
     CHECK(refuse_arguments(Args{"-sf=*test_a.cpp,*test_b.cpp"}) == std::nullopt);
-    CHECK(refuse_arguments(Args{"-tc=docs match code*"}) == std::nullopt);
+    CHECK(refuse_arguments(Args{"-tc=code lexer*"}) == std::nullopt);
     // An include and an exclude of the same thing are two kinds.
     CHECK(refuse_arguments(Args{"-sf=*a*", "-sfe=*b*", "-tc=x*", "-tce=y*"}) == std::nullopt);
     // tools/check_shards.ps1's listing form.
