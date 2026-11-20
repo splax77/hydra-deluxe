@@ -1,8 +1,7 @@
 // Tests for app/preview_view's scene: the note-highway view-model the Preview
-// tab renders. A hand-built song pins the note/lane/attribute mapping and the
-// shaded spans exactly; the corpus cases confirm the SP-phrase-start the parser
-// keeps, that an analyzed chart's overlay lines up with its path, and that
-// the base plus the overlay equals the whole scene. The SP meter has its own
+// tab renders. Each drawn note, span and fill state is checked against the
+// Song's own data and the engine's paths, on the hand song and on the
+// corpus charts, and the base plus the overlay equals the whole scene. The SP meter has its own
 // file (test_sp_meter_curve.cpp), and so do the overlay boxes
 // (test_preview_boxes.cpp).
 
@@ -22,6 +21,8 @@
 #include "app/path_view.h"
 #include "core/model.h"
 #include "core/replay.h"
+#include "core/scoring.h"  // solo_note_count: the solo box's note count
+#include "core/timing.h"   // MeasureIndex: Clone Hero's measure grid
 #include "core/squeeze_rating.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -34,35 +35,51 @@ using namespace hydra;
 using namespace hydra::app;
 using namespace hydra::preview_fixtures;
 
+// Each of a song's chord notes, in the order the chord lists them, becomes
+// one drawn note on the lane of its colour, at its chord's tick and ms, with
+// the chord note's own cymbal, ghost, accent and 2x marks.
+static void check_notes_follow_song(const Song& song, const PreviewScene& scene) {
+    size_t k = 0;
+    for (const SongTimestamp& ts : song.sequence) {
+        for (const ChordNote& n : ts.chord.note_list()) {
+            REQUIRE(k < scene.notes.size());
+            const PreviewNote& pn = scene.notes[k++];
+            CHECK(pn.tick == ts.timecode.ticks());
+            CHECK(pn.ms == doctest::Approx(ts.timecode.ms()));
+            CHECK(pn.lane == lane_of(n.colortype));
+            CHECK(pn.cymbal == n.is_cymbal());
+            CHECK(pn.ghost == n.is_ghost());
+            CHECK(pn.accent == n.is_accent());
+            CHECK(pn.double_kick == n.is2x);
+        }
+    }
+    CHECK(k == scene.notes.size());
+}
+
 TEST_CASE("build_preview_scene: notes carry lane and drum attributes") {
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-
+    // The hand song holds a cymbal, a ghost, an accent and a 2x kick, so each
+    // mark is drawn at least once.
+    const Song song = make_hand_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.has_notes);
-    REQUIRE(scene.notes.size() == 5);  // 1 + 1 + 1 + 2 (Kick+Green)
+    check_notes_follow_song(song, scene);
+    CHECK(std::any_of(scene.notes.begin(), scene.notes.end(),
+                      [](const PreviewNote& n) { return n.cymbal; }));
+    CHECK(std::any_of(scene.notes.begin(), scene.notes.end(),
+                      [](const PreviewNote& n) { return n.ghost; }));
+    CHECK(std::any_of(scene.notes.begin(), scene.notes.end(),
+                      [](const PreviewNote& n) { return n.accent; }));
+    CHECK(std::any_of(scene.notes.begin(), scene.notes.end(),
+                      [](const PreviewNote& n) { return n.double_kick; }));
 
-    const PreviewNote& red = scene.notes[0];
-    CHECK(red.lane == PreviewLane::Red);
-    CHECK(red.tick == 0);
-    CHECK(red.ms == doctest::Approx(0.0));
-
-    const PreviewNote& yellow = scene.notes[1];
-    CHECK(yellow.lane == PreviewLane::Yellow);
-    CHECK(yellow.cymbal);
-    CHECK(yellow.ghost);
-    CHECK(yellow.ms == doctest::Approx(250.0));
-
-    const PreviewNote& blue = scene.notes[2];
-    CHECK(blue.lane == PreviewLane::Blue);
-    CHECK(blue.accent);
-
-    // The chord at tick 720 expands to Kick (2x) then Green, in KRYBG order.
-    CHECK(scene.notes[3].lane == PreviewLane::Kick);
-    CHECK(scene.notes[3].double_kick);
-    CHECK(scene.notes[4].lane == PreviewLane::Green);
-
-    // The song's length is the one the load hands in (D75); none was given.
-    CHECK(scene.song_length_ms == 0.0);
+    // The same holds note for note on every corpus chart.
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& real = corpus::song(chart, cfg.reading());
+        if (real.is_empty()) continue;
+        check_notes_follow_song(real, build_preview_scene(real, nullptr));
+    }
 }
 
 // color_of reads lane_of backwards, so a drawn lane can ask the core's colour
@@ -93,82 +110,89 @@ TEST_CASE("build_preview_scene: the song length is the one handed in, never a no
     CHECK(scene.beats.back().tick == before.beats.back().tick);
 }
 
-TEST_CASE("build_preview_scene: SP phrase, solo, and fill spans") {
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-
-    REQUIRE(scene.sp_phrases.size() == 1);
-    CHECK(scene.sp_phrases[0].start_tick == 240);
-    CHECK(scene.sp_phrases[0].end_tick == 720);
-    CHECK(scene.sp_phrases[0].start_ms == doctest::Approx(250.0));
-    CHECK(scene.sp_phrases[0].end_ms == doctest::Approx(750.0));
-
-    REQUIRE(scene.solos.size() == 1);
-    CHECK(scene.solos[0].start_tick == 240);
-    CHECK(scene.solos[0].end_tick == 480);
-
-    REQUIRE(scene.fills.size() == 1);
-    CHECK(scene.fills[0].span.start_tick == 240);  // 720 - 480
-    CHECK(scene.fills[0].span.end_tick == 720);
+// Each chord that ends an SP phrase draws one phrase span, in chart order,
+// from the start tick the parser kept on it to the chord itself.
+static void check_phrases_follow_song(const Song& song, const PreviewScene& scene) {
+    size_t k = 0;
+    for (const SongTimestamp& ts : song.sequence) {
+        if (!ts.flag_sp || !ts.sp_phrase_start.has_value()) continue;
+        REQUIRE(k < scene.sp_phrases.size());
+        const PreviewSpan& span = scene.sp_phrases[k++];
+        CHECK(span.start_tick == *ts.sp_phrase_start);
+        CHECK(span.end_tick == ts.timecode.ticks());
+        CHECK(span.start_ms == doctest::Approx(song.timecode(*ts.sp_phrase_start).ms()));
+        CHECK(span.end_ms == doctest::Approx(ts.timecode.ms()));
+    }
+    CHECK(k == scene.sp_phrases.size());
 }
 
-TEST_CASE("build_preview_scene: a fill whose chord sits before its measure line spans chord to line") {
-    Song song = make_hand_song();
-    for (SongTimestamp& ts : song.sequence)
-        if (ts.activation_length) ts.activation_length = -120;
+TEST_CASE("build_preview_scene: SP phrase spans run from the phrase's start to its end chord") {
+    const Song song = make_hand_song();
     const PreviewScene scene = build_preview_scene(song, nullptr);
-    REQUIRE(scene.fills.size() == 1);
-    CHECK(scene.fills[0].span.start_tick == 720);  // the chord
-    CHECK(scene.fills[0].span.end_tick == 840);    // the line
+    REQUIRE_FALSE(scene.sp_phrases.empty());
+    check_phrases_follow_song(song, scene);
+
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int phrases = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& real = corpus::song(chart, cfg.reading());
+        if (real.is_empty()) continue;
+        const PreviewScene s = build_preview_base(real);
+        check_phrases_follow_song(real, s);
+        phrases += static_cast<int>(s.sp_phrases.size());
+    }
+    // The corpus charts carry SP phrases, so none drawn would mean a lost span.
+    CHECK(phrases > 0);
 }
 
-// A generated fill draws as the half measure before its chord, whatever its
-// engine length (the user's ruling, 2026-10-19). Resolution 480 in 4/4: a
-// measure is 1920 ticks, half is 960. An authored fill keeps its own span.
-TEST_CASE("build_preview_scene: a generated fill draws the half measure before its chord") {
-    auto generated = [](const std::vector<int64_t>& chords, FillDeadlineRule rule) {
-        Song song(480);
-        song.bpm_changes[0] = 120.0;
-        song.build_timing();
-        for (int64_t tick : chords) {
-            SongTimestamp ts;
-            ts.timecode = song.timecode(tick);
-            ts.chord.add_note(NoteColor::Red);
-            song.sequence.push_back(ts);
+// A Clone Hero 1.1 generated fill draws as the half measure of Clone Hero's
+// grid before its chord, whatever its engine length. An authored fill, and a
+// Clone Hero 1.0 generated fill, draw their own engine span: from
+// fill_start_tick to the chord.
+static void check_fill_spans_follow_song(const Song& song, const PreviewScene& scene,
+                                         int& half_measure_fills, int& own_span_fills) {
+    const MeasureIndex& grid = song.timing().measure_index();
+    size_t k = 0;
+    for (const SongTimestamp& ts : song.sequence) {
+        if (!ts.has_activation()) continue;
+        REQUIRE(k < scene.fills.size());
+        const PreviewFill& f = scene.fills[k++];
+        const int64_t chord = ts.timecode.ticks();
+        CHECK(f.chord_tick == chord);
+        CHECK(f.span.end_tick == chord);
+        if (song.generated_fills == FillDeadlineRule::Ch11) {
+            const int64_t measure = grid.length_at(grid.span_at(chord));
+            CHECK(chord - f.span.start_tick == measure / 2);
+            ++half_measure_fills;
+        } else {
+            CHECK(f.span.start_tick == fill_start_tick(chord, *ts.activation_length));
+            ++own_span_fills;
         }
-        song.check_activations(core::default_rules(), rule);
-        return song;
-    };
+    }
+    CHECK(k == scene.fills.size());
+}
 
-    // Clone Hero 1.1: the chords sit on the measure lines at 1920 and 9600,
-    // so each fill's engine length is 0.
-    const Song ch11 = generated({1920, 9600}, FillDeadlineRule::Ch11);
-    for (const SongTimestamp& ts : ch11.sequence)
-        if (ts.has_activation()) CHECK(*ts.activation_length == 0);
-    const PreviewScene s11 = build_preview_base(ch11);
-    REQUIRE(s11.fills.size() == 2);
-    CHECK(s11.fills[0].span.start_tick == 960);
-    CHECK(s11.fills[0].span.end_tick == 1920);
-    CHECK(s11.fills[1].span.start_tick == 8640);
-    CHECK(s11.fills[1].span.end_tick == 9600);
-
-    // Clone Hero 1.0: the fills are already half a measure long, and draw
-    // the same span as before.
-    const Song ch10 = generated({1930, 9610}, FillDeadlineRule::Ch10);
-    const PreviewScene s10 = build_preview_base(ch10);
-    REQUIRE(s10.fills.size() == 2);
-    CHECK(s10.fills[0].span.start_tick == 970);
-    CHECK(s10.fills[0].span.end_tick == 1930);
-    CHECK(s10.fills[1].span.start_tick == 8650);
-    CHECK(s10.fills[1].span.end_tick == 9610);
-
-    // An authored fill (the hand song's, 480 ticks long) keeps its span.
-    const Song authored = make_hand_song();
-    CHECK_FALSE(authored.generated_fills.has_value());
-    const PreviewScene sa = build_preview_base(authored);
-    REQUIRE(sa.fills.size() == 1);
-    CHECK(sa.fills[0].span.start_tick == 240);
-    CHECK(sa.fills[0].span.end_tick == 720);
+TEST_CASE("build_preview_scene: a generated fill draws the half measure before its chord") {
+    // Each corpus chart read with Clone Hero 1.1's fill rule (kTestFillRule)
+    // and again with 1.0's. Pitch Dark's fills are generated, and
+    // test_fast_tempo's charts write their own.
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int ch11_half = 0, ch11_own = 0, ch10_half = 0, ch10_own = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& ch11 = corpus::song(chart, cfg.reading());
+        if (ch11.is_empty()) continue;
+        check_fill_spans_follow_song(ch11, build_preview_base(ch11), ch11_half, ch11_own);
+        if (ch11.generated_fills != FillDeadlineRule::Ch11) continue;
+        const Song ch10 =
+            load_songpath(chart, cfg.reading(), core::default_rules(), FillDeadlineRule::Ch10);
+        CHECK(ch10.generated_fills == FillDeadlineRule::Ch10);
+        check_fill_spans_follow_song(ch10, build_preview_base(ch10), ch10_half, ch10_own);
+    }
+    CHECK(ch11_half > 0);
+    CHECK(ch11_own > 0);
+    CHECK(ch10_own > 0);
 }
 
 TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") {
@@ -187,22 +211,29 @@ TEST_CASE("build_preview_scene: solo spans come from the song's solo sections") 
 }
 
 TEST_CASE("build_preview_scene: each solo's notes for the solo box, path-free") {
-    // Hand song: the solo is the one-note chords at 250 and 500 ms.
+    // One step per chord of the song's one solo section, at the chord's ms,
+    // holding the solo notes counted up to and including that chord.
     Song song = make_hand_song();
     PreviewScene scene = build_preview_scene(song, nullptr);
+    REQUIRE(song.solo_sections.size() == 1);
     REQUIRE(scene.solo_notes.size() == 1);
+    const SoloSection& section = song.solo_sections[0];
     const PreviewSoloNotes& s = scene.solo_notes[0];
-    REQUIRE(s.steps.size() == 2);
-    CHECK(s.steps[0].ms == doctest::Approx(250.0));
-    CHECK(s.steps[0].notes_hit == 1);
-    CHECK(s.steps[1].ms == doctest::Approx(500.0));
-    CHECK(s.steps[1].notes_hit == 2);
-    CHECK(s.notes == 2);
+    REQUIRE(s.steps.size() == section.last - section.first + 1);
+    int counted = 0;
+    for (size_t i = section.first; i <= section.last; ++i) {
+        const SongTimestamp& ts = song.sequence[i];
+        counted += solo_note_count(ts.chord, ts.flag_solo);
+        CHECK(s.steps[i - section.first].ms == doctest::Approx(ts.timecode.ms()));
+        CHECK(s.steps[i - section.first].notes_hit == counted);
+    }
+    CHECK(counted > 0);
+    CHECK(s.notes == counted);
     // The bonus is the path's own solo score (Path::score_solo, priced by the
     // replay), with or without a path in the scene.
     Path path = priced_path(song, {});
+    CHECK(s.bonus > 0);
     CHECK(s.bonus == path.score_solo);
-    CHECK(s.bonus == 200);
     CHECK(build_preview_scene(song, &path).solo_notes[0].bonus == s.bonus);
 }
 
@@ -213,15 +244,20 @@ TEST_CASE("build_preview_scene: drum lanes come from the song's drum lanes") {
     song.drum_lanes = {{240, 720, true, {NoteColor::Yellow, NoteColor::Green}},
                        {720, 960, false, {NoteColor::Red}}};
     PreviewScene scene = build_preview_scene(song, nullptr);
-    REQUIRE(scene.drum_lanes.size() == 2);
-    CHECK(scene.drum_lanes[0].span.start_tick == 240);
-    CHECK(scene.drum_lanes[0].span.end_tick == 720);
-    CHECK(scene.drum_lanes[0].span.start_ms == doctest::Approx(250.0));
-    CHECK(scene.drum_lanes[0].span.end_ms == doctest::Approx(750.0));
-    CHECK(scene.drum_lanes[0].pads ==
-          std::vector<PreviewLane>{PreviewLane::Yellow, PreviewLane::Green});
-    CHECK(scene.drum_lanes[1].span.start_tick == 720);
-    CHECK(scene.drum_lanes[1].pads == std::vector<PreviewLane>{PreviewLane::Red});
+    // One drawn lane per song lane, in order: the lane's own span, at its
+    // ticks' ms, lighting the pad column of each colour the song lane names.
+    REQUIRE(scene.drum_lanes.size() == song.drum_lanes.size());
+    for (size_t i = 0; i < song.drum_lanes.size(); ++i) {
+        const DrumLane& want = song.drum_lanes[i];
+        const PreviewDrumLane& got = scene.drum_lanes[i];
+        CHECK(got.span.start_tick == want.start_tick);
+        CHECK(got.span.end_tick == want.end_tick);
+        CHECK(got.span.start_ms == doctest::Approx(song.timecode(want.start_tick).ms()));
+        CHECK(got.span.end_ms == doctest::Approx(song.timecode(want.end_tick).ms()));
+        std::vector<PreviewLane> pads;
+        for (NoteColor c : want.pads) pads.push_back(lane_of(c));
+        CHECK(got.pads == pads);
+    }
 }
 
 TEST_CASE("build_preview_scene: an unanalyzed chart offers every candidate fill") {
@@ -231,73 +267,98 @@ TEST_CASE("build_preview_scene: an unanalyzed chart offers every candidate fill"
     for (const PreviewFill& f : scene.fills) CHECK(f.state == PreviewFillState::Offered);
 }
 
-TEST_CASE("build_preview_scene: skips say which fills the path was offered") {
-    Song song = make_fill_song();
-    Path path;
-    // The path activates on the third fill after passing over the one at 960.
-    path.activations = {act_at(song, 1440, {960})};
+// The fill states a drawn path gives, read from the path's own record. The
+// fill on an activation's chord is Taken, even when a later activation lists
+// it as passed over. A fill an activation, or the path after its last
+// activation (Path::trailing_skipped_fill_ticks), lists as passed over is
+// Offered. Every other fill is Hidden. Each activation names the fill on its
+// own chord, or none when no fill ends there. Counts each state it sees.
+struct FillStateCounts {
+    int taken = 0;
+    int offered = 0;
+    int hidden = 0;
+};
 
-    PreviewScene scene = build_preview_scene(song, &path);
-    REQUIRE(scene.fills.size() == 4);
-    CHECK(scene.fills[0].state == PreviewFillState::Hidden);   // not enough SP
-    CHECK(scene.fills[1].state == PreviewFillState::Offered);  // the one skip
-    CHECK(scene.fills[2].state == PreviewFillState::Taken);
-    CHECK(scene.fills[3].state == PreviewFillState::Hidden);   // past the last act
-    CHECK(scene.fills[2].span.end_tick == 1440);
+static void check_fill_states_follow_path(const PreviewScene& scene, const Path& path,
+                                          FillStateCounts& counts) {
+    std::set<int64_t> act_ticks;
+    std::set<int64_t> passed(path.trailing_skipped_fill_ticks.begin(),
+                             path.trailing_skipped_fill_ticks.end());
+    for (const Activation& a : path.walk_activations()) {
+        act_ticks.insert(a.timecode.ticks());
+        passed.insert(a.skipped_fill_ticks.begin(), a.skipped_fill_ticks.end());
+    }
+    for (const PreviewFill& f : scene.fills) {
+        CAPTURE(f.chord_tick);
+        if (act_ticks.count(f.chord_tick) != 0) {
+            CHECK(f.state == PreviewFillState::Taken);
+            ++counts.taken;
+        } else if (passed.count(f.chord_tick) != 0) {
+            CHECK(f.state == PreviewFillState::Offered);
+            ++counts.offered;
+        } else {
+            CHECK(f.state == PreviewFillState::Hidden);
+            ++counts.hidden;
+        }
+    }
+    REQUIRE(scene.activations.size() == path.walk_activations().size());
+    for (const PreviewActivation& a : scene.activations) {
+        CAPTURE(a.tick);
+        std::optional<size_t> on_chord;
+        for (size_t i = 0; i < scene.fills.size(); ++i)
+            if (scene.fills[i].chord_tick == a.tick) on_chord = i;
+        CHECK(a.taken_fill == on_chord);
+    }
 }
 
-TEST_CASE("build_preview_scene: a second activation with skips 0 hides what lies between") {
-    Song song = make_fill_song();
-    Path path;
-    path.activations = {act_at(song, 960, {}), act_at(song, 1920, {})};
-
-    PreviewScene scene = build_preview_scene(song, &path);
-    REQUIRE(scene.fills.size() == 4);
-    CHECK(scene.fills[0].state == PreviewFillState::Hidden);
-    CHECK(scene.fills[1].state == PreviewFillState::Taken);
-    CHECK(scene.fills[2].state == PreviewFillState::Hidden);  // SP was still active
-    CHECK(scene.fills[3].state == PreviewFillState::Taken);
-
-    // With the fill at 1440 passed over before the second activation, the fill
-    // between them is offered instead.
-    Path skipped;
-    skipped.activations = {act_at(song, 960, {}), act_at(song, 1920, {1440})};
-    PreviewScene s2 = build_preview_scene(song, &skipped);
-    CHECK(s2.fills[1].state == PreviewFillState::Taken);
-    CHECK(s2.fills[2].state == PreviewFillState::Offered);
-    CHECK(s2.fills[3].state == PreviewFillState::Taken);
+// On every path the engine keeps for a corpus chart, each fill reads Taken,
+// Offered or Hidden as that path's record says, and each activation names
+// the fill it stands on. The corpus holds all three states: an activation
+// always stands on a fill, "every stored passed-over fill is a fill in the
+// scene" below finds stored passed-over fills, and fills before Star Power
+// is first ready are hidden.
+TEST_CASE("build_preview_scene: each fill's state and each activation's fill follow the path's record") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    FillStateCounts counts;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        for (const Path* path : rec.all_paths()) {
+            CAPTURE(path->pathstring());
+            check_fill_states_follow_path(build_preview_scene(song, path), *path, counts);
+        }
+    }
+    CHECK(counts.taken > 0);
+    CHECK(counts.offered > 0);
+    CHECK(counts.hidden > 0);
 }
 
-TEST_CASE("build_preview_scene: a fill an activation took stays taken when a later one lists it") {
-    // A tied variant takes its activations after the fold, and their stored
-    // passed-over fills, from its leader (finding 97). If the variant
-    // activated on a fill its leader passed over, the variant's next
-    // activation lists that fill as passed over. The fill was taken; it must
-    // not turn offered.
-    Song song = make_fill_song();
-    Path path;
-    path.activations = {act_at(song, 960, {}), act_at(song, 1920, {960, 1440})};
-
-    PreviewScene scene = build_preview_scene(song, &path);
-    REQUIRE(scene.fills.size() == 4);
-    CHECK(scene.fills[0].state == PreviewFillState::Hidden);
-    CHECK(scene.fills[1].state == PreviewFillState::Taken);    // taken, though listed later
-    CHECK(scene.fills[2].state == PreviewFillState::Offered);
-    CHECK(scene.fills[3].state == PreviewFillState::Taken);
-}
-
+// Under Clone Hero 1.0's fill rule a fill's deadline can fall before an
+// earlier fill's. In make_ch10_fill_song the second fill's deadline falls
+// before the first's, so the second never spawns. Searched to activate on
+// the third fill, the engine lists only the first as passed over, and the
+// Preview draws the first offered, the second hidden and the third taken.
 TEST_CASE("build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged") {
-    // Finding 52. Fill B's 1.0 deadline falls before fill A's, so B never
-    // spawned and A was shown and passed over.
     Song song = test::make_ch10_fill_song();
+    std::vector<int64_t> fill_chords;
+    for (const SongTimestamp& ts : song.sequence)
+        if (ts.has_activation()) fill_chords.push_back(ts.timecode.ticks());
+    REQUIRE(fill_chords.size() == 3);
+
     ScoreGraph graph(song, 4, FillDeadlineRule::Ch10);
     EngineOptions opts;
-    opts.target_act_ticks = std::vector<int64_t>{28800};
+    opts.target_act_ticks = std::vector<int64_t>{fill_chords[2]};
     std::vector<Path> paths = run_search(graph, opts);
     REQUIRE(!paths.empty());
-    PreviewScene scene = build_preview_scene(song, &paths.front());
-    REQUIRE(scene.fills.size() == 3);
-    CHECK(scene.fills[0].span.end_tick == 19200);
+    const Path& path = paths.front();
+    REQUIRE(test::act_ticks(path) == std::vector<int64_t>{fill_chords[2]});
+    CHECK(path.walk_activations()[0].skipped_fill_ticks == std::vector<int64_t>{fill_chords[0]});
+
+    PreviewScene scene = build_preview_scene(song, &path);
+    REQUIRE(scene.fills.size() == fill_chords.size());
+    for (size_t i = 0; i < fill_chords.size(); ++i) CHECK(scene.fills[i].chord_tick == fill_chords[i]);
     CHECK(scene.fills[0].state == PreviewFillState::Offered);
     CHECK(scene.fills[1].state == PreviewFillState::Hidden);
     CHECK(scene.fills[2].state == PreviewFillState::Taken);
@@ -802,93 +863,43 @@ TEST_CASE("path_overlay_key: no overlay, the same path, and a changed path") {
     }
 }
 
-TEST_CASE("build_preview_scene: passed-over fills on several activations, and a tick that is no fill") {
-    // Fills end at 480, 960, 1440 and 1920. The first activation takes 480,
-    // the second passes over 960 and takes 1440, the third lists a tick (1700)
-    // that is no fill, which lights nothing, and takes 1920.
-    Song song = make_fill_song();
-    Path path;
-    path.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
-                        act_at(song, 1920, {1700})};
-    PreviewScene scene = build_preview_scene(song, &path);
-    REQUIRE(scene.fills.size() == 4);
-    CHECK(scene.fills[0].state == PreviewFillState::Taken);
-    CHECK(scene.fills[1].state == PreviewFillState::Offered);
-    CHECK(scene.fills[2].state == PreviewFillState::Taken);
-    CHECK(scene.fills[3].state == PreviewFillState::Taken);
-}
-
-TEST_CASE("build_preview_scene: each activation names the fill it took") {
-    // The fixtures of the three fill cases above; fills end at 480, 960,
-    // 1440 and 1920.
-    Song song = make_fill_song();
-
-    // "skips say which fills the path was offered": the activation takes 1440.
-    Path skips;
-    skips.activations = {act_at(song, 1440, {960})};
-    PreviewScene s1 = build_preview_scene(song, &skips);
-    REQUIRE(s1.activations.size() == 1);
-    CHECK(s1.activations[0].taken_fill == std::optional<size_t>{2});
-
-    // "a fill an activation took stays taken when a later one lists it": the
-    // first still names 960, though the second lists it as passed over.
-    Path tied;
-    tied.activations = {act_at(song, 960, {}), act_at(song, 1920, {960, 1440})};
-    PreviewScene s2 = build_preview_scene(song, &tied);
-    REQUIRE(s2.activations.size() == 2);
-    CHECK(s2.activations[0].taken_fill == std::optional<size_t>{1});
-    CHECK(s2.activations[1].taken_fill == std::optional<size_t>{3});
-
-    // "passed-over fills on several activations, and a tick that is no fill".
-    Path several;
-    several.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
-                           act_at(song, 1920, {1700})};
-    PreviewScene s3 = build_preview_scene(song, &several);
-    REQUIRE(s3.activations.size() == 3);
-    CHECK(s3.activations[0].taken_fill == std::optional<size_t>{0});
-    CHECK(s3.activations[1].taken_fill == std::optional<size_t>{2});
-    CHECK(s3.activations[2].taken_fill == std::optional<size_t>{3});
-
-    // An activation on a tick that is no fill names none.
-    Path off_fill;
-    off_fill.activations = {act_at(song, 1700, {})};
-    PreviewScene s4 = build_preview_scene(song, &off_fill);
-    REQUIRE(s4.activations.size() == 1);
-    CHECK_FALSE(s4.activations[0].taken_fill.has_value());
-}
-
 // A ghost path lists the fills its activations stand on and changes nothing
 // else: the drawn path's fill states and activations are the ones built with
-// no ghost. Fills end at 480, 960, 1440 and 1920.
+// no ghost. Both paths are the engine's, from one analyzed corpus chart: the
+// first path drawn, the last as the ghost.
 TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothing else") {
-    Song song = make_fill_song();
-    Path drawn;
-    drawn.activations = {act_at(song, 1440, {960})};
-    // Takes 480, 1440 and 1920; its passed-over 960 and the tick 1700 that is
-    // no fill are no ghost fills.
-    Path ghost;
-    ghost.activations = {act_at(song, 480, {}), act_at(song, 1440, {960}),
-                         act_at(song, 1920, {1700})};
+    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
+    const std::vector<const Path*> paths = r.record.all_paths();
+    REQUIRE_FALSE(paths.empty());
+    const Path& drawn = *paths.front();
+    const Path& ghost = *paths.back();
 
-    const PreviewScene plain = build_preview_scene(song, &drawn);
+    // The ghost's fills are the fills it takes when it is the drawn path.
+    std::vector<size_t> ghost_taken;
+    for (const PreviewActivation& a : build_preview_scene(r.song, &ghost).activations)
+        if (a.taken_fill) ghost_taken.push_back(*a.taken_fill);
+    REQUIRE_FALSE(ghost_taken.empty());
+
+    const PreviewScene plain = build_preview_scene(r.song, &drawn);
     CHECK(plain.ghost_fills.empty());
-    const PreviewScene with = build_preview_scene(song, &drawn, kCloneHeroSpCap,
+    const PreviewScene with = build_preview_scene(r.song, &drawn, kCloneHeroSpCap,
                                                   core::default_rules(), std::nullopt, &ghost);
-    CHECK(with.ghost_fills == std::vector<size_t>{0, 2, 3});
+    CHECK(with.ghost_fills == ghost_taken);
     REQUIRE(with.fills.size() == plain.fills.size());
     for (size_t i = 0; i < plain.fills.size(); ++i)
         CHECK(with.fills[i].state == plain.fills[i].state);
     REQUIRE(with.activations.size() == plain.activations.size());
-    CHECK(with.activations[0].taken_fill == plain.activations[0].taken_fill);
+    for (size_t i = 0; i < plain.activations.size(); ++i)
+        CHECK(with.activations[i].taken_fill == plain.activations[i].taken_fill);
 
     // No drawn path: every fill still reads Offered, as for an unanalyzed chart.
-    const PreviewScene alone = build_preview_scene(song, nullptr, kCloneHeroSpCap,
+    const PreviewScene alone = build_preview_scene(r.song, nullptr, kCloneHeroSpCap,
                                                    core::default_rules(), std::nullopt, &ghost);
-    CHECK(alone.ghost_fills == std::vector<size_t>{0, 2, 3});
+    CHECK(alone.ghost_fills == ghost_taken);
     for (const PreviewFill& f : alone.fills) CHECK(f.state == PreviewFillState::Offered);
 
     // A later overlay with no ghost clears the list.
-    const PreviewScene cleared = apply_preview_overlay(with, song, &drawn);
+    const PreviewScene cleared = apply_preview_overlay(with, r.song, &drawn);
     CHECK(cleared.ghost_fills.empty());
     CHECK(cleared.ghost_windows.empty());
 }
@@ -1025,15 +1036,41 @@ TEST_CASE("preview scene: each activation's bar arrivals are the record's stored
     CHECK(squeeze_outs > 0);
 }
 
+// Each button build_path_buttons makes for a corpus record is labelled with
+// its own notation. A Within path's label is the notation alone; an Optimal
+// and an all-0 path's label is the notation and then a note of its list, and
+// the two lists' notes differ.
 TEST_CASE("preview path label: the notation and which list it came from") {
-    PathButtonView b;
-    b.notation = "3- 1 2";
-    b.group = PathButtonView::Group::Optimal;
-    CHECK(preview_path_label(b) == "3- 1 2  (optimal)");
-    b.notation = "0 4 1";
-    b.group = PathButtonView::Group::Within;
-    CHECK(preview_path_label(b) == "0 4 1");
-    b.notation = "0 0 0 0";
-    b.group = PathButtonView::Group::AllZero;
-    CHECK(preview_path_label(b) == "0 0 0 0  (best all-0)");
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    const Settings s = Settings();
+    std::set<std::string> optimal_notes, allzero_notes;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        if (corpus::song(chart, cfg.reading()).is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        for (const PathButtonView& b : build_path_buttons(rec, s.depth_mode, s.depth_value).buttons) {
+            CAPTURE(b.notation);
+            const std::string label = preview_path_label(b);
+            REQUIRE(label.size() >= b.notation.size());
+            CHECK(label.compare(0, b.notation.size(), b.notation) == 0);
+            const std::string note = label.substr(b.notation.size());
+            switch (b.group) {
+                case PathButtonView::Group::Within:
+                    CHECK(note.empty());
+                    break;
+                case PathButtonView::Group::Optimal:
+                    CHECK_FALSE(note.empty());
+                    optimal_notes.insert(note);
+                    break;
+                case PathButtonView::Group::AllZero:
+                    CHECK_FALSE(note.empty());
+                    allzero_notes.insert(note);
+                    break;
+            }
+        }
+    }
+    // Every list's note is the same on every button of that list.
+    CHECK(optimal_notes.size() == 1);
+    CHECK(allzero_notes.size() <= 1);
+    for (const std::string& n : allzero_notes) CHECK(optimal_notes.count(n) == 0);
 }
