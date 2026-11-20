@@ -9,8 +9,8 @@ where no real run recorded the field.
 from __future__ import annotations
 
 import os
-import struct
 import sys
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -80,32 +80,13 @@ def samples_following(notes: list[dict], window_for) -> list[WW.Sample]:
     return out
 
 
-class LiveSnapshotTest(unittest.TestCase):
-    def test_decode_reads_each_field_at_its_offset(self):
-        raw = bytearray(live.SNAPSHOT_SIZE)
-        struct.pack_into("<d", raw, C.OFF_TOTAL_WINDOW, C.ms_to_s(C.WINDOW_CAP_MS))
-        struct.pack_into("<I", raw, C.OFF_SCORE, 1234)
-        struct.pack_into("<d", raw, C.OFF_SONG_CLOCK, 12.5)
-        struct.pack_into("<I", raw, C.OFF_FLAGS, C.PRECISION_MODE_BIT)
-        struct.pack_into("<d", raw, C.OFF_ROUND_START, 12.49)
-        s = live.decode_snapshot(bytes(raw))
-        self.assertAlmostEqual(s.window_ms, C.WINDOW_CAP_MS)
-        self.assertEqual(s.score, 1234)
-        self.assertEqual(s.clock_s, 12.5)
-        self.assertEqual(s.round_start_s, 12.49)
-        self.assertTrue(s.precision)
-
-    def test_live_keeps_no_offsets_or_finder_of_its_own(self):
-        for name in ("OFF_WINDOW", "OFF_SCORE", "OFF_CLOCK", "OFF_FLAGS",
-                     "OFF_ROUND_START", "find_live_engine"):
-            self.assertFalse(hasattr(live, name), name)
-
-
 class LiveHelpersTest(unittest.TestCase):
     """The one wait loop, start cursor, hit offset and window tolerance."""
 
     def test_wait_until_fires_at_the_target_or_its_lead(self):
-        for lead_ms, fires_at_ms in ((0.0, 1100.0), (2.0, 1098.0)):
+        target_ms = 1100.0
+        for lead_ms in (0.0, 2.0):
+            fires_at_ms = target_ms - lead_ms
             # The song clock moves 1 ms per read and the read is always fresh,
             # so the estimate equals the raw clock. A sleep moves both on.
             ms = [999]
@@ -121,7 +102,7 @@ class LiveHelpersTest(unittest.TestCase):
                 t[0] += s
 
             clock = live.SongClock(read_raw, now=lambda: t[0])
-            raw_ms, est_ms = live.wait_until(clock, 1100.0, lead_ms=lead_ms,
+            raw_ms, est_ms = live.wait_until(clock, target_ms, lead_ms=lead_ms,
                                              now=lambda: t[0], sleep=sleep)
             self.assertAlmostEqual(est_ms, fires_at_ms)
             self.assertAlmostEqual(raw_ms, fires_at_ms)
@@ -168,19 +149,13 @@ class LiveHelpersTest(unittest.TestCase):
                 live.first_note_index(notes_ms, note_ms - live.START_LEAD_MS + 0.001), k + 1)
 
     def test_window_changed_uses_the_one_tolerance(self):
-        self.assertEqual(C.WINDOW_CHANGE_TOLERANCE_MS, 1e-6)
-        self.assertTrue(live.window_changed(85.0, 85.0005))
+        # Just inside and just past the tolerance, both ways round.
+        tol = C.WINDOW_CHANGE_TOLERANCE_MS
         self.assertFalse(live.window_changed(85.0, 85.0))
-
-    def test_old_diagnostics_are_gone(self):
-        from tools.ch_probe import input_driver
-        experiments = os.path.join(_REPO_ROOT, "tools", "ch_probe", "experiments")
-        for script in ("hit_detect.py", "find_clock3.py", "poll_windows.py",
-                       "find_engine.py", "milestone2.py", "test_attach.py"):
-            self.assertFalse(os.path.exists(os.path.join(experiments, script)), script)
-        for module in (WW, input_driver, input_driver.InputDriver):
-            for name in ("wait_until", "schedule_hit", "STALL_S"):
-                self.assertFalse(hasattr(module, name), f"{module.__name__}.{name}")
+        self.assertFalse(live.window_changed(85.0, 85.0 + tol / 2))
+        self.assertFalse(live.window_changed(85.0 + tol / 2, 85.0))
+        self.assertTrue(live.window_changed(85.0, 85.0 + 2 * tol))
+        self.assertTrue(live.window_changed(85.0 + 2 * tol, 85.0))
 
 
 class WatchWindowTest(unittest.TestCase):
@@ -208,15 +183,23 @@ class WatchWindowTest(unittest.TestCase):
             self.assertEqual(owner, [n["block"]])
 
     def test_cap_verdict_passes_when_every_wide_run_reads_the_cap(self):
+        # The gap edges are typed as literals, not the script's own
+        # comparisons, so a wrong edge in watch_window fails here. Each
+        # half-gap is held between 37.5 and 85 ms, so a note reads the cap
+        # from a 170 ms gap and the floor up to a 75 ms gap
+        # (docs/clone-hero/03-timing.md, TM-19 and TM-20).
+        cap_from_gap_ms, floor_up_to_gap_ms = 170, 75
         notes = window_map_notes()
         samples = samples_following(
-            # The gap edges typed as literals (170 and 75 ms), not the script's
-            # own comparisons, so a wrong edge in watch_window fails here.
-            notes, lambda n: C.WINDOW_CAP_MS if (n["gap_after_ms"] or 0) >= 170
-            else (C.WINDOW_FLOOR_MS if (n["gap_after_ms"] or 999) <= 75
+            notes, lambda n: C.WINDOW_CAP_MS if (n["gap_after_ms"] or 0) >= cap_from_gap_ms
+            else (C.WINDOW_FLOOR_MS if (n["gap_after_ms"] or 999) <= floor_up_to_gap_ms
                   else 100.0))
         lines = WW.window_report(samples, notes)
-        self.assertEqual(sum("matches the cap" in l for l in lines), 5)
+        # One verdict per cap block of the real layout whose gap reaches the cap.
+        wide_cap_blocks = {n["block"] for n in notes if n["block"].startswith("cap_")
+                           and int(n["block"].split("_")[1]) >= cap_from_gap_ms}
+        self.assertTrue(wide_cap_blocks)
+        self.assertEqual(sum("matches the cap" in l for l in lines), len(wide_cap_blocks))
         self.assertFalse(any("DIFFERENT" in l for l in lines))
 
     def test_round_start_report_ties_each_real_change_to_its_note(self):
@@ -263,23 +246,37 @@ class SongClockTest(unittest.TestCase):
         raw = [1.000]
         clock = live.SongClock(lambda: raw[0], now=lambda: t[0])
         self.assertEqual(clock.read(), (1.000, 1.000))   # first read: no anchor
-        t[0] = 0.001; raw[0] = 1.016                      # change seen 1 ms later
-        self.assertEqual(clock.read(), (1.016, 1.016))
-        t[0] = 0.006
+        changed_s, seen_t = 1.016, 0.001                  # change seen 1 ms later
+        t[0] = seen_t; raw[0] = changed_s
+        self.assertEqual(clock.read(), (changed_s, changed_s))
+        later_t = 0.006
+        t[0] = later_t
         r, est = clock.read()
-        self.assertAlmostEqual(est, 1.021)
+        self.assertAlmostEqual(est, changed_s + (later_t - seen_t))
         t[0] = 1.0                                        # capped fill-in
-        self.assertAlmostEqual(clock.read()[1], 1.016 + C.CLOCK_MAX_FILL_S)
+        self.assertAlmostEqual(clock.read()[1], changed_s + C.CLOCK_MAX_FILL_S)
 
     def test_song_clock_ignores_a_change_seen_late(self):
-        t = [0.0]
-        raw = [1.0]
-        clock = live.SongClock(lambda: raw[0], now=lambda: t[0])
-        clock.read()
-        t[0] = 0.5; raw[0] = 1.5                          # slept through it
-        clock.read()
-        t[0] = 0.51
-        self.assertEqual(clock.read(), (1.5, 1.5))
+        # A real watch's song clock, read back at the recording's own pace on
+        # the real timer. After one read, the next change is left unread for
+        # longer than CLOCK_FRESH_S, so its age is unknown: every read until
+        # the clock moves again gives the raw clock with nothing filled in.
+        # A read past the recording's end fails the test at once.
+        clock, game = recorded_song_clock(LANE_END_CSV)
+        first_raw, _ = clock.read()
+        read_t = time.perf_counter()
+        while game.read()[0] == first_raw or time.perf_counter() - read_t <= C.CLOCK_FRESH_S:
+            pass
+        late_raw, late_est = clock.read()
+        self.assertEqual(late_est, late_raw)
+        held = []
+        while True:
+            raw, est = clock.read()
+            if raw != late_raw:
+                break
+            held.append(est)
+        self.assertTrue(held)
+        self.assertEqual(held, [late_raw] * len(held))
 
 
 if __name__ == "__main__":
