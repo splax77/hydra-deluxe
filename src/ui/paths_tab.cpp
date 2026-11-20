@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "app/config.h"  // Settings::clamp, the Backend limit's range
+#include "app/display_format.h"  // kFactSeparator
 #include "app/path_view.h"
 #include "core/model.h"
 #include "imgui.h"
@@ -631,8 +632,9 @@ void render_path_footer(AppState& app, const app::PathsTabCache::Details& d,
     } else {
         fold_header("Multiplier squeeze##mult", ui.mult_open);
     }
-    ImGui::SameLine();
-    ImGui::TextDisabled("\xC2\xB7 %s", summary.c_str());
+    // No gap from SameLine: kFactSeparator brings its own spaces.
+    ImGui::SameLine(0.0f, 0.0f);
+    ImGui::TextDisabled("%s%s", app::kFactSeparator, summary.c_str());
     if (ui.mult_open && !d.squeezes.empty()) {
         ImGui::Indent(body_indent);
         for (const app::MultSqueezeView& msq : d.squeezes) {
