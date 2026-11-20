@@ -181,9 +181,12 @@ class ServerTest(unittest.TestCase):
         self.assertIn("ch_notes(since=...)", S.CAP_HINT)
 
     def test_the_trace_texts_say_the_hook_fires_on_hits(self):
-        # Live step L2 found the default hook fires only on hit notes (plan
-        # 2026-10-28-ch-mcp-server, "Live results (2026-10-29)"; removed, read
-        # it with git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
+        # The texts rest on the Clone Hero page's entry for the traced
+        # method; the test fails when the page no longer holds it.
+        with open(os.path.join(_REPO_ROOT, "docs", "clone-hero", "07-internals.md"),
+                  encoding="utf-8") as f:
+            page = f.read()
+        self.assertIn("### IN-19 Whether the score method fires only for hit notes", page)
         server = S.build_server(self.helper)
         tools = {t.name: t for t in asyncio.run(server.list_tools())}
         for name, text in (("instructions", server.instructions),
@@ -200,35 +203,36 @@ class ServerTest(unittest.TestCase):
         result = asyncio.run(server.call_tool("ch_play_chart",
                                               {"score_json": "x.json",
                                                "schedule_json": "y.json", "route": "pads"}))
-        self.assertEqual(result.content[0].text, 'unknown route "pads"; routes: kit, keys')
+        # The unknown route is named, with every route GameTools takes.
+        text = result.content[0].text
+        self.assertTrue(text.startswith('unknown route "pads"'), text)
+        for route in GT.ROUTES:
+            self.assertIn(route, text.split(";", 1)[1])
         result = asyncio.run(server.call_tool("ch_play_chart",
                                               {"score_json": "x.json",
-                                               "schedule_json": "y.json", "route": "kit"}))
-        self.assertEqual(result.content[0].text,
-                         'route kit: the kit is not set up; call ch_kit_setup first, '
-                         'or pass route="keys"')
+                                               "schedule_json": "y.json", "route": GT.ROUTE_KIT}))
+        # The kit route is refused with the kit's own "not set up" words and
+        # names the other route.
+        text = result.content[0].text
+        self.assertTrue(text.startswith(f"route {GT.ROUTE_KIT}:"), text)
+        self.assertIn(KT.NOT_SET_UP, text)
+        self.assertIn(f'route="{GT.ROUTE_KEYS}"', text)
 
-    def test_the_play_tools_take_schedule_json_and_no_dump_json(self):
-        # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
-        # schedule.md and D324 item 2: schedule_json replaces dump_json, and
-        # no decline mode or lead is an argument. D318 item 4: ch_run_chart
-        # and ch_play_chart take path_index, 0 when left out. D342:
-        # neither takes timing; the route alone says who times the presses.
-        # Task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md:
-        # ch_run_chart takes ch_edge_probe's probes file, None when left out.
-        self.assertEqual(set(self._schema("ch_run_chart")),
-                         {"song_folder", "score_json", "schedule_json", "kit_player",
-                          "path_index", "probes_json"})
-        self.assertIsNone(self._schema("ch_run_chart")["probes_json"]["default"])
-        self.assertEqual(set(self._schema("ch_play_chart")),
-                         {"score_json", "schedule_json", "log", "song_folder", "route",
-                          "path_index"})
-        for name in ("ch_run_chart", "ch_play_chart"):
-            self.assertEqual(self._schema(name)["path_index"]["default"], 0)
-            self.assertNotIn("timing", self._schema(name))
-            self.assertNotIn("decline_mode", self._schema(name))
-        self.assertEqual(set(self._schema("ch_edge_probe")),
-                         {"song_folder", "score_json", "schedule_json", "probes_json"})
+    def test_the_play_tools_take_the_arguments_of_the_methods_they_reach(self):
+        # Each play tool's schema is the argument list of the GameTools
+        # method it calls: the same names, the same defaults, and the same
+        # arguments required. An argument the method dropped is gone from the
+        # tool too.
+        import inspect
+        required = object()
+        for name in ("ch_run_chart", "ch_play_chart", "ch_edge_probe"):
+            with self.subTest(name):
+                params = list(inspect.signature(getattr(GT.GameTools, name)).parameters.values())[1:]
+                want = {p.name: required if p.default is inspect.Parameter.empty else p.default
+                        for p in params}
+                got = {arg: spec.get("default", required)
+                       for arg, spec in self._schema(name).items()}
+                self.assertEqual(got, want)
 
     def test_ch_edge_probe_passes_its_arguments_through(self):
         seen = []
@@ -249,22 +253,21 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3, "p.json")])
 
     def test_a_leftover_timing_argument_is_dropped_without_a_word(self):
-        # Row P33 of docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md):
-        # the server takes a call that still passes timing, drops the
-        # argument and runs the tool as if it were left out. The MCP page
-        # (docs/agents/clone-hero-mcp.md) says so.
-        seen = []
-        self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
-        self.helper.game.ch_play_chart = lambda *a: seen.append(a) or "playing"
+        # A call that still passes timing runs the real tool as if timing
+        # were left out: the same reply, and no argument error. With no game
+        # open, ch_run_chart reaches its schedule read and ch_play_chart its
+        # kit check.
         server = S.build_server(self.helper)
-        run = asyncio.run(server.call_tool("ch_run_chart", {
-            "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
-            "timing": "python"}))
-        play = asyncio.run(server.call_tool("ch_play_chart", {
-            "score_json": "s.json", "schedule_json": "sched.json", "timing": "python"}))
-        self.assertEqual((run.content[0].text, play.content[0].text), ("ran", "playing"))
-        self.assertEqual(seen, [("song", "top.json", "sched.json", None, 0, None),
-                                ("s.json", "sched.json", None, None, None, 0)])
+        for name, args in (("ch_run_chart", {"song_folder": "song", "score_json": "top.json",
+                                             "schedule_json": "sched.json"}),
+                           ("ch_play_chart", {"score_json": "s.json",
+                                              "schedule_json": "sched.json"})):
+            with self.subTest(name):
+                left_out = asyncio.run(server.call_tool(name, args))
+                passed = asyncio.run(server.call_tool(name, {**args, "timing": "python"}))
+                self.assertFalse(passed.is_error)
+                self.assertEqual(passed.content[0].text, left_out.content[0].text)
+        self.assertEqual(self.printed, [])
 
     def test_ch_kit_frame_probe_passes_its_seconds_through(self):
         seen = []
@@ -286,9 +289,13 @@ class ServerTest(unittest.TestCase):
         with open(os.path.join(docs, "settings.ini"), "w", encoding="utf-8") as f:
             f.write("[game]\npause_on_focus_lost = 1\n")
         self.helper.frida.is_attached = lambda: True
-        self.assertEqual(self.helper.kit.ch_kit_setup(),
-                         "refused: settings.ini reads pause_on_focus_lost = 1, not 0; "
-                         "start the game with ch_start, which sets it for the run")
+        # Refused, naming the file, the setting, the value read there, the
+        # run's value and ch_start.
+        text = self.helper.kit.ch_kit_setup()
+        self.assertTrue(text.startswith("refused:"), text)
+        self.assertIn(f"{game_files.SETTINGS} reads {game_files.PAUSE_ON_FOCUS_LOST} = 1", text)
+        self.assertIn(f"not {game_files.PAUSE_ON_FOCUS_LOST_RUN_VALUE}", text)
+        self.assertIn("ch_start", text)
 
     def _schema(self, name):
         tools = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())}
@@ -391,9 +398,18 @@ class ServerTest(unittest.TestCase):
         self.assertIn("value sets", tools["ch_kit_press"].description)
 
     def test_status_joins_the_game_and_the_frida_lines(self):
-        out = self.helper.ch_status().splitlines()
-        self.assertIn("game: no run open, and no backup taken", out)
-        self.assertEqual(out[-2:], ["frida: not attached", "trace: none"])
+        # ch_status is the game half, then the Frida half, each from its own
+        # tool, before and after a real backup; after it, the status names
+        # the backup folder.
+        h = self.helper
+        for step in ("no backup", "backup taken"):
+            with self.subTest(step):
+                if step == "backup taken":
+                    h.game.ensure_backup()
+                out = h.ch_status().splitlines()
+                self.assertEqual(out, h.game.ch_status().splitlines() + h.frida.status_lines())
+        [folder] = backup_folders(self.tmp)
+        self.assertTrue(any(line.endswith(folder) for line in out), out)
         self.assertEqual(self.printed, [])
 
 
@@ -401,9 +417,17 @@ class McpJsonTest(unittest.TestCase):
     def test_the_ch_entry_runs_the_front_and_the_worker_without_dash_i(self):
         with open(os.path.join(_REPO_ROOT, ".mcp.json"), encoding="utf-8") as f:
             entry = json.load(f)["mcpServers"]["ch"]
-        self.assertEqual(entry["command"], "py")
-        self.assertEqual(entry["args"], ["tools/ch_mcp/front.py", "--", "py", "tools/ch_mcp/server.py"])
-        self.assertNotIn("-I", entry["args"])
+        # The entry runs the front's file; after the "--" the front's main
+        # splits on, the worker command runs the server's file with the same
+        # launcher.
+        args = entry["args"]
+        split = args.index("--")
+        front_args, worker = args[:split], args[split + 1:]
+        self.assertEqual(len(front_args), 1, args)
+        self.assertTrue(os.path.samefile(os.path.join(_REPO_ROOT, front_args[0]), F.__file__))
+        self.assertEqual(worker[0], entry["command"])
+        self.assertTrue(os.path.samefile(os.path.join(_REPO_ROOT, worker[-1]), S.__file__))
+        self.assertNotIn("-I", args)
 
 
 if __name__ == "__main__":
