@@ -428,7 +428,10 @@ TEST_CASE("single-owner: the row scan flags a copied owner line and a new answer
         for (size_t i = 0; i < listed.size(); ++i) {
             const ListedLine& l = listed[i];
             if (l.question == rule.question && l.file == e.file && l.line_text == e.owner_line && !after.used[i])
+            {
                 ++unused;
+                CHECK(names_all(stale_message(l), {l.stale, e.file, e.owner_line, rule.rules_file}));
+            }
         }
         CHECK(unused == 1);
     }
