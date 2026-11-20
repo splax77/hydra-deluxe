@@ -18,10 +18,16 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from tools.ch_probe.constants import s_to_ms  # noqa: E402
+
 SCHEDULER = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "press_schedule.ts")
 NODE = shutil.which("node")
 # One driver run is a fresh Node start; this is its stop.
@@ -116,8 +122,8 @@ def score_window():
     """The window's wall times and song clocks in ms, and its scores."""
     with open(SCORE_WINDOW_CSV, newline="", encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
-    return ([float(r["wall_s"]) * 1000.0 for r in rows],
-            [float(r["clock_s"]) * 1000.0 for r in rows],
+    return ([s_to_ms(float(r["wall_s"])) for r in rows],
+            [s_to_ms(float(r["clock_s"])) for r in rows],
             [int(r["score"]) for r in rows])
 
 
