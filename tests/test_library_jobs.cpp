@@ -633,6 +633,24 @@ std::vector<ChartLibraryEntry> corpus_rows_with_a_copy(size_t n, const std::stri
     return rows;
 }
 
+// A started one-worker batch job over the first two corpus charts, with an
+// in-memory store and test_run(). Each chart is held at its start until
+// `released` lets it go (real_analysis_in_turn). The members are built in the
+// order they are declared, so the job is built last and torn down first.
+struct HeldTwoChartBatch {
+    std::atomic<int> started{0};
+    std::atomic<int> released{0};
+    RecordStore store{":memory:"};
+    const BatchRun run = test_run();
+    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
+    BatchJob job{plan_of(charts), run, store};
+
+    HeldTwoChartBatch() {
+        job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
+        job.start();
+    }
+};
+
 }  // namespace
 
 TEST_CASE("jobs: answered_count reaches the number of charts saved, and counts a chart in two "
@@ -752,65 +770,54 @@ TEST_CASE("jobs: a failed chart whose failure was stored reaches the tray as the
 
 TEST_CASE("jobs: the tray is empty after it is taken, and a stopped run's tray holds only what it "
           "saved") {
-    std::atomic<int> started{0};
-    std::atomic<int> released{0};
-    RecordStore store(":memory:");
-    const BatchRun run = test_run();
-    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
-    BatchJob job(plan_of(charts), run, store);
-    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
-    job.start();
+    HeldTwoChartBatch held;
 
-    released = 1;
-    wait_for_batch_step(job, [&] { return job.answered_count() == 1; }, "the first chart's answer");
-    job.stop();
-    released = 2;  // the second chart runs after the stop, so it is dropped
-    wait_until([&] { return job.snapshot().finished; }, "the stopped batch to finish");
+    held.released = 1;
+    wait_for_batch_step(held.job, [&] { return held.job.answered_count() == 1; },
+                        "the first chart's answer");
+    held.job.stop();
+    held.released = 2;  // the second chart runs after the stop, so it is dropped
+    wait_until([&] { return held.job.snapshot().finished; }, "the stopped batch to finish");
 
-    const SavedRows rows = job.take_saved_rows();
+    const SavedRows rows = held.job.take_saved_rows();
     REQUIRE(rows.answers.size() == 1);
-    CHECK(rows.answers[0].first == charts[0].md5);
-    check_answers_match_store(rows, store, run);
+    CHECK(rows.answers[0].first == held.charts[0].md5);
+    check_answers_match_store(rows, held.store, held.run);
 
-    const SavedRows again = job.take_saved_rows();
+    const SavedRows again = held.job.take_saved_rows();
     CHECK(again.answers.empty());
     CHECK(again.problem.empty());
-    CHECK(job.answered_count() == 1);
+    CHECK(held.job.answered_count() == 1);
 }
 
 TEST_CASE("jobs: a paused batch job's tray keeps its answers") {
-    std::atomic<int> started{0};
-    std::atomic<int> released{0};
-    RecordStore store(":memory:");
-    const BatchRun run = test_run();
-    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
-    BatchJob job(plan_of(charts), run, store);
-    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
-    job.start();
-    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
+    HeldTwoChartBatch held;
+    wait_for_batch_step(held.job, [&] { return held.started.load() == 1; },
+                        "the first chart to start");
 
     // Paused with the first chart in flight: it finishes and is stored. The
     // second is let go too, so only the pause can keep it from starting.
-    job.pause();
-    released = 2;
-    wait_for_batch_step(job, [&] { return job.answered_count() == 1; }, "the first chart's answer");
-    const SavedRows paused = job.take_saved_rows();
+    held.job.pause();
+    held.released = 2;
+    wait_for_batch_step(held.job, [&] { return held.job.answered_count() == 1; },
+                        "the first chart's answer");
+    const SavedRows paused = held.job.take_saved_rows();
     // Read once the paused chart is answered and its tray taken: the
     // analyzer's own count says the second chart never reached it.
-    CHECK(started.load() == 1);
-    CHECK(job.answered_count() == 1);  // nothing added while paused
-    CHECK(job.snapshot().paused);
+    CHECK(held.started.load() == 1);
+    CHECK(held.job.answered_count() == 1);  // nothing added while paused
+    CHECK(held.job.snapshot().paused);
 
     REQUIRE(paused.answers.size() == 1);
-    CHECK(paused.answers[0].first == charts[0].md5);
-    check_answers_match_store(paused, store, run);
+    CHECK(paused.answers[0].first == held.charts[0].md5);
+    check_answers_match_store(paused, held.store, held.run);
 
-    job.resume();
-    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
-    CHECK(started.load() == 2);
-    const SavedRows rest = job.take_saved_rows();
+    held.job.resume();
+    wait_until([&] { return held.job.snapshot().finished; }, "the batch to finish");
+    CHECK(held.started.load() == 2);
+    const SavedRows rest = held.job.take_saved_rows();
     REQUIRE(rest.answers.size() == 1);
-    CHECK(rest.answers[0].first == charts[1].md5);
+    CHECK(rest.answers[0].first == held.charts[1].md5);
 }
 
 // A lookup that fails shows the same sentence a failed store read shows, and
