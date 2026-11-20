@@ -161,6 +161,14 @@ def recorded_chords(log_lines):
     return [chord(index, group[0].chart_ms, *group) for index, group in presses.items()]
 
 
+def repressed(one_press_chord, lanes, **kw):
+    """A one-press chord's press made again on `lanes` with `kw`, and the
+    chord holding it."""
+    p = one_press_chord.presses[0]
+    q = press(p.index, p.chart_ms, lanes, **kw)
+    return q, chord(p.index, p.chart_ms, q)
+
+
 def watched_sp_end(active):
     """The Star Power end the g3 run's sp_watch-1.csv recorded on its first
     row whose active byte is set (`active`) or clear, read the way
@@ -268,11 +276,11 @@ class PlayInGameTest(unittest.TestCase):
         # planned_end_ms, is a hand-picked schedule input.
         planned_end_ms = 104_800.0
         (c0, c1, c2) = recorded_chords(recorded_log("press-1-head.csv"))
-        head = press(c0.index, c0.presses[0].chart_ms, [Lane.RED], planned_end_ms=planned_end_ms)
+        _, c0 = repressed(c0, [Lane.RED], planned_end_ms=planned_end_ms)
         other = c1.presses[0]
-        timed = press(c2.index, c2.presses[0].chart_ms, [Lane.BLUE], end_read_after=c0.index,
-                      aim_end_ms=planned_end_ms)
-        chords = [chord(c0.index, c0.presses[0].chart_ms, head), c1, chord(c2.index, c2.presses[0].chart_ms, timed)]
+        timed, c2 = repressed(c2, [Lane.BLUE], end_read_after=c0.index,
+                              aim_end_ms=planned_end_ms)
+        chords = [c0, c1, c2]
         player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(3))
         read_s = watched_sp_end(active=True)
         result = run(chords, player, read_sp_end=lambda: read_s)
@@ -294,10 +302,11 @@ class PlayInGameTest(unittest.TestCase):
         # chords (kit-1-head.jsonl); the end read is a row of the run's
         # sp_watch-1.csv taken before its first activation.
         (c0, c1, _) = recorded_chords(recorded_log("press-1-head.csv"))
-        head = press(c0.index, c0.presses[0].chart_ms, [Lane.RED], planned_end_ms=c1.presses[0].chart_ms)
-        timed = press(c1.index, c1.presses[0].chart_ms, [Lane.BLUE], end_read_after=c0.index,
-                      aim_end_ms=c1.presses[0].chart_ms)
-        chords = [chord(c0.index, c0.presses[0].chart_ms, head), chord(c1.index, c1.presses[0].chart_ms, timed)]
+        planned_end_ms = c1.presses[0].chart_ms
+        _, c0 = repressed(c0, [Lane.RED], planned_end_ms=planned_end_ms)
+        timed, c1 = repressed(c1, [Lane.BLUE], end_read_after=c0.index,
+                              aim_end_ms=planned_end_ms)
+        chords = [c0, c1]
         player = RecordedPlayer(os.path.join(_G3, "kit-1-head.jsonl"), seqs=range(2))
         read_s = watched_sp_end(active=False)
         result = run(chords, player, read_sp_end=lambda: read_s)
