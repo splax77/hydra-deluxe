@@ -50,4 +50,4 @@ all methods by count:
         0  ʼʲʹʻʹʲʵˁʲʽˀ (base 0x100e8b0)  (ʻʾˀʹʵʵʴʶʵˀʵ<ʾʸʸʻʷʸˁʾˁʽʸ>)
         0  ʴʺʴʺʴʷʲʺʷʽʿ (base 0x100dcb0)  (ʻʾˀʹʵʵʴʶʵˀʵ<ʾʸʸʻʷʸˁʾˁʽʸ>)
         0  ʻʶʿʺʹʺˁʷʽʷʸ (base 0x2eb6550)  ()
-messages written to C:\Users\Patrick\AppData\Local\Temp\claude\C--Users-Patrick-Downloads-Hydra-hydra-test\6a549de0-baf9-484b-bc31-5c46be6059e6\scratchpad\l3\trace-wm-count.jsonl
+messages written to C:\Users\user\AppData\Local\Temp\claude\C--Users-user-Downloads-Hydra-hydra-test\6a549de0-baf9-484b-bc31-5c46be6059e6\scratchpad\l3\trace-wm-count.jsonl

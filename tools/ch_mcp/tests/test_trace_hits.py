@@ -329,7 +329,7 @@ class CommandLineTest(unittest.TestCase):
         # Every line of the count run's own report comes back, in its order,
         # but for the two lines that named that run's own files
         # (testdata/ch_runs/2026-10-28-l3/trace-wm-count.txt, copied from
-        # hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt).
+        # hydra-data/ch-mcp-runs/2026-10-28/l3/trace-wm-count.txt, with the user's folder name in its last line replaced by "user").
         _, _, _, code = self.run_window_map_count()
         self.assertEqual(code, 0)
         report = self.assert_printed_the_report("trace-wm-count.txt")
