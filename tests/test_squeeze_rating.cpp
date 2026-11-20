@@ -600,52 +600,66 @@ TEST_CASE("rate_note: the side of the end picks the multiplier") {
 }
 
 TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close") {
-    // Sinner's Vengeance act 3 shape: 187.5 ms at an early scale just under
-    // 1 moves by under 1 ms, and it still gets a figure. Full precision.
+    // An early scale just under 1 that moves a 187.5 ms gap by under 1 ms
+    // still gets a figure, at full precision.
+    const double gap = 187.5;
     const double r = 0.9912;
-    NoteRating n = rate_note(-187.5, true, TransferScale{r, 1.0});
+    REQUIRE(is_scaled(r));
+    NoteRating n = rate_note(-gap, true, TransferScale{r, kIdentityScale});
     REQUIRE(n.effective_ms.has_value());
-    CHECK(*n.effective_ms == doctest::Approx(188.32864604258737).epsilon(1e-12));
+    CHECK(*n.effective_ms == doctest::Approx(figure_by_rule(gap, r)).epsilon(1e-12));
+    CHECK(std::abs(*n.effective_ms - gap) < 1.0);
     // Exactly 1, or float noise around it: no figure.
-    CHECK_FALSE(rate_note(-187.5, true, TransferScale{1.0, 1.0}).effective_ms.has_value());
     CHECK_FALSE(
-        rate_note(-187.5, true, TransferScale{1.0 + 1e-12, 1.0}).effective_ms.has_value());
-    // A note on the end itself keeps its figure when scaled: 0 ms.
-    NoteRating z = rate_note(0.0, true, TransferScale{8.59, 8.76});
+        rate_note(-gap, true, TransferScale{kIdentityScale, kIdentityScale}).effective_ms.has_value());
+    CHECK_FALSE(rate_note(-gap, true, TransferScale{kIdentityScale + 1e-12, kIdentityScale})
+                    .effective_ms.has_value());
+    // A note on the end itself keeps its figure when scaled: 0 ms. Any scale
+    // far from 1 on either side shows it; these two are just that.
+    const double far_early = 8.59;
+    const double far_late = 8.76;
+    REQUIRE(is_scaled(far_early));
+    NoteRating z = rate_note(0.0, true, TransferScale{far_early, far_late});
     REQUIRE(z.effective_ms.has_value());
     CHECK(*z.effective_ms == 0.0);
 }
 
 TEST_CASE("rate_activation: every row reads post, by its side of the end") {
-    REQUIRE(core::default_rules().backend_leeway_ms > 1.5);
+    const double leeway = core::default_rules().backend_leeway_ms;
+    // A row past the end but less than the leeway after it: counted.
+    const double inside_leeway = leeway / 2.0;
+    // A row well past the leeway: uncounted.
+    const double past_leeway = leeway + 47.0;
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
-    // A row never reads the SqIn scale.
-    test::set_transfer(act, TransferScale{3.0, 4.0}, TransferScale{0.5, 2.0});
+    // A row never reads the SqIn scale, so the SqIn's differs from post's.
+    const TransferScale sqin_scale{3.0, 4.0};
+    const TransferScale post{0.5, 2.0};
+    test::set_transfer(act, sqin_scale, post);
     auto add = [&act](int64_t tick, double off) {
         BackendSqueeze b;
         b.timecode = Timecode::raw(tick);
         b.offset_ms = off;
         act.backends.push_back(b);
     };
-    add(1000, -40.0);  // counted, inside SP: early
-    add(1001, 0.0);    // counted, on the end: early
-    add(1002, 1.5);    // counted inside the leeway: early (D290 decision 6)
-    add(1003, 50.0);   // uncounted, past the leeway: late
+    const double offsets[] = {-40.0, 0.0, inside_leeway, past_leeway};
+    // Inside SP, on the end and inside the leeway all read the early side
+    // (D290 decision 6); past the leeway reads the late side.
+    const bool want_early[] = {true, true, true, false};
+    for (size_t i = 0; i < 4; ++i) add(1000 + int64_t(i), offsets[i]);
 
     ActivationRating r = rate_activation(act);
     REQUIRE(r.backends.size() == 4);
-    CHECK(r.backends[0].note.early);
-    CHECK(r.backends[1].note.early);
-    CHECK(r.backends[2].note.early);
-    CHECK(r.backends[2].note.scale == 0.5);
-    CHECK_FALSE(r.backends[3].note.early);
-    CHECK(r.backends[3].note.scale == 2.0);
-    const double want[] = {53.333333333333336, 0.0, 2.0, 33.333333333333336};
     for (size_t i = 0; i < r.backends.size(); ++i) {
-        REQUIRE(r.backends[i].note.effective_ms.has_value());
-        CHECK(*r.backends[i].note.effective_ms == doctest::Approx(want[i]).epsilon(1e-12));
+        CAPTURE(offsets[i]);
+        const NoteRating& n = r.backends[i].note;
+        CHECK(n.early == want_early[i]);
+        const double want_scale = want_early[i] ? post.early : post.late;
+        CHECK(n.scale == want_scale);
+        REQUIRE(n.effective_ms.has_value());
+        CHECK(*n.effective_ms ==
+              doctest::Approx(figure_by_rule(offsets[i], want_scale)).epsilon(1e-12));
     }
     CHECK(r.scale_governs);
     // Rows on both sides of the end: post reads both; no SqIn, so none recorded.
@@ -655,86 +669,102 @@ TEST_CASE("rate_activation: every row reads post, by its side of the end") {
 }
 
 TEST_CASE("rate_activation: the squeeze-out is rated once, as its row, at post") {
-    // Sinner's Vengeance act 3 shape: a SqIn extended SP, then the path
-    // squeezed out the [RY] phrase 187.5 ms before the final end. The SqOut
-    // entry and the row hold the same stored number (its squeeze choice's
-    // timing on the deact edge), measured from the final end, so the row's post
-    // multiplier is the only one that applies.
+    // A SqIn extended SP, then the path squeezed out a phrase before the
+    // final end. The SqOut entry and the row hold the same stored number,
+    // measured from the final end, so the row's post multiplier is the only
+    // one that applies. Every scale differs, so each figure names the scale
+    // it read.
+    const double sqin_gap = 92.1;
+    const double sqout_gap = 187.5;
+    const TransferScale sqin_scale{0.97, 0.974};
+    const TransferScale post{0.9912, 0.98};
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -92.1});
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -187.5});
-    test::set_transfer(act, TransferScale{0.97, 0.974}, TransferScale{0.9912, 0.98});
-    BackendSqueeze ry;
-    ry.timecode = Timecode::raw(5000);
-    ry.offset_ms = -187.5;
-    act.backends.push_back(ry);
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -sqin_gap});
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -sqout_gap});
+    test::set_transfer(act, sqin_scale, post);
+    BackendSqueeze squeezed_row;
+    squeezed_row.timecode = Timecode::raw(5000);
+    squeezed_row.offset_ms = -sqout_gap;
+    act.backends.push_back(squeezed_row);
     act.sqout_tick = 5000;
 
     ActivationRating r = rate_activation(act);
     REQUIRE(r.backends.size() == 1);
     CHECK(r.backends[0].squeezed_out);
     CHECK(r.backends[0].note.early);
-    CHECK(r.backends[0].note.scale == 0.9912);
+    CHECK(r.backends[0].note.scale == post.early);
     REQUIRE(r.backends[0].note.effective_ms.has_value());
-    CHECK(*r.backends[0].note.effective_ms == doctest::Approx(188.32864604258737).epsilon(1e-12));
+    CHECK(*r.backends[0].note.effective_ms ==
+          doctest::Approx(figure_by_rule(sqout_gap, post.early)).epsilon(1e-12));
     REQUIRE(r.note_effective_ms.size() == 2);
-    // The SqIn: free by 92.1 ms at its own SP end, so its SqIn scale's early side.
+    // The SqIn: free before its own SP end, so its SqIn scale's early side.
     REQUIRE(r.note_effective_ms[0].has_value());
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(93.50253807106598).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[0] ==
+          doctest::Approx(figure_by_rule(sqin_gap, sqin_scale.early)).epsilon(1e-12));
     // The SqOut: its row above is its only rating.
     CHECK_FALSE(r.note_effective_ms[1].has_value());
 
     // A free squeeze-out, already past the end, reads post's late side.
-    act.backends[0].offset_ms = 40.0;
-    act.sqinouts[1] = SPSqueeze{SqueezeKind::SqOut, 40.0};
+    const double past_end = 40.0;
+    act.backends[0].offset_ms = past_end;
+    act.sqinouts[1] = SPSqueeze{SqueezeKind::SqOut, past_end};
     r = rate_activation(act);
     CHECK_FALSE(r.backends[0].note.early);
-    CHECK(r.backends[0].note.scale == 0.98);
+    CHECK(r.backends[0].note.scale == post.late);
 }
 
 TEST_CASE("rate_activation: each SqIn reads its own stored scale") {
     // Two SqIns measured from two different ends, so two different scales.
     // Only the early side is scaled, and both are free, so each figure shows
     // which SqIn's scale was read.
+    const double gap = 400.0;
+    const double first_early = 1.6;
+    const double second_early = 0.6;
     Activation act;
     act.e_offset = 300.0;
-    SPSqueeze first{SqueezeKind::SqIn, -400.0};
-    first.transfer = TransferScale{1.6, 1.0};
-    SPSqueeze second{SqueezeKind::SqIn, -400.0};
-    second.transfer = TransferScale{0.6, 1.0};
+    SPSqueeze first{SqueezeKind::SqIn, -gap};
+    first.transfer = TransferScale{first_early, kIdentityScale};
+    SPSqueeze second{SqueezeKind::SqIn, -gap};
+    second.transfer = TransferScale{second_early, kIdentityScale};
     act.sqinouts = {first, second};
     // Every scale is stored or none is read (D4), so the SP end's is stored
     // too, flat.
-    act.transfer_post = TransferScale{1.0, 1.0};
+    act.transfer_post = TransferScale{kIdentityScale, kIdentityScale};
     ActivationRating r = rate_activation(act);
     REQUIRE(r.scales.has_value());
     REQUIRE(r.scales->sqins.size() == 2);
-    CHECK(r.scales->sqins[0].early == 1.6);
-    CHECK(r.scales->sqins[1].early == 0.6);
+    CHECK(r.scales->sqins[0].early == first_early);
+    CHECK(r.scales->sqins[1].early == second_early);
     REQUIRE(r.note_effective_ms.size() == 2);
     REQUIRE(r.note_effective_ms[0].has_value());
     REQUIRE(r.note_effective_ms[1].has_value());
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(307.6923076923077).epsilon(1e-12));
-    CHECK(*r.note_effective_ms[1] == doctest::Approx(500.0).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[0] ==
+          doctest::Approx(figure_by_rule(gap, first_early)).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[1] ==
+          doctest::Approx(figure_by_rule(gap, second_early)).epsilon(1e-12));
 }
 
 TEST_CASE("rate_activation: a SqIn reads its SqIn scale, by its side of the end") {
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -400.0});  // free: early
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 50.0});    // to earn: late
-    // A SqIn never reads the backend rows' scale.
-    test::set_transfer(act, TransferScale{1.6, 0.5}, TransferScale{3.0, 4.0});
+    const double free_gap = 400.0;  // before the end: free, early side
+    const double earn_gap = 50.0;   // past the end: to earn, late side
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, -free_gap});
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, earn_gap});
+    // A SqIn never reads the backend rows' scale, so post's differs.
+    const TransferScale sqin_scale{1.6, 0.5};
+    test::set_transfer(act, sqin_scale, TransferScale{3.0, 4.0});
     ActivationRating r = rate_activation(act);
     REQUIRE(r.note_effective_ms.size() == 2);
     REQUIRE(r.note_effective_ms[0].has_value());
     REQUIRE(r.note_effective_ms[1].has_value());
-    // Sun of Nothing act 5: 400 ms free at early x1.60 is worth 307.7 ms.
-    CHECK(*r.note_effective_ms[0] == doctest::Approx(307.6923076923077).epsilon(1e-12));
-    CHECK(*r.note_effective_ms[1] == doctest::Approx(66.666666666666667).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[0] ==
+          doctest::Approx(figure_by_rule(free_gap, sqin_scale.early)).epsilon(1e-12));
+    CHECK(*r.note_effective_ms[1] ==
+          doctest::Approx(figure_by_rule(earn_gap, sqin_scale.late)).epsilon(1e-12));
     CHECK(r.scale_governs);
     // Each SqIn marks its own side of its own end; no row reads the SP end.
     CHECK_FALSE(r.post_read.early);
@@ -768,12 +798,14 @@ TEST_CASE("rate_activation: a SqIn on the SP end is inside Star Power, so it rea
     CHECK_FALSE(figure(late_only, 0.0).has_value());
     // Just before the end: inside Star Power, early side.
     REQUIRE(figure(early_only, -0.5).has_value());
-    CHECK(*figure(early_only, -0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
+    CHECK(*figure(early_only, -0.5) ==
+          doctest::Approx(figure_by_rule(-0.5, early_only.early)).epsilon(1e-12));
     CHECK_FALSE(figure(late_only, -0.5).has_value());
     // Just past the end: still to earn, late side.
     CHECK_FALSE(figure(early_only, 0.5).has_value());
     REQUIRE(figure(late_only, 0.5).has_value());
-    CHECK(*figure(late_only, 0.5) == doctest::Approx(0.38461538461538464).epsilon(1e-12));
+    CHECK(*figure(late_only, 0.5) ==
+          doctest::Approx(figure_by_rule(0.5, late_only.late)).epsilon(1e-12));
 }
 
 // D302: the squeezed-out row's side is read the same way, so both kinds are
