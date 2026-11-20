@@ -1,7 +1,7 @@
 // Unit tests for the one column-width rule (ui/column_widths). The rule's
 // arithmetic has no ImGui in it, so these feed it a pretend font: every
-// character is 10 pixels wide. Every expected number is worked by hand from
-// the inputs in the comment beside it.
+// character is 10 pixels wide. Every expected number is worked from the
+// test's own inputs.
 
 #include "doctest.h"
 
@@ -61,6 +61,32 @@ const std::vector<ColumnSpec> kLibrarySpecs = {text_spec("Title", 17), text_spec
 // the real panel hides is render_table's choice, in src/ui/library_table.cpp.
 const std::vector<bool> kPanelOpen = {true, true, false, false, true};
 
+// The five columns' places in kLibrarySpecs.
+constexpr std::size_t kTitle = 0;
+constexpr std::size_t kArtist = 1;
+constexpr std::size_t kCharter = 2;
+constexpr std::size_t kFolder = 3;
+constexpr std::size_t kBestPath = 4;
+
+// A kLibrarySpecs column's header in the pretend font, and its share.
+float header_px(std::size_t c) { return ten_px(kLibrarySpecs[c].header); }
+int share_of(std::size_t c) { return kLibrarySpecs[c].share; }
+
+// The shares of the kLibrarySpecs columns `shown` keeps (all when empty).
+int shown_shares(const std::vector<bool>& shown) {
+    int total = 0;
+    for (std::size_t c = 0; c < kLibrarySpecs.size(); ++c)
+        if (shown.empty() || shown[c]) total += kLibrarySpecs[c].share;
+    return total;
+}
+
+// What a text column gets of `room` pixels for `share` of `total` shares,
+// in whole pixels rounded down, the way place_columns
+// (src/ui/column_widths.cpp) splits the leftover.
+float split_px(float room, int share, int total) {
+    return std::floor(room * static_cast<float>(share) / static_cast<float>(total));
+}
+
 // Short Library rows. Text columns never read them; they are here so the
 // measure has rows, as the app's does.
 const Rows kLibraryRows = {{"Song", "Band", "Me", "pack", "1 2 3"},
@@ -91,127 +117,160 @@ TableRoom room_of(float available, std::vector<bool> shown = {},
 }  // namespace
 
 TEST_CASE("column_widths: a header wider than every cell sets the width") {
-    // Header "Artist" = 60; cells "Abc" = 30 and "Ab" = 20.
+    const std::string header = "Artist";
     const Rows rows = {{"Abc"}, {"Ab"}};
-    const MeasuredWidths m = hydra::ui::measure_widths({spec("Artist", false)}, 2, cells(rows));
-    CHECK(m.widths == std::vector<float>{60.0f});
-    CHECK(m.header_widths == std::vector<float>{60.0f});
+    for (const auto& row : rows) REQUIRE(ten_px(row[0]) < ten_px(header));
+    const MeasuredWidths m = hydra::ui::measure_widths({spec(header, false)}, 2, cells(rows));
+    CHECK(m.widths == std::vector<float>{ten_px(header)});
+    CHECK(m.header_widths == std::vector<float>{ten_px(header)});
     CHECK_FALSE(m.widest_row[0].has_value());
 }
 
 TEST_CASE("column_widths: a chip's padding is added to its cells, not its header") {
-    // Header "T" = 10. Cells "Beyond" = 60 and "Hit" = 30, each plus 8 of
-    // padding: 68 and 38. The widest is row 0 at 68; the header stays 10.
+    const float padding = 8.0f;
+    const std::string header = "T";
     const Rows rows = {{"Beyond"}, {"Hit"}};
-    const MeasuredWidths m = hydra::ui::measure_widths({spec("T", false, 8.0f)}, 2, cells(rows));
-    CHECK(m.widths == std::vector<float>{68.0f});
-    CHECK(m.header_widths == std::vector<float>{10.0f});
-    CHECK(m.widest_row[0] == 0u);
+    const MeasuredWidths m = hydra::ui::measure_widths({spec(header, false, padding)}, 2, cells(rows));
+    const std::size_t widest = 0;  // "Beyond", wider than "Hit" and the header
+    CHECK(m.widths == std::vector<float>{ten_px(rows[widest][0]) + padding});
+    CHECK(m.header_widths == std::vector<float>{ten_px(header)});
+    CHECK(m.widest_row[0] == widest);
 }
 
 TEST_CASE("column_widths: header_width_of measures the header, width_of the cells") {
-    // Header "Points" in a pretend 5 px font = 30. Cells in the 10 px font:
-    // "Points" = 60 and "1234" = 40. A cell that reads as the header still
-    // measures in the cells' font, so row 0 is the widest at 60.
-    ColumnSpec s = spec("Points", false);
-    s.header_width_of = [](std::string_view t) { return 5.0f * static_cast<float>(t.size()); };
-    const Rows rows = {{"Points"}, {"1234"}};
+    // The header gets a second pretend font, half as wide. Row 0's cell reads
+    // the same as the header, yet measures in the cells' font.
+    const auto five_px = [](std::string_view t) { return 5.0f * static_cast<float>(t.size()); };
+    const std::string header = "Points";
+    ColumnSpec s = spec(header, false);
+    s.header_width_of = five_px;
+    const Rows rows = {{header}, {"1234"}};
+    const std::size_t widest = 0;  // the cell that reads as the header
     const MeasuredWidths m = hydra::ui::measure_widths({s}, 2, cells(rows));
-    CHECK(m.header_widths == std::vector<float>{30.0f});
-    CHECK(m.widths == std::vector<float>{60.0f});
-    CHECK(m.widest_row[0] == 0u);
+    CHECK(m.header_widths == std::vector<float>{five_px(header)});
+    CHECK(m.widths == std::vector<float>{ten_px(rows[widest][0])});
+    CHECK(m.widest_row[0] == widest);
 
-    // Without header_width_of, width_of measures the header too: 60.
-    const MeasuredWidths plain = hydra::ui::measure_widths({spec("Points", false)}, 2, cells(rows));
-    CHECK(plain.header_widths == std::vector<float>{60.0f});
+    // Without header_width_of, width_of measures the header too.
+    const MeasuredWidths plain = hydra::ui::measure_widths({spec(header, false)}, 2, cells(rows));
+    CHECK(plain.header_widths == std::vector<float>{ten_px(header)});
 }
 
 TEST_CASE("column_widths: a measure is stale until taken, and again after a scale change") {
     CHECK(MeasuredWidths{}.stale());
     const float before = hydra::ui::g_ui_scale;
-    hydra::ui::g_ui_scale = 1.0f;
+    const float scale_measured_at = 1.0f;
+    const float a_later_scale = 1.25f;
+    hydra::ui::g_ui_scale = scale_measured_at;
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    CHECK(m.scale == 1.0f);
+    CHECK(m.scale == scale_measured_at);
     CHECK_FALSE(m.stale());
-    hydra::ui::g_ui_scale = 1.25f;
+    hydra::ui::g_ui_scale = a_later_scale;
     CHECK(m.stale());
     hydra::ui::g_ui_scale = before;
 }
 
-TEST_CASE("column_widths: the Library's text columns split the room by their shares") {
-    // 1,000 px, no spacing, no number column: the shares apply to all 1,000.
-    // Title 17% = 170, Artist 10% = 100, Charter 9% = 90, Folder 39% = 390,
-    // Best path 25% = 250. Each is above its header. They sum to 1,000.
-    const ColumnLayout l = hydra::ui::place_columns(library_measure(), kLibrarySpecs, room_of(1000.0f));
-    CHECK(l.widths == std::vector<float>{170.0f, 100.0f, 90.0f, 390.0f, 250.0f});
-    CHECK(l.inner_width == 1000.0f);
+TEST_CASE("column_widths: five text columns, all shown, split the room by their shares") {
+    // No spacing and no number column, so the shares split the whole room.
+    const float room = 1000.0f;
+    const int total = shown_shares({});
+    std::vector<float> expected;
+    for (std::size_t c = 0; c < kLibrarySpecs.size(); ++c) {
+        expected.push_back(split_px(room, share_of(c), total));
+        REQUIRE(expected[c] > header_px(c));  // no column stops at its header
+    }
+    const ColumnLayout l = hydra::ui::place_columns(library_measure(), kLibrarySpecs, room_of(room));
+    CHECK(l.widths == expected);
+    CHECK(l.inner_width == room);
 }
 
 TEST_CASE("column_widths: hidden columns' shares go to the shown ones, lost pixels to the last") {
-    // kPanelOpen hides Charter and Folder. The shown shares 17, 10 and 25
-    // sum to 52 and split the same 1,000:
-    //   Title     1,000 x 17 / 52 = 326.9 -> 326
-    //   Artist    1,000 x 10 / 52 = 192.3 -> 192
-    //   Best path 1,000 x 25 / 52 = 480.8 -> 480
-    // 326 + 192 + 480 = 998, so Best path, the last shown text column, takes
-    // the 2 lost pixels: 482. The hidden columns keep their measured width,
-    // their header's: Charter 70, Folder 60.
+    // kPanelOpen hides Charter and Folder; the shown shares split the whole
+    // room. Best path is the last shown text column.
+    const float room = 1000.0f;
+    const int total = shown_shares(kPanelOpen);
+    const float title = split_px(room, share_of(kTitle), total);
+    const float artist = split_px(room, share_of(kArtist), total);
+    const float best_path = split_px(room, share_of(kBestPath), total);
+    const float lost = room - (title + artist + best_path);
+    REQUIRE(lost > 0.0f);  // rounding down loses pixels in this room
     const ColumnLayout l =
-        hydra::ui::place_columns(library_measure(), kLibrarySpecs, room_of(1000.0f, kPanelOpen));
-    CHECK(l.widths == std::vector<float>{326.0f, 192.0f, 70.0f, 60.0f, 482.0f});
-    CHECK(l.inner_width == 1000.0f);
+        hydra::ui::place_columns(library_measure(), kLibrarySpecs, room_of(room, kPanelOpen));
+    // The hidden columns keep their measured width, their header's.
+    CHECK(l.widths == std::vector<float>{title, artist, header_px(kCharter), header_px(kFolder),
+                                         best_path + lost});
+    CHECK(l.inner_width == room);
 }
 
 TEST_CASE("column_widths: a text column whose split is below its header stops there") {
     const MeasuredWidths m = library_measure();
+    const int total = shown_shares(kPanelOpen);
     SUBCASE("300 px: Artist stops at its header, the others split the rest") {
-        // Panel open, 300 px. First pass by 17, 10 and 25 of 52:
-        //   Title 300 x 17 / 52 = 98.1, Artist 300 x 10 / 52 = 57.7 (below
-        //   its header's 60), Best path 300 x 25 / 52 = 144.2.
-        // Artist stops at 60. Title and Best path split the 240 left by 17
-        // and 25 of 42: Title 97.1 -> 97, Best path 142.9 -> 142, and the
-        // lost pixel goes to Best path: 143. 97 + 60 + 143 = 300.
+        // Panel open. On the first split only Artist falls below its header.
+        const float room = 300.0f;
+        REQUIRE(split_px(room, share_of(kTitle), total) >= header_px(kTitle));
+        REQUIRE(split_px(room, share_of(kArtist), total) < header_px(kArtist));
+        REQUIRE(split_px(room, share_of(kBestPath), total) >= header_px(kBestPath));
+        // Artist sits at its header; Title and Best path split what is left by
+        // their own shares, and the lost pixels go to Best path.
+        const float left = room - header_px(kArtist);
+        const int rest = share_of(kTitle) + share_of(kBestPath);
+        const float title = split_px(left, share_of(kTitle), rest);
+        const float best_path = split_px(left, share_of(kBestPath), rest);
+        REQUIRE(title >= header_px(kTitle));
+        REQUIRE(best_path >= header_px(kBestPath));
+        const float lost = left - (title + best_path);
         const ColumnLayout l =
-            hydra::ui::place_columns(m, kLibrarySpecs, room_of(300.0f, kPanelOpen));
-        CHECK(l.widths == std::vector<float>{97.0f, 60.0f, 70.0f, 60.0f, 143.0f});
-        CHECK(l.inner_width == 300.0f);
+            hydra::ui::place_columns(m, kLibrarySpecs, room_of(room, kPanelOpen));
+        CHECK(l.widths == std::vector<float>{title, header_px(kArtist), header_px(kCharter),
+                                             header_px(kFolder), best_path + lost});
+        CHECK(l.inner_width == room);
     }
     SUBCASE("150 px: every column at its header, and the table scrolls") {
-        // Every split is below its header: Title 150 x 17 / 52 = 49.0 < 50,
-        // Artist 28.8 < 60, Best path 72.1 < 90. Each sits at its header:
-        // 50, 60 and 90. The inner width 200 is more than the 150 of room.
+        const float room = 150.0f;
+        for (std::size_t c : {kTitle, kArtist, kBestPath})
+            REQUIRE(split_px(room, share_of(c), total) < header_px(c));
+        const float headers = header_px(kTitle) + header_px(kArtist) + header_px(kBestPath);
         const ColumnLayout l =
-            hydra::ui::place_columns(m, kLibrarySpecs, room_of(150.0f, kPanelOpen));
-        CHECK(l.widths == std::vector<float>{50.0f, 60.0f, 70.0f, 60.0f, 90.0f});
-        CHECK(l.inner_width == 200.0f);
-        CHECK(l.min_inner_width == 200.0f);
+            hydra::ui::place_columns(m, kLibrarySpecs, room_of(room, kPanelOpen));
+        CHECK(l.widths == std::vector<float>{header_px(kTitle), header_px(kArtist), header_px(kCharter),
+                                             header_px(kFolder), header_px(kBestPath)});
+        CHECK(l.inner_width == headers);
+        CHECK(l.inner_width > room);
+        CHECK(l.min_inner_width == headers);
     }
 }
 
 TEST_CASE("column_widths: a number column takes its widest and the text columns split the rest") {
     const MeasuredWidths m = hydra::ui::measure_widths(kSpecs, kRows.size(), cells(kRows));
-    // Available 260, spacing 10. Num takes its widest cell, 50. Leftover
-    // 260 - 10 - 50 = 200: Song 60% = 120, Artist 40% = 80.
-    // Inner width 50 + 120 + 80 + 10 = 260. Minimum: 50 + 40 + 60 + 10 = 160.
-    const ColumnLayout l = hydra::ui::place_columns(m, kSpecs, TableRoom{260.0f, 10.0f, {}});
-    CHECK(l.widths == std::vector<float>{50.0f, 120.0f, 80.0f});
-    CHECK(l.inner_width == 260.0f);
-    CHECK(l.min_inner_width == 160.0f);
+    const float available = 260.0f;
+    const float spacing = 10.0f;
+    const float num = ten_px(kRows[0][0]);  // "12345", Num's widest cell
+    const float leftover = available - spacing - num;
+    const int total = kSpecs[1].share + kSpecs[2].share;
+    const float song = split_px(leftover, kSpecs[1].share, total);
+    const float artist = split_px(leftover, kSpecs[2].share, total);
+    REQUIRE(song + artist == leftover);  // no pixels lost to rounding here
+    const ColumnLayout l = hydra::ui::place_columns(m, kSpecs, TableRoom{available, spacing, {}});
+    CHECK(l.widths == std::vector<float>{num, song, artist});
+    CHECK(l.inner_width == num + song + artist + spacing);
+    // The narrowest the table can be: the number column whole, each text
+    // column at its header.
+    CHECK(l.min_inner_width == num + ten_px(kSpecs[1].header) + ten_px(kSpecs[2].header) + spacing);
 }
 
 TEST_CASE("column_widths: the text in a text column does not change the layout") {
-    // The same Library table twice: once with short cells, once with every
-    // cell 200 characters (2,000 px in the pretend font). Text columns
-    // measure their headers alone, so both give the 1,000 px widths of the
-    // shares: 170, 100, 90, 390, 250.
-    const Rows long_rows = {std::vector<std::string>(5, std::string(200, 'a'))};
+    // The same table twice: once with short cells, once with every cell far
+    // wider than the room.
+    const float room = 1000.0f;
+    const Rows long_rows = {std::vector<std::string>(kLibrarySpecs.size(), std::string(200, 'a'))};
+    REQUIRE(ten_px(long_rows[0][0]) > room);
     const MeasuredWidths short_m = library_measure();
     const MeasuredWidths long_m = library_measure(long_rows);
     CHECK(short_m.widths == long_m.widths);
-    const ColumnLayout a = hydra::ui::place_columns(short_m, kLibrarySpecs, room_of(1000.0f));
-    const ColumnLayout b = hydra::ui::place_columns(long_m, kLibrarySpecs, room_of(1000.0f));
+    const ColumnLayout a = hydra::ui::place_columns(short_m, kLibrarySpecs, room_of(room));
+    const ColumnLayout b = hydra::ui::place_columns(long_m, kLibrarySpecs, room_of(room));
     CHECK(a.widths == b.widths);
-    CHECK(b.widths == std::vector<float>{170.0f, 100.0f, 90.0f, 390.0f, 250.0f});
 }
 
 TEST_CASE("column_widths: a dragged text column keeps its width and the others re-split") {
