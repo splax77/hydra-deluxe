@@ -573,9 +573,7 @@ bool Path::has_activations() const { return !walk_activations().empty(); }
 
 std::vector<int64_t> Path::bank_arrivals(size_t i) const {
     const ActivationWalk acts = walk_activations();
-    std::vector<int64_t> out = i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
-    if (!out.empty() && i > 0 && acts[i - 1].sqout_tick) out.front() = *acts[i - 1].sqout_tick;
-    return out;
+    return i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
 }
 
 int64_t Path::totalscore() const {
