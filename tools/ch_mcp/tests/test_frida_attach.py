@@ -1552,21 +1552,6 @@ def own_number_findings(block: str) -> list[str]:
     return found
 
 
-def top_functions(text: str) -> dict[str, str]:
-    """Each top-level function of an agent, by name, with the lines of its
-    body (its signature line left out), up to the `}` that closes it at
-    column 0."""
-    out = {}
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        m = re.match(r"(?:async\s+)?function\s+(\w+)\s*\(", line)
-        if m is None:
-            continue
-        end = next(j for j in range(i + 1, len(lines)) if lines[j] == "}")
-        out[m.group(1)] = "\n".join(lines[i + 1:end])
-    return out
-
-
 def play_waits_findings(kit_text: str) -> list[str]:
     """Why kit.ts's play case would wait for its schedule before replying:
     a play case that does not reply with startPlay through settled, or a
