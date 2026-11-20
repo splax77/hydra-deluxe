@@ -4,9 +4,9 @@
 //
 // These are facts the chart and the window give on their own. They do not
 // restate when the engine says a bar arrives. A banked bar arrives on a real
-// SP-phrase-end note, or, for a squeezed-out bar, at the deact node; every
-// list is strictly ascending (a phrase banks once); nothing arrives before the
-// window that precedes it closed; and a phrase a squeeze-in spent never banks
+// SP-phrase-end note, or, for a squeezed-out bar, on the squeezed-out chord;
+// every list is strictly ascending (a phrase banks once); nothing arrives
+// before the Star Power of the window that precedes it ended; and a phrase a squeeze-in spent never banks
 // a bar. The D34 one-step-per-SqIn check lives here too, beside the
 // spent-phrase check.
 
@@ -40,10 +40,12 @@ inline std::set<int64_t> phrase_ends(const hydra::Song& song) {
 // chart began), up to `last_tick`.
 inline void check_bank_list(const std::vector<int64_t>& ticks, const hydra::Activation* prev,
                             int64_t last_tick, const std::set<int64_t>& phrase_ends) {
-    const std::optional<int64_t> deact = prev ? prev->deact_tick() : std::nullopt;
-    const int64_t floor = deact ? *deact : std::numeric_limits<int64_t>::min();
-    // A squeeze-out leaves one bar, banked by the player's hit on the phrase.
-    // That hit can land at the deact node itself.
+    // Nothing arrives before the previous window's Star Power ended
+    // (Activation::window_end_tick).
+    const std::optional<int64_t> end = prev ? prev->window_end_tick() : std::nullopt;
+    const int64_t floor = end ? *end : std::numeric_limits<int64_t>::min();
+    // A squeeze-out leaves one bar, banked by the player's hit on the
+    // squeezed-out chord (SP-35 on docs/clone-hero/05-star-power.md).
     const bool squeezed_out = prev && prev->sqout_tick.has_value();
     if (squeezed_out) REQUIRE_FALSE(ticks.empty());
     for (size_t k = 0; k < ticks.size(); ++k) {
@@ -52,8 +54,8 @@ inline void check_bank_list(const std::vector<int64_t>& ticks, const hydra::Acti
         CHECK(ticks[k] >= floor);
         CHECK(ticks[k] <= last_tick);
         if (k > 0) CHECK(ticks[k] > ticks[k - 1]);
-        const bool at_deact_node = squeezed_out && k == 0 && deact && ticks[k] == *deact;
-        CHECK((phrase_ends.count(ticks[k]) == 1 || at_deact_node));
+        const bool on_squeezed_chord = squeezed_out && k == 0 && ticks[k] == *prev->sqout_tick;
+        CHECK((phrase_ends.count(ticks[k]) == 1 || on_squeezed_chord));
     }
 }
 
