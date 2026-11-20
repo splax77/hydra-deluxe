@@ -92,7 +92,7 @@ std::vector<Path> search_target(const Song& song, const SearchSettings& settings
 // One activation a target names. With only `act_tick` it is the activation
 // pin above: every squeeze variant of the window comes back. With
 // `deact_tick` too it pins the whole window: the engine keeps only the path
-// whose Star Power ends on that node (Activation::deact_tick,
+// whose deactivation node is that node (Activation::deact_tick,
 // EngineOptions::target_deact_ticks), so every squeeze choice is answered
 // and the search walks the graph once.
 struct PinnedWindow {

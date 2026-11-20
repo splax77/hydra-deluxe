@@ -2092,7 +2092,7 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
             // search tracked. Nothing here invents a value.
             act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
                                     out_ends.begin() + oa.end_end);
-            // D36: a closed window's record ends on the node SP ended at, tied
+            // D36: a closed window's record ends on its deactivation node, tied
             // variants included (close_folded_act).
             if (oa.deact_edge >= 0 &&
                 act.deact_tick() !=

@@ -177,12 +177,14 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
         size_t kept = 0;
         for (size_t k = 0; k < open.size(); ++k) {
             const Window& w = wins[open[k]];
-            // The row's offset from the SP end, as the graph measures it. A
-            // chord on or before the deactivation node is inside the window
-            // whatever its ms says; time rises with tick (parse refuses
-            // timing that does not, D6), so its offset is never above 0.
-            // Whether the chord is after the SP end is asked of
-            // core::after_sp_end, the rule the graph uses.
+            // The row's offset from the deactivation node, as the graph
+            // measures it. A chord on or before the deactivation node is
+            // inside the window whatever its ms says; time rises with tick
+            // (parse refuses timing that does not, D6), so its offset is never
+            // above 0. Whether the chord is after the deactivation node is
+            // asked of core::after_sp_end, the rule the graph uses. Where the
+            // doubling stops on a squeeze-out is the squeezed chord, through
+            // sqout_position below.
             const bool past_deact = core::after_sp_end(row.tick, w.deact_tick);
             const double offset = offset_from_sp_end(row.ms, w.deact_ms);
             const core::SqOutPosition pos =
@@ -304,7 +306,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
         throw std::runtime_error(where + " has no SqOut offset to resolve");
     const double d_ms = song.timing().timecode(w.deact_tick).ms();
 
-    // How far a candidate's offset from the SP end sits from the typed one.
+    // How far a candidate's offset from the deactivation node sits from the
+    // typed one.
     const auto miss = [&](const SongTimestamp* ts) {
         return std::fabs(offset_from_sp_end(ts->timecode.ms(), d_ms) -
                          *w.sqout_offset_ms);
@@ -319,7 +322,7 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
     if (!best) {
         std::snprintf(buf, sizeof(buf),
                       "%s has a SqOut offset of %.2f ms but no Star Power "
-                      "phrase chord within %.0f ms of its SP end",
+                      "phrase chord within %.0f ms of its deact node",
                       where.c_str(), *w.sqout_offset_ms, kSqueezeWindowMs);
         throw std::runtime_error(buf);
     }
@@ -375,8 +378,8 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
                       where.c_str(), *w.sqout_offset_ms, (long long)typed.tick);
         throw std::runtime_error(buf);
     }
-    // D36: a window squeezes out only its newest phrase at or before the SP
-    // end, or the first phrase after it. A typed window has no history, so
+    // D36: a window squeezes out only its newest phrase at or before the
+    // deactivation node, or the first phrase after it. A typed window has no history, so
     // either is accepted (core::sqout_chords).
     const std::vector<const SongTimestamp*> offered =
         core::sqout_chords(song, deact_tc, w.act_tick, w.sqin_ticks, false);
@@ -389,9 +392,9 @@ SqOutNote resolve_sqout_note(const Song& song, const ReplayWindow& w) {
         std::snprintf(
             buf, sizeof(buf),
             "%s: the SqOut offset %.2f ms lands on the phrase chord at tick "
-            "%lld (%.2f ms from the SP end), which the engine never squeezes "
+            "%lld (%.2f ms from the deact node), which the engine never squeezes "
             "out. A window squeezes out only its newest phrase chord at or "
-            "before the SP end or the first one after it%s%s. Not priced.",
+            "before the deact node or the first one after it%s%s. Not priced.",
             where.c_str(), *w.sqout_offset_ms, (long long)typed.tick, typed.offset_ms,
             can.empty() ? "; here neither is left" : ": here ", can.c_str());
         throw std::runtime_error(buf);
