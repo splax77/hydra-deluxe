@@ -531,9 +531,10 @@ TEST_CASE("precheck pick (h): the shard list the build reads runs the whole suit
     const std::vector<std::string> root = real_lines("CMakeLists.txt");
     std::vector<std::string> sliced;
     for (const std::string& rest : after_calls(root, "file(STRINGS ${CMAKE_SOURCE_DIR}/")) {
+        const size_t gap = rest.find(' ');
+        if (gap == std::string::npos) continue;
         const std::string file = first_word(rest);
-        if (file.size() >= rest.size()) continue;
-        const std::string loop = "IN LISTS " + first_word(rest.substr(file.size() + 1)) + ")";
+        const std::string loop = "IN LISTS " + first_word(rest.substr(gap + 1)) + ")";
         if (std::any_of(root.begin(), root.end(),
                         [&](const std::string& line) { return line.find(loop) != std::string::npos; }))
             sliced.push_back(file);
