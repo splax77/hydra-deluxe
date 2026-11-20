@@ -269,7 +269,7 @@ bool real_path_fixture(ImGuiTestContext* ctx) {
     return true;
 }
 
-/// The path window's count line for `shown` of the fixture's rows, as its
+// The path window's count line for `shown` of the fixture's rows, as its
 // owner (report_view::count_line) words it.
 std::string fixture_path_count(size_t shown) {
     return hydra::app::report_view::count_line(shown, fixture().path.result->paths.size(),
@@ -348,7 +348,7 @@ void test_filters(ImGuiTestContext* ctx) {
     IM_CHECK(!shows(boxed(word)));
 }
 
-/ Every state the frame draws, over the real report a batch of the corpus's
+// Every state the frame draws, over the real report a batch of the corpus's
 // first chart built.
 void test_states(ImGuiTestContext* ctx) {
     if (!real_path_fixture(ctx)) return;
@@ -607,7 +607,7 @@ void test_close_button(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.closes, 3);
 }
 
-/// A new result that lands while the path window is hidden frees the old one
+// A new result that lands while the path window is hidden frees the old one
 // at once: the hidden window's view must not keep it alive until the reopen.
 // Each result is a copy of the real report a batch of the corpus's first
 // chart built, held by nothing but the window's input, so only the window's
@@ -692,7 +692,7 @@ void test_chip_label(ImGuiTestContext* ctx) {
         if (columns[c].numeric) IM_CHECK(read[c]);
 }
 
-/// Every chip draws its outline in its token's colour (D308 item 5: the window
+// Every chip draws its outline in its token's colour (D308 item 5: the window
 // draws the outline, so the chips match). The outline sits a chip's padding
 // out from the label on each side, so the marks in the token's colour reach
 // wider than the label; the label's glyphs alone stay within its width.
@@ -747,7 +747,7 @@ void test_column_widths(ImGuiTestContext* ctx) {
     IM_CHECK_LT(std::fabs(table->InnerClipRect.Max.x - right), 1.0f);
 }
 
-/ The leftmost x of the text glyphs drawn last frame in `color` inside
+// The leftmost x of the text glyphs drawn last frame in `color` inside
 // column `c` of `table`, between `top` and `bottom`: where that cell's text
 // starts. Glyphs are told from filled rects by their texture coordinates (a
 // rect samples the font atlas's white pixel). None when no such glyph.
@@ -1552,7 +1552,7 @@ void test_fresh_state(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
-/ After a batch the report goes out of date with the batch's time; a setting
+// After a batch the report goes out of date with the batch's time; a setting
 // the report reads gives the settings sentence; Refresh rebuilds and clears
 // the strip.
 void test_out_of_date(ImGuiTestContext* ctx) {
