@@ -159,9 +159,11 @@ TEST_CASE("build_activations: rows and backend rows line up") {
 
 namespace {
 
-// Calls visit(chart, song, record) for every corpus chart that analyzes under
-// the app's default settings, with the chart captured, and requires at least
-// one such chart.
+// Calls visit(chart, song, record) for every corpus chart under the app's
+// default settings, with the chart captured, and requires at least one such
+// chart. The one chart passed over is one with no notes at that difficulty,
+// which the app refuses to analyze (require_notes). Any other chart that
+// fails to analyze throws, failing the test with the chart named.
 template <typename Visit>
 void for_each_corpus_chart(Visit&& visit) {
     const AnalysisSettings cfg = Settings().to_analysis_settings();
@@ -170,14 +172,9 @@ void for_each_corpus_chart(Visit&& visit) {
         CAPTURE(chart);
         const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         if (song.is_empty()) continue;
-        const HydraRecord* rec = nullptr;
-        try {
-            rec = &corpus::analyzed(chart, cfg);
-        } catch (const std::exception&) {
-            continue;
-        }
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
         ++charts;
-        visit(chart, song, *rec);
+        visit(chart, song, rec);
     }
     REQUIRE(charts > 0);
 }
@@ -836,6 +833,33 @@ TEST_CASE("format_measure: one form for both tabs") {
     CHECK(lines_checked > 0);
 }
 
+namespace {
+
+// The fields of row `i` (0-based) that read activation `act` straight from
+// the engine's record: its number, measure, notation, bars, chord, one
+// sentence per squeeze, its backends, and one badge per timing the
+// activation lists, in its order, orange exactly where the activation calls
+// that timing difficult.
+void check_row_reads_activation(size_t i, const Activation& act, const ActivationRowView& av) {
+    CAPTURE(i);
+    CHECK(av.number == static_cast<int>(i) + 1);
+    CHECK(av.measure == format_measure(act.timecode));
+    CHECK(av.notation == act.notationstr());
+    CHECK(av.sp_bars == act.sp_meter());
+    CHECK(av.bars == bars_text(act.sp_meter()));
+    CHECK(av.chord == act.chord.rowstr(true));
+    CHECK(av.squeeze_sentences.size() == act.sqinouts.size());
+    CHECK(av.backends.size() == act.display_backends().size());
+    const std::vector<ActivationTiming> timings = act.badge_timings();
+    REQUIRE(av.badges.size() == timings.size());
+    for (size_t j = 0; j < timings.size(); ++j) {
+        CHECK(av.badges[j].text.find(format_ms(timings[j].ms)) != std::string::npos);
+        CHECK(av.badges[j].warn == timings[j].difficult);
+    }
+}
+
+}  // namespace
+
 TEST_CASE("activation rows: each of Burnout's rows reads its activation") {
     const AnalysisResult& ar = burnout();
     const HydraRecord& rec = ar.record;
@@ -846,39 +870,19 @@ TEST_CASE("activation rows: each of Burnout's rows reads its activation") {
     ActivationsView view = build_activations(best, rec, &timing);
     REQUIRE(view.acts.size() == acts.size());
     for (size_t i = 0; i < acts.size(); ++i) {
-        const Activation& act = acts[i];
         const ActivationRowView& av = view.acts[i];
-        CAPTURE(i);
-        CHECK(av.number == static_cast<int>(i) + 1);
-        CHECK(av.measure == format_measure(act.timecode));
-        CHECK(av.notation == act.notationstr());
-        CHECK(av.sp_bars == act.sp_meter());
-        CHECK(av.bars == bars_text(act.sp_meter()));
-        CHECK(av.chord == act.chord.rowstr(true));
-        CHECK(av.squeeze_sentences.size() == act.sqinouts.size());
-        CHECK(av.backends.size() == act.display_backends().size());
-        // One badge per timing the activation lists, in its order, orange
-        // exactly where the activation calls that timing difficult.
-        const std::vector<ActivationTiming> timings = act.badge_timings();
-        REQUIRE(av.badges.size() == timings.size());
-        for (size_t j = 0; j < timings.size(); ++j) {
-            CHECK(av.badges[j].text.find(format_ms(timings[j].ms)) != std::string::npos);
-            CHECK(av.badges[j].warn == timings[j].difficult);
-        }
+        check_row_reads_activation(i, acts[i], av);
         // No song length given: no timeline.
         CHECK_FALSE(av.song_fraction.has_value());
     }
     CHECK(view.timeline_end.empty());
 
-    // Burnout's best path squeezes a note out (its first activation's badge
-    // reads "squeeze out"), so this loop has a row to check.
-    int squeezed_out = 0;
+    // Burnout's best path squeezes a note out on its first activation (its
+    // notation, "3-"), so the loop checks at least that row.
+    REQUIRE_FALSE(best.activations.empty());
+    CHECK(best.activations.front().sqout_row() != nullptr);
     for (const Activation& act : best.activations)
-        if (act.sqout_row()) {
-            check_word_agrees_with_badge(act);
-            ++squeezed_out;
-        }
-    CHECK(squeezed_out >= 1);
+        if (act.sqout_row()) check_word_agrees_with_badge(act);
 }
 
 TEST_CASE("activation timeline: onset over the song's length, and the end measure") {
@@ -1538,22 +1542,21 @@ TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's
 }
 
 // ---- the Dynamic Hit Window row ---------------------------------------------
-// The figures are the ones hydra_replay schedule prints.
+// Each expected row is read from the engine's record and the row's owners
+// (core/note_window.h), never typed.
 
 namespace {
 
 // A corpus chart analyzed the way burnout() analyzes it
-// (song_details_fixtures.h), once per test run, with the early-fill window
-// at kHitWindowMs: the window these rows' paths and figures were pinned
-// under (Get Ur Freak On's E marks need it).
+// (song_details_fixtures.h), once per test run, at the app's default
+// early-fill window.
 const AnalysisResult& analyzed_like_the_gui(const std::string& name) {
     static std::map<std::string, AnalysisResult> cache;
     auto it = cache.find(name);
     if (it == cache.end()) {
         const std::string path = corpus::chart_named(name);
         if (path.empty()) throw std::runtime_error(name + " is not in testdata/input");
-        AnalysisSettings settings = scratch_settings().to_analysis_settings();
-        settings.early_fill_window_ms = kHitWindowMs;
+        const AnalysisSettings settings = scratch_settings().to_analysis_settings();
         it = cache.emplace(name, analyze_chart_file(path, settings)).first;
     }
     return it->second;
@@ -1561,7 +1564,8 @@ const AnalysisResult& analyzed_like_the_gui(const std::string& name) {
 
 const AnalysisResult& tapped_out() { return analyzed_like_the_gui("Mike Orlando - Tapped Out"); }
 const AnalysisResult& focus() { return analyzed_like_the_gui("SoundHaven - Focus [Ariana Grande]"); }
-const AnalysisResult& epidermis() { return analyzed_like_the_gui("Venetian Snares - Epidermis"); }
+const AnalysisResult& beg() { return analyzed_like_the_gui("Evans Blue - Beg"); }
+const AnalysisResult& late_sqin_twice() { return analyzed_like_the_gui("late_sqin_twice"); }
 
 // `path`'s rows as the Paths tab builds them, with `chords` (null for none).
 ActivationsView window_rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes* chords) {
@@ -1580,44 +1584,6 @@ size_t only_squeeze(const Activation& act, SqueezeKind kind) {
         }
     REQUIRE(found.has_value());
     return *found;
-}
-
-// Every field of two rows but the Dynamic Hit Window rows.
-void check_same_but_windows(const ActivationRowView& a, const ActivationRowView& b) {
-    CHECK(a.number == b.number);
-    CHECK(a.notation == b.notation);
-    CHECK(a.measure == b.measure);
-    CHECK(a.sp_bars == b.sp_bars);
-    CHECK(a.bars == b.bars);
-    REQUIRE(a.badges.size() == b.badges.size());
-    for (size_t i = 0; i < a.badges.size(); ++i) {
-        CHECK(a.badges[i].text == b.badges[i].text);
-        CHECK(a.badges[i].warn == b.badges[i].warn);
-    }
-    CHECK(a.difficult == b.difficult);
-    CHECK(a.song_fraction == b.song_fraction);
-    CHECK(a.chord == b.chord);
-    CHECK(a.early_fill == b.early_fill);
-    REQUIRE(a.squeeze_sentences.size() == b.squeeze_sentences.size());
-    for (size_t i = 0; i < a.squeeze_sentences.size(); ++i) {
-        CHECK(a.squeeze_sentences[i].text == b.squeeze_sentences[i].text);
-        CHECK(a.squeeze_sentences[i].warn == b.squeeze_sentences[i].warn);
-    }
-    CHECK(a.sqin_scale_warning == b.sqin_scale_warning);
-    CHECK(a.scale_warning == b.scale_warning);
-    CHECK(a.scale_warn == b.scale_warn);
-    CHECK(a.overfill_warning == b.overfill_warning);
-    CHECK(a.backends_label == b.backends_label);
-    REQUIRE(a.backends.size() == b.backends.size());
-    for (size_t i = 0; i < a.backends.size(); ++i) {
-        CHECK(a.backends[i].timing == b.backends[i].timing);
-        CHECK(a.backends[i].tooltip == b.backends[i].tooltip);
-        CHECK(a.backends[i].chord == b.backends[i].chord);
-        CHECK(a.backends[i].points == b.backends[i].points);
-        CHECK(a.backends[i].rating == b.backends[i].rating);
-        CHECK(a.backends[i].warn == b.backends[i].warn);
-    }
-    CHECK(a.backends_hidden_line == b.backends_hidden_line);
 }
 
 // How many squeeze-out rows of `ar`'s best path the owner calls short, and
@@ -1731,11 +1697,12 @@ ActivationTiming fill_timing(const Activation& act) {
 
 }  // namespace
 
-// Every early fill on Tapped Out's best path (an E0 fill and an optional one
-// after a skip, the rows the edited-figure case below starts from) gets one
-// row with one end and no word: the owner's SP-ready end
-// (early_fill_window_end). Its details line names the fill's figure and
-// whether it is required.
+// Every early fill on Tapped Out's best path gets one row with one end and no
+// word: the owner's SP-ready end (early_fill_window_end), on the note the
+// engine says made Star Power ready. Its details line names the fill's figure
+// and whether it is required. That path holds both kinds: its third
+// activation is a required fill (E0) and its fourth an optional one after a
+// skip (E1).
 TEST_CASE("dynamic hit window: an early fill gets one window, required or optional") {
     const AnalysisResult& ar = tapped_out();
     const Path& best = ar.record.best_path();
@@ -1743,8 +1710,10 @@ TEST_CASE("dynamic hit window: an early fill gets one window, required or option
     const std::vector<Activation> acts = best.all_activations();
     const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() == acts.size());
-    int required = 0;
-    int optional_fills = 0;
+    REQUIRE(acts.size() >= 4);
+    CHECK(acts[2].is_E0());
+    CHECK(acts[3].is_e_critical());
+    CHECK_FALSE(acts[3].is_E0());
     for (size_t i = 0; i < acts.size(); ++i) {
         const Activation& act = acts[i];
         const ActivationRowView& av = view.acts[i];
@@ -1763,23 +1732,25 @@ TEST_CASE("dynamic hit window: an early fill gets one window, required or option
         CHECK(std::optional<int64_t>(ends->ends[0].tick) == act.sp_ready_tick());
         check_row_ends(*av.early_fill_window, *ends, chords);
         CHECK(av.early_fill_window->figures[0].word.empty());
-        ++(act.is_E0() ? required : optional_fills);
     }
-    CHECK(required > 0);
-    CHECK(optional_fills > 0);
 }
 
 // A squeeze in that needs no timing still gets its row, its ends the
-// owner's: the anchor the frontend, the squeezed note the backend. Get Ur
-// Freak On's best path holds one (its second activation's squeeze in).
+// owner's on the engine's anchor and squeezed-chord ticks: the anchor the
+// frontend, the squeezed note the backend. late_sqin_twice's best path
+// (testdata/input/test_fast_tempo) holds one: its first activation's first
+// squeeze in is hit late enough to need no timing.
 TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its row") {
-    const AnalysisResult& ar = analyzed_like_the_gui("Eric Moore - Get Ur Freak On");
+    const AnalysisResult& ar = late_sqin_twice();
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
     const ActivationsView view = window_rows_of(ar, best, &chords);
     REQUIRE(view.acts.size() == acts.size());
-    int free_sqins = 0;
+    REQUIRE_FALSE(acts.empty());
+    REQUIRE_FALSE(acts[0].sqinouts.empty());
+    CHECK(acts[0].sqinouts[0].kind == SqueezeKind::SqIn);
+    CHECK(acts[0].sqinouts[0].needs_no_timing());
     for (size_t i = 0; i < acts.size(); ++i) {
         const Activation& act = acts[i];
         CAPTURE(i);
@@ -1797,10 +1768,8 @@ TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its 
             check_row_ends(row, *ends, chords);
             CHECK(row.figures[0].word == "frontend");
             CHECK(row.figures[1].word == "backend");
-            ++free_sqins;
         }
     }
-    CHECK(free_sqins > 0);
 }
 
 // Every timing badge gets its row, so edited figures on either side of the
@@ -1828,22 +1797,26 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
             CHECK(row->windows == unedited->windows);
         }
     }
-    SUBCASE("a required early fill with time to spare adds the spare to its sum") {
-        // Tapped Out's third activation is E0 (the case above).
-        const AnalysisResult& ar = tapped_out();
+    SUBCASE("a required early fill at 0.0 ms, then with time to spare, adds the spare to its sum") {
+        // Beg's fourth activation is a required fill (E0) whose figure reads
+        // 0.0 ms as the engine found it, so it is the real 0.0 case before
+        // the edit.
+        const AnalysisResult& ar = beg();
         const ChordTimes chords = chord_times(ar.song);
         Path p;
         p.activations = ar.record.best_path().all_activations();
-        REQUIRE(p.activations.size() >= 3);
-        REQUIRE(p.activations[2].is_E0());
-        const std::optional<WindowEnds> unedited = early_fill_window_end(p.activations[2], chords);
+        REQUIRE(p.activations.size() >= 4);
+        REQUIRE(p.activations[3].is_E0());
+        REQUIRE(format_ms(fill_timing(p.activations[3]).ms) == format_ms(0.0));
+        REQUIRE(window_rows_of(ar, p, &chords).acts[3].early_fill_window.has_value());
+        const std::optional<WindowEnds> unedited = early_fill_window_end(p.activations[3], chords);
         REQUIRE(unedited.has_value());
         REQUIRE(unedited->ends.size() == 1);
         const double spare = 20.0;  // Star Power ready 20 ms before the deadline
-        Activation& act = p.activations[2];
+        Activation& act = p.activations[3];
         act.e_offset = spare;
         REQUIRE(act.is_E0());
-        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
+        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[3];
         CHECK(av.early_fill.find(figure_of(fill_timing(act))) != std::string::npos);
         CHECK(av.early_fill.find("(required)") != std::string::npos);
         REQUIRE(av.early_fill_window.has_value());
@@ -1855,18 +1828,18 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         CHECK_FALSE(av.early_fill_window->is_short);
     }
     SUBCASE("the same early fill made optional gets the unedited row") {
-        const AnalysisResult& ar = tapped_out();
+        const AnalysisResult& ar = beg();
         const ChordTimes chords = chord_times(ar.song);
         Path p;
         p.activations = ar.record.best_path().all_activations();
-        REQUIRE(p.activations.size() >= 3);
-        REQUIRE(p.activations[2].is_E0());
-        const std::optional<WindowRowView> unedited = window_rows_of(ar, p, &chords).acts[2].early_fill_window;
+        REQUIRE(p.activations.size() >= 4);
+        REQUIRE(p.activations[3].is_E0());
+        const std::optional<WindowRowView> unedited = window_rows_of(ar, p, &chords).acts[3].early_fill_window;
         REQUIRE(unedited.has_value());
-        test::set_skips(p.activations[2], 1);
-        REQUIRE_FALSE(p.activations[2].is_E0());
+        test::set_skips(p.activations[3], 1);
+        REQUIRE_FALSE(p.activations[3].is_E0());
         // A skip changes neither the SP-ready note nor the figure.
-        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[2];
+        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[3];
         CHECK(av.early_fill.find("(optional)") != std::string::npos);
         REQUIRE(av.early_fill_window.has_value());
         CHECK(av.early_fill_window->windows == unedited->windows);
@@ -1874,59 +1847,60 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
     }
 }
 
-TEST_CASE("dynamic hit window: no chord times, no row anywhere") {
-    for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &focus(), &epidermis()}) {
-        const ActivationsView view = window_rows_of(*ar, ar->record.best_path(), nullptr);
-        REQUIRE_FALSE(view.acts.empty());
-        for (const ActivationRowView& av : view.acts) {
-            CHECK(av.squeeze_windows.size() == av.squeeze_sentences.size());
-            for (const std::optional<WindowRowView>& w : av.squeeze_windows)
-                CHECK_FALSE(w.has_value());
-            CHECK_FALSE(av.early_fill_window.has_value());
-        }
-    }
-}
-
+// With the Dynamic Hit Window rows built, every other field of each row
+// still reads its activation from the engine's record. Beg's first
+// activation squeezes a note out, so its row shows on that chart.
 TEST_CASE("dynamic hit window: the row sits alongside and changes no other field") {
-    int rows_shown = 0;
-    for (const AnalysisResult* ar : {&tapped_out(), &burnout(), &focus(), &epidermis()}) {
+    {
+        const AnalysisResult& ar = beg();
+        const std::vector<Activation> acts = ar.record.best_path().all_activations();
+        REQUIRE_FALSE(acts.empty());
+        const ChordTimes chords = chord_times(ar.song);
+        const ActivationsView view = window_rows_of(ar, ar.record.best_path(), &chords);
+        REQUIRE_FALSE(view.acts.empty());
+        const size_t k = only_squeeze(acts[0], SqueezeKind::SqOut);
+        REQUIRE(view.acts[0].squeeze_windows.size() == acts[0].sqinouts.size());
+        CHECK(view.acts[0].squeeze_windows[k].has_value());
+    }
+    for (const AnalysisResult* ar : {&beg(), &tapped_out(), &burnout(), &focus()}) {
         const Path& best = ar->record.best_path();
+        const std::vector<Activation> acts = best.all_activations();
         const ChordTimes chords = chord_times(ar->song);
         const ActivationsView with = window_rows_of(*ar, best, &chords);
-        const ActivationsView without = window_rows_of(*ar, best, nullptr);
-        CHECK(with.summary == without.summary);
-        CHECK(with.timeline_start == without.timeline_start);
-        CHECK(with.timeline_end == without.timeline_end);
-        REQUIRE(with.acts.size() == without.acts.size());
-        for (size_t i = 0; i < with.acts.size(); ++i) {
-            check_same_but_windows(with.acts[i], without.acts[i]);
-            for (const std::optional<WindowRowView>& w : with.acts[i].squeeze_windows)
-                rows_shown += w.has_value() ? 1 : 0;
-            rows_shown += with.acts[i].early_fill_window.has_value() ? 1 : 0;
-        }
+        REQUIRE(with.acts.size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) check_row_reads_activation(i, acts[i], with.acts[i]);
     }
-    // The comparison covers rows that show, not only rows that do not: at
-    // least the five the cases above pin on these charts.
-    CHECK(rows_shown >= 5);
 }
 
 namespace {
 
-// What every corpus row is checked for, whatever its kind. `safe_ms` is the
-// owner's sum for the row. The tag is its size with no minus sign, then
-// " ms short" exactly when the sum is below 0.0 and " ms safe" otherwise
-// (the user's ruling of 2026-11-13: "xx ms safe >=0 ms, xx ms short <0ms").
-// The ends hold no direction word and no tag word.
-void check_any_row(const WindowRowView& row, double safe_ms, int& short_tags, int& safe_tags) {
+// Which kinds of row one corpus chart showed, on any of its kept paths.
+struct RowKindsSeen {
+    bool fill_row = false;
+    bool squeeze_row = false;
+    bool short_tag = false;
+    bool safe_tag = false;
+    // A squeeze row whose sentence presses the squeezed note early and the
+    // anchor late: the row a label by press direction would switch.
+    bool note_pressed_early = false;
+};
+
+// What every corpus row is checked for, whatever its kind. `ends` is the
+// owner's answer for the row. The tag is the size of its sum with no minus
+// sign, then " ms short" exactly when the owner calls the sum short
+// (safe_is_short) and " ms safe" otherwise. The ends hold no direction word
+// and no tag word.
+void check_any_row(const WindowRowView& row, const WindowEnds& ends, RowKindsSeen& seen) {
     CAPTURE(row.windows);
     CAPTURE(row.tag);
     CHECK(row.tag.find('-') == std::string::npos);
-    const bool below_zero = safe_ms < 0.0;
-    CHECK(row.is_short == below_zero);
-    const std::string word = below_zero ? " ms short" : " ms safe";
+    const bool is_short = ends.is_short();
+    CHECK(row.is_short == is_short);
+    CHECK(row.tag.rfind(format_ms(std::fabs(ends.safe_ms)), 0) == 0);
+    const std::string word = is_short ? " ms short" : " ms safe";
     REQUIRE(row.tag.size() > word.size());
     CHECK(row.tag.compare(row.tag.size() - word.size(), word.size(), word) == 0);
-    ++(below_zero ? short_tags : safe_tags);
+    (is_short ? seen.short_tag : seen.safe_tag) = true;
     for (const char* banned : {"early", "late", "spare", "short", "safe"})
         CHECK(row.windows.find(banned) == std::string::npos);
     REQUIRE_FALSE(row.figures.empty());
@@ -1939,14 +1913,9 @@ void check_any_row(const WindowRowView& row, double safe_ms, int& short_tags, in
 // sign, and a squeeze row names its anchor the frontend and its squeezed note
 // the backend, the anchor first, whichever way its sentence says to press.
 TEST_CASE("dynamic hit window: every corpus row") {
-    int squeeze_rows = 0;
-    int fill_rows = 0;
-    int short_tags = 0;
-    int safe_tags = 0;
-    // Squeeze rows whose sentence presses the squeezed note early and the
-    // anchor late: the rows a label by press direction would switch.
-    int note_pressed_early = 0;
-    for_each_corpus_chart([&](const std::string& /*chart*/, const Song& song, const HydraRecord& rec) {
+    std::map<std::string, RowKindsSeen> seen_by_chart;
+    for_each_corpus_chart([&](const std::string& chart, const Song& song, const HydraRecord& rec) {
+        RowKindsSeen& seen = seen_by_chart[chart];
         const ChordTimes chords = chord_times(song);
         const SongTiming& timing = song.timing();
         for (const Path& path : rec.paths) {
@@ -1961,8 +1930,7 @@ TEST_CASE("dynamic hit window: every corpus row") {
                 CAPTURE(path.pathstring());
                 CAPTURE(av.number);
 
-                // Every timing badge has its row (the user's ruling of
-                // 2026-11-12).
+                // Every timing badge has its row.
                 size_t shown = av.early_fill_window ? 1 : 0;
                 for (const std::optional<WindowRowView>& w : av.squeeze_windows)
                     shown += w ? 1 : 0;
@@ -1971,11 +1939,15 @@ TEST_CASE("dynamic hit window: every corpus row") {
                 if (av.early_fill_window) {
                     const std::optional<WindowEnds> ends = early_fill_window_end(act, chords);
                     REQUIRE(ends.has_value());
-                    check_any_row(*av.early_fill_window, ends->safe_ms, short_tags, safe_tags);
+                    check_any_row(*av.early_fill_window, *ends, seen);
                     REQUIRE(av.early_fill_window->figures.size() == 1);
                     CHECK(av.early_fill_window->figures[0].word.empty());
                     CHECK(av.early_fill_window->windows.rfind(av.early_fill_window->figures[0].figure, 0) == 0);
-                    ++fill_rows;
+                    // Its one end is the note the engine says made Star
+                    // Power ready.
+                    REQUIRE(ends->ends.size() == 1);
+                    CHECK(std::optional<int64_t>(ends->ends[0].tick) == act.sp_ready_tick());
+                    seen.fill_row = true;
                 }
 
                 REQUIRE(av.squeeze_windows.size() == act.sqinouts.size());
@@ -1985,11 +1957,11 @@ TEST_CASE("dynamic hit window: every corpus row") {
                     const WindowRowView& row = *av.squeeze_windows[k];
                     const std::optional<WindowEnds> ends = squeeze_window_ends(act, k, chords);
                     REQUIRE(ends.has_value());
-                    check_any_row(row, ends->safe_ms, short_tags, safe_tags);
+                    check_any_row(row, *ends, seen);
                     REQUIRE(row.figures.size() == 2);
                     CHECK(row.figures[0].word == "frontend");
                     CHECK(row.figures[1].word == "backend");
-                    ++squeeze_rows;
+                    seen.squeeze_row = true;
 
                     // The view keeps the owner's order, and the owner names
                     // each end's tick: the anchor first, the squeezed note
@@ -2005,18 +1977,32 @@ TEST_CASE("dynamic hit window: every corpus row") {
                     const bool says_late = sentence.find(" ms late") != std::string::npos;
                     const bool says_early = sentence.find(" ms early") != std::string::npos;
                     REQUIRE(says_late != says_early);
-                    if (says_early) ++note_pressed_early;
+                    if (says_early) seen.note_pressed_early = true;
                 }
             }
         }
     });
-    CHECK(squeeze_rows > 0);
-    CHECK(fill_rows > 0);
-    // Both tag words occur (Tapped Out's squeeze out is short, Burnout's safe).
-    CHECK(short_tags > 0);
-    CHECK(safe_tags > 0);
-    // At least one squeeze presses its note early (Focus's and Epidermis's
-    // squeeze ins, above), so a row that named its ends by press direction
-    // fails here.
-    CHECK(note_pressed_early > 0);
+    // Two named charts show every kind of row the walk checks, so the walk
+    // can never pass on rows it never met. Beg's best path squeezes a note
+    // out and has a required early fill. late_sqin_twice's best path has
+    // four squeeze ins, some short and some safe, and its sentences press
+    // the squeezed note early, so a row that named its ends by press
+    // direction fails there.
+    const auto seen_on = [&](const std::string& name) {
+        const std::string chart = corpus::chart_named(name);
+        CAPTURE(name);
+        REQUIRE_FALSE(chart.empty());
+        const auto it = seen_by_chart.find(chart);
+        REQUIRE(it != seen_by_chart.end());
+        return it->second;
+    };
+    const RowKindsSeen beg_rows = seen_on("Evans Blue - Beg");
+    CHECK(beg_rows.fill_row);
+    CHECK(beg_rows.squeeze_row);
+    CHECK(beg_rows.safe_tag);
+    const RowKindsSeen sqin_rows = seen_on("late_sqin_twice");
+    CHECK(sqin_rows.squeeze_row);
+    CHECK(sqin_rows.short_tag);
+    CHECK(sqin_rows.safe_tag);
+    CHECK(sqin_rows.note_pressed_early);
 }
