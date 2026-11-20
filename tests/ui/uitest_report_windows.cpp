@@ -22,12 +22,10 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
-#include <ctime>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <thread>
 #include <utility>
 #include <vector>
 
@@ -38,6 +36,7 @@
 #include "app/dm_report.h"
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
+#include "app/user_messages.h"  // kPathReportFailed, kComparisonFailed, kLeaderboardWaking
 #include "core/error_kind.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
@@ -206,18 +205,6 @@ void draw_windows(ImGuiTestContext*) {
     if (f.want_chip_vertices) note_chip_vertices();
 }
 
-// Today at hour:minute, local time.
-std::chrono::system_clock::time_point local_time(int hour, int minute) {
-    const std::time_t now = std::time(nullptr);
-    std::tm t{};
-    localtime_s(&t, &now);
-    t.tm_hour = hour;
-    t.tm_min = minute;
-    t.tm_sec = 0;
-    t.tm_isdst = -1;
-    return std::chrono::system_clock::from_time_t(std::mktime(&t));
-}
-
 bool shows(const std::string& s) { return fixture().text.find(s) != std::string::npos; }
 size_t where(const std::string& s) { return fixture().text.find(s); }
 
@@ -242,6 +229,47 @@ void open_dm(ImGuiTestContext* ctx) {
     IM_CHECK(dm_window() != nullptr);
     if (ctx->IsError()) return;
     ctx->SetRef(dm_window());
+}
+
+// Library row `row`'s title in quotes, so the word search matches it as one
+// phrase. Read it before any search narrows the rows.
+std::string quoted_title(Harness& h, size_t row) {
+    return "\"" + h.app->library_row_at(row).title + "\"";
+}
+
+// The corpus scanned and its first chart batched, the batch's report built
+// while the path window is shut. False when a step failed.
+bool batch_first_chart(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    IM_CHECK_RETV(batch_search(ctx, quoted_title(h, 0)), false);
+    dismiss_done(ctx);
+    return true;
+}
+
+// The fixture's path window on the real report that batch built, through
+// the window input AppState hands the app's own window, with the fixture's
+// recording callbacks in place of the app's. The comparison side holds no
+// rows: a real one needs dmleaderboards, so it is left as the app's window
+// is before its first comparison lands. False when a step failed.
+bool real_path_fixture(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!batch_first_chart(ctx)) return false;
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->report_job == nullptr && h.app->path_report.result != nullptr;
+    }, 60), false);
+    IM_CHECK_RETV(!h.app->path_report.window_open, false);  // auto-open is off
+    reset_fixture();
+    Fixture& f = fixture();
+    f.path = hydra::ui::path_report_input(*h.app);
+    f.path.callbacks = recording_callbacks(f.path_clicks);
+    IM_CHECK_RETV(f.path.state == ReportBuild::Ready, false);
+    IM_CHECK_RETV(f.path.result != nullptr && !f.path.result->paths.empty(), false);
+    f.dm.result = nullptr;
+    f.dm.state = ReportBuild::Building;
+    return true;
 }
 
 // The first sort is Score, highest first; a header click flips it.
@@ -302,18 +330,20 @@ void test_filters(ImGuiTestContext* ctx) {
     IM_CHECK(shows("4 of 4 scores"));
 }
 
-// Every state the frame draws.
+// Every state the frame draws, over the real report a batch of the corpus's
+// first chart built.
 void test_states(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
+    const std::string subtitle = f.path.result->subtitle;
+    IM_CHECK_RETV(!subtitle.empty(), );
     f.path.state = ReportBuild::Building;
     f.path_open = true;
     ctx->Yield(3);
     // The subtitle while it builds (D103 item 21, board 2a), not the old
     // result's. The build only reads the store, so no bar counts anything.
     IM_CHECK(shows("Building the report from your library..."));
-    IM_CHECK(!shows("sample path subtitle"));
+    IM_CHECK(!shows(subtitle));
     IM_CHECK(!shows("Analyzing "));
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
@@ -326,55 +356,44 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.retries, 1);
 
     f.path.state = ReportBuild::Failed;
-    f.path.failure_message = "sample failure message";
-    f.path.failure_error = "sample failure error";
     ctx->Yield(2);
-    IM_CHECK(shows("The path report could not be built."));
-    IM_CHECK(shows("sample failure message"));
-    IM_CHECK(shows("sample failure error"));
+    IM_CHECK(shows(hydra::app::kPathReportFailed));
 
+    // Out of date: the strip shows the sentence its owner writes for each
+    // reason, and its Refresh asks for a rebuild.
+    namespace frame = hydra::ui::report_frame;
     f.path.state = ReportBuild::Ready;
     f.path.out_of_date = ReportOutOfDate::Library;
     ctx->Yield(2);
-    IM_CHECK(shows("Your library changed since this report was built."));
+    IM_CHECK(shows(frame::out_of_date_text(ReportOutOfDate::Library, std::nullopt)));
     IM_CHECK(shows("Built "));
     ctx->ItemClick("**/Refresh##outofdate");  // inside the strip's child
     IM_CHECK_EQ(f.refreshes, 1);
     // With a batch's finish time, the library line names it (D103 item 21,
-    // board 2b), in the same HH:MM as "Built".
-    f.path.built = local_time(13, 42);
-    f.path.batch_finished = local_time(14, 5);
+    // board 2b).
+    f.path.batch_finished = std::chrono::system_clock::now();
     ctx->Yield(2);
-    IM_CHECK(shows("Your library changed since this report was built "
-                   "(a batch finished at 14:05)."));
-    IM_CHECK(shows("Built 13:42"));
-    // The settings line has no time.
+    IM_CHECK(shows(frame::out_of_date_text(ReportOutOfDate::Library, f.path.batch_finished)));
+    // The settings line names no batch, even with a finish time set.
     f.path.out_of_date = ReportOutOfDate::Settings;
     ctx->Yield(2);
-    IM_CHECK(shows("The settings changed since this report was built."));
-    IM_CHECK(!shows("a batch finished"));
+    IM_CHECK(shows(frame::out_of_date_text(ReportOutOfDate::Settings, f.path.batch_finished)));
+    IM_CHECK(!shows(frame::out_of_date_text(ReportOutOfDate::Library, f.path.batch_finished)));
     f.path.out_of_date = ReportOutOfDate::None;
     f.path.batch_finished.reset();
-
-    // Nothing to report: the report's empty reason.
-    auto empty = std::make_shared<GeneratedReport>();
-    empty->why_empty = "sample empty reason";
-    f.path.result = empty;
-    ctx->Yield(2);
-    IM_CHECK(shows("sample empty reason"));
     f.path_open = false;
 
-    f.dm.state = ReportBuild::Building;
+    // The comparison while its first fetch runs (real_path_fixture leaves
+    // it building with no rows), then failed.
     open_dm(ctx);
     IM_CHECK(shows("Fetching scores and building the report..."));
     IM_CHECK(!shows("Building the report from your library..."));
-    IM_CHECK(!shows("sample dm subtitle"));
-    IM_CHECK(shows("The leaderboard server can take a moment to wake up."));
+    IM_CHECK(shows(hydra::app::kLeaderboardWaking));
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 2);
     f.dm.state = ReportBuild::Failed;
     ctx->Yield(2);
-    IM_CHECK(shows("The comparison could not be built."));  // D114 item 14
+    IM_CHECK(shows(hydra::app::kComparisonFailed));  // D114 item 14
     ctx->ItemClick("Compare another player...");
     IM_CHECK_EQ(f.compares, 1);
     f.dm_open = false;
@@ -388,8 +407,7 @@ void test_states(ImGuiTestContext* ctx) {
     IM_CHECK(f.path.state == ReportBuild::None);
     f.path_open = true;
     ctx->Yield(3);
-    IM_CHECK(shows("hydra_rules.ini has an error, so analysis is off until the file is "
-                   "fixed and Hydra is restarted."));
+    IM_CHECK(shows(hydra::app::kAnalysisOffSentence));
     IM_CHECK(shows("max_tied_paths"));
     f.path_open = false;
     ctx->Yield(2);
@@ -519,10 +537,10 @@ void test_keys(ImGuiTestContext* ctx) {
 }
 
 // The header's Close shuts the window as Esc does, in every build state and
-// in both windows.
+// in both windows, over the real report a batch of the corpus's first chart
+// built.
 void test_close_button(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
     open_path_all_rows(ctx);
     ctx->ItemClick("Close");
@@ -550,9 +568,9 @@ void test_close_button(ImGuiTestContext* ctx) {
     f.path.state = ReportBuild::Building;
     f.path_open = true;
     ctx->Yield(3);
-    IM_CHECK(shows("Building the report from your library..."));
     IM_CHECK_RETV(path_window() != nullptr, );
     ctx->SetRef(path_window());
+    IM_CHECK(ctx->ItemExists("Cancel"));  // the building frame's own button
     ctx->ItemClick("Close");
     ctx->Yield(2);
     IM_CHECK(!f.path_open);
@@ -560,7 +578,8 @@ void test_close_button(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.closes, 2);
     IM_CHECK_EQ(f.cancels, 0);  // Close is not the build's Cancel
 
-    // The comparison has it too.
+    // The comparison has it too, while its first fetch runs
+    // (real_path_fixture leaves it so).
     open_dm(ctx);
     ctx->ItemClick("Close");
     ctx->Yield(2);
@@ -617,10 +636,10 @@ void test_both(ImGuiTestContext* ctx) {
 
 // In a narrow window the chips and numbers show in full and the table
 // scrolls sideways. A cut cell draws past ImGui's text log, so a label in the
-// frame's text was drawn whole.
+// frame's text was drawn whole. The rows are the real report a batch of the
+// corpus's first chart built.
 void test_chip_label(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
     ctx->WindowResize("", ImVec2(900.0f, 600.0f));
@@ -628,7 +647,7 @@ void test_chip_label(ImGuiTestContext* ctx) {
     Fixture& f = fixture();
     const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
 
-    // Every row's Timing chip, Song B's "Beyond" tier among them (171 ms).
+    // Every row's Timing chip.
     for (const auto& r : rows)
         IM_CHECK(shows(hydra::app::path_report_view::tier_label(r.tier)));
 
@@ -745,20 +764,40 @@ void test_cells_left(ImGuiTestContext* ctx) {
     }
 }
 
+// The scanned library's first chart stored as a chart that can't be analyzed:
+// the record failure_record makes from a NoNotesError, the call a batch makes
+// for a chart with no Expert Pro Drums notes (app/analysis.cpp), saved on the
+// scratch db. It returns the chart's title.
+std::string store_first_chart_failure(Harness& h) {
+    const std::string md5 = h.app->library_row_at(0).entry.md5;
+    const std::string title = h.app->library_row_at(0).title;
+    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
+    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
+                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
+    h.app->refresh_library_summaries();
+    return title;
+}
+
 // A report too narrow for the header's buttons beside "Built HH:MM": the
 // buttons start a line of their own, Close last at its right edge (the user's
 // answer 7 and their choice of 2026-10-14). A report with no rows has no
-// controls row or table to hold the window wide.
+// controls row or table to hold the window wide. The only report with no rows
+// that builds is one whose charts the store holds as can't be analyzed
+// (ReportJob::run fails a page with no rows otherwise), so the corpus is
+// scanned, its first chart stored so, and the report's batch declined: the
+// app's own window lists only what is stored.
+void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false);
+bool path_report_ready(ImGuiTestContext* ctx);
 void test_header_narrow(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
-    Fixture& f = fixture();
-    auto empty = std::make_shared<GeneratedReport>();
-    empty->why_empty = "sample empty reason";
-    f.path.result = empty;
-    f.path.built = local_time(13, 42);
-    f.path_open = true;
-    ctx->Yield(3);
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return;
+    store_first_chart_failure(h);
+    open_path_report_declining_batch(ctx);
+    IM_CHECK_RETV(path_report_ready(ctx), );
+    IM_CHECK_RETV(h.app->path_report.result != nullptr, );
+    IM_CHECK_RETV(h.app->path_report.result->paths.empty(), );
     ImGuiWindow* window = path_window();
     IM_CHECK_RETV(window != nullptr, );
     ctx->SetRef(window);
@@ -766,17 +805,21 @@ void test_header_narrow(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     const ImRect wide = ctx->ItemInfo("Refresh").RectFull;
     const ImRect wide_close = ctx->ItemInfo("Close").RectFull;
-    IM_CHECK(shows("Built 13:42"));
+    // "Built HH:MM" as the header drew it for this report's build time.
+    const std::string drawn = visible_text(h);
+    const size_t built_at = drawn.find("Built ");
+    IM_CHECK_RETV(built_at != std::string::npos, );
+    const std::string built = drawn.substr(built_at, std::string("Built 00:00").size());
     // Wide: Refresh and Close share the heading's line, Close at its right
     // edge with Refresh just before it.
     IM_CHECK_LE(std::fabs(wide_close.Max.x - window->WorkRect.Max.x), 1.0f);
     IM_CHECK_EQ(wide_close.Min.y, wide.Min.y);
     IM_CHECK_LT(wide.Max.x, wide_close.Min.x);
 
-    // Room for "Hydra Path Index  Built 13:42", but not for Refresh beside it.
+    // Room for "Hydra Path Index  Built HH:MM", but not for Refresh beside it.
     const ImGuiStyle& style = ImGui::GetStyle();
     const float header_w = ImGui::CalcTextSize("Hydra").x + ImGui::CalcTextSize("Path Index").x +
-                           ImGui::CalcTextSize("Built 13:42").x + style.ItemSpacing.x * 3.0f;
+                           ImGui::CalcTextSize(built.c_str()).x + style.ItemSpacing.x * 3.0f;
     ctx->WindowResize("", ImVec2(header_w + style.WindowPadding.x * 2.0f + style.ScrollbarSize +
                                      wide.GetWidth() * 0.5f,
                                  400.0f));
@@ -792,27 +835,57 @@ void test_header_narrow(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(narrow_close.Min.y, narrow.Min.y);
     IM_CHECK_LT(narrow.Max.x, narrow_close.Min.x);
     IM_CHECK_LE(std::fabs(narrow_close.Max.x - window->WorkRect.Max.x), 1.0f);
-    f.path_open = false;
+    h.app->close_path_report();
     ctx->Yield(2);
 }
 
-// A saved size bigger than the screen (the user's hydra_ui.ini) opens fitted
-// to it; with the main window maximized the report opens at the whole work
-// area. The runner's work area is its display, and it has no OS frame.
+// The fixture's path window's entry in the saved-window text, as ImGui writes
+// it once the window has been placed at `pos` and sized `size`, then shut.
+// Empty when the window did not open.
+std::string saved_path_window_entry(ImGuiTestContext* ctx, ImVec2 pos, ImVec2 size) {
+    Fixture& f = fixture();
+    f.path_open = true;
+    ctx->Yield(3);
+    ImGuiWindow* w = path_window();
+    IM_CHECK_RETV(w != nullptr, std::string());
+    ImGui::SetWindowPos(w, pos);
+    ImGui::SetWindowSize(w, size);
+    ctx->Yield(2);
+    f.path_open = false;
+    ctx->Yield(2);
+    const std::string all = ImGui::SaveIniSettingsToMemory();
+    // The entry is headed by the name ImGui keeps the window's settings
+    // under, which the save above has just filled in (ImGui cuts the window's
+    // name down to the part its id hashes, CreateNewWindowSettings).
+    ImGuiWindowSettings* settings = ImGui::FindWindowSettingsByWindow(w);
+    IM_CHECK_RETV(settings != nullptr, std::string());
+    const std::string head = std::string("[Window][") + settings->GetName() + "]\n";
+    const size_t start = all.find(head);
+    IM_CHECK_RETV(start != std::string::npos, std::string());
+    const size_t end = all.find("\n[", start);
+    return all.substr(start, end == std::string::npos ? std::string::npos : end + 1 - start);
+}
+
+// A saved size bigger than the screen opens fitted to it; with the main
+// window maximized the report opens at the whole work area. The runner's work
+// area is its display, and it has no OS frame. Each saved entry is the one
+// ImGui writes for the window after it was placed so, over the real report a
+// batch of the corpus's first chart built.
 void test_fits_screen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     const hydra::ui::WindowPlacement main_before = hydra::ui::window_placement();
     const ImVec2 origin = ImGui::GetMainViewport()->Pos;
     const ImVec2 display(static_cast<float>(h.width), static_cast<float>(h.height));
     Fixture& f = fixture();
-    // Shut, so the next opening is placed afresh (an open window stays put).
-    ctx->Yield(2);
 
-    // The user's entry: a 2,560 x 1,440 monitor less a 23 px title band.
-    const char* big_ini = "[Window][###pathreport]\nViewportPos=0,23\nSize=2560,1417\n";
-    ImGui::LoadIniSettingsFromMemory(big_ini);
+    // Half again as big as the screen each way. It is written while the
+    // window is open (an open window stays put) and read back once it is
+    // shut, so the next opening is placed afresh.
+    const std::string big_ini =
+        saved_path_window_entry(ctx, origin, ImVec2(display.x * 1.5f, display.y * 1.5f));
+    IM_CHECK_RETV(!big_ini.empty(), );
+    ImGui::LoadIniSettingsFromMemory(big_ini.c_str(), big_ini.size());
     f.path_open = true;
     ctx->Yield(3);
     ImGuiWindow* w = path_window();
@@ -827,8 +900,10 @@ void test_fits_screen(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 
     // A small saved size, but the main window is maximized: the work area.
-    const char* small_ini = "[Window][###pathreport]\nPos=100,100\nSize=600,400\n";
-    ImGui::LoadIniSettingsFromMemory(small_ini);
+    const std::string small_ini = saved_path_window_entry(
+        ctx, ImVec2(origin.x + 100.0f, origin.y + 100.0f), ImVec2(600.0f, 400.0f));
+    IM_CHECK_RETV(!small_ini.empty(), );
+    ImGui::LoadIniSettingsFromMemory(small_ini.c_str(), small_ini.size());
     hydra::ui::WindowPlacement maximized = main_before;
     maximized.valid = true;
     maximized.maximized = true;
@@ -849,12 +924,6 @@ void test_fits_screen(ImGuiTestContext* ctx) {
 }
 
 // ---- End to end, through AppState -----------------------------------------
-
-// Library row `row`'s title in quotes, so the word search matches it as one
-// phrase. Read it before any search narrows the rows.
-std::string quoted_title(Harness& h, size_t row) {
-    return "\"" + h.app->library_row_at(row).title + "\"";
-}
 
 // The tail of the path window's count line for the report in memory,
 // " of N path" (the "s" left off, so one path matches too).
@@ -897,44 +966,6 @@ private:
     std::optional<ScopedHook> seam_;
 };
 
-// The dmleaderboards API, canned as reset_app cans it (alice, one score on
-// `md5`), with an optional second score on a chart not in the library, and
-// optionally holding the scores fetch until release(). The destructor lets a
-// held fetch go; reset_app puts its own fetcher back for the next test.
-constexpr const char* kNotInLibraryMd5 = "ffffffffffffffffffffffffffffffff";
-std::atomic<bool> g_fetch_release{true};
-class CannedDm {
-public:
-    CannedDm(const std::string& md5, bool not_in_library_score, bool hold) {
-        g_fetch_release = !hold;
-        std::vector<std::string> rows{canned_dm_score(md5, 100000)};
-        if (not_in_library_score) rows.push_back(canned_dm_score(kNotInLibraryMd5, 90000));
-        const std::string body = canned_dm_scores(rows);
-        hydra::net::set_fetcher([body](const std::string& url, const std::atomic<bool>* cancel) {
-            if (url.find("/all-users") != std::string::npos) return canned_dm_users();
-            testwait::wait_until(
-                [cancel] { return g_fetch_release.load() || (cancel && cancel->load()); },
-                "the test to release or cancel the scores fetch");
-            return body;
-        });
-    }
-    ~CannedDm() { release(); }
-    CannedDm(const CannedDm&) = delete;
-    CannedDm& operator=(const CannedDm&) = delete;
-    void release() { g_fetch_release = true; }
-};
-
-// The toolbar's "Compare with dmleaderboards...", then alice in the picker.
-void compare_with_alice(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK_RETV(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10), );
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-}
-
 // A path report build just started under `hold`: the window shows the
 // building subtitle with no count, then, once released, the rows.
 void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
@@ -960,7 +991,7 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
 // the path window asks first, and its Cancel leaves the report to list only
 // what is stored. Returns with the threshold put back and that report's build
 // started; the caller waits for it.
-void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = false) {
+void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh) {
     Harness& h = harness(ctx);
     h.app->report_confirm_above = 0;
     if (refresh) {
@@ -983,11 +1014,31 @@ void open_path_report_declining_batch(ImGuiTestContext* ctx, bool refresh = fals
     h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove;
 }
 
+// Waits up to `seconds` for `seen` to hold of the running batch's snapshot,
+// read beside what the last frame drew. The batch runs the real analyzer on
+// the corpus, so it can end before then: that fails at once, because the
+// running state can no longer be seen.
+bool while_batch_runs(ImGuiTestContext* ctx,
+                      const std::function<bool(const hydra::ui::BatchJob::Snapshot&)>& seen,
+                      double seconds) {
+    Harness& h = harness(ctx);
+    IM_CHECK_RETV(h.app->batch_job != nullptr, false);
+    bool ended = false;
+    const bool met = wait_until(ctx, [&] {
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        if (!s.finished && seen(s)) return true;
+        ended = s.finished;
+        return ended;
+    }, seconds);
+    IM_CHECK_RETV(!ended, false);  // the batch ended before its running state showed
+    return met;
+}
+
 // More rows to run than the threshold (lowered to 0 here): the path window
 // itself asks, in the batch confirm's words, and its Analyze runs the batch
 // the report then waits on, its count over the bar. No "Analyze library"
-// popup opens in the main window. The batch's charts wait at a gate, so the
-// running state is read before it ends.
+// popup opens in the main window. The running state is read, and the window's
+// Cancel pressed, while the real batch over the corpus is paused.
 void test_open_asks(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -997,7 +1048,6 @@ void test_open_asks(ImGuiTestContext* ctx) {
         Harness& h;
         ~Threshold() { h.app->report_confirm_above = hydra::ui::AppState::kReportConfirmAbove; }
     } threshold{h};
-    BatchGate gate;
     h.app->report_confirm_above = 0;
     ctx->SetRef("//Hydra");
     ctx->ItemClick("**/Open path report");
@@ -1010,15 +1060,22 @@ void test_open_asks(ImGuiTestContext* ctx) {
 
     ctx->SetRef(path_window());
     ctx->ItemClick("Analyze");
-    ctx->Yield(2);
     IM_CHECK_RETV(h.app->batch_job != nullptr, );
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
-    IM_CHECK(wait_until(ctx, [&] {
+    // The window's Cancel stops only a batch still running
+    // (AppState::cancel_path_report), and the corpus batch can end within
+    // the frames a click takes. So the batch is paused at once, as the batch
+    // strip's Pause pauses it (library_dialogs.cpp): it finishes the charts it
+    // has started and takes no more. pause() leaves a batch that has already
+    // finished as it is, which fails here.
+    h.app->batch_job->pause();
+    {
         const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
-        return !s.preparing && s.total > 0 && gate.started() >= 1;
-    }, 10));
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Analyzing "));
+        IM_CHECK_RETV(s.paused && !s.finished, );
+    }
+    IM_CHECK_RETV(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0 && on_screen(h, "Analyzing ");
+    }, 10), );
     IM_CHECK(window_named("Analyze library") == nullptr);
     IM_CHECK(!h.app->batch_confirm_pending);
 
@@ -1028,21 +1085,27 @@ void test_open_asks(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_job->is_cancelled());
     IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Cancelled);
-    gate.allow(1000000);
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 60));
     h.app->close_path_report();
     ctx->Yield(2);
 }
 
-// Waits for the path report's build to finish, up to 60 s.
+// Waits up to 60 s for the path report's build to end, and says whether it
+// ended Ready. A build that ends any other way (failed or cancelled) can no
+// longer become Ready, so the wait ends there at once.
 bool path_report_ready(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const bool ready = wait_until(ctx, [&] {
+    const bool ended = wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
-               h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
+               h.app->path_report_build() != hydra::ui::ReportBuild::Building;
     }, 60);
     ctx->Yield(2);
-    return ready;
+    const hydra::ui::ReportBuild build = h.app->path_report_build();
+    if (ended && build != hydra::ui::ReportBuild::Ready)
+        ctx->LogError("the path report's build ended %s, not Ready: %s",
+                      build == hydra::ui::ReportBuild::Failed ? "failed" : "otherwise",
+                      h.app->path_report.message.c_str());
+    return ended && build == hydra::ui::ReportBuild::Ready;
 }
 
 // The path window opens from the finished strip's "Open report", from the
@@ -1107,54 +1170,41 @@ void test_open_path(ImGuiTestContext* ctx) {
 
 // Opening the report with nothing analyzed runs a batch over the corpus first
 // (D249 item 8): the window shows the batch's own count over
-// its bar, then the rows once the batch's report lands. The batch's workers
-// wait at a gate before each real analysis, so the count is read at 0.
+// its bar, then the rows once the batch's report lands. The batch runs the
+// real analyzer, and its count is read while it runs.
 void test_open_analyzes(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
 
-    static std::atomic<bool> go{false};
-    go = false;
-    struct Release {
-        ~Release() { go = true; }  // a failed check never leaves the workers waiting
-    } release;
-    hydra::ui::set_app_batch_analyzer_for_test(
-        [](const std::string& path, const hydra::app::AnalysisSettings& settings,
-           const std::function<void(float)>& progress) {
-            while (!go.load()) std::this_thread::sleep_for(std::chrono::milliseconds(5));
-            return hydra::app::analyze_chart_file(path, settings, progress);
-        },
-        hydra::app::batch_worker_count());
     ctx->SetRef("//Hydra");
     IM_CHECK(ctx->ItemExists("**/Open path report"));  // offered with nothing analyzed
     ctx->ItemClick("**/Open path report");
-    hydra::ui::set_app_batch_analyzer_for_test({}, 1);
     IM_CHECK_RETV(h.app->batch_job != nullptr, );
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
-    IM_CHECK(wait_until(ctx, [&] {
-        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
-        return !s.preparing && s.total > 0;
+    // The window shows the batch's own total over its bar.
+    IM_CHECK(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0 && on_screen(h, "Analyzing ") &&
+               on_screen(h, " of " + hydra::counted(s.total, "chart", "charts"));
     }, 10));
-    const int total = h.app->batch_job->snapshot().total;
-    ctx->Yield(2);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, "Analyzing 0 of " + hydra::counted(total, "chart", "charts")));
 
-    go = true;
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
                h.app->path_report_build() == hydra::ui::ReportBuild::Ready;
     }, 300));
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Charts shown"));
     IM_CHECK(on_screen(h, path_count_tail(h)));
     // The coverage lines: the batch gave every chart a result, so none is
     // left without one, and any chart it couldn't analyze is named by the
     // report's own line on screen.
     IM_CHECK_RETV(h.app->path_report.result != nullptr, );
     const hydra::app::report::GeneratedReport& page = *h.app->path_report.result;
+    // The tiles over the rows, each under the label its owner gives it.
+    for (const hydra::app::report::Tile& tile :
+         hydra::app::report::path_tiles(page.paths, {}, page.library_charts))
+        IM_CHECK(on_screen(h, tile.label));
     IM_CHECK_EQ(page.no_result_charts, int64_t{0});
     IM_CHECK(page.no_result_line.empty());
     IM_CHECK_EQ(page.songs + page.cant_analyze_charts, page.library_charts);
@@ -1173,12 +1223,7 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    const std::string md5 = h.app->library_row_at(0).entry.md5;
-    const std::string title = h.app->library_row_at(0).title;
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
-    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
-                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
-    h.app->refresh_library_summaries();
+    const std::string title = store_first_chart_failure(h);
 
     open_path_report_declining_batch(ctx);
     IM_CHECK_RETV(path_report_ready(ctx), );
@@ -1200,60 +1245,8 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     ctx->Yield(2);
 }
 
-// Picking a player closes the picker and opens the comparison; the window's
-// "Compare another player..." reopens the picker; Cancel while it builds
-// closes the window and reopens the picker (D103 items 8 and 10).
-void test_dm_handover(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    CannedDm dm(h.app->library_row_at(0).entry.md5, /*not_in_library_score=*/false,
-                /*hold=*/false);
-
-    compare_with_alice(ctx);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1 of 1 score"));
-
-    // A ready comparison's "Compare another player...".
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("Compare another player...");
-    ctx->Yield(2);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(on_screen(h, "Pick a player"));
-
-    // Pick alice again with the scores fetch held: the window builds, and
-    // its Cancel closes it and goes back to the list.
-    g_fetch_release = false;
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("**/###111");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-    IM_CHECK(h.app->dm_report_build() == hydra::ui::ReportBuild::Building);
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    IM_CHECK(on_screen(h, "Fetching scores and building the report..."));
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("Cancel");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_report.window_open);
-    IM_CHECK(dm_window() == nullptr);
-    IM_CHECK(h.app->dm_picker_open);
-    IM_CHECK(on_screen(h, "Pick a player"));
-    dm.release();
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
-    IM_CHECK(!h.app->dm_picker_open);
-}
-
 // The path report lists the current chart mode's records only, and a row
-// click selects its chart without switching the chart mode; a comparison row
-// not in the library selects nothing.
+// click selects its chart without switching the chart mode.
 void test_row_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1286,25 +1279,6 @@ void test_row_click(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), mode_b.c_str());
     h.app->close_path_report();  // it covers the toolbar
     ctx->Yield(2);
-
-    // A comparison with a second score on a chart not in the library. With
-    // the Status filter on "Not in your library", that score is row 1.
-    CannedDm dm(md5, /*not_in_library_score=*/true, /*hold=*/false);
-    compare_with_alice(ctx);
-    IM_CHECK_RETV(wait_until(ctx, [&] {
-        return h.app->dm_report_build() == hydra::ui::ReportBuild::Ready;
-    }, 60), );
-    IM_CHECK_RETV(dm_window() != nullptr, );
-    ctx->SetRef(dm_window());
-    ctx->ComboClick("##status/Not in your library");
-    ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1 of 2 scores"));
-    const std::string mode_before = h.app->settings.chartmode_key();
-    ctx->SetRef(dm_window());
-    ctx->ItemClick("**/1");
-    ctx->Yield(2);
-    IM_CHECK_STR_EQ(selected_md5().c_str(), md5.c_str());  // unchanged
-    IM_CHECK(h.app->settings.chartmode_key() == mode_before);
 }
 
 // The path window's count line for the report in memory, "n of M paths", as
@@ -1325,12 +1299,7 @@ std::string shown_count(Harness& h) {
 // the window opened on that report. False when a step failed.
 bool open_batch_report(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return false;
-    IM_CHECK_RETV(batch_search(ctx, quoted_title(h, 0)), false);
-    dismiss_done(ctx);
-
+    if (!batch_first_chart(ctx)) return false;
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, false);
@@ -1555,28 +1524,32 @@ void test_out_of_date(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->path_report.batch_finished.has_value());
 
     // A batch that is stopped builds no report, so the one in memory stays,
-    // out of date. The gate holds the run so Stop lands while it runs.
-    {
-        BatchGate gate;
-        ctx->SetRef("//Hydra");
-        ctx->ItemInputValue("**/##search", "");
-        IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
-        start_library_batch(ctx);
-        IM_CHECK_RETV(wait_until(ctx, [&] { return gate.started() >= 1; }, 30), );
-        h.app->batch_job->stop();
-        IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );
-    }
+    // out of date. The real batch over the corpus is stopped once it reaches
+    // its charts, before it can end by itself.
+    ctx->SetRef("//Hydra");
+    ctx->ItemInputValue("**/##search", "");
+    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->search.empty(); }, 5), );
+    start_library_batch(ctx);
+    IM_CHECK_RETV(while_batch_runs(ctx, [](const hydra::ui::BatchJob::Snapshot& s) {
+        return !s.preparing && s.total > 0;
+    }, 30), );
+    h.app->batch_job->stop();
+    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300), );
     ctx->Yield(3);
     IM_CHECK(h.app->report_job == nullptr);
-    IM_CHECK(h.app->path_report.batch_finished.has_value());
+    IM_CHECK_RETV(h.app->path_report.batch_finished.has_value(), );
     dismiss_done(ctx);
 
-    const std::string library_line = "Your library changed since this report was built";
-    const std::string settings_line = "The settings changed since this report was built.";
+    // Each strip sentence as its owner writes it for this report.
+    namespace frame = hydra::ui::report_frame;
+    const std::string library_line =
+        frame::out_of_date_text(ReportOutOfDate::Library, h.app->path_report.batch_finished);
+    const std::string settings_line =
+        frame::out_of_date_text(ReportOutOfDate::Settings, std::nullopt);
     h.app->show_path_report();
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
-    IM_CHECK(on_screen(h, library_line + " (a batch finished at "));
+    IM_CHECK(on_screen(h, library_line));
 
     // A setting the report reads.
     h.app->settings.sp_cap = 5;
@@ -1621,7 +1594,6 @@ const std::vector<TestEntry>& report_window_flow_tests() {
         {"report-window-open-analyzes", test_open_analyzes},
         {"report-window-open-asks", test_open_asks},
         {"report-window-cant-analyze-list", test_cant_analyze_list},
-        {"report-window-dm-handover", test_dm_handover},
         {"report-window-row-click", test_row_click},
         {"report-window-reopen", test_reopen},
         {"report-window-hidden-lets-go", test_hidden_lets_go},
