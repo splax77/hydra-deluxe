@@ -14,6 +14,8 @@
 #include <optional>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -113,24 +115,56 @@ TEST_CASE("memory: a loaded song's chord list holds no spare capacity") {
 
 namespace {
 
-// Whether a .chart's own text holds an N line in `section`, read from the
-// file's lines and not through the parser.
-bool chart_text_has_notes(const std::string& path, const std::string& section) {
-    std::istringstream in(corpus::read_bytes(path));
-    const std::string header = "[" + section + "]";
-    bool inside = false;
+// One `key = words` line of a .chart section, as the file spells it: the key
+// is the tick in a track section ("768") or a name in [Song] ("Resolution"),
+// and the words are the right-hand side split on spaces ("N", "1", "0").
+struct ChartTextLine {
+    std::string key;
+    std::vector<std::string> words;
+};
+
+// A .chart's sections by name, read from the file's own lines and not
+// through the parser. A later section of a name replaces an earlier one.
+std::map<std::string, std::vector<ChartTextLine>> chart_text_sections(const std::string& path) {
+    std::map<std::string, std::vector<ChartTextLine>> sections;
+    std::vector<ChartTextLine>* current = nullptr;
+    std::string text = corpus::read_bytes(path);
+    const std::string bom = "\xEF\xBB\xBF";  // a UTF-8 byte order mark, which chart editors may write
+    if (text.compare(0, bom.size(), bom) == 0) text.erase(0, bom.size());
+    std::istringstream in(text);
     std::string line;
     while (std::getline(in, line)) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         const size_t first = line.find_first_not_of(" \t");
-        const std::string trimmed = first == std::string::npos ? "" : line.substr(first);
-        if (!trimmed.empty() && trimmed.front() == '[') {
-            inside = trimmed == header;
+        if (first == std::string::npos) continue;
+        const std::string trimmed = line.substr(first);
+        if (trimmed.front() == '[' && trimmed.back() == ']') {
+            current = &sections[trimmed.substr(1, trimmed.size() - 2)];
+            current->clear();
             continue;
         }
-        if (inside && trimmed.find(" = N ") != std::string::npos) return true;
+        const size_t eq = trimmed.find(" = ");
+        if (current == nullptr || eq == std::string::npos) continue;
+        ChartTextLine l;
+        l.key = trimmed.substr(0, eq);
+        std::istringstream words(trimmed.substr(eq + 3));
+        for (std::string w; words >> w;) l.words.push_back(w);
+        if (!l.words.empty()) current->push_back(std::move(l));
     }
-    return false;
+    return sections;
+}
+
+// Whether `lines` hold an N line (a note).
+bool has_note_line(const std::vector<ChartTextLine>& lines) {
+    return std::any_of(lines.begin(), lines.end(),
+                       [](const ChartTextLine& l) { return l.words[0] == "N"; });
+}
+
+// Whether a .chart's own text holds an N line in `section`.
+bool chart_text_has_notes(const std::string& path, const std::string& section) {
+    const auto sections = chart_text_sections(path);
+    const auto it = sections.find(section);
+    return it != sections.end() && has_note_line(it->second);
 }
 
 // Whether a .mid's drum track holds a note-on of one of `difficulty`'s drum
@@ -402,27 +436,77 @@ TEST_CASE(".chart: the last note end is the latest N line's tick plus sustain in
     CHECK_FALSE(none.last_note_end_tick.has_value());
 }
 
-TEST_CASE("corpus: the last note end spans every instrument, through the tempo map") {
-    // Neck Deep's bass runs past its drums; one of Chaotrope's other sections
-    // runs past its drums and its stated length. The ms are the section 3 and
-    // 4 numbers of the D255 plan, which was removed; read it with
-    // git show 6804353f:docs/superpowers/plans/2026-10-18-song-length-end-event.md.
-    struct Want {
-        const char* file;
-        int64_t tick;
-        int64_t ms;
-    };
-    const Want wants[] = {
-        {"IB24/T3/Neck Deep - Beautiful Madness/notes.mid", 288000, 189473},
-        {"Summer Blast _25 Setlist/Tier 5/Chaotrope - Senescence (shortened)/notes.chart", 151152, 314996},
-    };
-    for (const Want& w : wants) {
-        INFO(w.file);
-        const Song song = load_songpath(corpus::root() + "/common/" + w.file, ChartReading{});
-        REQUIRE(song.last_note_end_tick.has_value());
-        CHECK(*song.last_note_end_tick == w.tick);
-        CHECK(std::llround(song.timecode(*song.last_note_end_tick).ms()) == w.ms);
+namespace {
+
+// The latest N line's tick plus sustain in `lines`, or nullopt with none.
+std::optional<int64_t> latest_note_end(const std::vector<ChartTextLine>& lines) {
+    std::optional<int64_t> end;
+    for (const ChartTextLine& l : lines) {
+        if (l.words[0] != "N" || l.words.size() < 3) continue;
+        const int64_t e = std::stoll(l.key) + std::stoll(l.words[2]);
+        if (!end || e > *end) end = e;
     }
+    return end;
+}
+
+// Milliseconds from tick 0 to `tick` through the chart's own B lines (tempo
+// in thousandths of a beat a minute), each beat `resolution` ticks long.
+double chart_text_ms(const std::map<std::string, std::vector<ChartTextLine>>& sections,
+                     int64_t tick) {
+    int64_t resolution = 0;
+    for (const ChartTextLine& l : sections.at("Song"))
+        if (l.key == "Resolution") resolution = std::stoll(l.words[0]);
+    REQUIRE(resolution > 0);
+    std::map<int64_t, double> bpm;
+    for (const ChartTextLine& l : sections.at("SyncTrack"))
+        if (l.words[0] == "B") bpm[std::stoll(l.key)] = std::stod(l.words[1]) / 1000.0;
+    REQUIRE_MESSAGE((!bpm.empty() && bpm.begin()->first == 0), "no tempo at tick 0");
+    double ms = 0;
+    for (auto it = bpm.begin(); it != bpm.end() && it->first < tick; ++it) {
+        const auto next = std::next(it);
+        const int64_t until = next == bpm.end() ? tick : std::min(next->first, tick);
+        const double beats = static_cast<double>(until - it->first) / static_cast<double>(resolution);
+        ms += beats * 60000.0 / it->second;
+    }
+    return ms;
+}
+
+}  // namespace
+
+TEST_CASE("corpus .chart: the last note end spans every section, through the tempo map") {
+    // Each corpus .chart's last note end is the latest N line's tick plus
+    // sustain over all its sections, read from the file's own lines, and its
+    // time is that tick through the chart's own B lines. A .mid's comes from
+    // MidiFile::last_note_end_tick, whose tests are in test_midi.cpp.
+    int past_drums = 0;
+    for (const std::string& path : corpus_sweep()) {
+        if (chart_format_of(path) != ChartFormat::Chart) continue;
+        CAPTURE(path);
+        const auto sections = chart_text_sections(path);
+        std::optional<int64_t> want, drums_end;
+        for (const auto& [name, lines] : sections) {
+            const std::optional<int64_t> end = latest_note_end(lines);
+            if (!end) continue;
+            if (!want || *end > *want) want = end;
+            for (const Difficulty d : kAllDifficulties)
+                if (name == difficulty_chart_codes(d).chart_section() &&
+                    (!drums_end || *end > *drums_end))
+                    drums_end = end;
+        }
+        REQUIRE(want.has_value());
+        if (!drums_end || *want > *drums_end) ++past_drums;
+
+        const Song song = load_songpath(path, ChartReading{});
+        REQUIRE(song.last_note_end_tick.has_value());
+        CHECK(*song.last_note_end_tick == *want);
+        // One microsecond: far under any error a wrong tempo segment makes,
+        // far over the rounding of two sums of doubles.
+        CHECK(std::abs(song.timecode(*want).ms() - chart_text_ms(sections, *want)) < 1e-3);
+    }
+    // The rule is about sections past the drums, so the corpus must hold a
+    // chart whose guitar, bass or other section ends after its drums (it
+    // holds several, Chaotrope - Senescence among them).
+    CHECK(past_drums > 0);
 }
 
 namespace {
@@ -552,57 +636,96 @@ std::string common_chart(const char* rel) { return corpus::root() + "/common/" +
 
 }  // namespace
 
-// The five lanes the main session read out of testdata, each checked in its
-// file: the phrase line or the 126/127 note, and the notes under it.
-TEST_CASE("drum lanes: the testdata lanes, with the pads Clone Hero lights") {
-    struct Want {
-        const char* file;
-        Difficulty difficulty;
-        int64_t start, end;
-        bool double_lane;
-        Pads pads;
-    };
-    const Want wants[] = {
-        // S 65 3240 over a yellow cymbal.
-        {"IB24/T4/1.O.M. - Apex/notes.chart", Difficulty::Expert, 125280, 128520, false,
-         {NoteColor::Yellow}},
-        // S 65 84 starting on a red ghost and a blue cymbal: the lowest, red.
-        {"Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart", Difficulty::Expert,
-         29856, 29940, false, {NoteColor::Red}},
-        // S 66 6480 starting on a lone green cymbal; the next chord is a
-        // yellow cymbal.
-        {"Summer Blast _25 Setlist/Tier 6/The Agonist - Thank You, Pain/notes.chart",
-         Difficulty::Expert, 167280, 173760, true, {NoteColor::Yellow, NoteColor::Green}},
-        // 126 at velocity 96 over a run of pitch 100 (Expert green).
-        {"IB24/T3/CHON - Book (feat. Matt Garstka)/notes.mid", Difficulty::Expert, 102720,
-         103695, false, {NoteColor::Green}},
-        // 127 at velocity 96 over pitches 100 and 98 in turn.
-        {"Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid", Difficulty::Expert, 318000,
-         319455, true, {NoteColor::Yellow, NoteColor::Green}},
-    };
-    for (const Want& w : wants) {
-        CAPTURE(w.file);
-        const Song song = load_songpath(common_chart(w.file), ChartReading{w.difficulty});
-        const DrumLane* lane = lane_at(song, w.start);
-        REQUIRE(lane != nullptr);
-        CHECK(lane->end_tick == w.end);
-        CHECK(lane->double_lane == w.double_lane);
-        CHECK(lane->pads == w.pads);
-    }
+namespace {
 
-    // Every lane line in each .chart's ExpertDrums section starts on a note,
-    // so none is dropped: two in Apex, eight in Victoria - Grow, one in The
-    // Agonist.
-    CHECK(load_songpath(common_chart(wants[0].file), ChartReading{}).drum_lanes.size() == 2);
-    CHECK(load_songpath(common_chart(wants[1].file), ChartReading{}).drum_lanes.size() == 8);
-    CHECK(load_songpath(common_chart(wants[2].file), ChartReading{}).drum_lanes.size() == 1);
-
-    // Both .mid lanes are velocity 96, Expert only: Hard shows neither.
-    for (const Want& w : {wants[3], wants[4]}) {
-        CAPTURE(w.file);
-        const Song hard = load_songpath(common_chart(w.file), ChartReading{Difficulty::Hard});
-        CHECK(lane_at(hard, w.start) == nullptr);
+// Whether some chord of `song` from one tick before `lane` starts up to its
+// end holds a note of colour `pad`.
+bool lane_covers_pad(const Song& song, const DrumLane& lane, NoteColor pad) {
+    for (const SongTimestamp& ts : song.sequence) {
+        const int64_t t = ts.timecode.ticks();
+        if (t < lane.start_tick - 1 || t >= lane.end_tick) continue;
+        for (const ChordNote& n : ts.chord.notes())
+            if (n.colortype == pad) return true;
     }
+    return false;
+}
+
+}  // namespace
+
+// Every corpus .chart's lanes against its own S 65 and S 66 lines, and every
+// corpus .mid's lanes against the marker notes in its drum track.
+TEST_CASE("drum lanes: each corpus lane is a lane line or marker of its own file") {
+    const std::string expert_drums = difficulty_chart_codes(Difficulty::Expert).chart_section();
+    int chart_lanes = 0, mid_lanes = 0;
+    for (const std::string& path : corpus_sweep()) {
+        CAPTURE(path);
+        const ChartFormat format = chart_format_of(path);
+        const Song song = load_songpath(path, ChartReading{});
+        if (format == ChartFormat::Chart) {
+            // S 65 is a single lane and S 66 a double one, its length in
+            // ticks. Every lane line in the corpus starts on a chord with a
+            // pad, so each one is lit and none is dropped.
+            const auto sections = chart_text_sections(path);
+            const auto drums = sections.find(expert_drums);
+            REQUIRE(drums != sections.end());
+            size_t lines = 0;
+            for (const ChartTextLine& l : drums->second) {
+                if (l.words[0] != "S" || l.words.size() < 3) continue;
+                if (l.words[1] != "65" && l.words[1] != "66") continue;
+                ++lines;
+                const int64_t start = std::stoll(l.key);
+                const DrumLane* lane = lane_at(song, start);
+                REQUIRE_MESSAGE(lane != nullptr, "no lane from the line at tick " << start);
+                CHECK(lane->end_tick == start + std::stoll(l.words[2]));
+                CHECK(lane->double_lane == (l.words[1] == "66"));
+            }
+            CHECK(song.drum_lanes.size() == lines);
+            chart_lanes += static_cast<int>(lines);
+        } else if (format == ChartFormat::Mid) {
+            // Each lane starts on a marker note's note-on and ends on its
+            // note-off, both read from the drum track by the file reader.
+            const MidiFile file = MidiFile::from_file(path);
+            const MidiTrack* track = file.drums_track();
+            REQUIRE(track != nullptr);
+            std::map<int, int64_t> open;  // marker pitch -> its note-on tick
+            std::vector<std::pair<int64_t, int64_t>> markers;  // start, end
+            int64_t tick = 0;
+            for (const Message& m : track->messages) {
+                tick += m.time;
+                if (!is_midi_marker_pitch(m.note)) continue;
+                if (m.is_note_on()) {
+                    open.emplace(m.note, tick);
+                } else if (m.type == Message::Type::NoteOn || m.type == Message::Type::NoteOff) {
+                    const auto it = open.find(m.note);
+                    if (it == open.end()) continue;
+                    markers.emplace_back(it->second, tick);
+                    open.erase(it);
+                }
+            }
+            for (const DrumLane& lane : song.drum_lanes) {
+                CAPTURE(lane.start_tick);
+                const std::pair<int64_t, int64_t> span{lane.start_tick, lane.end_tick};
+                const bool on_marker =
+                    std::find(markers.begin(), markers.end(), span) != markers.end();
+                CHECK_MESSAGE(on_marker, "lane ends at " << lane.end_tick);
+            }
+            mid_lanes += static_cast<int>(song.drum_lanes.size());
+        }
+        // A single lane lights one pad, a double lane at most two, and each
+        // pad lit is a colour a chord under the lane holds.
+        for (const DrumLane& lane : song.drum_lanes) {
+            CAPTURE(lane.start_tick);
+            CHECK(lane.pads.size() >= 1);
+            CHECK(lane.pads.size() <= (lane.double_lane ? 2u : 1u));
+            if (!lane.double_lane)
+                for (const NoteColor pad : lane.pads) CHECK(lane_covers_pad(song, lane, pad));
+        }
+    }
+    // The corpus holds lanes of both kinds of file (Apex and Victoria - Grow
+    // among the .chart files, CHON - Book and Rush - YYZ among the .mid
+    // files), so neither half of this test runs on nothing.
+    CHECK(chart_lanes > 0);
+    CHECK(mid_lanes > 0);
 }
 
 TEST_CASE(".chart: a double lane on a three-pad chord takes its second pad from the next chord") {
