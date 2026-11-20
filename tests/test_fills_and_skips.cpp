@@ -159,16 +159,12 @@ static Song early_fill_song(int64_t ready, bool second_fill = false) {
     return song;
 }
 
-// Fill A's 1.1 deadline, from the rule's owner, checked against the rule as
-// the game states it: kCh11FillLeadBeats beats before the fill starts. The
-// deadline reads only the tempo map, which every early_fill_song shares.
+// Fill A's 1.1 deadline, from the rule's owner (test_fill_deadline.cpp pins
+// its math). It reads only the tempo map, which every early_fill_song shares.
 static double fill_a_deadline_ms() {
     const Song timing_only = test::build_fixture_song(kEfResolution, kEfBpm, {});
-    const double deadline = activation_fill_deadline_ms(timing_only.timing(), kEfFillA, kEfFillLength,
-                                                        FillDeadlineRule::Ch11);
-    const int64_t lead_ticks = static_cast<int64_t>(kCh11FillLeadBeats) * kEfResolution;
-    REQUIRE(deadline == timing_only.timecode(fill_start_tick(kEfFillA, kEfFillLength) - lead_ticks).ms());
-    return deadline;
+    return activation_fill_deadline_ms(timing_only.timing(), kEfFillA, kEfFillLength,
+                                       FillDeadlineRule::Ch11);
 }
 
 // The fixture's tick at `ms`: a tick is one millisecond, and the ms must land
@@ -357,7 +353,7 @@ TEST_CASE("all-0 pass: passing over a fill with 70 ms to spare is an E1 at 85, a
 // The song of a corpus chart under `cfg`. Every chart the corpus scan lists
 // has Expert drum notes, so a chart that loads empty fails here by name
 // instead of being passed over.
-static const Song& corpus_song(const std::string& chart, const app::AnalysisSettings& cfg) {
+static const Song& song_with_notes(const std::string& chart, const app::AnalysisSettings& cfg) {
     const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
     REQUIRE_MESSAGE(!song.is_empty(), chart << " loads with no notes");
     return song;
@@ -369,7 +365,7 @@ TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int skipped = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus_song(chart, cfg);
+        const Song& song = song_with_notes(chart, cfg);
         for (const Path& root : corpus::analyzed(chart, cfg).paths) {
             const Activation* prev = nullptr;
             for (const Activation& act : root.walk_activations()) {
@@ -437,7 +433,7 @@ TEST_CASE("trailing fills: a corpus path lists the fills after its last activati
     // Every corpus path, tied variants included.
     int listed = 0;
     for (const std::string& c : corpus::chart_paths()) {
-        const Song& s = corpus_song(c, cfg);
+        const Song& s = song_with_notes(c, cfg);
         for (const Path* p : corpus::analyzed(c, cfg).all_paths()) {
             CAPTURE(c);
             CAPTURE(p->pathstring());
@@ -455,7 +451,7 @@ TEST_CASE("trailing fills: a path whose last window outlasts the chart lists non
     const app::AnalysisSettings cfg = test::scores_settings(4);
     int outlasting = 0, with_fills_after = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus_song(chart, cfg);
+        const Song& song = song_with_notes(chart, cfg);
         const int64_t last_note = song.sequence.back().timecode.ticks();
         for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
             const ActivationWalk walk = p->walk_activations();
@@ -486,7 +482,7 @@ TEST_CASE("trailing fills: a full pin of a corpus path agrees with the free sear
     const app::AnalysisSettings cfg = test::scores_settings(4);
     int compared = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus_song(chart, cfg);
+        const Song& song = song_with_notes(chart, cfg);
         for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
             if (p->trailing_skipped_fill_ticks.empty()) continue;
             CAPTURE(chart);
@@ -511,7 +507,7 @@ TEST_CASE("trailing fills: the path with no activation lists every fill the mete
     int listed = 0, unlisted = 0;
     for (const std::string& chart : corpus::chart_paths()) {
         CAPTURE(chart);
-        const Song& song = corpus_song(chart, cfg);
+        const Song& song = song_with_notes(chart, cfg);
         const TargetResult t = search_target(song, cfg, std::vector<PinnedWindow>{});
         REQUIRE(t.paths.size() == 1);
         const Path& empty = t.paths[0];
