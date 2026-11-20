@@ -885,19 +885,8 @@ TEST_CASE("hydra_replay score writes act_ms and deact_ms for each window") {
     const int64_t resolution = timing.tick_resolution();
     const std::vector<int64_t>& starts = timing.ms_index().change_ticks();
 
-    // The inputs: each tempo section's start tick and BPM as the chart states
-    // them. A section of `ticks` at `bpm` lasts ticks / resolution beats of
-    // 60000 / bpm ms each.
-    const auto ms_at = [&](int64_t tick) {
-        double ms = 0.0;
-        for (size_t i = 0; i < starts.size() && starts[i] < tick; ++i) {
-            const int64_t end = i + 1 < starts.size() ? std::min(starts[i + 1], tick) : tick;
-            const double bpm = timing.tempo_at(starts[i]);
-            ms += static_cast<double>(end - starts[i]) / static_cast<double>(resolution) *
-                  60000.0 / bpm;
-        }
-        return ms;
-    };
+    // The time of a tick is the chart's own tempo map's: SongTiming::timecode.
+    const auto ms_at = [&](int64_t tick) { return timing.timecode(tick).ms(); };
     size_t change = 1;
     while (change < starts.size() &&
            timing.tempo_at(starts[change]) == timing.tempo_at(starts[change - 1]))
