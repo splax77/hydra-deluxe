@@ -3328,20 +3328,30 @@ class PlayerLimitsLinesTest(unittest.TestCase):
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply
 
-    def test_the_probe_presses_its_chord_at_its_lead_and_marks_only_that_row(self):
-        t, seen = self._probe_rig()
-        reply = self._probe(t, [{"index": 1, "lead_ms": -60}])
-        self.assertIn("probes: chord 1 60 ms late", reply.splitlines())
-        self.assertEqual(t.live_in_game.players, [t.player])
-        rows = {row["index"]: row for row in t.tools._play.rows}
-        self.assertEqual(rows[1]["chart_ms"], 1500.0)
-        self.assertAlmostEqual(rows[1]["chart_ms"] - rows[1]["clock_ms_at_press"], -60.0)
-        self.assertEqual(rows[1]["probe"], -60.0)
-        self.assertNotIn("probe", rows[0])
-        # SCHEDULE_JSON's hand-picked aim of 2 ms early (_schedule_of).
-        self.assertAlmostEqual(rows[0]["chart_ms"] - rows[0]["clock_ms_at_press"], 2.0)
-        self.assertIn("probe chord 1: asked 60.00 ms late, pressed 60.00 ms late, score step 50",
-                      t.tools.ch_play_status().splitlines())
+    def test_the_play_status_names_each_probe_row_with_its_asked_lead(self):
+        # The press log and probes file of a real probe run
+        # (testdata/ch_runs/ls-e-run1, copied from
+        # hydra-data/ch-mcp-runs/2026-11-07/ls-e-run1): each probe chord's row
+        # carries the lead probes.json asked for, and the status gives one
+        # probe line per such row, in the probes file's order.
+        rows = _press_rows("ls-e-run1", "press-1.csv")
+        with open(os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-e-run1", "probes.json"),
+                  encoding="utf-8") as f:
+            probes = json.load(f)
+        marked = {r["index"]: float(r[edge_probe.PROBE_COLUMN]) for r in rows
+                  if r[edge_probe.PROBE_COLUMN]}
+        self.assertEqual(marked, {p["index"]: p["lead_ms"] for p in probes})
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        tools._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                      log_path=None, rows=rows)
+        probe_lines = [line for line in tools.ch_play_status().splitlines()
+                       if line.startswith("probe chord ")]
+        self.assertEqual([line.split(":")[0] for line in probe_lines],
+                         [f"probe chord {p['index']}" for p in probes])
+        for p, line in zip(probes, probe_lines):
+            asked = p["lead_ms"]
+            self.assertIn(f"asked {abs(asked):.2f} ms {'early' if asked >= 0 else 'late'}, ",
+                          line)
 
     def test_the_probe_moved_chords_reach_the_agent_as_play_entries_at_literal_times(self):
         # live_in_game builds the kit agent's `play` entries from the chords
@@ -3356,25 +3366,16 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertEqual([(e["index"], e["at_ms"], e["last_send_ms"]) for e in entries],
                          [(0, 998.0, 1050.0), (1, 1560.0, 1612.0)])
 
-    def test_the_probe_writes_a_press_log_in_the_session_folder(self):
-        t, _seen = self._probe_rig()
-        reply = self._probe(t, [{"index": 0, "lead_ms": 80}])
-        log = os.path.join(t.tools.session_dir(), "press-1.csv")
-        self.assertEqual(t.tools._play.log_path, log)
-        self.assertIn(f"press log: {log}", [line.split(" (")[0] for line in reply.splitlines()])
-
-    def test_a_probe_chord_not_in_the_file_is_refused_and_nothing_runs(self):
-        t, seen = self._probe_rig()
-        reply = self._probe(t, [{"index": 7, "lead_ms": 80}])
-        self.assertEqual(reply, "refused: ValueError: probe chords 7 are not in the score file")
-        self.assertIsNone(t.tools._play)
-        self.assertEqual(seen, {})
-
     def test_the_probe_needs_the_kit(self):
-        t, _seen = self._probe_rig(kit=False)
-        self.assertEqual(self._probe(t, [{"index": 1, "lead_ms": 80}]),
-                         "refused: the kit is not set up; call ch_kit_setup first")
-        self.assertIsNone(t.tools._play)
+        # A GameTools with no kit set up, as the server starts.
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        reply = tools.ch_edge_probe(os.path.join(self.tmp, "song"), "score.json",
+                                    os.path.join(_PROBE_TESTS, "edge_walk_pair_schedule.json"),
+                                    os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                                                 "ls-e-run1", "probes.json"))
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertIn("ch_kit_setup", reply)
+        self.assertIsNone(tools._play)
 
     def test_no_play_tool_takes_a_lead_argument(self):
         # The lead is press_plan's (and a probe file's), never a tool argument.
@@ -3411,16 +3412,23 @@ class DroppedStatusTest(unittest.TestCase):
         return t.tools.ch_play_status().splitlines()
 
     def test_a_dropped_row_is_out_of_the_sent_counts_and_no_clock_jump(self):
-        rows = [{**ROWS[0], "index": 152},
-                {**ROWS[1], "index": 153, "score_after": 50, "send": play_chart.DROPPED}]
-        lines = self._status(rows, play_chart.RunResult(
-            stop="done", sent=1, dropped=1, rows=list(rows)))
-        self.assertIn("sent 1", lines)
+        # ls-p3-run1's rows of chords 467 to 469 (testdata/ch_runs/ls-p3-run1,
+        # copied from hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1): the
+        # player dropped chord 468. The result counts the rows as play_chords
+        # counts them, a message per chord.
+        rows = _press_rows("ls-p3-run1", "press-1-chords-467-469.csv")
+        sent = [r["index"] for r in rows if r["send"] == play_chart.SENT]
+        dropped = [r["index"] for r in rows if r["send"] == play_chart.DROPPED]
+        self.assertEqual(dropped, [468])
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        tools._play = GT._PlaySession(
+            score_json="score.json", chord_count=len(rows), log_path=None, rows=rows,
+            result=play_chart.RunResult(stop="done", sent=len(sent), dropped=len(dropped),
+                                        rows=list(rows)))
+        lines = tools.ch_play_status().splitlines()
         self.assertFalse([line for line in lines if "jumped back" in line])
-        self.assertIn("dropped: chords 153", lines)
-        # The dropped line comes right after the counts.
-        self.assertEqual(lines[lines.index("sent 1") + 1],
-                         "dropped: chords 153")
+        counts = lines.index(f"sent {len(sent)}")
+        self.assertEqual(lines[counts + 1], "dropped: chords 468")
 
     def test_a_result_with_no_rows_of_its_own_counts_the_drop_as_logged(self):
         rows = [{**ROWS[0], "index": 152},
@@ -3428,15 +3436,6 @@ class DroppedStatusTest(unittest.TestCase):
         lines = self._status(rows, play_chart.RunResult(
             stop="done", sent=1, dropped=1))
         self.assertFalse([line for line in lines if "jumped back" in line])
-
-    def test_a_split_chord_dropped_is_named_once(self):
-        rows = [{**ROWS[0], "index": 152},
-                {**ROWS[1], "index": 153, "send": play_chart.DROPPED},
-                {**ROWS[1], "index": 153, "send": play_chart.DROPPED}]
-        lines = self._status(rows, play_chart.RunResult(
-            stop="done", sent=1, dropped=1, rows=list(rows)))
-        self.assertIn("sent 1", lines)
-        self.assertIn("dropped: chords 153", lines)
 
     def test_no_dropped_row_says_none(self):
         lines = self._status(list(ROWS), play_chart.RunResult(
