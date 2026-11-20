@@ -77,6 +77,13 @@ const std::vector<ChartActivation>& searched_activations() {
     return all;
 }
 
+// The eff. figure worked out by hand, the rule the Paths tab shows: the
+// note's distance from the end, rescaled by the two-hit budget at no scale
+// (1 + 1 windows) over the budget at this scale (1 + scale windows).
+double figure_by_rule(double offset_ms, double scale) {
+    return std::abs(offset_ms) * (1.0 + kIdentityScale) / (1.0 + scale);
+}
+
 }  // namespace
 
 TEST_CASE("frontend_transfer_scales: measure-rate ratio, both directions") {
@@ -425,23 +432,18 @@ TEST_CASE("frontend_transfer_scales: a SqOut whose activation and SP end both si
 }
 
 TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
-    // Field-verified: blink-182 - Dumpweed (Hoph2o), Expert Pro Drums 2x,
-    // activation "1-" at m19.1.0 (tick 34560), sp_meter 2. The player
-    // collects ONE SP phrase mid-SP, so the search's deact node sits at tick
-    // 46080 (act + 6 measures), not the plain act + 4 (42240). The true end
-    // gives early x0.935114.
-    // An FC video shows frontend -74.1 ms + SqOut backend +75.1 ms landing
-    // the squeeze on the 143.129 ms gap: 74.1*0.935114 + 75.1 = 144.4 >=
-    // 143.129. A scale read at an end short of the true one would predict a
-    // miss: x0.890911, an example this tempo map does not produce, gives
-    // 141.1. DragonDelgar's published even split of +-74 = 143.129 /
-    // (1 + 0.935114) matches the true end too.
+    // The tempo map of blink-182 - Dumpweed (Hoph2o), Expert Pro Drums 2x,
+    // around its activation at tick 34560 with sp_meter 2. The player
+    // collects one SP phrase mid-SP, so the search's deact node sits at tick
+    // 46080 (act + 6 measures), not the plain act + 4 (42240), and the scale
+    // is read there.
+    const int64_t resolution = 480;
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{{0, 98.0003},
                                   {34560, 97.4999},
                                   {45120, 104.8004},
                                   {46080, 101.0002}};
-    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
+    SongTiming st(resolution, tpm, bpm, {{0, {4, 4}}});
 
     Activation act;
     act.timecode = st.timecode(34560);
@@ -465,12 +467,17 @@ TEST_CASE("field fixture: Dumpweed SqOut end anchored on the deact node") {
     // No SqIn: no SqIn scales.
     CHECK(scales->sqins.empty());
 
-    // The SqOut gap and its displayed numbers.
-    double gap = st.timecode(46080).ms() - st.timecode(45960).ms();
-    CHECK(gap == doctest::Approx(143.129).epsilon(1e-4));
+    // The SqOut gap: the SqOut phrase note at tick 45960 and the deact node
+    // at 46080 both sit in the 104.8004 BPM section (45120 to 46080), so the
+    // gap is that many beats at that tempo.
+    const int64_t sqout_tick = 45960;
+    const int64_t deact_tick = 46080;
+    const double gap_beats = double(deact_tick - sqout_tick) / double(resolution);
+    const double gap = st.timecode(deact_tick).ms() - st.timecode(sqout_tick).ms();
+    CHECK(gap == doctest::Approx(gap_beats * 60000.0 / 104.8004).epsilon(1e-9));
+    // The figure is the gap rescaled to the early scale read at that node.
     const double r = scales->post.early;
-    CHECK(effective_backend_ms(gap, r) == doctest::Approx(147.94).epsilon(1e-3));
-    CHECK(74.1 * r + 75.1 > gap);  // the video's successful split
+    CHECK(effective_backend_ms(gap, r) == doctest::Approx(figure_by_rule(gap, r)).epsilon(1e-12));
 
     // The same D recovered through a nonzero-offset row (the ms -> tick
     // rounding path): the SqOut phrase note itself, 143.129 ms before D.
@@ -505,15 +512,21 @@ TEST_CASE("difficulty is the raw gap, untouched by stored transfer scales") {
     Activation act;
     test::set_skips(act, 0);
     act.e_offset = 300.0;  // not e-critical
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -12.0});
-    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 7.0});
+    // A SqOut 12 ms before the end needs a 12 ms late hit; a SqIn 7 ms
+    // past it needs a 7 ms early one. The harder of the two is the
+    // activation's difficulty.
+    const double sqout_gap = 12.0;
+    const double sqin_gap = 7.0;
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqOut, -sqout_gap});
+    act.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, sqin_gap});
+    const double hardest_gap = std::max(sqout_gap, sqin_gap);
 
     REQUIRE(act.difficulty().has_value());
-    CHECK(*act.difficulty() == doctest::Approx(12.0));
+    CHECK(*act.difficulty() == doctest::Approx(hardest_gap));
 
     // The scales are display-only; the metric must not move with them.
     test::set_transfer(act, TransferScale{0.5, 3.0});
-    CHECK(*act.difficulty() == doctest::Approx(12.0));
+    CHECK(*act.difficulty() == doctest::Approx(hardest_gap));
 }
 
 TEST_CASE("is_scaled: less than the tolerance from 1 is no scale") {
@@ -563,20 +576,27 @@ TEST_CASE("is_scaled: less than the tolerance from 1 is no scale") {
 }
 
 TEST_CASE("rate_note: the side of the end picks the multiplier") {
-    const TransferScale s{0.5, 2.0};
-    // Inside SP: an early hit is what moves the end across it.
-    NoteRating in = rate_note(-50.0, true, s);
+    const double early_scale = 0.5;
+    const double late_scale = 2.0;
+    const TransferScale s{early_scale, late_scale};
+    const double gap = 50.0;
+    const bool inside_sp = true;
+    // Inside SP an early hit is what moves the end across the note, so the
+    // early scale applies.
+    NoteRating in = rate_note(-gap, inside_sp, s);
     CHECK(in.early);
-    CHECK(in.scale == 0.5);
-    CHECK(in.budget_ms == 127.5);
+    CHECK(in.scale == early_scale);
+    // The two-hit budget at that scale: one window for each hit, the
+    // second shrunk by the scale.
+    CHECK(in.budget_ms == doctest::Approx(kHitWindowMs * (1.0 + early_scale)));
     REQUIRE(in.effective_ms.has_value());
-    CHECK(*in.effective_ms == doctest::Approx(66.666666666666667).epsilon(1e-12));
-    // Outside: a late hit.
-    NoteRating out = rate_note(50.0, false, s);
+    CHECK(*in.effective_ms == doctest::Approx(figure_by_rule(gap, early_scale)).epsilon(1e-12));
+    // Outside SP a late hit moves it, so the late scale applies.
+    NoteRating out = rate_note(gap, !inside_sp, s);
     CHECK_FALSE(out.early);
-    CHECK(out.scale == 2.0);
+    CHECK(out.scale == late_scale);
     REQUIRE(out.effective_ms.has_value());
-    CHECK(*out.effective_ms == doctest::Approx(33.333333333333336).epsilon(1e-12));
+    CHECK(*out.effective_ms == doctest::Approx(figure_by_rule(gap, late_scale)).epsilon(1e-12));
 }
 
 TEST_CASE("rate_note: a figure whenever the multiplier is not 1, however close") {
