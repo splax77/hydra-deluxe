@@ -73,56 +73,94 @@ void test_scan(ImGuiTestContext* ctx) {
     IM_CHECK(ctx->ItemInfo("Scan library").ID != 0);
 }
 
-// One chart in two folders is two rows (row_key). A click on the second
-// copy's row selects that copy, not the first one the scan listed, and the
-// batch's entries come back in table order, leaving out a row the store no
-// longer lists.
+// One chart in two folders is two rows (row_key). One corpus chart is copied
+// to scratch twice, beside a second chart, and the three are scanned. A click
+// on the second copy's row selects that copy, not the first one the store
+// lists, and the batch's entries come back in table order, leaving out a row
+// the store no longer lists.
 void test_library_twin_rows(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
-    auto entry = [](const char* title, const char* path) {
-        hydra::store::ChartLibraryEntry e;
-        e.md5 = "0123456789abcdef0123456789abcdef";
-        e.title = title;
-        e.notespath = path;
-        e.rootfolder = "twins";
-        return e;
-    };
-    const hydra::store::ChartLibraryEntry first = entry("Twin A", "C:\\twins\\a\\notes.chart");
-    const hydra::store::ChartLibraryEntry second = entry("Twin B", "C:\\twins\\b\\notes.chart");
-    hydra::store::ChartLibraryEntry other = entry("Zed", "C:\\twins\\z\\notes.chart");
-    other.md5 = "fedcba9876543210fedcba9876543210";
-    h.app->store->rebuild_chart_library({first, second, other});
-    h.app->reload_library();
+    const fs::path tier = fs::u8path(corpus::root()) / "common" / "IB24" / "T1";
+    const fs::path songs = fs::u8path(h.temp_dir) / "twin_rows";
+    fs::remove_all(songs);
+    fs::create_directories(songs);
+    const fs::path twin = tier / "Allister - Overrated";
+    fs::copy(twin, songs / "a", fs::copy_options::recursive);
+    fs::copy(twin, songs / "b", fs::copy_options::recursive);
+    fs::copy(tier / "Hawthorne Heights - Saying Sorry", songs / "other",
+             fs::copy_options::recursive);
+    h.app->settings.chartfolders = {songs.u8string()};
+    scan_library(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK_EQ(h.app->library_shown_count(), size_t{3});
+    if (h.app->library_shown_count() != 3) return;
 
-    // Rows sort by title: Twin A, Twin B, Zed.
-    IM_CHECK(h.app->library_row_at(1).entry.notespath == second.notespath);
-    h.app->select(h.app->library_row_at(1).entry, hydra::ui::SelectionSource::Click);
-    IM_CHECK(h.app->selected && h.app->selected->notespath == second.notespath);
-    IM_CHECK(h.app->selected && h.app->selected->title == "Twin B");
+    // The chart two rows share, and its copies in the order a click picks from.
+    std::string twin_md5;
+    for (size_t i = 0; i < 3; ++i)
+        for (size_t j = i + 1; j < 3; ++j)
+            if (h.app->library_row_at(i).entry.md5 == h.app->library_row_at(j).entry.md5)
+                twin_md5 = h.app->library_row_at(i).entry.md5;
+    IM_CHECK(!twin_md5.empty());
+    const std::vector<hydra::store::ChartLibraryEntry> copies =
+        h.app->store->list_chart_library_copies(twin_md5);
+    IM_CHECK_EQ(copies.size(), size_t{2});
+    if (copies.size() != 2) return;
+    IM_CHECK(copies[0].notespath != copies[1].notespath);
+
+    std::optional<size_t> second_row;
+    for (size_t i = 0; i < 3; ++i)
+        if (h.app->library_row_at(i).entry.notespath == copies[1].notespath) second_row = i;
+    IM_CHECK(second_row.has_value());
+    if (!second_row) return;
+    h.app->select(h.app->library_row_at(*second_row).entry, hydra::ui::SelectionSource::Click);
+    IM_CHECK(h.app->selected && h.app->selected->notespath == copies[1].notespath);
     h.app->close_details();
 
     // Table order, not the store's (which lists by name): titles descending.
     // No frame runs between these calls, so the table's own sort can't step in.
     h.app->library.set_sort(hydra::ui::LibrarySort::Title, false);
-    std::vector<hydra::store::ChartLibraryEntry> matches = h.app->library_matches();
-    IM_CHECK_EQ(matches.size(), size_t{3});
-    if (matches.size() == 3) {
-        IM_CHECK(matches[0].notespath == other.notespath);
-        IM_CHECK(matches[1].notespath == second.notespath);
-        IM_CHECK(matches[2].notespath == first.notespath);
-    }
+    auto paths_of = [](const std::vector<hydra::store::ChartLibraryEntry>& entries) {
+        std::vector<std::string> out;
+        for (const hydra::store::ChartLibraryEntry& e : entries) out.push_back(e.notespath);
+        return out;
+    };
+    auto table_paths = [&h](const std::string& leave_out) {
+        std::vector<std::string> out;
+        for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+            if (h.app->library_row_at(i).entry.notespath != leave_out)
+                out.push_back(h.app->library_row_at(i).entry.notespath);
+        return out;
+    };
+    const std::vector<hydra::store::ChartLibraryEntry> listed = h.app->store->list_chart_library(0, 10);
+    IM_CHECK_EQ(listed.size(), size_t{3});
+    std::vector<std::string> matched = paths_of(h.app->library_matches());
+    IM_CHECK(matched == table_paths(""));
+    // The two orders differ here, so a batch that kept the store's would fail.
+    IM_CHECK(matched != paths_of(listed));
 
     // The store drops the first copy; the rows are not reloaded yet.
-    h.app->store->rebuild_chart_library({second, other});
-    matches = h.app->library_matches();
-    IM_CHECK_EQ(matches.size(), size_t{2});
-    if (matches.size() == 2) {
-        IM_CHECK(matches[0].notespath == other.notespath);
-        IM_CHECK(matches[1].notespath == second.notespath);
-    }
+    std::vector<hydra::store::ChartLibraryEntry> kept;
+    for (const hydra::store::ChartLibraryEntry& e : listed)
+        if (e.notespath != copies[0].notespath) kept.push_back(e);
+    IM_CHECK_EQ(kept.size(), size_t{2});
+    h.app->store->rebuild_chart_library(kept);
+    IM_CHECK_EQ(h.app->library_shown_count(), size_t{3});
+    matched = paths_of(h.app->library_matches());
+    IM_CHECK(matched == table_paths(copies[0].notespath));
     h.app->library.set_sort(hydra::ui::LibrarySort::Title, true);
+}
+
+// The chart mode a reading with Pro Drums on and Note Shuffle off is filed
+// under, as its owner app::chartmode_key spells it.
+std::string drums_key(hydra::Difficulty difficulty, bool bass2x) {
+    hydra::ChartReading reading;
+    reading.difficulty = difficulty;
+    reading.prodrums = true;
+    reading.bass2x = bass2x;
+    reading.noteshuffle = false;
+    return hydra::app::chartmode_key(reading);
 }
 
 // The settings panel's difficulty dropdown: it drives the chartmode
@@ -143,14 +181,14 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
     IM_CHECK_STR_EQ(hydra::app::Settings::load_file(h.ini_path).view_difficulty.c_str(),
                     "Hard");
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Hard, true));
 
     // Live at Hard: unticking it changes Hard's key, and ticking it restores it.
     IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
     ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.view_bass2x; }, 5));
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 1x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Hard, false));
     ctx->ItemClick("**/##bass2x");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_bass2x; }, 5));
 
@@ -161,7 +199,7 @@ void test_difficulty(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Expert"; }, 5));
     IM_CHECK((ctx->ItemInfo("**/##bass2x").ItemFlags & ImGuiItemFlags_Disabled) == 0);
     IM_CHECK(h.app->settings.effective_bass2x());
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Expert Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Expert, true));
 
     settings_combo_pick(ctx, "##prodrums", "##difficulty", "Hard");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.view_difficulty == "Hard"; }, 5));
@@ -175,7 +213,7 @@ void test_difficulty(ImGuiTestContext* ctx) {
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     // The settings, not the song panel, name the difficulty now.
-    IM_CHECK_STR_EQ(h.app->settings.chartmode_key().c_str(), "Hard Pro Drums, 2x Bass");
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), drums_key(hydra::Difficulty::Hard, true));
 
     // The click analyzed it under Hard (D87 item 1).
     wait_song_analyzed(ctx);
@@ -244,6 +282,12 @@ void test_note_shuffle_switch(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !compare_disabled(); }, 5));
 }
 
+// Whether the settings button reads its owner's label for `s`
+// (settings_button_label, unlocked).
+bool button_reads(Harness& h, const hydra::app::Settings& s) {
+    return on_screen(h, hydra::ui::detail::settings_button_label(s, false));
+}
+
 // A fresh app with every analysis setting at its default, the settings button
 // reading so. The scratch INI keeps a smaller score range; this puts the
 // default one back.
@@ -251,7 +295,8 @@ void reset_app_at_default_settings(ImGuiTestContext* ctx, Harness& h) {
     reset_app(h);
     h.app->settings.depth_value = hydra::app::Settings{}.depth_value;
     h.app->commit_settings();
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    IM_CHECK(hydra::ui::detail::settings_at_defaults(h.app->settings));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, h.app->settings); }, 5));
 }
 
 // The settings button (settings summary button handoff, 2026-10-09): it
@@ -260,17 +305,25 @@ void reset_app_at_default_settings(ImGuiTestContext* ctx, Harness& h) {
 void test_settings_button(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app_at_default_settings(ctx, h);
+    const hydra::app::Settings at_defaults = h.app->settings;
+    hydra::app::Settings shuffled = at_defaults;
+    shuffled.view_noteshuffle = true;
+    // The tick must change the words, or the wait below proves nothing.
+    IM_CHECK(hydra::ui::detail::settings_button_label(shuffled, false) !=
+             hydra::ui::detail::settings_button_label(at_defaults, false));
 
     ImGuiWindow* panel = open_settings_panel(ctx);
     if (ctx->IsError()) return;
     ctx->ItemCheck("**/##noteshuffle");
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: Note Shuffle"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->settings.view_noteshuffle && button_reads(h, shuffled);
+    }, 5));
     // Ticking a box leaves the panel open, still the window with focus.
     ctx->Yield(2);
     IM_CHECK(ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel));
     IM_CHECK(ctx->GetWindowByRef("//$FOCUSED") == panel);
     ctx->ItemUncheck("**/##noteshuffle");
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_defaults); }, 5));
     close_settings_panel(ctx);
 }
 
@@ -302,24 +355,25 @@ void test_settings_reset(ImGuiTestContext* ctx) {
         return (ctx->ItemInfo("**/Reset to defaults").ItemFlags & ImGuiItemFlags_Disabled) != 0;
     };
     const std::vector<std::string> folders = h.app->settings.chartfolders;
+    const hydra::app::Settings at_defaults = h.app->settings;
+    // The three changes the clicks below make.
+    hydra::app::Settings changed = at_defaults;
+    changed.view_prodrums = false;
+    changed.sp_cap = 5;
+    changed.early_fill_window_ms = 85;
+    IM_CHECK_EQ(changed.analysis_changes().size(), size_t{3});
 
     ImGuiWindow* panel = open_settings_panel(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(reset_off());
     ctx->ItemUncheck("**/##prodrums");
-    ctx->ItemInputValue("**/##spcap", 5);
-    ctx->ItemInputValue("**/##earlyfillwindow", 85);
-    IM_CHECK(wait_until(
-        ctx,
-        [&] {
-            return on_screen(h, "Analysis settings: Pro Drums off \xC2\xB7 SP cap 5 bars \xC2\xB7 "
-                                "Early fill window 85 ms");
-        },
-        5));
+    ctx->ItemInputValue("**/##spcap", changed.sp_cap);
+    ctx->ItemInputValue("**/##earlyfillwindow", changed.early_fill_window_ms);
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, changed); }, 5));
     IM_CHECK(!reset_off());
 
     ctx->ItemClick("**/Reset to defaults");
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "Analysis settings: defaults"); }, 5));
+    IM_CHECK(wait_until(ctx, [&] { return button_reads(h, at_defaults); }, 5));
     const hydra::app::Settings defaults;
     IM_CHECK(h.app->settings.view_prodrums);
     IM_CHECK(h.app->settings.sp_cap == hydra::kCloneHeroSpCap);
