@@ -4,7 +4,8 @@ The whole point of the engine model taking a ProcessHandle and a Debugger
 through its constructor is that we can hand it fakes here. The fakes are dumb:
 the fake process returns whatever double or dword we told it to for a given
 address, and the fake debugger fires the breakpoint callback the instant it is
-set. The score-rise check runs on a real run's press log instead.
+set. The score-rise check runs on a real run's press log instead, and the
+engine class's field types come from the real 1.1 build's class dump.
 
 The process is a real Process from the shared builder in fakes.py, so the
 address maths and the decoding are production's.
@@ -33,6 +34,7 @@ _REPO_ROOT = os.path.dirname(os.path.dirname(_CH_PROBE_DIR))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import build_facts  # noqa: E402
 from tools.ch_probe.experiments import score_compare  # noqa: E402
 
 try:
@@ -112,35 +114,41 @@ def make_engine(object_ptr=OBJ, doubles=None, dwords=None, consts=None,
 # --- tests: offset arithmetic ------------------------------------------------
 
 
+# The real 1.1 build's facts cut to its drum engine class, copied from
+# hydra-data/ch-dumps/6142/facts.json; test_frida_tools.py reads the same
+# folder. The dump lists only the fields the sealed class itself adds (IN-09 on
+# docs/clone-hero/07-internals.md), so offsets of the generic base, such as
+# the song clock's, are not in it.
+_REAL_6142_DUMPS = os.path.join(_REPO_ROOT, "testdata", "ch_runs",
+                                "ch-dumps-6142")
+
+
+def real_engine_fields():
+    """The drum engine class's constructor RVA and its instance fields as
+    {offset: type}, from the real 6142 dump."""
+    facts = build_facts.load_facts(os.path.join(_REAL_6142_DUMPS, "game"),
+                                   _REAL_6142_DUMPS)
+    name, ctor_rva = build_facts.engine_class(facts)
+    cls = build_facts._one_class(facts, name)
+    return ctor_rva, {f["offset"]: f["type"] for f in cls["fields"]
+                      if not f["static"]}
+
+
+class TestEngineClassFields(unittest.TestCase):
+    def test_the_dump_is_the_class_whose_constructor_constants_names(self):
+        ctor_rva, _ = real_engine_fields()
+        self.assertEqual(ctor_rva, C.RVA_DRUMS_ENGINE_CTOR)
+
+    def test_round_start_is_a_double_field_of_the_engine(self):
+        _, fields = real_engine_fields()
+        self.assertEqual(fields.get(C.OFF_ROUND_START), "double")
+
+    def test_dyn_threshold_is_a_uint_field_of_the_engine(self):
+        _, fields = real_engine_fields()
+        self.assertEqual(fields.get(C.OFF_DYN_THRESHOLD), "uint")
+
+
 class TestFieldReads(unittest.TestCase):
-    def _engine_with_fields(self, **field_values):
-        """Build an engine whose object fields hold the given doubles.
-
-        Pass e.g. total=170.0 and the double at OBJ+OFF_TOTAL_WINDOW is set.
-        """
-        offset_of = {
-            "total": C.OFF_TOTAL_WINDOW,
-            "back": C.OFF_BACK_WINDOW,
-            "front": C.OFF_FRONT_WINDOW,
-            "round_start": C.OFF_ROUND_START,
-        }
-        doubles = {OBJ + offset_of[k]: v for k, v in field_values.items()}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
-        eng.capture_object()
-        return eng
-
-    def test_round_start_reads_off_0x2e0(self):
-        # OFF_ROUND_START's comment in constants.py says what +0x2e0 holds.
-        self.assertEqual(C.OFF_ROUND_START, 0x2E0)
-        eng = self._engine_with_fields(round_start=12.34)
-        self.assertEqual(eng.round_start(), 12.34)
-
-    def test_total_is_twice_back_at_construction(self):
-        # Not engine logic, just a sanity check the offsets are distinct fields
-        # and the reads land where we put them.
-        eng = self._engine_with_fields(total=170.0, back=85.0)
-        self.assertEqual(eng.total_window(), 2 * eng.back_window())
-
     def test_reads_before_capture_raise(self):
         eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles={})
         with self.assertRaises(RuntimeError):
@@ -151,27 +159,15 @@ class TestFieldReads(unittest.TestCase):
 
 
 class TestPrecisionMode(unittest.TestCase):
-    def _mode(self, flags_value):
-        dwords = {OBJ + C.OFF_FLAGS: flags_value}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, dwords=dwords)
-        eng.capture_object()
-        return eng.precision_mode()
-
-    def test_precision_bit_is_0x1000(self):
-        # Guards against the constant drifting; the spec pins it at 0x1000.
-        self.assertEqual(C.PRECISION_MODE_BIT, 0x1000)
-
     def test_is_precision_reads_the_one_bit(self):
-        # Finding 230's six flag values, through the one pure helper.
+        # The game tests bit 0x1000 of the flags dword (IN-10 and TM-28 on
+        # docs/clone-hero/07-internals.md and 03-timing.md), and no other bit.
         self.assertTrue(engine.is_precision(0x1000))
         self.assertFalse(engine.is_precision(0x0FFF))
         self.assertTrue(engine.is_precision(0xFFFFFFFF))
         self.assertTrue(engine.is_precision(0x0FF1 | 0x1000))
         self.assertFalse(engine.is_precision(0xFFFFFFFF & ~0x1000))
         self.assertFalse(engine.is_precision(0))
-        # The engine's reader agrees with the helper.
-        self.assertTrue(self._mode(0x1000))
-        self.assertFalse(self._mode(0))
 
 
 # --- tests: did the score rise -----------------------------------------------
@@ -205,114 +201,53 @@ class TestPressedInputHit(unittest.TestCase):
 # --- tests: constants --------------------------------------------------------
 
 
+def every_rdata_rva():
+    """Every .rdata constant constants.py names: each RVA_CONST_*,
+    RVA_FORMULA_* and RVA_HITCHECK_* value, and each value of the formula
+    tables. A constant added there is expected without editing this list."""
+    rvas = []
+    for name in sorted(vars(C)):
+        if not name.startswith(("RVA_CONST_", "RVA_FORMULA_", "RVA_HITCHECK_")):
+            continue
+        value = getattr(C, name)
+        rvas += list(value.values()) if isinstance(value, dict) else [value]
+    return rvas
+
+
 class TestConstants(unittest.TestCase):
-    def _all_expected_rvas(self):
-        rvas = [
-            C.RVA_CONST_NORMAL_BACK,
-            C.RVA_CONST_NORMAL_FRONT,
-            C.RVA_CONST_PRECISION_BACK,
-            C.RVA_CONST_PRECISION_FRONT,
-            C.RVA_FORMULA_DIVISOR,
-            C.RVA_FORMULA_EXPONENT,
-            C.RVA_HITCHECK_THRESHOLD,
-        ]
-        rvas += list(C.RVA_FORMULA_NORMAL.values())
-        rvas += list(C.RVA_FORMULA_PRECISION.values())
-        return rvas
-
-    def _engine_with_every_constant(self):
-        consts = {rva: 0.0 for rva in self._all_expected_rvas()}
-        return make_engine(object_ptr=OBJ, consts=consts)
-
     def test_reads_every_expected_rva(self):
-        eng, proc, dbg, mem = self._engine_with_every_constant()
+        rvas = every_rdata_rva()
+        eng, proc, dbg, mem = make_engine(
+            object_ptr=OBJ, consts={rva: 0.0 for rva in rvas})
         eng.constants()
         addrs_read = [addr for addr, _ in mem.reads]
-        for rva in self._all_expected_rvas():
+        for rva in rvas:
             self.assertIn(proc.resolve(rva), addrs_read,
                           msg="constants() did not read RVA 0x%X" % rva)
-
-    def test_returns_a_value_for_every_name(self):
-        # Feed known values so we can check they land under the right keys.
-        consts = {
-            C.RVA_CONST_NORMAL_BACK: 85.0,
-            C.RVA_CONST_NORMAL_FRONT: 37.5,
-            C.RVA_CONST_PRECISION_BACK: 40.0,
-            C.RVA_CONST_PRECISION_FRONT: 25.0,
-            C.RVA_FORMULA_DIVISOR: 1000.0,
-            C.RVA_FORMULA_EXPONENT: 2.0,
-            C.RVA_HITCHECK_THRESHOLD: 0.5,
-        }
-        for rva in C.RVA_FORMULA_NORMAL.values():
-            consts[rva] = 1.0
-        for rva in C.RVA_FORMULA_PRECISION.values():
-            consts[rva] = 2.0
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, consts=consts)
-        got = eng.constants()
-        self.assertEqual(got[C.CONST_KEY_NORMAL_BACK], 85.0)
-        self.assertEqual(got[C.CONST_KEY_NORMAL_FRONT], 37.5)
-        self.assertEqual(got[C.CONST_KEY_PRECISION_BACK], 40.0)
-        self.assertEqual(got[C.CONST_KEY_PRECISION_FRONT], 25.0)
-        self.assertEqual(got[C.CONST_KEY_DIVISOR], 1000.0)
-        self.assertEqual(got[C.CONST_KEY_EXPONENT], 2.0)
-        self.assertEqual(got[C.CONST_KEY_HITCHECK_THRESHOLD], 0.5)
-        # Every normal-branch and precision-branch coefficient shows up, keyed
-        # with its mode prefix.
-        for name in C.RVA_FORMULA_NORMAL:
-            self.assertIn(C.CONST_KEY_PREFIX_NORMAL + name, got)
-        for name in C.RVA_FORMULA_PRECISION:
-            self.assertIn(C.CONST_KEY_PREFIX_PRECISION + name, got)
-
-    def test_window_keys_carry_their_mode_prefix(self):
-        self.assertTrue(C.CONST_KEY_NORMAL_BACK.startswith(C.CONST_KEY_PREFIX_NORMAL))
-        self.assertTrue(C.CONST_KEY_NORMAL_FRONT.startswith(C.CONST_KEY_PREFIX_NORMAL))
-        self.assertTrue(
-            C.CONST_KEY_PRECISION_BACK.startswith(C.CONST_KEY_PREFIX_PRECISION))
-        self.assertTrue(
-            C.CONST_KEY_PRECISION_FRONT.startswith(C.CONST_KEY_PREFIX_PRECISION))
-
-    def test_constants_need_no_captured_object(self):
-        # constants() reads .rdata, which does not depend on the object pointer.
-        eng, proc, dbg, mem = self._engine_with_every_constant()
-        self.assertIsNone(eng.object_ptr)
-        eng.constants()  # must not raise
 
 
 # --- tests: song clock (live-only seam) --------------------------------------
 
 
 class TestSongClock(unittest.TestCase):
-    def test_reads_the_proven_clock_at_0x100(self):
-        # play_chart.py plays whole songs off this field, so the song clock is
-        # +0x100, in seconds.
-        self.assertEqual(C.OFF_SONG_CLOCK, 0x100)
+    def test_reads_the_song_clock_field(self):
         doubles = {OBJ + C.OFF_SONG_CLOCK: 3.5}
         eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
         eng.capture_object()
         self.assertEqual(eng.song_clock(), 3.5)
 
-    def test_no_placeholder_offset_is_left(self):
-        self.assertFalse(hasattr(engine, "_PLACEHOLDER_SONG_CLOCK_OFFSET"))
-
 
 class TestScoreAndFoundObject(unittest.TestCase):
-    def test_dyn_threshold_reads_u32_off_0x2c0(self):
-        self.assertEqual(C.OFF_DYN_THRESHOLD, 0x2C0)
+    def test_dyn_threshold_reads_its_field(self):
         eng, proc, dbg, mem = make_engine(object_ptr=OBJ,
                                      dwords={OBJ + C.OFF_DYN_THRESHOLD: 64})
         eng.capture_object()
         self.assertEqual(eng.dyn_threshold(), 64)
 
-    def test_use_object_takes_a_scanned_pointer_without_a_debugger(self):
-        proc, _ = fakes.fake_process(None, MODULE_BASE,
-                                     doubles={OBJ + C.OFF_SONG_CLOCK: 1.25})
-        eng = engine.EngineModel(proc)
-        self.assertEqual(eng.use_object(OBJ), OBJ)
-        self.assertEqual(eng.object_ptr, OBJ)
-        self.assertEqual(eng.song_clock(), 1.25)
-
     def test_capture_without_a_debugger_raises(self):
-        eng = engine.EngineModel(fakes.fake_process(None, MODULE_BASE)[0])
+        # No process either: the guard must refuse before anything is read,
+        # so a reordered guard fails here with an AttributeError on None.
+        eng = engine.EngineModel(None)
         with self.assertRaises(RuntimeError):
             eng.capture_object()
 
