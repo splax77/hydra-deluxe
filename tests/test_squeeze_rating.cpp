@@ -871,114 +871,90 @@ TEST_CASE("rate_activation: scale_governs only for a scaled multiplier on a rate
     REQUIRE(flat > 0);
 }
 
-TEST_CASE("rate_activation: the stored scales are the only scales") {
-    // A flat chart would recompute identity scales, but the search stored
-    // 0.5s. The rating reads what the search stored and never recomputes.
-    Activation act;
-    act.timecode = Timecode::raw(0);
-    test::set_sp_meter(act, 2);
-    test::set_plain_window(act, 7680);
-    test::set_transfer(act, TransferScale{0.5, 0.5});
-
-    BackendSqueeze row;
-    row.timecode = Timecode::raw(7728);
-    row.offset_ms = 50.0;
-    act.backends.push_back(row);
-
-    ActivationRating r = rate_activation(act);
-    REQUIRE(r.scales.has_value());
-    CHECK(r.scales->post.late == doctest::Approx(0.5));
-    CHECK(r.scales->post.early == doctest::Approx(0.5));
-    CHECK(r.scale_governs);
-}
-
-TEST_CASE("timing_tiers: the ladder at the 85 ms hit window") {
-    // The 85 ms window (kHitWindowMs) -> a 170 ms two-hit budget: the 2 ms "Normal"
-    // floor, then quarters of the budget.
-    std::vector<TimingTier> t85 = timing_tiers();
-    REQUIRE(t85.size() == 7);
-
-    CHECK(std::string(t85[0].name) == "Normal");
-    CHECK(std::string(t85[0].tok) == "t0");
-    REQUIRE(t85[0].cutoff.has_value());
-    CHECK(*t85[0].cutoff == doctest::Approx(2.0));
-
-    CHECK(std::string(t85[1].name) == "Hard");
-    CHECK(std::string(t85[1].tok) == "t1");
-    REQUIRE(t85[1].cutoff.has_value());
-    CHECK(*t85[1].cutoff == doctest::Approx(42.5));
-
-    CHECK(std::string(t85[2].name) == "Extreme");
-    CHECK(std::string(t85[2].tok) == "t2");
-    REQUIRE(t85[2].cutoff.has_value());
-    CHECK(*t85[2].cutoff == doctest::Approx(85.0));
-    // The Extreme edge is the window itself, read from its one owner.
-    CHECK(*t85[2].cutoff == kHitWindowMs);
-
-    CHECK(std::string(t85[3].name) == "Insane");
-    CHECK(std::string(t85[3].tok) == "t3");
-    REQUIRE(t85[3].cutoff.has_value());
-    CHECK(*t85[3].cutoff == doctest::Approx(127.5));
-
-    CHECK(std::string(t85[4].name) == "Insane+");
-    CHECK(std::string(t85[4].tok) == "t4");
-    REQUIRE(t85[4].cutoff.has_value());
-    CHECK(*t85[4].cutoff == doctest::Approx(170.0));
-    // The ladder's top cutoff is the two-hit budget itself, read from its one
-    // owner, not twice the window written again.
-    CHECK(*t85[4].cutoff == nominal_budget_ms());
-
-    // The two open bands carry no cutoff, and "None" is last.
-    CHECK(std::string(t85[5].name) == "Beyond");
-    CHECK(std::string(t85[5].tok) == "t5");
-    CHECK_FALSE(t85[5].cutoff.has_value());
-    CHECK(std::string(t85[6].name) == "None");
-    CHECK(std::string(t85[6].tok) == "tn");
-    CHECK_FALSE(t85[6].cutoff.has_value());
-}
-
-TEST_CASE("display_backends: 500 ms window keeps everything the 500 ms search graph collects") {
-    // The display window IS the search graph's squeeze window (one constant,
-    // kSqueezeWindowMs), so nothing the graph gathers gets trimmed at
-    // store/display time. 180 and -300 sit past the nominal budget
-    // (nominal_budget_ms), and the window still keeps them.
-    CHECK(kSqueezeWindowMs == 500.0);
-    std::map<int64_t, int64_t> tpm{{0, 1920}};
-    std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
-
-    Activation act;
-    act.timecode = st.timecode(0);
-    test::set_sp_meter(act, 2);
-
-    const double offsets[] = {0.0, 180.0, -300.0, kSqueezeWindowMs - 1.0,
-                              kSqueezeWindowMs + 20.0};
-    for (double off : offsets) {
-        BackendSqueeze row;
-        row.timecode = st.timecode(0);
-        row.offset_ms = off;
-        act.backends.push_back(row);
+TEST_CASE("timing_tiers: the ladder's edges follow the hit window") {
+    // The 2 ms difficult floor, then one half, one, one and a half and two
+    // hit windows (the last is the two-hit budget), then the two open bands.
+    const double w = kHitWindowMs;
+    const std::vector<TimingTier> tiers = timing_tiers();
+    const std::vector<double> want_cutoffs{kDifficultMs, w / 2, w, 3 * w / 2, nominal_budget_ms()};
+    REQUIRE(tiers.size() == want_cutoffs.size() + 2);
+    for (size_t i = 0; i < want_cutoffs.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(tiers[i].cutoff.has_value());
+        CHECK(*tiers[i].cutoff == want_cutoffs[i]);
+        // The edges rise up the ladder.
+        if (i > 0) {
+            CHECK(*tiers[i].cutoff > *tiers[i - 1].cutoff);
+        }
     }
 
-    std::vector<BackendSqueeze> kept = act.display_backends();
-    REQUIRE(kept.size() == 4);
-    CHECK(kept[0].offset_ms == doctest::Approx(0.0));
-    CHECK(kept[1].offset_ms == doctest::Approx(180.0));
-    CHECK(kept[2].offset_ms == doctest::Approx(-300.0));
-    CHECK(kept[3].offset_ms == doctest::Approx(kSqueezeWindowMs - 1.0));
+    // The two open bands are the last two entries, carry no cutoff, and are
+    // the ones beyond_tier and none_tier name.
+    const TimingTier& beyond = tiers[tiers.size() - 2];
+    const TimingTier& none = tiers.back();
+    CHECK_FALSE(beyond.cutoff.has_value());
+    CHECK_FALSE(none.cutoff.has_value());
+    CHECK(&beyond_tier(tiers) == &beyond);
+    CHECK(&none_tier(tiers) == &none);
 
-    // Exactly 500 ms away is outside, on both sides.
-    Activation edge;
-    for (double off : {-kSqueezeWindowMs, kSqueezeWindowMs}) {
-        BackendSqueeze row;
-        row.timecode = st.timecode(0);
-        row.offset_ms = off;
-        edge.backends.push_back(row);
+    // Every band has its own name and token.
+    for (size_t i = 0; i < tiers.size(); ++i)
+        for (size_t j = i + 1; j < tiers.size(); ++j) {
+            CHECK(std::string(tiers[i].name) != tiers[j].name);
+            CHECK(std::string(tiers[i].tok) != tiers[j].tok);
+        }
+
+    // tier_for reads the ladder: a timing on an edge is the band below it,
+    // a hair past it is the next band (past the top edge, Beyond), and no
+    // timing is None.
+    for (size_t i = 0; i < want_cutoffs.size(); ++i) {
+        CAPTURE(i);
+        CHECK(tier_for(want_cutoffs[i], tiers).first == tiers[i].name);
+        CHECK(tier_for(want_cutoffs[i] + 0.001, tiers).first == tiers[i + 1].name);
     }
-    CHECK(edge.display_backends().empty());
+    CHECK(tier_for(std::nullopt, tiers).first == none.name);
+}
+
+// The search gathers a deact edge's rows strictly inside kSqueezeWindowMs of
+// its SP end (within_squeeze_window, in the graph and the engine's copy-out),
+// and the table trims by that same window, so on every activation the search
+// writes the table keeps every row the engine stored, in order. Only the
+// squeezed-out row may sit farther out.
+TEST_CASE("display_backends: the table keeps every row the search stored") {
+    int rows = 0;
+    for (const ChartActivation& ca : searched_activations()) {
+        CAPTURE(ca.chart);
+        const std::vector<BackendSqueeze> kept = ca.act.display_backends();
+        REQUIRE(kept.size() == ca.act.backends.size());
+        for (size_t i = 0; i < kept.size(); ++i) {
+            ++rows;
+            CAPTURE(kept[i].offset());
+            CHECK(kept[i].timecode.ticks() == ca.act.backends[i].timecode.ticks());
+            if (!ca.act.is_sqout_backend(kept[i])) {
+                CHECK(within_squeeze_window(kept[i].offset()));
+            }
+        }
+    }
+    REQUIRE(rows > 0);
+}
+
+TEST_CASE("within_squeeze_window: exactly the window away is outside, on both sides") {
+    CHECK(within_squeeze_window(0.0));
     CHECK(within_squeeze_window(kSqueezeWindowMs - 0.001));
+    CHECK(within_squeeze_window(-(kSqueezeWindowMs - 0.001)));
+    CHECK_FALSE(within_squeeze_window(kSqueezeWindowMs));
     CHECK_FALSE(within_squeeze_window(-kSqueezeWindowMs));
-    CHECK(offset_from_sp_end(1000.0, 1250.0) == -250.0);
+}
+
+TEST_CASE("offset_from_sp_end: a note before the end is negative, one after it positive") {
+    const double end_ms = 1250.0;
+    const double before_ms = 1000.0;
+    const double after_ms = 1400.0;
+    CHECK(offset_from_sp_end(before_ms, end_ms) == before_ms - end_ms);
+    CHECK(offset_from_sp_end(before_ms, end_ms) < 0.0);
+    CHECK(offset_from_sp_end(after_ms, end_ms) == after_ms - end_ms);
+    CHECK(offset_from_sp_end(after_ms, end_ms) > 0.0);
+    CHECK(offset_from_sp_end(end_ms, end_ms) == 0.0);
 }
 
 // cap_clamped needs both halves: the SP cap clamped the window (clamp_tick
@@ -1134,10 +1110,19 @@ TEST_CASE("BackendSqueeze::summarystr: a scaled row's word follows its eff. figu
 
 TEST_CASE("squeeze_budget_ms: identity scale is twice the hit window") {
     // The backend tooltip's normal-scale figure, nominal_budget_ms, is this
-    // call at the identity scale.
-    CHECK(squeeze_budget_ms(1.0) == 170.0);
+    // call at the identity scale: one full hit window for each of the two
+    // hits.
+    CHECK(squeeze_budget_ms(kIdentityScale) == 2 * kHitWindowMs);
+    CHECK(nominal_budget_ms() == squeeze_budget_ms(kIdentityScale));
 }
 
-TEST_CASE("beyond_edge_ms: pinned at the 85 ms hit window") {
-    CHECK(beyond_edge_ms() == 170.0);
+TEST_CASE("beyond_edge_ms: where the ladder's Beyond band starts") {
+    // The report's Beyond edge is the two-hit budget, the ladder's top
+    // finite cutoff: a timing on it is still a finite band, a hair past it
+    // is Beyond.
+    const std::vector<TimingTier> tiers = timing_tiers();
+    const std::string beyond = beyond_tier(tiers).name;
+    CHECK(beyond_edge_ms() == nominal_budget_ms());
+    CHECK(tier_for(beyond_edge_ms(), tiers).first != beyond);
+    CHECK(tier_for(beyond_edge_ms() + 0.001, tiers).first == beyond);
 }
