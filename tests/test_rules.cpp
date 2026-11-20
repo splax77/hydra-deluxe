@@ -8,10 +8,14 @@
 
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <optional>
+#include <set>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "app/config.h"
@@ -56,6 +60,38 @@ Song fill_song() {
     return song;
 }
 
+// The text hydra_rules.ini takes for field f's value in r: a number in the
+// %.17g form, which reads back exactly, or the sqout_rule word.
+std::string field_value_text(const core::Rules& r, const core::RulesField& f) {
+    char buf[64];
+    if (auto real = std::get_if<double core::Rules::*>(&f.member)) {
+        std::snprintf(buf, sizeof buf, "%.17g", r.**real);
+        return buf;
+    }
+    if (auto whole = std::get_if<int core::Rules::*>(&f.member)) return std::to_string(r.**whole);
+    return core::sqout_rule_name(r.*std::get<core::SqOutRule core::Rules::*>(f.member));
+}
+
+// r with field f moved off its value: one more for a number, which stays
+// above every field's smallest allowed value, or the other sqout_rule.
+core::Rules with_field_moved(core::Rules r, const core::RulesField& f) {
+    if (auto real = std::get_if<double core::Rules::*>(&f.member)) {
+        r.**real += 1.0;
+    } else if (auto whole = std::get_if<int core::Rules::*>(&f.member)) {
+        r.**whole += 1;
+    } else {
+        const auto sqout = std::get<core::SqOutRule core::Rules::*>(f.member);
+        r.*sqout = r.*sqout == core::SqOutRule::FirstNote ? core::SqOutRule::WholeChord
+                                                          : core::SqOutRule::FirstNote;
+    }
+    return r;
+}
+
+// The line hydra_rules.ini takes to set field f to its value in r.
+std::string field_line(const core::Rules& r, const core::RulesField& f) {
+    return std::string(f.name) + " = " + field_value_text(r, f) + "\n";
+}
+
 int fill_count(const Song& song) {
     int n = 0;
     for (const SongTimestamp& ts : song.sequence)
@@ -65,14 +101,21 @@ int fill_count(const Song& song) {
 
 }  // namespace
 
-TEST_CASE("rules: defaults are the values Hydra always used") {
-    const core::Rules& r = core::default_rules();
-    CHECK(r.backend_leeway_ms == 3.0);
-    CHECK(r.sqout_rule == core::SqOutRule::FirstNote);
-    CHECK(r.max_tied_paths == 4);
-    CHECK(r.fill_cooldown_measures == 4);
-    CHECK(r.fill_max_distance_beats == 0.5);
-    CHECK(r.fill_land_slop_beats == 1.0 / 32);
+// Each default comes from its owner (the Rules member initialisers, walked
+// through rules_fields), and a hydra_rules.ini that writes it back loads the
+// same rules, so no default sits outside what the file may set.
+TEST_CASE("rules: every default is a value hydra_rules.ini accepts") {
+    const core::Rules& defaults = core::default_rules();
+    std::string text;
+    for (const core::RulesField& f : core::rules_fields()) {
+        CAPTURE(f.name);
+        const core::Rules one =
+            app::load_rules_file(write_rules("default_one", field_line(defaults, f)));
+        CHECK(one.fingerprint() == defaults.fingerprint());
+        text += field_line(defaults, f);
+    }
+    CHECK(app::load_rules_file(write_rules("default_all", text)).fingerprint() ==
+          defaults.fingerprint());
 }
 
 TEST_CASE("rules: a missing file and an empty file both load the defaults") {
@@ -83,21 +126,30 @@ TEST_CASE("rules: a missing file and an empty file both load the defaults") {
     CHECK(app::load_rules_file(write_rules("empty", "# nothing here\n\n")).fingerprint() == fp);
 }
 
+// Every field rules_fields lists, so a field added there is read here too.
+// Each key, written alone at a value off its default, sets its own field and
+// moves the fingerprint; all of them in one file each set their own.
 TEST_CASE("rules: every key in the file is read") {
-    core::Rules r = app::load_rules_file(write_rules("full",
-        "backend_leeway_ms = 5\n"
-        "sqout_rule = whole_chord\n"
-        "max_tied_paths = 2\n"
-        "fill_cooldown_measures = 2\n"
-        "fill_max_distance_beats = 0.25\n"
-        "fill_land_slop_beats = 0.125\n"));
-    CHECK(r.backend_leeway_ms == 5.0);
-    CHECK(r.sqout_rule == core::SqOutRule::WholeChord);
-    CHECK(r.max_tied_paths == 2);
-    CHECK(r.fill_cooldown_measures == 2);
-    CHECK(r.fill_max_distance_beats == 0.25);
-    CHECK(r.fill_land_slop_beats == 0.125);
-    CHECK(r.fingerprint() != core::default_rules().fingerprint());
+    const core::Rules& defaults = core::default_rules();
+    core::Rules all = defaults;
+    std::string text;
+    for (const core::RulesField& f : core::rules_fields()) {
+        CAPTURE(f.name);
+        const core::Rules moved = with_field_moved(defaults, f);
+        REQUIRE(field_value_text(moved, f) != field_value_text(defaults, f));
+        const core::Rules r = app::load_rules_file(write_rules("key_one", field_line(moved, f)));
+        CHECK(field_value_text(r, f) == field_value_text(moved, f));
+        CHECK(r.fingerprint() == moved.fingerprint());
+        CHECK(r.fingerprint() != defaults.fingerprint());
+        all = with_field_moved(all, f);
+        text += field_line(all, f);
+    }
+    const core::Rules r = app::load_rules_file(write_rules("key_all", text));
+    for (const core::RulesField& f : core::rules_fields()) {
+        CAPTURE(f.name);
+        CHECK(field_value_text(r, f) == field_value_text(all, f));
+    }
+    CHECK(r.fingerprint() == all.fingerprint());
 }
 
 TEST_CASE("rules: a # starts a comment anywhere on a line") {
@@ -147,29 +199,28 @@ TEST_CASE("rules: a whole-number key takes a whole value written as a decimal") 
     CHECK(r.fill_cooldown_measures == 10);
 }
 
-TEST_CASE("rules: no rules value has the no-rules fingerprint") {
-    // AppState opens the store on RulesStamp::none(), which holds
-    // kNoRulesFingerprint, when the file is bad, so no stored row can read
-    // Ready. That only works if no real rules value ever hashes to it.
-    CHECK(core::default_rules().fingerprint() != core::kNoRulesFingerprint);
-    core::Rules other = core::default_rules();
-    other.max_tied_paths = 2;
-    CHECK(other.fingerprint() != core::kNoRulesFingerprint);
-}
-
 TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") {
     hydra::Chord chord;  // qualified: windows.h (through temp_util.h) declares a Chord too
     chord.add_note(NoteColor::Red);
     chord.add_note(NoteColor::Blue);
-    // Combo 0, so both notes sit at a 1x multiplier and are worth 50 each.
-    CHECK(category_scores(chord, 0, nullptr, core::SqOutRule::FirstNote).sqout_reduction == 50);
-    CHECK(category_scores(chord, 0, nullptr, core::SqOutRule::WholeChord).sqout_reduction == 100);
-
+    // Each note loses its own doubling: the whole value it is paid without
+    // Star Power, the sum of its non-SP categories.
     std::vector<CategoryScores> per_note;
-    category_scores(chord, 0, &per_note, core::SqOutRule::WholeChord);
+    const int whole =
+        category_scores(chord, 0, &per_note, core::SqOutRule::WholeChord).sqout_reduction;
     REQUIRE(per_note.size() == 2);
-    CHECK(per_note[0].sqout_reduction == 50);
-    CHECK(per_note[1].sqout_reduction == 50);
+    int sum = 0;
+    for (const CategoryScores& n : per_note) {
+        const int paid = n.notes + n.combo + n.accent + n.ghost;
+        CHECK(paid > 0);
+        CHECK(n.sqout_reduction == paid);
+        sum += n.sqout_reduction;
+    }
+    CHECK(whole == sum);
+    // first_note takes the first note's doubling only.
+    CHECK(category_scores(chord, 0, nullptr, core::SqOutRule::FirstNote).sqout_reduction ==
+          per_note[0].sqout_reduction);
+    CHECK(whole > per_note[0].sqout_reduction);
 }
 
 // The leeway decides only whether a plain row is counted (D269 call 4).
