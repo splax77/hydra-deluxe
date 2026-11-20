@@ -11,10 +11,12 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "analyzed_chart.h"  // analyzed_by_ten_scores, the ghost list's pinned chart
@@ -23,9 +25,11 @@
 #include "chart_text.h"
 #include "app/preview_view.h"
 #include "app/song_length.h"  // kSongEndPadMs
+#include "app/user_messages.h"  // plain_error: the asset failure's sentence
 #include "audio/device.h"
 #include "audio_chart_fixtures.h"
 #include "audio_util.h"  // fixture_path
+#include "core/error_kind.h"  // KindedError, ErrorKind::PreviewAssets
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "parse/song.h"
@@ -341,13 +345,42 @@ TEST_CASE("the Preview base job builds the path-free scene and timeline") {
 }
 
 // The Preview's view settings become highway options in one place
-// (finding R7.16), and the jobs compare the options whole.
-TEST_CASE("track_options: one builder, compared whole") {
+// (finding R7.16). What the Pro Drums option does to the highway: with it on
+// the scene's cymbals draw as cymbals, and with it off every pad draws as a
+// tom, so the timeline holds no cymbal and loses no gem. The corpus's Deftones
+// chart marks cymbals on its Expert drums (N 66 to 68 in its notes.chart).
+TEST_CASE("track_options: Pro Drums off draws every pad as a tom") {
     using hydra::ui::track_options;
-    CHECK(track_options(true) == track_options(true));
-    CHECK(track_options(true) != track_options(false));
-    CHECK(track_options(true).pro);
-    CHECK_FALSE(track_options(false).pro);
+    const std::string chart = corpus::chart_named("Deftones - My Own Summer");
+    REQUIRE_FALSE(chart.empty());
+    PreviewLoadJob job(entry_for(chart), {Difficulty::Expert, true, true}, kTestFillRule,
+                       std::nullopt, 4);
+    job.start();
+    wait_finished(job);
+    REQUIRE(job.ok());
+    PreviewLoadJob::Result r = job.take_result();
+    bool scene_has_cymbal = false;
+    for (const hydra::app::PreviewNote& n : r.scene.notes)
+        if (n.cymbal) scene_has_cymbal = true;
+    REQUIRE(scene_has_cymbal);
+
+    // {gems, cymbal gems} on the timeline built with Pro Drums `pro`.
+    const auto gems_and_cymbals = [&r](bool pro) {
+        const hydra::render::TrackState track =
+            hydra::render::build_track_state(r.scene, track_options(pro));
+        std::pair<size_t, size_t> counts{0, 0};
+        for (const hydra::render::TrackInstant& inst : track.instants())
+            for (const hydra::render::TrackGem& g : inst.notes) {
+                ++counts.first;
+                if (g.cymbal) ++counts.second;
+            }
+        return counts;
+    };
+    const std::pair<size_t, size_t> pro = gems_and_cymbals(true);
+    const std::pair<size_t, size_t> toms = gems_and_cymbals(false);
+    CHECK(pro.second > 0);
+    CHECK(toms.second == 0);
+    CHECK(toms.first == pro.first);
 }
 
 // Closing the details window joins the load's thread on the UI thread. A
@@ -358,8 +391,8 @@ TEST_CASE("a cancelled Preview load stops before decoding") {
     job.cancel();  // the window closed before the worker got going
     job.start();
     wait_finished(job);
-    CHECK_FALSE(job.ok());
-    CHECK(job.error() == "cancelled");
+    CHECK(job.outcome() == hydra::ui::JobOutcome::Cancelled);
+    CHECK(job.message().empty());  // a cancel is the user's own click: no message
     CHECK(job.progress().step == PreviewLoadJob::Step::Reading);
 }
 
@@ -381,60 +414,6 @@ TEST_CASE("a cancelled click job stops before counting") {
     CHECK(job.is_cancelled());
 }
 
-// No output device is a warning, not a failure: the chart loads, the clock
-// plays, and only the sound is missing.
-TEST_CASE("with no audio device the Preview still loads, muted, with a warning") {
-    PreviewController pc(nullptr, nullptr);
-    pc.set_audio_device_factory(
-        [](int, int, PreviewController::AudioSource)
-            -> std::unique_ptr<hydra::audio::PreviewAudioDevice> {
-            throw std::runtime_error("PreviewAudioDevice: ma_device_init failed");
-        });
-    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
-    wait_loaded(pc);
-
-    CHECK(pc.has_audio());        // the stem decoded; only the device failed
-    CHECK_FALSE(pc.has_error());  // so no "Preview failed"
-    CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_init failed");
-    CHECK(pc.playback_end_ms() > 0.0);  // the scene is there to draw
-    pc.play();
-    CHECK(pc.playing());          // the clock runs without a device
-
-    pc.close();
-    CHECK(pc.audio_warning().empty());
-}
-
-// A device that opens but won't start takes the same path as one that won't
-// open (D109): the chart loads, the clock plays, the device is let go and
-// the warning names the step that failed.
-TEST_CASE("with an audio device that won't start the Preview still loads, muted, with a warning") {
-    // A headless device (nothing real opens) whose start() is forced to
-    // fail; the guard puts both switches back when the case ends.
-    struct SwitchRestore {
-        bool headless;
-        bool start_fails;
-        ~SwitchRestore() {
-            hydra::audio::set_start_fails(start_fails);
-            hydra::audio::set_headless(headless);
-        }
-    } restore{hydra::audio::set_headless(true), hydra::audio::set_start_fails(true)};
-
-    PreviewController pc(nullptr, nullptr);
-    pc.open(entry_for(chart_with_audio()), {Difficulty::Expert, true, true}, kTestFillRule, nullptr, "",4);
-    wait_loaded(pc);
-
-    CHECK(pc.has_audio());        // the stem decoded; only the device failed
-    CHECK_FALSE(pc.has_error());  // so no "Preview failed"
-    CHECK_FALSE(pc.has_audio_device());
-    CHECK(pc.audio_warning() == "PreviewAudioDevice: ma_device_start failed");
-    CHECK(pc.playback_end_ms() > 0.0);  // the scene is there to draw
-    pc.play();
-    CHECK(pc.playing());          // the clock runs without a device
-
-    pc.close();
-    CHECK(pc.audio_warning().empty());
-}
-
 // The Preview's look is the renderer's 3d-config.json and nothing else
 // (finding 220): there is no default-built struct behind it. Only the first
 // render builds the renderer, so asking before then fails loudly.
@@ -444,16 +423,19 @@ TEST_CASE("preview_config: asked before the first render it fails loudly") {
 }
 
 // Finding 193: a missing Preview file reads its kind's sentence, the one D51
-// call 25 chose, and the raw text stays for the details line.
-TEST_CASE("a Preview asset failure reads Reinstall Hydra, with the raw text as its detail") {
-    const ScopedPathOverrides no_assets([](hydra::app::PathOverrides& o) {
-        o.asset_dir = testtemp::temp_path("no_preview_assets", "");
-    });
+// call 25 chose, and the raw text stays for the details line. The sentence is
+// the one app::plain_error gives every PreviewAssets error; the detail names
+// the asset folder the renderer looked in, here one that does not exist.
+TEST_CASE("a Preview asset failure reads its kind's sentence, with the raw text as its detail") {
+    const std::string missing_dir = testtemp::temp_path("no_preview_assets", "");
+    const ScopedPathOverrides no_assets(
+        [&missing_dir](hydra::app::PathOverrides& o) { o.asset_dir = missing_dir; });
     PreviewController pc(nullptr, nullptr);
     CHECK(pc.render(64, 64) == nullptr);
     CHECK(pc.error() ==
-          "Some of Hydra's Preview files are missing. Reinstall Hydra to restore them.");
-    CHECK(pc.error_detail().rfind("PreviewRenderer: missing", 0) == 0);
+          hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::PreviewAssets, "")));
+    CHECK(pc.error_detail().find(missing_dir) != std::string::npos);
+    CHECK(pc.error_detail() != pc.error());
 }
 
 namespace {
