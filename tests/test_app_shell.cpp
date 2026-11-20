@@ -154,9 +154,22 @@ ScreenRect inside_frame(const ScreenRect& area, const hydra::ui::FrameInsets& f)
 // `p` saved under `key` the way Hydra saves it: remembered, written to a
 // hydra_ui.ini by ImGui's shutdown, then read back from that file by a fresh
 // setup_imgui.
+//
+// ImGui's shutdown writes the ini only once settings were loaded, and
+// LoadIniSettingsFromDisk marks them loaded only when the file exists. The
+// app's first frame marks them loaded even with no file, but no frame runs
+// here, so the ini starts as a Hydra that has run before leaves it: the main
+// window's [Hydra][Window] section, in format_window_placement's text.
 WindowPlacement saved_by_hydra(const std::string& key, const WindowPlacement& p) {
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_saved_" + key));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
+    {
+        WindowPlacement main_window;
+        main_window.valid = true;
+        main_window.normal = {100, 100, 1380, 820};
+        std::ofstream f(ini);
+        f << "[Hydra][Window]\n" << hydra::ui::format_window_placement(main_window) << "\n";
+    }
     {
         ImGuiOnIni imgui(ini.string());
         hydra::ui::remember_report_placement(key, p);
