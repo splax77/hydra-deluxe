@@ -6,8 +6,8 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
-#include <chrono>
 #include <functional>
 #include <optional>
 #include <set>
@@ -33,14 +33,6 @@ namespace {
 
 bool matches(std::string_view query, const SearchableRow& row, const RowFacts& facts = {}) {
     return query_matches(parse_library_query(query), row, facts);
-}
-
-// The facts of an analyzed row: its best path's stars and hardest squeeze.
-RowFacts analyzed(int stars, std::optional<double> hardest_ms) {
-    RowFacts facts;
-    facts.stars = stars;
-    facts.hardest_ms = hardest_ms;
-    return facts;
 }
 
 // The rows a library scan of the corpus saves, read once.
@@ -138,6 +130,18 @@ const ChartFacts& untimed_facts() {
     return facts;
 }
 
+// The analysed corpus charts whose best path the library shows with a timing:
+// the 0.0 ms chart, and Burnout when its path is timed. Throws when the 0.0 ms
+// chart has no shown timing, so a test that loops over these never passes on
+// no chart at all.
+std::vector<const ChartFacts*> timed_facts() {
+    if (!on_end_facts().facts.stars || !on_end_facts().facts.hardest_ms)
+        throw std::runtime_error("the 0.0 ms chart has no shown timing: " + on_end_facts().chart);
+    std::vector<const ChartFacts*> out{&on_end_facts()};
+    if (burnout_facts().facts.stars && burnout_facts().facts.hardest_ms) out.push_back(&burnout_facts());
+    return out;
+}
+
 // A number as the shortest text that reads back as the same double, so a
 // filter typed with it sits exactly on that value.
 std::string ms_text(double ms) {
@@ -147,11 +151,14 @@ std::string ms_text(double ms) {
     return std::string(buf, r.ptr);
 }
 
-bool spans_equal(const std::vector<MatchSpan>& got, const std::vector<MatchSpan>& want) {
-    return std::equal(got.begin(), got.end(), want.begin(), want.end(),
-                      [](const MatchSpan& a, const MatchSpan& b) {
-                          return a.begin == b.begin && a.end == b.end;
-                      });
+// The shown text each highlight span of `query` covers in `shown`, in order:
+// what the library table lights up.
+std::vector<std::string> lit_texts(std::string_view query, QueryField field,
+                                   std::string_view shown) {
+    std::vector<std::string> out;
+    for (const MatchSpan& s : match_spans(parse_library_query(query), field, shown))
+        out.emplace_back(shown.substr(s.begin, s.end - s.begin));
+    return out;
 }
 
 }  // namespace
@@ -241,22 +248,39 @@ TEST_CASE("library query: the plain fold and the traced fold give the same text"
     }
 }
 
-TEST_CASE("library query: only a real lead byte starts a kept character") {
-    // A kept character maps back to all of its bytes, so a match that starts
-    // on its last byte lights up the whole character. "©" (C2 A9), "€"
-    // (E2 82 AC) and the guitar (F0 9F 8E B8) are two, three and four bytes.
-    CHECK(spans_equal(match_spans(parse_library_query("\xA9" "y"), QueryField::Title, "\xC2\xA9" "y"),
-                      std::vector<MatchSpan>{MatchSpan{0, 3}}));
-    CHECK(spans_equal(match_spans(parse_library_query("\xAC" "y"), QueryField::Title, "\xE2\x82\xAC" "y"),
-                      std::vector<MatchSpan>{MatchSpan{0, 4}}));
-    CHECK(spans_equal(match_spans(parse_library_query("\xB8" "y"), QueryField::Title, "\xF0\x9F\x8E\xB8" "y"),
-                      std::vector<MatchSpan>{MatchSpan{0, 5}}));
-    // C1 and F5 never start a character, so the byte after them is its own
-    // and the span starts there.
-    CHECK(spans_equal(match_spans(parse_library_query("\xBF" "ab"), QueryField::Title, "\xC1\xBF" "ab"),
-                      std::vector<MatchSpan>{MatchSpan{1, 4}}));
-    CHECK(spans_equal(match_spans(parse_library_query("\x80" "a"), QueryField::Title, "\xF5\x80\x80\x80" "a"),
-                      std::vector<MatchSpan>{MatchSpan{3, 5}}));
+TEST_CASE("library query: a match on any letter of a folded character lights the whole character") {
+    // Each character the fold changes, shown alone, is searched by each
+    // letter or digit of its folded form, as a player types it: "s" in "ß"
+    // (folded "ss"), "e" in "É", "a" in a full-width "Ａ". The highlight is
+    // the whole character, every byte of it, never part of one.
+    const std::vector<FoldEntry> table = search_fold_table();
+    REQUIRE_FALSE(table.empty());
+    for (const FoldEntry& entry : table) {
+        for (char letter : entry.to) {
+            if (!std::isalnum(static_cast<unsigned char>(letter))) continue;
+            const std::string query(1, letter);
+            INFO("character: " << entry.from << ", typed: " << query);
+            CHECK(lit_texts(query, QueryField::Title, entry.from) ==
+                  std::vector<std::string>{entry.from});
+        }
+    }
+    // A real name: the "a" typed for the ä of The Fall of Troy's album
+    // "Doppelgänger" lights up the ä's two bytes. The folded album holds that
+    // letter once, so the ä is the one span.
+    const std::string album = scanned_in("The Fall of Troy - Act One, Scene One").album;
+    const auto first_wide = std::find_if(album.begin(), album.end(),
+                                         [](char c) { return static_cast<unsigned char>(c) >= 0x80; });
+    REQUIRE(first_wide != album.end());
+    const size_t begin = static_cast<size_t>(first_wide - album.begin());
+    size_t end = begin + 1;
+    while (end < album.size() && (static_cast<unsigned char>(album[end]) & 0xC0) == 0x80) ++end;
+    const std::string accented = album.substr(begin, end - begin);
+    const std::string typed = fold_for_search(accented);
+    REQUIRE(typed.size() == 1);
+    const std::string folded_album = fold_for_search(album);
+    REQUIRE(folded_album.find(typed) != std::string::npos);
+    REQUIRE(folded_album.find(typed) == folded_album.rfind(typed));
+    CHECK(lit_texts(typed, QueryField::Album, album) == std::vector<std::string>{accented});
 }
 
 namespace {
@@ -325,22 +349,20 @@ TEST_CASE("library query: an accented name is found without its accents") {
     CHECK(matches(e.album, row));  // typed with its accent, as shown
 }
 
-TEST_CASE("library query: the report pages' fold table is the fold, one character at a time") {
-    // The report pages fold a typed query with this table, so every entry has
-    // to be exactly what the library's own fold does to that character.
+TEST_CASE("library query: the report pages' fold table removes accents, lowercases and lists no kept character") {
+    // The report pages fold a typed query with this table. Each spot check is
+    // one of the fold's rules (fold_for_search, library_query.h): accents are
+    // removed, letters lowercased, full-width ASCII made ASCII, and a
+    // character the fold keeps is not listed.
     const std::vector<FoldEntry> table = search_fold_table();
     REQUIRE_FALSE(table.empty());
-    for (const FoldEntry& e : table) {
-        CHECK(e.to == fold_for_search(e.from));
-        CHECK(e.to != e.from);  // a character the fold keeps is left out
-    }
     auto folded = [&](std::string_view from) -> std::optional<std::string> {
         for (const FoldEntry& e : table)
             if (e.from == from) return e.to;
         return std::nullopt;
     };
     CHECK(folded("\xc3\x89") == std::optional<std::string>("e"));  // É
-    CHECK(folded("\xc3\x84").has_value());                         // Ä
+    CHECK(folded("\xc3\x84") == std::optional<std::string>("a"));  // Ä
     CHECK(folded("B") == std::optional<std::string>("b"));
     CHECK(folded("\xef\xbc\xa1") == std::optional<std::string>("a"));  // full-width A
     CHECK_FALSE(folded("\xc3\x97").has_value());  // × is kept, so it is not listed
@@ -494,6 +516,22 @@ void check_squeeze_edges(const ChartFacts& c) {
     CHECK_FALSE(matches("squeeze>=" + above, c.row, c.facts));
 }
 
+// An error sentence's last word is the example it offers the player. That
+// example has to be a filter the parser takes: no error, no words, and a
+// squeeze side set. Returns the example.
+std::string check_example_parses(const std::string& sentence) {
+    INFO("sentence: " << sentence);
+    const size_t space = sentence.find_last_of(' ');
+    REQUIRE(space != std::string::npos);
+    const std::string example = sentence.substr(space + 1);
+    INFO("example: " << example);
+    const LibraryQuery q = parse_library_query(example);
+    CHECK(q.errors.empty());
+    CHECK(q.terms.empty());
+    CHECK((q.squeeze_max_ms.has_value() || q.squeeze_min_ms.has_value()));
+    return example;
+}
+
 }  // namespace
 
 TEST_CASE("library query: stars:N keeps analyzed rows with exactly N stars") {
@@ -576,26 +614,32 @@ TEST_CASE("squeeze filters: a path whose hardest is 0.0 passes squeeze<=0, match
 }
 
 TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
-    // A row at exactly N ms matches >=N and not >N.
-    CHECK(matches("squeeze>=163", scanned_burnout(), analyzed(7, 163.0)));  // Burnout's real 163.0 ms
-    CHECK_FALSE(matches("squeeze>163", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>20", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=164", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("SQUEEZE>20", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>-5", scanned_burnout(), analyzed(7, -2.5)));
-
-    // squeeze>N is the exact opposite of squeeze<=N: a timed row matches one.
-    for (double ms : {12.5, 20.0, 163.0}) {
-        CHECK(matches("squeeze>20", scanned_burnout(), analyzed(7, ms)) !=
-              matches("squeeze<=20", scanned_burnout(), analyzed(7, ms)));
+    for (const ChartFacts* c : timed_facts()) {
+        INFO("chart: " << c->chart);
+        const double ms = *c->facts.hardest_ms;
+        // A floor below the chart's own timing keeps it, in any letter case.
+        CHECK(matches("SQUEEZE>" + ms_text(ms - 1.0), c->row, c->facts));
+        // squeeze>N is the exact opposite of squeeze<=N: a timed row matches
+        // one, wherever N sits against its figure.
+        for (double n : {ms - 1.0, ms, ms + 1.0}) {
+            const std::string text = ms_text(n);
+            CAPTURE(text);
+            CHECK(matches("squeeze>" + text, c->row, c->facts) !=
+                  matches("squeeze<=" + text, c->row, c->facts));
+        }
+        // An unrated row matches no floor.
+        CHECK_FALSE(matches("squeeze>" + ms_text(ms - 1.0), c->row, RowFacts{}));
+        CHECK_FALSE(matches("squeeze>=" + ms_text(ms - 1.0), c->row, RowFacts{}));
     }
 
     // A path that needs no timing has nothing to squeeze, so it matches no
-    // > or >= filter. An unrated row matches no filter.
-    CHECK_FALSE(matches("squeeze>20", scanned_burnout(), analyzed(7, std::nullopt)));
-    CHECK_FALSE(matches("squeeze>=0", scanned_burnout(), analyzed(7, std::nullopt)));
-    CHECK_FALSE(matches("squeeze>20", scanned_burnout(), RowFacts{}));
-    CHECK_FALSE(matches("squeeze>=20", scanned_burnout(), RowFacts{}));
+    // > or >= filter, however low.
+    const ChartFacts& untimed = untimed_facts();
+    REQUIRE(untimed.facts.stars.has_value());
+    REQUIRE_FALSE(untimed.facts.hardest_ms.has_value());
+    CHECK_FALSE(matches("squeeze>20", untimed.row, untimed.facts));
+    CHECK_FALSE(matches("squeeze>=0", untimed.row, untimed.facts));
+    CHECK_FALSE(matches("squeeze>-5", untimed.row, untimed.facts));
 
     const LibraryQuery q = parse_library_query("squeeze>20");
     CHECK(q.terms.empty());
@@ -605,26 +649,53 @@ TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timin
 }
 
 TEST_CASE("library query: a squeeze floor and limit combine into a range, last of each side counts") {
-    CHECK(matches("squeeze>=10 squeeze<=200", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=10 squeeze<=50", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=170 squeeze<=200", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze<=200 squeeze>163 green", scanned_burnout(), analyzed(7, 163.5)));
+    // Each chart's own shown timing, and 1 and 10 ms on either side of it.
+    for (const ChartFacts* c : timed_facts()) {
+        INFO("chart: " << c->chart);
+        const double ms = *c->facts.hardest_ms;
+        const std::string at = ms_text(ms);
+        const std::string far_below = ms_text(ms - 10.0);
+        const std::string below = ms_text(ms - 1.0);
+        const std::string above = ms_text(ms + 1.0);
+        const std::string far_above = ms_text(ms + 10.0);
+        auto keeps = [&](const std::string& query) { return matches(query, c->row, c->facts); };
 
-    // The same side twice: the last one counts.
-    CHECK(matches("squeeze>200 squeeze>20", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>20 squeeze>200", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>163 squeeze>=163", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=163 squeeze>163", scanned_burnout(), analyzed(7, 163.0)));
+        // A range around the timing keeps the row; one wholly below or above it does not.
+        CHECK(keeps("squeeze>=" + far_below + " squeeze<=" + far_above));
+        CHECK_FALSE(keeps("squeeze>=" + far_below + " squeeze<=" + below));
+        CHECK_FALSE(keeps("squeeze>=" + above + " squeeze<=" + far_above));
+
+        // The same side twice: the last one counts (parse_library_query's rule).
+        CHECK(keeps("squeeze>" + far_above + " squeeze>" + below));
+        CHECK_FALSE(keeps("squeeze>" + below + " squeeze>" + far_above));
+        CHECK(keeps("squeeze>" + at + " squeeze>=" + at));
+        CHECK_FALSE(keeps("squeeze>=" + at + " squeeze>" + at));
+        CHECK(keeps("squeeze<" + at + " squeeze<=" + at));
+        CHECK_FALSE(keeps("squeeze<=" + at + " squeeze<" + at));
+    }
 }
 
 TEST_CASE("library query: an unknown squeeze operator gives a plain error and filters nothing") {
+    // Every wrong operator gets the same one sentence. It names squeeze and
+    // the operators it does take, and the example it ends on is itself a
+    // filter that parses.
+    const std::vector<std::string> first = parse_library_query("squeeze=20").errors;
+    REQUIRE(first.size() == 1);
+    const std::string& sentence = first[0];
+    CHECK(sentence.find("squeeze") != std::string::npos);
+    for (const char* op : {"<=", ">=", "<", ">"}) {
+        CAPTURE(op);
+        CHECK(sentence.find(op) != std::string::npos);
+    }
+    check_example_parses(sentence);
     for (const char* text :
          {"squeeze=20", "squeeze==20", "squeeze:20", "squeeze=>20", "squeeze<>20", "SQUEEZE=20"}) {
         CAPTURE(text);
         const LibraryQuery q = parse_library_query(text);
         CHECK(q.terms.empty());
-        CHECK(q.errors ==
-              std::vector<std::string>{"squeeze takes <=, <, >= or >, like squeeze<=20"});
+        CHECK(q.errors == first);
+        CHECK_FALSE(q.squeeze_max_ms.has_value());
+        CHECK_FALSE(q.squeeze_min_ms.has_value());
         CHECK(query_matches(q, scanned_burnout(), RowFacts{}));
     }
 
@@ -636,40 +707,54 @@ TEST_CASE("library query: an unknown squeeze operator gives a plain error and fi
         REQUIRE(q.terms.size() == 1);
         CHECK(q.terms[0].folded == fold_for_search(text));
     }
-    CHECK(matches("squeeze", make_searchable("Squeeze Me", "", "", ""), RowFacts{}));
 }
 
 TEST_CASE("library query: bad filter values give a plain error and filter nothing") {
-    const LibraryQuery stars = parse_library_query("burnout stars:9");
+    // A count past the top of the stars: filter (kMaxStars) is refused, and
+    // the rest of the query still works.
+    const std::string too_many = "stars:" + std::to_string(hydra::kMaxStars + 1);
+    const LibraryQuery stars = parse_library_query("burnout " + too_many);
     CHECK_FALSE(stars.stars.has_value());
     REQUIRE(stars.errors.size() == 1);
-    CHECK(stars.errors[0] == "stars: needs a number from 0 to 7");
-    REQUIRE(stars.terms.size() == 1);  // the rest of the query still works
+    // The sentence names the filter and the top of its range.
+    const std::string stars_sentence = stars.errors[0];
+    CHECK(stars_sentence.find("stars:") == 0);
+    CHECK(stars_sentence.find(std::to_string(hydra::kMaxStars)) != std::string::npos);
+    REQUIRE(stars.terms.size() == 1);
     CHECK(stars.terms[0].folded == "burnout");
     CHECK(query_matches(stars, scanned_burnout(), RowFacts{}));
 
-    CHECK(parse_library_query("stars:x").errors ==
-          std::vector<std::string>{"stars: needs a number from 0 to 7"});
-    CHECK(parse_library_query("stars:-1").errors.size() == 1);
-    CHECK(parse_library_query("stars:").errors.size() == 1);
+    // Every bad stars: value gets that same one sentence and sets no filter.
+    for (const char* text : {"stars:x", "stars:-1", "stars:"}) {
+        CAPTURE(text);
+        const LibraryQuery q = parse_library_query(text);
+        CHECK(q.errors == std::vector<std::string>{stars_sentence});
+        CHECK_FALSE(q.stars.has_value());
+    }
 
-    const LibraryQuery squeeze = parse_library_query("squeeze<=abc");
-    CHECK_FALSE(squeeze.squeeze_max_ms.has_value());
-    REQUIRE(squeeze.errors.size() == 1);
-    CHECK(squeeze.errors[0] == "squeeze<= needs a number of milliseconds, like squeeze<=20");
-    CHECK(parse_library_query("squeeze<=").errors.size() == 1);
-    CHECK(parse_library_query("squeeze<=20ms").errors.size() == 1);
-
-    // The message names the operator the user typed.
-    CHECK(parse_library_query("squeeze>abc").errors ==
-          std::vector<std::string>{"squeeze> needs a number of milliseconds, like squeeze>20"});
-    CHECK(parse_library_query("squeeze>=").errors ==
-          std::vector<std::string>{"squeeze>= needs a number of milliseconds, like squeeze>=20"});
-    CHECK(parse_library_query("squeeze<x").errors ==
-          std::vector<std::string>{"squeeze< needs a number of milliseconds, like squeeze<20"});
+    // A bad squeeze value gets one sentence that starts with the filter and
+    // operator the user typed and ends on an example with that operator,
+    // which itself parses.
+    for (const char* op : {"<=", "<", ">=", ">"}) {
+        const std::string filter = std::string("squeeze") + op;
+        for (const std::string& value : {std::string("abc"), std::string(""), std::string("20ms")}) {
+            const std::string text = filter + value;
+            CAPTURE(text);
+            const LibraryQuery q = parse_library_query(text);
+            CHECK_FALSE(q.squeeze_max_ms.has_value());
+            CHECK_FALSE(q.squeeze_min_ms.has_value());
+            REQUIRE(q.errors.size() == 1);
+            CHECK(q.errors[0].find(filter + " ") == 0);
+            const std::string example = check_example_parses(q.errors[0]);
+            CHECK(example.find(filter) == 0);
+            const char after = example.size() > filter.size() ? example[filter.size()] : '\0';
+            CHECK(after >= '0');
+            CHECK(after <= '9');  // the operator is exactly the one typed, then a number
+        }
+    }
 
     // The same mistake twice is reported once.
-    CHECK(parse_library_query("stars:9 stars:10").errors.size() == 1);
+    CHECK(parse_library_query(too_many + " " + too_many).errors.size() == 1);
 }
 
 TEST_CASE("library query: an empty query matches every row") {
@@ -677,8 +762,12 @@ TEST_CASE("library query: an empty query matches every row") {
         const LibraryQuery q = parse_library_query(text);
         CHECK(q.empty());
         CHECK(q.errors.empty());
-        CHECK(query_matches(q, scanned_burnout(), RowFacts{}));
-        CHECK(query_matches(q, scanned_acid_romance(), analyzed(3, 40.0)));
+        // Rows with and without analysed facts, timed and untimed, all pass.
+        CHECK(query_matches(q, scanned_acid_romance(), RowFacts{}));
+        for (const ChartFacts* c : {&burnout_facts(), &on_end_facts(), &untimed_facts()}) {
+            INFO("chart: " << c->chart);
+            CHECK(query_matches(q, c->row, c->facts));
+        }
     }
     CHECK_FALSE(parse_library_query("x").empty());
     CHECK_FALSE(parse_library_query("stars:7").empty());
@@ -686,154 +775,143 @@ TEST_CASE("library query: an empty query matches every row") {
 }
 
 TEST_CASE("library query: highlight spans cover the displayed bytes") {
-    // "é" is two bytes, so the span runs to byte 14, not 13.
-    const std::string title = "Halo (Beyoncé cover)";  // made up
-    CHECK(spans_equal(match_spans(parse_library_query("beyonce"), QueryField::Title, title),
-                      std::vector<MatchSpan>{MatchSpan{6, 14}}));
-    CHECK(title.substr(6, 8) == "Beyoncé");
+    // Typed without its accent, The Fall of Troy's album "Doppelgänger" lights
+    // up whole, the accented letter's two bytes included.
+    const std::string accented = scanned_in("The Fall of Troy - Act One, Scene One").album;
+    REQUIRE(std::any_of(accented.begin(), accented.end(),
+                        [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
+    CHECK(lit_texts(fold_for_search(accented), QueryField::Album, accented) ==
+          std::vector<std::string>{accented});
 
-    // The caller passes the tag-stripped charter, as the table shows it.
-    const std::string charter = strip_rich_tags("<color=#e02222>Blood</color>line");
-    CHECK(spans_equal(match_spans(parse_library_query("bloodline"), QueryField::Charter, charter),
-                      std::vector<MatchSpan>{MatchSpan{0, 9}}));
+    // The caller passes the tag-stripped charter, as the table shows it: Acid
+    // Romance's tagged charter lights up whole by its plain name.
+    const std::string charter = strip_rich_tags(scanned_in("Alpha Wolf - Acid Romance").charter);
+    CHECK(lit_texts(fold_for_search(charter), QueryField::Charter, charter) ==
+          std::vector<std::string>{charter});
 
-    // A phrase in the folder, despite the capital T.
-    const std::string folder = "common\\Summer Blast _25 Setlist\\Tier 4";
-    CHECK(spans_equal(match_spans(parse_library_query("\"tier 4\""), QueryField::Folder, folder),
-                      std::vector<MatchSpan>{MatchSpan{32, 38}}));
+    // A phrase in Burnout's folder lights up as shown, with its capital T.
+    const hydra::store::ChartLibraryEntry& burnout = scanned_in("Green Day - Burnout");
+    CHECK(lit_texts("\"tier 4\"", QueryField::Folder, burnout.rootfolder) ==
+          std::vector<std::string>{"Tier 4"});
 
-    // Two spaces fold to one, and the span still covers both.
-    CHECK(spans_equal(match_spans(parse_library_query("\"tier 4\""), QueryField::Folder, "Tier  4"),
-                      std::vector<MatchSpan>{MatchSpan{0, 7}}));
+    // Every occurrence lights up: the s of Illusion and the S of Safety in
+    // Deadbolt's album "The Illusion of Safety".
+    const std::string album = scanned_in("Thrice - Deadbolt").album;
+    CHECK(lit_texts("s", QueryField::Album, album) == std::vector<std::string>{"s", "S"});
 
-    // Every occurrence lights up.
-    CHECK(spans_equal(match_spans(parse_library_query("tier"), QueryField::Folder, "Tier 1\\Tier 2"),
-                      std::vector<MatchSpan>{MatchSpan{0, 4}, MatchSpan{7, 11}}));
-
-    // Touching matches merge. A field-limited term lights up only its field.
-    const LibraryQuery words = parse_library_query("burn out artist:green");
-    CHECK(spans_equal(match_spans(words, QueryField::Title, "Burnout"),
-                      std::vector<MatchSpan>{MatchSpan{0, 7}}));
-    CHECK(spans_equal(match_spans(words, QueryField::Artist, "Green Day"),
-                      std::vector<MatchSpan>{MatchSpan{0, 5}}));
-    CHECK(match_spans(parse_library_query("artist:green"), QueryField::Title, "Green Light").empty());
+    // Touching matches merge: "burn" and "out" light up Burnout as one span.
+    CHECK(lit_texts("burn out artist:green", QueryField::Title, burnout.title) ==
+          std::vector<std::string>{"Burnout"});
+    // A field-limited term lights up only its field.
+    CHECK(lit_texts("burn out artist:green", QueryField::Artist, burnout.artist) ==
+          std::vector<std::string>{"Green"});
+    CHECK(lit_texts("artist:burnout", QueryField::Title, burnout.title).empty());
 
     // An album lights up for a plain word and for album:, and not for artist:.
-    const std::string album = "The Illusion of Safety";
-    CHECK(spans_equal(match_spans(parse_library_query("illusion"), QueryField::Album, album),
-                      std::vector<MatchSpan>{MatchSpan{4, 12}}));
-    CHECK(spans_equal(match_spans(parse_library_query("album:safety"), QueryField::Album, album),
-                      std::vector<MatchSpan>{MatchSpan{16, 22}}));
-    CHECK(match_spans(parse_library_query("artist:safety"), QueryField::Album, album).empty());
+    CHECK(lit_texts("illusion", QueryField::Album, album) == std::vector<std::string>{"Illusion"});
+    CHECK(lit_texts("album:safety", QueryField::Album, album) == std::vector<std::string>{"Safety"});
+    CHECK(lit_texts("artist:safety", QueryField::Album, album).empty());
 }
 
 TEST_CASE("library query: a chart with no album matches nothing through its album") {
-    const SearchableRow row = make_searchable("Song", "Band", "Charter", "Pack");  // made up
+    // Pokemon Theme's song.ini has an empty album line and its notes.chart
+    // names no album, so the scan gives it none.
+    const hydra::store::ChartLibraryEntry& e = scanned_in("Jason Paige - Pokemon Theme");
+    REQUIRE(e.album.empty());
+    const SearchableRow row = searchable_of(e);
     CHECK(row.album.empty());
-    CHECK_FALSE(matches("album:song", row));
-    CHECK_FALSE(matches("album:a", row));
-    CHECK(matches("song", row));  // the title still matches
-    CHECK(make_searchable("Song", "Band", "Charter", "Pack", "").album.empty());
-    CHECK(match_spans(parse_library_query("song"), QueryField::Album, "").empty());
-    CHECK(match_spans(parse_library_query("album:song"), QueryField::Album, "").empty());
+    REQUIRE_FALSE(row.title.empty());
+    // No album: term finds it, not even its own title's words or one letter of them.
+    CHECK_FALSE(matches("album:" + row.title, row));
+    CHECK_FALSE(matches("album:" + row.title.substr(0, 1), row));
+    CHECK(matches(row.title, row));  // the title still matches as a plain word
+    CHECK(match_spans(parse_library_query(row.title), QueryField::Album, e.album).empty());
+    CHECK(match_spans(parse_library_query("album:" + row.title), QueryField::Album, e.album).empty());
 }
 
 TEST_CASE("library query: the report pages' search text holds no album") {
-    // The report pages call search_field, which the album leaves unchanged.
-    CHECK(search_field("Burnout", "Green Day", "<b>Hoph2o</b>", "1 2 3") ==
-          "burnout green day hoph2o 1 2 3");
-    CHECK(search_field("Deadbolt", "Thrice", "") == "deadbolt thrice");
+    // Burnout's album is a word no other field of its row holds ("dookie"
+    // finds it only through the album, as the test above shows).
+    const hydra::store::ChartLibraryEntry& e = scanned_in("Green Day - Burnout");
+    const SearchableRow row = searchable_of(e);
+    REQUIRE_FALSE(row.album.empty());
+    REQUIRE_FALSE(row.charter.empty());
+    REQUIRE_FALSE(row.folder.empty());
+    const std::string text = search_field(e.title, e.artist, e.charter, e.rootfolder);
+    CHECK(text.find(row.album) == std::string::npos);
+    // Every other field, folded as the library folds it, joined by single spaces.
+    CHECK(text == row.title + " " + row.artist + " " + row.charter + " " + row.folder);
+    // An empty field is left out, not joined as a blank.
+    CHECK(search_field(e.title, e.artist, "") == row.title + " " + row.artist);
+
+    // A tagged charter goes in as its plain name (Acid Romance's song.ini).
+    const hydra::store::ChartLibraryEntry& tagged = scanned_in("Alpha Wolf - Acid Romance");
+    REQUIRE(tagged.charter.find('<') != std::string::npos);
+    const std::string tagged_text = search_field(tagged.title, tagged.artist, tagged.charter);
+    CHECK(tagged_text.find('<') == std::string::npos);
+    CHECK(tagged_text.find(searchable_of(tagged).charter) != std::string::npos);
 }
 
 TEST_CASE("library query: every Search tips example parses into the key its entry names") {
-    const std::vector<SearchTip>& tips = search_tips();
-    std::vector<std::string_view> examples;
-    for (const SearchTip& tip : tips) {
-        examples.push_back(tip.example);
-        CAPTURE(tip.example);
-        CHECK_FALSE(tip.meaning.empty());
-        CHECK(parse_library_query(tip.example).errors.empty());
+    // The popup draws search_tips() and writes no key of its own, so between
+    // them the tips must cover every key parse_library_query reads.
+    std::set<QueryField> fields;
+    bool has_phrase = false, has_stars = false, has_limit = false, has_floor = false;
+    for (const SearchTip& tip : search_tips()) {
+        const std::string example(tip.example);
+        const std::string meaning(tip.meaning);
+        CAPTURE(example);
+        const LibraryQuery q = parse_library_query(example);
+        CHECK(q.errors.empty());
+        // Each example sets exactly one key: one term or one filter.
+        const size_t keys = q.terms.size() + (q.stars ? 1u : 0u) + (q.squeeze_max_ms ? 1u : 0u) +
+                            (q.squeeze_min_ms ? 1u : 0u);
+        REQUIRE(keys == 1);
+        if (!q.terms.empty()) {
+            const QueryTerm& term = q.terms[0];
+            const size_t colon = example.find(':');
+            // The term searches for the example's own text after its key,
+            // without its quotes.
+            std::string value = colon == std::string::npos ? example : example.substr(colon + 1);
+            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                value = value.substr(1, value.size() - 2);
+            CHECK(term.folded == fold_for_search(value));
+            CHECK(term.phrase == (example.find('"') != std::string::npos));
+            if (term.field == QueryField::Any) {
+                CHECK(colon == std::string::npos);
+            } else {
+                REQUIRE(colon != std::string::npos);
+                // The meaning names the field the example's key limits it to.
+                CHECK(meaning.find("in the " + example.substr(0, colon)) != std::string::npos);
+            }
+            fields.insert(term.field);
+            has_phrase = has_phrase || term.phrase;
+            // A player can try it on the test library: a scanned corpus row matches it.
+            const std::vector<hydra::store::ChartLibraryEntry>& rows = corpus_scan_entries();
+            CHECK(std::any_of(rows.begin(), rows.end(), [&](const hydra::store::ChartLibraryEntry& e) {
+                return query_matches(q, searchable_of(e), RowFacts{});
+            }));
+        } else if (q.stars) {
+            // The meaning names the star count the filter keeps.
+            CHECK(meaning.find(std::to_string(*q.stars)) != std::string::npos);
+            has_stars = true;
+        } else {
+            // The meaning names the milliseconds the filter compares with.
+            const double ms = q.squeeze_max_ms ? *q.squeeze_max_ms : *q.squeeze_min_ms;
+            CHECK(meaning.find(ms_text(ms) + " ms") != std::string::npos);
+            has_limit = has_limit || q.squeeze_max_ms.has_value();
+            has_floor = has_floor || q.squeeze_min_ms.has_value();
+        }
     }
-    // The order the popup lists them in (D263 call 10).
-    CHECK(examples == std::vector<std::string_view>{"title:actors", "artist:green", "album:dookie",
-                                                    "charter:boo", "folder:ib24", "\"tier 4\"",
-                                                    "stars:7", "squeeze<=20", "squeeze>20"});
-
-    // Each example yields one term in the field it names, or the filter it names.
-    struct FieldTip {
-        size_t index;
-        QueryField field;
-        const char* folded;
-        bool phrase;
-    };
-    for (const FieldTip& want : {FieldTip{0, QueryField::Title, "actors", false},
-                                 FieldTip{1, QueryField::Artist, "green", false},
-                                 FieldTip{2, QueryField::Album, "dookie", false},
-                                 FieldTip{3, QueryField::Charter, "boo", false},
-                                 FieldTip{4, QueryField::Folder, "ib24", false},
-                                 FieldTip{5, QueryField::Any, "tier 4", true}}) {
-        REQUIRE(want.index < tips.size());
-        CAPTURE(tips[want.index].example);
-        const LibraryQuery q = parse_library_query(tips[want.index].example);
-        REQUIRE(q.terms.size() == 1);
-        CHECK(q.terms[0].field == want.field);
-        CHECK(q.terms[0].folded == want.folded);
-        CHECK(q.terms[0].phrase == want.phrase);
-        CHECK_FALSE(q.stars.has_value());
-        CHECK_FALSE(q.squeeze_max_ms.has_value());
-        CHECK_FALSE(q.squeeze_min_ms.has_value());
+    for (QueryField f : {QueryField::Title, QueryField::Artist, QueryField::Album,
+                         QueryField::Charter, QueryField::Folder}) {
+        CAPTURE(static_cast<int>(f));
+        CHECK(fields.count(f) == 1);
     }
-
-    REQUIRE(tips.size() == 9);
-    const LibraryQuery stars = parse_library_query(tips[6].example);
-    CHECK(stars.terms.empty());
-    CHECK(stars.stars == std::optional<int>(7));
-    CHECK_FALSE(stars.squeeze_max_ms.has_value());
-    CHECK_FALSE(stars.squeeze_min_ms.has_value());
-
-    const LibraryQuery at_most = parse_library_query(tips[7].example);
-    CHECK(at_most.terms.empty());
-    CHECK(at_most.squeeze_max_ms == std::optional<double>(20.0));
-    CHECK_FALSE(at_most.squeeze_max_strict);
-    CHECK_FALSE(at_most.squeeze_min_ms.has_value());
-    CHECK_FALSE(at_most.stars.has_value());
-
-    const LibraryQuery above = parse_library_query(tips[8].example);
-    CHECK(above.terms.empty());
-    CHECK(above.squeeze_min_ms == std::optional<double>(20.0));
-    CHECK(above.squeeze_min_strict);
-    CHECK_FALSE(above.squeeze_max_ms.has_value());
-    CHECK_FALSE(above.stars.has_value());
-
-    // The fixture rows are the tips' own charts, so the examples find them.
-    CHECK(matches(tips[1].example, scanned_burnout()));
-    CHECK(matches(tips[2].example, scanned_burnout()));
-    CHECK(matches(tips[4].example, scanned_deadbolt()));
-    CHECK(matches(tips[5].example, scanned_burnout()));
+    CHECK(has_phrase);
+    CHECK(has_stars);
+    CHECK(has_limit);
+    CHECK(has_floor);
 
     CHECK_FALSE(search_tips_note().empty());
-}
-
-TEST_CASE("library query: matching 20000 rows finds the pinned hit count") {
-    std::vector<SearchableRow> rows;  // made up, library-shaped
-    rows.reserve(20000);
-    for (int i = 0; i < 20000; ++i) {
-        rows.push_back(make_searchable(
-            "Song number " + std::to_string(i), "Artist " + std::to_string(i % 500),
-            "Charter " + std::to_string(i % 50),
-            "common\\Pack " + std::to_string(i % 40) + "\\Tier " + std::to_string(i % 8)));
-    }
-    const LibraryQuery q = parse_library_query("artist 12 \"tier 3\"");
-    const RowFacts none;
-
-    // The time is printed for a person to read, not checked: a busy machine
-    // can fail any wall-clock limit.
-    const auto start = std::chrono::steady_clock::now();
-    size_t hits = 0;
-    for (const SearchableRow& row : rows)
-        if (query_matches(q, row, none)) ++hits;
-    const std::chrono::duration<double, std::milli> took = std::chrono::steady_clock::now() - start;
-    MESSAGE("matching 20000 rows: " << took.count() << " ms, " << hits << " hits");
-    // Pinned from one run.
-    CHECK(hits == 189);
 }
