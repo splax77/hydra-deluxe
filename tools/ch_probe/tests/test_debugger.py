@@ -18,7 +18,6 @@ from __future__ import annotations
 import ctypes
 import os
 import struct
-import threading
 import unittest
 from unittest import mock
 
@@ -216,36 +215,35 @@ class AdjustRipTests(unittest.TestCase):
 class ThreadContextTests(unittest.TestCase):
     def test_registers_are_plain_int_attributes(self):
         # A real CONTEXT, read the way _on_our_breakpoint reads one: from a
-        # suspended thread of this process. The thread is resumed and joined
-        # before the checks run.
+        # suspended thread of this process. The thread is resumed and ended
+        # when the test ends.
         win32 = debugger._Win32()
         k32 = win32.k32
         k32.SuspendThread.argtypes = [ctypes.wintypes.HANDLE]
         k32.SuspendThread.restype = ctypes.wintypes.DWORD
         k32.ResumeThread.argtypes = [ctypes.wintypes.HANDLE]
         k32.ResumeThread.restype = ctypes.wintypes.DWORD
-        release = threading.Event()
-        thread = threading.Thread(target=release.wait, daemon=True)
-        thread.start()
+        # A native thread asleep in kernel32's Sleep: it runs no Python, so
+        # suspending it can never freeze the interpreter's lock.
+        k32.CreateThread.argtypes = [
+            ctypes.c_void_p, ctypes.c_size_t, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.wintypes.DWORD, ctypes.c_void_p]
+        k32.CreateThread.restype = ctypes.wintypes.HANDLE
+        k32.TerminateThread.argtypes = [ctypes.wintypes.HANDLE, ctypes.wintypes.DWORD]
+        k32.CloseHandle.argtypes = [ctypes.wintypes.HANDLE]
+        sleep_addr = ctypes.cast(k32.Sleep, ctypes.c_void_p).value
+        handle = k32.CreateThread(None, 0, sleep_addr, 30000, 0, None)
+        self.assertTrue(handle, ctypes.get_last_error())
+        self.addCleanup(k32.CloseHandle, handle)
+        self.addCleanup(k32.TerminateThread, handle, 0)  # runs before CloseHandle
+        self.assertNotEqual(k32.SuspendThread(handle), 0xFFFFFFFF)
         try:
-            handle = k32.OpenThread(debugger.THREAD_ALL_ACCESS, False,
-                                    thread.native_id)
-            self.assertTrue(handle, ctypes.get_last_error())
-            try:
-                self.assertNotEqual(k32.SuspendThread(handle), 0xFFFFFFFF)
-                try:
-                    raw = debugger.CONTEXT()
-                    raw.ContextFlags = debugger.CONTEXT_ALL
-                    self.assertTrue(k32.GetThreadContext(handle, ctypes.byref(raw)),
-                                    ctypes.get_last_error())
-                finally:
-                    k32.ResumeThread(handle)
-            finally:
-                k32.CloseHandle(handle)
+            raw = debugger.CONTEXT()
+            raw.ContextFlags = debugger.CONTEXT_ALL
+            self.assertTrue(k32.GetThreadContext(handle, ctypes.byref(raw)),
+                            ctypes.get_last_error())
         finally:
-            release.set()
-            thread.join(timeout=5)
-        self.assertFalse(thread.is_alive())
+            k32.ResumeThread(handle)
 
         ctx = Debugger._context_from_ctx(raw)
         self.assertNotEqual(ctx.rip, 0)  # a suspended thread has a real rip
