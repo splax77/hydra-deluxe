@@ -1,12 +1,15 @@
-// search_target and keep_target_paths: a targeted search keeps exactly the
-// paths that took every named activation (D45), and a full pin of a stored
-// path (Track R2) comes back alone, or names the window that broke and why.
-// Most cases pin answers on the fuzzed fast-tempo charts (fast_tempo_charts.h).
-// The free-after cases (EngineOptions::free_after, keep_prefix_paths) follow
-// the pins and then search freely, on the corpus.
+// search_target, keep_target_paths and keep_prefix_paths: a targeted search
+// keeps exactly the engine's paths that took every named activation, and a
+// full pin of a stored path comes back alone, or names the window that broke
+// and why. Each case checks the filter against the engine's own answer before
+// it filtered (unfiltered_target), on the fuzzed fast-tempo charts
+// (fast_tempo_charts.h) or on the corpus. The free-after cases
+// (EngineOptions::free_after, keep_prefix_paths) follow the pins and then
+// search freely, on the corpus.
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <set>
@@ -15,11 +18,13 @@
 #include <vector>
 
 #include "app/config.h"
+#include "app/user_messages.h"
 #include "corpus_util.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "fast_tempo_charts.h"
 #include "parse/song.h"
+#include "pathbuilder/pb_coach.h"
 #include "record_fixtures.h"
 #include "search/engine.h"
 #include "search/graph.h"
@@ -40,6 +45,9 @@ using test::roots_and_tied;
 using test::FuzzChart;
 using test::fuzz_chart;
 using test::analyzes;
+
+// Fuzz seed 5's two fill ticks, the activations its targeted cases name.
+const std::vector<int64_t> kSeed5Fills = {3168, 12864};
 
 // search_target's answer as text: each root's path string and total, then
 // its tied variants' in brackets, in the order it returns them.
@@ -73,269 +81,367 @@ AlliesBest allies_best(const app::AnalysisSettings& cfg) {
     return {&corpus::song(chart, cfg.reading()), rec.all_paths().front()};
 }
 
-// A hand-built path for the keep_*_paths cases: it carries only activation
-// ticks, and `label` rides in notecount, which those filters never touch.
-Path made(int label, std::vector<int64_t> ticks) {
-    Path p;
-    p.notecount = label;
-    for (const int64_t t : ticks) {
-        Activation a;
-        a.timecode = Timecode::raw(t);
-        p.activations.push_back(a);
+// A chart's text read as the app reads a .chart file's bytes.
+Song chart_song(const std::string& text) {
+    const std::vector<uint8_t> bytes(text.begin(), text.end());
+    return load_songbytes_chart(bytes, ChartReading{});
+}
+
+// Fuzz seed 5 with one more note after its last phrase chord (at 22848), a
+// line a chart editor saves like any other note.
+Song seed5_with_note_after_last_phrase(const FuzzChart& fc) {
+    std::string text = fc.text;
+    const std::string last_phrase = "  22848 = N 1 0\n";
+    const size_t at = text.find(last_phrase);
+    REQUIRE(at != std::string::npos);
+    text.insert(at + last_phrase.size(), "  23040 = N 1 0\n");
+    return chart_song(text);
+}
+
+// One corpus chart's file and its song.
+struct CorpusSong {
+    std::string chart;
+    const Song* song;
+};
+
+// Every corpus chart's song under `cfg`'s reading. A chart whose song has no
+// notes fails here, named, rather than being skipped, so a parser that empties
+// a chart cannot shrink a corpus walk unseen.
+std::vector<CorpusSong> corpus_songs(const app::AnalysisSettings& cfg) {
+    std::vector<CorpusSong> out;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        CAPTURE(chart);
+        CHECK_FALSE(song.is_empty());
+        if (!song.is_empty()) out.push_back({chart, &song});
     }
-    return p;
+    REQUIRE_FALSE(out.empty());
+    return out;
+}
+
+// The engine's own paths for a search told to activate at exactly `ticks`,
+// before search_target filters them: the same run on the same graph
+// (search_graph), every survivor kept (wide_search) and no timing filter.
+std::vector<Path> unfiltered_target(const Song& song, const SearchSettings& settings,
+                                    const std::vector<int64_t>& ticks) {
+    const ScoreGraph graph = search_graph(song, settings);
+    EngineOptions options = test::wide_search();
+    options.target_act_ticks = ticks;
+    return run_search(graph, options);
+}
+
+// One path as text for comparing two searches: its path string, total and
+// every stored window fact (windows_text, which names each window's ticks).
+std::string path_key(const Path& p) {
+    return p.pathstring() + ' ' + std::to_string(p.totalscore()) + ' ' + test::windows_text(p);
+}
+
+// Whether `roots`, tied variants included, hold the path `key` names.
+bool holds_path(const std::vector<Path>& roots, const std::string& key) {
+    for (const Path* p : roots_and_tied(roots))
+        if (path_key(*p) == key) return true;
+    return false;
+}
+
+// The activation rules the filters keep by: exactly `want`, or starting with it.
+auto exactly_ticks(const std::vector<int64_t>& want) {
+    return [want](const std::vector<int64_t>& t) { return t == want; };
+}
+auto beginning_with_ticks(const std::vector<int64_t>& pin) {
+    return [pin](const std::vector<int64_t>& t) {
+        return t.size() >= pin.size() && std::equal(pin.begin(), pin.end(), t.begin());
+    };
+}
+
+// Whether some root of `roots` whose ticks pass `takes` (or, with `root_took`
+// false, fail it) has a tied variant whose ticks pass it (`variant_took`) or
+// fail it.
+template <class Takes>
+bool tied_case(const std::vector<Path>& roots, const Takes& takes, bool root_took,
+               bool variant_took) {
+    for (const Path& r : roots) {
+        if (takes(act_ticks(r)) != root_took) continue;
+        std::vector<const Path*> tied;
+        collect_tied(r, tied);
+        for (const Path* v : tied)
+            if (takes(act_ticks(*v)) == variant_took) return true;
+    }
+    return false;
+}
+
+// `kept`, what keep_target_paths or keep_prefix_paths (or search_target, which
+// runs keep_target_paths) returned from the engine's paths `raw`, checked
+// against `takes`, the activation rule it keeps by:
+// - every kept path, tied variants included, passes `takes`, and the kept
+//   paths are exactly the paths of `raw` that pass it, none lost, none added;
+// - the results not promoted are the roots of `raw` that pass, in order;
+// - a promoted result is a lead of its own: no variant point, no tail;
+// - each result's tied-path count is itself plus its tied variants.
+template <class Takes>
+void check_kept_from(const std::vector<Path>& raw, const std::vector<Path>& kept,
+                     const std::vector<bool>& promoted, const Takes& takes) {
+    std::multiset<std::string> want;
+    std::multiset<std::string> got;
+    for (const Path* p : roots_and_tied(raw))
+        if (takes(act_ticks(*p))) want.insert(path_key(*p));
+    for (const Path* p : roots_and_tied(kept)) {
+        CAPTURE(p->pathstring());
+        CHECK(takes(act_ticks(*p)));
+        got.insert(path_key(*p));
+    }
+    CHECK(got == want);
+
+    REQUIRE(promoted.size() == kept.size());
+    std::vector<std::string> raw_roots;
+    for (const Path& r : raw)
+        if (takes(act_ticks(r))) raw_roots.push_back(path_key(r));
+    std::vector<std::string> kept_roots;
+    for (size_t i = 0; i < kept.size(); ++i) {
+        const Path& k = kept[i];
+        CAPTURE(k.pathstring());
+        std::vector<const Path*> tied;
+        collect_tied(k, tied);
+        CHECK(k.tied_pathcount() == 1 + static_cast<int>(tied.size()));
+        if (!promoted[i]) {
+            kept_roots.push_back(path_key(k));
+            continue;
+        }
+        CHECK_FALSE(k.var_point.has_value());
+        CHECK(k.variant_tail.empty());
+    }
+    CHECK(kept_roots == raw_roots);
+}
+
+// The first result search_target promoted, or nullptr.
+const Path* first_promoted(const std::vector<Path>& kept, const std::vector<bool>& promoted) {
+    for (size_t i = 0; i < kept.size() && i < promoted.size(); ++i)
+        if (promoted[i]) return &kept[i];
+    return nullptr;
 }
 
 }  // namespace
 
-// D45: a targeted search drops only the paths that came back without one of
-// the named activations, and keeps the ones that took them all. On fuzz seed
-// 5, told to activate at 3168 and 12864, the engine also returns paths that
-// take only 3168 (SP still runs at 12864's fill); search_target drops those.
-// The kept paths are pinned as read from one run.
-// D21 (a phrase that runs past the last note pays on that note) awards seed
-// 5's last phrase, at 22848. That gives '0+- 0++', which takes 3168 and 12864
-// as a tied variant of a root that took only 3168, so search_target promotes
-// it to a result of its own (the next test's case).
-// The squeeze choices offer a squeeze at the cap's ceiling (finding 37, D44
-// addendum), where a full meter pins the SP end when a phrase is hit mid-SP.
-// Seed 5's second window starts full, which gives '0- 0+-' (6,750), '0- 0++'
-// (a tied variant at 7,150) and '0- 0-' (6,550).
+// A targeted search drops only the paths that came back without one of the
+// named activations, and keeps the ones that took them all. On fuzz seed 5,
+// told to activate at its two fills, the engine also returns paths that take
+// only the first (Star Power still runs at the second's fill); search_target
+// drops those and keeps every other path the engine returned.
 TEST_CASE("search_target: a path missing a named activation is dropped, the rest kept") {
     const FuzzChart fc = fuzz_chart(5);
-    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, ChartReading{});
+    const Song song = chart_song(fc.text);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
-    const std::vector<int64_t> want = {3168, 12864};
+    const auto takes = exactly_ticks(kSeed5Fills);
+
+    // The engine did return a path that missed one: the case this test is for.
+    const std::vector<Path> raw = unfiltered_target(song, cfg, kSeed5Fills);
+    bool missed_one = false;
+    for (const Path* p : roots_and_tied(raw)) missed_one = missed_one || !takes(act_ticks(*p));
+    REQUIRE(missed_one);
 
     std::vector<bool> promoted;
-    const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
-    CHECK(kept.size() == 6);
-    CHECK(target_text(kept) ==
-          "0+- 0++ 7550 | 0++- E0++ 7350 [0++- E0+- 7350] | "
-          "0++- E0- 7150 [0+- 0+- 7150; 0- 0++ 7150] | 0+- 0- 6950 | 0- 0+- 6750 | "
-          "0- 0- 6550 | ");
-    // '0+- 0++' is the promoted variant; the other five are the engine's roots.
-    CHECK(promoted == std::vector<bool>{true, false, false, false, false, false});
-    for (const Path& p : kept) {
-        CHECK(act_ticks(p) == want);
-        std::vector<const Path*> tied;
-        collect_tied(p, tied);
-        for (const Path* v : tied) CHECK(act_ticks(*v) == want);
-    }
+    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &promoted);
+    REQUIRE_FALSE(kept.empty());
+    check_kept_from(raw, kept, promoted, takes);
 
     // A tick that is no fill node is still unrealizable: nothing comes back.
-    CHECK(search_target(song, cfg, {3168, 12865}).empty());
+    CHECK(search_target(song, cfg, {kSeed5Fills[0], kSeed5Fills[1] + 1}).empty());
 }
 
-// D45, a dropped root's variants: the engine can fold a path that takes
-// every named activation under a tied root that missed one. search_target
-// drops that root but keeps the variant, as a result of its own (the first
-// such variant leads, the rest stay its tied variants). The chart is fuzz
-// seed 5 with one more note after its last phrase: root '0++++-' takes only
-// 3168, and its tied variant '0+- 0++' takes 3168 and 12864.
-// D21 awards that phrase with or without the extra note (the test above
-// promotes '0+- 0++' too). Every value below is pinned with the note in the
-// chart. Squeezes at the cap's ceiling give '0- 0+-' (6,950), '0- 0++' (a
-// tied variant at 7,350) and '0- 0-' (6,750), as in the test above.
+// A dropped root's variants: the engine can fold a path that takes every
+// named activation under a tied root that missed one. search_target drops
+// that root but keeps the variant, as a result of its own (the first such
+// variant leads, the rest stay its tied variants). The chart is fuzz seed 5
+// with one more note after its last phrase, where the engine makes that fold.
 TEST_CASE("search_target: a variant that took every named activation outlives its dropped root") {
-    FuzzChart fc = fuzz_chart(5);
-    const std::string last_phrase = "  22848 = N 1 0\n";
-    const size_t at = fc.text.find(last_phrase);
-    REQUIRE(at != std::string::npos);
-    fc.text.insert(at + last_phrase.size(), "  23040 = N 1 0\n");
-    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, ChartReading{});
+    const FuzzChart fc = fuzz_chart(5);
+    const Song song = seed5_with_note_after_last_phrase(fc);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
-    const std::vector<int64_t> want = {3168, 12864};
+    const auto takes = exactly_ticks(kSeed5Fills);
+
+    const std::vector<Path> raw = unfiltered_target(song, cfg, kSeed5Fills);
+    REQUIRE(tied_case(raw, takes, false, true));
 
     std::vector<bool> was_promoted;
-    const std::vector<Path> kept = search_target(song, cfg, want, &was_promoted);
-    CHECK(target_text(kept) ==
-          "0+- 0++ 7750 | 0++- E0++ 7550 [0++- E0+- 7550] | "
-          "0++- E0- 7350 [0+- 0+- 7350; 0- 0++ 7350] | 0+- 0- 7150 | 0- 0+- 6950 | "
-          "0- 0- 6750 | ");
-    // search_target says which result it promoted: only the first.
-    CHECK(was_promoted == std::vector<bool>{true, false, false, false, false, false});
-    const Path* promoted = test::path_named(kept, "0+- 0++");
+    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &was_promoted);
+    check_kept_from(raw, kept, was_promoted, takes);
+    const Path* promoted = first_promoted(kept, was_promoted);
     REQUIRE(promoted != nullptr);
-    CHECK(promoted->totalscore() == 7750);
-    CHECK_FALSE(promoted->var_point.has_value());
-    CHECK(promoted->variant_tail.empty());
 
-    // Its windows are its own, not the dropped root's: pinned as read from
-    // one run, and the same as the full search stores for that path (there a
-    // tied variant of '0++++-', read through its root).
-    CHECK(test::windows_text(*promoted) ==
-          "3168 [steps 3168>7776:0 4800>9312:3 | sq +-232.5 -22.5 | out 9600 | backends "
-          "4128/200/0/-405 4800/200/0/-352.5 7008/200/0/-180 9600/200/0/22.5 | bank 768 1536 "
-          "2304 | e 1250 | passed] 12864 [steps 12864>17472:0 13440>19008:3 22848>20544:3 | sq "
-          "+-315 +300 | out -1 | backends 19776/200/0/-60 19968/200/0/-45 22848/200/0/180 "
-          "23040/200/0/195 | bank 9600 10080 11616 | e 127.5 | passed] trailing");
+    // Its windows are its own, not the dropped root's: the same as the full
+    // search stores for that path, where it is a tied variant read through
+    // its root.
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
-    const Path* full = test::path_named(rec.all_paths(), "0+- 0++");
+    const Path* full = test::path_named(rec.all_paths(), promoted->pathstring());
     REQUIRE(full != nullptr);
     CHECK(full->var_point.has_value());
-    CHECK(full->totalscore() == 7750);
+    CHECK(full->totalscore() == promoted->totalscore());
     CHECK(test::windows_text(*promoted) == test::windows_text(*full));
-
-    // So the promoted copy would pass for the full search's variant, but it
-    // came out of the same fold, so it is no oracle. The lone-pricing helper
-    // reads search_target's promoted flag and reports the variant as tied
-    // under a root (skipped), not as a lone match against its own fold.
-    const test::LonePricing lone = test::lone_pricing(song, cfg, *full);
-    CHECK(lone.tied_under_root);
-    CHECK_FALSE(lone.diff.empty());
 }
 
-// D45 addendum, a kept root's variants: every tied path search_target
-// returns has exactly the named activations. On fuzz seed 199, told to
-// activate at 4896, 12288 and 21792, the engine ties '0+- E0++++' (it takes
-// only 4896 and 12288) under the root '0++- E0++- 0', which takes all three,
-// and '0- 0+++-' under '0++- E0- 0'. Both are dropped and their roots kept.
-// The answer is pinned as read from one run.
+// The lone-pricing helper (record_fixtures.h) on the fold above: the full
+// search's copy of the variant search_target promoted would pass for a lone
+// match, but the lone search folded it too, so it is no oracle. The helper
+// reads search_target's promoted flag and reports it as tied under a root.
+TEST_CASE("lone_pricing: a variant search_target promoted is tied under a root") {
+    const FuzzChart fc = fuzz_chart(5);
+    const Song song = seed5_with_note_after_last_phrase(fc);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
+
+    std::vector<bool> was_promoted;
+    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &was_promoted);
+    const Path* promoted = first_promoted(kept, was_promoted);
+    REQUIRE(promoted != nullptr);
+    HydraRecord rec;
+    REQUIRE(analyzes(song, cfg, rec));
+    const Path* full = test::path_named(rec.all_paths(), promoted->pathstring());
+    REQUIRE(full != nullptr);
+    CHECK(test::lone_pricing(song, cfg, *full).tied_under_root);
+}
+
+// A kept root's variants: every tied path search_target returns has exactly
+// the named activations. On fuzz seed 199, told to activate at three of its
+// fills, the engine ties a path that misses one under a root that takes all
+// three; search_target drops that variant and keeps its root.
 TEST_CASE("search_target: a kept root's tied variant that missed a named activation is dropped") {
     const FuzzChart fc = fuzz_chart(199);
-    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, ChartReading{});
+    const Song song = chart_song(fc.text);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
     const std::vector<int64_t> want = {4896, 12288, 21792};
+    const auto takes = exactly_ticks(want);
+
+    const std::vector<Path> raw = unfiltered_target(song, cfg, want);
+    REQUIRE(tied_case(raw, takes, true, false));
 
     std::vector<bool> promoted;
     const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
-    CHECK(target_text(kept) ==
-          "0++- E0++- 0 12350 | 0++- E0+- 0 11750 | 0++- E0- 0 11350 [0+- E0+- 0 11350] | "
-          "0- 0+- 0 11150 | 0+- E0- 0 10750 | 0- 0- 0 10550 | ");
-    CHECK(promoted.size() == kept.size());
-    std::vector<int> counts;
-    for (const Path& p : kept) {
-        CHECK(act_ticks(p) == want);
-        std::vector<const Path*> tied;
-        collect_tied(p, tied);
-        for (const Path* v : tied) CHECK(act_ticks(*v) == want);
-        counts.push_back(p.tied_pathcount());
-    }
-    // Each root's stored tied-path count, pinned as read from one run.
-    CHECK(counts == std::vector<int>{1, 1, 2, 1, 1, 1});
+    REQUIRE_FALSE(kept.empty());
+    check_kept_from(raw, kept, promoted, takes);
 }
 
-// keep_target_paths on a hand-built list: it reads only each path's
-// activation ticks. Labels ride in notecount, which it never touches.
+// keep_target_paths over the engine's own answer on every corpus chart: told
+// to activate at the ticks of the chart's best stored path, search_target
+// keeps exactly the engine's paths, tied variants included, that took those
+// ticks. Each kept root is the engine's, and each promoted result leads on
+// its own (check_kept_from).
 TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the named ticks") {
-    // Root 1 takes both. Its variant 2 misses 200, but 2's own variant 3
-    // takes both; its variant 4 takes both and 4's variant 5 misses 100.
-    Path r1 = made(1, {100, 200});
-    Path v2 = made(2, {100});
-    v2.variants.push_back(made(3, {100, 200}));
-    Path v4 = made(4, {100, 200});
-    v4.variants.push_back(made(5, {200}));
-    r1.variants = {v2, v4};
-    // Root 6 misses 200; its variants 7 and 8 take both, 7's variant 9
-    // misses one. Root 10 takes neither and has no qualifying variant.
-    Path r6 = made(6, {100});
-    Path v7 = made(7, {100, 200});
-    v7.variants.push_back(made(9, {300}));
-    r6.variants = {v7, made(8, {100, 200})};
-    const std::vector<Path> in = {r1, r6, made(10, {300})};
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for (const CorpusSong& c : corpus_songs(cfg)) {
+        CAPTURE(c.chart);
+        const HydraRecord& rec = corpus::analyzed(c.chart, cfg);
+        REQUIRE_FALSE(rec.paths.empty());
+        const Path& best = rec.paths.front();
+        CAPTURE(best.pathstring());
+        const std::vector<int64_t> want = act_ticks(best);
 
-    std::vector<bool> promoted;
-    const std::vector<Path> out = keep_target_paths(in, activation_pins({100, 200}), &promoted);
-    REQUIRE(out.size() == 2);
-    CHECK(promoted == std::vector<bool>{false, true});
-
-    // Root 1 stays. 2 is dropped and its variant 3 rescued in its place,
-    // sharing nothing with root 1; 4 stays as folded, without 5.
-    const Path& k1 = out[0];
-    CHECK(k1.notecount == 1);
-    REQUIRE(k1.variants.size() == 2);
-    CHECK(k1.variants[0].notecount == 3);
-    CHECK(k1.variants[0].var_point == std::optional<int>(2));
-    CHECK(k1.variants[1].notecount == 4);
-    CHECK_FALSE(k1.variants[1].var_point.has_value());
-    CHECK(k1.variants[1].variants.empty());
-    CHECK(k1.tied_pathcount() == 3);
-
-    // Root 6 is dropped: 7 leads, without 9, and 8 is its tied variant.
-    const Path& k7 = out[1];
-    CHECK(k7.notecount == 7);
-    CHECK_FALSE(k7.var_point.has_value());
-    REQUIRE(k7.variants.size() == 1);
-    CHECK(k7.variants[0].notecount == 8);
-    CHECK(k7.variants[0].var_point == std::optional<int>(2));
-    CHECK(k7.tied_pathcount() == 2);
+        std::vector<bool> promoted;
+        const std::vector<Path> kept = search_target(*c.song, cfg, want, &promoted);
+        REQUIRE_FALSE(kept.empty());
+        check_kept_from(unfiltered_target(*c.song, cfg, want), kept, promoted,
+                        exactly_ticks(want));
+    }
 }
 
 // Track R2: every corpus path, handed back to search_target as a full pin
 // (pinned_windows: each window's activation, deactivation node and
 // squeeze-out), comes back alone and stores what the search stored for it.
 // full_pin_mismatch is the check hydra_replay selfcheck runs; windows_text
-// adds every other stored fact of each window.
+// adds every other stored fact of each window. Every corpus chart runs
+// (corpus_songs), and every one stores at least its best path.
 TEST_CASE("search_target: every corpus path pinned in full comes back alone, the same") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int paths = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    for (const CorpusSong& c : corpus_songs(cfg)) {
+        const HydraRecord& rec = corpus::analyzed(c.chart, cfg);
+        CAPTURE(c.chart);
+        CHECK_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) {
-            ++paths;
-            CAPTURE(chart);
             CAPTURE(p->pathstring());
-            CHECK(full_pin_mismatch(song, cfg, *p) == "");
-            const TargetResult t = search_target(song, cfg, pinned_windows(*p));
+            CHECK(full_pin_mismatch(*c.song, cfg, *p) == "");
+            const TargetResult t = search_target(*c.song, cfg, pinned_windows(*p));
             CHECK(t.paths.size() == 1);
             if (t.paths.size() != 1) continue;
             CHECK(test::windows_text(t.paths[0]) == test::windows_text(*p));
         }
     }
-    CHECK(paths > 0);
 }
 
-// Track R2 on D45's chart (fuzz seed 5, activations 3168 and 12864): a full
-// pin of one of its paths comes back alone. Moved to an end no Star Power
-// reaches, or told a squeeze-out the engine does not make there, it comes
-// back empty, naming the window that broke and how.
+// Track R2 on fuzz seed 5's two fills: a full pin of a path search_target
+// kept there, a root with no tied variant, comes back alone. Its second
+// window moved to an end no Star Power reaches, or told the other answer on
+// how it ended, it comes back empty and names that window. Its reason is one
+// the Path Builder reads (impossible_window_text), a different one for each
+// part that broke, and the part it names is the one that broke: with the
+// end pin taken off, the moved end comes back; with the squeeze-out check
+// taken off, the other answer comes back and the moved end still fails.
 TEST_CASE("search_target: a full pin no path realizes names its window and why") {
     const FuzzChart fc = fuzz_chart(5);
-    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, ChartReading{});
+    const Song song = chart_song(fc.text);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
-    const std::vector<Path> kept = search_target(song, cfg, {3168, 12864});
-    const Path* path = test::path_named(kept, "0+- 0-");
+    std::vector<bool> promoted;
+    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &promoted);
+    const Path* path = nullptr;
+    for (size_t i = 0; i < kept.size() && !path; ++i)
+        if (!promoted[i] && kept[i].variants.empty()) path = &kept[i];
     REQUIRE(path != nullptr);
+    CAPTURE(path->pathstring());
     const std::vector<PinnedWindow> pins = pinned_windows(*path);
-    REQUIRE(pins.size() == 2);
+    REQUIRE(pins.size() == kSeed5Fills.size());
+    const size_t broken = pins.size() - 1;
 
     const TargetResult whole = search_target(song, cfg, pins);
     REQUIRE(whole.paths.size() == 1);
-    CHECK(whole.paths[0].pathstring() == path->pathstring());
-    CHECK(whole.paths[0].totalscore() == path->totalscore());
-    CHECK(whole.realized_prefix == 2);
+    CHECK(path_key(whole.paths[0]) == path_key(*path));
+    CHECK(whole.realized_prefix == pins.size());
     CHECK_FALSE(whole.failed_tick.has_value());
     CHECK(whole.failed_reason.empty());
 
     // One tick after its own activation, no Star Power can end.
     std::vector<PinnedWindow> unreachable = pins;
-    unreachable[1].deact_tick = unreachable[1].act_tick + 1;
+    unreachable[broken].deact_tick = unreachable[broken].act_tick + 1;
     const TargetResult end = search_target(song, cfg, unreachable);
     CHECK(end.paths.empty());
-    CHECK(end.realized_prefix == 1);
-    CHECK(end.failed_tick == std::optional<int64_t>(12864));
-    CHECK(end.failed_reason == "window_end");
+    CHECK(end.realized_prefix == broken);
+    CHECK(end.failed_tick == std::optional<int64_t>(pins[broken].act_tick));
+    std::vector<PinnedWindow> end_unchecked = unreachable;
+    end_unchecked[broken].check_sqout = false;
+    CHECK(search_target(song, cfg, end_unchecked).paths.empty());
+    std::vector<PinnedWindow> end_unpinned = unreachable;
+    end_unpinned[broken].deact_tick.reset();
+    end_unpinned[broken].check_sqout = false;
+    CHECK_FALSE(search_target(song, cfg, end_unpinned).paths.empty());
 
-    // The second window's end as stored, but the other answer on how it
-    // ended: a plain end where it squeezed out, or 22848 (a phrase chord)
-    // squeezed out where it ended plainly.
+    // The window's end as stored, but the other answer on how it ended: a
+    // plain end where it squeezed out, or a squeeze-out on its own end node
+    // where it ended plainly.
     std::vector<PinnedWindow> other_sqout = pins;
-    REQUIRE(other_sqout[1].check_sqout);
-    other_sqout[1].squeezed_out =
-        pins[1].squeezed_out ? std::nullopt : std::optional<int64_t>(22848);
+    REQUIRE(other_sqout[broken].check_sqout);
+    REQUIRE(pins[broken].deact_tick.has_value());
+    other_sqout[broken].squeezed_out =
+        pins[broken].squeezed_out ? std::nullopt : pins[broken].deact_tick;
     const TargetResult sqout = search_target(song, cfg, other_sqout);
     CHECK(sqout.paths.empty());
-    CHECK(sqout.realized_prefix == 1);
-    CHECK(sqout.failed_tick == std::optional<int64_t>(12864));
-    CHECK(sqout.failed_reason == "sqout");
+    CHECK(sqout.realized_prefix == broken);
+    CHECK(sqout.failed_tick == std::optional<int64_t>(pins[broken].act_tick));
+    std::vector<PinnedWindow> sqout_unchecked = other_sqout;
+    sqout_unchecked[broken].check_sqout = false;
+    CHECK_FALSE(search_target(song, cfg, sqout_unchecked).paths.empty());
+
+    // The activation itself broken, for the third reason: a tick one past
+    // the window's fill node, which is no fill node.
+    std::vector<PinnedWindow> no_fill = pins;
+    no_fill[broken] = PinnedWindow{pins[broken].act_tick + 1};
+    const TargetResult act = search_target(song, cfg, no_fill);
+    CHECK(act.paths.empty());
+
+    // Each reason is one the Path Builder puts in words, and no two parts
+    // that broke give the same one.
+    for (const std::string& reason : {end.failed_reason, sqout.failed_reason, act.failed_reason}) {
+        CAPTURE(reason);
+        CHECK(pathbuilder::impossible_window_text(reason, true) != app::kSomethingWentWrong);
+    }
+    CHECK(end.failed_reason != sqout.failed_reason);
+    CHECK(end.failed_reason != act.failed_reason);
+    CHECK(sqout.failed_reason != act.failed_reason);
 }
 
 // Activation pins alone ask what the tick list asks: search_target over them
@@ -344,8 +450,7 @@ TEST_CASE("search_target: a full pin no path realizes names its window and why")
 // by the binary search over the prefix length.
 TEST_CASE("search_target: activation pins return the tick search's paths and its failing tick") {
     const FuzzChart fc = fuzz_chart(5);
-    const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
-    const Song song = load_songbytes_chart(bytes, ChartReading{});
+    const Song song = chart_song(fc.text);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
 
     std::vector<bool> promoted;
@@ -492,26 +597,39 @@ TEST_CASE("free after: a pinned window over the Path limit survives a soft and a
     FAIL("no corpus chart has a best path over a 0 ms limit");
 }
 
-// keep_prefix_paths on a hand-built list, as the keep_target_paths case
-// above: labels ride in notecount. A path must start with the pinned ticks;
-// one that activates before or between them, or stops short, is dropped, and
-// a dropped root's qualifying variant is rescued. keep_target_paths, on the
-// same list, keeps only the exact match.
+// keep_prefix_paths and keep_target_paths over the engine's own answer: the
+// unpinned search on fuzz seed 5, every survivor kept. The first of its
+// roots that activates at least twice is the case: pinned at its first
+// activation it is kept as a prefix match, and pinned at its second it is
+// dropped, because it activates earlier. keep_target_paths, on the same
+// paths and pins, keeps only the exact matches, so never that root.
 TEST_CASE("keep_prefix_paths keeps a prefix match and drops a path that activates earlier") {
-    Path r3 = made(3, {50, 100, 200});
-    r3.variants.push_back(made(4, {100, 200, 400}));
-    const std::vector<Path> in = {made(1, {100, 200, 300}), made(2, {100, 200}), r3,
-                                  made(5, {100, 150, 200}), made(6, {100})};
-    const std::vector<PinnedWindow> pins = activation_pins({100, 200});
+    const FuzzChart fc = fuzz_chart(5);
+    const Song song = chart_song(fc.text);
+    const app::AnalysisSettings cfg = scores_settings(fc.cap);
+    const ScoreGraph graph = search_graph(song, cfg);
+    const std::vector<Path> raw = run_search(graph, test::wide_search());
+    const Path* twice = nullptr;
+    for (size_t i = 0; i < raw.size() && !twice; ++i)
+        if (act_ticks(raw[i]).size() >= 2) twice = &raw[i];
+    REQUIRE(twice != nullptr);
+    CAPTURE(twice->pathstring());
+    const std::vector<int64_t> ticks = act_ticks(*twice);
+    const std::string key = path_key(*twice);
 
-    std::vector<bool> promoted;
-    const std::vector<Path> prefix = keep_prefix_paths(in, pins, &promoted);
-    std::vector<int> labels;
-    for (const Path& p : prefix) labels.push_back(p.notecount);
-    CHECK(labels == std::vector<int>{1, 2, 4});
-    CHECK(promoted == std::vector<bool>{false, false, true});
+    for (const size_t at : {size_t{0}, size_t{1}}) {
+        CAPTURE(at);
+        const std::vector<int64_t> pin = {ticks[at]};
+        const std::vector<PinnedWindow> pins = activation_pins(pin);
 
-    const std::vector<Path> exact = keep_target_paths(in, pins);
-    REQUIRE(exact.size() == 1);
-    CHECK(exact[0].notecount == 2);
+        std::vector<bool> promoted;
+        const std::vector<Path> prefix = keep_prefix_paths(raw, pins, &promoted);
+        check_kept_from(raw, prefix, promoted, beginning_with_ticks(pin));
+        CHECK(holds_path(prefix, key) == (at == 0));
+
+        std::vector<bool> exact_promoted;
+        const std::vector<Path> exact = keep_target_paths(raw, pins, &exact_promoted);
+        check_kept_from(raw, exact, exact_promoted, exactly_ticks(pin));
+        CHECK_FALSE(holds_path(exact, key));
+    }
 }
