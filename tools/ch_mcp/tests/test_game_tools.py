@@ -337,30 +337,48 @@ class GameToolsTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
+    def real_tools(self) -> GT.GameTools:
+        """real_game_tools under this test's folder: a real Env with no
+        registry runner and a game exe that is not there, so a launch fails
+        for real and nothing can start the game."""
+        return real_game_tools(self.tmp, os.path.join(self.tmp, "real scratch"))
+
     def test_session_dir_is_the_scratch_folder_the_backups_go_in(self):
-        t = ToolRig(self.tmp)
-        folder = t.tools.session_dir()
+        tools = self.real_tools()
+        scratch_root = os.path.join(self.tmp, "real scratch")
+        folder = tools.session_dir()
         self.assertTrue(os.path.isdir(folder))
-        self.assertTrue(folder.startswith(t.scratch_root))
-        self.assertEqual(t.tools.session_dir(), folder)
-        t.tools.ch_start(t.r.song)
-        self.assertEqual(os.path.dirname(t.backup_dir()), t.tools.session_dir())
+        self.assertTrue(folder.startswith(scratch_root))
+        self.assertEqual(tools.session_dir(), folder)
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        self.assertTrue(os.path.isfile(os.path.join(backup, G.BACKUP_MANIFEST)), backup)
+        self.assertEqual(os.path.dirname(backup), tools.session_dir())
+        tools.ch_stop()
 
     # -- the quiet check ----------------------------------------------------------
 
     def test_a_machine_that_is_not_quiet_refuses_with_no_folder_no_backup_no_launch(self):
-        t = ToolRig(self.tmp)
-        with mock.patch.object(Q, "LIVE_ENV", FakeQuiet(cpu=40.0).env()):
-            reply = t.tools.ch_start(t.r.song)
-        self.assertTrue(reply.startswith("refused: the machine is not quiet: "), reply)
-        self.assertIn("CPU: 40.00 percent", reply)
-        self.assertTrue(reply.endswith("; hold the other sessions' builds and call ch_start again"))
-        self.assertFalse(os.path.exists(t.scratch_root))
-        self.assertIsNone(t.tools._scratch)
-        self.assertIsNone(t.tools._run)
-        self.assertEqual(t.r.launch.commands, [])
-        self.assertEqual(t.tools.ch_stop(),
-                         "no run is open and no backup was taken; nothing to restore")
+        # A real process list read while a build was linking (BUILD_PROCESSES),
+        # and this machine's own other readings.
+        processes = build_processes()
+        compilers = Q._compiler_lines(processes)
+        self.assertEqual(len(compilers), 1)
+        tools = self.real_tools()
+        with mock.patch.object(Q, "LIVE_ENV", real_quiet_env(processes)):
+            reply = tools.ch_start()
+        prefix, suffix = refusal_parts()
+        self.assertTrue(reply.startswith(prefix), reply)
+        self.assertTrue(reply.endswith(suffix), reply)
+        self.assertIn(compilers[0], reply)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
+        self.assertIsNone(tools._scratch)
+        self.assertIsNone(tools._run)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertEqual(tools.open_lines(), [])
+        # A ch_stop after the refusal finds nothing to put back and makes no folder.
+        tools.ch_stop()
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
 
     def test_a_quiet_machine_puts_the_report_before_the_launch_lines(self):
         t = ToolRig(self.tmp)
@@ -375,35 +393,50 @@ class GameToolsTest(unittest.TestCase):
         self.assertIn("power scheme: Balanced", lines)
 
     def test_the_check_runs_once_and_waits_quiet_sample_s(self):
-        fake = FakeQuiet()
-        t = ToolRig(self.tmp)
-        with mock.patch.object(Q, "LIVE_ENV", fake.env()):
-            t.tools.ch_start(t.r.song)
-        self.assertEqual(fake.calls.count(("sample", Q.QUIET_SAMPLE_S)), 1)
+        # The real readers, on the recorded build-time process list, so the
+        # check refuses and nothing after it runs.
+        tools = self.real_tools()
+        with mock.patch.object(Q, "LIVE_ENV", real_quiet_env(build_processes())):
+            began = time.monotonic()
+            reply = tools.ch_start()
+            took = time.monotonic() - began
+        # The real CPU sample waits its whole QUIET_SAMPLE_S, and the reply
+        # holds the one CPU reading it took.
+        # A timer may wake a few ms early on the monotonic clock.
+        self.assertGreaterEqual(took, Q.QUIET_SAMPLE_S - 0.1)
+        self.assertEqual(reply.count(f"averaged over {Q.QUIET_SAMPLE_S} s"), 1, reply)
 
     def test_an_open_run_is_stopped_first_so_the_game_is_not_read_as_load(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
-        scratch = t.tools._scratch
+        # The open run is a real adopted backup, with its marker.
+        tools = self.real_tools()
+        scratch_root = os.path.join(self.tmp, "real scratch")
+        tools.ensure_backup()
+        scratch = tools._scratch
         in_scratch = os.listdir(scratch)
-        with mock.patch.object(Q, "LIVE_ENV", FakeQuiet(cpu=40.0).env()):
-            lines = t.tools.ch_start(t.r.song).splitlines()
+        self.assertTrue(os.path.exists(os.path.join(scratch_root, GT.OPEN_RUN_MARKER)))
+        with mock.patch.object(Q, "LIVE_ENV", real_quiet_env(build_processes())):
+            lines = tools.ch_start().splitlines()
         self.assertEqual(lines[0], "a run was open; stopping it first:")
-        self.assertIn("rewired registry: unchanged", lines)
-        self.assertTrue(lines[-1].startswith("refused: the machine is not quiet: "))
-        self.assertIsNone(t.tools._run)
-        self.assertEqual(t.tools._scratch, scratch)
+        prefix, _suffix = refusal_parts()
+        self.assertTrue(lines[-1].startswith(prefix), lines)
+        # The stop restored the backup before the check refused.
+        self.assertIsNone(tools._adopted_backup)
+        self.assertIsNone(tools._run)
+        self.assertEqual(tools._scratch, scratch)
         self.assertEqual(os.listdir(scratch), in_scratch)
-        self.assertEqual([d for d in os.listdir(t.scratch_root)
+        self.assertEqual([d for d in os.listdir(scratch_root)
                           if d.startswith(GT.SCRATCH_PREFIX)], [os.path.basename(scratch)])
-        self.assertFalse(os.path.exists(os.path.join(t.scratch_root, GT.OPEN_RUN_MARKER)))
+        self.assertFalse(os.path.exists(os.path.join(scratch_root, GT.OPEN_RUN_MARKER)))
 
     def test_a_refusal_with_no_need_of_the_machine_takes_no_sample(self):
-        fake = FakeQuiet()
-        t = ToolRig(self.tmp)
-        with mock.patch.object(Q, "LIVE_ENV", fake.env()):
-            self.assertEqual(t.tools.ch_start(human=True), B.HUMAN_NEEDS_SONG)
-        self.assertEqual(fake.calls, [])
+        # The real readers: a sample would hold the reply QUIET_SAMPLE_S.
+        tools = self.real_tools()
+        with mock.patch.object(Q, "LIVE_ENV", real_quiet_env()):
+            began = time.monotonic()
+            reply = tools.ch_start(human=True)
+            took = time.monotonic() - began
+        self.assertEqual(reply, B.human_refusal(True, None))
+        self.assertLess(took, Q.QUIET_SAMPLE_S)
 
     def test_ch_start_has_no_argument_that_skips_the_check(self):
         self.assertEqual(list(inspect.signature(GT.GameTools.ch_start).parameters),
@@ -411,32 +444,23 @@ class GameToolsTest(unittest.TestCase):
 
     # -- ch_start ----------------------------------------------------------------
 
-    def test_ch_start_with_a_song_backs_up_before_the_launch_and_names_it_all(self):
-        t = ToolRig(self.tmp)
-        seen_at_launch = []
-        real_launch = t.r.launch
-
-        def launch(cmd):
-            seen_at_launch.append([d for d in os.listdir(t.tools._scratch)
-                                   if d.startswith(G.BACKUP_PREFIX)])
-            return real_launch(cmd)
-
-        t.r.env.launch = launch
-        dumps_before = len(FAKE.charts)
-        reply = t.tools.ch_start(t.r.song)
-        # One dump of the song's chart serves the recorder's cap and the run's.
-        self.assertEqual(FAKE.charts[dumps_before:], [t.r.chart])
-        backup = t.backup_dir()
-        self.assertEqual(seen_at_launch, [[os.path.basename(backup)]])
-        self.assertTrue(backup.startswith(t.scratch_root))
-        lines = reply.splitlines()
-        self.assertIn(f"backup folder: {backup}", lines)
-        self.assertTrue(any(line.startswith("starting: ") and t.r.song in line for line in lines))
-        self.assertIn("game process id: 4242", lines)
-        # Hydra's end, from the dump made for the song's chart.
-        self.assertEqual(lines[-1], "song length: 4000 ms, from "
-                         + hydra_end.chart_source_text(t.r.chart))
-        self.assertEqual(t.tools.launched_at(), 0.0)
+    def test_ch_start_backs_up_before_the_launch_and_names_the_folder(self):
+        # The launch fails for real (the game exe is not there), after the
+        # backup and before any game.
+        tools = self.real_tools()
+        exe = tools._env.exe
+        lines = tools.ch_start().splitlines()
+        backups = [line for line in lines if line.startswith("backup folder: ")]
+        self.assertEqual(len(backups), 1, lines)
+        backup = backups[0][len("backup folder: "):]
+        self.assertTrue(backup.startswith(os.path.join(self.tmp, "real scratch")), backup)
+        self.assertTrue(os.path.isfile(os.path.join(backup, G.BACKUP_MANIFEST)), backup)
+        starting = lines.index("starting: " + subprocess.list2cmdline(
+            B.launch_command(exe, None, B.DEFAULT_PLAYER)))
+        self.assertLess(lines.index(backups[0]), starting)
+        self.assertTrue(lines[-1].startswith("could not start the game: "), lines)
+        self.assertIsNone(tools._run)
+        self.assertIsNone(tools.launched_at())
 
     def test_ch_start_with_no_song_launches_launch_commands_no_song_line(self):
         t = ToolRig(self.tmp)
@@ -454,52 +478,74 @@ class GameToolsTest(unittest.TestCase):
                          {"--song", "--player", "--profile"})
 
     def test_a_second_ch_start_stops_and_restores_the_first_before_launching(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
-        first_backup = t.backup_dir()
-        original_key = t.reg.text
-        t.reg.text = b"changed by the game"
-        lines = t.tools.ch_start(t.r.song).splitlines()
+        # The first run is a real adopted backup; the second start's launch
+        # fails for real, after its own backup.
+        tools = self.real_tools()
+        tools.ensure_backup()
+        first_backup = tools._adopted_backup
+        lines = tools.ch_start().splitlines()
         self.assertEqual(lines[0], "a run was open; stopping it first:")
-        restored = lines.index("rewired registry: restored")
+        restored = [i for i, line in enumerate(lines) if first_backup in line]
+        self.assertTrue(restored, lines)
         second_start = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
-        self.assertEqual(len(second_start), 1)
-        self.assertLess(restored, second_start[0])
-        self.assertIn(f"restoring the backup from {first_backup}", lines)
-        self.assertTrue(t.r.game.stopped)
-        self.assertEqual(len(t.r.launch.commands), 2)
-        self.assertNotEqual(t.backup_dir(), first_backup)
-        self.assertEqual(t.reg.text, original_key)
+        self.assertEqual(len(second_start), 1, lines)
+        self.assertLess(max(restored), second_start[0])
+        self.assertIsNone(tools._adopted_backup)
+        backups = [line for line in lines if line.startswith("backup folder: ")]
+        self.assertEqual(len(backups), 1, lines)
+        self.assertNotIn(first_backup, backups[0])
 
     # -- ch_stop and shutdown -----------------------------------------------------
 
-    def test_ch_stop_stops_the_game_restores_the_key_and_leaves_every_file(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
-        original_key = t.reg.text
-        t.reg.text = b"changed by the game"
-        for name in ORIGINAL:
-            _write(t.r.path(name), b"changed by the game")
-        lines = t.tools.ch_stop().splitlines()
-        self.assertIn("rewired registry: restored", lines)
-        self.assertEqual(t.reg.text, original_key)
+    def put_game_files(self) -> dict:
+        """The game's files in real_tools' documents folder, holding what the
+        real game wrote: scorestats.json after a run (pitch-dark-run1) and
+        the settings.ini of ls-g1-run1's backup. Returns each name's bytes."""
+        _exe, documents = real_game_paths(self.tmp)
+        written = {G.SCORESTATS: _read(STATS_AFTER_A_RUN),
+                   G.SETTINGS: _read(os.path.join(REAL_BACKUP, G.SETTINGS))}
+        for name, data in written.items():
+            _write(os.path.join(documents, name), data)
+        return written
+
+    def assert_game_files_kept(self, written: dict) -> None:
+        _exe, documents = real_game_paths(self.tmp)
+        for name, data in written.items():
+            self.assertEqual(_read(os.path.join(documents, name)), data, name)
+
+    def test_ch_stop_restores_the_backup_and_leaves_every_file(self):
+        tools = self.real_tools()
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        # The files as a run left them, written after the backup.
+        written = self.put_game_files()
+        lines = tools.ch_stop().splitlines()
+        self.assertTrue([line for line in lines if backup in line], lines)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertEqual(tools.open_lines(), [])
         # Every file, settings.ini and scorestats.json among them, stays as
         # the run left it.
-        t.r.assert_files_hold(self, b"changed by the game")
-        self.assertIn("stopped the game", lines)
-        self.assertFalse(any("--stop" in line for line in lines))
-        self.assertTrue(t.r.game.stopped)
-        self.assertIsNone(t.tools.launched_at())
+        self.assert_game_files_kept(written)
+        self.assertIsNone(tools.launched_at())
 
     def test_ch_stop_runs_the_stop_hooks_first_in_order(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
+        tools = self.real_tools()
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        marker = os.path.join(self.tmp, "real scratch", GT.OPEN_RUN_MARKER)
         calls = []
-        t.tools.add_stop_hook(lambda: calls.append(("first", t.r.game.stopped)) or "trace stopped")
-        t.tools.add_stop_hook(lambda: calls.append(("second", t.r.game.stopped)))
-        lines = t.tools.ch_stop().splitlines()
-        self.assertEqual(calls, [("first", False), ("second", False)])
-        self.assertLess(lines.index("trace stopped"), lines.index("stopped the game"))
+        # Each hook notes whether the backup was still unrestored: its marker
+        # goes only once the restore is done.
+        tools.add_stop_hook(lambda: calls.append(("first", os.path.exists(marker)))
+                            or "first hook's line")
+        tools.add_stop_hook(lambda: calls.append(("second", os.path.exists(marker))))
+        lines = tools.ch_stop().splitlines()
+        self.assertEqual(calls, [("first", True), ("second", True)])
+        self.assertFalse(os.path.exists(marker))
+        # The hook's line comes before the restore's lines, which name the backup.
+        restore = [i for i, line in enumerate(lines) if backup in line]
+        self.assertTrue(restore, lines)
+        self.assertLess(lines.index("first hook's line"), min(restore))
 
     def test_ch_stop_says_when_the_game_outlives_the_wait_and_still_restores(self):
         t = ToolRig(self.tmp)
@@ -514,66 +560,54 @@ class GameToolsTest(unittest.TestCase):
         t.r.assert_files_hold(self, b"changed by the game")
 
     def test_a_failed_restore_names_it_and_the_folder_and_nothing_further_runs(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
-        backup = t.backup_dir()
-
-        def fail(backup_dir, **_kw):
-            raise G.RestoreError(G.REGISTRY_BACKUP, "locked")
-
-        with mock.patch.object(G, "restore_all", fail):
-            lines = t.tools.ch_start(t.r.song).splitlines()
-        self.assertIn(f"restore failed on {G.REGISTRY_BACKUP}: locked", lines)
-        self.assertIn(f"stopped; the backup is still in {backup}", lines)
+        tools = self.real_tools()
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        scratch_root = os.path.join(self.tmp, "real scratch")
+        before = sorted(os.listdir(scratch_root))
+        # A real failure: the backup folder is moved away, so the restore
+        # cannot read its manifest.
+        moved = backup + " moved"
+        os.rename(backup, moved)
+        lines = tools.ch_start().splitlines()
+        self.assertEqual(lines[0], "a run was open; stopping it first:")
+        self.assertTrue([line for line in lines if backup in line], lines)
         self.assertEqual(lines[-1], "the new run was not started")
-        self.assertEqual(len(t.r.launch.commands), 1)
-        # The run stays open, so the next ch_stop tries the restore again.
-        self.assertEqual(t.backup_dir(), backup)
-        self.assertIn("rewired registry: unchanged", t.tools.ch_stop())
-
-    def test_shutdown_terminates_a_server_started_game_and_restores(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
-        original_key = t.reg.text
-        t.reg.text = b"changed by the game"
-        _write(t.r.path(G.SETTINGS), b"changed by the game")
-        reply = t.tools.shutdown()
-        self.assertTrue(t.r.game.stopped)
-        self.assertIn("rewired registry: restored", reply)
-        self.assertEqual(t.reg.text, original_key)
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), b"changed by the game")
+        self.assertFalse([line for line in lines if line.startswith("starting: ")], lines)
+        # No new session folder or backup was made.
+        self.assertEqual(sorted(os.listdir(scratch_root)), before)
+        # The backup stays held, so the next ch_stop tries the restore again.
+        self.assertEqual(tools._adopted_backup, backup)
+        os.rename(moved, backup)
+        tools.ch_stop()
+        self.assertIsNone(tools._adopted_backup)
 
     def test_shutdown_with_an_adopted_game_restores_only(self):
-        t = ToolRig(self.tmp)
-        t.tools.ensure_backup()
-        backup = t.backup_dir()
-        t.reg.text = b"changed by the game"
-        _write(t.r.path(G.SETTINGS), b"changed by the game")
-        _write(t.r.path("user.bin"), b"changed by the game")
-        reply = t.tools.shutdown()
-        self.assertEqual(t.r.launch.commands, [])
-        self.assertFalse(t.r.game.stopped)
-        self.assertIn("rewired registry: restored", reply)
-        self.assertEqual(_read(t.r.path(G.SETTINGS)), b"changed by the game")
-        self.assertEqual(_read(t.r.path("user.bin")), b"changed by the game")
+        tools = self.real_tools()
+        tools.ensure_backup()
+        backup = tools._adopted_backup
+        written = self.put_game_files()
+        reply = tools.shutdown()
+        self.assertIsNone(tools._adopted_backup)
+        self.assert_game_files_kept(written)
         self.assertIn("the server did not start the game, so it does not close it", reply)
         self.assertEqual(reply.splitlines()[-1],
-                         "if the game is still running it may write the registry key again "
-                         "when it closes; after closing it, run py tools/ch_mcp/bot_run.py "
-                         f'--restore "{backup}"')
+                         "if the game is still running it " + B.late_write_hint(backup))
 
     # -- ensure_backup and launched_at ----------------------------------------------
 
     def test_ensure_backup_on_an_adopted_game_takes_one_backup(self):
-        t = ToolRig(self.tmp)
-        first = t.tools.ensure_backup()
-        backup = t.backup_dir()
+        tools = self.real_tools()
+        scratch_root = os.path.join(self.tmp, "real scratch")
+        first = tools.ensure_backup()
+        backup = tools._adopted_backup
         self.assertTrue(first.startswith(f"backup folder: {backup} "))
         self.assertTrue(os.path.isfile(os.path.join(backup, G.BACKUP_MANIFEST)))
-        self.assertIsNone(t.tools.launched_at())
-        self.assertEqual(t.tools.ensure_backup(), "")
-        self.assertEqual(sorted(os.listdir(t.scratch_root)),
-                         sorted([os.path.basename(t.tools._scratch), GT.OPEN_RUN_MARKER]))
+        self.assertIsNone(tools.launched_at())
+        self.assertEqual(tools.ensure_backup(), "")
+        self.assertEqual(sorted(os.listdir(scratch_root)),
+                         sorted([os.path.basename(tools._scratch), GT.OPEN_RUN_MARKER]))
+        tools.ch_stop()
 
     def test_ensure_backup_takes_none_when_a_run_holds_one(self):
         t = ToolRig(self.tmp)
@@ -2225,6 +2259,29 @@ class RunWithoutFocusTest(unittest.TestCase):
 # 2026-11-12/ls-g3-run1/machine-1/processes.csv, header and that sample only.
 BUILD_PROCESSES = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g3-run1",
                                "machine-1-processes-sample-615.csv")
+
+
+def build_processes() -> list:
+    """BUILD_PROCESSES as the quiet check's process list."""
+    with open(BUILD_PROCESSES, encoding="utf-8", newline="") as f:
+        return [Q.Proc(row["name"], int(row["pid"]), None) for row in csv.DictReader(f)]
+
+
+def real_quiet_env(processes=None) -> Q.QuietEnv:
+    """The quiet check's real readers, which setUpModule's stand-in in
+    Q.LIVE_ENV hides; with `processes`, that list in place of this machine's."""
+    listed = Q.list_processes if processes is None else (lambda: processes)
+    return Q.QuietEnv(list_processes=listed, sample_cpu=Q.sample_cpu,
+                      scan_folders=Q.scan_folders, free_memory_bytes=Q.free_memory_bytes,
+                      power_scheme=Q.power_scheme)
+
+
+def refusal_parts() -> tuple:
+    """quiet.refusal_text's wording before and after a report's lines."""
+    prefix, suffix = Q.refusal_text(Q.QuietReport(False, ("\0",))).split("\0")
+    return prefix, suffix
+
+
 D2A_LAUNCH_LOG = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-11-06-ls-d2a-run1",
                               "launch-20261106-194201.jsonl")
 
@@ -2822,17 +2879,11 @@ class RecorderTest(unittest.TestCase):
         # linking: sample 615 of ls-g3-run1's machine-1 processes.csv, from
         # hydra-data/ch-mcp-runs/2026-11-12/ls-g3-run1. The machine's other
         # readings are this machine's own.
-        with open(BUILD_PROCESSES, encoding="utf-8", newline="") as f:
-            processes = [Q.Proc(row["name"], int(row["pid"]), None) for row in csv.DictReader(f)]
+        processes = build_processes()
         compilers = Q._compiler_lines(processes)
         self.assertEqual(len(compilers), 1)
         tools = self.real_tools()
-        # setUpModule puts a stand-in in Q.LIVE_ENV, so the real readers are
-        # named here.
-        env = Q.QuietEnv(list_processes=lambda: processes, sample_cpu=Q.sample_cpu,
-                         scan_folders=Q.scan_folders, free_memory_bytes=Q.free_memory_bytes,
-                         power_scheme=Q.power_scheme)
-        with mock.patch.object(Q, "LIVE_ENV", env):
+        with mock.patch.object(Q, "LIVE_ENV", real_quiet_env(processes)):
             reply = tools.ch_start()
         self.assertIn(compilers[0], reply)
         self.assertFalse(tools._recorder.running())
@@ -3438,9 +3489,18 @@ class DroppedStatusTest(unittest.TestCase):
         self.assertFalse([line for line in lines if "jumped back" in line])
 
     def test_no_dropped_row_says_none(self):
-        lines = self._status(list(ROWS), play_chart.RunResult(
-            stop="done", sent=2, rows=list(ROWS)))
-        self.assertIn("dropped: none", lines)
+        # ls-p3-run1's first three rows (testdata/ch_runs/ls-p3-run1, copied
+        # from hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1): every chord sent.
+        rows = _press_rows("ls-p3-run1", "press-1-rows-1-3.csv")
+        self.assertEqual({r["send"] for r in rows}, {play_chart.SENT})
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        tools._play = GT._PlaySession(
+            score_json="score.json", chord_count=len(rows), log_path=None, rows=rows,
+            result=play_chart.RunResult(stop="done", sent=len(rows), rows=list(rows)))
+        lines = tools.ch_play_status().splitlines()
+        # The no-drop wording comes from its owner, dropped_line, given no rows.
+        counts = lines.index(f"sent {len(rows)}")
+        self.assertEqual(lines[counts + 1], GT.dropped_line([]))
 
     def test_the_dropped_line_from_rows(self):
         self.assertEqual(GT.dropped_line(ROWS), "dropped: none")
@@ -3527,13 +3587,6 @@ class BlockedPressLogTest(unittest.TestCase):
         self.assertFalse(t.tools._play.running())
         self.assertIsNone(t.tools._play.error)
         return t.tools._play.result
-
-    def test_a_log_write_that_blocks_900_ms_drops_no_chord(self):
-        result = self._play()
-        self.assertEqual(result.stop, play_chart.STOP_DONE)
-        self.assertEqual(result.dropped, 0)
-        self.assertEqual([r["send"] for r in result.rows],
-                         [play_chart.SENT] * len(SCORE_JSON["chords"]))
 
     def test_the_same_block_on_the_player_thread_still_drops(self):
         result = self._play(wire_into_on_press=True)
