@@ -630,14 +630,24 @@ TEST_CASE("build_highway_draws: an offered fill's strips are dimmed") {
 // is ready again, stays Hidden. The record's first activation, at tick 109440,
 // runs to 132240, and SP is ready for the next at 151440
 // (testdata/replay/test_pitch_dark_ratio-schedule.json); fills fall in
-// between. The chart has no drum lane, and every lane strip the highway draws
-// sits on an offered or taken fill's span, so a frame on a hidden fill draws
-// no lane strip over that fill's own stretch.
+// between. The chart has no drum lane, and every lane strip a fill draws sits
+// on an offered or taken fill's span, so a frame on a hidden fill draws no
+// lane strip of its own over that fill's stretch.
+//
+// One thing in these textures is not a fill's: the glow after a hit. It is
+// drawn in the lit target texture on the strike line's fixed depths, not over
+// a stretch of time, and a playhead on the fill's start sits on that line.
+// The draw code tells it apart by those depths, so the count skips a strip on
+// exactly the strike line's depths.
 TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
     const PreviewConfig cfg = shipped_preview_config();
     const PreviewScene& scene = pitch_dark_scenes().path;
     REQUIRE(scene.drum_lanes.empty());
     const TrackState st = build_track_state(scene, TrackStateOptions{});
+    const double glow_a = cfg.track.z_now + cfg.track.targets_z_past;
+    const double glow_b = cfg.track.z_now + cfg.track.targets_z_future;
+    const double glow_lo = std::min(glow_a, glow_b);
+    const double glow_hi = std::max(glow_a, glow_b);
     int checked = 0;
     for (size_t i = 0; i < scene.fills.size(); ++i) {
         if (scene.fills[i].state != PreviewFillState::Hidden) continue;
@@ -655,6 +665,9 @@ TEST_CASE("build_highway_draws: a hidden fill draws no lane strips") {
             if (!is_lane_tex(c.material.texture) && !is_lit_target_tex(c.material.texture)) continue;
             const double c_lo = std::min<double>(c.lo[2], c.hi[2]);
             const double c_hi = std::max<double>(c.lo[2], c.hi[2]);
+            const bool glow = is_lit_target_tex(c.material.texture) &&
+                              c_lo == doctest::Approx(glow_lo) && c_hi == doctest::Approx(glow_hi);
+            if (glow) continue;
             // A strip that only touches the hidden fill's edge (equal depth,
             // as strips_over compares depths) belongs to a neighbouring fill.
             const bool touches = c_hi == doctest::Approx(z_lo) || c_lo == doctest::Approx(z_hi);
