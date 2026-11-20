@@ -68,6 +68,18 @@ def by_name_only_findings(text: str) -> list[tuple[int, str, str]]:
 # (docs/clone-hero/07-internals.md, IN-76). LISTED_AGENTS are the files
 # allowed a list, and each one's list is pinned by a test below: menu.ts's to
 # its names, kit.ts's to KIT_METHODS.
+# The check reads source text, not a parsed program, so it has limits. It
+# does not skip comments or strings: a lookup written in a comment counts as
+# a source of its name (the variable's other sources must still be lookups),
+# and an `.invoke(` in a comment is a finding. Functions are found by the
+# `function` keyword only, so an arrow function is no scope of its own, and
+# a name is judged over the whole enclosing function. It cannot see a
+# function handed on by reference (`list.forEach(f)`, `g = f`) or a call made
+# as `m.invoke.call(...)`. Only those two could hide a call, and no line in
+# menu.ts or kit.ts does either today: every function that takes a method is
+# called by name, and each real `.invoke(` and the NativeFunction trace to a
+# literal lookup. A name set by destructuring or `for ... of` has no
+# lookup source, so it is a finding, not a miss.
 MENU_AGENT = "menu.ts"
 KIT_AGENT = "kit.ts"
 LISTED_AGENTS = (MENU_AGENT, KIT_AGENT)
@@ -75,7 +87,7 @@ KIT_METHODS = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "kit_methods.json")
 # A method looked up by name, with an optional type argument; group 2 is the
 # name when it is a string literal.
 _METHOD_LOOKUP = re.compile(r"\.(?:method|tryMethod)\s*(?:<[^>]*>)?\s*\(\s*(?:([\"'])(\w+)\1)?")
-_INVOKE = re.compile(r"\.invoke\(")
+_INVOKE = re.compile(r"(?:\.\s*invoke|\[\s*[\"']invoke[\"']\s*\])\s*\(")
 _NATIVE_FUNCTION = re.compile(r"new\s+NativeFunction\b")
 _ALLOWED_LIST = re.compile(r"ALLOWED_CALLS\s*=\s*\[([^\]]*)\]")
 # An expression that ends in a lookup by a literal name, with any
@@ -1439,6 +1451,14 @@ class AllowedCallsTest(unittest.TestCase):
         added_at = len(texts["clock.ts"].splitlines()) + 1
         texts["clock.ts"] += 'go.method("SetActive", 1).invoke(true);\n'
         self.one_finding(texts, "clock.ts", added_at, "SetActive is not in")
+
+    def test_an_invoke_spelled_with_brackets_in_kit_ts_fails(self):
+        # `m["invoke"](...)` is the same call as `m.invoke(...)`.
+        kit = self.real_texts()[KIT_AGENT]
+        added = 'const m = Il2Cpp.domain.assembly(GAME); m["invoke"]();'
+        texts = {KIT_AGENT: kit + added + "\n"}
+        self.one_finding(texts, KIT_AGENT, len(kit.splitlines()) + 1,
+                         ".invoke( on a method not looked up", added)
 
     def test_a_bare_invoke_in_a_second_file_fails(self):
         texts = self.real_texts()
