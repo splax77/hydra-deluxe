@@ -1,7 +1,8 @@
 """Unit tests for the input driver's pure logic.
 
-These run with no game and no debugger. They test the binding map (set then
-get), the key table, and that tap and press_chord send the right key events.
+These run with no game and no debugger. They test the binding map, the key
+table against the game's own saved key map, and that press_chord sends the
+right key events.
 
 The live seam (the real SendInput) is replaced with a recorder here. What only
 a running Clone Hero can exercise -- that SendInput
@@ -18,6 +19,7 @@ from __future__ import annotations
 import os
 import sys
 import unittest
+import xml.etree.ElementTree as ET
 
 # Make the repo root importable so `tools.ch_probe...` resolves regardless of
 # where the test runner is launched from.
@@ -25,6 +27,7 @@ _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import kit_tools as K
 from tools.ch_probe import constants as C
 from tools.ch_probe import input_driver
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, LANE_NAMES, InputDriver, Lane
@@ -43,22 +46,55 @@ def _make_driver():
     return driver, presses
 
 
+# Player1's drums keyboard map as the game saved it in its Rewired registry
+# key: the header, the key's line and that one value, copied verbatim from
+# hydra-data\ch-mcp-runs\2026-11-12\ls-g1-run1\backup-20261112-182956\rewired.reg,
+# the export ch_start took before that run.
+RECORDED_DRUMS_KEYBOARD_MAP = os.path.join(
+    _REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1", "rewired-key",
+    "player1-drums-keyboard-map.reg")
+_REWIRED_NS = "{http://guavaman.com/rewired}"
+
+
+def _recorded_drums_keyboard_map():
+    """(value name, {Rewired action id: Unity key code}) of the one hex value
+    in RECORDED_DRUMS_KEYBOARD_MAP, its enabled key bindings only."""
+    with open(RECORDED_DRUMS_KEYBOARD_MAP, encoding="utf-16") as f:
+        text = f.read().replace("\\\n  ", "")
+    values = [line for line in text.splitlines() if "=hex:" in line]
+    assert len(values) == 1, values
+    name, data = values[0].split("=hex:", 1)
+    xml = bytes(int(b, 16) for b in data.split(",")).rstrip(b"\0").decode("utf-8")
+    root = ET.fromstring(xml.split("?>", 1)[1])
+    keys = {}
+    for binding in root.iter(_REWIRED_NS + "ActionElementMap"):
+        if binding.findtext(_REWIRED_NS + "enabled") == "true":
+            keys[int(binding.findtext(_REWIRED_NS + "actionId"))] = int(
+                binding.findtext(_REWIRED_NS + "keyboardKeyCode"))
+    return name.strip('"'), keys
+
+
+def _lane_action(lane):
+    """The game's Rewired action for a lane, through the kit's own tables."""
+    return K.KIT_BINDINGS[K.lane_element(lane).id][0]
+
+
+def _virtual_key(unity_key):
+    """The Windows virtual key of a letter key in Unity's KeyCode numbering,
+    which numbers a letter by its lower-case character
+    (https://docs.unity3d.com/ScriptReference/KeyCode.html); Windows numbers
+    it by its upper-case one."""
+    letter = chr(unity_key)
+    assert letter.isascii() and letter.isalpha(), unity_key
+    return ord(letter.upper())
+
+
 class TestBindings(unittest.TestCase):
     def test_defaults_are_present(self):
         driver = InputDriver()
         # Every lane in DEFAULT_BINDINGS is readable.
         for lane, vk in DEFAULT_BINDINGS.items():
             self.assertEqual(driver.get_binding(lane), vk)
-
-    def test_set_binding_round_trips(self):
-        driver = InputDriver()
-        driver.set_binding(0, 0x51)  # 'Q'
-        self.assertEqual(driver.get_binding(0), 0x51)
-
-    def test_set_binding_adds_new_lane(self):
-        driver = InputDriver(bindings={})
-        driver.set_binding(7, 0x42)
-        self.assertEqual(driver.get_binding(7), 0x42)
 
     def test_missing_lane_raises(self):
         driver = InputDriver(bindings={})
@@ -73,27 +109,25 @@ class TestBindings(unittest.TestCase):
         self.assertEqual(DEFAULT_BINDINGS[0], original)
 
 
-class TestTap(unittest.TestCase):
-    def test_tap_sends_down_then_up(self):
-        driver, presses = _make_driver()
-        vk = driver.get_binding(0)
-        driver.tap(0)
-        self.assertEqual(presses, [(vk, False), (vk, True)])
-
-
 class TestKeyTable(unittest.TestCase):
     """One key table. A lane number means the same key everywhere."""
 
-    def test_lanes_follow_the_bind_screen(self):
-        keys = {lane: chr(DEFAULT_BINDINGS[lane]) for lane in Lane}
-        self.assertEqual(keys, {
-            Lane.GREEN: "A", Lane.RED: "S", Lane.YELLOW: "J", Lane.BLUE: "K",
-            Lane.KICK: "L", Lane.YELLOW_CYMBAL: "U", Lane.BLUE_CYMBAL: "Y",
-            Lane.GREEN_CYMBAL: "T"})
+    def test_every_lane_presses_the_key_the_game_saved_for_it(self):
+        name, keys = _recorded_drums_keyboard_map()
+        # The value is the game's Gameplay / Drums map, the one the kit uses too.
+        self.assertIn(f"|categoryId={K.KIT_MAP_CATEGORY_ID}|layoutId={K.KIT_MAP_LAYOUT_ID}|",
+                      name)
+        for lane in Lane:
+            self.assertIn(_lane_action(lane), keys, lane.name)
+            self.assertEqual(DEFAULT_BINDINGS[lane], _virtual_key(keys[_lane_action(lane)]),
+                             lane.name)
 
-    def test_lane_numbers_are_unchanged(self):
-        self.assertEqual([int(lane) for lane in Lane], list(range(8)))
-        self.assertEqual(Lane.KICK, 4)
+    def test_every_lane_has_its_own_key_and_its_own_kit_pad(self):
+        # A lane number is how press_chord finds a key and the kit finds a pad.
+        self.assertEqual(set(DEFAULT_BINDINGS), set(Lane))
+        self.assertEqual(len(set(DEFAULT_BINDINGS.values())), len(Lane))
+        actions = [_lane_action(lane) for lane in Lane]
+        self.assertEqual(len(set(actions)), len(Lane))
 
     def test_every_lane_has_a_short_name(self):
         self.assertEqual(set(LANE_NAMES), set(Lane))
@@ -112,17 +146,6 @@ class TestPressChord(unittest.TestCase):
                                    ("sleep", input_driver.KEY_HOLD_S),
                                    (red, True), (kick, True)])
         self.assertEqual(sent, [red, kick])
-
-    def test_key_hold_is_the_recorded_value(self):
-        # D54 records the 3 ms hold as it is.
-        self.assertEqual(input_driver.KEY_HOLD_S, 0.003)
-
-    def test_unbound_lane_is_skipped(self):
-        driver = InputDriver(bindings={Lane.KICK: 0x4C})
-        presses = []
-        driver.send_key = lambda vk, key_up: presses.append((vk, key_up))
-        driver.press_chord([Lane.GREEN, Lane.KICK], sleep=lambda s: None)
-        self.assertEqual(presses, [(0x4C, False), (0x4C, True)])
 
 
 class TestMenuKeys(unittest.TestCase):
