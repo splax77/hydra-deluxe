@@ -21,6 +21,7 @@
 #include "doctest.h"
 
 #include <ctime>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -125,6 +126,39 @@ std::string answers_message(const OwnerRule& rule, const std::string& where, con
            rule_suffix(rule.rules_file);
 }
 
+// The message for line `t` at `where` that copies a listed line word for word
+// after earlier lines used up every entry that lists it.
+std::string used_up_message(const OwnerRule& rule, const std::string& where, const std::string& t) {
+    return where + ": a second copy of a listed line (each entry covers one line) answers \"" +
+           rule.question + "\": " + t + rule_suffix(rule.rules_file);
+}
+
+// Whether any entry of `listed` names this question, file and line text.
+bool lists_line(const std::vector<ListedLine>& listed, const std::string& question, const std::string& file,
+                const std::string& text) {
+    for (const ListedLine& l : listed)
+        if (l.question == question && l.file == file && l.line_text == text) return true;
+    return false;
+}
+
+// What `run` throws, or empty when it throws nothing.
+template <typename Run>
+std::string thrown_message(Run&& run) {
+    try {
+        run();
+    } catch (const std::exception& e) {
+        return e.what();
+    }
+    return {};
+}
+
+// Whether `message` names each of `parts`.
+bool names_all(const std::string& message, const std::vector<std::string>& parts) {
+    for (const std::string& p : parts)
+        if (message.find(p) == std::string::npos) return false;
+    return true;
+}
+
 // The engine's scan state plus the failures the cases report.
 struct RowScan : ScanState {
     std::vector<std::string> problems;
@@ -142,9 +176,7 @@ void scan_rows(RowScan& s, const std::string& rel, bool py, std::istream& in) {
         const OwnerRule& rule = *s.compiled[h.rule_index].rule;
         const std::string where = rel + ":" + std::to_string(h.line);
         if (h.take == Take::used_up)
-            s.problems.push_back(where + ": a second copy of a listed line (each "
-                                 "entry covers one line) answers \"" +
-                                 rule.question + "\": " + h.text + rule_suffix(rule.rules_file));
+            s.problems.push_back(used_up_message(rule, where, h.text));
         else
             s.problems.push_back(answers_message(rule, where, h.text));
     });
@@ -153,18 +185,44 @@ void scan_rows(RowScan& s, const std::string& rel, bool py, std::istream& in) {
 }  // namespace
 
 TEST_CASE("single-owner listed lines each cover one line of source") {
-    const std::vector<ListedLine> listed = {{"Q?", "src/a.cpp", "x();", "stale"},
-                                            {"Q?", "src/a.cpp", "y();", "stale"},
-                                            {"Q?", "src/a.cpp", "y();", "stale"}};
+    // The real rows' listed lines. Some rows list one line twice, because the
+    // owner holds it twice; the first entry is listed once more, as a row that
+    // names its owner line twice would list it, so a repeat is always there.
+    std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
+    REQUIRE_FALSE(listed.empty());
+    const ListedLine repeated = listed.front();
+    listed.push_back(repeated);
     std::vector<bool> used(listed.size(), false);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "x();") == Take::taken);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "x();") == Take::used_up);
-    // Two identical entries cover two identical lines, and no third.
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::taken);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::taken);
-    CHECK(take_listed_line(listed, used, "Q?", "src/a.cpp", "y();") == Take::used_up);
-    CHECK(take_listed_line(listed, used, "Q?", "src/b.cpp", "x();") == Take::unlisted);
-    CHECK(take_listed_line(listed, used, "Other?", "src/a.cpp", "x();") == Take::unlisted);
+    // N identical entries cover N identical lines, and no more.
+    for (size_t i = 0; i < listed.size(); ++i) {
+        if (used[i]) continue;  // taken with an earlier identical entry
+        const ListedLine& l = listed[i];
+        size_t entries = 0;
+        for (const ListedLine& m : listed)
+            if (m.question == l.question && m.file == l.file && m.line_text == l.line_text) ++entries;
+        INFO(l.question << " in " << l.file << ": " << l.line_text << " (" << entries << " entries)");
+        for (size_t k = 0; k < entries; ++k)
+            CHECK(take_listed_line(listed, used, l.question, l.file, l.line_text) == Take::taken);
+        CHECK(take_listed_line(listed, used, l.question, l.file, l.line_text) == Take::used_up);
+    }
+    // The same text in another real file, or under another real question, is
+    // no entry's line.
+    const ListedLine& first = listed.front();
+    bool other_file = false, other_question = false;
+    for (const ListedLine& l : listed) {
+        if (lists_line(listed, first.question, l.file, first.line_text)) continue;
+        CHECK(take_listed_line(listed, used, first.question, l.file, first.line_text) == Take::unlisted);
+        other_file = true;
+        break;
+    }
+    for (const OwnerRule& r : rules()) {
+        if (lists_line(listed, r.question, first.file, first.line_text)) continue;
+        CHECK(take_listed_line(listed, used, r.question, first.file, first.line_text) == Take::unlisted);
+        other_question = true;
+        break;
+    }
+    CHECK(other_file);
+    CHECK(other_question);
 }
 
 TEST_CASE("single-owner rules match their own examples") {
@@ -236,48 +294,137 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
 
 namespace {
 
-// The made-up row both made-up file cases scan with: two owner lines, the
-// second of which no line of kMadeUpFile uses.
-OwnerRule made_up_owner_row() {
-    OwnerRule r;
-    r.question = "Is this a made-up question?";
-    r.owner = "made_up in src/a.cpp";
-    r.rules_file = "rules/made_up.json";
-    r.pattern = "made_up\\(";
-    r.anchor = "made_up(";
-    r.owner_lines = {{"src/a.cpp", "return made_up(1);", "the owner"},
-                     {"src/a.cpp", "return made_up(9);", "the owner, gone"}};
-    return r;
-}
+// A real row's owner file, as it is, with the edit a coder might make: a
+// word-for-word copy of the row's first owner line, then one of the row's own
+// must_match lines, both added at the end.
+struct OwnerFileEdit {
+    const OwnerRule* rule;
+    std::string file;         // the first owner line's file, repo-relative
+    bool py;                  // the walk reads it as Python
+    std::string owner_line;   // that owner line, trimmed
+    std::string answer_line;  // the must_match line, as the row gives it
+    std::string text;         // the file as it is, ending in a newline
+    int lines;                // the lines `text` holds
+};
 
-// The made-up src/a.cpp: an owner line, a comment, an unlisted answer and a
-// second copy of the owner line.
-const char* const kMadeUpFile = "int f() {\n  return made_up(1);\n}\n// made_up(2) in a comment\n"
-                                "x = made_up(3);\n  return made_up(1);\n";
+// The edit for every real row it fits: a row with owner lines and no
+// function, whose first owner line sits in a file the walk reads for the
+// row and in its scope, and which has a must_match line the scan reads (not a
+// skipped comment) that no entry lists for that file.
+std::vector<OwnerFileEdit> owner_file_edits(const std::vector<ListedLine>& listed) {
+    std::vector<OwnerFileEdit> out;
+    for (const OwnerRule& r : rules()) {
+        if (r.owner_lines.empty() || !r.function.empty()) continue;
+        const std::string& file = r.owner_lines.front().file;
+        bool reads_freely = false;
+        for (const std::string& o : r.owner_files) reads_freely = reads_freely || o == file;
+        for (const Exempt& x : r.exempt) reads_freely = reads_freely || x.file == file;
+        if (reads_freely || !walk_reads_for(r, file) || !in_scope(r, file.substr(0, file.find('/')), file))
+            continue;
+        const codelex::Lang lang = lexer_language(fs::u8path(file));
+        const std::string& owner_line = r.owner_lines.front().line_text;
+        if (skipped_comment_line(owner_line, lang) && !r.scan_comments) continue;
+        std::string answer_line;
+        for (const std::string& m : r.must_match) {
+            const std::string t = hydra::trim(m);
+            if (skipped_comment_line(t, lang) && !r.scan_comments) continue;
+            if (lists_line(listed, r.question, file, t)) continue;
+            answer_line = m;
+            break;
+        }
+        if (answer_line.empty()) continue;
+        std::string text = hydra::read_file_text((sourcetree::root() / fs::u8path(file)).u8string());
+        if (!text.empty() && text.back() != '\n') text += '\n';
+        int lines = 0;
+        for (const char ch : text) lines += ch == '\n' ? 1 : 0;
+        out.push_back({&r, file, lang == codelex::Lang::Python, owner_line, answer_line, text, lines});
+    }
+    return out;
+}
 
 }  // namespace
 
-TEST_CASE("single-owner: the row scan's messages, pinned on a made-up file") {
-    const OwnerRule r = made_up_owner_row();
-    const std::vector<CompiledRule> compiled = {compile_rule(r)};
-    std::vector<ListedLine> listed;
-    for (const OwnerLine& o : r.owner_lines)
-        listed.push_back({r.question, o.file, o.line_text, "owner line no longer matches (update it)",
-                          r.rules_file});
-    RowScan scan = start_row_scan(compiled, listed);
-    std::istringstream in(kMadeUpFile);
-    scan_rows(scan, "src/a.cpp", false, in);
-    REQUIRE(scan.problems.size() == 2);
-    CHECK(scan.problems[0] ==
-          "src/a.cpp:5: answers \"Is this a made-up question?\", which belongs to made_up in "
-          "src/a.cpp: x = made_up(3); (rule: rules/made_up.json)");
-    CHECK(scan.problems[1] ==
-          "src/a.cpp:6: a second copy of a listed line (each entry covers one line) answers \"Is "
-          "this a made-up question?\": return made_up(1); (rule: rules/made_up.json)");
-    CHECK_FALSE(scan.used[1]);
-    CHECK(stale_message(listed[1]) ==
-          "owner line no longer matches (update it): src/a.cpp: return made_up(9); (rule: "
-          "rules/made_up.json)");
+// The hit sink and the row scan's messages, on real owner files: every line
+// of the file as it is takes an entry; the copy finds every entry that lists
+// it used up; the must_match line is unlisted. With the owner line deleted
+// instead, an entry that lists it is left unused, which the scan's end
+// (check_scan) reports as stale.
+TEST_CASE("single-owner: the row scan flags a copied owner line and a new answer in a real owner file") {
+    const std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
+    const std::vector<OwnerFileEdit> edits = owner_file_edits(listed);
+    CHECK_FALSE(edits.empty());
+    for (const OwnerFileEdit& e : edits) {
+        const OwnerRule& rule = *e.rule;
+        INFO(rule.question << " in " << e.file << rule_suffix(rule.rules_file));
+        const std::vector<CompiledRule> compiled = {compile_rule(rule)};
+        const std::string edited = e.text + e.owner_line + "\n" + e.answer_line + "\n";
+        const std::string answer = hydra::trim(e.answer_line);
+
+        ScanState state = start_scan(compiled, listed);
+        std::istringstream in(edited);
+        std::vector<RowHit> hits;
+        scan_file(state, e.file, e.py, in, [&](const RowHit& h) { hits.push_back(h); });
+        REQUIRE(hits.size() >= 3);  // the owner line itself, the copy, the answer
+        for (size_t i = 0; i + 2 < hits.size(); ++i) {
+            const RowHit& h = hits[i];
+            INFO("line " << h.line << ": " << h.text);
+            CHECK(h.rule_index == 0);
+            CHECK(h.line <= e.lines);
+            CHECK(h.take == Take::taken);
+            REQUIRE(h.listed_index.has_value());
+            const ListedLine& l = listed[*h.listed_index];
+            CHECK(l.question == rule.question);
+            CHECK(l.file == e.file);
+            CHECK(l.line_text == h.text);
+        }
+        const RowHit& copy = hits[hits.size() - 2];
+        CHECK(copy.line == e.lines + 1);
+        CHECK(copy.text == e.owner_line);
+        CHECK(copy.take == Take::used_up);
+        CHECK_FALSE(copy.listed_index.has_value());
+        const RowHit& added = hits.back();
+        CHECK(added.line == e.lines + 2);
+        CHECK(added.text == answer);
+        CHECK(added.take == Take::unlisted);
+        CHECK_FALSE(added.listed_index.has_value());
+
+        // The same edit through the scan's own sink gives exactly two
+        // failures, each naming the file and line, the row's question, the
+        // line's text and the rules file.
+        RowScan scan = start_row_scan(compiled, listed);
+        std::istringstream again(edited);
+        scan_rows(scan, e.file, e.py, again);
+        const std::string copy_at = e.file + ":" + std::to_string(e.lines + 1);
+        const std::string answer_at = e.file + ":" + std::to_string(e.lines + 2);
+        CHECK(scan.problems == std::vector<std::string>{used_up_message(rule, copy_at, e.owner_line),
+                                                        answers_message(rule, answer_at, answer)});
+        if (scan.problems.size() == 2) {
+            CHECK(names_all(scan.problems[0], {copy_at + ":", rule.question, e.owner_line, rule.rules_file}));
+            CHECK(names_all(scan.problems[1], {answer_at + ":", rule.question, answer, rule.rules_file}));
+        }
+
+        std::istringstream lines_in(e.text);
+        std::string without, line;
+        bool dropped = false;
+        while (std::getline(lines_in, line)) {
+            if (!dropped && hydra::trim(line) == e.owner_line) {
+                dropped = true;
+                continue;
+            }
+            without += line + "\n";
+        }
+        REQUIRE(dropped);
+        ScanState after = start_scan(compiled, listed);
+        std::istringstream without_in(without);
+        scan_file(after, e.file, e.py, without_in, [](const RowHit&) {});
+        int unused = 0;
+        for (size_t i = 0; i < listed.size(); ++i) {
+            const ListedLine& l = listed[i];
+            if (l.question == rule.question && l.file == e.file && l.line_text == e.owner_line && !after.used[i])
+                ++unused;
+        }
+        CHECK(unused == 1);
+    }
 }
 
 namespace {
@@ -392,30 +539,6 @@ TEST_CASE("single-owner: the committed-only listing holds committed and staged f
     CHECK(sourcetree::source_files(root) ==
           std::vector<std::string>{"tools/kept.py", "tools/new.py", "tools/staged.py"});
     testtemp::remove_dir(dir);
-}
-
-TEST_CASE("single-owner: the hit sink reports taken, used-up and unlisted lines") {
-    const OwnerRule r = made_up_owner_row();
-    const std::vector<CompiledRule> compiled = {compile_rule(r)};
-    const std::vector<ListedLine> listed = listed_lines({r}, {});
-    ScanState scan = start_scan(compiled, listed);
-    std::istringstream in(kMadeUpFile);
-    std::vector<RowHit> hits;
-    scan_file(scan, "src/a.cpp", false, in, [&](const RowHit& h) { hits.push_back(h); });
-    REQUIRE(hits.size() == 3);
-    CHECK(hits[0].rule_index == 0);
-    CHECK(hits[0].line == 2);
-    CHECK(hits[0].text == "return made_up(1);");
-    CHECK(hits[0].take == Take::taken);
-    CHECK(hits[0].listed_index == std::optional<size_t>(0));
-    CHECK(hits[1].line == 5);
-    CHECK(hits[1].text == "x = made_up(3);");
-    CHECK(hits[1].take == Take::unlisted);
-    CHECK_FALSE(hits[1].listed_index.has_value());
-    CHECK(hits[2].line == 6);
-    CHECK(hits[2].text == "return made_up(1);");
-    CHECK(hits[2].take == Take::used_up);
-    CHECK_FALSE(hits[2].listed_index.has_value());
 }
 
 TEST_CASE("single-owner: select_rule_files picks the rules files from a path list") {
