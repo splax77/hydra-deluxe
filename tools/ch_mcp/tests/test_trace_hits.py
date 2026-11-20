@@ -30,7 +30,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
-from tools.ch_mcp import hydra_end  # noqa: E402
+from tools.ch_mcp import hydra_end, install_chart  # noqa: E402
 from tools.ch_mcp import trace_hits as TH  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
@@ -239,13 +239,19 @@ class SongEndTest(unittest.TestCase):
         self.assertEqual(made, [chart])
 
     def test_a_folder_with_no_chart_is_refused_with_no_dump(self):
-        before = len(FAKE.charts)
-        with self.assertRaises(hydra_end.SongEndMissing) as caught:
-            TH.song_end_ms(self.song)
-        self.assertEqual(str(caught.exception),
-                         f"{self.song} has no notes.chart or notes.mid, so Hydra has no "
-                         "song end to cap the trace at")
-        self.assertEqual(len(FAKE.charts), before)
+        # hydra_end's own make_dump, with an exe that is not there: a dump
+        # tried would fail with ReplayFailed as the refusal's cause.
+        missing_exe = os.path.join(self.tmp.name, "no-such-hydra_replay.exe")
+        with unittest.mock.patch.object(hydra_end, "make_dump", _REAL_MAKE_DUMP), \
+                unittest.mock.patch.object(prep_inputs, "DEFAULT_EXE", missing_exe):
+            with self.assertRaises(hydra_end.SongEndMissing) as caught:
+                TH.song_end_ms(self.song)
+        self.assertIsNone(caught.exception.__cause__)
+        # The refusal names the folder and every chart file it looked for.
+        refusal = str(caught.exception)
+        self.assertIn(self.song, refusal)
+        for name in install_chart.CHART_FILES:
+            self.assertIn(name, refusal)
 
     def test_a_failed_dump_is_refused(self):
         # hydra_end's own make_dump, run with an exe that is not there, so
@@ -377,9 +383,11 @@ class CommandLineTest(unittest.TestCase):
         session = FakeSession([])
         code = self.run_main(["--mode", "count"], session)
         self.assertEqual(code, 1)
-        self.assertEqual(self.lines, [
-            f"{self.song} has no notes.chart or notes.mid, so Hydra has no song end "
-            "to cap the trace at; nothing traced"])
+        # The one line is song_end_ms's own refusal for this folder.
+        with self.assertRaises(hydra_end.SongEndMissing) as caught:
+            TH.song_end_ms(self.song)
+        self.assertEqual(len(self.lines), 1, self.lines)
+        self.assertTrue(self.lines[0].startswith(str(caught.exception)), self.lines)
         self.assertIsNone(session.script)  # no agent was loaded
 
     def test_an_agent_error_is_printed_and_exits_1(self):
@@ -401,7 +409,9 @@ class CommandLineTest(unittest.TestCase):
         code = self.run_main(["--mode", "count"], FakeSession([]))
         self.assertEqual(code, 1)
         self.assertEqual(self.lines, [BS.check(self.agent)])
-        self.assertTrue(self.lines[0].startswith(f"{self.agent} not found; "))
+        # The line names the missing agent and the command that builds it.
+        self.assertIn(self.agent, self.lines[0])
+        self.assertIn(BS.build_command(self.agent), self.lines[0])
 
     def test_a_stale_agent_runs_nothing(self):
         with open(os.path.join(self.tmp.name, "trace.ts"), "a", encoding="utf-8") as fh:
