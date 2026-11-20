@@ -979,7 +979,7 @@ TEST_CASE("mid: a lane's velocity picks the lowest difficulty that shows it") {
             }
         }
         CHECK_MESSAGE(shown >= 1, velocity);
-        lowest_of.push_back(shown == 0 ? 0 : shown - 1);
+        lowest_of.push_back(shown == 0 ? size_t{0} : shown - 1);
     }
     for (size_t d = 0; d < n; ++d) {
         size_t first = lowest_of.size(), last = 0, count = 0;
