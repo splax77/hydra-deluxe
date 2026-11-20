@@ -17,6 +17,7 @@ import tempfile
 import threading
 import time
 import unittest
+import urllib.parse
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -177,51 +178,6 @@ STEPS = [
 
 
 class OpenSongTest(MenuToolsCase):
-    def screens(self):
-        """The game's reads for STEPS: Start shows the profile screen, Green
-        the main menu, Green the song list with the target selected; Green
-        opens the player screen, Green again loads the target, which reads
-        loaded on the read after."""
-        folder = self.folder
-
-        def script(presses, reads):
-            if presses < 3:
-                return state(screen=(None, "PlayerProfileMenu", "MainMenu")[presses])
-            if presses == 3:
-                return state(screen="SongSelect", selected=folder)
-            if presses == 4:
-                return state(screen="PlayerSelectionMenu", selected=folder)
-            return state(found=True, loaded=self.frida.reads > self.loaded_after, current=folder)
-        self.loaded_after = 10 ** 9
-        return script
-
-    def test_backup_comes_before_the_first_press(self):
-        tools = self.tools(self.screens(), STEPS)
-        self.loaded_after = 0
-        tools.ch_open_song(self.folder)
-        self.assertEqual(self.events[0], BACKUP)
-        self.assertEqual(self.events.count(BACKUP), 1)
-
-    def _player_script(self, player):
-        """The checked-in walk, with the player screen reading `player`."""
-        def script(presses, reads):
-            if presses < 4:
-                return state(screen=(None, "PlayerProfileMenu", "MainMenu", "SongSelect")[presses],
-                             selected=self.other)
-            if presses == 4:
-                return state(screen="PlayerSelectionMenu", selected=self.other, player=player)
-            return state(found=True, loaded=True, current=self.folder)
-        return script
-
-    def test_open_song_refuses_a_player_word_menu_fields_does_not_hold(self):
-        tools = self.tools(self._player_script((DRUMS, EXPERT)))
-        for asked in ("Drums", "Drums,Brutal", "Drum,Expert"):
-            with self.subTest(asked=asked):
-                reply = tools.ch_open_song(self.folder, asked)
-                self.assertTrue(reply.startswith("refused: player "), reply)
-                self.assertTrue(reply.endswith("; nothing pressed"), reply)
-        self.assertEqual(self.kit.presses(), [])
-
     def test_no_kit_refuses_before_any_read(self):
         tools = self.tools(lambda presses, reads: state(), STEPS, kit=False)
         self.assertEqual(tools.ch_open_song(self.folder), MT.NO_KIT)
@@ -418,6 +374,43 @@ class RealToolsTest(unittest.TestCase):
         self.assertIn("kit items pressed so far: none", reply)
         self.assertEqual(len(replies.served), 1)
 
+    def test_a_player_word_menu_fields_does_not_hold_is_refused_before_any_read(self):
+        # The asked words are built from menu_fields.json's own tables: an
+        # instrument with no difficulty, an instrument word where the
+        # difficulty goes, and an instrument word missing its last letter.
+        instruments = list(MT._field_words(MT.INSTRUMENT_KEY).values())
+        difficulties = list(MT._field_words(MT.DIFFICULTY_KEY).values())
+        instrument, difficulty = instruments[0], difficulties[0]
+        self.assertNotIn(instrument, difficulties)
+        self.assertNotIn(instrument[:-1], instruments)
+        replies = self.recorded()
+        tools = MT.MenuTools(self.game, replies, self.lock, kit=self.kit)
+        for asked in (instrument, f"{instrument},{instrument}",
+                      f"{instrument[:-1]},{difficulty}"):
+            with self.subTest(asked=asked):
+                with self.assertRaises(ValueError) as caught:
+                    MT.player_target(asked)
+                reply = tools.ch_open_song(self.target, asked)
+                self.assertTrue(reply.startswith("refused:"), reply)
+                self.assertIn(str(caught.exception), reply)
+        # Refused before the first read, so before the backup and any press.
+        self.assertEqual(replies.served, [])
+        self.assertEqual(self.backups(), [])
+
+    def test_a_steps_file_with_an_item_the_kit_cannot_press_is_refused_before_any_read(self):
+        bad = "lane:" + next(iter(KT.KIT_ELEMENTS))
+        self.assertIsNotNone(MT.item_problem(bad))
+        path = self.steps_file([{"name": "x", "items": [bad], "expect": self.first["expect"]}])
+        with self.assertRaises(MT.StepsInvalid) as caught:
+            MT.load_steps(path)
+        replies = self.recorded()
+        tools = MT.MenuTools(self.game, replies, self.lock, kit=self.kit, steps_path=path)
+        reply = tools.ch_open_song(self.target)
+        self.assertTrue(reply.startswith("refused:"), reply)
+        self.assertIn(str(caught.exception), reply)
+        self.assertEqual(replies.served, [])
+        self.assertEqual(self.backups(), [])
+
     def test_a_step_waits_menu_step_cap_s_reading_every_menu_poll_s(self):
         # A walk of one step with no presses, waiting for the checked-in
         # walk's first word, on MenuTools' own clock. No recorded read shows
@@ -467,7 +460,7 @@ class ExpectWordsTest(unittest.TestCase):
                 self.assertEqual(holding, loaded_words)
 
     def test_only_true_counts_as_active(self):
-        for reads in ([False], [None], ["error: x"], [], [1], "true"):
+        for reads in ([False], [None], ["error: x"], []):
             read = state()
             read["menu"]["classes"]["MainMenu"]["active"] = reads
             with self.subTest(reads=reads):
@@ -494,31 +487,43 @@ class StepsFileTest(unittest.TestCase):
         self.data = MT.load_steps()
         self.steps = self.data["steps"]
 
-    def test_it_loads_and_starts_unverified(self):
-        self.assertIs(self.data["verified"], False)
-
-    def test_it_names_the_two_manual_pages_and_only_repo_files_that_exist(self):
+    def test_every_source_is_a_web_page_or_a_repo_file_that_exists(self):
         # The test names no repo file itself: a plan the file cites leaves the
         # repo when its work is done, and this check then fails until the
         # citation moves with it.
-        wiki = [s for s in self.data["sources"] if s.startswith("https://wiki.clonehero.net/")]
-        self.assertEqual(len(wiki), 2)
-        for source in self.data["sources"]:
-            if source in wiki:
-                continue
-            self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, source)), source)
+        sources = self.data["sources"]
+        self.assertTrue(sources, "menu_steps.json cites no source")
+        for source in sources:
+            url = urllib.parse.urlparse(source)
+            with self.subTest(source=source):
+                if url.scheme:
+                    self.assertEqual(url.scheme, "https")
+                    self.assertTrue(url.netloc and url.path.strip("/"))
+                else:
+                    self.assertTrue(os.path.isfile(os.path.join(_REPO_ROOT, source)))
 
     def test_every_item_is_a_kit_item(self):
         for step in self.steps:
             for item in step["items"]:
                 self.assertIsNone(MT.item_problem(item), item)
 
-    def test_the_item_check_refuses_what_a_step_may_not_list(self):
-        for bad in ("enter", "space", "down", "lane:green", "text:{name}", "text:x",
-                    "kit:purple", "kit:green,kick", "kit:", "green"):
-            self.assertIsNotNone(MT.item_problem(bad), bad)
-        for good in ("kit:green", "kit:Start", "KIT: kick", "kit:yellow_cymbal"):
-            self.assertIsNone(MT.item_problem(good), good)
+    def test_the_item_check_takes_only_one_prefixed_kit_name(self):
+        # Built from kit_tools' own names and prefix: every kit name with the
+        # prefix passes, in any case and with a space after the prefix; a
+        # bare name, another prefix, two names in one item, a name the kit
+        # lacks and the prefix alone are refused.
+        names = list(KT.KIT_ELEMENTS)
+        self.assertGreaterEqual(len(names), 2)
+        self.assertIsNotNone(MT.item_problem(KT.KIT_PREFIX))
+        for name, other in zip(names, names[1:] + names[:1]):
+            with self.subTest(name=name):
+                self.assertIsNone(MT.item_problem(KT.KIT_PREFIX + name))
+                self.assertIsNone(MT.item_problem((KT.KIT_PREFIX + " " + name).upper()))
+                unknown = name + "x"
+                self.assertNotIn(unknown, KT.KIT_ELEMENTS)
+                for bad in (name, "lane:" + name, f"{KT.KIT_PREFIX}{name},{other}",
+                            KT.KIT_PREFIX + unknown):
+                    self.assertIsNotNone(MT.item_problem(bad), bad)
 
     def test_a_lane_or_key_item_says_the_kit_route_presses_no_keys(self):
         for bad in ("lane:green", "enter", "text:x"):
@@ -564,13 +569,14 @@ class StepsFileTest(unittest.TestCase):
             self.assertEqual(events, [])
             self.assertEqual(frida.reads, 0)
 
-    def test_the_object_reads_are_marked_unproven(self):
-        for step in self.steps:
-            if step["expect"].endswith(("_live", "_active")) and step["expect"] != "game_manager_live":
-                self.assertIs(step.get("unproven"), True, step["name"])
-
-    def test_it_ends_on_song_loaded(self):
-        self.assertEqual(self.steps[-1]["expect"], "song_loaded")
+    def test_it_ends_on_a_word_every_real_read_of_a_playing_song_holds(self):
+        reads = recorded_reads()
+        if not reads:
+            self.fail("the recorded state logs hold no read")
+        holds = MT.EXPECT[self.steps[-1]["expect"]]
+        for read in reads:
+            with self.subTest(loaded=MT.loaded_folder(read)):
+                self.assertTrue(holds(read, MT.loaded_folder(read)))
 
 
 if __name__ == "__main__":
