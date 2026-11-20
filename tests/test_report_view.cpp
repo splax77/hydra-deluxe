@@ -29,7 +29,7 @@
 #include "app/report_view.h"
 #include "core/model.h"           // counted, format_ms, group_thousands, kCloneHeroSpCap
 #include "core/squeeze_rating.h"  // timing_tiers, beyond_tier, none_tier
-#include "core/strutil.h"         // ends_with, starts_with
+#include "core/strutil.h"         // starts_with
 #include "corpus_util.h"
 #include "dm_fixture.h"           // testdm::settings, profile, save, make_score, kHash
 #include "headless_imgui_fixture.h"
@@ -92,7 +92,7 @@ const report::GeneratedReport& corpus_page() {
 }
 
 // The corpus page's rows. Fails the test when the corpus gives none.
-const std::vector<ReportRow>& corpus_rows() {
+const std::vector<ReportRow>& corpus_report_rows() {
     const std::vector<ReportRow>& rows = corpus_page().paths;
     REQUIRE(!rows.empty());
     return rows;
@@ -108,7 +108,7 @@ enum ScoreIndex : size_t { kUnder, kAbove, kAt, kOtherSpeed, kMissing, kScoreCou
 // named from the library.
 std::vector<DmReportRow> corpus_scores() {
     std::vector<const ReportRow*> best;  // each chart's rank-1 row, in page order
-    for (const ReportRow& r : corpus_rows()) {
+    for (const ReportRow& r : corpus_report_rows()) {
         if (r.rank != 1) continue;
         const bool seen = std::any_of(best.begin(), best.end(), [&](const ReportRow* b) {
             return b->hyhash == r.hyhash;
@@ -116,7 +116,7 @@ std::vector<DmReportRow> corpus_scores() {
         if (!seen) best.push_back(&r);
     }
     REQUIRE(best.size() >= 4);
-    for (const ReportRow& r : corpus_rows()) REQUIRE(r.hyhash != testdm::kHash);
+    for (const ReportRow& r : corpus_report_rows()) REQUIRE(r.hyhash != testdm::kHash);
 
     const auto score = [](const std::string& id, int64_t points, int speed, const char* posted,
                           std::optional<int> rank) {
@@ -309,7 +309,7 @@ TEST_CASE("report view search: folded words in any order, nothing more") {
     CHECK(search_words("").empty());
     CHECK(search_words("   ").empty());
 
-    const std::vector<ReportRow>& rows = corpus_rows();
+    const std::vector<ReportRow>& rows = corpus_report_rows();
     // A corpus row whose song holds a plain "e", so a query can spell it "é".
     const auto with_e = std::find_if(rows.begin(), rows.end(), [](const ReportRow& r) {
         return holds(r.song, "e");
@@ -345,7 +345,7 @@ TEST_CASE("report view search: folded words in any order, nothing more") {
 }
 
 TEST_CASE("report view: search, keep-rule, clear_search and the count line") {
-    const std::vector<ReportRow>& rows = corpus_rows();
+    const std::vector<ReportRow>& rows = corpus_report_rows();
     const auto& noun = path_report_view::kNoun;
     TableView<ReportRow> view = path_view(rows);
     CHECK(view.visible() == report_samples::every_row(rows.size()));
@@ -380,7 +380,7 @@ TEST_CASE("report view: search, keep-rule, clear_search and the count line") {
 
 // The rows live once, in the result; the view only points at them.
 TEST_CASE("report view shares its result's rows instead of copying them") {
-    const std::shared_ptr<const report::GeneratedReport> result = path_result(corpus_rows());
+    const std::shared_ptr<const report::GeneratedReport> result = path_result(corpus_report_rows());
     const long owners_before = result.use_count();
     const TableView<ReportRow> view = path_view_of(result);
     CHECK(&view.rows() == &result->paths);
@@ -391,7 +391,7 @@ TEST_CASE("report view shares its result's rows instead of copying them") {
 // A Refresh, a new batch's report or a Cancel replaces or drops the slot's
 // result while the window still holds its view.
 TEST_CASE("report view still reads its rows after the result is replaced or dropped") {
-    const std::vector<ReportRow>& rows = corpus_rows();
+    const std::vector<ReportRow>& rows = corpus_report_rows();
     std::shared_ptr<const report::GeneratedReport> result = path_result(rows);
     const std::weak_ptr<const report::GeneratedReport> held = result;
     TableView<ReportRow> view = path_view_of(result);
@@ -412,22 +412,26 @@ TEST_CASE("report view still reads its rows after the result is replaced or drop
 }
 
 TEST_CASE("report view count line: the noun follows counted on the total") {
-    const std::vector<ReportRow>& rows = corpus_rows();
+    const std::vector<ReportRow>& rows = corpus_report_rows();
     const auto& noun = path_report_view::kNoun;
     const std::string one_path = counted(1, noun.one, noun.many);
     TableView<ReportRow> view = path_view({rows.front()});
-    CHECK(ends_with(view.count_line(noun), one_path));
+    // One row in the table: the singular noun, never the plural.
+    CHECK(holds(view.count_line(noun), one_path));
+    CHECK_FALSE(holds(view.count_line(noun), noun.many));
     // No row shown: the noun still follows the one row in the table.
     view.set_search(absent_from(rows, path_report_view::path_search_text(rows.front())));
     REQUIRE(view.visible().empty());
-    CHECK(ends_with(view.count_line(noun), one_path));
+    CHECK(holds(view.count_line(noun), one_path));
+    CHECK_FALSE(holds(view.count_line(noun), noun.many));
     const auto& scores = dm_report_view::kNoun;
-    CHECK(ends_with(report_view::count_line(4, 4, scores), counted(4, scores.one, scores.many)));
-    CHECK(ends_with(report_view::count_line(1, 1, scores), counted(1, scores.one, scores.many)));
+    CHECK(holds(report_view::count_line(4, 4, scores), counted(4, scores.one, scores.many)));
+    CHECK(holds(report_view::count_line(1, 1, scores), counted(1, scores.one, scores.many)));
+    CHECK_FALSE(holds(report_view::count_line(1, 1, scores), scores.many));
 }
 
 TEST_CASE("report view sort: first directions, empty values sink, two keys, stable ties") {
-    const std::vector<ReportRow>& rows = corpus_rows();
+    const std::vector<ReportRow>& rows = corpus_report_rows();
     const auto cols = path_report_view::path_columns();
     TableView<ReportRow> view = path_view(rows);
     // A numeric column starts high to low, a text one A to Z.
@@ -510,7 +514,7 @@ TEST_CASE("path report cells read as the page wrote them") {
     const auto key = [&](const char* id, const ReportRow& r) {
         return column_named(cols, id).sort_key(r);
     };
-    for (const ReportRow& r : corpus_rows()) {
+    for (const ReportRow& r : corpus_report_rows()) {
         INFO(r.song << " path " << r.path);
         CHECK(cell_of(cols, "song", r) == r.song);
         CHECK(cell_of(cols, "artist", r) == r.artist);
@@ -730,7 +734,7 @@ TEST_CASE("dm comparison: Status choices, the keep-rule, sort and count line") {
 // as a Label whatever its cells draw in.
 TEST_CASE("report column_spec: a Notation column's header measures as Label, its cells in Notation") {
     // The longest path Hydra's report gives on the corpus.
-    const std::vector<ReportRow>& rows = corpus_rows();
+    const std::vector<ReportRow>& rows = corpus_report_rows();
     const std::string cell = std::max_element(rows.begin(), rows.end(),
                                               [](const ReportRow& a, const ReportRow& b) {
                                                   return a.path.size() < b.path.size();
