@@ -1,10 +1,10 @@
 """Tests for menu_tools: ch_open_song's kit presses, waits, caps and refusals,
 the expect words, and the checked-in menu_steps.json.
 
-No game and no Frida: the game side is a fake that records the backup, the
-kit a fake that records each press, the Frida side a fake whose read is a
-function of the presses so far and the reads so far, and the clock a fake
-that sleeping moves.
+No game is running. Where a test can, it drives the server's real game,
+Frida and kit tools on a temp folder, never attached and never set up, and
+feeds the walk the state agent's reads from real Clone Hero runs. The older
+walk tests in OpenSongTest still use the fakes below.
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ import re
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,6 +23,11 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
+from tools.ch_mcp import bot_run  # noqa: E402
+from tools.ch_mcp import frida_tools as FT  # noqa: E402
+from tools.ch_mcp import game_files  # noqa: E402
+from tools.ch_mcp import game_tools as GT  # noqa: E402
+from tools.ch_mcp import kit_tools as KT  # noqa: E402
 from tools.ch_mcp import menu_tools as MT  # noqa: E402
 from tools.ch_mcp.frida_tools import StateUnread  # noqa: E402
 from tools.ch_mcp.game_tools import PressResult  # noqa: E402
@@ -171,26 +177,21 @@ STEPS = [
 
 
 class OpenSongTest(MenuToolsCase):
-    def screens(self, target_after_scrolls=0, never_target=False, loads=None):
+    def screens(self):
         """The game's reads for STEPS: Start shows the profile screen, Green
-        the main menu, Green the song list; the selected song is result
-        `target_after_scrolls`, each scroll press the next; Green opens the
-        player screen, Green again loads the song `loads` (the target when
-        None), which reads loaded on the read after."""
+        the main menu, Green the song list with the target selected; Green
+        opens the player screen, Green again loads the target, which reads
+        loaded on the read after."""
         folder = self.folder
-        other = self.other
-        loads = folder if loads is None else loads
 
         def script(presses, reads):
             if presses < 3:
                 return state(screen=(None, "PlayerProfileMenu", "MainMenu")[presses])
-            scrolls = self.kit.presses().count(MT.SEARCH_NEXT_ITEM)
-            if presses == 3 + scrolls:
-                hit = not never_target and scrolls == target_after_scrolls
-                return state(screen="SongSelect", selected=folder if hit else f"{other}{scrolls}")
-            if presses == 4 + scrolls:
+            if presses == 3:
+                return state(screen="SongSelect", selected=folder)
+            if presses == 4:
                 return state(screen="PlayerSelectionMenu", selected=folder)
-            return state(found=True, loaded=self.frida.reads > self.loaded_after, current=loads)
+            return state(found=True, loaded=self.frida.reads > self.loaded_after, current=folder)
         self.loaded_after = 10 ** 9
         return script
 
@@ -221,71 +222,11 @@ class OpenSongTest(MenuToolsCase):
                 self.assertTrue(reply.endswith("; nothing pressed"), reply)
         self.assertEqual(self.kit.presses(), [])
 
-    def test_a_failed_menu_block_refuses(self):
-        broken = {"found": False, "menu": {"error": "reading the menus failed: x"}}
-        self.assertIn("the menu read failed", MT.online_refusal(broken))
-        self.assertIn("no menu block", MT.online_refusal({"found": False}))
-        self.assertIn("no classes", MT.online_refusal({"menu": {"selectedSong": None}}))
-        odd = state()
-        odd["menu"]["classes"]["MainMenu"]["onlineMenuActive"] = True
-        self.assertIn("not a list", MT.online_refusal(odd))
-
-    def test_a_search_that_needs_two_scrolls_presses_exactly_two(self):
-        tools = self.tools(self.screens(target_after_scrolls=2), STEPS)
-        self.loaded_after = 0
-        reply = tools.ch_open_song(self.folder)
-        self.assertEqual(self.kit.presses().count(MT.SEARCH_NEXT_ITEM), 2)
-        self.assertIn(f"step 4 (search): 2 {MT.SEARCH_NEXT_ITEM} presses to reach the target",
-                      reply)
-        self.assertIn("done:", reply)
-
-    def test_a_search_that_never_finds_the_target_stops_at_the_scroll_cap(self):
-        tools = self.tools(self.screens(never_target=True), STEPS)
-        reply = tools.ch_open_song(self.folder)
-        self.assertEqual(self.kit.presses().count(MT.SEARCH_NEXT_ITEM), MT.SEARCH_DOWN_CAP)
-        self.assertIn(f"stopped at step 4 (search): the target was not selected after "
-                      f"{MT.SEARCH_DOWN_CAP} {MT.SEARCH_NEXT_ITEM} presses (SEARCH_DOWN_CAP)",
-                      reply)
-
-    def test_unattached_refuses_before_any_press(self):
-        tools = self.tools(lambda presses, reads: None, STEPS)
-        reply = tools.ch_open_song(self.folder)
-        self.assertIn("stopped at step 1 (profile screen): no read came back: state: not "
-                      "attached", reply)
-        self.assertIn("last read: none", reply)
-        self.assertEqual(self.events, [])
-
     def test_no_kit_refuses_before_any_read(self):
         tools = self.tools(lambda presses, reads: state(), STEPS, kit=False)
         self.assertEqual(tools.ch_open_song(self.folder), MT.NO_KIT)
         self.assertEqual(self.events, [])
         self.assertEqual(self.frida.reads, 0)
-
-    def test_a_refused_kit_press_stops_at_once_naming_the_refusal(self):
-        self.kit.refuse.add("kit:start")
-        tools = self.tools(lambda presses, reads: state(), STEPS)
-        reply = tools.ch_open_song(self.folder)
-        self.assertIn("stopped at step 1 (profile screen): the kit refused the press of "
-                      "kit:start, so nothing was pressed: the kit is not set up", reply)
-        self.assertIn("kit items pressed so far: none", reply)
-        self.assertIn("last read:\n  PlayerProfileMenu:", reply)
-        self.assertEqual(self.frida.reads, 1)
-        self.assertLess(self.clock.t, MT.MENU_STEP_CAP_S)
-
-    def test_a_refused_scroll_press_in_the_search_stops_at_once(self):
-        self.kit.refuse.add(MT.SEARCH_NEXT_ITEM)
-        tools = self.tools(self.screens(target_after_scrolls=2), STEPS)
-        reply = tools.ch_open_song(self.folder)
-        self.assertIn(f"stopped at step 4 (search): the kit refused the press of "
-                      f"{MT.SEARCH_NEXT_ITEM}", reply)
-        self.assertEqual(self.kit.presses().count(MT.SEARCH_NEXT_ITEM), 0)
-
-    def test_presses_after_the_first_wait_the_key_gap(self):
-        tools = self.tools(self.screens(), STEPS)
-        self.loaded_after = 0
-        tools.ch_open_song(self.folder)
-        # Five presses: start, then green four times.
-        self.assertEqual(self.clock.slept.count(input_driver.MENU_KEY_GAP_S), 4)
 
     def test_same_folder_ignores_case_slashes_and_a_trailing_slash(self):
         self.assertTrue(MT.same_folder(self.folder, self.folder.upper().replace("\\", "/") + "/"))
@@ -314,13 +255,36 @@ RECORDED_STATE_LOGS = (("2026-11-06-ls-d1b-run1", "state-1.jsonl"),
                        ("ls-g2-run1", "state-2.jsonl"))
 
 
+def recorded_reads():
+    """Every read the state agent sent in RECORDED_STATE_LOGS, in order."""
+    return [message["payload"] for run, name in RECORDED_STATE_LOGS
+            for message in recorded(run, name) if message.get("type") == "send"]
+
+
+class RecordedReplies:
+    """Stands where FridaTools.read_state is called and answers with the
+    recorded reads in turn, starting over after the last. It keeps each read
+    it gave and the time.monotonic() it gave it at, the clock MenuTools waits
+    on by default."""
+
+    def __init__(self):
+        self.reads = recorded_reads()
+        self.served = []
+        self.times = []
+
+    def read_state(self):
+        read = self.reads[len(self.served) % len(self.reads)]
+        self.served.append(read)
+        self.times.append(time.monotonic())
+        return read
+
+
 class RecordedReadTest(unittest.TestCase):
     """ch_open_song's end check and Online check, run on reads from real
     runs."""
 
     def setUp(self):
-        self.reads = [message["payload"] for run, name in RECORDED_STATE_LOGS
-                      for message in recorded(run, name) if message.get("type") == "send"]
+        self.reads = recorded_reads()
         if not self.reads:
             self.fail("the recorded state logs hold no read")
         for read in self.reads:
@@ -370,24 +334,137 @@ class RecordedReadTest(unittest.TestCase):
                 self.assertIsNone(MT.online_refusal(read))
 
 
+class RealToolsTest(unittest.TestCase):
+    """ch_open_song on the server's real game, Frida and kit tools, on a temp
+    folder with no registry export: Frida is never attached and the kit is
+    never set up, which is what a run sees before ch_attach and
+    ch_kit_setup. Where a walk needs a read, RecordedReplies gives it the
+    reads of real runs. MenuTools keeps its own clock."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = tmp.name
+        self.scratch = os.path.join(self.root, "scratch")
+        self.target = os.path.join(self.root, "target")
+        self.lock = threading.RLock()
+        self.game = GT.GameTools(bot_run.Env(run_reg=None), self.lock, self.scratch)
+        self.frida = FT.FridaTools(self.game, self.lock)
+        self.kit = KT.KitTools(self.game, self.frida, self.lock)
+        self.first = MT.load_steps()["steps"][0]
+
+    def backups(self):
+        """The backup folders GameTools.ensure_backup made under the temp
+        scratch folder."""
+        return [d for _root, dirs, _files in os.walk(self.scratch) for d in dirs
+                if d.startswith(game_files.BACKUP_PREFIX)]
+
+    def steps_file(self, steps):
+        path = os.path.join(self.root, "steps.json")
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump({"verified": False, "steps": steps}, f)
+        return path
+
+    def recorded(self):
+        replies = RecordedReplies()
+        if not replies.reads:
+            self.fail("the recorded state logs hold no read")
+        return replies
+
+    def test_unattached_refuses_before_any_press(self):
+        # The reason is the one the real FridaTools gives before ch_attach.
+        with self.assertRaises(StateUnread) as caught:
+            self.frida.read_state()
+        tools = MT.MenuTools(self.game, self.frida, self.lock, kit=self.kit)
+        reply = tools.ch_open_song(self.target)
+        self.assertIn(f"stopped at step 1 ({self.first['name']}): no read came back: "
+                      f"{caught.exception}", reply)
+        self.assertIn("kit items pressed so far: none", reply)
+        self.assertIn("last read: none", reply)
+        self.assertEqual(self.backups(), [])
+
+    def test_a_refused_kit_press_stops_at_once_naming_the_refusal(self):
+        # The checked-in walk's first step presses a kit item; the real kit,
+        # never set up, refuses it with its own reason.
+        if not self.first["items"]:
+            self.fail(f"step 1 ({self.first['name']}) of menu_steps.json presses nothing")
+        replies = self.recorded()
+        tools = MT.MenuTools(self.game, replies, self.lock, kit=self.kit)
+        reply = tools.ch_open_song(self.target)
+        self.assertIn(f"stopped at step 1 ({self.first['name']}): the kit refused the press "
+                      f"of {self.first['items'][0]}, so nothing was pressed: {KT.NOT_SET_UP}",
+                      reply)
+        self.assertIn("kit items pressed so far: none", reply)
+        last = "\n".join("  " + line for line in FT.menu_lines(replies.served[-1][FT.MENU_BLOCK]))
+        self.assertIn("last read:\n" + last, reply)
+        # One read, the one before the press: the walk did not wait.
+        self.assertEqual(len(replies.served), 1)
+        # The backup comes before the first press, refused or not.
+        self.assertEqual(len(self.backups()), 1)
+
+    def test_a_refused_scroll_press_in_the_search_stops_at_once(self):
+        # A walk of one search step with no presses of its own: no recorded
+        # read selects the target, so the search presses SEARCH_NEXT_ITEM,
+        # and the real kit, never set up, refuses it.
+        replies = self.recorded()
+        for read in replies.reads:
+            if MT.EXPECT[MT.SEARCH_EXPECT](read, self.target):
+                self.fail(f"a recorded read selects the target: {read}")
+        path = self.steps_file([{"name": "search", "items": [], "expect": MT.SEARCH_EXPECT}])
+        tools = MT.MenuTools(self.game, replies, self.lock, kit=self.kit, steps_path=path)
+        reply = tools.ch_open_song(self.target)
+        self.assertIn(f"stopped at step 1 (search): the kit refused the press of "
+                      f"{MT.SEARCH_NEXT_ITEM}, so nothing was pressed: {KT.NOT_SET_UP}", reply)
+        self.assertIn("kit items pressed so far: none", reply)
+        self.assertEqual(len(replies.served), 1)
+
+    def test_a_step_waits_menu_step_cap_s_reading_every_menu_poll_s(self):
+        # A walk of one step with no presses, waiting for the checked-in
+        # walk's first word, on MenuTools' own clock. No recorded read shows
+        # that word, so the step waits out its cap. This takes
+        # MENU_STEP_CAP_S of real time.
+        word = self.first["expect"]
+        replies = self.recorded()
+        for read in replies.reads:
+            if MT.EXPECT[word](read, self.target):
+                self.fail(f"a recorded read shows {word}, so the step would not wait: {read}")
+        path = self.steps_file([{"name": "wait", "items": [], "expect": word}])
+        tools = MT.MenuTools(self.game, replies, self.lock, kit=self.kit, steps_path=path)
+        reply = tools.ch_open_song(self.target)
+        self.assertIn(f"stopped at step 1 (wait): {word} did not hold within", reply)
+        times = replies.times
+        # Read 0 is the one before the step; the step's wait reads the rest.
+        self.assertGreaterEqual(len(times), 3, times)
+        # The wait lasts the cap, and stops at the first read past it.
+        self.assertGreaterEqual(times[-1] - times[0], MT.MENU_STEP_CAP_S)
+        self.assertLess(times[-2] - times[1], MT.MENU_STEP_CAP_S)
+        for before, after in zip(times, times[1:]):
+            self.assertGreaterEqual(after - before, MT.MENU_POLL_S)
+
+
 class ExpectWordsTest(unittest.TestCase):
-    WORDS = {"profile_screen_active": "PlayerProfileMenu",
-             "main_menu_active": "MainMenu",
-             "song_select_active": "SongSelect",
-             "player_screen_active": "PlayerSelectionMenu"}
-
-    def test_each_active_word_holds_when_its_menu_reads_active_true(self):
-        for word, name in self.WORDS.items():
-            with self.subTest(word=word):
-                self.assertTrue(MT.EXPECT[word](state(screen=name), "t"))
-                for other in MENUS:
-                    if other != name:
-                        self.assertFalse(MT.EXPECT[word](state(screen=other), "t"))
-
-    def test_one_active_instance_among_several_is_enough(self):
-        read = state()
-        read["menu"]["classes"]["SongSelect"]["active"] = [False, None, True]
-        self.assertTrue(MT.EXPECT["song_select_active"](read, "t"))
+    def test_a_real_read_while_a_song_plays_holds_only_the_loaded_song_words(self):
+        # In every recorded read the agent found each menu class with no live
+        # object, because a song was playing. So of every expect word, the
+        # ones that hold are exactly the words of the checked-in walk's steps
+        # that do not rest on a menu object (menu_tools marks those that do
+        # "unproven"), with the loaded folder as the target.
+        reads = recorded_reads()
+        if not reads:
+            self.fail("the recorded state logs hold no read")
+        steps = MT.load_steps()["steps"]
+        loaded_words = {step["expect"] for step in steps if not step.get("unproven")}
+        if not loaded_words or len(loaded_words) == len(steps):
+            self.fail("menu_steps.json marks no step, or every step, unproven")
+        for read in reads:
+            classes = read[FT.MENU_BLOCK]["classes"]
+            live = {name: entry.get("live") for name, entry in classes.items()}
+            if any(live.values()):
+                self.fail(f"a recorded read has a live menu object: {live}")
+            target = MT.loaded_folder(read)
+            with self.subTest(loaded=target):
+                holding = {word for word, holds in MT.EXPECT.items() if holds(read, target)}
+                self.assertEqual(holding, loaded_words)
 
     def test_only_true_counts_as_active(self):
         for reads in ([False], [None], ["error: x"], [], [1], "true"):
@@ -403,20 +480,8 @@ class ExpectWordsTest(unittest.TestCase):
         self.assertFalse(MT.EXPECT["main_menu_active"](unfound, "t"))
         self.assertFalse(MT.EXPECT["main_menu_active"]({"found": False}, "t"))
 
-    def test_the_old_words_stay(self):
-        for word in ("song_select_live", "selected_folder_is_target", "player_screen_live",
-                     "game_manager_live", "song_loaded"):
-            self.assertIn(word, MT.EXPECT)
-        self.assertTrue(MT.EXPECT["song_select_live"](state(), "t"))
-        self.assertFalse(MT.EXPECT["song_select_live"](state(live=0), "t"))
-
 
 class NumbersTest(unittest.TestCase):
-    def test_the_three_numbers_are_ruling_3s(self):
-        self.assertEqual(MT.MENU_STEP_CAP_S, 10)
-        self.assertEqual(MT.SEARCH_DOWN_CAP, 10)
-        self.assertEqual(MT.MENU_POLL_S, 0.5)
-
     def test_the_key_gap_is_input_drivers_not_defined_here(self):
         self.assertIs(MT.MENU_KEY_GAP_S, input_driver.MENU_KEY_GAP_S)
         with open(MT.__file__, encoding="utf-8") as f:

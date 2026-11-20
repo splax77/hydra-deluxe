@@ -1002,6 +1002,40 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
     CHECK(ticks_checked > 0);
 }
 
+// Where each bar arrived is stamped by the search (Activation::bank_rise_ticks,
+// Path::trailing_bank_ticks). The scene copies those lists and works out none
+// of its own, so on every corpus path they match item by item. A squeezed-out
+// bar is the first entry of the next activation's list (or of the trailing
+// list), so a scene that moved it would fail here.
+TEST_CASE("preview scene: each activation's bar arrivals are the record's stored list") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int lists_checked = 0, squeeze_outs = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        for (const Path* p : rec.all_paths()) {
+            const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            const ActivationWalk acts = p->walk_activations();
+            REQUIRE(scene.activations.size() == acts.size());
+            for (size_t i = 0; i < acts.size(); ++i) {
+                INFO(chart << " | path " << p->pathstring() << " | activation " << i);
+                CHECK(scene.activations[i].bank_rise_ticks == acts[i].bank_rise_ticks);
+                ++lists_checked;
+                if (acts[i].sqout_tick) ++squeeze_outs;
+            }
+            INFO(chart << " | path " << p->pathstring() << " | trailing bars");
+            CHECK(scene.trailing_bank_ticks == p->trailing_bank_ticks);
+            ++lists_checked;
+        }
+    }
+    MESSAGE("bar lists checked: " << lists_checked << ", squeeze-outs: " << squeeze_outs);
+    CHECK(lists_checked > 0);
+    // A squeeze-out's bar is the case a second rule would move; the corpus
+    // must hold one, or the check above never meets it.
+    CHECK(squeeze_outs > 0);
+}
+
 // Each button build_path_buttons makes for a corpus record is labelled with
 // its own notation. A Within path's label is the notation alone; an Optimal
 // and an all-0 path's label is the notation and then a note of its list, and

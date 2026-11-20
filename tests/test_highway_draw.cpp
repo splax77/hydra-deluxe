@@ -6,7 +6,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
+#include <filesystem>
 #include <optional>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -126,6 +129,128 @@ std::vector<const DrawCommand*> strips_over(const std::vector<DrawCommand>& cmds
     return out;
 }
 
+bool same_color(const Color& a, const Color& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+// A floor flat: the floor is the only flat drawn in a colour with the depth
+// test on.
+bool is_floor_flat(const DrawCommand& c) {
+    return c.mesh == MeshId::Flat && c.depth == hydra::render::DepthMode::Less &&
+           c.material.kind == MaterialKind::Color;
+}
+
+// The floor's coloured flats, in draw order (near to far).
+std::vector<DrawCommand> floor_flats(const std::vector<DrawCommand>& cmds) {
+    std::vector<DrawCommand> out;
+    for (const DrawCommand& c : cmds)
+        if (is_floor_flat(c)) out.push_back(c);
+    return out;
+}
+
+bool is_energy_tex(TextureId t) {
+    return t == TextureId::BoxEnergy || t == TextureId::CymbalEnergy ||
+           t == TextureId::LongEnergy;
+}
+
+// The gems drawn for the chord at `ms`, with the playhead 50 ms before it (a
+// free input: ahead of the strike line, so nothing has flashed): every gem
+// mesh whose depth centre is the chord's. Each is true when drawn in an
+// energy texture.
+std::vector<bool> chord_energy(const TrackState& st, const PreviewConfig& cfg, double ms) {
+    const double now = ms / 1000.0 - 0.05;
+    const float z = static_cast<float>(time_to_z(cfg, now, ms / 1000.0, 1.0));
+    std::vector<bool> out;
+    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
+        if (c.mesh != MeshId::Tom && c.mesh != MeshId::Cymbal && c.mesh != MeshId::Kick) continue;
+        if ((c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z)) out.push_back(is_energy_tex(c.material.texture));
+    }
+    return out;
+}
+
+// Gem sizes that are literals in Onyx's code, not keys in its 3d-config.yml
+// (mtolly/onyx, haskell/packages/onyx-lib-game/src/Onyx/Game/Graphics.hs,
+// drawDrumPlay / drawGem, lines 660-668 at commit 84d5e51). The config holds
+// every other number the tests below use.
+constexpr float kOnyxPadGemHalfSize = 0.5f / 2.0f;  // Onyx: reference = 0.5 / 2
+constexpr float kOnyxGhostWidthScale = 0.7f;        // Onyx: (v - xCenter) * 0.7
+
+// Hail The Sun - Missed Injections (testdata/input, IB24 Tier 4), the song
+// alone. Its notes.mid turns dynamics on at tick 0 (ENABLE_CHART_DYNAMICS),
+// and its Expert drums carry a ghost kick (velocity 1 on pitch 96, tick
+// 269760), ghost Red toms (velocity 1 on 97) and accented Yellow cymbals
+// (velocity 127 on 98 with no tom marker, from tick 124320).
+const PreviewScene& missed_injections_base() {
+    static const PreviewScene scene = [] {
+        const AnalysisSettings cfg = Settings().to_analysis_settings();
+        const std::string chart = corpus::chart_named("Missed Injections");
+        if (chart.empty()) throw std::runtime_error("Missed Injections is not in the corpus");
+        return build_preview_base(corpus::song(chart, cfg.reading(), cfg.rules));
+    }();
+    return scene;
+}
+
+// Is the note at `tick` inside one of the scene's SP phrases (its end tick
+// included)?
+bool in_sp_phrase(const PreviewScene& scene, int64_t tick) {
+    for (const PreviewSpan& ph : scene.sp_phrases)
+        if (tick >= ph.start_tick && tick <= ph.end_tick) return true;
+    return false;
+}
+
+// The first note of the scene on `lane` that passes `want` and sits outside
+// every SP phrase, so its gem draws in its own pad's texture.
+template <typename Want>
+const PreviewNote* first_plain_note(const PreviewScene& scene, PreviewLane lane, Want&& want) {
+    for (const PreviewNote& n : scene.notes)
+        if (n.lane == lane && want(n) && !in_sp_phrase(scene, n.tick)) return &n;
+    return nullptr;
+}
+
+// The gem draws of mesh `mesh` for the chord at `ms`, with the playhead 50 ms
+// before it (a free input: ahead of the strike line, so nothing has flashed),
+// whose depth centre is the chord's and whose x centre is `x_centre`.
+std::vector<DrawCommand> gems_at(const TrackState& st, const PreviewConfig& cfg, double ms,
+                                 MeshId mesh, float x_centre) {
+    const double now = ms / 1000.0 - 0.05;
+    const float z = static_cast<float>(time_to_z(cfg, now, ms / 1000.0, 1.0));
+    std::vector<DrawCommand> out;
+    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0))
+        if (c.mesh == mesh && (c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z) &&
+            (c.lo[0] + c.hi[0]) * 0.5f == doctest::Approx(x_centre))
+            out.push_back(c);
+    return out;
+}
+
+// The centre of `pad`'s lane.
+float pad_centre(const PreviewConfig& cfg, Pad pad) {
+    float x1, x2;
+    pad_x(cfg, pad, x1, x2);
+    return (x1 + x2) * 0.5f;
+}
+
+// The frame "order and geometry" tests below share: a Red tom on the
+// playhead, a Yellow cymbal and a kick at 1.5 s, a solo, an offered fill
+// from 1.3 s to the 1.5 s chord, a measure line on the playhead and a half
+// beat 0.25 s on, drawn at now 1.0 s and speed 1.
+constexpr double kFrameNow = 1.0;
+
+TrackState frame_state() {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow, true),
+                   note(1500.0, PreviewLane::Kick)};
+    scene.solos = {span(900.0, 1200.0)};
+    scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
+    scene.beats = {{0, 1000.0, PreviewBeatKind::MeasureLine}, {0, 1250.0, PreviewBeatKind::Half}};
+    return build_track_state(scene, TrackStateOptions{});
+}
+
+std::vector<DrawCommand> frame_draws(const PreviewConfig& cfg) {
+    return build_highway_draws(frame_state(), cfg, kFrameNow, 1.0);
+}
+
+bool is_target_tex(TextureId t) { return t >= TextureId::TargetRed && t <= TextureId::TargetGreen; }
+
 }  // namespace
 
 // The map is stated on the config's own fields: the shipped values themselves
@@ -161,42 +286,47 @@ TEST_CASE("time_to_z: Onyx's linear time->depth map") {
     }
 }
 
+// The lanes tile the note area: the first starts at x_left, each ends where
+// the next starts, the last ends at x_right, all four are one width, and they
+// run Red, Yellow, Blue, Green from left to right.
 TEST_CASE("pad_x: the note area split into four lanes, left to right") {
-    PreviewConfig cfg = shipped_preview_config();
-    float x1, x2;
-    pad_x(cfg, Pad::Red, x1, x2);
-    CHECK(x1 == doctest::Approx(-1.0f));
-    CHECK(x2 == doctest::Approx(-0.5f));
-    pad_x(cfg, Pad::Yellow, x1, x2);
-    CHECK(x1 == doctest::Approx(-0.5f));
-    CHECK(x2 == doctest::Approx(0.0f));
-    pad_x(cfg, Pad::Blue, x1, x2);
-    CHECK(x1 == doctest::Approx(0.0f));
-    CHECK(x2 == doctest::Approx(0.5f));
-    pad_x(cfg, Pad::Green, x1, x2);
-    CHECK(x1 == doctest::Approx(0.5f));
-    CHECK(x2 == doctest::Approx(1.0f));
+    const PreviewConfig& cfg = shipped_preview_config();
+    REQUIRE(cfg.track.x_right > cfg.track.x_left);
+    float first_x1, first_x2;
+    pad_x(cfg, Pad::Red, first_x1, first_x2);
+    const float width = first_x2 - first_x1;
+    CHECK(width > 0.0f);
+    float edge = cfg.track.x_left;
+    for (const Pad p : {Pad::Red, Pad::Yellow, Pad::Blue, Pad::Green}) {
+        CAPTURE(static_cast<int>(p));
+        float x1, x2;
+        pad_x(cfg, p, x1, x2);
+        CHECK(x1 == doctest::Approx(edge));
+        CHECK(x2 - x1 == doctest::Approx(width));
+        edge = x2;
+    }
+    CHECK(edge == doctest::Approx(cfg.track.x_right));
 }
 
 TEST_CASE("make_camera: Onyx's tilted view and right-handed projection") {
-    PreviewConfig cfg = shipped_preview_config();
+    const PreviewConfig& cfg = shipped_preview_config();
+    const auto& T = cfg.track;
     HighwayCamera cam = make_camera(cfg, 1.0f);
-    CHECK(cam.view_pos.y == doctest::Approx(1.4f));
-    // World (0,-1,0) -> view (0, -0.907, -3.733): below centre, in front.
-    XMFLOAT3 p = transform(cam.view, 0.0f, -1.0f, 0.0f);
-    CHECK(p.x == doctest::Approx(0.0f).epsilon(0.001));
-    CHECK(p.y == doctest::Approx(-0.907f).epsilon(0.01));
-    CHECK(p.z == doctest::Approx(-3.733f).epsilon(0.01));
+    CHECK(cam.view_pos.y == doctest::Approx(cfg.view.camera_position.y));
+    // The highway's centre line on the floor, at the strike line and at the
+    // far end, seen from the camera.
+    const XMFLOAT3 p = transform(cam.view, 0.0f, T.y, T.z_now);
+    const XMFLOAT3 far = transform(cam.view, 0.0f, T.y, T.z_future);
     // The far end of the highway sits above the near end on screen.
-    XMFLOAT3 far = transform(cam.view, 0.0f, -1.0f, -12.0f);
     CHECK(far.y > p.y);
     CHECK(far.z < p.z);  // farther in front of the camera (RH: -Z)
     // Both project inside the clip volume with positive w.
     XMMATRIX vp = XMLoadFloat4x4(&cam.view) * XMLoadFloat4x4(&cam.proj);
-    XMVECTOR clip = XMVector4Transform(XMVectorSet(0.0f, -1.0f, -12.0f, 1.0f), vp);
+    XMVECTOR clip = XMVector4Transform(XMVectorSet(0.0f, T.y, T.z_future, 1.0f), vp);
     CHECK(XMVectorGetW(clip) > 0.0f);
     CHECK(std::fabs(XMVectorGetY(clip) / XMVectorGetW(clip)) < 1.0f);
-    XMVECTOR clip_near = XMVector4Transform(XMVectorSet(0.0f, -1.0f, 0.0f, 1.0f), vp);
+    XMVECTOR clip_near = XMVector4Transform(XMVectorSet(0.0f, T.y, T.z_now, 1.0f), vp);
+    CHECK(XMVectorGetW(clip_near) > 0.0f);
     CHECK(XMVectorGetY(clip_near) / XMVectorGetW(clip_near) <
           XMVectorGetY(clip) / XMVectorGetW(clip));
 }
@@ -208,18 +338,26 @@ TEST_CASE("stretch_matrix and light_for") {
     XMMATRIX m = stretch_matrix(c);
     // The unit cube's (0.5, 0.5, 0.5) corner lands on the box's hi corner.
     XMVECTOR v = XMVector3TransformCoord(XMVectorSet(0.5f, 0.5f, 0.5f, 1.0f), m);
-    CHECK(XMVectorGetX(v) == doctest::Approx(-0.5f));
-    CHECK(XMVectorGetY(v) == doctest::Approx(-0.75f));
-    CHECK(XMVectorGetZ(v) == doctest::Approx(0.25f));
+    CHECK(XMVectorGetX(v) == doctest::Approx(c.hi[0]));
+    CHECK(XMVectorGetY(v) == doctest::Approx(c.hi[1]));
+    CHECK(XMVectorGetZ(v) == doctest::Approx(c.hi[2]));
 
-    PreviewConfig cfg = shipped_preview_config();
+    // A gem's light sits at the config's offset from the box's top centre.
+    const PreviewConfig& cfg = shipped_preview_config();
+    const float centre_x = (c.lo[0] + c.hi[0]) * 0.5f;
+    const float top_y = std::max(c.lo[1], c.hi[1]);
+    const float centre_z = (c.lo[2] + c.hi[2]) * 0.5f;
     c.light = LightKind::GemOffset;
     LightConfig l = light_for(cfg, c);
-    CHECK(l.position.x == doctest::Approx(-0.75f));
-    CHECK(l.position.y == doctest::Approx(-0.75f + 1.0f));
-    CHECK(l.position.z == doctest::Approx(0.0f + 0.2f));
+    CHECK(l.position.x == doctest::Approx(centre_x + cfg.gems.light.position.x));
+    CHECK(l.position.y == doctest::Approx(top_y + cfg.gems.light.position.y));
+    CHECK(l.position.z == doctest::Approx(centre_z + cfg.gems.light.position.z));
+    // The highway light is the config's, wherever the box is.
     c.light = LightKind::Global;
-    CHECK(light_for(cfg, c).position.y == doctest::Approx(-0.5f));
+    const LightConfig g = light_for(cfg, c);
+    CHECK(g.position.x == doctest::Approx(cfg.track.light.position.x));
+    CHECK(g.position.y == doctest::Approx(cfg.track.light.position.y));
+    CHECK(g.position.z == doctest::Approx(cfg.track.light.position.z));
     // Unlit: full ambient, nothing else, so the shader returns the colour.
     c.light = LightKind::Unlit;
     const LightConfig u = light_for(cfg, c);
@@ -242,22 +380,13 @@ TEST_CASE("stretch_matrix and light_for") {
     CHECK(XMVectorGetY(top) == doctest::Approx(-0.5f));
 }
 
-TEST_CASE("build_highway_draws: order and geometry for a frame") {
-    PreviewConfig cfg = shipped_preview_config();
-    PreviewScene scene = timed_scene();
-    scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow, true),
-                   note(1500.0, PreviewLane::Kick)};
-    scene.solos = {span(900.0, 1200.0)};
-    scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
-    scene.beats = {{0, 1000.0, PreviewBeatKind::MeasureLine}, {0, 1250.0, PreviewBeatKind::Half}};
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-
-    const double now = 1.0;  // the Red note is exactly at the strike line
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, now, 1.0);
+// One frame draws, in order, floor flats, two railing boxes, beat lines, lane
+// strips, four targets, then gems.
+TEST_CASE("build_highway_draws: a frame draws floor, railings, beat lines, strips, targets, gems in order") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const std::vector<DrawCommand> cmds = frame_draws(cfg);
     REQUIRE(!cmds.empty());
-
-    // Order: floor flats, two railing boxes, beat lines, lane strips, four
-    // targets, gems. Find the first index of each kind.
+    // The first index of each kind.
     size_t first_box = cmds.size(), first_always = cmds.size(), first_gem = cmds.size();
     for (size_t i = 0; i < cmds.size(); ++i) {
         if (cmds[i].mesh == MeshId::Box && first_box == cmds.size()) first_box = i;
@@ -271,196 +400,294 @@ TEST_CASE("build_highway_draws: order and geometry for a frame") {
     CHECK(cmds[0].mesh == MeshId::Flat);
     CHECK(cmds[0].depth == hydra::render::DepthMode::Less);
     CHECK(cmds[0].material.kind == MaterialKind::Color);
-
-    // Floor covers near..far: first flat starts at z_past (2), the last floor
-    // flat ends at z_future (-12); the solo stretch is tinted #333399.
-    CHECK(cmds[0].lo[2] == doctest::Approx(2.0f));
-    bool saw_solo = false;
-    float floor_far = 0.0f;
+    // Every floor flat comes before the first railing box.
     for (size_t i = 0; i < first_box; ++i) {
-        if (cmds[i].material.color.b > 0.5f) saw_solo = true;
-        floor_far = cmds[i].hi[2];
+        CAPTURE(i);
+        CHECK(cmds[i].mesh == MeshId::Flat);
+        CHECK(cmds[i].depth == hydra::render::DepthMode::Less);
     }
+}
+
+// The floor covers the view from z_past to z_future, and the solo's stretch
+// is drawn in the solo colour.
+TEST_CASE("build_highway_draws: the floor spans the view and tints the solo") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const std::vector<DrawCommand> floor = floor_flats(frame_draws(cfg));
+    REQUIRE_FALSE(floor.empty());
+    CHECK(floor.front().lo[2] == doctest::Approx(cfg.track.z_past));
+    CHECK(floor.back().hi[2] == doctest::Approx(cfg.track.z_future));
+    bool saw_solo = false;
+    for (const DrawCommand& f : floor)
+        if (same_color(f.material.color, cfg.track.color_solo)) saw_solo = true;
     CHECK(saw_solo);
-    CHECK(floor_far == doctest::Approx(-12.0f));
+}
 
-    // Railings.
-    CHECK(cmds[first_box].lo[0] == doctest::Approx(-1.09f));
-    CHECK(cmds[first_box].hi[0] == doctest::Approx(-1.0f));
-    CHECK(cmds[first_box].lo[1] == doctest::Approx(-0.85f));
-    CHECK(cmds[first_box].hi[1] == doctest::Approx(-1.1f));
-    CHECK(cmds[first_box + 1].hi[0] == doctest::Approx(1.09f));
+// The two railings sit where railing_x puts them, at the config's height,
+// left first.
+TEST_CASE("build_highway_draws: the railings sit at the highway's edges") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const std::vector<DrawCommand> cmds = frame_draws(cfg);
+    const std::vector<const DrawCommand*> boxes = of_mesh(cmds, MeshId::Box);
+    REQUIRE(boxes.size() == 2);
+    for (const bool right : {false, true}) {
+        CAPTURE(right);
+        const DrawCommand& rail = *boxes[right ? 1 : 0];
+        float x1, x2;
+        railing_x(cfg, right, x1, x2);
+        CHECK(rail.lo[0] == doctest::Approx(x1));
+        CHECK(rail.hi[0] == doctest::Approx(x2));
+        CHECK(rail.lo[1] == doctest::Approx(cfg.track.railing_y_top));
+        CHECK(rail.hi[1] == doctest::Approx(cfg.track.railing_y_bottom));
+    }
+}
 
-    // Beat lines: a Bar at now (z 0 +-0.05, line-1) and a Half at +0.25 s.
+// The measure line on the playhead is drawn once in the measure texture over
+// the config's beat-line depth, depth test off; the half beat once in its own.
+TEST_CASE("build_highway_draws: each beat line is drawn once at its own depth") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const float z_bar = static_cast<float>(time_to_z(cfg, kFrameNow, 1.0, 1.0));
     int bars = 0, halves = 0;
-    for (const DrawCommand& c : cmds) {
+    for (const DrawCommand& c : frame_draws(cfg)) {
         if (c.material.texture == TextureId::Line1) {
             ++bars;
-            CHECK(c.lo[2] == doctest::Approx(0.05f));
-            CHECK(c.hi[2] == doctest::Approx(-0.05f));
+            CHECK(c.lo[2] == doctest::Approx(z_bar + cfg.track.beats_z_past));
+            CHECK(c.hi[2] == doctest::Approx(z_bar + cfg.track.beats_z_future));
             CHECK(c.depth == hydra::render::DepthMode::Always);
         }
         if (c.material.texture == TextureId::Line3) ++halves;
     }
-    // The Bar sits exactly at now, well inside the (near, far) window.
     CHECK(bars == 1);
     CHECK(halves == 1);
+}
 
-    // Fill: four lane strips from 1.3 s to kSpanEndTicks past the 1.5 s note.
-    // timed_scene() has one tick per millisecond, hence the 1000.
-    int lanes = 0;
-    for (const DrawCommand& c : cmds) {
-        if (is_lane_tex(c.material.texture)) {
-            ++lanes;
-            CHECK(c.lo[2] == doctest::Approx(time_to_z(cfg, now, 1.3, 1.0)));
-            CHECK(c.hi[2] ==
-                  doctest::Approx(time_to_z(cfg, now, 1.5 + kSpanEndTicks / 1000.0, 1.0)));
-        }
+// The offered fill draws one lane strip on each pad, from its start to
+// kSpanEndTicks past its 1.5 s end note (timed_scene() has one tick per
+// millisecond, hence the 1000), and no other lane strip.
+TEST_CASE("build_highway_draws: an offered fill draws one strip on each lane over its span") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const std::vector<DrawCommand> cmds = frame_draws(cfg);
+    const HighwayView v = view_at(cfg, kFrameNow);
+    for (const Pad p : kPads) {
+        CAPTURE(static_cast<int>(p));
+        CHECK(strips_over(cmds, cfg, v, p, 1.3, 1.5 + kSpanEndTicks / 1000.0).size() == 1);
     }
-    CHECK(lanes == 4);
-
-    // Four targets at z [+0.13, -0.13] with depth off.
-    int targets = 0;
+    int lanes = 0;
     for (const DrawCommand& c : cmds)
-        if (c.material.texture >= TextureId::TargetRed && c.material.texture <= TextureId::TargetGreen) {
-            ++targets;
-            CHECK(c.lo[2] == doctest::Approx(0.13f));
-            CHECK(c.hi[2] == doctest::Approx(-0.13f));
-        }
-    CHECK(targets == 4);
+        if (is_lane_tex(c.material.texture)) ++lanes;
+    CHECK(lanes == static_cast<int>(kPads.size()));
+}
 
-    // Gems: the Red exactly at now is struck, so it flashes at the strike
-    // line (D48, Q27); the Yellow cymbal and the kick at 1.5 s are drawn
-    // farther up.
-    std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
-    std::vector<const DrawCommand*> cymbals = of_mesh(cmds, MeshId::Cymbal);
-    std::vector<const DrawCommand*> kicks = of_mesh(cmds, MeshId::Kick);
+// One target per pad on its own lane, over the strike line's depths, depth
+// test off.
+TEST_CASE("build_highway_draws: each pad has one target on the strike line") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const auto& T = cfg.track;
+    const std::vector<DrawCommand> cmds = frame_draws(cfg);
+    std::vector<const DrawCommand*> targets;
+    for (const DrawCommand& c : cmds)
+        if (is_target_tex(c.material.texture)) targets.push_back(&c);
+    REQUIRE(targets.size() == kPads.size());
+    for (size_t i = 0; i < kPads.size(); ++i) {
+        CAPTURE(i);
+        float x1, x2;
+        pad_x(cfg, kPads[i], x1, x2);
+        CHECK(targets[i]->lo[0] == doctest::Approx(x1));
+        CHECK(targets[i]->hi[0] == doctest::Approx(x2));
+        CHECK(targets[i]->lo[2] == doctest::Approx(T.z_now + T.targets_z_past));
+        CHECK(targets[i]->hi[2] == doctest::Approx(T.z_now + T.targets_z_future));
+        CHECK(targets[i]->depth == hydra::render::DepthMode::Always);
+    }
+}
+
+// The Red tom exactly on the playhead is struck, so it flashes at the strike
+// line; the Yellow cymbal and the kick at 1.5 s are drawn at their own depth
+// in their own textures.
+TEST_CASE("build_highway_draws: a struck gem flashes at the strike line, later ones draw at their time") {
+    const PreviewConfig& cfg = shipped_preview_config();
+    const std::vector<DrawCommand> cmds = frame_draws(cfg);
+    const std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
+    const std::vector<const DrawCommand*> cymbals = of_mesh(cmds, MeshId::Cymbal);
+    const std::vector<const DrawCommand*> kicks = of_mesh(cmds, MeshId::Kick);
     REQUIRE(toms.size() == 1);
     CHECK(toms[0]->material.kind == MaterialKind::Color);
-    CHECK((toms[0]->lo[2] + toms[0]->hi[2]) * 0.5f == doctest::Approx(0.0f));
+    CHECK((toms[0]->lo[2] + toms[0]->hi[2]) * 0.5f == doctest::Approx(cfg.track.z_now));
     REQUIRE(cymbals.size() == 1);
     REQUIRE(kicks.size() == 1);
-    const float z15 = static_cast<float>(time_to_z(cfg, now, 1.5, 1.0));
-    CHECK(cymbals[0]->lo[0] == doctest::Approx(-0.5f));
-    CHECK(cymbals[0]->hi[0] == doctest::Approx(0.0f));
-    CHECK(cymbals[0]->lo[1] == doctest::Approx(-1.25f));
-    CHECK(cymbals[0]->hi[1] == doctest::Approx(-0.75f));
-    CHECK(cymbals[0]->lo[2] == doctest::Approx(z15 - 0.25f));
-    CHECK(cymbals[0]->hi[2] == doctest::Approx(z15 + 0.25f));
+    const float z15 = static_cast<float>(time_to_z(cfg, kFrameNow, 1.5, 1.0));
+    CHECK((cymbals[0]->lo[2] + cymbals[0]->hi[2]) * 0.5f == doctest::Approx(z15));
+    CHECK((cymbals[0]->lo[0] + cymbals[0]->hi[0]) * 0.5f ==
+          doctest::Approx(pad_centre(cfg, Pad::Yellow)));
     CHECK(cymbals[0]->material.texture == TextureId::CymbalYellow);
     CHECK(cymbals[0]->light == LightKind::GemOffset);
-    CHECK(kicks[0]->lo[0] == doctest::Approx(-1.0f));
-    CHECK(kicks[0]->hi[0] == doctest::Approx(1.0f));
-    CHECK(kicks[0]->lo[1] == doctest::Approx(-2.0f));
-    CHECK(kicks[0]->hi[1] == doctest::Approx(0.0f));
-    CHECK(kicks[0]->lo[2] == doctest::Approx(z15 - 1.0f));
+    CHECK((kicks[0]->lo[2] + kicks[0]->hi[2]) * 0.5f == doctest::Approx(z15));
     CHECK(kicks[0]->material.texture == TextureId::LongKick);
 }
 
+// A pad gem is Onyx's box: its lane's width, kOnyxPadGemHalfSize above and
+// below the floor and either side of its own depth, in its pad's texture.
 TEST_CASE("build_highway_draws: a Red gem just ahead fills Onyx's box") {
-    PreviewConfig cfg = shipped_preview_config();
+    const PreviewConfig& cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(1001.0, PreviewLane::Red)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
     std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
     REQUIRE(toms.size() == 1);
+    float x1, x2;
+    pad_x(cfg, Pad::Red, x1, x2);
     const float z = static_cast<float>(time_to_z(cfg, 1.0, 1.001, 1.0));
-    CHECK(toms[0]->lo[0] == doctest::Approx(-1.0f));
-    CHECK(toms[0]->hi[0] == doctest::Approx(-0.5f));
-    CHECK(toms[0]->lo[1] == doctest::Approx(-1.25f));
-    CHECK(toms[0]->hi[1] == doctest::Approx(-0.75f));
-    CHECK(toms[0]->lo[2] == doctest::Approx(z - 0.25f));
-    CHECK(toms[0]->hi[2] == doctest::Approx(z + 0.25f));
+    CHECK(toms[0]->lo[0] == doctest::Approx(x1));
+    CHECK(toms[0]->hi[0] == doctest::Approx(x2));
+    CHECK(toms[0]->lo[1] == doctest::Approx(cfg.track.y - kOnyxPadGemHalfSize));
+    CHECK(toms[0]->hi[1] == doctest::Approx(cfg.track.y + kOnyxPadGemHalfSize));
+    CHECK(toms[0]->lo[2] == doctest::Approx(z - kOnyxPadGemHalfSize));
+    CHECK(toms[0]->hi[2] == doctest::Approx(z + kOnyxPadGemHalfSize));
     CHECK(toms[0]->material.kind == MaterialKind::Texture);
     CHECK(toms[0]->material.texture == TextureId::BoxRed);
 }
 
+// Missed Injections' first ghost Red tom and first accented Yellow cymbal
+// outside SP phrases. A ghost tom is drawn kOnyxGhostWidthScale of its lane's
+// width about the lane's centre, with the ghost overlay on its pad's box; an
+// accent cymbal keeps its whole lane and takes the accent overlay.
 TEST_CASE("build_highway_draws: ghost shrinks 70% and overlays; accent overlays") {
-    PreviewConfig cfg = shipped_preview_config();
-    PreviewScene scene;
-    scene.notes = {note(1100.0, PreviewLane::Blue, false, true),
-                   note(1200.0, PreviewLane::Green, true, false, true)};
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
-    std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
-    std::vector<const DrawCommand*> cyms = of_mesh(cmds, MeshId::Cymbal);
+    const PreviewConfig& cfg = shipped_preview_config();
+    const PreviewScene& scene = missed_injections_base();
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    const PreviewNote* ghost = first_plain_note(scene, PreviewLane::Red,
+                                                [](const PreviewNote& n) { return n.ghost; });
+    REQUIRE(ghost != nullptr);
+    CAPTURE(ghost->tick);
+    float x1, x2;
+    pad_x(cfg, Pad::Red, x1, x2);
+    const float centre = (x1 + x2) * 0.5f;
+    const float half = (x2 - x1) * 0.5f * kOnyxGhostWidthScale;
+    const std::vector<DrawCommand> toms = gems_at(st, cfg, ghost->ms, MeshId::Tom, centre);
     REQUIRE(toms.size() == 1);
+    CHECK(toms[0].lo[0] == doctest::Approx(centre - half));
+    CHECK(toms[0].hi[0] == doctest::Approx(centre + half));
+    CHECK(toms[0].material.kind == MaterialKind::TextureOverlay);
+    CHECK(toms[0].material.texture == TextureId::BoxRed);
+    CHECK(toms[0].material.overlay == TextureId::OverlayGhost);
+
+    const PreviewNote* accent = first_plain_note(
+        scene, PreviewLane::Yellow, [](const PreviewNote& n) { return n.accent && n.cymbal; });
+    REQUIRE(accent != nullptr);
+    CAPTURE(accent->tick);
+    pad_x(cfg, Pad::Yellow, x1, x2);
+    const std::vector<DrawCommand> cyms =
+        gems_at(st, cfg, accent->ms, MeshId::Cymbal, pad_centre(cfg, Pad::Yellow));
     REQUIRE(cyms.size() == 1);
-    // Blue lane is [0, 0.5]; centre 0.25; 70% -> [0.075, 0.425].
-    CHECK(toms[0]->lo[0] == doctest::Approx(0.075f));
-    CHECK(toms[0]->hi[0] == doctest::Approx(0.425f));
-    CHECK(toms[0]->material.kind == MaterialKind::TextureOverlay);
-    CHECK(toms[0]->material.texture == TextureId::BoxBlue);
-    CHECK(toms[0]->material.overlay == TextureId::OverlayGhost);
-    CHECK(cyms[0]->material.overlay == TextureId::OverlayAccent);
-    CHECK(cyms[0]->material.texture == TextureId::CymbalGreen);
-    CHECK(cyms[0]->lo[0] == doctest::Approx(0.5f));
+    CHECK(cyms[0].lo[0] == doctest::Approx(x1));
+    CHECK(cyms[0].hi[0] == doctest::Approx(x2));
+    CHECK(cyms[0].material.kind == MaterialKind::TextureOverlay);
+    CHECK(cyms[0].material.texture == TextureId::CymbalYellow);
+    CHECK(cyms[0].material.overlay == TextureId::OverlayAccent);
 }
 
+// Missed Injections' ghost kick (tick 269760). Hydra departs from Onyx here:
+// Onyx shrinks every ghost to 70%, but a shrunken kick reads as a bar that
+// stops short of the highway edge, so a ghost kick keeps the note area's
+// width (x_left to x_right) and shows only the ghost overlay. Its box is as
+// tall as it is wide, as every kick's is (Onyx: reference = (x2' - x1') / 2).
 TEST_CASE("build_highway_draws: a ghost kick keeps full width and overlays") {
-    // Hydra departs from Onyx here: Onyx shrinks every ghost to 70%, but a
-    // shrunken kick reads as a bar that stops short of the highway edge.
-    PreviewConfig cfg = shipped_preview_config();
-    PreviewScene scene;
-    scene.notes = {note(1100.0, PreviewLane::Kick, false, true)};
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
-    std::vector<const DrawCommand*> kicks = of_mesh(cmds, MeshId::Kick);
+    const PreviewConfig& cfg = shipped_preview_config();
+    const auto& T = cfg.track;
+    const PreviewScene& scene = missed_injections_base();
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+    const PreviewNote* ghost = nullptr;
+    for (const PreviewNote& n : scene.notes)
+        if (n.lane == PreviewLane::Kick && n.ghost) {
+            ghost = &n;
+            break;
+        }
+    REQUIRE(ghost != nullptr);
+    CAPTURE(ghost->tick);
+    const std::vector<DrawCommand> kicks =
+        gems_at(st, cfg, ghost->ms, MeshId::Kick, (T.x_left + T.x_right) * 0.5f);
     REQUIRE(kicks.size() == 1);
-    CHECK(kicks[0]->lo[0] == doctest::Approx(-1.0f));
-    CHECK(kicks[0]->hi[0] == doctest::Approx(1.0f));
-    CHECK(kicks[0]->lo[1] == doctest::Approx(-2.0f));
-    CHECK(kicks[0]->hi[1] == doctest::Approx(0.0f));
-    CHECK(kicks[0]->material.kind == MaterialKind::TextureOverlay);
-    CHECK(kicks[0]->material.texture == TextureId::LongKick);
-    CHECK(kicks[0]->material.overlay == TextureId::OverlayGhost);
+    const float half = (T.x_right - T.x_left) * 0.5f;
+    CHECK(kicks[0].lo[0] == doctest::Approx(T.x_left));
+    CHECK(kicks[0].hi[0] == doctest::Approx(T.x_right));
+    CHECK(kicks[0].lo[1] == doctest::Approx(T.y - half));
+    CHECK(kicks[0].hi[1] == doctest::Approx(T.y + half));
+    CHECK(kicks[0].material.kind == MaterialKind::TextureOverlay);
+    CHECK(kicks[0].material.texture ==
+          (in_sp_phrase(scene, ghost->tick) ? TextureId::LongEnergy : TextureId::LongKick));
+    CHECK(kicks[0].material.overlay == TextureId::OverlayGhost);
 }
 
+namespace {
+
+// The Green target glows in one frame: their alphas, one per glow draw.
+std::vector<float> green_glows(const std::vector<DrawCommand>& cmds) {
+    std::vector<float> out;
+    for (const DrawCommand& c : cmds)
+        if (c.material.texture == TextureId::TargetGreenLight) out.push_back(c.alpha);
+    return out;
+}
+
+}  // namespace
+
+// A Green + kick chord hit at 1.0 s. After it the gems flash in the hit
+// colour at the strike line and fade out over the config's secs_fade; the
+// Green target glows and fades out over targets_secs_light; a kick lights no
+// target. Each fade starts at alpha 1 (the next test), drops as the hit gets
+// older, and has drawn nothing once its length has passed. The playheads are
+// free inputs: 1 ms either side of each fade's end, and midway into it.
 TEST_CASE("build_highway_draws: hit flash and target glow after a note passes") {
-    PreviewConfig cfg = shipped_preview_config();
+    const PreviewConfig& cfg = shipped_preview_config();
+    const double fade = cfg.gems.secs_fade;
+    const double glow = cfg.track.targets_secs_light;
     PreviewScene scene;
     scene.notes = {note(1000.0, PreviewLane::Green), note(1000.0, PreviewLane::Kick),
                    note(5000.0, PreviewLane::Red)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
 
-    // 50 ms after the hit: the gems flash white at the strike line at alpha
-    // 0.5, and only the Green target glows (kicks light nothing).
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.05, 1.0);
+    // Midway into the flash: the gems flash at the strike line, both at one
+    // alpha below full, and only the Green target glows.
+    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0 + fade / 2.0, 1.0);
     std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
     std::vector<const DrawCommand*> kicks = of_mesh(cmds, MeshId::Kick);
     REQUIRE(toms.size() == 1);
     REQUIRE(kicks.size() == 1);
     CHECK(toms[0]->material.kind == MaterialKind::Color);
-    CHECK(toms[0]->material.color.r == doctest::Approx(1.0f));
-    CHECK(toms[0]->alpha == doctest::Approx(0.5f));
-    CHECK((toms[0]->lo[2] + toms[0]->hi[2]) * 0.5f == doctest::Approx(0.0f));
-    CHECK(kicks[0]->alpha == doctest::Approx(0.5f));
-    int glows = 0;
-    for (const DrawCommand& c : cmds)
-        if (c.material.texture == TextureId::TargetGreenLight) {
-            ++glows;
-            // Pinned from one run; the fade length is the shipped json's
-            // targets_secs_light.
-            CHECK(c.alpha == doctest::Approx(0.7f));
-        }
-    CHECK(glows == 1);
-    for (const DrawCommand& c : cmds) CHECK(c.material.texture != TextureId::TargetRedLight);
+    CHECK(same_color(toms[0]->material.color, cfg.gems.color_hit));
+    CHECK(toms[0]->alpha > 0.0f);
+    CHECK(toms[0]->alpha < 1.0f);
+    CHECK((toms[0]->lo[2] + toms[0]->hi[2]) * 0.5f == doctest::Approx(cfg.track.z_now));
+    CHECK(kicks[0]->alpha == toms[0]->alpha);
+    const float flash_mid = toms[0]->alpha;
+    const std::vector<float> glow_mid = green_glows(cmds);
+    REQUIRE(glow_mid.size() == 1);
+    CHECK(glow_mid[0] > 0.0f);
+    CHECK(glow_mid[0] < 1.0f);
+    for (const DrawCommand& c : cmds) {
+        CHECK(c.material.texture != TextureId::TargetRedLight);
+        CHECK(c.material.texture != TextureId::TargetYellowLight);
+        CHECK(c.material.texture != TextureId::TargetBlueLight);
+    }
 
-    // 150 ms after: the flash is gone, the glow is dimmer.
-    cmds = build_highway_draws(st, cfg, 1.15, 1.0);
+    // Just before the flash ends: still drawn, dimmer than midway.
+    cmds = build_highway_draws(st, cfg, 1.0 + fade - 0.001, 1.0);
+    toms = of_mesh(cmds, MeshId::Tom);
+    REQUIRE(toms.size() == 1);
+    CHECK(toms[0]->alpha > 0.0f);
+    CHECK(toms[0]->alpha < flash_mid);
+
+    // Just after the flash ends: no gem is left, and the glow is dimmer.
+    cmds = build_highway_draws(st, cfg, 1.0 + fade + 0.001, 1.0);
     CHECK(of_mesh(cmds, MeshId::Tom).empty());
-    glows = 0;
-    for (const DrawCommand& c : cmds)
-        if (c.material.texture == TextureId::TargetGreenLight) {
-            ++glows;
-            CHECK(c.alpha == doctest::Approx(0.1f));  // same run, same owner
-        }
-    CHECK(glows == 1);
+    CHECK(of_mesh(cmds, MeshId::Kick).empty());
+    const std::vector<float> glow_late = green_glows(cmds);
+    REQUIRE(glow_late.size() == 1);
+    CHECK(glow_late[0] > 0.0f);
+    CHECK(glow_late[0] < glow_mid[0]);
 
-    // 200 ms after: no glow either.
-    cmds = build_highway_draws(st, cfg, 1.2, 1.0);
-    for (const DrawCommand& c : cmds) CHECK(c.material.texture != TextureId::TargetGreenLight);
+    // Just before and after the glow ends: drawn, then gone.
+    CHECK(green_glows(build_highway_draws(st, cfg, 1.0 + glow - 0.001, 1.0)).size() == 1);
+    CHECK(green_glows(build_highway_draws(st, cfg, 1.0 + glow + 0.001, 1.0)).empty());
 }
 
 TEST_CASE("build_highway_draws: a chord exactly on the playhead is lit") {
@@ -478,7 +705,7 @@ TEST_CASE("build_highway_draws: a chord exactly on the playhead is lit") {
     std::vector<const DrawCommand*> toms = of_mesh(cmds, MeshId::Tom);
     REQUIRE(toms.size() == 1);
     CHECK(toms[0]->material.kind == MaterialKind::Color);
-    CHECK(toms[0]->material.color.r == doctest::Approx(1.0f));
+    CHECK(same_color(toms[0]->material.color, cfg.gems.color_hit));
     CHECK(toms[0]->alpha == doctest::Approx(1.0f));
     int glows = 0;
     for (const DrawCommand& c : cmds)
@@ -502,26 +729,40 @@ TEST_CASE("build_highway_draws: energy gems inside an SP phrase, tinted floor in
     a.sp_end_ms = 2000.0;
     scene.activations = {a};
     TrackState st = build_track_state(scene, TrackStateOptions{});
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
 
-    int energy = 0, plain = 0;
-    for (const DrawCommand& c : cmds) {
-        if (c.material.texture == TextureId::BoxEnergy || c.material.texture == TextureId::CymbalEnergy ||
-            c.material.texture == TextureId::LongEnergy)
-            ++energy;
-        if (c.material.texture == TextureId::BoxBlue) ++plain;
+    // Each chord on its own: every gem of a chord inside the phrase (the end
+    // chord included) is drawn in an energy texture, every gem of the chord
+    // after it plain.
+    for (const PreviewNote& n : scene.notes) {
+        CAPTURE(n.ms);
+        const std::vector<bool> gems = chord_energy(st, cfg, n.ms);
+        REQUIRE_FALSE(gems.empty());
+        const bool inside = in_sp_phrase(scene, n.tick);
+        for (const bool e : gems) CHECK(e == inside);
     }
-    CHECK(energy == 3);  // red tom, yellow cymbal, kick — the end chord included
-    CHECK(plain == 1);   // the blue after the phrase
 
-    // The floor between 1.3 s and the far edge is the darkened energy colour.
-    bool tinted = false;
-    for (const DrawCommand& c : cmds) {
-        if (c.mesh != MeshId::Flat || c.material.kind != MaterialKind::Color) continue;
-        if (c.lo[2] <= time_to_z(cfg, 1.0, 1.3, 1.0) + 1e-4 && c.material.color.g > c.material.color.r)
-            tinted = true;
-    }
-    CHECK(tinted);
+    // At now 1.0 s the floor is cut where the activation starts, at 1.3 s:
+    // plain before, and from there on the SP colour darkened by
+    // sp_active_darken. The lit railing starts at the same depth.
+    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    const float z_act = static_cast<float>(time_to_z(cfg, 1.0, 1.3, 1.0));
+    const Color& sp = cfg.hydra.sp_active_color;
+    const float dk = cfg.hydra.sp_active_darken;
+    const Color darkened{sp.r * dk, sp.g * dk, sp.b * dk, 1.0f};
+    const std::vector<DrawCommand> floor = floor_flats(cmds);
+    size_t at = floor.size();
+    for (size_t i = 0; i < floor.size(); ++i)
+        if (floor[i].lo[2] == doctest::Approx(z_act)) at = i;
+    REQUIRE(at < floor.size());
+    REQUIRE(at > 0);
+    CHECK(floor[at].material.color.r == doctest::Approx(darkened.r));
+    CHECK(floor[at].material.color.g == doctest::Approx(darkened.g));
+    CHECK(floor[at].material.color.b == doctest::Approx(darkened.b));
+    CHECK(same_color(floor[at - 1].material.color, cfg.track.color_normal));
+    bool lit_rail_at_cut = false;
+    for (const DrawCommand* b : of_mesh(cmds, MeshId::Box))
+        if (b->lo[2] == doctest::Approx(z_act) && same_color(b->material.color, sp)) lit_rail_at_cut = true;
+    CHECK(lit_rail_at_cut);
 }
 
 TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit target") {
@@ -538,6 +779,8 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
     scene.activations = {a};
     TrackState st = build_track_state(scene, TrackStateOptions{});
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    float green_x1, green_x2;
+    pad_x(cfg, Pad::Green, green_x1, green_x2);
     int lanes = 0, lit_green = 0;
     for (const DrawCommand& c : cmds) {
         if (is_lane_tex(c.material.texture)) {
@@ -551,8 +794,8 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
             // kSpanEndTicks past the 1.5 s note, at one tick per millisecond.
             CHECK(c.hi[2] ==
                   doctest::Approx(time_to_z(cfg, 1.0, 1.5 + kSpanEndTicks / 1000.0, 1.0)));
-            CHECK(c.lo[0] == doctest::Approx(0.5f));  // the green lane's x span
-            CHECK(c.hi[0] == doctest::Approx(1.0f));
+            CHECK(c.lo[0] == doctest::Approx(green_x1));  // the green lane's x span
+            CHECK(c.hi[0] == doctest::Approx(green_x2));
         }
     }
     CHECK(lanes == 4);      // all four lanes light, Onyx's BRE look
@@ -788,26 +1031,6 @@ TEST_CASE("build_highway_draws: drum lane strips come before the fill strips") {
     CHECK(checked > 0);
 }
 
-// A lane on the kick column lights nothing: the frame is the one the scene
-// draws with no lanes at all.
-TEST_CASE("build_highway_draws: a kick drum lane draws what no lane draws") {
-    const PreviewConfig cfg = shipped_preview_config();
-    PreviewScene plain = timed_scene();
-    plain.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Kick)};
-    plain.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
-    PreviewScene kick = plain;
-    kick.drum_lanes = {drum_lane(span(1100.0, 1600.0), {PreviewLane::Kick})};
-    const std::vector<DrawCommand> want =
-        build_highway_draws(build_track_state(plain, TrackStateOptions{}), cfg, 1.0, 1.0);
-    const std::vector<DrawCommand> got =
-        build_highway_draws(build_track_state(kick, TrackStateOptions{}), cfg, 1.0, 1.0);
-    REQUIRE(got.size() == want.size());
-    for (size_t i = 0; i < want.size(); ++i) {
-        INFO("draw " << i);
-        CHECK(same_draw(got[i], want[i]));
-    }
-}
-
 namespace {
 
 // The draws `got` adds to `want`, where `got` is `want` with one run of extra
@@ -948,47 +1171,44 @@ TEST_CASE("build_highway_draws: a ghost fill cut by the window has no edge at th
     CHECK(near_cut > 0);
 }
 
+// With no note, beat, solo, fill or SP in view, a frame draws one floor flat
+// from z_past to z_future, the two railings and one target per pad, and
+// nothing else.
 TEST_CASE("build_highway_draws: an empty window still draws floor, railings and targets") {
-    PreviewConfig cfg = shipped_preview_config();
+    const PreviewConfig& cfg = shipped_preview_config();
     PreviewScene scene;
     scene.notes = {note(10000.0, PreviewLane::Red)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
-    std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
-    // One floor flat (no solo/SP cuts), two railings, four targets.
-    CHECK(cmds.size() == 1 + 2 + 4);
-    CHECK(cmds[0].lo[2] == doctest::Approx(2.0f));
-    CHECK(cmds[0].hi[2] == doctest::Approx(-12.0f));
-}
-
-TEST_CASE("texture_file names every texture") {
-    for (int i = 1; i < static_cast<int>(TextureId::Count); ++i)
-        CHECK(texture_file(static_cast<TextureId>(i))[0] != '\0');
-    CHECK(std::string(texture_file(TextureId::LongKick)) == "long-kick.jpg");
-}
-
-namespace {
-
-bool is_energy_tex(TextureId t) {
-    return t == TextureId::BoxEnergy || t == TextureId::CymbalEnergy ||
-           t == TextureId::LongEnergy;
-}
-
-// The gems drawn for the chord at `ms`, with the playhead 50 ms before it (a
-// free input: ahead of the strike line, so nothing has flashed): every gem
-// mesh whose depth centre is the chord's. Each is true when drawn in an
-// energy texture.
-std::vector<bool> chord_energy(const TrackState& st, const PreviewConfig& cfg, double ms) {
-    const double now = ms / 1000.0 - 0.05;
-    const float z = static_cast<float>(time_to_z(cfg, now, ms / 1000.0, 1.0));
-    std::vector<bool> out;
-    for (const DrawCommand& c : build_highway_draws(st, cfg, now, 1.0)) {
-        if (c.mesh != MeshId::Tom && c.mesh != MeshId::Cymbal && c.mesh != MeshId::Kick) continue;
-        if ((c.lo[2] + c.hi[2]) * 0.5f == doctest::Approx(z)) out.push_back(is_energy_tex(c.material.texture));
+    const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    const std::vector<DrawCommand> floor = floor_flats(cmds);
+    REQUIRE(floor.size() == 1);
+    CHECK(floor[0].lo[2] == doctest::Approx(cfg.track.z_past));
+    CHECK(floor[0].hi[2] == doctest::Approx(cfg.track.z_future));
+    CHECK(of_mesh(cmds, MeshId::Box).size() == 2);
+    size_t targets = 0;
+    for (const DrawCommand& c : cmds) {
+        const bool is_target = c.mesh == MeshId::Flat && is_target_tex(c.material.texture);
+        if (is_target) ++targets;
+        CHECK((is_floor_flat(c) || is_target || c.mesh == MeshId::Box));
     }
-    return out;
+    CHECK(targets == kPads.size());
 }
 
-}  // namespace
+// The renderer loads each texture from assets/preview/textures by the name
+// texture_file gives it. Every texture has a file there, and no two share
+// one.
+TEST_CASE("texture_file names a shipped file for every texture, each its own") {
+    const std::filesystem::path dir = std::filesystem::u8path(HYDRA_ASSET_DIR) / "textures";
+    std::set<std::string> seen;
+    for (int i = static_cast<int>(TextureId::None) + 1; i < static_cast<int>(TextureId::Count); ++i) {
+        CAPTURE(i);
+        const std::string name = texture_file(static_cast<TextureId>(i));
+        CAPTURE(name);
+        REQUIRE_FALSE(name.empty());
+        CHECK(std::filesystem::is_regular_file(dir / std::filesystem::u8path(name)));
+        CHECK(seen.insert(name).second);
+    }
+}
 
 // On each of Pitch Dark's SP phrases, the last chord inside it (its tick at or
 // before the phrase's end tick) draws every gem in an energy texture, and the
@@ -1034,25 +1254,11 @@ TEST_CASE("build_highway_draws: the chord after a phrase ends draws plain") {
 // the end on the lanes.
 namespace {
 
-bool same_color(const Color& a, const Color& b) {
-    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
-}
-
 // One side's railing boxes, in draw order (near to far).
 std::vector<DrawCommand> rail_boxes(const std::vector<DrawCommand>& cmds, bool right) {
     std::vector<DrawCommand> out;
     for (const DrawCommand& c : cmds)
         if (c.mesh == MeshId::Box && (c.lo[0] > 0.0f) == right) out.push_back(c);
-    return out;
-}
-
-// The floor's coloured flats, in draw order (near to far).
-std::vector<DrawCommand> floor_flats(const std::vector<DrawCommand>& cmds) {
-    std::vector<DrawCommand> out;
-    for (const DrawCommand& c : cmds)
-        if (c.mesh == MeshId::Flat && c.depth == hydra::render::DepthMode::Less &&
-            c.material.kind == MaterialKind::Color)
-            out.push_back(c);
     return out;
 }
 
@@ -1294,16 +1500,67 @@ TEST_CASE("build_highway_draws: a ghost path's SP windows do not reach the highw
     }
 }
 
+namespace {
+
+// A draw the SP window is meant to change: a floor flat or a railing box.
+bool is_floor_or_rail(const DrawCommand& c) { return is_floor_flat(c) || c.mesh == MeshId::Box; }
+
+// The draws of a frame other than the floor flats and the railing boxes, in
+// draw order.
+std::vector<DrawCommand> beside_floor_and_rails(const std::vector<DrawCommand>& cmds) {
+    std::vector<DrawCommand> out;
+    for (const DrawCommand& c : cmds)
+        if (!is_floor_or_rail(c)) out.push_back(c);
+    return out;
+}
+
+// Two draws of one kind: the same mesh, material, textures, depth test and
+// light, wherever they sit.
+bool same_kind(const DrawCommand& a, const DrawCommand& b) {
+    return a.mesh == b.mesh && a.material.kind == b.material.kind &&
+           a.material.texture == b.material.texture && a.material.overlay == b.material.overlay &&
+           a.depth == b.depth && a.light == b.light;
+}
+
+}  // namespace
+
+// Option B: nothing marks the SP end on the lanes, in a colour or a texture.
+// The SP end scene's SP runs out at 2.0 s. Its frames, with the playhead
+// 1.0 s before the end (the end in view) and on the end, draw exactly what
+// the same scene with no SP window draws, apart from the floor flats and the
+// railings, which carry the SP colour. And the frame on the end draws the
+// same kinds of draw, as many of each, as the frame one millisecond before.
 TEST_CASE("build_highway_draws: nothing marks the SP end on the lanes") {
-    const PreviewConfig cfg = shipped_preview_config();
-    TrackState st = build_track_state(sp_end_scene(), TrackStateOptions{});
-    // now 1.0 s: the 2.0 s end is in view.
-    int colored = 0;
-    for (const DrawCommand& c : build_highway_draws(st, cfg, 1.0, 1.0)) {
-        if (c.material.kind != MaterialKind::Color) continue;
-        ++colored;
-        const bool floor = c.mesh == MeshId::Flat && c.depth == hydra::render::DepthMode::Less;
-        CHECK((floor || c.mesh == MeshId::Box));
+    const PreviewConfig& cfg = shipped_preview_config();
+    const PreviewScene with_sp = sp_end_scene();
+    REQUIRE(with_sp.activations.size() == 1);
+    const std::optional<std::pair<double, double>> w = with_sp.activations[0].sp_window();
+    REQUIRE(w.has_value());
+    const double end_s = w->second / 1000.0;
+    PreviewScene no_sp = with_sp;
+    no_sp.activations.clear();
+    const TrackState st = build_track_state(with_sp, TrackStateOptions{});
+    const TrackState plain = build_track_state(no_sp, TrackStateOptions{});
+
+    for (const double now : {end_s - 1.0, end_s}) {
+        CAPTURE(now);
+        const std::vector<DrawCommand> got = beside_floor_and_rails(build_highway_draws(st, cfg, now, 1.0));
+        const std::vector<DrawCommand> want =
+            beside_floor_and_rails(build_highway_draws(plain, cfg, now, 1.0));
+        REQUIRE(got.size() == want.size());
+        for (size_t i = 0; i < got.size(); ++i) {
+            INFO("draw " << i);
+            CHECK(same_draw(got[i], want[i]));
+        }
     }
-    CHECK(colored > 0);
+
+    const std::vector<DrawCommand> at_end = beside_floor_and_rails(build_highway_draws(st, cfg, end_s, 1.0));
+    const std::vector<DrawCommand> before =
+        beside_floor_and_rails(build_highway_draws(st, cfg, end_s - 0.001, 1.0));
+    REQUIRE_FALSE(at_end.empty());
+    REQUIRE(at_end.size() == before.size());
+    for (size_t i = 0; i < at_end.size(); ++i) {
+        INFO("draw " << i);
+        CHECK(same_kind(at_end[i], before[i]));
+    }
 }

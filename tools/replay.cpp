@@ -125,7 +125,7 @@ void usage() {
         "squeeze-out offset, which an --acts string typed by hand usually drops\n"
         "and which is worth real points. --index picks the entry of that file's\n"
         "\"paths\" array (default 0). --path and --acts cannot both be given.\n"
-        "A typed SqOut offset is matched to the nearest phrase chord within %.0f ms of the SP end and the chord used is printed on stderr; an exact tie between chords, or a chord the engine would never squeeze out, is refused.\n"
+        "A typed SqOut offset is matched to the nearest phrase chord within %.0f ms of the deact node and the chord used is printed on stderr; an exact tie between chords, or a chord the engine would never squeeze out, is refused.\n"
         "Where a window ends on a Star Power phrase note but carries no\n"
         "squeeze-out offset, score prints a warning: the score is right if the\n"
         "player did not squeeze that note out, and high if they did. The\n"
@@ -396,7 +396,7 @@ std::vector<ReplayWindow> windows_from_args(const Args& a, const Song& song) {
         if (!n) continue;
         std::fprintf(stderr,
                      "note: window %lld:%lld SqOut %.2f ms -> phrase chord at "
-                     "tick %lld (%.2f ms from the SP end)\n",
+                     "tick %lld (%.2f ms from the deact node)\n",
                      (long long)w.act_tick, (long long)w.deact_tick,
                      *w.sqout_offset_ms, (long long)n->tick, n->offset_ms);
     }
@@ -430,7 +430,7 @@ int cmd_score(const Args& a, const app::Settings& s) {
     json acts = json::array();
     for (const ReplayWindow& w : windows) {
         // Each tick's time too, through the chart's own timing, so a reader
-        // with no chord on the end still has the end's time.
+        // with no chord on the deactivation node still has the node's time.
         json one{{"act_tick", w.act_tick},
                  {"deact_tick", w.deact_tick},
                  {"act_ms", song.timing().timecode(w.act_tick).ms()},

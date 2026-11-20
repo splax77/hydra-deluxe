@@ -731,8 +731,10 @@ it. The engine stores it once per activation. The deact node, the clamp note
 and the collected phrases are read from it (docs/adr/0021).
 
 **Deact node**:
-The exact chart position where an activation's Star Power ends; backend
-squeeze timings are measured against it. The search stamps it onto the
+Where an activation's Star Power would end with nothing squeezed out. Backend
+squeeze timings are measured against it. On an early squeeze-out Star Power
+ends sooner, on the squeezed-out chord (`Activation::window_end_tick`). The
+search stamps it onto the
 analysis as it runs, and nothing downstream re-derives it: every reader asks
 `Activation::deact_tick` (src/core/model.h), which reads the last step of the
 SP-end history.
@@ -964,11 +966,13 @@ The vertical gauge on the note highway's right edge showing banked Star Power
 at the playhead. With a path, every value is the analysis's. Between activations
 it steps up one bar at each tick where the engine stamped a bar's arrival. In
 an active window it shows the measures left until the SP end in force, two
-measures to a bar, and the analysis lists every place that end moved. It empties
-exactly at the deact node. The gauge counts no phrases and applies no cap. A
+measures to a bar, and the analysis lists every place that end moved. It runs
+until Star Power ends (`Activation::window_end_tick`). On an early squeeze-out
+that is the squeezed-out chord, and whatever is left in the meter is dropped
+there. The gauge counts no phrases and applies no cap. A
 late squeeze-in refills at the old SP end, because the player hits that phrase
-early and SP never stops. A squeezed-out phrase's bar arrives when the player
-hits it: as SP ends for an early phrase, on its own note for a late one.
+early and SP never stops. A squeezed-out phrase's bar arrives on the
+squeezed-out chord, for early and late phrases alike.
 Without a path it fills one bar per phrase and pins at the cap, since nothing
 spends it and there is no analysis to read. Every scene built from a song has
 the gauge (`PreviewScene::has_sp_gauge`), so a chart with no Star Power phrase

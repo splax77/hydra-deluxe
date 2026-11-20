@@ -1106,12 +1106,10 @@ void Engine::create_deactivated_path(const Path& p, Path* child, const ChoiceVie
     c.sp_bars = sq ? 1 : 0;
     c.sp_end_time = NO_TIME;
     c.end_tail = -1;
-    // A squeeze-out banks one bar when the player hits the phrase: just after
-    // SP ends for an early phrase, on its own tick for a late one. The
-    // choice's `late` is this edge's answer to core::after_sp_end, stamped
-    // by the graph (add_deact_edge).
-    const int64_t sp_end = node(e.dest).tick;
-    c.bank_tail = sq ? push_tick(banks_, -1, sq->late ? sq->chord : sp_end) : -1;
+    // A squeeze-out banks one bar, credited on the squeezed chord's own hit
+    // (docs/clone-hero/05-star-power.md, SP-35), whether the chord is early
+    // or late.
+    c.bank_tail = sq ? push_tick(banks_, -1, sq->chord) : -1;
 
     c.act_tail = clone_tail(p.act_tail);
     if (c.act_tail >= 0) {
@@ -2094,7 +2092,7 @@ std::vector<MPath> rebuild(const ScoreGraph& graph, const Enum& en,
             // search tracked. Nothing here invents a value.
             act.sp_end_steps.assign(out_ends.begin() + oa.end_begin,
                                     out_ends.begin() + oa.end_end);
-            // D36: a closed window's record ends on the node SP ended at, tied
+            // D36: a closed window's record ends on its deactivation node, tied
             // variants included (close_folded_act).
             if (oa.deact_edge >= 0 &&
                 act.deact_tick() !=

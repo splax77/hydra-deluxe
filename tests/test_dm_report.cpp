@@ -21,6 +21,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include "app/analysis.h"
@@ -40,6 +41,7 @@
 #include "net/dmbot_client.h"
 #include "net/http.h"
 #include "parse/song.h"
+#include "search/graph.h"     // fill_rule_for, fill_rule_name
 #include "store/chart_index.h"
 #include "store/record_store.h"
 #include "temp_util.h"
@@ -54,7 +56,6 @@ using testdm::fill_store;
 using testdm::kHash;
 using testdm::kMode;
 using testdm::make_score;
-using testdm::dm_tile;
 
 namespace {
 
@@ -67,20 +68,92 @@ const std::string kUnlistedHash = "00ff00ff00ff00ff00ff00ff00ff00ff";
 const std::string kTaggedChartFolder =
     "/common/Summer Blast _25 Setlist/Tier 7/SoundHaven - Focus [Ariana Grande]";
 
-// Lists the one corpus chart in `folder` (under corpus::root()) as `store`'s
-// library through the app's own scan (discover_charts, save_scan_as_library),
-// and saves its analysis at depth 0 under testdm::settings(), the profile the
-// comparison lists. Returns the library row the scan wrote.
-store::ChartLibraryEntry scan_and_analyze(store::RecordStore& store, const std::string& folder) {
+// A second corpus chart from the same setlist, for a library of two.
+const std::string kSecondChartFolder =
+    "/common/Summer Blast _25 Setlist/Tier 7/Kinglet - Blister";
+
+// The one corpus chart in `folder` (under corpus::root()), as the app's own
+// scan reads it (discover_charts).
+store::ChartLibraryEntry discover_one(const std::string& folder) {
     auto [items, errors] = app::discover_charts({corpus::root() + folder});
     REQUIRE(errors.empty());
     REQUIRE(items.size() == 1);
-    REQUIRE_FALSE(app::save_scan_as_library(store, items).has_value());
-    app::AnalysisSettings analysis = testdm::settings().to_analysis_settings();
-    analysis.depth_value = 0;
-    testdm::save(store, items[0].md5, testdm::settings(),
-                 corpus::analyzed(items[0].notespath, analysis));
     return items[0];
+}
+
+// Saves `charts` as `store`'s library, the way a finished scan does.
+void list_as_library(store::RecordStore& store,
+                     const std::vector<store::ChartLibraryEntry>& charts) {
+    REQUIRE_FALSE(app::save_scan_as_library(store, charts).has_value());
+}
+
+// Analyzes `chart` at depth 0 under `s` and saves the record under
+// s.profile(), as the corpus analysis does.
+void save_analysis(store::RecordStore& store, const store::ChartLibraryEntry& chart,
+                   const app::Settings& s) {
+    app::AnalysisSettings analysis = s.to_analysis_settings();
+    analysis.depth_value = 0;
+    testdm::save(store, chart.md5, s, corpus::analyzed(chart.notespath, analysis));
+}
+
+// Lists the one corpus chart in `folder` as `store`'s library through the
+// app's own scan, and saves its analysis under testdm::settings(), the profile
+// the comparison lists. Returns the library row the scan wrote.
+store::ChartLibraryEntry scan_and_analyze(store::RecordStore& store, const std::string& folder) {
+    const store::ChartLibraryEntry chart = discover_one(folder);
+    list_as_library(store, {chart});
+    save_analysis(store, chart, testdm::settings());
+    return chart;
+}
+
+// The status a base-speed score should read, decided from two reads apart
+// from collect_dm_rows' joined one: the library's own list
+// (ChartIndex::lists) and the store's read of that one chart under `profile`
+// (lookup_one).
+std::string expected_status(store::RecordStore& store, const store::Profile& profile,
+                            const net::DmScore& score) {
+    if (!store.chart_index().lists(score.identifier)) return dmr::kStatusNotInLibrary;
+    const store::RecordLookup found = store.lookup_one(score.identifier, profile);
+    if (found.status != store::RecordStatus::Ready) return dmr::kStatusNoCurrentResult;
+    if (!found.record.has_scored_best_path()) return dmr::kStatusNoPaths;
+    const int64_t best = *found.record.summary().score;
+    if (score.score > best) return dmr::kStatusAboveOptimal;
+    return score.score == best ? dmr::kStatusAtOptimal : dmr::kStatusUnderOptimal;
+}
+
+// Each row reads expected_status for its score.
+void check_expected_statuses(store::RecordStore& store, const store::Profile& profile,
+                             const std::vector<net::DmScore>& scores,
+                             const std::vector<DmReportRow>& rows) {
+    REQUIRE(rows.size() == scores.size());
+    for (size_t i = 0; i < rows.size(); ++i) {
+        CAPTURE(i);
+        CHECK(rows[i].status == expected_status(store, profile, scores[i]));
+    }
+}
+
+// The tally counts every row once, in its own status's bucket.
+void check_tally(const std::vector<DmReportRow>& rows) {
+    const dmr::DmReportStats stats = dmr::tally_dm_rows(rows);
+    CHECK(stats.total == static_cast<int>(rows.size()));
+    for (const dmr::StatusWords& w : dmr::kStatusWords) {
+        CAPTURE(w.status);
+        const auto n = std::count_if(rows.begin(), rows.end(),
+                                     [&](const DmReportRow& r) { return r.status == w.status; });
+        CHECK(stats.*w.count == static_cast<int>(n));
+    }
+}
+
+// The sentence the join refuses with: the plain text of the AlreadyPlain
+// error collect_dm_rows throws for `profile`, or empty when it throws none.
+std::string join_refusal(store::RecordStore& store, const store::Profile& profile) {
+    try {
+        dmr::collect_dm_rows(store, {make_score(kHash, 1)}, profile);
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::AlreadyPlain);
+        return app::plain_error(e);
+    }
+    return {};
 }
 
 // The names `store`'s library lists chart `song_id` under (its naming copy).
@@ -596,109 +669,94 @@ TEST_CASE("collect_dm_rows: a leaderboard row with no charter shows the library'
     CHECK(rows[1].charter == kUnknownTitle);
 }
 
-TEST_CASE("dm comparison: a percent rounds once") {
-    // 198,010 of 198,020 is 99.99495%: rounded once it reads 99.99%, where
-    // rounding to four places first and then to two read 100.00%. The row is
-    // the one collect_dm_rows makes for that score at base speed.
-    DmReportRow row;
-    row.song = "Percent Song";
-    row.actual = 198010;
-    row.optimal = 198020;
-    row.delta = 10;
-    row.pct_h = 9999;
-    row.status = "under optimal";
-
-    // The % of opt cell writes the row's whole hundredths as text, and sorts
-    // on those same hundredths.
-    CHECK(dm_cell("pct_h", row) == "99.99%");
-    CHECK(std::get<double>(dm_sort_key("pct_h", row)) == 9999.0);
+// Scores at fractions of `optimal` in thousandths: at it, close under it,
+// at half and near zero, so the percents run from 100% down.
+std::vector<net::DmScore> scores_across(int64_t optimal) {
+    std::vector<net::DmScore> scores;
+    scores.push_back(make_score(kHash, optimal));
+    scores.push_back(make_score(kHash, optimal - 1));
+    for (const int64_t thousandths : {999, 995, 990, 500, 1})
+        scores.push_back(make_score(kHash, optimal * thousandths / 1000));
+    return scores;
 }
 
 TEST_CASE("dm comparison: the average tile reads a percent the way the cells do") {
-    // 198,010 of 200,000 is exactly 99.005%. format_percent rounds the half
-    // up, so the cell reads 99.01%.
-    CHECK(app::format_percent(198010, 200000, 2) == "99.01%");
-    CHECK(app::percent_steps(198010, 200000, 2) == 9901);
+    store::RecordStore store(":memory:");
+    const int64_t optimal = fill_store(store);
+    REQUIRE(optimal > 0);
+    const std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, scores_across(optimal), testdm::profile());
 
-    DmReportRow row;
-    row.song = "Half Song";
-    row.actual = 198010;
-    row.optimal = 200000;
-    row.delta = 1990;
-    row.pct_h = 9901;
-    row.status = "under optimal";
+    // The status tiles sit between the scores-shown tile and the average
+    // (dm_tiles' order), so the average is the tile after them.
+    size_t status_tiles = 0;
+    for (const dmr::StatusWords& w : dmr::kStatusWords)
+        if (w.tile) ++status_tiles;
 
     // The cell's text and the tile's input both come from the row's whole
-    // hundredths, so one score's tile reads the cell's own text.
-    CHECK(dm_cell("pct_h", row) == "99.01%");
-    CHECK(dm_tile({row}, "Avg % of optimal") == "99.01%");
+    // hundredths, so each score shown alone has an average tile that reads
+    // its own cell.
+    for (size_t i = 0; i < rows.size(); ++i) {
+        CAPTURE(i);
+        REQUIRE(rows[i].pct_h.has_value());
+        const std::vector<app::report::Tile> tiles = dmr::dm_tiles(rows, {i});
+        REQUIRE(tiles.size() == status_tiles + 3);
+        CHECK(tiles[status_tiles + 1].value == dm_cell("pct_h", rows[i]));
+    }
 }
 
 TEST_CASE("collect_dm_rows: the % of opt column sorts on the shown hundredths") {
     store::RecordStore store(":memory:");
     const int64_t optimal = fill_store(store);
     REQUIRE(optimal > 0);
+    const std::vector<DmReportRow> rows =
+        dmr::collect_dm_rows(store, scores_across(optimal), testdm::profile());
 
-    // The first two scores are one point apart. Their percents differ only
-    // past the second decimal, so both read 100.00% and carry the same whole
-    // hundredths. The third, half the optimal, reads 50.00%: lower at the
-    // shown precision.
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store,
-        {make_score(kHash, optimal), make_score(kHash, optimal - 1),
-         make_score(kHash, optimal / 2)},
-        testdm::profile());
-    REQUIRE(rows.size() == 3);
-    REQUIRE(rows[0].pct_h.has_value());
-    REQUIRE(rows[1].pct_h.has_value());
-    REQUIRE(rows[2].pct_h.has_value());
-    CHECK(*rows[0].pct_h == 10000);
-    CHECK(*rows[1].pct_h == 10000);
-    CHECK(*rows[2].pct_h == 5000);
-    CHECK(app::format_percent(rows[1].actual, optimal, 2) == "100.00%");
+    // The case the rule is for: the score at optimal and the one a point under
+    // it read the same text, and the score at half reads another.
+    REQUIRE(rows.size() > 2);
+    REQUIRE(rows[0].actual != rows[1].actual);
+    REQUIRE(dm_cell("pct_h", rows[0]) == dm_cell("pct_h", rows[1]));
+    REQUIRE(dm_cell("pct_h", rows[0]) != dm_cell("pct_h", rows.back()));
 
-    // The "% of opt" column sorts on that one value, so the two 100.00% rows
-    // tie (the window's sort keeps ties in order) and the 50.00% row sorts
-    // below both.
-    CHECK(std::get<double>(dm_sort_key("pct_h", rows[0])) == 10000.0);
-    CHECK(std::get<double>(dm_sort_key("pct_h", rows[1])) == 10000.0);
-    CHECK(std::get<double>(dm_sort_key("pct_h", rows[2])) == 5000.0);
+    // Over every pair of rows: the same text sorts as a tie, and the row with
+    // fewer shown hundredths sorts below.
+    for (size_t i = 0; i < rows.size(); ++i) {
+        for (size_t j = 0; j < rows.size(); ++j) {
+            CAPTURE(i);
+            CAPTURE(j);
+            REQUIRE(rows[i].pct_h.has_value());
+            REQUIRE(rows[j].pct_h.has_value());
+            const double key_i = std::get<double>(dm_sort_key("pct_h", rows[i]));
+            const double key_j = std::get<double>(dm_sort_key("pct_h", rows[j]));
+            CHECK((dm_cell("pct_h", rows[i]) == dm_cell("pct_h", rows[j])) == (key_i == key_j));
+            CHECK((*rows[i].pct_h < *rows[j].pct_h) == (key_i < key_j));
+        }
+    }
 }
 
 TEST_CASE("collect_dm_rows tells no current result from not in library") {
+    // A real library of two scanned corpus charts, one of them analyzed, and a
+    // song id the scan never found.
     store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    REQUIRE(optimal > 0);
+    const store::ChartLibraryEntry analyzed = discover_one(kTaggedChartFolder);
+    const store::ChartLibraryEntry scanned = discover_one(kSecondChartFolder);
+    list_as_library(store, {analyzed, scanned});
+    save_analysis(store, analyzed, testdm::settings());
+    const store::Profile profile = testdm::profile();
 
-    // The last scan found kHash and one more chart nobody has analyzed.
-    constexpr const char* kScanned = "abcdef00112233445566778899aabbcc";
-    store::ChartLibraryEntry analyzed;
-    analyzed.md5 = kHash;
-    analyzed.title = "Stored Title";
-    store::ChartLibraryEntry scanned;
-    scanned.md5 = kScanned;
-    scanned.title = "Scanned Only";
-    store.rebuild_chart_library({analyzed, scanned});
+    const std::vector<net::DmScore> scores = {make_score(analyzed.md5, 1),
+                                              make_score(scanned.md5, 1),
+                                              make_score(kUnlistedHash, 1)};
+    // Both buckets the test tells apart are reached.
+    REQUIRE(expected_status(store, profile, scores[1]) == dmr::kStatusNoCurrentResult);
+    REQUIRE(expected_status(store, profile, scores[2]) == dmr::kStatusNotInLibrary);
 
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store,
-        {make_score(kHash, optimal - 1000),                        // under optimal
-         make_score(kScanned, 5000),                               // in the library, no result
-         make_score("00ff00ff00ff00ff00ff00ff00ff00ff", 123456)},  // never scanned
-        testdm::profile());
-    REQUIRE(rows.size() == 3);
-    CHECK(rows[0].status == "under optimal");
-    CHECK(rows[1].status == "no current result");
-    CHECK(rows[2].status == "not in library");
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(store, scores, profile);
+    check_expected_statuses(store, profile, scores, rows);
     CHECK_FALSE(rows[1].optimal.has_value());
-
-    const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
-    CHECK(stats.total == 3);
-    CHECK(stats.under_optimal == 1);
-    CHECK(stats.at_optimal == 0);
-    CHECK(stats.above_optimal == 0);
-    CHECK(stats.not_analyzed == 1);
-    CHECK(stats.not_in_library == 1);
+    CHECK_FALSE(rows[2].optimal.has_value());
+    check_tally(rows);
 }
 
 // D51 call 11.
@@ -719,56 +777,107 @@ TEST_CASE("collect_dm_rows: a Ready record with no paths reads \"no paths\"") {
     empty.title = "Empty Title";
     store.rebuild_chart_library({analyzed, empty});
 
-    std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
+    std::vector<DmReportRow> rows = dmr::collect_dm_rows(
         store, {make_score(kHash, optimal - 1000), make_score(kEmpty, 5000)}, testdm::profile());
     REQUIRE(rows.size() == 2);
-    CHECK(rows[0].status == "under optimal");
-    CHECK(rows[1].status == "no paths");
+    CHECK(rows[0].status == dmr::kStatusUnderOptimal);
+    CHECK(rows[1].status == dmr::kStatusNoPaths);
     CHECK_FALSE(rows[1].optimal.has_value());
 
-    const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
+    const dmr::DmReportStats stats = dmr::tally_dm_rows(rows);
     CHECK(stats.no_paths == 1);
     CHECK(stats.not_analyzed == 0);
-    const std::string phrase = app::dm_report::counts_phrase(stats);
-    const std::string clause = ", 1 with no paths";
+    // The counts phrase ends with the status's own count words for one.
+    const dmr::StatusWords& no_paths = dmr::status_words(dmr::kStatusNoPaths);
+    REQUIRE(no_paths.count_when_any);
+    const std::string clause =
+        std::string(", ") + counted(stats.no_paths, no_paths.count_one, no_paths.count_one);
+    const std::string phrase = dmr::counts_phrase(stats);
     REQUIRE(phrase.size() > clause.size());
     CHECK(hydra::ends_with(phrase, clause));
 
     // With no such row, the phrase has no clause (D62 item 1).
-    CHECK(app::dm_report::counts_phrase(app::dm_report::tally_dm_rows({rows[0]})).find(
-              "with no paths") == std::string::npos);
+    CHECK(dmr::counts_phrase(dmr::tally_dm_rows({rows[0]})).find(no_paths.count_one) ==
+          std::string::npos);
 
-    // The window offers the status in its Status filter, and the Status
-    // column's definition explains it.
-    bool offered = false;
-    for (const auto& c : app::dm_report_view::status_choices())
-        if (c.status == std::optional<std::string>("no paths"))
-            offered = c.label == "No paths (analyzed, none kept)";
-    CHECK(offered);
-    bool defined = false;
+    // Every status the table lists, this one among them, is offered in the
+    // window's Status filter under its name, and the Status column's
+    // definition explains each one that has a gloss. A gloss's text before
+    // its first placeholder is the part the definition shows as written.
+    std::string definition;
     for (const auto& c : app::dm_report_view::dm_columns())
-        if (c.id == "status")
-            defined = c.definition.find("No paths: analyzed, but the analysis kept no path.") !=
-                      std::string::npos;
-    CHECK(defined);
+        if (c.id == "status") definition = c.definition;
+    REQUIRE_FALSE(definition.empty());
+    const std::vector<app::dm_report_view::StatusChoice> choices =
+        app::dm_report_view::status_choices();
+    for (const dmr::StatusWords& w : dmr::kStatusWords) {
+        CAPTURE(w.status);
+        const auto offered = std::find_if(choices.begin(), choices.end(), [&](const auto& c) {
+            return c.status == std::optional<std::string>(w.status);
+        });
+        REQUIRE(offered != choices.end());
+        CHECK(starts_with(offered->label, w.name));
+        const std::string gloss = w.gloss;
+        if (gloss.empty()) continue;
+        const std::string shown = gloss.substr(0, gloss.find("__"));
+        CHECK(definition.find(std::string(w.name) + ": " + shown) != std::string::npos);
+    }
 }
 
-// Finding 170.
+// The gate's answer for each rule moved off the value the leaderboard plays
+// at, one at a time, from the four-argument owner.
+struct GateAnswers {
+    std::string non_expert;
+    std::string other_cap;
+    std::string legacy_fills;
+    std::string shuffle;
+};
+GateAnswers gate_answers() {
+    using dmr::why_not_comparable;
+    GateAnswers a;
+    a.non_expert = why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, false);
+    a.other_cap = why_not_comparable(Difficulty::Expert, kCloneHeroSpCap + 1, false, false);
+    a.legacy_fills = why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, false);
+    a.shuffle = why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, true);
+    return a;
+}
+
 TEST_CASE("why_not_comparable names the missing Clone Hero rule") {
-    using app::dm_report::why_not_comparable;
-    const std::string expert = "Needs Expert: the leaderboard only has Expert scores.";
-    const std::string cap =
-        "Needs SP cap 4, Clone Hero's rule: the leaderboard's scores were played under it.";
-    const std::string fills =
-        "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
-        "current Clone Hero.";
-    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, false) == "");
-    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, false) == expert);
-    CHECK(why_not_comparable(Difficulty::Expert, 8, false, false) == cap);
-    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, false) == fills);
-    // The first rule that fails names the reason.
-    CHECK(why_not_comparable(Difficulty::Easy, 8, true, false) == expert);
-    CHECK(why_not_comparable(Difficulty::Expert, 8, true, false) == cap);
+    using dmr::why_not_comparable;
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, false).empty());
+
+    // Each rule broken alone refuses, each with its own sentence, which names
+    // the value the leaderboard needs.
+    const GateAnswers a = gate_answers();
+    const std::vector<std::string> sentences = {a.non_expert, a.other_cap, a.legacy_fills,
+                                                a.shuffle};
+    for (size_t i = 0; i < sentences.size(); ++i) {
+        CAPTURE(i);
+        CHECK_FALSE(sentences[i].empty());
+        for (size_t j = i + 1; j < sentences.size(); ++j) CHECK(sentences[i] != sentences[j]);
+    }
+    CHECK(a.non_expert.find(difficulty_name(Difficulty::Expert)) != std::string::npos);
+    CHECK(a.other_cap.find(dmr::clone_hero_cap_phrase()) != std::string::npos);
+    CHECK(a.legacy_fills.find(fill_rule_name(fill_rule_for(false), FillRuleNameStyle::Long)) !=
+          std::string::npos);
+
+    // Every difficulty but Expert, and every cap but Clone Hero's, refuses
+    // with the same sentence.
+    for (const Difficulty d : kAllDifficulties) {
+        CAPTURE(difficulty_name(d));
+        CHECK(why_not_comparable(d, kCloneHeroSpCap, false, false) ==
+              (d == Difficulty::Expert ? std::string() : a.non_expert));
+    }
+    for (const int cap : {kCloneHeroSpCap - 1, kCloneHeroSpCap + 1, kCloneHeroSpCap + 4}) {
+        CAPTURE(cap);
+        CHECK(why_not_comparable(Difficulty::Expert, cap, false, false) == a.other_cap);
+    }
+
+    // The first rule that fails names the reason, in the order Expert, cap,
+    // fills, Note Shuffle.
+    CHECK(why_not_comparable(Difficulty::Easy, kCloneHeroSpCap + 1, true, true) == a.non_expert);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap + 1, true, true) == a.other_cap);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, true) == a.legacy_fills);
 
     // The join refuses a 1.0-fills profile with the same sentence, as an
     // AlreadyPlain error, so a screen shows the sentence as it is.
@@ -776,79 +885,61 @@ TEST_CASE("why_not_comparable names the missing Clone Hero rule") {
     REQUIRE(fill_store(store) > 0);
     app::Settings legacy = testdm::settings();
     legacy.legacy_fills = true;
-    bool refused = false;
-    try {
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
-                                        legacy.profile_at_clone_hero_cap());
-    } catch (const KindedError& e) {
-        refused = true;
-        CHECK(e.kind() == ErrorKind::AlreadyPlain);
-        CHECK(app::plain_error(e) == fills);
-    }
-    CHECK(refused);
+    CHECK(join_refusal(store, legacy.profile_at_clone_hero_cap()) == a.legacy_fills);
 }
 
 // D271 item 8: the toolbar asks the gate about the profile the page is built
 // at, so the cap setting never refuses; the other three rules still do.
 TEST_CASE("why_not_comparable for settings asks about the Clone Hero cap profile") {
-    using app::dm_report::why_not_comparable;
-    for (const int cap : {kCloneHeroSpCap, 6, 8}) {
+    using dmr::why_not_comparable;
+    const GateAnswers a = gate_answers();
+    for (const int cap : {kCloneHeroSpCap - 1, kCloneHeroSpCap, kCloneHeroSpCap + 2,
+                          kCloneHeroSpCap + 4}) {
         CAPTURE(cap);
+        // At any cap the settings form answers as the owner does at Clone
+        // Hero's cap, for each of the other three rules.
         app::Settings s = testdm::settings(kMode, cap);
-        CHECK(why_not_comparable(s) == "");
-        s.view_difficulty = "Hard";
-        CHECK(why_not_comparable(s) == "Needs Expert: the leaderboard only has Expert scores.");
-        s.view_difficulty = "Expert";
+        CHECK(why_not_comparable(s).empty());
+        s.view_difficulty = difficulty_name(Difficulty::Hard);
+        CHECK(why_not_comparable(s) == a.non_expert);
+        s.view_difficulty = difficulty_name(Difficulty::Expert);
         s.legacy_fills = true;
-        CHECK(why_not_comparable(s) ==
-              "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
-              "current Clone Hero.");
+        CHECK(why_not_comparable(s) == a.legacy_fills);
         s.legacy_fills = false;
         s.view_noteshuffle = true;
-        CHECK(why_not_comparable(s) ==
-              "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-              "compared with a shuffled path. Untick Note Shuffle to compare.");
+        CHECK(why_not_comparable(s) == a.shuffle);
     }
 }
 
 // D276 item 7: the cap words, and the Compare button's tooltip built from them.
-TEST_CASE("clone_hero_cap_phrase and compare_tooltip name SP cap 4") {
-    CHECK(app::dm_report::clone_hero_cap_phrase() == "SP cap 4, Clone Hero's rule");
-    CHECK(app::dm_report::compare_tooltip() ==
-          "Compare a dmleaderboards player's scores against your library at SP cap 4, Clone "
-          "Hero's rule.");
+TEST_CASE("clone_hero_cap_phrase and compare_tooltip name Clone Hero's SP cap") {
+    const std::string phrase = dmr::clone_hero_cap_phrase();
+    CHECK(phrase.find("SP cap " + std::to_string(kCloneHeroSpCap)) != std::string::npos);
+    // The tooltip ends with the phrase, and the gate's cap sentence says it.
+    CHECK(ends_with(dmr::compare_tooltip(), phrase + "."));
+    CHECK(gate_answers().other_cap.find(phrase) != std::string::npos);
 }
 
 // D104 item 6.
 TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle changes") {
-    using app::dm_report::why_not_comparable;
-    const std::string shuffle =
-        "dmleaderboards scores don't say whether Note Shuffle was on, so they can't be "
-        "compared with a shuffled path. Untick Note Shuffle to compare.";
-    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, false, true) == shuffle);
+    using dmr::why_not_comparable;
+    const GateAnswers a = gate_answers();
     // An earlier rule still names the reason first.
-    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, true) ==
-          "Needs Expert: the leaderboard only has Expert scores.");
-    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, true) ==
-          "Needs Clone Hero 1.1 fills: untick \"1.0 fills\". The leaderboard is played on "
-          "current Clone Hero.");
+    CHECK(why_not_comparable(Difficulty::Hard, kCloneHeroSpCap, false, true) == a.non_expert);
+    CHECK(why_not_comparable(Difficulty::Expert, kCloneHeroSpCap, true, true) == a.legacy_fills);
 
-    // The join reads the switch back from the mode string and refuses a
-    // shuffled one with the same sentence. The unshuffled mode still joins.
+    // The settings with Note Shuffle ticked and nothing else changed: the
+    // toolbar's gate and the join both refuse them with the shuffle sentence,
+    // the join reading the switch back from the profile's mode text. The
+    // unshuffled settings still join.
+    app::Settings shuffled = testdm::settings();
+    shuffled.view_noteshuffle = true;
+    REQUIRE(shuffled.profile_at_clone_hero_cap().chartmode != testdm::profile().chartmode);
+    CHECK(why_not_comparable(shuffled) == a.shuffle);
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store) > 0);
-    bool refused = false;
-    try {
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)},
-                                        testdm::profile("Expert Pro Drums, 2x Bass, Note Shuffle"));
-    } catch (const KindedError& e) {
-        refused = true;
-        CHECK(e.kind() == ErrorKind::AlreadyPlain);
-        CHECK(app::plain_error(e) == shuffle);
-    }
-    CHECK(refused);
-    CHECK(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, testdm::profile())
-              .size() == 1);
+    CHECK(join_refusal(store, shuffled.profile_at_clone_hero_cap()) == a.shuffle);
+    CHECK(dmr::collect_dm_rows(store, {make_score(kHash, 1)}, testdm::profile()).size() == 1);
 }
 
 // D114 item 6 (M17): Refresh, Try again and "Compare another player..." reach
@@ -857,18 +948,20 @@ TEST_CASE("why_not_comparable refuses Note Shuffle, and only Note Shuffle change
 TEST_CASE("collect_dm_rows refuses a non-Expert chart mode with the toolbar's sentence") {
     store::RecordStore store(":memory:");
     REQUIRE(fill_store(store) > 0);
-    const std::string expert = "Needs Expert: the leaderboard only has Expert scores.";
-    for (const std::string mode : {"Hard Pro Drums, 2x Bass", "Easy Drums, 1x Bass"}) {
-        CAPTURE(mode);
-        bool refused = false;
-        try {
-            app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, testdm::profile(mode));
-        } catch (const KindedError& e) {
-            refused = true;
-            CHECK(e.kind() == ErrorKind::AlreadyPlain);
-            CHECK(app::plain_error(e) == expert);
+    for (const Difficulty d : kAllDifficulties) {
+        if (d == Difficulty::Expert) continue;
+        for (const bool prodrums : {true, false}) {
+            CAPTURE(difficulty_name(d));
+            CAPTURE(prodrums);
+            app::Settings s = testdm::settings();
+            s.view_difficulty = difficulty_name(d);
+            s.view_prodrums = prodrums;
+            REQUIRE(s.difficulty() == d);
+            const std::string sentence =
+                dmr::why_not_comparable(d, kCloneHeroSpCap, s.legacy_fills, s.view_noteshuffle);
+            REQUIRE_FALSE(sentence.empty());
+            CHECK(join_refusal(store, s.profile_at_clone_hero_cap()) == sentence);
         }
-        CHECK(refused);
     }
 }
 
@@ -878,20 +971,38 @@ TEST_CASE("collect_dm_rows refuses a chart mode it cannot read") {
     REQUIRE(fill_store(store) > 0);
     store::Profile unreadable = testdm::profile();
     unreadable.chartmode = "not a chart mode";
-    CHECK_THROWS_AS(app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, unreadable),
-                    std::exception);
+    // The refusal is the mode reader's own (Settings::with_known_chartmode).
+    std::string owner_says;
+    try {
+        (void)app::Settings{}.with_known_chartmode(unreadable.chartmode);
+    } catch (const std::runtime_error& e) {
+        owner_says = e.what();
+    }
+    REQUIRE_FALSE(owner_says.empty());
+    CHECK(owner_says.find(unreadable.chartmode) != std::string::npos);
+    bool refused = false;
+    try {
+        dmr::collect_dm_rows(store, {make_score(kHash, 1)}, unreadable);
+    } catch (const std::runtime_error& e) {
+        refused = true;
+        CHECK(std::string(e.what()) == owner_says);
+    }
+    CHECK(refused);
 }
 
 // ---- results the library doesn't list (D92) ---------------------------------
 
 TEST_CASE("collect_dm_rows: a database with no chart library stops with the path report's "
           "sentence") {
-    // What hydra_batch with folder arguments leaves: a result, and no library.
+    // What hydra_batch with folder arguments leaves: a corpus chart's result,
+    // and no library.
     store::RecordStore store(":memory:");
-    testdm::save_no_paths(store, kHash);
+    const store::ChartLibraryEntry chart = discover_one(kTaggedChartFolder);
+    save_analysis(store, chart, testdm::settings());
+    REQUIRE(store.lookup_one(chart.md5, testdm::profile()).status == store::RecordStatus::Ready);
     bool stopped = false;
     try {
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1000)}, testdm::profile());
+        dmr::collect_dm_rows(store, {make_score(chart.md5, 1000)}, testdm::profile());
     } catch (const KindedError& e) {
         stopped = true;
         CHECK(e.kind() == ErrorKind::AlreadyPlain);
@@ -901,89 +1012,93 @@ TEST_CASE("collect_dm_rows: a database with no chart library stops with the path
 }
 
 TEST_CASE("collect_dm_rows: a result whose chart the library doesn't list is left out") {
+    // A library of one scanned corpus chart, and a second chart's result saved
+    // with no library row for it, as when its folder left the library.
     store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    // A second chart's result, saved without a library row for it.
-    constexpr const char* kOutside = "0123456789abcdef0123456789abcdef";
-    testdm::save_no_paths(store, kOutside);
+    const store::ChartLibraryEntry listed = discover_one(kTaggedChartFolder);
+    const store::ChartLibraryEntry outside = discover_one(kSecondChartFolder);
+    list_as_library(store, {listed});
+    save_analysis(store, listed, testdm::settings());
+    save_analysis(store, outside, testdm::settings());
+    const store::Profile profile = testdm::profile();
+    REQUIRE(store.lookup_one(outside.md5, profile).status == store::RecordStatus::Ready);
 
-    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {make_score(kHash, optimal - 1), make_score(kOutside, 5000)}, testdm::profile());
-    REQUIRE(rows.size() == 2);
-    CHECK(rows[0].status == "under optimal");
+    const std::vector<net::DmScore> scores = {make_score(listed.md5, 1),
+                                              make_score(outside.md5, 1)};
+    REQUIRE(expected_status(store, profile, scores[1]) == dmr::kStatusNotInLibrary);
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(store, scores, profile);
     // The leaderboard's score stays on the page; Hydra's result for it does
     // not join it.
-    CHECK(rows[1].status == "not in library");
+    check_expected_statuses(store, profile, scores, rows);
     CHECK_FALSE(rows[1].optimal.has_value());
 }
 
 // D115: the page lists the one profile Settings::profile_at_clone_hero_cap
 // names, whatever cap the settings hold.
 TEST_CASE("collect_dm_rows reads the Clone Hero cap profile by name") {
+    // Two scanned corpus charts: the first analyzed at Clone Hero's cap and
+    // at a what-if cap, the second only at the what-if cap.
     store::RecordStore store(":memory:");
-    const int64_t optimal = fill_store(store);
-    // A second listed chart whose only record is a what-if one at 8 bars.
-    constexpr const char* kWhatIfOnly = "0123456789abcdef0123456789abcdef";
-    const app::Settings at8 = testdm::settings(kMode, 8);
-    HydraRecord whatif = testdm::sample_chart().record;
-    whatif.sp_cap = 8;
-    test::name_chart(store, kWhatIfOnly, "What-if Title");
-    testdm::save(store, kWhatIfOnly, at8, whatif);
+    const store::ChartLibraryEntry both = discover_one(kTaggedChartFolder);
+    const store::ChartLibraryEntry whatif_only = discover_one(kSecondChartFolder);
+    list_as_library(store, {both, whatif_only});
+    const app::Settings whatif = testdm::settings(kMode, kCloneHeroSpCap * 2);
+    save_analysis(store, both, testdm::settings());
+    save_analysis(store, both, whatif);
+    save_analysis(store, whatif_only, whatif);
+    REQUIRE(store.lookup_one(whatif_only.md5, whatif.profile()).status ==
+            store::RecordStatus::Ready);
 
-    // Settings at the what-if cap still list Clone Hero's cap: kHash joins its
-    // cap-4 record, and the chart analyzed only at 8 bars has no current
-    // result.
-    const std::vector<DmReportRow> rows = app::dm_report::collect_dm_rows(
-        store, {make_score(kHash, optimal - 1), make_score(kWhatIfOnly, 5000)},
-        at8.profile_at_clone_hero_cap());
-    REQUIRE(rows.size() == 2);
-    CHECK(rows[0].status == "under optimal");
-    CHECK(rows[0].optimal == optimal);
-    CHECK(rows[1].status == "no current result");
+    // Settings at the what-if cap still list Clone Hero's cap: each row reads
+    // what that profile's records give it, so the chart analyzed only at the
+    // what-if cap has no current result.
+    const store::Profile listed = whatif.profile_at_clone_hero_cap();
+    const std::vector<net::DmScore> scores = {make_score(both.md5, 1),
+                                              make_score(whatif_only.md5, 1)};
+    REQUIRE(expected_status(store, listed, scores[1]) == dmr::kStatusNoCurrentResult);
+    const std::vector<DmReportRow> rows = dmr::collect_dm_rows(store, scores, listed);
+    check_expected_statuses(store, listed, scores, rows);
+    const store::RecordLookup at_ch_cap = store.lookup_one(both.md5, listed);
+    REQUIRE(at_ch_cap.status == store::RecordStatus::Ready);
+    CHECK(rows[0].optimal == at_ch_cap.record.summary().score);
 
     // A profile at another cap is refused with the gate's cap sentence.
-    bool refused = false;
-    try {
-        app::dm_report::collect_dm_rows(store, {make_score(kHash, 1)}, at8.profile());
-    } catch (const KindedError& e) {
-        refused = true;
-        CHECK(app::plain_error(e) ==
-              "Needs SP cap 4, Clone Hero's rule: the leaderboard's scores were played under it.");
-    }
-    CHECK(refused);
+    const std::string sentence = dmr::why_not_comparable(
+        whatif.difficulty(), whatif.sp_cap, whatif.legacy_fills, whatif.view_noteshuffle);
+    REQUIRE_FALSE(sentence.empty());
+    CHECK(join_refusal(store, whatif.profile()) == sentence);
 }
 
 // D103 item 22: a settings change marks the comparison out of date only when
-// it moves a setting the comparison reads.
-TEST_CASE("settings_change_touches: the comparison reads its chart mode and the lens, not the cap") {
+// it moves a setting the comparison reads. Each analysis setting
+// (kAnalysisFields) is changed alone, the way the settings reset test does.
+TEST_CASE("settings_change_touches: every analysis setting but the SP cap marks the comparison "
+          "out of date") {
+    using app::KeyPart;
     const app::Settings before;
-    CHECK_FALSE(app::dm_report::settings_change_touches(before, before));
+    CHECK_FALSE(dmr::settings_change_touches(before, before));
 
-    app::Settings mode_only = before;
-    mode_only.view_difficulty = "Hard";
-    mode_only.view_prodrums = false;
-    REQUIRE(mode_only.chartmode_key() != before.chartmode_key());
-    CHECK(app::dm_report::settings_change_touches(before, mode_only));
-
-    // The SP cap alone: the comparison is at Clone Hero's cap.
-    app::Settings cap = before;
-    cap.sp_cap = 5;
-    CHECK_FALSE(app::dm_report::settings_change_touches(before, cap));
-
-    app::Settings ms_limit = before;
-    ms_limit.mslimit_enabled = !before.mslimit_enabled;
-    REQUIRE(ms_limit.lens() != before.lens());
-    CHECK(app::dm_report::settings_change_touches(before, ms_limit));
-
-    app::Settings fills = before;
-    fills.legacy_fills = !before.legacy_fills;
-    REQUIRE(fills.lens() != before.lens());
-    CHECK(app::dm_report::settings_change_touches(before, fills));
+    struct Change {
+        app::Settings& t;
+        void operator()(bool app::Settings::* m) const { t.*m = !(t.*m); }
+        void operator()(int app::Settings::* m) const { t.*m += 1; }
+        void operator()(std::string app::Settings::* m) const {
+            t.*m = t.*m == difficulty_name(Difficulty::Hard) ? difficulty_name(Difficulty::Expert)
+                                                             : difficulty_name(Difficulty::Hard);
+        }
+    };
+    for (const app::AnalysisField& f : app::kAnalysisFields) {
+        app::Settings after = before;
+        std::visit(Change{after}, f.member);
+        CAPTURE(static_cast<int>(f.setting));
+        REQUIRE(after.profile() != before.profile());
+        CHECK(dmr::settings_change_touches(before, after) == (f.part != KeyPart::Cap));
+    }
 
     // A setting no report reads.
     app::Settings auto_open = before;
     auto_open.auto_open_report = !before.auto_open_report;
-    CHECK_FALSE(app::dm_report::settings_change_touches(before, auto_open));
+    CHECK_FALSE(dmr::settings_change_touches(before, auto_open));
 }
 
 namespace {

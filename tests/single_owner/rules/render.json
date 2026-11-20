@@ -54,7 +54,7 @@
         "tools",
         "tests"
       ],
-      "note": "The track state's owners. A toggle_at function would be a second copy of the span rule beside SpanSweep."
+      "note": "The track state's owners. A toggle_at function would be a second copy of the span rule beside SpanSweep. The Toggle order itself is toggle_of in track_state.cpp, which SpanSweep::at and SpRunSweep::at (the sp_active field) both read."
     },
     {
       "question": "Is a span on after this instant?",

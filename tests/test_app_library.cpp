@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -14,6 +15,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -24,6 +26,7 @@
 #include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_scan_blocked_notice
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
+#include "core/stars.h"  // kMaxStars
 #include "corpus_util.h"  // first_chart_with_paths, charts_with_paths
 #include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // save_batch_record
@@ -152,15 +155,20 @@ TEST_CASE("set_search narrows the library and the match count") {
     CHECK(app->library_shown_count() == all);
 }
 
-// "stars:9" is not a filter Hydra understands, so the search narrows nothing:
-// the toolbar's batch button keeps reading "Analyze library..." (D48, Q15).
+// A stars: value one past the most stars a path can earn (kMaxStars) is a
+// filter that does not parse, so the search narrows nothing. The toolbar's
+// batch button names the whole library unless LibraryModel::narrowed says
+// otherwise (D48, Q15).
 TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
     ScratchPaths paths("appstate_badfilter");
-    std::unique_ptr<AppState> app = app_on(paths);
-    app->set_search("stars:9");
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    const size_t all = app->library_shown_count();
+    app->set_search("stars:" + std::to_string(hydra::kMaxStars + 1));
+    CHECK_FALSE(app->library.query().errors.empty());
     CHECK(app->library.query().empty());
     CHECK_FALSE(app->library.searching());
-    CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK_FALSE(app->library.narrowed());
+    CHECK(app->library_shown_count() == all);
 }
 
 // ---- the rows a batch refreshes ---------------------------------------------
@@ -240,21 +248,47 @@ TEST_CASE("a batch result for an open Ready chart changes its row and keeps the 
 }
 
 // A result stored behind the view's back shows once its row is re-read, and
-// only that row is asked about.
+// only that row is asked about: a second chart's result, stored as well,
+// stays off its row.
 TEST_CASE("refresh_library_row picks up one chart's new result") {
     ScratchPaths paths("appstate_row");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const ChartLibraryEntry fifth = library_entry(5);
-    size_t at = app->library_shown_count();
-    for (size_t i = 0; i < app->library_shown_count(); ++i)
-        if (app->library_row_at(i).entry.md5 == fifth.md5) at = i;
-    REQUIRE(at < app->library_shown_count());
-    CHECK(app->library_row_at(at).status == RecordStatus::NotAnalyzed);
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    const std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(app->settings.to_analysis_settings(), 3);
+    REQUIRE_FALSE(charts.empty());
+    const corpus::ChartWithPaths& asked = charts.front();
+    const std::string refreshed = hydra::app::hash_chart_file(asked.chart);
+    const corpus::ChartWithPaths* other = nullptr;
+    for (const corpus::ChartWithPaths& c : charts)
+        if (hydra::app::hash_chart_file(c.chart) != refreshed) {
+            other = &c;
+            break;
+        }
+    REQUIRE_MESSAGE(other != nullptr, "the first corpus charts with paths are one chart");
 
-    hydra::test::save_batch_record(*app->store, fifth.md5, kSeededCap);
-    app->refresh_library_row(fifth.md5);
-    CHECK(app->library_row_at(at).status == RecordStatus::Ready);
-    CHECK(app->library.counts().analyzed == 2);
+    std::vector<RecordStatus> before;
+    for (size_t i = 0; i < app->library_shown_count(); ++i)
+        before.push_back(app->library_row_at(i).status);
+    const size_t analyzed_before = app->library.counts().analyzed;
+
+    save_engine_result(*app, asked);
+    save_engine_result(*app, *other);
+    REQUIRE(app->refresh_library_row(refreshed));
+
+    REQUIRE(app->library_shown_count() == before.size());
+    size_t copies = 0;
+    for (size_t i = 0; i < before.size(); ++i) {
+        const hydra::ui::LibraryRow& row = app->library_row_at(i);
+        if (row.entry.md5 == refreshed) {
+            ++copies;
+            CHECK(before[i] == RecordStatus::NotAnalyzed);
+            CHECK(row.status == RecordStatus::Ready);
+        } else {
+            CHECK(row.status == before[i]);
+        }
+    }
+    REQUIRE(copies > 0);
+    CHECK(app->library.counts().analyzed == analyzed_before + copies);
 }
 
 // ---- the row order while results arrive -------------------------------------
@@ -298,8 +332,6 @@ std::vector<int> shown(const AppState& app) {
     return out;
 }
 
-const std::vector<int> kTitleOrder{0, 1, 2, 3};
-
 // Lets a batch's charts through one at a time, so a test knows exactly what the
 // batch has stored at each tick with no sleep and no race. A chart waits here
 // for its turn; its progress callback throws once Stop is pressed, so a chart
@@ -340,18 +372,149 @@ void let_through(AppState& app, ChartGate& gate, int charts) {
         "the batch finished before it stored and answered that many charts");
 }
 
-// A library under Best path whose batch has stored two charts and whose rows
-// have read both: the first chart through still sits above the second, which
-// outscores it.
-struct BatchAfterTwoCharts {
+// The engine's own analysis of each chart, let through `gate` one at a time
+// as ChartGate says. The batch stores what the engine makes of the chart.
+hydra::app::ChartAnalyzer gated_engine(std::shared_ptr<ChartGate> gate) {
+    return [gate](const std::string& path, const hydra::app::AnalysisSettings& settings,
+                  const std::function<void(float)>& on_progress) {
+        const int turn = ++gate->started;
+        wait_until(
+            [&] {
+                on_progress(0.0f);
+                return gate->allowed.load() >= turn;
+            },
+            "the test to let a chart through");
+        return hydra::app::analyze_chart_file(path, settings, on_progress);
+    };
+}
+
+// kHeldCharts real corpus charts, one per song and each with its own best-path
+// score under the default settings. Chart i is titled "Held i", and the charts
+// go lowest score first, so with every row unscored the rows read in chart
+// order, and each chart a batch runs in that order outscores the ones before.
+struct HeldCharts {
+    std::vector<ChartLibraryEntry> entries;   // chart i's library row
+    std::vector<hydra::HydraRecord> records;  // the engine's analysis of chart i
+    std::vector<int64_t> scores;              // the score chart i's row shows
+};
+
+const HeldCharts& held_charts() {
+    static const HeldCharts held = [] {
+        const std::vector<corpus::ChartWithPaths> found = corpus::charts_with_paths(
+            Settings{}.to_analysis_settings(), static_cast<size_t>(2 * kHeldCharts));
+        std::vector<const corpus::ChartWithPaths*> picked;
+        std::vector<std::string> ids;
+        std::vector<int64_t> scores;
+        for (const corpus::ChartWithPaths& c : found) {
+            if (picked.size() == static_cast<size_t>(kHeldCharts)) break;
+            const std::string id = hydra::app::hash_chart_file(c.chart);
+            const std::optional<int64_t> score =
+                hydra::store::record_of(id, c.result.record).summary().score;
+            if (!score) continue;
+            if (std::find(ids.begin(), ids.end(), id) != ids.end()) continue;
+            if (std::find(scores.begin(), scores.end(), *score) != scores.end()) continue;
+            picked.push_back(&c);
+            ids.push_back(id);
+            scores.push_back(*score);
+        }
+        if (picked.size() != static_cast<size_t>(kHeldCharts))
+            throw std::runtime_error("the corpus has too few charts with paths of their own score");
+        std::vector<size_t> by_score;
+        for (size_t i = 0; i < picked.size(); ++i) by_score.push_back(i);
+        std::sort(by_score.begin(), by_score.end(),
+                  [&](size_t a, size_t b) { return scores[a] < scores[b]; });
+        HeldCharts out;
+        for (size_t i = 0; i < by_score.size(); ++i) {
+            const corpus::ChartWithPaths& c = *picked[by_score[i]];
+            out.entries.push_back(corpus::scanned_entry(c.chart, "Held " + std::to_string(i)));
+            out.records.push_back(c.result.record);
+            out.scores.push_back(scores[by_score[i]]);
+        }
+        return out;
+    }();
+    return held;
+}
+
+// Held chart `chart`'s library row.
+const ChartLibraryEntry& held_entry(int chart) {
+    return held_charts().entries[static_cast<size_t>(chart)];
+}
+
+// The held chart with the highest score.
+constexpr int kTopHeld = kHeldCharts - 1;
+
+// A library of the held charts with no results, under Best path, highest
+// first.
+std::unique_ptr<AppState> app_on_held_charts(const ScratchPaths& paths) {
+    std::unique_ptr<AppState> app = app_with(paths, held_charts().entries);
+    app->library.set_sort(hydra::ui::LibrarySort::BestPath, false);
+    return app;
+}
+
+// The rows on screen, top to bottom, as held chart numbers.
+std::vector<int> shown_held(const AppState& app) {
+    std::vector<int> out;
+    for (size_t i = 0; i < app.library_shown_count(); ++i)
+        for (int chart = 0; chart < kHeldCharts; ++chart)
+            if (app.library_row_at(i).entry.md5 == held_entry(chart).md5) out.push_back(chart);
+    return out;
+}
+
+// The held charts whose rows show a score, in chart order.
+std::vector<int> scored_held(const AppState& app) {
+    std::vector<int> out;
+    for (int chart = 0; chart < kHeldCharts; ++chart)
+        if (row_of(app, held_entry(chart).md5).summary.has_scored_best_path())
+            out.push_back(chart);
+    return out;
+}
+
+// The score held chart `chart`'s row shows, if any.
+std::optional<int64_t> held_row_score(const AppState& app, int chart) {
+    return row_of(app, held_entry(chart).md5).summary.score;
+}
+
+// The order Best path, highest first, gives the held charts when the charts in
+// `scored` show their scores and the rest show none: the scored charts by
+// score, highest first, then the rest in title order. With nothing scored it
+// is the title order the rows start in.
+std::vector<int> best_path_order(const std::vector<int>& scored) {
+    const HeldCharts& held = held_charts();
+    std::vector<int> out = scored;
+    std::sort(out.begin(), out.end(), [&](int a, int b) {
+        return held.scores[static_cast<size_t>(a)] > held.scores[static_cast<size_t>(b)];
+    });
+    for (int chart = 0; chart < kHeldCharts; ++chart)
+        if (std::find(scored.begin(), scored.end(), chart) == scored.end()) out.push_back(chart);
+    return out;
+}
+
+// Stores the engine's analysis of held chart `chart` behind the view's back,
+// as one song's own analysis stores it.
+void save_held_result(AppState& app, int chart) {
+    app.store->save(hydra::store::prepare_record(
+        held_entry(chart).md5, app.settings.profile(),
+        held_charts().records[static_cast<size_t>(chart)]));
+}
+
+// The frame time `n` batch refresh gaps after the first frame, at 0: each such
+// frame is due a refresh (AppState::kBatchRefreshSeconds).
+double refresh_frame(int n) { return n * AppState::kBatchRefreshSeconds; }
+
+// The held charts under Best path, whose batch has stored the first two
+// charts and whose rows have read both. The second outscores the first, so a
+// sort would lift it above the first; the rows still sit in title order.
+struct HeldBatchAfterTwo {
     std::unique_ptr<AppState> app;
     std::shared_ptr<ChartGate> gate = std::make_shared<ChartGate>();
 
-    explicit BatchAfterTwoCharts(const ScratchPaths& paths) : app(app_under_best_path(paths)) {
-        start_redo_batch(*app, gated_scores(gate));
+    explicit HeldBatchAfterTwo(const ScratchPaths& paths) : app(app_on_held_charts(paths)) {
+        start_redo_batch(*app, gated_engine(gate));
         let_through(*app, *gate, 2);
-        app->tick_library(0.0);
-        REQUIRE(shown(*app) == kTitleOrder);
+        app->tick_library(refresh_frame(0));
+        REQUIRE(scored_held(*app) == std::vector<int>{0, 1});
+        REQUIRE(best_path_order(scored_held(*app)) != best_path_order({}));
+        REQUIRE(shown_held(*app) == best_path_order({}));
     }
 };
 
@@ -359,20 +522,22 @@ struct BatchAfterTwoCharts {
 
 TEST_CASE("a batch refresh fills scores in where the rows sit; the batch's end sorts them") {
     ScratchPaths paths("appstate_batchhold");
-    BatchAfterTwoCharts batch(paths);
+    HeldBatchAfterTwo batch(paths);
     AppState& app = *batch.app;
-    CHECK(row_of(app, library_entry(1).md5).best_label().find("2,000") == 0);
-    CHECK(app.library.counts().analyzed == 2);
+    CHECK(held_row_score(app, 1) == held_charts().scores[1]);
+    CHECK(app.library.counts().analyzed == scored_held(app).size());
 
     let_through(app, *batch.gate, 3);
-    app.tick_library(10.0);
-    CHECK(shown(app) == kTitleOrder);
+    app.tick_library(refresh_frame(1));
+    CHECK(scored_held(app).size() == 3);
     CHECK(app.library.counts().analyzed == 3);
+    CHECK(shown_held(app) == best_path_order({}));
 
     batch.gate->allowed.store(kHeldCharts);
     wait_batch_finished(app);
-    app.tick_library(20.0);
-    CHECK(shown(app) == std::vector<int>{3, 2, 1, 0});
+    app.tick_library(refresh_frame(2));
+    REQUIRE(scored_held(app).size() == static_cast<size_t>(kHeldCharts));
+    CHECK(shown_held(app) == best_path_order(scored_held(app)));
 }
 
 // Stop leaves the count where the last refresh read it, so the refresh's own
@@ -380,64 +545,48 @@ TEST_CASE("a batch refresh fills scores in where the rows sit; the batch's end s
 // read just before it finished, held still for the test.
 TEST_CASE("a batch whose last result was already read still sorts when it ends") {
     ScratchPaths paths("appstate_batchreadend");
-    BatchAfterTwoCharts batch(paths);
+    HeldBatchAfterTwo batch(paths);
     AppState& app = *batch.app;
     stop_batch(app);
     REQUIRE(app.batch_job->snapshot().completed == 2);
-    app.tick_library(10.0);
-    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+    app.tick_library(refresh_frame(1));
+    CHECK(shown_held(app) == best_path_order(scored_held(app)));
 }
 
 TEST_CASE("a batch's end sorts once, and the next batch sorts when it ends") {
     ScratchPaths paths("appstate_batchonce");
-    BatchAfterTwoCharts batch(paths);
+    HeldBatchAfterTwo batch(paths);
     AppState& app = *batch.app;
     stop_batch(app);
-    app.tick_library(10.0);
-    REQUIRE(shown(app) == std::vector<int>{1, 0, 2, 3});
+    app.tick_library(refresh_frame(1));
+    const std::vector<int> first_end = best_path_order(scored_held(app));
+    REQUIRE(shown_held(app) == first_end);
 
     // A song's own result after the end holds its place, however many frames
-    // the finished batch stays on its strip.
-    save_scored(app, 3, 5000);
-    REQUIRE(app.refresh_library_row(library_entry(3).md5));
-    app.tick_library(20.0);
-    app.tick_library(30.0);
-    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
+    // the finished batch stays on its strip. The top chart outscores every
+    // other, so a sort would move it.
+    save_held_result(app, kTopHeld);
+    REQUIRE(app.refresh_library_row(held_entry(kTopHeld).md5));
+    REQUIRE(best_path_order(scored_held(app)) != first_end);
+    app.tick_library(refresh_frame(2));
+    app.tick_library(refresh_frame(3));
+    CHECK(shown_held(app) == first_end);
 
-    start_redo_batch(app, gated_scores(std::make_shared<ChartGate>()));
+    start_redo_batch(app, gated_engine(std::make_shared<ChartGate>()));
     stop_batch(app);
-    app.tick_library(40.0);
-    CHECK(shown(app) == std::vector<int>{3, 1, 0, 2});
+    app.tick_library(refresh_frame(4));
+    CHECK(shown_held(app) == best_path_order(scored_held(app)));
 }
 
 // The finished strip's X can let the job go before the frame's tick reads it.
 TEST_CASE("a batch dismissed before a tick saw it finish still sorts") {
     ScratchPaths paths("appstate_batchdismiss");
-    BatchAfterTwoCharts batch(paths);
+    HeldBatchAfterTwo batch(paths);
     AppState& app = *batch.app;
     stop_batch(app);
     app.batch_job.reset();
-    app.tick_library(10.0);
-    CHECK(shown(app) == std::vector<int>{1, 0, 2, 3});
-}
-
-// A pool of no workers is a run that fails as a whole (BatchJob::finish_failed).
-TEST_CASE("a batch that fails as a whole sorts a held order when it ends") {
-    ScratchPaths paths("appstate_batcherror");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
-    save_scored(*app, 3, 5000);
-    REQUIRE(app->refresh_library_row(library_entry(3).md5));
-    REQUIRE(shown(*app) == kTitleOrder);
-    {
-        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
-                              gated_scores(std::make_shared<ChartGate>()), /*workers=*/0);
-        app->start_batch(true);
-    }
-    REQUIRE(app->batch_job != nullptr);
-    wait_batch_finished(*app);
-    REQUIRE_FALSE(app->batch_job->snapshot().run_error.empty());
-    app->tick_library(0.0);
-    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+    app.tick_library(refresh_frame(1));
+    CHECK(shown_held(app) == best_path_order(scored_held(app)));
 }
 
 // ---- the rows take the batch's answers, not a store read --------------------
@@ -680,11 +829,15 @@ TEST_CASE("one song's stored result keeps its row in place, with no batch runnin
 
 TEST_CASE("a settings change's re-read of the summaries sorts a held order at once") {
     ScratchPaths paths("appstate_settingssort");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
-    save_scored(*app, 3, 5000);
-    REQUIRE(app->refresh_library_row(library_entry(3).md5));
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
+    // The top chart's own result: its row reads it in place, below the
+    // unscored rows a sort would put after it.
+    save_held_result(*app, kTopHeld);
+    REQUIRE(app->refresh_library_row(held_entry(kTopHeld).md5));
+    REQUIRE(scored_held(*app) == std::vector<int>{kTopHeld});
+    REQUIRE(shown_held(*app) == best_path_order({}));
     app->refresh_library_summaries();
-    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+    CHECK(shown_held(*app) == best_path_order(scored_held(*app)));
 }
 
 // A reload replaces every row and then reads their summaries, and the list
@@ -922,32 +1075,24 @@ TEST_CASE("the batch confirm counts the rows on screen when a search and a chip 
 // run reads no second list from the store.
 TEST_CASE("the batch runs the plan the confirm showed, with no second store read") {
     ScratchPaths paths("appstate_confirmplan");
-    auto store = std::make_unique<RecordStore>(paths.db);
-    store->rebuild_chart_library({library_entry(1), library_entry(2)});
-    AppState app(Settings{}, std::move(store));
-    app.open_batch_confirm();
-    REQUIRE(app.batch_scope_with_result() == 0);
-    REQUIRE(app.batch_scope_charts() == 2);
+    std::unique_ptr<AppState> app = app_with(paths, {held_entry(0), held_entry(1)});
+    app->open_batch_confirm();
+    REQUIRE(app->batch_scope_with_result() == 0);
+    REQUIRE(app->batch_scope_charts() == 2);
 
-    // Stored after the confirm opened: a second read would now skip this chart.
-    hydra::test::save_batch_record(*app.store, library_entry(2).md5, Settings{}.sp_cap);
-    {
-        const ScopedHook seam(
-            hydra::ui::set_app_batch_analyzer_for_test,
-            [](const std::string&, const hydra::app::AnalysisSettings&,
-               const std::function<void(float)>&) -> hydra::app::AnalysisResult {
-                throw std::runtime_error("no chart file in this test");
-            },
-            1);
-        app.start_batch(false);
-    }
-    REQUIRE(app.batch_job != nullptr);
-    wait_batch_finished(app);
+    // The engine's result for chart 1, stored after the confirm opened: a
+    // second read would now skip this chart.
+    save_held_result(*app, 1);
+    app->start_batch(false);  // the app's own analyzer
+    REQUIRE(app->batch_job != nullptr);
+    wait_batch_finished(*app);
 
-    const hydra::ui::BatchJob::Snapshot s = app.batch_job->snapshot();
+    const hydra::ui::BatchJob::Snapshot s = app->batch_job->snapshot();
+    CHECK(s.run_error.empty());
     CHECK(s.total == 2);
     CHECK(s.skipped == 0);
-    CHECK(s.failed == 2);
+    CHECK(s.analyzed == 2);
+    CHECK(s.failed == 0);
 }
 
 // D72 item 2: the startup open reads "couldn't open" even when SQLite only
@@ -1389,16 +1534,41 @@ TEST_CASE("Analyze library on a database that fails shows the sentence and opens
 // leaves the frame, which would close Hydra with no message.
 TEST_CASE("a library reload whose reads fail keeps the library and says so") {
     ScratchPaths paths("appstate_reloadfail");
-    std::unique_ptr<AppState> app = app_on(paths);
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    const corpus::ChartWithPaths& analyzed = scratch_chart_with_paths();
+    const std::string analyzed_md5 = hydra::app::hash_chart_file(analyzed.chart);
+    save_engine_result(*app, analyzed);
+    REQUIRE(app->refresh_library_row(analyzed_md5));
+    REQUIRE(row_of(*app, analyzed_md5).status == RecordStatus::Ready);
+    const std::vector<std::string> before = shown_notespaths(*app);
     hydra::test::exec_on_file(paths.db, "DROP TABLE charts; DROP TABLE records;");
 
     app->reload_library();
 
     CHECK(app->status_is_problem);
     CHECK(app->status_message == kDatabaseReadSentence);
-    CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
-    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+    CHECK(shown_notespaths(*app) == before);
+    CHECK(row_of(*app, analyzed_md5).status == RecordStatus::Ready);
 }
+
+namespace {
+
+// The first row on screen, other than chart `skip`'s, whose chart the library
+// lists once, so the store's copies of it are that row alone.
+size_t first_single_copy_row(const AppState& app, const std::string& skip) {
+    for (size_t i = 0; i < app.library_shown_count(); ++i) {
+        const std::string& md5 = app.library_row_at(i).entry.md5;
+        if (md5 == skip) continue;
+        size_t copies = 0;
+        for (size_t j = 0; j < app.library_shown_count(); ++j)
+            if (app.library_row_at(j).entry.md5 == md5) ++copies;
+        if (copies == 1) return i;
+    }
+    FAIL("no chart in the library has a single copy");
+    throw std::logic_error("unreachable");
+}
+
+}  // namespace
 
 // ---- the window's reads go through the store's reader ------------------------
 
@@ -1411,14 +1581,14 @@ TEST_CASE("a library reload whose reads fail keeps the library and says so") {
 
 TEST_CASE("opening a song does not wait for a save") {
     ScratchPaths paths("appstate_readeropen");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const auto chart = row_of(*app, library_entry(5).md5).entry;
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    const auto chart = app->library_row_at(first_single_copy_row(*app, "")).entry;
     CHECK(returns_while_held(*app->store, [&] {
         app->select(chart, hydra::ui::SelectionSource::Click);
     }));
     REQUIRE(app->selected.has_value());
     const std::vector<ChartLibraryEntry> copies =
-        app->store->list_chart_library_copies(library_entry(5).md5);
+        app->store->list_chart_library_copies(chart.md5);
     REQUIRE(copies.size() == 1);
     CHECK(app->selected->md5 == copies.front().md5);
     CHECK(app->selected->notespath == copies.front().notespath);
@@ -1430,13 +1600,27 @@ TEST_CASE("opening a song does not wait for a save") {
 // copies, and the row's whole entry is read, both through the reader.
 TEST_CASE("select_chart on a hidden chart does not wait for a save") {
     ScratchPaths paths("appstate_readerselectchart");
-    std::unique_ptr<AppState> app = app_on(paths);
-    app->set_search(library_entry(17).md5);
-    REQUIRE(app->library_shown_count() == 1);
-    CHECK(returns_while_held(*app->store, [&] { app->select_chart(library_entry(5).md5); }));
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    const hydra::ui::LibraryRow& hidden_row = app->library_row_at(first_single_copy_row(*app, ""));
+    const std::string hidden = hidden_row.entry.md5;
+    const std::string hidden_title = hidden_row.title;
+    // A search for another chart's title, in quotes, hides it.
+    std::string other_title;
+    for (size_t i = 0; i < app->library_shown_count() && other_title.empty(); ++i) {
+        const hydra::ui::LibraryRow& row = app->library_row_at(i);
+        if (row.entry.md5 != hidden && plain_title(row.title) &&
+            hidden_title.find(row.title) == std::string::npos)
+            other_title = row.title;
+    }
+    REQUIRE_MESSAGE(!other_title.empty(), "no other corpus chart has a title of plain words");
+    app->set_search("\"" + other_title + "\"");
+    REQUIRE(app->library_shown_count() > 0);
+    for (size_t i = 0; i < app->library_shown_count(); ++i)
+        REQUIRE(app->library_row_at(i).entry.md5 != hidden);
+    CHECK(returns_while_held(*app->store, [&] { app->select_chart(hidden); }));
     REQUIRE(app->selected.has_value());
     const std::vector<ChartLibraryEntry> copies =
-        app->store->list_chart_library_copies(library_entry(5).md5);
+        app->store->list_chart_library_copies(hidden);
     REQUIRE(copies.size() == 1);
     CHECK(app->selected->md5 == copies.front().md5);
     CHECK(app->selected->notespath == copies.front().notespath);

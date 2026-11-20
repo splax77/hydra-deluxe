@@ -72,6 +72,35 @@
       "note": "The path gauge's body never touches the chart's phrases, the collected list, the bank count, the cap rule or a squeeze rule (where a squeeze-in's bar arrives is the stored step's tick; a window's end is Activation::window_end_tick; a squeezed-out bar's arrival is Path::bank_arrivals). Scoped to that one function."
     },
     {
+      "question": "How many bars of SP are left in the meter at a moment while SP runs?",
+      "owner": "Activation::meter_bars_at in src/core/model.cpp",
+      "owner_file": "src/core/model.cpp",
+      "owner_symbol": "meter_bars_at",
+      "date": "2026-11-19",
+      "decision": "plan docs/superpowers/plans/2026-11-19-one-sp-end-owner.md (removed; git show 790f1c6d:docs/superpowers/plans/2026-11-19-one-sp-end-owner.md), task T2 criterion 4 (Owner map row E6, which the user approved: \"approve create handoff\")",
+      "added_by": "SPE-T2",
+      "pattern": "\\bmeasures_at_tick_f\\s*\\(",
+      "anchor": "measures_at_tick_f",
+      "owner_files": [
+        "src/core/model.cpp",
+        "src/core/timing.h",
+        "src/core/timing.cpp"
+      ],
+      "must_match": [
+        "const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -",
+        "timing.measures_at_tick_f(static_cast<double>(tick));",
+        "const double left = (scene.timing->measures_at_tick_f(end) - scene.timing->measures_at_tick_f(now)) / kMeasuresPerSpBar;"
+      ],
+      "must_not_match": [
+        "return *rec.meter_bars_at(tick, timing, just_before);",
+        "static_cast<double>(kMeasuresPerSpBar) * timing.ms_per_measure_at(now_tick);"
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "A meter level worked out from two ticks anywhere but the record. The row flags any read of the continuous measure count, not only one on the same line as kMeasuresPerSpBar, because a line scan misses the two when they sit on separate lines, as they did in the Preview's old copy. Outside the timing code that defines the count, only the record's level reads it, so a read under src/app, src/ui, src/pathbuilder or src/render is a second owner. The gauge's own body is the row above's."
+    },
+    {
       "question": "Where does a Preview window's Star Power end?",
       "owner": "Activation::window_end_tick in src/core/model.cpp",
       "owner_file": "src/core/model.cpp",
