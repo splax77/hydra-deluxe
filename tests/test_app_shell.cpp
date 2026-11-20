@@ -521,25 +521,61 @@ TEST_CASE("app_shell: hydra_ui.ini remembers the window placement") {
     std::filesystem::remove_all(dir);
 }
 
+namespace {
+
+// The lines of `text`, without their line ends.
+std::vector<std::string> lines_of(const std::string& text) {
+    std::vector<std::string> lines;
+    std::istringstream in(text);
+    for (std::string line; std::getline(in, line);) lines.push_back(line);
+    return lines;
+}
+
+// A "key=value" line's "key=" part.
+std::string key_of(const std::string& line) {
+    const std::size_t eq = line.find('=');
+    REQUIRE(eq != std::string::npos);
+    return line.substr(0, eq + 1);
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: the [Hydra][Layout] text round-trips and refuses junk") {
-    CHECK(hydra::ui::format_layout({0.35f, false}) == "LibraryShare=0.3500\nLibraryHidden=0\n");
-    CHECK(hydra::ui::format_layout({0.35f, true}) == "LibraryShare=0.3500\nLibraryHidden=1\n");
+    const hydra::ui::Layout shown{0.35f, false};
+    const hydra::ui::Layout hidden{0.35f, true};
+    const std::vector<std::string> shown_lines = lines_of(hydra::ui::format_layout(shown));
+    const std::vector<std::string> hidden_lines = lines_of(hydra::ui::format_layout(hidden));
+    REQUIRE(shown_lines.size() == 2);
+    REQUIRE(hidden_lines.size() == 2);
+    // format_layout writes the share line first, then the hidden line.
+    const std::string share_key = key_of(hidden_lines[0]);
+    const std::string hidden_key = key_of(hidden_lines[1]);
+    CHECK(key_of(shown_lines[0]) == share_key);
+    CHECK(key_of(shown_lines[1]) == hidden_key);
+
+    // Each line format_layout writes reads back into a default layout.
     hydra::ui::Layout layout;
-    hydra::ui::parse_layout_line("LibraryShare=0.3500", layout);
-    CHECK(layout.library_share == doctest::Approx(0.35f));
-    CHECK_FALSE(layout.library_hidden);
-    hydra::ui::parse_layout_line("LibraryHidden=1", layout);
-    CHECK(layout.library_hidden);
+    REQUIRE(layout.library_share != doctest::Approx(hidden.library_share));
+    REQUIRE(layout.library_hidden != hidden.library_hidden);
+    for (const std::string& line : hidden_lines) hydra::ui::parse_layout_line(line, layout);
+    CHECK(layout.library_share == doctest::Approx(hidden.library_share));
+    CHECK(layout.library_hidden == hidden.library_hidden);
+
     // Anything else leaves both alone.
-    for (const char* line : {"LibraryShare=abc", "LibraryShare=0", "LibraryShare=1",
-                             "LibraryShare=1.5", "LibraryShare=-0.2", "LibraryShare=0.3x",
-                             "LibraryShare=", "Colour=blue", "LibraryHidden=2",
-                             "LibraryHidden=", "LibraryHidden=yes"})
+    const std::vector<std::string> junk = {
+        share_key + "abc", share_key + "0",   share_key + "1",   share_key + "1.5",
+        share_key + "-0.2", share_key + "0.3x", share_key,        "Colour=blue",
+        hidden_key + "2",  hidden_key,        hidden_key + "yes"};
+    for (const std::string& line : junk) {
+        CAPTURE(line);
         hydra::ui::parse_layout_line(line, layout);
-    CHECK(layout.library_share == doctest::Approx(0.35f));
-    CHECK(layout.library_hidden);
-    hydra::ui::parse_layout_line("LibraryHidden=0", layout);
-    CHECK_FALSE(layout.library_hidden);
+        CHECK(layout.library_share == doctest::Approx(hidden.library_share));
+        CHECK(layout.library_hidden == hidden.library_hidden);
+    }
+
+    // The shown layout's hidden line turns hiding back off.
+    hydra::ui::parse_layout_line(shown_lines[1], layout);
+    CHECK(layout.library_hidden == shown.library_hidden);
 }
 
 TEST_CASE("app_shell: share_is_valid takes only the open interval") {
@@ -549,30 +585,52 @@ TEST_CASE("app_shell: share_is_valid takes only the open interval") {
     CHECK_FALSE(hydra::ui::share_is_valid(std::numeric_limits<float>::quiet_NaN()));
 }
 
+namespace {
+
+// The name ImGui gives the library child, and so its [Window] section in
+// hydra_ui.ini: library_view.cpp begins it as "##library" inside the main
+// window, which it begins as "Hydra". ImGui adds the child's ID hash to it.
+std::string library_child_window_name() {
+    const hydra::test::HeadlessImGui imgui;
+    ImGui::NewFrame();
+    ImGui::Begin("Hydra");
+    ImGui::BeginChild("##library");
+    const std::string name = ImGui::GetCurrentWindow()->Name;
+    ImGui::EndChild();
+    ImGui::End();
+    ImGui::EndFrame();
+    return name;
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: hydra_ui.ini remembers the library split, not the child's own width") {
+    const std::string child = library_child_window_name();
     const std::filesystem::path dir = hydra::os_path(testtemp::temp_dir("app_shell_split"));
     const std::filesystem::path ini = dir / "hydra_ui.ini";
     {
         // A saved library child at the largest split, with no share.
         std::ofstream f(ini);
-        f << "[Window][Hydra/##library_06E76512]\nSize=2064,1313\n\n";
+        f << "[Window][" << child << "]\nSize=2064,1313\n\n";
     }
-    hydra::ui::setup_imgui(test_options(ini.string()));
-    CHECK(hydra::ui::library_share() == doctest::Approx(hydra::ui::kDefaultLibraryShare));
-    CHECK_FALSE(hydra::ui::library_hidden());
-    hydra::ui::remember_library_share(0.25f);
-    hydra::ui::remember_library_hidden(true);
-    hydra::ui::shutdown_imgui();  // DestroyContext writes the ini
+    {
+        ImGuiOnIni imgui(ini.string());
+        CHECK(hydra::ui::library_share() == doctest::Approx(hydra::ui::kDefaultLibraryShare));
+        CHECK_FALSE(hydra::ui::library_hidden());
+        hydra::ui::remember_library_share(0.25f);
+        hydra::ui::remember_library_hidden(true);
+    }  // DestroyContext writes the ini
 
-    hydra::ui::setup_imgui(test_options(ini.string()));
-    CHECK(hydra::ui::library_share() == doctest::Approx(0.25f));
-    CHECK(hydra::ui::library_hidden());
-    hydra::ui::shutdown_imgui();
+    {
+        ImGuiOnIni imgui(ini.string());
+        CHECK(hydra::ui::library_share() == doctest::Approx(0.25f));
+        CHECK(hydra::ui::library_hidden());
+    }
 
     std::ifstream f(ini);
     std::stringstream text;
     text << f.rdbuf();
-    CHECK(text.str().find("[Hydra][Layout]\nLibraryShare=0.2500\nLibraryHidden=1\n") !=
+    CHECK(text.str().find("[Hydra][Layout]\n" + hydra::ui::format_layout({0.25f, true})) !=
           std::string::npos);
     f.close();
     std::filesystem::remove_all(dir);
