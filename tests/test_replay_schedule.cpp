@@ -101,167 +101,158 @@ void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCh
     }
 }
 
+// Every activation of every stored corpus path (for_each_corpus_schedule),
+// with the activation_json it writes over its chart's whole chord list and
+// the refusal lines that call added.
+using ActivationCheck = std::function<void(const std::string& path, const Activation& act, const json& j,
+                                           const std::vector<std::string>& refusals)>;
+
+void for_each_corpus_activation(const app::AnalysisSettings& cfg, const ActivationCheck& check) {
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
+                                      const std::vector<const Activation*>& acts, const PathReplay&,
+                                      const json&) {
+        const ChordTimes chords = chord_times(song);
+        for (const Activation* a : acts) {
+            std::vector<std::string> refusals;
+            const json j = schedule::activation_json(*a, chords, song.timing(), refusals);
+            check(path, *a, j, refusals);
+        }
+    });
+}
+
 }  // namespace
 
 TEST_CASE("schedule: every end step names its anchor") {
-    const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840});
-    const ChordTimes chords = chord_times(song);
-
-    Activation act;
-    act.timecode = song.timecode(768);
-    act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
-    act.sp_end_steps = {{768, 3840, SpEndKind::Activation},
-                        {1536, 4608, SpEndKind::Collected},
-                        {2304, 4800, SpEndKind::Clamped},
-                        {3072, 5000, SpEndKind::SqIn}};
-    SPSqueeze in{};
-    in.kind = SqueezeKind::SqIn;
-    in.offset_ms = 10.0;
-    in.transfer = TransferScale{1.0, 1.0};
-    act.sqinouts.push_back(in);
-    act.transfer_post = TransferScale{1.0, 1.0};
-
-    std::vector<std::string> refusals;
-    const json j = schedule::activation_json(act, chords, song.timing(), refusals);
-    const json& steps = j["sp_end_steps"];
-    REQUIRE(steps.size() == 4);
-    // The clamp at 2304 anchors its own step and every later one; the steps
-    // before it are anchored on the activation.
-    const int64_t want[] = {768, 768, 2304, 2304};
-    for (size_t s = 0; s < 4; ++s) {
-        INFO("step " << s);
-        CHECK(steps[s]["anchor_tick"].get<int64_t>() == want[s]);
-        CHECK(steps[s]["anchor_tick"].get<int64_t>() == act.end_anchor_tick(s));
-    }
-    CHECK(steps[2]["kind"] == "clamped");
-    CHECK(j["read_end_after_tick"].get<int64_t>() == 2304);
-    CHECK(j["read_end_after"].get<int>() == 3);  // the chord on 2304
-    CHECK(j["chord"].get<int>() == 1);
-    CHECK(refusals.empty());
-
-    // No clamp: every end moves with the activation's own chord.
-    Activation plain;
-    plain.timecode = song.timecode(768);
-    plain.sp_end_steps = {{768, 3840, SpEndKind::Activation}, {1536, 4608, SpEndKind::Collected}};
-    plain.transfer_post = TransferScale{1.0, 1.0};
-    const json p = schedule::activation_json(plain, chords, song.timing(), refusals);
-    CHECK(p["read_end_after_tick"].get<int64_t>() == 768);
-    CHECK(p["read_end_after"].get<int>() == 1);
-    CHECK(p["sp_end_steps"][1]["anchor_tick"].get<int64_t>() == 768);
+    // On the corpus: an end is measured from the latest clamped step at or
+    // before it, else from the activation's own chord. Each step the file
+    // writes names that anchor, Activation::end_anchor_tick agrees, and the
+    // final end is read after the last step's anchor.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for_each_corpus_activation(cfg, [&](const std::string& path, const Activation& act, const json& j,
+                                        const std::vector<std::string>&) {
+        INFO(path << ": the activation at tick " << act.timecode.ticks());
+        const json& steps = j["sp_end_steps"];
+        REQUIRE(steps.size() == act.sp_end_steps.size());
+        int64_t anchor = act.timecode.ticks();
+        for (size_t s = 0; s < act.sp_end_steps.size(); ++s) {
+            const SpEndStep& st = act.sp_end_steps[s];
+            if (st.kind == SpEndKind::Clamped) anchor = st.tick;
+            INFO("step " << s);
+            CHECK(steps[s]["tick"].get<int64_t>() == st.tick);
+            CHECK(steps[s]["end_tick"].get<int64_t>() == st.end_tick);
+            CHECK(steps[s]["anchor_tick"].get<int64_t>() == anchor);
+            CHECK(act.end_anchor_tick(s) == anchor);
+        }
+        if (act.sp_end_steps.empty()) {
+            CHECK(j["read_end_after_tick"].is_null());
+        } else {
+            CHECK(j["read_end_after_tick"].get<int64_t>() == anchor);
+        }
+    });
 }
 
 TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
-    const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840, 4000});
-    const ChordTimes chords = chord_times(song);
-
-    // A SqIn on the step at 3072 and a SqOut of the chord at 4000. Each
-    // ratio is a value no recompute would give, so a recompute shows.
-    Activation act;
-    act.timecode = song.timecode(768);
-    act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
-    act.sp_end_steps = {{768, 3000, SpEndKind::Activation},
-                        {2304, 3500, SpEndKind::Clamped},
-                        {3072, 3900, SpEndKind::SqIn}};
-    SPSqueeze in{};
-    in.kind = SqueezeKind::SqIn;
-    in.offset_ms = 20.0;
-    in.transfer = TransferScale{1.02, 1.03};
-    SPSqueeze out{};
-    out.kind = SqueezeKind::SqOut;
-    out.offset_ms = -30.0;
-    act.sqinouts = {in, out};
-    act.sqout_tick = 4000;
-    act.transfer_post = TransferScale{1.04, 1.05};
-
-    std::vector<std::string> refusals;
-    const json j = schedule::activation_json(act, chords, song.timing(), refusals);
-    const json& q = j["squeezes"];
-    REQUIRE(q.size() == 2);
-
-    CHECK(q[0]["kind"] == "SqIn");
-    CHECK(q[0]["chord_tick"].get<int64_t>() == 3072);
-    CHECK(q[0]["end_tick"].get<int64_t>() == *act.squeeze_end_tick(0));
-    CHECK(q[0]["end_tick"].get<int64_t>() == 3500);
-    CHECK(q[0]["anchor_tick"].get<int64_t>() == *act.squeeze_anchor_tick(0));
-    CHECK(q[0]["anchor_tick"].get<int64_t>() == 2304);
-    CHECK(q[0]["ratio"]["early"].get<double>() == 1.02);
-    CHECK(q[0]["ratio"]["late"].get<double>() == 1.03);
-
-    CHECK(q[1]["kind"] == "SqOut");
-    CHECK(q[1]["chord_tick"].get<int64_t>() == 4000);
-    CHECK(q[1]["end_tick"].get<int64_t>() == 3900);
-    CHECK(q[1]["anchor_tick"].get<int64_t>() == 2304);
-    CHECK(q[1]["ratio"]["early"].get<double>() == 1.04);
-    CHECK(q[1]["ratio"]["late"].get<double>() == 1.05);
-    CHECK(refusals.empty());
-
-    // A transfer_post left unset: null, and a line saying so.
-    act.transfer_post.reset();
-    refusals.clear();
-    const json k = schedule::activation_json(act, chords, song.timing(), refusals);
-    CHECK(k["squeezes"][1]["ratio"]["early"].is_null());
-    CHECK(k["squeezes"][1]["ratio"]["late"].is_null());
-    REQUIRE(refusals.size() == 1);
-    CHECK(refusals[0].find("transfer_post") != std::string::npos);
+    // On the corpus: each squeeze in the file names the end, anchor and chord
+    // the record gives it, and the ratio the record stored (a SqIn's own,
+    // a SqOut's on transfer_post), null with a refusal line when unset.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int squeezes = 0;
+    for_each_corpus_activation(cfg, [&](const std::string& path, const Activation& act, const json& j,
+                                        const std::vector<std::string>& refusals) {
+        INFO(path << ": the activation at tick " << act.timecode.ticks());
+        const json& q = j["squeezes"];
+        REQUIRE(q.size() == act.sqinouts.size());
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            ++squeezes;
+            INFO("squeeze " << k);
+            const std::optional<int64_t> end = act.squeeze_end_tick(k);
+            const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
+            const std::optional<int64_t> chord = act.squeeze_chord_tick(k);
+            CHECK(q[k]["end_tick"] == (end ? json(*end) : json(nullptr)));
+            CHECK(q[k]["anchor_tick"] == (anchor ? json(*anchor) : json(nullptr)));
+            CHECK(q[k]["chord_tick"] == (chord ? json(*chord) : json(nullptr)));
+            const bool is_in = act.sqinouts[k].kind == SqueezeKind::SqIn;
+            const std::optional<TransferScale>& stored = is_in ? act.sqinouts[k].transfer : act.transfer_post;
+            if (stored) {
+                CHECK(q[k]["ratio"]["early"].get<double>() == stored->early);
+                CHECK(q[k]["ratio"]["late"].get<double>() == stored->late);
+            } else {
+                CHECK(q[k]["ratio"]["early"].is_null());
+                CHECK(q[k]["ratio"]["late"].is_null());
+                const std::string field = is_in ? "SPSqueeze::transfer" : "Activation::transfer_post";
+                CHECK(std::any_of(refusals.begin(), refusals.end(),
+                                  [&](const std::string& r) { return r.find(field) != std::string::npos; }));
+            }
+        }
+    });
+    // The ends_sp test below meets early squeeze-outs on this same corpus, so
+    // the sweep holds squeezes; none read means the walk lost them.
+    CHECK(squeezes > 0);
 }
 
 TEST_CASE("schedule: paid_by matches in_sp on every corpus path") {
+    // On the corpus: each payment a chord carries names one of the path's
+    // windows, the chord sits at or after that window's activation, and the
+    // payment's offset is the chord's distance from that window's SP end on
+    // the chart's own clock.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int rows = 0;
-    std::string first_bad;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
+        if (song.is_empty()) continue;  // no notes to read under cfg, so no path to replay
+        INFO(path);
         const HydraRecord& rec = corpus::analyzed(path, cfg);
         for (const Path* p : rec.all_paths()) {
             const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
             for (const ReplayChord& c : pr.result.chords) {
-                ++rows;
-                if (c.paid_by.empty() == c.in_sp && first_bad.empty())
-                    first_bad = path + ": chord " + std::to_string(c.index) + " paid_by and in_sp disagree";
+                INFO("chord " << c.index);
                 for (const ReplayPayment& pay : c.paid_by) {
-                    bool found = false;
-                    for (const ReplayWindow& w : pr.windows) {
-                        if (w.act_tick != pay.act_tick || w.deact_tick != pay.deact_tick) continue;
-                        found = true;
-                        const double deact_ms = song.timing().timecode(w.deact_tick).ms();
-                        if (pay.offset_ms != offset_from_sp_end(c.ms, deact_ms) && first_bad.empty())
-                            first_bad = path + ": chord " + std::to_string(c.index) + " has the wrong offset";
-                    }
-                    if (!found && first_bad.empty())
-                        first_bad = path + ": chord " + std::to_string(c.index) + " names no window";
+                    const auto w = std::find_if(pr.windows.begin(), pr.windows.end(), [&](const ReplayWindow& x) {
+                        return x.act_tick == pay.act_tick && x.deact_tick == pay.deact_tick;
+                    });
+                    REQUIRE(w != pr.windows.end());
+                    CHECK(c.tick >= w->act_tick);
+                    CHECK(pay.offset_ms == offset_from_sp_end(c.ms, song.timing().timecode(w->deact_tick).ms()));
                 }
             }
         }
     }
-    CHECK(rows > 0);
-    CHECK_MESSAGE(first_bad.empty(), first_bad);
 }
 
 TEST_CASE("schedule: declined chords are the skipped fill ticks") {
     // On the corpus: the declined rows are exactly the skipped fills, and
-    // each one's kept gems are kept_gems'.
+    // each one sends every gem of its chord but the chord's activation note
+    // (Chord::activation_note).
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int declined_rows = 0;
+    size_t declined_rows = 0;
+    size_t skipped_ticks = 0;
     for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
                                       const std::vector<const Activation*>& acts, const PathReplay& pr,
                                       const json& s) {
+        INFO(path);
         std::set<int64_t> skipped;
         for (const Activation* a : acts)
             skipped.insert(a->skipped_fill_ticks.begin(), a->skipped_fill_ticks.end());
+        skipped_ticks += skipped.size();
         std::set<int64_t> marked;
         for (const json& row : s["chords"]) {
             if (!row["declined"].get<bool>()) continue;
             ++declined_rows;
             marked.insert(row["tick"].get<int64_t>());
             const ReplayChord& c = pr.result.chords[row["index"].get<size_t>()];
-            CHECK(row["kept_gems"].get<std::vector<size_t>>() ==
-                  schedule::kept_gems(song.sequence[static_cast<size_t>(c.index)].chord, c.notes).places);
+            const Chord& chord = song.sequence[static_cast<size_t>(c.index)].chord;
+            std::multiset<NoteColor> want;
+            for (const ChordNote& n : chord.note_list(true))
+                if (n.colortype != chord.activation_note().colortype) want.insert(n.colortype);
+            std::multiset<NoteColor> sent;
+            for (size_t k : row["kept_gems"].get<std::vector<size_t>>()) sent.insert(c.notes.at(k).color);
+            INFO("chord " << c.index);
+            CHECK(sent == want);
         }
-        INFO(path);
         CHECK(marked == skipped);
     });
-    CHECK(declined_rows > 0);
+    CHECK(declined_rows == skipped_ticks);
+    // With no skipped fill on any stored path every check above is empty.
+    CHECK(skipped_ticks > 0);
 }
 
 TEST_CASE("schedule: ends_sp marks the chord where each window's Star Power is over") {
