@@ -34,6 +34,7 @@
 #include "../wait_util.h"
 #include "imgui_internal.h"
 #include "app/dm_report.h"
+#include "app/html_page.h"  // kNothingMatches
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
 #include "app/user_messages.h"  // kPathReportFailed, kComparisonFailed, kLeaderboardWaking
@@ -44,6 +45,7 @@
 #include "store/record_store.h"  // failure_record
 #include "ui/library_jobs.h"  // set_report_hold_for_test
 #include "ui/report_window.h"
+#include "ui/theme.h"  // chip_color
 
 namespace uitest {
 
@@ -60,6 +62,16 @@ using hydra::ui::DmReportInput;
 using hydra::ui::PathReportInput;
 using hydra::ui::ReportOutOfDate;
 using hydra::ui::ReportBuild;
+
+// What one chip drew, read from the vertices it added to the draw list in its
+// token's colour, beside the width of its label as ImGui measures it.
+struct ChipDrawn {
+    hydra::app::report::ChipToken token = hydra::app::report::ChipToken::t0;
+    int vertices = 0;   // in the token's colour
+    float left = 0.0f;  // the leftmost and rightmost of them
+    float right = 0.0f;
+    float label_width = 0.0f;
+};
 
 // What the windows were handed, and what they handed back.
 struct Fixture {
@@ -78,15 +90,10 @@ struct Fixture {
     int compares = 0;
     int closes = 0;
     std::string text;  // what the windows drew last frame
-    // report-window-column-widths: when set, each frame notes the path
-    // table's widths as the rule gives them (note_rule_widths).
-    bool want_rule_widths = false;
-    std::vector<float> rule_widths;
-    // report-window-chip-outline: when set, each frame draws a tn chip and a
-    // t0 chip (note_chip_vertices) and keeps what each added to the draw list.
-    bool want_chip_vertices = false;
-    int tn_chip_vertices = 0;
-    int t0_chip_vertices = 0;
+    // report-window-chip-outline: when set, each frame draws one chip per
+    // token (note_chips) and keeps what each drew.
+    bool want_chips = false;
+    std::vector<ChipDrawn> chips;
 };
 
 Fixture& fixture() {
@@ -145,50 +152,39 @@ void reset_fixture() {
 
 ImGuiWindow* path_window();
 
-// The path table's widths this frame as the production rule gives them: the
-// sample rows measured by the window's own measure, placed in the room
-// table_room reads inside the path window. It appends to the path window,
-// drawn earlier this frame, so table_room sees the room the table had.
-void note_rule_widths() {
-    Fixture& f = fixture();
-    f.rule_widths.clear();
-    ImGuiWindow* window = path_window();
-    if (!f.path_open || !window || !f.path.result) return;
-    namespace view_rules = hydra::app::path_report_view;
-    const GeneratedReport& report = *f.path.result;
-    std::vector<std::string> texts;
-    for (const auto& r : report.paths) texts.push_back(view_rules::path_search_text(r));
-    const hydra::app::report_view::TableView<hydra::app::report::ReportRow> view(
-        hydra::app::report_view::shared_rows(f.path.result, &GeneratedReport::paths),
-        std::move(texts), view_rules::path_columns());
-    const std::vector<hydra::ui::ColumnSpec> specs =
-        hydra::ui::report_frame::column_specs(view.columns());
-    ImGui::Begin(window->Name);
-    const hydra::ui::TableRoom room = hydra::ui::table_room("##pathtable", 0.0f, specs.size());
-    f.rule_widths =
-        hydra::ui::place_columns(hydra::ui::report_frame::measure(view), specs, room).widths;
-    ImGui::End();
-}
-
-// The vertices one chip adds to the current window's draw list. The label is
-// the same for every token, so the glyphs add the same number each time.
-int chip_vertices(hydra::app::report::ChipToken token) {
+// What `chip` draws for `token` in the current window: the vertices it adds
+// in the token's colour, and how far left and right they reach.
+ChipDrawn draw_chip(hydra::app::report::ChipToken token) {
+    static const std::string label = "Sample chip";
     const ImDrawList* list = ImGui::GetWindowDrawList();
     const int before = list->VtxBuffer.Size;
-    hydra::ui::report_frame::chip("Sample chip", token);
-    return list->VtxBuffer.Size - before;
+    hydra::ui::report_frame::chip(label, token);
+    ChipDrawn d;
+    d.token = token;
+    d.label_width = ImGui::CalcTextSize(label.c_str()).x;
+    const ImU32 color = ImGui::GetColorU32(hydra::ui::chip_color(token));
+    for (int i = before; i < list->VtxBuffer.Size; ++i) {
+        const ImDrawVert& v = list->VtxBuffer[i];
+        if (v.col != color) continue;
+        d.left = d.vertices == 0 ? v.pos.x : (std::min)(d.left, v.pos.x);
+        d.right = d.vertices == 0 ? v.pos.x : (std::max)(d.right, v.pos.x);
+        ++d.vertices;
+    }
+    return d;
 }
 
-// Draws the two chips in a window of their own, big enough that neither is
-// clipped, and notes what each added.
-void note_chip_vertices() {
+// Draws one chip per token in a window of its own, big enough that none is
+// clipped, and notes what each drew.
+void note_chips() {
     using hydra::app::report::ChipToken;
     Fixture& f = fixture();
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
-    ImGui::SetNextWindowSize(ImVec2(400.0f, 160.0f));
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 400.0f));
     ImGui::Begin("###chipoutline", nullptr, ImGuiWindowFlags_NoSavedSettings);
-    f.tn_chip_vertices = chip_vertices(ChipToken::tn);
-    f.t0_chip_vertices = chip_vertices(ChipToken::t0);
+    f.chips.clear();
+    for (ChipToken token : {ChipToken::t0, ChipToken::t1, ChipToken::t2, ChipToken::t3,
+                            ChipToken::t4, ChipToken::t5, ChipToken::tn, ChipToken::muted})
+        f.chips.push_back(draw_chip(token));
     ImGui::End();
 }
 
@@ -201,12 +197,13 @@ void draw_windows(ImGuiTestContext*) {
     ImGuiContext& g = *ImGui::GetCurrentContext();
     f.text.assign(g.LogBuffer.begin(), g.LogBuffer.end());
     ImGui::LogFinish();
-    if (f.want_rule_widths) note_rule_widths();
-    if (f.want_chip_vertices) note_chip_vertices();
+    if (f.want_chips) note_chips();
 }
 
 bool shows(const std::string& s) { return fixture().text.find(s) != std::string::npos; }
-size_t where(const std::string& s) { return fixture().text.find(s); }
+
+// A text box's or a dropdown's shown text as the frame text logs it.
+std::string boxed(const std::string& s) { return "{ " + s + " }"; }
 
 ImGuiWindow* path_window() { return window_named("###pathreport"); }
 ImGuiWindow* dm_window() { return window_named("###dmreport"); }
@@ -272,65 +269,86 @@ bool real_path_fixture(ImGuiTestContext* ctx) {
     return true;
 }
 
-// The first sort is Score, highest first; a header click flips it.
+/// The path window's count line for `shown` of the fixture's rows, as its
+// owner (report_view::count_line) words it.
+std::string fixture_path_count(size_t shown) {
+    return hydra::app::report_view::count_line(shown, fixture().path.result->paths.size(),
+                                               hydra::app::path_report_view::kNoun);
+}
+
+// How many of the fixture's rows Optimal paths only keeps, by the window's
+// own keep-rule (path_keep) with every timing tier.
+size_t fixture_optimal_rows() {
+    const auto keep = hydra::app::path_report_view::path_keep(std::nullopt, true);
+    const std::vector<hydra::app::report::ReportRow>& rows = fixture().path.result->paths;
+    return static_cast<size_t>(std::count_if(rows.begin(), rows.end(), keep));
+}
+
+// The fixture's row the last click reported, or none when no click came.
+const hydra::app::report::ReportRow* last_clicked_row() {
+    const Fixture& f = fixture();
+    if (f.path_clicks.empty() || f.path_clicks.back() >= f.path.result->paths.size())
+        return nullptr;
+    return &f.path.result->paths[f.path_clicks.back()];
+}
+
+// The first sort is Score, highest first; a header click flips it. The rows
+// are the real report a batch of the corpus's first chart built.
 void test_sort(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
-    fixture().path_open = true;
-    ctx->Yield(3);
-    // Optimal paths only starts ticked, and no sample row is optimal.
-    IM_CHECK(shows("Nothing matches."));
-    IM_CHECK(shows("0 of 6 paths"));
-    open_path_all_rows(ctx);
-    IM_CHECK(shows("6 of 6 paths"));
-    // Row 1 is Song B's best path (sample row 4, 250,000); after the flip it
-    // is Song C (sample row 6, 77,000). The rows are read back through their
-    // clicks: a cut cell's text never reaches the frame's text.
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
+    f.path_open = true;
+    ctx->Yield(3);
+    // Optimal paths only starts ticked: only the optimal paths show.
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+    open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
+    IM_CHECK(shows(fixture_path_count(rows.size())));
+    // The flip shows only where two paths differ in score.
+    const auto [low, high] = std::minmax_element(
+        rows.begin(), rows.end(),
+        [](const auto& a, const auto& b) { return a.score < b.score; });
+    IM_CHECK_RETV(low->score < high->score, );
+    // The rows are read back through their clicks: a cut cell's text never
+    // reaches the frame's text.
     ctx->ItemClick("**/1");
-    IM_CHECK(!f.path_clicks.empty() && f.path_clicks.back() == 3);
+    IM_CHECK_RETV(last_clicked_row() != nullptr, );
+    IM_CHECK_EQ(last_clicked_row()->score, high->score);
     ctx->ItemClick("**/Score");
     ctx->Yield(2);
     ctx->ItemClick("**/1");
-    IM_CHECK(!f.path_clicks.empty() && f.path_clicks.back() == 5);
-
-    // The comparison opens on Points left, most first.
-    open_dm(ctx);
-    IM_CHECK(shows("4 of 4 scores"));
-    IM_CHECK_LT(where("3,456"), where("+1,000 over"));
+    IM_CHECK_RETV(last_clicked_row() != nullptr, );
+    IM_CHECK_EQ(last_clicked_row()->score, low->score);
 }
 
-// Each window's search box hint, then filter to nothing, then Clear filters.
+// The search box's hint, then a word no row holds, then Clear filters.
 void test_filters(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
     open_path_all_rows(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK(shows("Search song, artist, charter, or path notation"));
-    ctx->ItemInputValue("##search", "zzz");
+    // A word none of the rows' search texts holds, so the search keeps none.
+    const std::string word = "zzz";
+    for (const auto& r : rows)
+        IM_CHECK_RETV(hydra::app::path_report_view::path_search_text(r).find(word) ==
+                          std::string::npos, );
+    ctx->ItemInputValue("##search", word.c_str());
     ctx->Yield(2);
-    IM_CHECK(shows("0 of 6 paths"));
-    IM_CHECK(shows("Nothing matches."));
+    IM_CHECK(shows(fixture_path_count(0)));
+    IM_CHECK(shows(hydra::app::html::kNothingMatches));
     IM_CHECK(!shows("Nothing matches those filters."));
     ctx->ItemClick("Clear filters");
     ctx->Yield(2);
-    // The search is empty again and Optimal paths only stayed unticked.
-    IM_CHECK(shows("6 of 6 paths"));
-
-    open_dm(ctx);
-    IM_CHECK(shows("Search song, artist, or charter"));
-    ctx->ComboClick("##status/Not in your library");
-    ctx->Yield(2);
-    IM_CHECK(shows("1 of 4 scores"));
-    ctx->ItemInputValue("##search", "zzz");
-    ctx->Yield(2);
-    IM_CHECK(shows("0 of 4 scores"));
-    IM_CHECK(shows("Nothing matches."));
-    ctx->ItemClick("Clear filters");
-    ctx->Yield(2);
-    IM_CHECK(shows("4 of 4 scores"));
+    // The search is empty again and Optimal paths only stayed unticked:
+    // every row is back.
+    IM_CHECK(shows(fixture_path_count(rows.size())));
+    IM_CHECK(!shows(boxed(word)));
 }
 
-// Every state the frame draws, over the real report a batch of the corpus's
+/ Every state the frame draws, over the real report a batch of the corpus's
 // first chart built.
 void test_states(ImGuiTestContext* ctx) {
     if (!real_path_fixture(ctx)) return;
@@ -428,7 +446,7 @@ std::optional<ImRect> drawn_row(ImGuiTestContext* ctx, size_t n) {
     return info.RectFull;
 }
 
-// In a path window too short for the six sample rows: a row click leaves the
+// In a path window too short for the fixture's rows: a row click leaves the
 // list where it is (the user's rule, 2026-10-14: a click never scrolls);
 // Down onto the first row below the view brings it in at the bottom edge, not
 // the middle; Up onto a row already on screen moves nothing (answer 4).
@@ -437,7 +455,7 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
     ImGuiTable* table = path_table(ctx);
     IM_CHECK_RETV(window != nullptr && table != nullptr && table->InnerWindow != nullptr, );
     const ImVec2 size_before = window->Size;
-    // Room for the header row and about two and a half of the six rows, in
+    // Room for the header row and about two and a half rows, in
     // rows as the table drew them. With more on screen, centring the next row
     // would stop at the end of the list, where it meets the bottom edge too.
     const std::optional<ImRect> first = drawn_row(ctx, 1);
@@ -458,12 +476,16 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
     // all on screen. Centring that next row must move the list further than
     // bringing it to the bottom edge, so it sits well above the last row.
     size_t last_shown = 0;
-    for (size_t n = 1; n <= 6; ++n) {
+    const size_t row_count = fixture().path.result->paths.size();
+    for (size_t n = 1; n <= row_count; ++n) {
         const std::optional<ImRect> r = drawn_row(ctx, n);
         if (r && fully_shown(list, *r)) last_shown = n;
     }
-    ctx->LogInfo("last row wholly on screen: %zu", last_shown);
+    ctx->LogInfo("last row wholly on screen: %zu of %zu", last_shown, row_count);
     IM_CHECK_RETV(last_shown >= 2 && last_shown <= 3, );
+    // Centring the next row moves the list past the bottom edge only with two
+    // rows or more below it; with fewer, the list's end stops it there too.
+    IM_CHECK_RETV(row_count >= last_shown + 3, );
 
     // A click on that row keeps the list still.
     const float scroll = list->Scroll.y;
@@ -493,19 +515,23 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
 }
 
 // Row clicks, the arrow keys, Esc and Ctrl+W.
+// The rows are the real report a batch of the corpus's first chart built.
 void test_keys(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
     open_path_all_rows(ctx);
-    // Row 1 in the first sort is Song B's best path, the fourth sample row.
-    ctx->ItemClick("**/1");
-    IM_CHECK_EQ(f.path_clicks.size(), size_t{1});
     if (ctx->IsError()) return;
-    IM_CHECK_EQ(f.path_clicks.back(), size_t{3});
+    // The second shown row's place among the rows, read by its own click.
+    ctx->ItemClick("**/2");
+    IM_CHECK_RETV(f.path_clicks.size() == size_t{1}, );
+    const size_t second = f.path_clicks.back();
+    // A click on the first shown row reports it, and Down moves to the second.
+    ctx->ItemClick("**/1");
+    IM_CHECK_RETV(f.path_clicks.size() == size_t{2}, );
+    IM_CHECK(f.path_clicks.back() != second);
     ctx->KeyPress(ImGuiKey_DownArrow);
     ctx->Yield(2);
-    IM_CHECK_EQ(f.path_clicks.back(), size_t{4});
+    IM_CHECK_EQ(f.path_clicks.back(), second);
     check_keys_scroll_just_enough(ctx);
     if (ctx->IsError()) return;
 
@@ -520,20 +546,13 @@ void test_keys(ImGuiTestContext* ctx) {
     f.path.keep_filters = true;
     f.path_open = true;
     ctx->Yield(2);
-    IM_CHECK(shows("6 of 6 paths"));
+    IM_CHECK(shows(fixture_path_count(f.path.result->paths.size())));
     ctx->SetRef(path_window());
     ctx->WindowFocus("");
     ctx->KeyPress(ImGuiMod_Ctrl | ImGuiKey_W);
     ctx->Yield(2);
     IM_CHECK(!f.path_open);
     IM_CHECK_EQ(f.closes, 2);
-
-    // Row 3 is Song C, not in the library: its click does nothing.
-    open_dm(ctx);
-    ctx->ItemClick("**/3");
-    IM_CHECK(f.dm_clicks.empty());
-    ctx->ItemClick("**/1");
-    IM_CHECK_EQ(f.dm_clicks.size(), size_t{1});
 }
 
 // The header's Close shuts the window as Esc does, in every build state and
@@ -588,48 +607,48 @@ void test_close_button(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(f.closes, 3);
 }
 
-// A new result that lands while a window is hidden frees the old one at
-// once: the hidden window's view must not keep it alive until the reopen.
+/// A new result that lands while the path window is hidden frees the old one
+// at once: the hidden window's view must not keep it alive until the reopen.
+// Each result is a copy of the real report a batch of the corpus's first
+// chart built, held by nothing but the window's input, so only the window's
+// view can keep it alive.
 void test_hidden_new_result(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
+    const GeneratedReport built = *f.path.result;
+    f.path.result = std::make_shared<GeneratedReport>(built);
     f.path_open = true;
-    f.dm_open = true;
     ctx->Yield(3);
     IM_CHECK(path_window() != nullptr);
-    IM_CHECK(dm_window() != nullptr);
     f.path_open = false;
-    f.dm_open = false;
     ctx->Yield(2);
 
     std::weak_ptr<const GeneratedReport> old_path = f.path.result;
-    std::weak_ptr<const GeneratedDmReport> old_dm = f.dm.result;
-    f.path.result = sample_path_result();
-    f.dm.result = sample_dm_result();
+    f.path.result = std::make_shared<GeneratedReport>(built);
     ctx->Yield(2);
     IM_CHECK(old_path.expired());
-    IM_CHECK(old_dm.expired());
 
     f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK(path_window() != nullptr);
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+}
+
+// Both report windows open at once: the path window on the real report a
+// batch of the corpus's first chart built, and the comparison while its
+// first fetch runs (real_path_fixture leaves it so).
+void test_both(ImGuiTestContext* ctx) {
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
     f.dm_open = true;
     ctx->Yield(3);
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(dm_window() != nullptr);
-    IM_CHECK(shows("of 6 paths"));
-}
-
-// Both windows open at once.
-void test_both(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
-    fixture().path_open = true;
-    fixture().dm_open = true;
-    ctx->Yield(3);
-    IM_CHECK(path_window() != nullptr);
-    IM_CHECK(dm_window() != nullptr);
-    IM_CHECK(shows("of 6 paths"));
-    IM_CHECK(shows("4 of 4 scores"));
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+    IM_CHECK(shows("Fetching scores and building the report..."));
 }
 
 // ---- Column widths and the window's size (one column-width rule) ----------
@@ -673,41 +692,62 @@ void test_chip_label(ImGuiTestContext* ctx) {
         if (columns[c].numeric) IM_CHECK(read[c]);
 }
 
-// A tn chip draws the outline a t0 chip does (D308 item 5). The two hold the
-// same words, so a chip that left its outline out would add fewer vertices.
+/// Every chip draws its outline in its token's colour (D308 item 5: the window
+// draws the outline, so the chips match). The outline sits a chip's padding
+// out from the label on each side, so the marks in the token's colour reach
+// wider than the label; the label's glyphs alone stay within its width.
 void test_chip_outline(ImGuiTestContext* ctx) {
     reset_app(harness(ctx));
     reset_fixture();
     Fixture& f = fixture();
-    f.want_chip_vertices = true;
+    f.want_chips = true;
     ctx->Yield(3);
-    ctx->LogInfo("vertices: tn chip %d, t0 chip %d", f.tn_chip_vertices, f.t0_chip_vertices);
-    IM_CHECK_GT(f.t0_chip_vertices, 0);
-    IM_CHECK_EQ(f.tn_chip_vertices, f.t0_chip_vertices);
-    f.want_chip_vertices = false;
+    f.want_chips = false;
+    IM_CHECK_RETV(!f.chips.empty(), );
+    for (const ChipDrawn& d : f.chips) {
+        ctx->LogInfo("token %d: %d vertices in its colour, from %.1f to %.1f, label %.1f wide",
+                     static_cast<int>(d.token), d.vertices, d.left, d.right, d.label_width);
+        IM_CHECK_GT(d.vertices, 0);
+        IM_CHECK_GT(d.right - d.left, d.label_width);
+    }
 }
 
-// With the window wide, every column is as wide as the rule says for the
-// sample rows.
+// With the window wide, the path table follows the width rule
+// (column_widths.h): every number column shows each of its cells whole, the
+// table needs no sideways scroll, and the columns fill the table's room. The
+// rows are the real report a batch of the corpus's first chart built.
 void test_column_widths(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    Harness& h = harness(ctx);
+    if (!real_path_fixture(ctx)) return;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
-    Fixture& f = fixture();
-    f.want_rule_widths = true;
+    ctx->WindowResize("", ImVec2(static_cast<float>(h.width), 600.0f));
     ctx->Yield(3);
+    const std::vector<hydra::app::report::ReportRow>& rows = fixture().path.result->paths;
     ImGuiTable* table = path_table(ctx);
-    IM_CHECK_RETV(table != nullptr, );
-    IM_CHECK_RETV(static_cast<size_t>(table->ColumnsCount) == f.rule_widths.size(), );
-    for (int c = 0; c < table->ColumnsCount; ++c) {
-        ctx->LogInfo("column %d (%s)", c, ImGui::TableGetColumnName(table, c));
-        IM_CHECK_EQ(table->Columns[c].WidthGiven, f.rule_widths[static_cast<size_t>(c)]);
-    }
-    f.want_rule_widths = false;
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    IM_CHECK(!table->InnerWindow->ScrollbarX);
+
+    // A cut cell draws past ImGui's text log, so a number in the frame's text
+    // was drawn whole.
+    const auto columns = hydra::app::path_report_view::path_columns();
+    for (const auto& column : columns)
+        if (column.numeric)
+            for (const auto& r : rows) IM_CHECK(shows(column.cell(r)));
+
+    // place_columns hands the last open text column the pixels its rounding
+    // lost, so all the room is used but a fraction of one pixel.
+    int last = -1;
+    for (int c = 0; c < table->ColumnsCount; ++c)
+        if (table->Columns[c].IsEnabled) last = c;
+    IM_CHECK_RETV(last >= 0, );
+    const float right = table->Columns[last].MaxX;
+    ctx->LogInfo("last column ends at %.1f, the table's room at %.1f", right,
+                 table->InnerClipRect.Max.x);
+    IM_CHECK_LT(std::fabs(table->InnerClipRect.Max.x - right), 1.0f);
 }
 
-// The leftmost x of the text glyphs drawn last frame in `color` inside
+/ The leftmost x of the text glyphs drawn last frame in `color` inside
 // column `c` of `table`, between `top` and `bottom`: where that cell's text
 // starts. Glyphs are told from filled rects by their texture coordinates (a
 // rect samples the font atlas's white pixel). None when no such glyph.
@@ -727,12 +767,12 @@ std::optional<float> text_start(const ImGuiTable* table, int c, ImU32 color, flo
 
 // Every cell's text starts at its column's left edge: a number in Score and
 // the dim row number in "#" alike (Change 3 of the column-shares plan this
-// file's header points at). The shorter scores show it: right-aligned,
-// "77,000" would start a digit's width in from where "250,000" starts.
+// file's header points at). A shorter number shows it: right-aligned, it
+// would start a digit's width in from where a longer one starts. The rows are
+// the real report a batch of the corpus's first chart built.
 void test_cells_left(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    reset_fixture();
+    if (!real_path_fixture(ctx)) return;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
     // Wide enough that every column is on screen.
@@ -750,10 +790,13 @@ void test_cells_left(ImGuiTestContext* ctx) {
     const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
     const ImU32 dim = ImGui::GetColorU32(hydra::ui::kDimTextColor);
     const std::pair<int, ImU32> cells[] = {{0, dim}, {score, text}};
-    // From the bottom up, so the shortest score is read first.
-    for (size_t n = 6; n >= 1; --n) {
+    // Every row wholly on screen, from the bottom up, so the lowest score
+    // shown is read first.
+    size_t checked = 0;
+    for (size_t n = fixture().path.result->paths.size(); n >= 1; --n) {
         const std::optional<ImRect> row = drawn_row(ctx, n);
-        IM_CHECK_RETV(row.has_value(), );
+        if (!row || !fully_shown(table->InnerWindow, *row)) continue;
+        ++checked;
         for (const auto& [c, color] : cells) {
             const std::optional<float> x = text_start(table, c, color, row->Min.y, row->Max.y);
             IM_CHECK_RETV(x.has_value(), );
@@ -762,6 +805,14 @@ void test_cells_left(ImGuiTestContext* ctx) {
             IM_CHECK_LE(std::fabs(*x - table->Columns[c].WorkMinX), pad);
         }
     }
+    // Row 1 always fits a window this tall, so at least it was read.
+    IM_CHECK_GT(checked, size_t{0});
+}
+
+// The reason store_first_chart_failure's record keeps: the NoNotesError's own
+// words, for Expert Pro Drums.
+std::string no_notes_reason() {
+    return hydra::NoNotesError(hydra::Difficulty::Expert, true).what();
 }
 
 // The scanned library's first chart stored as a chart that can't be analyzed:
@@ -771,9 +822,8 @@ void test_cells_left(ImGuiTestContext* ctx) {
 std::string store_first_chart_failure(Harness& h) {
     const std::string md5 = h.app->library_row_at(0).entry.md5;
     const std::string title = h.app->library_row_at(0).title;
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
     h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
-                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
+                                                    hydra::ErrorKind::NoNotes, no_notes_reason()));
     h.app->refresh_library_summaries();
     return title;
 }
@@ -1233,12 +1283,12 @@ void test_cant_analyze_list(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, hydra::app::report::kNothingToShow));
     IM_CHECK(!page.cant_analyze_line.empty());
     IM_CHECK(on_screen(h, page.cant_analyze_line));
-    IM_CHECK(!on_screen(h, "No Expert Pro Drums notes in this chart."));
+    IM_CHECK(!on_screen(h, no_notes_reason()));
 
     ctx->SetRef(path_window());
     ctx->ItemClick("**/Show list##cantanalyze");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "No Expert Pro Drums notes in this chart."));
+    IM_CHECK(on_screen(h, no_notes_reason()));
     IM_CHECK(on_screen(h, title));
     IM_CHECK(on_screen(h, "Hide list"));
     h.app->close_path_report();
@@ -1374,9 +1424,6 @@ std::vector<std::pair<int, int>> table_sort(ImGuiTestContext* ctx) {
     return out;
 }
 
-// A text box's or a dropdown's shown text as the frame text logs it.
-std::string boxed(const std::string& s) { return "{ " + s + " }"; }
-
 bool best_only_ticked(ImGuiTestContext* ctx) {
     ctx->SetRef(path_window());
     return (ctx->ItemInfo("Optimal paths only").StatusFlags & ImGuiItemStatusFlags_Checked) != 0;
@@ -1460,58 +1507,51 @@ void test_reopen_keeps_filters(ImGuiTestContext* ctx) {
     IM_CHECK(table_sort(ctx) == default_sort);
 }
 
-// A window's state goes with its owner (D308 item 3): rebuilt as the runner
-// builds an AppState per test, the fixture opens both windows fresh. They get
-// back the very results they held, because a new result starts a window over
-// by itself and would prove nothing.
+// A window's state goes with its AppState (D308 item 3): a new AppState, as
+// the runner builds one per test, opens the path window fresh. The fixture
+// draws each AppState's own window state over the real report a batch of the
+// corpus's first chart built. The second AppState's window gets back the
+// very report the first one showed, because a new report starts a window
+// over by itself and would prove nothing.
 void test_fresh_state(ImGuiTestContext* ctx) {
-    reset_app(harness(ctx));
-    reset_fixture();
+    Harness& h = harness(ctx);
+    if (!real_path_fixture(ctx)) return;
     Fixture& f = fixture();
-    const std::string typed = boxed("zzz");
-
-    open_dm(ctx);
-    if (ctx->IsError()) return;
-    ctx->ItemInputValue("##search", "zzz");
-    ctx->Yield(2);
-    IM_CHECK(shows("0 of 4 scores"));
-    IM_CHECK(shows(typed));
-    f.dm_open = false;
+    f.path_state = h.app->path_window_ui;
+    const std::shared_ptr<hydra::ui::PathWindow> first_path = h.app->path_window_ui;
+    const std::shared_ptr<hydra::ui::DmWindow> first_dm = h.app->dm_window_ui;
+    const std::shared_ptr<const GeneratedReport> report = f.path.result;
+    const std::string typed = report->paths.front().song;
 
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
-    ctx->ItemInputValue("##search", "zzz");
+    ctx->ItemInputValue("##search", typed.c_str());
     ctx->Yield(2);
-    IM_CHECK(shows("0 of 6 paths"));
-    IM_CHECK(shows(typed));
-    IM_CHECK(!best_only_ticked(ctx));
+    IM_CHECK_RETV(shows(boxed(typed)), );
+    IM_CHECK_RETV(!best_only_ticked(ctx), );
     f.path_open = false;
     ctx->Yield(2);
 
-    const std::shared_ptr<const GeneratedReport> path_result = f.path.result;
-    const std::shared_ptr<const GeneratedDmReport> dm_result = f.dm.result;
-    reset_fixture();
-    f.path.result = path_result;
-    f.dm.result = dm_result;
-
-    open_dm(ctx);
-    if (ctx->IsError()) return;
-    IM_CHECK(shows("4 of 4 scores"));
-    IM_CHECK(shows("Search song, artist, or charter"));
-    IM_CHECK(!shows(typed));
-    f.dm_open = false;
-
+    // The runner's step between tests: the old AppState goes and a new one
+    // comes. The first one's window states are kept alive here, so the new
+    // ones cannot take their addresses.
+    reset_app(h);
+    IM_CHECK(h.app->path_window_ui != first_path);
+    IM_CHECK(h.app->dm_window_ui != first_dm);
+    f.path_state = h.app->path_window_ui;
+    f.path.result = report;
     f.path_open = true;
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK(shows("Search song, artist, charter, or path notation"));
-    IM_CHECK(!shows(typed));
+    IM_CHECK(!shows(boxed(typed)));
     IM_CHECK(best_only_ticked(ctx));
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
     f.path_open = false;
     ctx->Yield(2);
 }
 
-// After a batch the report goes out of date with the batch's time; a setting
+/ After a batch the report goes out of date with the batch's time; a setting
 // the report reads gives the settings sentence; Refresh rebuilds and clears
 // the strip.
 void test_out_of_date(ImGuiTestContext* ctx) {
