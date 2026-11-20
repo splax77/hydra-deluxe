@@ -548,7 +548,9 @@
 - 2026-11-20 24688ced Handoff workflow documentation (2026-11-20) | hooks, review, agents, deact-node, sp-meter-gauge, clone-hero | Ended with a handoff: the user asked for one, and it is committed on its own branch, claude/handoff-tag-colour-realapp, with the steps to finish the tag-colour merge. [write-back]
 - 2026-11-20 630b71b1 Test fix wave 7 handoff (2026-11-20) | tests, agents, review, docs | Ended with the wave 8 handoff: the user asked for one instead of starting wave 8, and it is committed on its own branch, claude/test-fix-wave8-handoff.
 - 2026-11-20 e90a2d6f Clear the 14 pending Clone Hero write-backs (2026-11-20) | clone-hero, docs, agents | Ended with 11 of the 14 markers cleared on branch claude/intelligent-goldstine-e14a7c, commit a68ecb91, which is not merged. [write-back]
-- 2026-11-20 302feef9 Wave 8 test fix handoff (2026-11-20) | tests, agents, review, docs | Ended with the wave 9 handoff, committed on its own branch, claude/test-fix-wave9-handoff.
+- 2026-11-20 302feef9 Wave 8 test fix handoff (2026-11-20) | tests, agents, review, docs | Ended with the wave 9 handoff, committed on its own branch, claude/test-fix-wave9-handoff. [stale]
+- 2026-11-20 c7e79f79 Tag colour realapp merge handoff (2026-11-20) | batch-time-left, library, planning, agents, memory | Ended with a handoff: the tag colour fix was merged and main was rebuilt, but the time-left fix stayed a reviewed plan, not built, because the main session started work the user had not approved.
+- 2026-11-20 47ab11fd Wave 9 handoff documentation (2026-11-20) | agents, review, tests, docs | Ended with wave 9 merged into main and a wave 10 handoff written on its own branch; nothing was pushed and wave 10 has not started.
 
 ## Proposed tags
 
