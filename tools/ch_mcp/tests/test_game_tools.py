@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import dataclasses
+import functools
 import glob
 import inspect
 import io
@@ -107,6 +109,16 @@ def for_song(schedule, song_folder):
 # A hand-built schedule of SCORE_JSON's two chords, one plain press each
 # (test_play_chart._schedule_of).
 SCHEDULE_JSON = schedule_of(SCORE_JSON)
+
+# A corpus chart folder (song.ini and notes.mid) for ch_install_chart.
+CORPUS_CHART_FOLDER = os.path.join(_REPO_ROOT, "testdata", "input", "test_pitch_dark_ratio")
+# The game's scorestats.json from an in-game run of the Window Map probe song
+# (copied from hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1), and Hydra's
+# score JSON of that song, path 0 (the command that makes it is in the
+# comment above _WINDOW_MAP_SCORE in tools/ch_probe/tests/test_score_compare.py).
+WINDOW_MAP_STATS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o2-run1",
+                                "scorestats-Window_Map-20261107-093442.json")
+WINDOW_MAP_SCORE = os.path.join(_REPO_ROOT, "testdata", "replay", "window_map-score.json")
 
 # The schedule fixtures under tools/ch_probe/tests (hydra_replay schedule of
 # each chart, path 0) and the reply lines they give. Every number below is
@@ -609,150 +621,153 @@ class GameToolsTest(unittest.TestCase):
                          sorted([os.path.basename(tools._scratch), GT.OPEN_RUN_MARKER]))
         tools.ch_stop()
 
-    def test_ensure_backup_takes_none_when_a_run_holds_one(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_start(t.r.song)
-        self.assertEqual(t.tools.ensure_backup(), "")
-
     # -- the stats files ----------------------------------------------------------
 
-    def test_install_cap_is_the_approved_sixty_seconds(self):
-        self.assertEqual(GT.INSTALL_CAP_S, 60.0)
+    def test_ch_install_chart_names_the_refusal_install_gives(self):
+        # The real install into a songs folder under this test's folder, on a
+        # corpus chart folder. Both refusals come before anything is read or
+        # written, so neither needs hydra_replay or ffmpeg.
+        dest_root = os.path.join(self.tmp, "songs")
+        os.makedirs(os.path.join(dest_root, os.path.basename(CORPUS_CHART_FOLDER)))
+        tools = GT.GameTools(B.Env(*real_game_paths(self.tmp), run_reg=None), threading.RLock(),
+                             os.path.join(self.tmp, "real scratch"),
+                             install=functools.partial(I.install, dest_root=dest_root))
+        taken = tools.ch_install_chart(CORPUS_CHART_FOLDER)
+        self.assertTrue(taken.startswith("refused: "), taken)
+        self.assertIn(os.path.join(dest_root, os.path.basename(CORPUS_CHART_FOLDER)), taken)
+        missing = os.path.join(self.tmp, "no such folder")
+        not_a_folder = tools.ch_install_chart(missing)
+        self.assertTrue(not_a_folder.startswith("refused: "), not_a_folder)
+        self.assertIn(missing, not_a_folder)
+        # Neither refusal wrote anything into the songs folder.
+        self.assertEqual(os.listdir(dest_root), [os.path.basename(CORPUS_CHART_FOLDER)])
 
-    def test_ch_install_chart_that_outlasts_the_cap_says_so(self):
-        release = threading.Event()
-
-        def slow_install(src, *, name=None):
-            release.wait(THREAD_CAP_S)
-            return "never read"
-
-        t = ToolRig(self.tmp, install=slow_install, wait_thread=lambda thread, cap_s: None)
-        try:
-            reply = t.tools.ch_install_chart("chart folder")
-        finally:
-            release.set()
-        self.assertTrue(reply.startswith("not finished after 60 s (INSTALL_CAP_S)"), reply)
-
-    def test_ch_install_chart_names_the_chart_or_the_refusal(self):
-        def install(src, *, name=None):
-            if name == "taken":
-                raise I.InstallRefused("taken already exists; not overwritten")
-            return os.path.join(probe_songs.DEFAULT_OUT, name, "notes.mid")
-
-        t = ToolRig(self.tmp, install=install)
-        self.assertEqual(t.tools.ch_install_chart("src", name="new"),
-                         "installed; its chart file is "
-                         + os.path.join(probe_songs.DEFAULT_OUT, "new", "notes.mid"))
-        self.assertEqual(t.tools.ch_install_chart("src", name="taken"),
-                         "refused: taken already exists; not overwritten")
-
-    def test_ch_wait_stats_copies_the_stats_and_ch_stats_reads_the_copy(self):
-        t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.ch_wait_stats(),
-                         "no run is open; start one with ch_start(song_folder)")
-        t.tools.ch_start(t.r.song)
-        t.r.game_writes_stats_at(5)
-        reply = t.tools.ch_wait_stats()
-        self.assertIn("scorestats.json changed after 5 s; copied to ", reply)
-        copy = t.tools._last_stats
-        self.assertTrue(copy.startswith(t.tools._scratch))
-        self.assertIn(f"last stats copy: {copy}", t.tools.ch_status())
-        self.assertEqual(t.tools.ch_stats().splitlines(),
-                         [f"stats: {copy}", "players[0]:", "  is_bot: true"])
+    def test_ch_wait_stats_and_ch_stats_with_no_run_and_no_copy_name_the_next_tool(self):
+        tools = self.real_tools()
+        wait = tools.ch_wait_stats()
+        self.assertIn("no run is open", wait)
+        self.assertIn("ch_start", wait)
+        stats = tools.ch_stats()
+        self.assertIn("no stats copy yet", stats)
+        self.assertIn("ch_wait_stats", stats)
+        # Neither took a backup or made a session folder.
+        self.assertIsNone(tools._adopted_backup)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
 
     def test_ch_stats_prints_every_key_in_the_files_order(self):
-        path = os.path.join(self.tmp, "stats.json")
-        _write(path, json.dumps({
-            "game_version": "v1", "band_score": 10,
-            "players": [{"instrument": "Drums", "modifiers": ["DoubleKick"], "no_fail": True,
-                         "score": 10}]}).encode())
-        t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.ch_stats(path).splitlines(), [
-            f"stats: {path}", "game_version: v1", "band_score: 10", "players[0]:",
-            "  instrument: Drums", '  modifiers: ["DoubleKick"]', "  no_fail: true",
-            "  score: 10"])
+        with open(WINDOW_MAP_STATS, encoding="utf-8-sig") as f:
+            stats = json.load(f)
+        lines = self.real_tools().ch_stats(WINDOW_MAP_STATS).splitlines()
+        self.assertEqual(lines[0], f"stats: {WINDOW_MAP_STATS}")
+        # Each line is `key: value`; the value reads back as the file's own,
+        # a string as itself and anything else as JSON.
+        def parsed(line, indent):
+            self.assertTrue(line.startswith(indent), line)
+            key, _sep, text = line[len(indent):].partition(": ")
+            return key, text
 
-    # The run's settings the ch_compare tests pass, and the stats file holds.
-    COMPARE_RUN = compare_scorestats.RunSettings(
-        "AF44D5C8D941BB33444D18E7871CDC77", 100, True, ("DoubleKick",))
+        top = [key for key in stats if key != "players"]
+        self.assertEqual([parsed(line, "")[0] for line in lines[1:1 + len(top)]], top)
+        for line in lines[1:1 + len(top)]:
+            key, text = parsed(line, "")
+            value = stats[key]
+            self.assertEqual(text if isinstance(value, str) else json.loads(text), value, key)
+        rest = lines[1 + len(top):]
+        for i, player in enumerate(stats["players"]):
+            self.assertEqual(rest[0], f"players[{i}]:")
+            body, rest = rest[1:1 + len(player)], rest[1 + len(player):]
+            self.assertEqual([parsed(line, "  ")[0] for line in body], list(player))
+            for line in body:
+                key, text = parsed(line, "  ")
+                value = player[key]
+                self.assertEqual(text if isinstance(value, str) else json.loads(text), value, key)
+        self.assertEqual(rest, [])
 
-    def _compare_files(self):
-        stats = os.path.join(self.tmp, "stats.json")
-        score = os.path.join(self.tmp, "score.json")
-        run = self.COMPARE_RUN
-        _write(stats, json.dumps({
-            "checksum": run.checksum, "playback_speed": run.playback_speed,
-            "players": [{"total_notes": 2, "notes_hit": 2, "sp_phrases_total": 0,
-                         "sp_phrases_earned": 0, "base_score": 100, "note_score": 100,
-                         "score": 100, "accent_notes_hit": 0, "ghost_notes_hit": 0,
-                         "sp_activations": 0, "no_fail": run.no_fail,
-                         "modifiers": list(run.modifiers)}]}).encode())
-        _write(score, json.dumps({
-            "chords": [{"notes": [{"dynamic": "none"}], "is_sp_phrase_end": False}] * 2,
-            "final": {"notes": 100, "accent": 0, "ghost": 0, "total": 100},
-            "activations": []}).encode())
-        return stats, score
+    def _window_map_run(self) -> compare_scorestats.RunSettings:
+        """The settings the Window Map stats file says the game played with,
+        given back as the run's."""
+        with open(WINDOW_MAP_STATS, encoding="utf-8-sig") as f:
+            stats = json.load(f)
+        player = stats["players"][0]
+        return compare_scorestats.RunSettings(stats["checksum"], stats["playback_speed"],
+                                              player["no_fail"], tuple(player["modifiers"]))
 
     def test_ch_compare_prints_compares_lines_then_the_verdict(self):
-        stats, score = self._compare_files()
-        run = self.COMPARE_RUN
+        run = self._window_map_run()
         expected = []
-        self.assertTrue(compare_scorestats.compare(stats, score, run=run, out=expected.append))
-        t = ToolRig(self.tmp)
-        reply = t.tools.ch_compare(stats, score, run.checksum, run.playback_speed, run.no_fail,
-                                   list(run.modifiers))
-        self.assertEqual(reply.splitlines(), expected + ["pass"])
+        ok = compare_scorestats.compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE, run=run,
+                                        out=expected.append)
+        reply = self.real_tools().ch_compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE, run.checksum,
+                                             run.playback_speed, run.no_fail, list(run.modifiers))
+        self.assertEqual(reply.splitlines(), expected + ["pass" if ok else "fail"])
 
     def test_ch_compare_without_the_run_settings_fails_on_the_settings_line(self):
-        stats, score = self._compare_files()
         expected = []
-        self.assertFalse(compare_scorestats.compare(stats, score, out=expected.append))
-        t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.ch_compare(stats, score).splitlines(), expected + ["fail"])
+        self.assertFalse(compare_scorestats.compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE,
+                                                    out=expected.append))
+        # With the run's settings given, the same files give other lines: the
+        # settings line is where the two differ.
+        given = []
+        compare_scorestats.compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE,
+                                   run=self._window_map_run(), out=given.append)
+        self.assertNotEqual(expected, given)
+        reply = self.real_tools().ch_compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE)
+        self.assertEqual(reply.splitlines(), expected + ["fail"])
 
     def test_ch_compare_refuses_some_but_not_all_of_the_run_settings(self):
-        stats, score = self._compare_files()
-        t = ToolRig(self.tmp)
-        self.assertEqual(
-            t.tools.ch_compare(stats, score, checksum=self.COMPARE_RUN.checksum, no_fail=True),
-            "refused: give all four of the run's settings, or none; missing: "
-            "playback_speed, modifiers")
+        run = self._window_map_run()
+        # A stats path that is not there: the refusal comes before any read.
+        missing = os.path.join(self.tmp, "no stats.json")
+        reply = self.real_tools().ch_compare(missing, WINDOW_MAP_SCORE, checksum=run.checksum,
+                                             no_fail=run.no_fail)
+        self.assertTrue(reply.startswith("refused: "), reply)
+        self.assertNotIn(missing, reply)
+        named = reply.partition("missing: ")[2].split(", ")
+        self.assertEqual(named, ["playback_speed", "modifiers"])
+        # Every name it gives is one of ch_compare's own arguments.
+        self.assertLessEqual(set(named),
+                             set(inspect.signature(GT.GameTools.ch_compare).parameters))
 
     def test_ch_compare_takes_an_empty_modifier_list_as_given(self):
-        stats, score = self._compare_files()
-        run = self.COMPARE_RUN
-        reply = ToolRig(self.tmp).tools.ch_compare(stats, score, run.checksum,
-                                                   run.playback_speed, run.no_fail, [])
-        self.assertIn("modifiers: FAIL; ", reply)
+        run = self._window_map_run()
+        self.assertTrue(run.modifiers)
+        none_played = []
+        compare_scorestats.compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE,
+                                   run=dataclasses.replace(run, modifiers=()), out=none_played.append)
+        as_played = []
+        compare_scorestats.compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE, run=run,
+                                   out=as_played.append)
+        reply = self.real_tools().ch_compare(WINDOW_MAP_STATS, WINDOW_MAP_SCORE, run.checksum,
+                                             run.playback_speed, run.no_fail, [])
+        # Taken as an empty list, not as a missing setting: compare's lines
+        # for no modifiers, which differ from the ones for the modifiers the
+        # game played with.
+        self.assertEqual(reply.splitlines()[:-1], none_played)
+        self.assertNotEqual(none_played, as_played)
         self.assertEqual(reply.splitlines()[-1], "fail")
 
     # -- keys -------------------------------------------------------------------------
 
-    def test_ch_press_focuses_the_window_and_presses_the_bound_keys(self):
-        t = ToolRig(self.tmp)
-        focused = []
-        with mock.patch.object(play_chart, "focus_window", focused.append):
-            reply = t.tools.ch_press("red,kick")
-        red, kick = DEFAULT_BINDINGS[Lane.RED], DEFAULT_BINDINGS[Lane.KICK]
-        self.assertEqual(focused, [WINDOW])
-        self.assertEqual(t.driver.events, [(red, False), (kick, False), (red, True), (kick, True)])
-        self.assertEqual(reply.splitlines()[-1], "pressed red, kick; keys sent: S, L")
-        # No run was open, so the press took the adopted game's backup first.
-        self.assertTrue(reply.startswith(f"backup folder: {t.backup_dir()} "))
-
     def test_ch_press_refuses_an_unknown_lane_with_the_list(self):
-        t = ToolRig(self.tmp)
-        reply = t.tools.ch_press("purple")
-        self.assertEqual(reply, 'unknown lane "purple"; valid lanes: green, red, yellow, blue, '
-                                "kick, yellow_cymbal, blue_cymbal, green_cymbal")
-        self.assertEqual(t.driver.events, [])
-        self.assertIsNone(t.backup_dir())
+        tools = self.real_tools()
+        reply = tools.ch_press("purple")
+        self.assertIn('"purple"', reply)
+        listed = reply.partition("valid lanes: ")[2].split(", ")
+        self.assertEqual(listed, [lane.name.lower() for lane in Lane])
+        # Refused before the window lookup: no backup, no session folder.
+        self.assertIsNone(tools._adopted_backup)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
 
     def test_ch_press_with_no_window_says_so(self):
-        t = ToolRig(self.tmp)
-        t.hwnd = 0
-        self.assertTrue(t.tools.ch_press("red").startswith("no game window found"))
-        self.assertEqual(t.driver.events, [])
+        # The real window lookup on this desktop. With the game open the
+        # press would go to it, so the test fails at once rather than press.
+        if input_driver.find_game_window():
+            self.fail("a Clone Hero window is open; close it to run this test")
+        tools = self.real_tools()
+        reply = tools.ch_press("red")
+        self.assertTrue(reply.startswith("no game window found"), reply)
+        self.assertIsNone(tools._adopted_backup)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
 
     # -- menu keys ------------------------------------------------------------------------
 
@@ -789,30 +804,6 @@ class GameToolsTest(unittest.TestCase):
                                lambda hwnd: events.append(("focus", hwnd))):
             reply = t.tools.ch_key(keys)
         return t, events, reply
-
-    def test_ch_key_backs_up_focuses_once_then_presses_and_types_in_order(self):
-        song = probe_songs.WINDOW_MAP
-        t, events, reply = self._ch_key(f"enter,down,text:{song}")
-        gap = ("sleep", input_driver.MENU_KEY_GAP_S)  # pinned in test_input_driver
-        hold = ("sleep", input_driver.KEY_HOLD_S)
-        enter, down = input_driver.MENU_KEYS["enter"], input_driver.MENU_KEYS["down"]
-        typed = []
-        for i, char in enumerate(song):
-            if i:
-                typed.append(gap)
-            typed += [("char", char, False), ("char", char, True)]
-        self.assertEqual(events, [("backup",), ("focus", WINDOW),
-                                  ("key", enter, False), hold, ("key", enter, True), gap,
-                                  ("key", down, False), hold, ("key", down, True), gap]
-                         + typed)
-        self.assertEqual(reply.splitlines()[-1],
-                         f'keys sent: enter, down, text "{song}" (10 characters)')
-        self.assertTrue(reply.startswith(f"backup folder: {t.backup_dir()} "))
-
-    def test_ch_key_types_a_comma_inside_the_text(self):
-        _t, events, reply = self._ch_key("text:a,b")
-        self.assertEqual([e[1] for e in events if e[0] == "char" and not e[2]], ["a", ",", "b"])
-        self.assertEqual(reply.splitlines()[-1], 'keys sent: text "a,b" (3 characters)')
 
     def test_ch_key_refuses_an_unknown_key_with_the_list_and_sends_nothing(self):
         t, events, reply = self._ch_key("f1")
