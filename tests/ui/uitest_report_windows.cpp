@@ -246,14 +246,33 @@ bool batch_first_chart(ImGuiTestContext* ctx) {
     return true;
 }
 
-// The fixture's path window on the real report that batch built, through
+// The corpus scanned and every chart in it batched through Analyze library,
+// the batch's report built while the path window is shut. Each analyzed
+// chart puts at least one row on the report (report.cpp, rows_of), so this
+// report has far more rows than one chart's. False when a step failed.
+bool batch_whole_corpus(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    reset_app(h);
+    scan_library(ctx);
+    if (ctx->IsError()) return false;
+    start_library_batch(ctx);
+    IM_CHECK_RETV(wait_until(ctx, [&] {
+        return h.app->batch_job && h.app->batch_job->snapshot().finished;
+    }, 300), false);
+    dismiss_done(ctx);
+    return !ctx->IsError();
+}
+
+// The fixture's path window on the real report the `batch` step built
+// (the corpus's first chart unless the test names another step), through
 // the window input AppState hands the app's own window, with the fixture's
 // recording callbacks in place of the app's. The comparison side holds no
 // rows: a real one needs dmleaderboards, so it is left as the app's window
 // is before its first comparison lands. False when a step failed.
-bool real_path_fixture(ImGuiTestContext* ctx) {
+bool real_path_fixture(ImGuiTestContext* ctx,
+                       bool (*batch)(ImGuiTestContext*) = batch_first_chart) {
     Harness& h = harness(ctx);
-    if (!batch_first_chart(ctx)) return false;
+    if (!batch(ctx)) return false;
     IM_CHECK_RETV(wait_until(ctx, [&] {
         return h.app->report_job == nullptr && h.app->path_report.result != nullptr;
     }, 60), false);
@@ -515,9 +534,10 @@ void check_keys_scroll_just_enough(ImGuiTestContext* ctx) {
 }
 
 // Row clicks, the arrow keys, Esc and Ctrl+W.
-// The rows are the real report a batch of the corpus's first chart built.
+// The rows are the real report a batch of the whole corpus built: the scroll
+// checks need rows below the view, more than the first chart's paths give.
 void test_keys(ImGuiTestContext* ctx) {
-    if (!real_path_fixture(ctx)) return;
+    if (!real_path_fixture(ctx, batch_whole_corpus)) return;
     Fixture& f = fixture();
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
@@ -736,13 +756,24 @@ void test_column_widths(ImGuiTestContext* ctx) {
             for (const auto& r : rows) IM_CHECK(shows(column.cell(r)));
 
     // place_columns hands the last open text column the pixels its rounding
-    // lost, so all the room is used but a fraction of one pixel.
+    // lost, so all the room is used but a fraction of one pixel. The room
+    // (table_room) is the width inside the table's scroll window, and the
+    // spacing it takes off counts the cell spacing between columns only.
+    // ImGui's TableUpdateLayout (imgui_tables.cpp) starts the first column's
+    // MinX one CellSpacingX1 left of the table's WorkRect, and gives each
+    // column's MaxX its width plus CellSpacingX1 and CellSpacingX2, so the
+    // last column's MaxX sits a CellSpacingX2 past the room's right edge.
+    // Its WorkMaxX (MaxX less CellPaddingX and CellSpacingX2) is where its
+    // cells' content ends, and that is the edge the rule fills to.
+    // InnerClipRect.Max.x is the scroll window's own clip edge
+    // (InnerRect.Max.x rounded down, imgui.cpp). Both edges round down from
+    // the same room, so they differ by less than a pixel.
     int last = -1;
     for (int c = 0; c < table->ColumnsCount; ++c)
         if (table->Columns[c].IsEnabled) last = c;
     IM_CHECK_RETV(last >= 0, );
-    const float right = table->Columns[last].MaxX;
-    ctx->LogInfo("last column ends at %.1f, the table's room at %.1f", right,
+    const float right = table->Columns[last].WorkMaxX;
+    ctx->LogInfo("last column's content ends at %.1f, the table's room at %.1f", right,
                  table->InnerClipRect.Max.x);
     IM_CHECK_LT(std::fabs(table->InnerClipRect.Max.x - right), 1.0f);
 }
