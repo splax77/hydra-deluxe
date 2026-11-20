@@ -73,11 +73,6 @@ std::set<NoteColor> kept_colours(const std::set<NoteColor>& colours) {
     return out;
 }
 
-// A side at the floor and at the cap: half of TM-21's whole window at a
-// summed gap of 75 and of 170 (TM-22 prints them as 48.15 and 85.72).
-const doctest::Approx kFloorSide = doctest::Approx(96.2931672 / 2);
-const doctest::Approx kCapSide = doctest::Approx(171.4313075 / 2);
-
 // Every stored path of every corpus chart that has notes under `cfg`:
 // replayed, and its schedule built by schedule::schedule_json.
 // `check` gets the chart's path, its song, the path's activations in walk
@@ -101,167 +96,158 @@ void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCh
     }
 }
 
+// Every activation of every stored corpus path (for_each_corpus_schedule),
+// with the activation_json it writes over its chart's whole chord list and
+// the refusal lines that call added.
+using ActivationCheck = std::function<void(const std::string& path, const Activation& act, const json& j,
+                                           const std::vector<std::string>& refusals)>;
+
+void for_each_corpus_activation_json(const app::AnalysisSettings& cfg, const ActivationCheck& check) {
+    for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
+                                      const std::vector<const Activation*>& acts, const PathReplay&,
+                                      const json&) {
+        const ChordTimes chords = chord_times(song);
+        for (const Activation* a : acts) {
+            std::vector<std::string> refusals;
+            const json j = schedule::activation_json(*a, chords, song.timing(), refusals);
+            check(path, *a, j, refusals);
+        }
+    });
+}
+
 }  // namespace
 
 TEST_CASE("schedule: every end step names its anchor") {
-    const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840});
-    const ChordTimes chords = chord_times(song);
-
-    Activation act;
-    act.timecode = song.timecode(768);
-    act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
-    act.sp_end_steps = {{768, 3840, SpEndKind::Activation},
-                        {1536, 4608, SpEndKind::Collected},
-                        {2304, 4800, SpEndKind::Clamped},
-                        {3072, 5000, SpEndKind::SqIn}};
-    SPSqueeze in{};
-    in.kind = SqueezeKind::SqIn;
-    in.offset_ms = 10.0;
-    in.transfer = TransferScale{1.0, 1.0};
-    act.sqinouts.push_back(in);
-    act.transfer_post = TransferScale{1.0, 1.0};
-
-    std::vector<std::string> refusals;
-    const json j = schedule::activation_json(act, chords, song.timing(), refusals);
-    const json& steps = j["sp_end_steps"];
-    REQUIRE(steps.size() == 4);
-    // The clamp at 2304 anchors its own step and every later one; the steps
-    // before it are anchored on the activation.
-    const int64_t want[] = {768, 768, 2304, 2304};
-    for (size_t s = 0; s < 4; ++s) {
-        INFO("step " << s);
-        CHECK(steps[s]["anchor_tick"].get<int64_t>() == want[s]);
-        CHECK(steps[s]["anchor_tick"].get<int64_t>() == act.end_anchor_tick(s));
-    }
-    CHECK(steps[2]["kind"] == "clamped");
-    CHECK(j["read_end_after_tick"].get<int64_t>() == 2304);
-    CHECK(j["read_end_after"].get<int>() == 3);  // the chord on 2304
-    CHECK(j["chord"].get<int>() == 1);
-    CHECK(refusals.empty());
-
-    // No clamp: every end moves with the activation's own chord.
-    Activation plain;
-    plain.timecode = song.timecode(768);
-    plain.sp_end_steps = {{768, 3840, SpEndKind::Activation}, {1536, 4608, SpEndKind::Collected}};
-    plain.transfer_post = TransferScale{1.0, 1.0};
-    const json p = schedule::activation_json(plain, chords, song.timing(), refusals);
-    CHECK(p["read_end_after_tick"].get<int64_t>() == 768);
-    CHECK(p["read_end_after"].get<int>() == 1);
-    CHECK(p["sp_end_steps"][1]["anchor_tick"].get<int64_t>() == 768);
+    // On the corpus: an end is measured from the latest clamped step at or
+    // before it, else from the activation's own chord. Each step the file
+    // writes names that anchor, Activation::end_anchor_tick agrees, and the
+    // final end is read after the last step's anchor.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    for_each_corpus_activation_json(cfg, [&](const std::string& path, const Activation& act, const json& j,
+                                        const std::vector<std::string>&) {
+        INFO(path << ": the activation at tick " << act.timecode.ticks());
+        const json& steps = j["sp_end_steps"];
+        REQUIRE(steps.size() == act.sp_end_steps.size());
+        int64_t anchor = act.timecode.ticks();
+        for (size_t s = 0; s < act.sp_end_steps.size(); ++s) {
+            const SpEndStep& st = act.sp_end_steps[s];
+            if (st.kind == SpEndKind::Clamped) anchor = st.tick;
+            INFO("step " << s);
+            CHECK(steps[s]["tick"].get<int64_t>() == st.tick);
+            CHECK(steps[s]["end_tick"].get<int64_t>() == st.end_tick);
+            CHECK(steps[s]["anchor_tick"].get<int64_t>() == anchor);
+            CHECK(act.end_anchor_tick(s) == anchor);
+        }
+        if (act.sp_end_steps.empty()) {
+            CHECK(j["read_end_after_tick"].is_null());
+        } else {
+            CHECK(j["read_end_after_tick"].get<int64_t>() == anchor);
+        }
+    });
 }
 
 TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
-    const Song song = plain_song({0, 768, 1536, 2304, 3072, 3840, 4000});
-    const ChordTimes chords = chord_times(song);
-
-    // A SqIn on the step at 3072 and a SqOut of the chord at 4000. Each
-    // ratio is a value no recompute would give, so a recompute shows.
-    Activation act;
-    act.timecode = song.timecode(768);
-    act.bank_rise_ticks = {0, 768};  // two bars, so the ready point is known
-    act.sp_end_steps = {{768, 3000, SpEndKind::Activation},
-                        {2304, 3500, SpEndKind::Clamped},
-                        {3072, 3900, SpEndKind::SqIn}};
-    SPSqueeze in{};
-    in.kind = SqueezeKind::SqIn;
-    in.offset_ms = 20.0;
-    in.transfer = TransferScale{1.02, 1.03};
-    SPSqueeze out{};
-    out.kind = SqueezeKind::SqOut;
-    out.offset_ms = -30.0;
-    act.sqinouts = {in, out};
-    act.sqout_tick = 4000;
-    act.transfer_post = TransferScale{1.04, 1.05};
-
-    std::vector<std::string> refusals;
-    const json j = schedule::activation_json(act, chords, song.timing(), refusals);
-    const json& q = j["squeezes"];
-    REQUIRE(q.size() == 2);
-
-    CHECK(q[0]["kind"] == "SqIn");
-    CHECK(q[0]["chord_tick"].get<int64_t>() == 3072);
-    CHECK(q[0]["end_tick"].get<int64_t>() == *act.squeeze_end_tick(0));
-    CHECK(q[0]["end_tick"].get<int64_t>() == 3500);
-    CHECK(q[0]["anchor_tick"].get<int64_t>() == *act.squeeze_anchor_tick(0));
-    CHECK(q[0]["anchor_tick"].get<int64_t>() == 2304);
-    CHECK(q[0]["ratio"]["early"].get<double>() == 1.02);
-    CHECK(q[0]["ratio"]["late"].get<double>() == 1.03);
-
-    CHECK(q[1]["kind"] == "SqOut");
-    CHECK(q[1]["chord_tick"].get<int64_t>() == 4000);
-    CHECK(q[1]["end_tick"].get<int64_t>() == 3900);
-    CHECK(q[1]["anchor_tick"].get<int64_t>() == 2304);
-    CHECK(q[1]["ratio"]["early"].get<double>() == 1.04);
-    CHECK(q[1]["ratio"]["late"].get<double>() == 1.05);
-    CHECK(refusals.empty());
-
-    // A transfer_post left unset: null, and a line saying so.
-    act.transfer_post.reset();
-    refusals.clear();
-    const json k = schedule::activation_json(act, chords, song.timing(), refusals);
-    CHECK(k["squeezes"][1]["ratio"]["early"].is_null());
-    CHECK(k["squeezes"][1]["ratio"]["late"].is_null());
-    REQUIRE(refusals.size() == 1);
-    CHECK(refusals[0].find("transfer_post") != std::string::npos);
+    // On the corpus: each squeeze in the file names the end, anchor and chord
+    // the record gives it, and the ratio the record stored (a SqIn's own,
+    // a SqOut's on transfer_post), null with a refusal line when unset.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int squeezes = 0;
+    for_each_corpus_activation_json(cfg, [&](const std::string& path, const Activation& act, const json& j,
+                                        const std::vector<std::string>& refusals) {
+        INFO(path << ": the activation at tick " << act.timecode.ticks());
+        const json& q = j["squeezes"];
+        REQUIRE(q.size() == act.sqinouts.size());
+        for (size_t k = 0; k < act.sqinouts.size(); ++k) {
+            ++squeezes;
+            INFO("squeeze " << k);
+            const std::optional<int64_t> end = act.squeeze_end_tick(k);
+            const std::optional<int64_t> anchor = act.squeeze_anchor_tick(k);
+            const std::optional<int64_t> chord = act.squeeze_chord_tick(k);
+            CHECK(q[k]["end_tick"] == (end ? json(*end) : json(nullptr)));
+            CHECK(q[k]["anchor_tick"] == (anchor ? json(*anchor) : json(nullptr)));
+            CHECK(q[k]["chord_tick"] == (chord ? json(*chord) : json(nullptr)));
+            const bool is_in = act.sqinouts[k].kind == SqueezeKind::SqIn;
+            const std::optional<TransferScale>& stored = is_in ? act.sqinouts[k].transfer : act.transfer_post;
+            if (stored) {
+                CHECK(q[k]["ratio"]["early"].get<double>() == stored->early);
+                CHECK(q[k]["ratio"]["late"].get<double>() == stored->late);
+            } else {
+                CHECK(q[k]["ratio"]["early"].is_null());
+                CHECK(q[k]["ratio"]["late"].is_null());
+                const std::string field = is_in ? "SPSqueeze::transfer" : "Activation::transfer_post";
+                CHECK(std::any_of(refusals.begin(), refusals.end(),
+                                  [&](const std::string& r) { return r.find(field) != std::string::npos; }));
+            }
+        }
+    });
+    // The ends_sp test below meets early squeeze-outs on this same corpus, so
+    // the sweep holds squeezes; none read means the walk lost them.
+    CHECK(squeezes > 0);
 }
 
 TEST_CASE("schedule: paid_by matches in_sp on every corpus path") {
+    // On the corpus: each payment a chord carries names one of the path's
+    // windows, the chord sits at or after that window's activation, and the
+    // payment's offset is the chord's distance from that window's SP end on
+    // the chart's own clock.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int rows = 0;
-    std::string first_bad;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
+        if (song.is_empty()) continue;  // no notes to read under cfg, so no path to replay
+        INFO(path);
         const HydraRecord& rec = corpus::analyzed(path, cfg);
         for (const Path* p : rec.all_paths()) {
             const PathReplay pr = replay_stored_path(song, *p, cfg.rules);
             for (const ReplayChord& c : pr.result.chords) {
-                ++rows;
-                if (c.paid_by.empty() == c.in_sp && first_bad.empty())
-                    first_bad = path + ": chord " + std::to_string(c.index) + " paid_by and in_sp disagree";
+                INFO("chord " << c.index);
                 for (const ReplayPayment& pay : c.paid_by) {
-                    bool found = false;
-                    for (const ReplayWindow& w : pr.windows) {
-                        if (w.act_tick != pay.act_tick || w.deact_tick != pay.deact_tick) continue;
-                        found = true;
-                        const double deact_ms = song.timing().timecode(w.deact_tick).ms();
-                        if (pay.offset_ms != offset_from_sp_end(c.ms, deact_ms) && first_bad.empty())
-                            first_bad = path + ": chord " + std::to_string(c.index) + " has the wrong offset";
-                    }
-                    if (!found && first_bad.empty())
-                        first_bad = path + ": chord " + std::to_string(c.index) + " names no window";
+                    const auto w = std::find_if(pr.windows.begin(), pr.windows.end(), [&](const ReplayWindow& x) {
+                        return x.act_tick == pay.act_tick && x.deact_tick == pay.deact_tick;
+                    });
+                    REQUIRE(w != pr.windows.end());
+                    CHECK(c.tick >= w->act_tick);
+                    CHECK(pay.offset_ms == offset_from_sp_end(c.ms, song.timing().timecode(w->deact_tick).ms()));
                 }
             }
         }
     }
-    CHECK(rows > 0);
-    CHECK_MESSAGE(first_bad.empty(), first_bad);
 }
 
 TEST_CASE("schedule: declined chords are the skipped fill ticks") {
     // On the corpus: the declined rows are exactly the skipped fills, and
-    // each one's kept gems are kept_gems'.
+    // each one sends every gem of its chord but the chord's activation note
+    // (Chord::activation_note).
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int declined_rows = 0;
+    size_t declined_rows = 0;
+    size_t skipped_ticks = 0;
     for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
                                       const std::vector<const Activation*>& acts, const PathReplay& pr,
                                       const json& s) {
+        INFO(path);
         std::set<int64_t> skipped;
         for (const Activation* a : acts)
             skipped.insert(a->skipped_fill_ticks.begin(), a->skipped_fill_ticks.end());
+        skipped_ticks += skipped.size();
         std::set<int64_t> marked;
         for (const json& row : s["chords"]) {
             if (!row["declined"].get<bool>()) continue;
             ++declined_rows;
             marked.insert(row["tick"].get<int64_t>());
             const ReplayChord& c = pr.result.chords[row["index"].get<size_t>()];
-            CHECK(row["kept_gems"].get<std::vector<size_t>>() ==
-                  schedule::kept_gems(song.sequence[static_cast<size_t>(c.index)].chord, c.notes).places);
+            const Chord& chord = song.sequence[static_cast<size_t>(c.index)].chord;
+            std::multiset<NoteColor> want;
+            for (const ChordNote& n : chord.note_list(true))
+                if (n.colortype != chord.activation_note().colortype) want.insert(n.colortype);
+            std::multiset<NoteColor> sent;
+            for (size_t k : row["kept_gems"].get<std::vector<size_t>>()) sent.insert(c.notes.at(k).color);
+            INFO("chord " << c.index);
+            CHECK(sent == want);
         }
-        INFO(path);
         CHECK(marked == skipped);
     });
-    CHECK(declined_rows > 0);
+    CHECK(declined_rows == skipped_ticks);
+    // With no skipped fill on any stored path every check above is empty.
+    CHECK(skipped_ticks > 0);
 }
 
 TEST_CASE("schedule: ends_sp marks the chord where each window's Star Power is over") {
@@ -293,73 +279,82 @@ TEST_CASE("schedule: ends_sp marks the chord where each window's Star Power is o
 }
 
 TEST_CASE("schedule: the window constants are written") {
-    // The formula's own values are pinned in tests/test_note_window.cpp.
+    // The constants the file writes are the ones its presses use: the
+    // window's edges are core/note_window.h's, the game judges a press one
+    // frame after it is sent, a plain press aims press_lead_ms early, and a
+    // press's last send is its chord's side less one frame.
     const Song song = plain_song({0, 768});
     const ReplayResult r = replay_path(song, {});
-    const json c = schedule::schedule_json(song, {}, r, core::default_rules())["constants"];
-    CHECK(c["frame_ms"].get<double>() == 3.0);
-    CHECK(c["judge_early_ms"].get<double>() == 3.0);
-    CHECK_FALSE(c.contains("judge_late_ms"));  // one frame everywhere (D319 item 3)
-    CHECK(c["press_lead_ms"].get<double>() == 2.0);
-    CHECK(c["sp_end_lead_ms"].get<double>() == 15.0);
-    CHECK(c["sp_out_lag_ms"].get<double>() == 15.0);
-    CHECK(c["chord_order_gap_ms"].get<double>() == 8.0);
-    CHECK(c["room_margin_ms"].get<double>() == 3.0);
-    CHECK(c["window_front_ms"].get<double>() == 37.5);
-    CHECK(c["window_back_ms"].get<double>() == 85.0);
+    const json s = schedule::schedule_json(song, {}, r, core::default_rules());
+    const json& c = s["constants"];
+    CHECK(c["window_front_ms"].get<double>() == kWindowFrontMs);
+    CHECK(c["window_back_ms"].get<double>() == kWindowBackMs);
+    CHECK(c["judge_early_ms"].get<double>() == c["frame_ms"].get<double>());
+    CHECK_FALSE(c.contains("judge_late_ms"));
+    REQUIRE(s["presses"].size() == song.sequence.size());
+    for (const json& p : s["presses"]) {
+        const json& row = s["chords"][p["chord"].get<size_t>()];
+        CHECK(p["aim_ms"].get<double>() == -c["press_lead_ms"].get<double>());
+        CHECK(p["last_send_ms"].get<double>() ==
+              doctest::Approx(row["ms"].get<double>() + row["side_ms"].get<double>() - c["frame_ms"].get<double>()));
+    }
 }
 
 TEST_CASE("schedule: sides come from the whole chart") {
-    // Chords 20 ticks (52.08 ms) apart: the middle one's half-gaps both
-    // clamp to the front, so its side is the floor, as Freak's chord 263
-    // gets from neighbours 56.18 ms away. The sides are read off the whole
-    // chord list the file writes, never a pruned one.
-    {
-        const Song song = plain_song({0, 20, 40});
+    // Each chord's side is core::chord_sides_ms over the whole chord list the
+    // file writes, never a pruned one. The floor is the side between two
+    // neighbours whose half-gaps both sit on the window's front edge, the cap
+    // the side between two on its back edge.
+    const double floor_side = window_side_ms(2 * kWindowFrontMs, 2 * kWindowFrontMs);
+    const double cap_side = window_side_ms(2 * kWindowBackMs, 2 * kWindowBackMs);
+    const auto middle_side = [](const Song& song) {
         const ReplayResult r = replay_path(song, {});
         const json s = schedule::schedule_json(song, {}, r, core::default_rules());
         REQUIRE(s["chords"].size() == 3);
-        CHECK(s["chords"][1]["side_ms"].get<double>() == kFloorSide);
-    }
-    // Chords 917 ticks (2,388 ms) and 2,999 ticks (7,810 ms) either side of
-    // the middle one: both half-gaps clamp to the back, so the side is the cap.
-    {
-        const Song song = plain_song({0, 917, 917 + 2999});
-        const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, core::default_rules());
-        REQUIRE(s["chords"].size() == 3);
-        CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
-    }
+        std::vector<double> ms;
+        for (const json& row : s["chords"]) ms.push_back(row["ms"].get<double>());
+        const double side = s["chords"][1]["side_ms"].get<double>();
+        CHECK(side == doctest::Approx(chord_sides_ms(ms)[1]));
+        return side;
+    };
+    // Chords 20 ticks (52.08 ms) apart: both half-gaps clamp to the front.
+    CHECK(middle_side(plain_song({0, 20, 40})) == doctest::Approx(floor_side));
+    // Chords 917 ticks (2,388 ms) and 2,999 ticks (7,810 ms) either side:
+    // both half-gaps clamp to the back.
+    CHECK(middle_side(plain_song({0, 917, 917 + 2999})) == doctest::Approx(cap_side));
     // A chord's own gems are not each other's neighbours (TM-51): a
     // two-gem chord between far neighbours still gets the cap.
-    {
-        Song song = plain_song({0, 917, 917 + 2999});
-        song.sequence[1].chord.add_note(NoteColor::Kick);
-        const ReplayResult r = replay_path(song, {});
-        const json s = schedule::schedule_json(song, {}, r, core::default_rules());
-        REQUIRE(s["chords"][1]["gems"].size() == 2);
-        CHECK(s["chords"][1]["side_ms"].get<double>() == kCapSide);
-    }
+    Song two_gems = plain_song({0, 917, 917 + 2999});
+    two_gems.sequence[1].chord.add_note(NoteColor::Kick);
+    CHECK(middle_side(two_gems) == doctest::Approx(cap_side));
 }
 
 TEST_CASE("schedule: a missing --path refuses by name") {
+    // hydra_replay schedule reads its path from the file its --path flag
+    // names (cmd_schedule, tools/replay.cpp): no file named is refused with
+    // one line naming that flag, and a real dump file named is not.
     const std::optional<std::string> r = schedule::path_flag_refusal("");
     REQUIRE(r.has_value());
     CHECK(r->find("--path") != std::string::npos);
     CHECK(r->find('\n') == std::string::npos);  // main prints it as one "error:" line
-    CHECK_FALSE(schedule::path_flag_refusal("dump.json").has_value());
+    CHECK_FALSE(schedule::path_flag_refusal(corpus::testdata_root() + "/replay/window_map-dump.json").has_value());
 }
 
 TEST_CASE("schedule: a chart with no path refuses by name") {
-    const json empty{{"paths", json::array()}};
-    const std::optional<std::string> r = schedule::no_path_refusal(empty, "freak_dump.json");
+    // A real dump (hydra_replay dump of the Window Map chart) holds a
+    // path, so it plans. The same dump with its paths taken out is refused
+    // in one line that names the file it was read from.
+    const std::string file = corpus::testdata_root() + "/replay/window_map-dump.json";
+    json doc = corpus::load_json(file);
+    REQUIRE(!doc["paths"].empty());
+    CHECK_FALSE(schedule::no_path_refusal(doc, file).has_value());
+    doc["paths"] = json::array();
+    const std::optional<std::string> r = schedule::no_path_refusal(doc, file);
     REQUIRE(r.has_value());
-    CHECK(r->find("freak_dump.json") != std::string::npos);
-    CHECK(r->find("no path") != std::string::npos);
+    CHECK(r->find(file) != std::string::npos);
     CHECK(r->find('\n') == std::string::npos);
-    CHECK(schedule::no_path_refusal(json::object(), "x.json").has_value());
-    const json one{{"paths", json::array({json::object()})}};
-    CHECK_FALSE(schedule::no_path_refusal(one, "x.json").has_value());
+    doc.erase("paths");
+    CHECK(schedule::no_path_refusal(doc, file).has_value());
 }
 
 TEST_CASE("schedule: nothing under src/ reads the schedule") {
@@ -656,31 +651,36 @@ TEST_CASE("schedule: an activation that needs both directions is refused naming 
     std::vector<std::string> refusals;
     CHECK_FALSE(schedule::anchor_lead_ms({out, in}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
-    CHECK(refusals[0].find("anchor chord 5") != std::string::npos);
-    CHECK(refusals[0].find("early for chord 17") != std::string::npos);
-    CHECK(refusals[0].find("late for chord 23") != std::string::npos);
+    // The line names the anchor, the chord it would go early for and the one
+    // it would go late for.
+    CHECK(refusals[0].find("anchor chord " + std::to_string(out.anchor_chord)) != std::string::npos);
+    CHECK(refusals[0].find("early for chord " + std::to_string(out.squeeze_chord)) != std::string::npos);
+    CHECK(refusals[0].find("late for chord " + std::to_string(in.squeeze_chord)) != std::string::npos);
 }
 
 TEST_CASE("schedule: a lead across a steady span is refused naming the span") {
-    // Freak 387's split leads the anchor 24.82 ms early; a tempo change 10 ms
-    // before the anchor breaks the ratio.
+    // A squeeze-out whose anchor leads early by the equal-room split: a tempo
+    // change nearer the anchor than that lead breaks the ratio, one farther
+    // away does not.
     schedule::SqueezeGeometry g = sqout(48.15, 60545.26, 53.59, 60573.35, 1.0);
-    g.steady.before_anchor_ms = 10.0;
+    const double lead = schedule::equal_room_lead_ms(g);
+    REQUIRE(lead > 0.0);
+    g.steady.before_anchor_ms = lead / 2;
     std::vector<std::string> refusals;
     CHECK_FALSE(schedule::anchor_lead_ms({g}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
+    // The line names the span that was crossed and how long it is.
     CHECK(refusals[0].find("before_anchor_ms") != std::string::npos);
-    CHECK(refusals[0].find("tempo or time signature change") != std::string::npos);
-    // One the lead stays inside passes.
-    g.steady.before_anchor_ms = 30.0;
+    CHECK(refusals[0].find(std::to_string(*g.steady.before_anchor_ms)) != std::string::npos);
+    g.steady.before_anchor_ms = lead * 2;
     refusals.clear();
     CHECK(schedule::anchor_lead_ms({g}, refusals).has_value());
     CHECK(refusals.empty());
 }
 
 TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused naming both chords") {
-    // The Edge Walk Pair shape: two kicks 100 ms apart, chords 10 and 11,
-    // each side 76.57 ms (TM-50's run).
+    // Two kick chords 100 ms apart, each with the side core::chord_sides_ms
+    // gives it.
     const std::vector<double> sides = chord_sides_ms({1000.0, 1100.0});
     std::vector<schedule::PadChord> pair(2);
     const schedule::Pad kick_pad{NoteColor::Kick, false};
@@ -691,33 +691,39 @@ TEST_CASE("schedule: a press that reaches a neighbour on its pad is refused nami
         pair[i].chart_pads = {kick_pad};
     }
     const std::vector<schedule::Pad> kick = {kick_pad};
-    // Chord 10 pressed on time, at 998: chord 11 pressed 60 ms early lands
-    // inside chord 10's window after 10 is hit, so it passes.
-    pair[0].sends = {{kick_pad, 998.0}};
-    CHECK_FALSE(schedule::far_press_refusal(pair, 1, 1040.0, kick).has_value());
-    // Chord 10 not pressed: chord 11's press would take it. Refused.
+    // The first chord pressed 2 ms early: the second pressed 60 ms early
+    // lands inside the first's window after the first is hit, so it passes.
+    pair[0].sends = {{kick_pad, pair[0].ms - 2.0}};
+    const double early_send = pair[1].ms - 60.0;
+    CHECK_FALSE(schedule::far_press_refusal(pair, 1, early_send, kick).has_value());
+    // The first chord not pressed: the second's press would take it. Refused,
+    // naming both chords.
     pair[0].sends.clear();
-    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, 1040.0, kick);
+    const std::optional<std::string> r = schedule::far_press_refusal(pair, 1, early_send, kick);
     REQUIRE(r.has_value());
-    CHECK(r->find("chord 11") != std::string::npos);
-    CHECK(r->find("chord 10") != std::string::npos);
-    CHECK(r->find("no press") != std::string::npos);
+    CHECK(r->find("chord " + std::to_string(pair[1].index)) != std::string::npos);
+    CHECK(r->find("chord " + std::to_string(pair[0].index)) != std::string::npos);
 }
 
 TEST_CASE("schedule: a late gem that pays less than an inside gem is refused") {
+    // Place 0 is late at x1, place 1 inside at x2: no press order pays that.
+    const int chord = 7;
+    const std::vector<int> mults = {1, 2};
     std::vector<std::string> refusals;
-    CHECK_FALSE(schedule::squeeze_out_inside_groups(7, {1, 2}, {0, 1}, {0}, refusals).has_value());
+    CHECK_FALSE(schedule::squeeze_out_inside_groups(chord, mults, {0, 1}, {0}, refusals).has_value());
     REQUIRE(refusals.size() == 1);
-    CHECK(refusals[0].find("chord 7") != std::string::npos);
-    CHECK(refusals[0].find("late gem pays x1 and an inside gem x2") != std::string::npos);
+    // The line names the chord and both multipliers.
+    CHECK(refusals[0].find("chord " + std::to_string(chord)) != std::string::npos);
+    CHECK(refusals[0].find("x" + std::to_string(mults[0])) != std::string::npos);
+    CHECK(refusals[0].find("x" + std::to_string(mults[1])) != std::string::npos);
     refusals.clear();
-    const auto ok = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, {0, 1, 2}, {0}, refusals);
+    const auto ok = schedule::squeeze_out_inside_groups(chord, {2, 2, 1}, {0, 1, 2}, {0}, refusals);
     REQUIRE(ok.has_value());
     CHECK(refusals.empty());
     CHECK(*ok == std::vector<std::vector<size_t>>{{2}, {1}});
     // Only the gems the player sends go inside: a declined chord that keeps
     // places 0 and 2 presses place 2 alone inside.
-    const auto kept = schedule::squeeze_out_inside_groups(7, {2, 2, 1}, {0, 2}, {0}, refusals);
+    const auto kept = schedule::squeeze_out_inside_groups(chord, {2, 2, 1}, {0, 2}, {0}, refusals);
     REQUIRE(kept.has_value());
     CHECK(*kept == std::vector<std::vector<size_t>>{{2}});
 }
@@ -819,18 +825,28 @@ TEST_CASE("schedule: the equal-room split of a squeeze-in is the mirror of a squ
 }
 
 TEST_CASE("schedule: moving_side reads the anchor's press, not the squeeze's kind") {
-    // Dead on Arrival activation 3's stored scale (the Dynamic Hit Window
-    // plan's figures): early 1.0044, late 0.9970. The two sides differ, so a
-    // wrong pick shows.
-    const TransferScale scale{1.0044, 0.9970};
-    CHECK(schedule::moving_side(Press::Early, scale) == 1.0044);
-    CHECK(schedule::moving_side(Press::Late, scale) == 0.9970);
-    // A geometry's ratio follows its anchor's press the same way.
-    schedule::SqueezeGeometry g = hand_built_squeeze_in();
-    g.ratio = scale;
-    CHECK(schedule::moving_ratio(g) == 0.9970);
-    g.anchor_press = Press::Early;
-    CHECK(schedule::moving_ratio(g) == 1.0044);
+    // On every scale the corpus stores (Activation::transfer_post): the side
+    // an anchor moves the end by is the one core::transfer_side gives its
+    // press, and a geometry's ratio follows its anchor's press the same way.
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int unequal = 0;
+    for_each_corpus_activation_json(cfg, [&](const std::string& path, const Activation& act, const json&,
+                                        const std::vector<std::string>&) {
+        if (!act.transfer_post) return;
+        const TransferScale& scale = *act.transfer_post;
+        if (scale.early != scale.late) ++unequal;
+        INFO(path << ": the activation at tick " << act.timecode.ticks());
+        schedule::SqueezeGeometry g = hand_built_squeeze_in();
+        g.ratio = scale;
+        for (const Press press : {Press::Early, Press::Late}) {
+            CHECK(schedule::moving_side(press, scale) == transfer_side(scale, press));
+            g.anchor_press = press;
+            CHECK(schedule::moving_ratio(g) == transfer_side(scale, press));
+        }
+    });
+    // A wrong pick shows only on a scale whose two sides differ; a corpus
+    // with none would make every check above pass whichever side was read.
+    CHECK(unequal > 0);
 }
 
 // ---- F1: the song end, the ready point, the late gems and the build -------
