@@ -3110,6 +3110,25 @@ class AtexitFactTest(unittest.TestCase):
         self.assertTrue(os.path.exists(self.flag))
 
 
+# Hydra's schedule of the corpus chart testdata/input/test_pitch_dark_ratio
+# (the command is in the comment above _REPLAY_DIR in
+# tools/ch_probe/tests/test_sp_compare.py), and the folder under
+# testdata/ch_runs of an in-game run of that chart's path 0 (copied from
+# hydra-data/ch-mcp-runs/2026-11-13/pitch-dark-ratios-run1). An older build
+# made the run's own schedule; its reads and declined chords are this one's.
+PITCH_DARK_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "replay",
+                                   "test_pitch_dark_ratio-schedule.json")
+PITCH_DARK_RUN = ("pitch-dark-ratios-run1",)
+
+
+def _press_rows(*parts):
+    """A press log under testdata/ch_runs as a play session holds its rows:
+    the csv's text, with `index` the int play_chords writes."""
+    with open(os.path.join(_REPO_ROOT, "testdata", "ch_runs", *parts),
+              encoding="utf-8", newline="") as f:
+        return [{**row, "index": int(row["index"])} for row in csv.DictReader(f)]
+
+
 class PlayerLimitsLinesTest(unittest.TestCase):
     """The reply lines and the edge probe of the 2026-11-07 player-limits
     plan, task T4: design points 1, 8 and 9."""
@@ -3124,61 +3143,88 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         _write(path, json.dumps(value).encode())
         return path
 
-    # -- the activation lead line -------------------------------------------------------
-
     # -- the anchor line -----------------------------------------------------------------
 
-    def _squeeze(self, **fields):
-        # A hand-built timed squeeze of the schedule's shape; the numbers are
-        # test inputs.
-        return {"chord": 931, "kind": "SqOut", "needs_no_timing": False, "feasible": True,
-                "anchor_chord": 820, "anchor_aim_ms": -58.82, "planned_end_ms": 186348.9,
-                "ratio": {"early": 1.0045, "late": 1.0045},
-                "anchor_room_ms": 20.04, "squeeze_room_ms": 20.04, **fields}
+    def _schedule(self, name):
+        """A hydra_replay schedule fixture under tools/ch_probe/tests, read."""
+        with open(os.path.join(_PROBE_TESTS, name), encoding="utf-8") as f:
+            return json.load(f)
+
+    @staticmethod
+    def _squeeze_at(doc, chord):
+        return next(q for q in GT._squeezes(doc) if q["chord"] == chord)
+
+    def _anchor_line_of(self, doc, q):
+        lines = [line for line in GT.anchor_lines(doc)
+                 if f" at chord {q['chord']} " in line]
+        self.assertEqual(len(lines), 1, GT.anchor_lines(doc))
+        return lines[0]
 
     def test_the_anchor_line_reads_every_number_off_the_squeeze(self):
-        doc = {"activations": [{"squeezes": [self._squeeze()]}]}
-        self.assertEqual(GT.anchor_lines(doc), [
-            "chord 820 pressed 58.8 ms early for the squeeze-out at chord 931 "
-            "(end planned 186,348.9 ms, ratio 1.0045, room 20.0 ms both presses)"])
+        # Freak's squeeze-out at chord 387 (freak_limits_schedule.json): its
+        # anchor is pressed early, and its two ratios and two rooms are the
+        # same, so the line gives each once.
+        doc = self._schedule("freak_limits_schedule.json")
+        q = self._squeeze_at(doc, 387)
+        self.assertEqual((q["kind"], q["needs_no_timing"]), ("SqOut", False))
+        self.assertLess(q["anchor_aim_ms"], 0)
+        self.assertEqual(q["ratio"]["early"], q["ratio"]["late"])
+        line = self._anchor_line_of(doc, q)
+        self.assertTrue(line.startswith(
+            f"chord {q['anchor_chord']} pressed {abs(q['anchor_aim_ms']):.1f} ms early for the "
+            f"{GT._SQUEEZE_WORDS['SqOut'][1]} at chord 387 "), line)
+        self.assertIn(f"end planned {q['planned_end_ms']:,.1f} ms", line)
+        self.assertIn(f"ratio {q['ratio']['early']:.4f},", line)
+        self.assertIn(f"room {q['anchor_room_ms']:.1f} ms both presses", line)
 
     def test_a_late_anchor_names_the_squeeze_in_and_each_ratio_and_room(self):
-        doc = {"activations": [{"squeezes": [self._squeeze(
-            chord=77, kind="SqIn", anchor_chord=70, anchor_aim_ms=33.4, planned_end_ms=4952.8,
-            ratio={"early": 0.99, "late": 1.0}, anchor_room_ms=40.0, squeeze_room_ms=12.5)]}]}
-        self.assertEqual(GT.anchor_lines(doc), [
-            "chord 70 pressed 33.4 ms late for the squeeze-in at chord 77 "
-            "(end planned 4,952.8 ms, ratio 0.9900 early, 1.0000 late, "
-            "anchor room 40.0 ms, squeeze room 12.5 ms)"])
+        # Mouths' squeeze-in at chord 431 (mouths_refine_schedule.json): its
+        # anchor is pressed late, and its early and late ratios differ, as
+        # do its two rooms.
+        doc = self._schedule("mouths_refine_schedule.json")
+        q = self._squeeze_at(doc, 431)
+        self.assertEqual((q["kind"], q["needs_no_timing"]), ("SqIn", False))
+        self.assertGreater(q["anchor_aim_ms"], 0)
+        self.assertNotEqual(f"{q['ratio']['early']:.4f}", f"{q['ratio']['late']:.4f}")
+        self.assertNotEqual(f"{q['anchor_room_ms']:.1f}", f"{q['squeeze_room_ms']:.1f}")
+        line = self._anchor_line_of(doc, q)
+        self.assertTrue(line.startswith(
+            f"chord {q['anchor_chord']} pressed {q['anchor_aim_ms']:.1f} ms late for the "
+            f"{GT._SQUEEZE_WORDS['SqIn'][1]} at chord 431 "), line)
+        self.assertIn(f"ratio {q['ratio']['early']:.4f} early, {q['ratio']['late']:.4f} late",
+                      line)
+        self.assertIn(f"anchor room {q['anchor_room_ms']:.1f} ms, "
+                      f"squeeze room {q['squeeze_room_ms']:.1f} ms", line)
 
     def test_the_squeeze_line_times_a_press_from_its_own_end(self):
-        # A hand-built snippet of the Pitch Dark schedule: chord 644's
-        # squeeze-in, timed from the read after chord 466, with the plan's
-        # numbers for its own planned end (161,386.46) and the read's planned
-        # end (158,262.531). The chord's time is hand-picked so the press
-        # fires 15 ms before the own end; against the read end it would be
-        # over 3,000 ms after.
-        doc = schedule_of({"chords": [{"index": 644, "ms": 161389.776, "notes": [
-            {"color": "Red", "cymbal": False, "dynamic": "none"}]}]})
-        doc["presses"][0].update({
-            "aim_ms": -18.316, "rule": "squeeze_in", "timed_from_end": 1,
-            "end_read_after": 466, "aim_end_ms": 158262.531, "own_end_ms": 161386.46,
-            "read_stored_end_ms": 158224.757, "own_stored_end_ms": 161356.443,
-            "conversion": {"early": 0.79467, "late": 0.79467}, "read_range_ms": None})
-        doc["activations"] = [{"index": 1, "chord": 437, "read_end_after": 466,
-                               "sp_ready_ms": None, "squeezes": [self._squeeze(
-                                   chord=644, kind="SqIn", anchor_chord=466)]}]
-        path = os.path.join(self.tmp, "pitch dark snippet.json")
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(doc, f)
+        # Pitch Dark's squeeze-in at chord 644 is timed from the end the
+        # player reads after chord 466 (aim_end_ms), which is not its own
+        # planned end (own_end_ms). The line gives the gap to its own end.
+        path = os.path.join(_REPO_ROOT, "testdata", "replay",
+                            "test_pitch_dark_ratio-schedule.json")
+        doc = GT.schedule_doc(path)
+        row = next(p for p in doc["presses"] if p["chord"] == 644)
+        self.assertEqual((row["rule"], row["timed_from_end"]), ("squeeze_in", 1))
         chords = play_chart.load_schedule(path).chords
-        self.assertEqual(GT.squeeze_lines(chords, doc)[0],
-                         "squeezes: chord 644 in (15 ms before the end)")
+        press = next(p for p in play_chart.press_plan(chords) if p.index == 644)
+        own_gap = row["own_end_ms"] - press.at_ms
+        read_gap = row["aim_end_ms"] - press.at_ms
+        self.assertGreater(own_gap, 0)
+        self.assertNotEqual(GT._ms_text(abs(own_gap)), GT._ms_text(abs(read_gap)))
+        line = GT.squeeze_lines(chords, doc)[0]
+        self.assertIn(f"chord 644 in ({GT._ms_text(own_gap)} ms before the end)", line)
 
     def test_a_squeeze_that_needs_no_timing_has_no_anchor_line(self):
-        doc = {"activations": [{"squeezes": [{"chord": 717, "kind": "SqIn",
-                                              "needs_no_timing": True, "feasible": True}]}]}
-        self.assertEqual(GT.anchor_lines(doc), [])
+        # Freak's squeeze-in at chord 717 needs no timing
+        # (freak_limits_schedule.json): it gets no anchor line, while the
+        # file's timed squeezes each get one.
+        doc = self._schedule("freak_limits_schedule.json")
+        self.assertTrue(self._squeeze_at(doc, 717)["needs_no_timing"])
+        lines = GT.anchor_lines(doc)
+        self.assertFalse([line for line in lines if " at chord 717 " in line], lines)
+        timed = [q for q in GT._squeezes(doc) if not q["needs_no_timing"]]
+        self.assertTrue(timed)
+        self.assertEqual(len(lines), len(timed), lines)
 
     def test_the_planned_ends_are_the_schedules_on_each_chord_read_after(self):
         # Freak reads its first activation's end after chords 232 and 263
@@ -3194,61 +3240,68 @@ class PlayerLimitsLinesTest(unittest.TestCase):
 
     # -- the read end and the points between presses ---------------------------------------
 
+    def _planned_ends(self, schedule_path):
+        """The planned ends _start_play keeps for the schedule's chords."""
+        chords, _lines = GT.chords_to_play(schedule_path)
+        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
+        play = GT._PlaySession(score_json="s.json", chord_count=len(chords), log_path=None)
+        t.tools._start_play(play, chords)
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running(), "the play thread did not end")
+        return play.planned_ends
+
     def test_the_end_line_sets_the_games_end_against_the_planned_one(self):
-        rows = [{**ROWS[0], "index": 820, "end_read_ms": 186352.1},
-                {**ROWS[1], "index": 820, "end_read_ms": 186352.1},
-                {**ROWS[1], "index": 900, "end_read_ms": ""},
-                {**ROWS[1], "index": 1000, "end_read_ms": "no activation read"}]
-        self.assertEqual(GT.activation_end_lines(rows, {820: 186349.0, 1000: 200000.0}), [
-            "end read after chord 820: end planned 186,349.0 ms, game 186,352.1 ms (3.1 later)",
-            "end read after chord 1000: end planned 200,000.0 ms, game end not read "
-            "(no activation read)"])
+        # Every row of PITCH_DARK_RUN that carries the game's end, against the
+        # ends Hydra's schedule of the chart plans for the same chords.
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-end-reads.csv")
+        ends = self._planned_ends(PITCH_DARK_SCHEDULE)
+        lines = GT.activation_end_lines(rows, ends)
+        self.assertEqual(len(lines), len(rows), lines)
+        for row, line in zip(rows, lines):
+            planned, game = ends[row["index"]], float(row["end_read_ms"])
+            gap = game - planned
+            self.assertEqual(line.split(": ")[0], f"end read after chord {row['index']}")
+            self.assertIn(f"end planned {planned:,.1f} ms, game {game:,.1f} ms", line)
+            self.assertTrue(line.endswith(
+                f"({abs(gap):.1f} {'later' if gap >= 0 else 'earlier'})"), line)
 
     def test_rows_without_the_new_columns_give_no_lines(self):
-        self.assertEqual(GT.activation_end_lines(ROWS, {0: 1000.0}), [])
-        self.assertEqual(GT.scored_between_lines(ROWS), [])
+        # A press log written before play_chart had the end_read_ms and
+        # scored_between columns.
+        rows = _press_rows("ls-t2-run-a", "press-1.csv")
+        self.assertTrue(rows)
+        self.assertNotIn("end_read_ms", rows[0])
+        self.assertNotIn("scored_between", rows[0])
+        ends = {row["index"]: float(row["chart_ms"]) for row in rows}
+        self.assertEqual(GT.activation_end_lines(rows, ends), [])
+        self.assertEqual(GT.scored_between_lines(rows), [])
 
     def test_points_between_presses_go_to_the_declined_chord_before_them(self):
-        # Bomber's chords 854 (declined) and 855, from press-2.csv of the
-        # ls-r2ab-run1 run as the plan reads it, with the column T3 adds.
-        rows = [{"index": 853, "send": play_chart.SENT, "scored_between": 0},
-                {"index": 854, "send": play_chart.DECLINED, "scored_between": 0},
-                {"index": 855, "send": play_chart.SENT, "scored_between": 200},
-                {"index": 856, "send": play_chart.SENT, "scored_between": "50"}]
+        # PITCH_DARK_RUN declined chord 62, and the game's score rose between
+        # the presses of chords 62 and 63 (scored_between on 63's row).
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        declined = [r["index"] for r in rows if r["send"] == play_chart.DECLINED]
+        between = [r for r in rows if float(r["scored_between"] or 0)]
+        self.assertEqual(declined, [62])
+        self.assertEqual([r["index"] for r in between], [63])
         self.assertEqual(GT.scored_between_lines(rows), [
-            "scored between presses: chord 854 granted 200 before chord 855, "
-            "50 unexplained before chord 856"])
-
-    def test_a_split_declined_chord_waits_once(self):
-        rows = [{"index": 801, "send": play_chart.DECLINED},
-                {"index": 801, "send": play_chart.DECLINED, "scored_between": 0},
-                {"index": 802, "send": play_chart.SENT, "scored_between": 200},
-                {"index": 803, "send": play_chart.SENT, "scored_between": 200}]
-        self.assertEqual(GT.scored_between_lines(rows), [
-            "scored between presses: chord 801 granted 200 before chord 802, "
-            "200 unexplained before chord 803"])
+            f"scored between presses: chord 62 granted "
+            f"{float(between[0]['scored_between']):g} before chord 63"])
 
     def test_the_play_status_carries_the_end_and_between_lines(self):
-        rows = [{**ROWS[0], "end_read_ms": 1003.1, "scored_between": 0},
-                {**ROWS[1], "scored_between": 40}]
-
-        def live_play(chords, *, on_press, **kw):
-            for row in rows:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        # The game's end is read after chord 0, planned at a hand-picked 1000.
-        schedule = schedule_of(SCORE_JSON)
-        schedule["chords"][0]["reads"] = [{"activation": 0, "planned_end_ms": 1000.0,
-                                           "stored_end_ms": 1000.0}]
-        t.tools.ch_play_chart(self._json("score.json", SCORE_JSON),
-                              self._json("schedule.json", schedule), route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertIn("end read after chord 0: end planned 1,000.0 ms, game 1,003.1 ms (3.1 later)",
-                      lines)
-        self.assertIn("scored between presses: 40 unexplained before chord 1", lines)
+        # PITCH_DARK_RUN's rows of chords 61 to 64 and its end-read rows, in
+        # the order the run logged them, as a play session's rows.
+        rows = (_press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+                + _press_rows(*PITCH_DARK_RUN, "press-1-end-reads.csv"))
+        ends = self._planned_ends(PITCH_DARK_SCHEDULE)
+        tools = GT.GameTools(None, threading.RLock(), os.path.join(self.tmp, "scratch"))
+        tools._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                      log_path=None, rows=rows, planned_ends=ends)
+        lines = tools.ch_play_status().splitlines()
+        for line in (GT.activation_end_lines(rows, ends) + GT.scored_between_lines(rows)):
+            self.assertIn(line, lines)
+        self.assertTrue([line for line in lines if line.startswith("end read after chord 817: ")])
+        self.assertTrue([line for line in lines if line.startswith("scored between presses: ")])
 
     # -- the edge probe ------------------------------------------------------------------
 
