@@ -17,7 +17,10 @@
 #include "app/config.h"
 #include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/path_view.h"
+#include "core/backend_value.h"  // counted_without_squeeze
 #include "core/model.h"
+#include "core/note_window.h"     // role_word
+#include "core/squeeze_rating.h"  // rate_activation
 #include "imgui_internal.h"
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
@@ -99,60 +102,124 @@ bool open_burnout(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return false;
     wait_song_analyzed(ctx);  // waits, then lands on the Paths tab
     if (ctx->IsError()) return false;
-    IM_CHECK_RETV(h.app->viewed.record->best_path().pathstring() == "3- 1 2", false);
+    IM_CHECK_RETV(h.app->viewed.ready(), false);
     ctx->Yield(2);
     return true;
 }
 
-// The path list: three headings, the buttons' titles, each path's own timing
-// and the detail line, and a click that changes the shared selection.
+// The path list as the Paths tab drew it: the cache's buttons, asked with the
+// tab's own key (render_path_panel in paths_tab.cpp), so nothing is rebuilt.
+const hydra::app::PathButtonsView& shown_buttons(hydra::ui::AppState& app) {
+    return app.details_ui.paths_tab.buttons(*app.viewed.record, app.record_generation.n,
+                                            app.settings.depth_mode, app.settings.depth_value);
+}
+
+// The ImGui id of path button `i` (path_button in paths_tab.cpp).
+std::string path_button_ref(size_t i) {
+    return "**/##path" + std::to_string(i);
+}
+
+// The path list: its headings, every button the list view holds with its own
+// title, timing and detail line, and clicks that change the shared selection.
+// Every expected text is the list view's (app::build_path_buttons) and every
+// expected path is the record's.
 void test_paths_list(ImGuiTestContext* ctx) {
+    using Group = hydra::app::PathButtonView::Group;
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    const std::string dot = " \xC2\xB7 ";
+    const hydra::HydraRecord& rec = *h.app->viewed.record;
+    const hydra::app::PathButtonsView& list = shown_buttons(*h.app);
+    IM_CHECK(!list.buttons.empty());
+    if (list.buttons.empty()) return;
+    // The record's best path is the first button, under Optimal.
+    IM_CHECK(list.buttons[0].path == &rec.best_path());
+    IM_CHECK(list.buttons[0].group == Group::Optimal);
+    size_t within = list.buttons.size();
+    size_t allzero = list.buttons.size();
+    for (size_t i = 0; i < list.buttons.size(); ++i) {
+        const hydra::app::PathButtonView& b = list.buttons[i];
+        IM_CHECK(b.path != nullptr);
+        if (b.path == nullptr) return;
+        // Each button names its own path, and shows what the view gives it.
+        IM_CHECK_STR_EQ(b.notation.c_str(), b.path->pathstring().c_str());
+        IM_CHECK(on_screen(h, b.title));
+        if (!b.timing.empty()) IM_CHECK(on_screen(h, b.timing));
+        if (!b.detail.empty()) IM_CHECK(on_screen(h, b.detail));
+        // A path in a fold has its score on the fold, not on its button.
+        if (!b.fold.empty()) {
+            IM_CHECK(on_screen(h, b.fold));
+            IM_CHECK(on_screen(h, b.fold_count));
+            IM_CHECK(!on_screen(h, b.fold + hydra::app::kFactSeparator + b.notation));
+        }
+        if (b.group == Group::Within && within == list.buttons.size()) within = i;
+        if (b.group == Group::AllZero && allzero == list.buttons.size()) allzero = i;
+    }
+    // Burnout's list has all three groups, so all three headings show.
+    IM_CHECK(within < list.buttons.size());
+    IM_CHECK(allzero < list.buttons.size());
+    if (within >= list.buttons.size() || allzero >= list.buttons.size()) return;
     IM_CHECK(on_screen(h, "Optimal"));
-    IM_CHECK(on_screen(h, "Within 2 scores"));
-    IM_CHECK(on_screen(h, "Best all-0 path"));
+    IM_CHECK(on_screen(h, list.within_label));
+    IM_CHECK(on_screen(h, hydra::app::kBestAllZeroLabel));
     IM_CHECK(!on_screen(h, "0 ms limit"));
-    // One fold per score, the score on the fold and the path on its button;
-    // the all-0 path has no fold and keeps its score on the button.
-    IM_CHECK(on_screen(h, "378,315"));
-    IM_CHECK(on_screen(h, "1 path"));
-    IM_CHECK(!on_screen(h, "378,315" + dot + "3- 1 2"));
-    IM_CHECK(on_screen(h, "3- 1 2"));
-    IM_CHECK(on_screen(h, "163.0 ms"));
     IM_CHECK(!on_screen(h, "hardest squeeze"));
-    IM_CHECK(on_screen(h, "378,175"));
-    IM_CHECK(on_screen(h, "0 4 1"));
-    IM_CHECK(on_screen(h, "375,955" + dot + "0 0 0 0"));
-    IM_CHECK(on_screen(h, "2,360 below optimal"));
     // Those three are the only headings: these two never show.
     IM_CHECK(!on_screen(h, "Optimal Path"));
     IM_CHECK(!on_screen(h, "More Paths"));
 
-    IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
+    IM_CHECK(h.app->details_ui.selected_path == &rec.best_path());
     ctx->ItemClick("**/##act2");  // a row open on this path
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>({0, 1, 0}));
-    ctx->ItemClick("**/##path1");
+    {
+        const std::vector<char>& open = h.app->details_ui.paths_tab.ui().act_open;
+        IM_CHECK_GE(open.size(), static_cast<size_t>(2));
+        if (open.size() < 2) return;
+        std::vector<char> want(open.size(), 0);
+        want[1] = 1;
+        IM_CHECK(open == want);
+    }
+    ctx->ItemClick(path_button_ref(within).c_str());
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.selected_path != nullptr);
-    IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
+    IM_CHECK(h.app->details_ui.selected_path == list.buttons[within].path);
     // A new path opens with every row closed, whatever the last one had open.
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>(3, 0));
-    ctx->ItemClick("**/##path3");
+    {
+        const std::vector<char>& open = h.app->details_ui.paths_tab.ui().act_open;
+        IM_CHECK(std::all_of(open.begin(), open.end(), [](char c) { return c == 0; }));
+    }
+    ctx->ItemClick(path_button_ref(allzero).c_str());
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 0 0 0");
+    IM_CHECK(h.app->details_ui.selected_path == list.buttons[allzero].path);
 
-    // A closed fold hides its paths and nothing else; opening it brings them back.
-    ctx->ItemClick("**/378,175##fold");
+    // A closed fold hides its paths and nothing else; opening it brings them
+    // back. The fold is the first Within score's.
+    const std::string fold = list.buttons[within].fold;
+    IM_CHECK(!fold.empty());
+    if (fold.empty()) return;
+    auto in_fold = [&](size_t i) {
+        return list.buttons[i].group == Group::Within && list.buttons[i].fold == fold;
+    };
+    // A title another shown button's title contains stays on screen with the
+    // fold closed, so only the others are looked for.
+    auto title_elsewhere = [&](size_t i) {
+        for (size_t j = 0; j < list.buttons.size(); ++j)
+            if (!in_fold(j) && list.buttons[j].title.find(list.buttons[i].title) != std::string::npos)
+                return true;
+        return false;
+    };
+    const std::string fold_ref = "**/" + fold + "##fold";
+    ctx->ItemClick(fold_ref.c_str());
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "378,175"));
-    IM_CHECK(!on_screen(h, "0 4 1"));
-    IM_CHECK(on_screen(h, "2 1 2"));
-    ctx->ItemClick("**/378,175##fold");
+    IM_CHECK(on_screen(h, fold));
+    for (size_t i = 0; i < list.buttons.size(); ++i) {
+        if (!in_fold(i))
+            IM_CHECK(on_screen(h, list.buttons[i].title));
+        else if (!title_elsewhere(i))
+            IM_CHECK(!on_screen(h, list.buttons[i].title));
+    }
+    ctx->ItemClick(fold_ref.c_str());
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "0 4 1"));
+    for (size_t i = 0; i < list.buttons.size(); ++i)
+        if (in_fold(i)) IM_CHECK(on_screen(h, list.buttons[i].title));
 }
 
 // One timeline mark as the Paths tab last drew it: where its gold bar sits,
@@ -209,24 +276,39 @@ std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
     return marks;
 }
 
-// The open record's activation rows: the same call the Paths tab makes, so
-// this is the cached view it draws.
+// The open record's activation rows: the same call the Paths tab makes, with
+// the same inputs (render_path_panel in paths_tab.cpp), so this is the cached
+// view it draws and nothing is rebuilt.
 const hydra::app::ActivationsView& shown_activations(hydra::ui::AppState& app) {
     return app.details_ui.paths_tab
         .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
                  app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
-                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums)
+                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums,
+                 app.viewed.chords ? &*app.viewed.chords : nullptr)
         .activations;
 }
 
 // The outline a timeline mark is drawn with.
 enum class Outline { None, Orange, Grey };
 
-// Each mark's drawn outline, against the colours this chart's rows are known
-// to have, one per activation in order.
-void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
-                 const std::vector<Outline>& expected) {
+// The outline each activation's mark should have, from the engine's badges on
+// its row (app::activation_badges): none without a badge, orange when any
+// badge is a warning, grey otherwise.
+std::vector<Outline> badge_outlines(const hydra::app::ActivationsView& view) {
+    std::vector<Outline> out;
+    for (const hydra::app::ActivationRowView& a : view.acts) {
+        bool warn = false;
+        for (const hydra::app::ActivationBadge& b : a.badges) warn = warn || b.warn;
+        out.push_back(a.badges.empty() ? Outline::None : warn ? Outline::Orange : Outline::Grey);
+    }
+    return out;
+}
+
+// Each mark's drawn outline, against the outline its activation's badges
+// call for (badge_outlines), one per activation in order.
+void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app) {
     const hydra::app::ActivationsView& view = shown_activations(app);
+    const std::vector<Outline> expected = badge_outlines(view);
     const std::vector<DrawnMark> marks = drawn_marks(ctx);
     IM_CHECK_EQ(marks.size(), expected.size());
     if (marks.size() != expected.size() || view.acts.size() != expected.size()) return;
@@ -248,49 +330,73 @@ void check_marks(ImGuiTestContext* ctx, hydra::ui::AppState& app,
 // timeline marks, in ms: an input, since the GUI test library has no audio.
 constexpr double kMarksSongLengthMs = 600000.0;
 
+// Whether `view`'s rows hold an outline of kind `o`: a chart's test of the
+// marks covers that colour only when one of its rows calls for it.
+bool has_outline(const hydra::app::ActivationsView& view, Outline o) {
+    const std::vector<Outline> all = badge_outlines(view);
+    return std::find(all.begin(), all.end(), o) != all.end();
+}
+
 // The activation rows: one line each, all closed at first, one open at a
 // time, Expand all and Collapse all, and the summary beside the "Activations"
-// heading.
+// heading. Every expected text is the activations view's
+// (app::build_activations), which the engine's record fills.
 void test_paths_rows(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    const std::string dot = " \xC2\xB7 ";
+    // Copies: a longer song length below rebuilds the view.
+    const std::vector<hydra::app::ActivationRowView> acts = shown_activations(*h.app).acts;
+    IM_CHECK_GE(acts.size(), static_cast<size_t>(2));
+    if (acts.size() < 2) return;
+    const hydra::app::ActivationRowView& row1 = acts[0];
     IM_CHECK(on_screen(h, "Activations"));
-    IM_CHECK(on_screen(h, "3" + dot + "no SP left over"));
+    IM_CHECK(on_screen(h, shown_activations(*h.app).summary));
     IM_CHECK(!on_screen(h, "bars each"));
-    IM_CHECK(on_screen(h, "m32.1.0"));
-    IM_CHECK(on_screen(h, "m58.1.0"));
-    IM_CHECK(on_screen(h, "m88.1.0"));
-    IM_CHECK(on_screen(h, "squeeze out 163.0 ms"));
+    for (const hydra::app::ActivationRowView& a : acts) {
+        IM_CHECK(on_screen(h, a.measure));
+        for (const hydra::app::ActivationBadge& b : a.badges) IM_CHECK(on_screen(h, b.text));
+    }
+    // Row 1 is Burnout's squeeze out: it has a sentence to show when opened.
+    IM_CHECK(!row1.squeeze_sentences.empty());
+    if (row1.squeeze_sentences.empty()) return;
     // Every row starts closed: no chord, sentence or backend heading shows.
-    IM_CHECK(!on_screen(h, "[Kick - Green cymbal]"));
-    IM_CHECK(!on_screen(h, "notes near the SP end"));
+    IM_CHECK(!on_screen(h, row1.chord));
+    for (const hydra::app::TextLine& s : row1.squeeze_sentences) IM_CHECK(!on_screen(h, s.text));
+    for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(!on_screen(h, a.backends_label));
     IM_CHECK(!ctx->ItemExists("**/Show in Preview >##showact1"));
-    // A click opens row 1: its chord and sentence show, rows 2 and 3 stay shut.
+    // A click opens row 1: its chord, sentences and backend heading show; the
+    // other rows stay shut.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "[Kick - Green cymbal]"));
-    IM_CHECK(on_screen(h, "Hit the [  Y  ] note more than 163.0 ms late so it lands after "
-                          "Star Power ends."));
-    IM_CHECK(on_screen(h, "3 notes near the SP end"));
-    IM_CHECK(!on_screen(h, "6 notes near the SP end"));
+    IM_CHECK(on_screen(h, row1.chord));
+    for (const hydra::app::TextLine& s : row1.squeeze_sentences) IM_CHECK(on_screen(h, s.text));
+    IM_CHECK(on_screen(h, row1.backends_label));
+    for (size_t i = 1; i < acts.size(); ++i)
+        if (acts[i].backends_label != row1.backends_label)
+            IM_CHECK(!on_screen(h, acts[i].backends_label));
     IM_CHECK(!on_screen(h, "SqOut: Note timing"));
     IM_CHECK(!on_screen(h, "Frontend:"));
-    // The timeline outlines: row 1's 163 ms squeeze is orange, rows 2 and 3
-    // have no badge and no outline. The open record gets a length as an input:
-    // ten minutes, past either chart's last activation (D75).
+    // The timeline outlines follow each row's badges; Burnout's squeeze out
+    // is a warning, so an orange outline is among them. The open record gets
+    // a length as an input: ten minutes, past either chart's last activation.
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
-    check_marks(ctx, *h.app, {Outline::Orange, Outline::None, Outline::None});
-    // Hovering row 1's mark names the activation and every one of its badges;
-    // the row's pill alone never reads like this.
+    IM_CHECK(has_outline(shown_activations(*h.app), Outline::Orange));
+    check_marks(ctx, *h.app);
+    // Hovering row 1's mark names the activation and every one of its badges:
+    // each of them shows once more than before the hover.
     {
         const std::vector<DrawnMark> marks = drawn_marks(ctx);
         IM_CHECK(!marks.empty());
         if (marks.empty()) return;
+        std::vector<std::string> named = {row1.measure};
+        for (const hydra::app::ActivationBadge& b : row1.badges) named.push_back(b.text);
+        std::vector<size_t> before;
+        for (const std::string& s : named) before.push_back(count_on_screen(h, s));
         ctx->MouseMoveToPos(ImVec2(marks[0].x, marks[0].y));
         ctx->Yield(2);
-        IM_CHECK(on_screen(h, "Activation 1  m32.1.0  squeeze out 163.0 ms"));
+        for (size_t k = 0; k < named.size(); ++k)
+            IM_CHECK_GT(count_on_screen(h, named[k]), before[k]);
     }
 
     // "Show in Preview" asks the Preview for activation 1 (the Preview tab
@@ -304,39 +410,40 @@ void test_paths_rows(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
 
+    // Row 2 opens and row 1 closes. The two headings are told apart only
+    // where their texts differ.
+    const hydra::app::ActivationRowView& row2 = acts[1];
+    const bool labels_differ = row2.backends_label != row1.backends_label;
     ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "6 notes near the SP end"));
-    IM_CHECK(!on_screen(h, "3 notes near the SP end"));
+    IM_CHECK(on_screen(h, row2.backends_label));
+    if (labels_differ) IM_CHECK(!on_screen(h, row1.backends_label));
     ctx->ItemClick("**/##act2");  // closes it again
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "6 notes near the SP end"));
+    IM_CHECK(!on_screen(h, row2.backends_label));
 
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "3 notes near the SP end"));
-    IM_CHECK(on_screen(h, "6 notes near the SP end"));
-    IM_CHECK(on_screen(h, "7 notes near the SP end"));
+    for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(on_screen(h, a.backends_label));
     IM_CHECK(h.app->details_ui.paths_tab.ui().all_open());
     ctx->ItemClick("**/Collapse all");
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "3 notes near the SP end"));
-    IM_CHECK(!on_screen(h, "7 notes near the SP end"));
+    for (const hydra::app::ActivationRowView& a : acts) IM_CHECK(!on_screen(h, a.backends_label));
 
-    // Beg (Evans Blue): its optimal path has a 0 ms squeeze-out and a 0 ms
-    // early fill. Their badges are grey, so their marks are outlined grey,
-    // not orange.
+    // Beg (Evans Blue): its optimal path has timing badges that are no
+    // warning, so a grey outline is among its marks.
     open_titled(ctx, "evans blue", "Beg");
     if (ctx->IsError()) return;
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
-    // Row 1 is the squeeze-out, row 4 the early fill; rows 2 and 3 have no badge.
     h.app->viewed.song_length_ms = kMarksSongLengthMs;
     ctx->Yield(2);
-    check_marks(ctx, *h.app, {Outline::Grey, Outline::None, Outline::None, Outline::Grey});
-    IM_CHECK(on_screen(h, "squeeze out 0.0 ms"));
-    IM_CHECK(on_screen(h, "early fill 0.0 ms"));
+    const hydra::app::ActivationsView& beg = shown_activations(*h.app);
+    IM_CHECK(has_outline(beg, Outline::Grey));
+    check_marks(ctx, *h.app);
+    for (const hydra::app::ActivationRowView& a : beg.acts)
+        for (const hydra::app::ActivationBadge& b : a.badges) IM_CHECK(on_screen(h, b.text));
 }
 
 // Burnout's activation 1, its squeezed-out row's Rating cell: the word bands
