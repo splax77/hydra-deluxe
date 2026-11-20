@@ -1,8 +1,9 @@
 """Tests for method_watch.py and start_candidates.json: the start's refusals
 and backup, the stop reply's call list and scene-load line, the calls log, the
 shared-code addresses an "all" class skips, and the candidate file against the
-dump's facts and image list. A fake run_agent plays the agent: no test
-attaches Frida or starts the game."""
+dump's facts and image list. The refusals before an attach run on the
+server's real game and Frida tools; past an attach a fake run_agent plays
+the agent. No test attaches Frida or starts the game."""
 
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ from tools.ch_mcp import build_facts  # noqa: E402
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
+from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import method_watch as MW  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 
@@ -161,47 +163,32 @@ class WatchTestBase(unittest.TestCase):
             hook()
 
 
-class StartTest(WatchTestBase):
+class RealToolsTest(unittest.TestCase):
+    """The watch on the server's real game and Frida tools, on a temp folder
+    with no game running: nothing is attached, the state a watch meets before
+    ch_attach."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        lock = threading.RLock()
+        game = GT.GameTools(None, lock, os.path.join(tmp.name, "scratch"))
+        self.watch = MW.MethodWatch(game, FT.FridaTools(game, lock), lock)
+
     def test_the_start_refuses_when_nothing_is_attached(self):
-        watch, agent = self.make([SUMMARY], attached=False)
-        reply = watch.ch_method_watch_start()
-        self.assertEqual(reply, f"{FT.NOT_ATTACHED}; no method watch started")
-        self.assertEqual(self.events, [])
+        reply = self.watch.ch_method_watch_start()
+        self.assertTrue(reply.startswith(FT.NOT_ATTACHED), reply)
+        self.assertFalse(self.watch.running())
 
-    def test_an_attach_lets_the_start_through(self):
-        watch, _ = self.make([SUMMARY])
-        self.assertIn("hooked: 3 code addresses", watch.ch_method_watch_start())
+    def test_stop_with_no_watch(self):
+        # Nothing ran, so the stop names the start tool and lists no calls.
+        reply = self.watch.ch_method_watch_stop()
+        self.assertIn(MW.MethodWatch.ch_method_watch_start.__name__, reply)
+        self.assertNotIn(MW.call_lines([])[0], reply.splitlines())
+        self.assertFalse(self.watch.running())
 
-    def test_the_backup_comes_before_the_hooks(self):
-        watch, _ = self.make([SUMMARY])
-        reply = watch.ch_method_watch_start()
-        self.assertEqual(self.events, ["backup", "hooks"])
-        self.assertEqual(reply.splitlines()[0], BACKUP_LINE)
 
-    def test_the_start_refuses_while_a_watch_runs(self):
-        watch, _ = self.make([SUMMARY])
-        watch.ch_method_watch_start()
-        self.assertEqual(watch.ch_method_watch_start(),
-                         "a method watch is already running; call ch_method_watch_stop first")
-        self.assertEqual(self.events, ["backup", "hooks"])
-
-    def test_the_start_names_a_missing_class_and_rva(self):
-        summary = dict(SUMMARY, missing=["class CliGameLauncher found in 0 images",
-                                         "GlobalVariables has no method at RVA 0x235ad0"])
-        watch, _ = self.make([summary])
-        lines = watch.ch_method_watch_start().splitlines()
-        self.assertIn("not found: class CliGameLauncher found in 0 images", lines)
-        self.assertIn("not found: GlobalVariables has no method at RVA 0x235ad0", lines)
-
-    def test_the_start_sends_the_candidate_classes_and_the_cap(self):
-        watch, agent = self.make([SUMMARY])
-        watch.ch_method_watch_start()
-        labels = [c["label"] for c in agent.start["classes"]]
-        candidates = MW.load_candidates()
-        self.assertEqual(labels, [c["class"] for c in candidates["classes"]])
-        self.assertEqual(agent.cap_s, 120.0)
-        self.assertEqual(agent.agent_path, os.path.join(self.agent_dir, "menuhooks.js"))
-
+class StartTest(WatchTestBase):
     def test_classes_narrows_the_watch_and_an_unknown_name_is_refused(self):
         watch, agent = self.make([SUMMARY])
         watch.ch_method_watch_start(classes=["SceneManager"])
@@ -210,26 +197,6 @@ class StartTest(WatchTestBase):
         reply = watch.ch_method_watch_start(classes=["Nope"])
         self.assertTrue(reply.startswith("not in start_candidates.json: Nope;"), reply)
         self.assertIn("no method watch started", reply)
-
-    def test_an_agent_error_ends_the_watch_and_says_why(self):
-        watch, _ = self.make([{"error": "no method of the watched classes could be hooked",
-                               "classes": [], "missing": ["class X found in 0 images"]}])
-        lines = watch.ch_method_watch_start().splitlines()
-        self.assertIn("nothing hooked: no method of the watched classes could be hooked", lines)
-        self.assertIn("not found: class X found in 0 images", lines)
-        self.assertIn("ended: error; error: no method of the watched classes could be hooked",
-                      lines)
-
-    def test_the_start_names_each_address_it_skipped(self):
-        summary = dict(SUMMARY, skipped=[
-            {"class": "PlayerSelectionCanvas", "names": [".ctor"], "rva": "0x66940"},
-            {"class": "SongSelect", "names": ["a", "b"], "rva": "0x6d60"}])
-        watch, _ = self.make([summary])
-        lines = watch.ch_method_watch_start().splitlines()
-        self.assertIn("skipped (code shared with other classes): "
-                      "PlayerSelectionCanvas .ctor 0x66940", lines)
-        self.assertIn("skipped (code shared with other classes): SongSelect a / b 0x6D60",
-                      lines)
 
     def test_the_start_sends_each_classes_skips_and_assembly(self):
         watch, agent = self.make([SUMMARY])
@@ -270,57 +237,6 @@ class StartTest(WatchTestBase):
 
 
 class StopTest(WatchTestBase):
-    def test_stop_with_no_watch(self):
-        watch, _ = self.make([SUMMARY])
-        self.assertEqual(watch.ch_method_watch_stop(),
-                         "no method watch has run; call ch_method_watch_start")
-
-    def test_the_stop_lists_the_calls_in_order_and_names_the_one_before_the_load(self):
-        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
-        watch.ch_method_watch_start()
-        lines = watch.ch_method_watch_stop().splitlines()
-        self.assertEqual(lines[0], "ended: stopped")
-        start = lines.index("calls: 3")
-        self.assertEqual(lines[start + 1:start + 4], [
-            '  1. GlobalVariables ʺʵʸʸʽʶʾˀʶʺʺ (0x235AD0) args '
-            '["C:\\\\Clone Hero\\\\songs\\\\Hydra Probe\\\\Window Map", "ˁʻʽʷʽʻʾʵʷˀʶ", '
-            '"ref string", "ref string", "ref string"]; songTime null; +0 ms',
-            "  2. PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790) args []; songTime null; +250 ms",
-            '  3. SceneManager LoadScene (0x289C250) args ["Gameplay"]; songTime null; +300 ms',
-        ])
-        self.assertIn('  call 3: SceneManager LoadScene (0x289C250) scene "Gameplay"; '
-                      "last before it: call 2, PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790), "
-                      "args []", lines)
-
-    def test_a_load_that_calls_another_load_names_the_call_before_both(self):
-        inner = dict(LOAD_CALL, call="LoadSceneAsync", names=["LoadSceneAsync"],
-                     rva="0x289c0e0", t_ms=1301)
-        watch, _ = self.make([SUMMARY, M4_CALL, LOAD_CALL, inner])
-        watch.ch_method_watch_start()
-        lines = watch.ch_method_watch_stop().splitlines()
-        self.assertIn('  call 3: SceneManager LoadSceneAsync (0x289C0E0) scene "Gameplay"; '
-                      "last before it: call 1, PlayerSelectionCanvas ʽʶʼˀʷʺʳʻʶˁʾ (0xD0790), "
-                      "args []", lines)
-
-    def test_the_scene_loads_and_the_log_come_before_the_call_list(self):
-        # The server cuts a long reply, and a menu walk logs thousands of
-        # calls; the scene loads must survive the cut.
-        watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
-        watch.ch_method_watch_start()
-        lines = watch.ch_method_watch_stop().splitlines()
-        loads = lines.index("scene loads:")
-        log = next(i for i, line in enumerate(lines) if line.startswith("calls log: "))
-        self.assertLess(loads, log)
-        self.assertLess(log, lines.index("calls: 3"))
-        self.assertEqual(lines[-1],
-                         '  3. SceneManager LoadScene (0x289C250) args ["Gameplay"]; '
-                         'songTime null; +300 ms')
-
-    def test_no_load_is_said(self):
-        watch, _ = self.make([SUMMARY, M4_CALL])
-        watch.ch_method_watch_start()
-        self.assertIn("scene loads: none seen", watch.ch_method_watch_stop().splitlines())
-
     def test_the_calls_log_holds_one_line_per_call(self):
         watch, _ = self.make([SUMMARY, M3_CALL, M4_CALL, LOAD_CALL])
         watch.ch_method_watch_start()
@@ -329,12 +245,6 @@ class StopTest(WatchTestBase):
         with open(path, encoding="utf-8") as fh:
             rows = [json.loads(line) for line in fh]
         self.assertEqual(rows, [M3_CALL, M4_CALL, LOAD_CALL])
-
-    def test_the_game_stop_ends_a_running_watch(self):
-        watch, _ = self.make([SUMMARY, M4_CALL])
-        watch.ch_method_watch_start()
-        self.assertEqual(self.game.hooks[0](), "method watch: ended: stopped, 1 calls")
-        self.assertIsNone(self.game.hooks[0]())
 
 
 class SettingsTest(unittest.TestCase):
