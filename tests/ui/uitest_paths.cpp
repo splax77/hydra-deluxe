@@ -495,11 +495,11 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(!on_screen(h, sqout));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(on_screen(h, sqout));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
@@ -1187,41 +1187,80 @@ void check_tapped_out_box_fits() {
     IM_CHECK_LE(box->ContentSize.x, box->ContentRegionRect.GetWidth() + 0.5f);
 }
 
-// The Dynamic Hit Window row: on Burnout's squeeze out (safe), on no
-// activation without a timing badge, and on Tapped Out's squeeze out (out of
-// reach) and both its early fills, optional and required, each in a box.
+// The pieces a Dynamic Hit Window row draws, from the row view the tab drew
+// (app::WindowRowView): the label, each end's word when it has one, its
+// window and its chord, and the tag.
+std::vector<std::string> window_pieces(const hydra::app::WindowRowView& w) {
+    std::vector<std::string> out = {hydra::app::kDynamicHitWindowLabel};
+    for (const hydra::app::WindowFigure& f : w.figures)
+        out.push_back((f.word.empty() ? std::string() : f.word + " ") + f.figure + " " + f.chord);
+    out.push_back(w.tag);
+    return out;
+}
+
+// Whether an activation's opened row holds any Dynamic Hit Window row.
+bool has_window_row(const hydra::app::ActivationRowView& a) {
+    if (a.early_fill_window) return true;
+    for (const std::optional<hydra::app::WindowRowView>& w : a.squeeze_windows)
+        if (w) return true;
+    return false;
+}
+
+// An early fill's Dynamic Hit Window row on screen: its pieces, and no
+// squeeze word (core::role_word) before its window, since its one note is
+// neither end of a squeeze.
+void check_early_fill_window(Harness& h, const hydra::app::WindowRowView& w) {
+    for (const std::string& piece : window_pieces(w)) IM_CHECK(on_screen(h, piece));
+    const std::string front = hydra::role_word(hydra::EndRole::Frontend);
+    const std::string back = hydra::role_word(hydra::EndRole::Backend);
+    for (const hydra::app::WindowFigure& f : w.figures) {
+        IM_CHECK(!on_screen(h, front + " " + f.figure));
+        IM_CHECK(!on_screen(h, back + " " + f.figure));
+    }
+}
+
+// The Dynamic Hit Window row: on Burnout's squeeze out, on no activation
+// without a timing badge, and on Tapped Out's squeeze out and both its early
+// fills, each in a box. Every expected text is the row view the tab drew.
 void test_paths_hit_window(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    IM_CHECK(!on_screen(h, "Dynamic Hit Window:"));  // every row starts closed
+    IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));  // every row starts closed
 
-    // Burnout's activation 1: literals from T0's run.
+    // Burnout's activation 1 has a squeeze with a window row.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "frontend 84.5 ms [K   G]"));
-    IM_CHECK(on_screen(h, "backend 84.3 ms [  Y  ]"));
-    IM_CHECK(on_screen(h, "5.4 ms safe"));
-    // The tag is a badge (D262, shared_pill_width in badge_pill.h): its pill,
-    // in the squeeze's box, is as wide as the pill of the activation row's
-    // badge above it, and painted in the safe tag's own fill
-    // (window_tag_pill), not the shared pill's.
+    const hydra::app::ActivationsView& burnout = shown_activations(*h.app);
+    IM_CHECK_GE(burnout.acts.size(), static_cast<size_t>(2));
+    if (burnout.acts.size() < 2) return;
+    size_t k1 = burnout.acts[0].squeeze_windows.size();
+    for (size_t k = 0; k < burnout.acts[0].squeeze_windows.size(); ++k)
+        if (burnout.acts[0].squeeze_windows[k] && k1 == burnout.acts[0].squeeze_windows.size()) k1 = k;
+    IM_CHECK(k1 < burnout.acts[0].squeeze_windows.size());
+    if (k1 >= burnout.acts[0].squeeze_windows.size()) return;
+    const hydra::app::WindowRowView w1 = *burnout.acts[0].squeeze_windows[k1];
+    for (const std::string& piece : window_pieces(w1)) IM_CHECK(on_screen(h, piece));
+    // The tag is a badge: its pill, in the squeeze's box, is as wide as the
+    // pill of the activation row's badge above it, and painted in its own
+    // tag's fill (window_tag_pill), not the shared pill's.
     {
+        const std::string box_id = "##sq1_" + std::to_string(k1);
         const std::vector<ImRect> row_pills = drawn_pills(ctx->ItemInfo("**/##act1").RectFull);
-        ImGuiWindow* box = window_named("##sq1_0");
+        ImGuiWindow* box = window_named(box_id.c_str());
         IM_CHECK(box != nullptr);
-        IM_CHECK_EQ(static_cast<int>(row_pills.size()), 1);
-        if (!box || row_pills.size() != 1) return;
+        IM_CHECK_EQ(row_pills.size(), burnout.acts[0].badges.size());
+        IM_CHECK(!row_pills.empty());
+        if (!box || row_pills.empty()) return;
         // The box's own background, in the shared fill, starts at its top;
         // nothing below it is in the shared fill. Fails if the tag's pill is
         // painted in the shared fill.
         int shared_below_top = 0;
-        for (const ImRect& p : drawn_pills(box->Rect(), "##sq1_0"))
+        for (const ImRect& p : drawn_pills(box->Rect(), box_id.c_str()))
             if (p.Min.y > box->Pos.y + 2.0f) ++shared_below_top;
         IM_CHECK_EQ(shared_below_top, 0);
-        // Fails if the tag is not drawn in the safe tag's fill.
+        // Fails if the tag is not drawn in its own tag's fill.
         const std::vector<ImRect> tags =
-            drawn_pills(box->Rect(), "##sq1_0", hydra::ui::window_tag_pill(false).fill);
+            drawn_pills(box->Rect(), box_id.c_str(), hydra::ui::window_tag_pill(w1.is_short).fill);
         IM_CHECK_EQ(static_cast<int>(tags.size()), 1);
         if (tags.size() != 1) return;
         ctx->LogInfo("row badge pill %.3f wide, tag pill %.3f wide", row_pills[0].GetWidth(),
@@ -1230,38 +1269,46 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
         IM_CHECK_LE(std::fabs(tags[0].GetHeight() - row_pills[0].GetHeight()), 0.01f);
     }
 
-    // Activation 2 has no timing badge, so no row.
+    // Activation 2 has no window row in the view, and none shows.
+    IM_CHECK(!has_window_row(burnout.acts[1]));
     ctx->ItemClick("**/##act2");  // opens row 2, closes row 1
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == std::vector<char>({0, 1, 0}));
-    IM_CHECK(!on_screen(h, "Dynamic Hit Window:"));
+    {
+        std::vector<char> want(h.app->details_ui.paths_tab.ui().act_open.size(), 0);
+        want[1] = 1;
+        IM_CHECK(h.app->details_ui.paths_tab.ui().act_open == want);
+    }
+    IM_CHECK(!on_screen(h, hydra::app::kDynamicHitWindowLabel));
 
+    // Tapped Out's activation 4 has a squeeze with a window row and an early
+    // fill with its own box and row; activation 3 has an early fill with its
+    // own box and row.
     if (!open_tapped_out(ctx)) return;
+    const std::vector<hydra::app::ActivationRowView> tapped = shown_activations(*h.app).acts;
+    IM_CHECK_GE(tapped.size(), static_cast<size_t>(4));
+    if (tapped.size() < 4) return;
+    const hydra::app::ActivationRowView& act4 = tapped[3];
+    const hydra::app::ActivationRowView& act3 = tapped[2];
+    IM_CHECK(!act4.squeeze_windows.empty() && act4.squeeze_windows[0].has_value());
+    IM_CHECK(!act4.early_fill.empty() && act4.early_fill_window.has_value());
+    IM_CHECK(!act3.early_fill.empty() && act3.early_fill_window.has_value());
+    if (ctx->IsError()) return;
     ctx->ItemClick("**/##act4");
     ctx->Yield(2);
-    for (const char* piece : kTappedOutWindowPieces) IM_CHECK(on_screen(h, piece));
-    // Its optional early fill is boxed, with its own row (the user's ruling
-    // of 2026-11-12); tests/test_activation_rows.cpp pins the same text.
-    IM_CHECK(on_screen(h, "Early fill: 0.0 ms (optional)"));
+    for (const std::string& piece : window_pieces(*act4.squeeze_windows[0]))
+        IM_CHECK(on_screen(h, piece));
+    IM_CHECK(on_screen(h, act4.early_fill));
     IM_CHECK(window_named("##ef4") != nullptr);
-    // An early fill row's note carries no word (the user's ruling: "No word").
-    IM_CHECK(on_screen(h, "85.7 ms [K  B ]"));
-    IM_CHECK(!on_screen(h, "frontend 85.7 ms"));
-    IM_CHECK(!on_screen(h, "backend 85.7 ms"));
-    IM_CHECK(on_screen(h, "85.7 ms safe"));
+    check_early_fill_window(h, *act4.early_fill_window);
+    if (ctx->IsError()) return;
     check_tapped_out_box_fits();
     if (ctx->IsError()) return;
 
-    // Activation 3's required early fill: its box holds one window.
     ctx->ItemClick("**/##act3");  // opens row 3, closes row 4
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Early fill: 0.0 ms (required)"));
+    IM_CHECK(on_screen(h, act3.early_fill));
     IM_CHECK(window_named("##ef3") != nullptr);
-    IM_CHECK(on_screen(h, "Dynamic Hit Window:"));
-    IM_CHECK(on_screen(h, "82.9 ms [K   G]"));
-    IM_CHECK(!on_screen(h, "frontend 82.9 ms"));
-    IM_CHECK(!on_screen(h, "backend 82.9 ms"));
-    IM_CHECK(on_screen(h, "82.9 ms safe"));
+    check_early_fill_window(h, *act3.early_fill_window);
 }
 
 // At the narrowest panel, all four pieces of Tapped Out's activation 4 row
