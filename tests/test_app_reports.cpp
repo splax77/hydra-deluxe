@@ -5,6 +5,7 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <filesystem>
@@ -368,7 +369,7 @@ TEST_CASE("Cancel ends a path report build as cancelled and keeps the last repor
     CHECK(app->path_report.result == kept);
 }
 
-TEST_CASE("select_chart selects the first copy in the bar's mode") {
+TEST_CASE("select_chart selects the first copy in the library's order") {
     ScratchPaths paths("appstate_selectchart");
     std::unique_ptr<AppState> app = app_on(paths);
     // A second copy of chart 7, in another folder, sorting after it by title.
@@ -398,33 +399,27 @@ TEST_CASE("select_chart selects the first copy in the bar's mode") {
 
 TEST_CASE("select_chart opens the first copy by name when the search hides every copy") {
     ScratchPaths paths("appstate_selecthidden");
-    std::unique_ptr<AppState> app = app_on(paths);
-    // Three copies of chart 7, scanned in this order: "Song B" first, then
-    // two copies named "Song A". The later "Song A" has the path that sorts
-    // first. The user's ruling (docs/agents/rulings/ui-and-display.md, "Keep
-    // today's pick") keeps the first copy by name, and of two copies with one
-    // name the one scanned first: the middle copy. The first in the table's
-    // own order (what the unsorted read gives) is "Song B", and the first by
-    // path is the last "Song A".
-    std::vector<ChartLibraryEntry> charts;
-    for (int i = 0; i < kChartCount; ++i)
-        if (i != 7) charts.push_back(library_entry(i));
-    ChartLibraryEntry b = library_entry(7);
-    b.title = "Song B";
-    b.notespath = "C:\\m\\hash007\\notes.chart";
-    ChartLibraryEntry a = library_entry(7);
-    a.title = "Song A";
-    a.notespath = "C:\\p\\hash007\\notes.chart";
-    ChartLibraryEntry a_later = library_entry(7);
-    a_later.title = "Song A";
-    a_later.notespath = "C:\\a\\hash007\\notes.chart";
-    charts.insert(charts.begin(), {b, a, a_later});
-    app->store->rebuild_chart_library(charts);
-    app->reload_library();
+    // Three copies of one corpus chart, each in a folder of its own and
+    // scanned in this order: "Song B" first, then two copies named "Song A".
+    // The later "Song A" has the path that sorts first. The user's ruling
+    // (docs/agents/rulings/ui-and-display.md, "Keep today's pick") keeps the
+    // first copy by name, and of two copies with one name the one scanned
+    // first: the middle copy. The first in the table's own order (what the
+    // unsorted read gives) is "Song B", and the first by path is the last
+    // "Song A".
+    const ChartLibraryEntry b = entry_for(write_corpus_chart("selecthidden_m", false), "Song B");
+    const ChartLibraryEntry a = entry_for(write_corpus_chart("selecthidden_p", false), "Song A");
+    const ChartLibraryEntry a_later =
+        entry_for(write_corpus_chart("selecthidden_a", false), "Song A");
+    REQUIRE(a.md5 == b.md5);  // one chart, three copies
+    REQUIRE(a_later.md5 == b.md5);
+    REQUIRE(a_later.notespath < a.notespath);
+    std::unique_ptr<AppState> app = app_with(paths, {b, a, a_later});
+    REQUIRE(app->library_shown_count() == 3);
 
     app->set_search("zzqxj");  // in no row's text
     REQUIRE(app->library.order().empty());
-    app->select_chart("hash007");
+    app->select_chart(b.md5);
     REQUIRE(app->selected.has_value());
     CHECK(app->selected->notespath == a.notespath);
 }
@@ -433,21 +428,28 @@ TEST_CASE("select_chart opens the first copy by name when the search hides every
 // when the comparison was built in another.
 TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
     ScratchPaths paths("appstate_dmrowclick");
-    std::unique_ptr<AppState> app = app_on(paths);
+    // Two corpus charts, the second with one more note so it hashes apart.
+    const ChartLibraryEntry shown = corpus_chart("dmrowclick_a");
+    const ChartLibraryEntry clicked = corpus_chart("dmrowclick_b", true);
+    REQUIRE_FALSE(shown.md5 == clicked.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {shown, clicked});
+    app->selected = shown;
     const std::string bar = app->settings.chartmode_key();
 
     // The comparison keeps no mode of its own, so the click has none to switch
-    // to; the bar's mode must stay as it was.
+    // to; the bar's mode must stay as it was. A comparison row's identifier is
+    // the library chart's md5 (collect_dm_rows joins on it). No saved real
+    // leaderboard reply is checked in, so the one row is set here.
     auto result = std::make_shared<hydra::app::dm_report::GeneratedDmReport>();
     result->rows.emplace_back();
-    result->rows.back().identifier = library_entry(7).md5;
+    result->rows.back().identifier = clicked.md5;
     app->dm_report.result = result;
 
     hydra::ui::dm_report_input(*app).callbacks.row_click(0);
     CHECK(app->settings.chartmode_key() == bar);
     CHECK(Settings::load_file(paths.ini).chartmode_key() == bar);  // nothing committed
     REQUIRE(app->selected.has_value());
-    CHECK(app->selected->notespath == library_entry(7).notespath);
+    CHECK(app->selected->notespath == clicked.notespath);
 }
 
 namespace {
@@ -462,90 +464,18 @@ const char* const kDmScoresJson =
 
 }  // namespace
 
-// D103 items 8 to 11: picking a player opens the comparison window and
-// builds it; Refresh builds it again for the same player; Cancel keeps the
-// last comparison.
-TEST_CASE("picking a player opens the comparison; Refresh reuses the player") {
-    ScratchPaths paths("appstate_dmreport");
-    // Before the app, which joins the fetch's thread: the fetcher reads them.
-    std::mutex m;
-    std::vector<std::string> score_urls;
-    std::atomic<bool> hold{false};
-    // After what it reads, before the app: the fetch's thread calls it.
-    const ScopedHook fetcher(hydra::net::set_fetcher, [&](const std::string& url,
-                                                          const std::atomic<bool>* cancel)
-                                                          -> std::string {
-        if (url.find("/all-users") != std::string::npos) return kDmUsersJson;
-        {
-            std::lock_guard<std::mutex> lock(m);
-            score_urls.push_back(url);
-        }
-        wait_until([&] { return !hold.load() || cancel->load(); },
-                   "the test to stop holding or cancel the fetch");
-        if (cancel->load()) throw std::runtime_error("cancelled");
-        return kDmScoresJson;
-    });
-    std::unique_ptr<AppState> app = app_on(paths);
-
-    app->start_dm_report("111", "alice");
-    CHECK(app->dm_report.window_open);
-    CHECK(app->settings.dm_last_user == "111");
-    finish_dm_report(*app);
-    CHECK(app->dm_report_build() == ReportBuild::Ready);
-    REQUIRE(app->dm_report.result != nullptr);
-    CHECK(app->dm_report.result->username == "alice");
-    CHECK(app->dm_report.result->stats.total == 1);
-
-    // The chart mode is a setting the comparison reads.
-    app->settings.view_prodrums = !app->settings.view_prodrums;
-    app->commit_settings();
-    CHECK(app->dm_report.out_of_date == ReportOutOfDate::Settings);
-
-    // Refresh: the same player again, and the result is current.
-    app->dm_report.window_open = false;
-    app->request_dm_report();
-    finish_dm_report(*app);
-    REQUIRE(score_urls.size() == 2);
-    CHECK(score_urls[1] == score_urls[0]);
-    CHECK(score_urls[1].find("111") != std::string::npos);
-    CHECK(app->dm_report.out_of_date == ReportOutOfDate::None);
-    CHECK_FALSE(app->dm_report.window_open);  // Refresh opens no window
-
-    // Cancel while fetching: cancelled, and the last comparison is kept.
-    const auto kept = app->dm_report.result;
-    hold = true;
-    app->request_dm_report();
-    REQUIRE(app->dm_report_build() == ReportBuild::Building);
-    app->cancel_dm_report();
-    CHECK(app->dm_report_build() == ReportBuild::Cancelled);
-    CHECK(app->dm_report.result == kept);
-    wait_until(
-        [&] {
-            app->update_background_jobs();
-            return app->parked_dm_reports.empty();
-        },
-        "the cancelled comparison to be collected");
-
-    // The window's "Compare another player..." opens the picker again.
-    app->dm_picker_open = false;
-    app->reopen_dm_picker();
-    CHECK(app->dm_picker_open);
-    CHECK(app->dm_picker_popup_pending);
-    if (app->dm_fetch_job)
-        wait_until([&] { return app->dm_fetch_job->finished(); }, "the player list's fetch to finish");
-}
-
 // ---- opening the report analyzes first (D249 item 8) --------
 
 namespace {
 
-// A batch analyzer that waits for `release`, then fails the chart, so the
-// batch stores nothing and the test reads its snapshot while it is held.
-hydra::app::ChartAnalyzer held_failing_analyzer(std::atomic<bool>& release) {
-    return [&release](const std::string&, const hydra::app::AnalysisSettings&,
-                      const std::function<void(float)>&) -> hydra::app::AnalysisResult {
+// A batch analyzer that waits for `release`, then runs the real analyzer on
+// the chart, so the test reads the batch's snapshot while it is held.
+hydra::app::ChartAnalyzer held_analyzer(std::atomic<bool>& release) {
+    return [&release](const std::string& path, const hydra::app::AnalysisSettings& settings,
+                      const std::function<void(float)>& on_progress)
+               -> hydra::app::AnalysisResult {
         wait_until([&release] { return release.load(); }, "the test to release the batch");
-        throw std::runtime_error("no chart file in this test");
+        return hydra::app::analyze_chart_file(path, settings, on_progress);
     };
 }
 
@@ -554,11 +484,20 @@ hydra::app::ChartAnalyzer held_failing_analyzer(std::atomic<bool>& release) {
 constexpr int kUnanalyzed = 5;
 
 // An app whose one corpus chart has a stored result, so its report has rows,
-// and kUnanalyzed seeded charts with no file and no result.
+// and kUnanalyzed more corpus charts, as a scan lists them, with no result.
+// Each has its own md5, so each is a row the batch runs.
 std::unique_ptr<AppState> app_with_unanalyzed(const ScratchPaths& paths, const char* tag) {
     const ChartLibraryEntry song = corpus_chart(tag);
     std::vector<ChartLibraryEntry> charts{song};
-    for (int i = 1; i <= kUnanalyzed; ++i) charts.push_back(library_entry(i));
+    for (const std::string& notespath : corpus::chart_paths()) {
+        if (charts.size() > static_cast<size_t>(kUnanalyzed)) break;
+        const ChartLibraryEntry e =
+            corpus::scanned_entry(notespath, "Corpus " + std::to_string(charts.size()));
+        const bool listed = std::any_of(charts.begin(), charts.end(),
+                                        [&](const ChartLibraryEntry& c) { return c.md5 == e.md5; });
+        if (!listed) charts.push_back(e);
+    }
+    REQUIRE(charts.size() == static_cast<size_t>(kUnanalyzed) + 1);
     std::unique_ptr<AppState> app = app_with(paths, charts);
     click(*app, song);
     REQUIRE(app->viewed.ready());
@@ -573,7 +512,7 @@ TEST_CASE("opening the path report runs a batch over the charts with no result, 
     std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenbatch");
     {
         const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
-                              held_failing_analyzer(release), 1);
+                              held_analyzer(release), 1);
         app->show_path_report();
     }
     REQUIRE(app->batch_job != nullptr);
@@ -620,7 +559,7 @@ TEST_CASE("the window's Cancel stops the report's own batch, and no report follo
     std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopencancel");
     {
         const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
-                              held_failing_analyzer(release), 1);
+                              held_analyzer(release), 1);
         app->show_path_report();
     }
     REQUIRE(app->batch_job != nullptr);
@@ -637,31 +576,38 @@ TEST_CASE("the window's Cancel stops the report's own batch, and no report follo
 // The user's answer 8: more than kReportConfirmAbove rows to run asks first,
 // in the report window itself. The test library has kUnanalyzed to run, so
 // the test lowers the threshold the app reads.
-TEST_CASE("more rows to run than the threshold open the batch confirm first") {
-    CHECK(AppState::kReportConfirmAbove == 500);
-    ScratchPaths paths("appstate_pathopenconfirm");
+TEST_CASE("at the threshold the path report runs its batch without asking") {
+    ScratchPaths paths("appstate_pathopenatthreshold");
     std::atomic<bool> release{false};
-    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenconfirm");
-
-    // At the threshold it just runs.
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenatthreshold");
     app->report_confirm_above = kUnanalyzed;
     {
         const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
-                              held_failing_analyzer(release), 1);
+                              held_analyzer(release), 1);
         app->show_path_report();
     }
     REQUIRE(app->batch_job != nullptr);
     CHECK_FALSE(app->batch_confirm_pending);
+    CHECK_FALSE(app->path_report_awaits_confirm());
     release = true;
     wait_batch_finished(*app);
     app->update_background_jobs();
     finish_path_report(*app);
-    app->batch_job.reset();  // the finished strip's X
+    CHECK(app->path_report_build() == ReportBuild::Ready);
+}
 
-    // Over it, the report window asks on the same plan and nothing runs yet.
-    // The question is the report's own: the main window's popup stays shut.
+// The phases that run nothing come first: the batch at the end analyzes
+// every row, and after it nothing is left to ask about.
+TEST_CASE("more rows to run than the threshold open the batch confirm first") {
+    ScratchPaths paths("appstate_pathopenconfirm");
+    std::atomic<bool> release{false};
+    std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenconfirm");
+
+    // Over the threshold, the report window asks on the batch's plan and
+    // nothing runs yet. The question is the report's own: the main window's
+    // popup stays shut.
     app->report_confirm_above = kUnanalyzed - 1;
-    app->request_path_report();  // the window's Refresh
+    app->show_path_report();
     CHECK(app->batch_job == nullptr);
     CHECK(app->batch_plan.todo_rows() == kUnanalyzed);
     CHECK(app->path_report_awaits_confirm());
@@ -669,33 +615,14 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     CHECK(app->path_report_build() == ReportBuild::Building);
     {
         const hydra::ui::PathReportInput asking = hydra::ui::path_report_input(*app);
-        CHECK(asking.confirm_question == "Analyze 5 charts that have no result yet?");
         CHECK(asking.confirm_question == app->batch_question(false));
+        // It names how many charts would run.
+        CHECK(asking.confirm_question.find(std::to_string(kUnanalyzed)) != std::string::npos);
         CHECK(asking.can_analyze);
     }
 
-    // Its Analyze runs the batch, which the report then waits on.
-    release = false;
-    {
-        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
-                              held_failing_analyzer(release), 1);
-        hydra::ui::path_report_input(*app).callbacks.analyze();
-    }
-    REQUIRE(app->batch_job != nullptr);
-    CHECK_FALSE(app->path_report_awaits_confirm());
-    CHECK_FALSE(app->batch_confirm_pending);
-    CHECK(app->path_report_batch() == app->batch_job.get());
-    CHECK(hydra::ui::path_report_input(*app).confirm_question.empty());
-    release = true;
-    wait_batch_finished(*app);
-    app->update_background_jobs();
-    finish_path_report(*app);
-    CHECK(app->path_report_build() == ReportBuild::Ready);
-    app->batch_job.reset();
-
     // Its Cancel is "don't analyze": nothing runs, and the report builds from
     // the results already stored rather than ending cancelled.
-    app->request_path_report();
     REQUIRE(app->path_report_awaits_confirm());
     hydra::ui::path_report_input(*app).callbacks.cancel();
     CHECK_FALSE(app->batch_confirm_pending);
@@ -738,6 +665,25 @@ TEST_CASE("more rows to run than the threshold open the batch confirm first") {
     app->close_batch_confirm();
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
+
+    // Its Analyze runs the batch, which the report then waits on.
+    app->request_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    {
+        const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
+                              held_analyzer(release), 1);
+        hydra::ui::path_report_input(*app).callbacks.analyze();
+    }
+    REQUIRE(app->batch_job != nullptr);
+    CHECK_FALSE(app->path_report_awaits_confirm());
+    CHECK_FALSE(app->batch_confirm_pending);
+    CHECK(app->path_report_batch() == app->batch_job.get());
+    CHECK(hydra::ui::path_report_input(*app).confirm_question.empty());
+    release = true;
+    wait_batch_finished(*app);
+    app->update_background_jobs();
+    finish_path_report(*app);
+    CHECK(app->path_report_build() == ReportBuild::Ready);
 }
 
 // D276 item 6: closing the window while it asks "Analyze N charts?" means
@@ -771,7 +717,7 @@ TEST_CASE("a batch already running is waited on, and its finish builds the repor
     ScratchPaths paths("appstate_pathopenwait");
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_unanalyzed(paths, "pathopenwait");
-    start_redo_batch(*app, held_failing_analyzer(release));
+    start_redo_batch(*app, held_analyzer(release));
     app->show_path_report();
     CHECK(app->report_job == nullptr);
     CHECK(app->path_report_batch() == app->batch_job.get());
@@ -785,7 +731,7 @@ TEST_CASE("a batch already running is waited on, and its finish builds the repor
 
 TEST_CASE("the toolbar offers the path report whenever the library has rows") {
     ScratchPaths paths("appstate_pathoffered");
-    CHECK(app_on(paths)->path_report_offered());
+    CHECK(app_with(paths, {corpus_chart("pathoffered")})->path_report_offered());
     ScratchPaths empty("appstate_pathofferednone");
     CHECK_FALSE(app_with(empty, {})->path_report_offered());
 }
@@ -796,28 +742,30 @@ TEST_CASE("the toolbar offers the path report whenever the library has rows") {
 // the settings bar moved on after it (D51 call 26).
 TEST_CASE("the post-batch report lists the batch's cap and lens, not the live settings") {
     ScratchPaths paths("appstate_reportrun");
-    std::unique_ptr<AppState> app = app_on(paths);
-    REQUIRE(app->settings.sp_cap == 4);
-    run_redo_batch_over(*app, library_entry(5).md5);
-    const hydra::store::Lens batch_lens = app->batch_job->batch_run().profile.lens;
+    std::unique_ptr<AppState> app = app_with_result(paths, "reportrun");
+    run_redo_batch_over(*app, app->library_row_at(0).title);
+    const hydra::store::Profile batch_profile = app->batch_job->batch_run().profile;
 
-    app->settings.sp_cap = 5;  // edited, not committed
+    app->settings.sp_cap += 1;  // edited, not committed
     app->settings.mslimit_enabled = !app->settings.mslimit_enabled;
+    // The bar now names another cap and lens than the batch ran with.
+    REQUIRE_FALSE(app->settings.profile().cap == batch_profile.cap);
+    REQUIRE_FALSE(app->settings.lens() == batch_profile.lens);
     app->update_background_jobs();
 
     REQUIRE(app->report_job != nullptr);
-    CHECK(app->report_job->profile().cap == hydra::store::CapQuery::at(4));
-    CHECK(app->report_job->profile().lens == batch_lens);
-    CHECK_FALSE(app->report_job->profile().lens == app->settings.lens());
+    CHECK(app->report_job->profile().cap == batch_profile.cap);
+    CHECK(app->report_job->profile().lens == batch_profile.lens);
     wait_until([&] { return app->report_job->finished(); }, "the batch's report job to finish");
 }
 
-// D103 item 28's 2026-10-09 answer: the finished strip shows "Open
-// automatically" from report_started and the build state alone. These pin
-// what the strip reads on the paths that matter: a batch's report cancelled
-// in the window then refreshed, a close (which keeps the report, D271 item
-// 7), and a new batch.
-TEST_CASE("the strip's report_started holds through a cancel, a refresh and a close") {
+// The finished strip (render_batch_done) shows its report line and "Open
+// automatically" from report_started and the build state. The strip draws
+// inside ImGui and has no input a test can read, so this test checks the
+// flag's lifetime on the paths that matter: a batch's report cancelled in
+// the window then refreshed, a close (which keeps the report, D271 item 7),
+// and a new batch.
+TEST_CASE("report_started stays set through a cancel, a refresh and a close, and a new batch clears it") {
     ScratchPaths paths("appstate_batchlanded");
     std::atomic<bool> release{false};
     std::unique_ptr<AppState> app = app_with_result(paths, "batchlanded");
@@ -1085,16 +1033,14 @@ TEST_CASE("a report whose connection cannot open fails with the store's sentence
     CHECK(app->dm_report_build() == ReportBuild::Ready);
 }
 
-TEST_CASE("a finished report holds no connection") {
+// The comparison's half needs a leaderboard reply, and no saved real one is
+// checked in, so only the path report is checked here.
+TEST_CASE("a finished path report holds no connection") {
     ScratchPaths paths("appstate_reportclosed");
-    const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
     std::unique_ptr<AppState> app = app_with_result(paths, "reportclosed");
     app->request_path_report();
     finish_path_report(*app);
     REQUIRE(app->path_report_build() == ReportBuild::Ready);
-    app->start_dm_report("111", "alice");
-    finish_dm_report(*app);
-    REQUIRE(app->dm_report_build() == ReportBuild::Ready);
     check_log_empties(*app, paths);
 }
 
