@@ -59,7 +59,7 @@ from tools.ch_mcp.tests.test_game_files import FakeReg  # noqa: E402
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import probe_songs  # noqa: E402
 from tools.ch_probe import input_driver  # noqa: E402
-from tools.ch_probe.process import ProcessNotFoundError, open_process  # noqa: E402
+from tools.ch_probe.process import ProcessNotFoundError, _find_pid_by_name  # noqa: E402
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
@@ -964,12 +964,13 @@ class GameToolsTest(unittest.TestCase):
         self.assertFalse(play.running())
 
     def _fail_if_game_runs(self) -> str:
-        """The real open_process, which a keys-route run calls first. With
-        Clone Hero running, a run here would read its memory and press keys
-        into it, so the test fails at once. With it not running, returns the
-        open's refusal, the words the run's thread reports."""
+        """The process lookup open_process makes first; it only reads the
+        process list and never opens the game. With Clone Hero running, a run
+        here would read its memory and press keys into it, so the test fails
+        at once. With it not running, returns the lookup's refusal, the words
+        the run's thread reports."""
         try:
-            open_process(read_only=True)
+            _find_pid_by_name(PROCESS_NAME)
         except ProcessNotFoundError as e:
             return str(e)
         self.fail("Clone Hero is running; close it to run this test")
