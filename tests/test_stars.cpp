@@ -83,7 +83,9 @@ Path path_with_every_category() {
 int64_t exact_product_in_tenths(int64_t base, int stars) {
     const float multiplier = kStarMultipliers.at(static_cast<size_t>(stars - 1));
     const long tenths = std::lround(multiplier * 10.0f);
-    REQUIRE(std::fabs(multiplier * 10.0f - static_cast<float>(tenths)) < 1e-4f);
+    // Float division rounds to the nearest float, as the table's literals do,
+    // so a whole number of tenths divides back to the very same entry.
+    REQUIRE(static_cast<float>(tenths) / 10.0f == multiplier);
     return base * tenths;
 }
 
