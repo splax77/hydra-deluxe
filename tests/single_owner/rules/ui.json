@@ -1374,19 +1374,12 @@
         "h.app->settings.depth_value = 999999;",
         ": \"00000000000000000000000000000000\";"
       ],
-      "owner_lines": [
-        {
-          "file": "tests/ui/uitest_library.cpp",
-          "line_text": "IM_CHECK_STR_EQ(widest.c_str(), \"000000\");",
-          "why": "the pin of one measured run of widest_digits(6) (D42)"
-        }
-      ],
       "scope": [
         "src",
         "tools",
         "tests"
       ],
-      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test's pin is the one measured answer (D42)."
+      "note": "A quoted run of six 0s or 9s is a hand-picked \"widest six digits\". The GUI test reads widest_digits itself and holds no run of its own."
     },
     {
       "question": "How wide is the library with the song panel open?",
