@@ -17,9 +17,11 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 #include "app/analysis.h"
@@ -1593,82 +1595,210 @@ TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle"
 // ---- the crafted edge files (testdata/parse_edge, speedups task P1) ----
 //
 // gen_edge.py writes 41 small charts, each one odd or broken in its own way,
-// and says what each one tests. The two expected files were first captured
-// from the readers as they stood before P1 rewrote them, with hydra_bench
-// --parse (one line per file: its name relative to the folder,
-// tests/song_digest.h's hash in hex, and for a file that failed "FAIL " and
-// its exception's type and message). Later changes to the readers or the
-// digest re-pinned some lines; git log on expected_expert.tsv and
-// expected_hard.tsv says which and why. This test reads every file again and
-// must get each line's pinned hash and failure text.
+// with a comment above each saying what it tests. This test reads every file
+// listed in list.txt under two settings and checks what that comment says,
+// against the well-formed file the others vary (c01_base.chart for .chart,
+// m01_base.mid for .mid): the file parses to the same song as the base, or to
+// a different one, or fails with the error the comment names. No saved digest
+// or saved failure text is read. A failure's type comes from the reader that
+// throws it, and files that must fail the same way are compared with each
+// other.
 
 namespace {
 
 std::string edge_dir() { return corpus::testdata_root() + "/parse_edge/"; }
 
-// One expected line, split at its tabs. The expected files leave out the parse
-// time hydra_bench writes after the name.
-struct EdgeExpect {
-    std::string file;
+// What reading one file at one setting gave: its digest, and the failure text
+// (the exception's type, then its message) when it did not parse.
+struct EdgeResult {
     uint64_t hash = 0;
-    std::string fail;  // empty when the file parsed
+    std::string fail;
+    bool parsed() const { return fail.empty(); }
 };
 
-std::vector<EdgeExpect> read_edge_expect(const std::string& name) {
-    std::vector<EdgeExpect> out;
-    std::ifstream in(edge_dir() + name, std::ios::binary);
-    std::string line;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty()) continue;
-        const size_t t1 = line.find('\t');
-        const size_t t2 = line.find('\t', t1 + 1);
-        EdgeExpect e;
-        e.file = line.substr(0, t1);
-        e.hash = std::stoull(line.substr(t1 + 1, t2 - t1 - 1), nullptr, 16);
-        if (t2 != std::string::npos) e.fail = line.substr(t2 + 1);
-        out.push_back(std::move(e));
-    }
-    return out;
+EdgeResult read_edge(const std::string& file, const app::BatchRun& run) {
+    EdgeResult r;
+    r.hash = digest::chart_parse_hash(edge_dir() + file, run.settings, &r.fail);
+    return r;
 }
 
-// The settings an expected file was captured under.
-app::BatchRun edge_run(const char* difficulty, bool pro, bool bass2x) {
-    return digest::digest_settings(difficulty, pro, bass2x).batch_run();
+// The failure text is the throwing exception's type name, then ": ".
+template <class E>
+bool fails_with(const EdgeResult& r) {
+    const std::string type = std::string(typeid(E).name()) + ": ";
+    return !r.parsed() && r.fail.compare(0, type.size(), type) == 0;
 }
 
-void check_edge_files(const std::string& expected_name, const app::BatchRun& run) {
-    const std::vector<EdgeExpect> expect = read_edge_expect(expected_name);
-    // Every file the generator lists has its line, in the list's order.
+bool fails_in(const EdgeResult& r, const char* what) {
+    return !r.parsed() && r.fail.find(what) != std::string::npos;
+}
+
+// The file names list.txt holds, in order.
+std::vector<std::string> edge_listed() {
     std::vector<std::string> listed;
-    {
-        std::ifstream list(edge_dir() + "list.txt", std::ios::binary);
-        std::string name;
-        while (std::getline(list, name)) {
-            if (!name.empty() && name.back() == '\r') name.pop_back();
-            if (!name.empty()) listed.push_back(name);
-        }
+    std::ifstream list(edge_dir() + "list.txt", std::ios::binary);
+    std::string name;
+    while (std::getline(list, name)) {
+        if (!name.empty() && name.back() == '\r') name.pop_back();
+        if (!name.empty()) listed.push_back(name);
     }
-    REQUIRE(listed.size() == expect.size());
+    return listed;
+}
 
-    for (size_t i = 0; i < expect.size(); ++i) {
-        const EdgeExpect& e = expect[i];
-        CHECK_MESSAGE(e.file == listed[i], "line " << i + 1 << " of " << expected_name);
-        std::string fail;
-        const uint64_t got = digest::chart_parse_hash(edge_dir() + e.file, run.settings, &fail);
-        if (!fail.empty()) fail = "FAIL " + fail;
-        CHECK_MESSAGE(fail == e.fail, e.file << " (" << expected_name << ") failed differently");
-        CHECK_MESSAGE(got == e.hash, e.file << " (" << expected_name << ") parses differently");
+// One setting's check of every listed file. `expert` is true for the Expert
+// run. Each check names its file; a listed file no check names fails the
+// closing count.
+void check_edge_files(const app::BatchRun& run, bool expert) {
+    const std::vector<std::string> listed = edge_listed();
+    REQUIRE(!listed.empty());
+    std::map<std::string, EdgeResult> got;
+    for (const std::string& f : listed) got[f] = read_edge(f, run);
+    std::set<std::string> named;
+
+    auto of = [&](const char* f) -> const EdgeResult& {
+        const auto it = got.find(f);
+        REQUIRE_MESSAGE(it != got.end(), f << " is not in list.txt");
+        named.insert(f);
+        return it->second;
+    };
+    const EdgeResult chart_base = of("c01_base.chart");
+    const EdgeResult mid_base = of("m01_base.mid");
+    REQUIRE_MESSAGE(chart_base.parsed(), chart_base.fail);
+    REQUIRE_MESSAGE(mid_base.parsed(), mid_base.fail);
+
+    auto same_as = [&](const char* f, const EdgeResult& base) {
+        const EdgeResult& r = of(f);
+        CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
+        CHECK_MESSAGE(r.hash == base.hash, f << " parses to a different song than its base");
+    };
+    auto differs_from = [&](const char* f, const EdgeResult& base) {
+        const EdgeResult& r = of(f);
+        CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
+        CHECK_MESSAGE(r.hash != base.hash, f << " parses to the same song as its base");
+    };
+    auto parses = [&](const char* f) {
+        const EdgeResult& r = of(f);
+        CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
+    };
+    auto same_failure = [&](const char* a, const char* b) {
+        CHECK_MESSAGE(of(a).fail == of(b).fail, a << " and " << b << " fail differently");
+    };
+    auto other_failure = [&](const char* a, const char* b) {
+        CHECK_MESSAGE(of(a).fail != of(b).fail, a << " and " << b << " fail the same way");
+    };
+
+    // A bad or overflowing number refuses the chart wherever it sits, in a
+    // section the reader skips or not. std::stoi and std::stoll name which
+    // call read it: a note value or meter is an int, a tick or length is 64
+    // bits.
+    CHECK(fails_with<std::invalid_argument>(of("c02_bad_number_skipped.chart")));
+    CHECK(fails_in(of("c02_bad_number_skipped.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c03_overflow_skipped.chart")));
+    CHECK(fails_in(of("c03_overflow_skipped.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c04_overflow_length_skipped.chart")));
+    CHECK(fails_in(of("c04_overflow_length_skipped.chart"), "stoll"));
+    CHECK(fails_with<std::invalid_argument>(of("c05_bad_number_drums.chart")));
+    CHECK(fails_in(of("c05_bad_number_drums.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c06_overflow_drums.chart")));
+    CHECK(fails_in(of("c06_overflow_drums.chart"), "stoll"));
+    CHECK(fails_with<std::out_of_range>(of("c07_int_overflow_drums.chart")));
+    CHECK(fails_in(of("c07_int_overflow_drums.chart"), "stoi"));
+    CHECK(fails_with<std::invalid_argument>(of("c08_bad_number_events.chart")));
+    CHECK(fails_in(of("c08_bad_number_events.chart"), "stoll"));
+    CHECK(fails_with<std::out_of_range>(of("c09_overflow_events.chart")));
+    CHECK(fails_in(of("c09_overflow_events.chart"), "stoi"));
+    CHECK(fails_with<std::invalid_argument>(of("c10_bad_number_song.chart")));
+    CHECK(fails_in(of("c10_bad_number_song.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c11_overflow_song.chart")));
+    CHECK(fails_in(of("c11_overflow_song.chart"), "stoll"));
+    // The same bad value fails the same way whichever section it is in.
+    same_failure("c02_bad_number_skipped.chart", "c05_bad_number_drums.chart");
+    same_failure("c03_overflow_skipped.chart", "c07_int_overflow_drums.chart");
+    same_failure("c04_overflow_length_skipped.chart", "c06_overflow_drums.chart");
+
+    // Keys that stoll reads whole are ticks, so Expert gains notes. The Hard
+    // section is the base's.
+    if (expert) differs_from("c12_odd_keys.chart", chart_base);
+    else same_as("c12_odd_keys.chart", chart_base);
+    // Number spellings that parse change both difficulties and the sync track.
+    differs_from("c13_odd_numbers.chart", chart_base);
+    // The later copy of every section replaces the earlier one.
+    differs_from("c14_duplicate_sections.chart", chart_base);
+    // The Expert drum section is never closed: the file ends inside it, and
+    // Expert has no notes the reader keeps. Hard is the base's.
+    if (expert) CHECK(fails_with<NoNotesError>(of("c15_unterminated_drums.chart")));
+    else same_as("c15_unterminated_drums.chart", chart_base);
+    // An unclosed second copy leaves the first copy standing.
+    same_as("c16_unterminated_second_copy.chart", chart_base);
+    // A section left open swallows the next header: Expert ends with no notes
+    // the same way, and Hard reads a different set of lines.
+    if (expert) {
+        CHECK(fails_with<NoNotesError>(of("c17_header_inside_section.chart")));
+        same_failure("c17_header_inside_section.chart", "c15_unterminated_drums.chart");
+    } else {
+        differs_from("c17_header_inside_section.chart", chart_base);
     }
+    parses("c18_unsorted_ticks.chart");
+    // CRLF line ends, a stray CR, tabs and trailing spaces change nothing.
+    same_as("c19_crlf.chart", chart_base);
+    differs_from("c20_disco.chart", chart_base);
+
+    // A chart without a Resolution is refused as a chart file, with or
+    // without a [Song] section, and the same way; a Resolution with no digits
+    // is refused differently.
+    CHECK(fails_with<ChartFileError>(of("c21_missing_song.chart")));
+    CHECK(fails_with<ChartFileError>(of("c22_missing_resolution.chart")));
+    same_failure("c21_missing_song.chart", "c22_missing_resolution.chart");
+    differs_from("c23_resolution_junk.chart", chart_base);
+    CHECK(fails_with<ChartFileError>(of("c24_bad_resolution.chart")));
+    other_failure("c24_bad_resolution.chart", "c22_missing_resolution.chart");
+    CHECK(fails_with<ChartFileError>(of("c25_bad_header.chart")));
+    differs_from("c26_header_junk.chart", chart_base);
+    differs_from("c27_empty_values.chart", chart_base);
+    // Tempo and meter lines in the Expert drum section never run there, but
+    // the notes and phrase around them are Expert's. Hard is the base's.
+    if (expert) differs_from("c28_timing_in_drums.chart", chart_base);
+    else same_as("c28_timing_in_drums.chart", chart_base);
+
+    // .mid files. A second drum track is ignored, and so is an unknown chunk.
+    same_as("m02_two_drum_tracks.mid", mid_base);
+    differs_from("m03_late_names.mid", mid_base);
+    // A meta over the size cap fails the file, even in a track the song
+    // parser never reads.
+    CHECK(fails_with<MidiError>(of("m04_oversize_meta_other.mid")));
+    CHECK(fails_with<MidiError>(of("m05_oversize_meta_drums.mid")));
+    same_failure("m04_oversize_meta_other.mid", "m05_oversize_meta_drums.mid");
+    // Format 0 holds one track: Expert finds no drum notes in it, as in the
+    // unclosed chart section; Hard reads its own.
+    if (expert) {
+        CHECK(fails_with<NoNotesError>(of("m06_format0.mid")));
+        same_failure("m06_format0.mid", "c15_unterminated_drums.chart");
+    } else {
+        differs_from("m06_format0.mid", mid_base);
+    }
+    CHECK(fails_with<MidiError>(of("m07_smpte.mid")));
+    other_failure("m07_smpte.mid", "m04_oversize_meta_other.mid");
+    differs_from("m08_truncated.mid", mid_base);
+    differs_from("m09_running_status_after_meta.mid", mid_base);
+    same_as("m10_unknown_chunk.mid", mid_base);
+    // A status byte the reader cannot size stops the drum track there:
+    // Expert loses the notes after it, and Hard's come before it.
+    if (expert) differs_from("m11_bad_status.mid", mid_base);
+    else same_as("m11_bad_status.mid", mid_base);
+    CHECK(fails_with<ChartFileError>(of("m12_zero_tempo.mid")));
+    differs_from("m13_clipped_and_short_metas.mid", mid_base);
+
+    // Every listed file has a check above.
+    for (const std::string& f : listed) CHECK_MESSAGE(named.count(f) == 1, f << " has no check");
 }
 
 }  // namespace
 
-TEST_CASE("the crafted edge files parse to their pinned lines") {
+TEST_CASE("the crafted edge files parse as each one's generator comment says") {
     SUBCASE("Expert, Pro Drums, 2x Bass") {
-        check_edge_files("expected_expert.tsv", edge_run("Expert", true, true));
+        check_edge_files(digest::digest_settings("Expert", true, true).batch_run(), true);
     }
     SUBCASE("Hard, Pro Drums off, 2x Bass off") {
-        check_edge_files("expected_hard.tsv", edge_run("Hard", false, false));
+        check_edge_files(digest::digest_settings("Hard", false, false).batch_run(), false);
     }
 }
