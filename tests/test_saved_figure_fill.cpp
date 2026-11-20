@@ -266,8 +266,8 @@ TEST_CASE("a chart whose replay throws keeps its rows empty, and the fill goes o
     const std::string throwing_text = store.lookup_one(throws.entry.md5, profile)
                                           .record.paths.at(rank_index(throws_ranks.front()))
                                           .path;
-    for (const hydra::store::PathRow& p : store.lookup_one(kept.entry.md5, profile).record.paths)
-        REQUIRE(p.path != throwing_text);
+    const hydra::store::RecordLookup kept_saved = store.lookup_one(kept.entry.md5, profile);
+    for (const hydra::store::PathRow& p : kept_saved.record.paths) REQUIRE(p.path != throwing_text);
     int thrown = 0;
     const hydra::app::PathReplay replay = [&](const hydra::Song& song,
                                               const hydra::ScoreGraph& graph,
