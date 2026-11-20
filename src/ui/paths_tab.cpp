@@ -367,14 +367,15 @@ void window_row(const app::WindowRowView& w) {
         ImGui::SameLine(0.0f, space);
         ImGui::TextUnformatted(f.chord.c_str());
     }
-    // The tag is a badge: the same pill width as every activation badge.
+    // The tag is a badge: the same pill width as every activation badge, in
+    // the tag's own colours (window_tag_pill).
     const float tag_w =
         shared_pill_width(badge_pill_text_w(), ImGui::CalcTextSize(w.tag.c_str()).x, px(1.0f));
     if (fits_on_line(tag_w, gap)) ImGui::SameLine(0.0f, gap);
     place_control_at_right_edge(tag_w);
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     draw_badge(ImGui::GetWindowDrawList(), pos.x, pos.y, tag_w, w.tag.c_str(),
-               window_tag_ink(w.is_short), px(1.0f));
+               window_tag_ink(w.is_short), px(1.0f), window_tag_pill(w.is_short));
 }
 
 // One timing in its warm box, in the badge pill's colours (badge_pill.h): a

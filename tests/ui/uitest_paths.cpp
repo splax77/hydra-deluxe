@@ -655,14 +655,15 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
 
 // The pills the Paths tab drew last frame inside `band` (one row's rect), in
 // the window whose name holds `window`, read from the vertices of their fill
-// colour: each pill's rect, left to right and top to bottom. Pills are the
-// only shapes in that colour on a row. A timing box's own background is that
-// colour too, so in a box the caller tells it from a pill.
-std::vector<ImRect> drawn_pills(const ImRect& band, const char* window = "##pathdetails") {
+// colour `fill` (the shared pill's unless the caller looks for a Dynamic Hit
+// Window tag's): each pill's rect, left to right and top to bottom. Pills are
+// the only shapes in the shared fill on a row. A timing box's own background
+// is that colour too, so in a box the caller tells it from a pill.
+std::vector<ImRect> drawn_pills(const ImRect& band, const char* window = "##pathdetails",
+                                ImU32 fill = hydra::ui::pill_u32(hydra::ui::kPillFill)) {
     std::vector<ImRect> pills;
     ImGuiWindow* details = window_named(window);
     if (!details) return pills;
-    const ImU32 fill = hydra::ui::pill_u32(hydra::ui::kPillFill);
     // A filled rounded rect is one run of vertices, its anti-aliased fringe
     // interleaved in the same colour at zero alpha; a vertex of any other
     // colour ends the run.
@@ -980,17 +981,24 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     IM_CHECK(on_screen(h, "5.4 ms safe"));
     // The tag is a badge (D262, shared_pill_width in badge_pill.h): its pill,
     // in the squeeze's box, is as wide as the pill of the activation row's
-    // badge above it.
+    // badge above it, and painted in the safe tag's own fill
+    // (window_tag_pill), not the shared pill's.
     {
         const std::vector<ImRect> row_pills = drawn_pills(ctx->ItemInfo("**/##act1").RectFull);
         ImGuiWindow* box = window_named("##sq1_0");
         IM_CHECK(box != nullptr);
         IM_CHECK_EQ(static_cast<int>(row_pills.size()), 1);
         if (!box || row_pills.size() != 1) return;
-        std::vector<ImRect> tags;
-        // The box's own background starts at its top; the tag sits below the sentence.
+        // The box's own background, in the shared fill, starts at its top;
+        // nothing below it is in the shared fill. Fails if the tag's pill is
+        // painted in the shared fill.
+        int shared_below_top = 0;
         for (const ImRect& p : drawn_pills(box->Rect(), "##sq1_0"))
-            if (p.Min.y > box->Pos.y + 2.0f) tags.push_back(p);
+            if (p.Min.y > box->Pos.y + 2.0f) ++shared_below_top;
+        IM_CHECK_EQ(shared_below_top, 0);
+        // Fails if the tag is not drawn in the safe tag's fill.
+        const std::vector<ImRect> tags =
+            drawn_pills(box->Rect(), "##sq1_0", hydra::ui::window_tag_pill(false).fill);
         IM_CHECK_EQ(static_cast<int>(tags.size()), 1);
         if (tags.size() != 1) return;
         ctx->LogInfo("row badge pill %.3f wide, tag pill %.3f wide", row_pills[0].GetWidth(),

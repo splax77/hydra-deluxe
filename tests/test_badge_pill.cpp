@@ -2,7 +2,8 @@
 // activation-row layout uses them (ui/activation_row_layout.h): every pill on
 // every row is sized for the longest badge, side by side and stacked, and its
 // text sits centred in it (D262). Also the one shared pill width
-// (shared_pill_width) and the Dynamic Hit Window tag's text colours.
+// (shared_pill_width), the Dynamic Hit Window tag's colours (its text, fill
+// and outline) and the shared pill colours every other badge keeps.
 //
 // Widths are in the GUI harness's mono font, 9.6 px a character, on a 16 px
 // text line, as in test_activation_row_layout.cpp.
@@ -145,9 +146,40 @@ void check_rgb(const ImVec4& c, int r, int g, int b) {
 TEST_CASE("window tag: safe and short take the mockup's text colours") {
     // The approved mockup's .dhw .spare ink values
     // (docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html (removed; git show 45dd7799:docs/superpowers/specs/2026-11-12-dynamic-hit-window-mockup/index.html)):
-    // #f2c300 for safe, #ff7f00 for short. The pill around the text is every badge's.
+    // #f2c300 for safe, #ff7f00 for short. Fails if window_tag_ink returns another colour.
     check_rgb(hydra::ui::window_tag_ink(false), 0xf2, 0xc3, 0x00);
     check_rgb(hydra::ui::window_tag_ink(true), 0xff, 0x7f, 0x00);
+}
+
+TEST_CASE("window tag: its pill is painted in its own fill, outlined in its text colour") {
+    // The mockup's .dhw .spare fills: #2a2410 for safe, #2e1a08 for short.
+    // Fails if window_tag_fill returns another colour.
+    check_rgb(hydra::ui::window_tag_fill(false), 0x2a, 0x24, 0x10);
+    check_rgb(hydra::ui::window_tag_fill(true), 0x2e, 0x1a, 0x08);
+    // The tag's pill: its fill inside, its text colour as the outline. Fails
+    // if window_tag_pill paints the shared pill's fill or border, or outlines
+    // the tag in anything but its ink.
+    for (bool is_short : {false, true}) {
+        CAPTURE(is_short);
+        const hydra::ui::PillColors tag = hydra::ui::window_tag_pill(is_short);
+        const ImU32 fill =
+            is_short ? IM_COL32(0x2e, 0x1a, 0x08, 255) : IM_COL32(0x2a, 0x24, 0x10, 255);
+        const ImU32 ink =
+            is_short ? IM_COL32(0xff, 0x7f, 0x00, 255) : IM_COL32(0xf2, 0xc3, 0x00, 255);
+        CHECK(tag.fill == fill);
+        CHECK(tag.border == ink);
+        CHECK(tag.fill != hydra::ui::pill_u32(hydra::ui::kPillFill));
+        CHECK(tag.border != hydra::ui::pill_u32(hydra::ui::kPillBorder));
+    }
+}
+
+TEST_CASE("badge pill: every other badge keeps the shared pill colours") {
+    // draw_badge's PillColors left at its defaults, as the activation rows
+    // call it. Fails if the default fill or border stops being the shared
+    // pill's kPillFill and kPillBorder.
+    const hydra::ui::PillColors shared;
+    CHECK(shared.fill == hydra::ui::pill_u32(hydra::ui::kPillFill));
+    CHECK(shared.border == hydra::ui::pill_u32(hydra::ui::kPillBorder));
 }
 
 TEST_CASE("badge pill: the shared width grows only for a longer text") {
