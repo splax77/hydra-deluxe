@@ -402,7 +402,8 @@ class GameToolsTest(unittest.TestCase):
             took = time.monotonic() - began
         # The real CPU sample waits its whole QUIET_SAMPLE_S, and the reply
         # holds the one CPU reading it took.
-        self.assertGreaterEqual(took, Q.QUIET_SAMPLE_S)
+        # A timer may wake a few ms early on the monotonic clock.
+        self.assertGreaterEqual(took, Q.QUIET_SAMPLE_S - 0.1)
         self.assertEqual(reply.count(f"averaged over {Q.QUIET_SAMPLE_S} s"), 1, reply)
 
     def test_an_open_run_is_stopped_first_so_the_game_is_not_read_as_load(self):
