@@ -32,8 +32,8 @@ public:
     // is `units` over the time from the `units`-th last finish to now.
     static TimeLeftClock over_last_units(int units) { return TimeLeftClock((std::max)(1, units)); }
 
-    // `done` units of work had finished by `now_s`. Units that finish in one
-    // reading share its time.
+    // `done` units of work had finished by `now_s`: a sample for the window.
+    // Units that finish in one reading share its time.
     void record(double now_s, double done) {
         if (units_ == 0) {
             if (!window_start_s_) {
@@ -41,36 +41,35 @@ public:
                 window_start_done_ = done;
             }
         } else {
-            const double before = done_;
-            if (done > before) {
-                const double fresh = (std::min)(done - before, static_cast<double>(units_));
-                for (int i = 0; i < static_cast<int>(fresh); ++i) finishes_.push_back(now_s);
-                while (static_cast<int>(finishes_.size()) > units_) finishes_.pop_front();
-            }
+            const double before = samples_.empty() ? 0.0 : samples_.back().done;
+            if (done > before) samples_.push_back({now_s, done});
+            // The oldest sample kept is the one the `units_`-th last finish
+            // landed in.
+            while (!samples_.empty() && samples_.front().done <= done - units_)
+                samples_.pop_front();
         }
-        done_ = (std::max)(done_, done);
     }
 
-    // Seconds left of `total` at the window's rate, or empty while the rate
-    // is not known. A reading less than kTimeLeftStepSeconds after the last
-    // answer returns that answer.
-    std::optional<double> read(double now_s, double total) {
+    // Seconds left of `total`, `done` of it finished (the caller's own count),
+    // at the window's rate, or empty while the rate is not known. A reading
+    // less than kTimeLeftStepSeconds after the last answer returns that answer.
+    std::optional<double> read(double now_s, double done, double total) {
         if (answered_at_s_ && now_s - *answered_at_s_ < kTimeLeftStepSeconds) return answer_;
         double rate = 0.0;  // units a second over the window
         if (units_ == 0) {
             if (!window_start_s_) return answer_;
             const double span = now_s - *window_start_s_;
             if (span < kTimeLeftStepSeconds) return answer_;
-            rate = (std::max)(0.0, done_ - window_start_done_) / span;
+            rate = (std::max)(0.0, done - window_start_done_) / span;
             window_start_s_ = now_s;
-            window_start_done_ = done_;
+            window_start_done_ = done;
         } else {
-            if (static_cast<int>(finishes_.size()) < units_) return answer_;
-            const double span = now_s - finishes_.front();
+            if (samples_.empty() || samples_.back().done < units_) return answer_;
+            const double span = now_s - samples_.front().at_s;
             if (!(span > 0.0)) return answer_;
             rate = units_ / span;
         }
-        answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done_) / rate)
+        answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done) / rate)
                              : std::nullopt;
         answered_at_s_ = now_s;
         return answer_;
@@ -79,17 +78,21 @@ public:
     // record, then read.
     std::optional<double> update(double now_s, double done, double total) {
         record(now_s, done);
-        return read(now_s, total);
+        return read(now_s, done, total);
     }
 
 private:
     explicit TimeLeftClock(int units) : units_(units) {}
 
+    struct Sample {
+        double at_s;  // the reading's time
+        double done;  // the work it reported finished
+    };
+
     int units_;           // 0: the last-second window; else the last `units_` finished
-    double done_ = 0.0;   // the most work any reading has reported
     std::optional<double> window_start_s_;  // the last-second window's start
     double window_start_done_ = 0.0;
-    std::deque<double> finishes_;  // the last units_ finish times, oldest first
+    std::deque<Sample> samples_;  // the readings the last units_ finishes landed in, oldest first
     std::optional<double> answer_;
     std::optional<double> answered_at_s_;
 };

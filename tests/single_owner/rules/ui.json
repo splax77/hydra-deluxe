@@ -1493,12 +1493,12 @@
       "must_not_match": [
         "const int64_t n = std::min(kBlockFrames, total - done);",
         "return static_cast<float>(std::clamp(done / total, 0.0, 1.0));",
-        "if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);"
+        "if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.completed, s.total);"
       ],
       "owner_lines": [
         {
           "file": "src/app/time_left.h",
-          "line_text": "answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done_) / rate)",
+          "line_text": "answer_ = rate > 0.0 ? std::optional<double>((std::max)(0.0, total - done) / rate)",
           "why": "TimeLeftClock::read, the owner: the batch strip (BatchJob::snapshot) and the Preview loader (ByteRateClock) read it"
         }
       ],

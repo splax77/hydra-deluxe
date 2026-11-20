@@ -485,7 +485,7 @@ BatchJob::Snapshot BatchJob::snapshot() const {
     std::lock_guard<std::mutex> lock(mu_);
     Snapshot s = snap_;
     s.elapsed_s = clock_.elapsed_s(steady_seconds());
-    if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.total);
+    if (!s.finished && !s.paused) s.eta_s = time_left_.read(s.elapsed_s, s.completed, s.total);
     return s;
 }
 

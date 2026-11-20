@@ -294,7 +294,7 @@ TEST_CASE("jobs: time left is the rate over the last 2W finished charts") {
     clock.record(21.0, 16);  // and 4 more
     // The last 8 finishes are the two slow groups, so the window starts at
     // the earlier one, 11 s.
-    const std::optional<double> first = clock.read(25.0, total);
+    const std::optional<double> first = clock.read(25.0, 16, total);
     REQUIRE(first.has_value());
     CHECK(*first == doctest::Approx(left_at_window_rate(25.0, 11.0, window, 16, total)));
     // Not the mean since the start: 16 charts in 25 s.
@@ -303,12 +303,12 @@ TEST_CASE("jobs: time left is the rate over the last 2W finished charts") {
     // A second reading inside the same second returns the first, however
     // many charts landed in between.
     clock.record(25.5, 20);
-    const std::optional<double> held = clock.read(25.9, total);
+    const std::optional<double> held = clock.read(25.9, 20, total);
     REQUIRE(held.has_value());
     CHECK(*held == doctest::Approx(*first));
     // A second on, the window has moved to the last 8: the groups at 21 s
     // and 25.5 s, so it starts at 21 s.
-    const std::optional<double> next = clock.read(26.0, total);
+    const std::optional<double> next = clock.read(26.0, 20, total);
     REQUIRE(next.has_value());
     CHECK(*next == doctest::Approx(left_at_window_rate(26.0, 21.0, window, 20, total)));
 }
@@ -318,9 +318,9 @@ TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then sho
     const double total = 40;
     hydra::app::TimeLeftClock clock = hydra::app::TimeLeftClock::over_last_units(window);
     clock.record(1.0, window - 1);
-    CHECK_FALSE(clock.read(2.0, total).has_value());
+    CHECK_FALSE(clock.read(2.0, window - 1, total).has_value());
     clock.record(3.0, window);
-    const std::optional<double> at_window = clock.read(4.0, total);
+    const std::optional<double> at_window = clock.read(4.0, window, total);
     REQUIRE(at_window.has_value());
     // The window's earliest finish is the group at 1 s.
     CHECK(*at_window == doctest::Approx(left_at_window_rate(4.0, 1.0, window, window, total)));
