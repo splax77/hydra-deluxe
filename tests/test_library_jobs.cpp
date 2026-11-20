@@ -5,9 +5,12 @@
 // opt-in case times the startup library read on a library file the caller
 // names.
 // The batch cases run the real analyzer on corpus charts, or hold it at a gate
-// and then run it. The cases that need a chart to fail or a result of a
-// chosen size use a stand-in analyzer, and the network is a fake. The startup
-// open's cases read libraries a scan of the corpus writes.
+// and then run it. A chart that must fail is a scanned corpus chart whose song
+// file was then deleted. A few cases still use a stand-in analyzer: the ones
+// that need a result of a chosen size, or a chart held at the store's lookup.
+// The leaderboard cases use the real transport, and where a job would reach
+// dmleaderboards itself, the seam hands it a failure the real transport
+// threw. The startup open's cases read libraries a scan of the corpus writes.
 
 #include "doctest.h"
 
@@ -88,19 +91,6 @@ BatchRun test_run() {
 // The plan the confirm would hand over for `charts` when none has a result.
 hydra::app::BatchPlan plan_of(const std::vector<ChartLibraryEntry>& charts) {
     return hydra::app::plan_batch(charts, {});
-}
-
-// A chart that counts itself, waits for `release`, then fails with `error`,
-// thrown as `kind` the way a real thrower names it.
-hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<bool>& release,
-                                        std::string error,
-                                        hydra::ErrorKind kind = hydra::ErrorKind::ChartUnreadable) {
-    return [&started, &release, error, kind](const std::string&, const AnalysisSettings&,
-                                             const std::function<void(float)>&) -> AnalysisResult {
-        ++started;
-        wait_until([&release] { return release.load(); }, "the test to release the chart");
-        throw hydra::KindedError(kind, error);
-    };
 }
 
 // The library rows a scan of the corpus writes (discover_charts, the scan's
@@ -607,18 +597,6 @@ namespace {
 using hydra::store::RecordLookup;
 using SavedRows = BatchJob::SavedRows;
 
-// A chart that returns `real` once the test has released it: the chart that
-// started n-th (from 0) waits until `released` is above n.
-hydra::app::ChartAnalyzer real_in_turn(std::atomic<int>& released, const AnalysisResult& real) {
-    auto started = std::make_shared<std::atomic<int>>(0);
-    return [&released, &real, started](const std::string&, const AnalysisSettings&,
-                                       const std::function<void(float)>&) -> AnalysisResult {
-        const int me = (*started)++;
-        wait_until([&released, me] { return released.load() > me; }, "the test to release it");
-        return real;
-    };
-}
-
 // A chart that returns `real` at once.
 hydra::app::ChartAnalyzer always(const AnalysisResult& real) {
     return [&real](const std::string&, const AnalysisSettings&,
@@ -801,35 +779,38 @@ TEST_CASE("jobs: the tray is empty after it is taken, and a stopped run's tray h
 }
 
 TEST_CASE("jobs: a paused batch job's tray keeps its answers") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     RecordStore store(":memory:");
     const BatchRun run = test_run();
-    BatchJob job(plan_of(fake_charts(2)), run, store);
-    job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
+    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
+    BatchJob job(plan_of(charts), run, store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
     job.start();
-    wait_for_batch_step(job, [&] { return job.snapshot().current_title == "fake 0"; },
-                        "the first chart to start");
+    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
-    // Paused with the first chart in flight: it finishes and is stored, and
-    // the second never starts.
+    // Paused with the first chart in flight: it finishes and is stored. The
+    // second is let go too, so only the pause can keep it from starting.
     job.pause();
     released = 2;
     wait_for_batch_step(job, [&] { return job.answered_count() == 1; }, "the first chart's answer");
-    std::this_thread::sleep_for(200ms);
+    const SavedRows paused = job.take_saved_rows();
+    // Read once the paused chart is answered and its tray taken: the
+    // analyzer's own count says the second chart never reached it.
+    CHECK(started.load() == 1);
     CHECK(job.answered_count() == 1);  // nothing added while paused
     CHECK(job.snapshot().paused);
 
-    const SavedRows paused = job.take_saved_rows();
     REQUIRE(paused.answers.size() == 1);
-    CHECK(paused.answers[0].first == "fake0");
+    CHECK(paused.answers[0].first == charts[0].md5);
     check_answers_match_store(paused, store, run);
 
     job.resume();
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+    CHECK(started.load() == 2);
     const SavedRows rest = job.take_saved_rows();
     REQUIRE(rest.answers.size() == 1);
-    CHECK(rest.answers[0].first == "fake1");
+    CHECK(rest.answers[0].first == charts[1].md5);
 }
 
 // A lookup that fails shows the same sentence a failed store read shows, and
@@ -904,11 +885,13 @@ TEST_CASE("jobs: a frame's snapshot does not wait while the batch job waits on t
     const BatchRun run = test_run();
     std::atomic<bool> at_lookup{false};
     std::atomic<bool> go{false};
+    std::atomic<bool> into_lookup{false};
     BatchJob job(plan_of(fake_charts(1)), run, store);
     job.set_analyzer_for_test(always(real), /*workers=*/1);
     job.set_lookup_hold_for_test([&] {
         at_lookup = true;
         wait_until([&go] { return go.load(); }, "the test to let the lookup go");
+        into_lookup = true;  // the hold's last step: the store's lookup is next
     });
     job.start();
     wait_for_batch_step(job, [&] { return at_lookup.load(); }, "the batch to reach its lookup");
@@ -916,7 +899,10 @@ TEST_CASE("jobs: a frame's snapshot does not wait while the batch job waits on t
     {
         StoreLockHolder holder(store);
         go = true;
-        std::this_thread::sleep_for(50ms);  // the lookup now waits on the store lock
+        // The batch thread has left the hold for the store's lookup, which
+        // cannot finish while the holder has the store's lock.
+        wait_for_batch_step(job, [&] { return into_lookup.load(); },
+                            "the batch to go on into its lookup");
         const BatchJob::Snapshot s = job.snapshot();
         const SavedRows rows = job.take_saved_rows();
         const bool returned_while_held = !holder.let_go();
@@ -1055,6 +1041,38 @@ struct OpenRecorder {
                     }};
 };
 
+// The steps `seen` went through, in order, each once however many reports it
+// made in a row.
+std::vector<hydra::ui::StoreOpenProgress::Step> steps_in_order(
+    const std::vector<OpenReport>& seen) {
+    std::vector<hydra::ui::StoreOpenProgress::Step> steps;
+    for (const OpenReport& r : seen)
+        if (steps.empty() || steps.back() != r.step) steps.push_back(r.step);
+    return steps;
+}
+
+// Checks the counted step `step`: it reported, its first report had none of
+// `total` done and its last had all of them, and every report counted out of
+// `total`.
+void check_counted_step(const std::vector<OpenReport>& seen,
+                        hydra::ui::StoreOpenProgress::Step step, uint64_t total) {
+    std::vector<OpenReport> reports;
+    for (const OpenReport& r : seen)
+        if (r.step == step) reports.push_back(r);
+    INFO("step " << static_cast<int>(step));
+    REQUIRE_FALSE(reports.empty());
+    CHECK(reports.front().done == 0);
+    CHECK(reports.back().done == total);
+    for (const OpenReport& r : reports) CHECK(r.total == total);
+}
+
+// The open's own words, which every other step's label differs from.
+std::string opening_label() {
+    hydra::ui::StoreOpenProgress opening;
+    opening.step = hydra::ui::StoreOpenProgress::Step::Opening;
+    return opening.label();
+}
+
 // A library file at `db` listing the corpus chart Smash Mouth "I'm A
 // Believer", with its analysis under `settings` saved as an older build left
 // it: rank 1's hardest figure empty. Its best path carries a squeeze-in at
@@ -1087,41 +1105,32 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
         CHECK(job.library_problem().empty());
         const std::unique_ptr<RecordStore> store = job.take_store();
         const hydra::ui::LibraryModel library = job.take_library();
-        // The library lists one chart, and the model holds that one row.
+        // The library lists one chart, and the model holds that one row. The
+        // one old-build row is that chart's, so the fill has one row too.
         REQUIRE(store->chart_library_count() == 1);
         REQUIRE(library.rows().size() == 1);
-        // One chart to read at each counted step: reported before it and
-        // once it is done.
-        REQUIRE(seen.size() == 7);
-        CHECK(seen[0].step == Step::Opening);
-        CHECK(seen[1].step == Step::ReadingSavedPaths);
-        CHECK(seen[1].label == "Reading saved paths...");
-        CHECK(seen[1].upgrading);
-        CHECK(seen[1].done == 0);
-        CHECK(seen[1].total == 1);
-        CHECK(seen[2].step == Step::ReadingSavedPaths);
-        CHECK(seen[2].done == 1);
-        CHECK(seen[2].total == 1);
-        CHECK(seen[3].step == Step::ReadingCharts);
-        CHECK(seen[3].label == "Reading your charts...");
-        CHECK(seen[3].upgrading);
-        CHECK(seen[3].done == 0);
-        CHECK(seen[4].step == Step::ReadingCharts);
-        CHECK(seen[4].done == 1);
-        CHECK(seen[5].step == Step::ReadingResults);
-        CHECK(seen[5].label == "Reading your results...");
-        CHECK(seen[5].upgrading);
-        CHECK(seen[5].done == 0);
-        CHECK(seen[6].step == Step::ReadingResults);
-        CHECK(seen[6].done == 1);
-        // Both library steps count out of the one chart count, the rows the
-        // model holds.
-        for (size_t i = 3; i < seen.size(); ++i) CHECK(seen[i].total == library.rows().size());
+        const uint64_t charts = library.rows().size();
+        const std::vector<Step> upgrade_steps = {Step::Opening, Step::ReadingSavedPaths,
+                                                 Step::ReadingCharts, Step::ReadingResults};
+        CHECK(steps_in_order(seen) == upgrade_steps);
+        check_counted_step(seen, Step::ReadingSavedPaths, charts);
+        check_counted_step(seen, Step::ReadingCharts, charts);
+        check_counted_step(seen, Step::ReadingResults, charts);
+        // An upgrade: every step after the open says so, and the fill's step
+        // has its own words, not the open's.
+        for (const OpenReport& r : seen) {
+            if (r.step == Step::Opening) continue;
+            CHECK(r.upgrading);
+            CHECK(r.label != opening_label());
+            if (r.step == Step::ReadingSavedPaths) {
+                CHECK(r.label == hydra::ui::kReadingSavedPathsLabel);
+            }
+        }
         CHECK(store->hardest_figure_filled(settings.profile()));
     }
 
     // The fill has run for this profile, so the next open goes straight to
-    // the library.
+    // the library, and nothing reads as an upgrade.
     seen.clear();
     {
         hydra::ui::StoreOpenJob again(db, hydra::core::RulesStamp::of(settings.rules), settings);
@@ -1129,22 +1138,19 @@ TEST_CASE("jobs: the startup open reads saved paths with its own words, then the
         again.wait();
         REQUIRE(again.ok());
         const hydra::ui::LibraryModel library = again.take_library();
-        REQUIRE(seen.size() == 5);
-        CHECK(seen[0].step == Step::Opening);
-        CHECK(seen[0].label == "Opening your library...");
-        CHECK(seen[1].step == Step::ReadingCharts);
-        CHECK(seen[1].label == "Reading your charts...");
-        CHECK(seen[1].done == 0);
-        CHECK(seen[2].step == Step::ReadingCharts);
-        CHECK(seen[2].done == 1);
-        CHECK(seen[3].step == Step::ReadingResults);
-        CHECK(seen[3].label == "Reading your results...");
-        CHECK(seen[3].done == 0);
-        CHECK(seen[4].step == Step::ReadingResults);
-        CHECK(seen[4].done == 1);
-        for (size_t i = 1; i < seen.size(); ++i) {
-            CHECK_FALSE(seen[i].upgrading);
-            CHECK(seen[i].total == library.rows().size());
+        const uint64_t charts = library.rows().size();
+        const std::vector<Step> library_steps = {Step::Opening, Step::ReadingCharts,
+                                                 Step::ReadingResults};
+        CHECK(steps_in_order(seen) == library_steps);
+        check_counted_step(seen, Step::ReadingCharts, charts);
+        check_counted_step(seen, Step::ReadingResults, charts);
+        for (const OpenReport& r : seen) {
+            if (r.step == Step::Opening) {
+                CHECK(r.label == opening_label());
+                continue;
+            }
+            CHECK_FALSE(r.upgrading);
+            CHECK(r.label != opening_label());
         }
     }
     testtemp::remove_dir(dir);
@@ -1582,60 +1588,52 @@ TEST_CASE("timing: the startup library read by part") {
     print_startup_read("fastest (run " + std::to_string(fastest + 1) + "):", runs[fastest]);
 }
 
+// A cancel pressed before the fetch goes out. The real transport (the
+// fetcher seam off) checks the cancel before it connects, so nothing leaves
+// the machine, and the job ends not ok with no message.
 TEST_CASE("jobs: a cancelled leaderboard fetch is not an error") {
-    int opens = 0;
-    // Before the jobs, which join the threads that call these.
-    const ScopedHook browser(hydra::app::set_open_in_browser, [&](const std::wstring&) {
-        ++opens;
-        return true;
-    });
+    hydra::net::set_fetcher({});  // the real WinHTTP transport
     RecordStore store(":memory:");
-
-    // What the WinHTTP fetch does when cancel lands between read chunks.
-    {
-        const ScopedHook fetcher(
-            hydra::net::set_fetcher,
-            [](const std::string&, const std::atomic<bool>* cancel) -> std::string {
-                wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
-                throw std::runtime_error("cancelled");
-            });
-        hydra::ui::DmReportJob thrown(store, "1", "someone", hydra::store::Profile{"jobs-test"});
-        thrown.start();
-        thrown.cancel();
-        wait_until([&] { return thrown.finished(); }, "the cancelled fetch to finish");
-        CHECK_FALSE(thrown.ok());
-        CHECK(thrown.message().empty());
-    }
-
-    // The server answers after the cancel: nothing is written or opened.
-    const ScopedHook fetcher(
-        hydra::net::set_fetcher,
-        [](const std::string&, const std::atomic<bool>* cancel) -> std::string {
-            wait_until([cancel] { return cancel->load(); }, "the fetch to be cancelled");
-            return "{}";
-        });
-    hydra::ui::DmReportJob late(store, "1", "someone", hydra::store::Profile{"jobs-test"});
-    late.start();
-    late.cancel();
-    wait_until([&] { return late.finished(); }, "the late fetch to finish");
-    CHECK_FALSE(late.ok());
-    CHECK(late.message().empty());
-    CHECK(opens == 0);
+    hydra::ui::DmReportJob job(store, "1", "someone", hydra::store::Profile{"jobs-test"});
+    job.cancel();
+    job.start();
+    wait_until([&] { return job.finished(); }, "the cancelled fetch to finish");
+    CHECK_FALSE(job.ok());
+    CHECK(job.message().empty());
+    // The transport's own cancel, kept as the details.
+    CHECK(job.error() == hydra::app::plain_error_detail(hydra::Cancelled()));
 }
 
 TEST_CASE("jobs: a failed leaderboard fetch says what to do") {
+    // A real failure to reach a server: the real transport asked for a
+    // loopback port nothing listens on (port 1, tcpmux, which Windows does
+    // not serve), so the connection is refused.
+    hydra::net::set_fetcher({});  // the real WinHTTP transport
+    std::optional<hydra::KindedError> unreachable;
+    try {
+        (void)hydra::net::fetch_users("http://127.0.0.1:1");
+    } catch (const hydra::KindedError& e) {
+        unreachable.emplace(e);
+    }
+    REQUIRE(unreachable.has_value());
+    REQUIRE(unreachable->kind() == hydra::ErrorKind::NetUnreachable);
+    REQUIRE(unreachable->service() == hydra::NetService::Leaderboard);
+
+    // The job's fetch goes to dmleaderboards itself, which a test may not
+    // call, so the seam hands the job that same real failure.
+    const hydra::KindedError failure = *unreachable;
     const ScopedHook fetcher(
-        hydra::net::set_fetcher, [](const std::string&, const std::atomic<bool>*) -> std::string {
-            throw hydra::KindedError(hydra::ErrorKind::NetUnreachable,
-                                     "could not send the request (error 12029)");
-        });
+        hydra::net::set_fetcher,
+        [failure](const std::string&, const std::atomic<bool>*) -> std::string { throw failure; });
     hydra::ui::DmFetchUsersJob job;
     job.start();
     wait_until([&] { return job.finished(); }, "the failed fetch to finish");
     CHECK_FALSE(job.ok());
-    CHECK(job.message() ==
-          "Hydra couldn't reach dmleaderboards. Check your internet connection and try again.");
-    CHECK(job.error() == "could not send the request (error 12029)");
+    // The plain sentence for a server that cannot be reached, and the raw
+    // text as the details.
+    CHECK(job.message() == hydra::app::plain_error(failure));
+    CHECK(job.message() != job.error());
+    CHECK(job.error() == hydra::app::plain_error_detail(failure));
 }
 
 // Finding 212: run_guarded and ViewJob::start's thread-start catch record a
