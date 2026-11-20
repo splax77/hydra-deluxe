@@ -1,0 +1,209 @@
+{
+  "chords": [
+    {
+      "chord_code": "na...",
+      "combo_before": 343,
+      "cum": {
+        "accent": 200,
+        "combo": 57800,
+        "ghost": 1200,
+        "notes": 18915,
+        "solo": 0,
+        "sp": 0,
+        "total": 78115
+      },
+      "cum_onscreen_total": 78115,
+      "in_sp": false,
+      "index": 193,
+      "is_fill": false,
+      "is_solo": false,
+      "is_sp_phrase_end": false,
+      "measure": {
+        "decimal": 42.25,
+        "label": "m43.2.0"
+      },
+      "ms": 75076.33399999999,
+      "multiplier": 4,
+      "multiplier_after": 4,
+      "notes": [
+        {
+          "color": "Kick",
+          "cymbal": false,
+          "dynamic": "none",
+          "dynamics_bonus": 0,
+          "multiplier": 4,
+          "sp_points": 200
+        },
+        {
+          "color": "Red",
+          "cymbal": false,
+          "dynamic": "accent",
+          "dynamics_bonus": 200,
+          "multiplier": 4,
+          "sp_points": 400
+        }
+      ],
+      "points": {
+        "accent": 50,
+        "combo": 450,
+        "ghost": 0,
+        "notes": 100,
+        "solo": 0,
+        "sp": 0
+      },
+      "tick": 81120
+    },
+    {
+      "chord_code": ".a...",
+      "combo_before": 345,
+      "cum": {
+        "accent": 250,
+        "combo": 58100,
+        "ghost": 1200,
+        "notes": 18965,
+        "solo": 0,
+        "sp": 0,
+        "total": 78515
+      },
+      "cum_onscreen_total": 78515,
+      "in_sp": false,
+      "index": 194,
+      "is_fill": false,
+      "is_solo": false,
+      "is_sp_phrase_end": false,
+      "measure": {
+        "decimal": 42.3125,
+        "label": "m43.2.120"
+      },
+      "ms": 75185.26599999999,
+      "multiplier": 4,
+      "multiplier_after": 4,
+      "notes": [
+        {
+          "color": "Red",
+          "cymbal": false,
+          "dynamic": "accent",
+          "dynamics_bonus": 200,
+          "multiplier": 4,
+          "sp_points": 400
+        }
+      ],
+      "points": {
+        "accent": 50,
+        "combo": 300,
+        "ghost": 0,
+        "notes": 50,
+        "solo": 0,
+        "sp": 0
+      },
+      "tick": 81240
+    },
+    {
+      "chord_code": "na...",
+      "combo_before": 346,
+      "cum": {
+        "accent": 300,
+        "combo": 58550,
+        "ghost": 1200,
+        "notes": 19065,
+        "solo": 0,
+        "sp": 0,
+        "total": 79115
+      },
+      "cum_onscreen_total": 79115,
+      "in_sp": false,
+      "index": 195,
+      "is_fill": false,
+      "is_solo": false,
+      "is_sp_phrase_end": false,
+      "measure": {
+        "decimal": 42.375,
+        "label": "m43.2.240"
+      },
+      "ms": 75294.19799999999,
+      "multiplier": 4,
+      "multiplier_after": 4,
+      "notes": [
+        {
+          "color": "Kick",
+          "cymbal": false,
+          "dynamic": "none",
+          "dynamics_bonus": 0,
+          "multiplier": 4,
+          "sp_points": 200
+        },
+        {
+          "color": "Red",
+          "cymbal": false,
+          "dynamic": "accent",
+          "dynamics_bonus": 200,
+          "multiplier": 4,
+          "sp_points": 400
+        }
+      ],
+      "points": {
+        "accent": 50,
+        "combo": 450,
+        "ghost": 0,
+        "notes": 100,
+        "solo": 0,
+        "sp": 0
+      },
+      "tick": 81360
+    },
+    {
+      "chord_code": ".a...",
+      "combo_before": 348,
+      "cum": {
+        "accent": 350,
+        "combo": 58850,
+        "ghost": 1200,
+        "notes": 19115,
+        "solo": 0,
+        "sp": 0,
+        "total": 79515
+      },
+      "cum_onscreen_total": 79515,
+      "in_sp": false,
+      "index": 196,
+      "is_fill": false,
+      "is_solo": false,
+      "is_sp_phrase_end": false,
+      "measure": {
+        "decimal": 42.4375,
+        "label": "m43.2.360"
+      },
+      "ms": 75403.12999999999,
+      "multiplier": 4,
+      "multiplier_after": 4,
+      "notes": [
+        {
+          "color": "Red",
+          "cymbal": false,
+          "dynamic": "accent",
+          "dynamics_bonus": 200,
+          "multiplier": 4,
+          "sp_points": 400
+        }
+      ],
+      "points": {
+        "accent": 50,
+        "combo": 300,
+        "ghost": 0,
+        "notes": 50,
+        "solo": 0,
+        "sp": 0
+      },
+      "tick": 81480
+    }
+  ],
+  "final": {
+    "accent": 4100,
+    "combo": 640775,
+    "ghost": 8000,
+    "notes": 202540,
+    "solo": 12100,
+    "sp": 275520,
+    "total": 1143035
+  }
+}
