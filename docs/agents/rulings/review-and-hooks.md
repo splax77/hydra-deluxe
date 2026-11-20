@@ -16,7 +16,7 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 - **2026-10-25** "i want to be able to give explicit approval for a full library run." (session dee9c61e)
 - **2026-10-25** chose "Keep rule, move worktrees (Recommended)" to "The delete rule lets an agent recursively delete only inside its scratch folder or a worktree that sits in a `worktrees\` folder. Ten Hydra worktrees sit beside the repo as `C:\Users\Patrick\Downloads\Hydra\wt-*` instead. An agent in `wt-batch-whole-library` today could not run `rm -rf` on its own `build-cpp` folder. Which way?" (session 967c59de)
 - **2026-10-25** "why do we need to go through this whole key process to begin with? why does the hook refuse to accept that a review happened because it didnt follow the exact expected format? this is just bad design" (session 4672d33d)
-- **2026-10-25** "Build option A as planned, with Q1 as recommended: a hand-back with no sign-off line records CLEAN and tells the main session." (session 4672d33d)
+- **2026-10-25** chose "Build A" to "Which option should be built?" (session 4672d33d)
 - **2026-10-10** "i asked for the review agent to fix its findings directly, then we're done." (session 02851f21)
 - **2026-10-10** "notes are fine, and yes do that for running out" (session 02851f21)
 - **2026-10-10** "opus, retire, retire, minutes only, only large items over 20 lines should go for review, retire. send agents to compile a full plan" (session b5e8d95a)

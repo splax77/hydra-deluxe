@@ -22,7 +22,7 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 - **2026-10-15** "comments exist to explain the current code, not give a history lesson" (session c35a4b7d)
 - **2026-10-15** "change the early fill search to allow orange timing up to 85ms." (session c35a4b7d)
 - **2026-10-15** chose "Orange only (Recommended)" to "Which side of the early-fill window should go to 85 ms?" (session c35a4b7d)
-- **2026-10-15** "Keep them. The extra E fills in the notation are fine." (session c35a4b7d)
+- **2026-10-15** chose "Keep them" to "Keep the 48 same-score notation changes as they are?" (session c35a4b7d)
 - **2026-10-15** "do a run under 1.0 fills and see what comes up." (session c35a4b7d)
 - **2026-10-15** chose "Yes, run it on the copy (Recommended)" to "For the real-app check, may I run one batch over the whole library on a snapshot copy of your hydra.db (about 18,848 charts, current settings only)? Your real database is not touched." (session 51251479)
 - **2026-10-15** "why are you trying to come up with a different way to determine song name? a song only has one name" (session 51251479)
