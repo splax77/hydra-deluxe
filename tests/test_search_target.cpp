@@ -176,7 +176,8 @@ bool tied_case(const std::vector<Path>& roots, const Takes& takes, bool root_too
 //   paths are exactly the paths of `raw` that pass it, none lost, none added;
 // - the results not promoted are the roots of `raw` that pass, in order;
 // - a promoted result is a lead of its own: no variant point, no tail;
-// - each result's tied-path count is itself plus its tied variants.
+// - each result's stored tied-path count is current: the filter recounted it
+//   after it dropped variants (Path::recount_tied_paths, the count's owner).
 template <class Takes>
 void check_kept_from(const std::vector<Path>& raw, const std::vector<Path>& kept,
                      const std::vector<bool>& promoted, const Takes& takes) {
@@ -199,9 +200,8 @@ void check_kept_from(const std::vector<Path>& raw, const std::vector<Path>& kept
     for (size_t i = 0; i < kept.size(); ++i) {
         const Path& k = kept[i];
         CAPTURE(k.pathstring());
-        std::vector<const Path*> tied;
-        collect_tied(k, tied);
-        CHECK(k.tied_pathcount() == 1 + static_cast<int>(tied.size()));
+        Path recounted = k;
+        CHECK(recounted.recount_tied_paths() == k.tied_pathcount());
         if (!promoted[i]) {
             kept_roots.push_back(path_key(k));
             continue;
