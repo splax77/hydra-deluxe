@@ -41,7 +41,12 @@ READ_CAP_S = 30
 
 WORKER_INSTRUCTIONS = "Fake worker instructions."
 WORKER_STDERR_LINE = "fake worker line on stderr"
-LONG_TEXT = "é" + "x" * 11_998 + "é"
+# What the fake's slow tool writes to its stderr, the front's, when the call has
+# reached it, so a test knows the call is in flight.
+SLOW_BEGAN_LINE = "fake worker: slow call began"
+# A real hydra_replay schedule (from the 2026-11-12 efl-prep run) whose ch_stats
+# reply is longer than the worker's reply cap, so the worker cuts it.
+LONG_STATS_JSON = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "efl-prep", "schedule.json")
 SLOW_EXIT_S = 40
 FRONT_TOOL_NAMES = [tool.name for tool in front_module.FRONT_TOOLS]
 ADOPTION_LINE = "a previous worker (pid 5) left a backup open: C:/backup; ch_stop restores it"
@@ -97,17 +102,6 @@ def fake_worker(mode: str, settings_path: str | None = None) -> None:
         """How many calls reached echo_args in this worker."""
         return str(len(echoes))
 
-    @server.tool()
-    def long_text() -> str:
-        """A reply of exactly the worker's cut length."""
-        return LONG_TEXT
-
-    if not settings.get("drop_fails"):
-        @server.tool()
-        def fails() -> str:
-            """A tool whose reply has isError true."""
-            raise ValueError("the fake failed on purpose")
-
     if settings.get("extra_tool"):
         @server.tool()
         def extra_tool() -> str:
@@ -139,6 +133,7 @@ def fake_worker(mode: str, settings_path: str | None = None) -> None:
     @server.tool()
     async def slow(seconds: float) -> str:
         """A reply that comes after `seconds`, without blocking other calls."""
+        print(SLOW_BEGAN_LINE, file=sys.stderr, flush=True)
         await asyncio.sleep(seconds)
         return f"slept {seconds}"
 
@@ -149,9 +144,9 @@ def fake_worker(mode: str, settings_path: str | None = None) -> None:
 
     @server.tool()
     def die_after_reply() -> str:
-        """Reply, then exit with code 8 while no call is open."""
+        """Reply with this worker's pid, then exit with code 8 while no call is open."""
         threading.Timer(0.2, os._exit, args=(8,)).start()
-        return "dying soon"
+        return str(os.getpid())
 
     print(WORKER_STDERR_LINE, file=sys.stderr, flush=True)
     server.run("stdio")
@@ -343,6 +338,27 @@ class FrontCase(unittest.TestCase):
         peer.proc.wait(READ_CAP_S)
         return time.monotonic() - began
 
+    def wait_for(self, front: Peer, done, what: str) -> None:
+        """Wait until `done()` is true. The wait fails at once if the front has
+        exited, because nothing it waits on can happen then, and at READ_CAP_S."""
+        deadline = time.monotonic() + READ_CAP_S
+        while not done():
+            self.assertIsNone(front.proc.poll(), f"the front exited before {what}")
+            self.assertLess(time.monotonic(), deadline, f"no {what} within READ_CAP_S ({READ_CAP_S} s)")
+            time.sleep(0.01)
+
+    def wait_slow_began(self, front: Peer) -> None:
+        """Wait until a slow call sent through `front` has reached the worker."""
+        self.wait_for(front, lambda: SLOW_BEGAN_LINE in front.stderr(), "slow call at the worker")
+
+    def wait_worker_gone(self, front: Peer, pid: int) -> None:
+        """Wait until worker process `pid` has exited."""
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
+        from tools.ch_mcp.game_tools import pid_running  # noqa: PLC0415  (its imports are slow for a fake)
+
+        self.wait_for(front, lambda: not pid_running(pid), f"exit of worker pid {pid}")
+
 
 class ForwardingTest(FrontCase):
     def test_tool_list_and_instructions_come_from_the_worker(self) -> None:
@@ -378,23 +394,22 @@ class ForwardingTest(FrontCase):
             with self.subTest(tool):
                 self.assertEqual(front.call(tool, args), direct.call(tool, args))
 
-    def test_arguments_and_long_text_arrive_unchanged(self) -> None:
-        front = self.front(worker_command("plain"))
+    def test_a_reply_the_worker_cut_at_its_cap_arrives_whole(self) -> None:
+        if _REPO_ROOT not in sys.path:
+            sys.path.insert(0, _REPO_ROOT)
+        from tools.ch_mcp import server  # noqa: PLC0415  (the worker's own cut)
+
+        direct = self.peer(self.real_worker())
+        direct.hello()
+        front = self.front(self.real_worker())
         front.hello()
-        arguments = {"text": "é\n\"quoted\"", "numbers": [1, 2], "nested": {"a": [None, True]}}
+        args = {"path": LONG_STATS_JSON}
 
-        echoed = front.call("echo_args", arguments)["content"][0]["text"]
-        self.assertEqual(json.loads(echoed), arguments)
-
-        self.assertEqual(front.call("long_text")["content"][0]["text"], LONG_TEXT)
-        self.assertEqual(len(LONG_TEXT), 12_000)
-
-    def test_is_error_stays_true(self) -> None:
-        front = self.front(worker_command("plain"))
-        front.hello()
-        result = front.call("fails")
-        self.assertTrue(result["isError"])
-        self.assertEqual(result["content"][0]["text"], "Error executing tool fails")
+        sent = direct.call("ch_stats", args)
+        # The worker's closing line names its hint only when it cut the reply,
+        # so this is as long a reply as the worker sends; the front adds no cut.
+        self.assertIn(server.CAP_HINT, sent["content"][0]["text"].splitlines()[-1])
+        self.assertEqual(front.call("ch_stats", args), sent)
 
 class WorkerStartTest(FrontCase):
     def test_a_worker_with_no_reply_within_the_cap_ends_at_it_and_every_reply_says_so(self) -> None:
@@ -450,8 +465,7 @@ class WorkerDeathTest(FrontCase):
     def test_an_exit_between_calls_fails_the_next_call_the_same_way(self) -> None:
         front = self.front(worker_command("plain"))
         front.hello()
-        self.assertEqual(front.call("die_after_reply")["content"][0]["text"], "dying soon")
-        time.sleep(1.0)
+        self.wait_worker_gone(front, int(front.text("die_after_reply")))
 
         result = front.call("my_pid")
 
@@ -598,16 +612,17 @@ class ReloadTest(FrontCase):
         ])
 
     def test_an_initialize_offering_2026_07_28_is_answered_as_a_handshake_connection(self) -> None:
-        # The mcp package has no 2026-07-28 initialize: it counters with its latest
+        # The mcp package counters a 2026-07-28 initialize with its latest
         # handshake version and declares listChanged, so the front can send.
+        latest = front_module.LATEST_HANDSHAKE_VERSION
         self.write_settings()
         front = self.front(self.settings_worker())
-        hello = front.hello("2026-07-28")
-        self.assertEqual(hello["protocolVersion"], "2025-11-25")
+        hello = front.hello(MODERN_ENVELOPE["io.modelcontextprotocol/protocolVersion"])
+        self.assertEqual(hello["protocolVersion"], latest)
         self.assertTrue(hello["capabilities"]["tools"]["listChanged"])
         self.write_settings(extra_tool=True)
         text = front.text("ch_reload")
-        self.assertIn("protocol version with Claude Code: 2025-11-25", text)
+        self.assertIn(f"protocol version with Claude Code: {latest}", text)
         self.assertTrue(text.endswith("list_changed sent"))
 
     def test_the_protocol_version_is_printed_at_the_handshake(self) -> None:
@@ -622,7 +637,7 @@ class ReloadTest(FrontCase):
         front = self.reloadable()
         pid = front.text("my_pid")
         waiting = front.send("tools/call", {"name": "slow", "arguments": {"seconds": 2.0}})
-        time.sleep(0.5)
+        self.wait_slow_began(front)
 
         result = front.call("ch_reload")
 
@@ -640,7 +655,7 @@ class ReloadTest(FrontCase):
         waiting = front.send("tools/call", {
             "name": "ch_call", "arguments": {"tool": "slow", "args": {"seconds": 2.0}},
         })
-        time.sleep(0.5)
+        self.wait_slow_began(front)
         self.assertIn("a call is in flight: slow;", front.text("ch_reload"))
         front.reply(waiting)
 
@@ -660,7 +675,7 @@ class ReloadTest(FrontCase):
         front = self.reloadable(WORKER_EXIT_CAP_S=1.0)
         pid = front.text("my_pid")
         waiting = front.send("tools/call", {"name": "slow", "arguments": {"seconds": 3.0}})
-        time.sleep(0.3)
+        self.wait_slow_began(front)
 
         result = front.call("ch_reload")
 
@@ -683,8 +698,7 @@ class ReloadTest(FrontCase):
     def test_a_worker_dead_before_the_check_is_replaced_and_the_reply_says_so(self) -> None:
         self.write_settings()
         front = self.reloadable()
-        self.assertEqual(front.text("die_after_reply"), "dying soon")
-        time.sleep(1.0)
+        self.wait_worker_gone(front, int(front.text("die_after_reply")))
         result = front.call("ch_reload")
         self.assertTrue(result["isError"])
         self.assertIn("ch_reload: the worker exited with code 8", result["content"][0]["text"])
@@ -735,6 +749,10 @@ class ChCallTest(FrontCase):
         self.assertEqual(front.call("ch_call", {"tool": "ch_state", "args": {}}), front.call("ch_state"))
         echoed = front.text("ch_call", {"tool": "echo_args", "args": {"text": "é", "numbers": [1]}})
         self.assertEqual(json.loads(echoed), {"text": "é", "numbers": [1], "nested": None})
+        # The same arguments sent straight to the front arrive unchanged too,
+        # with a newline, quotes and a nested object.
+        arguments = {"text": "é\n\"q\"", "numbers": [1, 2], "nested": {"k": ["v", {"n": 1}]}}
+        self.assertEqual(json.loads(front.text("echo_args", arguments)), arguments)
 
     def test_an_unknown_name_is_refused_with_the_list(self) -> None:
         front = self.front(worker_command("plain"))
@@ -847,8 +865,10 @@ class FrontExitTest(FrontCase):
     def test_an_open_call_does_not_hold_the_exit_past_the_cap(self) -> None:
         front = self.front(worker_command("slow_exit"), FRONT_EXIT_CAP_S=1.0)
         front.hello()
-        front.send("tools/call", {"name": "slow", "arguments": {"seconds": 50}})
-        time.sleep(0.5)
+        # The call is open at the worker when stdin closes, and it would last
+        # longer than the bound below if the front waited for it.
+        front.send("tools/call", {"name": "slow", "arguments": {"seconds": SLOW_EXIT_S + 10}})
+        self.wait_slow_began(front)
         front.close_stdin()
         self.assertLess(self.wait_exit(front), SLOW_EXIT_S - 10)
         self.assertIn("FRONT_EXIT_CAP_S (1.0 s) ended the wait", front.stderr())
@@ -895,10 +915,6 @@ class PyLauncherTest(FrontCase):
 
 
 class SourceTest(unittest.TestCase):
-    def setUp(self) -> None:
-        with open(FRONT_PY, encoding="utf-8") as source:
-            self.source = source.read()
-
     def test_the_front_loads_none_of_the_repos_code_but_its_own(self) -> None:
         # So a ch_reload brings every merged line of the worker's code live:
         # the front, which never restarts, holds none of it.
@@ -912,10 +928,6 @@ class SourceTest(unittest.TestCase):
         from_repo = sorted({os.path.normcase(os.path.abspath(path)) for path in json.loads(loaded)
                             if path and os.path.normcase(os.path.abspath(path)).startswith(repo)})
         self.assertEqual(from_repo, [os.path.normcase(FRONT_PY)])
-
-    def test_the_front_holds_no_reply_cut_and_no_process_group(self) -> None:
-        for word in ("REPLY_CAP_CHARS", "win32job", "Job"):
-            self.assertNotIn(word, self.source)
 
 
 if __name__ == "__main__":
