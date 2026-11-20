@@ -44,7 +44,7 @@ RowFacts analyzed(int stars, std::optional<double> hardest_ms) {
 }
 
 // The rows a library scan of the corpus saves, read once.
-const std::vector<hydra::store::ChartLibraryEntry>& scanned_entries() {
+const std::vector<hydra::store::ChartLibraryEntry>& corpus_scan_entries() {
     static const std::vector<hydra::store::ChartLibraryEntry> entries = [] {
         auto scan = hydra::app::discover_charts({corpus::root()});
         if (!scan.second.empty())
@@ -55,8 +55,8 @@ const std::vector<hydra::store::ChartLibraryEntry>& scanned_entries() {
 }
 
 // The scanned row whose chart file sits in a folder named `song_folder`.
-const hydra::store::ChartLibraryEntry& scanned(std::string_view song_folder) {
-    for (const hydra::store::ChartLibraryEntry& e : scanned_entries())
+const hydra::store::ChartLibraryEntry& scanned_in(std::string_view song_folder) {
+    for (const hydra::store::ChartLibraryEntry& e : corpus_scan_entries())
         if (e.notespath.find(song_folder) != std::string::npos) return e;
     throw std::runtime_error("no corpus chart in a folder named " + std::string(song_folder));
 }
@@ -68,14 +68,14 @@ SearchableRow searchable_of(const hydra::store::ChartLibraryEntry& e) {
 }
 
 SearchableRow scanned_row(std::string_view song_folder) {
-    return searchable_of(scanned(song_folder));
+    return searchable_of(scanned_in(song_folder));
 }
 
-SearchableRow burnout() { return scanned_row("Green Day - Burnout"); }
+SearchableRow scanned_burnout() { return scanned_row("Green Day - Burnout"); }
 
-SearchableRow deadbolt() { return scanned_row("Thrice - Deadbolt"); }
+SearchableRow scanned_deadbolt() { return scanned_row("Thrice - Deadbolt"); }
 
-SearchableRow acid_romance() { return scanned_row("Alpha Wolf - Acid Romance"); }
+SearchableRow scanned_acid_romance() { return scanned_row("Alpha Wolf - Acid Romance"); }
 
 // One corpus chart's search row and the facts the library reads for it.
 struct ChartFacts {
@@ -101,7 +101,7 @@ ChartFacts saved_facts(const hydra::store::ChartLibraryEntry& e) {
 }
 
 const ChartFacts& burnout_facts() {
-    static const ChartFacts facts = saved_facts(scanned("Green Day - Burnout"));
+    static const ChartFacts facts = saved_facts(scanned_in("Green Day - Burnout"));
     return facts;
 }
 
@@ -120,7 +120,7 @@ ChartFacts first_chart_whose_figure(const std::function<bool(double)>& want) {
             continue;
         }
         if (!figure || !want(*figure)) continue;
-        for (const hydra::store::ChartLibraryEntry& e : scanned_entries())
+        for (const hydra::store::ChartLibraryEntry& e : corpus_scan_entries())
             if (e.notespath == path) return saved_facts(e);
     }
     throw std::runtime_error("no corpus chart's best path has the figure this test needs");
@@ -161,7 +161,7 @@ TEST_CASE("library query: folding lowercases and removes accents") {
     // corpus's one accented name, the album of The Fall of Troy's "Act One,
     // Scene One" (song.ini: album = Doppelgänger), folds to plain ASCII, one
     // letter for each letter shown, its unaccented letters lowercased in place.
-    for (const hydra::store::ChartLibraryEntry& e : scanned_entries()) {
+    for (const hydra::store::ChartLibraryEntry& e : corpus_scan_entries()) {
         for (const std::string* s : {&e.title, &e.artist, &e.album, &e.charter, &e.rootfolder}) {
             INFO("text: " << *s);
             const std::string folded = fold_for_search(*s);
@@ -169,7 +169,7 @@ TEST_CASE("library query: folding lowercases and removes accents") {
                                [](char c) { return c >= 'A' && c <= 'Z'; }));
         }
     }
-    const std::string shown = scanned("The Fall of Troy - Act One, Scene One").album;
+    const std::string shown = scanned_in("The Fall of Troy - Act One, Scene One").album;
     REQUIRE(std::any_of(shown.begin(), shown.end(),
                         [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
     const std::string folded = fold_for_search(shown);
@@ -190,7 +190,7 @@ TEST_CASE("library query: folding turns full-width ASCII into ASCII") {
     // black midi's "Sugar/Tzu" names itself with an ASCII slash in song.ini
     // and with the full-width slash U+FF0F in its folder's name. Folded, the
     // folder's name holds the folded title.
-    const hydra::store::ChartLibraryEntry& e = scanned("black midi - Sugar");
+    const hydra::store::ChartLibraryEntry& e = scanned_in("black midi - Sugar");
     const std::string folder_name = e.notespath.substr(0, e.notespath.find_last_of("\\/"));
     REQUIRE(folder_name.find(e.title) == std::string::npos);
     CHECK(fold_for_search(folder_name).find(fold_for_search(e.title)) != std::string::npos);
@@ -275,7 +275,7 @@ namespace {
 // Bloodline's "<color=#e02222>Blood</color>line" (Acid Romance's song.ini).
 std::vector<std::string> tagged_names() {
     std::vector<std::string> out;
-    for (const hydra::store::ChartLibraryEntry& e : scanned_entries())
+    for (const hydra::store::ChartLibraryEntry& e : corpus_scan_entries())
         for (const std::string* s : {&e.title, &e.artist, &e.album, &e.charter})
             if (s->find('<') != std::string::npos) out.push_back(*s);
     return out;
@@ -305,7 +305,7 @@ TEST_CASE("library query: rich-text tags are stripped and the text between them 
 
 TEST_CASE("library query: a tagged charter is found by its plain name") {
     // Acid Romance's charter is the tagged "<color=#e02222>Blood</color>line".
-    const hydra::store::ChartLibraryEntry& e = scanned("Alpha Wolf - Acid Romance");
+    const hydra::store::ChartLibraryEntry& e = scanned_in("Alpha Wolf - Acid Romance");
     const SearchableRow row = searchable_of(e);
     const std::string plain = strip_rich_tags(e.charter);
     REQUIRE(plain != e.charter);
@@ -327,7 +327,7 @@ TEST_CASE("library query: a tagged charter is found by its plain name") {
 
 TEST_CASE("library query: an accented name is found without its accents") {
     // The Fall of Troy's album, as its song.ini spells it: "Doppelgänger".
-    const hydra::store::ChartLibraryEntry& e = scanned("The Fall of Troy - Act One, Scene One");
+    const hydra::store::ChartLibraryEntry& e = scanned_in("The Fall of Troy - Act One, Scene One");
     const SearchableRow row = searchable_of(e);
     CHECK(matches("doppelganger", row));
     CHECK(matches("ALBUM:DOPPELGANGER", row));
@@ -377,14 +377,14 @@ TEST_CASE("library query: the report pages' fold table holds every character the
 }
 
 TEST_CASE("library query: words match in any order and across fields") {
-    const SearchableRow row = burnout();
+    const SearchableRow row = scanned_burnout();
     CHECK(matches("green burnout", row));
     CHECK(matches("burnout green", row));
     CHECK(matches("  Green   BURNOUT  ", row));
     CHECK(matches("hoph2o tier", row));  // charter and folder
     CHECK(matches("dookie", row));       // only the album holds it
     CHECK(matches("DOOKIE burnout", row));
-    CHECK_FALSE(matches("dookie", deadbolt()));
+    CHECK_FALSE(matches("dookie", scanned_deadbolt()));
     CHECK_FALSE(matches("green deadbolt", row));
     CHECK_FALSE(matches("thrice burnout", row));
 }
@@ -397,7 +397,7 @@ TEST_CASE("library query: a quoted phrase must appear whole in one field") {
     CHECK(q.terms[0].folded == "tier 4");
 
     const RowFacts none;
-    CHECK(query_matches(q, burnout(), none));
+    CHECK(query_matches(q, scanned_burnout(), none));
     // Everlong sits in IB24's "T4", which is not "tier 4".
     CHECK_FALSE(query_matches(q, scanned_row("Foo Fighters - Everlong"), none));
 
@@ -407,29 +407,29 @@ TEST_CASE("library query: a quoted phrase must appear whole in one field") {
     CHECK(matches("tier 4", apart));
     CHECK_FALSE(matches("\"tier 4\"", apart));
     // A phrase can't be split across two fields either.
-    CHECK_FALSE(matches("\"burnout green\"", burnout()));
+    CHECK_FALSE(matches("\"burnout green\"", scanned_burnout()));
     // A quote that is never closed runs to the end.
-    CHECK(matches("\"summer blast", burnout()));
+    CHECK(matches("\"summer blast", scanned_burnout()));
 }
 
 TEST_CASE("library query: artist: charter: folder: and title: limit a term to one field") {
-    CHECK(matches("artist:thrice", deadbolt()));
-    CHECK_FALSE(matches("artist:thrice", burnout()));
-    CHECK_FALSE(matches("title:thrice", deadbolt()));
-    CHECK(matches("album:dookie", burnout()));
-    CHECK(matches("album:\"illusion of safety\"", deadbolt()));
-    CHECK_FALSE(matches("album:dookie", deadbolt()));
-    CHECK_FALSE(matches("title:dookie", burnout()));
+    CHECK(matches("artist:thrice", scanned_deadbolt()));
+    CHECK_FALSE(matches("artist:thrice", scanned_burnout()));
+    CHECK_FALSE(matches("title:thrice", scanned_deadbolt()));
+    CHECK(matches("album:dookie", scanned_burnout()));
+    CHECK(matches("album:\"illusion of safety\"", scanned_deadbolt()));
+    CHECK_FALSE(matches("album:dookie", scanned_deadbolt()));
+    CHECK_FALSE(matches("title:dookie", scanned_burnout()));
     // album: looks in the album only, not at the same word in the title.
-    CHECK_FALSE(matches("album:burnout", burnout()));
-    CHECK(matches("charter:hoph2o", burnout()));
-    CHECK(matches("charter:hoph2o", deadbolt()));
-    CHECK_FALSE(matches("charter:hoph2o", acid_romance()));
-    CHECK(matches("folder:ib24", deadbolt()));
-    CHECK_FALSE(matches("folder:ib24", burnout()));
-    CHECK(matches("title:burnout", burnout()));
-    CHECK(matches("Artist:\"green day\"", burnout()));
-    CHECK_FALSE(matches("title:\"green day\"", burnout()));
+    CHECK_FALSE(matches("album:burnout", scanned_burnout()));
+    CHECK(matches("charter:hoph2o", scanned_burnout()));
+    CHECK(matches("charter:hoph2o", scanned_deadbolt()));
+    CHECK_FALSE(matches("charter:hoph2o", scanned_acid_romance()));
+    CHECK(matches("folder:ib24", scanned_deadbolt()));
+    CHECK_FALSE(matches("folder:ib24", scanned_burnout()));
+    CHECK(matches("title:burnout", scanned_burnout()));
+    CHECK(matches("Artist:\"green day\"", scanned_burnout()));
+    CHECK_FALSE(matches("title:\"green day\"", scanned_burnout()));
 
     const LibraryQuery album = parse_library_query("ALBUM:Dookie");
     REQUIRE(album.terms.size() == 1);
@@ -586,25 +586,25 @@ TEST_CASE("squeeze filters: a path whose hardest is 0.0 passes squeeze<=0, match
 
 TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
     // A row at exactly N ms matches >=N and not >N.
-    CHECK(matches("squeeze>=163", burnout(), analyzed(7, 163.0)));  // Burnout's real 163.0 ms
-    CHECK_FALSE(matches("squeeze>163", burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>20", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=164", burnout(), analyzed(7, 163.0)));
-    CHECK(matches("SQUEEZE>20", burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>-5", burnout(), analyzed(7, -2.5)));
+    CHECK(matches("squeeze>=163", scanned_burnout(), analyzed(7, 163.0)));  // Burnout's real 163.0 ms
+    CHECK_FALSE(matches("squeeze>163", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>20", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=164", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK(matches("SQUEEZE>20", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>-5", scanned_burnout(), analyzed(7, -2.5)));
 
     // squeeze>N is the exact opposite of squeeze<=N: a timed row matches one.
     for (double ms : {12.5, 20.0, 163.0}) {
-        CHECK(matches("squeeze>20", burnout(), analyzed(7, ms)) !=
-              matches("squeeze<=20", burnout(), analyzed(7, ms)));
+        CHECK(matches("squeeze>20", scanned_burnout(), analyzed(7, ms)) !=
+              matches("squeeze<=20", scanned_burnout(), analyzed(7, ms)));
     }
 
     // A path that needs no timing has nothing to squeeze, so it matches no
     // > or >= filter. An unrated row matches no filter.
-    CHECK_FALSE(matches("squeeze>20", burnout(), analyzed(7, std::nullopt)));
-    CHECK_FALSE(matches("squeeze>=0", burnout(), analyzed(7, std::nullopt)));
-    CHECK_FALSE(matches("squeeze>20", burnout(), RowFacts{}));
-    CHECK_FALSE(matches("squeeze>=20", burnout(), RowFacts{}));
+    CHECK_FALSE(matches("squeeze>20", scanned_burnout(), analyzed(7, std::nullopt)));
+    CHECK_FALSE(matches("squeeze>=0", scanned_burnout(), analyzed(7, std::nullopt)));
+    CHECK_FALSE(matches("squeeze>20", scanned_burnout(), RowFacts{}));
+    CHECK_FALSE(matches("squeeze>=20", scanned_burnout(), RowFacts{}));
 
     const LibraryQuery q = parse_library_query("squeeze>20");
     CHECK(q.terms.empty());
@@ -614,16 +614,16 @@ TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timin
 }
 
 TEST_CASE("library query: a squeeze floor and limit combine into a range, last of each side counts") {
-    CHECK(matches("squeeze>=10 squeeze<=200", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=10 squeeze<=50", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=170 squeeze<=200", burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze<=200 squeeze>163 green", burnout(), analyzed(7, 163.5)));
+    CHECK(matches("squeeze>=10 squeeze<=200", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=10 squeeze<=50", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=170 squeeze<=200", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze<=200 squeeze>163 green", scanned_burnout(), analyzed(7, 163.5)));
 
     // The same side twice: the last one counts.
-    CHECK(matches("squeeze>200 squeeze>20", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>20 squeeze>200", burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>163 squeeze>=163", burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=163 squeeze>163", burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>200 squeeze>20", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>20 squeeze>200", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK(matches("squeeze>163 squeeze>=163", scanned_burnout(), analyzed(7, 163.0)));
+    CHECK_FALSE(matches("squeeze>=163 squeeze>163", scanned_burnout(), analyzed(7, 163.0)));
 }
 
 TEST_CASE("library query: an unknown squeeze operator gives a plain error and filters nothing") {
@@ -634,7 +634,7 @@ TEST_CASE("library query: an unknown squeeze operator gives a plain error and fi
         CHECK(q.terms.empty());
         CHECK(q.errors ==
               std::vector<std::string>{"squeeze takes <=, <, >= or >, like squeeze<=20"});
-        CHECK(query_matches(q, burnout(), RowFacts{}));
+        CHECK(query_matches(q, scanned_burnout(), RowFacts{}));
     }
 
     // Words that only start with "squeeze" still search as text.
@@ -655,7 +655,7 @@ TEST_CASE("library query: bad filter values give a plain error and filter nothin
     CHECK(stars.errors[0] == "stars: needs a number from 0 to 7");
     REQUIRE(stars.terms.size() == 1);  // the rest of the query still works
     CHECK(stars.terms[0].folded == "burnout");
-    CHECK(query_matches(stars, burnout(), RowFacts{}));
+    CHECK(query_matches(stars, scanned_burnout(), RowFacts{}));
 
     CHECK(parse_library_query("stars:x").errors ==
           std::vector<std::string>{"stars: needs a number from 0 to 7"});
@@ -686,8 +686,8 @@ TEST_CASE("library query: an empty query matches every row") {
         const LibraryQuery q = parse_library_query(text);
         CHECK(q.empty());
         CHECK(q.errors.empty());
-        CHECK(query_matches(q, burnout(), RowFacts{}));
-        CHECK(query_matches(q, acid_romance(), analyzed(3, 40.0)));
+        CHECK(query_matches(q, scanned_burnout(), RowFacts{}));
+        CHECK(query_matches(q, scanned_acid_romance(), analyzed(3, 40.0)));
     }
     CHECK_FALSE(parse_library_query("x").empty());
     CHECK_FALSE(parse_library_query("stars:7").empty());
@@ -815,10 +815,10 @@ TEST_CASE("library query: every Search tips example parses into the key its entr
     CHECK_FALSE(above.stars.has_value());
 
     // The fixture rows are the tips' own charts, so the examples find them.
-    CHECK(matches(tips[1].example, burnout()));
-    CHECK(matches(tips[2].example, burnout()));
-    CHECK(matches(tips[4].example, deadbolt()));
-    CHECK(matches(tips[5].example, burnout()));
+    CHECK(matches(tips[1].example, scanned_burnout()));
+    CHECK(matches(tips[2].example, scanned_burnout()));
+    CHECK(matches(tips[4].example, scanned_deadbolt()));
+    CHECK(matches(tips[5].example, scanned_burnout()));
 
     CHECK_FALSE(search_tips_note().empty());
 }
