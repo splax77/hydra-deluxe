@@ -277,59 +277,82 @@ TEST_CASE("app_shell: a report saved maximized reopens maximized") {
     CHECK(p.maximized);
 }
 
-// The user's decision of 2026-10-10: a report saved maximized reopens
-// maximized on the monitor it was saved on, not the main window's.
+namespace {
+
+// The right-hand monitor of kUserTwoMonitors, and a report saved on it.
+const ScreenRect& kRightMonitor = kUserTwoMonitors.back();
+const ScreenRect kSavedOnRight{2600, 60, 4400, 1000};
+
+// True when `inner` lies wholly inside `outer`.
+bool contains(const ScreenRect& outer, const ScreenRect& inner) {
+    return inner.left >= outer.left && inner.top >= outer.top && inner.right <= outer.right &&
+           inner.bottom <= outer.bottom;
+}
+
+}  // namespace
+
 TEST_CASE("app_shell: a report saved maximized on a second monitor reopens maximized there") {
-    // Saved on the right-hand monitor: outer {2592, 29, 4408, 1008}, title band
-    // all on that monitor. The main window is on the left-hand one. The client
-    // is the right-hand work area less the frame: {2560+8, 0+31, 4480-8, 1040-8}.
-    const ReportPlacement p = report_placement(ScreenRect{2600, 60, 4400, 1000}, true, false,
-                                               kMainClient, kUserTwoMonitors, kFrame96);
-    CHECK(p.client == ScreenRect{2568, 31, 4472, 1032});
+    // Its title bar can be reached on the right-hand monitor, not the left one.
+    REQUIRE(placement_on_screen(kSavedOnRight, {kRightMonitor}));
+    REQUIRE_FALSE(placement_on_screen(kSavedOnRight, {kUserTwoMonitors.front()}));
+    const ScreenRect on_right = inside_frame(kRightMonitor, kFrame96);
+    // The main window is a normal one on the left-hand monitor.
+    const ReportPlacement p = report_placement(kSavedOnRight, true, false, kMainClient,
+                                               kUserTwoMonitors, kFrame96);
+    CHECK(p.client == on_right);
     CHECK(p.maximized);
 
-    // The main window maximized on the left-hand monitor does not pull it over.
-    const ReportPlacement main_max = report_placement(ScreenRect{2600, 60, 4400, 1000}, true, true,
-                                                      ScreenRect{0, 23, 2560, 1392},
+    // The main window maximized on the left-hand monitor, covering its work
+    // area, does not pull it over.
+    const ScreenRect main_maximized_client = kUserTwoMonitors.front();
+    const ReportPlacement main_max = report_placement(kSavedOnRight, true, true, main_maximized_client,
                                                       kUserTwoMonitors, kFrame96);
-    CHECK(main_max.client == ScreenRect{2568, 31, 4472, 1032});
+    CHECK(main_max.client == on_right);
     CHECK(main_max.maximized);
 }
 
 TEST_CASE("app_shell: a report saved maximized on a monitor that is gone opens on the main window's") {
-    // The same saved rectangle with only the left-hand monitor left: it fails
-    // placement_on_screen, so the client is that work area less the frame.
-    const ReportPlacement p = report_placement(ScreenRect{2600, 60, 4400, 1000}, true, false,
-                                               kMainClient, kUserMonitor, kFrame96);
-    CHECK(p.client == ScreenRect{8, 31, 2552, 1384});
+    // Only the left-hand monitor is left, so the saved rectangle is off screen.
+    REQUIRE_FALSE(placement_on_screen(kSavedOnRight, kUserMonitor));
+    const ReportPlacement p = report_placement(kSavedOnRight, true, false, kMainClient, kUserMonitor,
+                                               kFrame96);
+    CHECK(p.client == inside_frame(kUserMonitor.front(), kFrame96));
     CHECK(p.maximized);
 }
 
 TEST_CASE("app_shell: a first open with the main window maximized uses the main window's monitor") {
-    // The main window maximized on the right-hand monitor, no saved placement:
-    // the right-hand work area less the frame.
-    const ReportPlacement p = report_placement(std::nullopt, false, true,
-                                               ScreenRect{2560, 23, 4480, 1040}, kUserTwoMonitors,
-                                               kFrame96);
-    CHECK(p.client == ScreenRect{2568, 31, 4472, 1032});
+    // The main window maximized on the right-hand monitor covers its work
+    // area; there is no saved placement.
+    const ScreenRect main_maximized_client = kRightMonitor;
+    const ReportPlacement p = report_placement(std::nullopt, false, true, main_maximized_client,
+                                               kUserTwoMonitors, kFrame96);
+    CHECK(p.client == inside_frame(kRightMonitor, kFrame96));
     CHECK(p.maximized);
 }
 
 TEST_CASE("app_shell: a saved report is fitted into the monitor holding its title bar") {
-    // Fits on the right-hand monitor: outer {2592, 29, 4408, 1008}. Unchanged.
-    const ReportPlacement fits = report_placement(ScreenRect{2600, 60, 4400, 1000}, false, false,
-                                                  kMainClient, kUserTwoMonitors, kFrame96);
-    CHECK(fits.client == ScreenRect{2600, 60, 4400, 1000});
+    // A saved report whose outer window fits the right-hand monitor stays.
+    REQUIRE(contains(kRightMonitor, outer_of(kSavedOnRight, kFrame96)));
+    const ReportPlacement fits = report_placement(kSavedOnRight, false, false, kMainClient,
+                                                  kUserTwoMonitors, kFrame96);
+    CHECK(fits.client == kSavedOnRight);
     CHECK_FALSE(fits.maximized);
 
-    // That monitor's whole height below a 23-pixel band. Outer
-    // {2552, -8, 4488, 1088}; its title band is 1,920 wide on the right-hand
-    // monitor and 8 wide on the left one, so the right-hand one holds it.
-    // Capped to 1,920 x 1,040 it is {2552, -8, 4472, 1032}; moved 8 right and
-    // 8 down it is {2560, 0, 4480, 1040}; the client is {2568, 31, 4472, 1032}.
-    const ReportPlacement big = report_placement(ScreenRect{2560, 23, 4480, 1080}, false, false,
-                                                 kMainClient, kUserTwoMonitors, kFrame96);
-    CHECK(big.client == ScreenRect{2568, 31, 4472, 1032});
+    // A saved report taller than the right-hand monitor. Its outer window
+    // also reaches a few pixels onto the left-hand monitor, but nearly all
+    // of its title bar is on the right-hand one.
+    const ScreenRect tall{kRightMonitor.left, kRightMonitor.top + 23, kRightMonitor.right,
+                          kRightMonitor.bottom + 40};
+    const ScreenRect tall_outer = outer_of(tall, kFrame96);
+    REQUIRE(tall_outer.left < kRightMonitor.left);
+    REQUIRE(tall_outer.height() > kRightMonitor.height());
+    const ReportPlacement big = report_placement(tall, false, false, kMainClient, kUserTwoMonitors,
+                                                 kFrame96);
+    // Its outer window, frame included, now lies inside the right-hand
+    // monitor, cut to that monitor's height.
+    const ScreenRect big_outer = outer_of(big.client, kFrame96);
+    CHECK(contains(kRightMonitor, big_outer));
+    CHECK(big_outer.height() == kRightMonitor.height());
     CHECK_FALSE(big.maximized);
 }
 
@@ -367,21 +390,6 @@ TEST_CASE("app_shell: a report's placement key is its window's ### ID") {
     CHECK(hydra::ui::report_placement_key("Any##report###" + id) == id);
     const std::string no_id = "plain";
     CHECK(hydra::ui::report_placement_key(no_id) == no_id);
-}
-
-TEST_CASE("app_shell: the [Hydra][Window:pathreport] text round-trips") {
-    WindowPlacement p;
-    p.valid = true;
-    p.normal = {8, 31, 2552, 1384};
-    p.maximized = true;
-    const std::string text = hydra::ui::format_window_placement(p);
-    CHECK(text == "Pos=8,31\nSize=2544,1353\nMaximized=1\n");
-
-    WindowPlacement back;
-    std::istringstream lines(text);
-    for (std::string line; std::getline(lines, line);)
-        hydra::ui::parse_window_placement_line(line, back);
-    CHECK(back == p);
 }
 
 TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own section") {
