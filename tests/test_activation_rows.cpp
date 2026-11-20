@@ -1565,7 +1565,14 @@ const AnalysisResult& analyzed_like_the_gui(const std::string& name) {
 const AnalysisResult& tapped_out() { return analyzed_like_the_gui("Mike Orlando - Tapped Out"); }
 const AnalysisResult& focus() { return analyzed_like_the_gui("SoundHaven - Focus [Ariana Grande]"); }
 const AnalysisResult& beg() { return analyzed_like_the_gui("Evans Blue - Beg"); }
-const AnalysisResult& late_sqin_twice() { return analyzed_like_the_gui("late_sqin_twice"); }
+// A fast-tempo fixture, analyzed the same way. Its folder has no song.ini, so
+// the corpus scan (corpus::chart_paths) skips it, and it is read by its path
+// under corpus::root() the way test_fast_tempo.cpp reads it.
+const AnalysisResult& late_sqin_twice() {
+    static const AnalysisResult ar = analyze_chart_file(
+        corpus::root() + "/test_fast_tempo/late_sqin_twice.chart", scratch_settings().to_analysis_settings());
+    return ar;
+}
 
 // `path`'s rows as the Paths tab builds them, with `chords` (null for none).
 ActivationsView window_rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes* chords) {
@@ -1786,6 +1793,7 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         p.activations = ar.record.best_path().all_activations();
         REQUIRE(p.activations.size() >= 2);
         const size_t k = only_squeeze(p.activations[1], SqueezeKind::SqIn);
+        REQUIRE_FALSE(p.activations[1].sqinouts[k].needs_no_timing());
         const std::optional<WindowRowView> unedited = window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k];
         REQUIRE(unedited.has_value());
         for (const double offset : {0.0, -0.1}) {
@@ -1982,12 +1990,14 @@ TEST_CASE("dynamic hit window: every corpus row") {
             }
         }
     });
-    // Two named charts show every kind of row the walk checks, so the walk
-    // can never pass on rows it never met. Beg's best path squeezes a note
-    // out and has a required early fill. late_sqin_twice's best path has
-    // four squeeze ins, some short and some safe, and its sentences press
-    // the squeezed note early, so a row that named its ends by press
-    // direction fails there.
+    // Named corpus charts show every kind of row the walk checks, so the walk
+    // can never pass on rows it never met. Each is a row a case above pins
+    // on that chart's best path. Beg's best path squeezes a note out with a
+    // safe sum and has a required early fill. Tapped Out's squeezes a note
+    // out with a short sum. Focus's second activation squeezes a note in
+    // with a timing, so its sentence presses the squeezed note early
+    // (squeeze_presses), and a row that named its ends by press direction
+    // fails there.
     const auto seen_on = [&](const std::string& name) {
         const std::string chart = corpus::chart_named(name);
         CAPTURE(name);
@@ -2000,9 +2010,10 @@ TEST_CASE("dynamic hit window: every corpus row") {
     CHECK(beg_rows.fill_row);
     CHECK(beg_rows.squeeze_row);
     CHECK(beg_rows.safe_tag);
-    const RowKindsSeen sqin_rows = seen_on("late_sqin_twice");
-    CHECK(sqin_rows.squeeze_row);
-    CHECK(sqin_rows.short_tag);
-    CHECK(sqin_rows.safe_tag);
-    CHECK(sqin_rows.note_pressed_early);
+    const RowKindsSeen tapped_out_rows = seen_on("Mike Orlando - Tapped Out");
+    CHECK(tapped_out_rows.squeeze_row);
+    CHECK(tapped_out_rows.short_tag);
+    const RowKindsSeen focus_rows = seen_on("SoundHaven - Focus [Ariana Grande]");
+    CHECK(focus_rows.squeeze_row);
+    CHECK(focus_rows.note_pressed_early);
 }
