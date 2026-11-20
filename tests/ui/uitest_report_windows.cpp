@@ -209,7 +209,7 @@ ImGuiWindow* path_window() { return window_named("###pathreport"); }
 ImGuiWindow* dm_window() { return window_named("###dmreport"); }
 
 // Opens the path report and points the ref at it, with Optimal paths only
-// unticked: none of the sample rows is an optimal path.
+// unticked, so every row of the fixture's report shows.
 void open_path_all_rows(ImGuiTestContext* ctx) {
     fixture().path_open = true;
     ctx->Yield(3);
