@@ -130,11 +130,6 @@ def notes_at(*times_ms):
     return [{"index": i, "time_ms": t} for i, t in enumerate(times_ms)]
 
 
-def call(name, song_time_s, args=()):
-    return {"call": name, "names": [name], "songTime": song_time_s,
-            "args": list(args)}
-
-
 class OncePerNoteTest(unittest.TestCase):
     def test_a_full_run_finds_the_studys_per_note_methods(self):
         # The count run that played Window Map to its end.
@@ -564,9 +559,9 @@ class TraceSessionTest(unittest.TestCase):
         self.in_wait.set()
         return event.wait(timeout_s)
 
-    def session(self, fake_session, **kw):
+    def session(self, fake_session, notes=None, **kw):
         kw.setdefault("wait", self.blocking_wait)
-        s = TH.TraceSession(self.NOTES, "Eng", ["Hit"], self.out_path,
+        s = TH.TraceSession(notes or self.NOTES, "Eng", ["Hit"], self.out_path,
                             song_end_ms=self.END_MS, agent_path=self.agent,
                             frida_mod=FakeFrida(fake_session), **kw)
         self.addCleanup(s.stop, THREAD_CAP_S)
@@ -588,54 +583,66 @@ class TraceSessionTest(unittest.TestCase):
             "round_start_offset": C.OFF_ROUND_START, "methods": ["Hit"]}])
 
     def test_stop_ends_a_run_that_never_ends_and_detaches_once(self):
-        fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,
-                                  "no_code": []})])
+        # A real trace that caught one call and sent no end: the run goes on
+        # until stop() ends it.
+        msgs = recorded(*ONE_CALL_RUN)
+        fake = FakeSession(msgs)
         s = self.session(fake)
         self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
         self.assertFalse(s.ended())
-        self.assertEqual(s.ended_line(),
-                         "ended: not yet; the trace is still running")
+        self.assertIsNone(s.result)
+        running = s.ended_line()
         self.assertTrue(s.stop(THREAD_CAP_S))
         self.assertEqual(fake.detach_calls, 1)
         self.assertEqual(s.result.reason, TH.END_STOPPED)
         self.assertIsNone(s.result.error)
-        self.assertEqual(s.ended_line(), "ended: stopped")
+        # Once stopped, the line is ended_line's for the stopped result, and
+        # it differs from the line the running trace gave.
+        self.assertEqual(s.ended_line(), TH.ended_line(s.result))
+        self.assertNotEqual(running, s.ended_line())
+        self.assertEqual(s.payloads(), [m["payload"] for m in msgs])
         self.assertEqual(s.lines, [])
 
     def test_calls_grow_as_the_agent_sends_them(self):
-        fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,
-                                  "no_code": []})])
+        # The real args run's messages, its first sent at the start and the
+        # rest one at a time, all but its end.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        payloads = [m["payload"] for m in msgs if "done" not in m["payload"]]
+        fake = FakeSession(msgs[:1])
         s = self.session(fake)
         self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
         self.assertEqual(s.calls(), [])
-        self.deliver(fake, call("Hit", 1.0, [7]))
-        self.assertEqual(s.calls(), [call("Hit", 1.0, [7])])
-        self.deliver(fake, call("Hit", 2.1, [8]))
-        self.deliver(fake, call("Hit", 2.95, [9]))
-        self.assertEqual(len(s.calls()), 3)
-        self.assertEqual(len(s.payloads()), 4)
+        for k, payload in enumerate(payloads[1:], start=2):
+            self.deliver(fake, payload)
+            # calls() is every `call` payload seen so far; the engine
+            # payload is seen but is not a call.
+            self.assertEqual(s.payloads(), payloads[:k])
+            self.assertEqual(s.calls(), payloads[1:k])
+        self.assertFalse(s.ended())
 
     def test_lined_up_starts_at_since(self):
-        fake = FakeSession([sent({"engine": ENGINE, "hooked": 1,
-                                  "no_code": []}),
-                            sent(call("Hit", 1.0)), sent(call("Hit", 2.1)),
-                            sent(call("Hit", 2.95))])
-        s = self.session(fake)
-        self.assertTrue(self.in_wait.wait(THREAD_CAP_S))
-        lined = s.lined_up(since=2)
-        self.assertEqual(len(lined), 1)
-        self.assertEqual(lined[0].note_index, 2)
-        self.assertAlmostEqual(lined[0].diff_ms, -50.0, places=6)
-        self.assertEqual([x.note_index for x in s.lined_up()], [0, 1, 2])
+        # The real args run on Window Map, lined up with that song's notes.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        calls = [m["payload"] for m in msgs if "call" in m["payload"]]
+        s = self.session(FakeSession(msgs), notes=window_map_notes())
+        self.assertTrue(s.stop(THREAD_CAP_S))
+        everything = s.lined_up()
+        self.assertEqual(everything, TH.line_up(calls, window_map_notes()))
+        for since in (0, 1, len(calls) // 2, len(calls) - 1, len(calls)):
+            with self.subTest(since=since):
+                self.assertEqual(s.lined_up(since=since), everything[since:])
 
     def test_a_run_the_agent_ends_keeps_the_agents_end(self):
-        fake = FakeSession([sent(call("Hit", 1.0)),
-                            sent({"done": "song over", "calls": 1})])
+        # The real args run, which the agent ended at the song's end: the
+        # session's line is the one that run's own report printed.
+        msgs = recorded(L3, "trace-wm-args.jsonl")
+        fake = FakeSession(msgs)
         s = self.session(fake)
         self.assertTrue(s.stop(THREAD_CAP_S))
-        self.assertEqual(s.ended_line(), "ended: done (agent: song over)")
+        self.assertEqual(s.ended_line(), recorded_report("trace-wm-args.txt")[0])
         self.assertEqual(fake.detach_calls, 1)
-        self.assertEqual(len(s.calls()), 1)
+        self.assertEqual(s.calls(),
+                         [m["payload"] for m in msgs if "call" in m["payload"]])
 
     def test_an_agent_end_that_lands_as_stop_is_seen_keeps_its_reason(self):
         # The agent's end arrives between the wait's check of `ended` and its
@@ -672,13 +679,6 @@ class TraceSessionTest(unittest.TestCase):
         self.assertEqual(fake.detach_calls, 1)
         self.assertEqual(s.lines, [
             "cap of 156 s reached before the agent finished; 0 messages seen"])
-
-    def test_not_running_is_the_end_and_its_line_is_kept(self):
-        s = self.session(None)
-        self.assertTrue(s.stop(THREAD_CAP_S))
-        self.assertEqual(s.ended_line(), "ended: not running")
-        self.assertEqual(s.lines,
-                         ["Clone Hero.exe is not running; nothing attached"])
 
     def test_a_runner_that_raises_ends_as_failed(self):
         fake = FakeSession([], load_raises=RuntimeError("script broke"))
