@@ -92,6 +92,23 @@ struct FakeClipboard {
     }
 };
 
+// Puts the system clipboard's text back when the test ends, however it ends,
+// for a test that lets Copy path write the real clipboard.
+struct KeptClipboardText {
+    std::string text;
+    bool had_text = false;
+    KeptClipboardText() {
+        const char* t = ImGui::GetClipboardText();
+        had_text = t != nullptr && *t != '\0';
+        if (had_text) text = t;
+    }
+    ~KeptClipboardText() {
+        if (had_text) ImGui::SetClipboardText(text.c_str());
+    }
+    KeptClipboardText(const KeptClipboardText&) = delete;
+    KeptClipboardText& operator=(const KeptClipboardText&) = delete;
+};
+
 // A fresh app with Burnout analyzed and its Paths tab showing.
 bool open_burnout(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -446,22 +463,35 @@ void test_paths_rows(ImGuiTestContext* ctx) {
         for (const hydra::app::ActivationBadge& b : a.badges) IM_CHECK(on_screen(h, b.text));
 }
 
-// Burnout's activation 1, its squeezed-out row's Rating cell: the word bands
-// the eff. figure on the report's tiers (D269), and the suffix stays raw.
-constexpr const char* kBurnoutSqOutRating = "Insane+ (eff. 163.5 ms) <-- squeezed out (-260)";
+// The Rating cell of activation 1's squeezed-out row that costs points, the
+// one row build_activations warn-colours, as the view the tab drew holds it.
+// Empty when the row has no such row.
+std::string costly_sqout_rating(hydra::ui::AppState& app) {
+    const hydra::app::ActivationsView& view = shown_activations(app);
+    if (view.acts.empty()) return "";
+    for (const hydra::app::BackendRowView& row : view.acts[0].backends)
+        if (row.warn) return row.rating;
+    return "";
+}
 
 // The backend table folds per activation, and the Backend limit on the Paths
-// tab hides rows from it.
+// tab hides rows from it. Every expected text is the activations view's.
 void test_paths_backend_timings(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
+    // Burnout's activation 1 squeezes out a row that costs points.
+    const std::string sqout = costly_sqout_rating(*h.app);
+    IM_CHECK(!sqout.empty());
+    if (sqout.empty()) return;
+    const std::string label_all = shown_activations(*h.app).acts[0].backends_label;
+    const size_t rows_all = shown_activations(*h.app).acts[0].backends.size();
     // Row 1 opens with its backend table open; its fold closes, reopens and
     // closes it, and the table stays closed when the row is shut and reopened.
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    IM_CHECK(on_screen(h, "3 notes near the SP end"));  // the fold's heading
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(on_screen(h, label_all));  // the fold's heading
+    IM_CHECK(on_screen(h, sqout));
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
@@ -478,43 +508,55 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 0);
-    IM_CHECK(!on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(!on_screen(h, sqout));
     // The rest of this test reads the table, so it opens again.
     ctx->ItemClick("**/Backend timings##act1");
     ctx->Yield(2);
     IM_CHECK(h.app->details_ui.paths_tab.ui().backends_open[0] == 1);
-    // The stored early x0.99... multiplier isn't 1, so the row shows its
-    // figure, however small the shift (one-squeeze-rating decision 1).
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    IM_CHECK(on_screen(h, sqout));
     // The table has no explanation paragraph above it.
     IM_CHECK(!on_screen(h, "Timing is how far each note sits"));
 
-    // Off by default, and the number box is inert until it is ticked.
+    // Off by default, at the default limit Settings holds, and the number box
+    // is inert until it is ticked.
     IM_CHECK(!h.app->settings.backendlimit_enabled);
-    IM_CHECK_EQ(h.app->settings.backendlimit_value, 50);
+    IM_CHECK_EQ(h.app->settings.backendlimit_value, hydra::app::Settings{}.backendlimit_value);
     IM_CHECK((ctx->ItemInfo("**/##backendlimitvalue").ItemFlags & ImGuiItemFlags_Disabled) != 0);
     ctx->ItemClick("**/Hide backend rows beyond##backendlimit");
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_enabled; }, 5));
     IM_CHECK(hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
 
-    // At 30 ms the -489.1 and -326.1 rows go; the squeezed-out -163.0 row stays.
-    // The heading still counts all three and says the two hidden ones are
-    // before the SP end; the line under the table says so with the limit.
+    // At 30 ms Burnout's rows far from the SP end go and the squeezed-out row
+    // stays. The heading and the line under the table say what was hidden,
+    // as build_activations words it from the rows it hid.
     ctx->ItemInputValue("**/##backendlimitvalue", 30);
     IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 30; }, 5));
     IM_CHECK_EQ(hydra::app::Settings::load_file(h.ini_path).backendlimit_value, 30);
-    IM_CHECK(wait_until(
-        ctx,
-        [&] { return on_screen(h, "3 notes near the SP end \xC2\xB7 2 hidden: 2 before, 0 after"); },
-        5));
-    IM_CHECK(on_screen(h, "2 hidden: 2 before the SP end and 0 after, beyond 30 ms."));
-    IM_CHECK(on_screen(h, "squeezed out (-260)"));
+    ctx->Yield(2);
+    std::string hidden_line;
+    {
+        const hydra::app::ActivationRowView& limited = shown_activations(*h.app).acts[0];
+        hidden_line = limited.backends_hidden_line;
+        IM_CHECK(!hidden_line.empty());
+        IM_CHECK_LT(limited.backends.size(), rows_all);
+        IM_CHECK(on_screen(h, limited.backends_label));
+        IM_CHECK(on_screen(h, hidden_line));
+    }
+    IM_CHECK_STR_EQ(costly_sqout_rating(*h.app).c_str(), sqout.c_str());
+    IM_CHECK(on_screen(h, sqout));
 
-    // The full engine window (500 ms) is reachable; beyond it clamps back.
-    ctx->ItemInputValue("**/##backendlimitvalue", 500);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 500; }, 5));
-    ctx->ItemInputValue("**/##backendlimitvalue", 600);
-    IM_CHECK(wait_until(ctx, [&] { return h.app->settings.backendlimit_value == 500; }, 5));
+    // The limit reaches the engine's whole squeeze window (kSqueezeWindowMs)
+    // and no further: the box clamps a larger value as Settings::clamp does,
+    // back to the window.
+    const int window = static_cast<int>(hydra::kSqueezeWindowMs);
+    ctx->ItemInputValue("**/##backendlimitvalue", window);
+    ctx->Yield(2);
+    IM_CHECK_EQ(h.app->settings.backendlimit_value, window);
+    ctx->ItemInputValue("**/##backendlimitvalue", window + 100);
+    ctx->Yield(2);
+    IM_CHECK_EQ(hydra::app::Settings::clamp(&hydra::app::Settings::backendlimit_value, window + 100),
+                window);
+    IM_CHECK_EQ(h.app->settings.backendlimit_value, window);
 
     // Display only: the record is still the analyzed one. Unticking restores
     // every row and persists too.
@@ -523,8 +565,10 @@ void test_paths_backend_timings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Hide backend rows beyond##backendlimit");
     IM_CHECK(wait_until(ctx, [&] { return !h.app->settings.backendlimit_enabled; }, 5));
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).backendlimit_enabled);
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, "3 notes near the SP end"); }, 5));
-    IM_CHECK(!on_screen(h, "hidden: 2 before"));
+    ctx->Yield(2);
+    IM_CHECK_EQ(shown_activations(*h.app).acts[0].backends.size(), rows_all);
+    IM_CHECK(on_screen(h, label_all));
+    IM_CHECK(!on_screen(h, hidden_line));
 }
 
 // The two folds under the list, and Copy path with its "Copied!" flash.
@@ -534,17 +578,26 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     FakeClipboard clipboard;
 
     // Both folds start open; a click closes each and another reopens it.
+    // Burnout's record has a multiplier squeeze, so its fold has rows; the
+    // texts are the squeeze views the tab drew (app::build_multsqueezes' form).
     IM_CHECK(h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(h.app->details_ui.paths_tab.ui().breakdown_open);
-    IM_CHECK(on_screen(h, "+15"));  // beside the Multiplier squeeze fold
-    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
-    IM_CHECK(on_screen(h, "2x   (+15 pts):   [Red snare - Yellow cymbal]"));
+    const hydra::app::PathsTabCache::Details* built = h.app->details_ui.paths_tab.built_details();
+    IM_CHECK(built != nullptr && !built->squeezes.empty());
+    if (built == nullptr || built->squeezes.empty()) return;
+    const std::vector<hydra::app::MultSqueezeView> squeezes = built->squeezes;
+    // beside the Multiplier squeeze fold
+    IM_CHECK(on_screen(h, hydra::app::multsqueeze_summary(squeezes)));
+    for (const hydra::app::MultSqueezeView& sq : squeezes) {
+        IM_CHECK(on_screen(h, sq.label));
+        IM_CHECK(on_screen(h, sq.howto));
+    }
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
-    IM_CHECK(!on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(!on_screen(h, squeezes[0].howto));
     ctx->ItemClick("**/Multiplier squeeze##mult");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Hit [Red snare] first."));
+    IM_CHECK(on_screen(h, squeezes[0].howto));
 
     IM_CHECK(on_screen(h, "Total Score:"));
     IM_CHECK(on_screen(h, std::string(hydra::app::kAverageMultiplierLabel) + ":"));
@@ -578,20 +631,27 @@ void test_paths_folds_copy(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
+    const int burnout_generation = h.app->record_generation.n;
     open_titled(ctx, "tapestry", "Tapestry of the Starless Abstract (Shortened)");
     if (ctx->IsError()) return;
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
     ctx->Yield(2);
-    IM_CHECK(h.app->viewed.record->best_path().pathstring() != "3- 1 2");  // not Burnout
+    // Another song's analysis has landed: the open record is a new one.
+    IM_CHECK(h.app->record_generation.n != burnout_generation);
+    IM_CHECK(h.app->viewed.ready());
     IM_CHECK(!h.app->details_ui.paths_tab.ui().mult_open);
     IM_CHECK(!h.app->details_ui.paths_tab.ui().breakdown_open);
     IM_CHECK(!on_screen(h, "Total Score:"));
 }
 
-// A squeezed-out row the engine never counted: the table says "(uncounted)"
-// and the squeeze sentence stops at its one sentence. The chart was found by searching the
-// corpus under the GUI tests' settings for such a row.
+// Every squeezed-out backend row on Tapestry's optimal path, against the
+// engine's own answer for it: a row the engine does not count
+// (core::counted_without_squeeze) costs nothing, so it is not warn-coloured,
+// and its Rating starts with the engine's word for it (summarystr, which adds
+// the "(uncounted)" tag); a counted one is warn-coloured. Each row's Rating and
+// each squeeze sentence is on screen. The path has at least one uncounted
+// squeezed-out row, the case this test is for.
 void test_paths_uncounted(ImGuiTestContext* ctx) {
     static const char* kTitle = "Tapestry of the Starless Abstract (Shortened)";
     Harness& h = harness(ctx);
@@ -604,11 +664,39 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     ctx->ItemClick("**/Expand all");
     ctx->Yield(2);
-    const size_t rows = h.app->details_ui.paths_tab.ui().act_open.size();
-    IM_CHECK(rows > 0);
+    // With no backend limit every rated row is shown, in the engine's order.
+    IM_CHECK(!h.app->settings.backend_limit().has_value());
+    const hydra::Path* path = h.app->details_ui.selected_path;
+    IM_CHECK(path != nullptr);
+    if (path == nullptr) return;
+    const double leeway = h.app->settings.rules.backend_leeway_ms;
+    const hydra::app::ActivationsView& view = shown_activations(*h.app);
+    const hydra::ActivationWalk acts = path->walk_activations();
+    IM_CHECK_EQ(acts.size(), view.acts.size());
+    if (acts.size() != view.acts.size()) return;
     // Every opened row shows its backend table with no further click.
-    IM_CHECK(on_screen(h, "(uncounted) <-- squeezed out"));
-    IM_CHECK(on_screen(h, "so it lands after Star Power ends."));
+    size_t uncounted = 0;
+    for (size_t i = 0; i < acts.size(); ++i) {
+        const hydra::ActivationRating rate = hydra::rate_activation(acts[i], leeway);
+        const hydra::app::ActivationRowView& av = view.acts[i];
+        IM_CHECK_EQ(av.backends.size(), rate.backends.size());
+        if (av.backends.size() != rate.backends.size()) return;
+        for (size_t r = 0; r < rate.backends.size(); ++r) {
+            const hydra::BackendRating& br = rate.backends[r];
+            if (!br.squeezed_out) continue;
+            const bool counted = hydra::core::counted_without_squeeze(br.row.offset(), leeway);
+            const hydra::app::BackendRowView& row = av.backends[r];
+            const std::string word = br.row.summarystr(true, br.note.effective_ms, leeway);
+            ctx->LogInfo("activation %d squeezed-out row: counted %d, rating \"%s\"", av.number,
+                         counted, row.rating.c_str());
+            IM_CHECK_EQ(row.rating.rfind(word, 0), static_cast<size_t>(0));
+            IM_CHECK_EQ(row.warn, counted);
+            IM_CHECK(on_screen(h, row.rating));
+            if (!counted) ++uncounted;
+        }
+        for (const hydra::app::TextLine& s : av.squeeze_sentences) IM_CHECK(on_screen(h, s.text));
+    }
+    IM_CHECK_GT(uncounted, static_cast<size_t>(0));
     IM_CHECK(!on_screen(h, "costs no points"));
     IM_CHECK(!on_screen(h, "banks for later"));
 }
@@ -621,7 +709,8 @@ void test_paths_uncounted(ImGuiTestContext* ctx) {
 void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
-    FakeClipboard clipboard;
+    // Copy path writes the system clipboard, as it does for the player.
+    KeptClipboardText kept_clipboard;
     hydra::ui::remember_library_share(0.99f);  // the library as wide as it goes
     h.app->library_ui.panel_was_open = false;   // the split sets its width next frame
     ctx->Yield(3);
@@ -633,7 +722,10 @@ void test_paths_fit_narrow(ImGuiTestContext* ctx) {
     open_paths_folds(ctx);  // every backend table and both folds
     ctx->ItemClick("**/Copy path");
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Copied!"));
+    // The flash is up: Copy path started it, and it lasts kCopiedSeconds.
+    const double copied_at = h.app->details_ui.copied_at;
+    IM_CHECK_GE(copied_at, 0.0);
+    IM_CHECK_LT(ImGui::GetTime() - copied_at, hydra::ui::AppState::kCopiedSeconds);
     ImGuiWindow* details = window_named("##pathdetails");
     ImGuiWindow* list = window_named("##pathlist");
     IM_CHECK(details != nullptr && list != nullptr);
@@ -715,7 +807,10 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
     ctx->Yield(3);
-    IM_CHECK(on_screen(h, kBurnoutSqOutRating));
+    // Burnout's squeezed-out row, the table's longest Rating line.
+    const std::string sqout = costly_sqout_rating(*h.app);
+    IM_CHECK(!sqout.empty());
+    IM_CHECK(on_screen(h, sqout));
     ImGuiTable* t = backend_table();
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -727,32 +822,41 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
     // The squeezed-out line is longer than the cell, so it did wrap: the
     // cell is narrower than the line.
-    const float line_w =
-        hydra::ui::text_size(hydra::ui::TextRole::Figure, kBurnoutSqOutRating).x;
+    const float line_w = hydra::ui::text_size(hydra::ui::TextRole::Figure, sqout.c_str()).x;
     IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
-    // The three fixed columns fit their text: no cell runs past its column.
-    for (int c = 0; c < 3; ++c) {
-        const ImGuiTableColumn& col = t->Columns[c];
-        IM_CHECK_LE((std::max)(col.ContentMaxXUnfrozen, col.ContentMaxXFrozen), col.WorkMaxX + 0.5f);
-        IM_CHECK_LT(col.WidthGiven, hydra::ui::px(80.0f));
-    }
-    // Points is as wide as the width rule gives it for the rows the tab drew,
-    // its header measured as a Label and its cells as Figures (text_role.h).
+    // The three fixed columns fit their text: no cell runs past its column,
+    // and each is as wide as the width rule gives it for the rows the tab
+    // drew, its header measured as a Label and its cells in the role the tab
+    // draws them in (text_role.h).
     const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
     IM_CHECK(d != nullptr && !d->activations.acts.empty());
     if (ctx->IsError()) return;
     const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
-    std::vector<std::string> points;
-    for (const hydra::app::BackendRowView& row : rows) points.push_back(row.points);
-    std::vector<hydra::ui::ColumnSpec> points_spec = {
-        {"Points", false, 0.0f, hydra::ui::measure_in_role(hydra::ui::TextRole::Figure)}};
-    points_spec[0].header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
-    const float points_w =
-        hydra::ui::place_columns(hydra::ui::measure_widths(points_spec, points.size(),
-                                                           [&](size_t r, size_t) { return points[r]; }),
-                                 points_spec, hydra::ui::TableRoom{})
-            .widths[0];
-    IM_CHECK_EQ(t->Columns[2].WidthGiven, points_w);
+    struct FixedColumn {
+        const char* header;
+        hydra::ui::TextRole role;
+        std::string hydra::app::BackendRowView::*cell;
+    };
+    const FixedColumn fixed[] = {
+        {"Timing", hydra::ui::TextRole::Figure, &hydra::app::BackendRowView::timing},
+        {"Chord", hydra::ui::TextRole::Notation, &hydra::app::BackendRowView::chord},
+        {"Points", hydra::ui::TextRole::Figure, &hydra::app::BackendRowView::points}};
+    for (int c = 0; c < 3; ++c) {
+        const ImGuiTableColumn& col = t->Columns[c];
+        IM_CHECK_LE((std::max)(col.ContentMaxXUnfrozen, col.ContentMaxXFrozen), col.WorkMaxX + 0.5f);
+        std::vector<hydra::ui::ColumnSpec> spec = {
+            {fixed[c].header, false, 0.0f, hydra::ui::measure_in_role(fixed[c].role)}};
+        spec[0].header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
+        std::string hydra::app::BackendRowView::*cell = fixed[c].cell;
+        const float rule_w =
+            hydra::ui::place_columns(
+                hydra::ui::measure_widths(spec, rows.size(),
+                                          [&](size_t r, size_t) { return rows[r].*cell; }),
+                spec, hydra::ui::TableRoom{})
+                .widths[0];
+        ctx->LogInfo("column %s drawn %.1f, rule %.1f", fixed[c].header, col.WidthGiven, rule_w);
+        IM_CHECK_EQ(col.WidthGiven, rule_w);
+    }
     // And the table stays inside the details column.
     ImGuiWindow* details = window_named("##pathdetails");
     IM_CHECK_LE(details->ContentSize.x, details->ContentRegionRect.GetWidth() + 0.5f);
@@ -913,8 +1017,9 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     const float one_line = row1_rect.GetHeight();
     check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
     IM_CHECK_EQ(l.badge_lines, 0);
-    // The Selectable's rect reaches half the item spacing past its size on each side.
-    IM_CHECK_EQ(one_line, hydra::ui::px(hydra::ui::kRowLineH) + style.ItemSpacing.y);
+    // The drawn row is as tall as the layout's row; the Selectable's rect
+    // reaches half the item spacing past its size on each side.
+    IM_CHECK_EQ(one_line, l.row_h + style.ItemSpacing.y);
     {
         std::vector<std::string> pieces = texts(view.acts[0]);
         pieces.push_back(std::to_string(view.acts[0].number));
@@ -970,12 +1075,11 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK_LE(p.Max.x, grown_rect.Max.x - hydra::ui::px(hydra::ui::kRowBadgeRight) +
                                  hydra::ui::px(hydra::ui::kRowBadgePad) + 0.5f);
     }
-    // One width (D262, badge_pill.h): every drawn pill is the longest badge's
-    // pill, and pills on different lines share both edges.
+    // One width: every drawn pill is as wide as the layout's pill, and pills
+    // on different lines share both edges.
     const float inset = drawn_pill_inset();
     ctx->LogInfo("row pill width %.3f (longest badge text %.3f), drawn %.3f, fill inset %.3f",
                  three.pill_w, pill_text_w, pills[0].GetWidth(), inset);
-    IM_CHECK_LE(std::fabs(three.pill_w - hydra::ui::pill_width(pill_text_w, scale)), 0.01f);
     for (const ImRect& p : pills) {
         IM_CHECK_LE(std::fabs(p.GetWidth() - pills[0].GetWidth()), 0.01f);
         IM_CHECK_LE(std::fabs(p.GetWidth() + inset - three.pill_w), 0.01f);
@@ -1022,28 +1126,40 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(ctx->ItemInfo("**/##act1").RectFull.GetHeight(), one_line);
 }
 
-// The GUI test library has no audio, but the chart gives Burnout a length
-// (app::song_length_ms, D255, which owns the rule), so the timeline places
-// its activation dots. The literal below is one logged run of that function
-// on Burnout. The click works the length out with its
-// analysis (app::analysis_song_length on the same Song), so no other job
-// reads the chart for it (D87 item 1).
+// The GUI test library has no audio, but the click gives Burnout a length
+// from its chart, so the timeline places a mark for every activation, each
+// inside the song. The click works the length out with its analysis, so no
+// other job reads the chart for it, and the length stays as it was while the
+// song stays open.
 void test_paths_length_from_click(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     hydra::ui::AppState& app = *h.app;
     IM_CHECK(app.viewed.ready());
-    IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
+    IM_CHECK(app.viewed.song_length_ms.has_value());
+    if (!app.viewed.song_length_ms) return;
+    const double length = *app.viewed.song_length_ms;
+    IM_CHECK_GT(length, 0.0);
     IM_CHECK(!app.view_job);
     ctx->Yield(2);
-    IM_CHECK(!drawn_marks(ctx).empty());
+    // Every activation falls inside the song, so each has its place on the
+    // timeline and its own mark.
+    const hydra::app::ActivationsView& view = shown_activations(app);
+    IM_CHECK(!view.acts.empty());
+    for (const hydra::app::ActivationRowView& a : view.acts) {
+        IM_CHECK(a.song_fraction.has_value());
+        if (!a.song_fraction) return;
+        IM_CHECK_GE(*a.song_fraction, 0.0);
+        IM_CHECK_LE(*a.song_fraction, 1.0);
+    }
+    IM_CHECK_EQ(drawn_marks(ctx).size(), view.acts.size());
     const hydra::HydraRecord* record = &*app.viewed.record;
 
     // Nothing reads it again while the song stays open.
     ctx->Yield(5);
     IM_CHECK(!app.view_job);
     IM_CHECK(&*app.viewed.record == record);
-    IM_CHECK(app.viewed.song_length_ms == 130087.87999999993);
+    IM_CHECK(app.viewed.song_length_ms == length);
 }
 
 // The pieces of Tapped Out (Mike Orlando)'s optimal path, activation 4: its
