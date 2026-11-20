@@ -28,23 +28,35 @@ using namespace hydra;
 
 // ---- parser cases -----------------------------------------------------------
 
+namespace {
+
+// The Preview time box's section line with the playhead on `tick`: the tick's
+// time on the song's own tempo map. The length is that same time, so the box
+// shows the playhead unclamped.
+std::string section_line_at(const Song& song, const app::PreviewScene& scene, int64_t tick) {
+    const double ms = song.timing().timecode(tick).ms();
+    return app::build_time_box(scene, ms, ms).section_line;
+}
+
+}  // namespace
+
 // Finding R7.7; D27; D253. The time box checks stay with the parse: the
 // Preview reads the parser's order, and a copy of this fixture in
 // test_preview_boxes.cpp would be a clone the single-owner scan refuses.
 TEST_CASE(".mid: practice sections come from the first EVENTS track only, and the time box "
           "names the one in force") {
     using namespace testmidi;
+    constexpr uint32_t kVerseTick = 960;    // the second EVENTS track's section
+    constexpr uint32_t kChorusTick = 1920;  // the first EVENTS track's second section
     const std::vector<uint8_t> tempo = concat({set_tempo(), end_of_track()});
     const std::vector<uint8_t> drums =
         concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()});
-    // First EVENTS track: Intro at 0, Chorus at 1920.
     const std::vector<uint8_t> events1 =
         concat({track_name("EVENTS"), text_event("[section Intro]"),
-                after(1920, text_event("[section Chorus]")), end_of_track()});
-    // Second EVENTS track: Verse at 960. Clone Hero reads only the first
-    // events track (MidiFile::events_track), so Verse is not a section.
+                after(kChorusTick, text_event("[section Chorus]")), end_of_track()});
+    // Clone Hero reads only the first events track (MidiFile::events_track).
     const std::vector<uint8_t> events2 =
-        concat({track_name("EVENTS"), after(960, text_event("[section Verse]")),
+        concat({track_name("EVENTS"), after(kVerseTick, text_event("[section Verse]")),
                 end_of_track()});
     const Song song =
         load_songbytes_mid(smf_tracks({tempo, drums, events1, events2}), ChartReading{});
@@ -52,14 +64,18 @@ TEST_CASE(".mid: practice sections come from the first EVENTS track only, and th
     REQUIRE(song.practice_sections.size() == 2);
     CHECK(song.practice_sections[0].name == "Intro");
     CHECK(song.practice_sections[1].name == "Chorus");
-    CHECK(song.practice_sections[1].tick == 1920);
+    CHECK(song.practice_sections[1].tick == kChorusTick);
 
-    // The time box names the section the playhead is in. At 120 BPM and 480
-    // ticks a beat, tick 1000 is 1041.67 ms (still Intro) and tick 2000 is
-    // 2083.33 ms (Chorus).
+    // The time box names Intro from its start up to the tick before Chorus,
+    // the second track's Verse tick included, and Chorus from its own tick.
     const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
-    CHECK(app::build_time_box(scene, 1041.7, 3000.0).section_line == "Section Intro");
-    CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Chorus");
+    const std::string intro = section_line_at(song, scene, 0);
+    const std::string chorus = section_line_at(song, scene, kChorusTick);
+    CHECK(intro.find(song.practice_sections[0].name) != std::string::npos);
+    CHECK(chorus.find(song.practice_sections[1].name) != std::string::npos);
+    CHECK(intro != chorus);
+    CHECK(section_line_at(song, scene, kVerseTick) == intro);
+    CHECK(section_line_at(song, scene, kChorusTick - 1) == intro);
 }
 
 // Block CR-24 on docs/clone-hero/01-reading-a-chart.md: the game's .mid reader
@@ -67,17 +83,21 @@ TEST_CASE(".mid: practice sections come from the first EVENTS track only, and th
 // the section before it.
 TEST_CASE(".mid: after [section _ENDOFSONG] the time box still names the section before it") {
     using namespace testmidi;
+    constexpr uint32_t kEndOfSongTick = 1920;
     const Song song = load_songbytes_mid(
         smf_tracks({concat({set_tempo(), end_of_track()}),
                     concat({track_name("PART DRUMS"), note_on(96, 100), end_of_track()}),
                     concat({track_name("EVENTS"), text_event("[section Intro]"),
-                            after(1920, text_event("[section _ENDOFSONG]")), end_of_track()})}),
+                            after(kEndOfSongTick, text_event("[section _ENDOFSONG]")),
+                            end_of_track()})}),
         ChartReading{});
     const app::PreviewScene scene = app::build_preview_scene(song, nullptr);
     REQUIRE(scene.sections.size() == 1);
-    // At 120 BPM and 480 ticks a beat, tick 2000 is 2083.33 ms, past the
-    // vetoed text at tick 1920.
-    CHECK(app::build_time_box(scene, 2083.4, 3000.0).section_line == "Section Intro");
+    // On the _ENDOFSONG tick and a beat past it, the line is the one Intro shows.
+    const std::string intro = section_line_at(song, scene, 0);
+    CHECK(intro.find(scene.sections[0].name) != std::string::npos);
+    CHECK(section_line_at(song, scene, kEndOfSongTick) == intro);
+    CHECK(section_line_at(song, scene, kEndOfSongTick + song.tick_resolution()) == intro);
 }
 
 // D252: Clone Hero plays a drum track named "PART DRUM" (is_drums_track_name
@@ -120,10 +140,22 @@ TEST_CASE(".chart: a modifier with no note under it is skipped") {
         testchart::chart_bytes(testchart::section("ExpertDrums", drums));
     REQUIRE_NOTHROW(load_songbytes_chart(data, ChartReading{}));
     const Song song = load_songbytes_chart(data, ChartReading{});
+    // No chord at tick 384: the lone cymbal marker made none.
     REQUIRE(song.sequence.size() == 2);
-    CHECK(song.sequence[0].chord.code() == ".n...");
+    // Tick 0 is red alone, a plain hit: no yellow, and the yellow markers
+    // changed nothing on the red.
+    const hydra::Chord& first = song.sequence[0].chord;
+    CHECK(first.count() == 1);
+    REQUIRE(first.at(NoteColor::Red).has_value());
+    CHECK_FALSE(first.at(NoteColor::Yellow).has_value());
+    CHECK_FALSE(first.at(NoteColor::Red)->is_cymbal());
+    CHECK_FALSE(first.at(NoteColor::Red)->is_dynamic());
+    // Tick 768 is a yellow note that keeps its real cymbal marker.
+    const hydra::Chord& second = song.sequence[1].chord;
     CHECK(song.sequence[1].timecode.ticks() == 768);
-    CHECK(song.sequence[1].chord.code() == "..N..");
+    CHECK(second.count() == 1);
+    REQUIRE(second.at(NoteColor::Yellow).has_value());
+    CHECK(second.at(NoteColor::Yellow)->is_cymbal());
 }
 
 // Finding R7.5; D27.
