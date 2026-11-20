@@ -1,0 +1,34 @@
+{
+  "rules": [
+    {
+      "question": "How is the Dynamic Hit Window row's label spelled?",
+      "owner": "kDynamicHitWindowLabel in src/app/path_view.h",
+      "owner_file": "src/app/path_view.h",
+      "owner_symbol": "kDynamicHitWindowLabel",
+      "date": "2026-11-19",
+      "decision": "ui-and-display.md, Confirmed: \"change Clone Hero to Dynamic Hit Window and mock it up.\"",
+      "added_by": "C089-review",
+      "pattern": "\"Dynamic Hit Window",
+      "anchor": "Dynamic Hit Window",
+      "must_match": [
+        "ImGui::TextUnformatted(\"Dynamic Hit Window:\");",
+        "const std::string label = \"Dynamic Hit Window: \" + text;"
+      ],
+      "must_not_match": [
+        "ImGui::TextUnformatted(kDynamicHitWindowLabel);",
+        "// One Dynamic Hit Window row's text from the owner's ends, in the owner's"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/app/path_view.h",
+          "line_text": "inline constexpr const char* kDynamicHitWindowLabel = \"Dynamic Hit Window:\";",
+          "why": "the constant, the owner"
+        }
+      ],
+      "scope": [
+        "src"
+      ],
+      "note": "The screen's label above a Dynamic Hit Window row reads the one constant, so no other file under src types the user's words again. The test that the constant starts with the user's words is in tests/test_activation_rows.cpp."
+    }
+  ]
+}
