@@ -720,6 +720,24 @@ std::optional<int64_t> Activation::window_end_tick() const {
     return d;
 }
 
+std::optional<double> Activation::meter_bars_at(int64_t tick, const SongTiming& timing,
+                                                bool just_before) const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    // The steps are in time order, so the one in force is the last one reached.
+    size_t step = 0;
+    for (size_t k = 1; k < sp_end_steps.size(); ++k) {
+        const int64_t at = sp_end_steps[k].tick;
+        if (just_before ? at >= tick : at > tick) break;
+        step = k;
+    }
+    const int64_t end_tick = sp_end_steps[step].end_tick;
+    // Never below empty: between an end in force and a late phrase's chord
+    // past it, the tick is past that end.
+    const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -
+                            timing.measures_at_tick_f(static_cast<double>(tick));
+    return std::max(0.0, measures / static_cast<double>(kMeasuresPerSpBar));
+}
+
 namespace {
 
 // Which note did the SP cap last pin, at or before step `last`? The tick of

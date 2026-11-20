@@ -667,8 +667,11 @@ struct Activation {
     int skips() const { return static_cast<int>(skipped_fill_ticks.size()); }
 
     // Read from sp_end_steps; see each body in model.cpp.
-    //   deact_tick()             - the deactivation node D: where this
-    //                              window's SP ends, every extension included.
+    //   deact_tick()             - the deactivation node D, the last stored
+    //                              step's end: the node every backend row's
+    //                              offset was measured against (the search's
+    //                              copy-out in search/engine.cpp says so). Where
+    //                              SP ends as played is window_end_tick().
     //   clamp_tick()             - the collecting note the SP cap last pinned
     //                              the end to (ADR 0013); unset if none.
     //   collected_phrase_ticks() - every phrase chord the gauge received while
@@ -680,9 +683,19 @@ struct Activation {
     // chord when core::after_sp_end says it is not after deact_tick(), since
     // set_sqout treats every chord past it as hit after SP ended; otherwise
     // deact_tick(). The search asks the same function of the same two ticks
-    // (SqueezeChoice::late). deact_tick() stays the stored end the search,
-    // the replay and the press schedule read.
+    // (SqueezeChoice::late).
     std::optional<int64_t> window_end_tick() const;
+    // Bars of SP left in the meter at `tick` while this window runs: the
+    // measures from `tick` to the SP end in force there (the last step at or
+    // before `tick`, or strictly before it when `just_before`, so a step's
+    // own tick can be read from either side), two to a bar, never below
+    // empty. The first step stands for every tick before it. It does not stop
+    // at window_end_tick(): on an early squeeze-out SP ends with bars still in
+    // the meter, and the caller drops them there (docs/clone-hero/
+    // 05-star-power.md, SP-25). Unset with no stored step. The Preview's gauge
+    // reads every level inside a window here.
+    std::optional<double> meter_bars_at(int64_t tick, const SongTiming& timing,
+                                        bool just_before = false) const;
     std::optional<int64_t> clamp_tick() const;           // the last Clamped step's tick
     std::vector<int64_t> collected_phrase_ticks() const; // every step after the first
     std::optional<int64_t> nominal_end() const;          // the first step's end
