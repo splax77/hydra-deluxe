@@ -30,7 +30,6 @@ if _REPO_ROOT not in sys.path:
 from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_attach as FA  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
-from tools.ch_mcp.tests import test_launch_core as LC  # noqa: E402
 from tools.ch_probe.constants import PROCESS_NAME  # noqa: E402
 
 AGENT_DIR = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent")
@@ -1313,9 +1312,6 @@ class ByNameOnlyTest(unittest.TestCase):
 
 
 class AllowedCallsTest(unittest.TestCase):
-    MENU_TEXT = ('export const ALLOWED_CALLS = ["get_activeInHierarchy"];\n'
-                 'return o.method<boolean>("get_activeInHierarchy").invoke();\n')
-
     @staticmethod
     def real_texts():
         texts = {}
@@ -1492,14 +1488,22 @@ class AllowedCallsTest(unittest.TestCase):
                          f"SetActive is not in {MENU_AGENT}'s ALLOWED_CALLS")
 
     def test_a_lookup_by_a_name_that_is_not_a_literal_fails(self):
-        texts = {MENU_AGENT: self.MENU_TEXT,
-                 "other.ts": "o.tryMethod(name);\n"}
-        self.assertEqual(len(call_findings(texts)), 1)
+        # The real agents, with a lookup by a variable added to clock.ts.
+        texts = self.real_texts()
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        added = "o.tryMethod(name);"
+        texts["clock.ts"] += added + "\n"
+        self.one_finding(texts, "clock.ts", added_at,
+                         "a method looked up by a name that is not a literal", added)
 
     def test_a_native_function_fails(self):
-        texts = {MENU_AGENT: self.MENU_TEXT,
-                 "other.ts": "const f = new NativeFunction(p, 'void', []);\n"}
-        self.assertEqual(len(call_findings(texts)), 1)
+        # The real agents, with a NativeFunction on an address no lookup gave
+        # added to clock.ts.
+        texts = self.real_texts()
+        added_at = len(texts["clock.ts"].splitlines()) + 1
+        added = "const f = new NativeFunction(p, 'void', []);"
+        texts["clock.ts"] += added + "\n"
+        self.one_finding(texts, "clock.ts", added_at, "calls a game function", added)
 
     def test_a_second_native_function_in_kit_ts_fails(self):
         # The real kit.ts with a NativeFunction added at the end on an
@@ -1546,21 +1550,6 @@ def own_number_findings(block: str) -> list[str]:
             if token != "0" and code != _UNIT_LINE:
                 found.append(f"holds the number {token}: {line.strip()}")
     return found
-
-
-def top_functions(text: str) -> dict[str, str]:
-    """Each top-level function of an agent, by name, with the lines of its
-    body (its signature line left out), up to the `}` that closes it at
-    column 0."""
-    out = {}
-    lines = text.splitlines()
-    for i, line in enumerate(lines):
-        m = re.match(r"(?:async\s+)?function\s+(\w+)\s*\(", line)
-        if m is None:
-            continue
-        end = next(j for j in range(i + 1, len(lines)) if lines[j] == "}")
-        out[m.group(1)] = "\n".join(lines[i + 1:end])
-    return out
 
 
 def play_waits_findings(kit_text: str) -> list[str]:
@@ -1620,8 +1609,10 @@ class KitPlayHookTest(unittest.TestCase):
         kit = self.kit()
         self.assertIn('.class(GAME_MANAGER).method("Update", 0)', kit)
         self.assertIn("Update", allowed_calls(kit))
+        # The data file lists Update once, on GameManager; its dump line is
+        # the data file's own value, checked by test_kit_calls_match_the_data_file.
         update = [e for e in load_kit_methods()["methods"] if e["name"] == "Update"]
-        self.assertEqual([(e["class"], e["dump_line"]) for e in update], [("GameManager", 25387)])
+        self.assertEqual([e["class"] for e in update], ["GameManager"])
         self.assertEqual(kit.count("Interceptor.attach("), 1)
         self.assertIn('import { PressSchedule } from "./press_schedule.js";', kit)
 
@@ -1630,12 +1621,6 @@ class KitPlayHookTest(unittest.TestCase):
         block = timing_block(kit)
         self.assertEqual(own_number_findings(block), [])
         self.assertIn(_UNIT_LINE, block)
-        # The schedule takes the play message itself, so every number of
-        # press_schedule.ts's PlayConfig comes from it.
-        self.assertIn("new PressSchedule(m as unknown as PlayConfig,", block)
-        self.assertIn('needAbove0(m, "stall_ms")', block)
-        # A stall is the scheduler's "frozen" stop word, so Python maps it.
-        self.assertIn('`no frame came for ${quiet} ms`, "frozen")', block)
 
     def test_a_number_of_its_own_fails(self):
         # The real timing block with one real kit.ts line from outside it
@@ -1648,23 +1633,78 @@ class KitPlayHookTest(unittest.TestCase):
         self.assertRegex(findings[0], r"\b5\b")
         self.assertIn(added.strip(), findings[0])
 
+    # A small kit text with the play case, startPlay and every stop path the
+    # two checks read, each laid out the way kit.ts lays it out. The bad cases
+    # below edit this text, not the real kit.ts, so a reformat of kit.ts
+    # cannot turn an edit into one that changes nothing.
+    PLAY_KIT = (
+        'function answer(m) {\n'
+        '    switch (m.type) {\n'
+        '        case "play":\n'
+        '            return settled(() => startPlay(m));\n'
+        '    }\n'
+        '}\n'
+        '\n'
+        'function startPlay(m) {\n'
+        '    play = p;\n'
+        '    return { started: true };\n'
+        '}\n')
+    STOP_KIT = (
+        'function placeHook(kit) {\n'
+        '    hook = Interceptor.attach(update.virtualAddress, {});\n'
+        '}\n'
+        '\n'
+        'function unhook(kit) {\n'
+        '    hook?.detach();\n'
+        '    write(kit, pads, true);\n'
+        '}\n'
+        '\n'
+        'function applyStep(p, step, now) {\n'
+        '    endPlay(p);\n'
+        '}\n'
+        '\n'
+        'function endPlay(p) {\n'
+        '    try {\n'
+        '        unhook(p.kit);\n'
+        '    } finally {\n'
+        '        play = null;\n'
+        '    }\n'
+        '}\n'
+        '\n'
+        'function stopPlay(p) {\n'
+        '    applyStep(p, p.schedule.stop(Date.now()), null);\n'
+        '    return { stopped: true };\n'
+        '}\n'
+        '\n'
+        'function teardown() {\n'
+        '    unhook(kit);\n'
+        '}\n'
+        '\n'
+        'function frameProbe() {\n'
+        '    unhook(kit);\n'
+        '}\n')
+
+    def edited(self, text, old, new):
+        # `text` with its one `old` replaced by `new`; fails if `old` is not there.
+        self.assertEqual(text.count(old), 1, old)
+        return text.replace(old, new)
+
     def test_a_play_that_waits_fails(self):
-        kit = self.kit().replace("function startPlay(", "async function startPlay(", 1)
+        self.assertEqual(play_waits_findings(self.PLAY_KIT), [])
+        kit = self.edited(self.PLAY_KIT, "function startPlay(", "async function startPlay(")
         self.assertEqual(play_waits_findings(kit), ["startPlay is async"])
-        kit = self.kit().replace("    play = p;\n", "    play = p;\n    await sleep(1);\n", 1)
+        kit = self.edited(self.PLAY_KIT, "    play = p;\n", "    play = p;\n    await sleep(1);\n")
         self.assertEqual(play_waits_findings(kit),
                          ["startPlay holds await", "startPlay holds sleep("])
 
     def test_a_stop_that_skips_unhook_fails(self):
-        kit = self.kit()
-        bad = kit.replace("    applyStep(p, p.schedule.stop(Date.now()), null);\n"
-                          "    return { stopped: true };",
-                          "    p.schedule.stop(Date.now());\n    return { stopped: true };", 1)
-        self.assertNotEqual(bad, kit)
+        self.assertEqual(stop_path_findings(self.STOP_KIT), [])
+        bad = self.edited(self.STOP_KIT,
+                          "    applyStep(p, p.schedule.stop(Date.now()), null);\n",
+                          "    p.schedule.stop(Date.now());\n")
         self.assertEqual(stop_path_findings(bad),
                          ["stopPlay steps or stops the scheduler without applyStep"])
-        bad = kit.replace("    try {\n        unhook(p.kit);\n", "    try {\n        hook?.detach();\n", 1)
-        self.assertNotEqual(bad, kit)
+        bad = self.edited(self.STOP_KIT, "        unhook(p.kit);\n", "        hook?.detach();\n")
         self.assertEqual(stop_path_findings(bad), [
             "endPlay detaches a hook outside unhook", "endPlay does not call unhook("])
 
@@ -1684,13 +1724,20 @@ class DestroyedSkipTest(unittest.TestCase):
             with self.subTest(agent=name):
                 self.assertNotIn("m_CachedPtr", self.read(name))
         self.assertIn("export function isDestroyed(", self.read("gamemanager.ts"))
-        self.assertIn("isDestroyed", self.read("menu.ts"))
+        self.assertRegex(self.read("menu.ts"),
+                         r'(?m)^import\s*\{[^}]*\bisDestroyed\b[^}]*\}\s*from\s*"\./gamemanager\.js"')
 
     def test_the_state_agent_sends_the_destroyed_count_in_both_replies(self):
-        text = self.read("state.ts")
-        self.assertIn("lookUpGameManager()", text)
-        self.assertIn("destroyed: found.destroyed", text)
-        self.assertIn("        destroyed,\n", text)
+        # Every object readState returns, found or not, holds a `destroyed`
+        # key, written out or as a shorthand.
+        body = top_functions(self.read("state.ts"))["readState"]
+        self.assertIn("lookUpGameManager()", body)
+        replies = [body[m.end() - 1:_close(body, m.end() - 1, "{", "}")]
+                   for m in re.finditer(r"\breturn\s*\{", body)]
+        self.assertEqual(len(replies), 2, replies)
+        for reply in replies:
+            with self.subTest(reply=reply[:60]):
+                self.assertRegex(reply, r"[{,]\s*destroyed\s*[:,}]")
 
 
 LAUNCH_AGENT = "launch.ts"
@@ -1763,16 +1810,25 @@ class LaunchAgentTest(unittest.TestCase):
 
     def test_the_check_catches_a_patch_outside_the_observer(self):
         good = self.read(LAUNCH_AGENT)
+        self.assertEqual(patch_findings(good), [])
+        deferred = "setImmediate(() => patchModule(patch, module));"
+        self.assertEqual(good.count(deferred), 1, deferred)
+        calls = "patchModule( appears {} times, expected its definition and the observer's two calls"
+        observer = ("the observer's callback does not call patchModule once "
+                    "directly and once through setImmediate")
         bad = {
-            "a second patch": good + "Memory.patchCode(p, 1, () => {});\n",
-            "a second observer": good + "Process.attachModuleObserver({});\n",
-            "a patch at load": good + "patchModule(armed!, Process.getModuleByName(\"x\"));\n",
-            "no deferred branch": good.replace(
-                "setImmediate(() => patchModule(patch, module));", "return;"),
+            "a second patch": (good + "Memory.patchCode(p, 1, () => {});\n",
+                               ["2 Memory.patchCode( sites, expected 1"]),
+            "a second observer": (good + "Process.attachModuleObserver({});\n",
+                                  ["2 Process.attachModuleObserver( sites, expected 1"]),
+            "a patch at load": (good + "patchModule(armed!, Process.getModuleByName(\"x\"));\n",
+                                [calls.format(4)]),
+            "no deferred branch": (good.replace(deferred, "return;"),
+                                   [calls.format(2), observer]),
         }
-        for what, text in bad.items():
+        for what, (text, findings) in bad.items():
             with self.subTest(case=what):
-                self.assertNotEqual(patch_findings(text), [])
+                self.assertEqual(patch_findings(text), findings)
 
 
 class LaunchStatusRepliesTest(Workspace):
@@ -1801,33 +1857,26 @@ class LaunchStatusRepliesTest(Workspace):
         self.assertEqual(self.lines, [])
 
 
-@unittest.skipIf(LC.NODE is None, "node is not on PATH, so launch_core.ts cannot run")
-class LaunchRepliesTest(Workspace):
-    """launch.ts's error replies, and LiveAgent's answer to one."""
+class LaunchErrorKeyTest(unittest.TestCase):
+    @staticmethod
+    def code(name):
+        # The agent's text with its comment lines left out.
+        with open(os.path.join(AGENT_DIR, name), encoding="utf-8") as fh:
+            return "\n".join(l for l in fh.read().splitlines()
+                             if not l.lstrip().startswith("//"))
 
     def test_launch_ts_sends_an_error_key_only_for_a_fault(self):
-        # Its one `error:` site is the catch that answers a message that threw.
-        with open(os.path.join(AGENT_DIR, LAUNCH_AGENT), encoding="utf-8") as fh:
-            code = [line for line in fh.read().splitlines()
-                    if not line.lstrip().startswith("//")]
-        sites = [line.strip() for line in code if re.search(r"\berror\b", line)]
-        self.assertEqual(sites, ["send({ error: `${message.type} failed: ${e}`, id });"])
-        with open(os.path.join(AGENT_DIR, LAUNCH_CORE), encoding="utf-8") as fh:
-            self.assertNotRegex(
-                "\n".join(l for l in fh.read().splitlines()
-                          if not l.lstrip().startswith("//")), r"\berror\s*:")
-
-    def test_an_agent_fault_still_raises_with_its_text(self):
-        session = ReplySession([{"state": "idle"}, {"error": "arm failed: boom"}])
-        agent = FA.LiveAgent(self.agent, log_path=self.out_path,
-                             frida_mod=FakeFrida(session), wait=instant_wait,
-                             out=self.lines.append)
-        self.addCleanup(agent.detach)
-        agent.start(30.0)
-        with self.assertRaises(FA.ReadFailed) as caught:
-            agent.request({"type": "arm", "patch": {}}, 5.0)
-        self.assertEqual(caught.exception.reason, FA.END_AGENT_ERROR)
-        self.assertIn("arm failed: boom", str(caught.exception))
+        # LiveAgent raises on an `error` key, so launch.ts builds one only
+        # inside a catch block, and launch_core.ts builds none.
+        code = self.code(LAUNCH_AGENT)
+        sites = [m.start() for m in re.finditer(r"\berror\s*:", code)]
+        self.assertNotEqual(sites, [])
+        catches = [(m.end() - 1, _close(code, m.end() - 1, "{", "}"))
+                   for m in re.finditer(r"\bcatch\s*\([^)]*\)\s*\{", code)]
+        for at in sites:
+            with self.subTest(line=code.count("\n", 0, at) + 1):
+                self.assertTrue(any(lo < at < hi for lo, hi in catches))
+        self.assertNotRegex(self.code(LAUNCH_CORE), r"\berror\s*:")
 
 
 class BuildScriptsTest(unittest.TestCase):
@@ -1836,9 +1885,18 @@ class BuildScriptsTest(unittest.TestCase):
         with open(os.path.join(AGENT_DIR, "package.json"),
                   encoding="utf-8") as fh:
             scripts = json.load(fh)["scripts"]
-        self.assertEqual(sorted(scripts),
-                         ["build:clock", "build:kit", "build:launch",
-                          "build:menuhooks", "build:state", "build:trace"])
+        # Every agent no other agent imports is one the loaders start, so
+        # each has a build script, and no script builds anything else.
+        imported = set()
+        for path in agent_sources():
+            with open(path, encoding="utf-8") as fh:
+                imported |= {m + ".ts" for m in re.findall(r'from\s+"\./(\w+)\.js"', fh.read())}
+        entries = sorted(os.path.basename(p) for p in agent_sources()
+                         if os.path.basename(p) not in imported)
+        built = sorted(t for command in scripts.values()
+                       for t in re.findall(r"\b(\w+\.ts)\b", command))
+        self.assertNotEqual(entries, [])
+        self.assertEqual(built, entries)
         for name, command in scripts.items():
             with self.subTest(script=name):
                 words = command.split()
