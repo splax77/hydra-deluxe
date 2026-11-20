@@ -6,6 +6,7 @@
 #include "doctest.h"
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <exception>
@@ -23,6 +24,7 @@
 #include "app/user_messages.h"  // kDatabaseReadSentence, old_library_set_aside_notice, library_scan_blocked_notice
 #include "app_state_fixtures.h"
 #include "core/error_kind.h"
+#include "corpus_util.h"  // first_chart_with_paths, charts_with_paths
 #include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // save_batch_record
 #include "library_fixtures.h"  // library_entry
@@ -48,21 +50,106 @@ using hydra::ui::GenerationWatcher;
 using hydra::ui::ViewedSong;
 using testwait::wait_until;
 
+// ---- a library the app's own scan made ---------------------------------------
+
+namespace {
+
+// An AppState on the scratch store whose library is its own scan of the
+// corpus (scratch_settings' chart folders), read in by a frame as the
+// window's frame would read it.
+std::unique_ptr<AppState> app_on_scanned_corpus(const ScratchPaths& paths) {
+    auto app =
+        std::make_unique<AppState>(scratch_settings(), std::make_unique<RecordStore>(paths.db));
+    app->start_scan();
+    REQUIRE(app->scan_job != nullptr);
+    wait_until([&] { return app->scan_job->snapshot().finished; }, "the scan to finish");
+    const hydra::ui::ScanProgress done = app->scan_job->snapshot();
+    REQUIRE_FALSE(done.cancelled);
+    REQUIRE(done.charts_found > 0);
+    app->tick_library(0.0);
+    REQUIRE(app->library_shown_count() == static_cast<size_t>(done.charts_found));
+    return app;
+}
+
+// Files the engine's analysis of corpus chart `chart` under the app's
+// settings, the way a song's own analysis stores it: under the hash the scan
+// gives the chart's file. The analysis must have been made under the app's
+// settings.
+void save_engine_result(AppState& app, const corpus::ChartWithPaths& chart) {
+    app.store->save(hydra::store::prepare_record(hydra::app::hash_chart_file(chart.chart),
+                                                 app.settings.profile(), chart.result.record));
+}
+
+// The first corpus chart with paths under scratch_settings, analyzed once per
+// run.
+const corpus::ChartWithPaths& scratch_chart_with_paths() {
+    static const corpus::ChartWithPaths chart =
+        corpus::first_chart_with_paths(scratch_settings().to_analysis_settings());
+    return chart;
+}
+
+// Writes the app's own scan of the corpus to `paths.db`, with the engine's
+// result for one corpus chart stored. Returns how many rows the library holds.
+size_t seed_scanned_corpus(const ScratchPaths& paths) {
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    REQUIRE(app->settings.profile() == scratch_settings().profile());
+    save_engine_result(*app, scratch_chart_with_paths());
+    return app->library_shown_count();
+}
+
+// The rows on screen, top to bottom, as chart files.
+std::vector<std::string> shown_notespaths(const AppState& app) {
+    std::vector<std::string> out;
+    for (size_t i = 0; i < app.library_shown_count(); ++i)
+        out.push_back(app.library_row_at(i).entry.notespath);
+    return out;
+}
+
+// Where chart file `notespath` sits in `order`; order.size() when it is not
+// there.
+size_t place_of(const std::vector<std::string>& order, const std::string& notespath) {
+    for (size_t i = 0; i < order.size(); ++i)
+        if (order[i] == notespath) return i;
+    return order.size();
+}
+
+// Whether `title` holds only letters, digits and spaces, so a search for it
+// in quotes is one phrase with no filter in it.
+bool plain_title(const std::string& title) {
+    if (title.empty()) return false;
+    for (const char c : title)
+        if (!std::isalnum(static_cast<unsigned char>(c)) && c != ' ') return false;
+    return true;
+}
+
+}  // namespace
+
 // ---- the search --------------------------------------------------------------
 
-// The search runs in memory over every chart; a word matches inside a title.
+// The search runs in memory over every chart; a song's own title finds it.
 TEST_CASE("set_search narrows the library and the match count") {
     ScratchPaths paths("appstate_search");
-    std::unique_ptr<AppState> app = app_on(paths);
-    app->set_search("hash017");
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    const size_t all = app->library_shown_count();
+    size_t pick = all;
+    for (size_t i = all; i-- > 0;)
+        if (plain_title(app->library_row_at(i).title)) {
+            pick = i;
+            break;
+        }
+    REQUIRE_MESSAGE(pick < all, "no corpus chart has a title of plain words");
+    const hydra::ui::LibraryRow wanted = app->library_row_at(pick);
+
+    app->set_search("\"" + wanted.title + "\"");
     CHECK(app->library.searching());
-    CHECK(app->library_shown_count() == 1);
-    CHECK(app->library.counts().all == 1);
-    CHECK(app->library_row_at(0).entry.md5 == "hash017");
-    CHECK(app->library_matches().size() == 1);
+    const size_t found = app->library_shown_count();
+    CHECK(found < all);
+    CHECK(app->library.counts().all == found);
+    CHECK(app->library_matches().size() == found);
+    CHECK(place_of(shown_notespaths(*app), wanted.entry.notespath) < found);
     app->set_search("");
     CHECK_FALSE(app->library.searching());
-    CHECK(app->library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app->library_shown_count() == all);
 }
 
 // "stars:9" is not a filter Hydra understands, so the search narrows nothing:
@@ -78,25 +165,35 @@ TEST_CASE("set_search: a filter that does not parse leaves the query empty") {
 
 // ---- the rows a batch refreshes ---------------------------------------------
 
-// Ruling 14: after a batch the library rows refresh, and the open panel is
-// not analyzed again: it keeps what its own click showed (D48 Q16 restated).
+// After a batch the library rows refresh, and the open panel is not analyzed
+// again: it keeps what its own click showed. The chart's file is gone before
+// the click, so the click showed it missing.
 TEST_CASE("a batch result for the open chart refreshes its row, not the panel") {
     ScratchPaths paths("appstate_batchpanel");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const ChartLibraryEntry open = library_entry(5);
+    const ChartLibraryEntry open = corpus_chart("batchpanel");
+    // The engine's result for the chart, made before its file goes.
+    const hydra::app::AnalysisResult result =
+        hydra::app::analyze_chart_file(open.notespath, Settings{}.to_analysis_settings());
+    REQUIRE_FALSE(result.record.paths.empty());
+    std::filesystem::remove(std::filesystem::u8path(open.notespath));
+    std::unique_ptr<AppState> app = app_with(paths, {open});
     app->select(open, hydra::ui::SelectionSource::Click);
     REQUIRE(app->viewed.state == ViewedSong::State::FileMissing);
 
     GenerationWatcher records;
     records.changed(app->record_generation);
 
-    // The result arrives the way a batch files one (see display_fixtures.h).
-    hydra::test::save_batch_record(*app->store, open.md5, Settings{}.sp_cap);
-    run_redo_batch_over(*app, open.md5);
+    // The batch files that result; with the file gone, its analyzer hands
+    // back the result the engine made from the file.
+    start_redo_batch(*app, [result](const std::string&, const hydra::app::AnalysisSettings&,
+                                    const std::function<void(float)>&) { return result; });
+    wait_batch_finished(*app);
+    REQUIRE(app->batch_job->snapshot().failed == 0);
 
     app->tick_library(0.0);  // the batch's last refresh
     app->tick(0.0);
-    CHECK(app->library_row_at(0).status == RecordStatus::Ready);
+    CHECK(row_of(*app, open.md5).status == RecordStatus::Ready);
+    CHECK(row_of(*app, open.md5).summary.has_scored_best_path());
     CHECK(app->view_job == nullptr);
     CHECK(app->viewed.state == ViewedSong::State::FileMissing);
     CHECK_FALSE(records.changed(app->record_generation));
@@ -112,18 +209,30 @@ TEST_CASE("a batch result for an open Ready chart changes its row and keeps the 
     REQUIRE(app->viewed.ready());
     const size_t shown_paths = app->viewed.record->paths.size();
     REQUIRE(shown_paths > 0);
+    const std::string label_before = row_of(*app, song.md5).best_label();
+
+    // The engine's result for the same chart with one more note, as a batch
+    // that read the chart after an edit would file it.
+    const hydra::app::AnalysisResult edited = hydra::app::analyze_chart_file(
+        write_corpus_chart("click_batchredo_edited", true), app->settings.to_analysis_settings());
+    REQUIRE_FALSE(edited.record.paths.empty());
 
     GenerationWatcher records;
     records.changed(app->record_generation);
 
-    // An empty result (no paths, so no score) under the same profile.
-    hydra::test::save_batch_record(*app->store, song.md5, app->settings.profile());
-    run_redo_batch_over(*app, song.title);
+    start_redo_batch(*app, [edited](const std::string&, const hydra::app::AnalysisSettings&,
+                                    const std::function<void(float)>&) { return edited; });
+    wait_batch_finished(*app);
+    REQUIRE(app->batch_job->snapshot().failed == 0);
 
     app->tick_library(0.0);  // the batch's last refresh
     app->tick(0.0);
     CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
-    CHECK_FALSE(row_of(*app, song.md5).summary.has_scored_best_path());
+    CHECK(row_of(*app, song.md5).best_label() != label_before);
+    // The row reads what the store now holds, as a second app's read of it.
+    AppState second(Settings{}, std::make_unique<RecordStore>(paths.db));
+    second.refresh_library_row(song.md5);
+    CHECK(row_of(*app, song.md5).best_label() == row_of(second, song.md5).best_label());
     CHECK(app->view_job == nullptr);
     REQUIRE(app->viewed.ready());
     CHECK(app->viewed.record->paths.size() == shown_paths);
@@ -541,17 +650,32 @@ TEST_CASE("a stopped batch's stored results reach their rows, then the list sort
     CHECK(shown(*app) == std::vector<int>{1, 0, 2, 3});
 }
 
-// The user's wording: for a single opened song the row stays put until the
-// next re-sort.
+// One song's result, stored while no batch runs, shows on its row, and the
+// row stays where it sits until the next sort.
 TEST_CASE("one song's stored result keeps its row in place, with no batch running") {
     ScratchPaths paths("appstate_rowhold");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
-    save_scored(*app, 3, 5000);
-    REQUIRE(app->refresh_library_row(library_entry(3).md5));
-    CHECK(shown(*app) == kTitleOrder);
-    CHECK(row_of(*app, library_entry(3).md5).best_label().find("5,000") == 0);
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
+    app->library.set_sort(hydra::ui::LibrarySort::BestPath, false);
+    const std::vector<std::string> before = shown_notespaths(*app);
+    // Two charts with paths: at most one of them is the top row, so a sort
+    // would lift the lower one, the only row with a score, to the top.
+    const std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(app->settings.to_analysis_settings(), 2);
+    REQUIRE(charts.size() == 2);
+    const corpus::ChartWithPaths& lower =
+        place_of(before, charts[0].chart) > place_of(before, charts[1].chart) ? charts[0]
+                                                                              : charts[1];
+    const size_t at = place_of(before, lower.chart);
+    REQUIRE(at > 0);
+    REQUIRE(at < before.size());
+
+    save_engine_result(*app, lower);
+    REQUIRE(app->refresh_library_row(hydra::app::hash_chart_file(lower.chart)));
+    CHECK(shown_notespaths(*app) == before);
+    CHECK(app->library_row_at(at).status == RecordStatus::Ready);
+    CHECK(app->library_row_at(at).summary.has_scored_best_path());
     app->tick_library(0.0);  // no batch, so no end to sort at
-    CHECK(shown(*app) == kTitleOrder);
+    CHECK(shown_notespaths(*app) == before);
 }
 
 TEST_CASE("a settings change's re-read of the summaries sorts a held order at once") {
@@ -595,14 +719,17 @@ void start_batch_until_stopped(AppState& app) {
 // the selected row.
 TEST_CASE("is_selected_row: the selected row is the one with its notespath, not its md5") {
     ScratchPaths paths("appstate_selrow");
-    std::unique_ptr<AppState> app = app_on(paths);  // library_entry(0) is selected
-    ChartLibraryEntry twin = library_entry(0);
-    twin.notespath = "C:\\other\\hash000\\notes.chart";
-    twin.rootfolder = "C:\\other";
-    CHECK(app->is_selected_row(library_entry(0)));
+    // One corpus chart copied into two song folders.
+    const ChartLibraryEntry first = corpus_chart("selrow_first");
+    const ChartLibraryEntry twin = corpus_chart("selrow_twin");
+    REQUIRE(first.md5 == twin.md5);
+    REQUIRE(first.notespath != twin.notespath);
+    std::unique_ptr<AppState> app = app_with(paths, {first, twin});
+    app->selected = first;
+    CHECK(app->is_selected_row(first));
     CHECK_FALSE(app->is_selected_row(twin));
     app->selected.reset();
-    CHECK_FALSE(app->is_selected_row(library_entry(0)));
+    CHECK_FALSE(app->is_selected_row(first));
 }
 
 // Every way to start a scan is refused while a batch runs, and the status
@@ -625,26 +752,31 @@ TEST_CASE("a scan cannot start during a batch, and the status line says so") {
 
 namespace {
 
-// The hash the rows hold for a chart edited before the scan.
-const std::string kHashBeforeEdit = "hash-before-the-edit";
-
 // A library read before a scan that has since replaced the chart table, with
 // no frame run in between, so the rows are older than the store. `kept` is
-// what the scan wrote for a chart still in the folder, edited before the scan
-// (its row holds kHashBeforeEdit); `removed` is a row the scan dropped.
+// what the scan wrote for a chart still in the folder, edited before the
+// scan; `before_edit` is the row the library holds for it, the same folder's
+// chart before the edit. `removed` is a corpus chart outside the scanned
+// folder, so a row the scan dropped.
 struct RowsOlderThanScan {
     ChartLibraryEntry kept;
-    ChartLibraryEntry removed = library_entry(1);
+    ChartLibraryEntry before_edit;
+    ChartLibraryEntry removed;
     std::unique_ptr<AppState> app;
 };
 
 RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::string& tag) {
     RowsOlderThanScan s;
+    // The edit takes out the note the first copy has at the top of its drums.
+    s.before_edit = corpus_chart(tag, /*extra_note=*/true);
     s.kept = corpus_chart(tag);
-    ChartLibraryEntry before_edit = s.kept;
-    before_edit.md5 = kHashBeforeEdit;
-    before_edit.sig = "sig-before-the-edit";  // so the scan reads the file again
-    s.app = app_with(paths, {before_edit, s.removed});
+    REQUIRE(s.kept.notespath == s.before_edit.notespath);
+    REQUIRE(s.kept.md5 != s.before_edit.md5);
+    REQUIRE(s.kept.sig != s.before_edit.sig);  // so the scan reads the file again
+    s.removed = corpus::scanned_entry(corpus::first_chart_with_suffix(".mid"), "Removed");
+    REQUIRE(s.removed.md5 != s.kept.md5);
+    REQUIRE(s.removed.md5 != s.before_edit.md5);
+    s.app = app_with(paths, {s.before_edit, s.removed});
     s.app->settings.chartfolders = {s.kept.rootfolder};
     s.app->start_scan();
     REQUIRE(s.app->scan_job != nullptr);
@@ -662,7 +794,7 @@ RowsOlderThanScan rows_older_than_scan(const ScratchPaths& paths, const std::str
 TEST_CASE("a click right after a scan, before any frame, opens the chart the scan kept") {
     ScratchPaths paths("appstate_scanclick");
     RowsOlderThanScan s = rows_older_than_scan(paths, "scan_click");
-    s.app->select(row_of(*s.app, kHashBeforeEdit).entry, hydra::ui::SelectionSource::Click);
+    s.app->select(row_of(*s.app, s.before_edit.md5).entry, hydra::ui::SelectionSource::Click);
     REQUIRE(s.app->selected.has_value());
     CHECK(s.app->details_open());
     CHECK(s.app->selected->notespath == s.kept.notespath);
@@ -725,20 +857,31 @@ TEST_CASE("any_job_running lists every background job") {
 TEST_CASE("the confirm counts every library row, and rows with a result from the store") {
     ScratchPaths paths("appstate_confirm");
     auto store = std::make_unique<RecordStore>(paths.db);
-    const ChartLibraryEntry first = library_entry(1);
-    ChartLibraryEntry copy = library_entry(1);
-    copy.notespath = "C:\\other\\hash001\\notes.chart";
-    copy.rootfolder = "C:\\other";
-    store->rebuild_chart_library({first, copy, library_entry(2)});
+    // One corpus chart in two song folders, and the same chart with one more
+    // note, so a chart of its own.
+    const ChartLibraryEntry first = corpus_chart("confirm_first");
+    const ChartLibraryEntry copy = corpus_chart("confirm_copy");
+    const ChartLibraryEntry other = corpus_chart("confirm_other", /*extra_note=*/true);
+    REQUIRE(copy.md5 == first.md5);
+    REQUIRE(other.md5 != first.md5);
+    store->rebuild_chart_library({first, copy, other});
     AppState app(Settings{}, std::move(store));
     REQUIRE(app.library_shown_count() == 3);
 
-    // Stored behind the library's back: no reload.
-    hydra::test::save_batch_record(*app.store, first.md5, Settings{}.sp_cap);
+    // The engine's result for the chart, stored behind the library's back: no
+    // reload.
+    save_engine_result(
+        app, corpus::ChartWithPaths{first.notespath,
+                                    hydra::app::analyze_chart_file(
+                                        first.notespath, app.settings.to_analysis_settings())});
     app.open_batch_confirm();
 
     CHECK(app.batch_scope_charts() == app.library_shown_count());
-    CHECK(app.batch_scope_with_result() == 2);  // both copies of chart 1
+    int64_t copies_of_first = 0;
+    for (size_t i = 0; i < app.library_shown_count(); ++i)
+        if (app.library_row_at(i).entry.md5 == first.md5) ++copies_of_first;
+    REQUIRE(copies_of_first == 2);  // the two song folders holding the chart
+    CHECK(app.batch_scope_with_result() == copies_of_first);
 }
 
 // D115: the Analyze button runs the rows on screen, the search and the chip
@@ -916,7 +1059,7 @@ TEST_CASE("an AppState closed during its startup open stops the open") {
 
 TEST_CASE("a library read that fails after the startup open is the status line's problem") {
     ScratchPaths paths("appstate_startreadfail");
-    seeded_store(paths.db).reset();
+    REQUIRE(seed_scanned_corpus(paths) > 0);
     // Dropped once the store is open (it would make a missing table again),
     // at the chart list's first report, before any row is read.
     const ScopedHook gate(
@@ -1034,16 +1177,18 @@ TEST_CASE("an AppState on a current library leaves no notice and asks for no sca
 
 namespace {
 
-// The seeded library on `paths`, its scan stamp set to one this build does
-// not accept, with the corpus as the ini's chart folders plus `extra_folders`.
-void seed_out_of_date_library(const ScratchPaths& paths,
-                              const std::vector<std::string>& extra_folders = {}) {
+// The scanned corpus library on `paths` (seed_scanned_corpus), its scan stamp
+// set to one this build does not accept, with the corpus as the ini's chart
+// folders plus `extra_folders`. Returns how many rows the library holds.
+size_t seed_out_of_date_library(const ScratchPaths& paths,
+                                const std::vector<std::string>& extra_folders = {}) {
+    const size_t charts = seed_scanned_corpus(paths);
     Settings s = scratch_settings();
     for (const std::string& f : extra_folders) s.chartfolders.push_back(f);
     REQUIRE(s.save());
-    seeded_store(paths.db).reset();
     hydra::test::exec_on_file(paths.db,
                               "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    return charts;
 }
 
 }  // namespace
@@ -1076,7 +1221,7 @@ TEST_CASE("an AppState on an empty library asks for no scan") {
 // next open asks again; a finished one makes it current.
 TEST_CASE("a cancelled scan on open leaves the library out of date; a finished one clears it") {
     ScratchPaths paths("appstate_rescancancel");
-    seed_out_of_date_library(paths);
+    const size_t seeded = seed_out_of_date_library(paths);
     AppState app;
     app.wait_store_open();
     REQUIRE(app.request_scan);
@@ -1091,7 +1236,7 @@ TEST_CASE("a cancelled scan on open leaves the library out of date; a finished o
     CHECK(app.scan_job->snapshot().cancelled);
     CHECK(app.store->chart_library_out_of_date());
     app.tick_library(0.0);
-    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.library_shown_count() == seeded);
     app.scan_job.reset();
 
     app.start_scan();
@@ -1123,7 +1268,7 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     ScratchPaths paths("appstate_rescanmissing");
     const std::string missing = testtemp::temp_path("appstate_rescanmissing", "_nofolder");
     REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
-    seed_out_of_date_library(paths, {missing});
+    const size_t seeded = seed_out_of_date_library(paths, {missing});
     int64_t records_before = 0;
     {
         RecordStore before(paths.db);
@@ -1141,7 +1286,7 @@ TEST_CASE("an out-of-date library with a chart folder that cannot be read starts
     CHECK(app.status_is_problem);
     CHECK(app.status_message ==
           hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::Open));
-    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.library_shown_count() == seeded);
     CHECK(app.store->record_count() == records_before);
 }
 
@@ -1153,10 +1298,10 @@ TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and
     ScratchPaths paths("appstate_scanmissing");
     const std::string missing = testtemp::temp_path("appstate_scanmissing", "_nofolder");
     REQUIRE_FALSE(std::filesystem::exists(std::filesystem::u8path(missing)));
+    const size_t seeded = seed_scanned_corpus(paths);
     Settings s = scratch_settings();
     s.chartfolders.push_back(missing);
     REQUIRE(s.save());
-    seeded_store(paths.db).reset();
     int64_t records_before = 0;
     {
         RecordStore before(paths.db);
@@ -1176,27 +1321,50 @@ TEST_CASE("start_scan with a chart folder that cannot be read starts no scan and
     CHECK(app.status_message ==
           hydra::app::library_scan_blocked_notice(missing, hydra::app::ScanAsker::User));
     app.tick_library(0.0);
-    CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
+    CHECK(app.library_shown_count() == seeded);
     CHECK(app.store->record_count() == records_before);
 }
 
 TEST_CASE("the startup screen's line names what the open is doing") {
     using hydra::ui::StoreOpenProgress;
-    StoreOpenProgress p;
-    CHECK(p.label() == "Opening your library...");
-    p.step = StoreOpenProgress::Step::ReadingCharts;
-    CHECK(p.label() == "Reading your charts...");
-    p.step = StoreOpenProgress::Step::ReadingResults;
-    CHECK(p.label() == "Reading your results...");
+    using Step = StoreOpenProgress::Step;
+    // The line for `step`, on an upgrading file or not.
+    const auto line = [](Step step, bool upgrading) {
+        StoreOpenProgress p;
+        p.step = step;
+        p.upgrading = upgrading;
+        return p.label();
+    };
+    const std::string opening = line(Step::Opening, false);
+    const std::string charts = line(Step::ReadingCharts, false);
+    const std::string results = line(Step::ReadingResults, false);
+    // Each step of a plain open has a line of its own.
+    CHECK_FALSE(opening.empty());
+    CHECK_FALSE(charts.empty());
+    CHECK_FALSE(results.empty());
+    CHECK(opening != charts);
+    CHECK(opening != results);
+    CHECK(charts != results);
+    // The conversion's steps happen only on an upgrading file; anywhere else
+    // they read as the open.
+    CHECK(line(Step::ConvertingRecords, false) == opening);
+    CHECK(line(Step::ReadingSavedPaths, false) == opening);
 
-    // An upgrade names the library read's steps in the same words.
-    p.upgrading = true;
-    p.step = StoreOpenProgress::Step::ConvertingRecords;
-    CHECK(p.label() == "Updating the results table...");
-    p.step = StoreOpenProgress::Step::ReadingCharts;
-    CHECK(p.label() == "Reading your charts...");
-    p.step = StoreOpenProgress::Step::ReadingResults;
-    CHECK(p.label() == "Reading your results...");
+    // An upgrade names the library read's steps in the same words, and each
+    // conversion step in words of its own.
+    CHECK(line(Step::Opening, true) == opening);
+    CHECK(line(Step::ReadingCharts, true) == charts);
+    CHECK(line(Step::ReadingResults, true) == results);
+    const std::string converting = line(Step::ConvertingRecords, true);
+    const std::string saved_paths = line(Step::ReadingSavedPaths, true);
+    CHECK(saved_paths == hydra::ui::kReadingSavedPathsLabel);
+    for (const std::string& own : {converting, saved_paths}) {
+        CHECK_FALSE(own.empty());
+        CHECK(own != opening);
+        CHECK(own != charts);
+        CHECK(own != results);
+    }
+    CHECK(converting != saved_paths);
 }
 
 // D72 item 4: the Analyze-library click asks the store which charts already
@@ -1204,7 +1372,7 @@ TEST_CASE("the startup screen's line names what the open is doing") {
 // opens, and no batch starts.
 TEST_CASE("Analyze library on a database that fails shows the sentence and opens no confirm") {
     ScratchPaths paths("appstate_confirmfail");
-    std::unique_ptr<AppState> app = app_on(paths);
+    std::unique_ptr<AppState> app = app_on_scanned_corpus(paths);
     hydra::test::exec_on_file(paths.db, "DROP TABLE records");
 
     app->open_batch_confirm();
