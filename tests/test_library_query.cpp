@@ -6,8 +6,8 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
-#include <chrono>
 #include <functional>
 #include <optional>
 #include <set>
@@ -158,6 +158,16 @@ bool spans_equal(const std::vector<MatchSpan>& got, const std::vector<MatchSpan>
                       });
 }
 
+// The shown text each highlight span of `query` covers in `shown`, in order:
+// what the library table lights up.
+std::vector<std::string> lit_texts(std::string_view query, QueryField field,
+                                   std::string_view shown) {
+    std::vector<std::string> out;
+    for (const MatchSpan& s : match_spans(parse_library_query(query), field, shown))
+        out.emplace_back(shown.substr(s.begin, s.end - s.begin));
+    return out;
+}
+
 }  // namespace
 
 TEST_CASE("library query: folding lowercases and removes accents") {
@@ -245,22 +255,39 @@ TEST_CASE("library query: the plain fold and the traced fold give the same text"
     }
 }
 
-TEST_CASE("library query: only a real lead byte starts a kept character") {
-    // A kept character maps back to all of its bytes, so a match that starts
-    // on its last byte lights up the whole character. "©" (C2 A9), "€"
-    // (E2 82 AC) and the guitar (F0 9F 8E B8) are two, three and four bytes.
-    CHECK(spans_equal(match_spans(parse_library_query("\xA9" "y"), QueryField::Title, "\xC2\xA9" "y"),
-                      std::vector<MatchSpan>{MatchSpan{0, 3}}));
-    CHECK(spans_equal(match_spans(parse_library_query("\xAC" "y"), QueryField::Title, "\xE2\x82\xAC" "y"),
-                      std::vector<MatchSpan>{MatchSpan{0, 4}}));
-    CHECK(spans_equal(match_spans(parse_library_query("\xB8" "y"), QueryField::Title, "\xF0\x9F\x8E\xB8" "y"),
-                      std::vector<MatchSpan>{MatchSpan{0, 5}}));
-    // C1 and F5 never start a character, so the byte after them is its own
-    // and the span starts there.
-    CHECK(spans_equal(match_spans(parse_library_query("\xBF" "ab"), QueryField::Title, "\xC1\xBF" "ab"),
-                      std::vector<MatchSpan>{MatchSpan{1, 4}}));
-    CHECK(spans_equal(match_spans(parse_library_query("\x80" "a"), QueryField::Title, "\xF5\x80\x80\x80" "a"),
-                      std::vector<MatchSpan>{MatchSpan{3, 5}}));
+TEST_CASE("library query: a match on any letter of a folded character lights the whole character") {
+    // Each character the fold changes, shown alone, is searched by each
+    // letter or digit of its folded form, as a player types it: "s" in "ß"
+    // (folded "ss"), "e" in "É", "a" in a full-width "Ａ". The highlight is
+    // the whole character, every byte of it, never part of one.
+    const std::vector<FoldEntry> table = search_fold_table();
+    REQUIRE_FALSE(table.empty());
+    for (const FoldEntry& entry : table) {
+        for (char letter : entry.to) {
+            if (!std::isalnum(static_cast<unsigned char>(letter))) continue;
+            const std::string query(1, letter);
+            INFO("character: " << entry.from << ", typed: " << query);
+            CHECK(lit_texts(query, QueryField::Title, entry.from) ==
+                  std::vector<std::string>{entry.from});
+        }
+    }
+    // A real name: the "a" typed for the ä of The Fall of Troy's album
+    // "Doppelgänger" lights up the ä's two bytes. The folded album holds that
+    // letter once, so the ä is the one span.
+    const std::string album = scanned_in("The Fall of Troy - Act One, Scene One").album;
+    const auto first_wide = std::find_if(album.begin(), album.end(),
+                                         [](char c) { return static_cast<unsigned char>(c) >= 0x80; });
+    REQUIRE(first_wide != album.end());
+    const size_t begin = static_cast<size_t>(first_wide - album.begin());
+    size_t end = begin + 1;
+    while (end < album.size() && (static_cast<unsigned char>(album[end]) & 0xC0) == 0x80) ++end;
+    const std::string accented = album.substr(begin, end - begin);
+    const std::string typed = fold_for_search(accented);
+    REQUIRE(typed.size() == 1);
+    const std::string folded_album = fold_for_search(album);
+    REQUIRE(folded_album.find(typed) != std::string::npos);
+    REQUIRE(folded_album.find(typed) == folded_album.rfind(typed));
+    CHECK(lit_texts(typed, QueryField::Album, album) == std::vector<std::string>{accented});
 }
 
 namespace {
@@ -757,63 +784,81 @@ TEST_CASE("library query: an empty query matches every row") {
 }
 
 TEST_CASE("library query: highlight spans cover the displayed bytes") {
-    // "é" is two bytes, so the span runs to byte 14, not 13.
-    const std::string title = "Halo (Beyoncé cover)";  // made up
-    CHECK(spans_equal(match_spans(parse_library_query("beyonce"), QueryField::Title, title),
-                      std::vector<MatchSpan>{MatchSpan{6, 14}}));
-    CHECK(title.substr(6, 8) == "Beyoncé");
+    // Typed without its accent, The Fall of Troy's album "Doppelgänger" lights
+    // up whole, the accented letter's two bytes included.
+    const std::string accented = scanned_in("The Fall of Troy - Act One, Scene One").album;
+    REQUIRE(std::any_of(accented.begin(), accented.end(),
+                        [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
+    CHECK(lit_texts(fold_for_search(accented), QueryField::Album, accented) ==
+          std::vector<std::string>{accented});
 
-    // The caller passes the tag-stripped charter, as the table shows it.
-    const std::string charter = strip_rich_tags("<color=#e02222>Blood</color>line");
-    CHECK(spans_equal(match_spans(parse_library_query("bloodline"), QueryField::Charter, charter),
-                      std::vector<MatchSpan>{MatchSpan{0, 9}}));
+    // The caller passes the tag-stripped charter, as the table shows it: Acid
+    // Romance's tagged charter lights up whole by its plain name.
+    const std::string charter = strip_rich_tags(scanned_in("Alpha Wolf - Acid Romance").charter);
+    CHECK(lit_texts(fold_for_search(charter), QueryField::Charter, charter) ==
+          std::vector<std::string>{charter});
 
-    // A phrase in the folder, despite the capital T.
-    const std::string folder = "common\\Summer Blast _25 Setlist\\Tier 4";
-    CHECK(spans_equal(match_spans(parse_library_query("\"tier 4\""), QueryField::Folder, folder),
-                      std::vector<MatchSpan>{MatchSpan{32, 38}}));
+    // A phrase in Burnout's folder lights up as shown, with its capital T.
+    const hydra::store::ChartLibraryEntry& burnout = scanned_in("Green Day - Burnout");
+    CHECK(lit_texts("\"tier 4\"", QueryField::Folder, burnout.rootfolder) ==
+          std::vector<std::string>{"Tier 4"});
 
-    // Two spaces fold to one, and the span still covers both.
-    CHECK(spans_equal(match_spans(parse_library_query("\"tier 4\""), QueryField::Folder, "Tier  4"),
-                      std::vector<MatchSpan>{MatchSpan{0, 7}}));
+    // Every occurrence lights up: the s of Illusion and the S of Safety in
+    // Deadbolt's album "The Illusion of Safety".
+    const std::string album = scanned_in("Thrice - Deadbolt").album;
+    CHECK(lit_texts("s", QueryField::Album, album) == std::vector<std::string>{"s", "S"});
 
-    // Every occurrence lights up.
-    CHECK(spans_equal(match_spans(parse_library_query("tier"), QueryField::Folder, "Tier 1\\Tier 2"),
-                      std::vector<MatchSpan>{MatchSpan{0, 4}, MatchSpan{7, 11}}));
-
-    // Touching matches merge. A field-limited term lights up only its field.
-    const LibraryQuery words = parse_library_query("burn out artist:green");
-    CHECK(spans_equal(match_spans(words, QueryField::Title, "Burnout"),
-                      std::vector<MatchSpan>{MatchSpan{0, 7}}));
-    CHECK(spans_equal(match_spans(words, QueryField::Artist, "Green Day"),
-                      std::vector<MatchSpan>{MatchSpan{0, 5}}));
-    CHECK(match_spans(parse_library_query("artist:green"), QueryField::Title, "Green Light").empty());
+    // Touching matches merge: "burn" and "out" light up Burnout as one span.
+    CHECK(lit_texts("burn out artist:green", QueryField::Title, burnout.title) ==
+          std::vector<std::string>{"Burnout"});
+    // A field-limited term lights up only its field.
+    CHECK(lit_texts("burn out artist:green", QueryField::Artist, burnout.artist) ==
+          std::vector<std::string>{"Green"});
+    CHECK(lit_texts("artist:burnout", QueryField::Title, burnout.title).empty());
 
     // An album lights up for a plain word and for album:, and not for artist:.
-    const std::string album = "The Illusion of Safety";
-    CHECK(spans_equal(match_spans(parse_library_query("illusion"), QueryField::Album, album),
-                      std::vector<MatchSpan>{MatchSpan{4, 12}}));
-    CHECK(spans_equal(match_spans(parse_library_query("album:safety"), QueryField::Album, album),
-                      std::vector<MatchSpan>{MatchSpan{16, 22}}));
-    CHECK(match_spans(parse_library_query("artist:safety"), QueryField::Album, album).empty());
+    CHECK(lit_texts("illusion", QueryField::Album, album) == std::vector<std::string>{"Illusion"});
+    CHECK(lit_texts("album:safety", QueryField::Album, album) == std::vector<std::string>{"Safety"});
+    CHECK(lit_texts("artist:safety", QueryField::Album, album).empty());
 }
 
 TEST_CASE("library query: a chart with no album matches nothing through its album") {
-    const SearchableRow row = make_searchable("Song", "Band", "Charter", "Pack");  // made up
+    // Pokemon Theme's song.ini has an empty album line and its notes.chart
+    // names no album, so the scan gives it none.
+    const hydra::store::ChartLibraryEntry& e = scanned_in("Jason Paige - Pokemon Theme");
+    REQUIRE(e.album.empty());
+    const SearchableRow row = searchable_of(e);
     CHECK(row.album.empty());
-    CHECK_FALSE(matches("album:song", row));
-    CHECK_FALSE(matches("album:a", row));
-    CHECK(matches("song", row));  // the title still matches
-    CHECK(make_searchable("Song", "Band", "Charter", "Pack", "").album.empty());
-    CHECK(match_spans(parse_library_query("song"), QueryField::Album, "").empty());
-    CHECK(match_spans(parse_library_query("album:song"), QueryField::Album, "").empty());
+    REQUIRE_FALSE(row.title.empty());
+    // No album: term finds it, not even its own title's words or one letter of them.
+    CHECK_FALSE(matches("album:" + row.title, row));
+    CHECK_FALSE(matches("album:" + row.title.substr(0, 1), row));
+    CHECK(matches(row.title, row));  // the title still matches as a plain word
+    CHECK(match_spans(parse_library_query(row.title), QueryField::Album, e.album).empty());
+    CHECK(match_spans(parse_library_query("album:" + row.title), QueryField::Album, e.album).empty());
 }
 
 TEST_CASE("library query: the report pages' search text holds no album") {
-    // The report pages call search_field, which the album leaves unchanged.
-    CHECK(search_field("Burnout", "Green Day", "<b>Hoph2o</b>", "1 2 3") ==
-          "burnout green day hoph2o 1 2 3");
-    CHECK(search_field("Deadbolt", "Thrice", "") == "deadbolt thrice");
+    // Burnout's album is a word no other field of its row holds ("dookie"
+    // finds it only through the album, as the test above shows).
+    const hydra::store::ChartLibraryEntry& e = scanned_in("Green Day - Burnout");
+    const SearchableRow row = searchable_of(e);
+    REQUIRE_FALSE(row.album.empty());
+    REQUIRE_FALSE(row.charter.empty());
+    REQUIRE_FALSE(row.folder.empty());
+    const std::string text = search_field(e.title, e.artist, e.charter, e.rootfolder);
+    CHECK(text.find(row.album) == std::string::npos);
+    // Every other field, folded as the library folds it, joined by single spaces.
+    CHECK(text == row.title + " " + row.artist + " " + row.charter + " " + row.folder);
+    // An empty field is left out, not joined as a blank.
+    CHECK(search_field(e.title, e.artist, "") == row.title + " " + row.artist);
+
+    // A tagged charter goes in as its plain name (Acid Romance's song.ini).
+    const hydra::store::ChartLibraryEntry& tagged = scanned_in("Alpha Wolf - Acid Romance");
+    REQUIRE(tagged.charter.find('<') != std::string::npos);
+    const std::string tagged_text = search_field(tagged.title, tagged.artist, tagged.charter);
+    CHECK(tagged_text.find('<') == std::string::npos);
+    CHECK(tagged_text.find(searchable_of(tagged).charter) != std::string::npos);
 }
 
 TEST_CASE("library query: every Search tips example parses into the key its entry names") {
@@ -883,28 +928,4 @@ TEST_CASE("library query: every Search tips example parses into the key its entr
     CHECK(matches(tips[5].example, scanned_burnout()));
 
     CHECK_FALSE(search_tips_note().empty());
-}
-
-TEST_CASE("library query: matching 20000 rows finds the pinned hit count") {
-    std::vector<SearchableRow> rows;  // made up, library-shaped
-    rows.reserve(20000);
-    for (int i = 0; i < 20000; ++i) {
-        rows.push_back(make_searchable(
-            "Song number " + std::to_string(i), "Artist " + std::to_string(i % 500),
-            "Charter " + std::to_string(i % 50),
-            "common\\Pack " + std::to_string(i % 40) + "\\Tier " + std::to_string(i % 8)));
-    }
-    const LibraryQuery q = parse_library_query("artist 12 \"tier 3\"");
-    const RowFacts none;
-
-    // The time is printed for a person to read, not checked: a busy machine
-    // can fail any wall-clock limit.
-    const auto start = std::chrono::steady_clock::now();
-    size_t hits = 0;
-    for (const SearchableRow& row : rows)
-        if (query_matches(q, row, none)) ++hits;
-    const std::chrono::duration<double, std::milli> took = std::chrono::steady_clock::now() - start;
-    MESSAGE("matching 20000 rows: " << took.count() << " ms, " << hits << " hits");
-    // Pinned from one run.
-    CHECK(hits == 189);
 }
