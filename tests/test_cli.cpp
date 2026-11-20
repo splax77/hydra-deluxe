@@ -28,6 +28,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/report.h"  // nothing_under_settings
 #include "app/user_messages.h"  // kDatabaseOpenSentence
 #include "chart_text.h"           // chart_text, section, line
 #include "cli/batch_scope.h"
@@ -594,9 +595,13 @@ TEST_CASE("hydra_fillcompare reads the tool's own hydra.db without --db") {
     INFO(empty.output);
     CHECK(empty.exit_code == 1);
     CHECK(!contains(empty.output, "Warning"));
-    CHECK(contains(empty.output,
-                   "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, "
-                   "SP cap 4). Analyze with these settings, or change them."));
+    {
+        const hydra::app::Settings defaults{};  // what the sandboxed exe reads
+        const hydra::store::Profile profile =
+            defaults.profile_with_fills(hydra::FillDeadlineRule::Ch11);
+        CHECK(contains(empty.output, hydra::app::nothing_under_settings(
+                                         profile.chartmode, profile.cap.exact)));
+    }
     CHECK(!contains(empty.output, "No records to compare"));
 }
 
