@@ -1655,7 +1655,8 @@ void check_edge_files(const app::BatchRun& run, bool expert) {
     for (const std::string& f : listed) got[f] = read_edge(f, run);
     std::set<std::string> named;
 
-    auto of = [&](const char* f) -> const EdgeResult& {
+    // File names are std::string so doctest prints the name, not an address.
+    auto of = [&](const std::string& f) -> const EdgeResult& {
         const auto it = got.find(f);
         REQUIRE_MESSAGE(it != got.end(), f << " is not in list.txt");
         named.insert(f);
@@ -1666,24 +1667,24 @@ void check_edge_files(const app::BatchRun& run, bool expert) {
     REQUIRE_MESSAGE(chart_base.parsed(), chart_base.fail);
     REQUIRE_MESSAGE(mid_base.parsed(), mid_base.fail);
 
-    auto same_as = [&](const char* f, const EdgeResult& base) {
+    auto same_as = [&](const std::string& f, const EdgeResult& base) {
         const EdgeResult& r = of(f);
         CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
         CHECK_MESSAGE(r.hash == base.hash, f << " parses to a different song than its base");
     };
-    auto differs_from = [&](const char* f, const EdgeResult& base) {
+    auto differs_from = [&](const std::string& f, const EdgeResult& base) {
         const EdgeResult& r = of(f);
         CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
         CHECK_MESSAGE(r.hash != base.hash, f << " parses to the same song as its base");
     };
-    auto parses = [&](const char* f) {
+    auto parses = [&](const std::string& f) {
         const EdgeResult& r = of(f);
         CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
     };
-    auto same_failure = [&](const char* a, const char* b) {
+    auto same_failure = [&](const std::string& a, const std::string& b) {
         CHECK_MESSAGE(of(a).fail == of(b).fail, a << " and " << b << " fail differently");
     };
-    auto other_failure = [&](const char* a, const char* b) {
+    auto other_failure = [&](const std::string& a, const std::string& b) {
         CHECK_MESSAGE(of(a).fail != of(b).fail, a << " and " << b << " fail the same way");
     };
 
@@ -1768,14 +1769,11 @@ void check_edge_files(const app::BatchRun& run, bool expert) {
     CHECK(fails_with<MidiError>(of("m04_oversize_meta_other.mid")));
     CHECK(fails_with<MidiError>(of("m05_oversize_meta_drums.mid")));
     same_failure("m04_oversize_meta_other.mid", "m05_oversize_meta_drums.mid");
-    // Format 0 holds one track: Expert finds no drum notes in it, as in the
-    // unclosed chart section; Hard reads its own.
-    if (expert) {
-        CHECK(fails_with<NoNotesError>(of("m06_format0.mid")));
-        same_failure("m06_format0.mid", "c15_unterminated_drums.chart");
-    } else {
-        differs_from("m06_format0.mid", mid_base);
-    }
+    // Format 0 holds one track, and the reader takes no instrument from the
+    // first track (D253, midi.h), so neither difficulty has drum notes. Expert
+    // fails as the unclosed chart section does.
+    CHECK(fails_with<NoNotesError>(of("m06_format0.mid")));
+    if (expert) same_failure("m06_format0.mid", "c15_unterminated_drums.chart");
     CHECK(fails_with<MidiError>(of("m07_smpte.mid")));
     other_failure("m07_smpte.mid", "m04_oversize_meta_other.mid");
     differs_from("m08_truncated.mid", mid_base);
