@@ -539,8 +539,14 @@ class SnapshotEngineLinesTest(Rig):
         # code/6142/note_hit_dynamics_20DE770.asm lines 91 to 102), and the
         # MIDI pump writes a velocity as the axis 0.5 + velocity / 254 (page
         # 07, IN-86, code/6142/midi_pump_21E420.asm lines 137 to 142). So the
-        # ghost value is the axis of the top velocity under the threshold.
-        threshold = 64
+        # ghost value is the axis of the top velocity under the threshold. The
+        # threshold is the one a real run read from the game
+        # (testdata/ch_runs/ls-o1-run1/replies.txt, copied from
+        # hydra-data/ch-mcp-runs/2026-11-06/ls-o1-run1/replies.txt).
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o1-run1", "replies.txt")
+        with open(path, encoding="utf-8") as f:
+            threshold = int(re.search(r"^dynamics threshold: (\d+) ", f.read(),
+                                      re.MULTILINE).group(1))
         top_velocity = 127
         ghost_velocity = threshold - 1
         expected = 0.5 + ghost_velocity / (2 * top_velocity)
