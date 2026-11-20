@@ -464,7 +464,7 @@ double chart_text_ms(const std::map<std::string, std::vector<ChartTextLine>>& se
     double ms = 0;
     for (auto it = bpm.begin(); it != bpm.end() && it->first < tick; ++it) {
         const auto next = std::next(it);
-        const int64_t until = next == bpm.end() ? tick : std::min(next->first, tick);
+        const int64_t until = next == bpm.end() ? tick : (std::min)(next->first, tick);
         const double beats = static_cast<double>(until - it->first) / static_cast<double>(resolution);
         ms += beats * 60000.0 / it->second;
     }
