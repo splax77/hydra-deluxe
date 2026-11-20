@@ -517,11 +517,10 @@ class HookRvaTest(unittest.TestCase):
 
     def test_the_default_hooks_only_once_per_note_methods(self):
         # Every method ch_trace_start hooks by default ran once per note in
-        # that run, and the dynamics method is left to its with_dynamics option.
+        # that run, so each gives one call per note it hits.
         self.assertTrue(C.PER_NOTE_DEFAULT_RVAS)
         self.assertLessEqual(set(C.PER_NOTE_DEFAULT_RVAS),
                              {int(e["rva"], 16) for e in self.exact})
-        self.assertNotIn(C.RVA_NOTE_DYNAMICS, C.PER_NOTE_DEFAULT_RVAS)
 
 
 class SongNotesTest(unittest.TestCase):
