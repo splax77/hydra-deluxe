@@ -414,13 +414,13 @@ TEST_CASE("app_shell: hydra_ui.ini keeps each report's placement in its own sect
 }
 
 TEST_CASE("app_shell: the UI scale for a monitor DPI") {
-    // The scale is the monitor's DPI over Windows' default DPI, which is 1.0.
-    CHECK(hydra::ui::ui_scale_for_dpi(USER_DEFAULT_SCREEN_DPI) == doctest::Approx(1.0f));
-    for (const unsigned dpi : {120u, 144u, 192u}) {
-        CAPTURE(dpi);
-        CHECK(hydra::ui::ui_scale_for_dpi(dpi) ==
-              doctest::Approx(static_cast<float>(dpi) / static_cast<float>(USER_DEFAULT_SCREEN_DPI)));
-    }
+    // The scale is the monitor's DPI over Windows' default DPI: the default
+    // is 1.0, and each Windows scale setting is that fraction of it.
+    constexpr unsigned kDefault = USER_DEFAULT_SCREEN_DPI;
+    CHECK(hydra::ui::ui_scale_for_dpi(kDefault) == doctest::Approx(1.0f));
+    CHECK(hydra::ui::ui_scale_for_dpi(kDefault * 5 / 4) == doctest::Approx(1.25f));
+    CHECK(hydra::ui::ui_scale_for_dpi(kDefault * 3 / 2) == doctest::Approx(1.5f));
+    CHECK(hydra::ui::ui_scale_for_dpi(kDefault * 2) == doctest::Approx(2.0f));
     CHECK(hydra::ui::ui_scale_for_dpi(0) == doctest::Approx(1.0f));  // no reading: unscaled
 }
 
