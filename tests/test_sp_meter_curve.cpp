@@ -59,9 +59,6 @@ bool early_sqout(const Activation& a) {
     return d && a.sqout_tick && !core::after_sp_end(*a.sqout_tick, *d);
 }
 
-// A tick's ms from the song's one tick-to-ms index, the one the gauge reads.
-double tick_ms(const Song& song, int64_t tick) { return song.timing().ms_index().at(tick); }
-
 // The settings the corpus cases analyze and draw with: the app's defaults.
 AnalysisSettings corpus_settings() { return Settings().to_analysis_settings(); }
 
@@ -146,7 +143,7 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
                 if (i < acts.size() && acts[i].timecode.ticks() == t) continue;
                 CAPTURE(t);
                 const double bars = static_cast<double>(std::count(rises.begin(), rises.end(), t));
-                CHECK(rise_at(c, tick_ms(song, t)) == doctest::Approx(bars).epsilon(1e-6));
+                CHECK(rise_at(c, test::tick_ms(song, t)) == doctest::Approx(bars).epsilon(1e-6));
                 ++arrivals;
             }
         }
@@ -154,7 +151,7 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
             const Activation& a = acts[i];
             const std::optional<int64_t> end = a.window_end_tick();
             REQUIRE(end.has_value());
-            CHECK(sp_meter_bars_at(c, std::nextafter(tick_ms(song, *end), -1e300)) < 1e-6);
+            CHECK(sp_meter_bars_at(c, std::nextafter(test::tick_ms(song, *end), -1e300)) < 1e-6);
             if (a.sp_end_steps.size() != 1) continue;
             const int64_t mid = (a.timecode.ticks() + *end) / 2;
             // A next activation inside this window would draw its own drain.
@@ -163,8 +160,8 @@ TEST_CASE("sp meter curve: the bank between windows is the record's, not a phras
             const double measures_left =
                 song.timing().measures_at_tick_f(static_cast<double>(*end)) -
                 song.timing().measures_at_tick_f(static_cast<double>(mid));
-            CHECK(sp_meter_bars_at(c, tick_ms(song, mid)) ==
-                  doctest::Approx(measures_left / static_cast<double>(kMeasuresPerSpBar)));
+            const double bars_left = measures_left / static_cast<double>(kMeasuresPerSpBar);
+            CHECK(sp_meter_bars_at(c, test::tick_ms(song, mid)) == doctest::Approx(bars_left));
             ++drains;
         }
     });
@@ -201,7 +198,7 @@ TEST_CASE("sp meter curve: a phrase collected mid-activation jumps the meter a b
                 if (k + 1 < a.sp_end_steps.size() && a.sp_end_steps[k + 1].tick == step.tick)
                     continue;
                 CAPTURE(step.tick);
-                CHECK(std::fabs(rise_at(c, tick_ms(song, step.tick)) - 1.0) <= 2.0 * one_tick + 1e-9);
+                CHECK(std::fabs(rise_at(c, test::tick_ms(song, step.tick)) - 1.0) <= 2.0 * one_tick + 1e-9);
                 ++collected;
             }
         }
@@ -219,6 +216,8 @@ TEST_CASE("sp meter curve: a squeezed-out phrase does not bank mid-drain") {
     int windows = 0, early = 0;
     for_each_corpus_scene([&](const Song& song, const Path& p, const PreviewScene& scene) {
         const SpMeterCurve& c = scene.sp_meter;
+        // A rise no bigger than the drain a stored end may drop is no step.
+        const double one_tick = one_tick_of_drain(scene);
         const ActivationWalk acts = p.walk_activations();
         for (size_t i = 0; i < acts.size(); ++i) {
             const Activation& a = acts[i];
@@ -234,11 +233,11 @@ TEST_CASE("sp meter curve: a squeezed-out phrase does not bank mid-drain") {
             for (const SpMeterSegment& s : c.segments) {
                 const double m = s.start_ms;
                 if (!(m > pa.ms && m < stop)) continue;
-                if (rise_at(c, m) <= 1e-9) continue;
+                if (rise_at(c, m) <= one_tick) continue;
                 CAPTURE(m);
                 bool on_step = false;
                 for (const SpEndStep& step : a.sp_end_steps)
-                    if (tick_ms(song, step.tick) == m) on_step = true;
+                    if (test::tick_ms(song, step.tick) == m) on_step = true;
                 CHECK(on_step);
             }
         }
@@ -398,7 +397,7 @@ TEST_CASE("sp meter curve: the bank stops at the cap") {
     auto banked = [&](double ms, int cap) {
         int ended = 0;
         for (int64_t t : phrase_ticks)
-            if (tick_ms(song, t) <= ms) ++ended;
+            if (test::tick_ms(song, t) <= ms) ++ended;
         return static_cast<double>(std::min(ended, cap));
     };
 
@@ -530,10 +529,10 @@ TEST_CASE("sp meter curve: a squeezed-out bar arrives on the squeezed chord") {
             const bool next_act_by_end =
                 i + 1 < acts.size() && acts[i + 1].timecode.ticks() <= stored_end;
             if (!(i + 1 < acts.size() && acts[i + 1].timecode.ticks() == chord))
-                CHECK(rise_at(c, tick_ms(song, chord)) ==
+                CHECK(rise_at(c, test::tick_ms(song, chord)) ==
                       doctest::Approx(static_cast<double>(std::count(next.begin(), next.end(), chord))));
             if (next_act_by_end || std::count(next.begin(), next.end(), stored_end) > 0) continue;
-            CHECK(rise_at(c, tick_ms(song, stored_end)) == 0.0);
+            CHECK(rise_at(c, test::tick_ms(song, stored_end)) == 0.0);
         }
     });
     CHECK(strict > 0);
@@ -621,7 +620,7 @@ TEST_CASE("sp_window: the stored window, from the activation note to the record'
             const std::optional<std::pair<double, double>> w = scene.activations[i].sp_window();
             REQUIRE(w.has_value());
             CHECK(w->first == doctest::Approx(song.timecode(a.timecode.ticks()).ms()));
-            CHECK(w->second == doctest::Approx(tick_ms(song, *end)));
+            CHECK(w->second == doctest::Approx(test::tick_ms(song, *end)));
             ++windows;
         }
     });
@@ -641,7 +640,7 @@ TEST_CASE("sp_running_at: on from the strike, off at the window's end") {
             const std::optional<int64_t> end = a.window_end_tick();
             REQUIRE(end.has_value());
             const double start_ms = song.timecode(a.timecode.ticks()).ms();
-            const double end_ms = tick_ms(song, *end);
+            const double end_ms = test::tick_ms(song, *end);
             CHECK_FALSE(pa.sp_running_at(std::nextafter(start_ms, -1e300)));
             CHECK(pa.sp_running_at(start_ms));
             CHECK(pa.sp_running_at(std::nextafter(end_ms, -1e300)));
