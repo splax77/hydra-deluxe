@@ -102,7 +102,7 @@ void for_each_corpus_schedule(const app::AnalysisSettings& cfg, const ScheduleCh
 using ActivationCheck = std::function<void(const std::string& path, const Activation& act, const json& j,
                                            const std::vector<std::string>& refusals)>;
 
-void for_each_corpus_activation(const app::AnalysisSettings& cfg, const ActivationCheck& check) {
+void for_each_corpus_activation_json(const app::AnalysisSettings& cfg, const ActivationCheck& check) {
     for_each_corpus_schedule(cfg, [&](const std::string& path, const Song& song,
                                       const std::vector<const Activation*>& acts, const PathReplay&,
                                       const json&) {
@@ -123,7 +123,7 @@ TEST_CASE("schedule: every end step names its anchor") {
     // writes names that anchor, Activation::end_anchor_tick agrees, and the
     // final end is read after the last step's anchor.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for_each_corpus_activation(cfg, [&](const std::string& path, const Activation& act, const json& j,
+    for_each_corpus_activation_json(cfg, [&](const std::string& path, const Activation& act, const json& j,
                                         const std::vector<std::string>&) {
         INFO(path << ": the activation at tick " << act.timecode.ticks());
         const json& steps = j["sp_end_steps"];
@@ -152,7 +152,7 @@ TEST_CASE("schedule: a squeeze carries its own end, anchor and stored ratio") {
     // a SqOut's on transfer_post), null with a refusal line when unset.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int squeezes = 0;
-    for_each_corpus_activation(cfg, [&](const std::string& path, const Activation& act, const json& j,
+    for_each_corpus_activation_json(cfg, [&](const std::string& path, const Activation& act, const json& j,
                                         const std::vector<std::string>& refusals) {
         INFO(path << ": the activation at tick " << act.timecode.ticks());
         const json& q = j["squeezes"];
@@ -830,7 +830,7 @@ TEST_CASE("schedule: moving_side reads the anchor's press, not the squeeze's kin
     // press, and a geometry's ratio follows its anchor's press the same way.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int unequal = 0;
-    for_each_corpus_activation(cfg, [&](const std::string& path, const Activation& act, const json&,
+    for_each_corpus_activation_json(cfg, [&](const std::string& path, const Activation& act, const json&,
                                         const std::vector<std::string>&) {
         if (!act.transfer_post) return;
         const TransferScale& scale = *act.transfer_post;
