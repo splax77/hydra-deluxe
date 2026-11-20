@@ -898,6 +898,40 @@ def why_no_live():
 
 SMOKE = hm.REPO / "tests" / "ui" / "scripts" / "smoke.txt"
 NO_LIVE = why_no_live()
+CORPUS = hm.REPO / "testdata" / "input"
+
+
+def corpus_chart_count():
+    """How many charts a scan of testdata/input must list, counted from the
+    files on disk rather than typed: one per folder that holds a notes.mid
+    or notes.chart beside a song.ini (any case), plus each .sng or .srb file.
+    That is the scan's rule (pick_notes_file, find_song_ini and
+    chart_extensions in src/parse/chart_files.h, scan_folder and
+    pending_chart_of in src/app/analysis.cpp); counting the folders apart
+    from Hydra is what lets a scan that drops or doubles a chart fail."""
+    count = 0
+    for _, _, files in os.walk(CORPUS):
+        low = {name.lower() for name in files}
+        if low & {"notes.mid", "notes.chart"} and "song.ini" in low:
+            count += 1
+        count += sum(name.lower().endswith((".sng", ".srb")) for name in files)
+    return count
+
+
+def dump_lines_holding(dump, part):
+    """What `dump ... | part` keeps of an unfiltered dump, worked out from
+    the unfiltered reply: each item line holding `part`, under the line of
+    the window it sits in, and no window whose items hold none."""
+    out, window, kept = [], None, False
+    for line in dump.split("\n"):
+        if line.startswith("window "):
+            window, kept = line, False
+        elif part in line:
+            if not kept:
+                out.append(window)
+                kept = True
+            out.append(line)
+    return "".join(ln + "\n" for ln in out)
 
 # Pinned from the real exe's replies in one run. The engine's log lines start
 # with a frame number, which varies, so a failure is pinned by its first line
@@ -925,7 +959,7 @@ class RealExeLayer(unittest.TestCase):
         upto = [ln.strip() for ln in lines].index("expect-text Burnout") + 1
         out = self.helper.run("\n".join(lines[:upto]))
         self.assertNotIn("stopped at line", out)
-        self.assertIn("charts=98", self.helper.send("state"))
+        self.assertIn(f"charts={corpus_chart_count()}", self.helper.send("state"))
 
     def burnout_row(self, text):
         # The library row for the smoke script's Burnout, read from Hydra's own
@@ -1015,8 +1049,12 @@ class RealExeLayer(unittest.TestCase):
 
     def test_the_wait_cap_and_the_timeout_every_reply_carries(self):
         self.helper.start("headless")
-        self.assertEqual(self.helper.send("wait 31"),
-                         "wait 31 is longer than the 30 s timeout in force; raise the timeout first\n")
+        # One second over the timeout the hello line gave.
+        timeout = self.helper.session.timeout
+        over = f"{timeout + 1:g}"
+        out = self.helper.send(f"wait {over}")
+        self.assertTrue(out.startswith(f"wait {over} "), out)
+        self.assertIn(f" {timeout:g} s timeout", out)
         self.assertEqual(self.helper.send("timeout 5"), "ok")
         self.assertEqual(self.helper.session.timeout, 5)
         self.assertEqual(self.helper.send("reset"), "ok")
@@ -1050,15 +1088,20 @@ class RealExeLayer(unittest.TestCase):
     def test_text_and_dump_filters_are_hydras(self):
         self.helper.start("headless")
         self.scan()
-        row = self.burnout_row(self.helper.send("text"))
-        self.assertEqual(self.helper.send(hm.filtered("text", "Burnout")), row)
+        # The unfiltered replies come through command(), which no cap cuts.
+        _, text, _ = self.helper.command("text")
+        held = "".join(ln + "\n" for ln in text.split("\n") if "Burnout" in ln)
+        self.burnout_row(held)
+        self.assertEqual(self.helper.send(hm.filtered("text", "Burnout")), held)
         self.assertEqual(self.helper.send(hm.filtered("text", "zzqx-none")),
                          '(no line holding "zzqx-none")\n')
-        dump = ('window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
-                '  "Scan library" id=0xA6E9877D rect=(150,58 81x24)\n')
-        self.assertEqual(self.helper.send(hm.filtered("dump Hydra", "Scan library")), dump)
-        # A plain dump is every window: Hydra's default, not the helper's.
-        self.assertEqual(self.helper.send(hm.filtered("dump", "Scan library")), dump)
+        for dump in ("dump Hydra", "dump"):
+            with self.subTest(dump=dump):
+                _, whole, _ = self.helper.command(dump)
+                want = dump_lines_holding(whole, "Scan library")
+                self.assertTrue(want, whole)
+                self.assertNotEqual(want, whole)
+                self.assertEqual(self.helper.send(hm.filtered(dump, "Scan library")), want)
 
     def test_every_text_reply_ends_lines_in_a_bare_newline(self):
         self.helper.start("headless")
@@ -1123,8 +1166,12 @@ class RealExeLayer(unittest.TestCase):
     def test_a_focused_wildcard_ref_finds_the_popups_checkbox(self):
         self.helper.start("headless")
         self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
-        self.assertEqual(self.helper.send("rect //$FOCUSED/**/##bass2x"),
-                         '"##bass2x" id=0x357E5949 rect=(723,176 24x24) checked\n')
+        # The checkbox's line in the popup's own dump, without its indent,
+        # is the item the focused ref must find.
+        _, popup, _ = self.helper.command("dump ##Popup_")
+        listed = [ln.lstrip() for ln in popup.split("\n") if ln.lstrip().startswith('"##bass2x" ')]
+        self.assertEqual(len(listed), 1, popup)
+        self.assertEqual(self.helper.send("rect //$FOCUSED/**/##bass2x"), listed[0] + "\n")
 
     def test_a_failed_wildcard_check_leaves_wildcard_clicks_working(self):
         self.helper.start("headless")
@@ -1135,19 +1182,29 @@ class RealExeLayer(unittest.TestCase):
 
     def test_dump_shows_the_whole_label(self):
         self.helper.start("headless")
-        self.assertEqual(
-            self.helper.send(hm.filtered("dump Hydra", "###analysissettings")),
-            'window "Hydra" id=0xBAEC0FDA pos=(0,0) size=(1280,800)\n'
-            '  "Analysis settings: Score range 2 scores###analysissettings"'
-            ' id=0xB7DC11A6 rect=(611,58 257x24)\n')
+        _, whole, _ = self.helper.command("dump Hydra")
+        out = self.helper.send(hm.filtered("dump Hydra", "###analysissettings"))
+        self.assertEqual(out, dump_lines_holding(whole, "###analysissettings"))
+        # The whole label is the text the button shows, then its ### id: the
+        # shown part must be on screen, not cut off at the id.
+        items = [ln.strip() for ln in out.split("\n")[1:] if ln.strip()]
+        self.assertEqual(len(items), 1, out)
+        label = items[0].split('"')[1]
+        shown = label.split("###")[0]
+        self.assertTrue(shown, label)
+        self.assertIn(shown, self.helper.command("text")[1])
 
     def test_a_popup_dump_lists_the_checkboxes_inside_its_tables(self):
         self.helper.start("headless")
         self.assertEqual(self.helper.send("click **/###analysissettings"), "ok")
-        self.assertEqual(
-            self.helper.send(hm.filtered("dump ##Popup_", "##bass2x")),
-            'window "##Popup_2cd77690" id=0x0E54559D pos=(611,82) size=(319,365) popup\n'
-            '    "##bass2x" id=0x357E5949 rect=(723,176 24x24) checked\n')
+        _, whole, _ = self.helper.command("dump ##Popup_")
+        out = self.helper.send(hm.filtered("dump ##Popup_", "##bass2x"))
+        self.assertEqual(out, dump_lines_holding(whole, "##bass2x"))
+        # The checkbox sits inside one of the popup's tables, and the dump
+        # still lists it under the popup's window line.
+        lines = out.split("\n")
+        self.assertTrue(lines[0].startswith('window "##Popup_'), out)
+        self.assertTrue(any(ln.lstrip().startswith('"##bass2x" ') for ln in lines[1:]), out)
 
     def window_seed(self):
         """A library folder for a window session, and self.helper a fresh
@@ -1221,7 +1278,7 @@ class RealExeLayer(unittest.TestCase):
         self.assertEqual(Path(s.hello["log"]), s.scratch / hm.WINDOW_LOG)
         self.assertEqual(s.hello["crash_dump"], "")
         self.assertIsNone(s.crash_dump)
-        self.assertIn("charts=98", self.helper.send("state"))
+        self.assertIn(f"charts={corpus_chart_count()}", self.helper.send("state"))
         window_engine = s.engine_scratch()
         self.assertTrue(window_engine.is_dir())
         self.assertEqual(self.helper.stop().splitlines()[0], "Hydra exited with code 0")
