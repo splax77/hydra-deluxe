@@ -20,6 +20,7 @@
 #include "display_fixtures.h"  // kTagOnlyTitle
 #include "load_util.h"
 #include "midi_util.h"
+#include "parse/section_names.h"  // section_display_name
 #include "parse/song.h"
 #include "song_equal.h"
 #include "temp_util.h"
@@ -220,22 +221,21 @@ TEST_CASE(".chart: malformed lines keep their handling") {
     CHECK_THROWS_AS(parse(song + sync + "   "), ChartFileError);
     CHECK_THROWS_AS(parse(song + "}\n" + sync), ChartFileError);
 
+    // Each malformed chart below must read exactly as the clean chart it
+    // stands for (testsong::songs_equal: timing, features and every note).
+    const auto reads_as = [&](const std::string& malformed, const std::string& clean) {
+        CAPTURE(malformed);
+        CHECK(testsong::songs_equal(parse(malformed), parse(clean)));
+    };
+    // The clean chart: a red at tick 0 and a yellow at tick 192.
+    const std::string two_notes = song + sync + "[ExpertDrums]\n{\n  0 = N 1 0\n  192 = N 2 0\n}\n";
+
     // A second '=' ends the value: "N 1 0 = junk" reads as "N 1 0".
-    {
-        Song s = parse(song + sync + "[ExpertDrums]\n{\n  0 = N 1 0 = junk\n  192 = N 2 0=\n}\n");
-        REQUIRE(s.sequence.size() == 2);
-        CHECK(s.sequence[0].chord.at(NoteColor::Red).has_value());
-        CHECK(s.sequence[1].chord.at(NoteColor::Yellow).has_value());
-    }
+    reads_as(song + sync + "[ExpertDrums]\n{\n  0 = N 1 0 = junk\n  192 = N 2 0=\n}\n", two_notes);
 
     // Lines with no '=' or no value, and an N with too few words, add nothing.
-    {
-        Song s = parse(song + sync +
-                       "[ExpertDrums]\n{\n  garbage\n  =\n  0 = N 1\n  0 = N 3 0\n}\n");
-        REQUIRE(s.sequence.size() == 1);
-        CHECK(s.sequence[0].chord.count() == 1);
-        CHECK(s.sequence[0].chord.at(NoteColor::Blue).has_value());
-    }
+    reads_as(song + sync + "[ExpertDrums]\n{\n  garbage\n  =\n  0 = N 1\n  0 = N 3 0\n}\n",
+             song + sync + "[ExpertDrums]\n{\n  0 = N 3 0\n}\n");
 
     // A note number that is not a number refuses the chart, as std::stoi does.
     CHECK_THROWS_AS(parse(song + sync + "[ExpertDrums]\n{\n  0 = N x 0\n}\n"),
@@ -245,23 +245,19 @@ TEST_CASE(".chart: malformed lines keep their handling") {
     CHECK(parse(song + sync + "[ExpertDrums]\n{\n  0 = N 1 0\n").sequence.empty());
 
     // A repeated section replaces the earlier one.
-    {
-        Song s = parse(song + "[Song]\n{\n  Resolution = 480\n}\n" + sync +
-                       "[ExpertDrums]\n{\n  0 = N 1 0\n}\n[ExpertDrums]\n{\n  0 = N 2 0\n}\n");
-        CHECK(s.tick_resolution() == 480);
-        REQUIRE(s.sequence.size() == 1);
-        CHECK(s.sequence[0].chord.at(NoteColor::Yellow).has_value());
-    }
+    const std::string song480 = "[Song]\n{\n  Resolution = 480\n}\n";
+    reads_as(song + song480 + sync +
+                 "[ExpertDrums]\n{\n  0 = N 1 0\n}\n[ExpertDrums]\n{\n  0 = N 2 0\n}\n",
+             song480 + sync + "[ExpertDrums]\n{\n  0 = N 2 0\n}\n");
 
     // Tabs and CRLF are whitespace; tick keys read like std::stoll ("+192").
-    {
-        Song s = parse("\t[Song]\v\f\n{\n Resolution\t=\t192 \r\n}\r\n" + sync +
-                       "[ExpertDrums]\n{\n  0\t=\tN\t1\t0\n  +192 = N 2 0\n}\n");
-        REQUIRE(s.sequence.size() == 2);
-        CHECK(s.sequence[1].timecode.ticks() == 192);
-    }
+    reads_as("\t[Song]\v\f\n{\n Resolution\t=\t192 \r\n}\r\n" + sync +
+                 "[ExpertDrums]\n{\n  0\t=\tN\t1\t0\n  +192 = N 2 0\n}\n",
+             two_notes);
 
-    // Generic E events: quotes and outer spaces come off, inner spaces stay.
+    // Generic E events: quotes and outer spaces come off, inner spaces stay,
+    // and an E with no text makes no section. Each name is the one
+    // section_display_name gives the event's text with only that taken off.
     {
         Song s = parse(song + sync +
                        "[Events]\n{\n  0 = E   \"section  Intro  \"  \n  96 = E\n"
@@ -269,13 +265,11 @@ TEST_CASE(".chart: malformed lines keep their handling") {
                        "[ExpertDrums]\n{\n  0 = N 1 0\n}\n");
         REQUIRE(s.practice_sections.size() == 3);
         CHECK(s.practice_sections[0].tick == 0);
-        CHECK(s.practice_sections[0].name == " Intro  ");
+        CHECK(s.practice_sections[0].name == section_display_name("section  Intro  "));
         CHECK(s.practice_sections[1].tick == 10);
-        // chorus is in Clone Hero's list as "Chorus"
-        // (data/clone-hero-1.1.0.6142-section-names.tsv, line 423).
-        CHECK(s.practice_sections[1].name == "Chorus");
+        CHECK(s.practice_sections[1].name == section_display_name("prc_chorus"));
         CHECK(s.practice_sections[2].tick == 48);
-        CHECK(s.practice_sections[2].name == "Verse");
+        CHECK(s.practice_sections[2].name == section_display_name("section Verse"));
     }
 }
 
@@ -309,6 +303,11 @@ Refusal chart_refusal(const std::string& text) {
 // with a timing refusal, the same way as a tempo of 0 BPM. Hydra does not
 // guess a tempo for it (the user's ruling, PLAINERR-RES).
 TEST_CASE("a chart with no tempo at tick 0 is a timing refusal in both formats") {
+    // The owner's refusal for timing maps with no tempo at all; every chart
+    // below must be refused with this same reason.
+    const Refusal no_tempo = refusal_of([] { check_timing_maps(192, {}, {}); });
+    REQUIRE(no_tempo.kind == ErrorKind::ChartTimingRefused);
+    REQUIRE_FALSE(no_tempo.what.empty());
     const std::string drums =
         testchart::section("ExpertDrums", "  0 = N 0 0\n  384 = N 1 0\n  576 = N 2 0\n");
     for (const std::string& sync : {std::string("  0 = TS 4\n  384 = B 60000\n"),
@@ -316,13 +315,13 @@ TEST_CASE("a chart with no tempo at tick 0 is a timing refusal in both formats")
         CAPTURE(sync);
         const Refusal r = chart_refusal(testchart::chart_text(drums, 192, "", sync));
         CHECK(r.kind == ErrorKind::ChartTimingRefused);
-        CHECK(r.what == "it has no tempo at tick 0");
+        CHECK(r.what == no_tempo.what);
     }
     // No [SyncTrack] section at all.
     const Refusal none =
         chart_refusal(testchart::section("Song", "  Resolution = 192\n") + drums);
     CHECK(none.kind == ErrorKind::ChartTimingRefused);
-    CHECK(none.what == "it has no tempo at tick 0");
+    CHECK(none.what == no_tempo.what);
 
     // A .mid with no set-tempo event.
     using namespace testmidi;
@@ -331,7 +330,7 @@ TEST_CASE("a chart with no tempo at tick 0 is a timing refusal in both formats")
         std::vector<uint8_t>{});
     const Refusal m = refusal_of([&] { load_songbytes_mid(mid, ChartReading{}); });
     CHECK(m.kind == ErrorKind::ChartTimingRefused);
-    CHECK(m.what == "it has no tempo at tick 0");
+    CHECK(m.what == no_tempo.what);
 }
 
 // Resolution is read once, by one number rule (ChartParser::parse). Text it
@@ -341,28 +340,30 @@ TEST_CASE(".chart: a Resolution that can't be read is a timing refusal") {
     const std::string sync = testchart::section("SyncTrack", "  0 = TS 4\n  0 = B 120000\n");
     const std::string drums = testchart::section("ExpertDrums", "  0 = N 1 0\n");
     auto with_song = [&](const std::string& song_lines) {
-        return chart_refusal(testchart::section("Song", song_lines) + sync + drums);
+        return testchart::section("Song", song_lines) + sync + drums;
     };
-    struct Bad {
-        std::string text;
-        const char* what;
-    };
-    for (const Bad& bad : {Bad{sync + drums, "the chart's resolution is missing"},
-                           Bad{testchart::section("Song", "  Name = x\n") + sync + drums,
-                               "the chart's resolution is missing"}}) {
-        CAPTURE(bad.text);
-        const Refusal r = chart_refusal(bad.text);
-        CHECK(r.kind == ErrorKind::ChartTimingRefused);
-        CHECK(r.what == bad.what);
-    }
-    for (const Bad& bad : {Bad{"  Resolution = abc\n", "the chart's resolution is not a whole number"},
-                           Bad{"  Resolution = x192\n", "the chart's resolution is not a whole number"},
-                           Bad{"  Resolution = 99999999999999999999\n",
-                               "the chart's resolution is too large"}}) {
-        CAPTURE(bad.text);
-        const Refusal r = with_song(bad.text);
-        CHECK(r.kind == ErrorKind::ChartTimingRefused);
-        CHECK(r.what == bad.what);
+    // One entry per cause: the Resolution is missing, is not a whole number,
+    // or is too large for one. Each refusal is a timing refusal whose reason
+    // the reader builds on kResolutionRefusalPrefix, so none is the standard
+    // library's text. Charts with one cause share one reason, and two causes
+    // never share one.
+    const std::vector<std::vector<std::string>> causes = {
+        {sync + drums, with_song("  Name = x\n")},
+        {with_song("  Resolution = abc\n"), with_song("  Resolution = x192\n")},
+        {with_song("  Resolution = 99999999999999999999\n")}};
+    std::vector<std::string> reasons;
+    for (const std::vector<std::string>& charts : causes) {
+        const std::string reason = chart_refusal(charts.front()).what;
+        for (const std::string& text : charts) {
+            CAPTURE(text);
+            const Refusal r = chart_refusal(text);
+            CHECK(r.kind == ErrorKind::ChartTimingRefused);
+            CHECK(starts_with(r.what, kResolutionRefusalPrefix));
+            CHECK(r.what.size() > kResolutionRefusalPrefix.size());
+            CHECK(r.what == reason);
+        }
+        for (const std::string& other : reasons) CHECK(reason != other);
+        reasons.push_back(reason);
     }
     // Valid text keeps its number rule: leading digits read, trailing junk ignored.
     const std::string ok = testchart::section("Song", "  Resolution = 480abc\n") + sync + drums;
@@ -373,8 +374,8 @@ TEST_CASE(".chart: a Resolution that can't be read is a timing refusal") {
 // ---- display_title: the one cleaned song title (findings 8 and 111) ----------
 
 TEST_CASE("display_title: a title made only of Clone Hero tags reads (unknown)") {
-    CHECK(display_title(test::kTagOnlyTitle) == "(unknown)");
-    CHECK(display_title("   ") == "(unknown)");
+    CHECK(display_title(test::kTagOnlyTitle) == kUnknownTitle);
+    CHECK(display_title("   ") == kUnknownTitle);
 }
 
 TEST_CASE("display_title: tags go, words stay, spaces are trimmed") {
@@ -385,22 +386,22 @@ TEST_CASE("display_title: tags go, words stay, spaces are trimmed") {
 
 TEST_CASE("display_title: a clean name and the old placeholder behave like title_or_unknown") {
     CHECK(display_title("Some Song") == "Some Song");
-    CHECK(display_title("<unknown title>") == "(unknown)");
+    CHECK(display_title("<unknown title>") == kUnknownTitle);
 }
 
 TEST_CASE("display_title: an artist reads by the same rule (D50 item 5)") {
-    // An artist made only of tags reads "(unknown)", like a title.
-    CHECK(display_artist(test::kTagOnlyTitle) == "(unknown)");
+    // An artist made only of tags reads kUnknownTitle, like a title.
+    CHECK(display_artist(test::kTagOnlyTitle) == kUnknownTitle);
     CHECK(display_artist(" <i>Tagged</i> Artist ") == "Tagged Artist");
 }
 
 TEST_CASE("display_artist: a missing artist reads (unknown) however it is stored (D56 item 2)") {
-    // Empty, the scan's placeholder, or only tags: all three read "(unknown)".
-    CHECK(display_artist("") == "(unknown)");
-    CHECK(display_artist("<unknown artist>") == "(unknown)");
-    CHECK(display_artist(" <b></b> ") == "(unknown)");
+    // Empty, the scan's placeholder, or only tags: all three read kUnknownTitle.
+    CHECK(display_artist("") == kUnknownTitle);
+    CHECK(display_artist(kUnknownArtist) == kUnknownTitle);
+    CHECK(display_artist(" <b></b> ") == kUnknownTitle);
     // The stored text is not touched: the scan still writes its placeholder.
-    CHECK(artist_or_unknown("") == "<unknown artist>");
+    CHECK(artist_or_unknown("") == kUnknownArtist);
 }
 
 TEST_CASE("display_charter: tags go and the ends are trimmed") {
@@ -409,14 +410,14 @@ TEST_CASE("display_charter: tags go and the ends are trimmed") {
 }
 
 TEST_CASE("display_charter: a missing charter reads (unknown) however it is stored (D266 item 2)") {
-    // Empty, the scan's placeholder, or only tags: all three read "(unknown)",
+    // Empty, the scan's placeholder, or only tags: all three read kUnknownTitle,
     // the same text a missing artist shows.
-    CHECK(display_charter("") == "(unknown)");
-    CHECK(display_charter("<unknown charter>") == "(unknown)");
-    CHECK(display_charter(test::kTagOnlyTitle) == "(unknown)");
-    CHECK(display_charter(" <b></b> ") == "(unknown)");
+    CHECK(display_charter("") == kUnknownTitle);
+    CHECK(display_charter(kUnknownCharter) == kUnknownTitle);
+    CHECK(display_charter(test::kTagOnlyTitle) == kUnknownTitle);
+    CHECK(display_charter(" <b></b> ") == kUnknownTitle);
     // The stored text is not touched: the scan still writes its placeholder.
-    CHECK(charter_or_unknown("") == "<unknown charter>");
+    CHECK(charter_or_unknown("") == kUnknownCharter);
 }
 
 TEST_CASE("display_album: tags go and the ends are trimmed, and a blank stays blank") {
@@ -425,6 +426,6 @@ TEST_CASE("display_album: tags go and the ends are trimmed, and a blank stays bl
     CHECK(display_album(test::kTagOnlyTitle) == "");
     CHECK(display_album("") == "");
     CHECK(display_album("   ") == "");
-    // The artist's placeholder means nothing to an album.
-    CHECK(display_album("<unknown artist>") == "<unknown artist>");
+    // The artist placeholder means nothing to an album: it stays as it is.
+    CHECK(display_album(kUnknownArtist) == kUnknownArtist);
 }
