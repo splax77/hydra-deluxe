@@ -22,7 +22,7 @@
 #include <utility>
 #include <vector>
 
-#include "analyzed_chart.h"  // analyzed_by_ten_scores, the ghost list's pinned chart
+#include "analyzed_chart.h"  // analyzed_by_ten_scores: the changed-chart test's ghost path
 #include "app/analysis.h"
 #include "app/config.h"  // Settings: the Preview volume's owner
 #include "chart_text.h"
