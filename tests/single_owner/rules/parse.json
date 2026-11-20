@@ -376,6 +376,11 @@
           "file": "tests/test_dm_report.cpp",
           "line_text": "CHECK(ends_with(dmr::compare_tooltip(), phrase + \".\"));",
           "why": "checks that the Compare button's tooltip ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_pick.cpp",
+          "line_text": "if (hydra::ends_with(f, \".md\")) files.push_back(f);",
+          "why": "picks the repo root's .md pages as real files the merge-test picker must not count as shared code, not a chart format"
         }
       ],
       "scope": [
