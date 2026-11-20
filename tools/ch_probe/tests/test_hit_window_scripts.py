@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -258,15 +257,19 @@ class SongClockTest(unittest.TestCase):
 
     def test_song_clock_ignores_a_change_seen_late(self):
         # A real watch's song clock, read back at the recording's own pace on
-        # the real timer. After one read, the next change is left unread for
-        # 10 ms, two of the recording's frames, so its age is unknown: every read until
-        # the clock moves again gives the raw clock with nothing filled in.
-        # A read past the recording's end fails the test at once.
+        # the real timer. After one read, the clock is left to move twice
+        # unread, so a whole recorded frame passes and the change the next
+        # read sees is not fresh: every read until the clock moves again
+        # gives the raw clock with nothing filled in. A read past the
+        # recording's end fails the test at once.
         clock, game = recorded_song_clock(LANE_END_CSV)
-        first_raw, _ = clock.read()
-        read_t = time.perf_counter()
-        while game.read()[0] == first_raw or time.perf_counter() - read_t <= 0.010:
-            pass
+        seen_raw, _ = clock.read()
+        unread_moves = 0
+        while unread_moves < 2:
+            raw = game.read()[0]
+            if raw != seen_raw:
+                seen_raw = raw
+                unread_moves += 1
         late_raw, late_est = clock.read()
         self.assertEqual(late_est, late_raw)
         held = []
