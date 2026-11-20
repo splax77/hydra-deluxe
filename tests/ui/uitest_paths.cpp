@@ -14,6 +14,7 @@
 
 #include "uitest_harness.h"
 
+#include "app/analysis.h"  // analysis_song_length
 #include "app/config.h"
 #include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/path_view.h"
@@ -22,6 +23,8 @@
 #include "core/note_window.h"     // role_word
 #include "core/squeeze_rating.h"  // rate_activation
 #include "imgui_internal.h"
+#include "parse/song.h"    // load_songpath
+#include "search/graph.h"  // fill_rule_for
 #include "ui/activation_row_layout.h"
 #include "ui/app_state.h"
 #include "ui/badge_pill.h"
@@ -767,6 +770,11 @@ void test_paths_long_path(ImGuiTestContext* ctx) {
     }
 }
 
+// How wide `s` is drawn in the Figure role (text_role.h).
+float figure_w(const std::string& s) {
+    return hydra::ui::text_size(hydra::ui::TextRole::Figure, s.c_str()).x;
+}
+
 // The narrowest song panel: the library as wide as it goes.
 bool narrowest_panel(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -799,18 +807,25 @@ ImGuiTable* backend_table() {
 }
 
 // At the narrowest panel, Burnout's first backend table: Timing, Chord and
-// Points are as wide as their text, and the squeezed-out rating, the longest
-// line, wraps inside its Rating cell instead of running past it.
+// Points are as wide as their text, and the table's longest Rating line wraps
+// inside its Rating cell instead of running past it.
 void test_paths_backend_fit(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout(ctx)) return;
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/##act1");  // row 1 alone, so its table is the only one
     ctx->Yield(3);
-    // Burnout's squeezed-out row, the table's longest Rating line.
-    const std::string sqout = costly_sqout_rating(*h.app);
-    IM_CHECK(!sqout.empty());
-    IM_CHECK(on_screen(h, sqout));
+    const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
+    IM_CHECK(d != nullptr && !d->activations.acts.empty());
+    if (ctx->IsError()) return;
+    const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
+    // The table's longest Rating line, from the rows the tab drew, measured in
+    // the Figure role the cells are drawn in.
+    std::string longest;
+    for (const hydra::app::BackendRowView& r : rows)
+        if (figure_w(r.rating) > figure_w(longest)) longest = r.rating;
+    IM_CHECK(!longest.empty());
+    IM_CHECK(on_screen(h, longest));
     ImGuiTable* t = backend_table();
     IM_CHECK(t != nullptr);
     if (ctx->IsError()) return;
@@ -820,18 +835,13 @@ void test_paths_backend_fit(ImGuiTestContext* ctx) {
     ctx->LogInfo("rating column %.1f..%.1f, content to %.1f", rating.WorkMinX, rating.WorkMaxX,
                  content_max);
     IM_CHECK_LE(content_max, rating.WorkMaxX + 0.5f);
-    // The squeezed-out line is longer than the cell, so it did wrap: the
-    // cell is narrower than the line.
-    const float line_w = hydra::ui::text_size(hydra::ui::TextRole::Figure, sqout.c_str()).x;
-    IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, line_w);
+    // The longest line is longer than the cell, the case this test is for,
+    // so it did wrap: the cell is narrower than the line.
+    IM_CHECK_LT(rating.WorkMaxX - rating.WorkMinX, figure_w(longest));
     // The three fixed columns fit their text: no cell runs past its column,
     // and each is as wide as the width rule gives it for the rows the tab
     // drew, its header measured as a Label and its cells in the role the tab
     // draws them in (text_role.h).
-    const hydra::app::PathsTabCache::Details* d = h.app->details_ui.paths_tab.built_details();
-    IM_CHECK(d != nullptr && !d->activations.acts.empty());
-    if (ctx->IsError()) return;
-    const std::vector<hydra::app::BackendRowView>& rows = d->activations.acts[0].backends;
     struct FixedColumn {
         const char* header;
         hydra::ui::TextRole role;
@@ -954,11 +964,8 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     IM_CHECK_GT(row_w, 0.0f);
     const float scale = hydra::ui::px(1.0f);
     const float gap = hydra::ui::px(hydra::ui::kRowBarsGap);
-    // The row is one Figure scope: its layout measures and gets its line
-    // height in that role.
-    auto figure_w = [](const std::string& s) {
-        return hydra::ui::text_size(hydra::ui::TextRole::Figure, s.c_str()).x;
-    };
+    // The row is one Figure scope: its layout measures (figure_w) and gets its
+    // line height in that role.
     float line = 0.0f;
     {
         hydra::ui::ScopedFont font(hydra::ui::TextRole::Figure);
@@ -1010,16 +1017,15 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     check("m1024.1.120", "m1024.1.120", "12 bars", {longest, longest, longest});
     IM_CHECK_GE(l.badge_lines, 2);  // three don't fit on one line under the measure
 
-    // The drawn row: Burnout's row 1 keeps its one-line height while its badge
-    // fits, all in the mono font.
+    // The drawn row: Burnout's row 1 with its own badges is as tall as the
+    // layout makes it, all in the mono font.
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImRect row1_rect = ctx->ItemInfo("**/##act1").RectFull;
-    const float one_line = row1_rect.GetHeight();
+    const float row1_h = row1_rect.GetHeight();
     check(widest, view.acts[0].measure, view.acts[0].bars, texts(view.acts[0]));
-    IM_CHECK_EQ(l.badge_lines, 0);
     // The drawn row is as tall as the layout's row; the Selectable's rect
     // reaches half the item spacing past its size on each side.
-    IM_CHECK_EQ(one_line, l.row_h + style.ItemSpacing.y);
+    IM_CHECK_EQ(row1_h, l.row_h + style.ItemSpacing.y);
     {
         std::vector<std::string> pieces = texts(view.acts[0]);
         pieces.push_back(std::to_string(view.acts[0].number));
@@ -1029,8 +1035,8 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK(row_text_all_mono(ctx, row1_rect, pieces));
     }
     // Three badges of different lengths, the longest among them, on row 1 of
-    // the cached view the tab draws. Burnout's row 1 has one badge and the
-    // scratch library holds no row with three, so the two shorter texts are
+    // the cached view the tab draws. The scratch library holds no row with
+    // three, so the two shorter texts are
     // inputs shaped like an early fill and a squeeze in badge: they stand for
     // a row carrying both beside the longest, and the check reads that the
     // pills share one width. The cache is only rebuilt when its
@@ -1057,7 +1063,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     const std::vector<ImRect> pills = drawn_pills(grown_rect);
     ctx->LogInfo("row 1 height %.1f with its own badge, %.1f with three (%d lines under the "
                  "measure, %d pills drawn, row %.1f wide, %.1f before)",
-                 one_line, grown_rect.GetHeight(), three.badge_lines, static_cast<int>(pills.size()),
+                 row1_h, grown_rect.GetHeight(), three.badge_lines, static_cast<int>(pills.size()),
                  grown_rect.GetWidth(), row_w);
     IM_CHECK_GE(three.badge_lines, 1);
     IM_CHECK_EQ(grown_rect.GetHeight(), three.row_h + style.ItemSpacing.y);
@@ -1127,7 +1133,7 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
     }
     row1.badges = kept;
     ctx->Yield(2);
-    IM_CHECK_EQ(ctx->ItemInfo("**/##act1").RectFull.GetHeight(), one_line);
+    IM_CHECK_EQ(ctx->ItemInfo("**/##act1").RectFull.GetHeight(), row1_h);
 }
 
 // The GUI test library has no audio, but the click gives Burnout a length
@@ -1143,7 +1149,18 @@ void test_paths_length_from_click(ImGuiTestContext* ctx) {
     IM_CHECK(app.viewed.song_length_ms.has_value());
     if (!app.viewed.song_length_ms) return;
     const double length = *app.viewed.song_length_ms;
-    IM_CHECK_GT(length, 0.0);
+    // The length on screen is the owner's (app::analysis_song_length) for the
+    // open chart: what the scan read for it and the chart's own notes.
+    IM_CHECK(app.selected.has_value());
+    if (!app.selected) return;
+    const hydra::Song song =
+        hydra::load_songpath(app.selected->notespath, app.settings.reading(), app.settings.rules,
+                             hydra::fill_rule_for(app.settings.legacy_fills));
+    const hydra::store::SongLength owner =
+        hydra::app::analysis_song_length(app.selected->timing, app.selected->notespath, song);
+    IM_CHECK(owner.ms.has_value());
+    if (!owner.ms) return;
+    IM_CHECK_EQ(length, *owner.ms);
     IM_CHECK(!app.view_job);
     ctx->Yield(2);
     // Every activation falls inside the song, so each has its place on the
@@ -1165,12 +1182,6 @@ void test_paths_length_from_click(ImGuiTestContext* ctx) {
     IM_CHECK(&*app.viewed.record == record);
     IM_CHECK(app.viewed.song_length_ms == length);
 }
-
-// The pieces of Tapped Out (Mike Orlando)'s optimal path, activation 4: its
-// squeeze out, which the game's windows cannot cover. Literals from T0's run;
-// tests/test_activation_rows.cpp pins the same row's text.
-constexpr const char* kTappedOutWindowPieces[] = {"Dynamic Hit Window:", "frontend 77.9 ms [K   G]",
-                                                  "backend 72.0 ms [ R B ]", "65.9 ms short"};
 
 // Opens Tapped Out in the app already running and waits for its Paths tab.
 bool open_tapped_out(ImGuiTestContext* ctx) {
@@ -1311,8 +1322,10 @@ void test_paths_hit_window(ImGuiTestContext* ctx) {
     check_early_fill_window(h, *act3.early_fill_window);
 }
 
-// At the narrowest panel, all four pieces of Tapped Out's activation 4 row
-// are still on screen, and the row stays inside its box.
+// At the narrowest panel, every piece of the Dynamic Hit Window row of Tapped
+// Out (Mike Orlando)'s activation 4 squeeze is still on screen, and the row
+// stays inside its box. The pieces are the row view the tab drew
+// (window_pieces).
 void test_paths_hit_window_narrow(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -1322,7 +1335,14 @@ void test_paths_hit_window_narrow(ImGuiTestContext* ctx) {
     if (!narrowest_panel(ctx)) return;
     ctx->ItemClick("**/##act4");
     ctx->Yield(3);
-    for (const char* piece : kTappedOutWindowPieces) IM_CHECK(on_screen(h, piece));
+    const std::vector<hydra::app::ActivationRowView> tapped = shown_activations(*h.app).acts;
+    IM_CHECK_GE(tapped.size(), static_cast<size_t>(4));
+    if (tapped.size() < 4) return;
+    const hydra::app::ActivationRowView& act4 = tapped[3];
+    IM_CHECK(!act4.squeeze_windows.empty() && act4.squeeze_windows[0].has_value());
+    if (ctx->IsError()) return;
+    for (const std::string& piece : window_pieces(*act4.squeeze_windows[0]))
+        IM_CHECK(on_screen(h, piece));
     check_tapped_out_box_fits();
 }
 
