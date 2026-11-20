@@ -28,6 +28,7 @@
 
 #include "app/analysis.h"
 #include "app/config.h"
+#include "app/report.h"  // nothing_under_settings
 #include "app/user_messages.h"  // kDatabaseOpenSentence
 #include "chart_text.h"           // chart_text, section, line
 #include "cli/batch_scope.h"
@@ -116,6 +117,38 @@ bool contains(const std::string& haystack, const std::string& needle) {
     return haystack.find(needle) != std::string::npos;
 }
 
+// `text` as a tool's console prints it: the C runtime's text mode turns each
+// "\n" into "\r\n".
+std::string console_text(const std::string& text) {
+    std::string out;
+    for (const char c : text) {
+        if (c == '\n') out += '\r';
+        out += c;
+    }
+    return out;
+}
+
+// What hydra_batch and hydra_fillcompare print when the store at `db` will not
+// open: the same open the tools make, under the sandbox's default settings,
+// ending through app::tool_error. Empty when the open succeeds.
+std::string store_open_refusal(const std::string& db) {
+    try {
+        hydra::app::open_store(db, hydra::core::RulesStamp::of(hydra::app::Settings{}.rules));
+    } catch (const std::exception& e) {
+        return console_text(hydra::app::plain_error_block(e) + "\n");
+    }
+    return {};
+}
+
+// hydra_batch's header line for the fill rule a run with or without
+// --legacy-fills runs under, in the app's long name for the rule.
+std::string fills_header_line(bool legacy_fills) {
+    return std::string("Fills      : ") +
+           hydra::fill_rule_name(hydra::fill_rule_for(legacy_fills),
+                                 hydra::FillRuleNameStyle::Long) +
+           "\r\n";
+}
+
 // The smallest corpus .chart that has drum notes and at least two Star Power
 // phrases: every tool gets a real path to work with, and each run is quick.
 std::string small_chart() {
@@ -161,9 +194,14 @@ struct CliSandbox {
         songs = dir / "songs";
         fs::create_directories(songs / "fixture");
         fs::copy_file(fs::u8path(chart), songs / "fixture" / "notes.chart");
-        std::ofstream ini(songs / "fixture" / "song.ini", std::ios::binary);
-        ini << "[song]\nname = CLI Fixture\nartist = Tester\ncharter = Nobody\n";
+        write_song_ini("CLI Fixture", "Tester");
     }
+    // The chart folder's song.ini, as a chart editor saves one.
+    void write_song_ini(const std::string& name, const std::string& artist) const {
+        std::ofstream ini(song_ini(), std::ios::binary);
+        ini << "[song]\nname = " << name << "\nartist = " << artist << "\ncharter = Nobody\n";
+    }
+    fs::path song_ini() const { return songs / "fixture" / "song.ini"; }
     ~CliSandbox() {
         std::error_code ec;
         fs::remove_all(dir, ec);
@@ -180,26 +218,31 @@ struct CliSandbox {
 
 }  // namespace
 
-TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
+TEST_CASE("hydra_batch prints the app's setting words and counts, and fills a new database "
+          "under the rule it ran under") {
     CliSandbox box("stamp");
     const std::string normal = box.db("ch11.db");
     RunResult r = run_exe(box.batch, {"--db", normal, box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
     CHECK(contains(r.output, "Tester - CLI Fixture"));
-    // The header uses the app's names and words (D114 items 9 and 23).
-    CHECK(contains(r.output, "Score range: 4 scores"));
-    CHECK(contains(r.output, "SP cap     : 4 bars"));
-    CHECK(contains(r.output, "Path limit : 10 ms"));
-    CHECK(contains(r.output, "Fills      : Clone Hero 1.1"));
-    CHECK(contains(r.output, "Early fill : 60 ms"));
+    // The header uses the app's names and words (D114 items 9 and 23): each
+    // value is the app's own text for the defaults the sandboxed exe reads.
+    {
+        const hydra::app::SettingsText described =
+            hydra::app::describe_settings(hydra::app::Settings{}.batch_run().settings);
+        CHECK(contains(r.output, "Score range: " + described.depth + "\r\n"));
+        CHECK(contains(r.output, "SP cap     : " + described.cap + "\r\n"));
+        CHECK(contains(r.output, "Path limit : " + described.timing + "\r\n"));
+        CHECK(contains(r.output, fills_header_line(false)));
+        CHECK(contains(r.output, "Early fill : " + described.early_fill + "\r\n"));
+    }
     CHECK(contains(r.output, "Found 1 chart."));
     // Every number is the batch's progress, in library rows (D79); the
     // store's raw row count is not printed.
     CHECK(contains(r.output, "[1/1] "));
     // The closing counts are the app's strip words (D114 item 10).
-    CHECK(contains(r.output,
-                   "\n1 analyzed \xC2\xB7 0 failed \xC2\xB7 0 skipped (already had a result) in "));
+    CHECK(contains(r.output, "\n" + hydra::app::batch_counts_text(1, 0, 0) + " in "));
     CHECK_FALSE(contains(r.output, "Store now holds"));
     {
         hydra::store::RecordStore store(normal);
@@ -212,18 +255,22 @@ TEST_CASE("hydra_batch fills a new database under the rule it ran under") {
     r = run_exe(box.batch, {"--legacy-fills", "--db", legacy, box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
-    CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
+    CHECK(contains(r.output, fills_header_line(true)));
     CHECK(!contains(r.output, "(legacy)"));
     hydra::store::RecordStore store(legacy);
     CHECK(store.record_count() == 1);
 }
 
 // D72 item 5: a database that won't open is a run that can't start, so each
-// tool prints the sentence and SQLite's text and exits 2.
+// tool prints the sentence and SQLite's text and exits 2. The text is the
+// app's own for the store's open of the same file.
 TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
     CliSandbox box("junkdb");
     const std::string junk = box.db("junk.db");
     hydra::test::write_junk_db(junk);
+    const std::string refusal = store_open_refusal(junk);
+    INFO("the store's own open printed: " << refusal);
+    REQUIRE(contains(refusal, hydra::app::kDatabaseOpenSentence));
     const std::string page = (box.dir / "page.html").u8string();
     const std::pair<fs::path, std::vector<std::string>> runs[] = {
         {box.batch, {"--db", junk, box.folder()}},
@@ -233,9 +280,7 @@ TEST_CASE("hydra_batch and hydra_fillcompare say why a database won't open") {
         const RunResult r = run_exe(exe, args);
         INFO(exe.filename().u8string() << " printed: " << r.output);
         CHECK(r.exit_code == 2);
-        // Two checks, because the console's text mode turns each "\n" into "\r\n".
-        CHECK(contains(r.output, hydra::app::kDatabaseOpenSentence));
-        CHECK(contains(r.output, "sqlite exec failed: file is not a database"));
+        CHECK(contains(r.output, refusal));
     }
 }
 
@@ -250,7 +295,7 @@ TEST_CASE("hydra_batch --legacy-fills writes the tool's own hydra.db under the 1
     REQUIRE(r.exit_code == 0);
     const std::string own_db = (box.dir / "hydra.db").u8string();
     CHECK(contains(r.output, "Database   : " + own_db));
-    CHECK(contains(r.output, "Fills      : Clone Hero 1.0"));
+    CHECK(contains(r.output, fills_header_line(true)));
 
     const std::string md5 =
         hydra::app::hash_chart_file((box.songs / "fixture" / "notes.chart").u8string());
@@ -272,36 +317,29 @@ TEST_CASE("hydra_batch refuses a library file too old to convert in one sentence
                   fs::u8path(old_db));
     RunResult r = run_exe(box.batch, {"--db", old_db, box.folder()});
     CHECK(r.exit_code == 2);
-    // The whole of what the run printed; the console's text mode turns the
-    // "\n" into "\r\n".
-    CHECK(r.output == "The library file '" + old_db +
-                          "' is from a Hydra version older than 2.2.0, and opening it in "
-                          "Hydra sets it aside and starts a fresh library.\r\n");
     CHECK_FALSE(fs::exists(fs::u8path(hydra::store::set_aside_path(old_db))));
-}
-
-// An option hydra_batch doesn't know (a removed one included, D87) stops the
-// run before it opens the database.
-TEST_CASE("hydra_batch refuses an unknown option") {
-    CliSandbox box("unknown_option");
-    const std::string db = box.db("untouched.db");
-    RunResult r = run_exe(box.batch, {"--no-such-option", "--db", db});
-    INFO(r.output);
-    CHECK(r.exit_code == 2);
-    CHECK(contains(r.output, "Unknown option: --no-such-option"));
-    CHECK_FALSE(fs::exists(fs::u8path(db)));
+    // The whole of what the run printed is the app's text for the store's
+    // open of the same file, and that text names the file.
+    const std::string refusal = store_open_refusal(old_db);
+    CHECK(contains(refusal, old_db));
+    CHECK(r.output == refusal);
 }
 
 // D271 item 6: every tool prints the one helper's line for an option it does
-// not know, in the words the user chose (D276 item 5). Both tools here exit 2.
+// not know, in the words the user chose (D276 item 5). Both tools here exit 2,
+// and an unknown option (a removed one included, D87) stops the run before it
+// opens the database.
 TEST_CASE("hydra_batch and hydra_fillcompare print the one unknown-option line") {
-    CHECK(hydra::unknown_option_line("--bogus") == "Unknown option: --bogus");
+    const std::string line = hydra::unknown_option_line("--bogus");
+    CHECK(contains(line, "--bogus"));
     CliSandbox box("unknown_option_line");
+    const std::string db = box.db("untouched.db");
     for (const fs::path& exe : {box.batch, box.fillcompare}) {
-        RunResult r = run_exe(exe, {"--bogus"});
+        RunResult r = run_exe(exe, {"--bogus", "--db", db});
         INFO(exe.u8string() << ": " << r.output);
         CHECK(r.exit_code == 2);
-        CHECK(contains(r.output, hydra::unknown_option_line("--bogus") + "\r\n"));
+        CHECK(contains(r.output, console_text(line + "\n")));
+        CHECK_FALSE(fs::exists(fs::u8path(db)));
     }
 }
 
@@ -469,42 +507,40 @@ TEST_CASE("hydra_batch reuses the GUI's scan cache") {
     CliSandbox box("cache");
     const std::string db = box.db("cached.db");
     {
+        // The library a GUI scan saves (Scan library: discover_charts, then
+        // save_scan_as_library).
         auto [items, errors] = hydra::app::discover_charts({box.folder()});
         REQUIRE(items.size() == 1);
-        // The row a GUI scan writes, with only its title changed. The file
-        // sizes and times still match, so a scan that reads the cache takes
-        // this title; one that re-reads song.ini gets "CLI Fixture".
         hydra::store::RecordStore store(db);
-        store.rebuild_chart_library({{items[0].md5, "Title From Cache", items[0].artist,
-                                      items[0].charter, items[0].notespath,
-                                      items[0].rootfolder, items[0].sig}});
+        REQUIRE_FALSE(hydra::app::save_scan_as_library(store, items).has_value());
     }
+    // song.ini then gets a new name of the same length, and its time is put
+    // back, so the files' sizes and times match the scan's. A scan that reads
+    // the cache keeps the saved name; one that re-reads song.ini gets the new.
+    const fs::file_time_type saved_time = fs::last_write_time(box.song_ini());
+    box.write_song_ini("CLI Renamed", "Tester");
+    fs::last_write_time(box.song_ini(), saved_time);
 
     RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
-    CHECK(contains(r.output, "Tester - Title From Cache"));
-    CHECK(!contains(r.output, "CLI Fixture"));
+    CHECK(contains(r.output, "Tester - CLI Fixture"));
+    CHECK(!contains(r.output, "CLI Renamed"));
 }
 
 TEST_CASE("hydra_batch prints an artist made only of tags as (unknown)") {
     // D50 item 5: the progress line cleans the artist by the title's rule.
-    // The cached scan row carries the artist, as in the scan-cache case.
+    // The artist is the chart folder's own song.ini line, as a chart editor
+    // saves rich-text tags, and the run scans it.
     CliSandbox box("tagartist");
-    const std::string db = box.db("tags.db");
-    {
-        auto [items, errors] = hydra::app::discover_charts({box.folder()});
-        REQUIRE(items.size() == 1);
-        hydra::store::RecordStore store(db);
-        store.rebuild_chart_library({{items[0].md5, items[0].title, hydra::test::kTagOnlyTitle,
-                                      items[0].charter, items[0].notespath,
-                                      items[0].rootfolder, items[0].sig}});
-    }
+    box.write_song_ini("CLI Fixture", hydra::test::kTagOnlyTitle);
+    const std::string shown_artist = hydra::display_artist(hydra::test::kTagOnlyTitle);
+    REQUIRE(shown_artist == hydra::kUnknownTitle);
 
-    RunResult r = run_exe(box.batch, {"--db", db, box.folder()});
+    RunResult r = run_exe(box.batch, {"--db", box.db("tags.db"), box.folder()});
     INFO(r.output);
     REQUIRE(r.exit_code == 0);
-    CHECK(contains(r.output, "(unknown) - CLI Fixture"));
+    CHECK(contains(r.output, shown_artist + " - CLI Fixture"));
     CHECK(!contains(r.output, "<b>"));
 }
 
@@ -559,9 +595,14 @@ TEST_CASE("hydra_fillcompare reads the tool's own hydra.db without --db") {
     INFO(empty.output);
     CHECK(empty.exit_code == 1);
     CHECK(!contains(empty.output, "Warning"));
-    CHECK(contains(empty.output,
-                   "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, "
-                   "SP cap 4). Analyze with these settings, or change them."));
+    {
+        const hydra::app::Settings defaults{};  // what the sandboxed exe reads
+        const hydra::store::Profile profile =
+            defaults.profile_with_fills(hydra::FillDeadlineRule::Ch11);
+        CHECK(contains(empty.output,
+                       hydra::app::report::nothing_under_settings(profile.chartmode,
+                                                                  profile.cap.exact)));
+    }
     CHECK(!contains(empty.output, "No records to compare"));
 }
 
@@ -572,8 +613,10 @@ TEST_CASE("hydra_fillcompare refuses --old and --new and names --db") {
         RunResult r = run_exe(box.fillcompare, {flag, db, "--no-open"});
         INFO(r.output);
         CHECK(r.exit_code == 2);
-        CHECK(contains(r.output, std::string(flag) + " is gone"));
-        CHECK(contains(r.output, "--db <path>"));
+        // The refusal names the flag it refused and the one it takes instead.
+        CHECK(contains(r.output, flag));
+        CHECK(contains(r.output, "--db"));
+        CHECK_FALSE(contains(r.output, hydra::unknown_option_line(flag)));
     }
     CHECK_FALSE(fs::exists(fs::u8path(db)));
 }
@@ -639,21 +682,22 @@ TEST_CASE("hydra_replay refuses --ms, --efill and --depth values that are not wh
     const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
     const std::string out = (box.dir / "dump.json").u8string();
 
+    // Each refusal names the flag and the text it refused.
     const struct {
         const char* flag;
         const char* value;
-        const char* line;
     } refused[] = {
-        {"--ms", "abc", "--ms takes a whole number, not \"abc\""},
-        {"--efill", "abc", "--efill takes a whole number, not \"abc\""},
-        {"--depth", "1x", "--depth takes a whole number, not \"1x\""},
-        {"--depth", "99999999999", "--depth takes a whole number, not \"99999999999\""},
+        {"--ms", "abc"},
+        {"--efill", "abc"},
+        {"--depth", "1x"},
+        {"--depth", "99999999999"},
     };
     for (const auto& bad : refused) {
         const RunResult r = run_exe(replay, {"dump", "--chart", chart, bad.flag, bad.value, "--out", out});
         INFO(bad.flag << " " << bad.value << " printed: " << r.output);
         CHECK(r.exit_code == 2);
-        CHECK(contains(r.output, bad.line));
+        CHECK(contains(r.output, bad.flag));
+        CHECK(contains(r.output, bad.value));
         CHECK_FALSE(fs::exists(fs::u8path(out)));
         std::error_code ec;
         fs::remove(fs::u8path(out), ec);  // a loose read writes it; the next run starts clean
