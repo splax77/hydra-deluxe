@@ -1,0 +1,291 @@
+ended: done (agent: song over)
+engine: ʺʺʸʶʿʵˀʸʲˀʲ in StrikeCore, base ʿʺʸʺʼʴʸʼʻʳʼ<ʾʸʸʻʷʸˁʾˁʽʸ>
+shape: sealed yes, generic_base yes, hit_time_double yes, ctor_rva yes
+notes in C:\Clone Hero\songs\Hydra Probe\Window Map\manifest.json: 142
+calls: 284
+  call 1: ʾʼʺʻˀʵʶʸʶʻʳ at 3003.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 0 at 3000 ms, diff +3.0 ms
+  call 2: ʿʾʹʲˀʶʷʵʶʶˀ at 3003.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 0 at 3000 ms, diff +3.0 ms
+  call 3: ʾʼʺʻˀʵʶʸʶʻʳ at 3103.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 1 at 3100 ms, diff +3.0 ms
+  call 4: ʿʾʹʲˀʶʷʵʶʶˀ at 3103.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 1 at 3100 ms, diff +3.0 ms
+  call 5: ʾʼʺʻˀʵʶʸʶʻʳ at 3200.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 2 at 3200 ms, diff +0.0 ms
+  call 6: ʿʾʹʲˀʶʷʵʶʶˀ at 3200.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 2 at 3200 ms, diff +0.0 ms
+  call 7: ʾʼʺʻˀʵʶʸʶʻʳ at 3300.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 3 at 3300 ms, diff +0.1 ms
+  call 8: ʿʾʹʲˀʶʷʵʶʶˀ at 3300.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 3 at 3300 ms, diff +0.1 ms
+  call 9: ʾʼʺʻˀʵʶʸʶʻʳ at 3400.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 4 at 3400 ms, diff +0.1 ms
+  call 10: ʿʾʹʲˀʶʷʵʶʶˀ at 3400.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 4 at 3400 ms, diff +0.1 ms
+  call 11: ʾʼʺʻˀʵʶʸʶʻʳ at 3551.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 5 at 3550 ms, diff +1.7 ms
+  call 12: ʿʾʹʲˀʶʷʵʶʶˀ at 3551.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 5 at 3550 ms, diff +1.7 ms
+  call 13: ʾʼʺʻˀʵʶʸʶʻʳ at 3700.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 6 at 3700 ms, diff +0.2 ms
+  call 14: ʿʾʹʲˀʶʷʵʶʶˀ at 3700.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 6 at 3700 ms, diff +0.2 ms
+  call 15: ʾʼʺʻˀʵʶʸʶʻʳ at 3851.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 7 at 3850 ms, diff +1.7 ms
+  call 16: ʿʾʹʲˀʶʷʵʶʶˀ at 3851.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 7 at 3850 ms, diff +1.7 ms
+  call 17: ʾʼʺʻˀʵʶʸʶʻʳ at 4000.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 8 at 4000 ms, diff +0.2 ms
+  call 18: ʿʾʹʲˀʶʷʵʶʶˀ at 4000.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 8 at 4000 ms, diff +0.2 ms
+  call 19: ʾʼʺʻˀʵʶʸʶʻʳ at 4151.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 9 at 4150 ms, diff +1.8 ms
+  call 20: ʿʾʹʲˀʶʷʵʶʶˀ at 4151.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 9 at 4150 ms, diff +1.8 ms
+  call 21: ʾʼʺʻˀʵʶʸʶʻʳ at 4300.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 10 at 4300 ms, diff +0.4 ms
+  call 22: ʿʾʹʲˀʶʷʵʶʶˀ at 4300.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 10 at 4300 ms, diff +0.4 ms
+  call 23: ʾʼʺʻˀʵʶʸʶʻʳ at 4451.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 11 at 4450 ms, diff +1.9 ms
+  call 24: ʿʾʹʲˀʶʷʵʶʶˀ at 4451.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 11 at 4450 ms, diff +1.9 ms
+  call 25: ʾʼʺʻˀʵʶʸʶʻʳ at 4600.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 12 at 4600 ms, diff +0.4 ms
+  call 26: ʿʾʹʲˀʶʷʵʶʶˀ at 4600.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 12 at 4600 ms, diff +0.4 ms
+  call 27: ʾʼʺʻˀʵʶʸʶʻʳ at 7602.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 13 at 7600 ms, diff +2.3 ms
+  call 28: ʿʾʹʲˀʶʷʵʶʶˀ at 7602.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 13 at 7600 ms, diff +2.3 ms
+  call 29: ʾʼʺʻˀʵʶʸʶʻʳ at 7702.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 14 at 7700 ms, diff +2.3 ms
+  call 30: ʿʾʹʲˀʶʷʵʶʶˀ at 7702.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 14 at 7700 ms, diff +2.3 ms
+  call 31: ʾʼʺʻˀʵʶʸʶʻʳ at 7802.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 15 at 7800 ms, diff +2.6 ms
+  call 32: ʿʾʹʲˀʶʷʵʶʶˀ at 7802.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 15 at 7800 ms, diff +2.6 ms
+  call 33: ʾʼʺʻˀʵʶʸʶʻʳ at 7902.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 16 at 7900 ms, diff +2.6 ms
+  call 34: ʿʾʹʲˀʶʷʵʶʶˀ at 7902.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 16 at 7900 ms, diff +2.6 ms
+  call 35: ʾʼʺʻˀʵʶʸʶʻʳ at 8002.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 17 at 8000 ms, diff +2.6 ms
+  call 36: ʿʾʹʲˀʶʷʵʶʶˀ at 8002.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 17 at 8000 ms, diff +2.6 ms
+  call 37: ʾʼʺʻˀʵʶʸʶʻʳ at 8172.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 18 at 8170 ms, diff +2.4 ms
+  call 38: ʿʾʹʲˀʶʷʵʶʶˀ at 8172.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 18 at 8170 ms, diff +2.4 ms
+  call 39: ʾʼʺʻˀʵʶʸʶʻʳ at 8342.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 19 at 8340 ms, diff +2.2 ms
+  call 40: ʿʾʹʲˀʶʷʵʶʶˀ at 8342.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 19 at 8340 ms, diff +2.2 ms
+  call 41: ʾʼʺʻˀʵʶʸʶʻʳ at 8511.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 20 at 8510 ms, diff +1.9 ms
+  call 42: ʿʾʹʲˀʶʷʵʶʶˀ at 8511.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 20 at 8510 ms, diff +1.9 ms
+  call 43: ʾʼʺʻˀʵʶʸʶʻʳ at 8681.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 21 at 8680 ms, diff +1.7 ms
+  call 44: ʿʾʹʲˀʶʷʵʶʶˀ at 8681.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 21 at 8680 ms, diff +1.7 ms
+  call 45: ʾʼʺʻˀʵʶʸʶʻʳ at 8851.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 22 at 8850 ms, diff +1.4 ms
+  call 46: ʿʾʹʲˀʶʷʵʶʶˀ at 8851.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 22 at 8850 ms, diff +1.4 ms
+  call 47: ʾʼʺʻˀʵʶʸʶʻʳ at 9021.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 23 at 9020 ms, diff +1.4 ms
+  call 48: ʿʾʹʲˀʶʷʵʶʶˀ at 9021.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 23 at 9020 ms, diff +1.4 ms
+  call 49: ʾʼʺʻˀʵʶʸʶʻʳ at 9191.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 24 at 9190 ms, diff +1.3 ms
+  call 50: ʿʾʹʲˀʶʷʵʶʶˀ at 9191.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 24 at 9190 ms, diff +1.3 ms
+  call 51: ʾʼʺʻˀʵʶʸʶʻʳ at 9361.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 25 at 9360 ms, diff +1.0 ms
+  call 52: ʿʾʹʲˀʶʷʵʶʶˀ at 9361.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 25 at 9360 ms, diff +1.0 ms
+  call 53: ʾʼʺʻˀʵʶʸʶʻʳ at 12362.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 26 at 12360 ms, diff +2.2 ms
+  call 54: ʿʾʹʲˀʶʷʵʶʶˀ at 12362.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 26 at 12360 ms, diff +2.2 ms
+  call 55: ʾʼʺʻˀʵʶʸʶʻʳ at 12462.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 27 at 12460 ms, diff +2.2 ms
+  call 56: ʿʾʹʲˀʶʷʵʶʶˀ at 12462.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 27 at 12460 ms, diff +2.2 ms
+  call 57: ʾʼʺʻˀʵʶʸʶʻʳ at 12562.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 28 at 12560 ms, diff +2.3 ms
+  call 58: ʿʾʹʲˀʶʷʵʶʶˀ at 12562.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 28 at 12560 ms, diff +2.3 ms
+  call 59: ʾʼʺʻˀʵʶʸʶʻʳ at 12662.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 29 at 12660 ms, diff +2.3 ms
+  call 60: ʿʾʹʲˀʶʷʵʶʶˀ at 12662.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 29 at 12660 ms, diff +2.3 ms
+  call 61: ʾʼʺʻˀʵʶʸʶʻʳ at 12762.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 30 at 12760 ms, diff +2.3 ms
+  call 62: ʿʾʹʲˀʶʷʵʶʶˀ at 12762.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 30 at 12760 ms, diff +2.3 ms
+  call 63: ʾʼʺʻˀʵʶʸʶʻʳ at 12941.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 31 at 12940 ms, diff +1.1 ms
+  call 64: ʿʾʹʲˀʶʷʵʶʶˀ at 12941.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 31 at 12940 ms, diff +1.1 ms
+  call 65: ʾʼʺʻˀʵʶʸʶʻʳ at 13123.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 32 at 13120 ms, diff +3.0 ms
+  call 66: ʿʾʹʲˀʶʷʵʶʶˀ at 13123.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 32 at 13120 ms, diff +3.0 ms
+  call 67: ʾʼʺʻˀʵʶʸʶʻʳ at 13301.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 33 at 13300 ms, diff +1.8 ms
+  call 68: ʿʾʹʲˀʶʷʵʶʶˀ at 13301.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 33 at 13300 ms, diff +1.8 ms
+  call 69: ʾʼʺʻˀʵʶʸʶʻʳ at 13480.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 34 at 13480 ms, diff +0.7 ms
+  call 70: ʿʾʹʲˀʶʷʵʶʶˀ at 13480.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 34 at 13480 ms, diff +0.7 ms
+  call 71: ʾʼʺʻˀʵʶʸʶʻʳ at 13662.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 35 at 13660 ms, diff +2.6 ms
+  call 72: ʿʾʹʲˀʶʷʵʶʶˀ at 13662.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 35 at 13660 ms, diff +2.6 ms
+  call 73: ʾʼʺʻˀʵʶʸʶʻʳ at 13841.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 36 at 13840 ms, diff +1.8 ms
+  call 74: ʿʾʹʲˀʶʷʵʶʶˀ at 13841.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 36 at 13840 ms, diff +1.8 ms
+  call 75: ʾʼʺʻˀʵʶʸʶʻʳ at 14020.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 37 at 14020 ms, diff +0.6 ms
+  call 76: ʿʾʹʲˀʶʷʵʶʶˀ at 14020.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 37 at 14020 ms, diff +0.6 ms
+  call 77: ʾʼʺʻˀʵʶʸʶʻʳ at 14202.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 38 at 14200 ms, diff +2.4 ms
+  call 78: ʿʾʹʲˀʶʷʵʶʶˀ at 14202.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 38 at 14200 ms, diff +2.4 ms
+  call 79: ʾʼʺʻˀʵʶʸʶʻʳ at 17201.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 39 at 17200 ms, diff +1.6 ms
+  call 80: ʿʾʹʲˀʶʷʵʶʶˀ at 17201.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 39 at 17200 ms, diff +1.6 ms
+  call 81: ʾʼʺʻˀʵʶʸʶʻʳ at 17301.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 40 at 17300 ms, diff +1.7 ms
+  call 82: ʿʾʹʲˀʶʷʵʶʶˀ at 17301.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 40 at 17300 ms, diff +1.7 ms
+  call 83: ʾʼʺʻˀʵʶʸʶʻʳ at 17401.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 41 at 17400 ms, diff +1.7 ms
+  call 84: ʿʾʹʲˀʶʷʵʶʶˀ at 17401.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 41 at 17400 ms, diff +1.7 ms
+  call 85: ʾʼʺʻˀʵʶʸʶʻʳ at 17501.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 42 at 17500 ms, diff +1.7 ms
+  call 86: ʿʾʹʲˀʶʷʵʶʶˀ at 17501.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 42 at 17500 ms, diff +1.7 ms
+  call 87: ʾʼʺʻˀʵʶʸʶʻʳ at 17601.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 43 at 17600 ms, diff +1.7 ms
+  call 88: ʿʾʹʲˀʶʷʵʶʶˀ at 17601.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 43 at 17600 ms, diff +1.7 ms
+  call 89: ʾʼʺʻˀʵʶʸʶʻʳ at 17801.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 44 at 17800 ms, diff +1.7 ms
+  call 90: ʿʾʹʲˀʶʷʵʶʶˀ at 17801.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 44 at 17800 ms, diff +1.7 ms
+  call 91: ʾʼʺʻˀʵʶʸʶʻʳ at 18001.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 45 at 18000 ms, diff +1.7 ms
+  call 92: ʿʾʹʲˀʶʷʵʶʶˀ at 18001.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 45 at 18000 ms, diff +1.7 ms
+  call 93: ʾʼʺʻˀʵʶʸʶʻʳ at 18201.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 46 at 18200 ms, diff +1.7 ms
+  call 94: ʿʾʹʲˀʶʷʵʶʶˀ at 18201.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 46 at 18200 ms, diff +1.7 ms
+  call 95: ʾʼʺʻˀʵʶʸʶʻʳ at 18401.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 47 at 18400 ms, diff +1.7 ms
+  call 96: ʿʾʹʲˀʶʷʵʶʶˀ at 18401.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 47 at 18400 ms, diff +1.7 ms
+  call 97: ʾʼʺʻˀʵʶʸʶʻʳ at 18601.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 48 at 18600 ms, diff +1.8 ms
+  call 98: ʿʾʹʲˀʶʷʵʶʶˀ at 18601.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 48 at 18600 ms, diff +1.8 ms
+  call 99: ʾʼʺʻˀʵʶʸʶʻʳ at 18801.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 49 at 18800 ms, diff +1.9 ms
+  call 100: ʿʾʹʲˀʶʷʵʶʶˀ at 18801.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 49 at 18800 ms, diff +1.9 ms
+  call 101: ʾʼʺʻˀʵʶʸʶʻʳ at 19001.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 50 at 19000 ms, diff +1.9 ms
+  call 102: ʿʾʹʲˀʶʷʵʶʶˀ at 19001.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 50 at 19000 ms, diff +1.9 ms
+  call 103: ʾʼʺʻˀʵʶʸʶʻʳ at 19202.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 51 at 19200 ms, diff +2.1 ms
+  call 104: ʿʾʹʲˀʶʷʵʶʶˀ at 19202.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 51 at 19200 ms, diff +2.1 ms
+  call 105: ʾʼʺʻˀʵʶʸʶʻʳ at 22203.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 52 at 22200 ms, diff +3.0 ms
+  call 106: ʿʾʹʲˀʶʷʵʶʶˀ at 22203.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 52 at 22200 ms, diff +3.0 ms
+  call 107: ʾʼʺʻˀʵʶʸʶʻʳ at 22303.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 53 at 22300 ms, diff +3.0 ms
+  call 108: ʿʾʹʲˀʶʷʵʶʶˀ at 22303.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 53 at 22300 ms, diff +3.0 ms
+  call 109: ʾʼʺʻˀʵʶʸʶʻʳ at 22403.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 54 at 22400 ms, diff +3.0 ms
+  call 110: ʿʾʹʲˀʶʷʵʶʶˀ at 22403.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 54 at 22400 ms, diff +3.0 ms
+  call 111: ʾʼʺʻˀʵʶʸʶʻʳ at 22503.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 55 at 22500 ms, diff +3.0 ms
+  call 112: ʿʾʹʲˀʶʷʵʶʶˀ at 22503.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 55 at 22500 ms, diff +3.0 ms
+  call 113: ʾʼʺʻˀʵʶʸʶʻʳ at 22600.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 56 at 22600 ms, diff +0.2 ms
+  call 114: ʿʾʹʲˀʶʷʵʶʶˀ at 22600.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 56 at 22600 ms, diff +0.2 ms
+  call 115: ʾʼʺʻˀʵʶʸʶʻʳ at 22851.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 57 at 22850 ms, diff +1.7 ms
+  call 116: ʿʾʹʲˀʶʷʵʶʶˀ at 22851.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 57 at 22850 ms, diff +1.7 ms
+  call 117: ʾʼʺʻˀʵʶʸʶʻʳ at 23100.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 58 at 23100 ms, diff +0.5 ms
+  call 118: ʿʾʹʲˀʶʷʵʶʶˀ at 23100.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 58 at 23100 ms, diff +0.5 ms
+  call 119: ʾʼʺʻˀʵʶʸʶʻʳ at 23352.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 59 at 23350 ms, diff +2.3 ms
+  call 120: ʿʾʹʲˀʶʷʵʶʶˀ at 23352.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 59 at 23350 ms, diff +2.3 ms
+  call 121: ʾʼʺʻˀʵʶʸʶʻʳ at 23600.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 60 at 23600 ms, diff +0.8 ms
+  call 122: ʿʾʹʲˀʶʷʵʶʶˀ at 23600.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 60 at 23600 ms, diff +0.8 ms
+  call 123: ʾʼʺʻˀʵʶʸʶʻʳ at 23852.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 61 at 23850 ms, diff +2.4 ms
+  call 124: ʿʾʹʲˀʶʷʵʶʶˀ at 23852.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 61 at 23850 ms, diff +2.4 ms
+  call 125: ʾʼʺʻˀʵʶʸʶʻʳ at 24101.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 62 at 24100 ms, diff +1.1 ms
+  call 126: ʿʾʹʲˀʶʷʵʶʶˀ at 24101.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 62 at 24100 ms, diff +1.1 ms
+  call 127: ʾʼʺʻˀʵʶʸʶʻʳ at 24352.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 63 at 24350 ms, diff +2.8 ms
+  call 128: ʿʾʹʲˀʶʷʵʶʶˀ at 24352.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 63 at 24350 ms, diff +2.8 ms
+  call 129: ʾʼʺʻˀʵʶʸʶʻʳ at 24601.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 64 at 24600 ms, diff +1.3 ms
+  call 130: ʿʾʹʲˀʶʷʵʶʶˀ at 24601.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 64 at 24600 ms, diff +1.3 ms
+  call 131: ʾʼʺʻˀʵʶʸʶʻʳ at 27602.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 65 at 27600 ms, diff +2.4 ms
+  call 132: ʿʾʹʲˀʶʷʵʶʶˀ at 27602.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 65 at 27600 ms, diff +2.4 ms
+  call 133: ʾʼʺʻˀʵʶʸʶʻʳ at 27702.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 66 at 27700 ms, diff +2.5 ms
+  call 134: ʿʾʹʲˀʶʷʵʶʶˀ at 27702.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 66 at 27700 ms, diff +2.5 ms
+  call 135: ʾʼʺʻˀʵʶʸʶʻʳ at 27802.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 67 at 27800 ms, diff +2.5 ms
+  call 136: ʿʾʹʲˀʶʷʵʶʶˀ at 27802.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 67 at 27800 ms, diff +2.5 ms
+  call 137: ʾʼʺʻˀʵʶʸʶʻʳ at 27902.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 68 at 27900 ms, diff +2.5 ms
+  call 138: ʿʾʹʲˀʶʷʵʶʶˀ at 27902.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 68 at 27900 ms, diff +2.5 ms
+  call 139: ʾʼʺʻˀʵʶʸʶʻʳ at 28002.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 69 at 28000 ms, diff +2.5 ms
+  call 140: ʿʾʹʲˀʶʷʵʶʶˀ at 28002.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 69 at 28000 ms, diff +2.5 ms
+  call 141: ʾʼʺʻˀʵʶʸʶʻʳ at 28402.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 70 at 28400 ms, diff +2.5 ms
+  call 142: ʿʾʹʲˀʶʷʵʶʶˀ at 28402.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 70 at 28400 ms, diff +2.5 ms
+  call 143: ʾʼʺʻˀʵʶʸʶʻʳ at 28802.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 71 at 28800 ms, diff +2.6 ms
+  call 144: ʿʾʹʲˀʶʷʵʶʶˀ at 28802.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 71 at 28800 ms, diff +2.6 ms
+  call 145: ʾʼʺʻˀʵʶʸʶʻʳ at 29202.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 72 at 29200 ms, diff +2.9 ms
+  call 146: ʿʾʹʲˀʶʷʵʶʶˀ at 29202.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 72 at 29200 ms, diff +2.9 ms
+  call 147: ʾʼʺʻˀʵʶʸʶʻʳ at 29603.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 73 at 29600 ms, diff +3.0 ms
+  call 148: ʿʾʹʲˀʶʷʵʶʶˀ at 29603.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 73 at 29600 ms, diff +3.0 ms
+  call 149: ʾʼʺʻˀʵʶʸʶʻʳ at 30003.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 74 at 30000 ms, diff +3.0 ms
+  call 150: ʿʾʹʲˀʶʷʵʶʶˀ at 30003.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 74 at 30000 ms, diff +3.0 ms
+  call 151: ʾʼʺʻˀʵʶʸʶʻʳ at 30400.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 75 at 30400 ms, diff +0.1 ms
+  call 152: ʿʾʹʲˀʶʷʵʶʶˀ at 30400.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 75 at 30400 ms, diff +0.1 ms
+  call 153: ʾʼʺʻˀʵʶʸʶʻʳ at 30800.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 76 at 30800 ms, diff +0.3 ms
+  call 154: ʿʾʹʲˀʶʷʵʶʶˀ at 30800.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 76 at 30800 ms, diff +0.3 ms
+  call 155: ʾʼʺʻˀʵʶʸʶʻʳ at 31200.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 77 at 31200 ms, diff +0.4 ms
+  call 156: ʿʾʹʲˀʶʷʵʶʶˀ at 31200.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 77 at 31200 ms, diff +0.4 ms
+  call 157: ʾʼʺʻˀʵʶʸʶʻʳ at 34201.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 78 at 34200 ms, diff +1.9 ms
+  call 158: ʿʾʹʲˀʶʷʵʶʶˀ at 34201.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 78 at 34200 ms, diff +1.9 ms
+  call 159: ʾʼʺʻˀʵʶʸʶʻʳ at 34302.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 79 at 34300 ms, diff +2.0 ms
+  call 160: ʿʾʹʲˀʶʷʵʶʶˀ at 34302.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 79 at 34300 ms, diff +2.0 ms
+  call 161: ʾʼʺʻˀʵʶʸʶʻʳ at 34402.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 80 at 34400 ms, diff +2.0 ms
+  call 162: ʿʾʹʲˀʶʷʵʶʶˀ at 34402.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 80 at 34400 ms, diff +2.0 ms
+  call 163: ʾʼʺʻˀʵʶʸʶʻʳ at 34502.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 81 at 34500 ms, diff +2.4 ms
+  call 164: ʿʾʹʲˀʶʷʵʶʶˀ at 34502.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 81 at 34500 ms, diff +2.4 ms
+  call 165: ʾʼʺʻˀʵʶʸʶʻʳ at 34602.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 82 at 34600 ms, diff +2.4 ms
+  call 166: ʿʾʹʲˀʶʷʵʶʶˀ at 34602.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 82 at 34600 ms, diff +2.4 ms
+  call 167: ʾʼʺʻˀʵʶʸʶʻʳ at 34632.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 83 at 34630 ms, diff +2.7 ms
+  call 168: ʿʾʹʲˀʶʷʵʶʶˀ at 34632.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 83 at 34630 ms, diff +2.7 ms
+  call 169: ʾʼʺʻˀʵʶʸʶʻʳ at 34663.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 84 at 34660 ms, diff +3.0 ms
+  call 170: ʿʾʹʲˀʶʷʵʶʶˀ at 34663.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 84 at 34660 ms, diff +3.0 ms
+  call 171: ʾʼʺʻˀʵʶʸʶʻʳ at 34690.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 85 at 34690 ms, diff +0.5 ms
+  call 172: ʿʾʹʲˀʶʷʵʶʶˀ at 34690.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 85 at 34690 ms, diff +0.5 ms
+  call 173: ʾʼʺʻˀʵʶʸʶʻʳ at 34720.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 86 at 34720 ms, diff +0.8 ms
+  call 174: ʿʾʹʲˀʶʷʵʶʶˀ at 34720.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 86 at 34720 ms, diff +0.8 ms
+  call 175: ʾʼʺʻˀʵʶʸʶʻʳ at 34751.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 87 at 34750 ms, diff +1.1 ms
+  call 176: ʿʾʹʲˀʶʷʵʶʶˀ at 34751.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 87 at 34750 ms, diff +1.1 ms
+  call 177: ʾʼʺʻˀʵʶʸʶʻʳ at 34781.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 88 at 34780 ms, diff +1.4 ms
+  call 178: ʿʾʹʲˀʶʷʵʶʶˀ at 34781.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 88 at 34780 ms, diff +1.4 ms
+  call 179: ʾʼʺʻˀʵʶʸʶʻʳ at 34811.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 89 at 34810 ms, diff +1.7 ms
+  call 180: ʿʾʹʲˀʶʷʵʶʶˀ at 34811.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 89 at 34810 ms, diff +1.7 ms
+  call 181: ʾʼʺʻˀʵʶʸʶʻʳ at 34842.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 90 at 34840 ms, diff +2.0 ms
+  call 182: ʿʾʹʲˀʶʷʵʶʶˀ at 34842.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 90 at 34840 ms, diff +2.0 ms
+  call 183: ʾʼʺʻˀʵʶʸʶʻʳ at 37840.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 91 at 37840 ms, diff +0.7 ms
+  call 184: ʿʾʹʲˀʶʷʵʶʶˀ at 37840.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 91 at 37840 ms, diff +0.7 ms
+  call 185: ʾʼʺʻˀʵʶʸʶʻʳ at 37940.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 92 at 37940 ms, diff +0.7 ms
+  call 186: ʿʾʹʲˀʶʷʵʶʶˀ at 37940.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 92 at 37940 ms, diff +0.7 ms
+  call 187: ʾʼʺʻˀʵʶʸʶʻʳ at 38040.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 93 at 38040 ms, diff +0.8 ms
+  call 188: ʿʾʹʲˀʶʷʵʶʶˀ at 38040.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 93 at 38040 ms, diff +0.8 ms
+  call 189: ʾʼʺʻˀʵʶʸʶʻʳ at 38140.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 94 at 38140 ms, diff +0.9 ms
+  call 190: ʿʾʹʲˀʶʷʵʶʶˀ at 38140.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 94 at 38140 ms, diff +0.9 ms
+  call 191: ʾʼʺʻˀʵʶʸʶʻʳ at 38240.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 95 at 38240 ms, diff +0.9 ms
+  call 192: ʿʾʹʲˀʶʷʵʶʶˀ at 38240.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 95 at 38240 ms, diff +0.9 ms
+  call 193: ʾʼʺʻˀʵʶʸʶʻʳ at 38280.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 96 at 38280 ms, diff +0.3 ms
+  call 194: ʿʾʹʲˀʶʷʵʶʶˀ at 38280.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 96 at 38280 ms, diff +0.3 ms
+  call 195: ʾʼʺʻˀʵʶʸʶʻʳ at 38322.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 97 at 38320 ms, diff +2.7 ms
+  call 196: ʿʾʹʲˀʶʷʵʶʶˀ at 38322.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 97 at 38320 ms, diff +2.7 ms
+  call 197: ʾʼʺʻˀʵʶʸʶʻʳ at 38362.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 98 at 38360 ms, diff +2.1 ms
+  call 198: ʿʾʹʲˀʶʷʵʶʶˀ at 38362.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 98 at 38360 ms, diff +2.1 ms
+  call 199: ʾʼʺʻˀʵʶʸʶʻʳ at 38401.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 99 at 38400 ms, diff +1.5 ms
+  call 200: ʿʾʹʲˀʶʷʵʶʶˀ at 38401.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 99 at 38400 ms, diff +1.5 ms
+  call 201: ʾʼʺʻˀʵʶʸʶʻʳ at 38440.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 100 at 38440 ms, diff +0.9 ms
+  call 202: ʿʾʹʲˀʶʷʵʶʶˀ at 38440.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 100 at 38440 ms, diff +0.9 ms
+  call 203: ʾʼʺʻˀʵʶʸʶʻʳ at 38480.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 101 at 38480 ms, diff +0.3 ms
+  call 204: ʿʾʹʲˀʶʷʵʶʶˀ at 38480.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 101 at 38480 ms, diff +0.3 ms
+  call 205: ʾʼʺʻˀʵʶʸʶʻʳ at 38522.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 102 at 38520 ms, diff +2.7 ms
+  call 206: ʿʾʹʲˀʶʷʵʶʶˀ at 38522.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 102 at 38520 ms, diff +2.7 ms
+  call 207: ʾʼʺʻˀʵʶʸʶʻʳ at 38562.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 103 at 38560 ms, diff +2.1 ms
+  call 208: ʿʾʹʲˀʶʷʵʶʶˀ at 38562.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 103 at 38560 ms, diff +2.1 ms
+  call 209: ʾʼʺʻˀʵʶʸʶʻʳ at 41562.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 104 at 41560 ms, diff +2.8 ms
+  call 210: ʿʾʹʲˀʶʷʵʶʶˀ at 41562.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 104 at 41560 ms, diff +2.8 ms
+  call 211: ʾʼʺʻˀʵʶʸʶʻʳ at 41662.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 105 at 41660 ms, diff +2.8 ms
+  call 212: ʿʾʹʲˀʶʷʵʶʶˀ at 41662.8 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 105 at 41660 ms, diff +2.8 ms
+  call 213: ʾʼʺʻˀʵʶʸʶʻʳ at 41762.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 106 at 41760 ms, diff +2.9 ms
+  call 214: ʿʾʹʲˀʶʷʵʶʶˀ at 41762.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 106 at 41760 ms, diff +2.9 ms
+  call 215: ʾʼʺʻˀʵʶʸʶʻʳ at 41862.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 107 at 41860 ms, diff +2.9 ms
+  call 216: ʿʾʹʲˀʶʷʵʶʶˀ at 41862.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 107 at 41860 ms, diff +2.9 ms
+  call 217: ʾʼʺʻˀʵʶʸʶʻʳ at 41963.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 108 at 41960 ms, diff +3.0 ms
+  call 218: ʿʾʹʲˀʶʷʵʶʶˀ at 41963.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 108 at 41960 ms, diff +3.0 ms
+  call 219: ʾʼʺʻˀʵʶʸʶʻʳ at 42011.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 109 at 42010 ms, diff +1.5 ms
+  call 220: ʿʾʹʲˀʶʷʵʶʶˀ at 42011.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 109 at 42010 ms, diff +1.5 ms
+  call 221: ʾʼʺʻˀʵʶʸʶʻʳ at 42063.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 110 at 42060 ms, diff +3.0 ms
+  call 222: ʿʾʹʲˀʶʷʵʶʶˀ at 42063.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 110 at 42060 ms, diff +3.0 ms
+  call 223: ʾʼʺʻˀʵʶʸʶʻʳ at 42111.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 111 at 42110 ms, diff +1.5 ms
+  call 224: ʿʾʹʲˀʶʷʵʶʶˀ at 42111.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 111 at 42110 ms, diff +1.5 ms
+  call 225: ʾʼʺʻˀʵʶʸʶʻʳ at 42163.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 112 at 42160 ms, diff +3.0 ms
+  call 226: ʿʾʹʲˀʶʷʵʶʶˀ at 42163.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 112 at 42160 ms, diff +3.0 ms
+  call 227: ʾʼʺʻˀʵʶʸʶʻʳ at 42211.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 113 at 42210 ms, diff +1.5 ms
+  call 228: ʿʾʹʲˀʶʷʵʶʶˀ at 42211.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 113 at 42210 ms, diff +1.5 ms
+  call 229: ʾʼʺʻˀʵʶʸʶʻʳ at 42260.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 114 at 42260 ms, diff +0.0 ms
+  call 230: ʿʾʹʲˀʶʷʵʶʶˀ at 42260.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 114 at 42260 ms, diff +0.0 ms
+  call 231: ʾʼʺʻˀʵʶʸʶʻʳ at 42311.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 115 at 42310 ms, diff +1.6 ms
+  call 232: ʿʾʹʲˀʶʷʵʶʶˀ at 42311.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 115 at 42310 ms, diff +1.6 ms
+  call 233: ʾʼʺʻˀʵʶʸʶʻʳ at 42360.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 116 at 42360 ms, diff +0.0 ms
+  call 234: ʿʾʹʲˀʶʷʵʶʶˀ at 42360.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 116 at 42360 ms, diff +0.0 ms
+  call 235: ʾʼʺʻˀʵʶʸʶʻʳ at 45361.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 117 at 45360 ms, diff +1.3 ms
+  call 236: ʿʾʹʲˀʶʷʵʶʶˀ at 45361.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 117 at 45360 ms, diff +1.3 ms
+  call 237: ʾʼʺʻˀʵʶʸʶʻʳ at 45461.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 118 at 45460 ms, diff +1.3 ms
+  call 238: ʿʾʹʲˀʶʷʵʶʶˀ at 45461.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 118 at 45460 ms, diff +1.3 ms
+  call 239: ʾʼʺʻˀʵʶʸʶʻʳ at 45561.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 119 at 45560 ms, diff +1.3 ms
+  call 240: ʿʾʹʲˀʶʷʵʶʶˀ at 45561.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 119 at 45560 ms, diff +1.3 ms
+  call 241: ʾʼʺʻˀʵʶʸʶʻʳ at 45661.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 120 at 45660 ms, diff +1.3 ms
+  call 242: ʿʾʹʲˀʶʷʵʶʶˀ at 45661.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 120 at 45660 ms, diff +1.3 ms
+  call 243: ʾʼʺʻˀʵʶʸʶʻʳ at 45761.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 121 at 45760 ms, diff +1.3 ms
+  call 244: ʿʾʹʲˀʶʷʵʶʶˀ at 45761.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 121 at 45760 ms, diff +1.3 ms
+  call 245: ʾʼʺʻˀʵʶʸʶʻʳ at 45821.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 122 at 45820 ms, diff +1.9 ms
+  call 246: ʿʾʹʲˀʶʷʵʶʶˀ at 45821.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 122 at 45820 ms, diff +1.9 ms
+  call 247: ʾʼʺʻˀʵʶʸʶʻʳ at 45882.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 123 at 45880 ms, diff +2.7 ms
+  call 248: ʿʾʹʲˀʶʷʵʶʶˀ at 45882.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 123 at 45880 ms, diff +2.7 ms
+  call 249: ʾʼʺʻˀʵʶʸʶʻʳ at 45940.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 124 at 45940 ms, diff +0.3 ms
+  call 250: ʿʾʹʲˀʶʷʵʶʶˀ at 45940.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 124 at 45940 ms, diff +0.3 ms
+  call 251: ʾʼʺʻˀʵʶʸʶʻʳ at 46000.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 125 at 46000 ms, diff +0.9 ms
+  call 252: ʿʾʹʲˀʶʷʵʶʶˀ at 46000.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 125 at 46000 ms, diff +0.9 ms
+  call 253: ʾʼʺʻˀʵʶʸʶʻʳ at 46061.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 126 at 46060 ms, diff +1.5 ms
+  call 254: ʿʾʹʲˀʶʷʵʶʶˀ at 46061.5 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 126 at 46060 ms, diff +1.5 ms
+  call 255: ʾʼʺʻˀʵʶʸʶʻʳ at 46122.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 127 at 46120 ms, diff +2.1 ms
+  call 256: ʿʾʹʲˀʶʷʵʶʶˀ at 46122.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 127 at 46120 ms, diff +2.1 ms
+  call 257: ʾʼʺʻˀʵʶʸʶʻʳ at 46182.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 128 at 46180 ms, diff +2.7 ms
+  call 258: ʿʾʹʲˀʶʷʵʶʶˀ at 46182.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 128 at 46180 ms, diff +2.7 ms
+  call 259: ʾʼʺʻˀʵʶʸʶʻʳ at 46240.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 129 at 46240 ms, diff +0.3 ms
+  call 260: ʿʾʹʲˀʶʷʵʶʶˀ at 46240.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 129 at 46240 ms, diff +0.3 ms
+  call 261: ʾʼʺʻˀʵʶʸʶʻʳ at 49241.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 130 at 49240 ms, diff +1.0 ms
+  call 262: ʿʾʹʲˀʶʷʵʶʶˀ at 49241.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 130 at 49240 ms, diff +1.0 ms
+  call 263: ʾʼʺʻˀʵʶʸʶʻʳ at 49301.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 131 at 49300 ms, diff +1.6 ms
+  call 264: ʿʾʹʲˀʶʷʵʶʶˀ at 49301.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 131 at 49300 ms, diff +1.6 ms
+  call 265: ʾʼʺʻˀʵʶʸʶʻʳ at 49441.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 132 at 49440 ms, diff +1.0 ms
+  call 266: ʿʾʹʲˀʶʷʵʶʶˀ at 49441.0 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 132 at 49440 ms, diff +1.0 ms
+  call 267: ʾʼʺʻˀʵʶʸʶʻʳ at 52441.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 133 at 52440 ms, diff +1.9 ms
+  call 268: ʿʾʹʲˀʶʷʵʶʶˀ at 52441.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 133 at 52440 ms, diff +1.9 ms
+  call 269: ʾʼʺʻˀʵʶʸʶʻʳ at 52581.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 134 at 52580 ms, diff +1.3 ms
+  call 270: ʿʾʹʲˀʶʷʵʶʶˀ at 52581.3 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 134 at 52580 ms, diff +1.3 ms
+  call 271: ʾʼʺʻˀʵʶʸʶʻʳ at 52641.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 135 at 52640 ms, diff +1.9 ms
+  call 272: ʿʾʹʲˀʶʷʵʶʶˀ at 52641.9 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 135 at 52640 ms, diff +1.9 ms
+  call 273: ʾʼʺʻˀʵʶʸʶʻʳ at 55642.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 136 at 55640 ms, diff +2.7 ms
+  call 274: ʿʾʹʲˀʶʷʵʶʶˀ at 55642.7 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 136 at 55640 ms, diff +2.7 ms
+  call 275: ʾʼʺʻˀʵʶʸʶʻʳ at 55730.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 137 at 55730 ms, diff +0.6 ms
+  call 276: ʿʾʹʲˀʶʷʵʶʶˀ at 55730.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 137 at 55730 ms, diff +0.6 ms
+  call 277: ʾʼʺʻˀʵʶʸʶʻʳ at 55861.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 138 at 55860 ms, diff +1.1 ms
+  call 278: ʿʾʹʲˀʶʷʵʶʶˀ at 55861.1 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 138 at 55860 ms, diff +1.1 ms
+  call 279: ʾʼʺʻˀʵʶʸʶʻʳ at 58862.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 139 at 58860 ms, diff +2.2 ms
+  call 280: ʿʾʹʲˀʶʷʵʶʶˀ at 58862.2 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 139 at 58860 ms, diff +2.2 ms
+  call 281: ʾʼʺʻˀʵʶʸʶʻʳ at 58992.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 140 at 58990 ms, diff +2.6 ms
+  call 282: ʿʾʹʲˀʶʷʵʶʶˀ at 58992.6 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 140 at 58990 ms, diff +2.6 ms
+  call 283: ʾʼʺʻˀʵʶʸʶʻʳ at 59080.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ"]; nearest note 141 at 59080 ms, diff +0.4 ms
+  call 284: ʿʾʹʲˀʶʷʵʶʶˀ at 59080.4 ms, args ["ʽʿʸʸʾʶʶʾʶʹʲ", 50]; nearest note 141 at 59080 ms, diff +0.4 ms
+calls within 85 ms of their nearest note (EXPECT_NORMAL_BACK_MS): 284 of 284
+messages written to C:\scratch\trace-wm-args.jsonl

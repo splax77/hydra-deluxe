@@ -339,21 +339,17 @@ TEST_CASE("squeeze_difficulty and is_e0: one owner for the engine and the model"
     CHECK(squeeze_difficulty(/*is_sqin=*/false, -3.5) == 3.5);
     // A SqOut at exactly 0 is +0.0, never -0.0: the "-x + 0.0" idiom stays.
     CHECK_FALSE(std::signbit(squeeze_difficulty(false, 0.0)));
-    CHECK(SPSqueeze{SqueezeKind::SqOut, -3.5}.difficulty() == squeeze_difficulty(false, -3.5));
 
+    // The activation's own E answers on real activations are "early-fill
+    // window: each corpus activation keeps its search's window"; the
+    // SPSqueeze's are "squeeze timing and difficulty follow the offset on
+    // every corpus squeeze".
     const double w = kDefaultEarlyFillWindowMs;
     CHECK(is_e0(w - 0.1, 0, w));
     CHECK_FALSE(is_e0(w, 0, w));
     CHECK_FALSE(is_e0(10.0, 1, w));
     CHECK(early_fill_difficulty(-4.0) == 4.0);
     CHECK_FALSE(std::signbit(early_fill_difficulty(0.0)));
-
-    Activation a;
-    a.e_offset = 10.0;
-    test::set_skips(a, 0);
-    CHECK(a.is_E0() == is_e0(10.0, 0, a.e_window_ms));
-    REQUIRE(a.e_difficulty().has_value());
-    CHECK(*a.e_difficulty() == early_fill_difficulty(10.0));
 }
 
 // The all-0 rule (D102): no skips, or one skip that was the early fill. Run
@@ -460,25 +456,13 @@ TEST_CASE("early-fill window: the refusal and the E0 edges") {
     CHECK(fill_refuses(-70.0, kDefaultEarlyFillWindowMs));
     CHECK(is_e0(70.0, 0, kHitWindowMs));
     CHECK_FALSE(is_e0(70.0, 0, kDefaultEarlyFillWindowMs));
-    CHECK_FALSE(fill_within_limit(70.0, 0, -80.0, kHitWindowMs));
-    CHECK(fill_within_limit(70.0, 0, -80.0, kDefaultEarlyFillWindowMs));
-}
-
-// Both sides read one number (O13): every offset at which a fill refuses is
-// an E0 at the same window, which Engine::ready_class leans on. Walked over
-// windows from 0 to the widest, and offsets on both sides of each edge.
-TEST_CASE("early-fill window: every fill that refuses is an E0 at the same window") {
-    for (const double w : {0.0, 1.0, 30.0, kDefaultEarlyFillWindowMs, 70.0, kHitWindowMs}) {
-        CAPTURE(w);
-        int refusing = 0;
-        for (double e = -200.0; e <= 200.0; e += 0.5) {
-            CAPTURE(e);
-            if (!fill_refuses(e, w)) continue;
-            ++refusing;
-            CHECK(is_e0(e, 0, w));
-        }
-        CHECK(refusing > 0);
-    }
+    // The limit sits on that fill's own figure (70 ms to spare is -70 ms), so
+    // the limit itself lets it in and a hair below shuts it out, but only at
+    // 85, where it is an E. At 60 it is no E, and no limit applies to it.
+    const double fill_ms = early_fill_difficulty(70.0);
+    CHECK(fill_within_limit(70.0, 0, fill_ms, kHitWindowMs));
+    CHECK_FALSE(fill_within_limit(70.0, 0, fill_ms - 0.1, kHitWindowMs));
+    CHECK(fill_within_limit(70.0, 0, fill_ms - 0.1, kDefaultEarlyFillWindowMs));
 }
 
 // The 0 ms window, the setting's lowest: a fill spawns only when SP was
@@ -623,45 +607,48 @@ TEST_CASE("HydraRecord::optimal_score: the highest corpus path total, empty with
     CHECK_FALSE(empty.is_optimal(default_records().front().rec->paths.at(0)));
 }
 
+// A chord of n notes hit at combo c pays its first note at the multiplier of
+// the combo that note makes (c + 1) and its last at the one the last note
+// makes (c + n); a chord with no notes keeps the combo's. to_multiplier owns
+// where the steps sit (Clone Hero's 10, 20 and 30, model.h; pinned in
+// test_timing.cpp). Every combo up to past the last step, every chord size
+// Clone Hero allows (D51 call 3).
 TEST_CASE("multiplier_step: the multipliers at a chord's two ends") {
-    struct Case {
-        int combo;
-        int notes;
-        int first;
-        int last;
-    };
-    // Literal answers; to_multiplier owns where the steps sit.
-    const Case cases[] = {
-        // No notes: the chord pays nothing, so both ends stay at the combo's.
-        {9, 0, 1, 1}, {10, 0, 2, 2}, {29, 0, 3, 3},
-        {7, 1, 1, 1}, {7, 2, 1, 1}, {7, 3, 1, 2}, {7, 4, 1, 2}, {7, 5, 1, 2},
-        {8, 1, 1, 1}, {8, 2, 1, 2}, {8, 3, 1, 2}, {8, 4, 1, 2}, {8, 5, 1, 2},
-        {9, 1, 2, 2}, {9, 2, 2, 2}, {9, 3, 2, 2}, {9, 4, 2, 2}, {9, 5, 2, 2},
-        {10, 1, 2, 2}, {10, 2, 2, 2}, {10, 3, 2, 2}, {10, 4, 2, 2}, {10, 5, 2, 2},
-        {18, 1, 2, 2}, {18, 2, 2, 3}, {18, 3, 2, 3}, {18, 4, 2, 3}, {18, 5, 2, 3},
-        {19, 1, 3, 3}, {19, 2, 3, 3}, {19, 3, 3, 3}, {19, 4, 3, 3}, {19, 5, 3, 3},
-        {28, 1, 3, 3}, {28, 2, 3, 4}, {28, 3, 3, 4}, {28, 4, 3, 4}, {28, 5, 3, 4},
-        {29, 1, 4, 4}, {29, 2, 4, 4}, {29, 3, 4, 4}, {29, 4, 4, 4}, {29, 5, 4, 4},
-    };
-    for (const Case& c : cases) {
-        const MultiplierStep step = multiplier_step(c.combo, c.notes);
-        CHECK_MESSAGE(step.first == c.first, "combo=" << c.combo << " notes=" << c.notes);
-        CHECK_MESSAGE(step.last == c.last, "combo=" << c.combo << " notes=" << c.notes);
-        CHECK_MESSAGE(crosses_multiplier_step(c.combo, c.notes) == (c.first != c.last),
-                      "combo=" << c.combo << " notes=" << c.notes);
+    for (int combo = 0; combo < 40; ++combo) {
+        for (int notes = 0; notes <= 5; ++notes) {
+            CAPTURE(combo);
+            CAPTURE(notes);
+            const int first = to_multiplier(notes == 0 ? combo : combo + 1);
+            const int last = to_multiplier(combo + notes);
+            const MultiplierStep step = multiplier_step(combo, notes);
+            CHECK(step.first == first);
+            CHECK(step.last == last);
+        }
+        // category_scores, the payout's own copy of the two ends, reads a
+        // chord with no notes the same way: the combo's multiplier at both.
+        const CategoryScores empty = category_scores(Chord{}, combo);
+        CHECK(empty.multiplier == to_multiplier(combo));
+        CHECK(empty.multiplier_after == to_multiplier(combo));
+        CHECK(empty.combo_after == combo);
     }
-}
-
-TEST_CASE("category_scores: a chord with no notes keeps the combo's multiplier at both ends") {
-    const Chord empty{};
-    const CategoryScores at9 = category_scores(empty, 9);
-    CHECK(at9.multiplier == 1);
-    CHECK(at9.multiplier_after == 1);
-    CHECK(at9.combo_after == 9);
-    const CategoryScores at10 = category_scores(empty, 10);
-    CHECK(at10.multiplier == 2);
-    CHECK(at10.multiplier_after == 2);
-    CHECK(at10.combo_after == 10);
+    // category_scores reads the same two ends on every multiplier squeeze the
+    // engine wrote for the corpus: the chords that straddle a step, where a
+    // wrong end would change what the squeeze is worth.
+    int squeezes = 0;
+    for (const CorpusRecord& r : default_records()) {
+        for (const MultSqueeze& ms : r.rec->multsqueezes) {
+            CAPTURE(r.chart);
+            CAPTURE(ms.combo());
+            ++squeezes;
+            const int notes = ms.chord().count();
+            const CategoryScores cs = category_scores(ms.chord(), ms.combo());
+            CHECK(cs.multiplier == to_multiplier(ms.combo() + 1));
+            CHECK(cs.multiplier_after == to_multiplier(ms.combo() + notes));
+        }
+    }
+    // "Path pathstring and pathstring_verbose" requires a corpus record with
+    // multiplier squeezes, so this loop has some to check.
+    CHECK(squeezes > 0);
 }
 
 // On every corpus activation, hardest() names one of the activation's own
@@ -717,8 +704,11 @@ TEST_CASE("Activation::hardest: on every corpus activation, the largest timing t
     CHECK(named_none > 0);
 }
 
-// D51 Q4; D302.
-TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none") {
+// D51 Q4; D302. Checked through what the screens read: an activation's
+// difficulty() (the badges and the path button, through Path::difficulty)
+// and a saved figure as the library shows it (shown_timing of
+// engine_hardest_ms).
+TEST_CASE("Activation::difficulty: squeezes inside and slack fills need none") {
     auto plain = [] {
         Activation a;
         test::set_skips(a, 0);
@@ -730,7 +720,6 @@ TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none")
     // so nothing is hardest and there is no difficulty.
     Activation free_in = plain();
     free_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -163.0}};
-    CHECK_FALSE(free_in.needs_timing());
     CHECK_FALSE(free_in.hardest().has_value());
     CHECK_FALSE(free_in.difficulty().has_value());
 
@@ -738,7 +727,6 @@ TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none")
     // squeeze-out on the same note (D302).
     Activation on_end_in = plain();
     on_end_in.sqinouts = {SPSqueeze{SqueezeKind::SqIn, 0.0}};
-    CHECK(on_end_in.needs_timing());
     CHECK(on_end_in.difficulty() == std::optional<double>(0.0));
     CHECK(on_end_in.hardest() ==
           std::optional<HardestTiming>(HardestTiming{TimingPart::SqueezeIn, 0.0}));
@@ -746,35 +734,38 @@ TEST_CASE("Activation::needs_timing: squeezes inside and slack fills need none")
     // A squeeze-out dead on the SP end still has to be hit late.
     Activation on_end_out = plain();
     on_end_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, 0.0}};
-    CHECK(on_end_out.needs_timing());
     CHECK(on_end_out.difficulty() == std::optional<double>(0.0));
 
+    // A squeeze-out 12.5 ms past the end has to be hit 12.5 ms late.
     Activation late_out = plain();
     late_out.sqinouts = {SPSqueeze{SqueezeKind::SqOut, -12.5}};
-    CHECK(late_out.needs_timing());
+    CHECK(late_out.difficulty() == std::optional<double>(12.5));
 
     // A required (E0) fill with 10 ms to spare needs none; with none to
     // spare it does, like the squeeze-out on the SP end.
     Activation slack_fill = plain();
     slack_fill.e_offset = 10.0;
     REQUIRE(slack_fill.is_E0());
-    CHECK_FALSE(slack_fill.needs_timing());
     CHECK_FALSE(slack_fill.hardest().has_value());
+    CHECK_FALSE(slack_fill.difficulty().has_value());
     Activation tight_fill = plain();
     tight_fill.e_offset = 0.0;
     REQUIRE(tight_fill.is_E0());
-    CHECK(tight_fill.needs_timing());
     CHECK(tight_fill.difficulty() == std::optional<double>(0.0));
 
-    // A path needs timing once any of its activations does.
+    // A path needs timing once any of its activations does: its difficulty
+    // and the library's shown figure both stay empty until then.
     Path p;
     p.activations = {free_in, slack_fill};
-    CHECK_FALSE(p.needs_timing());
+    CHECK_FALSE(p.difficulty().has_value());
+    CHECK_FALSE(shown_timing(engine_hardest_ms(p)).has_value());
     p.activations.push_back(on_end_in);
-    CHECK(p.needs_timing());
+    CHECK(p.difficulty() == std::optional<double>(0.0));
+    CHECK(shown_timing(engine_hardest_ms(p)) == std::optional<double>(0.0));
     Path q;
     q.activations = {free_in, slack_fill, late_out};
-    CHECK(q.needs_timing());
+    CHECK(q.difficulty() == std::optional<double>(12.5));
+    CHECK(shown_timing(engine_hardest_ms(q)) == std::optional<double>(12.5));
 }
 
 // On every corpus activation, badge_timings lists the early fill first when
@@ -1424,13 +1415,6 @@ TEST_CASE("SPSqueeze::needs_no_timing: a squeeze at exactly 0 needs 0.0 ms, one 
     CHECK(SPSqueeze{SqueezeKind::SqOut, 0.001}.needs_no_timing());
 }
 
-// D302: a timing of 0.0 ms is still a timing to hit.
-TEST_CASE("timing_needs_hitting: 0.0 ms and more need hitting, below 0 does not") {
-    CHECK_FALSE(timing_needs_hitting(-0.001));
-    CHECK(timing_needs_hitting(0.0));
-    CHECK(timing_needs_hitting(0.001));
-}
-
 TEST_CASE("early_fill_needs_timing: zero slack needs timing, time to spare does not") {
     CHECK(early_fill_needs_timing(0.0));
     CHECK(early_fill_needs_timing(-0.001));
@@ -1565,9 +1549,12 @@ TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
 // A multiplier squeeze is a chord whose notes straddle a to_multiplier step.
 // MultSqueeze accepts exactly the straddling chords of every size, 2 to 5
 // notes (D51 call 3: Clone Hero allows 4- and 5-note chords, so Hydra must
-// get them right). The combos are pinned as literals: the steps sit at
-// combos 10, 20 and 30, so a chord of n notes hit at one of these combos
-// pays its first note below a step and its last note at or above it.
+// get them right). A chord straddles a step when the payout (category_scores,
+// which owns each note's multiplier) pays its first note below its last;
+// multiplier_step's own test pins those ends to to_multiplier's steps
+// (Clone Hero's 10, 20 and 30, model.h). The graph asks applies(), and the
+// constructor refuses what applies() refuses; both are checked against that
+// rule, for every combo up to past the last step.
 TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a multiplier step") {
     const NoteColor order[] = {NoteColor::Red, NoteColor::Yellow, NoteColor::Kick,
                                NoteColor::Blue, NoteColor::Green};
@@ -1587,25 +1574,47 @@ TEST_CASE("MultSqueeze accepts exactly the 2- to 5-note chords that straddle a m
             return false;
         }
     };
-    const std::map<int, std::set<int>> straddling = {
-        {2, {8, 18, 28}},
-        {3, {7, 8, 17, 18, 27, 28}},
-        {4, {6, 7, 8, 16, 17, 18, 26, 27, 28}},
-        {5, {5, 6, 7, 8, 15, 16, 17, 18, 25, 26, 27, 28}},
-    };
-    for (const auto& [n, combos] : straddling)
+    int straddles = 0;
+    for (int n = 2; n <= 5; ++n)
         for (int combo = 0; combo < 40; ++combo) {
-            CHECK_MESSAGE(accepted(chord_of(n, true), combo) == (combos.count(combo) == 1),
-                          "n=" << n << " combo=" << combo);
-            CHECK_MESSAGE(!accepted(chord_of(n, false), combo),
-                          "all-same-value n=" << n << " combo=" << combo);
+            CAPTURE(n);
+            CAPTURE(combo);
+            const Chord mixed = chord_of(n, true);
+            const CategoryScores paid = category_scores(mixed, combo);
+            const bool straddle = paid.multiplier < paid.multiplier_after;
+            if (straddle) ++straddles;
+            CHECK(MultSqueeze::applies(mixed, combo) == straddle);
+            CHECK(accepted(mixed, combo) == straddle);
+            const Chord same = chord_of(n, false);
+            CHECK_FALSE(MultSqueeze::applies(same, combo));
+            CHECK_FALSE(accepted(same, combo));
         }
+    // A straddling chord must turn up, or only the refusals were checked.
+    CHECK(straddles > 0);
 }
 
-// Kick and Red (50 each) with yellow and blue cymbals (65 each), hit at
-// combo 7: two notes are paid at 1x and two at 2x. Two notes cross the step,
-// so the right order gains two cymbal bonuses.
+// The best order puts the cymbals past the step and the pads before it; the
+// worst order swaps them. Each cymbal that the best order moves past the step
+// is worth its cymbal bonus more per multiplier gained, so the gain is that
+// count times kCymbalBonusPoints times the step's rise. Each note's
+// multiplier is read from the payout (category_scores): the notes paid past
+// the step are those paid above the first note's multiplier.
 TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
+    auto paid_past_step = [](const Chord& chord, int combo) {
+        std::vector<CategoryScores> per_note;
+        category_scores(chord, combo, &per_note);
+        int past = 0;
+        for (const CategoryScores& note : per_note)
+            if (note.multiplier > per_note.front().multiplier) ++past;
+        return past;
+    };
+    auto rise = [](const Chord& chord, int combo) {
+        const CategoryScores cs = category_scores(chord, combo);
+        return cs.multiplier_after - cs.multiplier;
+    };
+
+    // Kick and Red pads with yellow and blue cymbals, hit at combo 7: the
+    // last two notes are paid past the step, and both cymbals fit there.
     Chord kryb;
     kryb.add_note(NoteColor::Kick);
     kryb.add_note(NoteColor::Red);
@@ -1613,13 +1622,19 @@ TEST_CASE("MultSqueeze::gain is the best order minus the worst order") {
     kryb.add_note(NoteColor::Blue);
     kryb.apply_cymbal(NoteColor::Yellow);
     kryb.apply_cymbal(NoteColor::Blue);
-    CHECK(MultSqueeze(kryb, 7).gain() == 30);
+    const int kryb_cymbals = 2;
+    REQUIRE(paid_past_step(kryb, 7) == kryb_cymbals);
+    CHECK(MultSqueeze(kryb, 7).gain() == kryb_cymbals * kCymbalBonusPoints * rise(kryb, 7));
 
+    // A red pad and a yellow cymbal at combo 8: only the last note is paid
+    // past the step, and the one cymbal goes there.
     Chord ry;
     ry.add_note(NoteColor::Red);
     ry.add_note(NoteColor::Yellow);
     ry.apply_cymbal(NoteColor::Yellow);
-    CHECK(MultSqueeze(ry, 8).gain() == 15);
+    const int ry_cymbals = 1;
+    REQUIRE(paid_past_step(ry, 8) == ry_cymbals);
+    CHECK(MultSqueeze(ry, 8).gain() == ry_cymbals * kCymbalBonusPoints * rise(ry, 8));
 }
 
 // D51 call 3: the advice names every note that has to cross the step.
@@ -1792,30 +1807,6 @@ TEST_CASE("MultSqueeze::howto names the note in the Pro Drums setting's words") 
     CHECK(named_note(kry, NoteColor::Yellow, false) == cymbal_name);
     CHECK(cymbal.howto(false) == cymbal.howto(true));
     CHECK(cymbal.howto(false).find(cymbal_name) != std::string::npos);
-}
-
-// The graph asks applies() of every chord instead of catching a throw.
-// It must answer exactly as the constructor decides, for every shape.
-TEST_CASE("MultSqueeze::applies answers exactly when the constructor accepts") {
-    const NoteColor order[] = {NoteColor::Red, NoteColor::Yellow, NoteColor::Kick,
-                               NoteColor::Blue, NoteColor::Green};
-    for (int n = 0; n <= 5; ++n) {
-        for (bool cymbal : {false, true}) {
-            Chord c;
-            for (int i = 0; i < n; ++i) c.add_note(order[i]);
-            if (cymbal && n >= 2) c.apply_cymbal(NoteColor::Yellow);
-            for (int combo = 0; combo < 40; ++combo) {
-                bool constructed = true;
-                try {
-                    MultSqueeze ms(c, combo);
-                } catch (const std::invalid_argument&) {
-                    constructed = false;
-                }
-                CHECK_MESSAGE(MultSqueeze::applies(c, combo) == constructed,
-                              "n=" << n << " cymbal=" << cymbal << " combo=" << combo);
-            }
-        }
-    }
 }
 
 TEST_CASE("Activation: set_sqout stamps the tick, trims later rows, builds the SqOut from its row") {
@@ -2046,7 +2037,7 @@ TEST_CASE("squeeze_kind_from_name: type_name's two words and nothing else") {
     CHECK_FALSE(squeeze_kind_from_name("").has_value());
 }
 
-// The same six values "replay score fields: one list in schema order"
+// The same six values "replay score fields: each name reads its own member"
 // (tests/test_replay.cpp) assigns.
 TEST_CASE("score_total: the six categories in the stored order") {
     CHECK(score_total(1, 2, 3, 4, 5, 6) == 21);

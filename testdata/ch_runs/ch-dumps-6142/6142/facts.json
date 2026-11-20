@@ -1,0 +1,505 @@
+{
+ "game_version": "1.1.0.6142-final",
+ "dump_file": "dump.cs",
+ "classes": [
+  {
+   "name": "\u02ba\u02ba\u02b8\u02b6\u02bf\u02b5\u02c0\u02b8\u02b2\u02c0\u02b2",
+   "namespace": "",
+   "kind": "class",
+   "typedef_index": 8255,
+   "readable": false,
+   "fields": [
+    {
+     "name": "\u02c1\u02ba\u02ba\u02b7\u02bb\u02bc\u02b7\u02be\u02bd\u02b4\u02bc",
+     "type": "uint",
+     "static": false,
+     "offset": 704
+    },
+    {
+     "name": "\u02bc\u02b6\u02bb\u02bb\u02b5\u02b7\u02bd\u02c1\u02c1\u02c1\u02ba",
+     "type": "ushort",
+     "static": false,
+     "offset": 708
+    },
+    {
+     "name": "\u02bb\u02b7\u02b2\u02bf\u02bd\u02ba\u02c1\u02b9\u02bb\u02bb\u02ba",
+     "type": "ushort",
+     "static": false,
+     "offset": 710
+    },
+    {
+     "name": "\u02b8\u02be\u02b8\u02b2\u02bd\u02b7\u02bd\u02bd\u02b5\u02b5\u02b3",
+     "type": "bool",
+     "static": false,
+     "offset": 712
+    },
+    {
+     "name": "\u02ba\u02b2\u02b7\u02bb\u02b5\u02b8\u02b6\u02bc\u02bd\u02ba\u02bc",
+     "type": "double",
+     "static": false,
+     "offset": 720
+    },
+    {
+     "name": "\u02bd\u02c1\u02b3\u02b3\u02b2\u02b8\u02bc\u02b6\u02be\u02ba\u02b8",
+     "type": "double",
+     "static": false,
+     "offset": 728
+    },
+    {
+     "name": "\u02b7\u02b7\u02bd\u02b9\u02b7\u02b9\u02bc\u02c1\u02bb\u02b4\u02c1",
+     "type": "double",
+     "static": false,
+     "offset": 736
+    },
+    {
+     "name": "\u02bc\u02c1\u02bc\u02b6\u02bb\u02b2\u02b7\u02bd\u02b7\u02bb\u02b3",
+     "type": "uint",
+     "static": false,
+     "offset": 744
+    },
+    {
+     "name": "\u02bb\u02ba\u02b3\u02c1\u02b7\u02bf\u02be\u02b6\u02bf\u02b8\u02b2",
+     "type": "uint",
+     "static": false,
+     "offset": 748
+    },
+    {
+     "name": "\u02bd\u02c0\u02bb\u02bc\u02b6\u02bd\u02b8\u02c0\u02be\u02bd\u02b4",
+     "type": "bool",
+     "static": false,
+     "offset": 752
+    },
+    {
+     "name": "\u02ba\u02b2\u02bd\u02c0\u02b9\u02b2\u02b7\u02b7\u02ba\u02c1\u02be",
+     "type": "bool",
+     "static": false,
+     "offset": 753
+    },
+    {
+     "name": "\u02ba\u02b4\u02ba\u02b9\u02b7\u02b4\u02bf\u02ba\u02c1\u02b7\u02bc",
+     "type": "bool",
+     "static": false,
+     "offset": 754
+    },
+    {
+     "name": "\u02bf\u02b7\u02ba\u02b6\u02bc\u02c1\u02b5\u02ba\u02c0\u02bf\u02c1",
+     "type": "bool",
+     "static": false,
+     "offset": 755
+    },
+    {
+     "name": "\u02bf\u02bc\u02b4\u02bf\u02be\u02bc\u02bc\u02b4\u02b4\u02c1\u02b7",
+     "type": "ushort",
+     "static": false,
+     "offset": 756
+    },
+    {
+     "name": "\u02b2\u02b2\u02bb\u02b7\u02bf\u02b5\u02b4\u02b7\u02c1\u02b7\u02bf",
+     "type": "bool",
+     "static": false,
+     "offset": 758
+    },
+    {
+     "name": "\u02b6\u02b5\u02bc\u02b8\u02bd\u02b2\u02bc\u02b5\u02b8\u02b6\u02ba",
+     "type": "int",
+     "static": false,
+     "offset": 760
+    },
+    {
+     "name": "\u02ba\u02be\u02be\u02bf\u02b7\u02b9\u02b3\u02ba\u02ba\u02bd\u02bf",
+     "type": "long",
+     "static": false,
+     "offset": 768
+    },
+    {
+     "name": "\u02b3\u02b2\u02b3\u02c0\u02b5\u02b8\u02b7\u02ba\u02bb\u02bf\u02b5",
+     "type": "bool",
+     "static": false,
+     "offset": 776
+    },
+    {
+     "name": "\u02bb\u02c0\u02ba\u02bd\u02bd\u02b6\u02bc\u02bc\u02b7\u02b7\u02bd",
+     "type": "\u02be\u02bf\u02b4\u02b9\u02bb\u02b9\u02b8\u02b3\u02bc\u02b2\u02b5",
+     "static": false,
+     "offset": 777
+    },
+    {
+     "name": "\u02b8\u02bf\u02b9\u02b6\u02b9\u02b5\u02ba\u02b8\u02be\u02be\u02bf",
+     "type": "\u02b9\u02b2\u02bb\u02b5\u02b2\u02bb\u02c0\u02bf\u02b5\u02bd\u02c1",
+     "static": false,
+     "offset": 792
+    }
+   ],
+   "methods": [
+    {
+     "name": "\u02bf\u02be\u02b9\u02b2\u02c0\u02b6\u02b7\u02b5\u02b6\u02b6\u02c0",
+     "return": "void",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2",
+      "int"
+     ],
+     "static": false,
+     "rva": 34467520
+    },
+    {
+     "name": "\u02c0\u02b8\u02bf\u02b9\u02b3\u02ba\u02b5\u02bb\u02b2\u02bd\u02b8",
+     "return": "sbyte",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34467632
+    },
+    {
+     "name": "\u02c0\u02bd\u02b6\u02b6\u02bb\u02b9\u02c0\u02bc\u02c1\u02b4\u02b8",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34467824
+    },
+    {
+     "name": "\u02bf\u02ba\u02b8\u02bd\u02bb\u02b7\u02c1\u02b7\u02bb\u02b6\u02b7",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34467472
+    },
+    {
+     "name": "\u02b3\u02b9\u02bc\u02b4\u02b8\u02b5\u02b6\u02bb\u02ba\u02b6\u02ba",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34458768
+    },
+    {
+     "name": "\u02b9\u02b9\u02b3\u02b8\u02bd\u02bb\u02b3\u02bd\u02b6\u02b6\u02bb",
+     "return": "void",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34462512
+    },
+    {
+     "name": "\u02b7\u02bf\u02ba\u02b4\u02b2\u02b4\u02b7\u02be\u02b9\u02b3\u02b9",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34461440
+    },
+    {
+     "name": "\u02be\u02b5\u02b5\u02b7\u02bb\u02b3\u02bb\u02be\u02b6\u02ba\u02b2",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34465184
+    },
+    {
+     "name": "\u02b8\u02b6\u02b3\u02bf\u02bf\u02bb\u02c0\u02bc\u02bc\u02bb\u02bb",
+     "return": "void",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34462512
+    },
+    {
+     "name": "\u02b9\u02b5\u02be\u02bc\u02bf\u02b2\u02b9\u02bc\u02b7\u02bc\u02b2",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34462848
+    },
+    {
+     "name": "\u02b9\u02b9\u02b4\u02c1\u02b9\u02b6\u02b2\u02ba\u02b2\u02b2\u02bf",
+     "return": "double",
+     "params": [
+      "double"
+     ],
+     "static": false,
+     "rva": 34463136
+    },
+    {
+     "name": "\u02b8\u02b7\u02b7\u02b9\u02ba\u02b7\u02b6\u02c0\u02bc\u02c0\u02bc",
+     "return": "void",
+     "params": [
+      "uint"
+     ],
+     "static": false,
+     "rva": 34462560
+    },
+    {
+     "name": "\u02b9\u02bb\u02bf\u02bb\u02b2\u02b4\u02b7\u02c0\u02bf\u02bd\u02bf",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34463424
+    },
+    {
+     "name": "\u02bf\u02b6\u02b2\u02b3\u02b2\u02b4\u02b4\u02b5\u02b4\u02b2\u02b7",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34466464
+    },
+    {
+     "name": "\u02bc\u02b6\u02b5\u02c0\u02b3\u02b3\u02be\u02b3\u02b9\u02ba\u02b9",
+     "return": "void",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34464800
+    },
+    {
+     "name": "\u02b8\u02b8\u02b3\u02bd\u02b2\u02bb\u02bf\u02b8\u02b3\u02b8\u02bd",
+     "return": "void",
+     "params": [
+      "long",
+      "bool"
+     ],
+     "static": false,
+     "rva": 34462576
+    },
+    {
+     "name": "\u02ba\u02b8\u02b2\u02b6\u02b5\u02b5\u02bc\u02be\u02b3\u02bf\u02be",
+     "return": "void",
+     "params": [
+      "uint"
+     ],
+     "static": false,
+     "rva": 34462560
+    },
+    {
+     "name": "\u02bd\u02bd\u02be\u02b9\u02bf\u02ba\u02be\u02b5\u02b4\u02bd\u02ba",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34464960
+    },
+    {
+     "name": "\u02b3\u02b6\u02c0\u02c1\u02b6\u02b6\u02bd\u02bd\u02b7\u02bc\u02bc",
+     "return": "void",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34458320
+    },
+    {
+     "name": "\u02bb\u02b6\u02bf\u02ba\u02b9\u02ba\u02c1\u02b7\u02bd\u02b7\u02b8",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34463856
+    },
+    {
+     "name": "\u02be\u02b9\u02c0\u02b5\u02c0\u02bf\u02bd\u02b6\u02bb\u02b5\u02bc",
+     "return": "void",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34465408
+    },
+    {
+     "name": "\u02be\u02be\u02b8\u02b3\u02be\u02bf\u02b9\u02bc\u02bc\u02b5\u02b3",
+     "return": "void",
+     "params": [
+      "uint"
+     ],
+     "static": false,
+     "rva": 34462560
+    },
+    {
+     "name": "\u02ba\u02b7\u02bd\u02b2\u02b5\u02b2\u02b9\u02c0\u02be\u02b3\u02b7",
+     "return": "ushort",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34463728
+    },
+    {
+     "name": ".ctor",
+     "return": "void",
+     "params": [
+      "\u02b2\u02bd\u02b6\u02b3\u02ba\u02b9\u02b3\u02c0\u02be\u02b4\u02b9.\u02b8\u02b2\u02bb\u02bc\u02b4\u02b5\u02ba\u02b2\u02ba\u02c0\u02b8",
+      "\u02b3\u02b4\u02c1\u02b4\u02bb\u02c1\u02bc\u02b9\u02b4\u02bd\u02b3"
+     ],
+     "static": false,
+     "rva": 34469504
+    },
+    {
+     "name": "\u02b7\u02b7\u02b5\u02bb\u02b9\u02bb\u02bc\u02bb\u02ba\u02be\u02bc",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34461408
+    },
+    {
+     "name": "\u02b5\u02b8\u02b2\u02b4\u02b6\u02b5\u02b6\u02b9\u02c1\u02bf\u02bc",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34460048
+    },
+    {
+     "name": "\u02c0\u02c0\u02bb\u02bf\u02b6\u02b4\u02b4\u02b3\u02bb\u02bb\u02b5",
+     "return": "void",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34462512
+    },
+    {
+     "name": "\u02bb\u02ba\u02b5\u02b9\u02bc\u02b7\u02bf\u02b6\u02c0\u02b8\u02bf",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34464320
+    },
+    {
+     "name": "\u02b4\u02b9\u02b7\u02b5\u02b9\u02b4\u02b7\u02b3\u02be\u02bc\u02bf",
+     "return": "sbyte",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34459792
+    },
+    {
+     "name": "\u02b9\u02b4\u02bd\u02b6\u02b7\u02bc\u02b5\u02bd\u02bb\u02b8\u02b4",
+     "return": "void",
+     "params": [
+      "uint"
+     ],
+     "static": false,
+     "rva": 34462560
+    },
+    {
+     "name": "\u02b9\u02b6\u02bf\u02b3\u02b7\u02bf\u02b8\u02b6\u02b8\u02c1\u02b4",
+     "return": "ushort",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34463008
+    },
+    {
+     "name": "\u02be\u02bc\u02ba\u02bb\u02c0\u02b5\u02b6\u02b8\u02b6\u02bb\u02b3",
+     "return": "void",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34465648
+    },
+    {
+     "name": "\u02c1\u02c0\u02b6\u02b2\u02ba\u02b7\u02b5\u02b4\u02b5\u02bc\u02ba",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34469056
+    },
+    {
+     "name": "\u02be\u02c1\u02bb\u02bd\u02ba\u02b7\u02b5\u02b9\u02b9\u02bd\u02ba",
+     "return": "void",
+     "params": [
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34466208
+    },
+    {
+     "name": "\u02be\u02b2\u02b8\u02bf\u02c1\u02b8\u02b8\u02ba\u02ba\u02be\u02bc",
+     "return": "void",
+     "params": [
+      "uint"
+     ],
+     "static": false,
+     "rva": 34462560
+    },
+    {
+     "name": "\u02b5\u02b2\u02bd\u02b7\u02b3\u02ba\u02b5\u02bd\u02b5\u02c0\u02b6",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34460000
+    },
+    {
+     "name": "\u02b7\u02bf\u02ba\u02bf\u02c1\u02b4\u02b5\u02bd\u02c1\u02b8\u02b6",
+     "return": "bool",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2",
+      "ushort"
+     ],
+     "static": false,
+     "rva": 34462464
+    },
+    {
+     "name": "\u02b2\u02b6\u02b5\u02b2\u02b8\u02b7\u02bb\u02b2\u02bc\u02c1\u02b2",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34458272
+    },
+    {
+     "name": "\u02b6\u02c1\u02be\u02b7\u02b4\u02ba\u02b4\u02bd\u02b9\u02b2\u02b4",
+     "return": "void",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34461232
+    },
+    {
+     "name": "\u02b6\u02c0\u02c1\u02b7\u02b4\u02bf\u02bc\u02b2\u02be\u02c1\u02bd",
+     "return": "sbyte",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34461072
+    },
+    {
+     "name": "\u02be\u02b9\u02b3\u02b9\u02b2\u02bc\u02b2\u02b5\u02b2\u02b9\u02b7",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34465200
+    },
+    {
+     "name": "\u02c0\u02c1\u02b6\u02c1\u02bb\u02bc\u02b6\u02b4\u02bb\u02b2\u02b3",
+     "return": "void",
+     "params": [],
+     "static": false,
+     "rva": 34468832
+    },
+    {
+     "name": "\u02ba\u02b7\u02b5\u02c1\u02c0\u02b4\u02be\u02bf\u02bf\u02c0\u02be",
+     "return": "bool",
+     "params": [
+      "\u02bd\u02bf\u02b8\u02b8\u02be\u02b6\u02b6\u02be\u02b6\u02b9\u02b2"
+     ],
+     "static": false,
+     "rva": 34463696
+    }
+   ],
+   "base": "\u02bf\u02ba\u02b8\u02ba\u02bc\u02b4\u02b8\u02bc\u02bb\u02b3\u02bc<\u02be\u02b8\u02b8\u02bb\u02b7\u02b8\u02c1\u02be\u02c1\u02bd\u02b8>",
+   "interfaces": []
+  }
+ ],
+ "signatures": {
+  "drums_engine": {
+   "name": "\u02ba\u02ba\u02b8\u02b6\u02bf\u02b5\u02c0\u02b8\u02b2\u02c0\u02b2",
+   "typedef_index": 8255,
+   "base": "\u02bf\u02ba\u02b8\u02ba\u02bc\u02b4\u02b8\u02bc\u02bb\u02b3\u02bc<\u02be\u02b8\u02b8\u02bb\u02b7\u02b8\u02c1\u02be\u02c1\u02bd\u02b8>",
+   "readable_fields": [],
+   "field_count": 20,
+   "method_count": 43,
+   "ctor_rva": 34469504
+  }
+ }
+}

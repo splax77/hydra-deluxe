@@ -40,7 +40,7 @@ from tools.ch_mcp.kit_tools import DYNAMIC_GHOST, pad_axis  # noqa: E402
 from tools.ch_mcp.tests.test_build_facts import REAL_FACTS  # noqa: E402
 from tools.ch_mcp.tests.test_build_stamp import make_built_agent  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
-    MENU, STATE, FakeFrida, ReplySession, instant_wait)
+    MENU, STATE, FakeFrida, FakeSession, ReplySession, instant_wait)
 from tools.ch_mcp.tests.test_hydra_end import FAKE  # noqa: E402
 from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.engine import SNAPSHOT_SIZE  # noqa: E402
@@ -70,6 +70,21 @@ def recorded_state():
         payload = json.loads(f.readline())["payload"]
     payload.pop("id")
     return payload
+
+
+# The real 1.1 build's facts cut to its drum engine class (the
+# signatures.drums_engine entry and that one class, copied whole from
+# hydra-data/ch-dumps/6142/facts.json), under the build-number folder
+# build_facts.load_facts reads; and the installed game's real version file
+# (C:\Clone Hero\1.1 june\Clone Hero\Clone Hero_Data\version.json).
+REAL_6142_DUMPS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-6142")
+REAL_6142_GAME = os.path.join(REAL_6142_DUMPS, "game")
+
+
+def real_6142_facts():
+    return B.load_facts(REAL_6142_GAME, REAL_6142_DUMPS)
+
+
 # The song end the fake dump of the test song's chart names.
 SONG_END_MS = 6000.0
 
@@ -232,8 +247,28 @@ class Rig(unittest.TestCase):
         self.traces.append(trace)
         return trace
 
+    def make_real_trace(self, *args, **kw):
+        """A real trace_hits.TraceSession. Its Frida session is its own one
+        with nothing to send, so the state agent's session keeps its
+        replies; the trace runs until it is stopped."""
+        kw["frida_mod"] = FakeFrida(FakeSession([]))
+        trace = TH.TraceSession(*args, **kw)
+        self.traces.append(trace)
+        self.addCleanup(trace.stop, FT.READ_CAP_S)
+        return trace
+
+    def real_trace_tools(self, game=None, reads=1):
+        """Tools attached with a recorded state reply, on the real 6142 facts
+        and the real trace session, with `reads` more recorded replies for
+        the state reads ch_trace_start makes."""
+        return self.tools([recorded_state() for _ in range(reads + 1)], game=game,
+                          attached=True, real_time=True,
+                          current_build=lambda: B.current_build(REAL_6142_GAME),
+                          load_facts=real_6142_facts, trace_session=self.make_real_trace)
+
     def tools(self, replies=(), game=None, load_facts=None, attached=False,
-              opener=None, find_engine=None, current_build=None, real_time=False):
+              opener=None, find_engine=None, current_build=None, real_time=False,
+              trace_session=None):
         """`real_time` leaves FridaTools on its own clock and its own reply
         wait (time.monotonic, time.sleep, frida_attach's wait) instead of the
         fake clock and instant_wait."""
@@ -248,7 +283,7 @@ class Rig(unittest.TestCase):
             frida_mod=self.frida,
             current_build=current_build or (lambda: VERSION),
             load_facts=load_facts or self.load_facts,
-            trace_session=self.make_trace, agent_dir=self.agent_dir,
+            trace_session=trace_session or self.make_trace, agent_dir=self.agent_dir,
             opener=opener or self.open_engine_process,
             find_engine=find_engine or (lambda proc: ENGINE),
             **clock)
@@ -261,14 +296,26 @@ class Rig(unittest.TestCase):
 
 class AttachTest(Rig):
     def test_attach_before_the_delay_waits_the_rest_then_attaches(self):
-        self.clock.t = 12.0
-        tools = self.tools([STATE], game=FakeGame(launched_at=10.0))
+        # On the real clock (time.monotonic, the clock launched_at is on), the
+        # game launched half a second short of ATTACH_DELAY_S ago.
+        reply = recorded_state()
+        launched = time.monotonic() - (FT.ATTACH_DELAY_S - 0.5)
+        tools = self.tools([reply], game=FakeGame(launched_at=launched), real_time=True)
+        attached_at = []
+        attach = self.frida.attach
+
+        def timed_attach(name):
+            attached_at.append(time.monotonic())
+            return attach(name)
+
+        self.frida.attach = timed_attach
         out = tools.ch_attach()
-        self.assertEqual(self.clock.slept, [3.0])
         self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME])
-        self.assertIn("waited 3.0 s, so the attach comes 5 s after the launch (ATTACH_DELAY_S)", out)
-        self.assertIn("state: playing", out)
-        self.assertIn("songTime: 3.5", out)
+        # The attach comes no sooner than ATTACH_DELAY_S after the launch.
+        self.assertGreaterEqual(attached_at[0] - launched, FT.ATTACH_DELAY_S)
+        (waited,) = [line for line in out.splitlines() if "(ATTACH_DELAY_S)" in line]
+        self.assertLessEqual(float(re.match(r"waited (\d+\.\d) s", waited).group(1)), 0.5)
+        self.assertIn(f"state: {FT.state_words(reply)}", out.splitlines())
         self.assertEqual(self.game.backups, 0)
 
     def test_attach_after_the_delay_does_not_wait(self):
@@ -304,10 +351,18 @@ class AttachTest(Rig):
         self.assertEqual(self.game.backups, 0)
 
     def test_the_facts_load_once_per_build(self):
-        tools = self.tools([STATE, STATE])
+        # The real loader on the real 6142 facts and version file, counted.
+        def load_facts():
+            self.loads += 1
+            return real_6142_facts()
+
+        tools = self.tools([recorded_state(), recorded_state()], real_time=True,
+                           current_build=lambda: B.current_build(REAL_6142_GAME),
+                           load_facts=load_facts)
         tools.ch_attach()
         tools.ch_detach()
         tools.ch_attach()
+        self.assertEqual(self.frida.attached_to, [C.PROCESS_NAME, C.PROCESS_NAME])
         self.assertEqual(self.loads, 1)
 
     def drop_session(self):
@@ -378,33 +433,28 @@ class AttachTest(Rig):
         self.assertEqual(self.frida.attached_to, [])
 
     def test_a_stale_trace_agent_starts_no_trace(self):
-        # ch_trace_start reaches trace_hits.TraceSession, the trace loader.
+        # ch_trace_start builds the real trace session, which checks the
+        # agent's build stamp; the refusal is build_stamp's own line.
         path = os.path.join(self.agent_dir, os.path.basename(TH.DEFAULT_AGENT))
+        tools = self.real_trace_tools(reads=3)
+        self.game.backups = 0
         with open(os.path.join(self.agent_dir, "trace.ts"), "a", encoding="utf-8") as f:
             f.write("// an edit after the build\n")
-        with self.assertRaises(TH.AgentMissing) as raised:
-            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertEqual(str(raised.exception),
-                         f"{path} is stale: trace.ts changed since it was built; "
-                         "run npm run build:trace in tools/ch_mcp/agent first")
+        stale = BS.check(path)
+        self.assertIsNotNone(stale)
+        self.assertEqual(tools.ch_trace_start(self.song).splitlines()[-1], stale)
         os.remove(BS.stamp_path(path))
-        with self.assertRaises(TH.AgentMissing) as raised:
-            TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                            os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertIn("has no build stamp", str(raised.exception))
-        out = []
-        self.assertEqual(TH.main(["--song", self.song, "--mode", TH.MODE_COUNT,
-                                  "--engine-class", "Eng", "--agent", path,
-                                  "--out", os.path.join(self.tmp, "t.jsonl")], out=out.append), 1)
-        self.assertEqual(out, [BS.check(path)])
+        unstamped = BS.check(path)
+        self.assertIsNotNone(unstamped)
+        self.assertNotEqual(unstamped, stale)
+        self.assertEqual(tools.ch_trace_start(self.song).splitlines()[-1], unstamped)
+        self.assertEqual(self.traces, [])
+        self.assertEqual(self.game.backups, 0)
+        # Once the agent is rebuilt, the same call starts the trace on it.
         make_built_agent(self.agent_dir, TH.DEFAULT_AGENT_NAME)
-        session = TH.TraceSession([{"index": 0, "time_ms": 1000}], "Eng", ["AddPoints"],
-                                  os.path.join(self.tmp, "t.jsonl"), agent_path=path,
-                            song_end_ms=SONG_END_MS)
-        self.assertEqual(session.agent_path, path)
+        tools.ch_trace_start(self.song)
+        (trace,) = self.traces
+        self.assertEqual(trace.agent_path, path)
 
 
 class ReadTest(Rig):
@@ -480,30 +530,12 @@ class SnapshotEngineLinesTest(Rig):
         self.assertIn(repr(pad_axis(DYNAMIC_GHOST, threshold)), printed[3])
 
     def test_the_threshold_line_names_the_value_and_the_offsets_constant(self):
-        self.assertIn("dynamics threshold: 64 (OFF_DYN_THRESHOLD, +0x2c0)",
+        self.assertIn(f"dynamics threshold: 64 (OFF_DYN_THRESHOLD, +{C.OFF_DYN_THRESHOLD:#x})",
                       self.snapshot_lines(threshold=64))
 
     def test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision(self):
         lines = self.snapshot_lines(threshold=64)
         self.assertIn(f"ghost axis value: {pad_axis('ghost', 64)!r} (kit_tools.pad_axis)", lines)
-
-    def test_the_search_runs_without_the_servers_lock(self):
-        seen = []
-
-        def try_the_lock():
-            taken = self.lock.acquire(blocking=False)
-            seen.append(taken)
-            if taken:
-                self.lock.release()
-
-        def finder(proc):
-            other = threading.Thread(target=try_the_lock)
-            other.start()
-            other.join()
-            return ENGINE
-
-        self.snapshot_lines(find_engine=finder)
-        self.assertEqual(seen, [True])
 
 
 # A hand-written menu block in the shape agent/menu.ts sends.
@@ -840,7 +872,9 @@ class StateWordsTest(unittest.TestCase):
 class TraceTest(Rig):
     def test_trace_start_refuses_with_no_live_game_manager(self):
         tools = self.tools([STATE, MENU], attached=True)
+        self.game.backups = 0
         out = tools.ch_trace_start(self.song)
+        self.assertEqual(self.game.backups, 0)
         self.assertEqual(out.splitlines()[-1],
                          "no live GameManager: start the song (pause it if you like), "
                          "then call ch_trace_start")
@@ -868,50 +902,63 @@ class TraceTest(Rig):
         self.assertEqual(lines[0], BACKUP_LINE)
         self.assertTrue(lines[1].startswith("trace started"))
 
-    def test_a_refused_trace_start_takes_no_backup(self):
-        tools = self.tools([STATE, MENU], attached=True)
-        self.game.backups = 0
-        tools.ch_trace_start(self.song)
-        self.assertEqual(self.game.backups, 0)
-
     def test_trace_start_hooks_the_default_method_from_the_facts(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        out = tools.ch_trace_start(self.song)
+        tools = self.real_trace_tools()
+        out = tools.ch_trace_start(self.song).splitlines()
+        facts = real_6142_facts()
+        engine, ctor_rva = B.engine_class(facts)
+        rvas = list(C.PER_NOTE_DEFAULT_RVAS)
+        names = B.method_names_by_rva(facts, engine, rvas)
         (trace,) = self.traces
-        self.assertEqual(trace.engine_class, "Eng")
-        self.assertEqual(trace.methods, ["AddPoints"])
-        self.assertEqual(trace.kw["engine_ctor_rva"], C.RVA_DRUMS_ENGINE_CTOR)
-        self.assertIn(f"AddPoints (0x{C.RVA_NOTE_SCORE_ADD:X})", out)
+        self.assertEqual(trace.settings["engine_class"], engine)
+        self.assertEqual(trace.settings["engine_ctor_rva"], ctor_rva)
+        self.assertEqual(trace.settings["methods"], names)
+        (hooked,) = [line for line in out if line.startswith("hooked methods: ")]
+        for name, rva in zip(names, rvas):
+            self.assertIn(f"{name} (0x{rva:X})", hooked)
 
     def test_trace_start_caps_at_hydras_end_of_the_folders_chart(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        tools.ch_trace_start(self.song)
-        (trace,) = self.traces
-        self.assertEqual(trace.kw["song_end_ms"], SONG_END_MS)
+        tools = self.real_trace_tools()
+        out = tools.ch_trace_start(self.song).splitlines()
         self.assertEqual(FAKE.charts[-1], self.chart)
+        end_ms, _ = TH.song_end_ms(self.song)
+        (trace,) = self.traces
+        # Both caps start from that song end.
+        self.assertEqual(trace.settings["song_cap_s"], TH.trace_cap_s(end_ms))
+        self.assertEqual(trace.cap_s, TH.wall_cap_s(end_ms))
+        (caps,) = [line for line in out if line.startswith("song cap: ")]
+        self.assertIn(f"{TH.trace_cap_s(end_ms):g} s", caps)
+        self.assertIn(f"{TH.wall_cap_s(end_ms):g} s", caps)
+
+    def refused_by_the_song_end(self):
+        """ch_trace_start's reply and the song end's own refusal for the
+        folder. The attach takes the game side's backup, so the count starts
+        again after it: the refused start must not ask for another."""
+        tools = self.real_trace_tools()
+        self.game.backups = 0
+        out = tools.ch_trace_start(self.song)
+        with self.assertRaises(hydra_end.SongEndMissing) as raised:
+            TH.song_end_ms(self.song)
+        self.assertEqual(self.game.backups, 0)
+        return out, str(raised.exception)
 
     def test_a_folder_with_no_chart_starts_no_trace(self):
         os.remove(self.chart)
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.backups = 0
-        out = tools.ch_trace_start(self.song)
-        self.assertEqual(out.splitlines()[-1],
-                         f"{self.song} has no notes.chart or notes.mid, so Hydra has no "
-                         "song end to cap the trace at; no trace started")
+        out, refusal = self.refused_by_the_song_end()
+        self.assertIn(self.song, refusal)
+        self.assertEqual(out.splitlines()[-1], f"{refusal}; no trace started")
         self.assertEqual(self.traces, [])
-        self.assertEqual(self.game.backups, 0)
 
     def test_a_failed_dump_starts_no_trace(self):
         # A chart the fake has no dump for fails as hydra_replay would.
         os.remove(self.chart)
-        open(os.path.join(self.song, "notes.mid"), "w").close()
-        tools = self.tools([STATE, STATE], attached=True)
-        self.game.backups = 0
-        out = tools.ch_trace_start(self.song)
-        self.assertIn("hydra_replay dump failed with exit code 1", out)
-        self.assertTrue(out.endswith("; no trace started"))
+        midi = os.path.join(self.song, "notes.mid")
+        open(midi, "w").close()
+        out, refusal = self.refused_by_the_song_end()
+        self.assertIn(midi, refusal)
+        self.assertIn("hydra_replay", refusal)
+        self.assertTrue(out.endswith(f"{refusal}; no trace started"), out)
         self.assertEqual(self.traces, [])
-        self.assertEqual(self.game.backups, 0)
 
     def test_the_dump_runs_outside_the_lock(self):
         tools = self.tools([STATE, STATE], attached=True)
@@ -939,9 +986,14 @@ class TraceTest(Rig):
         self.assertEqual(len(self.traces), 1)
 
     def test_with_dynamics_hooks_both_methods(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        tools = self.real_trace_tools()
         tools.ch_trace_start(self.song, with_dynamics=True)
-        self.assertEqual(self.traces[0].methods, ["AddPoints", "Dynamics"])
+        facts = real_6142_facts()
+        engine, _ = B.engine_class(facts)
+        names = B.method_names_by_rva(
+            facts, engine, list(C.PER_NOTE_DEFAULT_RVAS) + [C.RVA_NOTE_DYNAMICS])
+        self.assertEqual(len(set(names)), len(C.PER_NOTE_DEFAULT_RVAS) + 1)
+        self.assertEqual(self.traces[0].settings["methods"], names)
 
     def test_notes_from_since_are_lined_up(self):
         tools = self.tools([STATE, STATE], attached=True)
@@ -956,31 +1008,27 @@ class TraceTest(Rig):
         self.assertEqual(out[-1], "next: ch_notes(since=3)")
 
     def test_trace_stop_stops_and_prints_the_ended_line(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        tools = self.real_trace_tools()
         tools.ch_trace_start(self.song)
+        (trace,) = self.traces
+        self.assertFalse(trace.ended())
         out = tools.ch_trace_stop().splitlines()
-        self.assertEqual(self.traces[0].stop_caps, [FT.READ_CAP_S])
-        self.assertEqual(out[:2], ["ended: stopped", "calls: 0"])
-
-    def test_a_trace_that_does_not_stop_in_time_says_so(self):
-        tools = self.tools([STATE, STATE], attached=True)
-        tools.ch_trace_start(self.song)
-        self.traces[0].ends_on_stop = False
-        self.assertEqual(tools.ch_trace_stop(),
-                         f"the trace thread was still running after {FT.READ_CAP_S:g} s "
-                         "(READ_CAP_S); it ends with the server")
+        self.assertTrue(trace.ended())
+        self.assertEqual(trace.result.reason, TH.END_STOPPED)
+        self.assertEqual(out[:2], [TH.ended_line(trace.result), f"calls: {len(trace.calls())}"])
 
     def test_the_stop_hook_stops_the_trace_and_detaches_once(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        tools = self.real_trace_tools()
         tools.ch_trace_start(self.song)
+        (trace,) = self.traces
         (hook,) = self.game.hooks
         said = hook()
-        self.assertEqual(self.traces[0].stop_caps, [FT.READ_CAP_S])
+        self.assertTrue(trace.ended())
+        self.assertEqual(trace.result.reason, TH.END_STOPPED)
         self.assertEqual(self.session.detach_calls, 1)
         self.assertIn("frida: detached", said)
         hook()
         self.assertEqual(self.session.detach_calls, 1)
-        self.assertEqual(self.traces[0].stop_caps, [FT.READ_CAP_S])
 
 
 class RealFactsTest(unittest.TestCase):

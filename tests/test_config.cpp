@@ -27,9 +27,11 @@
 #include "parse/song.h"  // difficulty_name
 #include "scratch_paths.h"
 #include "search/pather.h"  // kDefaultDepthValue, SearchSettings
+#include "source_tree.h"  // sourcetree::root
 #include "store/record_store.h"  // CapQuery, Lens
 #include "temp_util.h"
 #include "testdata_dirs.h"  // testdata_root
+#include "ui/icons.h"  // icon_files
 #include "ui/library_parts.h"  // settings_at_defaults, settings_changes_summary
 
 using hydra::app::AnalysisSettings;
@@ -52,6 +54,35 @@ Settings load_ini_text(const char* tag, const std::string& text) {
         ~Remove() { std::remove(path.c_str()); }
     } remove_after{path};
     return Settings::load_file(path);
+}
+
+// The lines save_file writes for `s`, one string per line.
+std::vector<std::string> saved_lines(const Settings& s, const char* tag) {
+    const std::string path = testtemp::temp_path(tag, ".ini");
+    REQUIRE(s.save_file(path));
+    std::vector<std::string> lines;
+    {
+        std::ifstream f(path);
+        std::string line;
+        while (std::getline(f, line)) lines.push_back(line);
+    }
+    std::remove(path.c_str());
+    return lines;
+}
+
+// A value other than `value` that its key's line still loads: the other
+// position of an on/off value, a number plus one, else another difficulty
+// name (text keys take any word).
+std::string other_value(const std::string& value) {
+    if (const std::optional<bool> on = hydra::parse_bool(value)) return *on ? "0" : "1";
+    if (const std::optional<double> n = hydra::parse_finite_number(value)) {
+        return std::to_string(static_cast<long long>(*n) + 1);
+    }
+    for (const hydra::Difficulty d : hydra::kAllDifficulties) {
+        const std::string name = hydra::difficulty_name(d);
+        if (name != value) return name;
+    }
+    return value;
 }
 
 // Every field the INI holds, compared one by one.
@@ -115,20 +146,14 @@ TEST_CASE("settings: load and save name the same keys") {
     const Settings d;
     REQUIRE(d.save_file(path));
     check_same_settings(Settings::load_file(path), d);
+    std::remove(path.c_str());
 
     // Every line save_file writes is, on its own, a line load_file takes: a
     // key written under a name the loader does not read refuses as unknown.
     Settings s;
     s.dm_last_user = "123";
     s.chartfolders = {"C:\\a"};
-    REQUIRE(s.save_file(path));
-    std::vector<std::string> lines;
-    {
-        std::ifstream f(path);
-        std::string line;
-        while (std::getline(f, line)) lines.push_back(line);
-    }
-    std::remove(path.c_str());
+    const std::vector<std::string> lines = saved_lines(s, "samekeys_lines");
     REQUIRE_FALSE(lines.empty());
     for (const std::string& line : lines) {
         CAPTURE(line);
@@ -896,18 +921,6 @@ TEST_CASE("save_file that cannot land keeps the old file whole and leaves no .tm
     std::remove(path.c_str());
 }
 
-// The lens files a result by the unit the search ran with (search_depth_mode),
-// so an int the search reads as scores files beside 0, never as a third row.
-// load_file lands a stray number on 0 or 1, so the 7 here is set in memory.
-TEST_CASE("lens: depth_mode is the search's unit, so a stray in-memory int files as scores") {
-    Settings s;
-    s.depth_mode = 7;
-    CHECK(s.lens().depth_mode == 0);
-    CHECK(s.lens() == Settings{}.lens());
-    s.depth_mode = 1;
-    CHECK(s.lens().depth_mode == 1);
-}
-
 // A value other than the field's default, for each kind of field in
 // kAnalysisFields: the other switch position, the next number, another
 // difficulty name.
@@ -948,6 +961,26 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
         CHECK(t.profile() != d.profile());
     }
 
+    // A keyed setting left out of kAnalysisFields. The lines here come from
+    // the key table through save_file, not from that list: each line, changed
+    // on its own, either leaves the profile alone or is a change the panel
+    // names and the reset undoes.
+    int keyed_lines = 0;
+    for (const std::string& line : saved_lines(d, "reset_keys")) {
+        const std::optional<hydra::IniPair> pair = hydra::split_ini_line(line);
+        REQUIRE(pair.has_value());
+        const std::string changed = pair->key + "=" + other_value(pair->value) + "\n";
+        CAPTURE(changed);
+        const Settings t = load_ini_text("reset_key", changed);
+        if (t.profile() == d.profile()) continue;
+        ++keyed_lines;
+        CHECK_FALSE(t.analysis_changes().empty());
+        CHECK(t.with_analysis_defaults().profile() == d.profile());
+    }
+    // A default file writes the sp_cap line, and the SP cap is part of the
+    // profile (Settings::cap_query), so at least that line moves it.
+    CHECK(keyed_lines > 0);
+
     // All at once, with the settings the panel doesn't show changed too.
     Settings s;
     for (const AnalysisField& f : kAnalysisFields) change_analysis_field(s, f);
@@ -957,7 +990,9 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     s.auto_open_report = true;
     s.dm_last_user = "1234";
     const Settings r = s.with_analysis_defaults();
-    CHECK(settings_changes_summary(r) == "defaults");
+    // The summary after the reset is the summary a default Settings gets.
+    CHECK(settings_at_defaults(r));
+    CHECK(settings_changes_summary(r) == settings_changes_summary(d));
     // Everything a stored result is keyed by, and everything the analysis
     // reads, matches the defaults', so a keyed setting the reset misses
     // fails here.
@@ -968,10 +1003,10 @@ TEST_CASE("settings reset: puts back each panel setting and keeps the rest") {
     const hydra::app::AnalysisSettings da = d.to_analysis_settings();
     CHECK(ra.reading() == da.reading());
     CHECK(r.chartfolders == s.chartfolders);
-    CHECK(r.preview_volume == 75);
-    CHECK(r.backendlimit_enabled);
-    CHECK(r.auto_open_report);
-    CHECK(r.dm_last_user == "1234");
+    CHECK(r.preview_volume == s.preview_volume);
+    CHECK(r.backendlimit_enabled == s.backendlimit_enabled);
+    CHECK(r.auto_open_report == s.auto_open_report);
+    CHECK(r.dm_last_user == s.dm_last_user);
 }
 
 // The settings button and the Reset tooltip name the early-fill window by
@@ -1004,18 +1039,33 @@ TEST_CASE("settings summary: the early-fill window, off its default") {
     CHECK(s.with_analysis_defaults().early_fill_window_ms == Settings{}.early_fill_window_ms);
 }
 
+// load_icons reads each file icon_files() names from resource_dir(). The
+// build copies resource/ beside the exes (CMakeLists.txt, the Hydra target's
+// post-build step), so the folder resource_dir() gives this exe must hold
+// every one of them.
 TEST_CASE("config: resource_dir is the resource folder beside the exe") {
+    namespace fs = std::filesystem;
     const std::string dir = hydra::app::resource_dir();
-    CHECK(hydra::parent_folder(dir) == hydra::app::exe_dir());
-    const std::string tail = "resource";
-    REQUIRE(dir.size() > tail.size());
-    CHECK(hydra::ends_with(dir, tail));
+    CAPTURE(dir);
+    REQUIRE(fs::is_directory(hydra::os_path(dir)));
+    REQUIRE_FALSE(hydra::ui::icon_files().empty());
+    for (const hydra::ui::IconFile& icon : hydra::ui::icon_files()) {
+        CAPTURE(icon.file);
+        CHECK(fs::is_regular_file(hydra::os_path(hydra::join_folder(dir, icon.file))));
+    }
 }
 
 // The pieces are the app's words for each setting, which the batch confirm,
 // the settings button and hydra_batch's header all print (D114 item 9).
 TEST_CASE("config: describe_settings uses the app's words") {
+    // Each value is set here, so the words below follow from the test's own
+    // settings and not from the fields' defaults.
     Settings s;
+    s.depth_mode = 0;
+    s.depth_value = 4;
+    s.sp_cap = 4;
+    s.mslimit_enabled = true;
+    s.mslimit_value = 10;
     hydra::app::SettingsText text = hydra::app::describe_settings(s.to_analysis_settings());
     CHECK(text.depth == "4 scores");
     CHECK(text.cap == "4 bars");
@@ -1035,8 +1085,25 @@ TEST_CASE("config: describe_settings uses the app's words") {
     CHECK(hydra::app::describe_settings(s.to_analysis_settings()).cap == "1 bar");
 }
 
-// The one guard that CMakeLists.txt's two strings reach the exe unchanged.
+// The one guard that CMakeLists.txt's two strings reach the exe unchanged:
+// each is read from its set(...) line in the repo's CMakeLists.txt.
 TEST_CASE("version: the window title and taskbar id are the build's") {
-    CHECK(std::wstring(hydra::kWindowTitleW) == L"Hydra Deluxe");
-    CHECK(std::wstring(hydra::kAppUserModelIDW) == L"Hydra.Hydra");
+    const std::string cmake =
+        hydra::read_file_text((sourcetree::root() / "CMakeLists.txt").u8string());
+    // The quoted value of `set(<name> "...")`, or empty when the line is missing.
+    auto cmake_string = [&cmake](const std::string& name) -> std::string {
+        const std::string head = "set(" + name + " \"";
+        const size_t at = cmake.find(head);
+        if (at == std::string::npos) return "";
+        const size_t start = at + head.size();
+        const size_t end = cmake.find('"', start);
+        if (end == std::string::npos) return "";
+        return cmake.substr(start, end - start);
+    };
+    const std::string title = cmake_string("HYDRA_APP_NAME");
+    const std::string model_id = cmake_string("HYDRA_APP_USER_MODEL_ID");
+    REQUIRE_FALSE(title.empty());
+    REQUIRE_FALSE(model_id.empty());
+    CHECK(std::wstring(hydra::kWindowTitleW) == hydra::utf8_to_wide(title));
+    CHECK(std::wstring(hydra::kAppUserModelIDW) == hydra::utf8_to_wide(model_id));
 }

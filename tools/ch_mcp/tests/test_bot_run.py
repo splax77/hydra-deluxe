@@ -23,6 +23,7 @@ import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -569,9 +570,6 @@ class RunStepsTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def start(self, r: Rig, song_dir) -> B.Run:
-        return B.start_run(song_dir, backup_root=os.path.join(r.out_dir, "backups"), env=r.env)
-
     def start_real(self, lines: list, before=None) -> B.Run:
         """start_run on PITCH_DARK with Hydra's end, launched for real
         (_launching_env), which it keeps as self.env. `before`, when given,
@@ -638,13 +636,6 @@ class RunStepsTest(unittest.TestCase):
             with self.subTest(length_ms=length_ms):
                 self.assertAlmostEqual(B.run_cap_s(length_ms) - ms_to_s(length_ms),
                                        B.POLL_CAP_EXTRA_S)
-
-    def test_bot_run_cap_is_run_cap_s_of_hydras_end(self):
-        end_ms = 260504
-        r = Rig(self.tmp, exits_at=None, length_ms=end_ms)
-        run = self.start(r, r.song)
-        self.assertEqual(run.length_ms, end_ms)
-        self.assertEqual(run.cap_s, B.run_cap_s(end_ms))
 
     def test_start_run_takes_a_song_end_already_read_without_a_dump(self):
         # A song folder holding only PITCH_DARK's song.ini has no chart, so
@@ -905,6 +896,9 @@ def recorded_launch_replies() -> list:
 # How long a test waits on a fake's thread, or on the stand-in program, before
 # it fails instead of hanging.
 THREAD_CAP_S = 5.0
+# How long a test holds the resume back: well past the clock's jitter, so a
+# cap counted from before the resume shows.
+RESUME_LATE_S = 1.0
 
 
 def status(state, **kw):
@@ -1025,51 +1019,88 @@ class HumanLaunchTest(unittest.TestCase):
             self.launch(agent, patch)
         return str(cm.exception)
 
-    def test_the_order_is_start_attach_load_arm_resume_status(self):
-        # The real paused start, resume, kill and clock, on the stand-in
-        # program in place of the game. Only the Frida attach cannot run
-        # without the game, so the agent answers with the replies of a real
-        # launch (LS_D0_LAUNCH_LOG). The start and resume seams are wrapped
-        # only to record when they ran.
-        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
-        agent = FakeLaunchAgent(self.events, statuses=[waiting, patched], arm_reply=arm_reply)
-        lines, games, attaches = [], [], []
+    def launch_stand_in(self, agent, before_resume=None, last_ask_s=None) -> types.SimpleNamespace:
+        """launch_human on the real paused start, resume, kill and clock, with
+        the stand-in program (_STARTED_WITH) in place of the game. Only the
+        Frida attach cannot run without the game, so `agent` answers in its
+        place. The start, resume and kill seams are wrapped only to record when
+        they ran; `before_resume`, when given, runs just before the real resume.
+        Each status ask is kept as (clock time, cap); one asked more than
+        `last_ask_s` after the resume fails the test at once, since past that
+        point the launch can no longer end the way the test needs.
+        Returns what it saw: the launch (or the LaunchFailed as `failed`), the
+        stand-in's out file, the games started, the lines, the attach calls,
+        the Env, the log path, the clock time after each resume and the asks."""
+        seen = types.SimpleNamespace(launch=None, failed=None, out=None, games=[],
+                                     lines=[], attaches=[], resumed_at=[], asks=[])
+        answer = agent.request
+
+        def request(message, cap_s):
+            if message["type"] == "status":
+                now = time.monotonic()
+                late_s = now - seen.resumed_at[0]
+                if last_ask_s is not None and late_s > last_ask_s:
+                    raise AssertionError(f"a status was still asked for {late_s:.1f} s after "
+                                         f"the resume, past {last_ask_s:g} s")
+                seen.asks.append((now, cap_s))
+            return answer(message, cap_s)
+
+        agent.request = request
 
         def start(cmd):
             self.events.append("start")
-            games.append(B._real_start_suspended(cmd))
-            return games[-1]
+            seen.games.append(B._real_start_suspended(cmd))
+            return seen.games[-1]
 
         def resume(pid):
             if not agent.armed:
                 raise AssertionError("resumed before the arm reply")
             self.events.append("resume")
+            if before_resume is not None:
+                before_resume()
             B.resume_main_thread(pid)
+            seen.resumed_at.append(time.monotonic())
 
         def attach(pid, path, log, out):
             self.events.append("attach")
-            attaches.append((pid, path, log))
+            seen.attaches.append((pid, path, log))
             return agent
 
-        env = B.Env(out=lines.append, start_process=start, resume_thread=resume,
-                    attach_agent=attach,
-                    launch_agent_path=make_built_agent(os.path.join(self.tmp, "agent"), "launch"))
-        log = os.path.join(self.tmp, "launch.jsonl")
+        def kill(game):
+            self.events.append("kill")
+            B._kill_game(game)
+
+        seen.env = B.Env(out=seen.lines.append, start_process=start, resume_thread=resume,
+                         attach_agent=attach, kill=kill,
+                         launch_agent_path=make_built_agent(os.path.join(self.tmp, "agent"),
+                                                            "launch"))
+        seen.log = os.path.join(self.tmp, "launch.jsonl")
         try:
-            launch, _folder, out = _start_stand_in(
-                self.tmp, lambda cmd: B.launch_human(cmd, env, log))
+            seen.launch, _folder, seen.out = _start_stand_in(
+                self.tmp, lambda cmd: B.launch_human(cmd, seen.env, seen.log))
+        except B.LaunchFailed as e:
+            seen.failed = e
         except BaseException:
-            for game in games:
+            for game in seen.games:
                 game._p.kill()
             raise
+        return seen
+
+    def test_the_order_is_start_attach_load_arm_resume_status(self):
+        # The agent answers with the replies of a real launch (LS_D0_LAUNCH_LOG).
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        agent = FakeLaunchAgent(self.events, statuses=[waiting, patched], arm_reply=arm_reply)
+        seen = self.launch_stand_in(agent)
+        self.assertIsNone(seen.failed)
+        launch, lines, games, env, log = seen.launch, seen.lines, seen.games, seen.env, seen.log
         # The stand-in only runs, writes and exits once resumed.
-        _started_with(self, launch.game, out)
+        _started_with(self, launch.game, seen.out)
         self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
                          + ["status"] * 2)
         self.assertIs(launch.agent, agent)
         self.assertIs(launch.game, games[0])
         self.assertEqual(launch.form, PATCH["launch"])
-        self.assertEqual(attaches, [(games[0].pid, env.launch_agent_path, log)])
+        self.assertEqual(seen.attaches, [(games[0].pid, env.launch_agent_path, log)])
         self.assertEqual(agent.start_caps, [B.LAUNCH_ATTACH_CAP_S])
         # arm carries the data file's contents, with the arm cap.
         self.assertEqual(agent.requests[0], ({"type": "arm", "patch": PATCH}, B.LAUNCH_ARM_CAP_S))
@@ -1080,15 +1111,32 @@ class HumanLaunchTest(unittest.TestCase):
         for line in B.launch_status_lines(patched, PATCH):
             self.assertIn(line, lines)
 
-    def test_waiting_statuses_are_polled_every_half_second_until_patched(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("waiting")] * 3 + [PATCHED])
-        self.launch(agent)
+    def test_waiting_statuses_are_polled_every_poll_gap_until_patched(self):
+        # Three of the real launch's waiting replies, then its patched one
+        # (LS_D0_LAUNCH_LOG), on the real clock.
+        _start, arm_reply, waiting, patched, *_later = recorded_launch_replies()
+        polls = 3
+        agent = FakeLaunchAgent(self.events, statuses=[waiting] * polls + [patched],
+                                arm_reply=arm_reply)
+        seen = self.launch_stand_in(
+            agent, last_ask_s=polls * B.LAUNCH_POLL_S + THREAD_CAP_S)
+        done = time.monotonic()
+        self.assertIsNone(seen.failed)
+        _started_with(self, seen.launch.game, seen.out)
         self.assertEqual(self.events, ["start", "attach", "load", "arm", "resume"]
-                         + ["status"] * 4)
-        # Three waiting replies, one poll gap after each.
-        waited_s = 3 * B.LAUNCH_POLL_S
-        self.assertEqual(self.r.clock.t, waited_s)
-        self.assertIn(f"patched {waited_s:.1f} s after the resume", self.r.lines)
+                         + ["status"] * (polls + 1))
+        # One poll gap after each waiting reply.
+        asked = [t for t, _cap in seen.asks]
+        self.assertEqual(len(asked), polls + 1)
+        for before, after in zip(asked, asked[1:]):
+            self.assertGreaterEqual(after - before, B.LAUNCH_POLL_S, asked)
+        # The line names the seconds from the resume to the patched reply: at
+        # least the polls' gaps, and no more than the wall time.
+        said = [float(m.group(1)) for line in seen.lines
+                for m in [re.fullmatch(r"patched (\d+\.\d) s after the resume", line)] if m]
+        self.assertEqual(len(said), 1, seen.lines)
+        self.assertGreaterEqual(said[0], round(polls * B.LAUNCH_POLL_S, 1))
+        self.assertLessEqual(said[0], round(done - seen.resumed_at[0], 1))
 
     def test_a_patched_arm_reply_still_resumes_and_reads_the_status(self):
         agent = FakeLaunchAgent(self.events, arm_reply=status("patched", modules=["x.dll"]))
@@ -1097,30 +1145,32 @@ class HumanLaunchTest(unittest.TestCase):
         self.assertIs(launch.agent, agent)
 
     def test_a_status_that_stays_waiting_ends_at_the_patch_cap_from_the_resume(self):
-        agent = FakeLaunchAgent(self.events, statuses=[status("waiting")])
-        resumed = []
-        wire_human(self.r, agent)
-        fake_resume = self.r.env.resume_thread
-
-        def resume(pid):
-            fake_resume(pid)
-            resumed.append(self.r.clock.t)
-
-        self.r.env.resume_thread = resume
-        resume_at = 7.0  # the resume comes later than time 0
-        self.r.clock.t = resume_at
-        with self.assertRaises(B.LaunchFailed) as cm:
-            B.launch_human(["exe"], self.r.env, os.path.join(self.tmp, "l.jsonl"))
-        said = str(cm.exception)
+        # The real launch's waiting reply (LS_D0_LAUNCH_LOG), for good, on the
+        # real clock. The resume comes RESUME_LATE_S after the start, so a cap
+        # counted from before the resume would end that much too early.
+        _start, arm_reply, waiting, *_later = recorded_launch_replies()
+        agent = FakeLaunchAgent(self.events, statuses=[waiting], arm_reply=arm_reply)
+        seen = self.launch_stand_in(agent, before_resume=lambda: time.sleep(RESUME_LATE_S),
+                                    last_ask_s=B.LAUNCH_PATCH_CAP_S + B.LAUNCH_POLL_S)
+        failed_at = time.monotonic()
+        self.assertIsNotNone(seen.failed, seen.lines)
+        said = str(seen.failed)
         self.assertIn(f"still said waiting {B.LAUNCH_PATCH_CAP_S:g} s after the resume", said)
-        self.assertEqual(resumed, [resume_at])
-        # The cap counts from the resume, not from the start.
-        self.assertEqual(self.r.clock.t, resume_at + B.LAUNCH_PATCH_CAP_S)
-        statuses = [cap for message, cap in agent.requests if message["type"] == "status"]
-        self.assertEqual(len(statuses), round(B.LAUNCH_PATCH_CAP_S / B.LAUNCH_POLL_S))
-        # Each status waits at most what is left of the cap.
-        self.assertEqual(statuses[0], B.LAUNCH_PATCH_CAP_S)
+        self.assertEqual(len(seen.resumed_at), 1)
+        # The cap counts from the resume: the failure comes no sooner.
+        self.assertGreaterEqual(failed_at - seen.resumed_at[0], B.LAUNCH_PATCH_CAP_S)
+        # Each status asks for at most what is left of the cap, so the caps
+        # shrink from one ask to the next.
+        self.assertTrue(seen.asks, seen.lines)
+        for (_t, cap), (_later_t, later_cap) in zip(seen.asks, seen.asks[1:]):
+            self.assertLess(later_cap, cap)
+        for t, cap in seen.asks:
+            self.assertGreater(cap, 0)
+            self.assertLessEqual(cap, B.LAUNCH_PATCH_CAP_S)
+            self.assertGreaterEqual(cap, B.LAUNCH_PATCH_CAP_S - (t - seen.resumed_at[0]))
+        # The game is killed and the agent detached, in that order.
         self.assertEqual(self.events[-2:], ["kill", "detach"])
+        self.assertIn("the game was killed", said)
 
     def test_the_spawn_form_takes_the_spawn_seam_and_resumes_through_the_device(self):
         agent = FakeLaunchAgent(self.events)

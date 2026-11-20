@@ -24,7 +24,9 @@ A row has one Kind. A fact with two sources of two kinds is two rows.
 
 A row is either checked or unchecked. There is no half-checked status. If part of a fact was never opened, that part gets its own `unchecked` row.
 
-**Source.** The Source cell names the exact place: a repo path with a line number or a block id, a game file path, a chart path, or a run's result folder. It holds at least one backticked token, because a cell with none is a shape error. It may hold several backticked tokens, with plain words around them. An `unchecked` row's Source holds one too: the file that only reports the fact, or the place where the search for a source found nothing.
+**Source.** The Source cell names the exact place: the lines read, for a `code` row; for the other Kinds, a block id, a game file path, a chart path, or a run's result folder. It holds at least one backticked token, because a cell with none is a shape error. It may hold several backticked tokens, with plain words around them. An `unchecked` row's Source holds one too: the file that only reports the fact, or the place where the search for a source found nothing.
+
+**A `code` row cites lines.** Every backticked token in a `code` row's Source cell takes one of two forms: `path:N` for one line, or `path:A-B` for a range whose first line is not above its last. The path is either absolute or relative to the root of the plan's own repo, so a hooks-repo file cited from a Hydra plan is written absolute. When a plan's reviewer stamps it, the stop hook records no stamp for that plan's range if the agent that wrote a `code` row never opened its cited lines with the Read tool, and it tells the main session which row. `premise_evidence.py` in the hooks' gates folder owns that check. A row whose lines you did not open is `unchecked`, which the hook does not read.
 
 **A source must be for the exact thing.** A source backs a row only when it works the fact out for the thing the row names. A `code` row that says "the ratio this end moves by" names code that works the ratio out for that end. Code that works it out for another end, chord or tick is not a source for the row, even when it is the right function.
 
@@ -47,7 +49,7 @@ Each word says what kind of thing the fact was read from.
 
 ## What counts as a source
 
-A premise about a file's own content is sourced by that file. "The planner's instructions say nothing about premises" is sourced by the planner's instruction file.
+A premise about a file's own content is sourced by the lines of that file that show it, cited as `path:N` or `path:A-B` (the Source rule in "Rules for the table"). "The planner's instructions say nothing about premises" is sourced by the lines of the planner's instruction file the author read to see that; a claim that a whole file holds nothing is sourced by a Read of the whole file, cited as its full line range.
 
 A premise about the world (the game, the code, a past run) is sourced by the thing itself. A file that only reports on it does not count. That means a handoff, another plan, a session card, a memory note, or a Clone Hero block with no proof label. A session card counts only as the place a `ruling`'s quoted words sit. A row whose only source is one of those, or nothing, is `unchecked`, and its Status must name a task in the plan, a question number or a live step.
 
