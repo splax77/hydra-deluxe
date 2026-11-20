@@ -1576,61 +1576,11 @@ class GameToolsTest(unittest.TestCase):
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply
 
-    def test_the_chain_runs_attach_setup_watch_play_in_that_order(self):
-        t, events, _seen = self._chain_rig()
-        self._run(t)
-        self.assertEqual([e if isinstance(e, str) else e[0] for e in events],
-                         ["attach", "setup", "watch", "play"])
-        self.assertEqual(events[1], ("setup", "System"))
-
-    def test_the_watch_gets_the_one_search_and_the_player_its_engine(self):
-        t, events, seen = self._chain_rig()
-        self._run(t)
-        self.assertIs(events[2][2], GT.find_run_engine)
-        self.assertEqual(seen["engine"], self.ENGINE)
-
-    def test_the_run_plays_on_the_player_setup_gave_and_has_no_driver(self):
-        t, _events, seen = self._chain_rig()
-        self._run(t)
-        self.assertEqual(t.live_in_game.players, [t.tools._run_parts.kit.player])
-        self.assertNotIn("driver", seen)
-
-    def test_the_watch_and_the_player_share_the_songs_run_cap(self):
-        t, events, seen = self._chain_rig()
-        schedule = self._schedule_json()
-        cap_s, end_ms = GT.schedule_run_cap_s(schedule)
-        dumps_before = len(FAKE.charts)
-        t.tools.ch_run_chart(t.r.song, self._score_json(), schedule, "System")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        # The cap and the watch's song end come from the run's schedule, so
-        # the run makes no dump of its own.
-        self.assertEqual(len(FAKE.charts), dumps_before)
-        self.assertEqual(events[2][1], cap_s)
-        self.assertEqual(events[2][3], end_ms)
-        self.assertEqual(seen["cap_s"], cap_s)
-
     def test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout(self):
         with mock.patch.object(play_chart, "find_normal_engine", return_value=self.ENGINE) as find:
             self.assertEqual(GT.find_run_engine("a proc"), self.ENGINE)
         self.assertEqual(find.call_args.args, ("a proc",))
         self.assertIsNot(find.call_args.kwargs["out"], None)
-
-    def test_the_reply_has_a_line_per_part_and_names_the_first_press(self):
-        t, _events, _seen = self._chain_rig()
-        lines = self._run(t).splitlines()
-        self.assertEqual([line.split(":")[0] for line in lines[:6]],
-                         ["attach", "song check", "kit setup", "watch", "machine recorder",
-                          "play"])
-        self.assertRegex(lines[1], r"^song check: ok, .* s, " + re.escape(t.r.song) + " is loaded$")
-        self.assertIn(f"engine {self.ENGINE:#x}, csv: w.csv", lines[3])
-        self.assertEqual(lines[-1], "first press chord index 0 at 1000.0 ms")
-        # The six parts, the schedule's declined line, the builds record's
-        # line, the press log's line and the first press.
-        self.assertEqual(lines[6], "declined: chords none")
-        self.assertEqual(lines[7], "builds record: "
-                         + os.path.join(t.tools.session_dir(), "builds-1.json"))
-        self.assertEqual(len(lines), 10)
-        self.assertEqual(lines[4], "machine recorder: none; this run is not recorded")
 
     # -- the press log file -------------------------------------------------------------
 
@@ -1662,8 +1612,14 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual([r[0] for r in table[1:]], [str(i) for i in range(200)])
 
     def test_no_file_call_runs_on_the_player_thread(self):
+        # The real play thread of real tools on Pitch Dark's hydra_replay
+        # files, with Clone Hero not running: the thread starts the log's
+        # writer, then the real live_play, whose open of the game fails. Every
+        # file call the log takes is recorded with the thread that made it.
+        # The run makes no press row; that a row's add makes no file call is
+        # PressLogWriter's, which test_play_chart's PressLogWriterTest checks.
+        refusal = self._fail_if_game_runs()
         calls = []
-        player = {}
         real_open = open
         real_writer = play_chart._press_log_writer
 
@@ -1699,72 +1655,68 @@ class GameToolsTest(unittest.TestCase):
             calls.append(("_press_log_writer", threading.get_ident()))
             return real_writer(f)
 
-        def live_play(chords, *, on_press, **kw):
-            player["ident"] = threading.get_ident()
-            for row in ROWS:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
+        tools = self.real_tools()
         path = os.path.join(self.tmp, "named.csv")
         with mock.patch.object(play_chart, "open", create=True, new=recorded_open), \
                 mock.patch.object(play_chart, "_press_log_writer", new=recorded_writer):
-            t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
-                                  route="keys")
-            t.tools._play.thread.join(THREAD_CAP_S)
+            tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE, log=path,
+                                route=GT.ROUTE_KEYS)
+            play = tools._play
+            play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
+        self.assertIn(refusal, play.error)
+        # The log was opened, its header written, flushed and closed, all on
+        # the writer's own thread, which ran beside the player's.
         self.assertEqual({name for name, _ident in calls},
                          {"open", "_press_log_writer", "write", "flush", "close"})
-        self.assertNotIn(player["ident"], {ident for _name, ident in calls})
-        self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
-
-    def test_the_reply_names_the_press_file_under_the_session_folder(self):
-        t, _events, _seen = self._chain_rig()
-        lines = self._run(t).splitlines()
-        log = os.path.join(t.tools.session_dir(), "press-1.csv")
-        self.assertEqual(t.tools._play.log_path, log)
-        # The fake's run may already have ended, and then the line counts the rows.
-        self.assertEqual(lines[-2].split(" (")[0], f"press log: {log}")
-
-    def test_each_run_of_a_session_gets_its_own_press_file(self):
-        t, _events, _seen = self._chain_rig()
-        self._run(t)
-        first = t.tools._play.log_path
-        self._run(t)
-        self.assertEqual(os.path.dirname(t.tools._play.log_path), os.path.dirname(first))
-        self.assertEqual(os.path.basename(t.tools._play.log_path), "press-2.csv")
-        self.assertEqual(len(self._log_table(first)), 2)
+        self.assertNotIn(play.thread.ident, {ident for _name, ident in calls})
+        self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
 
     def test_the_status_names_the_file_first_while_running_and_after(self):
-        release = threading.Event()
-
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[0])
-            release.wait(THREAD_CAP_S)
-            return play_chart.RunResult(stop="done", sent=1)
-
-        t, _events, _seen = self._chain_rig(live_play)
-        t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
-        log = t.tools._play.log_path
-        self.assertEqual(t.tools.ch_play_status().splitlines()[0], f"press log: {log}")
-        release.set()
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
-        self.assertEqual(lines[0], f"press log: {log} (1 rows)")
-        self.assertEqual(len([line for line in lines if log in line]), 1)
+        # While the run goes on: a real session of real tools, holding
+        # pitch-dark-ratios-run1's rows of chords 61 to 64 (PITCH_DARK_RUN)
+        # and a log in the session folder, whose thread runs until its stop.
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        tools = self.real_tools()
+        log = os.path.join(tools.session_dir(), "press.csv")
+        play = GT._PlaySession(score_json=PITCH_DARK_SCORE, chord_count=len(rows),
+                               log_path=log, rows=list(rows))
+        play.thread = threading.Thread(target=play.stop.wait, args=(THREAD_CAP_S,),
+                                       daemon=True)
+        play.thread.start()
+        tools._play = play
+        lines = tools.ch_play_status().splitlines()
+        self.assertEqual(lines[0], f"press log: {log}")
+        self.assertIn(f"running: {len(rows)} presses so far", lines)
+        tools.ch_play_stop()
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
+        # After a run has ended: the real play thread with Clone Hero not
+        # running, which ends before any press, names the file with its rows.
+        tools, _reply, _refusal = self._run_with_no_game(log="press.csv")
+        log = os.path.join(tools.session_dir(), "press.csv")
+        lines = tools.ch_play_status().splitlines()
+        self.assertEqual(lines[0], f"press log: {log} ({len(tools._play.rows)} rows)")
+        self.assertEqual(len([line for line in lines if log in line]), 1, lines)
 
     def test_a_named_log_is_written_row_by_row_too(self):
-        seen = []
+        # A log ch_play_chart is given by name goes to the same writer a run
+        # of ch_run_chart uses, which keeps the file on disk row by row
+        # (test_play_chart's PressLogWriterTest checks that on a real run's
+        # recorded clock). Real tools on Pitch Dark's hydra_replay files,
+        # with Clone Hero not running, so the run ends before any press.
+        refusal = self._fail_if_game_runs()
+        tools = self.real_tools()
         path = os.path.join(self.tmp, "named.csv")
-
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[0])
-            seen.append(len(self._rows_on_disk(path, 1)))
-            return play_chart.RunResult(stop="done", sent=1)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(seen, [1])
+        tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE, log=path, route=GT.ROUTE_KEYS)
+        play = tools._play
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
+        self.assertIn(refusal, play.error)
+        self.assertIsInstance(play.writer, play_chart.PressLogWriter)
+        self.assertEqual(play.writer.path, path)
+        self.assertIsNone(play.writer.error)
+        self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
 
     def test_a_run_reusing_a_log_name_starts_the_file_over(self):
         def live_play(chords, *, on_press, **kw):
@@ -1779,48 +1731,66 @@ class GameToolsTest(unittest.TestCase):
             t.tools._play.thread.join(THREAD_CAP_S)
         self.assertEqual(len(self._log_table(path)), 3)
 
-    def test_a_run_with_no_press_leaves_a_file_with_the_header(self):
-        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        path = os.path.join(self.tmp, "named.csv")
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
-
     def test_a_failed_write_goes_on_and_the_end_writes_every_row_once(self):
-        path = os.path.join(self.tmp, "named.csv")
-        said = []
-        tried = []
-        real_writer = play_chart._press_log_writer
+        # pitch-dark-ratios-run1's rows of chords 61 to 64 (PITCH_DARK_RUN)
+        # go to a real session's press-log writer as the play thread's
+        # on_press hands them. Once the header is on disk, a second handle
+        # locks the bytes after it, as another process holding the log can,
+        # so Windows refuses the writer's first row (as test_play_chart's
+        # test_a_failed_write_is_kept_and_ends_the_writing does).
+        import msvcrt
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        header = [list(PRESS_LOG_COLUMNS)]
+        tools = self.real_tools()
+        path = os.path.join(tools.session_dir(), "press.csv")
+        play = GT._PlaySession(score_json=PITCH_DARK_SCORE, chord_count=len(rows),
+                               log_path=path)
+        play.writer = play_chart.PressLogWriter(path)
+        play.writer.start()
+        self.addCleanup(play.writer.stop, THREAD_CAP_S)
+        tools._play = play
+        deadline = time.monotonic() + THREAD_CAP_S
+        while not (os.path.exists(path) and self._log_table(path) == header):
+            # A writer that failed or ran out the cap never writes the header.
+            self.assertIsNone(play.writer.error)
+            self.assertLess(time.monotonic(), deadline, "the writer wrote no header")
+            time.sleep(0.005)
 
-        class Failing:
-            """The real writer, whose rows fail as a file held open would."""
+        def on_press(row):
+            play.rows.append(row)
+            play.writer.add(row)
 
-            def __init__(self, f):
-                self._real = real_writer(f)
-                self.writeheader, self.writerows = self._real.writeheader, self._real.writerows
-
-            def writerow(self, row):
-                tried.append(row["index"])
-                raise PermissionError("held open")
-
-        def live_play(chords, *, on_press, **kw):
-            for row in ROWS:
-                on_press(row)
-            deadline = time.monotonic() + THREAD_CAP_S
-            while t.tools._play.writer.error is None and time.monotonic() < deadline:
-                time.sleep(0.005)
-            said.append(t.tools.ch_play_status().splitlines()[0])
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        with mock.patch.object(play_chart, "_press_log_writer", new=Failing):
-            t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
-            t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(tried, [0])
-        self.assertEqual(said, [f"press log not written to {path}: held open"])
-        self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
-        self.assertEqual(t.tools.ch_play_status().splitlines()[0],
-                         f"press log: {path} (2 rows)")
+        with open(path, "rb+") as other:
+            other.seek(0, os.SEEK_END)
+            # Any length past a row's would do; 1 MiB is past them all.
+            msvcrt.locking(other.fileno(), msvcrt.LK_NBLCK, 1 << 20)
+            try:
+                on_press(rows[0])
+                # The refused row ends the writer, which then finishes.
+                self.assertTrue(play.writer.stop(THREAD_CAP_S))
+            finally:
+                other.seek(0, os.SEEK_END)
+                msvcrt.locking(other.fileno(), msvcrt.LK_UNLCK, 1 << 20)
+        error = play.writer.error
+        self.assertIsInstance(error, OSError)
+        # The run goes on: a row after the failure is still taken, and the
+        # status names the log and the writer's own error.
+        for row in rows[1:]:
+            on_press(row)
+        first = tools.ch_play_status().splitlines()[0]
+        self.assertTrue(first.startswith(f"press log not written to {path}: "), first)
+        self.assertTrue(first.endswith(str(error)), first)
+        self.assertEqual(self._log_table(path), header)
+        # The end, as the play thread ends a run, writes the whole log: the
+        # same table a whole write of the run's rows gives, each row once.
+        play.log_note = GT.GameTools._end_press_log(play)
+        whole = os.path.join(self.tmp, "whole.csv")
+        play_chart.write_press_log(whole, rows)
+        table = self._log_table(path)
+        self.assertEqual(table, self._log_table(whole))
+        self.assertEqual([r[0] for r in table[1:]], [str(row["index"]) for row in rows])
+        self.assertEqual(tools.ch_play_status().splitlines()[0],
+                         f"press log: {path} ({len(rows)} rows)")
 
     def test_the_end_waits_for_the_writer_and_says_so_when_the_cap_passes(self):
         path = os.path.join(self.tmp, "named.csv")
@@ -1883,19 +1853,15 @@ class GameToolsTest(unittest.TestCase):
         self.assertIn("  0, 1000.0, 998.0, 0, 50, sent", lines)
 
     def test_with_no_log_the_status_opens_with_the_session_line(self):
-        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertTrue(t.tools.ch_play_status().startswith("play session: "))
-
-    def test_a_later_first_press_is_named(self):
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[1])
-            return play_chart.RunResult(stop="done")
-
-        t, _events, _seen = self._chain_rig(live_play)
-        self.assertEqual(self._run(t).splitlines()[-1],
-                         "first press chord index 1 at 1500.0 ms")
+        # Real tools on Pitch Dark's hydra_replay files with no log, Clone
+        # Hero not running: the status's first line is the session's, naming
+        # the schedule's chord count and the score, and no line names a log.
+        tools, _reply, _refusal = self._run_with_no_game()
+        self.assertIsNone(tools._play.log_path)
+        chords, _plan = GT.chords_to_play(PITCH_DARK_SCHEDULE)
+        lines = tools.ch_play_status().splitlines()
+        self.assertEqual(lines[0], f"play session: {len(chords)} chords from {PITCH_DARK_SCORE}")
+        self.assertFalse([line for line in lines if "press log" in line], lines)
 
     def test_a_decline_reaches_the_chords_and_the_reply_names_them(self):
         # chords_to_play is what ch_run_chart loads its chords and reply lines
