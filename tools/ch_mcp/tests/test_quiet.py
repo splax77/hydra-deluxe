@@ -347,8 +347,10 @@ class FailingReaderTest(Recorded):
         denied = os.path.join(self.checkout, "build-cpp", "x.dir")
         os.makedirs(denied)
         # Windows refuses to list the folder to everyone, this test included.
-        Q.run_command(["icacls", denied, "/deny", "*S-1-1-0:(RD)"])
+        # The folder is under this test's own temp folder, and the deny comes
+        # off even when the call that sets it fails part way.
         try:
+            Q.run_command(["icacls", denied, "/deny", "*S-1-1-0:(RD)"])
             got = self.report(start_processes())
         finally:
             Q.run_command(["icacls", denied, "/remove:d", "*S-1-1-0"])
