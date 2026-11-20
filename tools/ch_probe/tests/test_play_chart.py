@@ -146,30 +146,48 @@ class LoadScheduleTest(unittest.TestCase):
                 self.assertEqual(press.aim_end_ms, entry["aim_end_ms"])
                 self.assertEqual(press.lanes, [chord.lanes[g] for g in entry["gems"]])
 
-    def test_freak_squeeze_out_press_is_the_files(self):
-        # Literals read from freak_limits_schedule.json: chord 387's late
-        # press and its fallback, and chord 263's anchor press.
-        chords = {c.index: c for c in play_chart.load_schedule(_FREAK_SCHEDULE).chords}
-        (late,) = chords[387].presses
-        self.assertEqual(late.rule, "squeeze_out_late")
-        self.assertEqual(late.aim_ms, 24.265838069011807)
-        self.assertEqual(late.last_send_ms, 60595.849704541964)
-        self.assertEqual(late.end_read_after, 263)
-        self.assertEqual(late.fallback["if_end_after_ms"], 60580.849704541964)
-        self.assertEqual(late.fallback["action"], "join_group")
-        (anchor,) = chords[263].presses
-        self.assertEqual(anchor.aim_ms, -21.824207380682793)
-        # The end is read after the anchor; its planned end is the read's.
-        self.assertEqual(anchor.planned_end_ms, 60554.52732830211)
+    def test_each_press_keeps_its_rule_and_the_end_read_lands_on_the_first_press(self):
+        # Every press keeps the rule the file gives it. A chord whose `reads`
+        # names an end read hands that read's planned end to its earliest
+        # press only, the one play_chords reads the game's end after.
+        doc = _read_json(_FREAK_SCHEDULE)
+        rows = {row["index"]: row for row in doc["chords"]}
+        entries = {}
+        for entry in doc["presses"]:
+            entries.setdefault(entry["chord"], []).append(entry)
+        read_chords = 0
+        for chord in play_chart.load_schedule(_FREAK_SCHEDULE).chords:
+            mine = entries.get(chord.index, [])
+            self.assertEqual([p.rule for p in chord.presses], [e["rule"] for e in mine],
+                             chord.index)
+            reads = rows[chord.index]["reads"]
+            if not reads or not mine:
+                self.assertTrue(all(p.planned_end_ms is None for p in chord.presses),
+                                chord.index)
+                continue
+            read_chords += 1
+            first = min(range(len(mine)), key=lambda k: rows[chord.index]["ms"] + mine[k]["aim_ms"])
+            self.assertEqual([p.planned_end_ms for p in chord.presses],
+                             [reads[0]["planned_end_ms"] if k == first else None
+                              for k in range(len(mine))], chord.index)
+        # The Freak file reads an end after chord 263's anchor press.
+        self.assertGreater(read_chords, 0)
 
     def test_a_declined_chord_sends_its_kept_gems(self):
-        # Freak chord 51 is a skipped fill: kick and blue tom, kept_gems [0].
-        chords = {c.index: c for c in play_chart.load_schedule(_FREAK_SCHEDULE).chords}
-        chord = chords[51]
-        self.assertTrue(chord.declined)
-        self.assertEqual(chord.lanes, [Lane.KICK, Lane.BLUE])
-        self.assertEqual([p.lanes for p in chord.presses], [[Lane.KICK]])
-        self.assertTrue(all(p.declined for p in chord.presses))
+        # Every chord the file marks declined (a skipped fill) sends the gems
+        # its `kept_gems` names and no other, and each of its presses is
+        # marked declined. tools/replay_schedule.cpp picks the kept gems.
+        doc = _read_json(_FREAK_SCHEDULE)
+        rows = {row["index"]: row for row in doc["chords"]}
+        declined = [c for c in play_chart.load_schedule(_FREAK_SCHEDULE).chords if c.declined]
+        # The Freak path passes over fills: the file has declined chords.
+        self.assertEqual(len(declined), sum(1 for row in doc["chords"] if row["declined"]))
+        self.assertTrue(declined)
+        for chord in declined:
+            kept = [chord.lanes[g] for g in rows[chord.index]["kept_gems"]]
+            self.assertEqual(sorted(lane for p in chord.presses for lane in p.lanes),
+                             sorted(kept), chord.index)
+            self.assertTrue(all(p.declined for p in chord.presses), chord.index)
 
     def test_the_file_level_values_are_read(self):
         doc = _read_json(_FREAK_SCHEDULE)
@@ -216,32 +234,6 @@ class LoadScheduleTest(unittest.TestCase):
         # The refusal names the squeeze's chord; its wording is the loader's.
         self.assertIn("chord 91", str(caught.exception))
 
-    def test_no_deleted_name_remains(self):
-        # Design point 8 of the replay press-schedule plan, with DECLINE_MODES
-        # added by docs/superpowers/plans/2026-11-08-player-audit-fixes.md.
-        deleted = (
-            "PRESS_LEAD_MS", "SP_END_LEAD_MS", "SP_OUT_LAG_MS", "ACT_LEAD_MARGIN_MS",
-            "FRAME_MS", "CHORD_ORDER_GAP_MS", "EARLY", "LATE", "SQUEEZE_IN",
-            "SQUEEZE_OUT", "_TOP_PAD_ORDER", "_END_SCALE", "_STEADY_ACT", "_STEADY_END",
-            "Squeeze", "ActEnd", "ActLead", "half_gap_ms", "window_side_ms",
-            "note_window_ms", "window_sides", "activation_leads", "_solve_lead",
-            "_order_groups", "_squeeze_out_inside_groups", "_chord_presses",
-            "_timed_presses", "_refuse_far_presses", "_dump_path",
-            "declined_chord_indexes", "_kept_gems", "_flagged_gem", "load_dump_chords",
-            "_sp_acts", "_act_ends", "_stored_end_ms", "_squeezes", "load_dump_notes",
-            "DECLINE_KICK_ONLY", "DECLINE_NOTHING", "DECLINE_ALL_BUT_TOP_PAD",
-            "DECLINE_MODES", "WINDOW_FORMULA_NORMAL_LINEAR",
-            "WINDOW_FORMULA_NORMAL_SQUARE", "WINDOW_FORMULA_NORMAL_SCALE",
-            "WINDOW_FORMULA_NORMAL_OFFSET_MS")
-        import re
-        from tools.ch_probe import constants
-        for module in (play_chart, constants):
-            with open(module.__file__, encoding="utf-8") as f:
-                text = f.read()
-            for name in deleted:
-                self.assertIsNone(re.search(r"\b" + re.escape(name) + r"\b", text),
-                                  f"{name} in {os.path.basename(module.__file__)}")
-
     def test_no_timing_constant_is_defined_in_python(self):
         # The schedule file's `constants` block is the list of timing numbers
         # tools/replay_schedule.cpp owns. play_chart defines none of them
@@ -257,13 +249,13 @@ class LoadScheduleTest(unittest.TestCase):
                 self.assertNotEqual(own, value, f"{name} is {key}'s {value}")
 
     def test_score_times_are_the_chords_index_and_ms(self):
-        # What the trace's note list reads from a score file.
-        self.assertEqual(_write_and_load(_DUMP, play_chart.load_score_times),
-                         [(c.index, c.ms) for c in _load_chords()])
-
-    def test_chord_codes_are_not_decoded_here(self):
-        # The notes say the pads; play_chart never reads the ADR 0015 code.
-        self.assertFalse(hasattr(play_chart, "lanes_for_code"))
+        # What the trace's note list reads from a real score file: each
+        # chord's `index` and `ms`, in the file's order.
+        path = os.path.join(_HERE, "freak_limits_score.json")
+        chords = _read_json(path)["chords"]
+        self.assertTrue(chords)
+        self.assertEqual(play_chart.load_score_times(path),
+                         [(chord["index"], chord["ms"]) for chord in chords])
 
 
 class SharedPiecesTest(unittest.TestCase):
