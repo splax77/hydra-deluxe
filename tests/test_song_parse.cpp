@@ -676,7 +676,8 @@ TEST_CASE("drum lanes: each corpus lane is a lane line or marker of its own file
                 const int64_t start = std::stoll(l.key);
                 const DrumLane* lane = lane_at(song, start);
                 REQUIRE_MESSAGE(lane != nullptr, "no lane from the line at tick " << start);
-                CHECK(lane->end_tick == start + std::stoll(l.words[2]));
+                const int64_t line_end = start + std::stoll(l.words[2]);  // the line's tick plus its length
+                CHECK(lane->end_tick == line_end);
                 CHECK(lane->double_lane == (l.words[1] == "66"));
             }
             CHECK(song.drum_lanes.size() == lines);
