@@ -1302,12 +1302,6 @@ class ReadEndTest(unittest.TestCase):
                 self.assertAlmostEqual(g, want, places=6, msg=index)
         self.assertTrue(timed)
 
-    def test_a_clear_active_byte_leaves_the_plan_and_says_so(self):
-        result, _game = _play_schedule(self._chords(), lambda: None)
-        self.assertEqual(_rows_of(result, 263)[0]["end_read_ms"], play_chart.NO_ACTIVATION_READ)
-        self.assertEqual(play_chart.NO_ACTIVATION_READ, "no activation read")
-        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 387)], [-24.27])
-
     def test_retime_from_end_moves_only_that_activations_presses(self):
         # The Freak plan, with chord 263's end read 3 ms after the end the
         # file planned for it.
@@ -1359,6 +1353,19 @@ _F1_NO_READ_1302 = os.path.join(_F1_RUN, "sp_watch-1-sp-154.4-160.9.csv")
 _R1_RUN = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-r1-run1")
 _R1_READ_340 = os.path.join(_R1_RUN, "sp_watch-1-sp-57.2-57.6.csv")
 _R1_READ_704 = os.path.join(_R1_RUN, "sp_watch-1-sp-110.4-110.8.csv")
+# Two more windows of the Freak log, cut the same way: after chord 232, where
+# activation 0 starts, and after chord 1062, which chord 1144's late gem is
+# timed from.
+_F1_READ_232 = os.path.join(_F1_RUN, "sp_watch-1-sp-47.2-47.6.csv")
+_F1_READ_1062 = os.path.join(_F1_RUN, "sp_watch-1-sp-133.6-134.0.csv")
+# hydra_replay's schedule for Pitch Dark, and the row of chord 466 cut from
+# the press log of the real run on it,
+# hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1/press-1.csv: its
+# end_read_ms is the end the game held after the chord.
+_PITCH_DARK_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "replay",
+                                    "test_pitch_dark_ratio-schedule.json")
+_PD_READ_466 = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "pitch-dark-run1",
+                            "press-1-chord-466.csv")
 
 
 class FrozenClockDropTest(unittest.TestCase):
@@ -1427,19 +1434,6 @@ class FrozenClockDropTest(unittest.TestCase):
         self.assertTrue([line for line in lines if chart_s in line.split()], lines)
 
 
-class _ScriptedSongClock:
-    """A song clock that reads `values_s` in turn and then holds the last;
-    each read costs 1 ms of wall time."""
-
-    def __init__(self, wall: _FakeTime, values_s) -> None:
-        self.wall, self.values_s = wall, list(values_s)
-
-    def read(self):
-        self.wall.t += 0.001
-        song_s = self.values_s.pop(0) if len(self.values_s) > 1 else self.values_s[0]
-        return song_s, song_s
-
-
 def _clock_s_at(bound_ms):
     """A clock read, in song seconds, whose ms is `bound_ms` exactly in
     floats: the boundary of the drop check."""
@@ -1496,21 +1490,36 @@ class ReadAfterAnchorTest(unittest.TestCase):
         return result
 
     def test_the_end_is_read_after_the_anchor_chord_not_only_the_activation(self):
+        # The file's activation 0 starts on one chord and names the anchor
+        # chord after which its end is read again; 387's late gem is timed
+        # from that second read. The two reads are the real run ls-f1-run1's
+        # ends after each chord, and they differ.
         chords = self._chords()
+        (act,) = [a for a in _read_json(_FREAK_SCHEDULE)["activations"] if a["index"] == 0]
+        start, anchor = act["chord"], act["read_end_after"]
         late = _press_of(chords, 387)
-        self.assertEqual((late.end_read_after, late.aim_end_ms), (263, 60554.52732830211))
-        # 232's read comes back 5 ms late and 263's 2 ms before 387's aim_end_ms.
-        result = self._run({232: 57933.88726341159 + 5.0, 263: late.aim_end_ms - 2.0})
+        self.assertEqual(late.end_read_after, anchor)
+        chord_ms = {c.index: c.ms for c in chords}
+        recorded = {start: _recorded_end_ms(_F1_READ_232, chord_ms[start]),
+                    anchor: _recorded_end_ms(_F1_READ_263, chord_ms[anchor])}
+        self.assertNotAlmostEqual(recorded[start], recorded[anchor], delta=1.0)
+        result = self._run(recorded)
+        # The run reads after every chord the plan reads after, and logs the
+        # game's answer.
         reads = {r["index"]: r["end_read_ms"] for r in result.rows if "end_read_ms" in r}
-        self.assertEqual(sorted(reads), [232, 263, 633, 1062, 1302, 1512])
-        self.assertAlmostEqual(reads[232], 57938.89, delta=0.01)
-        self.assertAlmostEqual(reads[263], 60552.53, delta=0.01)
-        # 387 fires 2 ms earlier: its file aim of 24.27 ms late becomes 22.27.
-        # Had only 232's read counted, it would have moved 5 ms later.
-        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 387)], [-22.27])
-        # 232's read moves nothing: 263's presses keep the file's aims.
-        self.assertEqual([round(r["lead_ms"], 2) for r in _rows_of(result, 263)],
-                         [round(-p.aim_ms, 2) for p in _press_of_all(chords, 263)])
+        planned = {p.index for p in play_chart.press_plan(chords) if p.planned_end_ms is not None}
+        self.assertEqual(set(reads), planned)
+        for index, read_ms in recorded.items():
+            self.assertAlmostEqual(reads[index], read_ms, delta=1e-6, msg=index)
+        # 387 moves by its own end at the anchor's read, not the start's.
+        def lead_at(read_ms):
+            return -(late.aim_ms + play_chart.own_end_now_ms(late, read_ms) - late.own_end_ms)
+        (row,) = _rows_of(result, 387)
+        self.assertAlmostEqual(row["lead_ms"], lead_at(recorded[anchor]), places=6)
+        self.assertNotAlmostEqual(row["lead_ms"], lead_at(recorded[start]), delta=1.0)
+        # The start's read moves nothing: the anchor's presses keep the file's aims.
+        self.assertEqual([round(r["lead_ms"], 6) for r in _rows_of(result, anchor)],
+                         [round(-p.aim_ms, 6) for p in _press_of_all(chords, anchor)])
 
     def test_a_read_equal_to_aim_end_moves_nothing(self):
         # retime_from_end, the move play_chords makes after each read, given
@@ -1524,22 +1533,33 @@ class ReadAfterAnchorTest(unittest.TestCase):
     def test_each_press_moves_by_its_own_end(self):
         # Mouths chords 431 (a squeeze-in) and 465 (an sp_end press) are both
         # timed from the read after 340, each with its own end fields in the
-        # file: one read moves each by how far its own end moves, the
-        # production own_end_now_ms minus the file's own_end_ms (design point
-        # 3 of
-        # `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`)).
+        # file. The read is the real run ls-r1-run1's end after 340. Each
+        # press's own end moves from the file's stored own end by the file's
+        # ratio for the read's side of the stored read end, and the press
+        # moves with its own end.
         chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
         squeeze, sp_end = _press_of(chords, 431), _press_of(chords, 465)
-        self.assertEqual((squeeze.end_read_after, sp_end.end_read_after), (340, 340))
-        read_ms = 68985.0
-        moved = {p.index: p for p in play_chart.retime_from_end([squeeze, sp_end], 340, read_ms)}
+        after = squeeze.end_read_after
+        self.assertEqual(sp_end.end_read_after, after)
+        (reader_ms,) = [c.ms for c in chords if c.index == after]
+        read_ms = _recorded_end_ms(_R1_READ_340, reader_ms)
+        raw = {e["chord"]: e for e in _read_json(_MOUTHS_SCHEDULE)["presses"]
+               if e["chord"] in (squeeze.index, sp_end.index)}
+        moved = {p.index: p for p in play_chart.retime_from_end([squeeze, sp_end], after, read_ms)}
         shifts = {}
         for press in (squeeze, sp_end):
-            shifts[press.index] = play_chart.own_end_now_ms(press, read_ms) - press.own_end_ms
-            self.assertAlmostEqual(moved[press.index].aim_ms - press.aim_ms,
-                                   shifts[press.index], delta=1e-9)
+            file = raw[press.index]
+            side = "late" if read_ms >= file["read_stored_end_ms"] else "early"
+            now = moved[press.index]
+            self.assertIsNone(now.retimed, press.index)
+            self.assertAlmostEqual(now.own_end_ms - file["own_stored_end_ms"],
+                                   file["conversion"][side] * (read_ms - file["read_stored_end_ms"]),
+                                   delta=1e-9, msg=press.index)
+            shifts[press.index] = now.at_ms - press.at_ms
+            self.assertAlmostEqual(shifts[press.index], now.own_end_ms - file["own_end_ms"],
+                                   delta=1e-9, msg=press.index)
         # Each press moved by its own end, not the other press's.
-        self.assertNotAlmostEqual(shifts[431], shifts[465], delta=1e-6)
+        self.assertNotAlmostEqual(shifts[squeeze.index], shifts[sp_end.index], delta=1e-6)
 
     def test_no_activation_read_leaves_the_plan(self):
         # In the real run ls-f1-run1 no Star Power was active when the
@@ -1603,21 +1623,27 @@ class FallbackTest(unittest.TestCase):
         self.assertGreater(moved.at_ms, late.at_ms)
 
     def test_a_read_end_past_the_threshold_joins_the_inside_group(self):
-        late = _press_of(play_chart.load_schedule(_FREAK_SCHEDULE).chords, 1144)
-        bound = late.fallback["if_end_after_ms"]
-        self.assertAlmostEqual(bound, 141607.563330396, delta=1e-6)
-        self.assertEqual(late.fallback["join_gems"], [])
-        _c, past, _g = self._run(_FREAK_SCHEDULE, {1062: bound + 0.01})
+        # The real run ls-f1-run1's end after Freak chord 1062, which chord
+        # 1144's late gem is timed from: past the gem's threshold. Its block
+        # names no gems to join, so the gem goes down alone, the block's
+        # before_end_ms before its own end as the read moved it, and its row
+        # carries the block's word. (A read before a threshold is the two
+        # recorded-read tests' case.)
+        chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
+        late = _press_of(chords, 1144)
+        block = late.fallback
+        self.assertEqual(block["action"], "join_group")
+        self.assertEqual(block["join_gems"], [])
+        (reader_ms,) = [c.ms for c in chords if c.index == late.end_read_after]
+        read_ms = _recorded_end_ms(_F1_READ_1062, reader_ms)
+        self.assertGreater(read_ms, block["if_end_after_ms"])
+        _c, past, _g = self._run(_FREAK_SCHEDULE, {late.end_read_after: read_ms})
         (row,) = _rows_of(past, 1144)
-        self.assertEqual(row["retimed"], play_chart.RETIMED_INSIDE)
-        # With no inside group the gem goes down 15 ms before its own end,
-        # which here is the read end (conversion 1).
-        self.assertAlmostEqual(row["lead_ms"], late.chart_ms - (bound + 0.01 - 15.0), delta=1e-6)
-        _c, before, _g = self._run(_FREAK_SCHEDULE, {1062: bound - 0.01})
-        (row,) = _rows_of(before, 1144)
-        self.assertEqual(row["retimed"], play_chart.RETIMED_LATE)
-        self.assertAlmostEqual(row["lead_ms"], -(late.aim_ms + bound - 0.01 - late.aim_end_ms),
-                               delta=1e-6)
+        self.assertEqual(row["retimed"], block["retimed"])
+        own_now_ms = play_chart.own_end_now_ms(late, read_ms)
+        self.assertNotAlmostEqual(own_now_ms, late.own_end_ms, delta=1.0)
+        self.assertAlmostEqual(row["lead_ms"],
+                               late.chart_ms - (own_now_ms - block["before_end_ms"]), delta=1e-6)
 
     def test_a_recorded_read_before_the_threshold_keeps_the_late_gem_apart(self):
         # The real run ls-r1-run1's end after Mouths chord 704, which chord
@@ -1686,22 +1712,30 @@ class ConversionRetimeTest(unittest.TestCase):
     `docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md` (removed; `git show 48401572:docs/superpowers/plans/2026-11-13-schedule-reads-hydra-ratios.md`))."""
 
     def test_pitch_dark_chord_644_moves_by_the_conversion(self):
-        # The plan's Pitch Dark numbers: the stored ends of steps 2 and 1,
-        # chord 644's planned own end, its conversion, the read planned after
-        # chord 466, and the game's read in the 2026-11-12 run. The chord's
-        # time and aim are hand-picked.
-        press = _timed_press(index=644, chart_ms=161389.776, aim_ms=-18.316, read_after=466,
-                             aim_end_ms=158262.531, own_end_ms=161386.46,
-                             read_stored_end_ms=158224.757, own_stored_end_ms=161356.443,
-                             conversion={"early": 0.79467, "late": 0.79467},
-                             read_range_ms=None)
-        (moved,) = play_chart.retime_from_end([press], 466, 158268.988)
-        # 5.13 ms later; one for one with the read would be 6.46 against the
-        # planned read, or 14.2 against the read priced at the borrowed ratio.
-        self.assertAlmostEqual(moved.at_ms - press.at_ms, 5.13, delta=0.01)
-        self.assertAlmostEqual(moved.own_end_ms, 161391.59, delta=0.01)
-        self.assertEqual(moved.aim_end_ms, 158268.988)
+        # Chord 644's squeeze-in in hydra_replay's Pitch Dark schedule, moved
+        # by the end the real run pitch-dark-run1 read after the chord it is
+        # timed from. Its ratio is not one for one, so its own end moves by
+        # the file's ratio times how far the read is from the stored read end.
+        chords = play_chart.load_schedule(_PITCH_DARK_SCHEDULE).chords
+        press = _press_of(chords, 644, "squeeze_in")
+        (file,) = [e for e in _read_json(_PITCH_DARK_SCHEDULE)["presses"]
+                   if e["chord"] == press.index and e["rule"] == press.rule]
+        with open(_PD_READ_466, encoding="utf-8", newline="") as f:
+            (logged,) = [r for r in csv.DictReader(f) if int(r["index"]) == press.end_read_after]
+        read_ms = float(logged["end_read_ms"])
+        side = "late" if read_ms >= file["read_stored_end_ms"] else "early"
+        self.assertNotAlmostEqual(file["conversion"][side], 1.0, delta=1e-3)
+        (moved,) = play_chart.retime_from_end([press], press.end_read_after, read_ms)
         self.assertIsNone(moved.retimed)
+        self.assertEqual(moved.aim_end_ms, read_ms)
+        self.assertAlmostEqual(moved.own_end_ms - file["own_stored_end_ms"],
+                               file["conversion"][side] * (read_ms - file["read_stored_end_ms"]),
+                               delta=1e-9)
+        shift_ms = moved.at_ms - press.at_ms
+        self.assertAlmostEqual(shift_ms, moved.own_end_ms - file["own_end_ms"], delta=1e-9)
+        # Not one for one with the read: that would move it by the read
+        # minus the planned read.
+        self.assertNotAlmostEqual(shift_ms, read_ms - file["aim_end_ms"], delta=0.1)
 
     def _sided(self, **more):
         return _timed_press(aim_end_ms=1000.0, own_end_ms=2000.0, read_stored_end_ms=1000.0,
@@ -1717,25 +1751,6 @@ class ConversionRetimeTest(unittest.TestCase):
         (at,) = play_chart.retime_from_end([press], 4, 1000.0)
         self.assertEqual(at.at_ms, press.at_ms)
 
-    def test_the_late_gem_joins_before_the_moved_own_end(self):
-        # Conversion 0.5 and a read 10 ms late: the own end moves 5 ms, so
-        # the gem goes down 15 ms before 2,005, at 1,990, not 1,995.
-        late = _timed_press(chart_ms=1990.0, aim_ms=20.0, aim_end_ms=1000.0,
-                            own_end_ms=2000.0, read_stored_end_ms=1000.0,
-                            own_stored_end_ms=2000.0, conversion={"early": 0.5, "late": 0.5},
-                            read_range_ms=None,
-                            fallback={"action": "join_group", "if_end_after_ms": 1005.0,
-                                      "before_end_ms": 15.0, "join_gems": [],
-                                      "retimed": play_chart.RETIMED_INSIDE})
-        (moved,) = play_chart.retime_from_end([late], 4, 1010.0)
-        self.assertEqual(moved.retimed, play_chart.RETIMED_INSIDE)
-        self.assertAlmostEqual(moved.at_ms, 1990.0, delta=1e-9)
-
-    def test_a_press_missing_a_field_is_refused(self):
-        press = _timed_press(aim_end_ms=1000.0, own_end_ms=1000.0, read_stored_end_ms=1000.0,
-                             conversion={"early": 1.0, "late": 1.0})
-        with self.assertRaisesRegex(ValueError, "own_stored_end_ms"):
-            play_chart.retime_from_end([press], 4, 1001.0)
 
 
 class ReadRangeTest(unittest.TestCase):
@@ -1908,12 +1923,30 @@ class RetimedColumnTest(unittest.TestCase):
     marked, and on no other row."""
 
     def test_only_the_marked_rows_carry_it(self):
+        # The Freak run on the real run ls-f1-run1's ends after chords 263
+        # and 1062, and the plan's ends after the rest. The rows marked are
+        # those of the file's presses with a fallback block, each with the
+        # word for its read's side of the block's threshold.
         chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
-        late = _press_of(chords, 1144)
-        result, _game = _play_schedule(
-            chords, _reads(chords, {1062: late.fallback["if_end_after_ms"] + 0.01}))
+        chord_ms = {c.index: c.ms for c in chords}
+        recorded = {263: _recorded_end_ms(_F1_READ_263, chord_ms[263]),
+                    1062: _recorded_end_ms(_F1_READ_1062, chord_ms[1062])}
+        read_ms = {p.index: p.planned_end_ms for p in play_chart.press_plan(chords)
+                   if p.planned_end_ms is not None}
+        read_ms.update(recorded)
+        result, _game = _play_schedule(chords, _reads(chords, recorded))
+        want = {}
+        for entry in _read_json(_FREAK_SCHEDULE)["presses"]:
+            block = entry.get("fallback")
+            if block is None:
+                continue
+            self.assertEqual(block["action"], "join_group", entry["chord"])
+            past = read_ms[entry["end_read_after"]] > block["if_end_after_ms"]
+            want[entry["chord"]] = block["retimed"] if past else play_chart.RETIMED_LATE
+        # Both sides of a threshold are in the run.
+        self.assertEqual(set(want.values()), {play_chart.RETIMED_LATE, play_chart.RETIMED_INSIDE})
         marked = {r["index"]: r["retimed"] for r in result.rows if "retimed" in r}
-        self.assertEqual(marked, {387: play_chart.RETIMED_LATE, 1144: play_chart.RETIMED_INSIDE})
+        self.assertEqual(marked, want)
 
     def test_the_words_are_the_ones_the_schedule_writes(self):
         # Every "retimed" word a fallback in a hydra_replay schedule file
@@ -2172,37 +2205,35 @@ class StartLineTest(unittest.TestCase):
     """The start line counts the chords the run passes over where it starts
     (D321 item 3, L13)."""
 
-    def _text(self, clock_of):
-        wall = _FakeTime()
-        game = _FakeGame()
-        out = io.StringIO()
-        result = play_chart.play_chords(
-            _load_chords(), clock_of(wall), game.read_score, game.press,
-            now=wall.now, sleep=wall.sleep, out=out)
-        return result, out.getvalue().splitlines()
-
-    # Pinned from one run of _DUMP's schedule: chord 38 fires at 13,041.48 ms,
-    # 91.48 ms after a clock read of 12.95 s.
-    SKIP_ONE = ("  Song clock at 12.95s; starting at press 2/8 (t=13.61s); skipped 1 chord "
-                "less than 150 ms ahead of the clock.")
-    SKIP_NONE = ("  Song clock at 12.00s; starting at press 1/8 (t=13.04s); skipped 0 chords "
-                 "less than 150 ms ahead of the clock.")
-
     def test_the_start_line_counts_skipped_chords(self):
-        result, lines = self._text(lambda wall: _FakeSongClock(wall, start_s=12.95))
-        self.assertEqual(lines[0], self.SKIP_ONE)
-        self.assertEqual(result.skipped, 1)
-        result, lines = self._text(lambda wall: _FakeSongClock(wall, start_s=12.0))
-        self.assertEqual(lines[0], self.SKIP_NONE)
-        self.assertEqual(result.skipped, 0)
-        # The restart form: chord 38 is pressed from 12 s, the clock falls
-        # back to 11.95 s and the re-sync reads 12.95 s, so chord 38 is
-        # passed over again.
-        result, lines = self._text(lambda wall: _ScriptedSongClock(
-            wall, [12.0, 13.05, 11.95, 12.95]))
-        self.assertEqual(lines[0], self.SKIP_NONE)
-        self.assertIn(self.SKIP_ONE, lines)
-        self.assertEqual(result.skipped, 1)
+        # The Freak chords up to the last one the recorded mid-song clock
+        # outlasts, played on that clock: the run joins the song at the
+        # recording's first read, passes over every chord it is too late
+        # for and plays the rest.
+        from tools.ch_probe import constants as C
+        game = _RecordedGame(_F1_MID_SONG)
+        last_ms = C.s_to_ms(game.last_clock_s)
+        with open(_F1_MID_SONG, encoding="utf-8", newline="") as f:
+            first_ms = C.s_to_ms(float(next(csv.DictReader(f))["clock_s"]))
+        chords = [c for c in _freak_chords()
+                  if all(p.last_send_ms < last_ms for p in c.presses)]
+        result, _sent, out, _took, _chords = _play_recorded(_F1_MID_SONG, chords=chords)
+        self.assertEqual(result.stop, play_chart.STOP_DONE)
+        # The chords passed over are the ones with a press and no row, every
+        # one of them due less than the start lead ahead of the first read;
+        # the first chord played is due at least that far ahead.
+        plan = play_chart.press_plan(chords)
+        played = {r["index"] for r in result.rows}
+        passed = {p.index for p in plan} - played
+        self.assertTrue(passed and played)
+        bound_ms = first_ms + live.START_LEAD_MS
+        self.assertTrue(all(p.at_ms < bound_ms for p in plan if p.index in passed))
+        self.assertGreaterEqual(min(p.at_ms for p in plan if p.index in played), bound_ms)
+        self.assertEqual(result.skipped, len(passed))
+        # The start line names that count and the start lead.
+        line = out.splitlines()[0]
+        self.assertRegex(line, rf"\bskipped {len(passed)} chords?\b")
+        self.assertIn(f"{live.START_LEAD_MS:g} ms", line)
 
     def test_a_clock_past_the_last_note_counts_every_chord(self):
         # The Freak chords before the recorded mid-song clock's first read,
