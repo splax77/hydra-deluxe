@@ -2,17 +2,23 @@
 files they leave alone, the settings.ini line a run sets, and song.ini
 reads.
 
-Every test runs on temp folders and a fake reg.exe; the real game files and
-the real registry key are never read.
+The backup and restore tests run on temp folders, real backups and key
+exports from earlier runs, and the real reg.exe. The game's own key is only
+ever exported (read). Every key a test changes is a scratch key under
+HKCU\\Software that the test makes and deletes. FakeReg stays for the tests
+in this file and test_game_tools that still drive restore_registry with it.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
+import uuid
 from unittest import mock
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
@@ -21,21 +27,16 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_mcp import game_files as G  # noqa: E402
+from tools.ch_mcp.tests.test_bot_run import (  # noqa: E402
+    REAL_BACKUP, STATS_AFTER_A_RUN, _copy_real_backup, _folder_bytes)
 
-ORIGINAL = {
-    "settings.ini": b"[game]\nvolume = 1\n",
-    "scorestats.json": b'{"score": 1}',
-    "scoredata.bin": b"\x00\x01\x02",
-    "scoresext.bin": b"\x03\x04",
-    "user.bin": b"\x05" * 64,
-    "profiles.ini": b"[profile]\nplayer_name = Tester\n",
-    "profiles.bin": b"\x06\x07\x08",
-}
-# The files the game saves on its own, by the folder it keeps them in. No
-# backup or restore may touch them.
-GAME_SAVES_IN_DOCUMENTS = ("scorestats.json", "profiles.ini", "profiles.bin")
-GAME_SAVES_IN_LOCALLOW = ("scoredata.bin", "scoresext.bin", "user.bin")
-GAME_SAVES = GAME_SAVES_IN_DOCUMENTS + GAME_SAVES_IN_LOCALLOW
+# Trimmed from the game key's export before and after a real run (copied from
+# hydra-data\ch-mcp-runs\2026-11-12\ls-g1-run1\backup-20261112-182956,
+# rewired.reg and rewired.reg.after-run): the header, the key's line and the
+# two values that run changed (lines 1-3 and 20-22), in reg.exe's own UTF-16.
+REAL_KEY_EXPORTS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1", "rewired-key")
+KEY_BEFORE_A_RUN = os.path.join(REAL_KEY_EXPORTS, G.REGISTRY_BACKUP)
+KEY_AFTER_A_RUN = os.path.join(REAL_KEY_EXPORTS, G.REGISTRY_BACKUP + G.AFTER_RUN_SUFFIX)
 
 
 def _write(path: str, data: bytes) -> None:
@@ -48,107 +49,154 @@ def _read(path: str) -> bytes:
         return f.read()
 
 
-class Folders:
-    """A temp Documents folder, LocalLow folder and backup root."""
-
-    def __init__(self, tmp: str, absent=()):
-        self.docs = os.path.join(tmp, "Documents", "Clone Hero")
-        self.low = os.path.join(tmp, "LocalLow", "Clone Hero")
-        self.root = os.path.join(tmp, "backups")
-        os.makedirs(self.docs)
-        os.makedirs(self.low)
-        for name, data in ORIGINAL.items():
-            if name not in absent:
-                _write(self.path(name), data)
-
-    def path(self, name: str) -> str:
-        folder = self.low if name in GAME_SAVES_IN_LOCALLOW else self.docs
-        return os.path.join(folder, name)
-
-    def game_run(self) -> None:
-        """What a run of the game does to its own saves: rewrite some, delete
-        one and create one."""
-        _write(self.path("scorestats.json"), b'{"score": 2}')
-        _write(self.path("profiles.ini"), b"[profile]\nplayer_name = clone\n")
-        _write(self.path("profiles.bin"), b"clone")
-        os.remove(self.path("scoredata.bin"))
-        _write(self.path("scoresext.bin"), b"new ext")
-        _write(self.path("user.bin"), b"new user")
-
-    def game_run_bytes(self) -> dict:
-        return {name: (_read(self.path(name)) if os.path.exists(self.path(name)) else None)
-                for name in GAME_SAVES}
+def _reg_text(path: str) -> str:
+    """A .reg file reg.exe wrote, as text."""
+    return _read(path).decode("utf-16")
 
 
-def _old_backup(f: Folders) -> str:
-    """A backup in the shape the tools once took: every game save copied and
-    named in the manifest beside settings.ini."""
-    folder = os.path.join(f.root, G.BACKUP_PREFIX + "old")
+def _key_line(reg_text: str) -> str:
+    """The one bracketed line of a .reg text that holds a single key: the
+    key's full name as reg.exe writes it."""
+    lines = [line for line in reg_text.splitlines() if line.startswith("[")]
+    if len(lines) != 1:
+        raise AssertionError(f"expected one key line, got {lines}")
+    return lines[0]
+
+
+def _scratch_key(test: unittest.TestCase, tmp: str) -> tuple[str, str]:
+    """A new empty key under HKCU\\Software, made with the real reg.exe and
+    deleted when the test ends. Returns its name for reg.exe and its key
+    line as reg.exe exports it."""
+    key = r"HKCU\Software\HydraTests-game_files-" + uuid.uuid4().hex
+    G.run_reg(["add", key, "/f"])
+    test.addCleanup(G.run_reg, ["delete", key, "/f"])
+    probe = os.path.join(tmp, "scratch-key-line.reg")
+    G.run_reg(["export", key, probe, "/y"])
+    line = _key_line(_reg_text(probe))
+    os.remove(probe)
+    return key, line
+
+
+def _real_values_for(key_line: str, recorded: str) -> str:
+    """The recorded export's text with its key line swapped for `key_line`,
+    so an import of it writes the run's real values into that key and never
+    into the game's."""
+    text = _reg_text(recorded)
+    game_line = _key_line(text)
+    if game_line == key_line:
+        raise AssertionError("the scratch key is the game's key")
+    return text.replace(game_line, key_line)
+
+
+def _import_values(tmp: str, key_line: str, recorded: str) -> None:
+    path = os.path.join(tmp, "import-" + uuid.uuid4().hex + ".reg")
+    _write(path, _real_values_for(key_line, recorded).encode("utf-16"))
+    G.run_reg(["import", path])
+
+
+def _scratch_backup(test: unittest.TestCase, tmp: str, recorded: str = KEY_BEFORE_A_RUN):
+    """A backup folder in the shape backup() writes when it holds the key,
+    for a scratch key that holds `recorded`'s real values: its manifest names
+    the scratch key, and REGISTRY_BACKUP is the real reg.exe's export of it.
+    Returns the folder, the key and its key line."""
+    key, line = _scratch_key(test, tmp)
+    _import_values(tmp, line, recorded)
+    folder = os.path.join(tmp, G.BACKUP_PREFIX + uuid.uuid4().hex)
     os.makedirs(folder)
-    entries = []
-    for name in ("settings.ini",) + GAME_SAVES:
-        source = os.path.abspath(f.path(name))
-        existed = os.path.isfile(source)
-        if existed:
-            _write(os.path.join(folder, name), _read(source))
-        entries.append({"name": name, "source": source, "existed": existed})
-    with open(os.path.join(folder, G.BACKUP_MANIFEST), "w", encoding="utf-8") as fh:
-        json.dump({"files": entries}, fh)
-    return folder
+    G.run_reg(["export", key, os.path.join(folder, G.REGISTRY_BACKUP), "/y"])
+    with open(os.path.join(folder, G.BACKUP_MANIFEST), "w", encoding="utf-8") as f:
+        json.dump({"files": [{"name": G.REGISTRY_BACKUP, "key": key}]}, f)
+    return folder, key, line
+
+
+def _key_entries(backup: str) -> list:
+    with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
+        return [e for e in json.load(f)["files"] if "key" in e]
+
+
+def _file_entries(backup: str) -> list:
+    with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
+        return [e for e in json.load(f)["files"] if "key" not in e]
 
 
 class BackupRestoreTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
+        self.root = os.path.join(self.tmp, "backups")
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def test_backup_copies_no_file(self):
         # The user's rulings of 2026-11-13: no file of the game's is backed up.
-        f = Folders(self.tmp)
-        backup = G.backup(f.root, stamp=lambda: "20261028-101500")
-        self.assertEqual(backup, os.path.join(f.root, "backup-20261028-101500"))
+        backup = G.backup(self.root)
+        self.assertEqual(os.listdir(self.root), [os.path.basename(backup)])
+        self.assertTrue(os.path.basename(backup).startswith(G.BACKUP_PREFIX), backup)
         self.assertEqual(os.listdir(backup), [G.BACKUP_MANIFEST])
         with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as fh:
             self.assertEqual(json.load(fh)["files"], [])
 
-    def test_restore_leaves_settings_ini_and_every_game_save_as_they_are(self):
-        f = Folders(self.tmp, absent=("user.bin",))
-        backup = G.backup(f.root, stamp=lambda: "s")
-        _write(f.path("settings.ini"), b"changed")
-        f.game_run()
-        after_run = f.game_run_bytes()
-
-        lines = G.restore_all(backup, run_reg=None, out=lambda _l: None)
-        self.assertEqual(lines, [])
-        self.assertEqual(_read(f.path("settings.ini")), b"changed")
-        self.assertEqual(f.game_run_bytes(), after_run)
-        self.assertEqual(os.listdir(backup), [G.BACKUP_MANIFEST])
+    def test_restore_of_a_new_backup_reaches_no_file(self):
+        # A backup names in its manifest every file a restore may reach, and
+        # a new one names none, so the restore prints nothing and changes
+        # nothing, its own folder included.
+        backup = G.backup(self.root)
+        before = _folder_bytes(backup)
+        seen = []
+        self.assertEqual(G.restore_all(backup, run_reg=None, out=seen.append), [])
+        self.assertEqual(seen, [])
+        self.assertEqual(_folder_bytes(backup), before)
 
     def test_an_older_backup_that_names_files_leaves_every_one_alone(self):
-        f = Folders(self.tmp)
-        backup = _old_backup(f)
-        _write(f.path("settings.ini"), b"changed")
-        f.game_run()
-        after_run = f.game_run_bytes()
-        in_backup = sorted(os.listdir(backup))
+        # A real backup from before the rulings of 2026-11-13 (REAL_BACKUP),
+        # its file sources moved under the temp folder and its key entry
+        # pointed at a scratch key, so the restore runs whole with the real
+        # reg.exe and never reaches the user's files or the game's key. The
+        # files at the sources are what a run left: settings.ini with the
+        # run's line set, and scorestats.json as the game wrote it after a run.
+        backup, sources = _copy_real_backup(self.tmp)
+        scratch, key, _line = _scratch_backup(self, self.tmp)
+        manifest = os.path.join(backup, G.BACKUP_MANIFEST)
+        with open(manifest, encoding="utf-8") as f:
+            doc = json.load(f)
+        for e in doc["files"]:
+            if "key" in e:
+                e["key"] = key
+        with open(manifest, "w", encoding="utf-8") as f:
+            json.dump(doc, f)
+        shutil.copyfile(os.path.join(scratch, G.REGISTRY_BACKUP),
+                        os.path.join(backup, G.REGISTRY_BACKUP))
+        shutil.copyfile(os.path.join(backup, G.SETTINGS), sources[G.SETTINGS])
+        G.set_game_setting(sources[G.SETTINGS], G.PAUSE_ON_FOCUS_LOST,
+                           G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        shutil.copyfile(STATS_AFTER_A_RUN, sources[G.SCORESTATS])
+        run_left = _folder_bytes(os.path.dirname(sources[G.SETTINGS]))
+        backup_before = _folder_bytes(backup)
 
         seen = []
-        lines = G.restore_all(backup, run_reg=None, out=seen.append)
-        self.assertEqual(lines, [f"{name}: left as the game saved it"
-                                 for name in ("settings.ini",) + GAME_SAVES])
+        lines = G.restore_all(backup, run_reg=G.run_reg, out=seen.append)
         self.assertEqual(seen, lines)
-        self.assertEqual(_read(f.path("settings.ini")), b"changed")
-        self.assertEqual(f.game_run_bytes(), after_run)
-        self.assertEqual(sorted(os.listdir(backup)), in_backup)
+        # One line for each file the manifest names, saying it was left alone,
+        # then the key's line.
+        names = [e["name"] for e in _file_entries(backup)]
+        self.assertEqual(len(lines), len(names) + 1, lines)
+        for name, line in zip(names, lines):
+            self.assertTrue(line.startswith(name), line)
+            self.assertIn(G.LEFT_AS_SAVED, line)
+        self.assertTrue(lines[-1].startswith(G.REGISTRY_LINE_NAME), lines)
+        self.assertEqual(_folder_bytes(os.path.dirname(sources[G.SETTINGS])), run_left)
+        # The backup keeps every file it held; the restore adds only the
+        # key's export after the run.
+        after = _folder_bytes(backup)
+        self.assertEqual(sorted(set(after) - set(backup_before)),
+                         [G.REGISTRY_BACKUP + G.AFTER_RUN_SUFFIX])
+        self.assertEqual({n: after[n] for n in backup_before}, backup_before)
 
     def test_backup_refuses_an_existing_folder(self):
-        f = Folders(self.tmp)
-        G.backup(f.root, stamp=lambda: "same")
+        G.backup(self.root, stamp=lambda: "same")
         with self.assertRaises(FileExistsError):
-            G.backup(f.root, stamp=lambda: "same")
+            G.backup(self.root, stamp=lambda: "same")
 
 
 class FakeReg:
@@ -186,7 +234,7 @@ class RegistryTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.tmp = self._tmp.name
-        self.f = Folders(self.tmp)
+        self.root = os.path.join(self.tmp, "backups")
         self.reg = FakeReg()
         self.original = self.reg.text
 
@@ -194,33 +242,7 @@ class RegistryTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def backup(self):
-        return G.backup(self.f.root, stamp=lambda: "s", run_reg=self.reg)
-
-    def test_the_key_is_rewireds_save_key(self):
-        self.assertEqual(G.REGISTRY_KEY, r"HKCU\Software\srylain Inc.\Clone Hero")
-        self.assertEqual(G.REGISTRY_BACKUP, "rewired.reg")
-
-    def test_backup_exports_the_key_and_records_it(self):
-        backup = self.backup()
-        saved = os.path.join(backup, "rewired.reg")
-        self.assertEqual(_read(saved), self.original)
-        self.assertEqual(self.reg.calls, [["export", G.REGISTRY_KEY, saved, "/y"]])
-        with open(os.path.join(backup, G.BACKUP_MANIFEST), encoding="utf-8") as f:
-            entries = json.load(f)["files"]
-        self.assertEqual(entries, [{"name": "rewired.reg", "key": G.REGISTRY_KEY}])
-
-    def test_backup_with_no_runner_leaves_the_key_out(self):
-        backup = G.backup(self.f.root, stamp=lambda: "s")
-        self.assertFalse(os.path.exists(os.path.join(backup, "rewired.reg")))
-        self.assertEqual(G.restore_registry(backup, run_reg=None, out=lambda _l: None), [])
-
-    def test_an_unchanged_key_is_only_exported_and_compared(self):
-        backup = self.backup()
-        seen = []
-        self.assertEqual(G.restore_registry(backup, run_reg=self.reg, out=seen.append),
-                         ["rewired registry: unchanged"])
-        self.assertEqual(seen, ["rewired registry: unchanged"])
-        self.assertEqual(self.reg.verbs(), ["export", "export"])
+        return G.backup(self.root, stamp=lambda: "s", run_reg=self.reg)
 
     def test_a_changed_key_is_deleted_imported_and_checked(self):
         backup = self.backup()
@@ -238,70 +260,169 @@ class RegistryTest(unittest.TestCase):
         # The game's version stays in the backup folder.
         self.assertEqual(_read(saved + G.AFTER_RUN_SUFFIX), b"the game changed this")
 
-    def test_a_key_that_still_differs_after_the_import_raises(self):
-        backup = self.backup()
-        self.reg.text = b"the game changed this"
-        self.reg.import_works = False
-        with self.assertRaises(G.RestoreError) as cm:
-            G.restore_registry(backup, run_reg=self.reg, out=lambda _l: None)
-        self.assertEqual(cm.exception.name, "rewired.reg")
-        self.assertIn("still differs", str(cm.exception))
-
-    def test_a_failing_reg_exe_raises_with_the_name(self):
-        backup = self.backup()
-        self.reg.text = None  # the key is gone, so the export fails
-        with self.assertRaises(G.RestoreError) as cm:
-            G.restore_registry(backup, run_reg=self.reg, out=lambda _l: None)
-        self.assertEqual(cm.exception.name, "rewired.reg")
-
-    def test_a_backup_with_the_key_and_no_runner_refuses(self):
-        backup = self.backup()
-        with self.assertRaises(G.RestoreError) as cm:
-            G.restore_registry(backup, run_reg=None, out=lambda _l: None)
-        self.assertEqual(cm.exception.name, "rewired.reg")
-
-    def test_the_left_as_saved_lines_skip_the_registry_entry(self):
-        backup = self.backup()
-        self.assertEqual(G.left_as_saved(backup, out=lambda _l: None), [])
-        self.assertEqual(self.reg.verbs(), ["export"])
-
     def test_restore_all_puts_the_key_back(self):
         backup = self.backup()
         lines = G.restore_all(backup, run_reg=self.reg, out=lambda _l: None)
         self.assertEqual(lines, ["rewired registry: unchanged"])
         self.assertEqual(self.reg.verbs(), ["export", "export"])
 
-    def test_restore_all_refuses_a_backup_with_the_key_when_given_no_runner(self):
-        backup = self.backup()
+
+class RealRegistryTest(unittest.TestCase):
+    """backup() and restore_registry() with the real reg.exe. The game's key
+    is only exported; restores run on scratch keys."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.tmp = self._tmp.name
+        self.root = os.path.join(self.tmp, "backups")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_the_key_backed_up_is_the_one_the_game_saved_under(self):
+        # The key's export from a real run's backup names the key the game
+        # saved Rewired's bindings under; a backup now exports that same key.
+        backup = G.backup(self.root, run_reg=G.run_reg)
+        self.assertEqual(_key_line(_reg_text(os.path.join(backup, G.REGISTRY_BACKUP))),
+                         _key_line(_reg_text(KEY_BEFORE_A_RUN)))
+
+    def test_backup_exports_the_key_and_records_it(self):
+        backup = G.backup(self.root, run_reg=G.run_reg)
+        # The manifest names the export and the key it came from, and the
+        # export is the only other file in the folder.
+        self.assertEqual(_key_entries(backup), [{"name": G.REGISTRY_BACKUP, "key": G.REGISTRY_KEY}])
+        self.assertEqual(_file_entries(backup), [])
+        self.assertEqual(sorted(os.listdir(backup)),
+                         sorted([G.BACKUP_MANIFEST, G.REGISTRY_BACKUP]))
+
+    def test_backup_with_no_runner_leaves_the_key_out(self):
+        backup = G.backup(self.root)
+        self.assertFalse(os.path.exists(os.path.join(backup, G.REGISTRY_BACKUP)))
+        self.assertEqual(_key_entries(backup), [])
+        self.assertEqual(G.restore_registry(backup, run_reg=None, out=lambda _l: None), [])
+
+    def test_an_unchanged_key_is_only_exported_and_compared(self):
+        backup, key, _line = _scratch_backup(self, self.tmp)
+        saved = os.path.join(backup, G.REGISTRY_BACKUP)
+        seen = []
+        lines = G.restore_registry(backup, run_reg=G.run_reg, out=seen.append)
+        self.assertEqual(seen, lines)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith(G.REGISTRY_LINE_NAME), lines)
+        # One export, equal to the saved one; no import, so no check export.
+        self.assertEqual(_read(saved + G.AFTER_RUN_SUFFIX), _read(saved))
+        self.assertFalse(os.path.exists(saved + G.REGISTRY_CHECK_SUFFIX))
+        # A key the game changed gets a different line.
+        changed, _key, line = _scratch_backup(self, self.tmp)
+        _import_values(self.tmp, line, KEY_AFTER_A_RUN)
+        other = G.restore_registry(changed, run_reg=G.run_reg, out=lambda _l: None)
+        self.assertEqual(len(other), 1, other)
+        self.assertNotEqual(other, lines)
+
+    def test_a_key_that_still_differs_after_the_import_raises(self):
+        # The scratch key holds the values a real run left; the saved export
+        # holds the values from before it, written as REGEDIT4 text, which
+        # reg.exe imports but exports again as its own UTF-16. So the key's
+        # export after the import still differs from the saved bytes.
+        backup, key, line = _scratch_backup(self, self.tmp, KEY_AFTER_A_RUN)
+        saved = os.path.join(backup, G.REGISTRY_BACKUP)
+        text = _real_values_for(line, KEY_BEFORE_A_RUN)
+        header = text.splitlines()[0]
+        _write(saved, text.replace(header, "REGEDIT4").encode("ascii"))
         with self.assertRaises(G.RestoreError) as cm:
-            G.restore_all(backup, run_reg=None, out=lambda _l: None)
-        self.assertEqual(cm.exception.name, "rewired.reg")
-        self.assertEqual(self.reg.verbs(), ["export"])
+            G.restore_registry(backup, run_reg=G.run_reg, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, _key_entries(backup)[0]["name"])
+        # The error names the key, the saved export and where the game's
+        # version of the key was kept, and that export is there.
+        message = str(cm.exception)
+        after_run = saved + G.AFTER_RUN_SUFFIX
+        for part in (key, saved, after_run):
+            self.assertIn(part, message)
+        self.assertTrue(os.path.isfile(after_run))
+        self.assertNotEqual(_read(saved + G.REGISTRY_CHECK_SUFFIX), _read(saved))
 
-    def test_reg_exe_gets_the_users_30_second_cap(self):
-        self.assertEqual(G.REG_CAP_S, 30.0)
-        seen = {}
+    def test_a_failing_reg_exe_raises_with_the_name(self):
+        # The manifest names a key nobody made, so reg.exe's export of it
+        # exits non-zero.
+        missing = r"HKCU\Software\HydraTests-game_files-" + uuid.uuid4().hex
+        backup = os.path.join(self.tmp, G.BACKUP_PREFIX + "missing-key")
+        os.makedirs(backup)
+        shutil.copyfile(KEY_BEFORE_A_RUN, os.path.join(backup, G.REGISTRY_BACKUP))
+        with open(os.path.join(backup, G.BACKUP_MANIFEST), "w", encoding="utf-8") as f:
+            json.dump({"files": [{"name": G.REGISTRY_BACKUP, "key": missing}]}, f)
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_registry(backup, run_reg=G.run_reg, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, G.REGISTRY_BACKUP)
+        self.assertIsInstance(cm.exception.error, OSError)
+        self.assertIn(missing, str(cm.exception.error))
+        self.assertFalse(os.path.exists(
+            os.path.join(backup, G.REGISTRY_BACKUP + G.AFTER_RUN_SUFFIX)))
 
-        def fake_run(cmd, **kw):
-            seen.update(kw)
-            raise G.subprocess.TimeoutExpired(cmd, kw["timeout"])
+    def test_a_backup_with_the_key_and_no_runner_refuses(self):
+        backup, _sources = _copy_real_backup(self.tmp)
+        names = [e["name"] for e in _key_entries(backup)]
+        self.assertEqual(len(names), 1, names)
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_registry(backup, run_reg=None, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, names[0])
 
-        with mock.patch.object(G.subprocess, "run", fake_run):
+    def test_the_left_as_saved_lines_skip_the_registry_entry(self):
+        # REAL_BACKUP's manifest names the game's files and the key.
+        backup, sources = _copy_real_backup(self.tmp)
+        before = _folder_bytes(backup)
+        files = [e["name"] for e in _file_entries(backup)]
+        key_names = [e["name"] for e in _key_entries(backup)]
+        self.assertTrue(files and key_names, (files, key_names))
+        lines = G.left_as_saved(backup, out=lambda _l: None)
+        self.assertEqual(len(lines), len(files), lines)
+        for name, line in zip(files, lines):
+            self.assertTrue(line.startswith(name), line)
+            self.assertIn(G.LEFT_AS_SAVED, line)
+        for name in key_names:
+            self.assertFalse(any(name in line for line in lines), lines)
+        # Nothing was put back at any source, and the backup is as it was.
+        self.assertFalse(any(os.path.exists(p) for p in sources.values()), sources)
+        self.assertEqual(_folder_bytes(backup), before)
+
+    def test_restore_all_refuses_a_backup_with_the_key_when_given_no_runner(self):
+        # REAL_BACKUP holds the key. restore_all says what it left alone,
+        # then refuses the key by name rather than leave it out without a word.
+        backup, _sources = _copy_real_backup(self.tmp)
+        before = _folder_bytes(backup)
+        seen = []
+        with self.assertRaises(G.RestoreError) as cm:
+            G.restore_all(backup, run_reg=None, out=seen.append)
+        self.assertEqual(cm.exception.name, _key_entries(backup)[0]["name"])
+        self.assertEqual(seen, G.left_as_saved(backup, out=lambda _l: None))
+        self.assertEqual(_folder_bytes(backup), before)
+
+    def test_a_reg_exe_call_past_the_cap_fails_naming_the_command(self):
+        # The real reg.exe, with REG_CAP_S cut below the time any reg.exe
+        # call takes, so the cap is what stops it.
+        path = os.path.join(self.tmp, "capped.reg")
+        with mock.patch.object(G, "REG_CAP_S", 1e-6):
             with self.assertRaises(OSError) as cm:
-                G.run_reg(["export", G.REGISTRY_KEY, "x.reg", "/y"])
-        self.assertEqual(seen["timeout"], 30.0)
-        self.assertIn("did not finish in 30 s", str(cm.exception))
+                G.run_reg(["export", G.REGISTRY_KEY, path, "/y"])
+            cause = cm.exception.__cause__
+            self.assertIsInstance(cause, subprocess.TimeoutExpired)
+            self.assertEqual(cause.timeout, G.REG_CAP_S)
+        self.assertIn(subprocess.list2cmdline(cause.cmd), str(cm.exception))
 
     def test_a_reg_exe_timeout_fails_the_backup_and_the_restore_by_name(self):
-        def timing_out(_args):
-            raise OSError("reg.exe did not finish in 30 s")
-
-        with self.assertRaises(OSError):
-            G.backup(self.f.root, stamp=lambda: "t", run_reg=timing_out)
-        backup = self.backup()
-        with self.assertRaises(G.RestoreError) as cm:
-            G.restore_all(backup, run_reg=timing_out, out=lambda _l: None)
-        self.assertEqual(cm.exception.name, "rewired.reg")
+        backup, key, _line = _scratch_backup(self, self.tmp)
+        saved = os.path.join(backup, G.REGISTRY_BACKUP)
+        with mock.patch.object(G, "REG_CAP_S", 1e-6):
+            with self.assertRaises(OSError) as cm:
+                G.backup(self.root, stamp=lambda: "t", run_reg=G.run_reg)
+            self.assertIsInstance(cm.exception.__cause__, subprocess.TimeoutExpired)
+            with self.assertRaises(G.RestoreError) as cm:
+                G.restore_all(backup, run_reg=G.run_reg, out=lambda _l: None)
+        self.assertEqual(cm.exception.name, G.REGISTRY_BACKUP)
+        self.assertIsInstance(cm.exception.error.__cause__, subprocess.TimeoutExpired)
+        # The key was not touched: its export still equals the saved one.
+        check = os.path.join(self.tmp, "after-timeout.reg")
+        G.run_reg(["export", key, check, "/y"])
+        self.assertEqual(_read(check), _read(saved))
 
 
 # Shaped like the user's settings.ini: a [game] section holding the line,
