@@ -61,7 +61,7 @@ The rewrite states the behaviour on the record's own fields. For every step that
 
 ### B4. A gauge test that never asks the record where the squeeze-out is
 
-"sp meter curve: a squeezed-out bar arrives at the deact node", `tests/test_sp_meter_curve.cpp` lines 445 to 449:
+"sp meter curve: a squeezed-out bar arrives at the deact node" (since renamed "...on the squeezed chord"), `tests/test_sp_meter_curve.cpp` lines 445 to 449 as this record was written:
 
 ```cpp
     // Straight through the squeezed-out phrase (6750 ms): no step there.
@@ -77,7 +77,7 @@ The rewrite takes the squeeze-out from the record: where the activation has a `s
 
 ### B5. The engine-side twin, typed as raw ticks
 
-"Bank: a squeezed-out bar arrives at the deact node", `tests/test_sp_end.cpp` lines 817 to 819:
+"Bank: a squeezed-out bar arrives at the deact node" (since renamed "...on the squeezed chord"; the test reads the chord from the record), `tests/test_sp_end.cpp` lines 817 to 819 as this record was written:
 
 ```cpp
     // The phrase at 12960 was hit late, just after SP ended at 13440: its bar
@@ -85,7 +85,7 @@ The rewrite takes the squeeze-out from the record: where the activation has a `s
     CHECK((path.activations[1].bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
 ```
 
-It fails Q4: the check holds two raw ticks and the comment holds the rule. Q2 is not settled. The search stamps `bank_rise_ticks` (`src/search/engine.cpp` line 2015), so the field is the engine's. But the readers found in `src/` are the Preview and `Activation::sp_ready_tick`, and nothing found uses it to choose or score a path. Whether "the later of the previous deact node and that phrase" is a game fact or a drawing rule stamped by the search is open.
+It fails Q4: the check holds two raw ticks and the comment holds the rule. Q2 is not settled. The search stamps `bank_rise_ticks` (`src/search/engine.cpp` line 2015), so the field is the engine's. But the readers found in `src/` are the Preview and `Activation::sp_ready_tick`, and nothing found uses it to choose or score a path. Whether "the later of the previous deact node and that phrase" is a game fact or a drawing rule stamped by the search was open here. It is settled now: the search stamps the squeezed chord for early and late squeeze-outs alike (SP-35 on `docs/clone-hero/05-star-power.md`), and `Path::bank_arrivals` returns the stored list unchanged.
 
 This is a different rule from B1's. An earlier version of this page called the two "one rule stated twice" and asked the user what Clone Hero does. They had different owners (the refill-tick function, now removed, and `bank_rise_ticks`), and B1's was not a Clone Hero question at all.
 

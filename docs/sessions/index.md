@@ -1,6 +1,6 @@
 # Session index
 
-8 sessions are kept locally and have no line here.
+9 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -540,8 +540,11 @@
 - 2026-11-19 57045e74 Tooling audit T8 questions handoff (2026-11-19) | hooks, docs, tests, agents, review | The session ended with the docs check fixed and merged on main, the seven waiting session cards committed, and a handoff written for the rest of the audit.
 - 2026-11-19 aafe2801 Wave2 C++ build handoff (2026-11-19) | tests, agents, review, docs | Wave 2's six C++ branches and wave 3's sixteen branches were merged into main, and the wave 4 handoff was written and committed.
 - 2026-11-19 0e741144 Tooling audit T8 fold handoff (2026-11-19) | clone-hero, docs, agents, review, hooks | The session ended with the audit records merged to main and a handoff written for the fix plan. No fix was made yet. [write-back]
-- 2026-11-19 c783491f Tooling audit fix plan handoff (2026-11-19) | planning, hooks, agents, review, docs | The session ended waiting on the user: the hook passed its tests and one review, but its merge is blocked until a fresh review or the user's waiver.
-- 2026-11-19 58633898 Wave 4 handoff test fix (2026-11-19) | tests, agents, review, docs | The session ended with wave 4 finished: all 16 chunks were reviewed clean and merged into main at f1ef98f2, and main's tree matches the tree that was built and tested.
+- 2026-11-19 c783491f Tooling audit fix plan handoff (2026-11-19) | planning, hooks, agents, review, docs | The session ended waiting on the user: the hook passed its tests and one review, but its merge is blocked until a fresh review or the user's waiver. [stale]
+- 2026-11-19 58633898 Wave 4 handoff test fix (2026-11-19) | tests, agents, review, docs | The session ended with wave 4 finished: all 16 chunks were reviewed clean and merged into main at f1ef98f2, and main's tree matches the tree that was built and tested. [stale]
+- 2026-11-19 e5229eba Wave 5 handoff test fix (2026-11-19) | tests, agents, review, docs | Waves 5 and 6 finished and merged into main, and the session ended by writing a wave-7 handoff.
+- 2026-11-19 d85370f4 Starpower preview calculation (2026-11-19) | squeeze, sp-bar, preview, activation, planning, clone-hero | The session ended with the one-owner plan approved and a build handoff written, and nothing built yet. [write-back]
+- 2026-11-19 ac7ff376 Clone Hero solo bonus formula (2026-11-19) | clone-hero, docs | The session ended with the formula checked and corrected, and the 50 to 60% range still open. [write-back]
 
 ## Proposed tags
 

@@ -125,11 +125,11 @@ struct PreviewActivation {
     // highway's sp_active sweep answers it separately, and test_track_state
     // pins the two together.
     bool sp_running_at(double now) const;
-    // Where this window's SP end changed, read off the record: each stored
-    // step's tick (SpEndStep::tick) and the end after it, the last end being
-    // Activation::window_end_tick. The first entry is the activation itself.
-    // The gauge draws the window from these alone; a squeezed-out phrase has
-    // no entry.
+    // Where this window's SP end changed, copied off the record as stored:
+    // each step's tick (SpEndStep::tick) and the end after it. The first
+    // entry is the activation itself; a squeezed-out phrase has no entry. The
+    // window's end is sp_end_tick, not the last entry's end, and the gauge
+    // reads its level from the record (Activation::meter_bars_at).
     struct SpEndChange {
         int64_t at_tick = 0;
         int64_t end_tick = 0;
@@ -304,7 +304,8 @@ struct PreviewScene {
     std::vector<PreviewMeasureSpan> measure_spans;  // one per time signature, tick order
     // Banked SP over time, for the meter gauge. With a path every value is
     // the record's: the bank steps at each stored bar arrival, and each
-    // window drains from the stored SP end changes to the window's end. Without
+    // window reads its level from the record (Activation::meter_bars_at) up
+    // to the window's end, where what is left is dropped. Without
     // a path there is no record, so it fills one bar per phrase and pins at
     // the cap: that chart-only view has nothing to spend the bank. Empty when
     // the chart has no SP phrase and the path stamps no bar.

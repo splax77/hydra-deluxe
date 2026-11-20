@@ -573,9 +573,7 @@ bool Path::has_activations() const { return !walk_activations().empty(); }
 
 std::vector<int64_t> Path::bank_arrivals(size_t i) const {
     const ActivationWalk acts = walk_activations();
-    std::vector<int64_t> out = i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
-    if (!out.empty() && i > 0 && acts[i - 1].sqout_tick) out.front() = *acts[i - 1].sqout_tick;
-    return out;
+    return i == acts.size() ? trailing_bank_ticks : acts[i].bank_rise_ticks;
 }
 
 int64_t Path::totalscore() const {
@@ -718,6 +716,24 @@ std::optional<int64_t> Activation::window_end_tick() const {
     const std::optional<int64_t> d = deact_tick();
     if (d && sqout_tick && !core::after_sp_end(*sqout_tick, *d)) return sqout_tick;
     return d;
+}
+
+std::optional<double> Activation::meter_bars_at(int64_t tick, const SongTiming& timing,
+                                                bool just_before) const {
+    if (sp_end_steps.empty()) return std::nullopt;
+    // The steps are in time order, so the one in force is the last one reached.
+    size_t step = 0;
+    for (size_t k = 1; k < sp_end_steps.size(); ++k) {
+        const int64_t at = sp_end_steps[k].tick;
+        if (just_before ? at >= tick : at > tick) break;
+        step = k;
+    }
+    const int64_t end_tick = sp_end_steps[step].end_tick;
+    // Never below empty: between an end in force and a late phrase's chord
+    // past it, the tick is past that end.
+    const double measures = timing.measures_at_tick_f(static_cast<double>(end_tick)) -
+                            timing.measures_at_tick_f(static_cast<double>(tick));
+    return std::max(0.0, measures / static_cast<double>(kMeasuresPerSpBar));
 }
 
 namespace {

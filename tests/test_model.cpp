@@ -1886,6 +1886,53 @@ TEST_CASE("Bank arrivals and window_end_tick: a squeezed-out chord ends the wind
     CHECK(moved > 0);
 }
 
+// The meter's level on the record (Activation::meter_bars_at), on every path
+// the engine writes for the corpus. It is never more than the bars the
+// activation spent at its note (the stored end drops a fraction of a tick,
+// D15, so it may sit just below). A step never shortens Star Power, so the
+// level just after a step's tick is never below the level just before it.
+// The meter is empty on the last stored step's end. On an early squeeze-out
+// whose chord is before that end, SP ends on the chord with the meter above
+// empty (SP-25 drops the rest). A hand-built activation with no step has no
+// level.
+TEST_CASE("Activation::meter_bars_at: the level the record gives inside each window") {
+    const app::AnalysisSettings& cfg = default_cfg();
+    CHECK_FALSE(Activation{}.meter_bars_at(0, corpus::song(default_paths().front().chart,
+                                                           cfg.reading(), cfg.rules)
+                                                  .timing())
+                    .has_value());
+    int windows = 0, steps = 0, early_out = 0;
+    for (const CorpusPath& cp : default_paths()) {
+        CAPTURE(cp.chart);
+        CAPTURE(cp.path->pathstring());
+        const SongTiming& timing = corpus::song(cp.chart, cfg.reading(), cfg.rules).timing();
+        for (const Activation& a : cp.path->walk_activations()) {
+            const int64_t act = a.timecode.ticks();
+            CAPTURE(act);
+            const std::optional<int64_t> deact = a.deact_tick();
+            const std::optional<int64_t> end = a.window_end_tick();
+            REQUIRE(deact.has_value());
+            REQUIRE(end.has_value());
+            ++windows;
+            CHECK(*a.meter_bars_at(act, timing) <= a.sp_meter() + 1e-9);
+            for (size_t k = 1; k < a.sp_end_steps.size(); ++k) {
+                const int64_t t = a.sp_end_steps[k].tick;
+                CAPTURE(t);
+                ++steps;
+                CHECK(*a.meter_bars_at(t, timing) >= *a.meter_bars_at(t, timing, true));
+            }
+            CHECK(*a.meter_bars_at(*deact, timing, true) == 0.0);
+            if (*end < *deact) {
+                ++early_out;
+                CHECK(*a.meter_bars_at(*end, timing, true) > 0.0);
+            }
+        }
+    }
+    CHECK(windows > 0);
+    CHECK(steps > 0);
+    CHECK(early_out > 0);
+}
+
 // What squeezing a row out costs, on every corpus backend row at its own
 // prices (sp_points and sqout_sp_points, as the search stored them), with
 // offsets set from the leeway rule: where the row would be counted it keeps

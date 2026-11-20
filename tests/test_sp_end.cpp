@@ -1,7 +1,7 @@
 // Where Star Power ends, and what moves it: SP that outlasts the chart, the
 // squeeze choices at an SP end, a phrase collected mid-SP (overfill and the
 // collected-phrase list), the SP end history, the transfer scales anchored on
-// it, the squeeze-out, and the bars banked at the deact node. The corpus-wide
+// it, the squeeze-out, and the bar a squeeze-out banks. The corpus-wide
 // engine sweeps live in test_engine_sweeps.cpp.
 
 #include "doctest.h"
@@ -23,6 +23,7 @@
 #include "app/config.h"
 #include "app/dynamics_breakdown.h"
 #include "bank_check.h"
+#include "core/backend_value.h"
 #include "core/model.h"
 #include "core/replay.h"
 #include "core/scoring.h"
@@ -793,7 +794,7 @@ TEST_CASE("SP end history: every corpus activation is consistent") {
     CHECK(acts > 1000);  // a floor the user approved (D43)
 }
 
-TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
+TEST_CASE("Bank: a squeezed-out bar arrives on the squeezed chord") {
     Song song = test::make_early_sqout_song();
     ScoreGraph graph(song, 4);
     // The best path collects 12960 instead and keeps SP running over the
@@ -808,10 +809,65 @@ TEST_CASE("Bank: a squeezed-out bar arrives at the deact node") {
     const Path& path = *found;
     REQUIRE(path.activations.size() == 2);
     CHECK((path.activations[0].bank_rise_ticks == std::vector<int64_t>{480, 1920}));
-    // The phrase at 12960 was hit late, just after SP ended at 13440: its bar
-    // arrives there. Then the phrase at 14400.
-    CHECK((path.activations[1].bank_rise_ticks == std::vector<int64_t>{13440, 14400}));
+    // The squeezed-out phrase sits before the deact node (an early
+    // squeeze-out), and its bar arrives on its own chord, then the phrase at
+    // 14400. Both ticks are read off the record.
+    const Activation& first = path.activations[0];
+    REQUIRE(first.sqout_tick.has_value());
+    REQUIRE(first.deact_tick().has_value());
+    REQUIRE(*first.sqout_tick < *first.deact_tick());
+    CHECK((path.activations[1].bank_rise_ticks == std::vector<int64_t>{*first.sqout_tick, 14400}));
     CHECK(path.trailing_bank_ticks.empty());
+}
+
+// On every stored path of every corpus chart, tied variants and all-zero paths
+// included: after a window that squeezed out, the next window's first stored
+// bar (or the path's first trailing bar, after the last window) is that
+// window's own squeezed chord, for an early squeeze-out and a late one alike
+// (docs/clone-hero/05-star-power.md, SP-35). Early or late is core::after_sp_end
+// against the deact node. Path::bank_arrivals hands the stored lists back as
+// they are.
+TEST_CASE("Bank: after every corpus squeeze-out the next bar is stored on the squeezed chord") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    // early: the chord is before the deact node, where a stamp on the node
+    // would differ. on_node: the chord is the node itself. late: after it.
+    int early = 0, on_node = 0, late = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        std::vector<const Path*> all = rec.all_paths();
+        for (const Path* p : rec.all_allzero_paths()) all.push_back(p);
+        for (const Path* p : all) {
+            CAPTURE(chart);
+            CAPTURE(p->pathstring());
+            const ActivationWalk acts = p->walk_activations();
+            for (size_t i = 0; i <= acts.size(); ++i) {
+                CAPTURE(i);
+                const std::vector<int64_t>& stored =
+                    i == acts.size() ? p->trailing_bank_ticks : acts[i].bank_rise_ticks;
+                CHECK(p->bank_arrivals(i) == stored);
+                if (i == 0 || !acts[i - 1].sqout_tick) continue;
+                const Activation& prev = acts[i - 1];
+                CAPTURE(prev.timecode.ticks());
+                const std::optional<int64_t> d = prev.deact_tick();
+                REQUIRE(d.has_value());
+                const int64_t chord = *prev.sqout_tick;
+                CAPTURE(chord);
+                CAPTURE(*d);
+                if (core::after_sp_end(chord, *d)) ++late;
+                else if (chord < *d) ++early;
+                else ++on_node;
+                REQUIRE_FALSE(stored.empty());
+                CHECK(stored.front() == chord);
+            }
+        }
+    }
+    // An empty loop must not pass: the corpus holds both kinds.
+    CHECK(early > 0);
+    CHECK(late > 0);
+    MESSAGE("checked " << early << " early, " << on_node << " on the node and " << late
+                       << " late squeeze-outs");
 }
 
 // The lasting order checks (tests/bank_check.h), on every path, tied variants
