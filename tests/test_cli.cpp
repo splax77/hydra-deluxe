@@ -599,8 +599,9 @@ TEST_CASE("hydra_fillcompare reads the tool's own hydra.db without --db") {
         const hydra::app::Settings defaults{};  // what the sandboxed exe reads
         const hydra::store::Profile profile =
             defaults.profile_with_fills(hydra::FillDeadlineRule::Ch11);
-        CHECK(contains(empty.output, hydra::app::nothing_under_settings(
-                                         profile.chartmode, profile.cap.exact)));
+        CHECK(contains(empty.output,
+                       hydra::app::report::nothing_under_settings(profile.chartmode,
+                                                                  profile.cap.exact)));
     }
     CHECK(!contains(empty.output, "No records to compare"));
 }
