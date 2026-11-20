@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -389,24 +390,40 @@ TEST_CASE("build_beat_events: bars, beats, and half-beats from the timing alone"
 }
 
 TEST_CASE("build_beat_events: a 3/4 section changes the beat count per bar") {
-    // One bar of 4/4, then 3/4 (1440 ticks per measure).
-    std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}};
-    std::map<int64_t, double> bpm{{0, 120.0}};
-    SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {1920, {3, 4}}});
+    // One bar of 4/4, then two bars of 3/4 (1440 ticks per measure).
+    const std::map<int64_t, std::pair<int, int>> sigs{{0, {4, 4}}, {1920, {3, 4}}};
+    const std::map<int64_t, int64_t> tpm{{0, 1920}, {1920, 1440}};
+    const std::map<int64_t, double> bpm{{0, 120.0}};
+    const SongTiming st(480, tpm, bpm, sigs);
+    const int64_t end = 1920 + 1440 * 2;
 
-    std::vector<PreviewBeat> beats = build_beat_events(st, 1920 + 1440 * 2);
-    int bars = 0, quarter_beats = 0;
+    const std::vector<PreviewBeat> beats = build_beat_events(st, end);
+    std::vector<int64_t> bar_lines, beat_lines;
     for (const PreviewBeat& b : beats) {
-        if (b.kind == PreviewBeatKind::MeasureLine) ++bars;
-        if (b.kind == PreviewBeatKind::Beat) ++quarter_beats;
+        if (b.kind == PreviewBeatKind::MeasureLine) bar_lines.push_back(b.tick);
+        if (b.kind == PreviewBeatKind::Beat) beat_lines.push_back(b.tick);
     }
-    CHECK(bars == 4);              // ticks 0, 1920, 3360, 4800
-    CHECK(quarter_beats == 3 + 2 + 2);  // 3 in the 4/4 bar, 2 in each 3/4 bar
-    // Every Beat line lies strictly inside its bar.
-    bool saw_3360 = false;
-    for (const PreviewBeat& b : beats)
-        if (b.tick == 3360) saw_3360 = b.kind == PreviewBeatKind::MeasureLine;
-    CHECK(saw_3360);
+
+    // A measure line opens every bar the measure lengths lay out, from each
+    // length change on, and one more sits on the end, closing the last bar.
+    std::vector<int64_t> expected_bars;
+    for (auto it = tpm.begin(); it != tpm.end(); ++it) {
+        const bool last = std::next(it) == tpm.end();
+        const int64_t stop = last ? end : std::next(it)->first;
+        for (int64_t t = it->first; last ? t <= stop : t < stop; t += it->second)
+            expected_bars.push_back(t);
+    }
+    CHECK(bar_lines == expected_bars);
+
+    // Inside each bar its beat lines step by one beat of the time signature
+    // in force at the bar's line: numerator - 1 of them after the line.
+    std::vector<int64_t> expected_beats;
+    for (size_t i = 0; i + 1 < bar_lines.size(); ++i) {
+        const std::pair<int, int> sig = std::prev(sigs.upper_bound(bar_lines[i]))->second;
+        const int64_t step = st.tick_resolution() * 4 / sig.second;
+        for (int k = 1; k < sig.first; ++k) expected_beats.push_back(bar_lines[i] + k * step);
+    }
+    CHECK(beat_lines == expected_beats);
 }
 
 TEST_CASE("build_beat_events: 6/8 steps by the eighth note") {
@@ -447,22 +464,20 @@ TEST_CASE("build_beat_events: the fainter line is halfway back to the line befor
     for (size_t i = 1; i < beats.size(); ++i) CHECK(beats[i].tick > beats[i - 1].tick);
 }
 
-TEST_CASE("build_preview_scene fills beats, tempos and resolution") {
-    Song song = make_hand_song();
-    // The Preview passes the song's length, as the load does: here 5 s past
-    // the last note (tick 720, 750 ms), 5750 ms.
-    PreviewScene scene = build_preview_scene(song, nullptr, kCloneHeroSpCap,
-                                             core::default_rules(), 5750.0);
+// Where the beat lines stop is the D266 test's, below.
+TEST_CASE("build_preview_scene: the scene carries the song's resolution and every tempo") {
+    const Song song = make_hand_song();
+    const PreviewScene scene = build_preview_scene(song, nullptr);
     REQUIRE(scene.timing.has_value());
-    CHECK(scene.timing->tick_resolution() == 480);
-    REQUIRE(scene.tempos.size() == 1);
-    CHECK(scene.tempos[0].bpm == doctest::Approx(120.0));
-    REQUIRE(!scene.beats.empty());
-    CHECK(scene.beats.front().tick == 0);
-    // 5750 ms is tick 5520; the last line at or before it is the beat at
-    // 5280 (no half-beat line is drawn before a beat the grid does not reach).
-    CHECK(scene.beats.back().tick == 5280);
-    CHECK(scene.beats.back().kind == PreviewBeatKind::Beat);
+    CHECK(scene.timing->tick_resolution() == song.timing().tick_resolution());
+    REQUIRE(scene.tempos.size() == song.bpm_changes.size());
+    size_t i = 0;
+    for (const auto& change : song.bpm_changes) {
+        CHECK(scene.tempos[i].tick == change.first);
+        CHECK(scene.tempos[i].ms == doctest::Approx(song.timecode(change.first).ms()));
+        CHECK(scene.tempos[i].bpm == change.second);
+        ++i;
+    }
 }
 
 // The beat lines stop where playback stops: at the song's length, never at
@@ -506,82 +521,100 @@ TEST_CASE("build_preview_scene: the beat lines stop at the song's length (D266)"
     }
 }
 
-TEST_CASE("build_preview_scene: no path means no overlay") {
-    Song song = make_hand_song();
-    PreviewScene scene = build_preview_scene(song, nullptr);
-    CHECK(scene.activations.empty());
-}
-
-TEST_CASE("parser keeps the SP-phrase start on the flagged note") {
-    // Find the first corpus chart with an SP phrase and confirm every note the
-    // parser flags as an SP-phrase end also carries its start tick.
-    bool checked_a_chart = false;
+TEST_CASE("parser keeps the SP-phrase start on the flagged note, on every corpus chart") {
+    // Every note the parser flags as an SP-phrase end, on every corpus chart
+    // at the app's default reading, carries its phrase's start tick, at or
+    // before the note (close_sp_phrase flags only a chord inside the phrase).
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int sp_notes = 0;
     for (const std::string& path : corpus::chart_paths()) {
-        Song song = load_songpath(path, ChartReading{});
-        int sp_notes = 0;
-        for (const SongTimestamp& ts : song.sequence) {
+        for (const SongTimestamp& ts : corpus::song(path, cfg.reading()).sequence) {
             if (!ts.flag_sp) continue;
             ++sp_notes;
+            INFO(path << " | SP-phrase end at tick " << ts.timecode.ticks());
             REQUIRE(ts.sp_phrase_start.has_value());
             CHECK(*ts.sp_phrase_start <= ts.timecode.ticks());
         }
-        if (sp_notes > 0) {
-            checked_a_chart = true;
-            break;
-        }
     }
-    REQUIRE(checked_a_chart);  // the corpus must contain an SP-bearing chart
+    // With no flagged note anywhere the loop above checked nothing.
+    CHECK(sp_notes > 0);
 }
 
-TEST_CASE("build_preview_scene: an analyzed chart's overlay matches its path") {
-    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
-    const Path& best = r.record.best_path();
-    PreviewScene scene = build_preview_scene(r.song, &best);
+namespace {
 
-    REQUIRE(scene.has_notes);
-    REQUIRE_FALSE(scene.notes.empty());
-    const double last_note = last_note_ms(scene);
-    CHECK(last_note > 0.0);
-
-    // Notes are in non-decreasing tick order.
-    for (size_t i = 1; i < scene.notes.size(); ++i)
-        CHECK(scene.notes[i].tick >= scene.notes[i - 1].tick);
-
-    // Every activation the path takes (those with a resolved timecode) appears
-    // in the overlay, inside the song, in ms that share the notes' timing.
-    const size_t expected = best.all_activations().size();
-    CHECK(scene.activations.size() == expected);
-    size_t i = 0;
-    for (const Activation& a : best.all_activations()) {
-        const PreviewActivation& pa = scene.activations[i++];
-        CHECK(pa.tick >= 0);
-        CHECK(pa.ms >= 0.0);
-        CHECK(pa.ms <= last_note + 1.0);
-        // The active SP window ends exactly at the window end the record
-        // gives (Activation::window_end_tick), in the song's own ms. The engine
-        // stamps an end on every activation it produces, so it is always there
-        // on a fresh record.
-        std::optional<int64_t> d = a.window_end_tick();
-        CHECK(d.has_value());
-        CHECK(pa.has_sp_end == d.has_value());
-        if (d) {
-            CHECK(pa.sp_end_tick == *d);
-            CHECK(pa.sp_end_ms == doctest::Approx(r.song.timing().ms_index().at(*d)));
-            CHECK(pa.sp_end_ms > pa.ms);
+// The corpus charts with drum notes at `cfg`'s reading, in corpus order. A
+// chart without them has no record: analyzing it throws NoNotesError
+// (require_notes), and it is named here rather than passed over quietly.
+// At least one chart has notes, or no caller would check anything.
+std::vector<std::string> charts_with_notes(const AnalysisSettings& cfg) {
+    std::vector<std::string> out;
+    for (const std::string& chart : corpus::chart_paths()) {
+        if (!corpus::song(chart, cfg.reading()).is_empty()) {
+            out.push_back(chart);
+            continue;
         }
-        // The activation note's lane is the chord's highest-priority note.
-        if (a.chord.count() > 0) {
-            CHECK(pa.has_lane);
-            CHECK(pa.lane == lane_of(a.chord.activation_note().colortype));
-        }
-        CHECK(pa.measure == format_measure(r.song.timing(), pa.tick));
-        CHECK(pa.chord == a.chord);  // named by the box, in the Pro Drums setting's words
+        MESSAGE("no notes at this reading, so no record: " << chart);
+        CHECK_THROWS_AS(corpus::analyzed(chart, cfg), NoNotesError);
     }
+    REQUIRE_FALSE(out.empty());
+    return out;
+}
 
-    // Same song, no path: identical notes, empty overlay.
-    PreviewScene bare = build_preview_scene(r.song, nullptr);
-    CHECK(bare.notes.size() == scene.notes.size());
-    CHECK(bare.activations.empty());
+}  // namespace
+
+// Each activation a stored path walks is one overlay entry, in walk order,
+// carrying the record's own values: its tick and ms, every SP-end step as
+// stored, the window end (Activation::window_end_tick) in the song's ms, the
+// lane of the chord's activation note and the chord, the fills it passed
+// over and its notation. Every corpus chart with notes and every stored path,
+// at the app's default settings. The same song with no path has the same
+// notes and no overlay.
+TEST_CASE("build_preview_scene: each overlay activation carries its record's values, on every corpus path") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int activations_checked = 0;
+    for (const std::string& chart : charts_with_notes(cfg)) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        const PreviewScene bare = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules);
+        CHECK(bare.activations.empty());
+        for (const Path* p : rec.all_paths()) {
+            const PreviewScene scene = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            CHECK(scene.notes.size() == bare.notes.size());
+            const ActivationWalk acts = p->walk_activations();
+            REQUIRE(scene.activations.size() == acts.size());
+            for (size_t i = 0; i < acts.size(); ++i) {
+                INFO(chart << " | path " << p->pathstring() << " | activation " << i);
+                const Activation& a = acts[i];
+                const PreviewActivation& pa = scene.activations[i];
+                ++activations_checked;
+                CHECK(pa.tick == a.timecode.ticks());
+                CHECK(pa.ms == doctest::Approx(a.timecode.ms()));
+                CHECK(pa.skipped_fill_ticks == a.skipped_fill_ticks);
+                REQUIRE(pa.sp_end_changes.size() == a.sp_end_steps.size());
+                for (size_t k = 0; k < a.sp_end_steps.size(); ++k) {
+                    CHECK(pa.sp_end_changes[k].at_tick == a.sp_end_steps[k].tick);
+                    CHECK(pa.sp_end_changes[k].end_tick == a.sp_end_steps[k].end_tick);
+                }
+                // The engine stamps an end on every activation it produces,
+                // so a fresh record always has one.
+                const std::optional<int64_t> d = a.window_end_tick();
+                CHECK(d.has_value());
+                CHECK(pa.has_sp_end == d.has_value());
+                if (d) {
+                    CHECK(pa.sp_end_tick == *d);
+                    CHECK(pa.sp_end_ms == doctest::Approx(song.timecode(*d).ms()));
+                }
+                CHECK(pa.has_lane == (a.chord.count() > 0));
+                if (a.chord.count() > 0) {
+                    CHECK(pa.lane == lane_of(a.chord.activation_note().colortype));
+                    CHECK(pa.chord == a.chord);
+                }
+                CHECK(pa.notation == a.notationstr_verbose());
+            }
+        }
+    }
+    // With no activation on any stored path the loop above checked nothing.
+    CHECK(activations_checked > 0);
 }
 
 // ---- base + overlay equals the whole scene --------------------------------
@@ -636,6 +669,7 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                     [](const PreviewActivation& x, const PreviewActivation& y) {
                         return x.tick == y.tick && x.ms == y.ms &&
                                x.skipped_fill_ticks == y.skipped_fill_ticks &&
+                               x.taken_fill == y.taken_fill && x.notation == y.notation &&
                                x.has_sp_end == y.has_sp_end &&
                                x.sp_end_tick == y.sp_end_tick && x.sp_end_ms == y.sp_end_ms &&
                                x.sp_end_changes == y.sp_end_changes &&
@@ -684,9 +718,15 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
                         return x.ms == y.ms && x.total == y.total &&
                                x.multiplier == y.multiplier &&
                                x.multiplier_plain == y.multiplier_plain &&
-                               x.combo == y.combo;
+                               x.combo == y.combo &&
+                               x.score_without_solo == y.score_without_solo;
                     }))
         return "score";
+    if (a.score.cutoffs.chart_base_score != b.score.cutoffs.chart_base_score ||
+        a.score.cutoffs.solo_bonus != b.score.cutoffs.solo_bonus ||
+        a.score.cutoffs.cutoffs != b.score.cutoffs.cutoffs ||
+        a.score.cutoffs.with_solo != b.score.cutoffs.with_solo)
+        return "score cutoffs";
     if (a.timing.has_value() != b.timing.has_value()) return "timing (presence)";
     if (a.timing) {
         const SongTiming& x = *a.timing;
@@ -720,35 +760,32 @@ std::string scene_difference(const PreviewScene& a, const PreviewScene& b) {
     return "";
 }
 
-// The two checks of check_split with the scenes already built: `whole` is
-// build_preview_scene for `path`, `base` is the song's base and `other_scene`
-// is the whole scene for the other path. The overlays go over copies.
+// The check of check_split with the scenes already built: `whole` is
+// build_preview_scene for `path` and `other_scene` is the whole scene for the
+// other path. The overlay goes over a copy. (build_preview_scene is itself
+// the overlay laid over the song's base, so base + overlay needs no check of
+// its own.)
 void check_split_over(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
-                      const PreviewScene& whole, const PreviewScene& base,
-                      const PreviewScene& other_scene, const std::string& what) {
-    const std::string split =
-        scene_difference(whole, apply_preview_overlay(base, song, path, sp_cap, rules));
-    INFO(what << ": base + overlay differs in " << split);
-    CHECK(split.empty());
+                      const PreviewScene& whole, const PreviewScene& other_scene,
+                      const std::string& what) {
     const std::string relaid =
         scene_difference(whole, apply_preview_overlay(other_scene, song, path, sp_cap, rules));
     INFO(what << ": overlay over another path's scene differs in " << relaid);
     CHECK(relaid.empty());
 }
 
-// build_preview_scene against base + overlay for one song and path, and the
-// overlay laid over a scene built for `other` (another path, or none): both
-// must equal the whole scene, member by member.
+// The overlay for one song and path laid over a scene built for `other`
+// (another path, or none), as the Preview does on a path change: it must
+// equal build_preview_scene for the path, member by member.
 void check_split(const Song& song, const Path* path, int sp_cap, const core::Rules& rules,
                  const Path* other, const std::string& what) {
     check_split_over(song, path, sp_cap, rules, build_preview_scene(song, path, sp_cap, rules),
-                     build_preview_base(song), build_preview_scene(song, other, sp_cap, rules),
-                     what);
+                     build_preview_scene(song, other, sp_cap, rules), what);
 }
 
 }  // namespace
 
-TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures") {
+TEST_CASE("overlay over another path's scene: equals build_preview_scene on the hand-built fixtures") {
     const core::Rules& rules = core::default_rules();
 
     // Not analyzed: no path at all.
@@ -802,19 +839,16 @@ TEST_CASE("base + overlay: equals build_preview_scene on the hand-built fixtures
     check_split(empty, &on_empty, 6, rules, nullptr, "empty song, path");
 }
 
-TEST_CASE("base + overlay: equals build_preview_scene on every corpus chart and stored path") {
+TEST_CASE("overlay over another path's scene: equals build_preview_scene on every corpus chart and stored path") {
     const AnalysisSettings cfg = Settings().to_analysis_settings();
-    int charts = 0, paths = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
+    int paths = 0;
+    for (const std::string& chart : charts_with_notes(cfg)) {
         const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        ++charts;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const std::vector<const Path*> all = rec.all_paths();
-        // One base per chart and one whole scene per path. Walking the paths
-        // from last to first makes the next path's whole the one built on the
-        // previous step; the last path's other is the no-path scene.
-        const PreviewScene base = build_preview_base(song);
+        // One whole scene per path. Walking the paths from last to first
+        // makes the next path's whole the one built on the previous step; the
+        // last path's other is the no-path scene.
         const PreviewScene none = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules);
         PreviewScene next = none;
         for (size_t i = all.size(); i-- > 0;) {
@@ -822,45 +856,25 @@ TEST_CASE("base + overlay: equals build_preview_scene on every corpus chart and 
             // Laid over the next path's scene, so every overlay replaces a
             // different one.
             PreviewScene whole = build_preview_scene(song, all[i], cfg.sp_cap, cfg.rules);
-            check_split_over(song, all[i], cfg.sp_cap, cfg.rules, whole, base, next,
+            check_split_over(song, all[i], cfg.sp_cap, cfg.rules, whole, next,
                              chart + " path " + std::to_string(i));
             next = std::move(whole);
         }
         // `next` now holds path 0's whole, or the no-path scene if there is
         // no path.
-        check_split_over(song, nullptr, cfg.sp_cap, cfg.rules, none, base, next,
-                         chart + " (no path)");
+        check_split_over(song, nullptr, cfg.sp_cap, cfg.rules, none, next, chart + " (no path)");
     }
-    MESSAGE("charts " << charts << ", paths " << paths);
-    CHECK(charts > 0);
-    CHECK(paths > charts);
+    // With no stored path anywhere no overlay replaced another path's.
+    CHECK(paths > 0);
 }
 
-TEST_CASE("path_overlay_key: no overlay, the same path, and a changed path") {
-    // The key is how the Preview notices the Paths tab picked a different
-    // path; Path itself has no operator==.
+// The key is how the Preview notices the Paths tab picked a different path.
+// A path's key is its path_identity, for every path
+// (test_path_list.cpp, "the dedupe and the overlay key read one identity"),
+// and path_identity's own test covers a copy, a rescore and a trimmed path.
+// What is the key's alone is the empty key for no overlay.
+TEST_CASE("path_overlay_key: no overlay gives an empty key") {
     CHECK(path_overlay_key(nullptr).empty());
-
-    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
-    std::vector<const Path*> paths = r.record.all_paths();
-    REQUIRE_FALSE(paths.empty());
-
-    const Path& first = *paths.front();
-    Path copy = first;
-    CHECK_FALSE(path_overlay_key(&first).empty());
-    CHECK(path_overlay_key(&first) == path_overlay_key(&copy));
-
-    // Same activations, a different score: still a different overlay.
-    Path rescored = first;
-    rescored.notes_points += 1;
-    CHECK(path_overlay_key(&first) != path_overlay_key(&rescored));
-
-    // Different activations: different key.
-    Path trimmed = first;
-    if (!trimmed.activations.empty()) {
-        trimmed.activations.pop_back();
-        CHECK(path_overlay_key(&first) != path_overlay_key(&trimmed));
-    }
 }
 
 // A ghost path lists the fills its activations stand on and changes nothing
@@ -904,72 +918,84 @@ TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothi
     CHECK(cleared.ghost_windows.empty());
 }
 
-// On a real chart the ghost path's fills are the ones the same path takes when
-// it is the drawn path, pinned from one run.
-TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken fills") {
-    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
-    const Path& best = r.record.best_path();
-    const PreviewScene scene = build_preview_scene(r.song, nullptr, kCloneHeroSpCap,
-                                                   core::default_rules(), std::nullopt, &best);
-    CHECK(scene.ghost_fills == std::vector<size_t>{2, 7});
+// On every corpus chart with notes, at the app's default settings, each
+// stored path as the ghost lists, in walk order, the fill whose chord is one
+// of its activations' chords, read off the record's activation ticks. They
+// are the fills the same path takes when it is the drawn path, and its
+// windows are that drawn path's sp_window()s; a scene with no ghost has none.
+TEST_CASE("build_preview_scene: every corpus path as the ghost lists the fills its activations stand on") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int ghost_fills_seen = 0;
+    for (const std::string& chart : charts_with_notes(cfg)) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
+            INFO(chart << " | path " << p->pathstring());
+            const PreviewScene scene = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules,
+                                                           std::nullopt, p);
+            std::vector<size_t> on_chords;
+            for (const Activation& a : p->walk_activations())
+                for (size_t i = 0; i < scene.fills.size(); ++i)
+                    if (scene.fills[i].chord_tick == a.timecode.ticks()) on_chords.push_back(i);
+            CHECK(scene.ghost_fills == on_chords);
+            ghost_fills_seen += static_cast<int>(scene.ghost_fills.size());
 
-    const PreviewScene drawn = build_preview_scene(r.song, &best);
-    std::vector<size_t> taken;
-    for (const PreviewActivation& a : drawn.activations)
-        if (a.taken_fill) taken.push_back(*a.taken_fill);
-    CHECK(scene.ghost_fills == taken);
-
-    // Its windows are the same path's sp_window()s when it is the drawn path,
-    // and a scene with no ghost has none.
-    std::vector<std::pair<double, double>> windows;
-    for (const PreviewActivation& a : drawn.activations)
-        if (const auto w = a.sp_window()) windows.push_back(*w);
-    REQUIRE_FALSE(windows.empty());
-    CHECK(scene.ghost_windows == windows);
-    CHECK(drawn.ghost_windows.empty());
+            const PreviewScene drawn = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            std::vector<size_t> taken;
+            std::vector<std::pair<double, double>> windows;
+            for (const PreviewActivation& a : drawn.activations) {
+                if (a.taken_fill) taken.push_back(*a.taken_fill);
+                if (const auto w = a.sp_window()) windows.push_back(*w);
+            }
+            CHECK(scene.ghost_fills == taken);
+            CHECK(scene.ghost_windows == windows);
+            CHECK(drawn.ghost_windows.empty());
+        }
+    }
+    // With no ghost fill on any path the list checks above met only empty lists.
+    CHECK(ghost_fills_seen > 0);
 }
 
 // The fills after a path's last activation: the engine lists the ones the
 // path passed over (Path::trailing_skipped_fill_ticks), and the overlay
-// lights exactly those. On "Missed Injections" at the top 40 scores, cap 4,
-// the path "3" activates once, at 123838, and lists 244800 and 281759.
+// lights exactly those. Every path of "Missed Injections" at the top 40
+// scores, cap 4, that activates and lists a passed-over fill after its last
+// activation: each fill after that activation reads Offered when its tick is
+// in the list and Hidden when it is not.
 TEST_CASE("preview scene: fills after the last activation read Offered when the engine lists them, Hidden otherwise") {
     const AnalysisSettings cfg = test::scores_settings(4);
     const std::string chart = corpus::chart_named("Hail The Sun - Missed Injections");
     REQUIRE_FALSE(chart.empty());
     const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-    const Path* path = nullptr;
-    for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
-        if (p->pathstring() == "3") {
-            path = p;
-            break;
+    int paths_checked = 0;
+    for (const Path* path : corpus::analyzed(chart, cfg).all_paths()) {
+        const std::vector<int64_t> acts = test::act_ticks(*path);
+        if (acts.empty() || path->trailing_skipped_fill_ticks.empty()) continue;
+        INFO("path " << path->pathstring());
+        ++paths_checked;
+        const int64_t last_act = acts.back();
+        const std::vector<int64_t>& listed = path->trailing_skipped_fill_ticks;
+
+        const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
+        CHECK(scene.trailing_skipped_fill_ticks == listed);
+        for (const PreviewFill& f : scene.fills) {
+            if (f.chord_tick <= last_act) continue;
+            INFO("fill at " << f.chord_tick);
+            const bool is_listed =
+                std::find(listed.begin(), listed.end(), f.chord_tick) != listed.end();
+            CHECK(f.state == (is_listed ? PreviewFillState::Offered : PreviewFillState::Hidden));
         }
-    REQUIRE(path != nullptr);
-    REQUIRE(test::act_ticks(*path) == std::vector<int64_t>{123838});
-    REQUIRE(path->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
-    const int64_t last_act = test::act_ticks(*path).back();
 
-    const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
-    CHECK(scene.trailing_skipped_fill_ticks == path->trailing_skipped_fill_ticks);
-    // Each fill after the activation and its state, pinned from one run.
-    std::string after;
-    for (const PreviewFill& f : scene.fills) {
-        if (f.chord_tick <= last_act) continue;
-        after += std::to_string(f.chord_tick) + ":" +
-                 (f.state == PreviewFillState::Offered  ? "O"
-                  : f.state == PreviewFillState::Taken ? "T"
-                                                       : "H") +
-                 " ";
+        // The same path without its list draws those fills hidden, as the
+        // Preview did before the engine wrote them down.
+        Path bare = *path;
+        bare.trailing_skipped_fill_ticks.clear();
+        const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
+        for (const PreviewFill& f : without.fills)
+            if (f.chord_tick > last_act) CHECK(f.state == PreviewFillState::Hidden);
     }
-    CHECK(after == "157922:H 180960:H 244800:O 281759:O ");
-
-    // The same path without its list draws those fills hidden, as the
-    // Preview did before the engine wrote them down.
-    Path bare = *path;
-    bare.trailing_skipped_fill_ticks.clear();
-    const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
-    for (const PreviewFill& f : without.fills)
-        if (f.chord_tick > last_act) CHECK(f.state == PreviewFillState::Hidden);
+    // This chart at these settings is the corpus case where a path passes
+    // over fills after its last activation; with none, nothing was checked.
+    CHECK(paths_checked > 0);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill
@@ -979,26 +1005,29 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
     // The app's default settings, as "base + overlay" reads the corpus.
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int ticks_checked = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
+    for (const std::string& chart : charts_with_notes(cfg)) {
         const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        if (rec.paths.empty()) continue;
         std::set<int64_t> fill_ends;
         for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.chord_tick);
+        // One stored passed-over tick: it must name exactly one fill.
+        auto check_tick = [&](size_t root, const std::string& where, int64_t t) {
+            ++ticks_checked;
+            if (fill_ends.count(t) == 0)
+                MESSAGE(chart << " | root " << root << " | " << where << " | stored fill tick "
+                              << t);
+            CHECK(fill_ends.count(t) == 1);
+        };
         for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
-            for (const Activation& a : rec.paths[pi].walk_activations()) {
-                for (int64_t t : a.skipped_fill_ticks) {
-                    ++ticks_checked;
-                    if (fill_ends.count(t) == 0)
-                        MESSAGE(chart << " | root " << pi << " | activation "
-                                      << a.timecode.ticks() << " | stored fill tick " << t);
-                    CHECK(fill_ends.count(t) == 1);
-                }
-            }
+            for (const Activation& a : rec.paths[pi].walk_activations())
+                for (int64_t t : a.skipped_fill_ticks)
+                    check_tick(pi, "activation " + std::to_string(a.timecode.ticks()), t);
+            for (int64_t t : rec.paths[pi].trailing_skipped_fill_ticks)
+                check_tick(pi, "after the last activation", t);
         }
     }
     MESSAGE("stored passed-over fill ticks checked: " << ticks_checked);
+    // With no stored passed-over tick anywhere the check above never ran.
     CHECK(ticks_checked > 0);
 }
 
