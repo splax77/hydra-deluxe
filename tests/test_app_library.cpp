@@ -14,7 +14,6 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -474,6 +473,16 @@ std::optional<int64_t> held_row_score(const AppState& app, int chart) {
     return row_of(app, held_entry(chart).md5).summary.score;
 }
 
+// Whether held chart `chart`'s row shows the score the store's own read gives
+// for it under the app's settings, and the store holds a scored result for it.
+bool row_shows_stored_score(AppState& app, int chart) {
+    const hydra::store::RecordLookup stored =
+        app.store->lookup_one(held_entry(chart).md5, app.settings.profile());
+    if (stored.status != RecordStatus::Ready) return false;
+    const std::optional<int64_t> score = stored.record.summary().score;
+    return score.has_value() && held_row_score(app, chart) == score;
+}
+
 // The order Best path, highest first, gives the held charts when the charts in
 // `scored` show their scores and the rest show none: the scored charts by
 // score, highest first, then the rest in title order. With nothing scored it
@@ -605,14 +614,17 @@ bool row_scores(const AppState& app, int chart, const char* score) {
 // holding the store's lock does not hold the frame.
 TEST_CASE("a tick during a batch does not wait for the store") {
     ScratchPaths paths("appstate_ticknowait");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
     auto gate = std::make_shared<ChartGate>();
-    start_redo_batch(*app, gated_scores(gate));
-    let_through(*app, *gate, 2);  // both charts' lookups are done
+    start_redo_batch(*app, gated_engine(gate));
+    let_through(*app, *gate, 2);  // both charts' answers are in the tray
+    REQUIRE(scored_held(*app).empty());
 
-    CHECK(returns_while_held(*app->store, [&] { app->tick_library(0.0); }));
-    CHECK(row_scores(*app, 0, "1,000"));
-    CHECK(row_scores(*app, 1, "2,000"));
+    CHECK(returns_while_held(*app->store, [&] { app->tick_library(refresh_frame(0)); }));
+    // The batch ran the first two charts; each row shows what the store holds.
+    CHECK(scored_held(*app) == std::vector<int>{0, 1});
+    CHECK(row_shows_stored_score(*app, 0));
+    CHECK(row_shows_stored_score(*app, 1));
 }
 
 // Question 1 of the batch-rows plan: a result saved by someone other than the
@@ -788,15 +800,20 @@ TEST_CASE("a paused batch's stored results reach their rows") {
 // on their rows, then sorts once.
 TEST_CASE("a stopped batch's stored results reach their rows, then the list sorts") {
     ScratchPaths paths("appstate_traystopped");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
     auto gate = std::make_shared<ChartGate>();
-    start_redo_batch(*app, gated_scores(gate));
+    start_redo_batch(*app, gated_engine(gate));
     let_through(*app, *gate, 2);
     stop_batch(*app);
-    app->tick_library(10.0);
-    CHECK(row_scores(*app, 0, "1,000"));
-    CHECK(row_scores(*app, 1, "2,000"));
-    CHECK(shown(*app) == std::vector<int>{1, 0, 2, 3});
+    REQUIRE(scored_held(*app).empty());  // no tick has read the tray
+
+    app->tick_library(refresh_frame(1));
+    REQUIRE(scored_held(*app) == std::vector<int>{0, 1});
+    CHECK(row_shows_stored_score(*app, 0));
+    CHECK(row_shows_stored_score(*app, 1));
+    // The second chart outscores the first, so the sort moves the rows.
+    REQUIRE(best_path_order(scored_held(*app)) != best_path_order({}));
+    CHECK(shown_held(*app) == best_path_order(scored_held(*app)));
 }
 
 // One song's result, stored while no batch runs, shows on its row, and the
@@ -844,10 +861,15 @@ TEST_CASE("a settings change's re-read of the summaries sorts a held order at on
 // comes up sorted on them.
 TEST_CASE("a reload comes up sorted under Best path") {
     ScratchPaths paths("appstate_reloadsort");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
-    save_scored(*app, 3, 5000);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
+    // The top chart's own result, behind the view's back. Its row sits last
+    // in title order, and a sort lifts it above the unscored rows.
+    save_held_result(*app, kTopHeld);
+    REQUIRE(best_path_order({kTopHeld}) != best_path_order({}));
     app->reload_library();
-    CHECK(shown(*app) == std::vector<int>{3, 0, 1, 2});
+    REQUIRE(scored_held(*app) == std::vector<int>{kTopHeld});
+    CHECK(row_shows_stored_score(*app, kTopHeld));
+    CHECK(shown_held(*app) == best_path_order(scored_held(*app)));
 }
 
 // ---- scans and the batch ----------------------------------------------------
@@ -894,10 +916,15 @@ TEST_CASE("a scan cannot start during a batch, and the status line says so") {
     start_batch_until_stopped(*app);
 
     CHECK_FALSE(app->can_scan());
+    GenerationWatcher status;
+    status.changed(app->status_generation);
     app->start_scan();
     CHECK(app->scan_job == nullptr);
-    CHECK(app->status_message == "A batch is running.");
+    CHECK(app->status_message == AppState::kBatchRunningStatus);
+    // News, which fades: set_status's form, not set_problem's. The view
+    // times the fade off the status generation changing.
     CHECK_FALSE(app->status_is_problem);
+    CHECK(status.changed(app->status_generation));
 
     stop_batch(*app);
     CHECK(app->can_scan());
@@ -977,7 +1004,7 @@ TEST_CASE("the batch confirm right after a scan, before any frame, counts the li
 }
 
 // wait-idle in the GUI tests waits on this one list (finding 109).
-TEST_CASE("any_job_running lists every background job") {
+TEST_CASE("any_job_running counts a running batch, and a click's job until tick collects it") {
     ScratchPaths paths("appstate_anyjob");
     std::unique_ptr<AppState> app = app_on(paths);
     CHECK_FALSE(app->any_job_running());
@@ -1037,37 +1064,65 @@ TEST_CASE("the confirm counts every library row, and rows with a result from the
     CHECK(app.batch_scope_with_result() == copies_of_first);
 }
 
+namespace {
+
+// Opens the batch confirm on `app` and checks that the plan it shows runs the
+// rows on screen and nothing else: the same charts, none of them with a
+// result, and none of the charts in `with_result`.
+void check_confirm_runs_shown_rows(AppState& app, const std::vector<int>& with_result) {
+    std::vector<std::string> on_screen;
+    for (size_t i = 0; i < app.library_shown_count(); ++i) {
+        const hydra::ui::LibraryRow& row = app.library_row_at(i);
+        CHECK(row.status == RecordStatus::NotAnalyzed);
+        on_screen.push_back(row.entry.md5);
+    }
+    app.open_batch_confirm();
+    REQUIRE(app.batch_confirm_pending);
+    std::vector<std::string> planned;
+    for (const ChartLibraryEntry& item : app.batch_plan_for(true).todo)
+        planned.push_back(item.md5);
+    std::sort(on_screen.begin(), on_screen.end());
+    std::sort(planned.begin(), planned.end());
+    CHECK(planned == on_screen);
+    CHECK(app.batch_scope_charts() == static_cast<int64_t>(app.library_shown_count()));
+    CHECK(app.batch_scope_charts() < static_cast<int64_t>(app.library.counts().all));
+    CHECK(app.batch_scope_with_result() == 0);
+    for (const int chart : with_result) {
+        const std::string md5 = library_entry(chart).md5;
+        CHECK(std::find(planned.begin(), planned.end(), md5) == planned.end());
+    }
+    app.close_batch_confirm();
+}
+
+}  // namespace
+
 // D115: the Analyze button runs the rows on screen, the search and the chip
-// both applied. Ten charts match "hash00", four of them have a result, and the
-// Not analyzed chip shows the other six: the confirm counts those six, the
-// heading's number, not the ten the All chip counts.
+// both applied, not every row the search matches.
 TEST_CASE("the batch confirm counts the rows on screen when a search and a chip narrow them") {
     ScratchPaths paths("appstate_confirmchip");
     auto store = std::make_unique<RecordStore>(paths.db);
     std::vector<ChartLibraryEntry> charts;
     for (int i = 0; i < 20; ++i) charts.push_back(library_entry(i));
     store->rebuild_chart_library(charts);
-    for (int i : {0, 3, 5, 8})
+    // Charts the search below matches, each with a result, so the Not
+    // analyzed chip hides them.
+    const std::vector<int> with_result = {0, 3, 5, 8};
+    for (const int i : with_result)
         hydra::test::save_batch_record(*store, library_entry(i).md5, Settings{}.sp_cap);
     AppState app(Settings{}, std::move(store));
 
     app.set_search("hash00");
+    const size_t matches = app.library_shown_count();
+    for (const int i : with_result)
+        REQUIRE(row_of(app, library_entry(i).md5).status != RecordStatus::NotAnalyzed);
     app.library.set_chip(hydra::ui::StatusChip::NotAnalyzed);
-    REQUIRE(app.library.counts().all == 10);
-    REQUIRE(app.library_shown_count() == 6);
-    app.open_batch_confirm();
-    REQUIRE(app.batch_confirm_pending);
-    CHECK(app.batch_scope_charts() == static_cast<int64_t>(app.library_shown_count()));
-    CHECK(app.batch_scope_charts() < static_cast<int64_t>(app.library.counts().all));
-    CHECK(app.batch_scope_with_result() == 0);
-    app.close_batch_confirm();
+    REQUIRE(app.library_shown_count() + with_result.size() == matches);
+    check_confirm_runs_shown_rows(app, with_result);
 
     // The chip alone narrows the table too.
     app.set_search("");
-    REQUIRE(app.library_shown_count() == 16);
-    app.open_batch_confirm();
-    REQUIRE(app.batch_confirm_pending);
-    CHECK(app.batch_scope_charts() == 16);
+    REQUIRE(app.library_shown_count() > matches - with_result.size());
+    check_confirm_runs_shown_rows(app, with_result);
 }
 
 // D79: the plan the confirm showed is the plan the batch runs. A result that
@@ -1118,24 +1173,11 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
     ScratchPaths paths("appstate_startopen");
     seeded_store(paths.db).reset();
 
-    using Step = hydra::ui::StoreOpenProgress::Step;
-    // One report's step and counts.
-    struct Seen {
-        Step step;
-        uint64_t done;
-        uint64_t total;
-    };
     // Hold the open at its first report, as the GUI test's gate does.
-    std::mutex mu;
     std::atomic<bool> open{false};
-    std::vector<Seen> seen;
     const ScopedHook gate(
         hydra::ui::set_store_open_gate_for_test,
-        [&](const hydra::ui::StoreOpenProgress& p, const std::function<bool()>& cancelled) {
-            {
-                std::lock_guard<std::mutex> lock(mu);
-                seen.push_back({p.step, p.rows_done, p.rows_total});
-            }
+        [&](const hydra::ui::StoreOpenProgress&, const std::function<bool()>& cancelled) {
             wait_until([&] { return open.load() || cancelled(); },
                        "the test to let the open go on");
         });
@@ -1159,30 +1201,13 @@ TEST_CASE("the startup open runs on its own thread and tick collects the store a
     CHECK_FALSE(app.any_job_running());
     CHECK(app.library_shown_count() == static_cast<size_t>(kChartCount));
     CHECK(app.status_message.empty());
-    // A file that needs no upgrade reports the open, then the chart list row
-    // by row, then the results slice by slice, every count out of the
-    // library's one chart count, which is the rows the model holds.
+    // The library's one chart count is the rows the model holds. The open's
+    // steps and their counted bars are StoreOpenJob's own test's to check
+    // ("jobs: the startup open reads saved paths with its own words, then the
+    // library", test_library_jobs.cpp).
     const uint64_t charts = static_cast<uint64_t>(app.store->chart_library_count());
     CHECK(charts == static_cast<uint64_t>(kChartCount));
     CHECK(charts == app.library.rows().size());
-    std::lock_guard<std::mutex> lock(mu);
-    std::vector<Step> steps;
-    std::vector<uint64_t> charts_done;
-    std::vector<uint64_t> results_done;
-    for (const Seen& s : seen) {
-        if (steps.empty() || steps.back() != s.step) steps.push_back(s.step);
-        if (s.step == Step::ReadingCharts) charts_done.push_back(s.done);
-        if (s.step == Step::ReadingResults) results_done.push_back(s.done);
-        if (s.step != Step::Opening) CHECK(s.total == charts);
-    }
-    CHECK(steps == std::vector<Step>{Step::Opening, Step::ReadingCharts, Step::ReadingResults});
-    // 0 before the first row, then once per row read.
-    std::vector<uint64_t> every_row;
-    for (uint64_t i = 0; i <= charts; ++i) every_row.push_back(i);
-    CHECK(charts_done == every_row);
-    // The library fits in one results slice: 0 before it, all once it is read.
-    REQUIRE(charts < hydra::ui::kResultsSliceCharts);
-    CHECK(results_done == std::vector<uint64_t>{0, charts});
 }
 
 TEST_CASE("an AppState closed during its startup open stops the open") {
@@ -1391,7 +1416,10 @@ TEST_CASE("a cancelled scan on open leaves the library out of date; a finished o
     CHECK_FALSE(done.cancelled);
     CHECK_FALSE(app.store->chart_library_out_of_date());
     app.tick_library(0.0);
-    CHECK(done.charts_found > 0);
+    // The scan read the saved settings' one folder, the corpus, and found
+    // every chart file in it.
+    REQUIRE(app.settings.chartfolders == std::vector<std::string>{corpus::root()});
+    CHECK(static_cast<size_t>(done.charts_found) == corpus::chart_paths().size());
     CHECK(app.library_shown_count() == static_cast<size_t>(done.charts_found));
 }
 
