@@ -20,6 +20,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -783,18 +784,33 @@ std::multiset<std::string> table_rows(const std::string& path, const std::string
     return out;
 }
 
-// The song ids of every record in the file at `path`, in id order.
-std::vector<std::string> record_song_ids(const std::string& path) {
+// The first column of every row `sql` reads from the file at `path`, as
+// text, in the order the query gives.
+std::vector<std::string> texts_on_file(const std::string& path, const char* sql) {
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
     sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, "SELECT song_id FROM records ORDER BY song_id", -1, &s,
-                               nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_prepare_v2(db, sql, -1, &s, nullptr) == SQLITE_OK);
     std::vector<std::string> out;
     while (sqlite3_step(s) == SQLITE_ROW)
         out.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
     sqlite3_finalize(s);
     sqlite3_close(db);
+    return out;
+}
+
+// The song ids of every record in the file at `path`, in id order.
+std::vector<std::string> record_song_ids(const std::string& path) {
+    return texts_on_file(path, "SELECT song_id FROM records ORDER BY song_id");
+}
+
+// Every table in the file at `path`, by name, with its rows (table_rows):
+// what a write that is undone must leave as it found it.
+std::map<std::string, std::multiset<std::string>> every_table_rows(const std::string& path) {
+    std::map<std::string, std::multiset<std::string>> out;
+    for (const std::string& name :
+         texts_on_file(path, "SELECT name FROM sqlite_master WHERE type = 'table'"))
+        out[name] = table_rows(path, name);
     return out;
 }
 
@@ -1141,15 +1157,19 @@ TEST_CASE("a save that fails leaves nothing behind and reads as a save error") {
     {
         RecordStore store(path);
         const Profile profile{"mode", CapQuery::at(4), Lens{}};
+        const auto tables_before = every_table_rows(path);
         try {
             store.save(prepare_record("boom", profile, at_cap(4)));
             FAIL("the refused save went through");
-        } catch (const std::exception& e) {
+        } catch (const KindedError& e) {
+            // A save error, read as the sentence its kind owns.
+            CHECK(e.kind() == ErrorKind::DatabaseWrite);
             CHECK(hydra::app::plain_error(e) ==
-                  "Hydra couldn't save to its database (hydra.db). Check that the disk isn't "
-                  "full and that no other copy of Hydra is running, then try again.");
+                  hydra::app::plain_error(KindedError(ErrorKind::DatabaseWrite, "")));
         }
-        CHECK(store.record_count() == 0);
+        // Not one row of the chart, its paths or its profile is left in any
+        // table.
+        CHECK(every_table_rows(path) == tables_before);
         // The store is still usable: no transaction was left open.
         store.save(prepare_record("ok", profile, at_cap(4)));
         CHECK(store.lookup_one("ok", profile).status == RecordStatus::Ready);
@@ -1249,15 +1269,21 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
     std::remove(path.c_str());
 }
 
-TEST_CASE("every store read throws a database read error when its step fails") {
+// The list is the public reads RecordStore declares in store/record_store.h;
+// a read added there is not covered until it is added here, so the name says
+// the list is by name.
+TEST_CASE("each store read named in the test throws a database read error when its step fails") {
     const std::string path = testtemp::temp_path("every_read_fail", ".db");
     std::remove(path.c_str());
     const Profile profile{"mode", CapQuery::at(4), Lens{}};
     const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
         {"lookup", [&](RecordStore& s) { s.lookup({"h"}, profile); }},
         {"lookup_one", [&](RecordStore& s) { s.lookup_one("h", profile); }},
+        {"settled_song_ids", [&](RecordStore& s) { s.settled_song_ids(profile); }},
         {"ready_song_ids", [&](RecordStore& s) { s.ready_song_ids(profile); }},
         {"ready_records", [&](RecordStore& s) { s.ready_records(profile); }},
+        {"rows_missing_hardest", [&](RecordStore& s) { s.rows_missing_hardest(profile); }},
+        {"hardest_figure_filled", [&](RecordStore& s) { s.hardest_figure_filled(profile); }},
         {"record_count", [](RecordStore& s) { s.record_count(); }},
         {"chart_index", [](RecordStore& s) { s.chart_index(); }},
         {"chart_library_cache", [](RecordStore& s) { s.chart_library_cache(); }},
@@ -1315,13 +1341,16 @@ TEST_CASE("the vendored SQLite is built without memory counters or shared cache"
 
 TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log at the end") {
     // The threshold is per connection, so only the store's own getter can
-    // read it. 1,000 is SQLite's own default, read off one run.
+    // read the store's. D86 item 3: the batch's end puts back SQLite's own
+    // threshold, which a second plain connection on the same file reads.
     const std::string path = testtemp::temp_path("batch_guard", ".db");
     std::remove(path.c_str());
     const std::filesystem::path wal = std::filesystem::u8path(path + "-wal");
     {
         RecordStore store(path);
-        CHECK(store.wal_autocheckpoint_for_test() == 1000);
+        const int64_t sqlite_default = scalar_on_file(path, "PRAGMA wal_autocheckpoint");
+        REQUIRE(sqlite_default != kBatchWalAutocheckpointPages);
+        CHECK(store.wal_autocheckpoint_for_test() == sqlite_default);
         {
             const RecordStore::BatchWrites batch(store);
             CHECK(store.wal_autocheckpoint_for_test() == kBatchWalAutocheckpointPages);
@@ -1329,7 +1358,7 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
             CHECK(std::filesystem::file_size(wal) > 0);
         }
         CHECK(std::filesystem::file_size(wal) == 0);
-        CHECK(store.wal_autocheckpoint_for_test() == 1000);
+        CHECK(store.wal_autocheckpoint_for_test() == sqlite_default);
         CHECK(store.record_count() == 1);
     }
     std::remove(path.c_str());
@@ -1407,13 +1436,21 @@ TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure and
     CHECK(rows[0].sig == "sig-ready");
 }
 
-TEST_CASE("set_hardest writes one chart's rows together") {
+TEST_CASE("set_hardest fills only a record's empty figures and ignores a rank it does not have") {
+    // Every figure here is any value a figure may hold, each one different,
+    // so a figure written to the wrong rank shows. A figure of 0 is a real
+    // one: a squeeze at exactly 0 needs 0.0 ms (D302).
+    const double held = 12.5;
+    const double for_rank_1 = 0.0;
+    const double for_rank_2 = -315.8;
+    const double for_held_rank = 99.0;
+    const double for_missing_rank = 7.0;
     RecordStore store(":memory:");
     const Profile profile = hydra::test::at4();
     store.rebuild_chart_library({library_row("a", "A")});
     store.save(hand_record("a", profile,
                            {hand_path(1, std::nullopt, 1), hand_path(2, std::nullopt, 2),
-                            hand_path(3, 12.5, 1)}));
+                            hand_path(3, held, 1)}));
     const std::vector<MissingHardestRow> before = store.rows_missing_hardest(profile);
     REQUIRE(before.size() == 2);
     CHECK(before[0].rank == 1);
@@ -1421,10 +1458,11 @@ TEST_CASE("set_hardest writes one chart's rows together") {
 
     // Rank 3 already holds a figure, which the write leaves alone, and the
     // record has no rank 9.
-    store.set_hardest("a", before[0].profile_id, {{1, 0.0}, {2, -315.8}, {3, 99.0}, {9, 7.0}});
+    store.set_hardest("a", before[0].profile_id,
+                      {{1, for_rank_1}, {2, for_rank_2}, {3, for_held_rank}, {9, for_missing_rank}});
     CHECK(store.rows_missing_hardest(profile).empty());
     CHECK(hydra::test::saved_figures(store, "a", profile) ==
-          std::vector<std::optional<double>>{0.0, -315.8, 12.5});
+          std::vector<std::optional<double>>{for_rank_1, for_rank_2, held});
 }
 
 TEST_CASE("the hardest-figure marker is per profile: unset at first, set for one profile after "
