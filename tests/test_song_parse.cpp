@@ -8,6 +8,7 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
 #include <cstdint>
@@ -16,9 +17,11 @@
 #include <fstream>
 #include <iterator>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <typeinfo>
 #include <vector>
 
 #include "app/analysis.h"
@@ -632,8 +635,6 @@ Song lane_chart(const std::string& lines, bool pro = true, bool noteshuffle = fa
                                 core::default_rules());
 }
 
-std::string common_chart(const char* rel) { return corpus::root() + "/common/" + rel; }
-
 }  // namespace
 
 namespace {
@@ -648,6 +649,21 @@ bool lane_covers_pad(const Song& song, const DrumLane& lane, NoteColor pad) {
             if (n.colortype == pad) return true;
     }
     return false;
+}
+
+// With Note Shuffle on, a lane lights every pad its notes land on (D254;
+// light_drum_lanes in parse/song.cpp). So each pad colour is lit exactly when
+// a chord under the lane in `song` holds it, read from the song's own chords,
+// and the lit pads are in red-to-green order with each colour once.
+void check_lane_lights_its_pads(const Song& song, const DrumLane& lane) {
+    for (const NoteColor pad :
+         {NoteColor::Red, NoteColor::Yellow, NoteColor::Blue, NoteColor::Green}) {
+        const bool lit = std::find(lane.pads.begin(), lane.pads.end(), pad) != lane.pads.end();
+        CHECK_MESSAGE(lit == lane_covers_pad(song, lane, pad),
+                      "pad " << static_cast<int>(pad) << " of the lane at " << lane.start_tick);
+    }
+    CHECK(std::is_sorted(lane.pads.begin(), lane.pads.end()));
+    CHECK(std::adjacent_find(lane.pads.begin(), lane.pads.end()) == lane.pads.end());
 }
 
 }  // namespace
@@ -871,45 +887,40 @@ TEST_CASE(".chart: a lane shows on each difficulty whose section holds it") {
 }
 
 TEST_CASE("drum lanes take their pads from the shuffled notes with Note Shuffle on") {
-    // Each chart is read with Note Shuffle off and on. The lanes sit on the
-    // same ticks either way. Their pads follow the shuffled notes, because
-    // the game's lane holds the notes the shuffle recolours (D112's
-    // 2026-10-17 correction), and with Note Shuffle on a lane lights every
-    // pad its notes land on (D254), so some lanes light other pads. The
-    // shuffled pads are pinned from one run of the code.
-    constexpr NoteColor R = NoteColor::Red, Y = NoteColor::Yellow, B = NoteColor::Blue,
-                        G = NoteColor::Green;
-    struct Want {
-        const char* file;
-        std::vector<Pads> shuffled;  // one per lane, in lane order
-    };
-    const Want wants[] = {
-        // Eight single lanes, all red unshuffled.
-        {"Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart",
-         {{R, Y, G}, {B, G}, {Y, B}, {B, G}, {B, G}, {B, G}, {R, Y, B, G}, {R, Y, G}}},
-        // One double lane, yellow and green unshuffled.
-        {"Summer Blast _25 Setlist/Tier 4/Rush - YYZ/notes.mid", {{B, G}}},
-    };
-    for (const Want& w : wants) {
-        CAPTURE(w.file);
-        const std::string path = common_chart(w.file);
+    // Every corpus chart is read with Note Shuffle off and on. The lanes sit
+    // on the same ticks either way, because the game's lane holds the notes
+    // the shuffle recolours (D112's 2026-10-17 correction). With the shuffle
+    // on, each lane's pads are those of the shuffled notes under it, taken
+    // from the shuffled song's own chords (check_lane_lights_its_pads).
+    size_t lanes = 0;
+    for (const std::string& path : corpus_sweep()) {
+        CAPTURE(path);
         const Song plain = load_songpath(path, ChartReading{});
-        const Song shuffled =
-            load_songpath(path, ChartReading{Difficulty::Expert, true, true, /*noteshuffle=*/true},
-                          core::default_rules());
-        REQUIRE(plain.drum_lanes.size() == w.shuffled.size());
-        REQUIRE(shuffled.drum_lanes.size() == plain.drum_lanes.size());
-        bool differs = false;
+        std::optional<Song> shuffled;
+        try {
+            shuffled = load_songpath(
+                path, ChartReading{Difficulty::Expert, true, true, /*noteshuffle=*/true},
+                core::default_rules());
+        } catch (const KindedError& e) {
+            // A chart the game freezes on has no shuffled song to compare
+            // (the freeze test below); any other error fails here.
+            REQUIRE(e.kind() == ErrorKind::NoteShuffleFreezes);
+            continue;
+        }
+        REQUIRE(shuffled->drum_lanes.size() == plain.drum_lanes.size());
         for (size_t i = 0; i < plain.drum_lanes.size(); ++i) {
             CAPTURE(i);
-            CHECK(shuffled.drum_lanes[i].start_tick == plain.drum_lanes[i].start_tick);
-            CHECK(shuffled.drum_lanes[i].end_tick == plain.drum_lanes[i].end_tick);
-            CHECK(shuffled.drum_lanes[i].double_lane == plain.drum_lanes[i].double_lane);
-            CHECK(shuffled.drum_lanes[i].pads == w.shuffled[i]);
-            if (shuffled.drum_lanes[i].pads != plain.drum_lanes[i].pads) differs = true;
+            const DrumLane& lane = shuffled->drum_lanes[i];
+            CHECK(lane.start_tick == plain.drum_lanes[i].start_tick);
+            CHECK(lane.end_tick == plain.drum_lanes[i].end_tick);
+            CHECK(lane.double_lane == plain.drum_lanes[i].double_lane);
+            check_lane_lights_its_pads(*shuffled, lane);
         }
-        CHECK(differs);
+        lanes += shuffled->drum_lanes.size();
     }
+    // The lane-line test above finds lanes in both kinds of corpus file, so
+    // this walk checks some.
+    CHECK(lanes > 0);
 }
 
 TEST_CASE(".chart: with Note Shuffle off, a lane over several pads keeps the game's pads") {
@@ -927,31 +938,42 @@ TEST_CASE(".chart: with Note Shuffle off, a lane over several pads keeps the gam
 }
 
 TEST_CASE(".chart: with Note Shuffle on, a single lane over a red roll lights every pad") {
-    // A red snare roll under one single lane, as in the user's chart Glide.
-    // Note Shuffle spreads the roll over several pads, and the lane lights
-    // each of them (D254). The pads are pinned from one run of the code.
+    // A red snare roll under one single lane. Note Shuffle spreads the roll
+    // over other pads, and the lane lights each pad the shuffled notes under
+    // it land on (D254), not only the first.
     std::string lines = "  0 = S 65 768\n";
     for (int64_t tick = 0; tick < 768; tick += 48) lines += testchart::line(tick, "N 1 0");
     const Song song = lane_chart(lines, /*pro=*/true, /*noteshuffle=*/true);
     REQUIRE(song.drum_lanes.size() == 1);
-    CHECK(song.drum_lanes[0].pads == Pads{NoteColor::Red, NoteColor::Yellow, NoteColor::Blue});
+    const DrumLane& lane = song.drum_lanes[0];
+    // The shuffle moved some of the roll off red, so a lane showing only its
+    // first pad fails below.
+    const bool spread = lane_covers_pad(song, lane, NoteColor::Yellow) ||
+                        lane_covers_pad(song, lane, NoteColor::Blue) ||
+                        lane_covers_pad(song, lane, NoteColor::Green);
+    REQUIRE(spread);
+    check_lane_lights_its_pads(song, lane);
 }
 
 TEST_CASE("Song::note_count: the chart's note total under each 2x Bass setting") {
     // Tick 0: a kick, a 2x kick on the same tick, and a red. Tick 192: a lone
     // 2x kick. Tick 384: a yellow. Tick 576: a 2x kick written before a kick
-    // on the same tick. The two kicks on one tick merge into one 2x kick
-    // (D105), so 2x Bass off removes all three kicks, and on keeps one per
-    // tick.
+    // on the same tick.
     const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
         "ExpertDrums",
         "  0 = N 0 0\n  0 = N 32 0\n  0 = N 1 0\n"
         "  192 = N 32 0\n"
         "  384 = N 2 0\n"
         "  576 = N 32 0\n  576 = N 0 0\n"));
-    CHECK(load_songbytes_chart(data, ChartReading{}).note_count() == 5);
+    // Kicks on one tick merge into one kick that keeps the 2x mark (NL-29),
+    // so ticks 0, 192 and 576 each hold one 2x kick.
+    const int kick_ticks = 3;
+    // The red at tick 0 and the yellow at tick 384.
+    const int pad_notes = 2;
+    CHECK(load_songbytes_chart(data, ChartReading{}).note_count() == kick_ticks + pad_notes);
+    // 2x Bass off removes every 2x kick (NL-27), and each merged kick is one.
     CHECK(load_songbytes_chart(data, ChartReading{Difficulty::Expert, true, /*bass2x=*/false})
-              .note_count() == 2);
+              .note_count() == pad_notes);
     // A chart with no notes counts none.
     CHECK(Song(192).note_count() == 0);
 }
@@ -1130,25 +1152,57 @@ TEST_CASE("mid: kick velocity is read as ghost/accent, like a pad's") {
     }
 }
 
-TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
-    // A real FC on Hydra's own path scored 1,142,235 on this chart. It holds 36
-    // velocity-1 kicks and no accents.
+TEST_CASE("mid: Won't Get Fooled Again (O) reads each kick's velocity as its dynamic") {
+    // The real chart's kicks, read straight from its drum track's note-ons,
+    // against the parser's kicks, tick by tick.
     const std::string path =
         corpus::testdata_root() + "/midi/wgfa_onyxite/notes.mid";
     Song song = load_songpath(path, ChartReading{Difficulty::Expert});
     REQUIRE(!song.is_empty());
+    // The dynamics tag comes before every marked note, so every kick's
+    // velocity counts (Song::dynamics_late_tag_tick).
+    REQUIRE(song.dynamics_enabled);
+    REQUIRE(!song.dynamics_late_tag_tick.has_value());
 
-    int ghost = 0, accent = 0, kicks = 0;
+    // Each tick's kick and 2x kick note-on velocities, from the file.
+    const DifficultyChartCodes& codes = difficulty_chart_codes(Difficulty::Expert);
+    const MidiFile file = MidiFile::from_file(path);
+    const MidiTrack* track = file.drums_track();
+    REQUIRE(track != nullptr);
+    std::map<int64_t, std::vector<int>> kick_velocities;
+    int64_t tick = 0;
+    for (const Message& m : track->messages) {
+        tick += m.time;
+        if (m.is_note_on() && (m.note == codes.kick_pitch || m.note == codes.kick2x_pitch()))
+            kick_velocities[tick].push_back(m.velocity);
+    }
+
+    // Clone Hero reads a kick's velocity as a pad's: 127 an accent, 1 a
+    // ghost (NL-10). Kicks on one tick merge with both marks (NL-29), and a
+    // note with both plays as an accent (NL-16). The NL rules are on
+    // docs/clone-hero/02-note-list.md.
+    int ghosts = 0;
     for (const SongTimestamp& ts : song.sequence) {
         const auto& kick = ts.chord.at(NoteColor::Kick);
         if (!kick.has_value()) continue;
-        ++kicks;
-        if (kick->dynamictype == NoteDynamicType::Ghost) ++ghost;
-        if (kick->dynamictype == NoteDynamicType::Accent) ++accent;
+        const int64_t at = ts.timecode.ticks();
+        CAPTURE(at);
+        const auto it = kick_velocities.find(at);
+        REQUIRE(it != kick_velocities.end());
+        const std::vector<int>& vels = it->second;
+        const bool accent = std::find(vels.begin(), vels.end(), 127) != vels.end();
+        const bool ghost = std::find(vels.begin(), vels.end(), 1) != vels.end();
+        const NoteDynamicType want = accent  ? NoteDynamicType::Accent
+                                     : ghost ? NoteDynamicType::Ghost
+                                             : NoteDynamicType::Normal;
+        CHECK(kick->dynamictype == want);
+        if (want == NoteDynamicType::Ghost) ++ghosts;
+        kick_velocities.erase(it);
     }
-    CHECK(kicks > 36);
-    CHECK(ghost == 36);
-    CHECK(accent == 0);
+    // Every kick in the file is a kick in the song.
+    CHECK(kick_velocities.empty());
+    // The chart holds ghost kicks, so a ghost kick the parser loses fails above.
+    CHECK(ghosts > 0);
 
     // Every chord code still round-trips, ghost kicks included. The fill check
     // is skipped: this chart has a fill that starts on its own last note, so
@@ -1157,15 +1211,39 @@ TEST_CASE("mid: Won't Get Fooled Again (O) has 36 ghost kicks") {
 }
 
 TEST_CASE("mid: the marker pitch table is the one list the parser reads") {
-    // The solo, flam, tom, SP and fill markers.
-    for (int pitch : {103, 109, 110, 111, 112, 116, 120})
-        CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
-    // The single and double drum lanes (Song::drum_lanes).
-    for (int pitch : {126, 127}) CHECK_MESSAGE(is_midi_marker_pitch(pitch), pitch);
-    // Expert's 2x kick (95), kick (96) and Green (100), and the pitches on
-    // either side of the solo and fill markers.
-    for (int pitch : {95, 96, 100, 102, 104, 121})
-        CHECK_MESSAGE(!is_midi_marker_pitch(pitch), pitch);
+    // Expert's pads, from its kick pitch (difficulty_chart_codes): yellow,
+    // blue and green at tick 0, then a red alone at 480 and at 960. Each
+    // marker has a note under it to act on: a tom marker a cymbal pad, the
+    // flam marker a lone note, and the solo, SP, fill and lane markers
+    // (NL-02 on docs/clone-hero/02-note-list.md) any note.
+    const int kick = difficulty_chart_codes(Difficulty::Expert).kick_pitch;
+    const auto pad = [kick](int above_kick) { return static_cast<uint8_t>(kick + above_kick); };
+    const auto chart = [&pad](std::optional<int> marker) {
+        std::vector<std::vector<uint8_t>> ev;
+        ev.push_back(testmidi::track_name("PART DRUMS"));
+        if (marker) ev.push_back(testmidi::note_on(static_cast<uint8_t>(*marker), 100));
+        ev.push_back(testmidi::note_on(pad(2), 100));
+        ev.push_back(testmidi::note_on(pad(3), 100));
+        ev.push_back(testmidi::note_on(pad(4), 100));
+        ev.push_back(testmidi::after(480, testmidi::note_on(pad(1), 100)));
+        ev.push_back(testmidi::after(480, testmidi::note_on(pad(1), 100)));
+        if (marker) ev.push_back(testmidi::note_off(static_cast<uint8_t>(*marker)));
+        ev.push_back(testmidi::end_of_track());
+        return load_songbytes_mid(testmidi::smf_drums(testmidi::concat(ev)),
+                                  ChartReading{Difficulty::Expert, true, true});
+    };
+    const uint64_t plain = digest::song_digest(chart(std::nullopt));
+
+    // No marker sits below the lowest one and no pad at or above it
+    // (song.cpp's static_asserts beside the table), so from there up a pitch
+    // changes the song exactly when the table holds it.
+    int lowest = 0;
+    while (lowest <= 127 && !is_midi_marker_pitch(lowest)) ++lowest;
+    REQUIRE(lowest <= 127);
+    for (int pitch = lowest; pitch <= 127; ++pitch) {
+        const bool read = digest::song_digest(chart(pitch)) != plain;
+        CHECK_MESSAGE(read == is_midi_marker_pitch(pitch), "pitch " << pitch);
+    }
 }
 
 TEST_CASE("chart_files: loose-folder notes names match in any case") {
@@ -1480,20 +1558,36 @@ TEST_CASE("Note Shuffle switch: the Preview's song key differs when only the swi
 }
 
 TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle") {
+    // The pad rows count the notes of the song read shuffled, and the kick
+    // rows the notes of the song read as written with its 2x kicks kept, each
+    // counted here from the song's own chords. Which row a note belongs in is
+    // app::dynamics_row_for's rule.
+    using Rows = std::array<app::DynamicsCounts, static_cast<size_t>(app::DynamicsRow::Count)>;
+    const auto rows_from_chords = [](const Song& song) {
+        Rows rows{};
+        for (const SongTimestamp& ts : song.sequence) {
+            for (const ChordNote& note : ts.chord.note_list()) {
+                app::DynamicsCounts& c = rows[static_cast<size_t>(app::dynamics_row_for(note))];
+                if (note.dynamictype == NoteDynamicType::Ghost) ++c.ghost;
+                else if (note.dynamictype == NoteDynamicType::Accent) ++c.accent;
+                else ++c.normal;
+            }
+        }
+        return rows;
+    };
     const std::string a2 = "NS A2 tick scale mid960/notes.mid";
     const std::string path = kShuffleSongs + a2;
+    const Rows kicks =
+        rows_from_chords(load_shuffle_song(a2, true, app::kDynamicsParseBass2x, false));
     for (const bool bass2x : {true, false}) {
         CAPTURE(bass2x);
         const app::DynamicsBreakdown bd =
             app::dynamics_for_settings(path, {Difficulty::Expert, true, bass2x, true}, nullptr);
-        const app::DynamicsBreakdown pads =
-            app::count_dynamics(load_shuffle_song(a2, true, bass2x, true));
-        const app::DynamicsBreakdown kicks =
-            app::count_dynamics(app::load_dynamics_song(path, ChartReading{}));
+        const Rows pads = rows_from_chords(load_shuffle_song(a2, true, bass2x, true));
         for (size_t i = 0; i < bd.rows.size(); ++i) {
             CAPTURE(i);
             const bool pad = app::is_pad_row(static_cast<app::DynamicsRow>(i));
-            CHECK(bd.rows[i] == (pad ? pads.rows[i] : kicks.rows[i]));
+            CHECK(bd.rows[i] == (pad ? pads[i] : kicks[i]));
         }
     }
 }
@@ -1501,82 +1595,208 @@ TEST_CASE("Note Shuffle switch: the Dynamics pads follow the analysis's shuffle"
 // ---- the crafted edge files (testdata/parse_edge, speedups task P1) ----
 //
 // gen_edge.py writes 41 small charts, each one odd or broken in its own way,
-// and says what each one tests. The two expected files were first captured
-// from the readers as they stood before P1 rewrote them, with hydra_bench
-// --parse (one line per file: its name relative to the folder,
-// tests/song_digest.h's hash in hex, and for a file that failed "FAIL " and
-// its exception's type and message). Later changes to the readers or the
-// digest re-pinned some lines; git log on expected_expert.tsv and
-// expected_hard.tsv says which and why. This test reads every file again and
-// must get each line's pinned hash and failure text.
+// with a comment above each saying what it tests. This test reads every file
+// listed in list.txt under two settings and checks what that comment says,
+// against the well-formed file the others vary (c01_base.chart for .chart,
+// m01_base.mid for .mid): the file parses to the same song as the base, or to
+// a different one, or fails with the error the comment names. No saved digest
+// or saved failure text is read. A failure's type comes from the reader that
+// throws it, and files that must fail the same way are compared with each
+// other.
 
 namespace {
 
 std::string edge_dir() { return corpus::testdata_root() + "/parse_edge/"; }
 
-// One expected line, split at its tabs. The expected files leave out the parse
-// time hydra_bench writes after the name.
-struct EdgeExpect {
-    std::string file;
+// What reading one file at one setting gave: its digest, and the failure text
+// (the exception's type, then its message) when it did not parse.
+struct EdgeResult {
     uint64_t hash = 0;
-    std::string fail;  // empty when the file parsed
+    std::string fail;
+    bool parsed() const { return fail.empty(); }
 };
 
-std::vector<EdgeExpect> read_edge_expect(const std::string& name) {
-    std::vector<EdgeExpect> out;
-    std::ifstream in(edge_dir() + name, std::ios::binary);
-    std::string line;
-    while (std::getline(in, line)) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-        if (line.empty()) continue;
-        const size_t t1 = line.find('\t');
-        const size_t t2 = line.find('\t', t1 + 1);
-        EdgeExpect e;
-        e.file = line.substr(0, t1);
-        e.hash = std::stoull(line.substr(t1 + 1, t2 - t1 - 1), nullptr, 16);
-        if (t2 != std::string::npos) e.fail = line.substr(t2 + 1);
-        out.push_back(std::move(e));
-    }
-    return out;
+EdgeResult read_edge(const std::string& file, const app::BatchRun& run) {
+    EdgeResult r;
+    r.hash = digest::chart_parse_hash(edge_dir() + file, run.settings, &r.fail);
+    return r;
 }
 
-// The settings an expected file was captured under.
-app::BatchRun edge_run(const char* difficulty, bool pro, bool bass2x) {
-    return digest::digest_settings(difficulty, pro, bass2x).batch_run();
+// The failure text is the throwing exception's type name, then ": ".
+template <class E>
+bool fails_with(const EdgeResult& r) {
+    const std::string type = std::string(typeid(E).name()) + ": ";
+    return !r.parsed() && r.fail.compare(0, type.size(), type) == 0;
 }
 
-void check_edge_files(const std::string& expected_name, const app::BatchRun& run) {
-    const std::vector<EdgeExpect> expect = read_edge_expect(expected_name);
-    // Every file the generator lists has its line, in the list's order.
+bool fails_in(const EdgeResult& r, const char* what) {
+    return !r.parsed() && r.fail.find(what) != std::string::npos;
+}
+
+// The file names list.txt holds, in order.
+std::vector<std::string> edge_listed() {
     std::vector<std::string> listed;
-    {
-        std::ifstream list(edge_dir() + "list.txt", std::ios::binary);
-        std::string name;
-        while (std::getline(list, name)) {
-            if (!name.empty() && name.back() == '\r') name.pop_back();
-            if (!name.empty()) listed.push_back(name);
-        }
+    std::ifstream list(edge_dir() + "list.txt", std::ios::binary);
+    std::string name;
+    while (std::getline(list, name)) {
+        if (!name.empty() && name.back() == '\r') name.pop_back();
+        if (!name.empty()) listed.push_back(name);
     }
-    REQUIRE(listed.size() == expect.size());
+    return listed;
+}
 
-    for (size_t i = 0; i < expect.size(); ++i) {
-        const EdgeExpect& e = expect[i];
-        CHECK_MESSAGE(e.file == listed[i], "line " << i + 1 << " of " << expected_name);
-        std::string fail;
-        const uint64_t got = digest::chart_parse_hash(edge_dir() + e.file, run.settings, &fail);
-        if (!fail.empty()) fail = "FAIL " + fail;
-        CHECK_MESSAGE(fail == e.fail, e.file << " (" << expected_name << ") failed differently");
-        CHECK_MESSAGE(got == e.hash, e.file << " (" << expected_name << ") parses differently");
+// One setting's check of every listed file. `expert` is true for the Expert
+// run. Each check names its file; a listed file no check names fails the
+// closing count.
+void check_edge_files(const app::BatchRun& run, bool expert) {
+    const std::vector<std::string> listed = edge_listed();
+    REQUIRE(!listed.empty());
+    std::map<std::string, EdgeResult> got;
+    for (const std::string& f : listed) got[f] = read_edge(f, run);
+    std::set<std::string> named;
+
+    // File names are std::string so doctest prints the name, not an address.
+    auto of = [&](const std::string& f) -> const EdgeResult& {
+        const auto it = got.find(f);
+        REQUIRE_MESSAGE(it != got.end(), f << " is not in list.txt");
+        named.insert(f);
+        return it->second;
+    };
+    const EdgeResult chart_base = of("c01_base.chart");
+    const EdgeResult mid_base = of("m01_base.mid");
+    REQUIRE_MESSAGE(chart_base.parsed(), chart_base.fail);
+    REQUIRE_MESSAGE(mid_base.parsed(), mid_base.fail);
+
+    auto same_as = [&](const std::string& f, const EdgeResult& base) {
+        const EdgeResult& r = of(f);
+        CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
+        CHECK_MESSAGE(r.hash == base.hash, f << " parses to a different song than its base");
+    };
+    auto differs_from = [&](const std::string& f, const EdgeResult& base) {
+        const EdgeResult& r = of(f);
+        CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
+        CHECK_MESSAGE(r.hash != base.hash, f << " parses to the same song as its base");
+    };
+    auto parses = [&](const std::string& f) {
+        const EdgeResult& r = of(f);
+        CHECK_MESSAGE(r.parsed(), f << " failed: " << r.fail);
+    };
+    auto same_failure = [&](const std::string& a, const std::string& b) {
+        CHECK_MESSAGE(of(a).fail == of(b).fail, a << " and " << b << " fail differently");
+    };
+    auto other_failure = [&](const std::string& a, const std::string& b) {
+        CHECK_MESSAGE(of(a).fail != of(b).fail, a << " and " << b << " fail the same way");
+    };
+
+    // A bad or overflowing number refuses the chart wherever it sits, in a
+    // section the reader skips or not. std::stoi and std::stoll name which
+    // call read it: a note value or meter is an int, a tick or length is 64
+    // bits.
+    CHECK(fails_with<std::invalid_argument>(of("c02_bad_number_skipped.chart")));
+    CHECK(fails_in(of("c02_bad_number_skipped.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c03_overflow_skipped.chart")));
+    CHECK(fails_in(of("c03_overflow_skipped.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c04_overflow_length_skipped.chart")));
+    CHECK(fails_in(of("c04_overflow_length_skipped.chart"), "stoll"));
+    CHECK(fails_with<std::invalid_argument>(of("c05_bad_number_drums.chart")));
+    CHECK(fails_in(of("c05_bad_number_drums.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c06_overflow_drums.chart")));
+    CHECK(fails_in(of("c06_overflow_drums.chart"), "stoll"));
+    CHECK(fails_with<std::out_of_range>(of("c07_int_overflow_drums.chart")));
+    CHECK(fails_in(of("c07_int_overflow_drums.chart"), "stoi"));
+    CHECK(fails_with<std::invalid_argument>(of("c08_bad_number_events.chart")));
+    CHECK(fails_in(of("c08_bad_number_events.chart"), "stoll"));
+    CHECK(fails_with<std::out_of_range>(of("c09_overflow_events.chart")));
+    CHECK(fails_in(of("c09_overflow_events.chart"), "stoi"));
+    CHECK(fails_with<std::invalid_argument>(of("c10_bad_number_song.chart")));
+    CHECK(fails_in(of("c10_bad_number_song.chart"), "stoi"));
+    CHECK(fails_with<std::out_of_range>(of("c11_overflow_song.chart")));
+    CHECK(fails_in(of("c11_overflow_song.chart"), "stoll"));
+    // The same bad value fails the same way whichever section it is in.
+    same_failure("c02_bad_number_skipped.chart", "c05_bad_number_drums.chart");
+    same_failure("c03_overflow_skipped.chart", "c07_int_overflow_drums.chart");
+    same_failure("c04_overflow_length_skipped.chart", "c06_overflow_drums.chart");
+
+    // Keys that stoll reads whole are ticks, so Expert gains notes. The Hard
+    // section is the base's.
+    if (expert) differs_from("c12_odd_keys.chart", chart_base);
+    else same_as("c12_odd_keys.chart", chart_base);
+    // Number spellings that parse change both difficulties and the sync track.
+    differs_from("c13_odd_numbers.chart", chart_base);
+    // The later copy of every section replaces the earlier one.
+    differs_from("c14_duplicate_sections.chart", chart_base);
+    // The Expert drum section is never closed: the file ends inside it, and
+    // Expert has no notes the reader keeps. Hard is the base's.
+    if (expert) CHECK(fails_with<NoNotesError>(of("c15_unterminated_drums.chart")));
+    else same_as("c15_unterminated_drums.chart", chart_base);
+    // An unclosed second copy leaves the first copy standing.
+    same_as("c16_unterminated_second_copy.chart", chart_base);
+    // A section left open swallows the next header: Expert ends with no notes
+    // the same way, and Hard reads a different set of lines.
+    if (expert) {
+        CHECK(fails_with<NoNotesError>(of("c17_header_inside_section.chart")));
+        same_failure("c17_header_inside_section.chart", "c15_unterminated_drums.chart");
+    } else {
+        differs_from("c17_header_inside_section.chart", chart_base);
     }
+    parses("c18_unsorted_ticks.chart");
+    // CRLF line ends, a stray CR, tabs and trailing spaces change nothing.
+    same_as("c19_crlf.chart", chart_base);
+    differs_from("c20_disco.chart", chart_base);
+
+    // A chart without a Resolution is refused as a chart file, with or
+    // without a [Song] section, and the same way; a Resolution with no digits
+    // is refused differently.
+    CHECK(fails_with<ChartFileError>(of("c21_missing_song.chart")));
+    CHECK(fails_with<ChartFileError>(of("c22_missing_resolution.chart")));
+    same_failure("c21_missing_song.chart", "c22_missing_resolution.chart");
+    differs_from("c23_resolution_junk.chart", chart_base);
+    CHECK(fails_with<ChartFileError>(of("c24_bad_resolution.chart")));
+    other_failure("c24_bad_resolution.chart", "c22_missing_resolution.chart");
+    CHECK(fails_with<ChartFileError>(of("c25_bad_header.chart")));
+    differs_from("c26_header_junk.chart", chart_base);
+    differs_from("c27_empty_values.chart", chart_base);
+    // Tempo and meter lines in the Expert drum section never run there, but
+    // the notes and phrase around them are Expert's. Hard is the base's.
+    if (expert) differs_from("c28_timing_in_drums.chart", chart_base);
+    else same_as("c28_timing_in_drums.chart", chart_base);
+
+    // .mid files. A second drum track is ignored, and so is an unknown chunk.
+    same_as("m02_two_drum_tracks.mid", mid_base);
+    differs_from("m03_late_names.mid", mid_base);
+    // A meta over the size cap fails the file, even in a track the song
+    // parser never reads.
+    CHECK(fails_with<MidiError>(of("m04_oversize_meta_other.mid")));
+    CHECK(fails_with<MidiError>(of("m05_oversize_meta_drums.mid")));
+    same_failure("m04_oversize_meta_other.mid", "m05_oversize_meta_drums.mid");
+    // Format 0 holds one track, and the reader takes no instrument from the
+    // first track (D253, midi.h), so neither difficulty has drum notes. Expert
+    // fails as the unclosed chart section does.
+    CHECK(fails_with<NoNotesError>(of("m06_format0.mid")));
+    if (expert) same_failure("m06_format0.mid", "c15_unterminated_drums.chart");
+    CHECK(fails_with<MidiError>(of("m07_smpte.mid")));
+    other_failure("m07_smpte.mid", "m04_oversize_meta_other.mid");
+    differs_from("m08_truncated.mid", mid_base);
+    differs_from("m09_running_status_after_meta.mid", mid_base);
+    same_as("m10_unknown_chunk.mid", mid_base);
+    // A status byte the reader cannot size stops the drum track there:
+    // Expert loses the notes after it, and Hard's come before it.
+    if (expert) differs_from("m11_bad_status.mid", mid_base);
+    else same_as("m11_bad_status.mid", mid_base);
+    CHECK(fails_with<ChartFileError>(of("m12_zero_tempo.mid")));
+    differs_from("m13_clipped_and_short_metas.mid", mid_base);
+
+    // Every listed file has a check above.
+    for (const std::string& f : listed) CHECK_MESSAGE(named.count(f) == 1, f << " has no check");
 }
 
 }  // namespace
 
-TEST_CASE("the crafted edge files parse to their pinned lines") {
+TEST_CASE("the crafted edge files parse as each one's generator comment says") {
     SUBCASE("Expert, Pro Drums, 2x Bass") {
-        check_edge_files("expected_expert.tsv", edge_run("Expert", true, true));
+        check_edge_files(digest::digest_settings("Expert", true, true).batch_run(), true);
     }
     SUBCASE("Hard, Pro Drums off, 2x Bass off") {
-        check_edge_files("expected_hard.tsv", edge_run("Hard", false, false));
+        check_edge_files(digest::digest_settings("Hard", false, false).batch_run(), false);
     }
 }
