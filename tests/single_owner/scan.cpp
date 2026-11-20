@@ -269,11 +269,11 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
     const std::vector<CompiledRule> compiled = compile_rules();
     const std::vector<ListedLine> listed = listed_lines(rules(), known_copies());
     RowScan scan = start_row_scan(compiled, listed);
-    int files = 0;
+    std::vector<std::string> scanned;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
             const std::optional<codelex::Lang> lang = walk_language(rel);
             if (!lang) return;
-            ++files;
+            scanned.push_back(rel);
             std::ifstream in(path);
             scan_rows(scan, rel, *lang == codelex::Lang::Python, in);
     });
@@ -295,7 +295,23 @@ TEST_CASE("single-owner rules hold across src/, tools/ and tests/") {
             CHECK(fs::is_regular_file(root / fs::u8path(s)));
         }
     }
-    CHECK(files > 100);  // the scan found the sources
+    // The scan read every file git lists under each walked folder that is on
+    // disk and that walk_language reads, and no other, so a folder or file the
+    // walk dropped names itself here.
+    std::set<std::string> expected;
+    for (const char* sub : sourcetree::kWalkedFolders)
+        for (const std::string& rel : sourcetree::git_listed(root, sub))
+            if (walk_language(rel) && fs::is_regular_file(root / fs::u8path(rel))) expected.insert(rel);
+    const std::set<std::string> read_once(scanned.begin(), scanned.end());
+    CHECK(read_once.size() == scanned.size());  // each file read once
+    for (const std::string& rel : expected) {
+        INFO("the scan never read " << rel);
+        CHECK(read_once.count(rel) == 1);
+    }
+    for (const std::string& rel : read_once) {
+        INFO("the scan read a file git does not list under a walked folder: " << rel);
+        CHECK(expected.count(rel) == 1);
+    }
     check_scan(scan.problems, listed, scan.used);
 }
 
@@ -493,34 +509,42 @@ TEST_CASE("single-owner: the walk reads committed and new files, never ignored o
     for (const std::string& p : scan.problems) seen << "flagged " << p << "\n";
     INFO(seen.str());
     CHECK(visited ==std::vector<std::string>{"tools/kept.py", "tools/new.py"});
-    CHECK(scan.problems ==
-          std::vector<std::string>{
-              "tools/kept.py:1: answers \"Is this a made-up question?\", which belongs to made_up in "
-              "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)",
-              "tools/new.py:1: answers \"Is this a made-up question?\", which belongs to made_up in "
-              "src/a.cpp: x = made_up(3) (rule: rules/made_up.json)"});
+    // Each visited file's answer is flagged once, in the scan's own words
+    // (answers_message), at its file and line.
+    const std::string answer = hydra::trim(kWalkAnswer);
+    CHECK(scan.problems == std::vector<std::string>{answers_message(r, "tools/kept.py:1", answer),
+                                                    answers_message(r, "tools/new.py:1", answer)});
     testtemp::remove_dir(dir);
 
     // A folder outside any git repo, and a repo with no files to read, fail
-    // loudly, naming the folder.
+    // loudly, naming the folder. The walk passes on its lister's words: git's
+    // own failure from git_listed outside a repo, and source_files' refusal
+    // of an empty list in a repo where git_listed itself succeeds.
     const std::string plain = testtemp::temp_dir("single_owner_walk_plain");
     const fs::path plain_root = fs::path(hydra::os_path(plain));
     const auto walk_error = [&] {
-        std::string error;
-        try {
-            sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {});
-        } catch (const std::exception& e) {
-            error = e.what();
-        }
-        return error;
+        return thrown_message(
+            [&] { sourcetree::for_each_source_file(plain_root, [](const fs::path&, const std::string&) {}); });
     };
     const std::string outside = walk_error();
     INFO(outside);
-    CHECK(outside.rfind("the source walk could not ask git for the files in " + plain_root.u8string() + ": ",
-                        0) == 0);
+    CHECK_FALSE(outside.empty());
+    CHECK(outside ==
+          thrown_message([&] { (void)sourcetree::git_listed(plain_root, sourcetree::kWalkedFolders[0]); }));
+    CHECK(names_all(outside, {plain_root.u8string()}));
     precheck_fixture::fixture_git(plain, {"init", "-q", "-b", "main"});
-    CHECK(walk_error() ==
-          "the source walk found no files git knows under the walked folders in " + plain_root.u8string());
+    std::vector<std::string> listed_in_empty = {"not called"};
+    const std::string lister_error = thrown_message(
+        [&] { listed_in_empty = sourcetree::git_listed(plain_root, sourcetree::kWalkedFolders[0]); });
+    INFO(lister_error);
+    CHECK(lister_error.empty());
+    CHECK(listed_in_empty.empty());
+    const std::string no_files = walk_error();
+    INFO(no_files);
+    CHECK_FALSE(no_files.empty());
+    CHECK(no_files != outside);
+    CHECK(no_files == thrown_message([&] { (void)sourcetree::source_files(plain_root); }));
+    CHECK(names_all(no_files, {plain_root.u8string()}));
     testtemp::remove_dir(plain);
 }
 
