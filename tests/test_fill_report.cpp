@@ -1,16 +1,19 @@
 // Tests for app/fill_report: the CH 1.0 vs CH 1.1 join (collect_fill_rows),
-// the tally, and the comparison page (build_fill_html). Pins the status
-// strings as raw literals -- tally_fill_rows and the page's chip-color map
-// both compare them.
+// the tally, and the comparison page (build_fill_html).
 //
-// Every case here uses one in-memory store holding chart hashes at different
-// scores under each fill rule. Each result carries its rule in its profile
-// (docs/adr/0010), and the join reads the 1.0 results and the 1.1 results
-// from that one store.
+// Every case here uses one in-memory store holding results under each fill
+// rule. Each result carries its rule in its profile (docs/adr/0010), and the
+// join reads the 1.0 results and the 1.1 results from that one store. The
+// cases that read scored_charts file real corpus analyses under both rules,
+// listed as the library scan lists them; the rest file typed scores.
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <filesystem>
 #include <functional>
+#include <optional>
+#include <regex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -19,6 +22,7 @@
 #include "app/analysis.h"
 #include "app/config.h"  // Settings::profile_with_fills
 #include "app/fill_report.h"
+#include "app/html_page.h"  // json_escape_into, html_escape, charts_search_hint
 #include "app/report.h"  // kNoChartLibrary
 #include "core/model.h"
 #include "corpus_util.h"
@@ -27,6 +31,7 @@
 #include "parse/song.h"
 #include "search/graph.h"  // fill_rule_name
 #include "store/record_store.h"
+#include "temp_util.h"  // temp_path, temp_dir, remove_dir
 
 using namespace hydra;
 using app::fill_report::FillCompareRow;
@@ -112,363 +117,355 @@ const FillCompareRow* find(const std::vector<FillCompareRow>& rows,
     return nullptr;
 }
 
-}  // namespace
 
-TEST_CASE("collect_fill_rows: delta sign and status literals") {
-    store::RecordStore store(":memory:");
+// ---- real corpus records ---------------------------------------------------
 
-    // 1.1 scores higher: the rare long-fill gain.
-    put_ch10(store, kBoth, 1000000, 3, "old-path-A");
-    put_ch11(store, kBoth, 1050000, 4, "new-path-A");
-
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 1);
-    const FillCompareRow& r = rows[0];
-
-    CHECK(r.old_score == 1000000);
-    CHECK(r.new_score == 1050000);
-    REQUIRE(r.delta.has_value());
-    CHECK(*r.delta == 50000);  // new - old
-    CHECK(r.status == "1.1 higher");
-
-    // Both sides' paths and act counts survive the join.
-    CHECK(r.old_path == "old-path-A");
-    CHECK(r.new_path == "new-path-A");
-    CHECK(r.old_acts == 3);
-    CHECK(r.new_acts == 4);
-    CHECK(r.notes == 1234);
+// The settings a corpus chart is analyzed under here: the fixture's settings
+// under `rule`, at depth 0 as testdm::sample_chart is analyzed.
+app::AnalysisSettings analysis_under(FillDeadlineRule rule) {
+    app::Settings s = testdm::settings();
+    s.legacy_fills = legacy_fills_for(rule);
+    app::AnalysisSettings a = s.to_analysis_settings();
+    a.depth_value = 0;
+    return a;
 }
 
-TEST_CASE("collect_fill_rows: 1.0 higher and same") {
+// The library row the scan writes for the corpus chart at `notespath`: its id
+// and fingerprint from corpus::scanned_entry, and its names from
+// app::read_chart_meta, the reader the scan names a chart with.
+store::ChartLibraryEntry scan_row(const std::string& notespath) {
+    store::ChartLibraryEntry e = corpus::scanned_entry(notespath);
+    const app::ChartMeta meta = app::read_chart_meta(notespath);
+    e.title = meta.title;
+    e.artist = meta.artist;
+    e.charter = meta.charter;
+    e.album = meta.album;
+    return e;
+}
+
+// One corpus chart as the scan lists it, analyzed under each fill rule.
+struct ScoredChart {
+    store::ChartLibraryEntry entry;
+    HydraRecord ch10;
+    HydraRecord ch11;
+};
+
+// The first three corpus charts with paths under 1.1
+// (corpus::charts_with_paths), each analyzed under 1.0 too. Throws, naming
+// the corpus, when fewer than three have paths, and naming the chart when one
+// fails or keeps no path under 1.0.
+const std::vector<ScoredChart>& scored_charts() {
+    static const std::vector<ScoredChart> charts = [] {
+        std::vector<corpus::ChartWithPaths> found =
+            corpus::charts_with_paths(analysis_under(FillDeadlineRule::Ch11), 3);
+        if (found.size() < 3)
+            throw std::runtime_error("fewer than three charts under " + corpus::root() +
+                                     " analyze to a path under 1.1");
+        std::vector<ScoredChart> out;
+        for (corpus::ChartWithPaths& f : found) {
+            ScoredChart c;
+            c.entry = scan_row(f.chart);
+            c.ch10 =
+                app::analyze_chart_file(f.chart, analysis_under(FillDeadlineRule::Ch10)).record;
+            if (c.ch10.paths.empty())
+                throw std::runtime_error(f.chart + " has a path under 1.1 and none under 1.0");
+            c.ch11 = std::move(f.result.record);
+            out.push_back(std::move(c));
+        }
+        return out;
+    }();
+    return charts;
+}
+
+// Files `record`, an analysis under `rule`, for chart `md5`.
+void file_under(store::RecordStore& store, FillDeadlineRule rule, const std::string& md5,
+                const HydraRecord& record) {
+    save(store, legacy_fills_for(rule), md5, record);
+}
+
+// Lists `c` alone as the store's library and files both its analyses.
+void file_both(store::RecordStore& store, const ScoredChart& c) {
+    store.rebuild_chart_library({c.entry});
+    file_under(store, FillDeadlineRule::Ch10, c.entry.md5, c.ch10);
+    file_under(store, FillDeadlineRule::Ch11, c.entry.md5, c.ch11);
+}
+
+// The status a chart scored under both rules carries: the sign of its 1.1
+// score minus its 1.0 score, in fill_report.h's words.
+std::string status_of_delta(int64_t delta) {
+    if (delta > 0) return app::fill_report::kStatusNewHigher;
+    if (delta < 0) return app::fill_report::kStatusOldHigher;
+    return app::fill_report::kStatusSame;
+}
+
+// One side of a row against the record the store holds for that side
+// (store::record_of is the save's own step from analysis to stored row).
+void check_side(const std::optional<int64_t>& score, const std::string& path,
+                const std::optional<int>& acts, const store::RecordRow& want) {
+    CHECK(score == want.summary().score);
+    CHECK(path == want.best_path_text());
+    CHECK(acts == want.summary().actcount);
+}
+
+// A side that holds no record: no score, path or act count.
+void check_empty_side(const std::optional<int64_t>& score, const std::string& path,
+                      const std::optional<int>& acts) {
+    CHECK_FALSE(score.has_value());
+    CHECK(path.empty());
+    CHECK_FALSE(acts.has_value());
+}
+
+// How many of `library`'s rows list chart `md5`.
+int copies_in(const std::vector<store::ChartLibraryEntry>& library, const std::string& md5) {
+    return static_cast<int>(
+        std::count_if(library.begin(), library.end(),
+                      [&](const store::ChartLibraryEntry& e) { return e.md5 == md5; }));
+}
+
+// A library holding the three scored charts in several folders, as a scan
+// finds it: scored chart i in i + 1 folders, each copy its notes file (and
+// song.ini, when it has one) in a scratch folder of its own, scanned by
+// app::discover_charts as the app scans a library. Each chart's copy count
+// differs, so a tally that counts one status in another's place is seen. The
+// first chart is filed under both rules, the second under 1.0 only and the
+// third under 1.1 only: batch runs under each rule that covered different
+// charts. Returns the scan's rows.
+std::vector<store::ChartLibraryEntry> file_copies(store::RecordStore& store) {
+    namespace fs = std::filesystem;
+    const std::vector<ScoredChart>& charts = scored_charts();
+    const std::string root = testtemp::temp_path("fill_copies", "");
+    testtemp::remove_dir(root);
+    testtemp::temp_dir("fill_copies");
+    for (size_t i = 0; i < charts.size(); ++i) {
+        const fs::path from = hydra::os_path(charts[i].entry.notespath);
+        const fs::path ini = from.parent_path() / "song.ini";
+        for (size_t k = 0; k <= i; ++k) {
+            const fs::path dir =
+                hydra::os_path(root) / ("c" + std::to_string(i) + "_" + std::to_string(k));
+            fs::create_directories(dir);
+            fs::copy_file(from, dir / from.filename());
+            if (fs::exists(ini)) fs::copy_file(ini, dir / "song.ini");
+        }
+    }
+    auto [library, errors] = app::discover_charts({root});
+    testtemp::remove_dir(root);
+    if (!errors.empty()) throw std::runtime_error("scratch library scan error: " + errors.front());
+    store.rebuild_chart_library(library);
+    file_under(store, FillDeadlineRule::Ch10, charts[0].entry.md5, charts[0].ch10);
+    file_under(store, FillDeadlineRule::Ch11, charts[0].entry.md5, charts[0].ch11);
+    file_under(store, FillDeadlineRule::Ch10, charts[1].entry.md5, charts[1].ch10);
+    file_under(store, FillDeadlineRule::Ch11, charts[2].entry.md5, charts[2].ch11);
+    return library;
+}
+
+// Each status's count against the library rows of the charts `rows` give that
+// status, and the total against every row the library holds.
+void check_fill_tally(const app::fill_report::FillCompareStats& s,
+                 const std::vector<FillCompareRow>& rows,
+                 const std::vector<store::ChartLibraryEntry>& library) {
+    auto rows_of = [&](const char* status) {
+        int n = 0;
+        for (const FillCompareRow& r : rows)
+            if (r.status == status) n += copies_in(library, r.hyhash);
+        return n;
+    };
+    CHECK(s.same == rows_of(app::fill_report::kStatusSame));
+    CHECK(s.ch10_higher == rows_of(app::fill_report::kStatusOldHigher));
+    CHECK(s.ch11_higher == rows_of(app::fill_report::kStatusNewHigher));
+    CHECK(s.only_old == rows_of(app::fill_report::kStatusOnlyOld));
+    CHECK(s.only_new == rows_of(app::fill_report::kStatusOnlyNew));
+    CHECK(s.in_both == rows_of(app::fill_report::kStatusInBoth));
+    CHECK(s.total == static_cast<int>(library.size()));
+}
+
+}  // namespace
+
+// Each corpus chart's row joins the store's two real records for it: the 1.0
+// and 1.1 scores, best paths and act counts, the note count, the 1.1 score
+// minus the 1.0 score, and the status that difference's sign names.
+TEST_CASE("collect_fill_rows: each row's delta and status follow its two real scores") {
     store::RecordStore store(":memory:");
+    const std::vector<ScoredChart>& charts = scored_charts();
+    std::vector<store::ChartLibraryEntry> library;
+    for (const ScoredChart& c : charts) library.push_back(c.entry);
+    store.rebuild_chart_library(library);
+    for (const ScoredChart& c : charts) {
+        file_under(store, FillDeadlineRule::Ch10, c.entry.md5, c.ch10);
+        file_under(store, FillDeadlineRule::Ch11, c.entry.md5, c.ch11);
+    }
 
-    // The common case: 4 beats is the stricter deadline, so 1.1 drops.
-    put_ch10(store, kBoth, 1050000, 4, "old-path-B");
-    put_ch11(store, kBoth, 1000000, 3, "new-path-B");
-    // A chart where the rule change made no difference at all.
-    put_ch10(store, kOldOnly, 777000, 2, "tie-path");
-    put_ch11(store, kOldOnly, 777000, 2, "tie-path");
-
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 2);
-
-    const FillCompareRow* dropped = find(rows, kBoth);
-    REQUIRE(dropped != nullptr);
-    CHECK(*dropped->delta == -50000);
-    CHECK(dropped->status == "1.0 higher");
-
-    const FillCompareRow* tied = find(rows, kOldOnly);
-    REQUIRE(tied != nullptr);
-    CHECK(*tied->delta == 0);
-    CHECK(tied->status == "same");
+    const std::vector<FillCompareRow> rows = compare(store);
+    REQUIRE(rows.size() == charts.size());
+    for (const ScoredChart& c : charts) {
+        CAPTURE(c.entry.notespath);
+        const FillCompareRow* r = find(rows, c.entry.md5);
+        REQUIRE(r != nullptr);
+        const store::RecordRow old_rec = store::record_of(c.entry.md5, c.ch10);
+        const store::RecordRow new_rec = store::record_of(c.entry.md5, c.ch11);
+        check_side(r->old_score, r->old_path, r->old_acts, old_rec);
+        check_side(r->new_score, r->new_path, r->new_acts, new_rec);
+        CHECK(r->notes == new_rec.summary().notecount);
+        REQUIRE(r->old_score.has_value());
+        REQUIRE(r->new_score.has_value());
+        REQUIRE(r->delta.has_value());
+        CHECK(*r->delta == *r->new_score - *r->old_score);
+        CHECK(r->status == status_of_delta(*r->delta));
+    }
 }
 
 TEST_CASE("collect_fill_rows: a chart with a record under one rule only still gets a row") {
     store::RecordStore store(":memory:");
+    const ScoredChart& old_only = scored_charts()[0];
+    const ScoredChart& new_only = scored_charts()[1];
+    store.rebuild_chart_library({old_only.entry, new_only.entry});
+    // A 1.0 batch run that covered one chart and a 1.1 run that covered the
+    // other.
+    file_under(store, FillDeadlineRule::Ch10, old_only.entry.md5, old_only.ch10);
+    file_under(store, FillDeadlineRule::Ch11, new_only.entry.md5, new_only.ch11);
 
-    put_ch10(store, kOldOnly, 900000, 2, "only-old-path");
-    put_ch11(store, kNewOnly, 800000, 5, "only-new-path");
+    const std::vector<FillCompareRow> rows = compare(store);
+    REQUIRE(rows.size() == 2);
 
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 2);  // the union of both key sets
+    const FillCompareRow* o = find(rows, old_only.entry.md5);
+    REQUIRE(o != nullptr);
+    CHECK(o->status == app::fill_report::kStatusOnlyOld);
+    check_side(o->old_score, o->old_path, o->old_acts,
+               store::record_of(old_only.entry.md5, old_only.ch10));
+    check_empty_side(o->new_score, o->new_path, o->new_acts);
+    CHECK_FALSE(o->delta.has_value());
 
-    const FillCompareRow* only_old = find(rows, kOldOnly);
-    REQUIRE(only_old != nullptr);
-    CHECK(only_old->status == "only 1.0");
-    CHECK(only_old->old_score == 900000);
-    CHECK_FALSE(only_old->new_score.has_value());
-    CHECK_FALSE(only_old->delta.has_value());
-    CHECK(only_old->new_path.empty());
-
-    const FillCompareRow* only_new = find(rows, kNewOnly);
-    REQUIRE(only_new != nullptr);
-    CHECK(only_new->status == "only 1.1");
-    CHECK(only_new->new_score == 800000);
-    CHECK_FALSE(only_new->old_score.has_value());
-    CHECK_FALSE(only_new->delta.has_value());
-    CHECK(only_new->old_path.empty());
+    const FillCompareRow* n = find(rows, new_only.entry.md5);
+    REQUIRE(n != nullptr);
+    CHECK(n->status == app::fill_report::kStatusOnlyNew);
+    check_side(n->new_score, n->new_path, n->new_acts,
+               store::record_of(new_only.entry.md5, new_only.ch11));
+    check_empty_side(n->old_score, n->old_path, n->old_acts);
+    CHECK_FALSE(n->delta.has_value());
 }
 
 // The page reads report::library_lookup's Ready records, so a stored failure
-// (CantAnalyze) is no record on its side, and a chart that failed under both
-// rules gets no row.
-TEST_CASE("collect_fill_rows: a stored failure is no record on its side") {
+// is no record. Every chart in testdata/input has Expert Pro Drums notes, so
+// the failing chart is the checked-in edge chart whose Expert drums section
+// never closes: testdata/parse_edge/expected_expert.tsv pins it as a
+// NoNotesError, and the fill rule never changes what the chart's notes are.
+// Its failures under both rules are filed as the batch files them
+// (app::prepare_failed_chart), and it gets no row.
+TEST_CASE("collect_fill_rows: a chart that failed under both rules gets no row") {
     store::RecordStore store(":memory:");
-    put_ch10(store, kOldOnly, 900000, 2, "only-old-path");
-    store.save(store::failure_record(
-        kOldOnly, testdm::settings().profile_with_fills(FillDeadlineRule::Ch11), ErrorKind::NoNotes,
-        "No Expert Pro Drums notes in this chart."));
-    name(store, kNewOnly);
-    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
-        store.save(store::failure_record(kNewOnly, testdm::settings().profile_with_fills(rule),
-                                         ErrorKind::NoNotes,
-                                         "No Expert Pro Drums notes in this chart."));
-
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].hyhash == kOldOnly);
-    CHECK(rows[0].status == "only 1.0");
-    CHECK(rows[0].old_score == 900000);
-    CHECK_FALSE(rows[0].new_score.has_value());
-}
-
-TEST_CASE("collect_fill_rows: a 1.0 record with no score and no 1.1 record") {
-    store::RecordStore store(":memory:");
-
-    // The store holds a Ready 1.0 record with no paths, so its summary has no
-    // score, and nothing under 1.1 for the chart. The record is filed under
-    // the 1.0 profile: the 1.0 side never reads a 1.1 result.
-    name(store, kOldOnly);
-    put_no_paths(store, true, kOldOnly);
-
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 1);
-    CHECK_FALSE(rows[0].old_score.has_value());
-    CHECK_FALSE(rows[0].new_score.has_value());
-    // Labelled by the rule that holds the record, not by the score.
-    CHECK(rows[0].status == "only 1.0");
-}
-
-TEST_CASE("collect_fill_rows: a chart with records under both fill rules in one database gives "
-          "one row, named from that database's library") {
-    // One store holding both rules' results for a chart, as the app's own
-    // database does once "1.0 fills" has been used.
-    store::RecordStore both(":memory:");
-    test::name_chart(both, kBoth, "Named Here", "Library Artist", "Library Charter");
-    put_ch10(both, kBoth, 1000000, 3, "old-path-E");
-    put_ch11(both, kBoth, 1050000, 4, "new-path-E");
-
-    std::vector<FillCompareRow> rows = compare(both);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].hyhash == kBoth);
-    CHECK(rows[0].song == "Named Here");
-    CHECK(rows[0].artist == "Library Artist");
-    CHECK(rows[0].charter == "Library Charter");
-    CHECK(rows[0].copies == 1);
-    CHECK(rows[0].old_score == 1000000);
-    CHECK(rows[0].new_score == 1050000);
-    CHECK(rows[0].old_path == "old-path-E");
-    CHECK(rows[0].new_path == "new-path-E");
-
-    // Each side reads only its own rule: a 1.1 result is not a 1.0 answer.
-    store::RecordStore ch11_only(":memory:");
-    put_ch11(ch11_only, kBoth, 1050000, 4, "new-path-E");
-    rows = compare(ch11_only);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].status == "only 1.1");
-}
-
-TEST_CASE("tally_fill_rows counts every status") {
-    std::vector<FillCompareRow> rows(8);
-    rows[0].status = "same";
-    rows[1].status = "1.0 higher";
-    rows[2].status = "1.0 higher";
-    rows[3].status = "1.1 higher";
-    rows[4].status = "only 1.0";
-    rows[5].status = "only 1.1";
-    // Every status is counted by its own name: a status the page does not
-    // know lands in no bucket, not in "only 1.1".
-    rows[6].status = "no such status";
-    rows[7].status = "in both";
-    // Each row counts its chart's library copies (D79 item 3).
-    std::vector<std::pair<std::string, int>> library;
-    for (size_t i = 0; i < rows.size(); ++i) {
-        rows[i].hyhash = "h" + std::to_string(i);
-        library.push_back({rows[i].hyhash, i == 1 ? 3 : (i == 4 ? 2 : 1)});
+    const ScoredChart& scored = scored_charts()[0];
+    const store::ChartLibraryEntry failing =
+        scan_row(corpus::testdata_root() + "\\parse_edge\\c15_unterminated_drums.chart");
+    store.rebuild_chart_library({scored.entry, failing});
+    file_under(store, FillDeadlineRule::Ch10, scored.entry.md5, scored.ch10);
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11}) {
+        std::optional<store::PreparedRecord> failure;
+        try {
+            (void)app::analyze_chart_file(failing.notespath, analysis_under(rule));
+        } catch (const std::exception& e) {
+            failure = app::prepare_failed_chart(
+                failing.md5, testdm::settings().profile_with_fills(rule), e);
+        }
+        REQUIRE(failure.has_value());
+        store.save(*failure);
     }
-
-    app::fill_report::FillCompareStats stats =
-        app::fill_report::tally_fill_rows(rows, index_of(library));
-    CHECK(stats.total == 11);
-    CHECK(stats.same == 1);
-    CHECK(stats.ch10_higher == 4);
-    CHECK(stats.ch11_higher == 1);
-    CHECK(stats.only_old == 2);
-    CHECK(stats.only_new == 1);
-    CHECK(stats.in_both == 1);
-}
-
-TEST_CASE("collect_fill_rows: copies come from the library") {
-    // D79 item 3. The library lists kBoth in two folders; put() lists kOldOnly
-    // and kNewOnly once each.
-    store::RecordStore store(":memory:");
-
-    std::vector<store::ChartLibraryEntry> two_copies;
-    for (int i = 0; i < 2; ++i) {
-        store::ChartLibraryEntry e;
-        e.md5 = kBoth;
-        e.title = "Song";
-        e.rootfolder = "C:\\songs" + std::to_string(i);
-        e.notespath = e.rootfolder + "\\notes.chart";
-        two_copies.push_back(e);
-    }
-    // The library first: a scan deletes what its library doesn't list
-    // (D87 item 4), and hydra_batch with folder arguments saves the rest
-    // without touching the library.
-    store.rebuild_chart_library(two_copies);
-    put_ch10(store, kBoth, 1000000, 3, "old-path-K");
-    put_ch11(store, kBoth, 1050000, 4, "new-path-K");  // 1.1 higher
-    put_ch10(store, kOldOnly, 900000, 2, "only-old");  // only 1.0
-    put_ch11(store, kNewOnly, 800000, 5, "only-new");  // only 1.1
 
     const std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 3);
-    CHECK(find(rows, kBoth)->copies == 2);
-    CHECK(find(rows, kOldOnly)->copies == 1);
-    CHECK(find(rows, kNewOnly)->copies == 1);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].hyhash == scored.entry.md5);
+    CHECK(rows[0].status == app::fill_report::kStatusOnlyOld);
+}
 
-    // The tally, the subtitle and the payload all count the copies.
+// One store holding both rules' results for a chart, as the app's own
+// database does once "1.0 fills" has been used, gives one row, named from the
+// names the library scan read for the chart.
+TEST_CASE("collect_fill_rows: both rules' records in one database give one row named from its "
+          "library") {
+    store::RecordStore store(":memory:");
+    const ScoredChart& c = scored_charts()[0];
+    file_both(store, c);
+
+    const std::vector<FillCompareRow> rows = compare(store);
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].hyhash == c.entry.md5);
+    CHECK(rows[0].song == display_title(c.entry.title));
+    CHECK(rows[0].artist == display_artist(c.entry.artist));
+    CHECK(rows[0].charter == display_charter(c.entry.charter));
+    CHECK(rows[0].copies == 1);
+}
+
+// D79 item 3: each status counts its charts' library rows.
+TEST_CASE("tally_fill_rows counts every status by its charts' library rows") {
+    store::RecordStore store(":memory:");
+    const std::vector<store::ChartLibraryEntry> library = file_copies(store);
+    const std::vector<FillCompareRow> rows = compare(store);
+    REQUIRE(rows.size() == scored_charts().size());
+    check_fill_tally(app::fill_report::tally_fill_rows(rows, store.chart_index()), rows, library);
+}
+
+// D79 item 3 and D115: a chart the scan finds in several folders counts each
+// copy, in its row and in the report's tally.
+TEST_CASE("collect_fill_rows and generate_fill_report count each chart's library copies") {
+    store::RecordStore store(":memory:");
+    const std::vector<store::ChartLibraryEntry> library = file_copies(store);
+    const std::vector<FillCompareRow> rows = compare(store);
+    REQUIRE(rows.size() == scored_charts().size());
+    for (const FillCompareRow& r : rows) {
+        CAPTURE(r.hyhash);
+        CHECK(r.copies == copies_in(library, r.hyhash));
+    }
     const app::fill_report::GeneratedFillReport result =
         app::fill_report::generate_fill_report(store, testdm::settings());
-    const app::fill_report::FillCompareStats& s = result.stats;
-    CHECK(s.total == 4);
-    CHECK(s.ch11_higher == 2);
-    CHECK(s.only_old == 1);
-    CHECK(s.only_new == 1);
-    CHECK(s.same + s.ch10_higher + s.ch11_higher + s.only_old + s.only_new + s.in_both ==
-          s.total);
-    CHECK(result.html.find(
-              "4 charts in Expert Pro Drums, 2x Bass: 2 score higher under 1.1, "
-              "0 higher under 1.0, 0 unchanged, 2 under one rule only, "
-              "0 in both, not both scored") != std::string::npos);
-    CHECK(result.html.find("{\"k\":2,") != std::string::npos);
+    CHECK(result.reason.empty());
+    check_fill_tally(result.stats, rows, library);
 }
 
-// D115: every count on the page goes through the library's ChartIndex::count,
-// so a chart with two library copies counts 2.
-TEST_CASE("collect_fill_rows counts each status through ChartIndex::count") {
+// The page's chart tiles add up each row's "k", so each row's data carries its
+// chart's library copies, and the script's STATUS object carries every
+// status word fill_report.h gives a row.
+TEST_CASE("fill page: each row's data carries its library copies and the script every status") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> copies(2);
-    for (size_t i = 0; i < copies.size(); ++i) {
-        copies[i].md5 = kBoth;
-        copies[i].title = "Song";
-        copies[i].notespath = "C:\\songs" + std::to_string(i) + "\\notes.chart";
+    const std::vector<store::ChartLibraryEntry> library = file_copies(store);
+    const std::vector<FillCompareRow> rows = compare(store);
+    const std::string html = app::fill_report::generate_fill_report(store, testdm::settings()).html;
+    REQUIRE_FALSE(html.empty());
+    for (const FillCompareRow& r : rows) {
+        CAPTURE(r.hyhash);
+        std::string song;
+        app::html::json_escape_into(song, r.song);
+        CHECK(html.find("{\"k\":" + std::to_string(copies_in(library, r.hyhash)) +
+                        ",\"song\":" + song) != std::string::npos);
     }
-    store.rebuild_chart_library(copies);
-    REQUIRE(store.chart_index().copies(kBoth) == 2);
-    put_ch10(store, kBoth, 777000, 2, "tie-path");
-    put_ch11(store, kBoth, 777000, 2, "tie-path");
+    for (const char* status :
+         {app::fill_report::kStatusSame, app::fill_report::kStatusOldHigher,
+          app::fill_report::kStatusNewHigher, app::fill_report::kStatusOnlyOld,
+          app::fill_report::kStatusOnlyNew, app::fill_report::kStatusInBoth}) {
+        CAPTURE(status);
+        std::string word;
+        app::html::json_escape_into(word, status);
+        CHECK(html.find(word) != std::string::npos);
+    }
+}
 
+// The page made from a real chart's two records leaves no __NAME__
+// placeholder, and carries both best paths, both rules' short names and the
+// report windows' search hint.
+TEST_CASE("generate_fill_report fills every placeholder of a real chart's page") {
+    store::RecordStore store(":memory:");
+    file_both(store, scored_charts()[0]);
     const std::vector<FillCompareRow> rows = compare(store);
     REQUIRE(rows.size() == 1);
-    CHECK(rows[0].status == "same");
-    const app::fill_report::FillCompareStats s =
-        app::fill_report::tally_fill_rows(rows, store.chart_index());
-    CHECK(s.same == 2);
-    CHECK(s.total == 2);
-    CHECK(app::fill_report::generate_fill_report(store, testdm::settings()).stats.same == 2);
-}
+    const std::string html = app::fill_report::generate_fill_report(store, testdm::settings()).html;
+    REQUIRE_FALSE(html.empty());
 
-// The page's chart tiles and the count beside its filters add up each row's
-// "k" in JavaScript, and tally_fill_rows adds up each row's copies by status
-// in C++. The page has to count per filtered view, so it can't print the C++
-// totals. This pins that all of them count the same thing: every row carries
-// its copies as "k", one page function sums "k", the counter and every chart
-// tile read that function, every status the C++ counts has its own count in
-// the page's stats(), and the page counts no status the C++ doesn't know.
-TEST_CASE("fill page: the tiles add up the copies tally_fill_rows adds up") {
-    const std::vector<std::string> statuses = {"same",     "1.0 higher", "1.1 higher",
-                                               "only 1.0", "only 1.1",   "in both"};
-    std::vector<FillCompareRow> rows;
-    std::vector<std::pair<std::string, int>> charts;
-    for (size_t i = 0; i < statuses.size(); ++i) {
-        FillCompareRow r;
-        r.status = statuses[i];
-        r.hyhash = "h" + std::to_string(i);
-        r.copies = static_cast<int>(i) + 1;
-        charts.push_back({r.hyhash, r.copies});
-        rows.push_back(r);
+    CHECK_FALSE(std::regex_search(html, std::regex("__[A-Z][A-Z_]*__")));
+    for (const std::string& path : {rows[0].old_path, rows[0].new_path}) {
+        std::string escaped;
+        app::html::json_escape_into(escaped, path);
+        CHECK(html.find(escaped) != std::string::npos);
     }
-    const store::ChartIndex library = index_of(charts);
-    const app::fill_report::FillCompareStats st = app::fill_report::tally_fill_rows(rows, library);
-    CHECK(st.total == 21);
-    CHECK(st.same == 1);
-    CHECK(st.ch10_higher == 2);
-    CHECK(st.ch11_higher == 3);
-    CHECK(st.only_old == 4);
-    CHECK(st.only_new == 5);
-    CHECK(st.in_both == 6);
-
-    const std::string html = app::fill_report::build_fill_html(rows, library, "sub", "foot");
-    // The script's STATUS object carries fill_report.h's six words, and the
-    // tiles count by its names.
-    CHECK(html.find("const STATUS = {sameScore: \"same\", oldHigher: \"1.0 higher\", "
-                    "newHigher: \"1.1 higher\", onlyOld: \"only 1.0\", onlyNew: \"only 1.1\", "
-                    "inBoth: \"in both\"};") != std::string::npos);
-    for (size_t i = 0; i < statuses.size(); ++i) {
-        CAPTURE(statuses[i]);
-        CHECK(html.find("{\"k\":" + std::to_string(i + 1) + ",") != std::string::npos);
-    }
-    for (const char* name : {"sameScore", "oldHigher", "newHigher", "onlyOld", "onlyNew", "inBoth"}) {
-        CAPTURE(name);
-        CHECK(html.find(std::string("n(STATUS.") + name + ")") != std::string::npos);
-    }
-    CHECK(html.find("const charts = rs => rs.reduce((a, r) => a + r.k, 0);") !=
-          std::string::npos);
-    CHECK(html.find("const n = s => charts(rows.filter(r => r.status === s));") !=
-          std::string::npos);
-    CHECK(html.find("['Charts', fmt(charts(rows))],") != std::string::npos);
-    CHECK(html.find("['Charts', fmt(rows.length)]") == std::string::npos);
-    // The one summing function, defined once, and the counter beside the
-    // filters reads it through the shared script's PAGE.count.
-    const size_t defined = html.find("const charts = ");
-    REQUIRE(defined != std::string::npos);
-    CHECK(html.find("const charts = ", defined + 1) == std::string::npos);
-    CHECK(html.find("  count: charts,\n") != std::string::npos);
-    CHECK(html.find("const countOf = PAGE.count || (rs => rs.length);") != std::string::npos);
-    CHECK(html.find("fmt(countOf(rows)) + ' of ' + PAGE.total;") != std::string::npos);
-    CHECK(html.find("  total: \"21 charts\",\n") != std::string::npos);
-    // No status counted on the page that the C++ never assigns.
-    size_t counted = 0;
-    for (const char* call : {"(n(STATUS.", " n(STATUS."})
-        for (size_t at = html.find(call); at != std::string::npos; at = html.find(call, at + 1))
-            ++counted;
-    CHECK(counted == statuses.size());
-}
-
-TEST_CASE("build_fill_html substitutes every placeholder") {
-    store::RecordStore store(":memory:");
-    put_ch10(store, kBoth, 1000000, 3, "old-path-C");
-    put_ch11(store, kBoth, 1050000, 4, "new-path-C");
-
-    std::vector<FillCompareRow> rows = compare(store);
-    REQUIRE(rows.size() == 1);
-
-    const std::string subtitle = "Subtitle marker 5151";
-    const std::string footer = "Footer marker 1515";
-    std::string html =
-        app::fill_report::build_fill_html(rows, store.chart_index(), subtitle, footer);
-
-    CHECK(html.find("__SUBTITLE__") == std::string::npos);
-    CHECK(html.find("__FOOTER__") == std::string::npos);
-    CHECK(html.find("__DATA__") == std::string::npos);
-    CHECK(html.find(subtitle) != std::string::npos);
-    CHECK(html.find(footer) != std::string::npos);
-    // Both sides' paths reach the page, and the default sort is delta-first.
-    CHECK(html.find("old-path-C") != std::string::npos);
-    CHECK(html.find("new-path-C") != std::string::npos);
-    CHECK(html.find("sortKey: 'delta',") != std::string::npos);
-
-    // The title, heading and score and path columns name each rule by its
-    // short name.
-    const std::string old_rule = fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short);
-    const std::string new_rule = fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short);
-    CHECK(html.find("<title>Fill spawn comparison &mdash; " + old_rule + " vs " + new_rule +
-                    "</title>") != std::string::npos);
-    CHECK(html.find("<span class=\"accent\">" + old_rule + " vs " + new_rule + "</span>") !=
-          std::string::npos);
-    CHECK(html.find("{k:'s10',     t:'" + old_rule + "',") != std::string::npos);
-    CHECK(html.find("{k:'s11',     t:'" + new_rule + "',") != std::string::npos);
-    CHECK(html.find("{k:'p10',     t:'" + old_rule + " path',") != std::string::npos);
-    CHECK(html.find("{k:'p11',     t:'" + new_rule + " path',") != std::string::npos);
-    CHECK(html.find("__OLD_RULE__") == std::string::npos);
-    CHECK(html.find("__NEW_RULE__") == std::string::npos);
-    // The search box's hint comes from html_page.h.
-    CHECK(html.find("placeholder=\"Search song, artist, or charter\">") != std::string::npos);
-    CHECK(html.find("__SEARCH_HINT__") == std::string::npos);
-    // Counts and deltas go through the page's shared fmt.
-    CHECK(html.find(".toLocaleString()]") == std::string::npos);
-    CHECK(html.find("'+' + r.delta.toLocaleString()") == std::string::npos);
+    for (FillDeadlineRule rule : {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11})
+        CHECK(html.find(fill_rule_name(rule, FillRuleNameStyle::Short)) != std::string::npos);
+    CHECK(html.find(app::html::html_escape(app::html::charts_search_hint())) != std::string::npos);
 }
 
 // D114 item 3: each text column carries the windows' folded sort text, and
