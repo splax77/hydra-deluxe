@@ -1035,8 +1035,8 @@ void test_paths_row_layout(ImGuiTestContext* ctx) {
         IM_CHECK(row_text_all_mono(ctx, row1_rect, pieces));
     }
     // Three badges of different lengths, the longest among them, on row 1 of
-    // the cached view the tab draws. Burnout's row 1 has one badge and the
-    // scratch library holds no row with three, so the two shorter texts are
+    // the cached view the tab draws. The scratch library holds no row with
+    // three, so the two shorter texts are
     // inputs shaped like an early fill and a squeeze in badge: they stand for
     // a row carrying both beside the longest, and the check reads that the
     // pills share one width. The cache is only rebuilt when its
