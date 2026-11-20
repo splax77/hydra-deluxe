@@ -36,14 +36,18 @@
 #include "search/graph.h"
 #include "search/pather.h"
 #include "store/record_store.h"
-#include "store_fixtures.h"  // fixture, at_cap
+#include "store_fixtures.h"  // fixture, at_cap, fixture_chart, store_fixture_settings, OldLibrary
 #include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::store;
 
+using hydra::test::OldLibrary;
 using hydra::test::at_cap;
 using hydra::test::fixture;
+using hydra::test::fixture_chart;
+using hydra::test::old_library_analysis;
+using hydra::test::store_fixture_settings;
 // One integer straight out of a database file: how these tests look at a
 // table without the store growing an accessor for it.
 using hydra::test::scalar_on_file;
@@ -99,33 +103,11 @@ std::set<std::string> ready_ids_listed(RecordStore& store, const Profile& profil
     return out;
 }
 
-// The search settings fixture() (store_fixtures.h) runs under, at `cap` bars,
-// with ms limit `ms`, Clone Hero 1.0's fill rule when `legacy_fills`, and
-// `rules`.
-app::AnalysisSettings fixture_settings(int cap, std::optional<double> ms = std::nullopt,
-                                       bool legacy_fills = false,
-                                       const core::Rules& rules = core::default_rules()) {
-    app::AnalysisSettings settings;
-    settings.sp_cap = cap;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 0;
-    settings.ms_filter = ms;
-    settings.legacy_fills = legacy_fills;
-    settings.rules = rules;
-    return settings;
-}
-
-// The fixture's chart file: the first corpus chart with paths at 4 bars.
-const std::string& fixture_chart() {
-    static const std::string path = corpus::first_chart_with_paths(fixture_settings(4)).chart;
-    return path;
-}
-
-// The fixture's chart really analyzed under fixture_settings(...): a record
-// that ran at the cap, ms limit and fill rule its profile names.
+// The fixture's chart really analyzed under store_fixture_settings(...): a
+// record that ran at the cap, ms limit and fill rule its profile names.
 const HydraRecord& analysis_at(int cap, std::optional<double> ms = std::nullopt,
                                bool legacy_fills = false) {
-    return corpus::analyzed(fixture_chart(), fixture_settings(cap, ms, legacy_fills));
+    return corpus::analyzed(fixture_chart(), store_fixture_settings(cap, ms, legacy_fills));
 }
 
 // The fixture's chart analyzed at `cap` bars under other_rules()
@@ -133,55 +115,17 @@ const HydraRecord& analysis_at(int cap, std::optional<double> ms = std::nullopt,
 // a store running the defaults, it reads Stale for "other rules".
 const HydraRecord& other_rules_at(int cap) {
     return corpus::analyzed(fixture_chart(),
-                            fixture_settings(cap, std::nullopt, false, test::other_rules()));
+                            store_fixture_settings(cap, std::nullopt, false, test::other_rules()));
 }
 
-// A second corpus chart's real analysis under fixture_settings(cap, ms): a
-// record that differs from analysis_at(cap, ms) in its paths.
+// A second corpus chart's real analysis under store_fixture_settings(cap, ms):
+// a record that differs from analysis_at(cap, ms) in its paths.
 HydraRecord second_chart_at(int cap, std::optional<double> ms = std::nullopt) {
     const std::vector<app::AnalysisResult> two =
-        corpus::analyzed_with_paths(fixture_settings(cap, ms), 2);
+        corpus::analyzed_with_paths(store_fixture_settings(cap, ms), 2);
     REQUIRE(two.size() == 2);
     return two[1].record;
 }
-
-// A copy of testdata/store/v2.12.1_library.db, the library a real v2.12.1
-// hydra_batch wrote (testdata/store/README.md). Its records are another
-// build's, so they read Stale for "another build". The store opens the copy
-// in WAL mode, which would change the checked-in file.
-struct OldLibraryCopy {
-    std::string path;
-    explicit OldLibraryCopy(const std::string& tag) : path(testtemp::temp_path(tag, ".db")) {
-        const std::string source = corpus::testdata_root() + "/store/v2.12.1_library.db";
-        REQUIRE(std::filesystem::exists(std::filesystem::u8path(source)));
-        remove_files();
-        std::filesystem::copy_file(std::filesystem::u8path(source), std::filesystem::u8path(path));
-    }
-    ~OldLibraryCopy() { remove_files(); }
-    OldLibraryCopy(const OldLibraryCopy&) = delete;
-    OldLibraryCopy& operator=(const OldLibraryCopy&) = delete;
-    void remove_files() const {
-        std::error_code ec;
-        for (const char* suffix : {"", "-wal", "-shm"})
-            std::filesystem::remove(std::filesystem::u8path(path + suffix), ec);
-    }
-    // The run's profile at `cap` bars; the README gives its settings (4 bars,
-    // ms limit 10, score depth 4) and chart mode.
-    static Profile profile(int cap = 4) {
-        return Profile{"Expert Pro Drums, 2x Bass", CapQuery::at(cap), Lens::from(10, 0, 4)};
-    }
-    // The fixture's chart analyzed the way profile(cap) says.
-    static const HydraRecord& analysis(int cap = 4) {
-        app::AnalysisSettings s = fixture_settings(cap, 10.0);
-        s.depth_value = 4;
-        return corpus::analyzed(fixture_chart(), s);
-    }
-    // The song ids of its three records, as the README gives them.
-    static std::vector<std::string> song_ids() {
-        return {"0b647b1570475f18d463466f2c4d72a7", "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
-                "bef0759746740f9c1045f64e9a5a2938"};
-    }
-};
 
 }  // namespace
 
@@ -252,13 +196,13 @@ TEST_CASE("a saved record reads back whole across the corpus and config matrix")
 TEST_CASE("RecordStore maintenance: a lookup, the Ready list and the record count") {
     // The real v2.12.1 library: every record in it is another build's. Each
     // counts as a record, but not as "already analyzed".
-    const OldLibraryCopy old("maintenance");
-    const Profile at4 = OldLibraryCopy::profile();
-    const HydraRecord& record = OldLibraryCopy::analysis();
+    const OldLibrary old("maintenance");
+    const Profile at4 = OldLibrary::profile();
+    const HydraRecord& record = old_library_analysis();
     RecordStore store(old.path);
     const int64_t old_records = store.record_count();
     REQUIRE(old_records > 0);
-    for (const std::string& id : OldLibraryCopy::song_ids()) {
+    for (const std::string& id : OldLibrary::song_ids()) {
         INFO(id);
         CHECK(store.lookup_one(id, at4).status == RecordStatus::Stale);
     }
@@ -268,7 +212,7 @@ TEST_CASE("RecordStore maintenance: a lookup, the Ready list and the record coun
     CHECK(store.lookup_one("h1", at4).status == RecordStatus::NotAnalyzed);
     save_record(store, "h1", at4, record);
     CHECK(store.lookup_one("h1", at4).status == RecordStatus::Ready);
-    CHECK(store.lookup_one("h1", OldLibraryCopy::profile(8)).status == RecordStatus::NotAnalyzed);
+    CHECK(store.lookup_one("h1", OldLibrary::profile(8)).status == RecordStatus::NotAnalyzed);
 
     const std::vector<RecordRow> listing = store.ready_records(at4);
     REQUIRE(listing.size() == 1);
@@ -479,26 +423,26 @@ TEST_CASE("the same chart at the same cap keeps one result per lens") {
 
 TEST_CASE("a current-version save purges the chart's old-version records at every cap and lens") {
     // The real v2.12.1 library: its records are another build's, at 4 bars.
-    const OldLibraryCopy old("purge_old_versions");
-    const std::vector<std::string> ids = OldLibraryCopy::song_ids();
+    const OldLibrary old("purge_old_versions");
+    const std::vector<std::string> ids = OldLibrary::song_ids();
     RecordStore store(old.path);
     const int64_t before = store.record_count();
     for (const std::string& id : ids) {
         INFO(id);
-        REQUIRE(store.lookup_one(id, OldLibraryCopy::profile()).status == RecordStatus::Stale);
+        REQUIRE(store.lookup_one(id, OldLibrary::profile()).status == RecordStatus::Stale);
     }
 
     // A save at another cap, under the same lens.
-    save_record(store, ids[0], OldLibraryCopy::profile(8), OldLibraryCopy::analysis(8));
+    save_record(store, ids[0], OldLibrary::profile(8), old_library_analysis(8));
 
     // This build cannot read what another version wrote for this chart, so
     // the save supersedes it -- at every cap and lens...
-    CHECK(store.lookup_one(ids[0], OldLibraryCopy::profile()).status == RecordStatus::NotAnalyzed);
-    CHECK(store.lookup_one(ids[0], OldLibraryCopy::profile(8)).status == RecordStatus::Ready);
+    CHECK(store.lookup_one(ids[0], OldLibrary::profile()).status == RecordStatus::NotAnalyzed);
+    CHECK(store.lookup_one(ids[0], OldLibrary::profile(8)).status == RecordStatus::Ready);
     // ...while another chart's old record is none of this save's business.
     for (size_t i = 1; i < ids.size(); ++i) {
         INFO(ids[i]);
-        CHECK(store.lookup_one(ids[i], OldLibraryCopy::profile()).status == RecordStatus::Stale);
+        CHECK(store.lookup_one(ids[i], OldLibrary::profile()).status == RecordStatus::Stale);
     }
     // One old record gone, one current record in.
     CHECK(store.record_count() == before);

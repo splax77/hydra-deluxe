@@ -40,7 +40,7 @@
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
 #include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
-#include "store_fixtures.h"  // fixture, at_cap, at4, no_paths_at_cap
+#include "store_fixtures.h"  // fixture, fixture_chart, store_fixture_settings, OldLibrary, at4
 #include "temp_util.h"
 #include "wait_util.h"  // wait_until, WaitTimeout
 
@@ -48,11 +48,15 @@ using namespace hydra;
 using namespace hydra::store;
 
 using hydra::test::HeldSaveGroup;
+using hydra::test::OldLibrary;
 using hydra::test::StoreFile;
 using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::fixture;
+using hydra::test::fixture_chart;
 using hydra::test::no_paths_at_cap;
+using hydra::test::old_library_analysis;
+using hydra::test::store_fixture_settings;
 using hydra::test::scalar_on_file;
 
 namespace {
@@ -63,23 +67,6 @@ bool same_answer(const RecordLookup& a, const RecordLookup& b) {
     return a.status == b.status && a.stale_build == b.stale_build &&
            a.stale_rules == b.stale_rules && a.record == b.record &&
            a.failure_kind == b.failure_kind && a.failure_text == b.failure_text;
-}
-
-// The fixture's search settings (store_fixtures.h, fixture()) with the SP cap
-// set to `cap`.
-app::AnalysisSettings store_fixture_settings(int cap = 4) {
-    app::AnalysisSettings settings;
-    settings.sp_cap = cap;
-    settings.depth_mode = DepthMode::Scores;
-    settings.depth_value = 0;
-    settings.ms_filter = std::nullopt;
-    return settings;
-}
-
-// The fixture's chart file.
-const std::string& fixture_chart() {
-    static const std::string path = corpus::first_chart_with_paths(store_fixture_settings()).chart;
-    return path;
 }
 
 // The fixture's chart analyzed under other_rules(), the rules a user's
@@ -185,54 +172,6 @@ bool can_delete(const std::string& path) {
     std::error_code ec;
     const bool removed = std::filesystem::remove(std::filesystem::u8path(path), ec);
     return removed && !ec;
-}
-
-// A copy of testdata/store/v2.12.1_library.db, the library a real v2.12.1
-// hydra_batch wrote (testdata/store/README.md). Its three records are another
-// build's, so they read Stale for that build; the store opens its copy in WAL
-// mode, which would change the checked-in file.
-struct OldLibrary {
-    std::string path;
-    explicit OldLibrary(const std::string& tag) {
-        const std::string source = corpus::testdata_root() + "/store/v2.12.1_library.db";
-        REQUIRE(std::filesystem::exists(std::filesystem::u8path(source)));
-        path = testtemp::temp_path(tag, ".db");
-        remove_files();
-        std::filesystem::copy_file(std::filesystem::u8path(source), std::filesystem::u8path(path));
-    }
-    ~OldLibrary() { remove_files(); }
-    void remove_files() const {
-        std::error_code ec;
-        for (const char* suffix : {"", "-wal", "-shm"})
-            std::filesystem::remove(std::filesystem::u8path(path + suffix), ec);
-    }
-    // The run's settings, as the README gives them.
-    static Profile profile() {
-        return Profile{"Expert Pro Drums, 2x Bass", CapQuery::at(4), Lens::from(10, 0, 4)};
-    }
-    // The settings a search under profile() runs with.
-    static app::AnalysisSettings settings() {
-        app::AnalysisSettings s;
-        s.sp_cap = 4;
-        s.depth_mode = DepthMode::Scores;
-        s.depth_value = 4;
-        s.ms_filter = 10.0;
-        return s;
-    }
-    // The song ids of its three records, as the README gives them.
-    static std::vector<std::string> song_ids() {
-        return {"0b647b1570475f18d463466f2c4d72a7", "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
-                "bef0759746740f9c1045f64e9a5a2938"};
-    }
-};
-
-// The fixture's chart analyzed under the old library's settings at `cap` bars:
-// a real record that fits OldLibrary::profile() (at 4 bars) or the same
-// profile at another cap.
-const HydraRecord& old_library_analysis(int cap = 4) {
-    app::AnalysisSettings s = OldLibrary::settings();
-    s.sp_cap = cap;
-    return corpus::analyzed(fixture_chart(), s);
 }
 
 // The corpus as the app's library scan lists it: discover_charts over
