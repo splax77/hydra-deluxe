@@ -482,6 +482,10 @@ TEST_CASE("no activation keeps backends past its squeezed-out note") {
     CHECK(run.mismatches == 0);
     CHECK(run.rejected == 0);
     CHECK(run.charts == corpus_chart_count());
+    // The corpus holds squeeze-outs (I'm A Believer's path 4 has one at the SP
+    // end, as test_activation_rows.cpp reads); a walk that met none checked
+    // nothing, so it fails.
+    CHECK(sqout_acts > 0);
     MESSAGE("checked " << sqout_acts << " squeeze-out activations on " << run.charts
                        << " charts");
 }
