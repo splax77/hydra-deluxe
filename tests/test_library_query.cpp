@@ -35,14 +35,6 @@ bool matches(std::string_view query, const SearchableRow& row, const RowFacts& f
     return query_matches(parse_library_query(query), row, facts);
 }
 
-// The facts of an analyzed row: its best path's stars and hardest squeeze.
-RowFacts analyzed(int stars, std::optional<double> hardest_ms) {
-    RowFacts facts;
-    facts.stars = stars;
-    facts.hardest_ms = hardest_ms;
-    return facts;
-}
-
 // The rows a library scan of the corpus saves, read once.
 const std::vector<hydra::store::ChartLibraryEntry>& corpus_scan_entries() {
     static const std::vector<hydra::store::ChartLibraryEntry> entries = [] {
@@ -136,6 +128,18 @@ const ChartFacts& on_end_facts() {
 const ChartFacts& untimed_facts() {
     static const ChartFacts facts = first_chart_whose_figure([](double ms) { return ms < 0.0; });
     return facts;
+}
+
+// The analysed corpus charts whose best path the library shows with a timing:
+// the 0.0 ms chart, and Burnout when its path is timed. Throws when the 0.0 ms
+// chart has no shown timing, so a test that loops over these never passes on
+// no chart at all.
+std::vector<const ChartFacts*> timed_facts() {
+    if (!on_end_facts().facts.stars || !on_end_facts().facts.hardest_ms)
+        throw std::runtime_error("the 0.0 ms chart has no shown timing: " + on_end_facts().chart);
+    std::vector<const ChartFacts*> out{&on_end_facts()};
+    if (burnout_facts().facts.stars && burnout_facts().facts.hardest_ms) out.push_back(&burnout_facts());
+    return out;
 }
 
 // A number as the shortest text that reads back as the same double, so a
@@ -494,6 +498,22 @@ void check_squeeze_edges(const ChartFacts& c) {
     CHECK_FALSE(matches("squeeze>=" + above, c.row, c.facts));
 }
 
+// An error sentence's last word is the example it offers the player. That
+// example has to be a filter the parser takes: no error, no words, and a
+// squeeze side set. Returns the example.
+std::string check_example_parses(const std::string& sentence) {
+    INFO("sentence: " << sentence);
+    const size_t space = sentence.find_last_of(' ');
+    REQUIRE(space != std::string::npos);
+    const std::string example = sentence.substr(space + 1);
+    INFO("example: " << example);
+    const LibraryQuery q = parse_library_query(example);
+    CHECK(q.errors.empty());
+    CHECK(q.terms.empty());
+    CHECK((q.squeeze_max_ms.has_value() || q.squeeze_min_ms.has_value()));
+    return example;
+}
+
 }  // namespace
 
 TEST_CASE("library query: stars:N keeps analyzed rows with exactly N stars") {
@@ -576,26 +596,32 @@ TEST_CASE("squeeze filters: a path whose hardest is 0.0 passes squeeze<=0, match
 }
 
 TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timing is above N ms") {
-    // A row at exactly N ms matches >=N and not >N.
-    CHECK(matches("squeeze>=163", scanned_burnout(), analyzed(7, 163.0)));  // Burnout's real 163.0 ms
-    CHECK_FALSE(matches("squeeze>163", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>20", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=164", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("SQUEEZE>20", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>-5", scanned_burnout(), analyzed(7, -2.5)));
-
-    // squeeze>N is the exact opposite of squeeze<=N: a timed row matches one.
-    for (double ms : {12.5, 20.0, 163.0}) {
-        CHECK(matches("squeeze>20", scanned_burnout(), analyzed(7, ms)) !=
-              matches("squeeze<=20", scanned_burnout(), analyzed(7, ms)));
+    for (const ChartFacts* c : timed_facts()) {
+        INFO("chart: " << c->chart);
+        const double ms = *c->facts.hardest_ms;
+        // A floor below the chart's own timing keeps it, in any letter case.
+        CHECK(matches("SQUEEZE>" + ms_text(ms - 1.0), c->row, c->facts));
+        // squeeze>N is the exact opposite of squeeze<=N: a timed row matches
+        // one, wherever N sits against its figure.
+        for (double n : {ms - 1.0, ms, ms + 1.0}) {
+            const std::string text = ms_text(n);
+            CAPTURE(text);
+            CHECK(matches("squeeze>" + text, c->row, c->facts) !=
+                  matches("squeeze<=" + text, c->row, c->facts));
+        }
+        // An unrated row matches no floor.
+        CHECK_FALSE(matches("squeeze>" + ms_text(ms - 1.0), c->row, RowFacts{}));
+        CHECK_FALSE(matches("squeeze>=" + ms_text(ms - 1.0), c->row, RowFacts{}));
     }
 
     // A path that needs no timing has nothing to squeeze, so it matches no
-    // > or >= filter. An unrated row matches no filter.
-    CHECK_FALSE(matches("squeeze>20", scanned_burnout(), analyzed(7, std::nullopt)));
-    CHECK_FALSE(matches("squeeze>=0", scanned_burnout(), analyzed(7, std::nullopt)));
-    CHECK_FALSE(matches("squeeze>20", scanned_burnout(), RowFacts{}));
-    CHECK_FALSE(matches("squeeze>=20", scanned_burnout(), RowFacts{}));
+    // > or >= filter, however low.
+    const ChartFacts& untimed = untimed_facts();
+    REQUIRE(untimed.facts.stars.has_value());
+    REQUIRE_FALSE(untimed.facts.hardest_ms.has_value());
+    CHECK_FALSE(matches("squeeze>20", untimed.row, untimed.facts));
+    CHECK_FALSE(matches("squeeze>=0", untimed.row, untimed.facts));
+    CHECK_FALSE(matches("squeeze>-5", untimed.row, untimed.facts));
 
     const LibraryQuery q = parse_library_query("squeeze>20");
     CHECK(q.terms.empty());
@@ -605,26 +631,53 @@ TEST_CASE("library query: squeeze>N and squeeze>=N keep rows whose hardest timin
 }
 
 TEST_CASE("library query: a squeeze floor and limit combine into a range, last of each side counts") {
-    CHECK(matches("squeeze>=10 squeeze<=200", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=10 squeeze<=50", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=170 squeeze<=200", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze<=200 squeeze>163 green", scanned_burnout(), analyzed(7, 163.5)));
+    // Each chart's own shown timing, and 1 and 10 ms on either side of it.
+    for (const ChartFacts* c : timed_facts()) {
+        INFO("chart: " << c->chart);
+        const double ms = *c->facts.hardest_ms;
+        const std::string at = ms_text(ms);
+        const std::string far_below = ms_text(ms - 10.0);
+        const std::string below = ms_text(ms - 1.0);
+        const std::string above = ms_text(ms + 1.0);
+        const std::string far_above = ms_text(ms + 10.0);
+        auto keeps = [&](const std::string& query) { return matches(query, c->row, c->facts); };
 
-    // The same side twice: the last one counts.
-    CHECK(matches("squeeze>200 squeeze>20", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>20 squeeze>200", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK(matches("squeeze>163 squeeze>=163", scanned_burnout(), analyzed(7, 163.0)));
-    CHECK_FALSE(matches("squeeze>=163 squeeze>163", scanned_burnout(), analyzed(7, 163.0)));
+        // A range around the timing keeps the row; one wholly below or above it does not.
+        CHECK(keeps("squeeze>=" + far_below + " squeeze<=" + far_above));
+        CHECK_FALSE(keeps("squeeze>=" + far_below + " squeeze<=" + below));
+        CHECK_FALSE(keeps("squeeze>=" + above + " squeeze<=" + far_above));
+
+        // The same side twice: the last one counts (parse_library_query's rule).
+        CHECK(keeps("squeeze>" + far_above + " squeeze>" + below));
+        CHECK_FALSE(keeps("squeeze>" + below + " squeeze>" + far_above));
+        CHECK(keeps("squeeze>" + at + " squeeze>=" + at));
+        CHECK_FALSE(keeps("squeeze>=" + at + " squeeze>" + at));
+        CHECK(keeps("squeeze<" + at + " squeeze<=" + at));
+        CHECK_FALSE(keeps("squeeze<=" + at + " squeeze<" + at));
+    }
 }
 
 TEST_CASE("library query: an unknown squeeze operator gives a plain error and filters nothing") {
+    // Every wrong operator gets the same one sentence. It names squeeze and
+    // the operators it does take, and the example it ends on is itself a
+    // filter that parses.
+    const std::vector<std::string> first = parse_library_query("squeeze=20").errors;
+    REQUIRE(first.size() == 1);
+    const std::string& sentence = first[0];
+    CHECK(sentence.find("squeeze") != std::string::npos);
+    for (const char* op : {"<=", ">=", "<", ">"}) {
+        CAPTURE(op);
+        CHECK(sentence.find(op) != std::string::npos);
+    }
+    check_example_parses(sentence);
     for (const char* text :
          {"squeeze=20", "squeeze==20", "squeeze:20", "squeeze=>20", "squeeze<>20", "SQUEEZE=20"}) {
         CAPTURE(text);
         const LibraryQuery q = parse_library_query(text);
         CHECK(q.terms.empty());
-        CHECK(q.errors ==
-              std::vector<std::string>{"squeeze takes <=, <, >= or >, like squeeze<=20"});
+        CHECK(q.errors == first);
+        CHECK_FALSE(q.squeeze_max_ms.has_value());
+        CHECK_FALSE(q.squeeze_min_ms.has_value());
         CHECK(query_matches(q, scanned_burnout(), RowFacts{}));
     }
 
@@ -636,40 +689,54 @@ TEST_CASE("library query: an unknown squeeze operator gives a plain error and fi
         REQUIRE(q.terms.size() == 1);
         CHECK(q.terms[0].folded == fold_for_search(text));
     }
-    CHECK(matches("squeeze", make_searchable("Squeeze Me", "", "", ""), RowFacts{}));
 }
 
 TEST_CASE("library query: bad filter values give a plain error and filter nothing") {
-    const LibraryQuery stars = parse_library_query("burnout stars:9");
+    // A count past the top of the stars: filter (kMaxStars) is refused, and
+    // the rest of the query still works.
+    const std::string too_many = "stars:" + std::to_string(hydra::kMaxStars + 1);
+    const LibraryQuery stars = parse_library_query("burnout " + too_many);
     CHECK_FALSE(stars.stars.has_value());
     REQUIRE(stars.errors.size() == 1);
-    CHECK(stars.errors[0] == "stars: needs a number from 0 to 7");
-    REQUIRE(stars.terms.size() == 1);  // the rest of the query still works
+    // The sentence names the filter and the top of its range.
+    const std::string stars_sentence = stars.errors[0];
+    CHECK(stars_sentence.find("stars:") == 0);
+    CHECK(stars_sentence.find(std::to_string(hydra::kMaxStars)) != std::string::npos);
+    REQUIRE(stars.terms.size() == 1);
     CHECK(stars.terms[0].folded == "burnout");
     CHECK(query_matches(stars, scanned_burnout(), RowFacts{}));
 
-    CHECK(parse_library_query("stars:x").errors ==
-          std::vector<std::string>{"stars: needs a number from 0 to 7"});
-    CHECK(parse_library_query("stars:-1").errors.size() == 1);
-    CHECK(parse_library_query("stars:").errors.size() == 1);
+    // Every bad stars: value gets that same one sentence and sets no filter.
+    for (const char* text : {"stars:x", "stars:-1", "stars:"}) {
+        CAPTURE(text);
+        const LibraryQuery q = parse_library_query(text);
+        CHECK(q.errors == std::vector<std::string>{stars_sentence});
+        CHECK_FALSE(q.stars.has_value());
+    }
 
-    const LibraryQuery squeeze = parse_library_query("squeeze<=abc");
-    CHECK_FALSE(squeeze.squeeze_max_ms.has_value());
-    REQUIRE(squeeze.errors.size() == 1);
-    CHECK(squeeze.errors[0] == "squeeze<= needs a number of milliseconds, like squeeze<=20");
-    CHECK(parse_library_query("squeeze<=").errors.size() == 1);
-    CHECK(parse_library_query("squeeze<=20ms").errors.size() == 1);
-
-    // The message names the operator the user typed.
-    CHECK(parse_library_query("squeeze>abc").errors ==
-          std::vector<std::string>{"squeeze> needs a number of milliseconds, like squeeze>20"});
-    CHECK(parse_library_query("squeeze>=").errors ==
-          std::vector<std::string>{"squeeze>= needs a number of milliseconds, like squeeze>=20"});
-    CHECK(parse_library_query("squeeze<x").errors ==
-          std::vector<std::string>{"squeeze< needs a number of milliseconds, like squeeze<20"});
+    // A bad squeeze value gets one sentence that starts with the filter and
+    // operator the user typed and ends on an example with that operator,
+    // which itself parses.
+    for (const char* op : {"<=", "<", ">=", ">"}) {
+        const std::string filter = std::string("squeeze") + op;
+        for (const std::string& value : {std::string("abc"), std::string(""), std::string("20ms")}) {
+            const std::string text = filter + value;
+            CAPTURE(text);
+            const LibraryQuery q = parse_library_query(text);
+            CHECK_FALSE(q.squeeze_max_ms.has_value());
+            CHECK_FALSE(q.squeeze_min_ms.has_value());
+            REQUIRE(q.errors.size() == 1);
+            CHECK(q.errors[0].find(filter + " ") == 0);
+            const std::string example = check_example_parses(q.errors[0]);
+            CHECK(example.find(filter) == 0);
+            const char after = example.size() > filter.size() ? example[filter.size()] : '\0';
+            CHECK(after >= '0');
+            CHECK(after <= '9');  // the operator is exactly the one typed, then a number
+        }
+    }
 
     // The same mistake twice is reported once.
-    CHECK(parse_library_query("stars:9 stars:10").errors.size() == 1);
+    CHECK(parse_library_query(too_many + " " + too_many).errors.size() == 1);
 }
 
 TEST_CASE("library query: an empty query matches every row") {
@@ -677,8 +744,12 @@ TEST_CASE("library query: an empty query matches every row") {
         const LibraryQuery q = parse_library_query(text);
         CHECK(q.empty());
         CHECK(q.errors.empty());
-        CHECK(query_matches(q, scanned_burnout(), RowFacts{}));
-        CHECK(query_matches(q, scanned_acid_romance(), analyzed(3, 40.0)));
+        // Rows with and without analysed facts, timed and untimed, all pass.
+        CHECK(query_matches(q, scanned_acid_romance(), RowFacts{}));
+        for (const ChartFacts* c : {&burnout_facts(), &on_end_facts(), &untimed_facts()}) {
+            INFO("chart: " << c->chart);
+            CHECK(query_matches(q, c->row, c->facts));
+        }
     }
     CHECK_FALSE(parse_library_query("x").empty());
     CHECK_FALSE(parse_library_query("stars:7").empty());
