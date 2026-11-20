@@ -246,7 +246,7 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
     // notecount, and the Dynamics tab's Totals (counted from its own 2x-kept
     // parse, then played_total for the setting) are one number. The sweep
     // depth keeps many paths and variants for the check to walk.
-    int checked = 0, rejected = 0;
+    int checked_off = 0, checked_on = 0, rejected = 0;
     for (const std::string& path : corpus::chart_paths()) {
         for (const bool bass2x : {false, true}) {
             CAPTURE(path);
@@ -272,13 +272,14 @@ TEST_CASE("note total: the engine, the Song and the Dynamics tab agree on every 
             }
             each_stored_path(rec->paths,
                              [&](const Path& p) { CHECK(p.notecount == total); });
-            ++checked;
+            ++(bass2x ? checked_on : checked_off);
         }
     }
     CHECK(rejected == 0);
     // Each listed chart, once with 2x Bass off and once on.
-    CHECK(checked == 2 * corpus_chart_count());
-    MESSAGE("checked " << checked << " chart and 2x Bass pairs");
+    CHECK(checked_off == corpus_chart_count());
+    CHECK(checked_on == corpus_chart_count());
+    MESSAGE("checked " << checked_off << " charts with 2x Bass off and " << checked_on << " on");
 }
 
 // A multiplier squeeze depends on the combo alone, and a full-combo path
