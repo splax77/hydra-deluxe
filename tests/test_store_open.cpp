@@ -20,6 +20,7 @@
 #include <fstream>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <optional>
 #include <set>
 #include <string>
@@ -274,7 +275,6 @@ TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in plac
         CHECK(store.lookup_one("failed", profile).status == RecordStatus::CantAnalyze);
     }
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
-    CHECK(profiles_have_early_fill(path));
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE failure_kind IS NULL"
                                " AND failure_text IS NULL") == 1);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
@@ -354,7 +354,6 @@ TEST_CASE("a file whose charts table has no album column opens and gains it in p
         CHECK(store.chart_index().naming("a")->album == "Album A");
     }
     CHECK(charts_have_album(path));
-    CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     // A second open finds a Current file and reads the album the scan wrote.
     {
@@ -380,7 +379,6 @@ TEST_CASE("a 2.8.0 file gains the failure columns and the album column in one op
     CHECK(charts_have_album(path));
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('records')"
                                " WHERE name IN ('failure_kind', 'failure_text')") == 2);
-    CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     remove_db(path);
 }
@@ -525,7 +523,6 @@ void check_converted_file(const std::string& path) {
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM sqlite_master WHERE name = 'results'") == 0);
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     CHECK(charts_have_album(path));
-    CHECK(profiles_have_early_fill(path));
     CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
     // The whole-file fill-rule label is gone; each record's profile names
     // its rule.
@@ -787,18 +784,33 @@ std::multiset<std::string> table_rows(const std::string& path, const std::string
     return out;
 }
 
-// The song ids of every record in the file at `path`, in id order.
-std::vector<std::string> record_song_ids(const std::string& path) {
+// The first column of every row `sql` reads from the file at `path`, as
+// text, in the order the query gives.
+std::vector<std::string> texts_on_file(const std::string& path, const char* sql) {
     sqlite3* db = nullptr;
     REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
     sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, "SELECT song_id FROM records ORDER BY song_id", -1, &s,
-                               nullptr) == SQLITE_OK);
+    REQUIRE(sqlite3_prepare_v2(db, sql, -1, &s, nullptr) == SQLITE_OK);
     std::vector<std::string> out;
     while (sqlite3_step(s) == SQLITE_ROW)
         out.push_back(reinterpret_cast<const char*>(sqlite3_column_text(s, 0)));
     sqlite3_finalize(s);
     sqlite3_close(db);
+    return out;
+}
+
+// The song ids of every record in the file at `path`, in id order.
+std::vector<std::string> record_song_ids(const std::string& path) {
+    return texts_on_file(path, "SELECT song_id FROM records ORDER BY song_id");
+}
+
+// Every table in the file at `path`, by name, with its rows (table_rows):
+// what a write that is undone must leave as it found it.
+std::map<std::string, std::multiset<std::string>> every_table_rows(const std::string& path) {
+    std::map<std::string, std::multiset<std::string>> out;
+    for (const std::string& name :
+         texts_on_file(path, "SELECT name FROM sqlite_master WHERE type = 'table'"))
+        out[name] = table_rows(path, name);
     return out;
 }
 
@@ -869,7 +881,6 @@ TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps
         CHECK(store.ready_records(batch_profile).empty() == !stamp_current);
     }
     CHECK(charts_have_album(path));
-    CHECK(profiles_have_early_fill(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     // The open rewrote no record and no path row.
     CHECK(table_rows(path, "records") == records_before);
@@ -896,6 +907,13 @@ int64_t records_under_profiles(const std::string& path) {
                                 " ON p.id = r.profile_id");
 }
 
+// Whether the file at `path` still holds the table the early-fill rebuild
+// renames the old profiles table to.
+bool rebuild_table_left(const std::string& path) {
+    return scalar_on_file(path, std::string("SELECT COUNT(*) FROM sqlite_master WHERE name = '") +
+                                    kProfilesBeforeEarlyFillTable + "'") != 0;
+}
+
 // How many profile rows in the file at `path` carry the default early-fill
 // window.
 int64_t profiles_at_default_window(const std::string& path) {
@@ -906,20 +924,26 @@ int64_t profiles_at_default_window(const std::string& path) {
 
 // The profiles table a build before results were saved per early-fill window
 // wrote: the same columns and key without the window. The file at `path`
-// keeps every row it held, id included.
-void drop_early_fill_column(const std::string& path) {
-    exec_on_file(path,
-                 "CREATE TABLE p5 (id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL,"
-                 " sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
-                 " ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
-                 " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,"
-                 " hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL,"
-                 " UNIQUE (chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value,"
-                 " legacy_fills, hyversion, rules_fp));"
-                 "INSERT INTO p5 SELECT id, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-                 " depth_value, legacy_fills, hyversion, rules_fp FROM profiles;"
-                 "DROP TABLE profiles;"
-                 "ALTER TABLE p5 RENAME TO profiles;");
+// keeps every row it held, id included. With `keep_key` false the table
+// has no unique key, so it can hold two rows a real file never could.
+void drop_early_fill_column(const std::string& path, bool keep_key = true) {
+    const std::string key = keep_key ? ", UNIQUE (chartmode, sp_cap, ms_enabled, ms_value,"
+                                       " depth_mode, depth_value, legacy_fills, hyversion,"
+                                       " rules_fp)"
+                                     : "";
+    const std::string sql =
+        std::string("CREATE TABLE p5 (id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL,"
+                    " sp_cap INTEGER NOT NULL, ms_enabled INTEGER NOT NULL,"
+                    " ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,"
+                    " depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,"
+                    " hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL") +
+        key +
+        ");"
+        "INSERT INTO p5 SELECT id, chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
+        " depth_value, legacy_fills, hyversion, rules_fp FROM profiles;"
+        "DROP TABLE profiles;"
+        "ALTER TABLE p5 RENAME TO profiles;";
+    exec_on_file(path, sql.c_str());
 }
 
 // The search settings fixture() runs (store_fixtures.h), with the SP cap at
@@ -1029,18 +1053,23 @@ TEST_CASE("a file whose profiles table lacks the early-fill window opens and gai
     CHECK(profiles_at_default_window(path) == 2);
     CHECK(records_under_profiles(path) == 2);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == paths_before);
-    CHECK(scalar_on_file(path, std::string("SELECT COUNT(*) FROM sqlite_master WHERE name = '") +
-                                   kProfilesBeforeEarlyFillTable + "'") == 0);
+    CHECK_FALSE(rebuild_table_left(path));
     remove_db(path);
 }
 
 TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgrade and changes "
           "nothing") {
-    // A table already holds the name the rebuild renames the old profiles
-    // table to, so the rename fails inside the transaction.
+    // The old profiles table loses its unique key and gains a copy of one
+    // row under a new id. The rebuild's first steps go through; copying the
+    // rows into the new table, whose key the two copies share, fails. So the
+    // file can only end as it was if the whole rebuild is undone.
     const std::string path = testtemp::temp_path("efill_rebuild_blocked", ".db");
     seed_without_early_fill(path);
-    exec_on_file(path, (std::string("CREATE TABLE ") + kProfilesBeforeEarlyFillTable + " (x)").c_str());
+    drop_early_fill_column(path, false);
+    exec_on_file(path, "INSERT INTO profiles SELECT (SELECT MAX(id) + 1 FROM profiles), chartmode,"
+                       " sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,"
+                       " hyversion, rules_fp FROM profiles WHERE id = (SELECT MIN(id) FROM"
+                       " profiles)");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
     const std::string profiles_before = older_profile_columns(path);
     const std::string profiles_sql_before =
@@ -1049,11 +1078,13 @@ TEST_CASE("an open that cannot rebuild the profiles table fails as DatabaseUpgra
     const int64_t paths_before = scalar_on_file(path, "SELECT COUNT(*) FROM record_paths");
     try {
         RecordStore store(path);
-        FAIL("the open rebuilt the profiles table with its temporary name taken");
+        FAIL("the open copied two rows that share the new table's key");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
     }
-    // The old table, every row and every record, as they were.
+    // The renamed old table is gone and no new table took its place: the old
+    // table, every row and every record, as they were.
+    CHECK_FALSE(rebuild_table_left(path));
     CHECK(classify_library_file(path) == LibraryFileKind::LacksEarlyFillColumn);
     CHECK_FALSE(profiles_have_early_fill(path));
     CHECK(text_on_file(path, "SELECT sql FROM sqlite_master WHERE name = 'profiles'") ==
@@ -1126,15 +1157,19 @@ TEST_CASE("a save that fails leaves nothing behind and reads as a save error") {
     {
         RecordStore store(path);
         const Profile profile{"mode", CapQuery::at(4), Lens{}};
+        const auto tables_before = every_table_rows(path);
         try {
             store.save(prepare_record("boom", profile, at_cap(4)));
             FAIL("the refused save went through");
-        } catch (const std::exception& e) {
+        } catch (const KindedError& e) {
+            // A save error, read as the sentence its kind owns.
+            CHECK(e.kind() == ErrorKind::DatabaseWrite);
             CHECK(hydra::app::plain_error(e) ==
-                  "Hydra couldn't save to its database (hydra.db). Check that the disk isn't "
-                  "full and that no other copy of Hydra is running, then try again.");
+                  hydra::app::plain_error(KindedError(ErrorKind::DatabaseWrite, "")));
         }
-        CHECK(store.record_count() == 0);
+        // Not one row of the chart, its paths or its profile is left in any
+        // table.
+        CHECK(every_table_rows(path) == tables_before);
         // The store is still usable: no transaction was left open.
         store.save(prepare_record("ok", profile, at_cap(4)));
         CHECK(store.lookup_one("ok", profile).status == RecordStatus::Ready);
@@ -1234,15 +1269,21 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
     std::remove(path.c_str());
 }
 
-TEST_CASE("every store read throws a database read error when its step fails") {
+// The list is the public reads RecordStore declares in store/record_store.h;
+// a read added there is not covered until it is added here, so the name says
+// the list is by name.
+TEST_CASE("each store read named in the test throws a database read error when its step fails") {
     const std::string path = testtemp::temp_path("every_read_fail", ".db");
     std::remove(path.c_str());
     const Profile profile{"mode", CapQuery::at(4), Lens{}};
     const std::pair<const char*, std::function<void(RecordStore&)>> reads[] = {
         {"lookup", [&](RecordStore& s) { s.lookup({"h"}, profile); }},
         {"lookup_one", [&](RecordStore& s) { s.lookup_one("h", profile); }},
+        {"settled_song_ids", [&](RecordStore& s) { s.settled_song_ids(profile); }},
         {"ready_song_ids", [&](RecordStore& s) { s.ready_song_ids(profile); }},
         {"ready_records", [&](RecordStore& s) { s.ready_records(profile); }},
+        {"rows_missing_hardest", [&](RecordStore& s) { s.rows_missing_hardest(profile); }},
+        {"hardest_figure_filled", [&](RecordStore& s) { s.hardest_figure_filled(profile); }},
         {"record_count", [](RecordStore& s) { s.record_count(); }},
         {"chart_index", [](RecordStore& s) { s.chart_index(); }},
         {"chart_library_cache", [](RecordStore& s) { s.chart_library_cache(); }},
@@ -1300,13 +1341,16 @@ TEST_CASE("the vendored SQLite is built without memory counters or shared cache"
 
 TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log at the end") {
     // The threshold is per connection, so only the store's own getter can
-    // read it. 1,000 is SQLite's own default, read off one run.
+    // read the store's. D86 item 3: the batch's end puts back SQLite's own
+    // threshold, which a second plain connection on the same file reads.
     const std::string path = testtemp::temp_path("batch_guard", ".db");
     std::remove(path.c_str());
     const std::filesystem::path wal = std::filesystem::u8path(path + "-wal");
     {
         RecordStore store(path);
-        CHECK(store.wal_autocheckpoint_for_test() == 1000);
+        const int64_t sqlite_default = scalar_on_file(path, "PRAGMA wal_autocheckpoint");
+        REQUIRE(sqlite_default != kBatchWalAutocheckpointPages);
+        CHECK(store.wal_autocheckpoint_for_test() == sqlite_default);
         {
             const RecordStore::BatchWrites batch(store);
             CHECK(store.wal_autocheckpoint_for_test() == kBatchWalAutocheckpointPages);
@@ -1314,7 +1358,7 @@ TEST_CASE("the batch guard sets the checkpoint threshold and truncates the log a
             CHECK(std::filesystem::file_size(wal) > 0);
         }
         CHECK(std::filesystem::file_size(wal) == 0);
-        CHECK(store.wal_autocheckpoint_for_test() == 1000);
+        CHECK(store.wal_autocheckpoint_for_test() == sqlite_default);
         CHECK(store.record_count() == 1);
     }
     std::remove(path.c_str());
@@ -1392,13 +1436,21 @@ TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure and
     CHECK(rows[0].sig == "sig-ready");
 }
 
-TEST_CASE("set_hardest writes one chart's rows together") {
+TEST_CASE("set_hardest fills only a record's empty figures and ignores a rank it does not have") {
+    // Every figure here is any value a figure may hold, each one different,
+    // so a figure written to the wrong rank shows. A figure of 0 is a real
+    // one: a squeeze at exactly 0 needs 0.0 ms (D302).
+    const double held = 12.5;
+    const double for_rank_1 = 0.0;
+    const double for_rank_2 = -315.8;
+    const double for_held_rank = 99.0;
+    const double for_missing_rank = 7.0;
     RecordStore store(":memory:");
     const Profile profile = hydra::test::at4();
     store.rebuild_chart_library({library_row("a", "A")});
     store.save(hand_record("a", profile,
                            {hand_path(1, std::nullopt, 1), hand_path(2, std::nullopt, 2),
-                            hand_path(3, 12.5, 1)}));
+                            hand_path(3, held, 1)}));
     const std::vector<MissingHardestRow> before = store.rows_missing_hardest(profile);
     REQUIRE(before.size() == 2);
     CHECK(before[0].rank == 1);
@@ -1406,10 +1458,11 @@ TEST_CASE("set_hardest writes one chart's rows together") {
 
     // Rank 3 already holds a figure, which the write leaves alone, and the
     // record has no rank 9.
-    store.set_hardest("a", before[0].profile_id, {{1, 0.0}, {2, -315.8}, {3, 99.0}, {9, 7.0}});
+    store.set_hardest("a", before[0].profile_id,
+                      {{1, for_rank_1}, {2, for_rank_2}, {3, for_held_rank}, {9, for_missing_rank}});
     CHECK(store.rows_missing_hardest(profile).empty());
     CHECK(hydra::test::saved_figures(store, "a", profile) ==
-          std::vector<std::optional<double>>{0.0, -315.8, 12.5});
+          std::vector<std::optional<double>>{for_rank_1, for_rank_2, held});
 }
 
 TEST_CASE("the hardest-figure marker is per profile: unset at first, set for one profile after "
