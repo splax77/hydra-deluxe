@@ -1271,9 +1271,9 @@ class ReadEndTest(unittest.TestCase):
         for index, ms in reads.items():
             self.assertAlmostEqual(ms, read_ms[index], delta=0.01, msg=index)
         # Each row leads by its press's aim with the sign turned. A press
-        # timed from a read first moves by how far its own end moved: its
-        # own stored end plus the file's conversion of how far the read came
-        # from the stored end it was planned on, less its own planned end.
+        # timed from a read first moves by how far its own end moved, which
+        # play_chart.own_end_now_ms works out from the file's fields.
+        plan = {(p.index, p.aim_ms): p for p in play_chart.press_plan(chords)}
         entries = {}
         for entry in doc["presses"]:
             entries.setdefault(entry["chord"], []).append(entry)
@@ -1293,10 +1293,8 @@ class ReadEndTest(unittest.TestCase):
                         self.assertLessEqual(read, block["if_end_after_ms"], index)
                     low, high = e["read_range_ms"] or (None, None)
                     self.assertTrue((low is None or low <= read) and (high is None or read <= high))
-                    side = "late" if read >= e["read_stored_end_ms"] else "early"
-                    own_now = (e["own_stored_end_ms"]
-                               + e["conversion"][side] * (read - e["read_stored_end_ms"]))
-                    aim += own_now - e["own_end_ms"]
+                    press = plan[(index, e["aim_ms"])]
+                    aim += play_chart.own_end_now_ms(press, read) - press.own_end_ms
                 leads.append(-aim)
             got = [r["lead_ms"] for r in _rows_of(result, index)]
             self.assertEqual(len(got), len(leads), index)
