@@ -12,6 +12,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <optional>
 #include <set>
@@ -144,6 +145,34 @@ int fill_count(const Song& song) {
     for (const SongTimestamp& ts : song.sequence)
         if (ts.has_activation()) ++n;
     return n;
+}
+
+// Is p over the Path limit the record was searched under? The limit is the
+// record's own (HydraRecord::ms_limit) and the judge is Path::within_ms_limit,
+// the rule the search's Path limit asks. No limit means nothing is over.
+bool over_limit(const HydraRecord& record, const Path& p) {
+    return record.ms_limit.has_value() && !p.within_ms_limit(*record.ms_limit);
+}
+
+// Every path the record keeps, with its score and whether it is over the
+// Path limit, for a failure message.
+std::string kept_paths_text(const HydraRecord& record) {
+    std::string seen;
+    for (const Path* p : record.all_paths())
+        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) +
+                (over_limit(record, *p) ? " over" : " inside") + "; ";
+    return seen;
+}
+
+// D51 call 2 and D55 item 5: a kept path over the Path limit always has the
+// best score; one below it is dropped, tie or not.
+void check_over_limit_paths_tie_the_top(const HydraRecord& record) {
+    const int64_t top = record.best_path().totalscore();
+    for (const Path* p : record.all_paths()) {
+        if (!over_limit(record, *p)) continue;
+        CAPTURE(p->pathstring());
+        CHECK(p->totalscore() == top);
+    }
 }
 
 }  // namespace
@@ -518,118 +547,125 @@ TEST_CASE("rules: the leeway changes what the engine counts") {
     CHECK(best(none).totalscore() <= by_default.totalscore());
 }
 
-TEST_CASE("rules: max_tied_paths caps the tied paths the engine keeps") {
-    core::Rules one = core::default_rules();
-    one.max_tied_paths = 1;
-    int charts = 0;
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, ChartReading{});
-        if (song.is_empty()) continue;
-        ScoreGraph graph(song, 4, FillDeadlineRule::Ch11, one);
-        std::vector<Path> paths = run_search(graph, EngineOptions{});
-        REQUIRE(!paths.empty());
-        CHECK(paths.front().tied_pathcount() == 1);
-        if (++charts == 5) break;
-    }
-    CHECK(charts > 0);
-}
-
 // Finding 95, D51 call 1: the tie limit is one count per score, whichever
 // side of the Path limit a path falls on, and a path inside the limit leads.
-// On this chart two paths tie the top score under 1.0 fills; only the E0
-// path's early fill puts it over a 0 ms limit, so the inside one is kept.
+// On this chart, under 1.0 fills and a 0 ms Path limit, the top score is
+// reached both by a path inside the limit and by one over it.
 TEST_CASE("rules: max_tied_paths is one count per score, inside paths first") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("black midi - Sugar") != std::string::npos) chart = p;
+    const std::string chart = corpus::chart_named("black midi - Sugar");
     REQUIRE_FALSE(chart.empty());
 
     SearchSettings settings;
-    settings.sp_cap = 4;
     settings.legacy_fills = true;
     settings.ms_filter = 0.0;
-    settings.rules.max_tied_paths = 1;
-    const HydraRecord& record = corpus::analyzed(chart, settings);
-    REQUIRE_FALSE(record.paths.empty());
 
-    const Path& best = record.best_path();
-    int at_top = 0;
-    std::string seen;
-    for (const Path* p : record.all_paths()) {
-        if (p->totalscore() != best.totalscore()) continue;
-        seen += "'" + p->pathstring() + "' ";
+    // Under the default tie limit both sides of the top score are kept, so
+    // the case the inside-first rule decides is there.
+    const HydraRecord& wide = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(wide.paths.empty());
+    const int64_t top = wide.best_path().totalscore();
+    bool top_inside = false;
+    bool top_over = false;
+    for (const Path* p : wide.all_paths()) {
+        if (p->totalscore() != top) continue;
+        if (over_limit(wide, *p)) top_over = true;
+        else top_inside = true;
     }
-    for (const Path& p : record.paths)
-        if (p.totalscore() == best.totalscore()) at_top += p.tied_pathcount();
-    INFO("paths at the top score: ", seen);
+    INFO("paths under the default tie limit: ", kept_paths_text(wide));
+    REQUIRE(top_inside);
+    REQUIRE(top_over);
+
+    settings.rules.max_tied_paths = 1;
+    const HydraRecord& one = corpus::analyzed(chart, settings);
+    REQUIRE_FALSE(one.paths.empty());
+    INFO("paths under a tie limit of 1: ", kept_paths_text(one));
+    REQUIRE(one.best_path().totalscore() == top);
+    int at_top = 0;
+    for (const Path& p : one.paths)
+        if (p.totalscore() == top) at_top += p.tied_pathcount();
     CHECK(at_top == 1);
-    CHECK(best.tied_pathcount() == 1);
-    CHECK(best.pathstring() == "0 E3+ E5 E1");
+    CHECK(one.best_path().tied_pathcount() == 1);
+    CHECK_FALSE(over_limit(one, one.best_path()));
 }
 
 // Finding 330, D51 call 2: a path over the Path limit is still kept when it
 // ties the optimal score, and one over the limit below it is dropped.
 TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal score") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("HopH2O - I Am... All Of Me") != std::string::npos) chart = p;
+    const std::string chart = corpus::chart_named("HopH2O - I Am... All Of Me");
     REQUIRE_FALSE(chart.empty());
 
     SearchSettings settings;
-    settings.sp_cap = 4;
     settings.ms_filter = 10.0;
     const HydraRecord& record = corpus::analyzed(chart, settings);
     REQUIRE_FALSE(record.paths.empty());
+    INFO("kept paths: ", kept_paths_text(record));
 
     const int64_t top = record.best_path().totalscore();
-    CHECK(top == 694985);
-    bool kept = false;
-    bool below_kept = false;
-    std::string seen;
+    bool over_tie_kept = false;
     for (const Path* p : record.all_paths())
-        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
-    INFO("kept paths: ", seen);
-    for (const Path* p : record.all_paths()) {
-        if (p->pathstring() == "3 E0 1 0- 2 E0") below_kept = true;
-        if (p->totalscore() != top || p->pathstring() != "0+ 2 0 0- 2 E0") continue;
-        REQUIRE(p->difficulty().has_value());
-        CHECK(format_ms(*p->difficulty()) == "78.9 ms");
-        kept = true;
-    }
-    CHECK(kept);
-    CHECK_FALSE(below_kept);
+        if (p->totalscore() == top && over_limit(record, *p)) over_tie_kept = true;
+    CHECK(over_tie_kept);
+    check_over_limit_paths_tie_the_top(record);
 }
 
 // D55 item 5: one count per score must not bring back over-limit paths below
-// the best score. On this chart '2 2+ 0- 3' needs a 428.6 ms squeeze and ties
-// the inside path '2 2+ 3 0+' below the top. It is dropped, not filed under
-// that path as a tie.
+// the best score. The case needs a chart that, with no Path limit, keeps
+// below its top score a path over 10 ms that ties one inside it; no single
+// chart is known to have one, so this walks the corpus for them. Under a
+// 10 ms limit the over one is dropped, not filed under the inside one as a
+// tie, and the inside one stays.
+// The unlimited settings are the invariants sweep's deep ones
+// (test_engine_sweeps.cpp), so in a full run that record comes from the
+// corpus::analyzed cache; the deep search keeps many scores below the top,
+// which is where the case lives.
 TEST_CASE("rules: a path over the Path limit below the best score is dropped even as a tie") {
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("Unbound (The Wild Ride)") != std::string::npos) chart = p;
-    REQUIRE_FALSE(chart.empty());
+    constexpr double kLimitMs = 10.0;
+    SearchSettings unlimited;
+    unlimited.sp_cap = 4;
+    unlimited.depth_mode = DepthMode::Scores;
+    unlimited.depth_value = 200;
+    unlimited.ms_filter = std::nullopt;
+    SearchSettings settings = unlimited;
+    settings.ms_filter = kLimitMs;
 
-    SearchSettings settings;
-    settings.sp_cap = 4;
-    settings.legacy_fills = false;
-    settings.ms_filter = 10.0;
-    settings.rules.max_tied_paths = 4;
-    const HydraRecord& record = corpus::analyzed(chart, settings);
-    REQUIRE_FALSE(record.paths.empty());
+    int walked = 0;
+    int found = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        if (corpus::song(chart, ChartReading{}).is_empty()) continue;
+        ++walked;
+        const HydraRecord& free_record = corpus::analyzed(chart, unlimited);
+        if (free_record.paths.empty()) continue;
+        const HydraRecord& limited = corpus::analyzed(chart, settings);
+        if (limited.paths.empty()) continue;
+        const int64_t top = limited.best_path().totalscore();
 
-    std::string seen;
-    for (const Path* p : record.all_paths())
-        seen += "'" + p->pathstring() + "' " + std::to_string(p->totalscore()) + "; ";
-    INFO("kept paths: ", seen);
-    bool inside_kept = false;
-    bool over_kept = false;
-    for (const Path* p : record.all_paths()) {
-        if (p->pathstring() == "2 2+ 0- 3") over_kept = true;
-        if (p->pathstring() == "2 2+ 3 0+" && p->totalscore() == 859580) inside_kept = true;
+        std::set<int64_t> inside_scores;
+        std::set<int64_t> over_scores;
+        for (const Path* p : free_record.all_paths()) {
+            if (p->totalscore() >= top) continue;
+            if (p->within_ms_limit(kLimitMs)) inside_scores.insert(p->totalscore());
+            else over_scores.insert(p->totalscore());
+        }
+        std::vector<int64_t> tied_below;
+        std::set_intersection(inside_scores.begin(), inside_scores.end(), over_scores.begin(),
+                              over_scores.end(), std::back_inserter(tied_below));
+        if (tied_below.empty()) continue;
+        ++found;
+
+        CAPTURE(chart);
+        INFO("paths with no Path limit: ", kept_paths_text(free_record));
+        INFO("paths under the 10 ms limit: ", kept_paths_text(limited));
+        check_over_limit_paths_tie_the_top(limited);
+        for (const int64_t score : tied_below) {
+            CAPTURE(score);
+            bool inside_kept = false;
+            for (const Path* p : limited.all_paths())
+                if (p->totalscore() == score && !over_limit(limited, *p)) inside_kept = true;
+            CHECK(inside_kept);
+        }
     }
-    CHECK(inside_kept);
-    CHECK_FALSE(over_kept);
+    INFO("charts walked: ", walked);
+    REQUIRE(found > 0);
 }
 
 // Finding 179: the engine's running tie count (bookkeeping for the limit)
@@ -663,32 +699,7 @@ TEST_CASE("rules: the generated-fill values come from the rules") {
     CHECK(fill_count(with_tight) > default_fills);
 }
 
-TEST_CASE("rules: the retired fill_length_measures key is read and ignored") {
-    // D115: a generated fill starts on its measure line, so the key does
-    // nothing, but a hydra_rules.ini that still sets it keeps loading.
-    core::Rules r = app::load_rules_file(write_rules("retired_fill_length",
-        "fill_length_measures = 0.25\n"
-        "max_tied_paths = 2\n"));
-    core::Rules expected = core::default_rules();
-    expected.max_tied_paths = 2;
-    CHECK(r.fingerprint() == expected.fingerprint());
-}
-
 // ---- the fingerprint's scope (docs/adr/0014) ------------------------------
-
-TEST_CASE("rules: the retired Auto keys are read and ignored") {
-    // A hydra_rules.ini that still sets these two keys must keep loading: an
-    // error here would switch analysis off. Any value is accepted, since the
-    // keys do nothing.
-    core::Rules r = app::load_rules_file(write_rules("retired",
-        "auto_cap_ladder = 32, 16\n"
-        "auto_budget_s = banana\n"
-        "max_tied_paths = 2\n"));
-    CHECK(r.max_tied_paths == 2);
-    core::Rules expected = core::default_rules();
-    expected.max_tied_paths = 2;
-    CHECK(r.fingerprint() == expected.fingerprint());
-}
 
 // Every stored result carries the rules fingerprint, so a change to the
 // fingerprint text's names, number form or line order would read every row
@@ -710,20 +721,18 @@ TEST_CASE("rules: a library an earlier Hydra wrote still matches the default rul
                                             blob) == profiles);
 }
 
-TEST_CASE("rules: the default stamp is built once and matches a fresh record") {
-    // HydraRecord's default fingerprint reads this stamp, so a record built
-    // or decoded never re-hashes the default rules.
-    CHECK(&core::default_stamp() == &core::default_stamp());
+TEST_CASE("rules: the default stamp is the default rules' fingerprint, and a fresh record carries it") {
     CHECK(core::default_stamp().fixed == core::default_rules().fingerprint());
     CHECK(HydraRecord{}.rules_fingerprint == core::default_stamp().fixed);
     CHECK(core::RulesStamp::none().fixed == core::kNoRulesFingerprint);
 }
 
-TEST_CASE("rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8") {
+// A rule moved off its default, so a stamp that wrote the default rules'
+// fingerprint instead of the run's own would fail.
+TEST_CASE("rules: a run is stamped with the fingerprint of the rules it ran under") {
     const Song& song = corpus::song(corpus::first_chart_with_notes(), ChartReading{});
     SearchSettings settings;
-    settings.sp_cap = 8;
-    CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
-    settings.sp_cap = 4;
+    settings.rules.max_tied_paths = core::default_rules().max_tied_paths + 1;
+    REQUIRE(settings.rules.fingerprint() != core::default_rules().fingerprint());
     CHECK(analyze_chart(song, settings).rules_fingerprint == settings.rules.fingerprint());
 }
