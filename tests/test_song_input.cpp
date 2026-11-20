@@ -180,10 +180,7 @@ TEST_CASE("song.ini: a delay that is not a plain number is absent") {
 TEST_CASE(".chart: malformed lines keep their handling") {
     const std::string song = "[Song]\n{\n  Resolution = 192\n}\n";
     const std::string sync = "[SyncTrack]\n{\n  0 = TS 4\n  0 = B 120000\n}\n";
-    auto parse = [](const std::string& text) {
-        const std::vector<uint8_t> data(text.begin(), text.end());
-        return load_songbytes_chart(data, ChartReading{});
-    };
+    auto parse = [](const std::string& text) { return load_songtext_chart(text); };
 
     // A blank line outside a section is not a header: the chart is refused.
     CHECK_THROWS_AS(parse(song + "\n" + sync), ChartFileError);

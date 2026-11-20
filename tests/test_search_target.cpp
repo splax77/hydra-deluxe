@@ -82,10 +82,7 @@ AlliesBest allies_best(const app::AnalysisSettings& cfg) {
 }
 
 // A chart's text read as the app reads a .chart file's bytes.
-Song chart_song(const std::string& text) {
-    const std::vector<uint8_t> bytes(text.begin(), text.end());
-    return load_songbytes_chart(bytes, ChartReading{});
-}
+Song chart_song(const std::string& text) { return load_songtext_chart(text); }
 
 // Fuzz seed 5 with one more note after its last phrase chord (at 22848), a
 // line a chart editor saves like any other note.
