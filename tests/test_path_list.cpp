@@ -28,7 +28,6 @@
 using namespace hydra;
 using namespace hydra::app;
 using song_details::burnout;
-using song_details::kDot;
 
 namespace {
 
@@ -55,6 +54,20 @@ void for_each_corpus_record(Visit&& visit, std::optional<int> sp_cap = std::null
 PathButtonsView buttons_of(const HydraRecord& rec) {
     const Settings s = scratch_settings();
     return build_path_buttons(rec, s.depth_mode, s.depth_value);
+}
+
+// One squeeze row against the squeeze it shows, in the words of `pro_drums`:
+// its notation first, its gain, its chord's own Chord::rowstr last, and the
+// squeeze's own howto.
+void check_squeeze_row(const MultSqueezeView& row, const MultSqueeze& msq, bool pro_drums) {
+    CAPTURE(row.label);
+    const std::string chord = msq.chord().rowstr(pro_drums);
+    CHECK(row.label.rfind(msq.notationstr(), 0) == 0);
+    CHECK(row.label.find("+" + std::to_string(msq.gain())) != std::string::npos);
+    REQUIRE(row.label.size() >= chord.size());
+    CHECK(row.label.substr(row.label.size() - chord.size()) == chord);
+    CHECK(row.howto == msq.howto(pro_drums));
+    CHECK(row.gain == msq.gain());
 }
 
 }  // namespace
@@ -214,8 +227,7 @@ TEST_CASE("build_path_list: an all-0 path shows exactly when no listed path has 
         }
         CHECK(allzero_buttons == expected);
     });
-    // Burnout shows one under these settings (the Burnout button test below
-    // reads its all-0 button).
+    // Burnout shows one under these settings.
     CHECK(charts_showing > 0);
 }
 
@@ -253,30 +265,37 @@ TEST_CASE("path_identity: engine paths share one exactly when score, starts and 
     });
 }
 
-TEST_CASE("build_multsqueezes: one labeled entry per squeeze") {
-    const HydraRecord& rec = corpus::analyzed_by_ten_scores().record;
-    std::vector<MultSqueezeView> v = build_multsqueezes(rec);
-    CHECK(v.size() == rec.multsqueezes.size());
-    for (size_t i = 0; i < v.size(); ++i) {
-        CHECK(v[i].label.find(" pts):   ") != std::string::npos);
-        CHECK(v[i].howto == rec.multsqueezes[i].howto());
-    }
+TEST_CASE("build_multsqueezes: one entry per squeeze, each read from that squeeze") {
+    // build_multsqueezes words its rows with Pro Drums on.
+    size_t squeezes = 0;
+    for_each_corpus_record([&](const HydraRecord& rec) {
+        const std::vector<MultSqueezeView> v = build_multsqueezes(rec);
+        REQUIRE(v.size() == rec.multsqueezes.size());
+        squeezes += v.size();
+        for (size_t i = 0; i < v.size(); ++i) check_squeeze_row(v[i], rec.multsqueezes[i], true);
+    });
+    // Burnout has a multiplier squeeze (the Pro Drums test below needs it), so
+    // the walk reads at least one.
+    REQUIRE(squeezes > 0);
 }
 
 TEST_CASE("PathsTabCache: views are built once and rebuilt only when their inputs move") {
-    const AnalysisResult& ar = corpus::analyzed_by_ten_scores();
+    // Burnout lists more than one path, so the cache can be moved to a second.
+    const AnalysisResult& ar = burnout();
     const HydraRecord& rec = ar.record;
     const SongTiming& timing = ar.song.timing();
     PathsTabCache cache;
 
-    // The buttons: once per record generation, however many frames ask.
+    // The buttons: once per record generation and score range, however many
+    // frames ask.
     for (int frame = 0; frame < 5; ++frame) cache.buttons(rec, 7, 0, 10);
     CHECK(cache.buttons_builds() == 1);
     const PathButtonsView& list = cache.buttons(rec, 8, 0, 10);  // the record was re-read
     CHECK(cache.buttons_builds() == 2);
-
     // Every button carries its path's own notation.
     for (const PathButtonView& b : list.buttons) CHECK(b.notation == b.path->pathstring());
+    cache.buttons(rec, 8, 0, 11);  // the score range moved
+    CHECK(cache.buttons_builds() == 3);
 
     // The details: once per (path, record, backend limit).
     const Path& best = rec.best_path();
@@ -287,55 +306,74 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     CHECK(cache.details_builds() == 2);
     cache.details(best, rec, 9, &timing, 30.0, core::default_rules());
     CHECK(cache.details_builds() == 3);
-    std::vector<const Path*> all = rec.all_paths();
-    if (all.size() > 1) {
-        cache.details(*all[1], rec, 9, &timing, 30.0, core::default_rules());
-        CHECK(cache.details_builds() == 4);
-    }
+    const std::vector<const Path*> all = rec.all_paths();
+    REQUIRE(all.size() > 1);
+    const Path& other = *all[1];
+    REQUIRE(&other != &best);
+    cache.details(other, rec, 9, &timing, 30.0, core::default_rules());
+    CHECK(cache.details_builds() == 4);
 
-    // What the cache hands back is what a fresh build gives.
-    const PathsTabCache::Details& d =
-        cache.details(best, rec, 9, &timing, 30.0, core::default_rules());
-    CHECK(d.breakdown == build_score_breakdown(best));
-    CHECK(d.squeezes.size() == build_multsqueezes(rec).size());
-    CHECK(d.activations.acts.size() ==
-          build_activations(best, rec, &timing, 30.0).acts.size());
+    // What the cache hands back after each move is the selected path's own,
+    // never the one it held before: its activations, its score and the
+    // record's squeezes.
+    for (const Path* p : {&other, &best}) {
+        CAPTURE(p->pathstring());
+        const PathsTabCache::Details& d =
+            cache.details(*p, rec, 9, &timing, 30.0, core::default_rules());
+        CHECK(d.activations.acts.size() == p->walk_activations().size());
+        REQUIRE_FALSE(d.breakdown.empty());
+        CHECK(d.breakdown.back().find(group_thousands(p->totalscore())) != std::string::npos);
+        REQUIRE(d.squeezes.size() == rec.multsqueezes.size());
+        for (size_t i = 0; i < d.squeezes.size(); ++i)
+            check_squeeze_row(d.squeezes[i], rec.multsqueezes[i], true);
+    }
 }
 
-TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
-    const HydraRecord& rec = burnout().record;
-    PathButtonsView v = build_path_buttons(rec, /*depth_mode=*/0, /*depth_value=*/2);
-    CHECK(v.within_label == "Within 2 scores");
-    REQUIRE(v.buttons.size() == 4);
+TEST_CASE("path buttons: the listed paths in their score folds, then the all-0 path") {
+    // Each button's timing is checked by "each path's own hardest timing", and
+    // the all-0 button's shortfall by "an all-0 path shows exactly when".
+    for_each_corpus_record([](const HydraRecord& rec) {
+        const PathButtonsView v = buttons_of(rec);
+        const std::vector<const Path*> listed = rec.all_paths();
+        const PathListView list = build_path_list(rec);
+        REQUIRE_FALSE(listed.empty());
+        REQUIRE(v.buttons.size() == listed.size() + list.allzero.size());
+        const std::optional<int64_t> optimal = rec.optimal_score();
+        REQUIRE(optimal.has_value());
+        CHECK(v.buttons.front().path == &rec.best_path());
 
-    CHECK(v.buttons[0].path == &rec.best_path());
-    CHECK(v.buttons[0].group == PathButtonView::Group::Optimal);
-    CHECK(v.buttons[0].notation == "3- 1 2");
-    // Inside a fold the score sits on the fold, not on the button.
-    CHECK(v.buttons[0].fold == "378,315");
-    CHECK(v.buttons[0].fold_count == "1 path");
-    CHECK(v.buttons[0].title == "3- 1 2");
-    CHECK(v.buttons[0].timing == "163.0 ms");
-    CHECK(v.buttons[0].timing_warn);
-    CHECK(v.buttons[0].detail.empty());
-
-    CHECK(v.buttons[1].group == PathButtonView::Group::Within);
-    CHECK(v.buttons[1].fold == "378,175");
-    CHECK(v.buttons[1].title == "0 4 1");
-    CHECK(v.buttons[1].timing.empty());  // needs no squeeze
-    CHECK(v.buttons[1].detail.empty());
-    CHECK(v.buttons[2].group == PathButtonView::Group::Within);
-    CHECK(v.buttons[2].fold == "378,075");
-    CHECK(v.buttons[2].title == "2 1 2");
-
-    // The all-0 path has no fold, so its score stays on the button.
-    CHECK(v.buttons[3].group == PathButtonView::Group::AllZero);
-    CHECK(v.buttons[3].fold.empty());
-    CHECK(v.buttons[3].fold_count.empty());
-    CHECK(v.buttons[3].title == "375,955" + kDot + "0 0 0 0");
-    CHECK(v.buttons[3].detail == "2,360 below optimal");
+        for (size_t i = 0; i < v.buttons.size(); ++i) {
+            const PathButtonView& b = v.buttons[i];
+            CAPTURE(b.notation);
+            CHECK(b.notation == b.path->pathstring());
+            if (i >= listed.size()) {
+                // The all-0 path has no fold, so its score stays on the button.
+                CHECK(b.path == list.allzero[i - listed.size()]);
+                CHECK(b.group == PathButtonView::Group::AllZero);
+                CHECK(b.fold.empty());
+                CHECK(b.fold_count.empty());
+                CHECK(b.title ==
+                      group_thousands(b.path->totalscore()) + kFactSeparator + b.notation);
+                continue;
+            }
+            // A listed path sits in its traversal place, in Optimal exactly
+            // when it reaches the record's optimal score. Inside a fold the
+            // score sits on the fold, which counts every path with that score.
+            CHECK(b.path == listed[i]);
+            CHECK(b.group == (b.path->totalscore() == *optimal ? PathButtonView::Group::Optimal
+                                                               : PathButtonView::Group::Within));
+            CHECK(b.fold == group_thousands(b.path->totalscore()));
+            const int64_t sharing = std::count_if(listed.begin(), listed.end(), [&](const Path* p) {
+                return p->totalscore() == b.path->totalscore();
+            });
+            CHECK(b.fold_count.rfind(group_thousands(sharing) + " ", 0) == 0);
+            CHECK(b.title == b.notation);
+        }
+    });
 
     // The INI's int reaches the heading through Settings::search_depth_mode.
+    const HydraRecord& rec = burnout().record;
+    CHECK(build_path_buttons(rec, /*depth_mode=*/0, 2).within_label == "Within 2 scores");
     CHECK(build_path_buttons(rec, /*depth_mode=*/0, 1).within_label == "Within 1 score");
     CHECK(build_path_buttons(rec, /*depth_mode=*/1, 5000).within_label ==
           "Within 5,000 points");
@@ -361,16 +399,28 @@ TEST_CASE("path buttons: Burnout's list, in the mockup's groups") {
     CHECK(tv.buttons[2].fold_count == "1 path");
 }
 
-TEST_CASE("multiplier squeeze: Burnout's one squeeze and the fold's summary") {
-    std::vector<MultSqueezeView> v = build_multsqueezes(burnout().record);
-    REQUIRE(v.size() == 1);
-    CHECK(v[0].label == "2x   (+15 pts):   [Red snare - Yellow cymbal]");
-    CHECK(v[0].howto == "Hit [Red snare] first.");
-    CHECK(v[0].gain == 15);
-    CHECK(multsqueeze_summary(v) == "+15");
+TEST_CASE("multiplier squeeze: the fold's summary counts the squeezes and adds their gains") {
     CHECK(multsqueeze_summary({}) == "none");
-    std::vector<MultSqueezeView> three(3, v[0]);
-    CHECK(multsqueeze_summary(three) == "3" + kDot + "+45");
+    // Each record's squeezes, and three copies of its first: one squeeze shows
+    // its gain alone, several show how many beside the sum of their gains.
+    size_t summed = 0;
+    for_each_corpus_record([&](const HydraRecord& rec) {
+        const std::vector<MultSqueezeView> v = build_multsqueezes(rec);
+        if (v.empty()) return;
+        ++summed;
+        int64_t total = 0;
+        for (const MultSqueeze& msq : rec.multsqueezes) total += msq.gain();
+        const std::string sum = "+" + group_thousands(total);
+        CHECK(multsqueeze_summary(v) ==
+              (v.size() == 1 ? sum : std::to_string(v.size()) + kFactSeparator + sum));
+        const std::vector<MultSqueezeView> three(3, v.front());
+        CHECK(multsqueeze_summary(three) ==
+              std::to_string(three.size()) + kFactSeparator + "+" +
+                  group_thousands(static_cast<int64_t>(three.size()) *
+                                  rec.multsqueezes.front().gain()));
+    });
+    // Burnout has a multiplier squeeze (the Pro Drums test below needs it).
+    REQUIRE(summed > 0);
 }
 
 TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
@@ -393,13 +443,7 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
         REQUIRE(rows.size() == rec.multsqueezes.size());
         for (size_t i = 0; i < rows.size(); ++i) {
             const MultSqueeze& msq = rec.multsqueezes[i];
-            const std::string chord = msq.chord().rowstr(pro_drums);
-            CHECK(rows[i].label.rfind(msq.notationstr(), 0) == 0);
-            CHECK(rows[i].label.find("+" + std::to_string(msq.gain())) != std::string::npos);
-            REQUIRE(rows[i].label.size() >= chord.size());
-            CHECK(rows[i].label.substr(rows[i].label.size() - chord.size()) == chord);
-            CHECK(rows[i].howto == msq.howto(pro_drums));
-            CHECK(rows[i].gain == msq.gain());
+            check_squeeze_row(rows[i], msq, pro_drums);
             if (pro_drums && msq.chord().rowstr(true) != msq.chord().rowstr(false)) ++worded_apart;
         }
     }
@@ -451,35 +495,48 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     const Path& best = rec.best_path();
     PathsTabCache cache;
 
-    cache.details(best, rec, 1, &timing,std::nullopt, core::default_rules());
-    REQUIRE(cache.ui().act_open.size() == 3);
-    CHECK(cache.ui().act_open == std::vector<char>{0, 0, 0});
+    // One row per activation of the best path, every one folded. The path
+    // needs a row for "all open" to mean anything.
+    const size_t rows = best.walk_activations().size();
+    REQUIRE(rows > 0);
+    cache.details(best, rec, 1, &timing, std::nullopt, core::default_rules());
+    REQUIRE(cache.ui().act_open.size() == rows);
+    CHECK(cache.ui().act_open == std::vector<char>(rows, 0));
     cache.ui().set_all(true);
 
     // A display setting rebuilds the rows but keeps what is unfolded.
-    cache.details(best, rec, 1, &timing,30.0, core::default_rules());
+    cache.details(best, rec, 1, &timing, 30.0, core::default_rules());
     CHECK(cache.ui().all_open());
-    cache.details(best, rec, 1, &timing,30.0, core::default_rules(), 126000.0);
+    cache.details(best, rec, 1, &timing, 30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().all_open());
     CHECK(cache.details_builds() == 3);
 
     // Another path starts fresh: every row folded again.
-    const Path& other = *rec.all_paths()[1];
-    cache.details(other, rec, 1, &timing,30.0, core::default_rules(), 126000.0);
+    const std::vector<const Path*> all = rec.all_paths();
+    REQUIRE(all.size() > 1);
+    const Path& other = *all[1];
+    cache.details(other, rec, 1, &timing, 30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().act_open.size() == other.walk_activations().size());
     CHECK(cache.ui().act_open == std::vector<char>(other.walk_activations().size(), 0));
     CHECK_FALSE(cache.ui().all_open());
-
-    // The path buttons: once per record generation and score range.
-    for (int frame = 0; frame < 5; ++frame) cache.buttons(rec, 1, 0, 2);
-    CHECK(cache.buttons_builds() == 1);
-    cache.buttons(rec, 1, 0, 3);
-    CHECK(cache.buttons_builds() == 2);
-    cache.buttons(rec, 2, 0, 3);
-    CHECK(cache.buttons_builds() == 3);
 }
 
-TEST_CASE("path_item_id: the label, two hashes and the index") {
-    CHECK(path_item_id("3- 1 2  (optimal)", 0) == "3- 1 2  (optimal)##0");
-    CHECK(path_item_id("0 4 1", 7) == "0 4 1##7");
+TEST_CASE("path_item_id: each picker item has its own id and shows its label") {
+    // The Preview picker's labels for every corpus chart's buttons. ImGui
+    // shows the text before "##" and keys the item on the whole id.
+    for_each_corpus_record([](const HydraRecord& rec) {
+        const PathButtonsView v = buttons_of(rec);
+        std::vector<std::string> ids;
+        for (size_t i = 0; i < v.buttons.size(); ++i) {
+            const std::string label = preview_path_label(v.buttons[i]);
+            CAPTURE(label);
+            REQUIRE(label.find("##") == std::string::npos);
+            const std::string id = path_item_id(label, i);
+            CHECK(id.substr(0, id.find("##")) == label);
+            // The same label at another place in the list is another item.
+            CHECK(path_item_id(label, i + v.buttons.size()) != id);
+            for (const std::string& earlier : ids) CHECK(earlier != id);
+            ids.push_back(id);
+        }
+    });
 }
