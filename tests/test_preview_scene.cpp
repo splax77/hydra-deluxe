@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -471,10 +472,10 @@ TEST_CASE("build_preview_scene: the scene carries the song's resolution and ever
     CHECK(scene.timing->tick_resolution() == song.timing().tick_resolution());
     REQUIRE(scene.tempos.size() == song.bpm_changes.size());
     size_t i = 0;
-    for (const auto& [tick, bpm] : song.bpm_changes) {
-        CHECK(scene.tempos[i].tick == tick);
-        CHECK(scene.tempos[i].ms == doctest::Approx(song.timecode(tick).ms()));
-        CHECK(scene.tempos[i].bpm == bpm);
+    for (const auto& change : song.bpm_changes) {
+        CHECK(scene.tempos[i].tick == change.first);
+        CHECK(scene.tempos[i].ms == doctest::Approx(song.timecode(change.first).ms()));
+        CHECK(scene.tempos[i].bpm == change.second);
         ++i;
     }
 }
@@ -867,31 +868,13 @@ TEST_CASE("overlay over another path's scene: equals build_preview_scene on ever
     CHECK(paths > 0);
 }
 
-TEST_CASE("path_overlay_key: no overlay, the same path, and a changed path") {
-    // The key is how the Preview notices the Paths tab picked a different
-    // path; Path itself has no operator==.
+// The key is how the Preview notices the Paths tab picked a different path.
+// A path's key is its path_identity, for every path
+// (test_path_list.cpp, "the dedupe and the overlay key read one identity"),
+// and path_identity's own test covers a copy, a rescore and a trimmed path.
+// What is the key's alone is the empty key for no overlay.
+TEST_CASE("path_overlay_key: no overlay gives an empty key") {
     CHECK(path_overlay_key(nullptr).empty());
-
-    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
-    std::vector<const Path*> paths = r.record.all_paths();
-    REQUIRE_FALSE(paths.empty());
-
-    const Path& first = *paths.front();
-    Path copy = first;
-    CHECK_FALSE(path_overlay_key(&first).empty());
-    CHECK(path_overlay_key(&first) == path_overlay_key(&copy));
-
-    // Same activations, a different score: still a different overlay.
-    Path rescored = first;
-    rescored.notes_points += 1;
-    CHECK(path_overlay_key(&first) != path_overlay_key(&rescored));
-
-    // Different activations: different key.
-    Path trimmed = first;
-    if (!trimmed.activations.empty()) {
-        trimmed.activations.pop_back();
-        CHECK(path_overlay_key(&first) != path_overlay_key(&trimmed));
-    }
 }
 
 // A ghost path lists the fills its activations stand on and changes nothing
@@ -935,72 +918,84 @@ TEST_CASE("build_preview_scene: a ghost path lists its own taken fills and nothi
     CHECK(cleared.ghost_windows.empty());
 }
 
-// On a real chart the ghost path's fills are the ones the same path takes when
-// it is the drawn path, pinned from one run.
-TEST_CASE("build_preview_scene: a corpus best path as the ghost lists its taken fills") {
-    const AnalysisResult& r = corpus::analyzed_by_ten_scores();
-    const Path& best = r.record.best_path();
-    const PreviewScene scene = build_preview_scene(r.song, nullptr, kCloneHeroSpCap,
-                                                   core::default_rules(), std::nullopt, &best);
-    CHECK(scene.ghost_fills == std::vector<size_t>{2, 7});
+// On every corpus chart with notes, at the app's default settings, each
+// stored path as the ghost lists, in walk order, the fill whose chord is one
+// of its activations' chords, read off the record's activation ticks. They
+// are the fills the same path takes when it is the drawn path, and its
+// windows are that drawn path's sp_window()s; a scene with no ghost has none.
+TEST_CASE("build_preview_scene: every corpus path as the ghost lists the fills its activations stand on") {
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    int ghost_fills_seen = 0;
+    for (const std::string& chart : charts_with_notes(cfg)) {
+        const Song& song = corpus::song(chart, cfg.reading());
+        for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
+            INFO(chart << " | path " << p->pathstring());
+            const PreviewScene scene = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules,
+                                                           std::nullopt, p);
+            std::vector<size_t> on_chords;
+            for (const Activation& a : p->walk_activations())
+                for (size_t i = 0; i < scene.fills.size(); ++i)
+                    if (scene.fills[i].chord_tick == a.timecode.ticks()) on_chords.push_back(i);
+            CHECK(scene.ghost_fills == on_chords);
+            ghost_fills_seen += static_cast<int>(scene.ghost_fills.size());
 
-    const PreviewScene drawn = build_preview_scene(r.song, &best);
-    std::vector<size_t> taken;
-    for (const PreviewActivation& a : drawn.activations)
-        if (a.taken_fill) taken.push_back(*a.taken_fill);
-    CHECK(scene.ghost_fills == taken);
-
-    // Its windows are the same path's sp_window()s when it is the drawn path,
-    // and a scene with no ghost has none.
-    std::vector<std::pair<double, double>> windows;
-    for (const PreviewActivation& a : drawn.activations)
-        if (const auto w = a.sp_window()) windows.push_back(*w);
-    REQUIRE_FALSE(windows.empty());
-    CHECK(scene.ghost_windows == windows);
-    CHECK(drawn.ghost_windows.empty());
+            const PreviewScene drawn = build_preview_scene(song, p, cfg.sp_cap, cfg.rules);
+            std::vector<size_t> taken;
+            std::vector<std::pair<double, double>> windows;
+            for (const PreviewActivation& a : drawn.activations) {
+                if (a.taken_fill) taken.push_back(*a.taken_fill);
+                if (const auto w = a.sp_window()) windows.push_back(*w);
+            }
+            CHECK(scene.ghost_fills == taken);
+            CHECK(scene.ghost_windows == windows);
+            CHECK(drawn.ghost_windows.empty());
+        }
+    }
+    // With no ghost fill on any path the list checks above met only empty lists.
+    CHECK(ghost_fills_seen > 0);
 }
 
 // The fills after a path's last activation: the engine lists the ones the
 // path passed over (Path::trailing_skipped_fill_ticks), and the overlay
-// lights exactly those. On "Missed Injections" at the top 40 scores, cap 4,
-// the path "3" activates once, at 123838, and lists 244800 and 281759.
+// lights exactly those. Every path of "Missed Injections" at the top 40
+// scores, cap 4, that activates and lists a passed-over fill after its last
+// activation: each fill after that activation reads Offered when its tick is
+// in the list and Hidden when it is not.
 TEST_CASE("preview scene: fills after the last activation read Offered when the engine lists them, Hidden otherwise") {
     const AnalysisSettings cfg = test::scores_settings(4);
     const std::string chart = corpus::chart_named("Hail The Sun - Missed Injections");
     REQUIRE_FALSE(chart.empty());
     const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-    const Path* path = nullptr;
-    for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
-        if (p->pathstring() == "3") {
-            path = p;
-            break;
+    int paths_checked = 0;
+    for (const Path* path : corpus::analyzed(chart, cfg).all_paths()) {
+        const std::vector<int64_t> acts = test::act_ticks(*path);
+        if (acts.empty() || path->trailing_skipped_fill_ticks.empty()) continue;
+        INFO("path " << path->pathstring());
+        ++paths_checked;
+        const int64_t last_act = acts.back();
+        const std::vector<int64_t>& listed = path->trailing_skipped_fill_ticks;
+
+        const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
+        CHECK(scene.trailing_skipped_fill_ticks == listed);
+        for (const PreviewFill& f : scene.fills) {
+            if (f.chord_tick <= last_act) continue;
+            INFO("fill at " << f.chord_tick);
+            const bool is_listed =
+                std::find(listed.begin(), listed.end(), f.chord_tick) != listed.end();
+            CHECK(f.state == (is_listed ? PreviewFillState::Offered : PreviewFillState::Hidden));
         }
-    REQUIRE(path != nullptr);
-    REQUIRE(test::act_ticks(*path) == std::vector<int64_t>{123838});
-    REQUIRE(path->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
-    const int64_t last_act = test::act_ticks(*path).back();
 
-    const PreviewScene scene = build_preview_scene(song, path, cfg.sp_cap, cfg.rules);
-    CHECK(scene.trailing_skipped_fill_ticks == path->trailing_skipped_fill_ticks);
-    // Each fill after the activation and its state, pinned from one run.
-    std::string after;
-    for (const PreviewFill& f : scene.fills) {
-        if (f.chord_tick <= last_act) continue;
-        after += std::to_string(f.chord_tick) + ":" +
-                 (f.state == PreviewFillState::Offered  ? "O"
-                  : f.state == PreviewFillState::Taken ? "T"
-                                                       : "H") +
-                 " ";
+        // The same path without its list draws those fills hidden, as the
+        // Preview did before the engine wrote them down.
+        Path bare = *path;
+        bare.trailing_skipped_fill_ticks.clear();
+        const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
+        for (const PreviewFill& f : without.fills)
+            if (f.chord_tick > last_act) CHECK(f.state == PreviewFillState::Hidden);
     }
-    CHECK(after == "157922:H 180960:H 244800:O 281759:O ");
-
-    // The same path without its list draws those fills hidden, as the
-    // Preview did before the engine wrote them down.
-    Path bare = *path;
-    bare.trailing_skipped_fill_ticks.clear();
-    const PreviewScene without = build_preview_scene(song, &bare, cfg.sp_cap, cfg.rules);
-    for (const PreviewFill& f : without.fills)
-        if (f.chord_tick > last_act) CHECK(f.state == PreviewFillState::Hidden);
+    // This chart at these settings is the corpus case where a path passes
+    // over fills after its last activation; with none, nothing was checked.
+    CHECK(paths_checked > 0);
 }
 
 // The Preview lights a stored passed-over fill by matching its tick to a fill
@@ -1010,26 +1005,29 @@ TEST_CASE("preview fills: every stored passed-over fill is a fill in the scene")
     // The app's default settings, as "base + overlay" reads the corpus.
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int ticks_checked = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
+    for (const std::string& chart : charts_with_notes(cfg)) {
         const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        if (rec.paths.empty()) continue;
         std::set<int64_t> fill_ends;
         for (const PreviewFill& f : build_preview_base(song).fills) fill_ends.insert(f.chord_tick);
+        // One stored passed-over tick: it must name exactly one fill.
+        auto check_tick = [&](size_t root, const std::string& where, int64_t t) {
+            ++ticks_checked;
+            if (fill_ends.count(t) == 0)
+                MESSAGE(chart << " | root " << root << " | " << where << " | stored fill tick "
+                              << t);
+            CHECK(fill_ends.count(t) == 1);
+        };
         for (size_t pi = 0; pi < rec.paths.size(); ++pi) {
-            for (const Activation& a : rec.paths[pi].walk_activations()) {
-                for (int64_t t : a.skipped_fill_ticks) {
-                    ++ticks_checked;
-                    if (fill_ends.count(t) == 0)
-                        MESSAGE(chart << " | root " << pi << " | activation "
-                                      << a.timecode.ticks() << " | stored fill tick " << t);
-                    CHECK(fill_ends.count(t) == 1);
-                }
-            }
+            for (const Activation& a : rec.paths[pi].walk_activations())
+                for (int64_t t : a.skipped_fill_ticks)
+                    check_tick(pi, "activation " + std::to_string(a.timecode.ticks()), t);
+            for (int64_t t : rec.paths[pi].trailing_skipped_fill_ticks)
+                check_tick(pi, "after the last activation", t);
         }
     }
     MESSAGE("stored passed-over fill ticks checked: " << ticks_checked);
+    // With no stored passed-over tick anywhere the check above never ran.
     CHECK(ticks_checked > 0);
 }
 
