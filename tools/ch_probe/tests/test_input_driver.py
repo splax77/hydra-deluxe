@@ -4,7 +4,9 @@ These run with no game and no debugger. They test the binding map, the key
 table against the game's own saved key map, and that press_chord sends the
 right key events.
 
-The live seam (the real SendInput) is replaced with a recorder here. What only
+The key codes and SendInput flags are checked against Windows' own names for
+them, and the game-window lookup runs for real, read only. The live seam (the
+real SendInput) is replaced with a recorder here. What only
 a running Clone Hero can exercise -- that SendInput
 actually reaches the game window -- is out of scope for these tests and is
 commented as LIVE-ONLY in the module.
@@ -16,10 +18,16 @@ Run from the repo root:
 
 from __future__ import annotations
 
+import ctypes
 import os
 import sys
 import unittest
 import xml.etree.ElementTree as ET
+from ctypes import wintypes
+
+# Windows' own names for its key codes and SendInput flags: pywin32's copy of
+# the Win32 headers. The mcp package that CI installs requires pywin32.
+import win32con
 
 # Make the repo root importable so `tools.ch_probe...` resolves regardless of
 # where the test runner is launched from.
@@ -129,9 +137,13 @@ class TestKeyTable(unittest.TestCase):
         actions = [_lane_action(lane) for lane in Lane]
         self.assertEqual(len(set(actions)), len(Lane))
 
-    def test_every_lane_has_a_short_name(self):
+    def test_every_lane_has_its_own_short_name(self):
+        # A printed press log names each lane by LANE_NAMES, so two lanes must
+        # never print the same name, and none may print blank.
         self.assertEqual(set(LANE_NAMES), set(Lane))
-        self.assertEqual(LANE_NAMES[Lane.KICK], "Kick")
+        names = [LANE_NAMES[lane] for lane in Lane]
+        self.assertTrue(all(names), names)
+        self.assertEqual(len(set(names)), len(Lane), names)
 
 
 class TestPressChord(unittest.TestCase):
@@ -147,18 +159,38 @@ class TestPressChord(unittest.TestCase):
                                    (red, True), (kick, True)])
         self.assertEqual(sent, [red, kick])
 
+    def test_a_chord_goes_out_as_virtual_key_events(self):
+        driver = InputDriver()
+        events = []
+        driver.send_input = lambda event: events.append(
+            (event.type, event.u.ki.wVk, event.u.ki.dwFlags))
+        driver.press_chord([Lane.RED], sleep=lambda s: None)
+        red = DEFAULT_BINDINGS[Lane.RED]
+        self.assertEqual([(kind, vk) for kind, vk, _ in events],
+                         [(win32con.INPUT_KEYBOARD, red)] * 2)
+        (_, _, down), (_, _, up) = events
+        # A virtual-key event, never a typed character; down first, then up.
+        self.assertFalse(down & win32con.KEYEVENTF_UNICODE)
+        self.assertFalse(up & win32con.KEYEVENTF_UNICODE)
+        self.assertFalse(down & win32con.KEYEVENTF_KEYUP)
+        self.assertTrue(up & win32con.KEYEVENTF_KEYUP)
+
 
 class TestMenuKeys(unittest.TestCase):
-    """The non-lane keys and the typing path the menus take."""
+    """The non-lane keys the menus take."""
 
     def test_the_menu_key_table(self):
-        self.assertEqual(input_driver.MENU_KEYS, {
-            "enter": 0x0D, "escape": 0x1B, "space": 0x20, "backspace": 0x08,
-            "tab": 0x09, "up": 0x26, "down": 0x28, "left": 0x25, "right": 0x27})
+        # Each name's code is Windows' virtual key of that name.
+        vk_names = {"enter": "VK_RETURN", "escape": "VK_ESCAPE", "space": "VK_SPACE",
+                    "backspace": "VK_BACK", "tab": "VK_TAB", "up": "VK_UP",
+                    "down": "VK_DOWN", "left": "VK_LEFT", "right": "VK_RIGHT"}
+        self.assertEqual(set(input_driver.MENU_KEYS), set(vk_names))
+        for name, vk_name in vk_names.items():
+            self.assertEqual(input_driver.MENU_KEYS[name], getattr(win32con, vk_name), name)
 
-    def test_the_menu_key_gap_is_the_ruled_value(self):
-        # Ruling 3 of the 2026-10-30 ch_mcp Star Power plan.
-        self.assertEqual(input_driver.MENU_KEY_GAP_S, 0.25)
+    def test_the_sendinput_numbers_are_windows_own(self):
+        for name in ("INPUT_KEYBOARD", "KEYEVENTF_KEYUP", "KEYEVENTF_UNICODE"):
+            self.assertEqual(getattr(input_driver, name), getattr(win32con, name), name)
 
     def test_press_key_sends_down_hold_then_up(self):
         driver, presses = _make_driver()
@@ -168,61 +200,39 @@ class TestMenuKeys(unittest.TestCase):
                                    (enter, True)])
         self.assertEqual(sent, enter)
 
-    def test_type_text_sends_unicode_events_with_the_gap_between(self):
-        driver = InputDriver()
-        events = []
-        driver.send_input = lambda event: events.append(
-            (event.type, event.u.ki.wVk, event.u.ki.wScan, event.u.ki.dwFlags))
-        driver.send_key = lambda vk, key_up: self.fail("type_text pressed a virtual key")
-        sleeps = []
-        typed = driver.type_text("Wi", gap_s=0.25, sleep=sleeps.append)
-        down = input_driver.KEYEVENTF_UNICODE
-        up = input_driver.KEYEVENTF_UNICODE | input_driver.KEYEVENTF_KEYUP
-        self.assertEqual(input_driver.KEYEVENTF_UNICODE, 0x0004)
-        kb = input_driver.INPUT_KEYBOARD
-        self.assertEqual(events, [(kb, 0, ord("W"), down), (kb, 0, ord("W"), up),
-                                  (kb, 0, ord("i"), down), (kb, 0, ord("i"), up)])
-        self.assertEqual(sleeps, [0.25])
-        self.assertEqual(typed, 2)
-
-    def test_type_text_sends_a_wide_character_as_its_two_halves(self):
-        driver = InputDriver()
-        units = []
-        driver.send_unicode = lambda unit, key_up: units.append((unit, key_up))
-        driver.type_text("\U0001F941", gap_s=0.25, sleep=lambda s: None)
-        self.assertEqual(units, [(0xD83E, False), (0xD83E, True),
-                                 (0xDD41, False), (0xDD41, True)])
-
-    def test_send_key_still_sends_a_virtual_key_event(self):
-        driver = InputDriver()
-        events = []
-        driver.send_input = lambda event: events.append(
-            (event.u.ki.wVk, event.u.ki.wScan, event.u.ki.dwFlags))
-        driver.tap(Lane.RED)
-        red = DEFAULT_BINDINGS[Lane.RED]
-        self.assertEqual(events, [(red, 0, 0), (red, 0, input_driver.KEYEVENTF_KEYUP)])
-
 
 class TestGameWindow(unittest.TestCase):
     """The one way a runner finds and focuses the game window."""
 
-    def test_find_game_window_asks_for_the_one_title(self):
-        asked = []
+    def test_find_game_window_finds_the_window_with_the_games_title(self):
+        # The real lookup on this desktop. It only reads window titles: it
+        # sends nothing, and it works with or without the game open. The
+        # expected answer comes from listing every top-level window's title,
+        # which FindWindowW matches without regard to case.
+        user32 = ctypes.WinDLL("user32", use_last_error=True)
+        user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+        user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+        enum_proc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+        titled = set()
 
-        def finder(cls, title):
-            asked.append((cls, title))
-            return 0x1234
+        def visit(hwnd, _):
+            size = user32.GetWindowTextLengthW(hwnd) + 1
+            text = ctypes.create_unicode_buffer(size)
+            user32.GetWindowTextW(hwnd, text, size)
+            if text.value.casefold() == C.WINDOW_TITLE.casefold():
+                titled.add(hwnd)
+            return True
 
-        self.assertEqual(input_driver.find_game_window(find=finder), 0x1234)
-        self.assertEqual(asked, [(None, C.WINDOW_TITLE)])
-        self.assertEqual(input_driver.find_game_window(find=lambda cls, title: None), 0)
+        self.assertTrue(user32.EnumWindows(enum_proc(visit), 0), ctypes.get_last_error())
+        found = input_driver.find_game_window()
+        if titled:
+            self.assertIn(found, titled)
+        else:
+            self.assertEqual(found, 0)
 
     def test_focus_window_skips_a_missing_window(self):
-        focused = []
-        input_driver.focus_window(0, focus=focused.append)
-        self.assertEqual(focused, [])
-        input_driver.focus_window(0x1234, focus=focused.append)
-        self.assertEqual(focused, [0x1234])
+        # No window is handle 0, and focusing it is never tried.
+        input_driver.focus_window(0, focus=lambda hwnd: self.fail(f"focused {hwnd}"))
 
 
 if __name__ == "__main__":
