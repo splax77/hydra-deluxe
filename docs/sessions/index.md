@@ -542,9 +542,13 @@
 - 2026-11-19 0e741144 Tooling audit T8 fold handoff (2026-11-19) | clone-hero, docs, agents, review, hooks | The session ended with the audit records merged to main and a handoff written for the fix plan. No fix was made yet. [write-back]
 - 2026-11-19 c783491f Tooling audit fix plan handoff (2026-11-19) | planning, hooks, agents, review, docs | The session ended waiting on the user: the hook passed its tests and one review, but its merge is blocked until a fresh review or the user's waiver. [stale]
 - 2026-11-19 58633898 Wave 4 handoff test fix (2026-11-19) | tests, agents, review, docs | The session ended with wave 4 finished: all 16 chunks were reviewed clean and merged into main at f1ef98f2, and main's tree matches the tree that was built and tested. [stale]
-- 2026-11-19 e5229eba Wave 5 handoff test fix (2026-11-19) | tests, agents, review, docs | Waves 5 and 6 finished and merged into main, and the session ended by writing a wave-7 handoff.
+- 2026-11-19 e5229eba Wave 5 handoff test fix (2026-11-19) | tests, agents, review, docs | Waves 5 and 6 finished and merged into main, and the session ended by writing a wave-7 handoff. [stale]
 - 2026-11-19 d85370f4 Starpower preview calculation (2026-11-19) | squeeze, sp-bar, preview, activation, planning, clone-hero | The session ended with the one-owner plan approved and a build handoff written, and nothing built yet. [write-back]
 - 2026-11-19 ac7ff376 Clone Hero solo bonus formula (2026-11-19) | clone-hero, docs | The session ended with the formula checked and corrected, and the 50 to 60% range still open. [write-back]
+- 2026-11-20 24688ced Handoff workflow documentation (2026-11-20) | hooks, review, agents, deact-node, sp-meter-gauge, clone-hero | Ended with a handoff: the user asked for one, and it is committed on its own branch, claude/handoff-tag-colour-realapp, with the steps to finish the tag-colour merge. [write-back]
+- 2026-11-20 630b71b1 Test fix wave 7 handoff (2026-11-20) | tests, agents, review, docs | Ended with the wave 8 handoff: the user asked for one instead of starting wave 8, and it is committed on its own branch, claude/test-fix-wave8-handoff.
+- 2026-11-20 e90a2d6f Clear the 14 pending Clone Hero write-backs (2026-11-20) | clone-hero, docs, agents | Ended with 11 of the 14 markers cleared on branch claude/intelligent-goldstine-e14a7c, commit a68ecb91, which is not merged. [write-back]
+- 2026-11-20 302feef9 Wave 8 test fix handoff (2026-11-20) | tests, agents, review, docs | Ended with the wave 9 handoff, committed on its own branch, claude/test-fix-wave9-handoff.
 
 ## Proposed tags
 
