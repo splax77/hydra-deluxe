@@ -520,9 +520,11 @@ TEST_CASE("precheck pick (h): every real workflow file runs the whole suite") { 
 
 // The file that defines DOCTEST_CONFIG_IMPLEMENT gives every hydra_tests case
 // its main(). The pattern is split so this file's own line never matches it.
+// git grep has no whole-line switch, so the pattern is anchored at both ends;
+// its text holds no character a basic regex treats as special.
 TEST_CASE("precheck pick (h): the test harness's main file runs the whole suite") {
-    const std::string implement = std::string("#define DOCTEST_CONFIG_") + "IMPLEMENT";
-    check_real_shared(real_git({"grep", "-l", "-x", "--cached", "-e", implement, "--", "tests"}));
+    const std::string implement = std::string("^#define DOCTEST_CONFIG_") + "IMPLEMENT$";
+    check_real_shared(real_git({"grep", "-l", "--cached", "-e", implement, "--", "tests"}));
 }
 
 // The shard list is the file the root CMakeLists.txt reads line by line into
