@@ -728,6 +728,57 @@ TEST_CASE("build_highway_draws: drum lanes light their own pads in the lane text
     CHECK(checked > 0);
 }
 
+// Where a drum lane and a fill are drawn together, the lane's strips come
+// first in the draw list: Onyx's drawLanes draws its roll lanes before its BRE
+// strips. Two corpus charts have a drum lane within a couple of beats of a
+// fill (White Mist, The Decade Of Statues); with no path, every fill is
+// Offered. For each lane and fill that fit in view together, with the playhead
+// 50 ms (a free input) before whichever starts first, every strip of the
+// track state's lit-lane stretches precedes every strip of its fill stretches.
+TEST_CASE("build_highway_draws: drum lane strips come before the fill strips") {
+    const PreviewConfig cfg = shipped_preview_config();
+    const AnalysisSettings as = Settings().to_analysis_settings();
+    int checked = 0;
+    for (const char* name : {"White Mist", "The Decade Of Statues"}) {
+        CAPTURE(name);
+        const std::string chart = corpus::chart_named(name);
+        if (chart.empty()) throw std::runtime_error(std::string(name) + " is not in the corpus");
+        const PreviewScene scene = build_preview_scene(corpus::song(chart, as.reading(), as.rules),
+                                                       nullptr, as.sp_cap, as.rules);
+        const TrackState st = build_track_state(scene, TrackStateOptions{});
+        for (const PreviewDrumLane& lane : scene.drum_lanes) {
+            for (const PreviewFill& fill : scene.fills) {
+                if (fill.state != PreviewFillState::Offered) continue;
+                const double first = std::min(lane.span.start_ms, fill.span.start_ms) / 1000.0;
+                const HighwayView v = view_at(cfg, first - 0.05);
+                const double last = std::max(lane.span.end_ms, fill.span.end_ms) / 1000.0;
+                if (last > v.far_t) continue;  // not both whole in view at once
+                CAPTURE(lane.span.start_ms);
+                CAPTURE(fill.span.start_ms);
+                const std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, v.now, v.speed);
+                long last_lane = -1, first_fill = static_cast<long>(cmds.size());
+                for (const Pad p : kPads) {
+                    for (const ToggleSpan& s : bounds(st, v, drum_lane_field(p))) {
+                        if (!s.on) continue;
+                        for (const DrawCommand* c : strips_over(cmds, cfg, v, p, s.t1, s.t2))
+                            last_lane = std::max(last_lane, static_cast<long>(c - cmds.data()));
+                    }
+                    for (const ToggleSpan& s : bounds(st, v, &TrackInstant::fill)) {
+                        if (!s.on) continue;
+                        for (const DrawCommand* c : strips_over(cmds, cfg, v, p, s.t1, s.t2))
+                            first_fill = std::min(first_fill, static_cast<long>(c - cmds.data()));
+                    }
+                }
+                if (last_lane < 0) continue;  // a kick-only lane lights no pad
+                REQUIRE(first_fill < static_cast<long>(cmds.size()));
+                CHECK(last_lane < first_fill);
+                ++checked;
+            }
+        }
+    }
+    CHECK(checked > 0);
+}
+
 // A lane on the kick column lights nothing: the frame is the one the scene
 // draws with no lanes at all.
 TEST_CASE("build_highway_draws: a kick drum lane draws what no lane draws") {
