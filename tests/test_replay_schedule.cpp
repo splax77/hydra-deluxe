@@ -524,7 +524,7 @@ TEST_CASE("schedule: the equal-room split on Freak's clamped squeeze") {
     const json& q = sch["activations"][0]["squeezes"][0];
     const json& reads = sch["chords"][2]["reads"];
     REQUIRE(reads.size() == 1);
-    CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(o.song.timecode(3082).ms()));
+    CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(o.song.timecode(o.act.sp_end_steps.back().end_tick).ms()));
     CHECK(reads[0]["planned_end_ms"].get<double>() == doctest::Approx(q["planned_end_ms"].get<double>()));
     CHECK(reads[0]["planned_end_ms"].get<double>() < reads[0]["stored_end_ms"].get<double>());
     // The squeeze-out chord: the late gem (place 0) goes sp_out_lag_ms after
@@ -880,7 +880,7 @@ TEST_CASE("schedule: the planned end counts one frame") {
     REQUIRE(reads.size() == 1);
     const std::optional<TransferScale> scale = step_transfer_scale(act, 0, song.timing());
     REQUIRE(scale.has_value());
-    CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(song.timecode(3000).ms()));
+    CHECK(reads[0]["stored_end_ms"].get<double>() == doctest::Approx(song.timecode(act.sp_end_steps.front().end_tick).ms()));
     CHECK(reads[0]["planned_end_ms"].get<double>() - reads[0]["stored_end_ms"].get<double>() ==
           doctest::Approx(scale->late * (c["judge_early_ms"].get<double>() - c["press_lead_ms"].get<double>())));
 }
