@@ -321,8 +321,11 @@ TEST_CASE("step short: the row carries the Paths tab's badge words") {
         const SongTiming& timing = c.song->timing();
         const StepShort s = step_short(timing, act);
         const std::vector<std::string> badges = badge_texts(act);
-        if (badges.empty()) CHECK(s.squeezes.empty());
-        else CHECK(split_facts(s.squeezes) == badges);
+        if (badges.empty()) {
+            CHECK(s.squeezes.empty());
+        } else {
+            CHECK(split_facts(s.squeezes) == badges);
+        }
         if (const std::optional<std::string> chord = earlier_squeezed_measure(timing, act)) {
             ++squeezed;
             CHECK(split_on(s.span, kSpanArrow).back() == *chord);
@@ -392,7 +395,8 @@ TEST_CASE("fill refusal: the five kinds in fill_reason's order, and fill_reason'
     // Every fill of every scene in refusal_scenes. Each kind holds only when
     // the facts before it in fill_reason's order (pb_text.h) do not, and its
     // sentence names what the kind says.
-    std::vector<int> seen(6, 0);
+    // One count per FillRefusal kind; GameHides is the last.
+    std::vector<int> seen(static_cast<size_t>(FillRefusal::GameHides) + 1, 0);
     for (const SceneCase& sc : refusal_scenes()) {
         const app::PreviewScene& scene = sc.scene;
         for (size_t i = 0; i < scene.fills.size(); ++i) {
