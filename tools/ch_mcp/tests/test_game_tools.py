@@ -59,8 +59,9 @@ from tools.ch_probe import input_driver  # noqa: E402
 from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import PRESS_LOG_COLUMNS  # noqa: E402
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
-    _FakeGame, _FakeSongClock, _FakeTime, _schedule_of)
-from tools.ch_probe.input_driver import DEFAULT_BINDINGS, InputDriver, Lane  # noqa: E402
+    _GHOST_SCHEDULE, _FakeGame, _FakeSongClock, _FakeTime, _RecordedThresholdEngine,
+    _schedule_of)
+from tools.ch_probe.input_driver import DEFAULT_BINDINGS, MENU_KEYS, InputDriver, Lane  # noqa: E402
 
 
 class StuckGame(FakeGame):
@@ -771,172 +772,192 @@ class GameToolsTest(unittest.TestCase):
 
     # -- menu keys ------------------------------------------------------------------------
 
-    def _key_rig(self):
-        """A ToolRig whose driver records keys, typed characters and sleeps
-        into one list, beside the backup and the focus."""
-        events = []
+    def _fail_if_game_open(self):
+        """The real window lookup on this desktop. With the game open a key
+        that passes the check would go to it, so the test fails at once
+        rather than press."""
+        if input_driver.find_game_window():
+            self.fail("a Clone Hero window is open; close it to run this test")
 
-        class KeyDriver(InputDriver):
-            def send_key(self, vk, key_up):
-                events.append(("key", vk, key_up))
-
-            def send_unicode(self, unit, key_up):
-                events.append(("char", chr(unit), key_up))
-
-            def send_input(self, event):
-                raise AssertionError("a test reached the real SendInput")
-
-        t = ToolRig(self.tmp, driver=KeyDriver())
-        real_backup = t.tools.ensure_backup
-
-        def backup():
-            events.append(("backup",))
-            return real_backup()
-
-        t.tools.ensure_backup = backup
-        real_sleep = t.r.env.sleep
-        t.r.env.sleep = lambda s: (events.append(("sleep", s)), real_sleep(s))
-        return t, events
-
-    def _ch_key(self, keys):
-        t, events = self._key_rig()
-        with mock.patch.object(play_chart, "focus_window",
-                               lambda hwnd: events.append(("focus", hwnd))):
-            reply = t.tools.ch_key(keys)
-        return t, events, reply
+    def assert_nothing_held(self, tools):
+        """No backup and no session folder: the refusal came before the
+        backup, which comes before the first key goes out."""
+        self.assertIsNone(tools._adopted_backup)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
 
     def test_ch_key_refuses_an_unknown_key_with_the_list_and_sends_nothing(self):
-        t, events, reply = self._ch_key("f1")
-        self.assertEqual(reply, 'unknown key "f1"; valid keys: enter, escape, space, backspace, '
-                                "tab, up, down, left, right, and text:<string>")
-        self.assertEqual(events, [])
-        self.assertIsNone(t.backup_dir())
+        tools = self.real_tools()
+        reply = tools.ch_key("f1")
+        self.assertTrue(reply.startswith('unknown key "f1"'), reply)
+        # The list is input_driver's menu keys in its order, then the text item.
+        keys, _and, text = reply.partition("valid keys: ")[2].rpartition(", and ")
+        self.assertEqual(keys.split(", "), list(MENU_KEYS))
+        self.assertEqual(text, GT.TEXT_PREFIX + "<string>")
+        self.assert_nothing_held(tools)
 
     def test_ch_key_checks_every_key_before_sending_any(self):
-        _t, events, reply = self._ch_key("enter,purple")
-        self.assertTrue(reply.startswith('unknown key "purple"'))
-        self.assertEqual(events, [])
+        tools = self.real_tools()
+        reply = tools.ch_key("enter,purple")
+        self.assertTrue(reply.startswith('unknown key "purple"'), reply)
+        self.assert_nothing_held(tools)
 
     def test_ch_key_with_no_window_says_so(self):
-        t, events = self._key_rig()
-        t.hwnd = 0
-        self.assertTrue(t.tools.ch_key("enter").startswith("no game window found"))
-        self.assertEqual(events, [])
+        self._fail_if_game_open()
+        tools = self.real_tools()
+        reply = tools.ch_key("enter")
+        self.assertTrue(reply.startswith("no game window found"), reply)
+        self.assert_nothing_held(tools)
 
-    def test_press_keys_takes_the_list_already_split(self):
-        t, events = self._key_rig()
-        with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
-            result = t.tools.press_keys(["escape", "text:x,y"])
-        self.assertTrue(result.sent)
-        self.assertEqual(result.text.splitlines()[-1],
-                         'keys sent: escape, text "x,y" (3 characters)')
+    def test_press_keys_takes_each_item_whole(self):
+        self._fail_if_game_open()
+        tools = self.real_tools()
+        # ch_key splits "enter,escape" into two keys, which pass the check and
+        # reach the window lookup; press_keys takes the same text as one item,
+        # which is no key.
+        self.assertTrue(tools.ch_key("enter,escape").startswith("no game window found"))
+        whole = tools.press_keys(["enter,escape"])
+        self.assertFalse(whole.sent)
+        self.assertTrue(whole.text.startswith('unknown key "enter,escape"'), whole.text)
+        # A text item with a comma in it passes the check as it stands.
+        typed = tools.press_keys(["escape", "text:x,y"])
+        self.assertTrue(typed.text.startswith("no game window found"), typed.text)
+        self.assert_nothing_held(tools)
 
     def test_press_keys_says_sent_false_for_each_refusal(self):
-        t, events = self._key_rig()
-        unknown = t.tools.press_keys(["enter", "purple"])
+        self._fail_if_game_open()
+        tools = self.real_tools()
+        unknown = tools.press_keys(["enter", "purple"])
         self.assertFalse(unknown.sent)
-        self.assertTrue(unknown.text.startswith('unknown key "purple"'))
-        self.assertFalse(t.tools.press_keys(["text:"]).sent)
-        self.assertFalse(t.tools.press_keys([]).sent)
-        t.hwnd = 0
-        no_window = t.tools.press_keys(["enter"])
+        self.assertTrue(unknown.text.startswith('unknown key "purple"'), unknown.text)
+        empty_text = tools.press_keys([GT.TEXT_PREFIX])
+        self.assertFalse(empty_text.sent)
+        self.assertTrue(empty_text.text.startswith(f'"{GT.TEXT_PREFIX}" has no text to type'),
+                        empty_text.text)
+        none_given = tools.press_keys([])
+        self.assertFalse(none_given.sent)
+        self.assertTrue(none_given.text.startswith("no keys given"), none_given.text)
+        no_window = tools.press_keys(["enter"])
         self.assertFalse(no_window.sent)
-        self.assertTrue(no_window.text.startswith("no game window found"))
-        self.assertEqual(events, [])
+        self.assertTrue(no_window.text.startswith("no game window found"), no_window.text)
+        self.assert_nothing_held(tools)
 
     def test_press_lanes_says_sent_false_for_each_refusal(self):
-        t = ToolRig(self.tmp)
-        unknown = t.tools.press_lanes("purple")
+        self._fail_if_game_open()
+        tools = self.real_tools()
+        unknown = tools.press_lanes("purple")
         self.assertFalse(unknown.sent)
-        self.assertTrue(unknown.text.startswith('unknown lane "purple"'))
-        self.assertFalse(t.tools.press_lanes("").sent)
-        t.hwnd = 0
-        self.assertFalse(t.tools.press_lanes("red").sent)
+        self.assertTrue(unknown.text.startswith('unknown lane "purple"'), unknown.text)
+        none_given = tools.press_lanes("")
+        self.assertFalse(none_given.sent)
+        self.assertTrue(none_given.text.startswith("no lanes given"), none_given.text)
+        no_window = tools.press_lanes("red")
+        self.assertFalse(no_window.sent)
+        self.assertTrue(no_window.text.startswith("no game window found"), no_window.text)
+        self.assert_nothing_held(tools)
 
-    def test_press_lanes_says_sent_true_and_ch_press_prints_the_same_text(self):
-        t = ToolRig(self.tmp)
-        with mock.patch.object(play_chart, "focus_window", lambda hwnd: None):
-            result = t.tools.press_lanes("red")
-            self.assertTrue(result.sent)
-            self.assertEqual(t.tools.ch_press("red").splitlines()[-1],
-                             result.text.splitlines()[-1])
+    def test_ch_press_prints_the_text_press_lanes_returns(self):
+        # Each case press_lanes answers without the game: an unknown lane, no
+        # lanes, and no window.
+        self._fail_if_game_open()
+        tools = self.real_tools()
+        for lanes in ("purple", "", "red"):
+            with self.subTest(lanes=lanes):
+                self.assertEqual(tools.ch_press(lanes), tools.press_lanes(lanes).text)
 
-    def test_split_keys_keeps_the_text_whole(self):
-        self.assertEqual(GT.split_keys("enter, down ,text:Ladies Talk, fill"),
-                         ["enter", "down", "text:Ladies Talk, fill"])
-        self.assertEqual(GT.split_keys(" text: a "), ["text: a "])
+    def test_ch_key_keeps_a_text_item_whole_to_the_end(self):
+        self._fail_if_game_open()
+        tools = self.real_tools()
+        # Split at its comma, the text item would leave " fill", which the key
+        # check refuses; kept whole, the list passes the check and reaches the
+        # window lookup.
+        self.assertTrue(tools.ch_key("enter, fill").startswith('unknown key "fill"'))
+        self.assertTrue(tools.ch_key("enter, down ,text:Ladies Talk, fill")
+                        .startswith("no game window found"))
+        # Spaces before the text item do not hide it, and spaces inside it are
+        # text to type, so it is not empty.
+        self.assertTrue(tools.ch_key(" text: a ").startswith("no game window found"))
+        self.assert_nothing_held(tools)
 
     # -- the run cap ----------------------------------------------------------------------
 
-    def test_run_cap_is_the_song_plus_the_extra_minute_else_240_s(self):
-        t = ToolRig(self.tmp)
-        self.assertEqual(t.tools.cap_for_end(260504), 320.504)
-        self.assertEqual(GT.cap_for_end(260504), 320.504)
-        self.assertEqual(GT.cap_for_end(None), 240.0)
+    def test_run_cap_is_bot_runs_cap_of_the_song_end_else_play_charts_cap(self):
+        # The song end of a real hydra_replay schedule (PITCH_DARK_SCHEDULE).
+        end_ms = _json_field(PITCH_DARK_SCHEDULE, hydra_end.FIELD)
+        tools = self.real_tools()
+        self.assertEqual(tools.cap_for_end(end_ms), B.run_cap_s(end_ms))
+        self.assertEqual(GT.cap_for_end(end_ms), B.run_cap_s(end_ms))
+        self.assertEqual(GT.cap_for_end(None), play_chart.RUN_CAP_S)
 
-    def test_the_schedules_run_cap_reads_its_song_end_and_refuses_null(self):
-        schedule = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": 260504})
-        self.assertEqual(GT.schedule_run_cap_s(schedule), (320.504, 260504))
-        null = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": None})
+    def test_the_schedules_run_cap_reads_its_song_end_and_refuses_a_file_with_none(self):
+        # PITCH_DARK_SCHEDULE is a hydra_replay schedule with a song end.
+        end_ms = _json_field(PITCH_DARK_SCHEDULE, hydra_end.FIELD)
+        self.assertEqual(GT.schedule_run_cap_s(PITCH_DARK_SCHEDULE),
+                         (GT.cap_for_end(end_ms), end_ms))
+        # NO_SONG_END_DUMP was written by a hydra_replay older than the song
+        # end, so it has no song_length_ms.
+        with open(NO_SONG_END_DUMP, encoding="utf-8") as f:
+            self.assertNotIn(hydra_end.FIELD, json.load(f))
         with self.assertRaises(hydra_end.SongEndMissing):
-            GT.schedule_run_cap_s(null)
+            GT.schedule_run_cap_s(NO_SONG_END_DUMP)
 
-    def test_ch_play_chart_with_a_song_folder_passes_the_cap_to_live_play(self):
-        seen = []
+    # -- the play status --------------------------------------------------------------------
 
-        def live_play(chords, **kw):
-            seen.append(kw.get("cap_s"))
-            return play_chart.RunResult(stop="done")
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        # The schedule's song end sets the cap, not a dump of the folder's
-        # chart, whose fake end differs.
-        FAKE.set_end(t.r.chart, 9999)
-        schedule = self._schedule_json({**SCHEDULE_JSON, "song_length_ms": 260504})
-        dumps_before = len(FAKE.charts)
-        reply = t.tools.ch_play_chart(self._score_json(), schedule, song_folder=t.r.song,
-                                      route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(len(FAKE.charts), dumps_before)
-        self.assertEqual(seen, [320.504])
-        self.assertIn("run cap: 320.504 s", reply.splitlines())
+    def _ended_status(self, rows, result):
+        """ch_play_status of a real play session that ended with `result`
+        after the press rows `rows`."""
+        tools = self.real_tools()
+        tools._play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                                      log_path=None, rows=list(rows), result=result)
+        return tools.ch_play_status().splitlines()
 
     def test_the_status_prints_the_threshold_the_player_read(self):
-        def live_play(chords, **kw):
-            return play_chart.RunResult(stop="done", dyn_threshold=64)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(t.tools.ch_play_status().splitlines()[2], "dynamics threshold: 64")
+        # with_axes on a ghost chart reads the threshold one real run read
+        # (test_play_chart's _RecordedThresholdEngine, from ls-o1-run1).
+        engine = _RecordedThresholdEngine()
+        _chords, threshold = play_chart.with_axes(
+            play_chart.load_schedule(_GHOST_SCHEDULE).chords, engine)
+        self.assertEqual((engine.reads, threshold), (1, engine.value))
+        lines = self._ended_status([], play_chart.RunResult(stop="done",
+                                                            dyn_threshold=threshold))
+        self.assertIn(f"dynamics threshold: {engine.value}", lines)
 
     def test_the_status_prints_no_threshold_when_none_was_read(self):
-        t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertNotIn("threshold", t.tools.ch_play_status())
+        # Pitch Dark's schedule presses no ghost, so with_axes reads no
+        # threshold.
+        engine = _RecordedThresholdEngine()
+        _chords, threshold = play_chart.with_axes(
+            play_chart.load_schedule(PITCH_DARK_SCHEDULE).chords, engine)
+        self.assertEqual((engine.reads, threshold), (0, None))
+        lines = self._ended_status([], play_chart.RunResult(stop="done",
+                                                            dyn_threshold=threshold))
+        self.assertFalse([line for line in lines if "threshold" in line], lines)
 
     def test_the_status_names_the_first_chord_pressed_from_the_oldest_row(self):
-        def live_play(chords, **kw):
-            for row in ({**ROWS[0], "index": 7, "chart_ms": 5398.0},
-                        {**ROWS[1], "index": 8, "chart_ms": 5600.0}):
-                kw["on_press"](row)
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertIn("first press chord index 7 at 5398.0 ms",
-                      t.tools.ch_play_status().splitlines())
+        # Four rows of a real run's press log (PITCH_DARK_RUN), oldest first.
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        lines = self._ended_status(rows, play_chart.RunResult(
+            stop="done", sent=len(rows), rows=list(rows)))
+        self.assertIn(GT.first_press_line(rows), lines)
+        self.assertNotIn(GT.first_press_line(rows[-1:]), lines)
+        self.assertNotEqual(rows[0]["index"], rows[-1]["index"])
 
     def test_the_status_names_the_first_chord_while_the_run_goes_on(self):
-        t = ToolRig(self.tmp)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),route="keys")
-        self.assertTrue(t.live_play.delivered.wait(THREAD_CAP_S))
-        self.assertIn("first press chord index 0 at 1000.0 ms",
-                      t.tools.ch_play_status().splitlines())
-        t.tools.ch_play_stop()
-        t.tools._play.thread.join(THREAD_CAP_S)
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        tools = self.real_tools()
+        play = GT._PlaySession(score_json="score.json", chord_count=len(rows),
+                               log_path=None, rows=list(rows))
+        # The run's thread runs until the session's stop is set, which
+        # ch_play_stop does.
+        play.thread = threading.Thread(target=play.stop.wait, args=(THREAD_CAP_S,),
+                                       daemon=True)
+        play.thread.start()
+        tools._play = play
+        lines = tools.ch_play_status().splitlines()
+        self.assertIn(f"running: {len(rows)} presses so far", lines)
+        self.assertIn(GT.first_press_line(rows), lines)
+        self.assertEqual(tools.ch_play_stop().splitlines()[-1], "stopped")
+        play.thread.join(THREAD_CAP_S)
+        self.assertFalse(play.running())
 
     def test_the_status_says_when_no_chord_was_pressed(self):
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
@@ -3161,6 +3182,15 @@ class AtexitFactTest(unittest.TestCase):
 PITCH_DARK_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "replay",
                                    "test_pitch_dark_ratio-schedule.json")
 PITCH_DARK_RUN = ("pitch-dark-ratios-run1",)
+# A hydra_replay dump of the Bomber refine chart under tools/ch_probe/tests,
+# written by a hydra_replay older than the song end: it has no song_length_ms.
+NO_SONG_END_DUMP = os.path.join(_PROBE_TESTS, "bomber_refine_dump.json")
+
+
+def _json_field(path, field):
+    """The top-level `field` of the JSON file at `path`."""
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)[field]
 
 
 def _press_rows(*parts):
