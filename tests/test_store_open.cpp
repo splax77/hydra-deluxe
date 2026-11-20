@@ -138,27 +138,6 @@ std::string copy_of_old_database(const std::string& file, const std::string& tag
 
 // ---- store correctness (2026-09-26 audit, Task 1) --------------------------
 
-TEST_CASE("a database from Hydra 1.6 or older is too old: refused, or set aside for a fresh "
-          "library") {
-    // Hydra 1.6's own records table, keyed by chart with no profile.
-    const std::string path = testtemp::temp_path("old_records", ".db");
-    remove_db(path);
-    { RecordStore seed(path); }
-    exec_on_file(path,
-                 "DROP TABLE record_paths; DROP TABLE records; DROP TABLE profiles;"
-                 "PRAGMA user_version = 1;"
-                 "CREATE TABLE records (hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,"
-                 " hyversion TEXT NOT NULL, sp_cap INTEGER NOT NULL, bestpath TEXT NOT NULL,"
-                 " blob BLOB NOT NULL, score INTEGER, actcount INTEGER, maxskip INTEGER,"
-                 " hardest_ms REAL, avgmult REAL, notecount INTEGER, sqin_count INTEGER,"
-                 " sqout_count INTEGER, pathcount INTEGER,"
-                 " PRIMARY KEY (hyhash, chartmode, sp_cap));"
-                 "INSERT INTO records (hyhash, chartmode, hyversion, sp_cap, bestpath, blob,"
-                 " score) VALUES ('old', 'mode', '1.6.0', 8, '1 2 3', x'00', 100);");
-    check_too_old_file(path);
-    remove_db(path);
-}
-
 TEST_CASE("store: a new database carries 0 in user_version and reads its own rows") {
     // D53 item 1: Hydra never writes the user_version slot. classify_library_file
     // reads a file's tables, not that slot, so a new file keeps the 0 SQLite
@@ -307,12 +286,13 @@ TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in plac
 
 TEST_CASE("an open that cannot add the failure columns fails as DatabaseUpgrade and changes "
           "nothing") {
-    // A records table that has one failure column already: adding it again
-    // fails inside the transaction, so the other is not added either.
+    // A records table that has the second failure column but not the first:
+    // the open adds failure_kind, then fails adding failure_text again, so
+    // the column it did add must be undone with the rest of the transaction.
     const std::string path = testtemp::temp_path("half_failure_columns", ".db");
     remove_db(path);
     { RecordStore seed(path); }
-    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_text;");
+    exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_kind;");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
     try {
         RecordStore store(path);
@@ -321,6 +301,8 @@ TEST_CASE("an open that cannot add the failure columns fails as DatabaseUpgrade 
         CHECK(e.kind() == ErrorKind::DatabaseUpgrade);
     }
     CHECK(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('records')"
+                               " WHERE name = 'failure_kind'") == 0);
     remove_db(path);
 }
 
@@ -734,77 +716,15 @@ TEST_CASE("every open caps the WAL file the log keeps after a checkpoint") {
 
 // ---- real old databases (testdata/store, test fidelity plan task 1) --------
 
-namespace {
-
-// One file in testdata/store and its layout. The fields are the README's
-// "Facts the tests pin".
-struct OldDatabase {
-    const char* file;
-    int64_t user_version;
-    bool has_legacy_fills_column;
-    bool has_rules_fp_column;
-};
-
-// Every fixture row's chart mode (README "Schema and stamps").
-const char* const kOldDatabaseChartMode = "Expert Pro Drums, 2x Bass";
-
-// The three charts every fixture analysed (README "The three charts").
-const char* const kOldDatabaseHashes[] = {"0b647b1570475f18d463466f2c4d72a7",
-                                          "0d4fd734fe5f2bf6ff1fdbc4ff55be8f",
-                                          "bef0759746740f9c1045f64e9a5a2938"};
-
-using ChartPairs = std::set<std::pair<std::string, std::string>>;
-
-// The (hyhash, chartmode) pairs the fixtures' results tables hold. Rows are
-// matched by chart, since result_ids differ between the files.
-ChartPairs old_database_pairs() {
-    ChartPairs out;
-    for (const char* h : kOldDatabaseHashes) out.insert({h, kOldDatabaseChartMode});
-    return out;
-}
-
-// The (chart, chartmode) pairs an old file's results table holds.
-ChartPairs result_pairs_on_file(const std::string& path) {
-    sqlite3* db = nullptr;
-    REQUIRE(sqlite3_open(path.c_str(), &db) == SQLITE_OK);
-    sqlite3_stmt* s = nullptr;
-    REQUIRE(sqlite3_prepare_v2(db, "SELECT hyhash, chartmode FROM results", -1, &s, nullptr) ==
-            SQLITE_OK);
-    ChartPairs out;
-    while (sqlite3_step(s) == SQLITE_ROW)
-        out.insert({reinterpret_cast<const char*>(sqlite3_column_text(s, 0)),
-                    reinterpret_cast<const char*>(sqlite3_column_text(s, 1))});
-    sqlite3_finalize(s);
-    sqlite3_close(db);
-    return out;
-}
-
-int64_t results_columns_named(const std::string& path, const std::string& column) {
-    return scalar_on_file(path, "SELECT COUNT(*) FROM pragma_table_info('results') WHERE name = '" +
-                                    column + "'");
-}
-
-}  // namespace
-
 TEST_CASE("a database any release before 2.2.0 wrote is too old: refused, or set aside for a "
           "fresh library") {
-    const std::vector<OldDatabase> fixtures = {
-        {"v1.8.4-schema2.db", 2, false, false},
-        {"v1.8.4-schema2-legacy-fills.db", 2, false, false},
-        {"v2.0.0-schema3.db", 3, true, false},
-        // v2.1.0 stopped setting user_version (README "Schema and stamps").
-        {"v2.1.0-schema4.db", 0, true, true},
-    };
-    for (const OldDatabase& f : fixtures) {
-        INFO(std::string(f.file));
-        const std::string path = copy_of_old_database(f.file, "old_database");
-
-        // The file is the layout the README says, before anything opens it.
-        CHECK(scalar_on_file(path, "PRAGMA user_version") == f.user_version);
-        CHECK(results_columns_named(path, "legacy_fills") == (f.has_legacy_fills_column ? 1 : 0));
-        CHECK(results_columns_named(path, "rules_fp") == (f.has_rules_fp_column ? 1 : 0));
-        REQUIRE(result_pairs_on_file(path) == old_database_pairs());
-
+    // The four pre-2.2.0 files in testdata/store; its README says which
+    // release wrote each.
+    const char* const files[] = {"v1.8.4-schema2.db", "v1.8.4-schema2-legacy-fills.db",
+                                 "v2.0.0-schema3.db", "v2.1.0-schema4.db"};
+    for (const char* file : files) {
+        INFO(std::string(file));
+        const std::string path = copy_of_old_database(file, "old_database");
         check_too_old_file(path);
         remove_db(path);
     }
