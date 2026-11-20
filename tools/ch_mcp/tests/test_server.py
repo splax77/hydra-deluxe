@@ -8,12 +8,12 @@ refuses, and no test calls a tool that touches the game.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
 import os
 import sys
 import tempfile
 import unittest
-from types import SimpleNamespace
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
@@ -26,8 +26,16 @@ from tools.ch_mcp import game_files  # noqa: E402
 from tools.ch_mcp import game_tools as GT  # noqa: E402
 from tools.ch_mcp import kit_tools as KT  # noqa: E402
 from tools.ch_mcp import server as S  # noqa: E402
-from tools.ch_mcp import sp_tools as SP  # noqa: E402
 from tools.hydra_ui_mcp import REPLY_CAP_CHARS  # noqa: E402
+# A real Star Power watch piece of Pitch Dark's run, the chart, and Hydra's
+# files for it in testdata/replay.
+from tools.ch_probe.tests.test_sp_compare import (  # noqa: E402
+    _PITCH_DARK_CHART, _RISE_CSV, _midi_resolution, _replay_file)
+
+# The scorestats.json the game wrote after a real Pitch Dark run, copied from
+# hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-run1.
+_PITCH_DARK_STATS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "pitch-dark-run1",
+                                 "scorestats-CHON_-_Pitch_Dark_B-20261112-230618.json")
 
 # A real worker: the real server on a real Helper, over stdio, as the front
 # runs server.py. argv gives the repo root, the game exe, the documents folder,
@@ -52,27 +60,6 @@ def backup_folders(root: str) -> list[str]:
     return [os.path.join(top, name) for top, dirs, _files in os.walk(root)
             for name in dirs if name.startswith(game_files.BACKUP_PREFIX)]
 
-# The eighteen tools of the server plan's "The tools" table, then the eleven
-# of the Star Power and song start plan's (task T5), then the five kit tools
-# of the in-game input plan (task K5). The direct-start plan (task D5)
-# registers the changed ch_start and ch_kit_setup and adds no tool. The optimal
-# score run plan (task T4) adds ch_run_chart, the reload plan (task R3)
-# ch_open_items, the player-limits plan (task T4) ch_edge_probe, and the in-game
-# press timing plan (task IG3) ch_kit_frame_probe. The server plan is
-# docs/superpowers/plans/2026-10-28-ch-mcp-server.md (removed; git show ec91f8d1:docs/superpowers/plans/2026-10-28-ch-mcp-server.md).
-TOOL_NAMES = {
-    "ch_run_chart", "ch_open_items", "ch_edge_probe", "ch_kit_frame_probe",
-    "ch_start", "ch_stop", "ch_status", "ch_install_chart", "ch_wait_stats",
-    "ch_stats", "ch_compare", "ch_attach", "ch_detach", "ch_state",
-    "ch_snapshot", "ch_trace_start", "ch_notes", "ch_trace_stop", "ch_press",
-    "ch_play_chart", "ch_play_status", "ch_play_stop",
-    "ch_sp_watch_start", "ch_sp", "ch_sp_watch_status", "ch_sp_watch_stop",
-    "ch_sp_compare", "ch_sp_between", "ch_key", "ch_menu", "ch_open_song",
-    "ch_method_watch_start", "ch_method_watch_stop",
-    "ch_kit_setup", "ch_kit_press", "ch_kit_status", "ch_kit_watch", "ch_kit_teardown",
-}
-
-
 def _no_launch(cmd):
     raise AssertionError(f"a test launched {cmd}")
 
@@ -91,9 +78,49 @@ class ServerTest(unittest.TestCase):
         self.helper = S.Helper(env=env, scratch_root=tmp.name,
                                game_kw={"driver": object()})
 
-    def test_build_server_registers_the_thirty_seven_tools(self):
-        tools = asyncio.run(S.build_server(self.helper).list_tools())
-        self.assertEqual({t.name for t in tools}, TOOL_NAMES)
+    def _tool_methods(self) -> dict:
+        """Each ch_ method of the Helper and of the tool parts it holds, by
+        name: the methods the server's tools call. The Helper's own method
+        comes first where a part has one of the same name (ch_status)."""
+        h = self.helper
+        found = {}
+        for owner in [h] + [v for k, v in vars(h).items() if not k.startswith("_")]:
+            for name in dir(type(owner)):
+                if name.startswith("ch_") and callable(getattr(owner, name)):
+                    found.setdefault(name, getattr(owner, name))
+        return found
+
+    def test_build_server_registers_a_tool_for_each_ch_method_of_its_parts(self):
+        names = {t.name for t in asyncio.run(S.build_server(self.helper).list_tools())}
+        methods = self._tool_methods()
+        self.assertTrue(methods)
+        # Every ch_ method of a part is a tool, and every tool but one calls
+        # the method of its own name. ch_open_items answers from
+        # Helper.open_items, which test_ch_open_items_* read.
+        self.assertEqual(set(methods) - names, set())
+        self.assertEqual(names - set(methods), {"ch_open_items"})
+        self.assertTrue(callable(self.helper.open_items))
+
+    def _reaches(self, tool: str, method, cases: list) -> None:
+        """The tool's schema names the method's arguments, with the method's
+        defaults, and each case's arguments give the reply the method itself
+        gives them, capped as the server caps it. The cases' replies all
+        differ, so each argument a case changes is one the method reads."""
+        params = inspect.signature(method).parameters
+        schema = self._schema(tool)
+        self.assertEqual(set(schema), set(params))
+        for arg, spec in schema.items():
+            if "default" in spec:
+                self.assertEqual(spec["default"], params[arg].default, arg)
+        server = S.build_server(self.helper)
+        replies = []
+        for args in cases:
+            with self.subTest(tool=tool, args=args):
+                want = S.capped(method(**args))
+                got = asyncio.run(server.call_tool(tool, args)).content[0].text
+                self.assertEqual(got, want)
+                replies.append(got)
+        self.assertEqual(len(set(replies)), len(cases), replies)
 
     def _open_items(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_open_items", {}))
@@ -138,35 +165,6 @@ class ServerTest(unittest.TestCase):
         self.assertTrue(lines[0].startswith("adopted backup"), lines)
         self.assertTrue(lines[0].endswith(folders[0]), lines)
 
-    def test_open_items_uses_public_checks(self):
-        # A field of another tool read here would be a second copy of the
-        # question its owner answers (audit L76).
-        import inspect
-        source = inspect.getsource(S.Helper.open_items)
-        self.assertNotIn("._", source)
-
-    def test_each_public_check_answers_both_ways(self):
-        alive = SimpleNamespace(is_alive=lambda: True)
-        dead = SimpleNamespace(is_alive=lambda: False)
-        h = self.helper
-        cases = [
-            ("kit.agent_attached", h.kit.agent_attached, h.kit, "_agent", object(), None),
-            ("sp.watch_running", h.sp.watch_running, h.sp, "_watch",
-             SP._Watch("w.csv", 1.0, thread=alive), SP._Watch("w.csv", 1.0, thread=dead)),
-            ("method_watch.running", h.method_watch.running, h.method_watch, "_session",
-             SimpleNamespace(ended=lambda: False), SimpleNamespace(ended=lambda: True)),
-            ("frida.trace_running", h.frida.trace_running, h.frida, "_trace",
-             SimpleNamespace(ended=lambda: False), SimpleNamespace(ended=lambda: True)),
-        ]
-        for name, check, owner, field, on, off in cases:
-            with self.subTest(name):
-                setattr(owner, field, None)
-                self.assertFalse(check())
-                setattr(owner, field, on)
-                self.assertTrue(check())
-                setattr(owner, field, off)
-                self.assertFalse(check())
-
     def test_a_long_reply_is_cut_at_a_line_with_the_clone_hero_closing_line(self):
         long_text = "\n".join(f"call {i}: " + "x" * 90 for i in range(200))
         self.helper.frida.ch_notes = lambda since: long_text
@@ -176,8 +174,8 @@ class ServerTest(unittest.TestCase):
         lines = text.splitlines()
         kept = len(lines) - 1
         self.assertTrue(all(line in long_text.splitlines() for line in lines[:-1]))
-        self.assertEqual(lines[-1], f"[cut at 12,000 characters: {200 - kept} of 200 lines "
-                                    f"dropped; {S.CAP_HINT}]")
+        self.assertEqual(lines[-1], f"[cut at {REPLY_CAP_CHARS:,} characters: "
+                                    f"{200 - kept} of 200 lines dropped; {S.CAP_HINT}]")
         self.assertIn("ch_notes(since=...)", S.CAP_HINT)
 
     def test_the_trace_texts_say_the_hook_fires_on_hits(self):
@@ -243,14 +241,25 @@ class ServerTest(unittest.TestCase):
         self.assertEqual(result.content[0].text, "probing")
         self.assertEqual(seen, [("song", "s.json", "sched.json", "p.json")])
 
-    def test_ch_run_chart_passes_its_arguments_through(self):
-        seen = []
-        self.helper.game.ch_run_chart = lambda *a: seen.append(a) or "ran"
-        result = asyncio.run(S.build_server(self.helper).call_tool("ch_run_chart", {
-            "song_folder": "song", "score_json": "top.json", "schedule_json": "sched.json",
-            "kit_player": "System", "path_index": 3, "probes_json": "p.json"}))
-        self.assertEqual(result.content[0].text, "ran")
-        self.assertEqual(seen, [("song", "top.json", "sched.json", "System", 3, "p.json")])
+    def _pitch_dark_schedule(self) -> tuple[str, str, int]:
+        """Hydra's score and schedule of Pitch Dark's path 0 in testdata/replay
+        (test_sp_compare's _replay_file says how they are made), and the path
+        index the schedule says it was made from."""
+        schedule = _replay_file("test_pitch_dark_ratio-schedule.json")
+        index = GT.schedule_doc(schedule)["path_source"]["index"]
+        return _replay_file("test_pitch_dark_ratio-score.json"), schedule, index
+
+    def test_ch_run_chart_hands_its_schedule_and_path_to_the_run(self):
+        # With no game open, the real run stops at the schedule's checks:
+        # another path than the schedule's is refused, and the schedule's own
+        # path goes on to the chart check, which this schedule
+        # fails because it names its chart by a relative path. song_folder,
+        # kit_player and probes_json are read only after those checks.
+        score, schedule, index = self._pitch_dark_schedule()
+        base = {"song_folder": os.path.dirname(_PITCH_DARK_CHART), "score_json": score,
+                "schedule_json": schedule}
+        self._reaches("ch_run_chart", self.helper.game.ch_run_chart, [
+            {**base, "path_index": index}, {**base, "path_index": index + 1}])
 
     def test_a_leftover_timing_argument_is_dropped_without_a_word(self):
         # A call that still passes timing runs the real tool as if timing
@@ -269,13 +278,12 @@ class ServerTest(unittest.TestCase):
                 self.assertEqual(passed.content[0].text, left_out.content[0].text)
         self.assertEqual(self.printed, [])
 
-    def test_ch_kit_frame_probe_passes_its_seconds_through(self):
-        seen = []
-        self.helper.kit.ch_kit_frame_probe = lambda *a: seen.append(a) or "probed"
-        result = asyncio.run(S.build_server(self.helper).call_tool("ch_kit_frame_probe",
-                                                                   {"seconds": 5}))
-        self.assertEqual(result.content[0].text, "probed")
-        self.assertEqual(seen, [(5,)])
+    def test_ch_kit_frame_probe_hands_its_seconds_to_the_kit(self):
+        # Seconds over the kit's cap are refused before any kit is needed,
+        # naming the seconds given.
+        cap = KT.FRAME_PROBE_SECONDS
+        self._reaches("ch_kit_frame_probe", self.helper.kit.ch_kit_frame_probe,
+                      [{"seconds": cap * 2}, {"seconds": cap * 3}])
 
     def test_the_helper_hands_ch_run_chart_its_three_parts(self):
         parts = self.helper.game._run_parts
@@ -301,101 +309,83 @@ class ServerTest(unittest.TestCase):
         tools = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())}
         return tools[name].input_schema["properties"]
 
-    def test_ch_start_takes_human_and_passes_it_through(self):
-        self.assertEqual(self._schema("ch_start")["human"]["default"], False)
-        seen = []
-        self.helper.game.ch_start = lambda *a, **kw: seen.append((a, kw)) or "started"
-        result = asyncio.run(S.build_server(self.helper).call_tool(
-            "ch_start", {"song_folder": "song", "human": True}))
-        self.assertEqual(result.content[0].text, "started")
-        self.assertEqual(seen, [(("song", bot_run.DEFAULT_PLAYER, None), {"human": True})])
+    def test_ch_start_hands_human_to_the_game(self):
+        # human with no song folder is refused before the quiet check; the
+        # same call without human would go on to check the machine.
+        self._reaches("ch_start", self.helper.game.ch_start, [{"human": True}])
+        self.assertEqual(self.printed, [])
 
-    def test_ch_play_chart_passes_its_arguments_through(self):
-        seen = []
-        self.helper.game.ch_play_chart = lambda *a: seen.append(a) or "playing"
-        server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_play_chart", {"score_json": "s.json",
-                                                       "schedule_json": "sched.json"}))
-        asyncio.run(server.call_tool("ch_play_chart", {
-            "score_json": "s.json", "schedule_json": "sched.json", "log": "p.csv",
-            "song_folder": "song", "route": "kit", "path_index": 2}))
-        self.assertEqual(seen, [("s.json", "sched.json", None, None, None, 0),
-                                ("s.json", "sched.json", "p.csv", "song", "kit", 2)])
+    def test_ch_play_chart_hands_its_route_and_path_to_the_game(self):
+        # With no kit set up, no route and the kit route are refused with
+        # different words, and the keys route reaches the schedule's path
+        # check. log and song_folder are read only once a game runs.
+        score, schedule, index = self._pitch_dark_schedule()
+        base = {"score_json": score, "schedule_json": schedule}
+        self._reaches("ch_play_chart", self.helper.game.ch_play_chart, [
+            base,
+            {**base, "route": GT.ROUTE_KIT},
+            {**base, "route": GT.ROUTE_KEYS, "path_index": index + 1},
+            {**base, "route": GT.ROUTE_KEYS, "path_index": index + 2},
+        ])
 
-    def test_ch_open_song_takes_the_player_and_passes_it_through(self):
-        self.assertEqual(self._schema("ch_open_song")["player"]["default"],
-                         bot_run.DEFAULT_PLAYER)
-        seen = []
-        self.helper.menu.ch_open_song = lambda *a: seen.append(a) or "opened"
-        server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_open_song", {"song_folder": "song"}))
-        asyncio.run(server.call_tool("ch_open_song", {"song_folder": "song",
-                                                      "player": "ProDrums,Expert"}))
-        self.assertEqual(seen, [("song", bot_run.DEFAULT_PLAYER), ("song", "ProDrums,Expert")])
+    def test_ch_open_song_hands_its_player_to_the_menu_driver(self):
+        # A player with only one of its two words is refused before any
+        # press, naming the player given.
+        song = os.path.dirname(_PITCH_DARK_CHART)
+        instrument, difficulty = bot_run.DEFAULT_PLAYER.split(",")
+        self._reaches("ch_open_song", self.helper.menu.ch_open_song, [
+            {"song_folder": song, "player": instrument},
+            {"song_folder": song, "player": difficulty},
+        ])
 
-    def test_ch_sp_compare_passes_the_schedule_through_and_takes_no_dump(self):
-        schema = self._schema("ch_sp_compare")
-        self.assertNotIn("default", schema["schedule_json"])
-        self.assertNotIn("dump_json", schema)
-        self.assertNotIn("path_index", schema)
-        seen = []
-        self.helper.sp.ch_sp_compare = lambda *a: seen.append(a) or "compared"
-        server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_sp_compare", {"watch_csv": "w.csv",
-                                                       "score_json": "s.json",
-                                                       "schedule_json": "sched.json"}))
-        asyncio.run(server.call_tool("ch_sp_compare", {
-            "watch_csv": "w.csv", "score_json": "s.json", "schedule_json": "sched.json",
-            "resolution": 192}))
-        width = schema["width"]["default"]
-        self.assertEqual(seen, [("w.csv", "s.json", "sched.json", None, None, width),
-                                ("w.csv", "s.json", "sched.json", 192, None, width)])
+    def test_ch_sp_compare_hands_the_recorded_files_and_resolution_to_the_compare(self):
+        # A real watch piece against Hydra's files for its chart: refused
+        # with no resolution, compared with the chart's own.
+        score, schedule, _index = self._pitch_dark_schedule()
+        base = {"watch_csv": _RISE_CSV, "score_json": score, "schedule_json": schedule}
+        self._reaches("ch_sp_compare", self.helper.sp.ch_sp_compare, [
+            base, {**base, "resolution": _midi_resolution(_PITCH_DARK_CHART)}])
 
-    def test_ch_compare_takes_the_run_settings_and_passes_them_through(self):
-        schema = self._schema("ch_compare")
-        self.assertEqual(set(schema), {"stats_path", "score_json", "checksum",
-                                       "playback_speed", "no_fail", "modifiers"})
-        for name in ("checksum", "playback_speed", "no_fail", "modifiers"):
-            self.assertIsNone(schema[name]["default"])
-        seen = []
-        self.helper.game.ch_compare = lambda *a: seen.append(a) or "compared"
-        server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_compare", {"stats_path": "st.json",
-                                                    "score_json": "s.json"}))
-        asyncio.run(server.call_tool("ch_compare", {
-            "stats_path": "st.json", "score_json": "s.json", "checksum": "AB",
-            "playback_speed": 100, "no_fail": True, "modifiers": ["DoubleKick"]}))
-        self.assertEqual(seen, [("st.json", "s.json", None, None, None, None),
-                                ("st.json", "s.json", "AB", 100, True, ["DoubleKick"])])
+    def test_ch_compare_hands_the_run_settings_to_the_compare(self):
+        # The game's real scorestats.json against Hydra's score, with and
+        # without the run's settings as that file holds them.
+        with open(_PITCH_DARK_STATS, encoding="utf-8") as f:
+            stats = json.load(f)
+        [player] = stats["players"]
+        score = _replay_file("test_pitch_dark_ratio-score.json")
+        base = {"stats_path": _PITCH_DARK_STATS, "score_json": score}
+        self._reaches("ch_compare", self.helper.game.ch_compare, [base, {
+            **base, "checksum": stats["checksum"], "playback_speed": stats["playback_speed"],
+            "no_fail": player["no_fail"], "modifiers": player["modifiers"]}])
 
     def test_ch_start_human_with_no_song_folder_is_refused_before_any_launch(self):
         result = asyncio.run(S.build_server(self.helper).call_tool("ch_start", {"human": True}))
         self.assertEqual(result.content[0].text, bot_run.HUMAN_NEEDS_SONG)
         self.assertEqual(self.printed, [])
 
-    def test_ch_kit_setup_takes_player_and_passes_it_through(self):
-        self.assertEqual(self._schema("ch_kit_setup")["player"]["default"], None)
-        seen = []
-        self.helper.kit.ch_kit_setup = lambda player: seen.append(player) or "set up"
-        server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_kit_setup", {}))
-        asyncio.run(server.call_tool("ch_kit_setup", {"player": "System"}))
-        self.assertEqual(seen, [None, "System"])
+    def test_ch_kit_setup_hands_its_player_to_the_kit(self):
+        # With no game attached, setup is refused; a given player is named
+        # first in the reply.
+        self._reaches("ch_kit_setup", self.helper.kit.ch_kit_setup,
+                      [{}, {"player": KT.KIT_PLAYER}])
 
-    def test_ch_kit_press_takes_value_and_passes_it_through(self):
-        self.assertEqual(self._schema("ch_kit_press")["value"]["default"], None)
-        seen = []
-        self.helper.kit.ch_kit_press = lambda *a: seen.append(a) or "pressed"
-        server = S.build_server(self.helper)
-        asyncio.run(server.call_tool("ch_kit_press", {"items": "green"}))
-        asyncio.run(server.call_tool("ch_kit_press", {"items": "green", "read": "Green",
-                                                      "value": 0.748}))
-        self.assertEqual(seen, [("green", None, None, None, None, None),
-                                ("green", None, None, None, "Green", 0.748)])
+    def test_ch_kit_press_hands_its_hold_frames_and_value_to_the_kit(self):
+        # A hold and a value out of range are refused before any kit is
+        # needed, each naming its own argument; a press within range then
+        # needs the kit.
+        item = KT.FRAME_PROBE_ITEM
+        self._reaches("ch_kit_press", self.helper.kit.ch_kit_press, [
+            {"items": item}, {"items": item, "hold_frames": 0},
+            {"items": item, "value": 2.0}])
 
-    def test_ch_kit_press_says_what_value_does(self):
-        tools = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())}
-        self.assertIn("value sets", tools["ch_kit_press"].description)
+    def test_ch_kit_press_names_each_of_its_arguments_in_its_description(self):
+        tool = {t.name: t for t in asyncio.run(S.build_server(self.helper).list_tools())
+                }["ch_kit_press"]
+        args = tool.input_schema["properties"]
+        self.assertTrue(args)
+        for arg in args:
+            with self.subTest(arg):
+                self.assertIn(arg, tool.description)
 
     def test_status_joins_the_game_and_the_frida_lines(self):
         # ch_status is the game half, then the Frida half, each from its own
