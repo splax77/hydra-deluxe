@@ -376,6 +376,11 @@
           "file": "tests/test_dm_report.cpp",
           "line_text": "CHECK(ends_with(result.subtitle, dmr::clone_hero_cap_phrase()));",
           "why": "the second test's check that the comparison's subtitle ends with the cap phrase, not a file format"
+        },
+        {
+          "file": "tests/test_dm_report.cpp",
+          "line_text": "CHECK(ends_with(dmr::compare_tooltip(), phrase + \".\"));",
+          "why": "checks that the Compare button's tooltip ends with the cap phrase, not a file format"
         }
       ],
       "scope": [
