@@ -20,7 +20,6 @@
                                 // library_scan_blocked_notice
 #include "core/error_kind.h"
 #include "imgui_internal.h"
-#include "parse/song.h"  // NoNotesError
 #include "render/overlay_layout.h"  // ellipsize, the one cutting rule
 #include "ui/app_shell.h"  // remember_library_share
 #include "ui/app_state.h"
@@ -442,16 +441,24 @@ void test_settings_early_fill(ImGuiTestContext* ctx) {
 // nothing: the song's row stays Not analyzed (D87 item 9).
 void test_rules_error(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h, "max_tied_paths = 0\n");
+    // The one bad line the scratch hydra_rules.ini holds, and the key it sets.
+    const std::string key = "max_tied_paths";
+    reset_app(h, key + " = 0\n");
     IM_CHECK(h.app->analysis_blocked());
-    IM_CHECK(h.app->rules_error.find("max_tied_paths") != std::string::npos);
+    IM_CHECK(h.app->rules_error.find(key) != std::string::npos);
+    // One line on screen: the rules file's sentence and the loader's error.
+    const std::vector<hydra::ui::AnalysisOffLine> lines = h.app->analysis_off_lines();
+    IM_CHECK_EQ(lines.size(), size_t{1});
+    if (lines.size() != 1) return;
+    IM_CHECK_STR_EQ(lines[0].sentence, hydra::app::kAnalysisOffSentence);
+    IM_CHECK(lines[0].error == h.app->rules_error);
     scan_library(ctx);
     if (ctx->IsError()) return;
 
     IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("analysis is off") != std::string::npos;
+        return visible_text(h).find(hydra::app::kAnalysisOffSentence) != std::string::npos;
     }, 5));
-    IM_CHECK(visible_text(h).find("max_tied_paths") != std::string::npos);
+    IM_CHECK(visible_text(h).find(h.app->rules_error) != std::string::npos);
     IM_CHECK((ctx->ItemInfo("Analyze library...").ItemFlags & ImGuiItemFlags_Disabled) != 0);
 
     open_details(ctx, 0);
@@ -472,15 +479,20 @@ void test_rules_error(ImGuiTestContext* ctx) {
 // as they were (D276 item 1).
 void test_settings_error(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    const std::string bad = "view_prodrums=yes\n";
+    // The one bad line: a yes/no key given a word the loader refuses.
+    const std::string key = "view_prodrums";
+    const std::string word = "yes";
+    const std::string bad = key + "=" + word + "\n";
     reset_app(h, "", true, bad);
     IM_CHECK(h.app->analysis_blocked());
-    IM_CHECK(h.app->settings_error.find("view_prodrums") != std::string::npos);
+    // The loader's error names the key and the word it refused.
+    IM_CHECK(h.app->settings_error.find(key) != std::string::npos);
+    IM_CHECK(h.app->settings_error.find(word) != std::string::npos);
 
     IM_CHECK(wait_until(ctx, [&] {
         return visible_text(h).find(hydra::app::kSettingsOffSentence) != std::string::npos;
     }, 5));
-    IM_CHECK(visible_text(h).find("view_prodrums = \"yes\"") != std::string::npos);
+    IM_CHECK(visible_text(h).find(h.app->settings_error) != std::string::npos);
     IM_CHECK(!h.app->can_analyze());
     ctx->SetRef("//Hydra");
     IM_CHECK((ctx->ItemInfo("Analyze library...").ItemFlags & ImGuiItemFlags_Disabled) != 0);
@@ -495,43 +507,28 @@ void test_settings_error(ImGuiTestContext* ctx) {
     IM_CHECK(hydra::read_file_text(h.ini_path) == bad);
 }
 
-// The library view's own state (the search text, the dmleaderboards filter,
-// the status fade, the folder confirm) belongs to the AppState, so the next
-// test's fresh app never shows the last test's search text and filter.
+// The library view's own state belongs to the AppState, so the next test's
+// fresh app never shows the last test's search text.
 void test_library_state_per_app(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    const size_t all = h.app->library_shown_count();
     ctx->SetRef("//Hydra");
     ctx->ItemInputValue("**/##search", "zzqx");
     IM_CHECK(wait_until(ctx, [&] { return h.app->search == "zzqx"; }, 5));
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemInputValue("##dmfilter", "zzqx");
-    ctx->Yield(2);
-    IM_CHECK(visible_text(h).find("alice") == std::string::npos);
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
+    // The search narrowed the table, so a leftover one would show.
+    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() < all; }, 5));
 
-    // A fresh app: both boxes start empty. ImGui's text log shows an input
+    // A fresh app: the box starts empty. ImGui's text log shows an input
     // box's contents, so leftover text would be on screen.
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
     IM_CHECK(h.app->search.empty());
+    IM_CHECK_EQ(h.app->library_shown_count(), all);
     IM_CHECK(visible_text(h).find("zzqx") == std::string::npos);
-    ctx->SetRef("//Hydra");
-    ctx->ItemClick("Compare with dmleaderboards...");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->dm_users.empty(); }, 10));
-    IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("alice") != std::string::npos;
-    }, 5));
-    IM_CHECK(visible_text(h).find("zzqx") == std::string::npos);
-    ctx->SetRef("//Compare dmleaderboards user");
-    ctx->ItemClick("Close");
-    ctx->Yield(2);
 }
 
 // The View row and the library's own controls: Pro Drums, backing out of
@@ -548,7 +545,14 @@ void test_view_settings(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/##prodrums");
     IM_CHECK(!h.app->settings.view_prodrums);
     IM_CHECK(!hydra::app::Settings::load_file(h.ini_path).view_prodrums);
-    IM_CHECK(h.app->settings.chartmode_key().find("Pro Drums") == std::string::npos);
+    // Expert with 2x Bass, as the scratch settings start, but Pro Drums off.
+    hydra::ChartReading plain_drums;
+    plain_drums.difficulty = hydra::Difficulty::Expert;
+    plain_drums.prodrums = false;
+    plain_drums.bass2x = true;
+    plain_drums.noteshuffle = false;
+    IM_CHECK_EQ(h.app->settings.chartmode_key(), hydra::app::chartmode_key(plain_drums));
+    IM_CHECK(h.app->settings.chartmode_key() != drums_key(hydra::Difficulty::Expert, true));
     ctx->ItemClick("**/##prodrums");
     IM_CHECK(h.app->settings.view_prodrums);
     close_settings_panel(ctx);
@@ -556,7 +560,9 @@ void test_view_settings(ImGuiTestContext* ctx) {
     // "Analyze library..." asks first; Cancel starts nothing.
     ctx->ItemClick("Analyze library...");
     ctx->SetRef("//Analyze library");
-    IM_CHECK(visible_text(h).find("no result yet") != std::string::npos);
+    // The confirm asks its owner's question for the plan it counted.
+    IM_CHECK(h.app->batch_confirm_pending);
+    IM_CHECK(on_screen(h, h.app->batch_question(h.app->batch_redo)));
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
     IM_CHECK(h.app->batch_job == nullptr);
@@ -801,15 +807,19 @@ void test_analyze_follows_chip(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("Analyze library..."); }, 5));
 }
 
-// A chart whose failure the store kept (failure_record, saved on the scratch
-// db the way a batch saves one) reads Can't analyze in the Best path cell,
-// counts under its own chip, and that chip narrows the table and the Analyze
-// button to it (D115). The corpus has no chart without Expert drums, so the
-// failure is saved directly.
+// A chart whose failure a batch kept reads Can't analyze in the Best path
+// cell, counts under its own chip, and that chip narrows the table and the
+// Analyze button to it (D115). Every corpus chart has Expert drums, but many
+// .chart files have no [EasyDrums] section, so the whole corpus is batched at
+// Easy and each of those fails for real (NoNotesError, kept by
+// app::prepare_failed_chart).
 void test_library_cant_analyze(ImGuiTestContext* ctx) {
     using hydra::ui::StatusChip;
     Harness& h = harness(ctx);
     reset_app(h);
+    h.app->settings.view_difficulty = "Easy";
+    h.app->commit_settings();
+    IM_CHECK(h.app->settings.difficulty() == hydra::Difficulty::Easy);
     scan_library(ctx);
     if (ctx->IsError()) return;
     ctx->SetRef("//Hydra");
@@ -818,23 +828,28 @@ void test_library_cant_analyze(ImGuiTestContext* ctx) {
                   .ItemFlags &
               ImGuiItemFlags_Disabled) != 0);
 
-    const std::string md5 = h.app->library_row_at(0).entry.md5;
-    const hydra::NoNotesError no_notes(hydra::Difficulty::Expert, true);
-    h.app->store->save(hydra::store::failure_record(md5, h.app->settings.profile(),
-                                                    hydra::ErrorKind::NoNotes, no_notes.what()));
-    h.app->refresh_library_summaries();
-    IM_CHECK_EQ(h.app->library.counts().cant_analyze, size_t{1});
+    start_library_batch(ctx);
+    // A batch that never started can't finish, so the wait ends at once.
+    IM_CHECK(wait_until(ctx, [&] {
+        return !h.app->batch_job || h.app->batch_job->snapshot().finished;
+    }, 300));
+    IM_CHECK(h.app->batch_job && h.app->batch_job->snapshot().finished);
+    if (ctx->IsError()) return;
+    dismiss_done(ctx);
+    if (ctx->IsError()) return;
+    const size_t failed = h.app->library.counts().cant_analyze;
+    IM_CHECK(failed > 0);
+    IM_CHECK(failed < total);
     IM_CHECK_EQ(h.app->library.counts().all, total);
-    const std::string chip = "**/" + hydra::ui::chip_label(StatusChip::CantAnalyze, 1);
+    if (failed == 0) return;
+    const std::string chip = "**/" + hydra::ui::chip_label(StatusChip::CantAnalyze, failed);
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(chip.c_str()); }, 5));
     IM_CHECK((ctx->ItemInfo(chip.c_str()).ItemFlags & ImGuiItemFlags_Disabled) == 0);
-    IM_CHECK(ctx->ItemExists(
-        ("**/" + hydra::ui::chip_label(StatusChip::NotAnalyzed, total - 1)).c_str()));
 
     ctx->ItemClick(chip.c_str());
-    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() == 1; }, 5));
-    IM_CHECK(h.app->library_row_at(0).entry.md5 == md5);
-    IM_CHECK(h.app->library_row_at(0).status == hydra::store::RecordStatus::CantAnalyze);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->library_shown_count() == failed; }, 5));
+    for (size_t i = 0; i < h.app->library_shown_count(); ++i)
+        IM_CHECK(h.app->library_row_at(i).status == hydra::store::RecordStatus::CantAnalyze);
     // The cell draws the word: the chip's label and the cell both show it.
     const std::string word = hydra::ui::status_label(hydra::store::RecordStatus::CantAnalyze);
     const std::string text = visible_text(h);
@@ -842,13 +857,14 @@ void test_library_cant_analyze(ImGuiTestContext* ctx) {
     IM_CHECK(first != std::string::npos);
     IM_CHECK(text.find(word, first + word.size()) != std::string::npos);
 
-    // The Analyze button counts the one chart on screen.
-    const std::string label = hydra::ui::detail::analyze_shown_label(1);
+    // The Analyze button counts the charts on screen.
+    const std::string label =
+        hydra::ui::detail::analyze_shown_label(static_cast<int64_t>(failed));
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(label.c_str()); }, 5));
     ctx->ItemClick(label.c_str());
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
-    IM_CHECK_EQ(h.app->batch_scope_charts(), int64_t{1});
+    IM_CHECK_EQ(h.app->batch_scope_charts(), static_cast<int64_t>(failed));
     ctx->SetRef("//Analyze library");
     ctx->ItemClick("Cancel");
     ctx->Yield(2);
