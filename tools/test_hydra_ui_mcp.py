@@ -646,6 +646,142 @@ class TransportLayer(unittest.TestCase):
         self.assertTrue(out.startswith("Hydra exited with code 0\nno real-app record written: git "), out)
         self.assertIsNone(self.helper.session)
 
+    # -- a session on a worktree ---------------------------------------------
+
+    def make_worktree(self, built=True):
+        """A worktree of self.repo outside its folder, on a branch one commit
+        ahead of the repo's HEAD, with the stand-in's exes in its own exe
+        folder when `built`. The branch's commit ignores that folder, as the
+        repo's .gitignore does, so a build leaves the worktree clean."""
+        wt = self.root / "wt"
+        git(self.repo, "worktree", "add", "-q", "-b", "branch", str(wt))
+        (wt / ".gitignore").write_text(f"{hm.EXE_SUBDIR.parts[0]}/\n")
+        git(wt, "add", ".gitignore")
+        git(wt, "-c", "user.name=test", "-c", "user.email=test@example.invalid",
+            "commit", "-q", "-m", "branch commit")
+        if built:
+            (wt / hm.EXE_SUBDIR).mkdir(parents=True)
+            for exe in (hm.HEADLESS_EXE, hm.WINDOW_EXE):
+                (wt / hm.EXE_SUBDIR / exe).write_bytes(b"")
+        return wt
+
+    def launched_exes(self):
+        """A helper whose launches are noted: the exe paths, in order."""
+        launched = []
+
+        def noting(exe, args):
+            launched.append(Path(exe))
+            return fake_launcher(exe, args)
+
+        self.helper = self.new_helper(launcher=noting)
+        return launched
+
+    def start_window_on(self, worktree):
+        lib = self.root / "lib"
+        if not lib.exists():
+            make_library(lib)
+        return self.helper.start("window", library_dir=str(lib), worktree=worktree)
+
+    def test_a_worktree_runs_its_build_and_records_its_commit_and_cleanliness(self):
+        wt = self.make_worktree()
+        # The helper's own tree is dirty; the worktree is clean.
+        (self.repo / "new.txt").write_text("new\n")
+        launched = self.launched_exes()
+        out = self.start_window_on(str(wt))
+        self.assertIn("started a window session", out)
+        wt_head = git(wt, "rev-parse", "HEAD")
+        self.assertNotEqual(wt_head, self.head())
+        self.assertIn(f"  tree: {wt}, at commit {wt_head};", out)
+        self.assertEqual(launched, [wt / hm.EXE_SUBDIR / hm.WINDOW_EXE])
+        self.helper.send("state")
+        stop = self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual(rec["commit"], wt_head)
+        self.assertIs(rec["dirty"], False)
+        self.assertIn(f"real-app record for commit {wt_head} added to"
+                      f" {self.repo / '.git' / hm.REALAPP_FILE}", stop)
+
+    def test_a_dirty_worktree_is_recorded_dirty(self):
+        wt = self.make_worktree()
+        (wt / "tracked.txt").write_text("changed\n")
+        self.assertIn("started a window session", self.start_window_on(str(wt)))
+        self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertIs(rec["dirty"], True)
+        self.assertEqual(rec["commit"], git(wt, "rev-parse", "HEAD"))
+
+    def test_a_headless_session_runs_the_worktrees_build_and_writes_no_record(self):
+        wt = self.make_worktree()
+        launched = self.launched_exes()
+        out = self.helper.start("headless", worktree=str(wt))
+        self.assertIn("started a headless session", out)
+        self.assertIn(f"  tree: {wt}, at commit ", out)
+        self.assertEqual(launched, [wt / hm.EXE_SUBDIR / hm.HEADLESS_EXE])
+        self.assertEqual(self.helper.stop(), "Hydra exited with code 0")
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_no_worktree_keeps_the_helpers_own_exes_and_tree(self):
+        self.make_worktree()
+        launched = self.launched_exes()
+        out = self.start_window_on(None)
+        self.assertNotIn("tree:", out)
+        self.assertEqual(launched, [self.exe_dir / hm.WINDOW_EXE])
+        self.helper.stop()
+        [rec] = realapp_lines(self.repo)
+        self.assertEqual(rec["commit"], self.head())
+
+    def test_a_session_after_a_worktree_session_goes_back_to_the_helpers_tree(self):
+        wt = self.make_worktree()
+        launched = self.launched_exes()
+        self.start_window_on(str(wt))
+        self.start_window_on(None)
+        self.helper.stop()
+        first, second = realapp_lines(self.repo)
+        self.assertEqual(first["commit"], git(wt, "rev-parse", "HEAD"))
+        self.assertEqual(second["commit"], self.head())
+        self.assertEqual(launched, [wt / hm.EXE_SUBDIR / hm.WINDOW_EXE,
+                                    self.exe_dir / hm.WINDOW_EXE])
+
+    def assert_refused(self, worktree, *pieces):
+        launched = self.launched_exes()
+        out = self.helper.start("window", library_dir=str(self.root / "lib"), worktree=worktree)
+        self.assertTrue(out.startswith("refused: worktree "), out)
+        for piece in pieces:
+            self.assertIn(piece, out)
+        self.assertIsNone(self.helper.session)
+        self.assertEqual(launched, [])
+        self.assertEqual(realapp_lines(self.repo), [])
+
+    def test_a_worktree_of_another_repo_is_refused(self):
+        other = make_repo(self.root / "other")
+        self.assert_refused(str(other), "belongs to another repo",
+                            f"pass the absolute path of a worktree folder of {self.repo}")
+
+    def test_a_folder_that_is_no_git_tree_is_refused(self):
+        plain = self.root / "plain"
+        plain.mkdir()
+        self.assert_refused(str(plain), "is not a git worktree")
+
+    def test_a_missing_folder_is_refused(self):
+        self.assert_refused(str(self.root / "nowhere"), "is not a folder")
+
+    def test_a_relative_or_empty_path_is_refused(self):
+        self.assert_refused("wt", "is not an absolute path")
+        self.assert_refused("", "is not an absolute path")
+
+    def test_a_folder_inside_a_worktree_is_refused_naming_its_top(self):
+        wt = self.make_worktree()
+        self.assert_refused(str(wt / "build-cpp"), "not its top folder", f"pass {wt}")
+
+    def test_a_worktree_without_the_exe_is_refused(self):
+        wt = self.make_worktree(built=False)
+        launched = self.launched_exes()
+        out = self.start_window_on(str(wt))
+        self.assertEqual(out, f"{hm.WINDOW_EXE} is not built (looked in {wt / hm.EXE_SUBDIR})."
+                              " Ask the main session to build the Hydra target.")
+        self.assertIsNone(self.helper.session)
+        self.assertEqual(launched, [])
+
 
 class BuildPassTool(unittest.TestCase):
     """hydra_build_pass, through the real tools/build_slot.ps1 on a temporary
