@@ -318,9 +318,10 @@ TEST_CASE("coach rows: a squeeze with time to spare under a lower limit names th
     CHECK(hydra::pathbuilder::tight_window_note(*spare, static_cast<double>(inside)).empty());
 }
 
-// A click on an unused fill that sits before a window of the path used to
-// fail with the generic sentence, since the new window was pinned with no end
-// before windows pinned with theirs (sort_and_check_windows).
+// A click on an unused fill before a window of the path, refused because a
+// later window can no longer happen, gets the later-window sentence and not
+// the generic one, even though the new window is pinned with no end before
+// windows pinned with theirs (sort_and_check_windows).
 TEST_CASE("coach click: a fill that rules out a later window is refused in the later-window sentence") {
     PbState s;
     open_and_wait(s, corpus::burnout_notes(), scratch_settings());
