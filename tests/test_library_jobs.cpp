@@ -4,15 +4,17 @@
 // saved paths, and its counted read of the library's charts and results. One
 // opt-in case times the startup library read on a library file the caller
 // names.
-// The analyzer and the network are fakes; the counts case, the batch hand-back
-// case and the startup open's cases read one corpus chart each, for a result
-// the store can save.
+// The batch cases run the real analyzer on corpus charts, or hold it at a gate
+// and then run it. The cases that need a chart to fail or a result of a
+// chosen size use a stand-in analyzer, and the network is a fake. The startup
+// open's cases read libraries a scan of the corpus writes.
 
 #include "doctest.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -35,9 +37,8 @@
 #include "core/rules.h"  // RulesStamp
 #include "corpus_util.h"
 #include "db_file_util.h"  // exec_on_file
-#include "display_fixtures.h"  // kTagOnlyTitle, save_batch_record
+#include "display_fixtures.h"  // save_batch_record, save_old_build_record, other_rules_record
 #include "env_util.h"  // read_env
-#include "library_fixtures.h"  // library_row
 #include "net/dmbot_client.h"
 #include "parse/song.h"  // NoNotesError
 #include "scoped_hook.h"
@@ -101,15 +102,79 @@ hydra::app::ChartAnalyzer gated_failure(std::atomic<int>& started, std::atomic<b
     };
 }
 
-// A chart that fails once the test has released it: the chart that started
-// n-th (from 0) waits until `released` is above n.
-hydra::app::ChartAnalyzer released_in_turn(std::atomic<int>& released) {
-    auto started = std::make_shared<std::atomic<int>>(0);
-    return [&released, started](const std::string&, const AnalysisSettings&,
-                                const std::function<void(float)>&) -> AnalysisResult {
-        const int me = (*started)++;
+// The library rows a scan of the corpus writes (discover_charts, the scan's
+// own reader), read once. A discovery error throws: the corpus is checked in.
+const std::vector<ChartLibraryEntry>& corpus_scan() {
+    static const std::vector<ChartLibraryEntry> rows = [] {
+        auto [items, errors] = hydra::app::discover_charts({corpus::root()});
+        if (!errors.empty()) throw std::runtime_error("corpus scan error: " + errors.front());
+        return items;
+    }();
+    return rows;
+}
+
+// The scan's row for the corpus chart at `notespath`.
+ChartLibraryEntry corpus_row(const std::string& notespath) {
+    for (const ChartLibraryEntry& e : corpus_scan())
+        if (e.notespath == notespath) return e;
+    throw std::runtime_error("the corpus scan has no row for " + notespath);
+}
+
+// The scan's rows for the first `n` (at most 4) corpus charts that analyze to
+// a path under the default settings (corpus::charts_with_paths), so the real
+// analyzer saves a result for each.
+std::vector<ChartLibraryEntry> corpus_rows(size_t n) {
+    static const std::vector<ChartLibraryEntry> four = [] {
+        std::vector<ChartLibraryEntry> rows;
+        for (const corpus::ChartWithPaths& c : corpus::charts_with_paths(AnalysisSettings{}, 4))
+            rows.push_back(corpus_row(c.chart));
+        return rows;
+    }();
+    REQUIRE(n <= four.size());
+    return std::vector<ChartLibraryEntry>(four.begin(),
+                                          four.begin() + static_cast<std::ptrdiff_t>(n));
+}
+
+// An empty scratch folder for this run (testtemp::temp_dir, cleared).
+std::string empty_dir(const std::string& tag) {
+    testtemp::remove_dir(testtemp::temp_dir(tag));
+    return testtemp::temp_dir(tag);
+}
+
+// The scan's row for a copy of the chart `row` names, put in the empty folder
+// `dir`: its chart file and, when its folder has one, its song.ini, read back
+// by discover_charts. Same chart, so same md5, in a second folder.
+ChartLibraryEntry copied_row(const ChartLibraryEntry& row, const std::string& dir) {
+    const std::filesystem::path chart = hydra::os_path(row.notespath);
+    const std::filesystem::path to = hydra::os_path(dir);
+    std::filesystem::copy_file(chart, to / chart.filename());
+    const std::filesystem::path ini = chart.parent_path() / "song.ini";
+    if (std::filesystem::exists(ini)) std::filesystem::copy_file(ini, to / "song.ini");
+    auto [items, errors] = hydra::app::discover_charts({dir});
+    REQUIRE(errors.empty());
+    for (const ChartLibraryEntry& e : items)
+        if (e.md5 == row.md5) return e;
+    throw std::runtime_error("the scan of " + dir + " has no copy of " + row.notespath);
+}
+
+// The real analyzer (app::analyze_chart_file), with nothing in front of it.
+hydra::app::ChartAnalyzer real_analyzer() {
+    return [](const std::string& path, const AnalysisSettings& settings,
+              const std::function<void(float)>& on_progress) -> AnalysisResult {
+        return hydra::app::analyze_chart_file(path, settings, on_progress);
+    };
+}
+
+// The real analyzer, held at the start of each chart until the test lets it
+// go: the chart that started n-th (from 0) counts itself in `started`, waits
+// until `released` is above n, then is analyzed for real.
+hydra::app::ChartAnalyzer real_analysis_in_turn(std::atomic<int>& started,
+                                                std::atomic<int>& released) {
+    return [&started, &released](const std::string& path, const AnalysisSettings& settings,
+                                 const std::function<void(float)>& on_progress) -> AnalysisResult {
+        const int me = started++;
         wait_until([&released, me] { return released.load() > me; }, "the test to release it");
-        throw hydra::KindedError(hydra::ErrorKind::ChartUnreadable, "MD5 hashing failed");
+        return hydra::app::analyze_chart_file(path, settings, on_progress);
     };
 }
 
@@ -124,9 +189,13 @@ void wait_for_batch_step(const BatchJob& job, Done done, const std::string& what
 }  // namespace
 
 // AOA-W3 V9-SN1: an exception out of the scan ends the job with the error as
-// its one problem line. It writes no library.
+// its one problem line. It writes no library: the library a real scan of the
+// corpus saved before stays as it was.
 TEST_CASE("jobs: a scan that throws finishes with its error as a problem") {
     RecordStore store(":memory:");
+    REQUIRE_FALSE(hydra::app::save_scan_as_library(store, corpus_scan()).has_value());
+    const std::vector<ChartLibraryEntry> before = store.list_chart_library(0, -1);
+    REQUIRE_FALSE(before.empty());
     const std::runtime_error broke("scan broke");
     const ScopedHook hold(hydra::ui::set_scan_hold_for_test, [&broke] { throw broke; });
     hydra::ui::ScanJob job({corpus::root()}, store);
@@ -137,7 +206,12 @@ TEST_CASE("jobs: a scan that throws finishes with its error as a problem") {
     CHECK(p.errors[0] == hydra::app::plain_error_line(broke));
     CHECK(p.phase == hydra::ui::ScanProgress::Phase::Done);
     CHECK_FALSE(p.cancelled);
-    CHECK(p.charts_found == 0);
+    const std::vector<ChartLibraryEntry> after = store.list_chart_library(0, -1);
+    REQUIRE(after.size() == before.size());
+    for (size_t i = 0; i < before.size(); ++i) {
+        CHECK(after[i].md5 == before[i].md5);
+        CHECK(after[i].notespath == before[i].notespath);
+    }
 }
 
 TEST_CASE("jobs: the batch clock leaves paused time out") {
@@ -199,11 +273,13 @@ TEST_CASE("jobs: time left shows nothing until 2W charts have finished, then sho
 }
 
 TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers") {
-    // One worker, so the window is 2 charts. Each chart waits for its turn.
+    // One worker, so the window is 2 charts. Each corpus chart waits for its
+    // turn, then is analyzed for real.
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);
+    BatchJob job(plan_of(corpus_rows(4)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
     job.start();
 
     released = 1;
@@ -223,31 +299,40 @@ TEST_CASE("jobs: the batch strip's time left waits for two rounds of its workers
 // Paused time never counts (D283): a chart that finishes during a pause is
 // timed at the pause, and the window after the resume spans only run time.
 TEST_CASE("jobs: time left leaves a pause out of its window") {
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(released_in_turn(released), /*workers=*/1);  // a window of 2
+    BatchJob job(plan_of(corpus_rows(4)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released),
+                              /*workers=*/1);  // a window of 2
     job.start();
-    wait_for_batch_step(job, [&] { return job.snapshot().current_title == "fake 0"; },
-                        "the first chart to start");
+    wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
     job.pause();
     released = 1;
     wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
                         "the chart in flight to finish");
     CHECK_FALSE(job.snapshot().eta_s.has_value());
-    constexpr auto kPause = 1200ms;  // far longer than the run time that follows
+    constexpr auto kPause = 2000ms;  // longer than the run time that follows
     std::this_thread::sleep_for(kPause);
 
+    const auto resumed = std::chrono::steady_clock::now();
     job.resume();
     released = 2;
     wait_for_batch_step(job, [&] { return job.snapshot().completed == 2; },
                         "the second chart to finish");
+    const double run_s =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - resumed).count();
+    const double pause_s = std::chrono::duration<double>(kPause).count();
+    // The second chart's real analysis must take less than the pause, or the
+    // check below cannot tell run time from paused time.
+    REQUIRE(run_s < pause_s);
     // Two charts left over a rate of 2 charts in the window's span: the span
-    // in seconds. Counting the pause would make it kPause or more.
+    // in seconds, which is run time only, so at most run_s. Counting the
+    // pause would make it pause_s or more.
     const std::optional<double> eta = job.snapshot().eta_s;
     REQUIRE(eta.has_value());
-    CHECK(*eta < std::chrono::duration<double>(kPause).count() / 2);
+    CHECK(*eta <= run_s);
 
     released = 4;
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
@@ -255,16 +340,15 @@ TEST_CASE("jobs: time left leaves a pause out of its window") {
 
 TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     std::atomic<int> started{0};
-    std::atomic<bool> release{false};
+    std::atomic<int> released{0};
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(3)), test_run(), store);
-    job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
-                              /*workers=*/1);
+    BatchJob job(plan_of(corpus_rows(3)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
     job.start();
     wait_for_batch_step(job, [&] { return started.load() == 1; }, "the first chart to start");
 
     job.pause();
-    release = true;
+    released = 3;
     wait_for_batch_step(job, [&] { return job.snapshot().completed == 1; },
                         "the chart in flight to finish");
     std::this_thread::sleep_for(200ms);
@@ -278,17 +362,17 @@ TEST_CASE("jobs: pause lets the chart in flight finish and starts no new one") {
     BatchJob::Snapshot done = job.snapshot();
     CHECK(started.load() == 3);
     CHECK(done.completed == 3);
-    CHECK(done.failed == 3);
+    CHECK(done.analyzed == 3);
+    CHECK(done.failed == 0);
     CHECK_FALSE(done.paused);
 }
 
 TEST_CASE("jobs: stop while paused ends the run and fails nothing") {
     std::atomic<int> started{0};
-    std::atomic<bool> release{true};
+    std::atomic<int> released{4};  // no chart is held: each may run at once
     RecordStore store(":memory:");
-    BatchJob job(plan_of(fake_charts(4)), test_run(), store);
-    job.set_analyzer_for_test(gated_failure(started, release, "MD5 hashing failed"),
-                              /*workers=*/2);
+    BatchJob job(plan_of(corpus_rows(4)), test_run(), store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/2);
     job.pause();
     job.start();
     std::this_thread::sleep_for(200ms);
@@ -462,26 +546,23 @@ void check_answers_match_store(const SavedRows& rows, RecordStore& store, const 
     }
 }
 
-// fake_charts(n) with chart 0 listed in a second folder too: one chart, two
-// library rows.
-std::vector<ChartLibraryEntry> charts_with_a_copy(int n) {
-    std::vector<ChartLibraryEntry> charts = fake_charts(n);
-    ChartLibraryEntry copy = charts[0];
-    copy.title = "fake 0 copy";
-    copy.notespath = "fake_0_copy.chart";
-    charts.push_back(copy);
-    return charts;
+// corpus_rows(n) with chart 0 copied into the empty folder `dir` too, as the
+// scan reads that copy: one chart, two library rows.
+std::vector<ChartLibraryEntry> corpus_rows_with_a_copy(size_t n, const std::string& dir) {
+    std::vector<ChartLibraryEntry> rows = corpus_rows(n);
+    rows.push_back(copied_row(rows[0], dir));
+    return rows;
 }
 
 }  // namespace
 
 TEST_CASE("jobs: answered_count reaches the number of charts saved, and counts a chart in two "
           "folders once") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    const std::string dir = empty_dir("jobs_answered_copy");
     RecordStore store(":memory:");
     // Two charts, three library rows: chart 0 sits in two folders.
-    BatchJob job(plan_of(charts_with_a_copy(2)), test_run(), store);
-    job.set_analyzer_for_test(always(real), /*workers=*/1);
+    BatchJob job(plan_of(corpus_rows_with_a_copy(2, dir)), test_run(), store);
+    job.set_analyzer_for_test(real_analyzer(), /*workers=*/1);
     job.start();
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 
@@ -490,74 +571,92 @@ TEST_CASE("jobs: answered_count reaches the number of charts saved, and counts a
     // Taking the tray does not lower the count.
     (void)job.take_saved_rows();
     CHECK(job.answered_count() == 2);
+    testtemp::remove_dir(dir);
 }
 
 TEST_CASE("jobs: a batch job's tray holds the store's answer for each chart it saved") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
     RecordStore store(":memory:");
     const BatchRun run = test_run();
-    BatchJob job(plan_of(fake_charts(2)), run, store);
-    job.set_analyzer_for_test(always(real), /*workers=*/1);
+    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
+    BatchJob job(plan_of(charts), run, store);
+    job.set_analyzer_for_test(real_analyzer(), /*workers=*/1);
     job.start();
     wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 
     const SavedRows rows = job.take_saved_rows();
     CHECK(rows.problem.empty());
     REQUIRE(rows.answers.size() == 2);
-    CHECK(answers_for(rows, "fake0") == 1);
-    CHECK(answers_for(rows, "fake1") == 1);
+    CHECK(answers_for(rows, charts[0].md5) == 1);
+    CHECK(answers_for(rows, charts[1].md5) == 1);
     check_answers_match_store(rows, store, run);
 }
 
 TEST_CASE("jobs: a chart in two folders is asked about once") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    const std::string dir = empty_dir("jobs_asked_once_copy");
     RecordStore store(":memory:");
     const BatchRun run = test_run();
-    const hydra::app::BatchPlan plan = plan_of(charts_with_a_copy(2));
+    const std::vector<ChartLibraryEntry> charts = corpus_rows_with_a_copy(2, dir);
+    const hydra::app::BatchPlan plan = plan_of(charts);
     REQUIRE(plan.todo.size() == 2);
-    REQUIRE(plan.todo[0].md5 == "fake0");
+    REQUIRE(plan.todo[0].md5 == charts[0].md5);
     REQUIRE(plan.rows[0] == 2);
     std::atomic<int> lookups{0};  // before the job, so it outlives the job's thread
-    BatchJob job(plan, run, store);
-    job.set_analyzer_for_test(always(real), /*workers=*/1);
-    job.set_lookup_hold_for_test([&lookups] { ++lookups; });
-    job.start();
-    wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
+    {
+        BatchJob job(plan, run, store);
+        job.set_analyzer_for_test(real_analyzer(), /*workers=*/1);
+        job.set_lookup_hold_for_test([&lookups] { ++lookups; });
+        job.start();
+        wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
 
-    const SavedRows rows = job.take_saved_rows();
-    CHECK(answers_for(rows, "fake0") == 1);
-    CHECK(answers_for(rows, "fake1") == 1);
-    CHECK(rows.answers.size() == 2);
-    CHECK(lookups.load() == 2);  // one per chart, none for the second folder's row
-    check_answers_match_store(rows, store, run);
+        const SavedRows rows = job.take_saved_rows();
+        CHECK(answers_for(rows, charts[0].md5) == 1);
+        CHECK(answers_for(rows, charts[1].md5) == 1);
+        CHECK(rows.answers.size() == 2);
+        CHECK(lookups.load() == 2);  // one per chart, none for the second folder's row
+        check_answers_match_store(rows, store, run);
+    }
+    testtemp::remove_dir(dir);
 }
 
 // O7 and O13: a failure the store keeps reaches its row as the store's answer
 // (the test names no status); a failure it does not keep, and a failure whose
 // save failed, leave nothing for their rows.
 TEST_CASE("jobs: a failed chart whose failure was stored reaches the tray as the store's answer") {
+    // A Hard run: the corpus has charts with no Hard part.
+    hydra::app::Settings settings;
+    settings.view_difficulty = "Hard";
+    const BatchRun run = settings.batch_run();
+    // Chart 0 has no Hard notes: a failure the store keeps. Chart 1 is a copy
+    // of another corpus chart whose file is then deleted, as a chart moved
+    // away since the scan: a song file that cannot be opened is a failure the
+    // store does not keep. Chart 2 has Hard notes, and its save is refused.
+    const ChartLibraryEntry no_notes =
+        corpus_row(corpus::first_chart_without_notes(hydra::Difficulty::Hard));
+    const ChartLibraryEntry refused =
+        corpus_row(corpus::first_chart_with_notes(hydra::Difficulty::Hard));
+    const std::string dir = empty_dir("jobs_tray_failures_gone");
+    ChartLibraryEntry gone;
+    for (const ChartLibraryEntry& e : corpus_scan()) {
+        if (e.md5 == no_notes.md5 || e.md5 == refused.md5) continue;
+        gone = copied_row(e, dir);
+        break;
+    }
+    REQUIRE_FALSE(gone.md5.empty());
+    std::filesystem::remove(hydra::os_path(gone.notespath));
+
     testtemp::ScopedFile db("jobs_tray_failures", ".db");
     { RecordStore create(db.path); }
-    // A trigger refuses chart fake2's record, so its failure record's save
-    // throws, the way "run_batch counts a failed save as a failed chart and
-    // goes on" refuses a save.
-    hydra::test::exec_on_file(db.path,
-                              "CREATE TRIGGER refuse_fake2 BEFORE INSERT ON records"
-                              " WHEN NEW.song_id = 'fake2' BEGIN SELECT RAISE(ABORT, 'boom'); END;");
-    const BatchRun run = test_run();
+    // A trigger refuses every record of chart 2, so its saves throw, the way
+    // "run_batch counts a failed save as a failed chart and goes on" refuses
+    // a save.
+    const std::string trigger = "CREATE TRIGGER refuse_chart BEFORE INSERT ON records"
+                                " WHEN NEW.song_id = '" +
+                                refused.md5 + "' BEGIN SELECT RAISE(ABORT, 'boom'); END;";
+    hydra::test::exec_on_file(db.path, trigger.c_str());
     {
         RecordStore store(db.path);
-        BatchJob job(plan_of(fake_charts(3)), run, store);
-        job.set_analyzer_for_test(
-            [](const std::string& path, const AnalysisSettings&,
-               const std::function<void(float)>&) -> AnalysisResult {
-                // A song file that cannot be opened is a failure the store
-                // does not keep; a chart with no notes is one it keeps.
-                if (path == "fake_1.chart")
-                    throw hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
-                throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
-            },
-            /*workers=*/1);
+        BatchJob job(plan_of({no_notes, gone, refused}), run, store);
+        job.set_analyzer_for_test(real_analyzer(), /*workers=*/1);
         job.start();
         wait_until([&] { return job.snapshot().finished; }, "the batch to finish");
         CHECK(job.snapshot().failed == 3);
@@ -565,31 +664,33 @@ TEST_CASE("jobs: a failed chart whose failure was stored reaches the tray as the
         const SavedRows rows = job.take_saved_rows();
         CHECK(rows.problem.empty());
         REQUIRE(rows.answers.size() == 1);
-        CHECK(rows.answers[0].first == "fake0");
+        CHECK(rows.answers[0].first == no_notes.md5);
         check_answers_match_store(rows, store, run);
         CHECK(job.answered_count() == 1);
     }
+    testtemp::remove_dir(dir);
 }
 
 TEST_CASE("jobs: the tray is empty after it is taken, and a stopped run's tray holds only what it "
           "saved") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     RecordStore store(":memory:");
     const BatchRun run = test_run();
-    BatchJob job(plan_of(fake_charts(2)), run, store);
-    job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
+    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
+    BatchJob job(plan_of(charts), run, store);
+    job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
     job.start();
 
     released = 1;
     wait_for_batch_step(job, [&] { return job.answered_count() == 1; }, "the first chart's answer");
     job.stop();
-    released = 2;  // the second chart finishes after the stop, so it is dropped
+    released = 2;  // the second chart runs after the stop, so it is dropped
     wait_until([&] { return job.snapshot().finished; }, "the stopped batch to finish");
 
     const SavedRows rows = job.take_saved_rows();
     REQUIRE(rows.answers.size() == 1);
-    CHECK(rows.answers[0].first == "fake0");
+    CHECK(rows.answers[0].first == charts[0].md5);
     check_answers_match_store(rows, store, run);
 
     const SavedRows again = job.take_saved_rows();
@@ -635,15 +736,16 @@ TEST_CASE("jobs: a paused batch job's tray keeps its answers") {
 // table is moved aside between chart 0's save and its lookup (the seam), so
 // the save lands and the lookup fails, then moved back before chart 1 runs.
 TEST_CASE("jobs: a lookup that fails leaves its sentence in the tray and is tried again") {
-    const AnalysisResult real = corpus::first_analyzed_with_paths(AnalysisSettings{});
     testtemp::ScopedFile db("jobs_tray_lookup_fails", ".db");
+    std::atomic<int> started{0};
     std::atomic<int> released{0};
     std::atomic<int> lookups{0};
     const BatchRun run = test_run();
+    const std::vector<ChartLibraryEntry> charts = corpus_rows(2);
     {
         RecordStore store(db.path);
-        BatchJob job(plan_of(fake_charts(2)), run, store);
-        job.set_analyzer_for_test(real_in_turn(released, real), /*workers=*/1);
+        BatchJob job(plan_of(charts), run, store);
+        job.set_analyzer_for_test(real_analysis_in_turn(started, released), /*workers=*/1);
         job.set_lookup_hold_for_test([&] {
             if (lookups++ == 0)
                 hydra::test::exec_on_file(db.path, "ALTER TABLE records RENAME TO records_aside");
@@ -667,7 +769,7 @@ TEST_CASE("jobs: a lookup that fails leaves its sentence in the tray and is trie
         // The same failure, read by the test through the store.
         std::string expected;
         try {
-            (void)store.lookup_one("fake0", run.profile);
+            (void)store.lookup_one(charts[0].md5, run.profile);
         } catch (const std::exception& e) {
             expected = hydra::app::plain_error(e);
         }
@@ -685,8 +787,8 @@ TEST_CASE("jobs: a lookup that fails leaves its sentence in the tray and is trie
         const SavedRows rows = job.take_saved_rows();
         CHECK(rows.problem.empty());
         CHECK(rows.answers.size() == 2);
-        CHECK(answers_for(rows, "fake0") == 1);
-        CHECK(answers_for(rows, "fake1") == 1);
+        CHECK(answers_for(rows, charts[0].md5) == 1);
+        CHECK(answers_for(rows, charts[1].md5) == 1);
         check_answers_match_store(rows, store, run);
         CHECK(job.answered_count() == 2);
     }
@@ -970,14 +1072,26 @@ TEST_CASE("jobs: a fill that fails still opens the library and leaves its senten
         job.start();
         job.wait();
         REQUIRE(job.ok());
-        CHECK(job.library_problem() ==
-              hydra::app::plain_error(hydra::KindedError(hydra::ErrorKind::DatabaseWrite, "x")));
         // The library was still read to its last step, and the marker stays
         // unset so the next open tries again.
         REQUIRE_FALSE(seen.empty());
         CHECK(seen.back().step == Step::ReadingResults);
         const std::unique_ptr<RecordStore> store = job.take_store();
         CHECK_FALSE(store->hardest_figure_filled(settings.profile()));
+        // The sentence is the one the store's own refused write reads as: the
+        // test makes the fill's write itself, on the row the fill replays.
+        const std::vector<hydra::store::MissingHardestRow> missing =
+            store->rows_missing_hardest(settings.profile());
+        REQUIRE_FALSE(missing.empty());
+        std::string refused;
+        try {
+            store->set_hardest(missing[0].song_id, missing[0].profile_id,
+                               {hydra::store::HardestFigure{missing[0].rank, 0.0}});
+        } catch (const std::exception& e) {
+            refused = hydra::app::plain_error(e);
+        }
+        REQUIRE_FALSE(refused.empty());
+        CHECK(job.library_problem() == refused);
     }
     testtemp::remove_dir(dir);
 }
@@ -1032,14 +1146,17 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         CHECK(store.rows_missing_hardest(settings.profile()).size() == 1);
     }
 
-    // The library read's two steps stop the same way, on a library of four
-    // charts.
+    // The library read's two steps stop the same way, on the library a scan of
+    // the corpus saves.
     const std::string read_db = testtemp::temp_dir("open_fill_stop") + "\\read.db";
+    uint64_t library_size = 0;
     {
         RecordStore store(read_db);
-        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B"),
-                                     library_row("c", "C"), library_row("d", "D")});
+        REQUIRE_FALSE(hydra::app::save_scan_as_library(store, corpus_scan()).has_value());
+        library_size = static_cast<uint64_t>(store.chart_library_count());
     }
+    // The stop at the second row needs a third row after it.
+    REQUIRE(library_size > 2);
     {
         // At the chart list's first report, before any row is read.
         const std::vector<OpenReport> seen =
@@ -1061,7 +1178,7 @@ TEST_CASE("jobs: a stop while the startup open reads saved paths ends it as a ca
         REQUIRE_FALSE(seen.empty());
         CHECK(seen.back().step == Step::ReadingCharts);
         CHECK(seen.back().done == 2);
-        CHECK(seen.back().total == 4);
+        CHECK(seen.back().total == library_size);
     }
     {
         // At the results' first report.
@@ -1100,6 +1217,14 @@ void check_same_results(const hydra::ui::LibraryModel& got, const hydra::ui::Lib
     for (size_t i = 0; i < want.rows().size(); ++i) check_same_result(got.rows()[i], want.rows()[i]);
 }
 
+// The row of `library` for the chart file at `notespath`.
+const hydra::ui::LibraryRow& row_at_path(const hydra::ui::LibraryModel& library,
+                                         const std::string& notespath) {
+    for (const hydra::ui::LibraryRow& r : library.rows())
+        if (r.entry.notespath == notespath) return r;
+    throw std::runtime_error("the library has no row for " + notespath);
+}
+
 // Reads the store's charts, then their results in slices of `slice_charts`,
 // into `sliced`. Returns the rows answered after each slice. `after_slice`, if
 // given, runs after each slice's report with the rows answered so far.
@@ -1119,96 +1244,151 @@ std::vector<uint64_t> read_in_slices(RecordStore& store, const hydra::app::Setti
     return answered;
 }
 
+// The rows answered after each slice when `rows` rows are read in slices of
+// `slice_charts`: one more slice each time, the last one ending on `rows`.
+std::vector<uint64_t> slice_ends(size_t rows, size_t slice_charts) {
+    std::vector<uint64_t> ends;
+    for (size_t to = slice_charts; to < rows; to += slice_charts) ends.push_back(to);
+    ends.push_back(rows);
+    return ends;
+}
+
 }  // namespace
 
 TEST_CASE("jobs: results read in slices match one read") {
     const hydra::app::Settings settings;
     const hydra::store::Profile profile = settings.profile();
     RecordStore store(":memory:");
-    // One chart in two folders, under names that sort its rows first and
-    // last, so a slice of one chart reads them in different slices.
-    ChartLibraryEntry first = library_row("same", "A First Copy");
-    first.notespath = "C:\\charts\\one\\same\\notes.chart";
-    first.rootfolder = "C:\\charts\\one";
-    ChartLibraryEntry last = library_row("same", "Z Last Copy");
-    last.notespath = "C:\\charts\\two\\same\\notes.chart";
-    last.rootfolder = "C:\\charts\\two";
-    // Chart "zzz" has the last hash but the second name, so its row comes
-    // early in row order and last in hash order. Row order and hash order
-    // differ throughout:
-    //   row order:  same ("A First Copy"), zzz, ready, never, build, rules,
-    //               both, same ("Z Last Copy")
-    //   hash order: both, build, never, ready, rules, same, same, zzz
-    // In slices of two taken in hash order, the two "same" rows fall in the
-    // third and fourth slices.
-    store.rebuild_chart_library({first, library_row("zzz", "AB Asked Late"),
-                                 library_row("ready", "B Ready"), library_row("never", "C Never"),
-                                 library_row("build", "D Build"), library_row("rules", "E Rules"),
-                                 library_row("both", "F Both"), last});
-    hydra::test::save_batch_record(store, "same", profile);
-    hydra::test::save_batch_record(store, "ready", profile);
-    hydra::test::add_stale_records(store, hydra::test::empty_analysis_under(profile), profile,
-                                   "build", "rules", "both");
+    // Five corpus charts the real analyzer reads to paths, each with its real
+    // analysis (charts_with_paths) and the row a scan of the corpus writes.
+    const std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.to_analysis_settings(), 5);
+    REQUIRE(charts.size() == 5);
+    std::vector<ChartLibraryEntry> scanned;
+    for (const corpus::ChartWithPaths& c : charts) scanned.push_back(corpus_row(c.chart));
+    // The chart with the last hash is asked late. The other four are, in
+    // their order, Ready, another build's, other rules' and both.
+    size_t late_at = 0;
+    for (size_t i = 1; i < scanned.size(); ++i)
+        if (scanned[i].md5 > scanned[late_at].md5) late_at = i;
+    std::vector<size_t> saved_at;
+    for (size_t i = 0; i < scanned.size(); ++i) {
+        if (i == late_at) continue;
+        REQUIRE(scanned[i].md5 < scanned[late_at].md5);
+        saved_at.push_back(i);
+    }
+    // The late chart's row has an empty title. The library reads back by
+    // title, then in the order the rows were written (LibraryOrder::ByName),
+    // and no title sorts before an empty one, so written first it reads first.
+    ChartLibraryEntry late = scanned[late_at];
+    late.title.clear();
+    const ChartLibraryEntry& ready = scanned[saved_at[0]];
+
+    // The library a scan of the corpus writes: the late chart, the Ready
+    // chart, every other scanned row, then a copy of the Ready chart in a
+    // second folder, so one chart has two rows. Both rows have one hash, so
+    // a slice of one chart reads them in different slices.
+    const ChartLibraryEntry copy = copied_row(ready, empty_dir("slices_copy"));
+    std::vector<ChartLibraryEntry> rows{late, ready};
+    for (const ChartLibraryEntry& e : corpus_scan())
+        if (e.notespath != ready.notespath && e.notespath != late.notespath) rows.push_back(e);
+    rows.push_back(copy);
+    store.rebuild_chart_library(rows);
+
+    // Each saved chart's own real analysis: one saved by this build, one by
+    // another build, one under other rules and one with both.
+    const hydra::HydraRecord& build_record = charts[saved_at[1]].result.record;
+    const hydra::HydraRecord& rules_record = charts[saved_at[2]].result.record;
+    const hydra::HydraRecord& both_record = charts[saved_at[3]].result.record;
+    store.save(hydra::store::prepare_record(ready.md5, profile, charts[saved_at[0]].result.record));
+    hydra::test::save_old_build_record(
+        store, hydra::store::prepare_record(scanned[saved_at[1]].md5, profile, build_record));
+    store.save(hydra::store::prepare_record(scanned[saved_at[2]].md5, profile,
+                                            hydra::test::other_rules_record(rules_record)));
+    hydra::test::save_old_build_record(
+        store, hydra::store::prepare_record(scanned[saved_at[3]].md5, profile,
+                                            hydra::test::other_rules_record(both_record)));
 
     // The reference: one store lookup for every row, in row order, made here
     // without read_library_summaries.
     hydra::ui::LibraryModel whole;
     whole.set_charts(store.list_chart_library(0, -1));
     whole.set_summaries(store.lookup(whole.hashes(), profile));
-    REQUIRE(whole.rows().size() == 8);
-    REQUIRE(whole.rows().front().entry.md5 == "same");
-    REQUIRE(whole.rows()[1].entry.md5 == "zzz");
-    REQUIRE(whole.rows().back().entry.md5 == "same");
+    const size_t n = whole.rows().size();
+    REQUIRE(n == rows.size());
+    REQUIRE(whole.rows().front().entry.md5 == late.md5);
+    REQUIRE(whole.rows().front().entry.notespath == late.notespath);
+    REQUIRE(row_at_path(whole, ready.notespath).entry.md5 == ready.md5);
+    REQUIRE(row_at_path(whole, copy.notespath).entry.md5 == ready.md5);
+    // The one read shows each saved result as the store files it.
+    const auto row_of = [&whole](const std::string& md5) -> const hydra::ui::LibraryRow& {
+        for (const hydra::ui::LibraryRow& r : whole.rows())
+            if (r.entry.md5 == md5) return r;
+        throw std::runtime_error("the one read has no row for " + md5);
+    };
+    REQUIRE(row_at_path(whole, ready.notespath).status == hydra::store::RecordStatus::Ready);
+    REQUIRE(row_at_path(whole, copy.notespath).status == hydra::store::RecordStatus::Ready);
+    REQUIRE(row_of(scanned[saved_at[1]].md5).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(row_of(scanned[saved_at[1]].md5).stale_build);
+    REQUIRE(row_of(scanned[saved_at[2]].md5).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(row_of(scanned[saved_at[2]].md5).stale_rules);
+    REQUIRE(row_of(scanned[saved_at[3]].md5).status == hydra::store::RecordStatus::Stale);
+    REQUIRE(row_of(scanned[saved_at[3]].md5).stale_build);
+    REQUIRE(row_of(scanned[saved_at[3]].md5).stale_rules);
 
     SUBCASE("one chart per slice") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 1);
-        CHECK(answered == std::vector<uint64_t>{1, 2, 3, 4, 5, 6, 7, 8});
+        CHECK(answered == slice_ends(n, 1));
         check_same_results(sliced, whole);
         // The chart in two folders has its result in both rows.
-        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
-        CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, ready.notespath).status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, copy.notespath).status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("two charts per slice") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered = read_in_slices(store, settings, sliced, 2);
         // One report per slice, two rows more each time, ending on every row.
-        CHECK(answered == std::vector<uint64_t>{2, 4, 6, 8});
+        CHECK(answered == slice_ends(n, 2));
         check_same_results(sliced, whole);
-        // The chart in two folders, read in two different slices, has its
-        // result in both rows.
-        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
-        CHECK(sliced.rows().back().status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, ready.notespath).status == hydra::store::RecordStatus::Ready);
+        CHECK(row_at_path(sliced, copy.notespath).status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the store is asked in hash order") {
-        // Chart "zzz" gets a result after the first slice. Asked in hash
-        // order, it is in the last slice, so its row reads that result. Asked
-        // in row order, it was in the first slice and would read Not analyzed.
-        REQUIRE(whole.rows()[1].status == hydra::store::RecordStatus::NotAnalyzed);
+        // The late chart gets its result after the first slice of two. Its
+        // row is first, so asked in row order it was in the first slice and
+        // would read Not analyzed. Asked in hash order it has at least two
+        // smaller hashes before it (checked here), so it is not in the first
+        // slice and its row reads that result.
+        size_t smaller = 0;
+        for (const ChartLibraryEntry& e : rows)
+            if (e.md5 < late.md5) ++smaller;
+        REQUIRE(smaller >= 2);
+        REQUIRE(whole.rows().front().status == hydra::store::RecordStatus::NotAnalyzed);
+        const hydra::HydraRecord& late_record = charts[late_at].result.record;
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered =
             read_in_slices(store, settings, sliced, 2, [&](uint64_t rows_answered) {
-                if (rows_answered == 2) hydra::test::save_batch_record(store, "zzz", profile);
+                if (rows_answered == 2)
+                    store.save(hydra::store::prepare_record(late.md5, profile, late_record));
             });
-        CHECK(answered == std::vector<uint64_t>{2, 4, 6, 8});
-        REQUIRE(sliced.rows()[1].entry.md5 == "zzz");
-        CHECK(sliced.rows()[1].status == hydra::store::RecordStatus::Ready);
+        CHECK(answered == slice_ends(n, 2));
+        REQUIRE(sliced.rows().front().entry.md5 == late.md5);
+        CHECK(sliced.rows().front().status == hydra::store::RecordStatus::Ready);
     }
     SUBCASE("the real slice size") {
         hydra::ui::LibraryModel sliced;
         const std::vector<uint64_t> answered =
             read_in_slices(store, settings, sliced, hydra::ui::kResultsSliceCharts);
-        // Eight rows fit in one slice.
-        REQUIRE(whole.rows().size() < hydra::ui::kResultsSliceCharts);
-        CHECK(answered == std::vector<uint64_t>{8});
+        CHECK(answered == slice_ends(n, hydra::ui::kResultsSliceCharts));
         check_same_results(sliced, whole);
     }
     SUBCASE("no callback, as the reload after a scan reads it") {
-        // Slices of two, so the two rows of the chart in two folders are read
+        // Slices of one, so the two rows of the chart in two folders are read
         // in different slices here too.
         hydra::ui::LibraryModel reread;
         reread.set_charts(store.list_chart_library(0, -1));
-        hydra::ui::read_library_summaries(store, settings, reread, {}, 2);
+        hydra::ui::read_library_summaries(store, settings, reread, {}, 1);
         check_same_results(reread, whole);
     }
 }
@@ -1366,20 +1546,33 @@ TEST_CASE("jobs: a failed job records the raw text, the plain message, not ok an
     struct FailingJob : hydra::ui::ResultJobBase {
         using ResultJobBase::fail;
     };
-    const std::runtime_error boom("boom");
+    // A real failure: the analyzer asked for a chart file that is not there.
+    const std::string gone = empty_dir("jobs_failed_job") + "\\notes.chart";
+    std::optional<hydra::KindedError> thrown;
+    try {
+        (void)hydra::app::analyze_chart_file(gone, AnalysisSettings{});
+    } catch (const hydra::KindedError& e) {
+        thrown.emplace(e);
+    }
+    REQUIRE(thrown.has_value());
+    const hydra::KindedError& failure = *thrown;
+    const std::string raw = failure.what();
 
     FailingJob job;
-    job.fail(boom);
-    CHECK(job.error() == "boom");
-    CHECK(job.message() == hydra::app::plain_error(boom));
+    job.fail(failure);
+    // The raw text is kept for the details line, and the message is the
+    // plain sentence for its kind, not the raw text.
+    CHECK(job.error() == raw);
+    CHECK(job.message() == hydra::app::plain_error(failure));
+    CHECK(job.message() != job.error());
     CHECK_FALSE(job.ok());
     CHECK(job.finished());
 
     // A cancel is the user's own click: the raw text stays, the message is empty.
     FailingJob cancelled;
     cancelled.cancel();
-    cancelled.fail(boom);
-    CHECK(cancelled.error() == "boom");
+    cancelled.fail(failure);
+    CHECK(cancelled.error() == raw);
     CHECK(cancelled.message().empty());
     CHECK_FALSE(cancelled.ok());
     CHECK(cancelled.finished());
