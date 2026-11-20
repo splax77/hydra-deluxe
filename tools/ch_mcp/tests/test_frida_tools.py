@@ -533,9 +533,22 @@ class SnapshotEngineLinesTest(Rig):
         self.assertIn(f"dynamics threshold: 64 (OFF_DYN_THRESHOLD, +{C.OFF_DYN_THRESHOLD:#x})",
                       self.snapshot_lines(threshold=64))
 
-    def test_the_ghost_value_is_the_one_pad_axis_gives_at_full_precision(self):
-        lines = self.snapshot_lines(threshold=64)
-        self.assertIn(f"ghost axis value: {pad_axis('ghost', 64)!r} (kit_tools.pad_axis)", lines)
+    def test_the_ghost_value_is_the_softest_hit_below_the_threshold_at_full_precision(self):
+        # The game's rule, not pad_axis: the hit handler pays a ghost when the
+        # lane's velocity byte is below the dynamics threshold (page 06,
+        # code/6142/note_hit_dynamics_20DE770.asm lines 91 to 102), and the
+        # MIDI pump writes a velocity as the axis 0.5 + velocity / 254 (page
+        # 07, IN-86, code/6142/midi_pump_21E420.asm lines 137 to 142). So the
+        # ghost value is the axis of the top velocity under the threshold.
+        threshold = 64
+        top_velocity = 127
+        ghost_velocity = threshold - 1
+        expected = 0.5 + ghost_velocity / (2 * top_velocity)
+        (line,) = [line for line in self.snapshot_lines(threshold=threshold)
+                   if line.startswith("ghost axis value: ")]
+        printed = float(line.split()[3])
+        self.assertEqual(line.split()[3], repr(printed))
+        self.assertAlmostEqual(printed, expected, places=12)
 
 
 # A hand-written menu block in the shape agent/menu.ts sends.
@@ -581,16 +594,16 @@ class MenuFieldsTest(unittest.TestCase):
         return [f for f in self.data["fields"] if f.get("kind", FT.ENUM_KIND) == FT.ENUM_KIND]
 
     def test_it_parses_with_one_table_per_enum_field(self):
+        # Each key names one field, so a lookup by key finds one entry, and an
+        # enum_array's words come from an entry that carries a word table.
         keys = [f["key"] for f in self.data["fields"]]
-        self.assertEqual(keys, [
-            "page", "cursor", "scroll", "controllerType", "instrument", "difficulty",
-            "playerIndex", "firstTime", "rowCount", "visibleRows", "isDrums",
-            "networkFlag", "backLock", "rowNames", "rowInstruments"])
-        self.assertEqual({f["key"]: f.get("kind") for f in self.data["fields"] if "kind" in f}, {
-            "cursor": "int", "scroll": "int", "playerIndex": "int", "firstTime": "bool",
-            "rowCount": "int", "visibleRows": "int", "isDrums": "bool",
-            "networkFlag": "bool", "backLock": "bool", "rowNames": "string_array",
-            "rowInstruments": "enum_array"})
+        self.assertTrue(keys)
+        self.assertEqual(len(keys), len(set(keys)), keys)
+        by_key = {f["key"]: f for f in self.data["fields"]}
+        for field in self.data["fields"]:
+            if "words_from" in field:
+                with self.subTest(key=field["key"]):
+                    self.assertIn("values", by_key[field["words_from"]])
         for field in self.data["fields"]:
             with self.subTest(key=field["key"]):
                 self.assertEqual(field["class"], "PlayerSelectionMenu")
@@ -684,7 +697,7 @@ class PlayerScreenHookTest(unittest.TestCase):
     """The method menu.ts hooks to record the player screens is an instance
     method of PlayerSelectionMenu, in the facts of the build menu_fields.json
     names, and no other class runs its code (a shared body would record other
-    classes' objects as player screens). Skipped without the facts."""
+    classes' objects as player screens). Fails without the facts."""
 
     def test_the_hooked_method_is_the_player_screens_own(self):
         with open(os.path.join(FT.AGENT_DIR, "menu.ts"), encoding="utf-8") as f:
@@ -692,16 +705,18 @@ class PlayerScreenHookTest(unittest.TestCase):
         self.assertIsNotNone(match, "menu.ts names no PLAYER_SCREEN_FRAME_RVA")
         rva = int(match.group(1), 16)
         path = os.path.join(B.DUMPS_ROOT, FT.menu_fields()["build"], B.FACTS_FILE)
-        if not os.path.isfile(path):
-            self.skipTest(f"{path} is not on this machine")
+        self.assertTrue(os.path.isfile(path),
+                        f"{path} is not on this machine; this check needs that build's facts")
         with open(path, encoding="utf-8") as f:
             facts = json.load(f)
         owners = [c for c in facts["classes"]
                   if any(m["rva"] == rva for m in c["methods"])]
         self.assertEqual([c["name"] for c in owners], ["PlayerSelectionMenu"])
-        methods = [m for m in owners[0]["methods"] if m["rva"] == rva]
-        self.assertEqual([(m["name"], m["static"], m["params"]) for m in methods],
-                         [("ʸʳʼʹʸʽʾˀʴʼʷ", False, [])])
+        # One method sits at that address, and it is an instance method with
+        # no parameters, the shape of a per-frame call on one player screen.
+        (method,) = [m for m in owners[0]["methods"] if m["rva"] == rva]
+        self.assertFalse(method["static"], method)
+        self.assertEqual(method["params"], [], method)
 
 
 class MenuTest(Rig):
@@ -771,10 +786,18 @@ class MenuTest(Rig):
                          f"state: {FT.state_words(None)}; {FT.NOT_ATTACHED}")
 
     def test_state_leaves_the_menu_block_to_ch_menu(self):
-        tools = self.tools([STATE, {**STATE, "menu": MENU_READ}], attached=True)
-        out = tools.ch_state()
-        self.assertIn("songTime: 3.5", out)
-        self.assertNotIn("menu", out)
+        # The recorded reply carries a menu block; ch_state prints its other
+        # fields and none of the lines ch_menu prints for that block.
+        reply = recorded_state()
+        menu = FT.menu_lines(reply[FT.MENU_BLOCK])
+        self.assertTrue(menu)
+        tools = self.tools([reply, reply], attached=True, real_time=True)
+        out = tools.ch_state().splitlines()
+        self.assertIn(f"songTime: {json.dumps(reply['songTime'])}", out)
+        for line in menu:
+            with self.subTest(line=line):
+                self.assertNotIn(line, out)
+        self.assertFalse([line for line in out if line.startswith(f"{FT.MENU_BLOCK}: ")], out)
 
     def test_read_state_gives_the_song_check_the_loaded_folder(self):
         # ch_run_chart's song check reads the loaded song folder from
@@ -789,15 +812,50 @@ class MenuTest(Rig):
         self.assertEqual(MT.loaded_folder(tools.read_state()), folder)
 
     def test_player_screen_on_the_instrument_page_with_drum_rows(self):
-        self.assertEqual(FT.menu_lines(player_screen(PLAYER_FIELDS))[:3], [
+        lines = FT.menu_lines(player_screen(PLAYER_FIELDS))
+        values = {key: sent[0] for key, sent in PLAYER_FIELDS.items()}
+        entries = {f["key"]: f for f in FT.menu_fields()["fields"]}
+
+        def words(key):
+            entry = entries[key]
+            return entries[entry["words_from"]]["values"] if "words_from" in entry \
+                else entry["values"]
+
+        def shown(key, value):
+            kind = entries[key].get("kind", FT.ENUM_KIND)
+            if kind == FT.ENUM_KIND:
+                return f"{value} ({words(key)[str(value)]})"
+            if kind == "enum_array":
+                return "[" + ", ".join(f"{v} ({words(key)[str(v)]})" for v in value) + "]"
+            return json.dumps(value)
+
+        # On the Instrument page Green acts on the row at cursor + scroll
+        # (ROW_ADDS_SCROLL, page 07 IN-58), so the highlighted row is that
+        # index into the two row arrays.
+        page_word = words(FT.PAGE_KEY)[str(values[FT.PAGE_KEY])]
+        self.assertTrue(FT.ROW_ADDS_SCROLL[page_word], page_word)
+        index = values[FT.CURSOR_KEY] + values[FT.SCROLL_KEY]
+        row_id = values[FT.ROW_IDS_KEY][index]
+        highlighted = (f"highlighted row: {index}, "
+                       f"name {json.dumps(values[FT.ROW_NAMES_KEY][index])}, "
+                       f"id {row_id} ({words(FT.ROW_IDS_KEY)[str(row_id)]})")
+
+        # Every other field prints as sent, with an enum's word from its
+        # table, in menu_fields.json's order: the plain ones on the field line
+        # with the highlighted row after scroll, the arrays on the rows line.
+        plain, rows = [], []
+        for key in entries:
+            text = f"{key}: {shown(key, values[key])}"
+            if entries[key].get("kind") in FT.ARRAY_KINDS:
+                rows.append(text)
+                continue
+            plain.append(text)
+            if key == FT.SCROLL_KEY:
+                plain.append(highlighted)
+        self.assertEqual(lines[:3], [
             "PlayerSelectionMenu: 1 live, 0 destroyed; active: [true]",
-            "PlayerSelectionMenu[0]: page: 1 (Instrument); cursor: 1; scroll: 1; "
-            "highlighted row: 2, name \"Pro Drums\", id 9 (ProDrums); "
-            "controllerType: 2 (Drums); instrument: 0 (Guitar); difficulty: 3 (Expert); "
-            "playerIndex: 0; firstTime: true; rowCount: 3; visibleRows: 5; "
-            "isDrums: true; networkFlag: false; backLock: false",
-            "PlayerSelectionMenu[0] rows: rowNames: [\"Guitar\", \"Drums\", \"Pro Drums\"]; "
-            "rowInstruments: [0 (Guitar), 6 (Drums), 9 (ProDrums)]"])
+            "PlayerSelectionMenu[0]: " + "; ".join(plain),
+            "PlayerSelectionMenu[0] rows: " + "; ".join(rows)])
 
     def test_every_page_word_has_a_row_rule(self):
         words = set(FT._enum_words(FT.PAGE_KEY).values())
@@ -875,9 +933,7 @@ class TraceTest(Rig):
         self.game.backups = 0
         out = tools.ch_trace_start(self.song)
         self.assertEqual(self.game.backups, 0)
-        self.assertEqual(out.splitlines()[-1],
-                         "no live GameManager: start the song (pause it if you like), "
-                         "then call ch_trace_start")
+        self.assertEqual(out.splitlines()[-1], FT.NO_GAME_MANAGER)
         self.assertEqual(self.traces, [])
 
     def test_trace_start_before_attach_refuses(self):
@@ -895,12 +951,32 @@ class TraceTest(Rig):
         self.assertEqual(game.open_lines(), [])
 
     def test_trace_start_takes_the_backup_just_before_it_hooks(self):
-        tools = self.tools([STATE, STATE], attached=True)
+        # The calls go into one list as they happen, so the order checked is
+        # the order of the calls, not of the reply's lines.
+        calls = []
+
+        def backup():
+            calls.append("backup")
+            return FakeGame.ensure_backup(self.game)
+
+        def make_trace(*args, **kw):
+            trace = self.make_trace(*args, **kw)
+            calls.append("trace built")
+            start = trace.start
+
+            def hooked():
+                calls.append("trace started")
+                return start()
+
+            trace.start = hooked
+            return trace
+
+        tools = self.tools([STATE, STATE], attached=True, trace_session=make_trace)
         self.game.backups = 0  # as if the game side held no backup yet
+        self.game.ensure_backup = backup
         lines = tools.ch_trace_start(self.song).splitlines()
-        self.assertEqual(self.game.backups, 1)
+        self.assertEqual(calls, ["trace built", "backup", "trace started"])
         self.assertEqual(lines[0], BACKUP_LINE)
-        self.assertTrue(lines[1].startswith("trace started"))
 
     def test_trace_start_hooks_the_default_method_from_the_facts(self):
         tools = self.real_trace_tools()
@@ -998,12 +1074,22 @@ class TraceTest(Rig):
     def test_notes_from_since_are_lined_up(self):
         tools = self.tools([STATE, STATE], attached=True)
         tools.ch_trace_start(self.song)
-        self.traces[0].call_list = [call(1.0), call(2.1), call(2.95)]
+        # The rig's notes, from the manifest it wrote. Call 1 lands 1 ms past
+        # the limit after note 1, call 2 half the limit before note 2, so
+        # exactly one of the two lined-up calls is within the limit.
+        with open(TH.manifest_path(self.song), encoding="utf-8") as f:
+            notes = [n["time_ms"] for n in json.load(f)["notes"]]
+        limit = C.EXPECT_NORMAL_BACK_MS
+        outside, inside = notes[1] + limit + 1, notes[2] - limit / 2
+        self.traces[0].call_list = [call(notes[0] / 1000), call(outside / 1000),
+                                    call(inside / 1000)]
         out = tools.ch_notes(since=1).splitlines()
-        self.assertIn("call 1: AddPoints at 2100.0 ms; nearest note 1 at 2000 ms, diff +100.0 ms", out)
-        self.assertIn("call 2: AddPoints at 2950.0 ms; nearest note 2 at 3000 ms, diff -50.0 ms", out)
+        self.assertIn(f"call 1: AddPoints at {outside:.1f} ms; nearest note 1 at {notes[1]} ms, "
+                      f"diff {outside - notes[1]:+.1f} ms", out)
+        self.assertIn(f"call 2: AddPoints at {inside:.1f} ms; nearest note 2 at {notes[2]} ms, "
+                      f"diff {inside - notes[2]:+.1f} ms", out)
         self.assertNotIn("call 0", "\n".join(out))
-        self.assertIn(f"calls within {C.EXPECT_NORMAL_BACK_MS:g} ms of their nearest note "
+        self.assertIn(f"calls within {limit:g} ms of their nearest note "
                       "(EXPECT_NORMAL_BACK_MS): 1 of 2", out)
         self.assertEqual(out[-1], "next: ch_notes(since=3)")
 
@@ -1033,13 +1119,41 @@ class TraceTest(Rig):
 
 class RealFactsTest(unittest.TestCase):
     def test_both_hook_rvas_name_one_engine_method_each(self):
-        if not os.path.isfile(REAL_FACTS):
-            self.skipTest(f"no real facts file at {REAL_FACTS}")
+        # Each name the facts give for a hooked RVA is the method the build's
+        # own dump declares right under that RVA's comment line, inside the
+        # engine class's body.
+        self.assertTrue(os.path.isfile(REAL_FACTS), f"no real facts file at {REAL_FACTS}")
+        dump = os.path.join(os.path.dirname(REAL_FACTS), "dump.cs")
+        self.assertTrue(os.path.isfile(dump), f"no dump at {dump}")
         with open(REAL_FACTS, encoding="utf-8") as f:
             facts = json.load(f)
         engine, _ = B.engine_class(facts)
-        names = B.method_names_by_rva(facts, engine, [C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS])
-        self.assertEqual(len(names), 2)
+        rvas = [C.RVA_NOTE_SCORE_ADD, C.RVA_NOTE_DYNAMICS]
+        names = B.method_names_by_rva(facts, engine, rvas)
+        self.assertEqual(len(names), len(rvas))
+        wanted = {f"// RVA: 0x{rva:X} ": rva for rva in rvas}
+        declared, last_class = {}, None
+        with open(dump, encoding="utf-8") as f:
+            pending = None
+            for line in f:
+                if pending is not None:
+                    declared[pending] = (line, last_class)
+                    pending = None
+                    if len(declared) == len(rvas):
+                        break
+                    continue
+                if re.match(r"^\S.*\bclass ", line):
+                    last_class = line
+                stripped = line.strip()
+                for head, rva in wanted.items():
+                    if stripped.startswith(head):
+                        pending = rva
+        for rva, name in zip(rvas, names):
+            with self.subTest(rva=f"{rva:#x}"):
+                self.assertIn(rva, declared, f"the dump has no RVA 0x{rva:X}")
+                line, owner = declared[rva]
+                self.assertIn(f" {name}(", line)
+                self.assertIn(f"class {engine} ", owner or "")
 
 
 if __name__ == "__main__":
