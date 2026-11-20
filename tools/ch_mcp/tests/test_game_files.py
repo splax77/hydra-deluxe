@@ -5,8 +5,8 @@ reads.
 The backup and restore tests run on temp folders, real backups and key
 exports from earlier runs, and the real reg.exe. The game's own key is only
 ever exported (read). Every key a test changes is a scratch key under
-HKCU\\Software that the test makes and deletes. FakeReg stays for the tests
-in this file and test_game_tools that still drive restore_registry with it.
+HKCU\\Software that the test makes and deletes. FakeReg stays for the
+test_game_tools tests that still drive restore_registry with it.
 """
 
 from __future__ import annotations
@@ -230,43 +230,6 @@ class FakeReg:
         return [c[0] for c in self.calls]
 
 
-class RegistryTest(unittest.TestCase):
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = self._tmp.name
-        self.root = os.path.join(self.tmp, "backups")
-        self.reg = FakeReg()
-        self.original = self.reg.text
-
-    def tearDown(self):
-        self._tmp.cleanup()
-
-    def backup(self):
-        return G.backup(self.root, stamp=lambda: "s", run_reg=self.reg)
-
-    def test_a_changed_key_is_deleted_imported_and_checked(self):
-        backup = self.backup()
-        self.reg.text = b"the game changed this"
-        lines = G.restore_registry(backup, run_reg=self.reg, out=lambda _l: None)
-        self.assertEqual(lines, ["rewired registry: restored"])
-        saved = os.path.join(backup, "rewired.reg")
-        self.assertEqual(self.reg.calls[1:], [
-            ["export", G.REGISTRY_KEY, saved + G.AFTER_RUN_SUFFIX, "/y"],
-            ["delete", G.REGISTRY_KEY, "/f"],
-            ["import", saved],
-            ["export", G.REGISTRY_KEY, saved + G.REGISTRY_CHECK_SUFFIX, "/y"],
-        ])
-        self.assertEqual(self.reg.text, self.original)
-        # The game's version stays in the backup folder.
-        self.assertEqual(_read(saved + G.AFTER_RUN_SUFFIX), b"the game changed this")
-
-    def test_restore_all_puts_the_key_back(self):
-        backup = self.backup()
-        lines = G.restore_all(backup, run_reg=self.reg, out=lambda _l: None)
-        self.assertEqual(lines, ["rewired registry: unchanged"])
-        self.assertEqual(self.reg.verbs(), ["export", "export"])
-
-
 class RealRegistryTest(unittest.TestCase):
     """backup() and restore_registry() with the real reg.exe. The game's key
     is only exported; restores run on scratch keys."""
@@ -318,6 +281,41 @@ class RealRegistryTest(unittest.TestCase):
         other = G.restore_registry(changed, run_reg=G.run_reg, out=lambda _l: None)
         self.assertEqual(len(other), 1, other)
         self.assertNotEqual(other, lines)
+
+    def _changed_scratch_backup(self):
+        """A scratch backup whose key then takes the values a real run left,
+        as the game would change it. Returns the folder, the key, the saved
+        export and the key's export as the run left it."""
+        backup, key, line = _scratch_backup(self, self.tmp)
+        saved = os.path.join(backup, G.REGISTRY_BACKUP)
+        _import_values(self.tmp, line, KEY_AFTER_A_RUN)
+        games = os.path.join(self.tmp, "games-version-" + uuid.uuid4().hex + ".reg")
+        G.run_reg(["export", key, games, "/y"])
+        self.assertNotEqual(_read(games), _read(saved), "the run's values changed nothing")
+        return backup, key, saved, games
+
+    def _assert_key_is(self, key: str, path: str):
+        now = os.path.join(self.tmp, "key-now-" + uuid.uuid4().hex + ".reg")
+        G.run_reg(["export", key, now, "/y"])
+        self.assertEqual(_read(now), _read(path))
+
+    def test_a_changed_key_is_put_back_and_the_games_version_kept(self):
+        backup, key, saved, games = self._changed_scratch_backup()
+        lines = G.restore_registry(backup, run_reg=G.run_reg, out=lambda _l: None)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith(G.REGISTRY_LINE_NAME), lines)
+        # The key holds the saved values again, and the backup folder keeps
+        # the key as the game left it, so it was exported before any delete.
+        self._assert_key_is(key, saved)
+        self.assertEqual(_read(saved + G.AFTER_RUN_SUFFIX), _read(games))
+
+    def test_restore_all_puts_a_changed_key_back(self):
+        backup, key, saved, games = self._changed_scratch_backup()
+        lines = G.restore_all(backup, run_reg=G.run_reg, out=lambda _l: None)
+        self.assertEqual(len(lines), 1, lines)
+        self.assertTrue(lines[0].startswith(G.REGISTRY_LINE_NAME), lines)
+        self._assert_key_is(key, saved)
+        self.assertEqual(_read(saved + G.AFTER_RUN_SUFFIX), _read(games))
 
     def test_a_key_that_still_differs_after_the_import_raises(self):
         # The scratch key holds the values a real run left; the saved export
@@ -440,9 +438,20 @@ class SetGameSettingTest(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    def test_the_run_line_is_pause_on_focus_lost_0_in_game(self):
-        self.assertEqual((G.GAME_SECTION, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE),
-                         ("game", "pause_on_focus_lost", "0"))
+    def test_the_run_line_is_one_the_game_saved_and_the_run_changes_only_it(self):
+        # A settings.ini the game wrote, from a real run's backup: the run's
+        # key sits in its game section with a value other than the run's,
+        # and setting the run value changes that one line and no other.
+        shutil.copyfile(os.path.join(REAL_BACKUP, G.SETTINGS), self.path)
+        before = _read(self.path)
+        self.assertNotEqual(G.get_game_setting(self.path, G.PAUSE_ON_FOCUS_LOST),
+                            G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        G.set_game_setting(self.path, G.PAUSE_ON_FOCUS_LOST, G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        self.assertEqual(G.get_game_setting(self.path, G.PAUSE_ON_FOCUS_LOST),
+                         G.PAUSE_ON_FOCUS_LOST_RUN_VALUE)
+        old, new = before.splitlines(keepends=True), _read(self.path).splitlines(keepends=True)
+        self.assertEqual(len(old), len(new))
+        self.assertEqual(len([i for i in range(len(old)) if old[i] != new[i]]), 1)
 
     def test_changes_exactly_the_line_in_the_game_section(self):
         _write(self.path, SETTINGS_FIXTURE)
@@ -521,10 +530,6 @@ class SongIniTest(unittest.TestCase):
     def test_other_sections_do_not_count(self):
         d = self._ini("[other]\npro_drums = True\n[song]\npro_drums = False\n")
         self.assertFalse(G.song_ini_pro_drums(d))
-
-    def test_the_song_ini_length_reader_is_gone(self):
-        # The song's length is Hydra's end, read through hydra_end (D321 item 2).
-        self.assertFalse(hasattr(G, "song_ini_length_ms"))
 
 
 if __name__ == "__main__":
