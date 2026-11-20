@@ -396,7 +396,7 @@ std::vector<ReplayWindow> windows_from_args(const Args& a, const Song& song) {
         if (!n) continue;
         std::fprintf(stderr,
                      "note: window %lld:%lld SqOut %.2f ms -> phrase chord at "
-                     "tick %lld (%.2f ms from the SP end)\n",
+                     "tick %lld (%.2f ms from the deact node)\n",
                      (long long)w.act_tick, (long long)w.deact_tick,
                      *w.sqout_offset_ms, (long long)n->tick, n->offset_ms);
     }
@@ -430,7 +430,7 @@ int cmd_score(const Args& a, const app::Settings& s) {
     json acts = json::array();
     for (const ReplayWindow& w : windows) {
         // Each tick's time too, through the chart's own timing, so a reader
-        // with no chord on the end still has the end's time.
+        // with no chord on the deactivation node still has the node's time.
         json one{{"act_tick", w.act_tick},
                  {"deact_tick", w.deact_tick},
                  {"act_ms", song.timing().timecode(w.act_tick).ms()},

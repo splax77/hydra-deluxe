@@ -1,6 +1,5 @@
-// Squeeze rating — where an activation's Star Power ends, how frontend
-// timing error carries to that end, and how the resulting squeezes are
-// judged for display.
+// Squeeze rating — how frontend timing error carries to an activation's
+// deactivation node, and how the resulting squeezes are judged for display.
 //
 // One home for all of it: the transfer scales, which scale directions
 // matter, which multiplier governs a note, and what its margin is worth on
