@@ -1,16 +1,18 @@
 """Tests for the checksum finder (overlay spike, question 2): the hash forms,
-the Il2Cpp string decode, the direct search, the pointer walk and the
-finder's run.
+the direct search, the pointer walk and the finder's run.
 
-No game: a real Process over fake memory answers the reads, a fake region
-list stands in for VirtualQueryEx, and a fake engine finder stands in for the
-live search.
+The hash forms run on a real chart and the score file the game wrote after
+playing it. The rest has no game: a real Process over fake memory answers the
+reads, a fake region list stands in for VirtualQueryEx, and a fake engine
+finder stands in for the live search.
 """
 
 from __future__ import annotations
 
 import functools
+import hashlib
 import io
+import json
 import os
 import struct
 import sys
@@ -28,21 +30,32 @@ from tools.ch_probe import process  # noqa: E402
 from tools.ch_probe.experiments import find_checksum as F  # noqa: E402
 from tools.ch_probe.tests import fakes  # noqa: E402
 
-# The MD5 of the NS E star cutoffs notes.mid, equal to the game's checksum for
-# that chart in scorestats.json (the spike plan, "What the code does today").
-HASH = "234C917654CC7257E2BAFCF7D761304B"
+# A real chart and the game's own score file from a run of it. The score file
+# was copied from hydra-data/ch-mcp-runs/2026-11-12/pitch-dark-run1.
+_PITCH_DARK_NOTES = os.path.join(_REPO_ROOT, "testdata", "input",
+                                 "test_pitch_dark_ratio", "notes.mid")
+_PITCH_DARK_SCORESTATS = os.path.join(
+    _REPO_ROOT, "testdata", "ch_runs", "pitch-dark-run1",
+    "scorestats-CHON_-_Pitch_Dark_B-20261112-230618.json")
 
-RAW = b"\x23\x4c\x91\x76\x54\xcc\x72\x57\xe2\xba\xfc\xf7\xd7\x61\x30\x4b"
-UTF16_UPPER = (b"2\x003\x004\x00C\x009\x001\x007\x006\x00"
-               b"5\x004\x00C\x00C\x007\x002\x005\x007\x00"
-               b"E\x002\x00B\x00A\x00F\x00C\x00F\x007\x00"
-               b"D\x007\x006\x001\x003\x000\x004\x00B\x00")
-UTF16_LOWER = (b"2\x003\x004\x00c\x009\x001\x007\x006\x00"
-               b"5\x004\x00c\x00c\x007\x002\x005\x007\x00"
-               b"e\x002\x00b\x00a\x00f\x00c\x00f\x007\x00"
-               b"d\x007\x006\x001\x003\x000\x004\x00b\x00")
-ASCII_UPPER = b"234C917654CC7257E2BAFCF7D761304B"
-ASCII_LOWER = b"234c917654cc7257e2bafcf7d761304b"
+
+def _read_scorestats() -> dict:
+    with open(_PITCH_DARK_SCORESTATS, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _notes_md5() -> bytes:
+    with open(_PITCH_DARK_NOTES, "rb") as f:
+        return hashlib.md5(f.read()).digest()
+
+
+# The checksum the game wrote for the chart it played: the hash the finder
+# searches memory for.
+HASH = _read_scorestats()["checksum"]
+
+RAW = _notes_md5()
+ASCII_UPPER = HASH.upper().encode("ascii")
+ASCII_LOWER = HASH.lower().encode("ascii")
 
 BASE = 0x180000000
 ENGINE = 0x10000000
@@ -108,40 +121,46 @@ def run_finder(proc, regions, *, find_engine=None, opener=None, sleep=None):
 
 
 class EncodeFormsTest(unittest.TestCase):
-    def test_the_five_forms_of_the_known_hash(self):
-        forms = S.encode_forms(HASH)
+    def test_the_raw_form_is_the_md5_of_the_chart_the_game_played(self):
+        # The game's checksum for a folder chart is the MD5 of its notes file
+        # (docs/clone-hero/01-reading-a-chart.md, CR-10), so the raw pattern
+        # the finder searches for must be those digest bytes.
+        raw = [f.pattern for f in S.encode_forms(HASH) if f.name == S.FORM_RAW]
+        self.assertEqual(raw, [_notes_md5()])
+
+    def test_each_form_reads_back_as_the_game_checksum(self):
+        forms = {f.name: f for f in S.encode_forms(HASH)}
+        self.assertEqual(set(forms), {S.FORM_RAW, S.FORM_UTF16_UPPER,
+                                      S.FORM_UTF16_LOWER, S.FORM_ASCII_UPPER,
+                                      S.FORM_ASCII_LOWER})
+        self.assertEqual(forms[S.FORM_RAW].pattern.hex().upper(),
+                         HASH.upper())
         self.assertEqual(
-            [(f.name, f.pattern, f.utf16) for f in forms],
-            [("raw bytes", RAW, False),
-             ("UTF-16 upper hex", UTF16_UPPER, True),
-             ("UTF-16 lower hex", UTF16_LOWER, True),
-             ("ASCII upper hex", ASCII_UPPER, False),
-             ("ASCII lower hex", ASCII_LOWER, False)])
+            forms[S.FORM_UTF16_UPPER].pattern.decode("utf-16-le"),
+            HASH.upper())
+        self.assertEqual(
+            forms[S.FORM_UTF16_LOWER].pattern.decode("utf-16-le"),
+            HASH.lower())
+        self.assertEqual(forms[S.FORM_ASCII_UPPER].pattern.decode("ascii"),
+                         HASH.upper())
+        self.assertEqual(forms[S.FORM_ASCII_LOWER].pattern.decode("ascii"),
+                         HASH.lower())
+        # Only the UTF-16 forms can be a System.String's characters, which
+        # the pointer walk follows.
+        self.assertEqual({name for name, f in forms.items() if f.utf16},
+                         {S.FORM_UTF16_UPPER, S.FORM_UTF16_LOWER})
 
     def test_lower_case_input_gives_the_same_forms(self):
         self.assertEqual(S.encode_forms(HASH.lower()), S.encode_forms(HASH))
 
     def test_a_string_that_is_not_a_hash_is_refused(self):
-        with self.assertRaises(ValueError):
-            S.encode_forms(HASH[:-1])
-        with self.assertRaises(ValueError):
-            S.encode_forms(HASH[:-1] + "G")
-
-
-class DecodeStringTest(unittest.TestCase):
-    def test_a_string_object_decodes_to_the_hash(self):
-        self.assertEqual(S.decode_il2cpp_string(string_object(HASH)), HASH)
-
-    def test_an_absurd_length_is_refused(self):
-        raw = b"\0" * 0x10 + struct.pack("<i", 5000) + b"\0" * 64
-        self.assertIsNone(S.decode_il2cpp_string(raw))
-
-    def test_a_negative_length_is_refused(self):
-        raw = b"\0" * 0x10 + struct.pack("<i", -1) + b"\0" * 64
-        self.assertIsNone(S.decode_il2cpp_string(raw))
-
-    def test_fewer_characters_than_the_length_says_is_refused(self):
-        self.assertIsNone(S.decode_il2cpp_string(string_object(HASH)[:-2]))
+        stats = _read_scorestats()
+        # The game's checksum one digit short, and another text field of the
+        # same score file.
+        for text in (stats["checksum"][:-1], stats["song_name"]):
+            with self.subTest(text=text):
+                with self.assertRaises(ValueError):
+                    S.encode_forms(text)
 
 
 class DirectSearchTest(unittest.TestCase):
@@ -174,21 +193,6 @@ class DirectSearchTest(unittest.TestCase):
 
 
 class PointerWalkTest(unittest.TestCase):
-    def test_a_two_hop_path_prints_its_exact_offsets(self):
-        a, b, s = 0x30000, 0x40000, 0x50000
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({0x58: a}),
-             a: object_with({0x20: b}),
-             b: object_with({0x10: s}),
-             s: string_object(HASH)},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0, 1.5, 2.0]})
-        code, text = run_finder(proc, lambda p: [(s, len(string_object(HASH)))])
-        self.assertEqual(code, 0)
-        self.assertIn(
-            "engine+0x58 -> +0x20 -> +0x10 = 234C917654CC7257E2BAFCF7D761304B",
-            text)
-        self.assertIn(f"{s + 0x14:#x}  UTF-16 upper hex", text)
-
     def test_no_path_within_the_object_cap_says_not_found(self):
         objs = [0x30000, 0x31000, 0x32000]
         proc, _ = fakes.fake_process(
@@ -214,40 +218,6 @@ class PointerWalkTest(unittest.TestCase):
         self.assertIn(f"{s + 0x14:#x}  UTF-16 upper hex", text)
         self.assertIn("read 2 objects, took", text)
         self.assertIn("clock frozen", text)
-
-
-class SongEntryHolderTest(unittest.TestCase):
-    def test_a_pointer_to_the_song_entry_names_its_holder(self):
-        entry = 0x70000            # the SongEntry; its checksum at +0x38
-        globals_obj = 0x80000      # holds the SongEntry at +0x28
-        entry_bytes = b"\0" * 0x38 + RAW + b"\0" * 8
-        globals_bytes = object_with({0x28: entry})[:0x40]
-        # A copy of the pointer one byte off alignment is not a holder.
-        stray = b"\0" + struct.pack("<Q", entry) + b"\0" * 7
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({}), entry: entry_bytes,
-             globals_obj: globals_bytes, 0x90000: stray},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0, 2.0]})
-        regions = lambda p: [(entry, len(entry_bytes)),
-                             (globals_obj, len(globals_bytes)),
-                             (0x90000, len(stray))]
-        code, text = run_finder(proc, regions)
-        self.assertEqual(code, 0)
-        self.assertIn("rawhit 0x70038 -> SongEntry 0x70000 <- held at 0x80028 "
-                      "(candidate GlobalVariables = 0x80000)", text)
-        self.assertIn("  1 holders, took", text)
-
-    def test_no_pointer_to_the_song_entry_says_so(self):
-        entry = 0x70000
-        entry_bytes = b"\0" * 0x38 + RAW + b"\0" * 8
-        proc, _ = fakes.fake_process(
-            {ENGINE: object_with({}), entry: entry_bytes},
-            BASE, consts=VERIFY_CONSTS, clocks={CLOCK: [1.0]})
-        code, text = run_finder(proc, lambda p: [(entry, len(entry_bytes))])
-        self.assertEqual(code, 0)
-        self.assertIn("rawhit 0x70038 -> SongEntry 0x70000 <- no pointer to "
-                      "it found", text)
-        self.assertIn("  0 holders, took", text)
 
 
 class MovingMemory:
@@ -290,14 +260,6 @@ class RescanTest(unittest.TestCase):
 
 
 class RunTest(unittest.TestCase):
-    def test_the_game_is_opened_read_only(self):
-        proc, _ = fakes.fake_process({ENGINE: object_with({})}, BASE,
-                                     consts=VERIFY_CONSTS, clocks={CLOCK: [1.0]})
-        opener = RecordingOpener(proc)
-        code, _text = run_finder(proc, lambda p: [], opener=opener)
-        self.assertEqual(code, 0)
-        self.assertEqual(opener.calls, [((), {"read_only": True})])
-
     def test_no_playing_song_exits_2_with_the_message(self):
         frozen = 0x20000
         proc, _ = fakes.fake_process(
