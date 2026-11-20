@@ -7,6 +7,8 @@
 
 #include <atomic>
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <map>
 #include <optional>
@@ -20,6 +22,7 @@
 #include "app/analysis.h"
 #include "app/config.h"
 #include "app/display_format.h"
+#include "app/library_query.h"  // fold_for_search
 #include "app/path_report_view.h"
 #include "app/report.h"
 #include "app/user_messages.h"
@@ -34,6 +37,7 @@
 #include "report_samples.h"
 #include "search/graph.h"
 #include "store/record_store.h"
+#include "temp_util.h"
 
 using namespace hydra;
 using namespace hydra::app;
@@ -86,6 +90,27 @@ store::ChartLibraryEntry library_entry_for_file(const std::string& md5, const st
     e.charter = "Charter";
     e.notespath = notespath;
     e.rootfolder = "C:\\songs";
+    return e;
+}
+
+// A second copy of the corpus chart `chart` in another folder, as a scan
+// lists it: the chart file, and its song.ini when it has one, copied into the
+// scratch folder testtemp::temp_dir(tag), and the copy's own scanned row
+// titled `title` (corpus::scanned_entry). The scan's own hash of the copy
+// must be the original's, or the two rows are not one chart.
+store::ChartLibraryEntry scanned_copy(const std::string& chart, const std::string& tag,
+                                      const std::string& title) {
+    const size_t slash = chart.rfind('\\');
+    REQUIRE(slash != std::string::npos);
+    const std::string dir = testtemp::temp_dir(tag);
+    const std::string copied = dir + chart.substr(slash);
+    testtemp::write_bytes(copied, hydra::read_file_bytes(chart));
+    const std::string ini = chart.substr(0, slash) + "\\song.ini";
+    if (std::filesystem::exists(hydra::os_path(ini)))
+        testtemp::write_bytes(dir + "\\song.ini", hydra::read_file_bytes(ini));
+    store::ChartLibraryEntry e = corpus::scanned_entry(copied, title);
+    REQUIRE(e.md5 == app::hash_chart_file(chart));
+    REQUIRE(e.rootfolder != chart.substr(0, slash));
     return e;
 }
 
@@ -189,7 +214,8 @@ std::map<std::string, std::vector<std::pair<int64_t, int>>> ranks_by_chart(
 // Stores test::tied_variant_record() for chart `hyhash` under
 // fixture_settings(cap, legacy_fills), with a library row (kTiedFile), so the
 // report has three paths to list: two tied at the top score and a lower one.
-void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
+// No case calls it now; C130 decides whether it stays.
+[[maybe_unused]] void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
                 const std::string& hyhash, int cap, bool legacy_fills = false) {
     library.push_back(library_entry_for_file(hyhash, "Tied " + hyhash, kTiedFile));
     store.rebuild_chart_library(library);
@@ -201,30 +227,64 @@ void store_tied(store::RecordStore& store, std::vector<store::ChartLibraryEntry>
 
 }  // namespace
 
+// Every corpus chart with paths under the default settings, each listed once
+// by its scanned row with its record saved: a row is optimal exactly when its
+// score is its record's best. The case "HydraRecord::is_optimal: every corpus
+// path tied at the top score" in test_model.cpp shows that under these same
+// settings some corpus chart has a second path at the top score. all_paths
+// lists paths best first, so that path sits among the kPathsPerRecord a record
+// keeps.
 TEST_CASE("report rows: a tied top-score variant is optimal too") {
     store::RecordStore store(":memory:");
+    const Settings settings;
+    const BatchRun run = settings.batch_run();
     std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "tied", 4);
+    std::vector<const HydraRecord*> records;
+    std::map<std::string, int64_t> best_score;
+    for (const std::string& chart : corpus::chart_paths()) {
+        if (corpus::song(chart, run.settings.reading(), run.settings.rules).is_empty()) continue;
+        const HydraRecord& record = corpus::analyzed(chart, run.settings);
+        if (record.paths.empty()) continue;
+        store::ChartLibraryEntry entry =
+            corpus::scanned_entry(chart, "Title " + std::to_string(library.size()));
+        // Two corpus files with one md5 are one chart: list it once.
+        if (!best_score.emplace(entry.md5, record.best_path().totalscore()).second) continue;
+        library.push_back(std::move(entry));
+        records.push_back(&record);
+    }
+    REQUIRE(library.size() > 1);
+    store.rebuild_chart_library(library);
+    for (size_t i = 0; i < library.size(); ++i)
+        testdm::save(store, library[i].md5, settings, *records[i]);
 
-    report::ReportOptions options = fixture_options(4);
-    options.max_paths = 100;
+    report::ReportOptions options;
+    options.run = run;
+    options.max_paths = report::kEveryPathSentinel;
     const std::vector<report::ReportRow> rows = report::collect_rows(store, options).rows;
-    REQUIRE(rows.size() == 3);
-    // Best score first: the root and its tied variant, then the lower root.
-    CHECK(rows[0].score == rows[1].score);
-    CHECK(rows[2].score < rows[1].score);
-    CHECK(rows[0].optimal);
-    CHECK(rows[1].optimal);
-    CHECK_FALSE(rows[2].optimal);
+    std::map<std::string, int> optimal_rows;
+    int below = 0;
+    for (const report::ReportRow& r : rows) {
+        INFO(r.hyhash << " path " << r.path);
+        const auto best = best_score.find(r.hyhash);
+        REQUIRE(best != best_score.end());
+        CHECK(r.optimal == (r.score == best->second));
+        if (r.optimal) ++optimal_rows[r.hyhash];
+        else ++below;
+    }
+    // Both sides of the rule turn up: a chart with two optimal rows, and a
+    // row below its chart's best.
+    CHECK(std::any_of(optimal_rows.begin(), optimal_rows.end(),
+                      [](const std::pair<const std::string, int>& c) { return c.second > 1; }));
+    CHECK(below > 0);
 
-    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
-    // The subtitle still counts one chart, however many paths tie.
-    CHECK(page.songs == 1);
-    // The report hands both tied paths over as optimal, and the lower one not.
-    REQUIRE(page.paths.size() == 3);
-    CHECK(std::count_if(page.paths.begin(), page.paths.end(),
-                        [](const report::ReportRow& r) { return r.optimal; }) == 2);
-    CHECK_FALSE(page.paths[2].optimal);
+    const report::GeneratedReport page = report::generate_report(store, options);
+    // The subtitle counts each chart once, however many of its paths tie.
+    CHECK(page.songs == static_cast<int64_t>(library.size()));
+    // The report hands over the same optimal rows.
+    REQUIRE(page.paths.size() == rows.size());
+    const auto is_optimal = [](const report::ReportRow& r) { return r.optimal; };
+    CHECK(std::count_if(page.paths.begin(), page.paths.end(), is_optimal) ==
+          std::count_if(rows.begin(), rows.end(), is_optimal));
 }
 
 TEST_CASE("report rows list every stored record (4 bars)") { check_cap(4); }
@@ -337,37 +397,46 @@ TEST_CASE("path report: a batch's records read back as a fresh analysis's rows")
 
 // The store saves the engine's figure, sign included; the report shows it
 // through shown_timing, so a squeeze-in inside Star Power reads as no timing.
+// Foo Fighters - Everlong's best path under the default settings, "1 2 3+",
+// has its only squeeze-in inside Star Power, so the engine's figure is below
+// 0 (test_saved_figure_fill.cpp reads it there). Every row of its report is
+// checked: a saved figure below 0 shows no timing and the none tier, and any
+// other saved figure shows as shown_timing gives it.
 TEST_CASE("path report: a saved figure below 0 shows no timing and the none tier") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library{
-        library_entry_for_file("inside", "Inside", kTiedFile)};
-    store.rebuild_chart_library(library);
-
-    Activation a;
-    test::set_skips(a, 0);
-    a.e_offset = 300.0;  // not e-critical
-    a.sqinouts = {SPSqueeze{SqueezeKind::SqIn, -315.8}};
-    Path p;
-    p.activations = {a};
-    HydraRecord record;
-    record.paths = {p};
-    record.sp_cap = 4;
-    testdm::save(store, "inside", fixture_settings(4), record);
-    const std::vector<store::RecordLookup> saved =
-        store.lookup({"inside"}, fixture_settings(4).profile());
+    const std::string chart = corpus::chart_named("Foo Fighters - Everlong");
+    REQUIRE_FALSE(chart.empty());
+    const store::ChartLibraryEntry entry = corpus::scanned_entry(chart, "Everlong");
+    store.rebuild_chart_library({entry});
+    const Settings settings;
+    const BatchRun run = settings.batch_run();
+    testdm::save(store, entry.md5, settings, analyze_chart_file(chart, run.settings).record);
+    const std::vector<store::RecordLookup> saved = store.lookup({entry.md5}, run.profile);
     REQUIRE(saved.size() == 1);
-    REQUIRE(saved[0].record.paths.size() == 1);
-    REQUIRE(saved[0].record.paths[0].hardest_ms == std::optional<double>(-315.8));
 
-    const report::ReportOptions options = fixture_options(4);
+    report::ReportOptions options;
+    options.run = run;
+    options.max_paths = report::kEveryPathSentinel;
     const std::vector<report::ReportRow> rows = report::collect_rows(store, options).rows;
-    REQUIRE(rows.size() == 1);
-    const report::ReportRow& g = rows[0];
-    CHECK_FALSE(g.ms.has_value());
+    REQUIRE(rows.size() == saved[0].record.paths.size());
     const std::vector<TimingTier> tiers = timing_tiers();
     const TimingTier& none = hydra::none_tier(tiers);
-    CHECK(g.tier == none.name);
-    CHECK(g.tok == none.tok);
+    int below_zero = 0;
+    for (const store::PathRow& p : saved[0].record.paths) {
+        const auto row = std::find_if(rows.begin(), rows.end(), [&p](const report::ReportRow& r) {
+            return r.path == p.path && r.rank == p.rank;
+        });
+        REQUIRE(row != rows.end());
+        INFO("path " << p.path);
+        CHECK(row->ms == shown_timing(p.hardest_ms));
+        if (p.hardest_ms && *p.hardest_ms < 0.0) {
+            ++below_zero;
+            CHECK_FALSE(row->ms.has_value());
+            CHECK(row->tier == none.name);
+            CHECK(row->tok == none.tok);
+        }
+    }
+    CHECK(below_zero > 0);
 }
 
 // prepare_record numbers a record's paths in all_paths() order, so that order
@@ -393,29 +462,36 @@ TEST_CASE("all_paths lists paths best first on every corpus chart") {
 }
 
 TEST_CASE("report counts every library copy of a chart, and leaves out a chart the library dropped") {
-    // D76: chart h0 sits in two library folders, so it counts twice, like
-    // the library counts it. D87 item 4: chart h1 has a result but no library
-    // row, so the page leaves it out.
+    // D76: the first chart sits in two library folders, the corpus's and a
+    // real copy's, so it counts twice, like the library counts it. D87 item
+    // 4: the second chart has a result but no library row, so the page leaves
+    // it out.
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    REQUIRE(fill_store(store, library, 4, 2).size() == 2);
-    store::ChartLibraryEntry first = library[0];
-    store::ChartLibraryEntry copy = first;
-    copy.rootfolder = "C:\\other";
+    const Settings settings = fixture_settings(4);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.batch_run().settings, 2);
+    REQUIRE(charts.size() == 2);
+    const store::ChartLibraryEntry first = corpus::scanned_entry(charts[0].chart, "First");
+    const store::ChartLibraryEntry copy = scanned_copy(charts[0].chart, "report_rows_copy", "First");
+    const std::string dropped = app::hash_chart_file(charts[1].chart);
+    REQUIRE_FALSE(dropped.empty());
+    REQUIRE(dropped != first.md5);
     store.rebuild_chart_library({first, copy});
+    testdm::save(store, first.md5, settings, charts[0].result.record);
+    testdm::save(store, dropped, settings, charts[1].result.record);
 
     const report::GeneratedReport out = report::generate_report(store, fixture_options(4));
     CHECK(out.songs == 2);
-    CHECK(out.subtitle.rfind("2 charts — ", 0) == 0);
-    // Every row is h0's; h1 is left out.
+    CHECK(out.subtitle.rfind(counted(2, "chart", "charts") + " — ", 0) == 0);
+    // Every row is the first chart's; the dropped one is left out.
     REQUIRE_FALSE(out.paths.empty());
     for (const report::ReportRow& r : out.paths) {
-        CHECK(r.hyhash == "h0");
-        CHECK(r.song != "Title 1");
+        CHECK(r.hyhash == first.md5);
+        CHECK(r.song == display_title(first.title));
     }
     // The report keeps no chart index (D282): each row carries its chart's
-    // copies, so one shown row of h0 still counts both copies, and every h0
-    // row together counts them once.
+    // copies, so one shown row of the first chart still counts both copies,
+    // and all its rows together count them once.
     REQUIRE(out.paths.size() > 1);
     for (const report::ReportRow& r : out.paths) CHECK(r.copies == 2);
     CHECK(report::path_tiles(out.paths, {0}, out.library_charts)[0].value ==
@@ -474,23 +550,6 @@ TEST_CASE("generate_report hands over its rows, subtitle and footer") {
 // ---- coverage: every library chart is shown, can't be analyzed, or has no
 // result (D249 item 5) ----------
 
-namespace {
-
-// NoNotesError's own text for an Expert Pro Drums chart, as a batch stores it.
-std::string expert_no_notes_text() { return NoNotesError(Difficulty::Expert, true).what(); }
-
-// Lists `id` in the library (after the rows `library` already holds) and
-// stores a failure of `kind` for it under fixture_settings(4).
-void store_failure(store::RecordStore& store, std::vector<store::ChartLibraryEntry>& library,
-                   const std::string& id, const std::string& title, ErrorKind kind,
-                   const std::string& text) {
-    library.push_back(library_entry_for_file(id, title, "C:\\songs\\" + id + "\\notes.mid"));
-    store.rebuild_chart_library(library);
-    store.save(store::failure_record(id, fixture_settings(4).profile(), kind, text));
-}
-
-}  // namespace
-
 TEST_CASE("path report coverage: shown + can't analyze + no result is the library count (corpus)") {
     // Every corpus chart in the library, one of them twice. Each is analyzed
     // the way a batch analyzes it; a remembered failure is stored as the
@@ -534,151 +593,317 @@ TEST_CASE("path report coverage: shown + can't analyze + no result is the librar
     CHECK(page.cant_analyze_charts > 0);
     CHECK(page.no_result_charts > 0);
     CHECK(page.songs + page.cant_analyze_charts + page.no_result_charts == page.library_charts);
-    // Every stored failure is a missing Hard part, so the line names it.
+    // Every stored failure is a missing Hard part, so the line names the part
+    // NoNotesError's own text names, after the count.
+    const std::optional<std::string> hard_part =
+        no_notes_part(NoNotesError(Difficulty::Hard, true).what());
+    REQUIRE(hard_part.has_value());
     CHECK(page.cant_analyze_line ==
-          counted(page.cant_analyze_charts, "chart has", "charts have") +
-              " no Hard Pro Drums notes");
-    CHECK(page.no_result_line == counted(page.no_result_charts, "chart has", "charts have") +
-                                     " no result under these settings");
+          counted(page.cant_analyze_charts, "chart has", "charts have") + " no " + *hard_part);
+    // The no-result line opens with its own count.
+    CHECK(page.no_result_line.rfind(
+              counted(page.no_result_charts, "chart has", "charts have"), 0) == 0);
     // The Charts shown tile reads the same two counts, with no filters.
     CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library_charts)[0]
               .value == std::to_string(page.songs) + " of " + std::to_string(page.library_charts));
 }
 
+namespace {
+
+// The settings the coverage cases below report at: fixture_settings(4) read
+// at Hard, where some corpus charts have no part, so their analysis fails the
+// way a batch remembers (the corpus case above finds them the same way).
+Settings hard_settings() {
+    Settings s = fixture_settings(4);
+    s.view_difficulty = "Hard";
+    return s;
+}
+
+// A corpus chart whose Hard analysis threw a remembered failure.
+struct HardFailure {
+    std::string chart;
+    ErrorKind kind = ErrorKind::NoNotes;
+    std::string text;
+};
+
+// The first `want` corpus charts, in corpus order, whose Hard analysis
+// throws a remembered failure; fewer when the corpus holds fewer.
+std::vector<HardFailure> hard_failures(size_t want) {
+    std::vector<HardFailure> found;
+    const BatchRun run = hard_settings().batch_run();
+    for (const std::string& path : corpus::chart_paths()) {
+        if (found.size() >= want) break;
+        try {
+            analyze_chart_file(path, run.settings);
+        } catch (const KindedError& e) {
+            if (remembered_failure(e.kind())) found.push_back({path, e.kind(), e.what()});
+        } catch (const std::exception&) {
+            // Not remembered: a batch stores nothing for it.
+        }
+    }
+    return found;
+}
+
+// Lists `failure`'s chart in the library under its scanned row titled
+// `title`, and stores its failure under hard_settings(), as a batch does.
+// Returns the library row.
+store::ChartLibraryEntry store_hard_failure(store::RecordStore& store,
+                                            std::vector<store::ChartLibraryEntry>& library,
+                                            const HardFailure& failure,
+                                            const std::string& title) {
+    library.push_back(corpus::scanned_entry(failure.chart, title));
+    store.rebuild_chart_library(library);
+    store.save(store::failure_record(library.back().md5, hard_settings().profile(), failure.kind,
+                                     failure.text));
+    return library.back();
+}
+
+// Lists the first corpus chart that analyzes at Hard under its scanned row
+// and saves its record under hard_settings(). Returns the library row.
+store::ChartLibraryEntry store_hard_ready(store::RecordStore& store,
+                                          std::vector<store::ChartLibraryEntry>& library) {
+    const Settings settings = hard_settings();
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    library.push_back(corpus::scanned_entry(charts[0].chart, "Ready"));
+    store.rebuild_chart_library(library);
+    testdm::save(store, library.back().md5, settings, charts[0].result.record);
+    return library.back();
+}
+
+// A report under hard_settings().
+report::ReportOptions hard_options() {
+    report::ReportOptions options;
+    options.run = hard_settings().batch_run();
+    return options;
+}
+
+// The coverage line's words for a NoNotes failure's text: the part its
+// sentence names (no_notes_part, the sentence's one reader).
+std::string no_part_words(const std::string& text) {
+    const std::optional<std::string> part = no_notes_part(text);
+    REQUIRE(part.has_value());
+    return "no " + *part;
+}
+
+}  // namespace
+
 TEST_CASE("path report coverage: a chart with a stored failure gets no row and one list entry") {
+    const std::vector<HardFailure> failures = hard_failures(1);
+    REQUIRE(failures.size() == 1);
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "ok", 4);
-    store_failure(store, library, "bad", "<b>Bad</b> Song", ErrorKind::NoNotes,
-                  expert_no_notes_text());
+    const store::ChartLibraryEntry ok = store_hard_ready(store, library);
+    const store::ChartLibraryEntry bad =
+        store_hard_failure(store, library, failures[0], "<b>Bad</b> Song");
 
-    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    const report::GeneratedReport page = report::generate_report(store, hard_options());
     REQUIRE(page.empty_reason == report::EmptyReason::None);
-    for (const report::ReportRow& r : page.paths) CHECK(r.hyhash == "ok");
+    REQUIRE_FALSE(page.paths.empty());
+    for (const report::ReportRow& r : page.paths) CHECK(r.hyhash == ok.md5);
     CHECK(page.songs == 1);
     CHECK(page.library_charts == 2);
     CHECK(page.cant_analyze_charts == 1);
     CHECK(page.no_result_charts == 0);
     REQUIRE(page.cant_analyze.size() == 1);
     const report::CantAnalyzeGroup& group = page.cant_analyze[0];
-    CHECK(group.sentence == "No Expert Pro Drums notes in this chart.");
+    CHECK(group.sentence == plain_error(KindedError(failures[0].kind, failures[0].text)));
     CHECK(group.count == 1);
     REQUIRE(group.charts.size() == 1);
-    CHECK(group.charts[0].song_id == "bad");
+    CHECK(group.charts[0].song_id == bad.md5);
     // The library's names, cleaned the way every screen cleans them.
-    CHECK(group.charts[0].title == "Bad Song");
-    CHECK(group.charts[0].artist == "Artist");
-    CHECK(group.charts[0].kind == ErrorKind::NoNotes);
-    CHECK(group.charts[0].text == expert_no_notes_text());
-    CHECK(page.cant_analyze_line == "1 chart has no Expert Pro Drums notes");
+    CHECK(group.charts[0].title == display_title(bad.title));
+    CHECK(group.charts[0].title != bad.title);
+    CHECK(group.charts[0].artist == display_artist(bad.artist));
+    CHECK(group.charts[0].kind == failures[0].kind);
+    CHECK(group.charts[0].text == failures[0].text);
+    CHECK(page.cant_analyze_line ==
+          counted(1, "chart has", "charts have") + " " + no_part_words(failures[0].text));
     CHECK(page.no_result_line.empty());
     CHECK(report::path_tiles(page.paths, every_row(page.paths.size()), page.library_charts)[0]
               .value == "1 of 2");
 }
 
 TEST_CASE("path report coverage: the lines' words") {
+    // Three real Hard failures: the corpus case above shows every remembered
+    // Hard failure is a missing part, so all three share one reason.
+    const std::vector<HardFailure> failures = hard_failures(3);
+    REQUIRE(failures.size() == 3);
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "ok", 4);
+    store_hard_ready(store, library);
 
     // Every failure shares one reason with a short form: the line names it.
-    store_failure(store, library, "n1", "N1", ErrorKind::NoNotes, expert_no_notes_text());
-    store_failure(store, library, "n2", "N2", ErrorKind::NoNotes, expert_no_notes_text());
-    report::GeneratedReport page = report::generate_report(store, fixture_options(4));
-    CHECK(page.cant_analyze_line == "2 charts have no Expert Pro Drums notes");
+    store_hard_failure(store, library, failures[0], "N1");
+    store_hard_failure(store, library, failures[1], "N2");
+    report::GeneratedReport page = report::generate_report(store, hard_options());
+    CHECK(page.cant_analyze_line ==
+          counted(2, "chart has", "charts have") + " " + no_part_words(failures[0].text));
 
-    // Two reasons: the generic words, and the Show list groups by reason in
-    // the order each first appears in the library, with its charts in order.
-    store_failure(store, library, "u1", "U1", ErrorKind::ChartUnreadable, "expected a [section]");
-    store_failure(store, library, "n3", "N3", ErrorKind::NoNotes, expert_no_notes_text());
-    page = report::generate_report(store, fixture_options(4));
-    CHECK(page.cant_analyze_line == "4 charts can't be analyzed");
+    // A second reason: a chart file the reader cannot read. Its text is the
+    // real reader's, from a file holding no chart.
+    const std::string junk = testtemp::temp_path("report_rows_junk", ".chart");
+    {
+        std::ofstream f(junk, std::ios::binary);
+        f << "this is not a chart\n";
+    }
+    std::optional<KindedError> unreadable;
+    try {
+        analyze_chart_file(junk, hard_settings().batch_run().settings);
+    } catch (const KindedError& e) {
+        unreadable.emplace(e.kind(), e.what());
+    }
+    REQUIRE(unreadable.has_value());
+    REQUIRE(remembered_failure(unreadable->kind()));
+    REQUIRE(unreadable->kind() != failures[0].kind);
+    // The junk file's library row: a scan lists no unreadable file by its
+    // md5, so the row is built here.
+    library.push_back(library_entry_for_file("junk", "U1", junk));
+    store.rebuild_chart_library(library);
+    store.save(store::failure_record("junk", hard_settings().profile(), unreadable->kind(),
+                                     unreadable->what()));
+    const store::ChartLibraryEntry third = store_hard_failure(store, library, failures[2], "N3");
+
+    // Two reasons: the generic words, and the Show list groups by reason.
+    page = report::generate_report(store, hard_options());
+    CHECK(page.cant_analyze_line == counted(4, "chart", "charts") + " can't be analyzed");
     REQUIRE(page.cant_analyze.size() == 2);
-    CHECK(page.cant_analyze[0].sentence == "No Expert Pro Drums notes in this chart.");
-    CHECK(page.cant_analyze[0].count == 3);
-    REQUIRE(page.cant_analyze[0].charts.size() == 3);
-    CHECK(page.cant_analyze[0].charts[0].song_id == "n1");
-    CHECK(page.cant_analyze[0].charts[1].song_id == "n2");
-    CHECK(page.cant_analyze[0].charts[2].song_id == "n3");
-    CHECK(page.cant_analyze[1].sentence ==
-          plain_error(KindedError(ErrorKind::ChartUnreadable, "expected a [section]")));
-    CHECK(page.cant_analyze[1].count == 1);
+    const std::string no_notes_sentence =
+        plain_error(KindedError(failures[0].kind, failures[0].text));
+    const std::string junk_sentence = plain_error(*unreadable);
+    const auto group_of = [&page](const std::string& sentence) {
+        const auto it = std::find_if(
+            page.cant_analyze.begin(), page.cant_analyze.end(),
+            [&sentence](const report::CantAnalyzeGroup& g) { return g.sentence == sentence; });
+        REQUIRE(it != page.cant_analyze.end());
+        return *it;
+    };
+    const report::CantAnalyzeGroup missing = group_of(no_notes_sentence);
+    CHECK(missing.count == 3);
+    REQUIRE(missing.charts.size() == 3);
+    CHECK(std::any_of(missing.charts.begin(), missing.charts.end(),
+                      [&third](const report::CantAnalyzeChart& c) {
+                          return c.song_id == third.md5;
+                      }));
+    const report::CantAnalyzeGroup junk_group = group_of(junk_sentence);
+    CHECK(junk_group.count == 1);
+    REQUIRE(junk_group.charts.size() == 1);
+    CHECK(junk_group.charts[0].song_id == "junk");
 
     // One reason with no short form: the generic words, singular for 1.
     store::RecordStore lone(":memory:");
     std::vector<store::ChartLibraryEntry> lone_library;
-    store_tied(lone, lone_library, "ok", 4);
-    store_failure(lone, lone_library, "u1", "U1", ErrorKind::ChartUnreadable, "bad header");
-    CHECK(report::generate_report(lone, fixture_options(4)).cant_analyze_line ==
-          "1 chart can't be analyzed");
+    store_hard_ready(lone, lone_library);
+    lone_library.push_back(library_entry_for_file("junk", "U1", junk));
+    lone.rebuild_chart_library(lone_library);
+    lone.save(store::failure_record("junk", hard_settings().profile(), unreadable->kind(),
+                                    unreadable->what()));
+    CHECK(report::generate_report(lone, hard_options()).cant_analyze_line ==
+          counted(1, "chart", "charts") + " can't be analyzed");
 
-    // The no-result line: a chart listed with no record, then two.
-    library.push_back(library_entry_for_file("none1", "None 1", "C:\\songs\\none1\\notes.mid"));
+    // The no-result line: a corpus chart listed with no record, then two.
+    // Each line opens with its own count, and the four counts add up.
+    const std::vector<std::string>& paths = corpus::chart_paths();
+    std::vector<std::string> unlisted;
+    for (const std::string& p : paths) {
+        const std::string md5 = app::hash_chart_file(p);
+        if (md5.empty()) continue;
+        if (std::none_of(library.begin(), library.end(),
+                         [&md5](const store::ChartLibraryEntry& e) { return e.md5 == md5; }))
+            unlisted.push_back(p);
+        if (unlisted.size() == 2) break;
+    }
+    REQUIRE(unlisted.size() == 2);
+    library.push_back(corpus::scanned_entry(unlisted[0], "None 1"));
     store.rebuild_chart_library(library);
-    page = report::generate_report(store, fixture_options(4));
-    CHECK(page.no_result_line == "1 chart has no result under these settings");
-    library.push_back(library_entry_for_file("none2", "None 2", "C:\\songs\\none2\\notes.mid"));
+    page = report::generate_report(store, hard_options());
+    CHECK(page.no_result_charts == 1);
+    CHECK(page.no_result_line.rfind(counted(1, "chart has", "charts have"), 0) == 0);
+    library.push_back(corpus::scanned_entry(unlisted[1], "None 2"));
     store.rebuild_chart_library(library);
-    page = report::generate_report(store, fixture_options(4));
+    page = report::generate_report(store, hard_options());
     CHECK(page.no_result_charts == 2);
-    CHECK(page.no_result_line == "2 charts have no result under these settings");
+    CHECK(page.no_result_line.rfind(counted(2, "chart has", "charts have"), 0) == 0);
     CHECK(page.songs + page.cant_analyze_charts + page.no_result_charts == page.library_charts);
 }
 
 TEST_CASE("path report coverage: no Ready chart but a stored failure reads Nothing to show") {
+    const std::vector<HardFailure> failures = hard_failures(1);
+    REQUIRE(failures.size() == 1);
     store::RecordStore store(":memory:");
     std::vector<store::ChartLibraryEntry> library;
-    store_failure(store, library, "bad", "Bad", ErrorKind::NoNotes, expert_no_notes_text());
-    library.push_back(library_entry_for_file("none", "None", "C:\\songs\\none\\notes.mid"));
+    store_hard_failure(store, library, failures[0], "Bad");
+    // A second corpus chart, listed with no result.
+    std::string unlisted;
+    for (const std::string& p : corpus::chart_paths()) {
+        const std::string md5 = app::hash_chart_file(p);
+        if (!md5.empty() && md5 != library[0].md5) {
+            unlisted = p;
+            break;
+        }
+    }
+    REQUIRE_FALSE(unlisted.empty());
+    library.push_back(corpus::scanned_entry(unlisted, "None"));
     store.rebuild_chart_library(library);
 
-    const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
+    const report::GeneratedReport page = report::generate_report(store, hard_options());
     CHECK(page.paths.empty());
     CHECK(page.empty_reason == report::EmptyReason::NothingToShow);
-    CHECK(page.why_empty == "Nothing to show");
+    CHECK(page.why_empty == report::kNothingToShow);
     // The lines still say why.
-    CHECK(page.cant_analyze_line == "1 chart has no Expert Pro Drums notes");
-    CHECK(page.no_result_line == "1 chart has no result under these settings");
+    CHECK(page.cant_analyze_line ==
+          counted(1, "chart has", "charts have") + " " + no_part_words(failures[0].text));
+    CHECK(page.no_result_line.rfind(counted(1, "chart has", "charts have"), 0) == 0);
     CHECK(page.library_charts == 2);
 }
 
 TEST_CASE("report lists only the wanted cap and names it") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    const std::vector<std::string> files = fill_store(store, library, 4, 1);
-    REQUIRE(files.size() == 1);
-    // The same chart again at 8 bars.
-    const BatchRun eight = fixture_settings(8).batch_run();
-    testdm::save(store, "h0", fixture_settings(8),
-                 analyze_chart_file(files[0], eight.settings).record);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(fixture_settings(4).batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    const store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "Title 0");
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, fixture_settings(4), charts[0].result.record);
+    // The same chart analyzed again under fixture_settings(cap, legacy_fills).
+    const auto save_at = [&store, &entry](int cap, bool legacy_fills) {
+        const Settings settings = fixture_settings(cap, legacy_fills);
+        const AnalysisResult result =
+            analyze_chart_file(entry.notespath, settings.batch_run().settings);
+        REQUIRE_FALSE(result.record.paths.empty());
+        testdm::save(store, entry.md5, settings, result.record);
+    };
+    save_at(8, false);
     REQUIRE(store.ready_records(fixture_settings(8).profile()).size() == 1);
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
-    CHECK(hydra::ends_with(four.subtitle, "SP cap 4 bars"));
+    CHECK(hydra::ends_with(four.subtitle, "SP cap " + bars_text(4)));
     // The subtitle counts what the report lists: the one chart at 4 bars, not
     // the 8-bar record the database also holds for the same chart.
     CHECK(four.songs == 1);
-    CHECK(four.subtitle.rfind("1 chart — ", 0) == 0);
+    CHECK(four.subtitle.rfind(counted(1, "chart", "charts") + " — ", 0) == 0);
     int rank1 = 0;
     options.max_paths = 100;
     for (const report::ReportRow& row : report::collect_rows(store, options).rows)
         if (row.rank == 1) ++rank1;
     CHECK(rank1 == 1);
 
-    // The cap reads through the house count rule: one bar, and commas from
-    // 1,000 (D48 Q12).
-    store_tied(store, library, "one", 1);
-    store_tied(store, library, "thousand", 1000);
-    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1)).subtitle, "SP cap 1 bar"));
-    CHECK(hydra::ends_with(report::generate_report(store, fixture_options(1000)).subtitle,
-                           "SP cap 1,000 bars"));
+    // The cap reads through the house count rule (bars_text, D48 Q12), at
+    // the one-bar and the thousand-bar ends.
+    for (const int cap : {1, 1000}) {
+        INFO("cap " << cap);
+        save_at(cap, false);
+        CHECK(hydra::ends_with(report::generate_report(store, fixture_options(cap)).subtitle,
+                               "SP cap " + bars_text(cap)));
+    }
 
     // A 1.0 report names its rule by the fill rule's one long name.
-    store_tied(store, library, "legacy", 4, /*legacy_fills=*/true);
+    save_at(4, true);
     CHECK(hydra::ends_with(report::generate_report(store, fixture_options(4, /*legacy_fills=*/true))
                                .subtitle,
-                           std::string("SP cap 4 bars — ") +
+                           "SP cap " + bars_text(4) + " — " +
                                fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long) +
                                " fills"));
 }
@@ -692,63 +917,82 @@ TEST_CASE("generate_report reports a 1.0-fills database under the 1.0 rule") {
     std::vector<corpus::ChartWithPaths> charts =
         corpus::charts_with_paths(legacy.batch_run().settings, 1);
     REQUIRE(charts.size() == 1);
-    store.rebuild_chart_library({library_entry_for_file("h0", "Title 0", charts[0].chart)});
-    testdm::save(store, "h0", legacy, charts[0].result.record);
+    const store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "Title 0");
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, legacy, charts[0].result.record);
 
     const report::GeneratedReport ch10 =
         report::generate_report(store, fixture_options(4, /*legacy_fills=*/true));
     CHECK(ch10.songs == 1);
     REQUIRE_FALSE(ch10.paths.empty());
-    for (const report::ReportRow& r : ch10.paths) CHECK(r.song == "Title 0");
-    CHECK(hydra::ends_with(ch10.subtitle, "SP cap 4 bars — Clone Hero 1.0 fills"));
+    for (const report::ReportRow& r : ch10.paths) CHECK(r.hyhash == entry.md5);
+    // The subtitle names the 1.0 rule by the fill rule's one long name.
+    CHECK(hydra::ends_with(ch10.subtitle,
+                           std::string(fill_rule_name(FillDeadlineRule::Ch10,
+                                                      FillRuleNameStyle::Long)) +
+                               " fills"));
 
+    // Under the 1.1 rule the page is empty, and its sentence is the one
+    // nothing_under_settings builds from the page's own profile and rule.
     const report::GeneratedReport ch11 = report::generate_report(store, fixture_options(4));
     CHECK(ch11.paths.empty());
     CHECK(ch11.empty_reason == report::EmptyReason::NothingUnderSettings);
     CHECK(ch11.why_empty ==
-          "Nothing is analyzed under these settings (Expert Pro Drums, 2x Bass, SP cap 4, "
-          "Clone Hero 1.1 fills). Analyze with these settings, or change them.");
+          report::nothing_under_settings(
+              fixture_settings(4).profile().chartmode, 4,
+              std::string(fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long)) +
+                  " fills"));
 }
 
 TEST_CASE("collect_rows: the library names go through display_title, display_artist and "
           "display_charter") {
     // test_song_input.cpp pins what those three do. This checks only that the
-    // page calls them: one tagged name each. The page names a chart by its
-    // library row (ChartIndex::naming), so a rescan's names replace
-    // store_tied's own.
+    // page calls them: one tagged name each, on a corpus chart's scanned row
+    // over its real record. The page names a chart by its library row
+    // (ChartIndex::naming).
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    store_tied(store, library, "u0", 4);
-    library[0].title = "<b>Bold Title</b>";
-    library[0].artist = test::kTagOnlyTitle;
-    library[0].charter = " <b>Bob</b> ";
-    store.rebuild_chart_library(library);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(fixture_settings(4).batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "<b>Bold Title</b>");
+    entry.artist = test::kTagOnlyTitle;
+    entry.charter = " <b>Bob</b> ";
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, fixture_settings(4), charts[0].result.record);
 
     const std::vector<report::ReportRow> rows =
         report::collect_rows(store, fixture_options(4)).rows;
     REQUIRE(!rows.empty());
     for (const report::ReportRow& row : rows) {
-        CHECK(row.song == "Bold Title");
-        CHECK(row.artist == kUnknownTitle);
-        CHECK(row.charter == "Bob");
+        CHECK(row.song == display_title(entry.title));
+        CHECK(row.artist == display_artist(entry.artist));
+        CHECK(row.charter == display_charter(entry.charter));
+        // Each name is changed by its cleaner, so a page that skipped one
+        // would show the raw name and fail here.
+        CHECK(row.song != entry.title);
+        CHECK(row.artist != entry.artist);
+        CHECK(row.charter != entry.charter);
     }
 }
 
 TEST_CASE("the report names a chart the scan found twice by its first copy") {
     store::RecordStore store(":memory:");
-    std::vector<store::ChartLibraryEntry> library;
-    REQUIRE(fill_store(store, library, 4, 1).size() == 1);
-    // The scan listed the real file first, as "Zed", then a copy of the same
-    // md5 as "Alpha". Alpha sorts first by name, but the first row names it.
-    library[0].title = "Zed";
-    store::ChartLibraryEntry other = library[0];
-    other.title = "Alpha";
-    other.rootfolder = "C:\\other";
-    store.rebuild_chart_library({library[0], other});
+    const Settings settings = fixture_settings(4);
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(settings.batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    // The scan listed the corpus file first, as "Zed", then a real copy of it
+    // in another folder as "Alpha". Alpha sorts first by name, but the first
+    // row names the chart.
+    const store::ChartLibraryEntry zed = corpus::scanned_entry(charts[0].chart, "Zed");
+    const store::ChartLibraryEntry alpha =
+        scanned_copy(charts[0].chart, "report_rows_first_copy", "Alpha");
+    store.rebuild_chart_library({zed, alpha});
+    testdm::save(store, zed.md5, settings, charts[0].result.record);
 
     const report::GeneratedReport page = report::generate_report(store, fixture_options(4));
     REQUIRE_FALSE(page.paths.empty());
-    for (const report::ReportRow& r : page.paths) CHECK(r.song == "Zed");
+    for (const report::ReportRow& r : page.paths) CHECK(r.song == display_title(zed.title));
     CHECK(page.songs == 2);  // both copies count (D76)
 }
 
@@ -761,26 +1005,39 @@ TEST_CASE("fill_rule_for: the legacy_fills flag names one fill rule") {
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     using report::tier_for;
 
-    // The 85 ms window -> budget 170: bands 2 / 42.5 / 85 / 127.5 / 170.
-    // Each edge belongs to the band below it (D48 Q3): a timing on the
-    // difficult floor is not past it, so 2.0 ms reads Normal, and 170.0 ms is
-    // still inside the two-hit budget, so it reads Insane+.
-    CHECK(tier_for(std::nullopt).first == "None");
-    CHECK(tier_for(1.9).first == "Normal");
-    CHECK_FALSE(past_difficult_floor(2.0));
-    CHECK(tier_for(2.0).first == "Normal");
-    CHECK(past_difficult_floor(2.1));
-    CHECK(tier_for(2.1).first == "Hard");
-    CHECK(tier_for(42.5).first == "Hard");
-    CHECK(tier_for(42.6).first == "Extreme");
-    CHECK(tier_for(85.0).first == "Extreme");
-    CHECK(tier_for(85.1).first == "Insane");
-    CHECK(tier_for(127.5).first == "Insane");
-    CHECK(tier_for(127.6).first == "Insane+");
-    CHECK(tier_for(170.0).first == "Insane+");
-    CHECK(tier_for(170.0).second == "t4");
-    CHECK(tier_for(170.1).first == "Beyond");
-    CHECK(tier_for(170.1).second == "t5");
+    // The names and edges come from their owner, timing_tiers(). The ladder
+    // opens at the difficult floor past_difficult_floor tests and closes at
+    // the two-hit budget (nominal_budget_ms); each edge belongs to the band
+    // below it (D48 Q3).
+    const std::vector<TimingTier> tiers = timing_tiers();
+    REQUIRE(tiers.size() >= 3);
+    const TimingTier& none = hydra::none_tier(tiers);
+    const TimingTier& beyond = hydra::beyond_tier(tiers);
+    CHECK(tier_for(std::nullopt) == std::make_pair(std::string(none.name), std::string(none.tok)));
+
+    // The first band ends on the difficult floor: on it is not past it.
+    REQUIRE(tiers.front().cutoff.has_value());
+    const double difficult_floor = *tiers.front().cutoff;
+    CHECK_FALSE(past_difficult_floor(difficult_floor));
+    CHECK(past_difficult_floor(difficult_floor + 0.01));
+    CHECK(tier_for(difficult_floor).first == tiers.front().name);
+    CHECK(tier_for(difficult_floor + 0.01).first != tiers.front().name);
+
+    // The last banded edge is the two-hit budget: on it is still inside,
+    // just past it reads Beyond.
+    std::optional<double> last_edge;
+    std::string last_name;
+    for (const TimingTier& t : tiers) {
+        if (!t.cutoff) continue;
+        if (last_edge) CHECK(*t.cutoff > *last_edge);
+        last_edge = t.cutoff;
+        last_name = t.name;
+    }
+    REQUIRE(last_edge.has_value());
+    CHECK(*last_edge == nominal_budget_ms());
+    CHECK(tier_for(*last_edge).first == last_name);
+    CHECK(tier_for(*last_edge + 0.01) ==
+          std::make_pair(std::string(beyond.name), std::string(beyond.tok)));
 }
 
 TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
@@ -798,15 +1055,37 @@ TEST_CASE("tier_for walks the timing_tiers table edge by edge") {
     }
 }
 
+// A corpus chart's real rows, listed under names with a tag and an accent:
+// each row's search text is already folded and holds no tag, and a search for
+// any shown name or the path finds the row.
 TEST_CASE("path report: a row's search text is folded and tag-free") {
-    report::ReportRow row;
-    row.song = "Halo";
-    row.artist = "Beyonc\xc3\xa9";  // Beyoncé
-    row.charter = "<b>Bob</b>";
-    row.path = "1";
-    row.tier = "None";
-    row.tok = "tn";
-    CHECK(path_report_view::path_search_text(row) == "halo beyonce bob 1");
+    store::RecordStore store(":memory:");
+    std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(fixture_settings(4).batch_run().settings, 1);
+    REQUIRE(charts.size() == 1);
+    store::ChartLibraryEntry entry = corpus::scanned_entry(charts[0].chart, "<i>Halo</i>");
+    entry.artist = "Beyonc\xc3\xa9";  // Beyoncé
+    entry.charter = "<b>Bob</b>";
+    store.rebuild_chart_library({entry});
+    testdm::save(store, entry.md5, fixture_settings(4), charts[0].result.record);
+
+    const std::vector<report::ReportRow> rows =
+        report::collect_rows(store, fixture_options(4)).rows;
+    REQUIRE_FALSE(rows.empty());
+    for (const report::ReportRow& row : rows) {
+        INFO("path " << row.path);
+        const std::string text = path_report_view::path_search_text(row);
+        // Folded: folding it again changes nothing, and it differs from the
+        // shown artist, which the fold changes.
+        CHECK(fold_for_search(text) == text);
+        CHECK(text.find(row.artist) == std::string::npos);
+        // Tag-free: no tag's opening bracket is left.
+        CHECK(text.find('<') == std::string::npos);
+        for (const std::string& shown : {row.song, row.artist, row.charter, row.path}) {
+            INFO("search for " << shown);
+            CHECK(report_view::search_matches(report_view::search_words(shown), text));
+        }
+    }
 }
 
 TEST_CASE("generate_report: one seam frames the report for every entry point") {
@@ -874,13 +1153,16 @@ TEST_CASE("generate_report: \"every path\" is the sentinel's, a huge --paths sta
     // Only the sentinel reads "every path".
     report::ReportOptions options = fixture_options(4);
     options.max_paths = report::kEveryPathSentinel;
-    CHECK(report::generate_report(store, options).subtitle.find(" — every path — ") !=
-          std::string::npos);
+    const std::string every = report::generate_report(store, options).subtitle;
+    CHECK(every.find(" — every path — ") != std::string::npos);
+    // The sentinel is never printed as a count.
+    CHECK(every.find(counted(report::kEveryPathSentinel, "path", "paths")) == std::string::npos);
 
-    // A large max_paths below it lists at most that many, so it says so.
-    options.max_paths = 200000000;
+    // A large max_paths below it lists at most that many, so it names that
+    // count through the house count rule (hydra::counted).
+    options.max_paths = report::kEveryPathSentinel - 1;
     const std::string subtitle = report::generate_report(store, options).subtitle;
-    CHECK(subtitle.find("top 200,000,000 paths per chart") != std::string::npos);
+    CHECK(subtitle.find(counted(options.max_paths, "path", "paths")) != std::string::npos);
     CHECK(subtitle.find(" — every path") == std::string::npos);
 }
 
