@@ -17,6 +17,7 @@ void DmFetchUsersJob::start() { spawn([this] { run(); }); }
 void DmFetchUsersJob::run() {
     run_guarded([this] {
         users_ = net::fetch_users(net::kDefaultApiBase, &cancel_);
+        app::dm_report::sort_users_by_name(users_);
         // A cancel can land while the server is still answering; the fetch
         // then returns normally. The picker asked to stop, so stop.
         return !is_cancelled();
