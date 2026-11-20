@@ -391,90 +391,90 @@ L-C05	count	counts/T5-IR14.md:113	Z-cite, S-snapshot, P-pbticks	tests/pb_ui/pbte
 L-C05	count	counts/T5-IR14.md:114	Z-cite, S-snapshot, P-pbticks	tests/pb_ui/pbtest_coach.cpp	base
 L-C05	count	counts/T5-IR14.md:115	P-message, Z-cite	tests/pb_ui/pbtest_files.cpp	base
 L-C06	count	counts/T5-IR15.md:15	F-row	tests/test_library_model.cpp	base
-L-C06	count	counts/T5-IR15.md:16	F-record	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:17	F-row, P-placeholder	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:18	F-row, P-placeholder	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:19	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:20	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:21	P-other, S-snapshot	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:22	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:23	F-row, P-placeholder	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:24	F-row, P-placeholder	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:25	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:26	P-setting	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:27	F-row, P-setting	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:28	F-row, P-message	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:29	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:30	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:31	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:32	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:33	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:34	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:35	F-summary	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:36	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:37	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:38	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:39	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:40	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:41	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:42	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:43	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:44	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:45	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:46	F-row, P-setting	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:47	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:48	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:49	F-row	tests/test_library_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:50	F-row	tests/test_library_model.cpp	inherited
+L-C06	count	counts/T5-IR15.md:16	F-record	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:17	F-row, P-placeholder	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:18	F-row, P-placeholder	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:19	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:20	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:21	P-other, S-snapshot	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:22	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:23	F-row, P-placeholder	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:24	F-row, P-placeholder	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:25	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:26	P-setting	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:27	F-row, P-setting	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:28	F-row, P-message	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:29	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:30	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:31	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:32	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:33	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:34	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:35	F-summary	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:36	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:37	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:38	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:39	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:40	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:41	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:42	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:43	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:44	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:45	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:46	F-row, P-setting	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:47	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:48	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:49	F-row	tests/test_library_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:50	F-row	tests/test_library_model.cpp	table-base
 L-C06	count	counts/T5-IR15.md:51	P-other	tests/test_list_scroll.cpp	base
-L-C06	count	counts/T5-IR15.md:52	P-other, Z-cite	tests/test_list_scroll.cpp	inherited
-L-C06	count	counts/T5-IR15.md:53	P-other, Z-cite	tests/test_list_scroll.cpp	inherited
-L-C06	count	counts/T5-IR15.md:54	F-row	tests/test_list_scroll.cpp	inherited
+L-C06	count	counts/T5-IR15.md:52	P-other, Z-cite	tests/test_list_scroll.cpp	table-base
+L-C06	count	counts/T5-IR15.md:53	P-other, Z-cite	tests/test_list_scroll.cpp	table-base
+L-C06	count	counts/T5-IR15.md:54	F-row	tests/test_list_scroll.cpp	table-base
 L-C06	count	counts/T5-IR15.md:55	P-other	tests/test_live_protocol.cpp	base
 L-C06	count	counts/T5-IR15.md:56	Z-cite, S-snapshot	tests/test_note_shuffle.cpp	base
-L-C06	count	counts/T5-IR15.md:58	Z-cite, S-snapshot	docs/audit/note-shuffle/probes/vectors/gen_vectors.py	base
-L-C06	count	counts/T5-IR15.md:59	Z-cite, S-snapshot	docs/audit/note-shuffle/probes/vectors/gen_vectors.py	inherited
-L-C06	count	counts/T5-IR15.md:60	Z-cite, S-snapshot	docs/audit/note-shuffle/probes/vectors/gen_vectors.py	inherited
-L-C06	count	counts/T5-IR15.md:61	Z-cite, S-snapshot, K-unreachable, F-result	docs/audit/note-shuffle/probes/vectors/gen_vectors.py	base
-L-C06	count	counts/T5-IR15.md:62	Z-cite, S-snapshot	docs/audit/note-shuffle/probes/vectors/gen_vectors.py	base
-L-C06	count	counts/T5-IR15.md:63	Z-cite, S-snapshot	docs/audit/note-shuffle/verify/check_video.py	base
+L-C06	count	counts/T5-IR15.md:58	Z-cite, S-snapshot	tests/test_note_shuffle.cpp	table-base
+L-C06	count	counts/T5-IR15.md:59	Z-cite, S-snapshot	tests/test_note_shuffle.cpp	table-base
+L-C06	count	counts/T5-IR15.md:60	Z-cite, S-snapshot	tests/test_note_shuffle.cpp	table-base
+L-C06	count	counts/T5-IR15.md:61	Z-cite, S-snapshot, K-unreachable, F-result	tests/test_note_shuffle.cpp	table-base
+L-C06	count	counts/T5-IR15.md:62	Z-cite, S-snapshot	tests/test_note_shuffle.cpp	table-base
+L-C06	count	counts/T5-IR15.md:63	Z-cite, S-snapshot	tests/test_note_shuffle.cpp	table-base
 L-C06	count	counts/T5-IR15.md:64	P-other	tests/test_model.cpp	base
-L-C06	count	counts/T5-IR15.md:66	F-result, P-other	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:67	P-name, E-echo	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:68	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:69	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:70	F-result, P-tiers	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:71	F-record	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:72	F-record	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:73	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:74	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:75	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:76	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:77	F-result, P-message	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:78	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:79	F-row, K-unreachable	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:80	P-setting	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:81	P-other	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:82	P-setting	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:83	P-setting	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:84	P-setting	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:85	F-result, P-tiers, Z-cite	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:86	P-tiers, P-setting	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:89	E-echo	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:90	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:91	P-other	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:93	P-message	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:94	P-message	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:95	P-placeholder	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:96	P-message	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:97	P-message	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:98	P-message	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:99	F-result	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:100	F-result, Z-cite	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:101	E-echo	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:102	P-other, Z-cite	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:103	P-setting, P-name	tests/test_model.cpp	inherited
-L-C06	count	counts/T5-IR15.md:104	P-name	tests/test_model.cpp	inherited
+L-C06	count	counts/T5-IR15.md:66	F-result, P-other	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:67	P-name, E-echo	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:68	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:69	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:70	F-result, P-tiers	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:71	F-record	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:72	F-record	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:73	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:74	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:75	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:76	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:77	F-result, P-message	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:78	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:79	F-row, K-unreachable	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:80	P-setting	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:81	P-other	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:82	P-setting	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:83	P-setting	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:84	P-setting	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:85	F-result, P-tiers, Z-cite	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:86	P-tiers, P-setting	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:89	E-echo	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:90	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:91	P-other	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:93	P-message	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:94	P-message	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:95	P-placeholder	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:96	P-message	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:97	P-message	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:98	P-message	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:99	F-result	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:100	F-result, Z-cite	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:101	E-echo	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:102	P-other, Z-cite	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:103	P-setting, P-name	tests/test_model.cpp	table-base
+L-C06	count	counts/T5-IR15.md:104	P-name	tests/test_model.cpp	table-base
 L-C07	count	counts/T5-IR16.md:11	O-gamemem, E-echo	tools/ch_probe/tests/test_play_in_game.py	legend-base
 L-C07	count	counts/T5-IR16.md:12	O-gamemem	tools/ch_probe/tests/test_play_in_game.py	legend-base
 L-C07	count	counts/T5-IR16.md:13	O-gamemem, P-message, E-echo	tools/ch_probe/tests/test_play_in_game.py	legend-base
@@ -497,9 +497,9 @@ L-C07	count	counts/T5-IR16.md:33	C-reader	tools/ch_probe/tests/test_probe_songs.
 L-C07	count	counts/T5-IR16.md:34	C-reader, E-echo	tools/ch_probe/tests/test_probe_songs.py	legend-base
 L-C07	count	counts/T5-IR16.md:39	P-onefile, Z-cite, S-snapshot	tools/ch_probe/tests/test_probe_songs.py	legend-base
 L-C07	count	counts/T5-IR16.md:41	P-other	tools/ch_probe/tests/test_probe_songs.py	legend-base
-L-C07	count	counts/T5-IR16.md:42	O-gamemem	tools/ch_probe/tests/test_probe_songs.py	inherited
+L-C07	count	counts/T5-IR16.md:42	O-gamemem	tools/ch_probe/tests/test_process.py	legend-base
 L-C07	count	counts/T5-IR16.md:43	C-reader, P-message	tools/ch_probe/tests/test_process_readonly.py	legend-base
-L-C07	count	counts/T5-IR16.md:44	P-other	tools/ch_probe/tests/test_process_readonly.py	inherited
+L-C07	count	counts/T5-IR16.md:44	P-other	tools/ch_probe/tests/test_s2_window_constants.py	legend-base
 L-C07	count	counts/T5-IR16.md:45	F-summary, F-presslog, P-message	tools/ch_probe/tests/test_score_compare.py	legend-base
 L-C07	count	counts/T5-IR16.md:46	F-presslog, F-summary	tools/ch_probe/tests/test_score_compare.py	legend-base
 L-C07	count	counts/T5-IR16.md:47	F-presslog, F-summary	tools/ch_probe/tests/test_score_compare.py	legend-base
@@ -931,16 +931,16 @@ L-C12	count	counts/T5-IR20.md:39	P-setting	tests/test_app_library.cpp	inherited
 L-C12	count	counts/T5-IR20.md:40	F-row	tests/test_app_library.cpp	inherited
 L-C12	count	counts/T5-IR20.md:41	F-row	tests/test_app_library.cpp	inherited
 L-C12	count	counts/T5-IR20.md:42	F-result	tests/test_highway_draw.cpp	exact
-L-C12	count	counts/T5-IR20.md:43	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:44	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:45	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:46	F-result, Z-cite	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:47	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:48	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:49	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:50	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:51	F-result	tests/test_highway_draw.cpp	inherited
-L-C12	count	counts/T5-IR20.md:52	F-result	tests/test_highway_draw.cpp	inherited
+L-C12	count	counts/T5-IR20.md:43	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:44	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:45	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:46	F-result, Z-cite	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:47	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:48	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:49	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:50	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:51	F-result	tests/test_highway_draw.cpp	table-exact
+L-C12	count	counts/T5-IR20.md:52	F-result	tests/test_highway_draw.cpp	table-exact
 L-C12	count	counts/T5-IR21.md:10	F-row, E-echo	tests/ui/uitest_library.cpp	base
 L-C12	count	counts/T5-IR21.md:11	P-name	tests/ui/uitest_library.cpp	base
 L-C12	count	counts/T5-IR21.md:12	P-setting	tests/ui/uitest_library.cpp	base
@@ -1646,22 +1646,22 @@ L-C20	count	counts/T5-KR1.md:28	P-other	tools/ch_mcp/tests/test_method_watch.py	
 L-C20	count	counts/T5-KR1.md:29	O-toolout, P-message	tools/ch_mcp/mono_reader.ps1	base
 L-C20	count	counts/T5-KR1.md:30	O-toolout, P-message, E-echo, C-stub	tools/ch_mcp/tests/test_mono_facts.py	legend-base
 L-C20	count	counts/T5-KR1.md:33	O-gamemem, F-schedule	tools/ch_mcp/tests/test_press_schedule.py	legend-base
-L-C20	count	counts/T5-KR1.md:45	O-process, C-reader	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:46	O-process, C-reader	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:47	O-process, C-reader	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:48	C-reader	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:49	C-reader	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:50	C-reader	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:51	O-process, C-reader, P-message	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:52	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:53	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:54	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:55	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:56	C-reader, P-message	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:57	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:58	O-process, C-reader, P-message	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:63	P-message, C-reader, C-clock	tools/ch_mcp/tests/test_press_schedule.py	inherited
-L-C20	count	counts/T5-KR1.md:70	O-toolout, P-message, E-echo	tools/ch_mcp/tests/test_press_schedule.py	inherited
+L-C20	count	counts/T5-KR1.md:45	O-process, C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:46	O-process, C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:47	O-process, C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:48	C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:49	C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:50	C-reader	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:51	O-process, C-reader, P-message	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:52	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:53	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:54	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:55	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:56	C-reader, P-message	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:57	C-reader, P-message, E-echo	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:58	O-process, C-reader, P-message	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:63	P-message, C-reader, C-clock	tools/ch_mcp/tests/test_quiet.py	legend-base
+L-C20	count	counts/T5-KR1.md:70	O-toolout, P-message, E-echo	tools/ch_mcp/tests/test_quiet.py	legend-base
 L-C20	count	counts/T5-KR1.md:72	C-stub, P-message	tools/ch_mcp/tests/test_recorder_link.py	legend-base
 L-C20	count	counts/T5-KR1.md:73	C-stub, P-message	tools/ch_mcp/tests/test_recorder_link.py	legend-base
 L-C20	count	counts/T5-KR1.md:74	C-stub, P-message	tools/ch_mcp/tests/test_recorder_link.py	legend-base
@@ -1811,31 +1811,31 @@ L-C21	count	counts/T5-KR3.md:106	E-echo	tools/ch_probe/tests/test_input_driver.p
 L-C21	count	counts/T5-KR3.md:113	S-snapshot	tools/ch_probe/tests/test_play_chart.py	base
 L-C21	count	counts/T5-KR3.md:117	C-clock, O-gamemem, S-snapshot	tools/ch_probe/tests/test_play_chart.py	base
 L-C21	count	counts/T5-KR3.md:121	O-gamemem, C-clock	tools/ch_probe/tests/test_play_chart.py	base
-L-C21	count	counts/T5-KR4.md:11	F-record	:188	unresolved
-L-C21	count	counts/T5-KR4.md:12	F-record	:215	unresolved
-L-C21	count	counts/T5-KR4.md:20	F-record	:430	unresolved
+L-C21	count	counts/T5-KR4.md:11	F-record	tests/test_store_records.cpp	table-base
+L-C21	count	counts/T5-KR4.md:12	F-record	tests/test_store_records.cpp	table-base
+L-C21	count	counts/T5-KR4.md:20	F-record	tests/test_store_records.cpp	table-base
 L-C21	count	counts/T5-KR4.md:23	C-analyzer, F-row	tests/test_library_jobs.cpp	base
-L-C21	count	counts/T5-KR4.md:24	C-analyzer, F-row	tests/test_library_jobs.cpp	inherited
-L-C21	count	counts/T5-KR4.md:25	C-analyzer, F-row	tests/test_library_jobs.cpp	inherited
-L-C21	count	counts/T5-KR4.md:26	C-analyzer, F-row	tests/test_library_jobs.cpp	inherited
-L-C21	count	counts/T5-KR4.md:27	C-analyzer, F-row	tests/test_library_jobs.cpp	inherited
-L-C21	count	counts/T5-KR4.md:28	C-analyzer, F-row	tests/test_library_jobs.cpp	inherited
+L-C21	count	counts/T5-KR4.md:24	C-analyzer, F-row	tests/test_library_jobs.cpp	table-base
+L-C21	count	counts/T5-KR4.md:25	C-analyzer, F-row	tests/test_library_jobs.cpp	table-base
+L-C21	count	counts/T5-KR4.md:26	C-analyzer, F-row	tests/test_library_jobs.cpp	table-base
+L-C21	count	counts/T5-KR4.md:27	C-analyzer, F-row	tests/test_library_jobs.cpp	table-base
+L-C21	count	counts/T5-KR4.md:28	C-analyzer, F-row	tests/test_library_jobs.cpp	table-base
 L-C21	count	counts/T5-KR4.md:29	F-row	tests/test_store_library.cpp	base
-L-C21	count	counts/T5-KR4.md:30	F-row	tests/test_store_library.cpp	inherited
+L-C21	count	counts/T5-KR4.md:30	F-row	tests/test_store_library.cpp	table-base
 L-C21	count	counts/T5-KR4.md:34	F-row	tests/test_app_library.cpp	base
-L-C21	count	counts/T5-KR4.md:35	F-row	tests/test_app_library.cpp	inherited
+L-C21	count	counts/T5-KR4.md:35	F-row	tests/test_app_library.cpp	table-base
 L-C21	count	counts/T5-KR4.md:36	O-reply	tests/test_app_reports.cpp	base
 L-C21	count	counts/T5-KR4.md:37	P-message, C-rig	tools/ch_mcp/tests/test_game_tools.py	exact
-L-C21	count	counts/T5-KR4.md:39	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	name
-L-C21	count	counts/T5-KR4.md:40	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	name
-L-C21	count	counts/T5-KR4.md:41	C-rig	tools/ch_mcp/tests/test_game_tools.py	name
-L-C21	count	counts/T5-KR4.md:42	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	inherited
-L-C21	count	counts/T5-KR4.md:43	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	inherited
+L-C21	count	counts/T5-KR4.md:39	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	table-exact
+L-C21	count	counts/T5-KR4.md:40	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	table-exact
+L-C21	count	counts/T5-KR4.md:41	C-rig	tools/ch_mcp/tests/test_game_tools.py	table-exact
+L-C21	count	counts/T5-KR4.md:42	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	table-exact
+L-C21	count	counts/T5-KR4.md:43	F-schedule, C-rig	tools/ch_mcp/tests/test_game_tools.py	table-exact
 L-C21	count	counts/T5-KR4.md:44	P-message	tools/ch_mcp/tests/test_bot_run.py	exact
-L-C21	count	counts/T5-KR4.md:47	C-stub, P-name	tools/ch_mcp/tests/test_bot_run.py	inherited
+L-C21	count	counts/T5-KR4.md:47	C-stub, P-name	tools/ch_mcp/tests/test_bot_run.py	table-exact
 L-C21	count	counts/T5-KR4.md:49	O-scorestats	tools/ch_mcp/tests/test_compare_scorestats.py	base
 L-C21	count	counts/T5-KR4.md:50	C-rig, P-message	tools/ch_mcp/tests/test_game_tools.py	base
-L-C21	count	counts/T5-KR4.md:51	C-rig, P-message	tools/ch_mcp/tests/test_game_tools.py	inherited
+L-C21	count	counts/T5-KR4.md:51	C-rig, P-message	tools/ch_mcp/tests/test_game_tools.py	table-base
 L-C21	count	counts/T5-KR4.md:55	P-other, Z-cite	tools/ch_mcp/tests/test_kit_tools.py	base
 L-C21	count	counts/T5-KR4.md:57	P-message	tests/single_owner/scan.cpp	base
 L-C21	count	counts/T5-KR4.md:59	P-message	tests/single_owner/scan.cpp	base
@@ -1843,7 +1843,7 @@ L-C21	count	counts/T5-KR4.md:61	P-other	tests/single_owner/scan.cpp	base
 L-C21	count	counts/T5-KR4.md:62		tests/single_owner/scan.cpp	base
 L-C21	count	counts/T5-KR4.md:70	E-echo, C-clock	tests/test_preview_clock.cpp	base
 L-C21	count	counts/T5-KR4.md:71	F-result, P-other	tests/test_replay_schedule.cpp	base
-L-C21	count	counts/T5-KR4.md:72	E-echo, Z-cite, P-other, F-result	tests/test_replay_schedule.cpp	inherited
+L-C21	count	counts/T5-KR4.md:72	E-echo, Z-cite, P-other, F-result	tests/test_replay_schedule.cpp	table-base
 L-C21	count	counts/T5-KR4.md:74	P-tiers, Z-cite	tests/test_timing.cpp	base
 L-C21	count	counts/T5-KR5.md:23	P-message	tests/test_preview_controller.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:28		tests/test_preview_controller.cpp	header-exact
@@ -1857,7 +1857,7 @@ L-C21	count	counts/T5-KR5.md:46	F-row	tests/test_library_jobs.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:47	F-row, F-record	tests/test_library_jobs.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:48	E-echo	tests/test_library_jobs.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:56	C-analyzer	tests/test_app_library.cpp	header-exact
-L-C21	count	counts/T5-KR5.md:70	E-echo	tests/test_stem_reader.cpp	header-exact
+L-C21	count	counts/T5-KR5.md:70	E-echo	tests/test_store_library.cpp	legend-base
 L-C21	count	counts/T5-KR5.md:85	P-other, Z-cite	tests/test_store_open.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:86	P-other	tests/test_store_open.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:87	P-message	tests/test_store_open.cpp	header-exact
@@ -1865,46 +1865,46 @@ L-C21	count	counts/T5-KR5.md:89	P-other	tests/test_store_open.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:100	P-message	tests/single_owner/scan.cpp	base
 L-C21	count	counts/T5-KR5.md:108	P-setting	tests/ui/uitest_preview.cpp	header-exact
 L-C21	count	counts/T5-KR5.md:116	F-result	tests/test_highway_draw.cpp	base
-L-C21	count	counts/T5-KR5.md:117		tests/test_highway_draw.cpp	inherited
+L-C21	count	counts/T5-KR5.md:117		tests/test_highway_draw.cpp	table-base
 L-C21	count	counts/T5-KR5.md:120	F-record	tests/test_store_records.cpp	base
-L-C21	count	counts/T5-KR5.md:121	F-record, F-db	tests/test_store_records.cpp	inherited
+L-C21	count	counts/T5-KR5.md:121	F-record, F-db	tests/test_store_records.cpp	table-base
 L-C21	count	counts/T5-KR5.md:122	P-other, Z-cite	tests/test_squeeze_rating.cpp	base
-L-C21	count	counts/T5-KR5.md:123	F-result	tests/test_squeeze_rating.cpp	inherited
+L-C21	count	counts/T5-KR5.md:123	F-result	tests/test_squeeze_rating.cpp	table-base
 L-C21	count	counts/T5-KR5.md:126	F-row	tests/test_report_rows.cpp	base
-L-C21	count	counts/T5-KR5.md:127	F-record	tests/test_report_rows.cpp	inherited
+L-C21	count	counts/T5-KR5.md:127	F-record	tests/test_report_rows.cpp	table-base
 L-C21	count	counts/T5-KR5.md:145	P-other	tests/test_activation_rows.cpp	base
 L-C21	count	counts/T5-KR5.md:146	F-row, P-message	tests/test_report_view.cpp	base
 L-C21	count	counts/T5-KR5.md:147	P-message	tests/test_precheck.cpp	base
 L-C21	count	counts/T5-KR5.md:148	P-other	tests/test_helpers.cpp	base
 L-R01	record	records/A1.md:17	F-row, K-unreachable	tests/report_samples.cpp	exact
 L-R01	record	records/A1.md:131	F-row, K-selfmade	tests/report_samples.cpp	exact
-L-R01	record	records/A10.md:24	O-reply, S-snapshot, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:49	O-reply, P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:68	O-reply, P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:88	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:108	F-row	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:126	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:147	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:170	F-row, P-message, K-comment	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:192	P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:211	O-reply, P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:231	O-reply, P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:249	O-reply, P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:269	F-row, P-other, K-cantfail, K-duplicate	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:287	F-row, P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:308	P-other	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:391	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:411	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:434	P-message, Z-cite	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:458	P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:478	P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:497	P-message, P-name	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:520	P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:540	K-cantfail	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:558	F-record	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:578	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:597	O-reply, P-message	tests/test_dm_report.cpp	exact
-L-R01	record	records/A10.md:617	K-partial	tests/test_dm_report.cpp	exact
+L-R01	record	records/A10.md:24	O-reply, S-snapshot, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:49	O-reply, P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:68	O-reply, P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:88	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:108	F-row	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:126	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:147	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:170	F-row, P-message, K-comment	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:192	P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:211	O-reply, P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:231	O-reply, P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:249	O-reply, P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:269	F-row, P-other, K-cantfail, K-duplicate	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:287	F-row, P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:308	P-other	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:391	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:411	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:434	P-message, Z-cite	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:458	P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:478	P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:497	P-message, P-name	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:520	P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:540	K-cantfail	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:558	F-record	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:578	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:597	O-reply, P-message	tests/test_dm_report.cpp	heading-exact
+L-R01	record	records/A10.md:617	K-partial	tests/test_dm_report.cpp	heading-exact
 L-R01	record	records/A11.md:11	K-skip	tests/test_docs_match_code.cpp	exact
 L-R01	record	records/A11.md:34	K-skip	tests/test_docs_match_code.cpp	exact
 L-R01	record	records/A11.md:57	C-ownchecker, P-other	tests/test_docs_match_code.cpp	exact
@@ -1921,72 +1921,72 @@ L-R01	record	records/A12.md:191	C-ownchecker, P-message	tests/test_docs_match_co
 L-R01	record	records/A12.md:208	P-other	tests/test_docs_match_code.cpp	exact
 L-R01	record	records/A12.md:226	P-message, K-namebody	tests/test_docs_match_code.cpp	exact
 L-R01	record	records/A12.md:243	C-ownchecker	tests/test_docs_match_code.cpp	exact
-L-R01	record	records/A13.md:15	K-skip, K-floor	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:63	K-selfmade, K-floor	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:105	S-snapshot, K-floor, K-duplicate	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:143	K-skip, K-floor	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:183	K-selfmade, K-skip, K-floor	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:222	K-cantfail, K-skip, K-floor	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:261	K-selfmade, K-skip, K-floor, K-namebody	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:304	K-skip	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:344	K-floor, K-selfmade	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:387	S-snapshot, K-skip	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:427	K-skip	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:464	K-selfmade	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:502	K-selfmade	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:541	S-snapshot, C-ownchecker, K-partial	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:578	K-skip	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:614	K-comment	tests/test_engine_sweeps.cpp	exact
-L-R01	record	records/A13.md:660	P-builtchart, S-snapshot, K-comment	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:693	P-builtchart, S-snapshot	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:726	P-builtchart, K-comment, K-cantfail	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:760	P-builtchart, K-comment, Z-cite	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:794	P-builtchart, K-comment, Z-cite, K-unreachable	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:828	P-builtchart, S-snapshot	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:861	K-selfmade	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:895	P-name	tests/test_fill_deadline.cpp	exact
-L-R01	record	records/A13.md:930	P-message	tests/test_fill_deadline.cpp	exact
-L-R02	record	records/A14.md:21	F-record, P-setting, K-comment	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:38	F-record, P-setting, K-comment	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:55	F-record, P-setting	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:72	F-record, P-setting	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:89	F-record, P-setting	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:106	F-record, P-setting	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:124	F-row, P-other, K-unreachable	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:141	F-record, P-message	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:158	F-record, P-setting, K-selfmade	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:175	F-row, K-nocode	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:193	K-nocode, P-setting	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:210	P-other, K-nocode	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:227	P-message, K-unreachable	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:244	K-nocode	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:261	P-other	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:278	F-record, P-message	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:295	P-other	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:313	P-message	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:330	F-record, P-message, K-nocode	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:347	F-record, P-message	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:365	F-record	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:382	F-record	tests/test_fill_report.cpp	exact
-L-R02	record	records/A14.md:408	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:425	P-builtchart	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:442	P-builtchart, P-other, K-comment	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:459	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:476	K-selfmade, P-builtchart	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:493	K-floor, K-skip	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:510	S-snapshot, Z-cite, K-skip, K-floor	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:527	K-floor, K-skip	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:544	K-floor, K-skip, K-selfmade	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:561	S-snapshot, Z-cite	tests/test_fills_and_skips.cpp	exact
-L-R02	record	records/A14.md:586		tests/test_fitted_text_cache.cpp	exact
-L-R02	record	records/A14.md:603		tests/test_fitted_text_cache.cpp	exact
-L-R02	record	records/A14.md:620		tests/test_fitted_text_cache.cpp	exact
-L-R02	record	records/A14.md:637		tests/test_fitted_text_cache.cpp	exact
-L-R02	record	records/A14.md:654		tests/test_fitted_text_cache.cpp	exact
-L-R02	record	records/A14.md:671		tests/test_fitted_text_cache.cpp	exact
-L-R02	record	records/A14.md:695	P-setting	tests/test_helpers.cpp	exact
-L-R02	record	records/A14.md:712	P-message	tests/test_helpers.cpp	exact
-L-R02	record	records/A14.md:746	P-setting, K-partial	tests/test_helpers.cpp	exact
+L-R01	record	records/A13.md:15	K-skip, K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:63	K-selfmade, K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:105	S-snapshot, K-floor, K-duplicate	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:143	K-skip, K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:183	K-selfmade, K-skip, K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:222	K-cantfail, K-skip, K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:261	K-selfmade, K-skip, K-floor, K-namebody	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:304	K-skip	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:344	K-floor, K-selfmade	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:387	S-snapshot, K-skip	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:427	K-skip	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:464	K-selfmade	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:502	K-selfmade	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:541	S-snapshot, C-ownchecker, K-partial	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:578	K-skip	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:614	K-comment	tests/test_engine_sweeps.cpp	heading-exact
+L-R01	record	records/A13.md:660	P-builtchart, S-snapshot, K-comment	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:693	P-builtchart, S-snapshot	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:726	P-builtchart, K-comment, K-cantfail	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:760	P-builtchart, K-comment, Z-cite	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:794	P-builtchart, K-comment, Z-cite, K-unreachable	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:828	P-builtchart, S-snapshot	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:861	K-selfmade	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:895	P-name	tests/test_fill_deadline.cpp	heading-exact
+L-R01	record	records/A13.md:930	P-message	tests/test_fill_deadline.cpp	heading-exact
+L-R02	record	records/A14.md:21	F-record, P-setting, K-comment	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:38	F-record, P-setting, K-comment	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:55	F-record, P-setting	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:72	F-record, P-setting	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:89	F-record, P-setting	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:106	F-record, P-setting	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:124	F-row, P-other, K-unreachable	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:141	F-record, P-message	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:158	F-record, P-setting, K-selfmade	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:175	F-row, K-nocode	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:193	K-nocode, P-setting	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:210	P-other, K-nocode	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:227	P-message, K-unreachable	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:244	K-nocode	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:261	P-other	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:278	F-record, P-message	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:295	P-other	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:313	P-message	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:330	F-record, P-message, K-nocode	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:347	F-record, P-message	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:365	F-record	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:382	F-record	tests/test_fill_report.cpp	heading-exact
+L-R02	record	records/A14.md:408	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:425	P-builtchart	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:442	P-builtchart, P-other, K-comment	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:459	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:476	K-selfmade, P-builtchart	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:493	K-floor, K-skip	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:510	S-snapshot, Z-cite, K-skip, K-floor	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:527	K-floor, K-skip	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:544	K-floor, K-skip, K-selfmade	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:561	S-snapshot, Z-cite	tests/test_fills_and_skips.cpp	heading-exact
+L-R02	record	records/A14.md:586		tests/test_fitted_text_cache.cpp	heading-exact
+L-R02	record	records/A14.md:603		tests/test_fitted_text_cache.cpp	heading-exact
+L-R02	record	records/A14.md:620		tests/test_fitted_text_cache.cpp	heading-exact
+L-R02	record	records/A14.md:637		tests/test_fitted_text_cache.cpp	heading-exact
+L-R02	record	records/A14.md:654		tests/test_fitted_text_cache.cpp	heading-exact
+L-R02	record	records/A14.md:671		tests/test_fitted_text_cache.cpp	heading-exact
+L-R02	record	records/A14.md:695	P-setting	tests/test_helpers.cpp	heading-exact
+L-R02	record	records/A14.md:712	P-message	tests/test_helpers.cpp	heading-exact
+L-R02	record	records/A14.md:746	P-setting, K-partial	tests/test_helpers.cpp	heading-exact
 L-R02	record	records/A15.md:30	P-other	tests/test_highway_draw.cpp	exact
 L-R02	record	records/A15.md:47	P-other	tests/test_highway_draw.cpp	exact
 L-R02	record	records/A15.md:64	P-other	tests/test_highway_draw.cpp	exact
@@ -2036,28 +2036,28 @@ L-R02	record	records/A18.md:494	K-duplicate	tests/test_model.cpp	exact
 L-R02	record	records/A18.md:539	P-other	tests/test_model.cpp	exact
 L-R02	record	records/A18.md:551	P-other, K-comment	tests/test_model.cpp	exact
 L-R02	record	records/A18.md:570	K-selfmade, K-duplicate	tests/test_model.cpp	exact
-L-R03	record	records/A19.md:21	P-setting, K-comment, Z-cite	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:39	P-other, F-result	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:71	F-result, P-setting	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:102	F-result, K-partial	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:119	K-selfmade, K-skip, F-result	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:135	K-selfmade, K-skip, P-setting	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:151	K-skip, K-selfmade	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:167	P-burnout, P-setting, F-record	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:184	P-burnout, P-setting	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:231	P-burnout, K-duplicate	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:248	P-name	tests/test_path_list.cpp	exact
-L-R03	record	records/A19.md:268	K-namebody, P-setting, E-echo	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:285	P-pbticks, S-snapshot, Z-cite, F-result	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:303	P-allister, F-result	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:320	P-pbticks, S-snapshot	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:337	P-pbticks, S-snapshot, Z-cite	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:353	P-pbticks, S-snapshot, F-result	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:369	P-pbticks, P-message, S-snapshot	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:386	P-allister, S-snapshot, Z-cite	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:403	P-allister, S-snapshot, Z-cite	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:418	P-pbticks, P-message, S-snapshot	tests/test_pb_text.cpp	exact
-L-R03	record	records/A19.md:440	S-snapshot, P-other, Z-cite	tests/test_precheck.cpp	exact
+L-R03	record	records/A19.md:21	P-setting, K-comment, Z-cite	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:39	P-other, F-result	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:71	F-result, P-setting	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:102	F-result, K-partial	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:119	K-selfmade, K-skip, F-result	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:135	K-selfmade, K-skip, P-setting	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:151	K-skip, K-selfmade	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:167	P-burnout, P-setting, F-record	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:184	P-burnout, P-setting	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:231	P-burnout, K-duplicate	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:248	P-name	tests/test_path_list.cpp	heading-exact
+L-R03	record	records/A19.md:268	K-namebody, P-setting, E-echo	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:285	P-pbticks, S-snapshot, Z-cite, F-result	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:303	P-allister, F-result	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:320	P-pbticks, S-snapshot	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:337	P-pbticks, S-snapshot, Z-cite	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:353	P-pbticks, S-snapshot, F-result	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:369	P-pbticks, P-message, S-snapshot	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:386	P-allister, S-snapshot, Z-cite	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:403	P-allister, S-snapshot, Z-cite	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:418	P-pbticks, P-message, S-snapshot	tests/test_pb_text.cpp	heading-exact
+L-R03	record	records/A19.md:440	S-snapshot, P-other, Z-cite	tests/test_precheck.cpp	heading-exact
 L-R03	record	records/A2.md:18	K-duplicate, K-comment	tests/test_activation_rows.cpp	exact
 L-R03	record	records/A2.md:36	K-duplicate	tests/test_activation_rows.cpp	exact
 L-R03	record	records/A2.md:71	K-cantfail, K-selfmade	tests/test_activation_rows.cpp	exact
@@ -2151,62 +2151,62 @@ L-R04	record	records/A24.md:444	K-skip, K-floor, K-cantfail	tests/test_replay.cp
 L-R04	record	records/A24.md:464	P-name	tests/test_replay.cpp	exact
 L-R04	record	records/A24.md:483	E-echo, K-selfmade	tests/test_replay.cpp	exact
 L-R04	record	records/A24.md:500	K-skip, K-floor	tests/test_replay.cpp	exact
-L-R04	record	records/A25.md:47	K-nocode, P-other	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:64	F-row, P-other	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:80	F-row, P-other, K-comment	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:96	F-row, P-other, K-comment	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:112	F-row, P-other	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:128	P-setting	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:144	K-nocode, P-other	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:160	K-partial, Z-cite, P-other	tests/test_report_page.cpp	exact
-L-R04	record	records/A25.md:244	K-duplicate, K-cantfail	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:276	K-selfmade, P-other	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:308	K-skip, K-floor	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:341	P-other, P-setting	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:357	P-setting, K-duplicate	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:503	K-duplicate, P-other	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:535		tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:567	P-setting, P-other, K-floor	tests/test_report_rows.cpp	exact
-L-R04	record	records/A25.md:664	K-selfmade	tests/test_report_rows.cpp	exact
-L-R04	record	records/A26.md:13	P-message	tests/test_run_guard.cpp	exact
-L-R04	record	records/A26.md:29	P-message	tests/test_run_guard.cpp	exact
-L-R04	record	records/A26.md:76	P-message	tests/test_run_guard.cpp	exact
-L-R04	record	records/A26.md:141	K-partial	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:202	K-cantfail	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:308	P-tiers	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:324	K-skip, K-floor	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:339	K-cantfail, K-floor, K-skip	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:354	S-snapshot	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:369	S-snapshot	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:384	S-snapshot	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:429	K-duplicate	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:444	K-duplicate	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:474	K-namebody	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:489	K-selfmade	tests/test_rules.cpp	exact
-L-R04	record	records/A26.md:541	K-comment	tests/test_report_view.cpp	exact
-L-R04	record	records/A26.md:602	P-tiers	tests/test_report_view.cpp	exact
-L-R04	record	records/A26.md:633	F-row, P-setting, P-tiers	tests/test_report_view.cpp	exact
-L-R04	record	records/A26.md:648	P-tiers	tests/test_report_view.cpp	exact
-L-R04	record	records/A26.md:679	F-row, P-setting	tests/test_report_view.cpp	exact
-L-R04	record	records/A26.md:694	P-setting, F-row	tests/test_report_view.cpp	exact
-L-R04	record	records/A27.md:22	S-snapshot, Z-cite	tests/test_saved_figure_fill.cpp	exact
-L-R04	record	records/A27.md:85	S-snapshot	tests/test_saved_figure_fill.cpp	exact
-L-R04	record	records/A27.md:101	K-skip	tests/test_saved_figure_fill.cpp	exact
-L-R04	record	records/A27.md:117	S-snapshot	tests/test_saved_figure_fill.cpp	exact
-L-R04	record	records/A27.md:133	K-duplicate, K-namebody	tests/test_saved_figure_fill.cpp	exact
-L-R04	record	records/A27.md:164	P-other	tests/test_saved_figure_fill.cpp	exact
-L-R04	record	records/A27.md:184	S-snapshot, Z-cite	tests/test_song_audio.cpp	exact
-L-R04	record	records/A27.md:201		tests/test_song_audio.cpp	exact
-L-R04	record	records/A27.md:217	K-comment	tests/test_song_audio.cpp	exact
-L-R04	record	records/A27.md:239	S-snapshot, Z-cite	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:256	S-snapshot, Z-cite	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:272	S-snapshot	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:303	K-skip, K-floor	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:334	K-selfmade	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:350	P-builtchart	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:366	K-skip, K-floor	tests/test_search_target.cpp	exact
-L-R04	record	records/A27.md:434	K-comment	tests/test_song_input.cpp	exact
-L-R04	record	records/A27.md:497	K-comment	tests/test_song_input.cpp	exact
+L-R04	record	records/A25.md:47	K-nocode, P-other	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:64	F-row, P-other	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:80	F-row, P-other, K-comment	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:96	F-row, P-other, K-comment	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:112	F-row, P-other	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:128	P-setting	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:144	K-nocode, P-other	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:160	K-partial, Z-cite, P-other	tests/test_report_page.cpp	heading-exact
+L-R04	record	records/A25.md:244	K-duplicate, K-cantfail	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:276	K-selfmade, P-other	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:308	K-skip, K-floor	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:341	P-other, P-setting	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:357	P-setting, K-duplicate	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:503	K-duplicate, P-other	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:535		tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:567	P-setting, P-other, K-floor	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A25.md:664	K-selfmade	tests/test_report_rows.cpp	heading-exact
+L-R04	record	records/A26.md:13	P-message	tests/test_run_guard.cpp	heading-exact
+L-R04	record	records/A26.md:29	P-message	tests/test_run_guard.cpp	heading-exact
+L-R04	record	records/A26.md:76	P-message	tests/test_run_guard.cpp	heading-exact
+L-R04	record	records/A26.md:141	K-partial	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:202	K-cantfail	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:308	P-tiers	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:324	K-skip, K-floor	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:339	K-cantfail, K-floor, K-skip	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:354	S-snapshot	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:369	S-snapshot	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:384	S-snapshot	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:429	K-duplicate	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:444	K-duplicate	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:474	K-namebody	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:489	K-selfmade	tests/test_rules.cpp	heading-exact
+L-R04	record	records/A26.md:541	K-comment	tests/test_report_view.cpp	heading-exact
+L-R04	record	records/A26.md:602	P-tiers	tests/test_report_view.cpp	heading-exact
+L-R04	record	records/A26.md:633	F-row, P-setting, P-tiers	tests/test_report_view.cpp	heading-exact
+L-R04	record	records/A26.md:648	P-tiers	tests/test_report_view.cpp	heading-exact
+L-R04	record	records/A26.md:679	F-row, P-setting	tests/test_report_view.cpp	heading-exact
+L-R04	record	records/A26.md:694	P-setting, F-row	tests/test_report_view.cpp	heading-exact
+L-R04	record	records/A27.md:22	S-snapshot, Z-cite	tests/test_saved_figure_fill.cpp	heading-exact
+L-R04	record	records/A27.md:85	S-snapshot	tests/test_saved_figure_fill.cpp	heading-exact
+L-R04	record	records/A27.md:101	K-skip	tests/test_saved_figure_fill.cpp	heading-exact
+L-R04	record	records/A27.md:117	S-snapshot	tests/test_saved_figure_fill.cpp	heading-exact
+L-R04	record	records/A27.md:133	K-duplicate, K-namebody	tests/test_saved_figure_fill.cpp	heading-exact
+L-R04	record	records/A27.md:164	P-other	tests/test_saved_figure_fill.cpp	heading-exact
+L-R04	record	records/A27.md:184	S-snapshot, Z-cite	tests/test_song_audio.cpp	heading-exact
+L-R04	record	records/A27.md:201		tests/test_song_audio.cpp	heading-exact
+L-R04	record	records/A27.md:217	K-comment	tests/test_song_audio.cpp	heading-exact
+L-R04	record	records/A27.md:239	S-snapshot, Z-cite	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:256	S-snapshot, Z-cite	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:272	S-snapshot	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:303	K-skip, K-floor	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:334	K-selfmade	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:350	P-builtchart	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:366	K-skip, K-floor	tests/test_search_target.cpp	heading-exact
+L-R04	record	records/A27.md:434	K-comment	tests/test_song_input.cpp	heading-exact
+L-R04	record	records/A27.md:497	K-comment	tests/test_song_input.cpp	heading-exact
 L-R04	record	records/A28.md:80	K-skip, K-selfmade	tests/test_sp_end.cpp	exact
 L-R04	record	records/A28.md:96	K-comment, P-builtchart	tests/test_sp_end.cpp	exact
 L-R04	record	records/A28.md:112	K-selfmade	tests/test_sp_end.cpp	exact
@@ -2221,21 +2221,21 @@ L-R04	record	records/A28.md:304	K-duplicate	tests/test_sp_end.cpp	exact
 L-R04	record	records/A28.md:352	K-floor, K-skip, Z-cite	tests/test_sp_end.cpp	exact
 L-R04	record	records/A28.md:384	K-floor, K-skip, Z-cite	tests/test_sp_end.cpp	exact
 L-R04	record	records/A28.md:400	S-snapshot, Z-cite	tests/test_sp_end.cpp	exact
-L-R05	record	records/A29.md:67	P-other, F-result, K-selfmade, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:85	P-other, F-result, K-selfmade, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:103	P-other, F-result, K-unreachable	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:122	P-other, F-result, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:140	P-other, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:158	P-other, F-result, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:176	P-other, F-result, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:278	P-other, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:316	K-duplicate, P-other, K-unreachable	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:401	P-other, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:419	P-other, S-snapshot, K-comment	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:436	K-skip, K-floor	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:471	K-skip, K-selfmade	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:489	K-skip	tests/test_sp_meter_curve.cpp	exact
-L-R05	record	records/A29.md:507	S-snapshot, Z-cite, P-other, K-duplicate	tests/test_sp_meter_curve.cpp	exact
+L-R05	record	records/A29.md:67	P-other, F-result, K-selfmade, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:85	P-other, F-result, K-selfmade, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:103	P-other, F-result, K-unreachable	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:122	P-other, F-result, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:140	P-other, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:158	P-other, F-result, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:176	P-other, F-result, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:278	P-other, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:316	K-duplicate, P-other, K-unreachable	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:401	P-other, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:419	P-other, S-snapshot, K-comment	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:436	K-skip, K-floor	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:471	K-skip, K-selfmade	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:489	K-skip	tests/test_sp_meter_curve.cpp	heading-exact
+L-R05	record	records/A29.md:507	S-snapshot, Z-cite, P-other, K-duplicate	tests/test_sp_meter_curve.cpp	heading-exact
 L-R05	record	records/A3.md:15	K-duplicate, P-setting, E-echo	tests/test_activation_rows.cpp	exact
 L-R05	record	records/A3.md:33	F-result, K-selfmade, P-other	tests/test_activation_rows.cpp	exact
 L-R05	record	records/A3.md:50	P-setting, K-selfmade	tests/test_activation_rows.cpp	exact
@@ -2272,18 +2272,18 @@ L-R05	record	records/A30.md:388	P-tiers, K-selfmade	tests/test_squeeze_rating.cp
 L-R05	record	records/A30.md:406	P-other, K-namebody, K-selfmade	tests/test_squeeze_rating.cpp	exact
 L-R05	record	records/A30.md:493	P-other, S-snapshot	tests/test_squeeze_rating.cpp	exact
 L-R05	record	records/A30.md:511	S-snapshot, P-tiers	tests/test_squeeze_rating.cpp	exact
-L-R05	record	records/A31.md:41	P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:57	P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:73	P-other, K-namebody	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:89	P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:105	K-cantfail, P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:121	S-snapshot, K-unreachable	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:154	P-message	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:170	P-message, K-duplicate	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:186	P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:202	K-floor, P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:248	P-other	tests/test_stem_reader.cpp	exact
-L-R05	record	records/A31.md:316	P-name	tests/test_store_library.cpp	exact
+L-R05	record	records/A31.md:41	P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:57	P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:73	P-other, K-namebody	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:89	P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:105	K-cantfail, P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:121	S-snapshot, K-unreachable	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:154	P-message	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:170	P-message, K-duplicate	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:186	P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:202	K-floor, P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:248	P-other	tests/test_stem_reader.cpp	heading-exact
+L-R05	record	records/A31.md:316	P-name	tests/test_store_library.cpp	heading-exact
 L-R05	record	records/A32.md:28	K-duplicate, F-db	tests/test_store_open.cpp	exact
 L-R05	record	records/A32.md:95	K-cantfail, K-unreachable	tests/test_store_open.cpp	exact
 L-R05	record	records/A32.md:273	K-nocode, Z-cite	tests/test_store_open.cpp	exact
@@ -2293,18 +2293,18 @@ L-R05	record	records/A32.md:359	P-message, K-namebody	tests/test_store_open.cpp	
 L-R05	record	records/A32.md:425	K-partial	tests/test_store_open.cpp	exact
 L-R05	record	records/A32.md:458	P-other, K-selfmade, Z-cite	tests/test_store_open.cpp	exact
 L-R05	record	records/A32.md:491	K-namebody	tests/test_store_open.cpp	exact
-L-R05	record	records/A33.md:53	K-selfmade, K-cantfail	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:69	K-duplicate	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:85	K-skip, K-floor	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:132	P-other, K-comment	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:149	P-other, F-row	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:166	P-other	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:228	K-partial	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:244	P-message, K-namebody, K-cantfail	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:353	P-other, F-row	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:415	K-cantfail	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:431	K-skip, K-floor, K-cantfail	tests/test_store_records.cpp	exact
-L-R05	record	records/A33.md:463	P-other, Z-cite	tests/test_store_records.cpp	exact
+L-R05	record	records/A33.md:53	K-selfmade, K-cantfail	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:69	K-duplicate	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:85	K-skip, K-floor	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:132	P-other, K-comment	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:149	P-other, F-row	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:166	P-other	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:228	K-partial	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:244	P-message, K-namebody, K-cantfail	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:353	P-other, F-row	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:415	K-cantfail	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:431	K-skip, K-floor, K-cantfail	tests/test_store_records.cpp	heading-exact
+L-R05	record	records/A33.md:463	P-other, Z-cite	tests/test_store_records.cpp	heading-exact
 L-R05	record	records/A34.md:25	K-skip, K-floor	tests/test_store_results.cpp	exact
 L-R05	record	records/A34.md:235	K-duplicate, K-selfmade	tests/test_store_results.cpp	exact
 L-R05	record	records/A34.md:251	K-selfmade	tests/test_store_results.cpp	exact
@@ -2339,21 +2339,21 @@ L-R06	record	records/A36.md:606	S-snapshot, K-comment	tests/test_track_state.cpp
 L-R06	record	records/A36.md:676	K-duplicate	tests/test_track_state.cpp	exact
 L-R06	record	records/A36.md:703	K-selfmade, K-skip	tests/test_track_state.cpp	exact
 L-R06	record	records/A36.md:773	K-skip, K-partial, K-floor	tests/test_track_state.cpp	exact
-L-R06	record	records/A37.md:74	P-message, K-duplicate	tests/test_user_messages.cpp	exact
-L-R06	record	records/A37.md:149	P-message, P-name	tests/test_user_messages.cpp	exact
-L-R06	record	records/A37.md:314	P-name	tests/test_user_messages.cpp	exact
-L-R06	record	records/A37.md:692	K-cantfail	tests/test_winstr.cpp	exact
-L-R06	record	records/A37.md:710	P-other, Z-cite	tests/test_winstr.cpp	exact
-L-R06	record	records/A37.md:764	K-unreachable	tests/test_winstr.cpp	exact
-L-R06	record	records/A37.md:782	P-other	tests/test_winstr.cpp	exact
-L-R06	record	records/A37.md:809	K-floor	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:827	O-reply	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:881	S-snapshot, P-message	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:917	K-duplicate	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:936	S-snapshot	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:972	K-duplicate, K-cantfail, K-namebody	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:1027	K-duplicate	tests/ui/uitest_batch_reports.cpp	exact
-L-R06	record	records/A37.md:1063	K-selfmade, K-floor	tests/ui/uitest_batch_reports.cpp	exact
+L-R06	record	records/A37.md:74	P-message, K-duplicate	tests/test_user_messages.cpp	heading-exact
+L-R06	record	records/A37.md:149	P-message, P-name	tests/test_user_messages.cpp	heading-exact
+L-R06	record	records/A37.md:314	P-name	tests/test_user_messages.cpp	heading-exact
+L-R06	record	records/A37.md:692	K-cantfail	tests/test_winstr.cpp	heading-exact
+L-R06	record	records/A37.md:710	P-other, Z-cite	tests/test_winstr.cpp	heading-exact
+L-R06	record	records/A37.md:764	K-unreachable	tests/test_winstr.cpp	heading-exact
+L-R06	record	records/A37.md:782	P-other	tests/test_winstr.cpp	heading-exact
+L-R06	record	records/A37.md:809	K-floor	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:827	O-reply	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:881	S-snapshot, P-message	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:917	K-duplicate	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:936	S-snapshot	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:972	K-duplicate, K-cantfail, K-namebody	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:1027	K-duplicate	tests/ui/uitest_batch_reports.cpp	heading-exact
+L-R06	record	records/A37.md:1063	K-selfmade, K-floor	tests/ui/uitest_batch_reports.cpp	heading-exact
 L-R06	record	records/A39.md:69	S-snapshot, Z-cite, K-selfmade	test_dynamics: the Dynamics tab on Acid Romance shows its ki	unresolved
 L-R06	record	records/A39.md:89	S-snapshot, K-namebody	test_dynamics_reopen: the Dynamics count comes from the clic	unresolved
 L-R06	record	records/A39.md:109	S-snapshot	test_dynamics_hard: at Hard, the Dynamics tab counts Hard's 	unresolved
@@ -2380,14 +2380,14 @@ L-R06	record	records/A4.md:514	P-message	tests/test_analysis.cpp	exact
 L-R06	record	records/A4.md:595	P-placeholder, K-selfmade	tests/test_analysis.cpp	exact
 L-R06	record	records/A4.md:709	P-message, C-analyzer	tests/test_analysis.cpp	exact
 L-R06	record	records/A4.md:726	S-snapshot	tests/test_analysis.cpp	exact
-L-R06	record	records/A40.md:521	K-nocode	tests/ui/uitest_harness.cpp	exact
-L-R06	record	records/A40.md:574	K-nocode	tests/ui/uitest_harness.cpp	exact
+L-R06	record	records/A40.md:521	K-nocode	tests/ui/uitest_harness.cpp	heading-exact
+L-R06	record	records/A40.md:574	K-nocode	tests/ui/uitest_harness.cpp	heading-exact
 L-R06	record	records/A41.md:61	P-message	tests/ui/uitest_library.cpp	exact
 L-R06	record	records/A41.md:189	S-snapshot, P-onefile	tests/ui/uitest_library.cpp	exact
-L-R06	record	records/A42.md:102	K-floor	tests/ui/uitest_library.cpp	exact
-L-R06	record	records/A42.md:132	K-skip	tests/ui/uitest_library.cpp	exact
-L-R06	record	records/A42.md:163	P-message, O-reply	tests/ui/uitest_library.cpp	exact
-L-R06	record	records/A43.md:137	P-other	tests/ui/uitest_live.cpp	exact
+L-R06	record	records/A42.md:102	K-floor	tests/ui/uitest_library.cpp	heading-exact
+L-R06	record	records/A42.md:132	K-skip	tests/ui/uitest_library.cpp	heading-exact
+L-R06	record	records/A42.md:163	P-message, O-reply	tests/ui/uitest_library.cpp	heading-exact
+L-R06	record	records/A43.md:137	P-other	tests/ui/uitest_live.cpp	heading-exact
 L-R06	record	records/A44.md:16	P-burnout	tests/ui/uitest_paths.cpp	exact
 L-R06	record	records/A44.md:35	P-burnout	tests/ui/uitest_paths.cpp	exact
 L-R06	record	records/A44.md:54	P-burnout, P-other	tests/ui/uitest_paths.cpp	exact
@@ -2436,20 +2436,20 @@ L-R07	record	records/A49.md:319	K-floor	tests/single_owner/scan.cpp	exact
 L-R07	record	records/A5.md:325	S-snapshot, Z-cite	tests/test_app_click.cpp	exact
 L-R07	record	records/A5.md:405	P-other, K-comment	tests/test_app_click.cpp	exact
 L-R07	record	records/A5.md:421	P-other, K-comment	tests/test_app_click.cpp	exact
-L-R07	record	records/A6.md:40	P-other	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:101	K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:119	C-analyzer, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:139	C-analyzer, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:155	C-analyzer, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:174	C-analyzer, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:188	C-analyzer, C-worker, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:222	C-analyzer, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:235	C-analyzer, K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:264	P-message	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:335	K-namebody	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:372	K-comment	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:426	P-other, K-duplicate	tests/test_app_library.cpp	exact
-L-R07	record	records/A6.md:565	K-floor	tests/test_app_library.cpp	exact
+L-R07	record	records/A6.md:40	P-other	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:101	K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:119	C-analyzer, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:139	C-analyzer, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:155	C-analyzer, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:174	C-analyzer, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:188	C-analyzer, C-worker, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:222	C-analyzer, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:235	C-analyzer, K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:264	P-message	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:335	K-namebody	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:372	K-comment	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:426	P-other, K-duplicate	tests/test_app_library.cpp	heading-exact
+L-R07	record	records/A6.md:565	K-floor	tests/test_app_library.cpp	heading-exact
 L-R07	record	records/A7.md:228	K-namebody	tests/test_app_reports.cpp	exact
 L-R07	record	records/A7.md:420		tests/test_app_reports.cpp	exact
 L-R07	record	records/A7.md:444	P-other	tests/test_app_shell.cpp	exact
@@ -2469,122 +2469,122 @@ L-R07	record	records/A7.md:735	P-other	tests/test_app_shell.cpp	exact
 L-R07	record	records/A7.md:752	P-name	tests/test_app_shell.cpp	exact
 L-R07	record	records/A7.md:786	P-name	tests/test_app_shell.cpp	exact
 L-R07	record	records/A7.md:804	K-selfmade	tests/test_app_shell.cpp	exact
-L-R07	record	records/A8.md:15	K-duplicate	tests/test_batch_text.cpp	exact
-L-R07	record	records/A8.md:50	K-comment, K-cantfail	tests/test_batch_text.cpp	exact
-L-R07	record	records/A8.md:68	P-message, K-duplicate	tests/test_batch_text.cpp	exact
-L-R07	record	records/A8.md:140	K-duplicate	tests/test_batch_text.cpp	exact
-L-R07	record	records/A8.md:192	P-message	tests/test_batch_text.cpp	exact
-L-R07	record	records/A8.md:252	K-skip, K-floor	tests/test_best_finish.cpp	exact
-L-R07	record	records/A8.md:270	K-skip, K-floor	tests/test_best_finish.cpp	exact
-L-R07	record	records/A8.md:288	S-snapshot, Z-cite	tests/test_best_finish.cpp	exact
-L-R07	record	records/A8.md:333	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:351	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:369	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:404	K-comment, K-namebody	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:422	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:440	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:457	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:474	K-duplicate	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:492	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:509	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:526	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:543	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:560	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:594	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:611	K-comment	tests/test_column_widths.cpp	exact
-L-R07	record	records/A8.md:662	K-nocode	tests/test_column_widths.cpp	exact
-L-R08	record	records/A9.md:15	K-cantfail	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:31	P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:47	K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:63	P-other	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:79		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:95	P-other, K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:111	P-setting	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:127	P-setting, K-cantfail	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:143		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:159	P-message	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:175	P-other	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:191	K-duplicate, P-other	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:207		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:223	K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:239	K-unreachable	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:255	P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:271		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:287	K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:303	P-setting	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:319	K-duplicate, P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:335	K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:351	P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:367	K-selfmade, P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:383	K-cantfail, K-selfmade	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:399		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:415	P-other	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:431		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:447	K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:478	P-other	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:494	K-cantfail, K-selfmade	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:510	K-duplicate, P-setting	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:526	K-namebody, K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:542	K-duplicate, K-cantfail, K-unreachable	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:558		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:574		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:590		tests/test_config.cpp	exact
-L-R08	record	records/A9.md:606	K-unreachable, K-duplicate	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:622	P-setting, K-selfmade	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:639	K-selfmade, P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:655	P-setting	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:671	P-name	tests/test_config.cpp	exact
-L-R08	record	records/A9.md:691	P-other	tests/test_dm_other_speed.cpp	exact
-L-R08	record	records/A9.md:707	P-setting	tests/test_dm_other_speed.cpp	exact
-L-R08	record	records/A9.md:723	P-setting	tests/test_dm_other_speed.cpp	exact
-L-R08	record	records/A9.md:739	P-setting	tests/test_dm_other_speed.cpp	exact
-L-R08	record	records/B1.md:19	P-message, K-namebody	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:53	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:70	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:87	P-message, K-duplicate	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:137	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:154	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:171	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:188	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:203	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:252	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:268	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:300	P-message	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:332	K-comment, P-builtchart	tests/test_cli.cpp	exact
-L-R08	record	records/B1.md:387	K-comment, P-builtchart	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:404	S-snapshot	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:437	P-other, K-duplicate	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:470	P-other, K-duplicate	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:519	P-setting, S-snapshot, Z-cite	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:583	K-namebody, P-setting	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:649	P-setting	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:682	S-snapshot, Z-cite	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:699	K-partial	tests/test_dynamics_breakdown.cpp	exact
-L-R08	record	records/B1.md:720	K-cantfail, K-skip	tests/test_fuzz_regressions.cpp	exact
-L-R08	record	records/B1.md:738	K-skip, K-cantfail	tests/test_fuzz_regressions.cpp	exact
-L-R08	record	records/B2.md:23	P-builtchart, K-comment	Read: lines 62-73 and the helper song_with_chords (29-46); S	unresolved
-L-R08	record	records/B2.md:55	P-builtchart	Read: lines 88-91; S-G. 	unresolved
-L-R08	record	records/B2.md:71	P-builtchart	Read: lines 93-96; S-G; FL-16. 	unresolved
-L-R08	record	records/B2.md:84	P-builtchart	Read: lines 98-103; S-G; FL-16 (D115 item 4, cited in the co	unresolved
-L-R08	record	records/B2.md:109	P-builtchart	src/core/song.cpp	exact
-L-R08	record	records/B2.md:122	P-builtchart	src/core/song.cpp	exact
-L-R08	record	records/B2.md:147	P-builtchart, K-comment	src/core/song.cpp	inherited
-L-R08	record	records/B2.md:159	P-builtchart, K-comment	src/core/song.cpp	inherited
-L-R08	record	records/B2.md:189	P-builtchart	src/core/song.cpp	exact
-L-R08	record	records/B2.md:201	S-snapshot, Z-cite	src/core/song.cpp	inherited
-L-R08	record	records/B2.md:227	P-name	src/core/song.cpp	inherited
-L-R08	record	records/B2.md:381	K-duplicate	src/parse/midi.cpp	base
-L-R08	record	records/B2.md:553	K-cantfail	src/parse/midi.cpp	inherited
-L-R08	record	records/B2.md:608	P-other	src/parse/midi.cpp	inherited
-L-R08	record	records/B2.md:620	P-other	src/parse/midi.cpp	inherited
-L-R08	record	records/B2.md:644	K-selfmade	src/parse/midi.cpp	inherited
-L-R08	record	records/B2.md:719	K-skip, K-namebody	src/parse/midi.cpp	inherited
-L-R08	record	records/B2.md:734	K-skip, P-message	src/parse/midi.cpp	inherited
-L-R08	record	records/B2.md:771	K-skip	src/search/pathstring_read.cpp	base
-L-R08	record	records/B2.md:794	K-skip, P-message	src/search/pathstring_read.cpp	inherited
-L-R08	record	records/B2.md:804	K-skip, K-selfmade	src/search/pathstring_read.cpp	base
-L-R08	record	records/B2.md:817	K-duplicate	src/search/pathstring_read.cpp	base
-L-R08	record	records/B2.md:829	P-message	src/search/pathstring_read.cpp	base
+L-R07	record	records/A8.md:15	K-duplicate	tests/test_batch_text.cpp	heading-exact
+L-R07	record	records/A8.md:50	K-comment, K-cantfail	tests/test_batch_text.cpp	heading-exact
+L-R07	record	records/A8.md:68	P-message, K-duplicate	tests/test_batch_text.cpp	heading-exact
+L-R07	record	records/A8.md:140	K-duplicate	tests/test_batch_text.cpp	heading-exact
+L-R07	record	records/A8.md:192	P-message	tests/test_batch_text.cpp	heading-exact
+L-R07	record	records/A8.md:252	K-skip, K-floor	tests/test_best_finish.cpp	heading-exact
+L-R07	record	records/A8.md:270	K-skip, K-floor	tests/test_best_finish.cpp	heading-exact
+L-R07	record	records/A8.md:288	S-snapshot, Z-cite	tests/test_best_finish.cpp	heading-exact
+L-R07	record	records/A8.md:333	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:351	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:369	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:404	K-comment, K-namebody	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:422	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:440	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:457	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:474	K-duplicate	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:492	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:509	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:526	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:543	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:560	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:594	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:611	K-comment	tests/test_column_widths.cpp	heading-exact
+L-R07	record	records/A8.md:662	K-nocode	tests/test_column_widths.cpp	heading-exact
+L-R08	record	records/A9.md:15	K-cantfail	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:31	P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:47	K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:63	P-other	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:79		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:95	P-other, K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:111	P-setting	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:127	P-setting, K-cantfail	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:143		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:159	P-message	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:175	P-other	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:191	K-duplicate, P-other	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:207		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:223	K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:239	K-unreachable	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:255	P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:271		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:287	K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:303	P-setting	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:319	K-duplicate, P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:335	K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:351	P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:367	K-selfmade, P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:383	K-cantfail, K-selfmade	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:399		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:415	P-other	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:431		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:447	K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:478	P-other	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:494	K-cantfail, K-selfmade	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:510	K-duplicate, P-setting	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:526	K-namebody, K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:542	K-duplicate, K-cantfail, K-unreachable	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:558		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:574		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:590		tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:606	K-unreachable, K-duplicate	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:622	P-setting, K-selfmade	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:639	K-selfmade, P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:655	P-setting	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:671	P-name	tests/test_config.cpp	heading-exact
+L-R08	record	records/A9.md:691	P-other	tests/test_dm_other_speed.cpp	heading-exact
+L-R08	record	records/A9.md:707	P-setting	tests/test_dm_other_speed.cpp	heading-exact
+L-R08	record	records/A9.md:723	P-setting	tests/test_dm_other_speed.cpp	heading-exact
+L-R08	record	records/A9.md:739	P-setting	tests/test_dm_other_speed.cpp	heading-exact
+L-R08	record	records/B1.md:19	P-message, K-namebody	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:53	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:70	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:87	P-message, K-duplicate	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:137	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:154	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:171	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:188	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:203	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:252	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:268	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:300	P-message	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:332	K-comment, P-builtchart	tests/test_cli.cpp	heading-exact
+L-R08	record	records/B1.md:387	K-comment, P-builtchart	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:404	S-snapshot	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:437	P-other, K-duplicate	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:470	P-other, K-duplicate	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:519	P-setting, S-snapshot, Z-cite	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:583	K-namebody, P-setting	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:649	P-setting	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:682	S-snapshot, Z-cite	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:699	K-partial	tests/test_dynamics_breakdown.cpp	heading-exact
+L-R08	record	records/B1.md:720	K-cantfail, K-skip	tests/test_fuzz_regressions.cpp	heading-exact
+L-R08	record	records/B1.md:738	K-skip, K-cantfail	tests/test_fuzz_regressions.cpp	heading-exact
+L-R08	record	records/B2.md:23	P-builtchart, K-comment	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:55	P-builtchart	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:71	P-builtchart	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:84	P-builtchart	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:109	P-builtchart	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:122	P-builtchart	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:147	P-builtchart, K-comment	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:159	P-builtchart, K-comment	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:189	P-builtchart	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:201	S-snapshot, Z-cite	tests/test_generated_fills.cpp	heading-exact
+L-R08	record	records/B2.md:227	P-name	tests/test_midi.cpp	heading-exact
+L-R08	record	records/B2.md:381	K-duplicate	tests/test_midi.cpp	heading-exact
+L-R08	record	records/B2.md:553	K-cantfail	tests/test_midi.cpp	heading-exact
+L-R08	record	records/B2.md:608	P-other	tests/test_midi.cpp	heading-exact
+L-R08	record	records/B2.md:620	P-other	tests/test_midi.cpp	heading-exact
+L-R08	record	records/B2.md:644	K-selfmade	tests/test_midi.cpp	heading-exact
+L-R08	record	records/B2.md:719	K-skip, K-namebody	tests/test_pathstring_read.cpp	heading-exact
+L-R08	record	records/B2.md:734	K-skip, P-message	tests/test_pathstring_read.cpp	heading-exact
+L-R08	record	records/B2.md:771	K-skip	tests/test_pathstring_read.cpp	heading-exact
+L-R08	record	records/B2.md:794	K-skip, P-message	tests/test_pathstring_read.cpp	heading-exact
+L-R08	record	records/B2.md:804	K-skip, K-selfmade	tests/test_pathstring_read.cpp	heading-exact
+L-R08	record	records/B2.md:817	K-duplicate	tests/test_pathstring_read.cpp	heading-exact
+L-R08	record	records/B2.md:829	P-message	tests/test_pathstring_read.cpp	heading-exact
 L-R09	record	records/B3.md:43	K-cantfail, K-selfmade, K-skip, K-floor	tests/test_replay_schedule.cpp	exact
 L-R09	record	records/B3.md:59	K-selfmade, K-skip, K-floor	tests/test_replay_schedule.cpp	exact
 L-R09	record	records/B3.md:75	P-onefile, Z-cite	tests/test_replay_schedule.cpp	exact
@@ -2600,17 +2600,17 @@ L-R09	record	records/B3.md:315	P-builtchart, P-other, K-comment	tests/test_repla
 L-R09	record	records/B3.md:331	P-builtchart, K-comment	tests/test_replay_schedule.cpp	exact
 L-R09	record	records/B3.md:347	P-builtchart, K-comment	tests/test_replay_schedule.cpp	exact
 L-R09	record	records/B3.md:379	K-selfmade, K-floor, K-skip	tests/test_replay_schedule.cpp	exact
-L-R09	record	records/B4.md:38	K-selfmade, K-skip	src/core/model.cpp	exact
-L-R09	record	records/B4.md:90	S-snapshot, P-builtchart, K-cantfail, K-skip, Z-cite	src/core/model.cpp	inherited
-L-R09	record	records/B4.md:108	K-duplicate, K-selfmade	tools/replay_schedule.cpp	exact
-L-R09	record	records/B4.md:126	P-builtchart, K-nocode, K-comment	tools/replay_schedule.cpp	inherited
-L-R09	record	records/B4.md:162	P-message, K-skip	tools/replay_schedule.cpp	inherited
-L-R09	record	records/B4.md:180	K-comment, P-builtchart	tools/replay_schedule.cpp	exact
-L-R09	record	records/B4.md:198	K-nocode	tools/replay_schedule.cpp	base
-L-R09	record	records/B4.md:216	K-skip, K-floor	tools/replay_schedule.h	base
-L-R09	record	records/B4.md:234	S-snapshot, Z-cite, K-selfmade	pitch_dark_ratio.schedule.js	notinrepo
-L-R09	record	records/B4.md:252	S-snapshot, Z-cite	pitch_dark_ratio.schedule.js	notinrepo
-L-R09	record	records/B4.md:305	K-comment, K-selfmade	tools/replay_schedule.cpp	base
+L-R09	record	records/B4.md:38	K-selfmade, K-skip	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:90	S-snapshot, P-builtchart, K-cantfail, K-skip, Z-cite	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:108	K-duplicate, K-selfmade	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:126	P-builtchart, K-nocode, K-comment	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:162	P-message, K-skip	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:180	K-comment, P-builtchart	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:198	K-nocode	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:216	K-skip, K-floor	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:234	S-snapshot, Z-cite, K-selfmade	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:252	S-snapshot, Z-cite	tests/test_replay_schedule.cpp	heading-exact
+L-R09	record	records/B4.md:305	K-comment, K-selfmade	tests/test_replay_schedule.cpp	heading-exact
 L-R09	record	records/B5.md:28	F-result, S-snapshot, K-comment, K-unreachable	tests/test_replay_windows.cpp	name
 L-R09	record	records/B5.md:107	F-result, K-comment	tests/test_replay_windows.cpp	name
 L-R09	record	records/B5.md:159	K-duplicate, F-result, K-selfmade, K-floor	tests/test_replay_windows.cpp	name
@@ -2641,47 +2641,47 @@ L-R09	record	records/B7.md:214	K-comment	tests/test_timing.cpp	exact
 L-R09	record	records/B7.md:232	S-snapshot, P-other	tests/test_timing.cpp	exact
 L-R09	record	records/B7.md:314	P-other, K-duplicate	tests/test_timing.cpp	exact
 L-R09	record	records/B7.md:331	K-duplicate	tests/test_timing.cpp	exact
-L-R09	record	records/C1.md:79	P-other, Z-cite	Read: lines 92-99; layout header lines 52-112. Adding commit	unresolved
-L-R09	record	records/C1.md:104	P-other, Z-cite	Read: lines 101-106; layout lines 69-77, 110. Adding commit 	unresolved
-L-R09	record	records/C1.md:127	P-other, Z-cite	Read: lines 108-121; layout lines 78-111; the plan named in 	unresolved
-L-R09	record	records/C1.md:158	K-selfmade, K-partial	Read: lines 123-133; layout lines 85-110. Adding commit 1694	unresolved
-L-R09	record	records/C1.md:186	K-selfmade, Z-cite	Read: lines 135-145; layout lines 84-86. Adding commit 3f46a	unresolved
-L-R09	record	records/C1.md:214	P-other, Z-cite	Read: lines 147-157; layout lines 70-72,85; D262 (opened, li	unresolved
-L-R09	record	records/C1.md:246	K-selfmade, K-unreachable	Read: lines 159-186; layout lines 66,103-108. Adding commit 	unresolved
-L-R09	record	records/C1.md:273	K-partial, K-unreachable	Read: lines 188-207; layout lines 81-100. Adding commit 1694	unresolved
-L-R09	record	records/C1.md:293	K-partial, K-unreachable	Read: lines 209-232; layout lines 74-108. Adding commit 1694	unresolved
-L-R09	record	records/C1.md:315	S-snapshot, Z-cite	Read: lines 234-254; layout lines 89-108; D257 (opened). Add	unresolved
-L-R09	record	records/C1.md:338	K-cantfail, K-namebody	src/ui/paths_tab.cpp	base
-L-R09	record	records/C1.md:367	P-other, Z-cite	src/ui/badge_pill.h	base
-L-R09	record	records/C1.md:392	P-other, Z-cite, K-unreachable	src/ui/badge_pill.h	inherited
-L-R09	record	records/C1.md:414	P-other, Z-cite	src/ui/badge_pill.h	base
-L-R09	record	records/C1.md:435	P-other, Z-cite	src/ui/badge_pill.h	inherited
-L-R09	record	records/C1.md:511	P-other, Z-cite, K-duplicate	src/ui/badge_pill.h	base
-L-R09	record	records/C1.md:573	K-floor, K-selfmade	src/ui/badge_pill.h	inherited
-L-R09	record	records/C1.md:598	K-selfmade, K-cantfail	src/ui/badge_pill.h	inherited
-L-R09	record	records/C1.md:676	K-namebody	src/app/config.cpp	base
-L-R09	record	records/C1.md:706	K-floor	src/ui/app_state.cpp	base
-L-R09	record	records/C1.md:785	K-comment	tests/audio_util.h	base
-L-R09	record	records/C1.md:914	S-snapshot, Z-cite	tests/audio_util.h	inherited
-L-R09	record	records/C1.md:1038	K-floor	tests/audio_util.h	inherited
-L-R09	record	records/C1.md:1160	K-comment	tests/audio_util.h	inherited
-L-R09	record	records/C1.md:1245	K-duplicate, S-snapshot	tests/audio_util.h	inherited
-L-R09	record	records/C10.md:13	P-other, Z-cite, S-snapshot	Read: lines 1-98 (helpers check_color, check_light, check_is	unresolved
-L-R09	record	records/C10.md:113	K-cantfail	src/render/preview_config.cpp	base
-L-R09	record	records/C10.md:311	P-message, K-namebody	src/app/rules_file.cpp	base
-L-R09	record	records/C10.md:351	P-other, Z-cite	src/parse/section_names.h	base
-L-R09	record	records/C10.md:1174	K-comment	src/ui/preview_transport.cpp	base
-L-R09	record	records/C10.md:1330	K-duplicate	src/ui/preview_transport.cpp	inherited
-L-R10	record	records/C11.md:65	K-selfmade, P-message	tests/test_sng.cpp	exact
-L-R10	record	records/C11.md:81	S-snapshot, Z-cite	tests/test_sng.cpp	exact
-L-R10	record	records/C11.md:97	K-floor	tests/test_sng.cpp	exact
-L-R10	record	records/C11.md:113	K-floor	tests/test_sng.cpp	exact
-L-R10	record	records/C11.md:161	K-selfmade, P-message	tests/test_sng.cpp	exact
-L-R10	record	records/C11.md:177	K-selfmade	tests/test_sng.cpp	exact
-L-R10	record	records/C11.md:296	K-cantfail, P-other	tests/test_song_length.cpp	exact
-L-R10	record	records/C11.md:488	K-namebody, F-record, E-echo	tests/test_song_length.cpp	exact
-L-R10	record	records/C11.md:548	K-namebody, P-other	tests/test_song_panel_state.cpp	exact
-L-R10	record	records/C11.md:606	P-builtchart, K-comment	tests/test_sp_end_clamp.cpp	exact
+L-R09	record	records/C1.md:79	P-other, Z-cite	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:104	P-other, Z-cite	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:127	P-other, Z-cite	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:158	K-selfmade, K-partial	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:186	K-selfmade, Z-cite	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:214	P-other, Z-cite	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:246	K-selfmade, K-unreachable	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:273	K-partial, K-unreachable	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:293	K-partial, K-unreachable	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:315	S-snapshot, Z-cite	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:338	K-cantfail, K-namebody	tests/test_activation_row_layout.cpp	heading-exact
+L-R09	record	records/C1.md:367	P-other, Z-cite	tests/test_badge_pill.cpp	heading-exact
+L-R09	record	records/C1.md:392	P-other, Z-cite, K-unreachable	tests/test_badge_pill.cpp	heading-exact
+L-R09	record	records/C1.md:414	P-other, Z-cite	tests/test_badge_pill.cpp	heading-exact
+L-R09	record	records/C1.md:435	P-other, Z-cite	tests/test_badge_pill.cpp	heading-exact
+L-R09	record	records/C1.md:511	P-other, Z-cite, K-duplicate	tests/test_badge_pill.cpp	heading-exact
+L-R09	record	records/C1.md:573	K-floor, K-selfmade	tests/test_app_settings.cpp	heading-exact
+L-R09	record	records/C1.md:598	K-selfmade, K-cantfail	tests/test_app_settings.cpp	heading-exact
+L-R09	record	records/C1.md:676	K-namebody	tests/test_app_settings.cpp	heading-exact
+L-R09	record	records/C1.md:706	K-floor	tests/test_app_settings.cpp	heading-exact
+L-R09	record	records/C1.md:785	K-comment	tests/test_audio_decode.cpp	heading-exact
+L-R09	record	records/C1.md:914	S-snapshot, Z-cite	tests/test_audio_decode.cpp	heading-exact
+L-R09	record	records/C1.md:1038	K-floor	tests/test_audio_mixer.cpp	heading-exact
+L-R09	record	records/C1.md:1160	K-comment	tests/test_audio_player.cpp	heading-exact
+L-R09	record	records/C1.md:1245	K-duplicate, S-snapshot	tests/test_audio_player.cpp	heading-exact
+L-R09	record	records/C10.md:13	P-other, Z-cite, S-snapshot	tests/test_preview_config.cpp	heading-exact
+L-R09	record	records/C10.md:113	K-cantfail	tests/test_preview_config.cpp	heading-exact
+L-R09	record	records/C10.md:311	P-message, K-namebody	tests/test_rules_file.cpp	heading-exact
+L-R09	record	records/C10.md:351	P-other, Z-cite	tests/test_section_names.cpp	heading-exact
+L-R09	record	records/C10.md:1174	K-comment	tests/test_preview_transport.cpp	heading-exact
+L-R09	record	records/C10.md:1330	K-duplicate	tests/test_preview_transport.cpp	heading-exact
+L-R10	record	records/C11.md:65	K-selfmade, P-message	tests/test_sng.cpp	heading-exact
+L-R10	record	records/C11.md:81	S-snapshot, Z-cite	tests/test_sng.cpp	heading-exact
+L-R10	record	records/C11.md:97	K-floor	tests/test_sng.cpp	heading-exact
+L-R10	record	records/C11.md:113	K-floor	tests/test_sng.cpp	heading-exact
+L-R10	record	records/C11.md:161	K-selfmade, P-message	tests/test_sng.cpp	heading-exact
+L-R10	record	records/C11.md:177	K-selfmade	tests/test_sng.cpp	heading-exact
+L-R10	record	records/C11.md:296	K-cantfail, P-other	tests/test_song_length.cpp	heading-exact
+L-R10	record	records/C11.md:488	K-namebody, F-record, E-echo	tests/test_song_length.cpp	heading-exact
+L-R10	record	records/C11.md:548	K-namebody, P-other	tests/test_song_panel_state.cpp	heading-exact
+L-R10	record	records/C11.md:606	P-builtchart, K-comment	tests/test_sp_end_clamp.cpp	heading-exact
 L-R10	record	records/C12.md:67	P-message	tests/test_srb.cpp	exact
 L-R10	record	records/C12.md:83	P-message	tests/test_srb.cpp	exact
 L-R10	record	records/C12.md:115	K-floor	tests/test_srb.cpp	exact
@@ -2724,23 +2724,23 @@ L-R10	record	records/C14.md:395	K-cantfail	tests/test_upgrade_files.cpp	name
 L-R10	record	records/C14.md:426	K-cantfail	tests/test_upgrade_files.cpp	name
 L-R10	record	records/C14.md:508	K-cantfail	tests/test_upgrade_files.cpp	name
 L-R10	record	records/C14.md:533	K-cantfail	tests/test_upgrade_files.cpp	name
-L-R10	record	records/C2.md:43	K-comment	tests/test_chart_index.cpp	exact
-L-R10	record	records/C2.md:57	F-record, K-cantfail	tests/test_chart_index.cpp	exact
-L-R10	record	records/C2.md:85	E-echo, F-record, K-cantfail	tests/test_chart_index.cpp	exact
-L-R10	record	records/C2.md:113	K-partial	tests/test_chart_index.cpp	exact
-L-R10	record	records/C2.md:305	Z-cite	tests/test_display_format.cpp	exact
-L-R10	record	records/C2.md:437	K-comment, K-cantfail	tests/test_dynamics_tag.cpp	exact
-L-R10	record	records/C2.md:451	F-result, P-setting	tests/test_dynamics_tag.cpp	exact
-L-R10	record	records/C2.md:500	P-builtchart, K-unreachable	tests/test_fast_tempo.cpp	exact
-L-R10	record	records/C2.md:528	P-builtchart, K-unreachable	tests/test_fast_tempo.cpp	exact
-L-R10	record	records/C2.md:542	P-builtchart, K-unreachable	tests/test_fast_tempo.cpp	exact
-L-R10	record	records/C2.md:556	K-floor, K-skip	tests/test_fast_tempo.cpp	exact
-L-R10	record	records/C2.md:591	K-comment, P-builtchart	tests/test_fill_landing.cpp	exact
-L-R10	record	records/C2.md:604	K-comment, P-builtchart	tests/test_fill_landing.cpp	exact
-L-R10	record	records/C2.md:617	K-comment, P-builtchart	tests/test_fill_landing.cpp	exact
-L-R10	record	records/C2.md:630	K-comment, P-builtchart	tests/test_fill_landing.cpp	exact
-L-R10	record	records/C2.md:643	K-comment, P-builtchart	tests/test_fill_landing.cpp	exact
-L-R10	record	records/C2.md:651	K-comment, P-builtchart	tests/test_fill_landing.cpp	exact
+L-R10	record	records/C2.md:43	K-comment	tests/test_chart_index.cpp	heading-exact
+L-R10	record	records/C2.md:57	F-record, K-cantfail	tests/test_chart_index.cpp	heading-exact
+L-R10	record	records/C2.md:85	E-echo, F-record, K-cantfail	tests/test_chart_index.cpp	heading-exact
+L-R10	record	records/C2.md:113	K-partial	tests/test_chart_index.cpp	heading-exact
+L-R10	record	records/C2.md:305	Z-cite	tests/test_display_format.cpp	heading-exact
+L-R10	record	records/C2.md:437	K-comment, K-cantfail	tests/test_dynamics_tag.cpp	heading-exact
+L-R10	record	records/C2.md:451	F-result, P-setting	tests/test_dynamics_tag.cpp	heading-exact
+L-R10	record	records/C2.md:500	P-builtchart, K-unreachable	tests/test_fast_tempo.cpp	heading-exact
+L-R10	record	records/C2.md:528	P-builtchart, K-unreachable	tests/test_fast_tempo.cpp	heading-exact
+L-R10	record	records/C2.md:542	P-builtchart, K-unreachable	tests/test_fast_tempo.cpp	heading-exact
+L-R10	record	records/C2.md:556	K-floor, K-skip	tests/test_fast_tempo.cpp	heading-exact
+L-R10	record	records/C2.md:591	K-comment, P-builtchart	tests/test_fill_landing.cpp	heading-exact
+L-R10	record	records/C2.md:604	K-comment, P-builtchart	tests/test_fill_landing.cpp	heading-exact
+L-R10	record	records/C2.md:617	K-comment, P-builtchart	tests/test_fill_landing.cpp	heading-exact
+L-R10	record	records/C2.md:630	K-comment, P-builtchart	tests/test_fill_landing.cpp	heading-exact
+L-R10	record	records/C2.md:643	K-comment, P-builtchart	tests/test_fill_landing.cpp	heading-exact
+L-R10	record	records/C2.md:651	K-comment, P-builtchart	tests/test_fill_landing.cpp	heading-exact
 L-R10	record	records/C3.md:29	K-comment	tests/test_five_lane.cpp	exact
 L-R10	record	records/C3.md:59	K-duplicate	tests/test_five_lane.cpp	exact
 L-R10	record	records/C3.md:180	K-selfmade	tests/test_five_lane.cpp	exact
@@ -2778,121 +2778,121 @@ L-R11	record	records/C5.md:985	P-message	tests/test_live_protocol.cpp	exact
 L-R11	record	records/C5.md:1003	P-message, K-duplicate	tests/test_live_protocol.cpp	exact
 L-R11	record	records/C5.md:1183	P-builtchart	tests/test_note_shuffle.cpp	exact
 L-R11	record	records/C5.md:1255	P-other, Z-cite	tests/test_note_shuffle.cpp	exact
-L-R11	record	records/C6.md:22	P-other, Z-cite	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:69	K-nocode, K-partial	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:103	K-selfmade	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:165	P-other, Z-cite, K-comment	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:226	P-other, K-comment	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:349	K-duplicate	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:398	P-other, K-comment	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:426	P-other, Z-cite, K-comment	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:454	P-other, K-comment	tests/test_note_window.cpp	exact
-L-R11	record	records/C6.md:518	K-floor	tests/test_obj_loader.cpp	exact
-L-R11	record	records/C6.md:593	K-cantfail	tests/test_obj_loader.cpp	exact
-L-R11	record	records/C6.md:665	S-snapshot, P-other	tests/test_obj_loader.cpp	exact
-L-R11	record	records/C6.md:699	K-duplicate, P-other	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:724	P-other, Z-cite	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:750	P-setting, K-cantfail	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:774		tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:878	F-result	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:906	P-other, K-comment	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:929	P-other, K-comment	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:949	F-result	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:970	P-other, K-comment	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:995	P-other, Z-cite, K-comment	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:1018		tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:1065	K-selfmade	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:1090	P-other, Z-cite	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:1115	P-other	tests/test_overlay_layout.cpp	exact
-L-R11	record	records/C6.md:1224	S-snapshot, Z-cite	tests/test_path_costs.cpp	exact
-L-R11	record	records/C6.md:1251	S-snapshot	tests/test_path_costs.cpp	exact
-L-R11	record	records/C6.md:1341	S-snapshot, K-namebody	tests/test_path_costs.cpp	exact
-L-R11	record	records/C6.md:1391	K-duplicate, K-selfmade, S-snapshot	tests/test_path_costs.cpp	exact
-L-R11	record	records/C6.md:1415	S-snapshot, P-other	tests/test_path_costs.cpp	exact
-L-R11	record	records/C7.md:20	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:70	S-snapshot, P-message, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:88	P-message	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:105	S-snapshot	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:122	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:155	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:172	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:188	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:220	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:268		tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:285	S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:301	P-other	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:317	P-other	tests/test_pb_coach.cpp	exact
-L-R11	record	records/C7.md:339	K-selfmade	tests/test_pb_files.cpp	exact
-L-R11	record	records/C7.md:481	S-snapshot, Z-cite	tests/test_pb_state.cpp	exact
-L-R11	record	records/C8.md:93	P-other	tests/test_precheck_check1.cpp	exact
-L-R11	record	records/C8.md:275	P-message	tests/test_precheck_check3.cpp	exact
-L-R11	record	records/C8.md:387	K-namebody	tests/test_precheck_git.cpp	exact
-L-R11	record	records/C8.md:419	P-other, O-toolout	tests/test_precheck_git.cpp	exact
-L-R11	record	records/C8.md:435	O-toolout	tests/test_precheck_git.cpp	exact
-L-R11	record	records/C8.md:468	P-other, P-message	tests/test_precheck_git.cpp	exact
-L-R11	record	records/C8.md:484	P-message, K-selfmade	tests/test_precheck_git.cpp	exact
-L-R11	record	records/C9.md:21	P-other	tests/test_precheck_pick.cpp	exact
-L-R11	record	records/C9.md:192	K-skip	tests/test_precheck_pick.cpp	exact
-L-R11	record	records/C9.md:220	P-other	tests/test_precheck_pick.cpp	exact
-L-R11	record	records/C9.md:234	P-other	tests/test_precheck_pick.cpp	exact
-L-R11	record	records/C9.md:957	K-floor, P-message	tests/test_precheck_rows.cpp	exact
-L-R11	record	records/C9.md:985	E-echo, K-skip	tests/test_precheck_rows.cpp	exact
-L-R12	record	records/D1.md:33	K-selfmade, P-name	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:65	P-message, K-duplicate	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:73	P-other, C-clock, K-namebody	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:146	P-other, P-message, C-clock	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:154	P-other	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:162	P-other	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:226	P-message, K-duplicate	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:276	P-other, C-stub	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:303	P-other, C-stub	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:315	P-other, C-clock	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:371	P-other, C-clock	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:398	P-other, C-stub	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:421	C-ownchecker, K-nocode	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:483	P-message	tools/ch_mcp/tests/test_bot_run.py	base
-L-R12	record	records/D1.md:572	P-other, E-echo	tools/ch_mcp/tests/test_build_facts.py	base
-L-R12	record	records/D1.md:606	K-duplicate, K-namebody	tools/ch_mcp/tests/test_build_facts.py	base
-L-R12	record	records/D1.md:671	P-name	tools/ch_mcp/tests/test_build_stamp.py	base
-L-R12	record	records/D1.md:676	P-other	tools/ch_mcp/tests/test_build_stamp.py	base
-L-R12	record	records/D1.md:722	S-snapshot	tools/ch_mcp/tests/test_chdis.py	base
-L-R12	record	records/D1.md:812	F-result, Z-cite, S-snapshot	tools/ch_mcp/tests/test_compare_scorestats.py	base
-L-R12	record	records/D10.md:80	P-other, O-gamemem, Z-cite	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:86	K-selfmade, O-gamemem, E-echo, K-duplicate	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:130	P-other, Z-cite	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:136	P-other, K-duplicate	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:157	P-other	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:163	O-gamemem, K-cantfail	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:170	K-cantfail	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:184	P-other, Z-cite	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:190	K-cantfail	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:202	P-other	tools/ch_probe/tests/test_engine.py	base
-L-R12	record	records/D10.md:239	P-other, E-echo	tools/ch_probe/tests/test_engine_finder.py	base
-L-R12	record	records/D10.md:278	P-other, C-clock, P-message, K-comment	tools/ch_probe/tests/test_engine_finder.py	base
-L-R12	record	records/D10.md:284	P-message, C-clock, K-duplicate	tools/ch_probe/tests/test_engine_finder.py	base
-L-R12	record	records/D10.md:290	C-clock, K-duplicate	tools/ch_probe/tests/test_engine_finder.py	base
-L-R12	record	records/D10.md:363	K-unreachable, O-gamemem	tools/ch_probe/tests/test_find_checksum.py	base
-L-R12	record	records/D10.md:371	K-comment, O-gamemem	tools/ch_probe/tests/test_find_checksum.py	base
-L-R12	record	records/D10.md:385	K-namebody	tools/ch_probe/tests/test_find_checksum.py	base
-L-R12	record	records/D10.md:391	P-message, K-comment	tools/ch_probe/tests/test_find_checksum.py	base
-L-R12	record	records/D10.md:410	P-other	tools/ch_probe/tests/test_find_checksum.py	base
-L-R12	record	records/D10.md:470	K-duplicate	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:476	K-cantfail	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:482	K-comment	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:510	P-other	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:516	K-cantfail	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:542	K-comment, P-other	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:567	K-comment	tools/ch_probe/tests/test_hit_window_scripts.py	base
-L-R12	record	records/D10.md:672	P-other	tools/ch_probe/tests/test_input_driver.py	base
-L-R12	record	records/D10.md:706	P-other	tools/ch_probe/tests/test_input_driver.py	base
-L-R12	record	records/D10.md:790	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:796	S-snapshot	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:803	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:809	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:815	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:821	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:827	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
-L-R12	record	records/D10.md:833	P-other	tools/ch_probe/tests/test_overlay_logs.py	base
+L-R11	record	records/C6.md:22	P-other, Z-cite	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:69	K-nocode, K-partial	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:103	K-selfmade	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:165	P-other, Z-cite, K-comment	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:226	P-other, K-comment	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:349	K-duplicate	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:398	P-other, K-comment	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:426	P-other, Z-cite, K-comment	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:454	P-other, K-comment	tests/test_note_window.cpp	heading-exact
+L-R11	record	records/C6.md:518	K-floor	tests/test_obj_loader.cpp	heading-exact
+L-R11	record	records/C6.md:593	K-cantfail	tests/test_obj_loader.cpp	heading-exact
+L-R11	record	records/C6.md:665	S-snapshot, P-other	tests/test_obj_loader.cpp	heading-exact
+L-R11	record	records/C6.md:699	K-duplicate, P-other	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:724	P-other, Z-cite	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:750	P-setting, K-cantfail	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:774		tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:878	F-result	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:906	P-other, K-comment	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:929	P-other, K-comment	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:949	F-result	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:970	P-other, K-comment	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:995	P-other, Z-cite, K-comment	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:1018		tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:1065	K-selfmade	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:1090	P-other, Z-cite	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:1115	P-other	tests/test_overlay_layout.cpp	heading-exact
+L-R11	record	records/C6.md:1224	S-snapshot, Z-cite	tests/test_path_costs.cpp	heading-exact
+L-R11	record	records/C6.md:1251	S-snapshot	tests/test_path_costs.cpp	heading-exact
+L-R11	record	records/C6.md:1341	S-snapshot, K-namebody	tests/test_path_costs.cpp	heading-exact
+L-R11	record	records/C6.md:1391	K-duplicate, K-selfmade, S-snapshot	tests/test_path_costs.cpp	heading-exact
+L-R11	record	records/C6.md:1415	S-snapshot, P-other	tests/test_path_costs.cpp	heading-exact
+L-R11	record	records/C7.md:20	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:70	S-snapshot, P-message, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:88	P-message	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:105	S-snapshot	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:122	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:155	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:172	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:188	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:220	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:268		tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:285	S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:301	P-other	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:317	P-other	tests/test_pb_coach.cpp	heading-exact
+L-R11	record	records/C7.md:339	K-selfmade	tests/test_pb_files.cpp	heading-exact
+L-R11	record	records/C7.md:481	S-snapshot, Z-cite	tests/test_pb_state.cpp	heading-exact
+L-R11	record	records/C8.md:93	P-other	tests/test_precheck_check1.cpp	heading-exact
+L-R11	record	records/C8.md:275	P-message	tests/test_precheck_check3.cpp	heading-exact
+L-R11	record	records/C8.md:387	K-namebody	tests/test_precheck_git.cpp	heading-exact
+L-R11	record	records/C8.md:419	P-other, O-toolout	tests/test_precheck_git.cpp	heading-exact
+L-R11	record	records/C8.md:435	O-toolout	tests/test_precheck_git.cpp	heading-exact
+L-R11	record	records/C8.md:468	P-other, P-message	tests/test_precheck_git.cpp	heading-exact
+L-R11	record	records/C8.md:484	P-message, K-selfmade	tests/test_precheck_git.cpp	heading-exact
+L-R11	record	records/C9.md:21	P-other	tests/test_precheck_pick.cpp	heading-exact
+L-R11	record	records/C9.md:192	K-skip	tests/test_precheck_pick.cpp	heading-exact
+L-R11	record	records/C9.md:220	P-other	tests/test_precheck_pick.cpp	heading-exact
+L-R11	record	records/C9.md:234	P-other	tests/test_precheck_pick.cpp	heading-exact
+L-R11	record	records/C9.md:957	K-floor, P-message	tests/test_precheck_rows.cpp	heading-exact
+L-R11	record	records/C9.md:985	E-echo, K-skip	tests/test_precheck_rows.cpp	heading-exact
+L-R12	record	records/D1.md:33	K-selfmade, P-name	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:65	P-message, K-duplicate	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:73	P-other, C-clock, K-namebody	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:146	P-other, P-message, C-clock	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:154	P-other	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:162	P-other	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:226	P-message, K-duplicate	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:276	P-other, C-stub	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:303	P-other, C-stub	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:315	P-other, C-clock	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:371	P-other, C-clock	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:398	P-other, C-stub	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:421	C-ownchecker, K-nocode	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:483	P-message	tools/ch_mcp/tests/test_bot_run.py	heading-base
+L-R12	record	records/D1.md:572	P-other, E-echo	tools/ch_mcp/tests/test_build_facts.py	heading-base
+L-R12	record	records/D1.md:606	K-duplicate, K-namebody	tools/ch_mcp/tests/test_build_facts.py	heading-base
+L-R12	record	records/D1.md:671	P-name	tools/ch_mcp/tests/test_build_stamp.py	heading-base
+L-R12	record	records/D1.md:676	P-other	tools/ch_mcp/tests/test_build_stamp.py	heading-base
+L-R12	record	records/D1.md:722	S-snapshot	tools/ch_mcp/tests/test_chdis.py	heading-base
+L-R12	record	records/D1.md:812	F-result, Z-cite, S-snapshot	tools/ch_mcp/tests/test_compare_scorestats.py	heading-base
+L-R12	record	records/D10.md:80	P-other, O-gamemem, Z-cite	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:86	K-selfmade, O-gamemem, E-echo, K-duplicate	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:130	P-other, Z-cite	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:136	P-other, K-duplicate	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:157	P-other	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:163	O-gamemem, K-cantfail	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:170	K-cantfail	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:184	P-other, Z-cite	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:190	K-cantfail	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:202	P-other	tools/ch_probe/tests/test_engine.py	heading-base
+L-R12	record	records/D10.md:239	P-other, E-echo	tools/ch_probe/tests/test_engine_finder.py	heading-base
+L-R12	record	records/D10.md:278	P-other, C-clock, P-message, K-comment	tools/ch_probe/tests/test_engine_finder.py	heading-base
+L-R12	record	records/D10.md:284	P-message, C-clock, K-duplicate	tools/ch_probe/tests/test_engine_finder.py	heading-base
+L-R12	record	records/D10.md:290	C-clock, K-duplicate	tools/ch_probe/tests/test_engine_finder.py	heading-base
+L-R12	record	records/D10.md:363	K-unreachable, O-gamemem	tools/ch_probe/tests/test_find_checksum.py	heading-base
+L-R12	record	records/D10.md:371	K-comment, O-gamemem	tools/ch_probe/tests/test_find_checksum.py	heading-base
+L-R12	record	records/D10.md:385	K-namebody	tools/ch_probe/tests/test_find_checksum.py	heading-base
+L-R12	record	records/D10.md:391	P-message, K-comment	tools/ch_probe/tests/test_find_checksum.py	heading-base
+L-R12	record	records/D10.md:410	P-other	tools/ch_probe/tests/test_find_checksum.py	heading-base
+L-R12	record	records/D10.md:470	K-duplicate	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:476	K-cantfail	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:482	K-comment	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:510	P-other	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:516	K-cantfail	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:542	K-comment, P-other	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:567	K-comment	tools/ch_probe/tests/test_hit_window_scripts.py	heading-base
+L-R12	record	records/D10.md:672	P-other	tools/ch_probe/tests/test_input_driver.py	heading-base
+L-R12	record	records/D10.md:706	P-other	tools/ch_probe/tests/test_input_driver.py	heading-base
+L-R12	record	records/D10.md:790	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:796	S-snapshot	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:803	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:809	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:815	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:821	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:827	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
+L-R12	record	records/D10.md:833	P-other	tools/ch_probe/tests/test_overlay_logs.py	heading-base
 L-R12	record	records/D11.md:40	P-other, Z-cite	tools/ch_probe/tests/test_play_chart.py	name
 L-R12	record	records/D11.md:70	P-other	tools/ch_probe/tests/test_play_chart.py	name
 L-R12	record	records/D11.md:85	S-snapshot	tools/ch_probe/tests/test_play_chart.py	name
@@ -2924,7 +2924,7 @@ L-R12	record	records/D11.md:1194	P-name, E-echo	tools/ch_probe/tests/test_play_c
 L-R12	record	records/D11.md:1308	P-other	tools/ch_probe/tests/test_play_chart.py	name
 L-R12	record	records/D11.md:1320	P-name	tools/ch_probe/tests/test_play_chart.py	name
 L-R12	record	records/D11.md:1435	P-message, S-snapshot, C-clock	tools/ch_probe/tests/test_play_chart.py	name
-L-R13	record	records/D12.md:34	P-other, O-gamemem	tools/ch_probe/tests/test_play_in_game.py	base
+L-R13	record	records/D12.md:34	P-other, O-gamemem	tools/ch_probe/tests/test_play_in_game.py	heading-base
 L-R13	record	records/D12.md:41	P-name, O-gamemem	tools/ch_probe/tests/test_play_in_game.py	name
 L-R13	record	records/D12.md:53	K-selfmade, O-gamemem	tools/ch_probe/tests/test_play_in_game.py	name
 L-R13	record	records/D12.md:67	K-selfmade, O-gamemem	tools/ch_probe/tests/test_play_in_game.py	name
@@ -2932,7 +2932,7 @@ L-R13	record	records/D12.md:101	P-name	tools/ch_probe/tests/test_play_in_game.py
 L-R13	record	records/D12.md:149	K-selfmade, O-gamemem	tools/ch_probe/tests/test_play_in_game.py	name
 L-R13	record	records/D12.md:186	S-snapshot, C-stub, P-other	tools/ch_probe/tests/test_prep_inputs.py	name
 L-R13	record	records/D12.md:229	P-other	tools/ch_probe/tests/test_prep_inputs.py	name
-L-R13	record	records/D12.md:252	K-duplicate, K-comment	tools/ch_probe/tests/test_probe_chart.py	base
+L-R13	record	records/D12.md:252	K-duplicate, K-comment	tools/ch_probe/tests/test_probe_chart.py	heading-base
 L-R13	record	records/D12.md:266	K-comment	tools/ch_probe/tests/test_probe_chart.py	name
 L-R13	record	records/D12.md:272	K-comment	tools/ch_probe/tests/test_probe_chart.py	name
 L-R13	record	records/D12.md:305	K-cantfail	tools/ch_probe/tests/test_probe_chart.py	name
@@ -2940,12 +2940,12 @@ L-R13	record	records/D12.md:325	P-other	tools/ch_probe/tests/test_probe_chart.py
 L-R13	record	records/D12.md:338	K-comment, P-other	tools/ch_probe/tests/test_probe_chart.py	name
 L-R13	record	records/D12.md:374	P-other, S-snapshot	tools/ch_probe/tests/test_probe_songs.py	name
 L-R13	record	records/D12.md:401	P-name, K-namebody	tools/ch_probe/tests/test_probe_songs.py	name
-L-R13	record	records/D12.md:473	K-duplicate	tools/ch_probe/tests/test_process.py	base
+L-R13	record	records/D12.md:473	K-duplicate	tools/ch_probe/tests/test_process.py	heading-base
 L-R13	record	records/D12.md:571	P-other	tools/ch_probe/tests/test_process.py	name
 L-R13	record	records/D12.md:583	K-comment	tools/ch_probe/tests/test_process.py	name
 L-R13	record	records/D12.md:589	K-comment	tools/ch_probe/tests/test_process.py	name
 L-R13	record	records/D12.md:613	K-comment	tools/ch_probe/tests/test_process.py	name
-L-R13	record	records/D12.md:644	K-comment, P-other	tools/ch_probe/tests/test_process_readonly.py	base
+L-R13	record	records/D12.md:644	K-comment, P-other	tools/ch_probe/tests/test_process_readonly.py	heading-base
 L-R13	record	records/D12.md:650	K-comment, P-other	tools/ch_probe/tests/test_process_readonly.py	name
 L-R13	record	records/D12.md:663	K-duplicate	tools/ch_probe/tests/test_process_readonly.py	name
 L-R13	record	records/D12.md:689	P-other	tools/ch_probe/tests/test_s2_window_constants.py	name
@@ -3054,7 +3054,7 @@ L-R14	record	records/D2.md:1881	C-ownchecker, K-cantfail	tools/ch_mcp/tests/test
 L-R14	record	records/D2.md:1907	K-nocode, P-message	tools/ch_mcp/tests/test_frida_attach.py	name
 L-R14	record	records/D2.md:1919	K-duplicate	tools/ch_mcp/tests/test_frida_attach.py	name
 L-R14	record	records/D2.md:1933	P-other	tools/ch_mcp/tests/test_frida_attach.py	name
-L-R14	record	records/D3.md:30	K-comment, C-clock	tools/ch_mcp/tests/test_frida_tools.py	base
+L-R14	record	records/D3.md:30	K-comment, C-clock	tools/ch_mcp/tests/test_frida_tools.py	heading-base
 L-R14	record	records/D3.md:116	K-namebody, P-message	tools/ch_mcp/tests/test_frida_tools.py	name
 L-R14	record	records/D3.md:167	P-other	tools/ch_mcp/tests/test_frida_tools.py	name
 L-R14	record	records/D3.md:172	K-selfmade	tools/ch_mcp/tests/test_frida_tools.py	name
@@ -3079,25 +3079,25 @@ L-R14	record	records/D3.md:630	K-nocode	tools/ch_mcp/tests/test_front.py	name
 L-R14	record	records/D3.md:695	K-selfmade	tools/ch_mcp/tests/test_game_files.py	name
 L-R14	record	records/D3.md:712	K-namebody	tools/ch_mcp/tests/test_game_files.py	name
 L-R14	record	records/D3.md:772	K-nocode	tools/ch_mcp/tests/test_game_files.py	name
-L-R14	record	records/D4.md:36	P-message, P-other	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:68	K-nocode	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:84	K-selfmade	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:92	K-selfmade, P-other	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:126	P-other, C-clock	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:264	P-message	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:296	P-message	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:360	P-other, K-comment	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:371	K-comment	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:380	K-comment	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:431	P-other	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:584	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:596	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:604	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:611	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:620	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:743	K-cantfail	tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:761		tools/ch_mcp/tests/test_game_tools.py	base
-L-R14	record	records/D4.md:810	K-comment	tools/ch_mcp/tests/test_game_tools.py	base
+L-R14	record	records/D4.md:36	P-message, P-other	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:68	K-nocode	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:84	K-selfmade	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:92	K-selfmade, P-other	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:126	P-other, C-clock	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:264	P-message	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:296	P-message	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:360	P-other, K-comment	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:371	K-comment	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:380	K-comment	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:431	P-other	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:584	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:596	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:604	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:611	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:620	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:743	K-cantfail	tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:761		tools/ch_mcp/tests/test_game_tools.py	heading-base
+L-R14	record	records/D4.md:810	K-comment	tools/ch_mcp/tests/test_game_tools.py	heading-base
 L-R15	record	records/D5.md:34	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	name
 L-R15	record	records/D5.md:43	P-message, Z-cite	tools/ch_mcp/tests/test_game_tools.py	name
 L-R15	record	records/D5.md:49	P-message	tools/ch_mcp/tests/test_game_tools.py	name
@@ -3119,7 +3119,7 @@ L-R15	record	records/D5.md:893	K-duplicate	tools/ch_mcp/tests/test_game_tools.py
 L-R15	record	records/D5.md:911	K-floor	tools/ch_mcp/tests/test_game_tools.py	name
 L-R15	record	records/D6.md:38	E-echo, Z-cite, K-cantfail	tools/ch_mcp/tests/test_hydra_end.py	name
 L-R15	record	records/D6.md:68	F-result, K-selfmade, P-message	tools/ch_mcp/tests/test_hydra_end.py	name
-L-R15	record	records/D6.md:143	K-duplicate	tools/ch_mcp/tests/test_launch_patch.py	exact
+L-R15	record	records/D6.md:143	K-duplicate	tools/ch_mcp/tests/test_launch_patch.py	heading-exact
 L-R15	record	records/D6.md:156	P-other	tools/ch_mcp/tests/test_launch_patch.py	name
 L-R15	record	records/D6.md:182	P-other, K-duplicate	tools/ch_mcp/tests/test_launch_patch.py	name
 L-R15	record	records/D6.md:195	P-other, Z-cite	tools/ch_mcp/tests/test_launch_patch.py	name
@@ -3151,7 +3151,7 @@ L-R15	record	records/D7.md:341	P-other	tools/ch_mcp/tests/test_machine_recorder.
 L-R15	record	records/D7.md:350	P-other	tools/ch_mcp/tests/test_machine_recorder.py	name
 L-R15	record	records/D7.md:366	K-partial	tools/ch_mcp/tests/test_machine_recorder.py	name
 L-R15	record	records/D7.md:375	K-floor	tools/ch_mcp/tests/test_machine_recorder.py	name
-L-R15	record	records/D7.md:431	P-other, K-duplicate	tools/ch_mcp/tests/test_machine_report.py	base
+L-R15	record	records/D7.md:431	P-other, K-duplicate	tools/ch_mcp/tests/test_machine_report.py	heading-base
 L-R15	record	records/D7.md:438	P-other, K-duplicate	tools/ch_mcp/tests/test_machine_report.py	name
 L-R15	record	records/D7.md:566	K-duplicate	tools/ch_mcp/tests/test_machine_report.py	name
 L-R15	record	records/D7.md:574	K-duplicate	tools/ch_mcp/tests/test_machine_report.py	name
@@ -3168,100 +3168,100 @@ L-R15	record	records/D8.md:180	P-other	tools/ch_mcp/tests/test_method_watch.py	n
 L-R15	record	records/D8.md:187	P-other	tools/ch_mcp/tests/test_method_watch.py	name
 L-R15	record	records/D8.md:206	P-other	tools/ch_mcp/tests/test_method_watch.py	name
 L-R15	record	records/D8.md:246	S-snapshot	tools/ch_mcp/tests/test_method_watch.py	name
-L-R15	record	records/D8.md:276	P-other	tools/ch_mcp/tests/test_mono_facts.py	base
+L-R15	record	records/D8.md:276	P-other	tools/ch_mcp/tests/test_mono_facts.py	heading-base
 L-R15	record	records/D8.md:317	P-other	tools/ch_mcp/tests/test_mono_facts.py	name
 L-R15	record	records/D8.md:330	P-other	tools/ch_mcp/tests/test_mono_facts.py	name
 L-R15	record	records/D8.md:611	P-other	tools/ch_mcp/tests/test_quiet.py	name
 L-R15	record	records/D8.md:735	P-other	tools/ch_mcp/tests/test_quiet.py	name
 L-R15	record	records/D8.md:817	P-other	tools/ch_mcp/tests/test_recorder_link.py	name
-L-R15	record	records/D8.md:1004	P-name, K-namebody	tools/ch_mcp/tests/test_server.py	base
+L-R15	record	records/D8.md:1004	P-name, K-namebody	tools/ch_mcp/tests/test_server.py	heading-base
 L-R15	record	records/D8.md:1055	K-nocode	tools/ch_mcp/tests/test_server.py	name
 L-R15	record	records/D8.md:1068	P-message	tools/ch_mcp/tests/test_server.py	name
 L-R15	record	records/D8.md:1181	P-message, K-partial	tools/ch_mcp/tests/test_server.py	name
-L-R16	record	records/D9.md:75	P-other	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:89	P-other	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:123	P-message	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:148	P-other	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:172	S-snapshot	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:212	K-nocode	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:230	P-other	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:270	F-schedule, P-other, K-nocode	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:277	P-other	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:281	K-selfmade	tools/ch_mcp/tests/test_sp_tools.py	base
-L-R16	record	records/D9.md:335	P-other	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:342	P-other	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:361	P-other, P-message	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:408	P-message	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:423	K-nocode	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:437	P-other, Z-cite	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:444	P-other	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:465	P-other	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:494	P-other	tools/ch_mcp/tests/test_trace_hits.py	base
-L-R16	record	records/D9.md:553	K-cantfail	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:557	P-other	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:562	P-other, C-clock	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:568	P-other, Z-cite	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:573	P-other	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:577	K-nocode	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:596	P-message	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:600	K-nocode	tools/ch_probe/tests/test_cheap_checks.py	base
-L-R16	record	records/D9.md:651	K-duplicate	tools/ch_probe/tests/test_debugger.py	base
-L-R16	record	records/D9.md:669	K-nocode	tools/ch_probe/tests/test_debugger.py	base
-L-R16	record	records/D9.md:674	K-nocode, K-duplicate	tools/ch_probe/tests/test_debugger.py	base
-L-R16	record	records/D9.md:714	P-other, Z-cite	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:724	C-ownchecker, P-other	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:729	C-ownchecker, P-other	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:740	P-other, K-duplicate	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:745	K-namebody	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:760	P-other	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:765	S-snapshot, K-duplicate	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:770	P-other	tools/ch_probe/tests/test_early_fill_walk.py	base
-L-R16	record	records/D9.md:806	S-snapshot	tools/ch_probe/tests/test_edge_probe.py	base
+L-R16	record	records/D9.md:75	P-other	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:89	P-other	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:123	P-message	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:148	P-other	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:172	S-snapshot	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:212	K-nocode	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:230	P-other	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:270	F-schedule, P-other, K-nocode	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:277	P-other	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:281	K-selfmade	tools/ch_mcp/tests/test_sp_tools.py	heading-base
+L-R16	record	records/D9.md:335	P-other	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:342	P-other	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:361	P-other, P-message	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:408	P-message	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:423	K-nocode	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:437	P-other, Z-cite	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:444	P-other	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:465	P-other	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:494	P-other	tools/ch_mcp/tests/test_trace_hits.py	heading-base
+L-R16	record	records/D9.md:553	K-cantfail	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:557	P-other	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:562	P-other, C-clock	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:568	P-other, Z-cite	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:573	P-other	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:577	K-nocode	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:596	P-message	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:600	K-nocode	tools/ch_probe/tests/test_cheap_checks.py	heading-base
+L-R16	record	records/D9.md:651	K-duplicate	tools/ch_probe/tests/test_debugger.py	heading-base
+L-R16	record	records/D9.md:669	K-nocode	tools/ch_probe/tests/test_debugger.py	heading-base
+L-R16	record	records/D9.md:674	K-nocode, K-duplicate	tools/ch_probe/tests/test_debugger.py	heading-base
+L-R16	record	records/D9.md:714	P-other, Z-cite	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:724	C-ownchecker, P-other	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:729	C-ownchecker, P-other	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:740	P-other, K-duplicate	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:745	K-namebody	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:760	P-other	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:765	S-snapshot, K-duplicate	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:770	P-other	tools/ch_probe/tests/test_early_fill_walk.py	heading-base
+L-R16	record	records/D9.md:806	S-snapshot	tools/ch_probe/tests/test_edge_probe.py	heading-base
 L-R16	record	records/E1.md:22	P-other	~/.claude/gates/tests/test_agent_files.py	base
 L-R16	record	records/E1.md:26	P-other	~/.claude/gates/tests/test_agent_files.py	base
-L-R16	record	records/E1.md:44	P-other	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:62	P-message	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:101	K-namebody, O-transcript	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:119	P-message	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:137	P-other	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:140	P-message	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:152	P-message	~/.claude/gates/tests/test_agent_stop.py	base
-L-R16	record	records/E1.md:197	K-cantfail	~/.claude/gates/tests/test_common.py	base
-L-R16	record	records/E1.md:280	P-message	~/.claude/gates/tests/test_percall_key.py	base
+L-R16	record	records/E1.md:44	P-other	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:62	P-message	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:101	K-namebody, O-transcript	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:119	P-message	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:137	P-other	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:140	P-message	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:152	P-message	~/.claude/gates/tests/test_agent_stop.py	heading-base
+L-R16	record	records/E1.md:197	K-cantfail	~/.claude/gates/tests/test_common.py	heading-base
+L-R16	record	records/E1.md:280	P-message	~/.claude/gates/tests/test_percall_key.py	heading-base
 L-R16	record	records/E1.md:337	P-other	~/.claude/gates/tests/test_docs_numbers.py	base
 L-R16	record	records/E1.md:346	P-name	~/.claude/gates/tests/test_docs_numbers.py	base
-L-R16	record	records/E1.md:373	P-message	~/.claude/gates/tests/test_bash_windows_rule.py	base
+L-R16	record	records/E1.md:373	P-message	~/.claude/gates/tests/test_bash_windows_rule.py	heading-base
 L-R16	record	records/E1.md:546	K-duplicate	~/.claude/gates/tests/test_delete_rule.py	name
-L-R16	record	records/E2.md:18	P-message	~/.claude/gates/tests/test_percall_rewrite.py	base
-L-R16	record	records/E2.md:56	P-other	~/.claude/gates/tests/test_percall_rewrite.py	base
-L-R16	record	records/E2.md:99	P-message	~/.claude/gates/tests/test_percall_rewrite.py	base
-L-R16	record	records/E2.md:108	P-message	~/.claude/gates/tests/test_percall_rewrite.py	base
-L-R16	record	records/E2.md:116	P-message	~/.claude/gates/tests/test_percall_rewrite.py	base
-L-R16	record	records/E2.md:202	K-duplicate, P-other	~/.claude/gates/tests/test_posture.py	base
-L-R16	record	records/E2.md:219	P-other	~/.claude/gates/tests/test_posture.py	base
-L-R16	record	records/E2.md:434	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:442	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:449	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:454	K-duplicate	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:461	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:470	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:476	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:481	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:486	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:494	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:500	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:505	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:517	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:523	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:528	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:534	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:563	K-cantfail	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:584	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:775	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:865	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:871	P-other	~/.claude/gates/tests/test_progress.py	base
-L-R16	record	records/E2.md:1029	P-message	~/.claude/gates/tests/test_publish.py	base
-L-R16	record	records/E2.md:1037	P-message	~/.claude/gates/tests/test_publish.py	base
+L-R16	record	records/E2.md:18	P-message	~/.claude/gates/tests/test_percall_rewrite.py	heading-base
+L-R16	record	records/E2.md:56	P-other	~/.claude/gates/tests/test_percall_rewrite.py	heading-base
+L-R16	record	records/E2.md:99	P-message	~/.claude/gates/tests/test_percall_rewrite.py	heading-base
+L-R16	record	records/E2.md:108	P-message	~/.claude/gates/tests/test_percall_rewrite.py	heading-base
+L-R16	record	records/E2.md:116	P-message	~/.claude/gates/tests/test_percall_rewrite.py	heading-base
+L-R16	record	records/E2.md:202	K-duplicate, P-other	~/.claude/gates/tests/test_posture.py	heading-base
+L-R16	record	records/E2.md:219	P-other	~/.claude/gates/tests/test_posture.py	heading-base
+L-R16	record	records/E2.md:434	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:442	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:449	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:454	K-duplicate	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:461	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:470	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:476	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:481	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:486	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:494	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:500	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:505	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:517	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:523	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:528	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:534	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:563	K-cantfail	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:584	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:775	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:865	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:871	P-other	~/.claude/gates/tests/test_progress.py	heading-base
+L-R16	record	records/E2.md:1029	P-message	~/.claude/gates/tests/test_publish.py	heading-base
+L-R16	record	records/E2.md:1037	P-message	~/.claude/gates/tests/test_publish.py	heading-base
 L-R16	record	records/E3.md:33	P-other, K-selfmade	~/.claude/gates/tests/test_refusals.py	base
 L-R16	record	records/E3.md:94	S-snapshot, Z-cite	~/.claude/gates/tests/test_review_dispatch.py	name
 L-R16	record	records/E3.md:526		~/.claude/gates/tests/test_ref_judge.py	name
@@ -3270,36 +3270,36 @@ L-R16	record	records/E3.md:671	K-duplicate	~/.claude/gates/tests/test_review_rul
 L-R16	record	records/E3.md:692	K-cantfail	~/.claude/gates/tests/test_review_rules.py	name
 L-R16	record	records/E3.md:745	S-snapshot, Z-cite, K-namebody	~/.claude/gates/tests/test_review_rules.py	name
 L-R16	record	records/E3.md:821	K-cantfail	~/.claude/gates/tests/test_review_rules.py	name
-L-R17	record	records/E4.md:89	K-namebody, K-cantfail	~/.claude/gates/tests/test_ruling_rules.py	base
-L-R17	record	records/E4.md:242	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:245	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:248	P-message, O-payload	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:260	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:266	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:269	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:272	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:275	P-message	~/.claude/gates/tests/test_stall.py	base
-L-R17	record	records/E4.md:314	P-message	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:341	P-other	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:368	P-other	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:371	P-message, S-snapshot, P-other	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:380	P-other, K-cantfail	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:401	P-message, P-other, S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:413	P-other	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:425	S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:461	S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:479	S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:488	S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:491	S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
-L-R17	record	records/E4.md:494	S-snapshot	~/.claude/gates/tests/test_shell_output.py	base
+L-R17	record	records/E4.md:89	K-namebody, K-cantfail	~/.claude/gates/tests/test_ruling_rules.py	heading-base
+L-R17	record	records/E4.md:242	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:245	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:248	P-message, O-payload	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:260	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:266	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:269	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:272	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:275	P-message	~/.claude/gates/tests/test_stall.py	heading-base
+L-R17	record	records/E4.md:314	P-message	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:341	P-other	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:368	P-other	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:371	P-message, S-snapshot, P-other	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:380	P-other, K-cantfail	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:401	P-message, P-other, S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:413	P-other	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:425	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:461	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:479	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:488	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:491	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
+L-R17	record	records/E4.md:494	S-snapshot	~/.claude/gates/tests/test_shell_output.py	heading-base
 L-R17	record	records/E4.md:588	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
-L-R17	record	records/E4.md:591	P-message	~/.claude/tools/session_cards/check.py	base
+L-R17	record	records/E4.md:591	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1	heading-base
 L-R17	record	records/E4.md:600	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:603	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:606	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:660	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:669	K-floor	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
-L-R17	record	records/E4.md:675	P-message	~/.claude/tools/session_cards/batch.py	base
+L-R17	record	records/E4.md:675	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1	heading-base
 L-R17	record	records/E4.md:690	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:711	P-message	~/.claude/gates/tests/test_h53_session_cards_start.ps1|~/.claude/hooks/tests/test_h53_session_cards_start.ps1	ambiguous
 L-R17	record	records/E4.md:750	K-partial	~/.claude/gates/tests/test_h52_cleanup_sweep.ps1|~/.claude/hooks/tests/test_h52_cleanup_sweep.ps1	ambiguous
@@ -3396,13 +3396,13 @@ L-R18	record	records/T3.md:873	P-name	tests/test_preview_boxes.cpp	name
 L-R18	record	records/T3.md:908	P-builtchart	tests/test_preview_boxes.cpp	name
 L-R18	record	records/T3.md:926	P-builtchart, K-comment	tests/test_preview_boxes.cpp	name
 L-R18	record	records/T3.md:944	K-duplicate	tests/test_preview_boxes.cpp	name
-L-R18	record	records/delta-DL1.md:29	K-duplicate, K-selfmade	tests/test_store_records.cpp	exact
-L-R18	record	records/delta-DL1.md:399	F-record, P-other, K-comment	tests/test_store_records.cpp	exact
-L-R18	record	records/delta-DL1.md:406	P-other, F-row	tests/test_store_records.cpp	exact
-L-R18	record	records/delta-DL1.md:410	P-other	tests/test_store_records.cpp	exact
-L-R18	record	records/delta-DL1.md:422	P-other, F-row, F-record	tests/test_store_records.cpp	exact
-L-R18	record	records/delta-DL1.md:430	K-skip, K-cantfail, K-floor	tests/test_store_records.cpp	exact
-L-R18	record	records/delta-DL1.md:434	P-name, Z-cite	tests/test_store_records.cpp	exact
+L-R18	record	records/delta-DL1.md:29	K-duplicate, K-selfmade	tests/test_store_records.cpp	heading-exact
+L-R18	record	records/delta-DL1.md:399	F-record, P-other, K-comment	tests/test_store_records.cpp	heading-exact
+L-R18	record	records/delta-DL1.md:406	P-other, F-row	tests/test_store_records.cpp	heading-exact
+L-R18	record	records/delta-DL1.md:410	P-other	tests/test_store_records.cpp	heading-exact
+L-R18	record	records/delta-DL1.md:422	P-other, F-row, F-record	tests/test_store_records.cpp	heading-exact
+L-R18	record	records/delta-DL1.md:430	K-skip, K-cantfail, K-floor	tests/test_store_records.cpp	heading-exact
+L-R18	record	records/delta-DL1.md:434	P-name, Z-cite	tests/test_store_records.cpp	heading-exact
 L-R18	record	records/delta-DL2.md:41	F-db, K-cantfail	tests/test_store_open.cpp	exact
 L-R18	record	records/delta-DL2.md:59	F-db, K-cantfail	tests/test_store_open.cpp	exact
 L-R18	record	records/delta-DL2.md:77	F-db, K-cantfail	tests/test_store_open.cpp	exact
@@ -3411,17 +3411,17 @@ L-R18	record	records/delta-DL2.md:113	F-db, K-cantfail	tests/test_store_open.cpp
 L-R18	record	records/delta-DL2.md:131	S-snapshot, K-cantfail, Z-cite	tests/test_store_open.cpp	exact
 L-R18	record	records/delta-DL2.md:185	F-db, K-cantfail	tests/test_store_open.cpp	exact
 L-R18	record	records/delta-DL2.md:361		tests/store_lock_holder.h	exact
-L-R18	record	records/delta-DL3.md:41	K-floor	tests/test_app_click.cpp	exact
-L-R18	record	records/delta-DL3.md:57	K-duplicate	tests/test_app_click.cpp	exact
-L-R18	record	records/delta-DL3.md:73	K-duplicate	tests/test_app_click.cpp	exact
-L-R18	record	records/delta-DL3.md:167	K-floor	tests/test_app_click.cpp	exact
-L-R18	record	records/delta-DL3.md:209	C-analyzer, P-other, K-comment	tests/test_app_library.cpp	exact
-L-R18	record	records/delta-DL3.md:336	C-analyzer, P-other, K-comment	tests/test_app_library.cpp	exact
-L-R18	record	records/delta-DL3.md:446	C-analyzer, P-other, K-comment	tests/test_app_library.cpp	exact
-L-R18	record	records/delta-DL3.md:452	C-analyzer, P-other	tests/test_app_library.cpp	exact
-L-R18	record	records/delta-DL3.md:458	C-analyzer, P-other	tests/test_app_library.cpp	exact
-L-R18	record	records/delta-DL3.md:464	C-analyzer, P-other	tests/test_app_library.cpp	exact
-L-R18	record	records/delta-DL3.md:599		tests/test_app_reports.cpp	exact
+L-R18	record	records/delta-DL3.md:41	K-floor	tests/test_app_click.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:57	K-duplicate	tests/test_app_click.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:73	K-duplicate	tests/test_app_click.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:167	K-floor	tests/test_app_click.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:209	C-analyzer, P-other, K-comment	tests/test_app_library.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:336	C-analyzer, P-other, K-comment	tests/test_app_library.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:446	C-analyzer, P-other, K-comment	tests/test_app_library.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:452	C-analyzer, P-other	tests/test_app_library.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:458	C-analyzer, P-other	tests/test_app_library.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:464	C-analyzer, P-other	tests/test_app_library.cpp	heading-exact
+L-R18	record	records/delta-DL3.md:599		tests/test_app_reports.cpp	heading-exact
 L-R18	record	records/delta-DL4.md:104	C-analyzer, K-floor	tests/test_library_jobs.cpp	exact
 L-R18	record	records/delta-DL4.md:137	K-floor	tests/test_library_jobs.cpp	exact
 L-R18	record	records/delta-DL4.md:162	K-selfmade, K-cantfail	tests/test_library_model.cpp	exact
@@ -3435,125 +3435,125 @@ L-R18	record	records/delta-DL4.md:393	P-name	tests/test_config.cpp	exact
 L-R18	record	records/delta-DL4.md:409	P-setting	tests/test_config.cpp	exact
 L-R18	record	records/delta-DL4.md:458	P-setting	tests/test_config.cpp	exact
 L-R18	record	records/delta-DL4.md:474	P-setting, K-duplicate	tests/test_config.cpp	exact
-L-R18	record	records/delta-DL5.md:16	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	exact
-L-R18	record	records/delta-DL5.md:37	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	exact
-L-R18	record	records/delta-DL5.md:57	P-builtchart, K-selfmade	tests/test_fills_and_skips.cpp	exact
-L-R18	record	records/delta-DL5.md:77	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	exact
-L-R18	record	records/delta-DL5.md:123	P-message	tests/test_batch_text.cpp	exact
-L-R18	record	records/delta-DL5.md:147	P-message	tests/test_cli.cpp	exact
-L-R18	record	records/delta-DL5.md:201	K-duplicate, P-builtchart	tests/test_activation_rows.cpp	exact
-L-R18	record	records/delta-DL5.md:206	P-message, P-builtchart	tests/test_activation_rows.cpp	exact
-L-R18	record	records/delta-DL5.md:211	P-builtchart	tests/test_activation_rows.cpp	exact
-L-R18	record	records/delta-DL5.md:231	K-skip	tests/test_docs_match_code.cpp	exact
-L-R18	record	records/delta-DL5.md:258	S-snapshot	tests/test_engine_sweeps.cpp	exact
-L-R18	record	records/delta-DL5.md:269	S-snapshot, K-partial	tests/test_engine_sweeps.cpp	exact
-L-R18	record	records/delta-DL5.md:293	K-namebody, K-cantfail	tests/test_preview_controller.cpp	exact
-L-R18	record	records/delta-DL5.md:347	P-message, K-cantfail	tests/ui/uitest_live.cpp	exact
-L-R19	record	records/delta-DL5b.md:45	K-duplicate, P-other	tests/test_activation_rows.cpp	exact
-L-R19	record	records/delta-DL5b.md:66	P-other, K-selfmade	tests/test_activation_rows.cpp	exact
-L-R19	record	records/delta-DL5b.md:86	P-other	tests/test_activation_rows.cpp	exact
-L-R19	record	records/delta-DL5b.md:107	P-other	tests/test_activation_rows.cpp	exact
-L-R19	record	records/delta-DL5b.md:127	K-unreachable	tests/test_activation_rows.cpp	exact
-L-R19	record	records/delta-DL5b.md:146	K-floor, K-selfmade	tests/test_activation_rows.cpp	exact
-L-R19	record	records/delta-DL5b.md:171	C-ownchecker, P-setting, P-message	tests/test_docs_match_code.cpp	exact
-L-R19	record	records/delta-DL5b.md:246	K-duplicate, S-snapshot	tests/test_five_lane.cpp	exact
-L-R19	record	records/delta-DL5b.md:419	S-snapshot	tests/test_song_parse.cpp	exact
-L-R19	record	records/window-WN1.md:133	P-other, Z-cite	tests/test_store_results.cpp	exact
-L-R19	record	records/window-WN1.md:149	P-other, S-snapshot, Z-cite	tests/test_store_results.cpp	exact
-L-R19	record	records/window-WN1.md:200	P-builtchart	tests/test_rules.cpp	exact
-L-R19	record	records/window-WN1.md:216	P-builtchart	tests/test_rules.cpp	exact
-L-R19	record	records/window-WN1.md:232	P-builtchart	tests/test_rules.cpp	exact
-L-R19	record	records/window-WN1.md:331	P-builtchart, Z-cite	tests/test_search_target.cpp	exact
-L-R19	record	records/window-WN1.md:347	P-builtchart	tests/test_search_target.cpp	exact
-L-R19	record	records/window-WN1.md:363	P-builtchart	tests/test_search_target.cpp	exact
-L-R19	record	records/window-WN1.md:395	P-other, K-selfmade	tests/test_search_target.cpp	exact
-L-R19	record	records/window-WN1.md:411	P-builtchart, Z-cite	tests/test_search_target.cpp	exact
-L-R19	record	records/window-WN2.md:240	K-duplicate, P-burnout, P-builtchart	tests/test_sp_meter_curve.cpp	exact
-L-R19	record	records/window-WN2.md:307	P-builtchart	tests/test_fast_tempo.cpp	exact
-L-R19	record	records/window-WN2.md:324	P-builtchart	tests/test_fast_tempo.cpp	exact
-L-R19	record	records/window-WN2.md:332	P-builtchart, K-skip	tests/test_fast_tempo.cpp	exact
-L-R19	record	records/window-WN2.md:340	K-floor, P-other	tests/test_fast_tempo.cpp	exact
-L-R19	record	records/window-WN3.md:54	K-floor	Delta round: window, replaces A13.md record 2. The old verdi	unresolved
-L-R19	record	records/window-WN3.md:71	K-duplicate, K-floor	Delta round: window, replaces A13.md record 3. The old verdi	unresolved
-L-R19	record	records/window-WN3.md:88	K-floor	Delta round: window, replaces A13.md record 9. The old verdi	unresolved
-L-R19	record	records/window-WN3.md:123	K-floor, K-skip, P-other	Delta round: window, replaces A14.md record 28. The old verd	unresolved
-L-R19	record	records/window-WN3.md:140	P-builtchart, K-skip, Z-cite	Delta round: window, replaces A14.md record 29. The old verd	unresolved
-L-R19	record	records/window-WN3.md:157	K-floor, K-skip	Delta round: window, replaces A14.md record 30. The old verd	unresolved
-L-R19	record	records/window-WN3.md:174	K-floor, K-skip	Delta round: window, replaces A14.md record 31. The old verd	unresolved
-L-R19	record	records/window-WN3.md:191	P-allister, Z-cite	Delta round: window, replaces A14.md record 32. The old verd	unresolved
-L-R19	record	records/window-WN3.md:226	K-floor	Delta round: window, replaces A35.md record 4. The old verdi	unresolved
-L-R19	record	records/window-WN3.md:260	P-builtchart, Z-cite	Delta round: window, replaces A35.md record 13. The old verd	unresolved
-L-R19	record	records/window-WN3.md:292	P-builtchart, S-snapshot, Z-cite	Delta round: window, replaces C6.md record PC1. The old verd	unresolved
-L-R19	record	records/window-WN3.md:309	P-builtchart	Delta round: window, replaces C6.md record PC2. The old verd	unresolved
-L-R19	record	records/window-WN3.md:326	K-cantfail, P-builtchart, Z-cite	Delta round: window, replaces C6.md record PC8. The old verd	unresolved
-L-R19	record	records/window-WN3.md:343	P-builtchart	Delta round: window, replaces C6.md record PC9. The old verd	unresolved
-L-R19	record	records/window-WN4a.md:222	K-floor, Z-cite	tests/test_replay.cpp	exact
-L-R19	record	records/window-WN4a.md:241	K-floor	tests/test_replay.cpp	exact
-L-R19	record	records/window-WN4a.md:260	K-floor, P-other, S-snapshot	tests/test_replay.cpp	exact
-L-R19	record	records/window-WN4a.md:298	S-snapshot, P-builtchart	tests/test_replay.cpp	exact
-L-R19	record	records/window-WN4a.md:336	S-snapshot, P-builtchart, Z-cite	tests/test_replay_schedule.cpp	exact
-L-R19	record	records/window-WN4a.md:355	P-builtchart	tests/test_replay_schedule.cpp	exact
-L-R19	record	records/window-WN4a.md:393	P-other, S-snapshot, Z-cite	tests/test_preview_scene.cpp	exact
-L-R19	record	records/window-WN4a.md:412	P-builtchart, S-snapshot, Z-cite	tests/test_preview_scene.cpp	exact
-L-R19	record	records/window-WN4a.md:431	K-floor	tests/test_preview_controller.cpp	exact
-L-R19	record	records/window-WN4a.md:450	P-other, S-snapshot	tests/test_preview_controller.cpp	exact
-L-R19	record	records/window-WN4b.md:118	P-burnout, S-snapshot, Z-cite	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:138	P-message	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:155	P-message	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:172	P-message, P-burnout, Z-cite	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:189	P-builtchart, P-message	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:223	S-snapshot, P-builtchart	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:240	P-burnout, S-snapshot	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:257	S-snapshot, P-burnout	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:277	K-duplicate, P-burnout	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:294	P-builtchart	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:311	P-builtchart	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:328	P-builtchart	tests/test_pb_coach.cpp	exact
-L-R19	record	records/window-WN4b.md:345	P-pbticks	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:362	P-allister	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:379	P-pbticks	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:396	P-message	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:413	P-pbticks, P-message	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:430	P-message, P-other	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:447	P-message, P-builtchart	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:464	P-message	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:481	P-message, P-other	tests/test_pb_text.cpp	exact
-L-R19	record	records/window-WN4b.md:498	P-other	tests/test_saved_figure_fill.cpp	exact
-L-R19	record	records/window-WN4b.md:549	P-other	tests/test_saved_figure_fill.cpp	exact
-L-R19	record	records/window-WN4b.md:566	P-other, S-snapshot	tests/test_saved_figure_fill.cpp	exact
-L-R19	record	records/window-WN4b.md:583	K-duplicate	tests/test_saved_figure_fill.cpp	exact
-L-R19	record	records/window-WN4b.md:617	P-other	tests/test_saved_figure_fill.cpp	exact
-L-R19	record	records/window-WN4c.md:348	P-burnout, S-snapshot	tests/test_activation_rows.cpp	exact
-L-R19	record	records/window-WN4c.md:389	K-selfmade, K-floor, K-skip	tests/test_activation_rows.cpp	exact
-L-R19	record	records/window-WN4c.md:429	P-message, P-other	tests/test_cli.cpp	exact
-L-R19	record	records/window-WN5.md:152	P-burnout, S-snapshot, Z-cite	tests/ui/uitest_details.cpp	exact
-L-R19	record	records/window-WN5.md:187	K-floor	tests/ui/uitest_preview.cpp	exact
-L-R19	record	records/window-WN5.md:204	P-burnout, S-snapshot	tests/ui/uitest_preview.cpp	exact
-L-R19	record	records/window-WN5.md:221	P-burnout	tests/ui/uitest_preview.cpp	exact
-L-R19	record	records/window-WN5.md:238	P-burnout	tests/ui/uitest_preview.cpp	exact
-L-R19	record	records/window-WN5.md:255	P-burnout	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:272	P-burnout	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:289	P-burnout	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:306	P-burnout	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:323	Z-cite, P-other	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:352	P-burnout	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:369	P-burnout	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:381	P-burnout, P-other, Z-cite	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:398	P-other, Z-cite	tests/ui/uitest_paths.cpp	exact
-L-R19	record	records/window-WN5.md:415	P-other, Z-cite	tests/ui/uitest_paths.cpp	exact
-L-R20	record	records/window-WN6.md:76	P-burnout, P-pbticks, Z-cite	tests/pb_ui/pbtest_build.cpp	exact
-L-R20	record	records/window-WN6.md:92	P-pbticks, P-other, Z-cite	tests/pb_ui/pbtest_build.cpp	base
-L-R20	record	records/window-WN6.md:108	P-burnout, Z-cite	tests/pb_ui/pbtest_coach.cpp	base
-L-R20	record	records/window-WN6.md:124	P-burnout, Z-cite	tests/pb_ui/pbtest_coach.cpp	base
-L-R20	record	records/window-WN6.md:172	P-pbticks, Z-cite	tests/pb_ui/pbtest_coach.cpp	base
-L-R20	record	records/window-WN6.md:188	P-pbticks, Z-cite	tests/pb_ui/pbtest_coach.cpp	base
-L-R20	record	records/window-WN6.md:204	P-burnout, Z-cite	tests/pb_ui/pbtest_coach.cpp	base
-L-R20	record	records/window-WN6.md:220	P-pbticks, Z-cite	tests/pb_ui/pbtest_coach.cpp	base
-L-R20	record	records/window-WN6.md:236	P-burnout, P-pbticks, Z-cite	tests/pb_ui/pbtest_window.cpp	base
-L-R20	record	records/window-WN6.md:252	P-pbticks, Z-cite	tests/pb_ui/pbtest_window.cpp	base
-L-R20	record	records/window-WN6.md:300	P-burnout, Z-cite	tests/pb_ui/pbtest_window.cpp	base
-L-R20	record	records/window-WN7.md:198	P-burnout	tests/test_path_list.cpp	exact
-L-R20	record	records/window-WN7.md:215	P-burnout	tests/test_path_list.cpp	exact
-L-R20	record	records/window-WN7.md:232	K-selfmade, P-burnout	tests/test_pb_files.cpp	exact
-L-R20	record	records/window-WN7.md:266	S-snapshot, Z-cite	tests/test_preview_boxes.cpp	exact
+L-R18	record	records/delta-DL5.md:16	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:37	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:57	P-builtchart, K-selfmade	tests/test_fills_and_skips.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:77	P-builtchart, K-comment	tests/test_fills_and_skips.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:123	P-message	tests/test_batch_text.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:147	P-message	tests/test_cli.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:201	K-duplicate, P-builtchart	tests/test_activation_rows.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:206	P-message, P-builtchart	tests/test_activation_rows.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:211	P-builtchart	tests/test_activation_rows.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:231	K-skip	tests/test_docs_match_code.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:258	S-snapshot	tests/test_engine_sweeps.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:269	S-snapshot, K-partial	tests/test_engine_sweeps.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:293	K-namebody, K-cantfail	tests/test_preview_controller.cpp	heading-exact
+L-R18	record	records/delta-DL5.md:347	P-message, K-cantfail	tests/ui/uitest_live.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:45	K-duplicate, P-other	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:66	P-other, K-selfmade	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:86	P-other	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:107	P-other	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:127	K-unreachable	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:146	K-floor, K-selfmade	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:171	C-ownchecker, P-setting, P-message	tests/test_docs_match_code.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:246	K-duplicate, S-snapshot	tests/test_five_lane.cpp	heading-exact
+L-R19	record	records/delta-DL5b.md:419	S-snapshot	tests/test_song_parse.cpp	heading-exact
+L-R19	record	records/window-WN1.md:133	P-other, Z-cite	tests/test_store_results.cpp	heading-exact
+L-R19	record	records/window-WN1.md:149	P-other, S-snapshot, Z-cite	tests/test_store_results.cpp	heading-exact
+L-R19	record	records/window-WN1.md:200	P-builtchart	tests/test_rules.cpp	heading-exact
+L-R19	record	records/window-WN1.md:216	P-builtchart	tests/test_rules.cpp	heading-exact
+L-R19	record	records/window-WN1.md:232	P-builtchart	tests/test_rules.cpp	heading-exact
+L-R19	record	records/window-WN1.md:331	P-builtchart, Z-cite	tests/test_search_target.cpp	heading-exact
+L-R19	record	records/window-WN1.md:347	P-builtchart	tests/test_search_target.cpp	heading-exact
+L-R19	record	records/window-WN1.md:363	P-builtchart	tests/test_search_target.cpp	heading-exact
+L-R19	record	records/window-WN1.md:395	P-other, K-selfmade	tests/test_search_target.cpp	heading-exact
+L-R19	record	records/window-WN1.md:411	P-builtchart, Z-cite	tests/test_search_target.cpp	heading-exact
+L-R19	record	records/window-WN2.md:240	K-duplicate, P-burnout, P-builtchart	tests/test_sp_meter_curve.cpp	heading-exact
+L-R19	record	records/window-WN2.md:307	P-builtchart	tests/test_fast_tempo.cpp	heading-exact
+L-R19	record	records/window-WN2.md:324	P-builtchart	tests/test_fast_tempo.cpp	heading-exact
+L-R19	record	records/window-WN2.md:332	P-builtchart, K-skip	tests/test_fast_tempo.cpp	heading-exact
+L-R19	record	records/window-WN2.md:340	K-floor, P-other	tests/test_fast_tempo.cpp	heading-exact
+L-R19	record	records/window-WN3.md:54	K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R19	record	records/window-WN3.md:71	K-duplicate, K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R19	record	records/window-WN3.md:88	K-floor	tests/test_engine_sweeps.cpp	heading-exact
+L-R19	record	records/window-WN3.md:123	K-floor, K-skip, P-other	tests/test_fills_and_skips.cpp	heading-exact
+L-R19	record	records/window-WN3.md:140	P-builtchart, K-skip, Z-cite	tests/test_fills_and_skips.cpp	heading-exact
+L-R19	record	records/window-WN3.md:157	K-floor, K-skip	tests/test_fills_and_skips.cpp	heading-exact
+L-R19	record	records/window-WN3.md:174	K-floor, K-skip	tests/test_fills_and_skips.cpp	heading-exact
+L-R19	record	records/window-WN3.md:191	P-allister, Z-cite	tests/test_fills_and_skips.cpp	heading-exact
+L-R19	record	records/window-WN3.md:226	K-floor	tests/test_tied_variants.cpp	heading-exact
+L-R19	record	records/window-WN3.md:260	P-builtchart, Z-cite	tests/test_tied_variants.cpp	heading-exact
+L-R19	record	records/window-WN3.md:292	P-builtchart, S-snapshot, Z-cite	tests/test_path_costs.cpp	heading-exact
+L-R19	record	records/window-WN3.md:309	P-builtchart	tests/test_path_costs.cpp	heading-exact
+L-R19	record	records/window-WN3.md:326	K-cantfail, P-builtchart, Z-cite	tests/test_path_costs.cpp	heading-exact
+L-R19	record	records/window-WN3.md:343	P-builtchart	tests/test_path_costs.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:222	K-floor, Z-cite	tests/test_replay.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:241	K-floor	tests/test_replay.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:260	K-floor, P-other, S-snapshot	tests/test_replay.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:298	S-snapshot, P-builtchart	tests/test_replay.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:336	S-snapshot, P-builtchart, Z-cite	tests/test_replay_schedule.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:355	P-builtchart	tests/test_replay_schedule.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:393	P-other, S-snapshot, Z-cite	tests/test_preview_scene.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:412	P-builtchart, S-snapshot, Z-cite	tests/test_preview_scene.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:431	K-floor	tests/test_preview_controller.cpp	heading-exact
+L-R19	record	records/window-WN4a.md:450	P-other, S-snapshot	tests/test_preview_controller.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:118	P-burnout, S-snapshot, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:138	P-message	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:155	P-message	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:172	P-message, P-burnout, Z-cite	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:189	P-builtchart, P-message	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:223	S-snapshot, P-builtchart	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:240	P-burnout, S-snapshot	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:257	S-snapshot, P-burnout	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:277	K-duplicate, P-burnout	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:294	P-builtchart	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:311	P-builtchart	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:328	P-builtchart	tests/test_pb_coach.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:345	P-pbticks	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:362	P-allister	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:379	P-pbticks	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:396	P-message	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:413	P-pbticks, P-message	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:430	P-message, P-other	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:447	P-message, P-builtchart	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:464	P-message	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:481	P-message, P-other	tests/test_pb_text.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:498	P-other	tests/test_saved_figure_fill.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:549	P-other	tests/test_saved_figure_fill.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:566	P-other, S-snapshot	tests/test_saved_figure_fill.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:583	K-duplicate	tests/test_saved_figure_fill.cpp	heading-exact
+L-R19	record	records/window-WN4b.md:617	P-other	tests/test_saved_figure_fill.cpp	heading-exact
+L-R19	record	records/window-WN4c.md:348	P-burnout, S-snapshot	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/window-WN4c.md:389	K-selfmade, K-floor, K-skip	tests/test_activation_rows.cpp	heading-exact
+L-R19	record	records/window-WN4c.md:429	P-message, P-other	tests/test_cli.cpp	heading-exact
+L-R19	record	records/window-WN5.md:152	P-burnout, S-snapshot, Z-cite	tests/ui/uitest_details.cpp	heading-exact
+L-R19	record	records/window-WN5.md:187	K-floor	tests/ui/uitest_preview.cpp	heading-exact
+L-R19	record	records/window-WN5.md:204	P-burnout, S-snapshot	tests/ui/uitest_preview.cpp	heading-exact
+L-R19	record	records/window-WN5.md:221	P-burnout	tests/ui/uitest_preview.cpp	heading-exact
+L-R19	record	records/window-WN5.md:238	P-burnout	tests/ui/uitest_preview.cpp	heading-exact
+L-R19	record	records/window-WN5.md:255	P-burnout	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:272	P-burnout	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:289	P-burnout	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:306	P-burnout	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:323	Z-cite, P-other	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:352	P-burnout	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:369	P-burnout	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:381	P-burnout, P-other, Z-cite	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:398	P-other, Z-cite	tests/ui/uitest_paths.cpp	heading-exact
+L-R19	record	records/window-WN5.md:415	P-other, Z-cite	tests/ui/uitest_paths.cpp	heading-exact
+L-R20	record	records/window-WN6.md:76	P-burnout, P-pbticks, Z-cite	tests/pb_ui/pbtest_build.cpp	heading-exact
+L-R20	record	records/window-WN6.md:92	P-pbticks, P-other, Z-cite	tests/pb_ui/pbtest_build.cpp	heading-base
+L-R20	record	records/window-WN6.md:108	P-burnout, Z-cite	tests/pb_ui/pbtest_coach.cpp	heading-base
+L-R20	record	records/window-WN6.md:124	P-burnout, Z-cite	tests/pb_ui/pbtest_coach.cpp	heading-base
+L-R20	record	records/window-WN6.md:172	P-pbticks, Z-cite	tests/pb_ui/pbtest_coach.cpp	heading-base
+L-R20	record	records/window-WN6.md:188	P-pbticks, Z-cite	tests/pb_ui/pbtest_coach.cpp	heading-base
+L-R20	record	records/window-WN6.md:204	P-burnout, Z-cite	tests/pb_ui/pbtest_coach.cpp	heading-base
+L-R20	record	records/window-WN6.md:220	P-pbticks, Z-cite	tests/pb_ui/pbtest_coach.cpp	heading-base
+L-R20	record	records/window-WN6.md:236	P-burnout, P-pbticks, Z-cite	tests/pb_ui/pbtest_window.cpp	heading-base
+L-R20	record	records/window-WN6.md:252	P-pbticks, Z-cite	tests/pb_ui/pbtest_window.cpp	heading-base
+L-R20	record	records/window-WN6.md:300	P-burnout, Z-cite	tests/pb_ui/pbtest_window.cpp	heading-base
+L-R20	record	records/window-WN7.md:198	P-burnout	tests/test_path_list.cpp	heading-exact
+L-R20	record	records/window-WN7.md:215	P-burnout	tests/test_path_list.cpp	heading-exact
+L-R20	record	records/window-WN7.md:232	K-selfmade, P-burnout	tests/test_pb_files.cpp	heading-exact
+L-R20	record	records/window-WN7.md:266	S-snapshot, Z-cite	tests/test_preview_boxes.cpp	heading-exact
 L-R20	record	records/window-WN8.md:145	P-other, S-snapshot, Z-cite	Delta round: window, replaces records/A10.md record 1 	unresolved

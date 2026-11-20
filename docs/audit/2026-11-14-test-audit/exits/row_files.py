@@ -33,13 +33,16 @@ def count_line(path, n):
             cache[path] = fh.read().split('\n')
     return cache[path], cache[path][n - 1]
 
+# A legend code is a short upper-case name: letters (PS, MIDI), one letter (Q), or letters and digits (S2).
+CODE = r'[A-Z][A-Z0-9]{0,4}'
+
 # legend: lines like "`PG` = tests/x.py" or "PG is test_x.py" near the top
 def legend(lines):
     m = {}
     for ln in lines[:80]:
-        for code, f in re.findall(r'`?\b([A-Z]{2,4})\b`?\s*(?:=|is|means|for|:)\s*`?([\w./-]+\.(?:py|cpp|ps1))', ln):
+        for code, f in re.findall(r'`?\b(%s)\b`?\s*(?:=|is|means|for|:)\s*`?([\w./-]+\.(?:py|cpp|ps1))' % CODE, ln):
             m[code] = f
-        for f, code in re.findall(r'`?([\w./-]+\.(?:py|cpp|ps1))`?\s*\(`?([A-Z]{2,4})`?\)', ln):
+        for f, code in re.findall(r'`?([\w./-]+\.(?:py|cpp|ps1))`?\s*\(`?(%s)`?\)' % CODE, ln):
             m[code] = f
     return m
 
@@ -93,12 +96,15 @@ def by_name(text, scope_file):
 def legend2(lines):
     m = legend(lines)
     for ln in lines[:80]:
-        for f, code in re.findall(r'`([\w./-]+\.(?:py|cpp|ps1))`\s*\(`?([A-Z]{2,4})\b', ln):
+        for f, code in re.findall(r'`([\w./-]+\.(?:py|cpp|ps1))`\s*\(`?(%s)\b' % CODE, ln):
             m[code] = f
-        for code, f in re.findall(r'`?\b([A-Z]{2,4})\b`?\s*(?:is|=|:|for|means)\s*`([\w./-]+\.(?:py|cpp|ps1))`', ln):
+        for code, f in re.findall(r'`?\b(%s)\b`?\s*(?:is|=|:|for|means)\s*`([\w./-]+\.(?:py|cpp|ps1))`' % CODE, ln):
             m[code] = f
-        for code, f in re.findall(r'\|\s*`?([A-Z]{2,4})`?\s*\|\s*`([\w./-]+\.(?:py|cpp|ps1))`', ln):
+        for code, f in re.findall(r'\|\s*`?(%s)`?\s*\|\s*`([\w./-]+\.(?:py|cpp|ps1))`' % CODE, ln):
             m[code] = f
+        # A file the legend lists with no code is cited by its stem: test_process.py as "process:186".
+        for f, stem in re.findall(r'\b(test_(\w+)\.(?:py|cpp|ps1))\b', ln):
+            m.setdefault(stem, f)
     return m
 
 def header_files(lines):
@@ -106,6 +112,48 @@ def header_files(lines):
     for ln in lines[:40]:
         found += PAT.findall(ln)
     return list(dict.fromkeys(found))
+
+def is_test(f):
+    # The same rule as is_test in chunks.py: the path of a test file, not production code.
+    return ('/tests/' in f or f.startswith('tests/') or '/test_' in f or f.startswith('test_')
+            or f.rsplit('/', 1)[-1].startswith('test_') or '/ui/uitest' in f or 'report_samples' in f)
+
+def heading_test(path, n):
+    """A record sits under a `###` heading that names its test, as (tests/<file>:<line>).
+    That heading beats the record's Read: line, which names the production code it read.
+    Returns (file, 'heading-exact' or 'heading-base'), or None."""
+    if not os.path.exists(os.path.join(A, path)):
+        return None
+    lines, _ = count_line(path, n)
+    j = next((k for k in range(n - 1, -1, -1) if lines[k].startswith('#')), None)
+    if j is None or not lines[j].startswith('###'):
+        return None
+    for tok in PAT.findall(lines[j]):
+        f, how = resolve(tok.split(':')[0])
+        if how in ('exact', 'base') and is_test(f):
+            return f, 'heading-' + how
+    return None
+
+def table_file(lines, k, sep, col):
+    """The file of the nearest row above line index k, down to the table's separator at index sep,
+    whose test cell names one: a path, or a legend code such as "Q :87" or "process:186".
+    Rows whose cell is only ":N" are passed over. Returns (file, 'table-<how>') or None."""
+    lg = legend2(lines)
+    for j in range(k, sep, -1):
+        cells = [c.strip() for c in lines[j].strip().strip('|').split('|')]
+        cell = cells[col] if len(cells) > col else ''
+        if re.match(r'^:\s*\d', cell):
+            continue
+        mm = PAT.search(cell)
+        if mm:
+            f, how = resolve(mm.group(1).split(':')[0])
+            return f, 'table-' + how
+        cm = re.match(r'(%s|[a-z]\w*)\s*:\s*\d' % CODE, cell)
+        if cm and cm.group(1) in lg:
+            f, how = resolve(lg[cm.group(1)])
+            return f, 'table-' + how
+        return None
+    return None
 
 stats = collections.Counter()
 rows_out = []
@@ -124,14 +172,24 @@ with open(os.path.join(A, 'exits/labels/labels.tsv'), encoding='utf-8') as fh:
             if col is None:
                 col = next((k for k, h in enumerate(hdr) if 'test' in h or 'file' in h), 1)
             test = cells[col] if len(cells) > col else ''
+            # A test cell that is only ":154" continues the file of the nearest row above it in the
+            # same table that names one. A file named elsewhere on its line is its test only when
+            # it is a test file: "scan.cpp:538-548" in the faulty-check column is, but "rows from
+            # gen_vectors.py" in the reason column is not. With no such row above, the table's
+            # heading or the file's legend decides, as for any row whose cell names no file.
+            cont = re.match(r'^:\s*\d', test) is not None
             m = PAT.search(test) or PAT.search(ln)
-            m = m if m else None
+            if cont and m and not PAT.search(test) and not is_test(resolve(m.group(1).split(':')[0])[0]):
+                m = None
+            above = table_file(lines, int(n) - 2, i, col) if cont and not m else None
             test = test if test else ln
-            if m:
+            if above:
+                tf, how = above
+            elif m:
                 tf, how = resolve(m.group(1).split(':')[0])
             else:
                 lg = legend2(lines)
-                code = next((mm for mm in re.finditer(r'\b([A-Z]{2,4})\s*:\s*\d', ln) if mm.group(1) in lg), None)
+                code = next((mm for mm in re.finditer(r'\b(%s|[a-z]\w*)\s*:\s*\d' % CODE, ln) if mm.group(1) in lg), None)
                 hf = header_files(lines)
                 nb = by_name(ln, None)
                 if code and code.group(1) in lg:
@@ -156,7 +214,10 @@ with open(os.path.join(A, 'exits/labels/labels.tsv'), encoding='utf-8') as fh:
             text = (lr['record'] + ' ' + lr['test']) if lr else ''
             m = PAT.search(text)
             nb = by_name(text, None)
-            if m:
+            ht = heading_test(path, int(n))
+            if ht:
+                tf, how = ht
+            elif m:
                 tf, how = resolve(m.group(1).split(':')[0])
             elif nb:
                 tf, how = nb
@@ -172,7 +233,8 @@ with open(os.path.join(A, 'exits/labels/labels.tsv'), encoding='utf-8') as fh:
         rows_out.append((r['batch'], r['kind'], row, r['keys'], tf, how))
 
 # Last resort: a row takes the file of the nearest resolved row above it in the same audit file.
-GOOD = ('exact', 'base', 'name', 'legend-exact', 'legend-base', 'header-exact', 'header-base', 'notinrepo')
+GOOD = ('exact', 'base', 'name', 'legend-exact', 'legend-base', 'header-exact', 'header-base',
+        'heading-exact', 'heading-base', 'table-exact', 'table-base', 'notinrepo')
 resolved = collections.defaultdict(list)
 for b, k, row, keys, tf, how in rows_out:
     if how in GOOD:
