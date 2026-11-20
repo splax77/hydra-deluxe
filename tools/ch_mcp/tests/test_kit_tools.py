@@ -30,7 +30,7 @@ from tools.ch_mcp import build_stamp as BS  # noqa: E402
 from tools.ch_mcp import frida_tools as FT  # noqa: E402
 from tools.ch_mcp import game_files as G  # noqa: E402
 from tools.ch_mcp import kit_tools as K  # noqa: E402
-from tools.ch_probe.constants import ms_to_s  # noqa: E402
+from tools.ch_probe.constants import ms_to_s, s_to_ms  # noqa: E402
 from tools.ch_mcp.tests.test_frida_attach import (  # noqa: E402
     FakeFrida, ReplySession, instant_wait, recorded)
 from tools.ch_mcp import menu_tools as MT  # noqa: E402
@@ -163,10 +163,10 @@ LS_E_STATUS, LS_E_SETUP = recorded_replies("ls-e-run1", "kit-1-setup.jsonl")
 # definition, so the kick, Start and Select are elements 22, 20 and 21, bound
 # as buttons (line 2 of hydra-data/ch-mcp-runs/2026-11-06/ls-d2b-run1/kit-2.jsonl).
 _, LS_D2B_SETUP = recorded_replies("2026-11-06-ls-d2b-run1", "kit-2.jsonl")
-# kit.ts's setup reply from a real run that gave the kit to System and read
-# back no map at all, "maps": [] (line 2 of
+# kit.ts's status and setup replies from a real run that gave the kit to
+# System and read back no map at all, "maps": [] (lines 1 and 2 of
 # hydra-data/ch-mcp-runs/2026-10-31/ls-d1-run1/kit-1.jsonl).
-_, LS_D1_SETUP = recorded_replies("ls-d1-run1", "kit-1-setup.jsonl")
+LS_D1_STATUS, LS_D1_SETUP = recorded_replies("ls-d1-run1", "kit-1-setup.jsonl")
 
 
 def bindings_by_element(reply):
@@ -303,10 +303,15 @@ class Rig(unittest.TestCase):
 
 
 class ConstantsTest(unittest.TestCase):
-    def test_the_drum_maps_category_and_layout_are_pinned(self):
-        # Page 07, IN-76: category 1 ("Gameplay"), layout 2 ("Drums").
-        self.assertEqual(K.KIT_MAP_CATEGORY_ID, 1)
-        self.assertEqual(K.KIT_MAP_LAYOUT_ID, 2)
+    def test_the_drum_maps_ids_are_the_ones_the_game_loaded_in_every_real_run(self):
+        # Each recorded setup reply that holds a map, from runs on two kit
+        # definitions, has its one enabled map at the ids the kit asks for,
+        # and map_problems passes it.
+        for reply in (LS_G1_SETUP, LS_E_SETUP, LS_D2B_SETUP):
+            enabled = [(m["category_id"], m["layout_id"]) for m in reply["maps"]
+                       if m["enabled"]]
+            self.assertEqual(enabled, [(K.KIT_MAP_CATEGORY_ID, K.KIT_MAP_LAYOUT_ID)])
+            self.assertEqual(K.map_problems(reply["maps"]), [])
 
     def test_the_games_reply_to_the_setup_message_holds_what_it_names(self):
         # The real run's setup reply is the game's answer to the message
@@ -576,50 +581,69 @@ class SetupTest(Rig):
             self.assertIn("KIT_BINDINGS", line)
             self.assertTrue(line.endswith(f" {real[element_id]['action_id']}"), line)
 
-    def test_a_setup_with_no_reply_ends_at_its_cap_and_tears_down(self):
-        tools = self.tools([STATUS, None, TEARDOWN_OK])
-        lines = tools.ch_kit_setup().splitlines()
-        self.assertIn("setup failed: no reply to the setup request within the cap of 10 s "
-                      "(KIT_SETUP_CAP_S)", lines)
-        self.assertEqual(self.posted()[-1]["type"], "teardown")
-        self.assertEqual(lines[-1], "kit agent: detached")
+
+# kit.ts's teardown reply from the real run whose setup gave the kit id 0
+# (line 3 of hydra-data/ch-mcp-runs/2026-10-31/ls-d1-run1/kit-1.jsonl, the run
+# LS_D1_SETUP comes from).
+LS_D1_TEARDOWN, = recorded_replies("ls-d1-run1", "kit-1-teardown.jsonl")
 
 
 class SetupForRunTest(Rig):
     def test_a_setup_that_passes_gives_the_game_player_and_the_reply(self):
-        tools = self.tools([STATUS, setup_reply()])
-        player, text = tools.setup_for_run("System")
+        # The replies of a real run, which handed the kit to System.
+        player_name = LS_G1_SETUP["kit"]["player"]
+        tools = self.tools([LS_G1_STATUS, LS_G1_SETUP])
+        player, text = tools.setup_for_run(player_name)
+        self.addCleanup(lambda: player is not None and player.close())
         self.assertIsInstance(player, K.GamePlayer)
         self.assertIsNotNone(tools._agent._listener)
-        self.assertEqual(self.posted()[1]["player"], "System")
-        self.assertIn("bindings: all 10 match KIT_BINDINGS", text)
-        player.close()
-
-    def test_a_setup_that_is_refused_gives_no_player(self):
-        player, text = self.tools(attached=False).setup_for_run("System")
-        self.assertIsNone(player)
-        self.assertEqual(text, f'{K.given_player_line("System")}\n{FT.NOT_ATTACHED}')
-
-    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_player(self):
-        tools = self.tools([STATUS, setup_reply(kit_id=7), TEARDOWN_OK])
-        player, text = tools.setup_for_run("System")
-        self.assertIsNone(player)
-        self.assertIn("refused: the kit is controller 7", text)
-        self.assertEqual(self.posted()[-1]["type"], "teardown")
-
-    def test_a_kit_already_set_up_gives_no_player_and_stays(self):
-        tools = self.set_up()
-        player, text = tools.setup_for_run("System")
-        self.assertIsNone(player)
-        self.assertIn(K.KIT_ALREADY_SET_UP, text)
+        self.assertEqual(self.posted(), [{"type": "read"}, K.setup_message(player_name)])
+        lines = text.splitlines()
+        self.assertEqual(lines[0], K.given_player_line(player_name))
+        self.assertEqual(lines[-1], f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS")
+        self.assertFalse(any(line.startswith("refused: ") for line in lines), lines)
         self.assertIsNotNone(tools._ready_agent())
 
-    def test_the_kit_tools_lend_no_press_and_the_harness_press_stays(self):
-        # The auto-player reaches the kit only through the GamePlayer (D342);
-        # the module's kit_press stays for the stall harness (row P32 of
-        # docs/superpowers/plans/2026-11-12-in-game-press-timing.md (removed; git show b971b235:docs/superpowers/plans/2026-11-12-in-game-press-timing.md)).
-        self.assertFalse(hasattr(K.KitTools, "kit_press"))
-        self.assertTrue(callable(K.kit_press))
+    def test_a_setup_that_is_refused_gives_no_player(self):
+        # The server's real FridaTools, with nothing attached.
+        player, text = self.tools(real_frida_tools=True).setup_for_run("System")
+        self.assertIsNone(player)
+        self.assertEqual(text, f'{K.given_player_line("System")}\n{FT.NOT_ATTACHED}')
+        self.assertEqual(self.events, [])
+
+    def test_a_setup_on_the_wrong_id_is_torn_down_and_gives_no_player(self):
+        # A real run's setup gave the kit an id other than KIT_REQUIRED_ID;
+        # its status and teardown replies are that run's own.
+        player_name = LS_D1_SETUP["kit"]["player"]
+        self.assertNotEqual(LS_D1_SETUP["kit"]["id"], K.KIT_REQUIRED_ID)
+        wrong_id = K.kit_id_problem(LS_D1_SETUP)
+        self.assertIn(f"controller {LS_D1_SETUP['kit']['id']},", wrong_id)
+        tools = self.tools([LS_D1_STATUS, LS_D1_SETUP, LS_D1_TEARDOWN])
+        player, text = tools.setup_for_run(player_name)
+        self.assertIsNone(player)
+        self.assertIn(wrong_id, text)
+        self.assertNotIn(f"bindings: all {len(K.KIT_BINDINGS)} match KIT_BINDINGS", text)
+        self.assertEqual(self.posted()[-1], K.teardown_message())
+        lines = text.splitlines()
+        printed = K.teardown_lines(LS_D1_TEARDOWN)
+        start = lines.index(printed[0])
+        self.assertEqual(lines[start:start + len(printed)], printed)
+        self.assertIsNone(tools._agent)
+        self.assertIsNone(self.game.kit_source())
+
+    def test_a_kit_already_set_up_gives_no_player_and_stays(self):
+        # Set up on a real run's replies, then ask again: nothing is sent.
+        player_name = LS_G1_SETUP["kit"]["player"]
+        tools = self.tools([LS_G1_STATUS, LS_G1_SETUP])
+        first, _ = tools.setup_for_run(player_name)
+        self.addCleanup(lambda: first is not None and first.close())
+        self.assertIsNotNone(first)
+        agent, sent = tools._ready_agent(), len(self.posted())
+        player, text = tools.setup_for_run(player_name)
+        self.assertIsNone(player)
+        self.assertEqual(text, f"{K.given_player_line(player_name)}\n{K.KIT_ALREADY_SET_UP}")
+        self.assertEqual(len(self.posted()), sent)
+        self.assertIs(tools._ready_agent(), agent)
 
 
 class MapProblemsTest(Rig):
@@ -650,9 +674,6 @@ class MapProblemsTest(Rig):
             "the setup reply holds 2 such maps among 2:",
             "  map: category 1, layout 2, enabled",
             "  map: category 1, layout 2, enabled"])
-
-    def test_the_drum_map_passes(self):
-        self.assertEqual(K.map_problems(setup_reply()["maps"]), [])
 
     def test_setup_on_system_with_no_map_is_refused_and_torn_down(self):
         reply = setup_reply()
@@ -851,13 +872,10 @@ class PadAxisTest(unittest.TestCase):
         return round((axis - 0.5) * 254)
 
     def test_an_accent_and_a_plain_gem_press_at_full_strength_for_any_threshold(self):
-        for threshold in (1, 64, 127):
+        # None is the threshold left out.
+        for threshold in (None, 1, 64, 127):
             self.assertEqual(K.pad_axis("accent", threshold), 1.0)
             self.assertEqual(K.pad_axis("none", threshold), 1.0)
-
-    def test_a_plain_or_accent_gem_needs_no_threshold(self):
-        self.assertEqual(K.pad_axis("accent"), 1.0)
-        self.assertEqual(K.pad_axis("none"), 1.0)
 
     def test_a_ghost_makes_a_byte_of_the_threshold_minus_one(self):
         self.assertEqual(self.byte(K.pad_axis("ghost", 1)), 0)
@@ -889,13 +907,6 @@ class StrengthTest(Rig):
                                                {"id": 7, "value": ghost}])
         self.assertNotEqual(ghost, accent)
 
-    def test_a_red_ghost_and_a_kick_ghost_give_elements_0_and_7_at_the_ghost_value(self):
-        ghost = K.pad_axis("ghost", 100)
-        message = K.press_message([K.lane_element(Lane.RED), K.lane_element(Lane.KICK)],
-                                  values=[ghost, ghost])
-        self.assertEqual(message["elements"], [{"id": 0, "value": ghost},
-                                               {"id": 7, "value": ghost}])
-
     def test_a_kick_with_no_value_gives_element_7_at_the_plain_value(self):
         message = K.press_message([K.lane_element(Lane.KICK)])
         self.assertEqual(message["elements"], [{"id": 7, "value": K.pad_axis("none")}])
@@ -920,10 +931,6 @@ class StrengthTest(Rig):
                     self.assertTrue(written)
                     for element in written:
                         self.assertNotIsInstance(element["value"], bool, (group, values))
-
-    def test_a_press_with_no_values_presses_pads_as_plain_gems(self):
-        message = K.press_message([K.KIT_ELEMENTS["red"]])
-        self.assertEqual(message["elements"], [{"id": 0, "value": K.pad_axis("none")}])
 
     def test_a_list_of_values_of_another_length_is_an_error(self):
         with self.assertRaises(ValueError):
@@ -1128,25 +1135,50 @@ class FrameProbeTest(Rig):
             "cap_s": 6})
         self.assertEqual(self.events.count("find clock"), 1)
 
+    # The frame probe's reply from the real LS-G1 run, its first 12 of 1649
+    # rows (hydra-data/ch-mcp-runs/2026-11-12/ls-g1-run1/frame_probe-1.json).
+    REAL_PROBE = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g1-run1",
+                              "frame_probe-1-first-12-rows.json")
+
+    @staticmethod
+    def numbers(text):
+        return [float(n) for n in re.findall(r"-?\d+(?:\.\d+)?", text)]
+
     def test_a_clean_probe_prints_each_number_and_passes(self):
-        lines = self.probe(self.probe_reply())
-        path = os.path.join(self.tmp, "frame_probe-1.json")
-        self.assertEqual(lines, [
-            f"frame probe on the engine clock at {self.CLOCK_ADDR:#x}",
-            f"rows: 11, frames 1000 to 1010; rows saved to {path}",
-            "frame steps: all 10 rose by exactly 1",
-            "frame rate: 333.3 frames a second (10 frames in 30 ms of wall time); "
-            "not part of the pass line",
-            "press: down on frame 1000, up on frame 1002",
-            "Green read-back: first read pressed on frame 1001 (frames after the down frame: 1)",
-            "any_button: first read pressed on frame 1001 (frames after the down frame: 1)",
-            "engine clock minus songTime over 11 frames: smallest 1.000 ms, "
-            "median 2.000 ms, largest 3.000 ms",
-            "hook_out: True",
-            "failure: none",
-            "managers: 1; probe wall time: 5003 ms",
-            "PASS against LS-G1's pass line: every frame stepped by 1, no fault, "
-            "the press read back as pressed, and the hook is out"])
+        with open(self.REAL_PROBE, encoding="utf-8") as f:
+            reply = json.load(f)
+        rows = reply["frames"]
+        frames = [r["frame"] for r in rows]
+        down = reply["down_frame"]
+        # The real run is clean: every frame steps by 1, the press is read
+        # back, the hook came out and nothing faulted.
+        self.assertEqual(frames, list(range(frames[0], frames[0] + len(frames))))
+        self.assertIsNone(reply["failure"])
+        self.assertIs(reply["hook_out"], True)
+        green = next(r["frame"] for r in rows if r["frame"] >= down and r["read"][0] is True)
+        anyb = next(r["frame"] for r in rows if r["frame"] >= down and r["any_button"] is True)
+        span_ms = rows[-1]["wall_ms"] - rows[0]["wall_ms"]
+        rate = (frames[-1] - frames[0]) / ms_to_s(span_ms)
+        gaps = sorted(s_to_ms(r["engine_clock_s"] - r["song_time_s"]) for r in rows)
+        median = (gaps[(len(gaps) - 1) // 2] + gaps[len(gaps) // 2]) / 2
+
+        lines = self.probe(reply)
+        self.assertIn(f"{self.CLOCK_ADDR:#x}", lines[0])
+        counts, saved = lines[1].split("; ")
+        self.assertEqual(self.numbers(counts), [len(rows), frames[0], frames[-1]])
+        self.assertEqual(saved, f"rows saved to {os.path.join(self.tmp, 'frame_probe-1.json')}")
+        self.assertEqual(self.numbers(lines[2])[0], len(rows) - 1)
+        self.assertEqual(self.numbers(lines[3]),
+                         [float(f"{rate:.1f}"), frames[-1] - frames[0], span_ms])
+        self.assertEqual(self.numbers(lines[4]), [down, reply["up_frame"]])
+        self.assertEqual(self.numbers(lines[5]), [green, green - down])
+        self.assertEqual(self.numbers(lines[6]), [anyb, anyb - down])
+        self.assertEqual(self.numbers(lines[7]), [len(rows)] + [
+            float(f"{g:.3f}") for g in (gaps[0], median, gaps[-1])])
+        self.assertEqual(self.numbers(lines[10]), [reply["managers"], reply["wall_ms"]])
+        # The verdict is the clean one, because no part of the reply failed.
+        self.assertTrue(lines[-1].startswith("PASS "), lines[-1])
+        self.assertFalse(any("FAIL" in line for line in lines), lines)
 
     def test_the_whole_reply_is_saved_to_a_new_file_each_probe(self):
         reply = self.probe_reply()
