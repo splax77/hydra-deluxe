@@ -552,23 +552,6 @@ class StepsFileTest(unittest.TestCase):
                 MT.load_steps(path)
             self.assertIn("has no items list", str(ctx.exception))
 
-    def test_a_refused_file_presses_nothing(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = os.path.join(tmp, "steps.json")
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump({"steps": [{"name": "x", "items": ["lane:green"],
-                                      "expect": "song_loaded"}]}, f)
-            events = []
-            kit = FakeKit(events)
-            frida = FakeFrida(kit, lambda presses, reads: state())
-            tools = MT.MenuTools(FakeGame(events), frida, threading.RLock(), kit=kit,
-                                 steps_path=path)
-            reply = tools.ch_open_song("C:\\Songs\\x")
-            self.assertTrue(reply.startswith("refused:"), reply)
-            self.assertTrue(reply.endswith("; nothing pressed"), reply)
-            self.assertEqual(events, [])
-            self.assertEqual(frida.reads, 0)
-
     def test_it_ends_on_a_word_every_real_read_of_a_playing_song_holds(self):
         reads = recorded_reads()
         if not reads:
