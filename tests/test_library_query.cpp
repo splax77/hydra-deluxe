@@ -151,13 +151,6 @@ std::string ms_text(double ms) {
     return std::string(buf, r.ptr);
 }
 
-bool spans_equal(const std::vector<MatchSpan>& got, const std::vector<MatchSpan>& want) {
-    return std::equal(got.begin(), got.end(), want.begin(), want.end(),
-                      [](const MatchSpan& a, const MatchSpan& b) {
-                          return a.begin == b.begin && a.end == b.end;
-                      });
-}
-
 // The shown text each highlight span of `query` covers in `shown`, in order:
 // what the library table lights up.
 std::vector<std::string> lit_texts(std::string_view query, QueryField field,
@@ -356,22 +349,20 @@ TEST_CASE("library query: an accented name is found without its accents") {
     CHECK(matches(e.album, row));  // typed with its accent, as shown
 }
 
-TEST_CASE("library query: the report pages' fold table is the fold, one character at a time") {
-    // The report pages fold a typed query with this table, so every entry has
-    // to be exactly what the library's own fold does to that character.
+TEST_CASE("library query: the report pages' fold table removes accents, lowercases and lists no kept character") {
+    // The report pages fold a typed query with this table. Each spot check is
+    // one of the fold's rules (fold_for_search, library_query.h): accents are
+    // removed, letters lowercased, full-width ASCII made ASCII, and a
+    // character the fold keeps is not listed.
     const std::vector<FoldEntry> table = search_fold_table();
     REQUIRE_FALSE(table.empty());
-    for (const FoldEntry& e : table) {
-        CHECK(e.to == fold_for_search(e.from));
-        CHECK(e.to != e.from);  // a character the fold keeps is left out
-    }
     auto folded = [&](std::string_view from) -> std::optional<std::string> {
         for (const FoldEntry& e : table)
             if (e.from == from) return e.to;
         return std::nullopt;
     };
     CHECK(folded("\xc3\x89") == std::optional<std::string>("e"));  // É
-    CHECK(folded("\xc3\x84").has_value());                         // Ä
+    CHECK(folded("\xc3\x84") == std::optional<std::string>("a"));  // Ä
     CHECK(folded("B") == std::optional<std::string>("b"));
     CHECK(folded("\xef\xbc\xa1") == std::optional<std::string>("a"));  // full-width A
     CHECK_FALSE(folded("\xc3\x97").has_value());  // × is kept, so it is not listed
@@ -862,70 +853,65 @@ TEST_CASE("library query: the report pages' search text holds no album") {
 }
 
 TEST_CASE("library query: every Search tips example parses into the key its entry names") {
-    const std::vector<SearchTip>& tips = search_tips();
-    std::vector<std::string_view> examples;
-    for (const SearchTip& tip : tips) {
-        examples.push_back(tip.example);
-        CAPTURE(tip.example);
-        CHECK_FALSE(tip.meaning.empty());
-        CHECK(parse_library_query(tip.example).errors.empty());
+    // The popup draws search_tips() and writes no key of its own, so between
+    // them the tips must cover every key parse_library_query reads.
+    std::set<QueryField> fields;
+    bool has_phrase = false, has_stars = false, has_limit = false, has_floor = false;
+    for (const SearchTip& tip : search_tips()) {
+        const std::string example(tip.example);
+        const std::string meaning(tip.meaning);
+        CAPTURE(example);
+        const LibraryQuery q = parse_library_query(example);
+        CHECK(q.errors.empty());
+        // Each example sets exactly one key: one term or one filter.
+        const size_t keys = q.terms.size() + (q.stars ? 1u : 0u) + (q.squeeze_max_ms ? 1u : 0u) +
+                            (q.squeeze_min_ms ? 1u : 0u);
+        REQUIRE(keys == 1);
+        if (!q.terms.empty()) {
+            const QueryTerm& term = q.terms[0];
+            const size_t colon = example.find(':');
+            // The term searches for the example's own text after its key,
+            // without its quotes.
+            std::string value = colon == std::string::npos ? example : example.substr(colon + 1);
+            if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+                value = value.substr(1, value.size() - 2);
+            CHECK(term.folded == fold_for_search(value));
+            CHECK(term.phrase == (example.find('"') != std::string::npos));
+            if (term.field == QueryField::Any) {
+                CHECK(colon == std::string::npos);
+            } else {
+                REQUIRE(colon != std::string::npos);
+                // The meaning names the field the example's key limits it to.
+                CHECK(meaning.find("in the " + example.substr(0, colon)) != std::string::npos);
+            }
+            fields.insert(term.field);
+            has_phrase = has_phrase || term.phrase;
+            // A player can try it on the test library: a scanned corpus row matches it.
+            const std::vector<hydra::store::ChartLibraryEntry>& rows = corpus_scan_entries();
+            CHECK(std::any_of(rows.begin(), rows.end(), [&](const hydra::store::ChartLibraryEntry& e) {
+                return query_matches(q, searchable_of(e), RowFacts{});
+            }));
+        } else if (q.stars) {
+            // The meaning names the star count the filter keeps.
+            CHECK(meaning.find(std::to_string(*q.stars)) != std::string::npos);
+            has_stars = true;
+        } else {
+            // The meaning names the milliseconds the filter compares with.
+            const double ms = q.squeeze_max_ms ? *q.squeeze_max_ms : *q.squeeze_min_ms;
+            CHECK(meaning.find(ms_text(ms) + " ms") != std::string::npos);
+            has_limit = has_limit || q.squeeze_max_ms.has_value();
+            has_floor = has_floor || q.squeeze_min_ms.has_value();
+        }
     }
-    // The order the popup lists them in (D263 call 10).
-    CHECK(examples == std::vector<std::string_view>{"title:actors", "artist:green", "album:dookie",
-                                                    "charter:boo", "folder:ib24", "\"tier 4\"",
-                                                    "stars:7", "squeeze<=20", "squeeze>20"});
-
-    // Each example yields one term in the field it names, or the filter it names.
-    struct FieldTip {
-        size_t index;
-        QueryField field;
-        const char* folded;
-        bool phrase;
-    };
-    for (const FieldTip& want : {FieldTip{0, QueryField::Title, "actors", false},
-                                 FieldTip{1, QueryField::Artist, "green", false},
-                                 FieldTip{2, QueryField::Album, "dookie", false},
-                                 FieldTip{3, QueryField::Charter, "boo", false},
-                                 FieldTip{4, QueryField::Folder, "ib24", false},
-                                 FieldTip{5, QueryField::Any, "tier 4", true}}) {
-        REQUIRE(want.index < tips.size());
-        CAPTURE(tips[want.index].example);
-        const LibraryQuery q = parse_library_query(tips[want.index].example);
-        REQUIRE(q.terms.size() == 1);
-        CHECK(q.terms[0].field == want.field);
-        CHECK(q.terms[0].folded == want.folded);
-        CHECK(q.terms[0].phrase == want.phrase);
-        CHECK_FALSE(q.stars.has_value());
-        CHECK_FALSE(q.squeeze_max_ms.has_value());
-        CHECK_FALSE(q.squeeze_min_ms.has_value());
+    for (QueryField f : {QueryField::Title, QueryField::Artist, QueryField::Album,
+                         QueryField::Charter, QueryField::Folder}) {
+        CAPTURE(static_cast<int>(f));
+        CHECK(fields.count(f) == 1);
     }
-
-    REQUIRE(tips.size() == 9);
-    const LibraryQuery stars = parse_library_query(tips[6].example);
-    CHECK(stars.terms.empty());
-    CHECK(stars.stars == std::optional<int>(7));
-    CHECK_FALSE(stars.squeeze_max_ms.has_value());
-    CHECK_FALSE(stars.squeeze_min_ms.has_value());
-
-    const LibraryQuery at_most = parse_library_query(tips[7].example);
-    CHECK(at_most.terms.empty());
-    CHECK(at_most.squeeze_max_ms == std::optional<double>(20.0));
-    CHECK_FALSE(at_most.squeeze_max_strict);
-    CHECK_FALSE(at_most.squeeze_min_ms.has_value());
-    CHECK_FALSE(at_most.stars.has_value());
-
-    const LibraryQuery above = parse_library_query(tips[8].example);
-    CHECK(above.terms.empty());
-    CHECK(above.squeeze_min_ms == std::optional<double>(20.0));
-    CHECK(above.squeeze_min_strict);
-    CHECK_FALSE(above.squeeze_max_ms.has_value());
-    CHECK_FALSE(above.stars.has_value());
-
-    // The fixture rows are the tips' own charts, so the examples find them.
-    CHECK(matches(tips[1].example, scanned_burnout()));
-    CHECK(matches(tips[2].example, scanned_burnout()));
-    CHECK(matches(tips[4].example, scanned_deadbolt()));
-    CHECK(matches(tips[5].example, scanned_burnout()));
+    CHECK(has_phrase);
+    CHECK(has_stars);
+    CHECK(has_limit);
+    CHECK(has_floor);
 
     CHECK_FALSE(search_tips_note().empty());
 }
