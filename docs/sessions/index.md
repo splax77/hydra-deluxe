@@ -535,7 +535,7 @@
 - 2026-11-18 7f240a9c Hook timeout on long branches (2026-11-18) | hooks, review, agents, planning, docs | The no-guess hook fix and the two review pages were merged to their repos' main branches, after the plan was reviewed, trimmed and built.
 - 2026-11-19 8e6a2908 Test audit fix plan handoff (2026-11-19) | tests, agents, review, planning, docs | The session ended after wave 2 with a handoff, and no new executor was started.
 - 2026-11-19 f6a384b5 Dynamic hit window at 125% (2026-11-19) | agents, hooks, planning, docs, memory | The session ended with a handoff, and the audit was not finished.
-- 2026-11-19 5ec8a7a5 Coverage report CI failure (2026-11-19) | ci, tests, agents | The session ended with no cause found for either CI failure. It stopped at the user's request, with no CI run left running.
+- 2026-11-19 5ec8a7a5 Coverage report CI failure (2026-11-19) | ci, tests, agents | The session ended with no cause found for either CI failure. It stopped at the user's request, with no CI run left running. [stale]
 - 2026-11-19 3fd42b4e Test fix wave 2 review handoff (2026-11-19) | agents, review, hooks, tests, planning | Wave 2 finished: all 16 reviews ran in one Workflow, the gate recorded 16 CLEAN sign-offs, and the 10 Python branches merged into main.
 - 2026-11-19 57045e74 Tooling audit T8 questions handoff (2026-11-19) | hooks, docs, tests, agents, review | The session ended with the docs check fixed and merged on main, the seven waiting session cards committed, and a handoff written for the rest of the audit.
 - 2026-11-19 aafe2801 Wave2 C++ build handoff (2026-11-19) | tests, agents, review, docs | Wave 2's six C++ branches and wave 3's sixteen branches were merged into main, and the wave 4 handoff was written and committed.
@@ -553,6 +553,8 @@
 - 2026-11-20 4dda6e29 Batch time left handoff (2026-11-20) | batch-time-left, ui-timings, hooks, review, transcripts, docs | The batch time-left fix merged to main as 38aeee58, and the card checker now reads the original transcript while it still holds the session's words; all 556 cards pass.
 - 2026-11-20 47ab11fd Wave 9 handoff documentation (2026-11-20) | agents, review, tests, docs | Ended with wave 9 merged into main and a wave 10 handoff written on its own branch; nothing was pushed and wave 10 has not started.
 - 2026-11-20 64222952 Wave 10 handoff documentation (2026-11-20) | tests, agents, review, docs, planning | Wave 10 finished: all 16 chunks were reviewed and merged into main, which is now at d0aab2c3, and nothing was pushed. [stale]
+- 2026-11-20 c37fb7e1 Wave 11 handoff documentation (2026-11-20) | tests, docs, agents, review, hooks | The session ended at 18:38 UTC with wave 11 merged, every docs test removed, and a wave 12 handoff written. Nothing is pushed.
+- 2026-11-20 388e7e82 Duplicate "none" and unclear dropdown buttons (2026-11-20) | squeeze, path, tests, docs, review | The session ended at 19:01 UTC with the fold fix merged into main and Hydra's build folder rebuilt from main. Nothing is pushed.
 
 ## Proposed tags
 
