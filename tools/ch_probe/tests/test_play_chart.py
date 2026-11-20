@@ -995,18 +995,19 @@ class PressLogWriterTest(unittest.TestCase):
         self.assertEqual(_table(self.path), _table(whole))
 
     def test_every_row_is_on_disk_before_the_writer_closes(self):
-        fake = _FakeTime()
-        game = _FakeGame()
+        # The Freak schedule played on the recorded mid-song clock of
+        # ls-f1-run1, with a 2 s cap inside the 2.6 s the recording holds.
         writer = self._writer()
-        result = play_chart.play_chords(
-            _load_chords()[:3], _FakeSongClock(fake, start_s=12.0),
-            game.read_score, game.press, now=fake.now, sleep=fake.sleep,
-            on_press=writer.add, out=io.StringIO())
-        self.assertEqual(result.stop, "done")
-        # A second handle, with the writer still open.
-        table = self._table_once(3)
-        self.assertEqual(tuple(table[0]), overlay_logs.PRESS_LOG_COLUMNS)
-        self.assertEqual([r[0] for r in table[1:]], ["38", "41", "45"])
+        result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_MID_SONG, cap_s=2.0, on_press=writer.add)
+        self.assertEqual(result.stop, "cap")
+        self.assertTrue(result.rows)
+        # A second handle, with the writer still open, holds the log a whole
+        # write of the run's rows makes.
+        table = self._table_once(len(result.rows))
+        whole = self.path + ".whole"
+        play_chart.write_press_log(whole, result.rows)
+        self.assertEqual(table, _table(whole))
         self.assertTrue(writer.stop(self.CAP_S))
 
     def test_a_start_writes_the_file_over_with_the_header(self):
@@ -1408,6 +1409,15 @@ class FrozenClockDropTest(unittest.TestCase):
         (after,) = _rows_of(result, self.next_press.index)
         self.assertEqual(after[play_chart.SEND_COLUMN], play_chart.SENT)
 
+    def test_a_dropped_row_carries_its_wait_times(self):
+        # The dropped message waited and read the score, so its row says how
+        # long those took; it pressed nothing and read no end, so no press,
+        # reply or end time is on it. The run gives no on_press.
+        (row,) = _rows_of(self.result, self.late.index)
+        self.assertEqual(row[play_chart.SEND_COLUMN], play_chart.DROPPED)
+        self.assertEqual(set(overlay_logs.TIMING_PRESS_COLUMNS) & set(row),
+                         {"wait_read_max_ms", "wait_oversleep_max_ms", "score_read_took_ms"})
+
     def test_the_counts_leave_the_drop_out(self):
         result = self.result
         sends = [r[play_chart.SEND_COLUMN] for r in result.rows]
@@ -1513,9 +1523,13 @@ class ReadAfterAnchorTest(unittest.TestCase):
                          [round(-p.aim_ms, 2) for p in _press_of_all(chords, 263)])
 
     def test_a_read_equal_to_aim_end_moves_nothing(self):
+        # retime_from_end, the move play_chords makes after each read, given
+        # the end the Freak file plans for the read after 263: 387's late
+        # press keeps the file's aim and fires when the file says.
         late = _press_of(self._chords(), 387)
-        result = self._run({263: late.aim_end_ms})
-        self.assertEqual([r["lead_ms"] for r in _rows_of(result, 387)], [-late.aim_ms])
+        self.assertEqual(late.end_read_after, 263)
+        (moved,) = play_chart.retime_from_end([late], 263, late.aim_end_ms)
+        self.assertEqual((moved.aim_ms, moved.at_ms), (late.aim_ms, late.at_ms))
 
     def test_each_press_moves_by_its_own_end(self):
         # Mouths chords 431 (a squeeze-in) and 465 (an sp_end press) are both
@@ -2227,180 +2241,101 @@ class StartLineTest(unittest.TestCase):
         self.assertIn(out.getvalue().splitlines()[0], lines)
 
 
+# The reply the kit's agent sent to a press of two order groups in the real
+# run hydra-data/ch-mcp-runs/2026-11-12/ls-p3-run1: line 6 of its kit-1.jsonl.
+_P3_TWO_GROUP_REPLY = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-p3-run1",
+                                   "kit-1-line-6-two-group-reply.jsonl")
+
+
+def _recorded_reply(payload):
+    """A recorded kit message as the press caller gets it: frida_attach's
+    request hands back the payload less its message `id`."""
+    return {k: v for k, v in payload.items() if k != "id"}
+
+
+def _p3_two_group_reply():
+    with open(_P3_TWO_GROUP_REPLY, encoding="utf-8") as f:
+        (line,) = f.read().splitlines()
+    return _recorded_reply(json.loads(line)["payload"])
+
+
 class FakeReplyShapeTest(unittest.TestCase):
-    """The kit press fakes send the reply kit.ts sends (D318 item 2, L65)."""
-
-    @staticmethod
-    def _kit_ts_reply_keys():
-        """The keys of kit.ts's press reply literal, and of its `groups`
-        entries, read from the source."""
-        path = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "kit.ts")
-        with open(path, encoding="utf-8") as f:
-            text = f.read()
-        start = text.index("const reply: {")
-
-        def keys(opening, closing):
-            # An object literal's keys, `key: value` or the shorthand `key`.
-            begin = text.index(opening, start) + len(opening)
-            body = text[begin:text.index(closing, begin)]
-            return {part.split(":")[0].strip() for part in body.split(",") if part.strip()}
-
-        return keys("} = {", "};"), keys("groups.map((g) => ({", "}));")
+    """The kit press fakes send the reply the kit sent in real runs (D318
+    item 2, L65)."""
 
     def test_fakes_send_the_real_reply_shape(self):
         from tools.ch_mcp.kit_tools import reply_gap
-        top, group = self._kit_ts_reply_keys()
-        self.assertTrue(set(overlay_logs.KIT_PRESS_COLUMNS) <= top & group)
+        one = _recorded_reply(_e_replies()[0])
+        two = _p3_two_group_reply()
+        self.assertNotIn("groups", one)
+        self.assertEqual(len(two["groups"]), 2)
+        group_keys = {key for entry in two["groups"] for key in entry}
+        self.assertTrue(set(overlay_logs.KIT_PRESS_COLUMNS) <= set(one) & group_keys)
         press = _SplitReplyPress()
-        replies = [(press([Lane.KICK]), 1),
-                   (press([Lane.KICK], None, [([Lane.GREEN_CYMBAL], None, 8.0)]), 2),
-                   (fakes.kit_reply([(1, 3, 10, 20)] * 3), 3)]
-        for reply, groups in replies:
+        replies = [(press([Lane.KICK]), 1, one),
+                   (press([Lane.KICK], None, [([Lane.GREEN_CYMBAL], None, 8.0)]), 2, two),
+                   (fakes.kit_reply([(1, 3, 10, 20)] * 2), 2, two)]
+        for reply, groups, real in replies:
             with self.subTest(groups=groups):
+                self.assertIsNone(reply_gap(real, groups))
                 self.assertIsNone(reply_gap(reply, groups))
-                self.assertEqual(set(reply) - {"groups"}, top)
-                self.assertEqual("groups" in reply, groups > 1)
+                self.assertEqual(set(reply), set(real))
                 for entry in reply.get("groups", []):
-                    self.assertEqual(set(entry), group)
+                    self.assertEqual(set(entry), group_keys)
 
 
-# The fake stall of StepTimesTest, and the most any other step of the same
-# row may show beside it: PS3's acceptance line in
-# docs/superpowers/plans/2026-11-12-player-stall-fixes.md.
-_STALL_S = 0.3
-_STALL_MS = 300.0
-_QUIET_MS = 20.0
+class SplitChordTimesTest(unittest.TestCase):
+    """The first row of a split chord's message carries the times of the
+    message's steps, and its later group's row none. The Mouths schedule
+    plays on the recorded clock of ls-f1-run1 that passes its first split
+    chord, and the kit answers with real replies: ls-e-run1's to a one-group
+    press, ls-p3-run1's to a two-group press."""
 
+    @classmethod
+    def setUpClass(cls):
+        chords = play_chart.load_schedule(_MOUTHS_SCHEDULE).chords
+        cls.head, cls.later = next((h, l) for h, l in play_chart.press_messages(
+            play_chart.press_plan(chords)) if l)
+        one, two = _recorded_reply(_e_replies()[0]), _p3_two_group_reply()
 
-class _StallOnce:
-    """`call`, whose `nth` call (1-based) first moves `wall` on by
-    _STALL_S; every other call passes straight through."""
+        def press(lanes, _axes=None, then=()):
+            return two if then else one
 
-    def __init__(self, wall: _FakeTime, call, nth: int = 1) -> None:
-        self.wall, self.call, self.nth = wall, call, nth
-        self.calls = 0
+        cls.result, _sent, _out, _took, _chords = _play_recorded(
+            _F1_SPLIT_CHORD, chords=chords, press=press, kit=True,
+            cap_s=_cap_until_clock_passes(_F1_SPLIT_CHORD, cls.head.last_send_ms))
 
-    def __call__(self, *args, **kwargs):
-        self.calls += 1
-        if self.calls == self.nth:
-            self.wall.t += _STALL_S
-        return self.call(*args, **kwargs)
-
-
-class _ClockOf:
-    """A song clock whose read is `read`."""
-
-    def __init__(self, read) -> None:
-        self.read = read
-
-
-# Which part of StepTimesTest's run each timing column times.
-_PART_OF_COLUMN = {
-    "wait_read_max_ms": "clock",
-    "wait_oversleep_max_ms": "sleep",
-    "press_took_ms": "press",
-    "reply_check_took_ms": "reply_gap",
-    "end_read_took_ms": "sp_end",
-    "score_read_took_ms": "score",
-    "prev_handoff_took_ms": "on_press",
-}
-
-
-class StepTimesTest(unittest.TestCase):
-    """The first row of each message says how long each step took, so a
-    stall names its step (PS3 of
-    docs/superpowers/plans/2026-11-12-player-stall-fixes.md)."""
-
-    def _run(self, stalled_part):
-        """A kit run of the Freak fixture on the fakes, with every part of
-        a message the player times, and `stalled_part` stalling once."""
-        from tools.ch_mcp import kit_tools
-        chords = play_chart.load_schedule(_FREAK_SCHEDULE).chords
-        wall = _FakeTime()
-        song = _FakeSongClock(wall, start_s=chords[0].ms / 1000 - 1.0)
-        parts = {"clock": song.read, "sleep": wall.sleep, "press": _SplitReplyPress(),
-                 "reply_gap": kit_tools.reply_gap, "sp_end": _reads(chords, {}),
-                 "score": lambda: 0, "on_press": lambda row: None}
-        # The run's start reads the song clock and the score once before the
-        # first message, so the first message's own reads are the second.
-        nth = {"clock": 2, "score": 2}.get(stalled_part, 1)
-        parts[stalled_part] = _StallOnce(wall, parts[stalled_part], nth)
-        with mock.patch.object(kit_tools, "reply_gap", parts["reply_gap"]):
-            return play_chart.play_chords(
-                chords, _ClockOf(parts["clock"]), parts["score"], parts["press"],
-                now=wall.now, sleep=parts["sleep"], out=io.StringIO(), cap_s=600.0,
-                read_sp_end=parts["sp_end"], on_press=parts["on_press"], kit=True)
-
-    def test_a_stall_in_each_step_shows_in_that_steps_column(self):
-        self.assertEqual(set(_PART_OF_COLUMN), set(overlay_logs.TIMING_PRESS_COLUMNS))
-        for column in overlay_logs.TIMING_PRESS_COLUMNS:
-            with self.subTest(column=column):
-                result = self._run(_PART_OF_COLUMN[column])
-                self.assertEqual(result.stop, "done")
-                # The end read and the hand-off show on a later message's row.
-                row = next(r for r in result.rows if column in r)
-                # isclose's own default tolerance: the fake times are float sums.
-                self.assertTrue(row[column] >= _STALL_MS or math.isclose(row[column], _STALL_MS),
-                                row[column])
-                for other in overlay_logs.TIMING_PRESS_COLUMNS:
-                    if other != column:
-                        self.assertLess(row.get(other, 0.0), _QUIET_MS, other)
-
-    def test_a_dropped_row_carries_its_wait_times(self):
-        wall = _FakeTime()
-        game = _FakeGame()
-        song = _FakeSongClock(wall, start_s=12.0)
-        # After chord 38's hand-off, the next clock read takes 2 s, which is
-        # past the last send of chords 41 and 45 (13614 and 14185 ms).
-        jump_s = []
-
-        def read():
-            if jump_s:
-                wall.t += jump_s.pop()
-            return song.read()
-
-        def on_press(row):
-            if row["index"] == 38:
-                jump_s.append(2.0)
-
-        result = play_chart.play_chords(
-            _load_chords(), _ClockOf(read), game.read_score, game.press,
-            now=wall.now, sleep=wall.sleep, out=io.StringIO(), on_press=on_press)
-        (row,) = _rows_of(result, 41)
-        self.assertEqual(row["send"], play_chart.DROPPED)
-        self.assertGreaterEqual(row["wait_read_max_ms"], 2000.0)
-        for column in ("wait_oversleep_max_ms", "prev_handoff_took_ms", "score_read_took_ms"):
-            self.assertIn(column, row)
-        self.assertNotIn("press_took_ms", row)
-        self.assertNotIn("reply_check_took_ms", row)
+    def _split_rows(self):
+        rows = _rows_of(self.result, self.head.index)
+        self.assertEqual(len(rows), 1 + len(self.later))
+        self.assertEqual(rows[0][play_chart.SEND_COLUMN], play_chart.SENT)
+        return rows
 
     def test_only_the_first_row_of_a_split_chord_carries_the_times(self):
-        wall = _FakeTime()
-        result = play_chart.play_chords(
-            _split_chords(), _FakeSongClock(wall, start_s=0.5), lambda: 0, _SplitReplyPress(),
-            now=wall.now, sleep=wall.sleep, out=io.StringIO(), kit=True,
-            on_press=lambda row: None)
-        first, second = result.rows
+        first, *rest = self._split_rows()
         timing = set(overlay_logs.TIMING_PRESS_COLUMNS)
-        # The run's one message reads no end and follows no hand-off.
-        self.assertEqual(timing & set(first),
-                         timing - {"end_read_took_ms", "prev_handoff_took_ms"})
-        self.assertEqual(timing & set(second), set())
+        # The message pressed and checked its reply; it reads an end only
+        # when the schedule plans one after it, and no on_press was given.
+        ran = timing - {"prev_handoff_took_ms"}
+        if self.head.planned_end_ms is None:
+            ran -= {"end_read_took_ms"}
+        self.assertEqual(timing & set(first), ran)
+        for row in rest:
+            self.assertEqual(timing & set(row), set())
 
     def test_the_timing_columns_reach_the_press_log_on_the_first_row_only(self):
-        wall = _FakeTime()
-        result = play_chart.play_chords(
-            _split_chords(), _FakeSongClock(wall, start_s=0.5), lambda: 0, _SplitReplyPress(),
-            now=wall.now, sleep=wall.sleep, out=io.StringIO(), kit=True)
+        rows = self._split_rows()
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "press.csv")
-            play_chart.write_press_log(path, result.rows)
+            play_chart.write_press_log(path, self.result.rows)
             with open(path, encoding="utf-8", newline="") as f:
-                first, second = list(csv.DictReader(f))
-        self.assertNotEqual(first["press_took_ms"], "")
-        self.assertEqual(first["end_read_took_ms"], "")
-        self.assertEqual([second[c] for c in overlay_logs.TIMING_PRESS_COLUMNS],
-                         [""] * len(overlay_logs.TIMING_PRESS_COLUMNS))
+                logged = [r for r in csv.DictReader(f) if r["index"] == str(self.head.index)]
+        self.assertEqual(len(logged), len(rows))
+        first, *rest = logged
+        for column in overlay_logs.TIMING_PRESS_COLUMNS:
+            self.assertEqual(first[column] != "", column in rows[0], column)
+            for row in rest:
+                self.assertEqual(row[column], "", column)
 
 
 if __name__ == "__main__":
