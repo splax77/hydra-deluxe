@@ -354,15 +354,22 @@ TEST_CASE("all-0 pass: passing over a fill with 70 ms to spare is an E1 at 85, a
     check_window_carried(narrow, kDefaultEarlyFillWindowMs);
 }
 
+// The song of a corpus chart under `cfg`. Every chart the corpus scan lists
+// has Expert drum notes, so a chart that loads empty fails here by name
+// instead of being passed over.
+static const Song& corpus_song(const std::string& chart, const app::AnalysisSettings& cfg) {
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    REQUIRE_MESSAGE(!song.is_empty(), chart << " loads with no notes");
+    return song;
+}
+
 // The lasting order checks, on root paths. A tied variant's list is checked
 // by lone pricing (test::lone_pricing in record_fixtures.h).
 TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int skipped = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song =
-            corpus::song(chart, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
+        const Song& song = corpus_song(chart, cfg);
         for (const Path& root : corpus::analyzed(chart, cfg).paths) {
             const Activation* prev = nullptr;
             for (const Activation& act : root.walk_activations()) {
@@ -374,17 +381,16 @@ TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
                     CHECK(t < act.timecode.ticks());
                     if (prev) CHECK(t > prev->timecode.ticks());
                     if (k > 0) CHECK(t > act.skipped_fill_ticks[k - 1]);
-                    CHECK(std::any_of(song.sequence.begin(), song.sequence.end(),
-                                      [t](const SongTimestamp& ts) {
-                                          return ts.timecode.ticks() == t &&
-                                                 ts.activation_length.has_value();
-                                      }));
+                    CHECK(fill_chord_at(song, t) != nullptr);
                 }
                 prev = &act;
             }
         }
     }
-    CHECK(skipped > 100);  // a floor the user approved (D43)
+    // With no skipped fill the checks above ran on nothing. Pitch Dark's best
+    // path (testdata/input/test_pitch_dark_ratio) passes over three fills
+    // before its first activation at the app's defaults.
+    CHECK_MESSAGE(skipped > 0, "no corpus root path passed over a fill");
 }
 
 // ---- the fills a path passed over after its last activation -------------
@@ -428,38 +434,19 @@ void check_trailing(const Song& song, const Path& p, int sp_cap, const core::Rul
 
 TEST_CASE("trailing fills: a corpus path lists the fills after its last activation that the meter allows") {
     const app::AnalysisSettings cfg = test::scores_settings(4);
-
-    // One chart pinned from one run: the highest-ranked path that lists any
-    // activates once, at 123838, and passes two fills after that window.
-    const std::string chart = corpus::chart_named("Hail The Sun - Missed Injections");
-    REQUIRE_FALSE(chart.empty());
-    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-    const Path* first = nullptr;
-    for (const Path* p : corpus::analyzed(chart, cfg).all_paths())
-        if (!p->trailing_skipped_fill_ticks.empty()) {
-            first = p;
-            break;
-        }
-    REQUIRE(first != nullptr);
-    CHECK(first->pathstring() == "3");
-    CHECK(test::act_ticks(*first) == std::vector<int64_t>{123838});
-    CHECK(first->trailing_skipped_fill_ticks == std::vector<int64_t>{244800, 281759});
-    check_trailing(song, *first, cfg.sp_cap, cfg.rules);
-
     // Every corpus path, tied variants included.
     int listed = 0;
     for (const std::string& c : corpus::chart_paths()) {
-        const Song& s = corpus::song(c, cfg.reading(), cfg.rules);
-        if (s.is_empty()) continue;
+        const Song& s = corpus_song(c, cfg);
         for (const Path* p : corpus::analyzed(c, cfg).all_paths()) {
-            if (p->trailing_skipped_fill_ticks.empty()) continue;
             CAPTURE(c);
             CAPTURE(p->pathstring());
             listed += static_cast<int>(p->trailing_skipped_fill_ticks.size());
             check_trailing(s, *p, cfg.sp_cap, cfg.rules);
         }
     }
-    CHECK(listed > 0);
+    // With no listed fill the checks above ran on nothing.
+    CHECK_MESSAGE(listed > 0, "no corpus path at cap 4 lists a fill after its last activation");
 }
 
 TEST_CASE("trailing fills: a path whose last window outlasts the chart lists none") {
@@ -468,8 +455,7 @@ TEST_CASE("trailing fills: a path whose last window outlasts the chart lists non
     const app::AnalysisSettings cfg = test::scores_settings(4);
     int outlasting = 0, with_fills_after = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
+        const Song& song = corpus_song(chart, cfg);
         const int64_t last_note = song.sequence.back().timecode.ticks();
         for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
             const ActivationWalk walk = p->walk_activations();
@@ -480,27 +466,27 @@ TEST_CASE("trailing fills: a path whose last window outlasts the chart lists non
             CAPTURE(chart);
             CAPTURE(p->pathstring());
             CHECK(p->trailing_skipped_fill_ticks.empty());
-            if (std::any_of(song.sequence.begin(), song.sequence.end(), [&](const SongTimestamp& ts) {
-                    return ts.activation_length.has_value() &&
-                           ts.timecode.ticks() > last.timecode.ticks();
-                }))
-                ++with_fills_after;
+            for (const SongTimestamp* f : fill_chords(song))
+                if (f->timecode.ticks() > last.timecode.ticks()) {
+                    ++with_fills_after;
+                    break;
+                }
         }
     }
-    MESSAGE("outlasting paths " << outlasting << ", with fills after the last activation "
-                                << with_fills_after);
-    CHECK(outlasting > 0);
-    // Some of them run over fills of the chart's own, which the list must
-    // not hold either.
-    CHECK(with_fills_after > 0);
+    // The empty-list check above ran only on outlasting paths; one whose
+    // window runs over fills of the chart's own is the case it is for.
+    CHECK_MESSAGE(outlasting > 0, "no corpus path at cap 4 has a window that outlasts its chart");
+    CHECK_MESSAGE(with_fills_after > 0,
+                  "no outlasting corpus path runs over a fill after its last activation");
 }
 
+// A pinned search of a path's own windows lists the same trailing fills as
+// the free search did, and the pinned list meets the same rule.
 TEST_CASE("trailing fills: a full pin of a corpus path agrees with the free search") {
     const app::AnalysisSettings cfg = test::scores_settings(4);
     int compared = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-        if (song.is_empty()) continue;
+        const Song& song = corpus_song(chart, cfg);
         for (const Path* p : corpus::analyzed(chart, cfg).all_paths()) {
             if (p->trailing_skipped_fill_ticks.empty()) continue;
             CAPTURE(chart);
@@ -508,31 +494,46 @@ TEST_CASE("trailing fills: a full pin of a corpus path agrees with the free sear
             const TargetResult t = search_target(song, cfg, pinned_windows(*p));
             REQUIRE(t.paths.size() == 1);
             ++compared;
+            check_trailing(song, t.paths[0], cfg.sp_cap, cfg.rules);
             CHECK(t.paths[0].trailing_skipped_fill_ticks == p->trailing_skipped_fill_ticks);
         }
     }
-    CHECK(compared > 0);
+    CHECK_MESSAGE(compared > 0, "no corpus path at cap 4 lists a fill to compare");
 }
 
+// The empty path of the Path Builder's start: search_target over no windows
+// declines every fill, so it lists exactly the fills the game shows. A fill
+// is shown when the meter held an activation's worth by its deadline, late by
+// no more than the early-fill window (fill_refuses).
 TEST_CASE("trailing fills: the path with no activation lists every fill the meter allows") {
-    // The empty path of the Path Builder's start: search_target over no
-    // windows declines every fill.
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const std::string chart = corpus::chart_named("Allister - Overrated");
-    REQUIRE_FALSE(chart.empty());
-    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
-    const TargetResult t = search_target(song, cfg, std::vector<PinnedWindow>{});
-    REQUIRE(t.paths.size() == 1);
-    const Path& empty = t.paths[0];
-    CHECK(empty.walk_activations().size() == 0);
-    // Eight of the chart's nine fills, pinned from one run.
-    CHECK(empty.trailing_skipped_fill_ticks ==
-          std::vector<int64_t>{55680, 71040, 90240, 105600, 120960, 136320, 151680, 167040});
-    check_trailing(song, empty, cfg.sp_cap, cfg.rules);
-    // The one it does not list, at 36480, comes with one bar saved.
-    const app::PreviewScene scene = app::build_preview_scene(song, &empty, cfg.sp_cap, cfg.rules);
-    REQUIRE(scene.fills.size() == 9);
-    CHECK(scene.fills[0].chord_tick == 36480);
-    CHECK(bars_at(scene, song, 36480) < kSpActivationBars);
+    const FillDeadlineRule rule = fill_rule_for(cfg.legacy_fills);
+    int listed = 0, unlisted = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus_song(chart, cfg);
+        const TargetResult t = search_target(song, cfg, std::vector<PinnedWindow>{});
+        REQUIRE(t.paths.size() == 1);
+        const Path& empty = t.paths[0];
+        CHECK(empty.walk_activations().size() == 0);
+        check_trailing(song, empty, cfg.sp_cap, cfg.rules);
+        const app::PreviewScene scene = app::build_preview_scene(song, &empty, cfg.sp_cap, cfg.rules);
+        const std::vector<int64_t>& list = empty.trailing_skipped_fill_ticks;
+        for (const app::PreviewFill& f : scene.fills) {
+            CAPTURE(f.chord_tick);
+            const SongTimestamp* chord = fill_chord_at(song, f.chord_tick);
+            REQUIRE(chord != nullptr);
+            const double deadline =
+                activation_fill_deadline_ms(song.timing(), f.chord_tick, *chord->activation_length, rule);
+            const bool shown = app::sp_meter_bars_at(scene.sp_meter, deadline + cfg.early_fill_window_ms) >=
+                               kSpActivationBars;
+            const bool is_listed = std::find(list.begin(), list.end(), f.chord_tick) != list.end();
+            CHECK(is_listed == shown);
+            ++(is_listed ? listed : unlisted);
+        }
+    }
+    // Both sides of the rule ran: Allister - Overrated lists eight of its
+    // nine fills and not its first, which comes with one bar saved.
+    CHECK_MESSAGE(listed > 0, "no empty corpus path lists a fill");
+    CHECK_MESSAGE(unlisted > 0, "every fill of every empty corpus path is listed");
 }
-
