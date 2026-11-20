@@ -543,6 +543,10 @@ TEST_CASE("opening the path report runs a batch over the charts with no result, 
     REQUIRE(finished.batch.has_value());
     CHECK(finished.batch->completed == done.completed);
     CHECK(finished.batch->completed == kUnanalyzed);
+    // A chart the analyzer could not read counts as completed too, so the
+    // batch must show every one analyzed and none failed.
+    CHECK(done.failed == 0);
+    CHECK(done.analyzed == kUnanalyzed);
 
     // The batch's finish starts the report, with the window's cause.
     app->update_background_jobs();
@@ -591,6 +595,7 @@ TEST_CASE("at the threshold the path report runs its batch without asking") {
     CHECK_FALSE(app->path_report_awaits_confirm());
     release = true;
     wait_batch_finished(*app);
+    CHECK(app->batch_job->snapshot().failed == 0);
     app->update_background_jobs();
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
