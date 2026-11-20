@@ -527,6 +527,7 @@ namespace {
 void seek_sweep(StemReader& r, const DecodedAudio& full, int64_t stride) {
     std::vector<int64_t> targets;
     for (int64_t f = 0; f < r.length_frames(); f += stride) targets.push_back(f);
+    REQUIRE(targets.size() > 1);  // a stem with nothing to seek would pass vacuously
     for (std::size_t a = 0, b = targets.size(); a < b;) {
         check_seek_lands(r, full, targets[a++], 4800);
         if (a < b) check_seek_lands(r, full, targets[--b], 4800);
