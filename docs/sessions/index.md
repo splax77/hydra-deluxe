@@ -550,7 +550,9 @@
 - 2026-11-20 e90a2d6f Clear the 14 pending Clone Hero write-backs (2026-11-20) | clone-hero, docs, agents | Ended with 11 of the 14 markers cleared on branch claude/intelligent-goldstine-e14a7c, commit a68ecb91, which is not merged. [write-back]
 - 2026-11-20 302feef9 Wave 8 test fix handoff (2026-11-20) | tests, agents, review, docs | Ended with the wave 9 handoff, committed on its own branch, claude/test-fix-wave9-handoff. [stale]
 - 2026-11-20 c7e79f79 Tag colour realapp merge handoff (2026-11-20) | batch-time-left, library, planning, agents, memory | Ended with a handoff: the tag colour fix was merged and main was rebuilt, but the time-left fix stayed a reviewed plan, not built, because the main session started work the user had not approved.
+- 2026-11-20 4dda6e29 Batch time left handoff (2026-11-20) | batch-time-left, ui-timings, hooks, review, transcripts, docs | The batch time-left fix merged to main as 38aeee58, and the card checker now reads the original transcript while it still holds the session's words; all 556 cards pass.
 - 2026-11-20 47ab11fd Wave 9 handoff documentation (2026-11-20) | agents, review, tests, docs | Ended with wave 9 merged into main and a wave 10 handoff written on its own branch; nothing was pushed and wave 10 has not started.
+- 2026-11-20 64222952 Wave 10 handoff documentation (2026-11-20) | tests, agents, review, docs, planning | Wave 10 finished: all 16 chunks were reviewed and merged into main, which is now at d0aab2c3, and nothing was pushed.
 
 ## Proposed tags
 
