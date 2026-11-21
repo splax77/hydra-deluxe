@@ -1,0 +1,132 @@
+slice file: code/tests/test_update_state.cpp | lines: 557 | range: 50-396
+slice file: code/tests/ui/uitest_details.cpp | lines: 1388 | range: 1079-1095
+test: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:180-210 | facts section: yes
+test: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:214-252 | facts section: yes
+test: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:254-287 | facts section: yes
+test: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:289-306 | facts section: yes
+test: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:310-350 | facts section: yes
+test: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:354-390 | facts section: yes
+test: named_version is the app's name and the version | code/tests/test_update_state.cpp:394-396 | facts section: yes
+test: test_panel_close_cancels | code/tests/ui/uitest_details.cpp:1079-1095 | facts section: yes
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook | found
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:87 | ScopedHook | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:88 | ScopedHook | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:89 | ScopedHook | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:90 | ScopedHook | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:95 | for_test name | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:96 | set_fetcher | found
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:105 | set_downloader | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:111 | for_test name | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:181 | seam wrapper object | missed
+hit: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:196 | for_test name, ScopedHook | found
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook | missed
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:87 | ScopedHook | missed
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:88 | ScopedHook | missed
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:89 | ScopedHook | missed
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:90 | ScopedHook | missed
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:95 | for_test name | found
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:96 | set_fetcher | found
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:105 | set_downloader | found
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:111 | for_test name | found
+hit: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:215 | seam wrapper object | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:87 | ScopedHook | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:88 | ScopedHook | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:89 | ScopedHook | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:90 | ScopedHook | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:95 | for_test name | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:96 | set_fetcher | found
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:105 | set_downloader | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:111 | for_test name | missed
+hit: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:255 | seam wrapper object | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:87 | ScopedHook | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:88 | ScopedHook | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:89 | ScopedHook | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:90 | ScopedHook | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:95 | for_test name | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:96 | set_fetcher | found
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:105 | set_downloader | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:111 | for_test name | missed
+hit: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:290 | seam wrapper object | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:87 | ScopedHook | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:88 | ScopedHook | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:89 | ScopedHook | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:90 | ScopedHook | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:95 | for_test name | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:96 | set_fetcher | found
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:105 | set_downloader | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:111 | for_test name | missed
+hit: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:311 | seam wrapper object | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:87 | ScopedHook | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:88 | ScopedHook | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:89 | ScopedHook | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:90 | ScopedHook | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:95 | for_test name | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:96 | set_fetcher | found
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:105 | set_downloader | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:111 | for_test name | missed
+hit: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:355 | seam wrapper object | missed
+hit: test_panel_close_cancels | code/tests/ui/uitest_details.cpp:1084 | seam wrapper object | found
+hit: test_panel_close_cancels | code/tests/ui/uitest_harness.h:196 | ScopedHook | missed
+hit: test_panel_close_cancels | code/tests/ui/uitest_harness.cpp:353 | for_test name | found
+hit: test_panel_close_cancels | code/tests/ui/uitest_harness.cpp:206 | set_fetcher, set_ call given a lambda | missed
+hit: test_panel_close_cancels | code/tests/ui/uitest_harness.cpp:213 | set_downloader, set_ call given a lambda | missed
+hits: 66
+found: 13
+missed: 53
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:87 | ScopedHook
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:88 | ScopedHook
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:89 | ScopedHook
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:90 | ScopedHook
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:95 | for_test name
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:105 | set_downloader
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:111 | for_test name
+miss: every start of the installed exe checks, and a copy never does | code/tests/test_update_state.cpp:181 | seam wrapper object
+miss: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook
+miss: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:87 | ScopedHook
+miss: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:88 | ScopedHook
+miss: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:89 | ScopedHook
+miss: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:90 | ScopedHook
+miss: a newer release is offered; Later keeps an Update button and writes nothing | code/tests/test_update_state.cpp:215 | seam wrapper object
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:87 | ScopedHook
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:88 | ScopedHook
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:89 | ScopedHook
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:90 | ScopedHook
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:95 | for_test name
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:105 | set_downloader
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:111 | for_test name
+miss: Skip this version names the release as skipped; a newer one is offered | code/tests/test_update_state.cpp:255 | seam wrapper object
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:87 | ScopedHook
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:88 | ScopedHook
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:89 | ScopedHook
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:90 | ScopedHook
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:95 | for_test name
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:105 | set_downloader
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:111 | for_test name
+miss: the same or an older release lands in the resting Up to date | code/tests/test_update_state.cpp:290 | seam wrapper object
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:87 | ScopedHook
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:88 | ScopedHook
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:89 | ScopedHook
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:90 | ScopedHook
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:95 | for_test name
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:105 | set_downloader
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:111 | for_test name
+miss: a failed start-up check shows in the resting status with its plain_error | code/tests/test_update_state.cpp:311 | seam wrapper object
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:86 | for_test name, ScopedHook
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:87 | ScopedHook
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:88 | ScopedHook
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:89 | ScopedHook
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:90 | ScopedHook
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:95 | for_test name
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:105 | set_downloader
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:111 | for_test name
+miss: the Updated note's OK offers a found release, or gives way to the resting status | code/tests/test_update_state.cpp:355 | seam wrapper object
+miss: test_panel_close_cancels | code/tests/ui/uitest_harness.h:196 | ScopedHook
+miss: test_panel_close_cancels | code/tests/ui/uitest_harness.cpp:206 | set_fetcher, set_ call given a lambda
+miss: test_panel_close_cancels | code/tests/ui/uitest_harness.cpp:213 | set_downloader, set_ call given a lambda
