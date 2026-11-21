@@ -152,6 +152,8 @@ const std::vector<ChartScene>& corpus_path_scenes() {
             const Path* first = paths.empty() ? nullptr : paths.front();
             out.push_back(ChartScene{chart, build_preview_scene(song, first, cfg.sp_cap, cfg.rules)});
         }
+        // No chart found would let every corpus walk pass having checked nothing.
+        if (out.empty()) throw std::runtime_error("corpus_path_scenes: the corpus holds no chart");
         return out;
     }();
     return scenes;
@@ -704,10 +706,32 @@ TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (48
     CHECK(edge->t < next->t);
 }
 
-// A span's drawn end is read through the song's timing, so every scene the
-// Preview builds carries it: on every corpus chart the scene holds its timing
-// and its timeline builds.
+// A span's drawn end is read through the song's timing: a scene with a span
+// and no timing is refused, a scene with no span builds without one, and every
+// scene the Preview builds carries its timing, so on every corpus chart the
+// scene holds it and its timeline builds.
 TEST_CASE("build_track_state: spans need the song timing") {
+    PreviewScene no_timing;
+    no_timing.notes = {note(1000.0, PreviewLane::Red)};
+    no_timing.sp_phrases = {span(1000.0, 1000.0)};
+    CHECK_THROWS_AS(build_track_state(no_timing, TrackStateOptions{}), std::invalid_argument);
+
+    // The same note with no span builds: one instant, at the note's moment,
+    // with every span state absent.
+    PreviewScene plain;
+    plain.notes = {note(1000.0, PreviewLane::Red)};
+    const TrackState plain_st = build_track_state(plain, TrackStateOptions{});
+    REQUIRE(plain_st.instants().size() == 1);
+    const TrackInstant& only = plain_st.instants()[0];
+    CHECK(only.t == doctest::Approx(1.0));
+    CHECK(only.notes.size() == 1);
+    CHECK(only.overdrive == Toggle::Empty);
+    CHECK(only.solo == Toggle::Empty);
+    CHECK(only.fill == Toggle::Empty);
+    CHECK(only.fill_taken == Toggle::Empty);
+    CHECK(only.sp_active == Toggle::Empty);
+    CHECK(only.fill_lane == Toggle::Empty);
+
     for (const ChartScene& cs : corpus_path_scenes()) {
         INFO("corpus chart " << cs.chart);
         CHECK(cs.scene.timing.has_value());
