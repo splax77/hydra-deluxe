@@ -37,13 +37,15 @@ TEST_CASE("decode_image decodes a 2x2 PNG to RGBA with the right pixels") {
     auto px = [&](int x, int y) { return &img.rgba[(y * 2 + x) * 4]; };
     // (0,0) red
     CHECK(px(0, 0)[0] == 255); CHECK(px(0, 0)[1] == 0);   CHECK(px(0, 0)[2] == 0);
-    CHECK(px(0, 0)[3] == 255);
     // (1,0) green
     CHECK(px(1, 0)[0] == 0);   CHECK(px(1, 0)[1] == 255); CHECK(px(1, 0)[2] == 0);
     // (0,1) blue
     CHECK(px(0, 1)[0] == 0);   CHECK(px(0, 1)[1] == 0);   CHECK(px(0, 1)[2] == 255);
     // (1,1) white
     CHECK(px(1, 1)[0] == 255); CHECK(px(1, 1)[1] == 255); CHECK(px(1, 1)[2] == 255);
+    // All four are opaque.
+    for (int y = 0; y < 2; ++y)
+        for (int x = 0; x < 2; ++x) CHECK(px(x, y)[3] == 255);
 }
 
 TEST_CASE("decode_image returns an empty image on garbage bytes") {
