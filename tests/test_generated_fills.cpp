@@ -1,37 +1,33 @@
-// Tests for generated fills (Song::check_activations, D115). The plan is
-// docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart/part-B2-timing.md).
-//
-// A chart with no fills of its own gets fills placed the way Clone Hero
-// 1.1.0.6142's generator places them (0x20D2B30): on the chord nearest a
-// measure line of Clone Hero's grid (MeasureIndex), starting on the line.
-// Clone Hero 1.0 mode reads the same grid with its own fill rule.
-// Each case pins a literal from the rule as the plan reads it, never a
-// second copy of the rule.
+// Tests for generated fills (Song::check_activations, core/song.cpp). A chart
+// with no fills of its own gets fills placed on the measure lines of Clone
+// Hero's grid (MeasureIndex). Each expected tick here is read from that grid,
+// and each rule value from core::Rules or search/graph.h, never typed.
 
 #include "doctest.h"
 
 #include <algorithm>
 #include <cstdint>
-#include <cstdio>
-#include <map>
+#include <cstdlib>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "search/graph.h"
-#include "song_digest.h"
 
 using namespace hydra;
 
 namespace {
 
-// A song at resolution 480 and 120 BPM with one red note at each tick in
-// `chords`. `seven_eight_at`, when above 0, switches 4/4 to 7/8 there. `fills`
-// picks the game version whose generator runs.
-Song song_with_chords(const std::vector<int64_t>& chords, int64_t seven_eight_at = 0,
-                      FillDeadlineRule fills = FillDeadlineRule::Ch11) {
-    Song song(480);
+// The resolution of the songs these tests build.
+constexpr int64_t kRes = 480;
+
+// A song at resolution kRes and 120 BPM with one red note at each tick in
+// `chords`, and no fills yet. `seven_eight_at`, when above 0, switches 4/4 to
+// 7/8 there.
+Song song_on_grid(const std::vector<int64_t>& chords, int64_t seven_eight_at = 0) {
+    Song song(kRes);
     song.bpm_changes[0] = 120.0;
     if (seven_eight_at > 0) apply_timesig(song, seven_eight_at, 7, 8);
     song.build_timing();
@@ -41,6 +37,14 @@ Song song_with_chords(const std::vector<int64_t>& chords, int64_t seven_eight_at
         ts.chord.add_note(NoteColor::Red);
         song.sequence.push_back(ts);
     }
+    return song;
+}
+
+// song_on_grid's song with its fills generated the way the game version
+// `fills` names would.
+Song song_with_chords(const std::vector<int64_t>& chords, int64_t seven_eight_at = 0,
+                      FillDeadlineRule fills = FillDeadlineRule::Ch11) {
+    Song song = song_on_grid(chords, seven_eight_at);
     song.check_activations(core::default_rules(), fills);
     return song;
 }
@@ -57,225 +61,313 @@ std::vector<std::pair<int64_t, int64_t>> fills_of(const Song& song) {
 
 using Fills = std::vector<std::pair<int64_t, int64_t>>;
 
+// The tick of measure line `n` (0-based) on the grid song_on_grid builds for
+// the same meter map, read from that song's MeasureIndex.
+int64_t line_tick(int64_t n, int64_t seven_eight_at = 0) {
+    const Song grid = song_on_grid({}, seven_eight_at);
+    return grid.timing().measure_index().measure_line_tick(n);
+}
+
+// The number of the first measure line at or after `tick` on that grid.
+int64_t line_at_or_after(int64_t tick, int64_t seven_eight_at = 0) {
+    const Song grid = song_on_grid({}, seven_eight_at);
+    return grid.timing().measure_index().first_measure_line_at_or_after(tick);
+}
+
+// How far from its measure line a chord may sit and still take a Clone Hero
+// 1.1 generated fill, in ticks of `resolution`. place_fills_ch11 works this
+// out inline and exposes no function for it, so this follows its form: the
+// whole ticks of resolution x core::Rules::fill_max_distance_beats, plus the
+// one tick Clone Hero adds.
+int64_t ch11_reach(int64_t resolution, const core::Rules& rules) {
+    return static_cast<int64_t>(static_cast<double>(resolution) * rules.fill_max_distance_beats) +
+           1;
+}
+
+// The length of the grid measure in force at a tick of `song`.
+int64_t measure_length_at(const Song& song, int64_t tick) {
+    const MeasureIndex& grid = song.timing().measure_index();
+    return grid.length_at(grid.span_at(tick));
+}
+
+// Whether two Clone Hero 1.0 fills are the same share of the grid measure in
+// force at their chords. 1.0 sizes a fill by that measure alone, so every
+// 1.0 fill has one share whatever its meter or its chord's distance to the
+// line.
+bool same_measure_share(const Song& a, const SongTimestamp& fa, const Song& b,
+                        const SongTimestamp& fb) {
+    return *fa.activation_length * measure_length_at(b, fb.timecode.ticks()) ==
+           *fb.activation_length * measure_length_at(a, fa.timecode.ticks());
+}
+
+// A 4/4 song whose one chord sits on the second measure line, with its 1.0
+// fill: the share every other 1.0 fill is compared with.
+Song ch10_reference() {
+    return song_with_chords({line_tick(1)}, 0, FillDeadlineRule::Ch10);
+}
+
+// A chord on every measure line from `first` to `last` (4/4). The 1.1 fills
+// sit on the first such line from the second on, then every
+// core::Rules::fill_cooldown_measures lines on.
+void check_chord_on_every_line(int64_t first, int64_t last) {
+    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    std::vector<int64_t> chords;
+    for (int64_t n = first; n <= last; ++n) chords.push_back(line_tick(n));
+    Fills want;
+    for (int64_t n = (std::max)(first, int64_t{1}); n <= last; n += cooldown)
+        want.emplace_back(line_tick(n), line_tick(n));
+    CHECK(fills_of(song_with_chords(chords)) == want);
+}
+
+// The 7/8 change of the restarted-grid tests: one and a half 4/4 measures in.
+constexpr int64_t kMidMeasureChange = 6 * kRes;
+
+// Three chords on the grid restarted at kMidMeasureChange: just after the
+// restart line, just after the next line (inside the cooldown) and just after
+// the line the cooldown reaches.
+std::vector<int64_t> restart_chords() {
+    const int64_t restart = line_at_or_after(kMidMeasureChange, kMidMeasureChange);
+    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    return {line_tick(restart, kMidMeasureChange) + 120,
+            line_tick(restart + 1, kMidMeasureChange) + 100,
+            line_tick(restart + cooldown, kMidMeasureChange) + 50};
+}
+
 }  // namespace
 
-TEST_CASE("generated fills: a chord 241 ticks after the second measure line gets a fill") {
-    // Resolution 480: half a beat is 240 ticks, and Clone Hero adds one tick.
-    const Song song = song_with_chords({2161});
+TEST_CASE("generated fills: a chord at the 1.1 reach after the second measure line gets a fill") {
+    const int64_t line = line_tick(1);
+    const int64_t reach = ch11_reach(kRes, core::default_rules());
+    const Song song = song_with_chords({line + reach});
     REQUIRE(song.sequence.size() == 1);
     const SongTimestamp& ts = song.sequence[0];
     REQUIRE(ts.has_activation());
-    CHECK(*ts.activation_length == 241);
-    // The fill starts on the line at tick 1920, so its deadline is 4 quarter
-    // notes before that line: tick 0, which is 0 ms.
+    CHECK(fill_start_tick(ts.timecode.ticks(), *ts.activation_length) == line);
+    CHECK(*ts.activation_length == reach);
+    // The 1.1 deadline sits kCh11FillLeadBeats beats before the fill's line.
+    const double lead_ms = song.timing().timecode(line - kCh11FillLeadBeats * kRes).ms();
     CHECK(activation_fill_deadline_ms(song.timing(), ts.timecode.ticks(), *ts.activation_length,
-                                      FillDeadlineRule::Ch11) == 0.0);
+                                      FillDeadlineRule::Ch11) == lead_ms);
 }
 
-TEST_CASE("generated fills: Clone Hero 1.0 mode gives half-measure fills, 1.1 line-start fills") {
-    // Two chords 10 ticks after the measure lines at 1920 and 9600
-    // (resolution 480, 4/4).
-    const std::vector<int64_t> chords = {1930, 9610};
-    // 1.1: each fill starts on its line, so its length is 10 ticks.
+TEST_CASE("generated fills: Clone Hero 1.0 mode sizes fills by the measure, 1.1 starts them on the line") {
+    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    // One chord 10 ticks after each of two lines a cooldown apart.
+    const std::vector<int64_t> chords = {line_tick(1) + 10, line_tick(1 + cooldown) + 10};
     CHECK(fills_of(song_with_chords(chords, 0, FillDeadlineRule::Ch11)) ==
-          Fills{{1920, 1930}, {9600, 9610}});
-    // 1.0: each fill is half a 4/4 measure (960 ticks) long, ending on its chord.
+          Fills{{line_tick(1), chords[0]}, {line_tick(1 + cooldown), chords[1]}});
+    // 1.0: each fill is the same share of its measure as the reference fill,
+    // whose chord sits on its line, so the chord's distance does not size it.
     const Song old = song_with_chords(chords, 0, FillDeadlineRule::Ch10);
-    CHECK(fills_of(old) == Fills{{970, 1930}, {8650, 9610}});
-    CHECK(*old.sequence[0].activation_length == 960);
+    const Song ref = ch10_reference();
+    REQUIRE(ref.sequence[0].has_activation());
+    for (const SongTimestamp& ts : old.sequence) {
+        INFO("chord tick " << ts.timecode.ticks());
+        REQUIRE(ts.has_activation());
+        CHECK(same_measure_share(old, ts, ref, ref.sequence[0]));
+    }
 }
 
-TEST_CASE("generated fills: a chord 242 ticks from its line gets none") {
-    CHECK(fills_of(song_with_chords({2162})).empty());
-    CHECK(fills_of(song_with_chords({1920 - 242})).empty());
+TEST_CASE("generated fills: a chord one tick past the 1.1 reach from its line gets none") {
+    const int64_t line = line_tick(1);
+    const int64_t reach = ch11_reach(kRes, core::default_rules());
+    CHECK(fills_of(song_with_chords({line + reach + 1})).empty());
+    CHECK(fills_of(song_with_chords({line - (reach + 1)})).empty());
 }
 
 TEST_CASE("generated fills: a chord exactly on the line has length 0") {
-    CHECK(fills_of(song_with_chords({1920})) == Fills{{1920, 1920}});
-    CHECK(*song_with_chords({1920}).sequence[0].activation_length == 0);
+    const int64_t line = line_tick(1);
+    const Song song = song_with_chords({line});
+    CHECK(fills_of(song) == Fills{{line, line}});
+    REQUIRE(song.sequence[0].has_activation());
+    CHECK(*song.sequence[0].activation_length == song.sequence[0].timecode.ticks() - line);
 }
 
 TEST_CASE("generated fills: a chord just before its line has a negative length") {
-    // D115 item 4: the fill starts on the line, as Clone Hero's does.
-    const Song song = song_with_chords({1820});
+    const int64_t line = line_tick(1);
+    const int64_t chord = line - 100;
+    const Song song = song_with_chords({chord});
     REQUIRE(song.sequence[0].has_activation());
-    CHECK(*song.sequence[0].activation_length == -100);
+    // The fill starts on the line, so its length is the chord tick minus the
+    // line tick, which is below zero here.
+    CHECK(fill_start_tick(chord, *song.sequence[0].activation_length) == line);
+    CHECK(*song.sequence[0].activation_length < 0);
 }
 
-TEST_CASE("generated fills: the 1.0 deadline of a 0 or negative length is the line minus 250 ms") {
-    // The line at tick 1920 is 2000 ms in (120 BPM, resolution 480). The 1.0 rule
-    // measures back from the fill's start with at least 250 ms of lead, so a fill
-    // starting on that line has its deadline at 1750 ms whether its chord sits on
-    // the line (length 0) or 100 ticks before it (length -100).
-    for (int64_t chord : {1920, 1820}) {
+TEST_CASE("generated fills: the 1.0 deadline of a 0 or negative length fill depends only on its line") {
+    // Both chords take a 1.1 fill that starts on the same line: one sits on
+    // it (length 0), one before it (a negative length).
+    const int64_t line = line_tick(1);
+    std::vector<double> deadlines;
+    double line_ms = 0.0;
+    for (int64_t chord : {line, line - 100}) {
         INFO("chord tick " << chord);
         const Song song = song_with_chords({chord});
         REQUIRE(song.sequence[0].has_activation());
-        CHECK(activation_fill_deadline_ms(song.timing(), chord, *song.sequence[0].activation_length,
-                                          FillDeadlineRule::Ch10) == doctest::Approx(1750.0));
+        REQUIRE(fill_start_tick(chord, *song.sequence[0].activation_length) == line);
+        line_ms = song.timing().timecode(line).ms();
+        deadlines.push_back(activation_fill_deadline_ms(
+            song.timing(), chord, *song.sequence[0].activation_length, FillDeadlineRule::Ch10));
     }
+    REQUIRE(deadlines.size() == 2);
+    CHECK(deadlines[0] == doctest::Approx(deadlines[1]));
+    CHECK(deadlines[0] < line_ms);
 }
 
 TEST_CASE("generated fills: the nearer chord wins, and a tie goes to the later one") {
-    CHECK(fills_of(song_with_chords({1900, 1930})) == Fills{{1920, 1930}});
-    CHECK(fills_of(song_with_chords({1910, 1930})) == Fills{{1920, 1930}});
-    CHECK(fills_of(song_with_chords({1915, 1930})) == Fills{{1920, 1915}});
+    const int64_t line = line_tick(1);
+    const int64_t after = 10;
+    // The chord after the line is nearer.
+    CHECK(fills_of(song_with_chords({line - 2 * after, line + after})) ==
+          Fills{{line, line + after}});
+    // Both chords are as far from the line: the later one takes the fill.
+    CHECK(fills_of(song_with_chords({line - after, line + after})) == Fills{{line, line + after}});
+    // The chord before the line is nearer.
+    CHECK(fills_of(song_with_chords({line - after / 2, line + after})) ==
+          Fills{{line, line - after / 2}});
 }
 
-TEST_CASE("generated fills: after a fill the next candidate is 4 lines on") {
-    std::vector<int64_t> chords;
-    for (int64_t line = 0; line <= 12; ++line) chords.push_back(line * 1920);
-    CHECK(fills_of(song_with_chords(chords)) ==
-          Fills{{1920, 1920}, {9600, 9600}, {17280, 17280}});
+TEST_CASE("generated fills: after a fill the next candidate is a cooldown of lines on") {
+    check_chord_on_every_line(0, 12);
 }
 
-TEST_CASE("generated fills: the first line is never a candidate") {
-    // A chord on tick 0 sits on the first measure line; the generator starts
-    // at the second.
-    CHECK(fills_of(song_with_chords({0})).empty());
+TEST_CASE("generated fills: the first measure line is never a candidate") {
+    CHECK(fills_of(song_with_chords({line_tick(0)})).empty());
 }
 
 TEST_CASE("generated fills: a first chord in measure 3 still counts lines from the second") {
-    // Lines 1 and 2 have no chord near them, so each passes to the next line;
-    // the first fill is on line 3 and the next ones on lines 7 and 11.
-    std::vector<int64_t> chords;
-    for (int64_t line = 3; line <= 12; ++line) chords.push_back(line * 1920);
-    CHECK(fills_of(song_with_chords(chords)) ==
-          Fills{{5760, 5760}, {13440, 13440}, {21120, 21120}});
+    check_chord_on_every_line(3, 12);
 }
 
 TEST_CASE("generated fills: a 4/4 to 7/8 change places fills on the restarted grid") {
-    // The meter map: 7/8 from tick 2880, one and a half 4/4 measures in.
-    // Clone Hero's grid restarts there, so its lines run 0, 1920, 2880, 4560,
-    // 6240, ... (1680 ticks per 7/8 measure).
-    const Song song = song_with_chords({3000, 4660, 9650}, 2880);
-    CHECK(fills_of(song) == Fills{{2880, 3000}, {9600, 9650}});
+    const int64_t restart = line_at_or_after(kMidMeasureChange, kMidMeasureChange);
+    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    REQUIRE(cooldown > 1);
+    // The grid restarts at the meter change: a measure line sits on it.
+    CHECK(line_tick(restart, kMidMeasureChange) == kMidMeasureChange);
+    const std::vector<int64_t> chords = restart_chords();
+    const Song song = song_with_chords(chords, kMidMeasureChange);
+    CHECK(fills_of(song) == Fills{{line_tick(restart, kMidMeasureChange), chords[0]},
+                                  {line_tick(restart + cooldown, kMidMeasureChange), chords[2]}});
 }
 
 TEST_CASE("generated fills: Clone Hero 1.0 mode reads the same restarted grid") {
-    // The same map and chords as above. 1.0 asks the grid too, so its fills
-    // sit on the lines at 2880 and 9600, each half a 7/8 measure (840 ticks)
-    // long, ending on its chord.
-    const Song song = song_with_chords({3000, 4660, 9650}, 2880, FillDeadlineRule::Ch10);
-    CHECK(fills_of(song) == Fills{{2160, 3000}, {8810, 9650}});
+    const std::vector<int64_t> chords = restart_chords();
+    const Song song = song_with_chords(chords, kMidMeasureChange, FillDeadlineRule::Ch10);
+    std::vector<int64_t> filled;
+    for (const SongTimestamp& ts : song.sequence)
+        if (ts.has_activation()) filled.push_back(ts.timecode.ticks());
+    // The chords nearest the restart line and the line a cooldown on.
+    CHECK(filled == std::vector<int64_t>{chords[0], chords[2]});
+    // Each fill is sized by the 7/8 measure at its chord, in the same share
+    // as the 4/4 reference fill.
+    const Song ref = ch10_reference();
+    REQUIRE(ref.sequence[0].has_activation());
+    for (const SongTimestamp& ts : song.sequence) {
+        if (!ts.has_activation()) continue;
+        INFO("chord tick " << ts.timecode.ticks());
+        CHECK(measure_length_at(song, ts.timecode.ticks()) !=
+              measure_length_at(ref, ref.sequence[0].timecode.ticks()));
+        CHECK(same_measure_share(song, ts, ref, ref.sequence[0]));
+    }
 }
 
 TEST_CASE("generated fills: a 1.0 fill whose chord sits on a meter change takes the new meter") {
-    // 7/8 from tick 3840, a 4/4 measure line. The chord on that tick is in
-    // the 7/8 span, so its fill is half a 7/8 measure: 840 ticks.
-    const Song song = song_with_chords({3840}, 3840, FillDeadlineRule::Ch10);
-    CHECK(fills_of(song) == Fills{{3000, 3840}});
+    // 7/8 from the third 4/4 measure line, with the one chord on it.
+    const int64_t change = line_tick(2);
+    const Song song = song_with_chords({change}, change, FillDeadlineRule::Ch10);
+    REQUIRE(song.sequence[0].has_activation());
+    // The chord is in the new span, whose measure differs from the old one.
+    CHECK(measure_length_at(song, change) != measure_length_at(song, change - 1));
+    const Song ref = ch10_reference();
+    REQUIRE(ref.sequence[0].has_activation());
+    CHECK(same_measure_share(song, song.sequence[0], ref, ref.sequence[0]));
 }
 
 TEST_CASE("generated fills: a chart with its own fills gets none generated") {
-    Song song(480);
-    song.bpm_changes[0] = 120.0;
-    song.build_timing();
-    for (int64_t tick : {1920, 3840}) {
-        SongTimestamp ts;
-        ts.timecode = song.timecode(tick);
-        ts.chord.add_note(NoteColor::Red);
-        song.sequence.push_back(ts);
-    }
-    song.sequence[1].activation_length = 480;
+    const std::vector<int64_t> chords = {line_tick(1), line_tick(2)};
+    Song song = song_on_grid(chords);
+    // A written fill, one beat long, on the second chord.
+    const int64_t written_length = kRes;
+    song.sequence[1].activation_length = written_length;
     song.check_activations(core::default_rules(), kTestFillRule);
-    CHECK(fills_of(song) == Fills{{3360, 3840}});
+    CHECK_FALSE(song.sequence[0].has_activation());
+    REQUIRE(song.sequence[1].has_activation());
+    CHECK(*song.sequence[1].activation_length == written_length);
+    CHECK_FALSE(song.generated_fills.has_value());
     CHECK(std::find(song.features.begin(), song.features.end(), "Auto-Generated Fills") ==
           song.features.end());
 }
 
-// ---- the corpus pin -------------------------------------------------------
-//
-// For every corpus chart whose fills are generated, its fills as
-// "start:chord" pairs, folded to one FNV-1a hash, with the count beside it.
-// Pinned from one run of the code. A mismatch prints the chart's new line in
-// the table's own form, so a deliberate change re-pins by copying it.
+// ---- the corpus -----------------------------------------------------------
 
 namespace {
 
-struct FillPin {
-    const char* chart;  // relative to testdata/input
-    int count;
-    uint64_t hash;
-};
+// Checks one song's generated 1.1 fills against the placement rule. Each fill
+// starts on a measure line from the second on; its chord is the one nearest
+// that line (a tie going to the later chord) and within the reach; the next
+// fill sits at least core::Rules::fill_cooldown_measures lines on; and no
+// line the cooldown leaves open with a chord in reach is passed over.
+void check_ch11_placement(const Song& song, const core::Rules& rules) {
+    if (song.sequence.empty()) return;
+    const MeasureIndex& grid = song.timing().measure_index();
+    const int64_t reach = ch11_reach(song.tick_resolution(), rules);
+    const int64_t cooldown = rules.fill_cooldown_measures;
+    std::vector<int64_t> ticks;
+    for (const SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());
 
-// clang-format off
-const FillPin kFillPins[] = {
-    {"common/IB24/T1/Earth, Wind & Fire - September/notes.mid", 28, 0x013938619242b6e7ull},
-    {"common/IB24/T2/Karnivool - Themata/notes.mid", 62, 0xe5e7d3a19439f24dull},
-    {"common/IB24/T2/Stone Temple Pilots - Trippin on a Hole in a Paper Heart/notes.chart", 20, 0xbe255891bceb1d8dull},
-    {"common/IB24/T3/Good Tiger - Where Are the Birds/notes.chart", 22, 0x68bd08ab965baa51ull},
-    {"common/IB24/T3/The Ghost Inside - Get What You Give - 02 - Outlive/notes.mid", 28, 0x27447b68c1aa5a45ull},
-    {"common/IB24/T4/1.O.M. - Apex/notes.chart", 39, 0x0cccaf3dadedf579ull},
-    {"common/IB24/T4/A Lot Like Birds - Think Dirty out Loud/notes.mid", 39, 0x9e0f0e6cc122fbe3ull},
-    {"common/IB24/T4/Dance Gavin Dance - Chocolate Jackalope/notes.mid", 31, 0x2285e7e0e04e2229ull},
-    {"common/IB24/T4/Haken - The Good Doctor/notes.mid", 29, 0x3eee6eda54601bf3ull},
-    {"common/IB24/T5/Satyr - Whelmed/notes.mid", 48, 0xa31ba79be5ac1e82ull},
-    {"common/IB24/T5/Sianvar - Omniphobia/notes.mid", 46, 0x546ca00880e1b7adull},
-    {"common/IB24/T5/TEXTURES - Laments Of An Icarus/notes.mid", 40, 0x788a2e86a84aeb45ull},
-    {"common/IB24/T6/Fallen Monarch - Blight/notes.chart", 106, 0x7e0c170fdfbb797aull},
-    {"common/IB24/T6/Levitating (feat. DaBaby) (Dua Lipa) (L)/notes.chart", 22, 0x44dae46b05c95d99ull},
-    {"common/IB24/T6/Lockslip - Lockslip - 02 - Bend/notes.mid", 28, 0xd11f1b26ac54fe8eull},
-    {"common/IB24/T6/Pathfinder - When The Sunrise Breaks The Darkness/notes.mid", 69, 0x045f1334ae5249cfull},
-    {"common/IB24/T7/Conquering Dystopia - Prelude to Obliteration/notes.chart", 34, 0xb571e6db9e8eb9c3ull},
-    {"common/IB24/T7/SoundHaven - Snowball Earth [Indistinct]/notes.mid", 35, 0xacd70ef16d84bc59ull},
-    {"common/Summer Blast _25 Setlist/Tier 1/Jason Paige - Pokemon Theme/notes.chart", 29, 0x496cbc1fe4f1e360ull},
-    {"common/Summer Blast _25 Setlist/Tier 2/Dance Gavin Dance - Young Robot/notes.mid", 24, 0xf466f5103b4427eeull},
-    {"common/Summer Blast _25 Setlist/Tier 2/Moonlight Haze - Lunaris/notes.chart", 17, 0x12d7a6ac68549009ull},
-    {"common/Summer Blast _25 Setlist/Tier 2/Thornhill - Limbo/notes.mid", 22, 0x67ae178856dc8485ull},
-    {"common/Summer Blast _25 Setlist/Tier 3/Mutemath - Allies/notes.chart", 19, 0xecaef36aa42059b3ull},
-    {"common/Summer Blast _25 Setlist/Tier 4/Sufferer - Chair/notes.mid", 29, 0xe8e83a1221f502abull},
-    {"common/Summer Blast _25 Setlist/Tier 5/Interloper - Pathkeeper/notes.mid", 52, 0x3a686ecd3d11dbe9ull},
-    {"common/Summer Blast _25 Setlist/Tier 5/Victoria - Grow/notes.chart", 30, 0x87e962a06e45523full},
-    {"common/Summer Blast _25 Setlist/Tier 6/Casiopea - Swallow/notes.mid", 42, 0x7827ac50a6a9599bull},
-    {"common/Summer Blast _25 Setlist/Tier 7/Kinglet - Blister/notes.mid", 44, 0xfa77b8dd1a42c0a1ull},
-    {"common/Summer Blast _25 Setlist/Tier 8/Equipoise - Alchemic Web Of Deceit/notes.mid", 46, 0xff4cbb3ba247844bull},
-    {"common/Summer Blast _25 Setlist/Tier 8/Travis Orbin - Dr. Jackle_Dr. Jekyll [Miles Davis]/notes.mid", 60, 0xf03192f16c202dcfull},
-    {"common/Summer Blast _25 Setlist/Tier 8/Xane60 - Godzilla (Eminem)/notes.chart", 36, 0x83b4d76e8b285807ull},
-};
-// clang-format on
+    // The chord nearest a tick: the first at or after it, unless the one
+    // before is strictly nearer.
+    auto nearest = [&ticks](int64_t at) -> int64_t {
+        const auto after = std::lower_bound(ticks.begin(), ticks.end(), at);
+        if (after == ticks.begin()) return *after;
+        const int64_t before = *(after - 1);
+        if (after == ticks.end() || at - before < *after - at) return before;
+        return *after;
+    };
+    // Every line from `from` up to, not including, `to` has no chord in reach.
+    auto check_open_lines = [&](int64_t from, int64_t to) {
+        for (int64_t n = from; n < to; ++n) {
+            const int64_t line = grid.measure_line_tick(n);
+            INFO("measure line " << n);
+            CHECK(std::llabs(nearest(line) - line) > reach);
+        }
+    };
 
-// The pin's hash: the shared FNV-1a over the text's bytes (tests/song_digest.h).
-uint64_t pin_hash(const std::string& s) {
-    return digest::fnv(digest::kSeed, s.data(), s.size());
+    int64_t open_from = 1;  // the second measure line
+    for (const SongTimestamp& ts : song.sequence) {
+        if (!ts.has_activation()) continue;
+        const int64_t chord = ts.timecode.ticks();
+        const int64_t start = fill_start_tick(chord, *ts.activation_length);
+        const int64_t n = grid.at(start).measure;
+        INFO("fill on chord " << chord);
+        CHECK(grid.measure_line_tick(n) == start);
+        CHECK(n >= open_from);
+        CHECK(nearest(start) == chord);
+        CHECK(std::llabs(chord - start) <= reach);
+        check_open_lines(open_from, n);
+        open_from = n + cooldown;
+    }
+    check_open_lines(open_from, grid.first_measure_line_at_or_after(ticks.back() + reach + 1));
 }
 
 }  // namespace
 
-TEST_CASE("generated fills: every corpus chart's generated fills are pinned") {
-    std::map<std::string, const FillPin*> pins;
-    for (const FillPin& p : kFillPins) pins[p.chart] = &p;
-
-    const std::string root = corpus::root();
-    int charts = 0;
-    std::string fresh;
-    bool all_match = true;
+TEST_CASE("generated fills: every corpus chart's generated fills follow the 1.1 placement rule") {
+    const core::Rules& rules = core::default_rules();
+    int generated = 0;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, ChartReading{});
-        if (std::find(song.features.begin(), song.features.end(), "Auto-Generated Fills") ==
-            song.features.end())
-            continue;
-        std::string rel = path.substr(root.size());
-        std::replace(rel.begin(), rel.end(), '\\', '/');
-        rel.erase(0, rel.find_first_not_of('/'));
-        std::string text;
-        int count = 0;
-        for (const auto& [start, chord] : fills_of(song)) {
-            text += std::to_string(start) + ":" + std::to_string(chord) + ",";
-            ++count;
-        }
-        char line[64];
-        std::snprintf(line, sizeof line, "%d, 0x%016llxull},\n", count,
-                      static_cast<unsigned long long>(pin_hash(text)));
-        const std::string pin_line = "    {\"" + rel + "\", " + line;
-        fresh += pin_line;
-        ++charts;
-        const auto it = pins.find(rel);
-        const bool match = it != pins.end() && it->second->count == count &&
-                           it->second->hash == pin_hash(text);
-        CHECK_MESSAGE(match, "new pin: " << pin_line);
-        all_match = all_match && match;
+        INFO("chart " << path);
+        const bool listed = std::find(song.features.begin(), song.features.end(),
+                                      "Auto-Generated Fills") != song.features.end();
+        CHECK(listed == song.generated_fills.has_value());
+        if (!song.generated_fills.has_value()) continue;
+        ++generated;
+        CHECK((*song.generated_fills == kTestFillRule));
+        check_ch11_placement(song, rules);
     }
-    CHECK(charts == static_cast<int>(pins.size()));
-    if (!all_match) MESSAGE("the whole table:\n" << fresh);
+    // The corpus holds charts with no fills of their own, so some get fills
+    // generated; none found means the corpus or the loader changed.
+    CHECK(generated > 0);
 }
