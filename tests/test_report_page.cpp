@@ -46,7 +46,7 @@ size_t occurrences(const std::string& text, const std::string& what) {
     return n;
 }
 
-// The title every chart of corpus_page is listed under. The scan's row
+// The title every chart of shared_title_page is listed under. The scan's row
 // (corpus::scanned_entry) gives every chart the same artist, so with one
 // title too, two charts can only be told apart by their hash.
 const char* const kSharedTitle = "Same Title";
@@ -75,7 +75,7 @@ struct CorpusPage {
 // under kSharedTitle. The first chart is listed a second time from a copy of
 // its folder, so it counts two library rows. The rows and the library are
 // collect_rows' own.
-const CorpusPage& corpus_page() {
+const CorpusPage& shared_title_page() {
     static const CorpusPage page = [] {
         const Settings settings = testdm::settings();
         const BatchRun run = settings.batch_run();
@@ -193,7 +193,7 @@ TEST_CASE("the fill page carries the shared stylesheet and script") {
 // ---- the path report's tiles -------------------------------------------------
 
 TEST_CASE("path_tiles: each tile counts the rows shown, read from the store") {
-    const CorpusPage& page = corpus_page();
+    const CorpusPage& page = shared_title_page();
     REQUIRE_FALSE(page.rows.empty());
     const std::string beyond = beyond_tier(timing_tiers()).name;
     for (const std::vector<size_t>& shown : shown_lists(page)) {
@@ -225,7 +225,7 @@ TEST_CASE("path_tiles: each tile counts the rows shown, read from the store") {
 }
 
 TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
-    const CorpusPage& page = corpus_page();
+    const CorpusPage& page = shared_title_page();
     // The first chart sits in two library folders, so its rows count two
     // library rows, however many rows it has (D76 item 2: every copy counts).
     const std::string& twice = page.library.song_ids().front();
@@ -240,7 +240,7 @@ TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
 }
 
 TEST_CASE("path report counts charts by hash in the Charts shown tile") {
-    const CorpusPage& page = corpus_page();
+    const CorpusPage& page = shared_title_page();
     // Every chart shows one title and artist, and still each counts on its own.
     std::set<std::string> ids;
     std::set<std::pair<std::string, std::string>> names;
