@@ -36,12 +36,13 @@ struct Rules {
     // inside the limit leads when one exists; the ones over it come after, so
     // they are the ones dropped once the count is reached.
     int max_tied_paths = 4;
-    // Generated fills (Song::check_activations): how many measure lines on
-    // the next candidate sits after a fill, and how far from a measure line
-    // the chosen chord may sit (check_activations adds Clone Hero's one tick).
-    // A generated fill starts on its measure line, so its length is not a
-    // rule.
-    int fill_cooldown_measures = 4;
+    // Clone Hero 1.1 generated fills (Song::place_fills_ch11): how far from a
+    // measure line the chosen chord may sit (the generator adds Clone Hero's
+    // one tick). Each generator places a fill's start the way its game does,
+    // so the fill's length is not a rule, and both games step the same fixed
+    // number of measure lines after a fill (kLinesAfterFill in
+    // core/song.cpp). The 1.0 generator (Song::place_fills_ch10) does not
+    // read this field: it keeps 1.0's own reach.
     double fill_max_distance_beats = 0.5;
     // Authored-fill placement (place_authored_fills, both parsers): how close
     // the next chord must be to the fill end to count as the chord the fill

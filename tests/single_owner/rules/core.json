@@ -1015,6 +1015,11 @@
           "file": "src/core/timing.h",
           "line_text": "double tick_at_ms(double ms) const;",
           "why": "the ms-to-tick map's declaration"
+        },
+        {
+          "file": "src/core/song.cpp",
+          "line_text": "const double tick = ms.tick_at_ms(static_cast<double>(second) * 1000.0);",
+          "why": "ch10_tick_at_second, Clone Hero 1.0's own seconds-to-tick (fill_generator.cs F9) for its generator, rounded as the game rounds; no screen shows it"
         }
       ],
       "note": "A time turned into a tick outside the timing code. display_tick_at_ms is the one rule for which tick a screen shows at a time (D48, Q23). The row flags every raw tick_at_ms call, so a rounding of any kind (llround, round, floor, a cast) is caught, and so is one split over two lines, whose second line still holds the call. The second line of \"std::llround(\\n timing->ms_index().tick_at_ms(ms));\"."

@@ -194,7 +194,7 @@ TEST_CASE("pick names: a comment names the constant or function below it, and a 
         "namespace hydra {\n"                                        // 1
         "namespace {\n"                                              // 2
         "// Ten measures of fill length.\n"                          // 3
-        "constexpr int kCh10FillLengthMeasures = 2;\n"               // 4
+        "constexpr int kSampleFillMeasures = 2;\n"               // 4
         "}  // namespace\n"                                          // 5
         "constexpr int kResultsStamp = 9;\n"                         // 6
         "// Checks the activations.\n"                               // 7
@@ -202,7 +202,7 @@ TEST_CASE("pick names: a comment names the constant or function below it, and a 
         "    return true;\n"                                         // 9
         "}\n"                                                        // 10
         "}  // namespace hydra\n";                                   // 11
-    CHECK(names_of(text, {3}) == "kCh10FillLengthMeasures:comment");
+    CHECK(names_of(text, {3}) == "kSampleFillMeasures:comment");
     CHECK(names_of(text, {6}) == "kResultsStamp:value");
     CHECK(names_of(text, {7}) == "check_activations:comment");
 }

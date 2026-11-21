@@ -269,11 +269,10 @@ TEST_CASE("rules: a bad value or an unknown key is an error that names the key")
 
 TEST_CASE("rules: a whole-number key takes a whole value written as a decimal") {
     // D114 item 24: "4.0" and "1e1" are whole, so they load as 4 and 10.
-    core::Rules r = app::load_rules_file(write_rules("wholedec",
-        "max_tied_paths = 4.0\n"
-        "fill_cooldown_measures = 1e1\n"));
-    CHECK(r.max_tied_paths == 4);
-    CHECK(r.fill_cooldown_measures == 10);
+    CHECK(app::load_rules_file(write_rules("wholedec", "max_tied_paths = 4.0\n"))
+              .max_tied_paths == 4);
+    CHECK(app::load_rules_file(write_rules("wholeexp", "max_tied_paths = 1e1\n"))
+              .max_tied_paths == 10);
 }
 
 TEST_CASE("rules: whole_chord takes every note's SP doubling on a squeeze-out") {
@@ -683,17 +682,25 @@ TEST_CASE("rules: the engine's tied count matches the recount") {
     CHECK(charts == 5);
 }
 
-TEST_CASE("rules: the generated-fill values come from the rules") {
-    Song by_default = fill_song();
-    by_default.check_activations(core::default_rules(), kTestFillRule);
-    const int default_fills = fill_count(by_default);
-    REQUIRE(default_fills > 0);
+// fill_cooldown_measures is a retired key (kRetiredRulesKeys in
+// app/rules_file.cpp): a file that still asks for a step of 2 loads, and the
+// generator still steps four measure lines after each fill. fill_song has a
+// chord on every measure line and the 1.1 generator starts at the second
+// line, so the fills sit on measures 1, 5, 9 and 13; a step of 2 would also
+// fill 3, 7, 11 and 15.
+TEST_CASE("rules: a file asking for fill_cooldown_measures = 2 still steps four lines") {
+    core::Rules from_file;
+    REQUIRE_NOTHROW(from_file = app::load_rules_file(
+                        write_rules("cooldown_two", "fill_cooldown_measures = 2\n")));
+    CHECK(from_file.fingerprint() == core::default_rules().fingerprint());
 
-    core::Rules tight = core::default_rules();
-    tight.fill_cooldown_measures = 2;
-    Song with_tight = fill_song();
-    with_tight.check_activations(tight, kTestFillRule);
-    CHECK(fill_count(with_tight) > default_fills);
+    Song song = fill_song();
+    song.check_activations(from_file, kTestFillRule);
+    std::vector<size_t> filled;
+    for (size_t i = 0; i < song.sequence.size(); ++i)
+        if (song.sequence[i].has_activation()) filled.push_back(i);
+    CHECK(filled == std::vector<size_t>{1, 5, 9, 13});
+    CHECK(fill_count(song) == 4);
 }
 
 // ---- the fingerprint's scope (docs/adr/0014) ------------------------------
