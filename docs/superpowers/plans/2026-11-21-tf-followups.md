@@ -263,17 +263,17 @@ Rows 1, 17, X5 and 64, and the test fix plan's other work (B1 to B9, H1, H2, G1,
 | P2: The comparison window sets "Fetching scores and building the report..." inline | code | `src/ui/dm_report_window.cpp:125-126` | checked 2026-11-21 |
 | P3: The shared frame draws "Report cancelled." inline | code | `src/ui/report_window.cpp:190-192` | checked 2026-11-21 |
 | P4: The report windows test types those sentences and the search hint | code | `tests/ui/uitest_report_windows.cpp:324-400` | checked 2026-11-21 |
-| P5: `src` builds the path report's search hint from `app::html::search_hint` with four field names; no literal of the sentence exists in `src`, and the test types it twice | code | `src/ui/path_report_window.cpp:157-158`, `src/app/html_page.h:52-67`, `tests/ui/uitest_report_windows.cpp:324,1551` | checked 2026-11-21 |
+| P5: `src` builds the path report's search hint from `app::html::search_hint` with four field names; no literal of the sentence exists in `src`, and the test types it twice | code | `src/ui/path_report_window.cpp:157-158`, `src/app/html_page.h:52-67`, `tests/ui/uitest_report_windows.cpp:324`, `tests/ui/uitest_report_windows.cpp:1551` | checked 2026-11-21 |
 | P6: Named constants for these windows already live in one header | code | `src/app/user_messages.h:177-185` | checked 2026-11-21 (a grep hit, lines 177 and 185) |
 | P7: The three filter labels are literals in the two view files | code | `src/app/path_report_view.cpp:45-58`, `src/app/dm_report_view.cpp:180-185` | checked 2026-11-21 |
-| P8: No test or other code types the three filter labels | code | a grep of `src` and `tests` for "All timing tiers", "No timing needed" and "All charts" hits only `src/app/path_report_view.cpp:49,55`, `src/app/dm_report_view.cpp:181` and the web page option `src/app/fill_report.cpp:52` | checked 2026-11-21 (row 24 is not planned) |
+| P8: No test or other code types the three filter labels | code | `src/app/path_report_view.cpp:49`, `src/app/path_report_view.cpp:55`, `src/app/dm_report_view.cpp:181`, `src/app/fill_report.cpp:52` (a web page option); a search of all of `src` and `tests` for the three sentences found them nowhere else | checked 2026-11-21 (row 24 is not planned) |
 | P9: The batch strip builds its progress line inline and the test rebuilds it | code | `src/ui/library_dialogs.cpp:443-444`, `tests/ui/uitest_batch_reports.cpp:52-58` | checked 2026-11-21 |
 | P10: The ending line's name and the best-fill helpers are private to the window, and the test repeats them | code | `src/pathbuilder/pb_window.cpp:112-128`, `src/pathbuilder/pb_window.cpp:866-868`, `tests/pb_ui/pbtest_coach.cpp:172-178`, `tests/pb_ui/pbtest_coach.cpp:738-767` | checked 2026-11-21 |
-| P11: A test in `tests/test_update_state.cpp` types "setup.log" | code | `tests/test_update_state.cpp:745,752` | checked 2026-11-21 |
+| P11: A test in `tests/test_update_state.cpp` types "setup.log" | code | `tests/test_update_state.cpp:745-752` | checked 2026-11-21 |
 | P12: `installer_log_path` is private to `app_state.cpp` | code | `src/ui/app_state.cpp:1115-1118` | checked 2026-11-21 |
 | P13: The Preview panel's layout numbers and two hints are private to the panel file, and the layout test types them | code | `src/ui/preview_panel.cpp:150-156`, `src/ui/preview_panel.cpp:343-350`, `src/ui/preview_panel.cpp:545-547`, `tests/test_overlay_layout.cpp:177-194` | checked 2026-11-21 |
 | P14: `span_interval` is private and adds `kSpanEndTicks` to the end tick | code | `src/render/track_state.cpp:141-161` | checked 2026-11-21 |
-| P15: `tests/test_highway_draw.cpp` restates the span's end edge | code | `tests/test_highway_draw.cpp:472` and `:796` (both `1.5 + kSpanEndTicks / 1000.0`) | checked 2026-11-21 |
+| P15: `tests/test_highway_draw.cpp` restates the span's end edge as 1.5 plus `kSpanEndTicks` over 1000 | code | `tests/test_highway_draw.cpp:472`, `tests/test_highway_draw.cpp:796` | checked 2026-11-21 |
 | P17: `check_pointers.py` builds two hook replies by hand, and its test already checks both against `common.py`'s helpers | code | `tools/check_pointers.py:291-305`, `tools/test_check_pointers.py:40-60`, `C:\Users\Patrick\.claude\gates\common.py:28-33` | checked 2026-11-21 (row 48 is not planned) |
 | P18: The old placeholder is local to `title_or_unknown`, and the test types it | code | `src/parse/song.cpp:600-604`, `src/parse/song.h:100-108`, `tests/test_analysis.cpp:1209-1215` | checked 2026-11-21 |
 | P19: "Auto-Generated Fills" is a literal in `check_activations`, and a test types it | code | `src/core/song.cpp:107-113`, `tests/test_generated_fills.cpp:297-299` | checked 2026-11-21 |
@@ -285,22 +285,22 @@ Rows 1, 17, X5 and 64, and the test fix plan's other work (B1 to B9, H1, H2, G1,
 | P25: Two test files each copy a chart to a second folder, and two each type the contrast floors | code | `tests/test_report_page.cpp:54-65`, `tests/test_report_rows.cpp:96-109`, `tests/test_report_page.cpp:332-335`, `tests/test_theme.cpp:28-32` | checked 2026-11-21 |
 | P26: The Trivium case types 180000 and 195360 and requires the second from the engine | code | `tests/test_pb_text.cpp:523-540` | checked 2026-11-21 |
 | P27: Check 1 keeps its wording in file-local strings and the test says so | code | `tests/test_precheck_check1.cpp:243-244` | checked 2026-11-21 |
-| P28: `check_1.cpp` holds `kHelperWhy` as a file-local string | code | `tools/precheck/check_1.cpp:40,151` | checked 2026-11-21 |
+| P28: `check_1.cpp` holds `kHelperWhy` as a file-local string | code | `tools/precheck/check_1.cpp:40`, `tools/precheck/check_1.cpp:151` | checked 2026-11-21 |
 | P29: The store test says it cannot prove the lock covers the whole save, and the store already has a test seam | code | `tests/test_store_results.cpp:516-524`, `src/store/record_store.h:773-780` | checked 2026-11-21 |
-| P30: The store's lock can be tried from a second thread inside a save without a timed wait | code | `src/store/record_store.h:502-505` (a `std::recursive_mutex` whose rule is "sqlite calls and nothing else") | checked 2026-11-21 |
+| P30: The store's lock is a recursive mutex whose rule is "sqlite calls and nothing else", so a second thread can try it inside a save without a timed wait | code | `src/store/record_store.h:502-505` | checked 2026-11-21 |
 | P31: The report windows test clicks Clear filters and has no drag step | code | `tests/ui/uitest_report_windows.cpp:317-341` | checked 2026-11-21 |
-| P32: The harness can drag with the mouse | code | `tests/ui/uitest_details.cpp:838-844` (`MouseMoveToPos`, `MouseDown`, `MouseUp`); the table's width reading is `src/ui/column_widths.h` (`table_room`), which A15's executor opens first | checked 2026-11-21 |
+| P32: The harness can drag with the mouse (move, button down, move, button up), and the report tables' column room comes from `table_room` | code | `tests/ui/uitest_details.cpp:838-844`, `src/ui/column_widths.h:193-198` | checked 2026-11-21 |
 | P33: The quiet check compares with `<=` against `QUIET_CPU_PCT`, and the test checks only the limit's text | code | `tools/ch_mcp/quiet.py:205`, `tools/ch_mcp/tests/test_quiet.py:163` | checked 2026-11-21 |
 | P34: `QUIET_CPU_PCT` is 30 and is a named constant | code | `tools/ch_mcp/quiet.py:26-31` | checked 2026-11-21 |
 | P35: `run_reader` builds its failure message inline, the cap is already `READER_CAP_S`, and the test matches with its own pattern | code | `tools/ch_mcp/mono_facts.py:64-81`, `tools/ch_mcp/tests/test_mono_facts.py:268-283` | checked 2026-11-21 |
 | P36: `load_schedule` builds the "no chords to play" refusal inline | code | `tools/ch_probe/experiments/play_chart.py:262-269` | checked 2026-11-21 |
 | P37: The two hooks build their messages inline | code | `C:\Users\Patrick\.claude\gates\review_dispatch.py:50-62`, `C:\Users\Patrick\.claude\gates\progress.py:92-100` | checked 2026-11-21 |
-| P38: Hook tests under `gates/tests/` check those messages | code | `C:\Users\Patrick\.claude\gates\tests\test_review_dispatch.py:226-235` (the three key refusals, by fragment), `gates\tests\test_progress.py:192,196` ("wrapping up") | checked 2026-11-21 |
+| P38: Hook tests under `gates/tests/` check those messages | code | `C:\Users\Patrick\.claude\gates\tests\test_review_dispatch.py:226-235` (the key refusals, by fragment), `C:\Users\Patrick\.claude\gates\tests\test_progress.py:192-196` (the wrap-up note) | checked 2026-11-21 |
 | P39: The `relative_slash_path` comment names `scan_snapshot.json` | code | `src/core/strutil.h:59-67` | checked 2026-11-21 |
-| P40: Nothing writes or reads `scan_snapshot.json` any more | code | `git grep scan_snapshot` finds it only in `src/core/strutil.h:59` (plus old session and audit notes) | checked 2026-11-21 |
+| P40: Nothing writes or reads `scan_snapshot.json` any more | code | `src/core/strutil.h:59` is the only hit of a search of the whole repo, apart from old session and audit notes | checked 2026-11-21 |
 | P41: The rubric examples page cites `tests/test_stars.cpp:124`, which is now a table row; the calls are at 47 and 51 | code | `docs/agents/test-rubric-examples.md:319-324`, `tests/test_stars.cpp:118-125`, `tests/test_stars.cpp:45-52` | checked 2026-11-21 |
 | P42: The CI comment says the self-test skips a part without the two commits | code | `.github/workflows/ci.yml:61-64` | checked 2026-11-21 |
-| P43: The precheck self-test now fails, not skips, without the two commits | code | `tests/test_precheck.cpp:479-481` (`REQUIRE_MESSAGE(have_commit(repo, merge), missing)`) | checked 2026-11-21 |
+| P43: The precheck self-test now fails, not skips, without the two commits | code | `tests/test_precheck.cpp:479-481` | checked 2026-11-21 |
 | P44: ADR 0019 says a test pins the Opus decode bit for bit, and the test compares two reads of one file with no saved output | code | `docs/adr/0019-preview-audio-streams-from-the-compressed-file.md:67-68`, `tests/test_audio_decode.cpp:169-195` | checked 2026-11-21 |
 | P45: The song-end pad is a public constant | code | `src/app/song_length.h:35-37`, `src/app/song_length.cpp:54-55` | checked 2026-11-21 |
 | P46: The sweeps test turns a backend row's offset back into a tick with its own rounding | code | `tests/test_engine_sweeps.cpp:430-443` | checked 2026-11-21 |
@@ -310,8 +310,8 @@ Rows 1, 17, X5 and 64, and the test fix plan's other work (B1 to B9, H1, H2, G1,
 | P50: `ViewedSong::State` has seven values and no name function beside it | code | `src/ui/app_state.h:170-180` | checked 2026-11-21 |
 | P51: Rows 1, 17, X5 and 64 are out of scope | user | the user's choices as the main session reported them for this review: row 1, "Close it (Recommended)" (transfer hint closed as done, D17's log line updated, main commit `38304a9c9`); row X5, "Match the old game" (own plan, branch `claude/plan-ch10-fills`, which exists); row 17, asked whether to add lib, cvtres, mspdbsrv and Tracker, the user typed "is this a real concern or an edge case you invented", and the main session found no recorded failure and closed it with the list unchanged; row 64 waits on V0 and V1. Not a filed ruling | checked 2026-11-21 (the branch and the commit exist; the words are the main session's report) |
 | P52: The scout's table has 44 rows marked OPEN, not 45 | count | the scout's table: 39 numbered rows (1, 2, 6, 10, 11, 12, 15 to 24, 26 to 33, 35, 37, 38, 40 to 42, 44, 47 to 52, 63, 64) and X1 to X5 | checked 2026-11-21 |
-| P53: `claude/tf-C298` is merged into the hooks repo's main; `records/E4.md` is only on `claude/test-fix-plan` | code | `git merge-base --is-ancestor claude/tf-C298 HEAD` in `C:\Users\Patrick\.claude`; `git ls-tree` of `claude/test-fix-plan` | checked 2026-11-21 |
-| P54: Eighteen `claude/test-fix-*handoff*` branches exist and none is an ancestor of main | code | `git branch --list` and `git merge-base --is-ancestor` in this repo | checked 2026-11-21 |
+| P53: `claude/tf-C298` is merged into the hooks repo's main; `records/E4.md` is only on `claude/test-fix-plan` | code | a git ancestry check run in the hooks repo, and a listing of that branch's files in this repo | checked 2026-11-21 |
+| P54: Eighteen handoff branches named like `claude/test-fix-wave18-handoff` exist and none is an ancestor of main | code | a branch listing and an ancestry check for each, run in this repo | checked 2026-11-21 |
 
 ## Questions
 
