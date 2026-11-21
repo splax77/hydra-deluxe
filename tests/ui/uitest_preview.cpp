@@ -14,6 +14,7 @@
 #include "app/preview_view.h"
 #include "core/model.h"
 #include "core/stars.h"   // path_stars
+#include "core/strutil.h"  // ends_with
 #include "core/winstr.h"  // fopen_utf8
 #include "imgui_internal.h"
 #include "parse/song.h"  // no_notes_message
@@ -1287,7 +1288,7 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     if (slash == std::string::npos) return;
     const std::string cap_tail = tail_of_cap.substr(slash);
     IM_CHECK(readout.size() > cap_tail.size());
-    IM_CHECK(readout.compare(readout.size() - cap_tail.size(), cap_tail.size(), cap_tail) == 0);
+    IM_CHECK(hydra::ends_with(readout, cap_tail));
 
     // The time box's end is where playback stops, and that is the song's one
     // length (the click's analysis_song_length, D255).
