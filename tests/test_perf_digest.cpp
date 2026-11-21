@@ -70,8 +70,9 @@ std::string no_notes_text(const app::AnalysisSettings& settings) {
 }
 
 // Checks that every chart that does not load at these settings fails only
-// because it has no notes there, and that at least one chart loads.
-void check_loading(const std::vector<app::ScanItem>& charts,
+// because it has no notes there, and that at least one chart loads. Returns
+// how many load, by the parse digest's own load (digest::chart_parse_hash).
+size_t check_loading(const std::vector<app::ScanItem>& charts,
                    const app::AnalysisSettings& settings) {
     const std::string none = no_notes_text(settings);
     size_t loading = 0;
@@ -85,6 +86,7 @@ void check_loading(const std::vector<app::ScanItem>& charts,
         CHECK_MESSAGE(fail == none, it.notespath << " fails with " << fail);
     }
     CHECK(loading > 0);
+    return loading;
 }
 
 // Analyses every corpus chart twice and checks each chart's two answers are
@@ -93,18 +95,15 @@ void check_loading(const std::vector<app::ScanItem>& charts,
 void check_engine_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
     const std::vector<app::ScanItem> charts = corpus_charts();
-    std::vector<std::string> notespaths;
     size_t analysed = 0;
     for (const app::ScanItem& it : charts) {
-        notespaths.push_back(it.notespath);
         const std::optional<uint64_t> first = engine_row(it, st, settings);
         const std::optional<uint64_t> second = engine_row(it, st, settings);
         CHECK_MESSAGE((first == second), it.notespath << " gives two different answers");
         if (first) ++analysed;
     }
-    const size_t loading = digest::loading_chart_count(notespaths, settings);
+    const size_t loading = check_loading(charts, settings);
     CHECK_MESSAGE(analysed == loading, analysed << " charts analysed, " << loading << " load");
-    check_loading(charts, settings);
 }
 
 // Parses every corpus chart twice and checks each chart's two parse digests
