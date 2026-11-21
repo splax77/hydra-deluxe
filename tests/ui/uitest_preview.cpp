@@ -45,17 +45,12 @@ static_assert(kParkMs + kJumpMs < kChart0MinMs, "chart 0 must reach one jump pas
 
 void test_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    open_details(ctx, 0);
-    if (ctx->IsError()) return;
     // The loading bar's numbers and labels are PreviewLoadJob::Progress's,
     // pinned in tests/test_preview_load_progress.cpp, and the bar during a
     // real load is preview-load-bar's (uitest_details.cpp). This checks the
     // loaded Preview and its Play and Pause.
-    ctx->ItemClick("**/Preview");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+    start_preview(ctx);
+    if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return !h.app->preview->loading(); }, 120));
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
     IM_CHECK(!h.app->preview->playing());

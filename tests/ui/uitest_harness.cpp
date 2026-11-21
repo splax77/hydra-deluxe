@@ -605,16 +605,22 @@ void wait_song_analyzed(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Paths");
 }
 
-// Shared: open chart 0's Preview and wait for the load. Returns false on error.
-bool open_preview(ImGuiTestContext* ctx) {
+void start_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
-    if (ctx->IsError()) return false;
+    if (ctx->IsError()) return;
     open_details(ctx, 0);
-    if (ctx->IsError()) return false;
+    if (ctx->IsError()) return;
     ctx->ItemClick("**/Preview");
-    IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10), false);
+    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
+}
+
+// Shared: open chart 0's Preview and wait for the load. Returns false on error.
+bool open_preview(ImGuiTestContext* ctx) {
+    start_preview(ctx);
+    if (ctx->IsError()) return false;
+    Harness& h = harness(ctx);
     IM_CHECK_RETV(wait_until(ctx, [&] { return !h.app->preview->loading(); }, 120), false);
     IM_CHECK_RETV(h.app->preview->error().empty(), false);
     return true;

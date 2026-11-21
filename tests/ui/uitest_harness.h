@@ -303,7 +303,10 @@ std::string open_titled_reason(ImGuiTestContext* ctx, const std::string& search,
 // song open, starts it: D87 item 1, D90 item 1) and check it is Ready. Then
 // lands the panel on its Paths tab.
 void wait_song_analyzed(ImGuiTestContext* ctx);
-// Fresh app, scan, open chart 0's Preview and wait for the load. False on error.
+// Fresh app, scan, open chart 0's details, click Preview and wait up to 10 s
+// for the Preview to start; it may still be loading. Check ctx->IsError() after.
+void start_preview(ImGuiTestContext* ctx);
+// start_preview, then wait for the load and check it has no error. False on error.
 bool open_preview(ImGuiTestContext* ctx);
 
 // ---- the Analysis settings panel (settings_bar.cpp) ------------------------

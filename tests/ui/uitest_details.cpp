@@ -616,13 +616,8 @@ void test_panel_follows_rescan(ImGuiTestContext* ctx) {
 // arithmetic itself is pinned in tests/test_preview_load_progress.cpp.
 void test_preview_load_bar(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
+    start_preview(ctx);
     if (ctx->IsError()) return;
-    open_details(ctx, 0);
-    if (ctx->IsError()) return;
-    ctx->ItemClick("**/Preview");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
     static const char* const kSteps[] = {"Reading chart", "Opening audio", "Building scene",
                                          "Building highway"};
     int polls = 0;
