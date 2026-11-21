@@ -387,13 +387,6 @@
       "must_not_match": [
         "doctest::Approx(time_to_z(cfg, now, 1.5 + kSpanEndTicks / 1000.0, 1.0)));"
       ],
-      "owner_lines": [
-        {
-          "file": "tests/test_preview_config.cpp",
-          "line_text": "CHECK(c.track.targets_secs_light == doctest::Approx(0.1666666));",
-          "why": "the config test pins the shipped json's own value (D54, item 220)"
-        }
-      ],
       "scope": [
         "tests"
       ],
