@@ -45,6 +45,9 @@ DATA_EXTS = {
     ".jsonl", ".ini", ".csv", ".tsv", ".chart", ".mid", ".sng", ".srb",
     ".png", ".jpg", ".ico", ".ttf", ".obj", ".ogg", ".flac", ".wav", ".opus", ".mp3",
     ".db", ".bin", ".sig", ".log", ".reg", ".after-run", ".gitkeep",
+    # A saved release installer and Clone Hero's own C# are inputs to Hydra,
+    # not Hydra code, so they are copied whole.
+    ".exe", ".cs",
 }
 
 STRIPPED, COPIED, LEFT_OUT, UNKNOWN = "stripped", "copied", "left out", "unknown"
