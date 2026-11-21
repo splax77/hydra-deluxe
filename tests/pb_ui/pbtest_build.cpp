@@ -165,7 +165,7 @@ double fill_dot_ms(Harness& h, int64_t tick) {
 
 // The player's path as the engine made it from their windows, or null while
 // they have none.
-const hydra::Path* player_path(Harness& h) {
+const hydra::Path* engine_player_path(Harness& h) {
     const std::optional<hydra::Path>& path = h.app->state.history().current().path;
     return path ? &*path : nullptr;
 }
@@ -178,7 +178,7 @@ const std::vector<hydra::PinnedWindow>& player_windows(Harness& h) {
 // What "Your score" should read: the total of the engine's path for the
 // player's windows, or of the chart's empty path while there is none.
 std::string expected_your_score(Harness& h) {
-    const hydra::Path* path = player_path(h);
+    const hydra::Path* path = engine_player_path(h);
     if (path) return hydra::group_thousands(path->totalscore());
     const OpenChart* chart = h.app->state.chart();
     if (!chart || !chart->empty_path) return std::string();
@@ -206,7 +206,7 @@ size_t best_candidate_count(Harness& h) {
 // (step_short), in step order. Empty while there is no path.
 std::vector<std::string> step_spans(Harness& h) {
     std::vector<std::string> spans;
-    const hydra::Path* path = player_path(h);
+    const hydra::Path* path = engine_player_path(h);
     const OpenChart* chart = h.app->state.chart();
     if (!path || !chart) return spans;
     for (const hydra::Activation& act : path->activations)
@@ -474,7 +474,7 @@ std::string clock_tail(Harness& h) {
 }
 
 // The readout ui::readout gives `view` on the open song.
-std::string readout_of(Harness& h, const hydra::ui::TimelineView& view) {
+std::string window_readout(Harness& h, const hydra::ui::TimelineView& view) {
     return hydra::ui::readout(view, song_length_ms(h));
 }
 
@@ -500,7 +500,7 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(open.span_ms < length_ms, );
     const std::string forward = any_ref(hydra::ui::kScrollForwardLabel);
     const std::string back = any_ref(hydra::ui::kScrollBackLabel);
-    IM_CHECK_RETV(readout_reads(ctx, readout_of(h, open)), );
+    IM_CHECK_RETV(readout_reads(ctx, window_readout(h, open)), );
     IM_CHECK_STR_EQ(figure_under(h, kYourScoreLabel).c_str(), expected_your_score(h).c_str());
 
     // The first fill the player can activate on whose dot is past the
@@ -515,7 +515,7 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     const hydra::ui::TimelineView ahead = hydra::ui::page(open, 1, length_ms);
     IM_CHECK_RETV(hydra::ui::in_view(ahead, far_dot_ms), );
     ctx->ItemClick(forward.c_str());
-    IM_CHECK_RETV(readout_reads(ctx, readout_of(h, ahead)), );
+    IM_CHECK_RETV(readout_reads(ctx, window_readout(h, ahead)), );
 
     // The hover on the fill: its card, with the decision list's figures.
     int64_t far_finish = 0;
@@ -543,12 +543,12 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     ctx->ItemClick(jump_forward_ref().c_str());
     const double jumped_ms = far_dot_ms + kJumpForwardMs;
     const hydra::ui::TimelineView after_jump = hydra::ui::show(ahead, jumped_ms, length_ms);
-    IM_CHECK(readout_reads(ctx, readout_of(h, after_jump)));
+    IM_CHECK(readout_reads(ctx, window_readout(h, after_jump)));
     IM_CHECK(on_screen(h, clock_at(h, jumped_ms)));
     // One window back: the clock stays where it was.
     ctx->ItemClick(back.c_str());
     const hydra::ui::TimelineView behind = hydra::ui::page(after_jump, -1, length_ms);
-    IM_CHECK(readout_reads(ctx, readout_of(h, behind)));
+    IM_CHECK(readout_reads(ctx, window_readout(h, behind)));
     IM_CHECK(on_screen(h, clock_at(h, jumped_ms)));
     // "< Act" jumps the clock back to the activation, and the window goes
     // where ui::show puts it for that moment.
@@ -556,7 +556,7 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(acts.size() == 1, );
     const double act_ms = acts[0].ms;
     ctx->ItemClick(kPrevActRef);
-    IM_CHECK(readout_reads(ctx, readout_of(h, hydra::ui::show(behind, act_ms, length_ms))));
+    IM_CHECK(readout_reads(ctx, window_readout(h, hydra::ui::show(behind, act_ms, length_ms))));
     IM_CHECK(on_screen(h, clock_at(h, act_ms)));
 }
 
@@ -642,7 +642,7 @@ void test_follow_the_playhead(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(open_long_song(ctx), );
     const double length_ms = song_length_ms(h);
     const hydra::ui::TimelineView open = hydra::ui::open_view(length_ms);
-    const std::string opening = readout_of(h, open);
+    const std::string opening = window_readout(h, open);
     IM_CHECK_RETV(readout_reads(ctx, opening), );
 
     ctx->ItemClick(any_ref(kPlayWord).c_str());
@@ -700,7 +700,7 @@ void test_follow_the_playhead(ImGuiTestContext* ctx) {
     IM_CHECK_STR_EQ(read_long_song(h).readout.c_str(), wheeled.readout.c_str());
     hydra::ui::TimelineView at_end = open;
     at_end.start_ms = length_ms;
-    const std::string last_window = readout_of(h, hydra::ui::clamp(at_end, length_ms));
+    const std::string last_window = window_readout(h, hydra::ui::clamp(at_end, length_ms));
     ctx->ItemClick(any_ref(kPlayWord).c_str());
     IM_CHECK(readout_reads(ctx, last_window));
     ctx->ItemClick(any_ref(kPauseWord).c_str());
