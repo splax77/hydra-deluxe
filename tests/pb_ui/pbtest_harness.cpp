@@ -14,6 +14,7 @@
 #include "../testdata_dirs.h"
 
 #include "app/config.h"
+#include "app/preview_view.h"  // build_time_box
 #include "audio/device.h"
 #include "ui/preview_controller.h"
 #include "ui/preview_timeline.h"  // timeline_fill_id
@@ -173,6 +174,17 @@ bool wait_for_edit(ImGuiTestContext* ctx) {
     if (!wait_idle(ctx)) return false;
     ctx->Yield(2);
     return true;
+}
+
+std::string clock_text_at(Harness& h, double ms) {
+    const hydra::ui::PreviewController& preview = *h.app->preview();
+    return hydra::app::build_time_box(preview.scene(), ms, preview.playback_end_ms()).timestamp;
+}
+
+std::string clock_tail(Harness& h) {
+    const std::string whole = clock_text_at(h, 0.0);
+    const size_t gap = whole.find(' ');
+    return gap == std::string::npos ? std::string() : whole.substr(gap);
 }
 
 }  // namespace pbtest

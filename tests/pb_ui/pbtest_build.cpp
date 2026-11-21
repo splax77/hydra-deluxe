@@ -147,13 +147,6 @@ std::optional<size_t> first_fill_where(Harness& h, FillRefusal kind,
     return std::nullopt;
 }
 
-// The Preview's clock as its time box words it at `ms` on the open song
-// (app::build_time_box, the text the panel draws).
-std::string clock_at(Harness& h, double ms) {
-    const hydra::ui::PreviewController& preview = *h.app->preview();
-    return hydra::app::build_time_box(preview.scene(), ms, preview.playback_end_ms()).timestamp;
-}
-
 // Where the Preview's clock stands on the fill at chord tick `tick`: its dot
 // (ui::timeline_fill_ms, the moment PbApp::click_fill seeks to). Below zero
 // when the scene has no fill on that chord.
@@ -344,7 +337,7 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(second.has_value(), );
     const int64_t second_tick = scene_of(h).fills[*second].chord_tick;
     const double second_dot_ms = fill_dot_ms(h, second_tick);
-    const std::string clock_after_one = clock_at(h, first_dot_ms);
+    const std::string clock_after_one = clock_text_at(h, first_dot_ms);
     IM_CHECK(on_screen(h, clock_after_one));
     IM_CHECK_RETV(scroll_side_to(ctx, choice_ref(second_tick)), );
     ctx->MouseMove(choice_ref(second_tick).c_str());
@@ -379,7 +372,7 @@ void test_build_a_path_by_clicking(ImGuiTestContext* ctx) {
     // The row click left the clock on the second fill's dot. "< Act" jumps
     // the Preview from there back to the first activation's, and "Act >"
     // forward again to the second's.
-    const std::string clock_after_two = clock_at(h, second_dot_ms);
+    const std::string clock_after_two = clock_text_at(h, second_dot_ms);
     IM_CHECK(on_screen(h, clock_after_two));
     ctx->ItemClick(kPrevActRef);
     ctx->Yield(2);
@@ -465,14 +458,6 @@ std::string readout_tail(Harness& h) {
     return of == std::string::npos ? std::string() : whole.substr(of);
 }
 
-// The clock's tail on the open song, " / 5:59.957": everything after the
-// time box's first word, where the song ends.
-std::string clock_tail(Harness& h) {
-    const std::string whole = clock_at(h, 0.0);
-    const size_t gap = whole.find(' ');
-    return gap == std::string::npos ? std::string() : whole.substr(gap);
-}
-
 // The readout ui::readout gives `view` on the open song.
 std::string window_readout(Harness& h, const hydra::ui::TimelineView& view) {
     return hydra::ui::readout(view, song_length_ms(h));
@@ -539,17 +524,17 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
 
     // The click left the clock on the fill's dot; the forward jump carries
     // it on by kJumpForwardMs, and the window goes where ui::show puts it.
-    IM_CHECK(on_screen(h, clock_at(h, far_dot_ms)));
+    IM_CHECK(on_screen(h, clock_text_at(h, far_dot_ms)));
     ctx->ItemClick(jump_forward_ref().c_str());
     const double jumped_ms = far_dot_ms + kJumpForwardMs;
     const hydra::ui::TimelineView after_jump = hydra::ui::show(ahead, jumped_ms, length_ms);
     IM_CHECK(readout_reads(ctx, window_readout(h, after_jump)));
-    IM_CHECK(on_screen(h, clock_at(h, jumped_ms)));
+    IM_CHECK(on_screen(h, clock_text_at(h, jumped_ms)));
     // One window back: the clock stays where it was.
     ctx->ItemClick(back.c_str());
     const hydra::ui::TimelineView behind = hydra::ui::page(after_jump, -1, length_ms);
     IM_CHECK(readout_reads(ctx, window_readout(h, behind)));
-    IM_CHECK(on_screen(h, clock_at(h, jumped_ms)));
+    IM_CHECK(on_screen(h, clock_text_at(h, jumped_ms)));
     // "< Act" jumps the clock back to the activation, and the window goes
     // where ui::show puts it for that moment.
     const std::vector<hydra::app::PreviewActivation>& acts = scene_of(h).activations;
@@ -557,7 +542,7 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
     const double act_ms = acts[0].ms;
     ctx->ItemClick(kPrevActRef);
     IM_CHECK(readout_reads(ctx, window_readout(h, hydra::ui::show(behind, act_ms, length_ms))));
-    IM_CHECK(on_screen(h, clock_at(h, act_ms)));
+    IM_CHECK(on_screen(h, clock_text_at(h, act_ms)));
 }
 
 // One reading of the screen on the long song: the readout's start and end
