@@ -112,18 +112,10 @@ std::vector<std::string> patterns_of(const std::string& line) {
     return out;
 }
 
-std::vector<std::string> picked_files(const TestPick& p) {
-    std::vector<std::string> out;
-    for (const PickedTest& t : p.tests) out.push_back(t.file);
-    return out;
-}
-
-bool contains(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
-
 // Whether one printed line holds every one of `parts`.
 bool some_line_holds(const std::vector<std::string>& lines, const std::vector<std::string>& parts) {
     return std::any_of(lines.begin(), lines.end(), [&](const std::string& l) {
-        return std::all_of(parts.begin(), parts.end(), [&](const std::string& p) { return contains(l, p); });
+        return std::all_of(parts.begin(), parts.end(), [&](const std::string& p) { return l.find(p) != std::string::npos; });
     });
 }
 
@@ -144,14 +136,14 @@ void check_lines_name_pick(const TestPick& pick) {
     }
     if (pick.whole_suite) {
         const WholeSuite& w = *pick.whole_suite;
-        CHECK_FALSE(contains(lines.front(), "-sf="));
-        CHECK(contains(lines.back(), w.rule));
+        CHECK(lines.front().find("-sf=") == std::string::npos);
+        CHECK(lines.back().find(w.rule) != std::string::npos);
         // pick_lines prints the count only for a rule that compares one.
         if (w.count != 0) {
-            CHECK(contains(lines.back(), std::to_string(w.count)));
+            CHECK(lines.back().find(std::to_string(w.count)) != std::string::npos);
         }
         if (!w.file.empty()) {
-            CHECK(contains(lines.back(), w.file));
+            CHECK(lines.back().find(w.file) != std::string::npos);
         }
     }
 }
@@ -205,7 +197,7 @@ TEST_CASE("precheck --tests: a range changing no code prints no tests, not an em
     const TestPick pick = exe_prints_pick(fx);
     CHECK(pick.tests.empty());
     CHECK_FALSE(pick.whole_suite);
-    CHECK_FALSE(contains(pick_lines(pick).front(), "-sf="));
+    CHECK(pick_lines(pick).front().find("-sf=") == std::string::npos);
 }
 
 TEST_CASE("precheck --tests: a bad range exits 1 with git's error on stderr") {
@@ -230,10 +222,9 @@ TEST_CASE("precheck --tests: two picked files come in byte order, none ending in
         CHECK(p.front() == '*');
         CHECK(p.back() != '*');
         // Each pattern is one picked file's name.
-        const std::vector<std::string> files = picked_files(pick);
         const std::string one_name = "/" + p.substr(1);
-        CHECK(std::count_if(files.begin(), files.end(),
-                            [&](const std::string& f) { return hydra::ends_with(f, one_name); }) == 1);
+        const auto names_file = [&](const PickedTest& t) { return hydra::ends_with(t.file, one_name); };
+        CHECK(std::count_if(pick.tests.begin(), pick.tests.end(), names_file) == 1);
     }
 }
 
