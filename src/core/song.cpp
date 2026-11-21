@@ -95,6 +95,30 @@ int Song::note_count() const {
     return n;
 }
 
+// ---- chords_around --------------------------------------------------------
+
+// The game's two searches are the first chord after the tick and the last at
+// or before it (fill_generator.cs lines 170 to 194); one binary search finds
+// both, as they sit side by side in a tick-ordered sequence.
+ChordsAround chords_around(const std::vector<SongTimestamp>& sequence, int64_t tick,
+                           int64_t earliest, int64_t latest) {
+    const auto it = std::upper_bound(
+        sequence.begin(), sequence.end(), tick,
+        [](int64_t t, const SongTimestamp& c) { return t < c.timecode.ticks(); });
+    const size_t first_after = static_cast<size_t>(it - sequence.begin());
+    ChordsAround out;
+    if (it != sequence.end() && it->timecode.ticks() <= latest) out.after = first_after;
+    if (first_after > 0 && sequence[first_after - 1].timecode.ticks() >= earliest)
+        out.before = first_after - 1;
+    out.pick = out.after.has_value() ? out.after : out.before;
+    if (out.before.has_value() && out.after.has_value()) {
+        const int64_t to_after = sequence[*out.after].timecode.ticks() - tick;
+        const int64_t to_before = tick - sequence[*out.before].timecode.ticks();
+        if (to_after > to_before) out.pick = out.before;
+    }
+    return out;
+}
+
 // ---- Song::check_activations -------------------------------------------
 
 // The one owner of generated-fill placement, for a chart with no fills of its
@@ -171,8 +195,8 @@ void Song::place_fills_ch10(const core::Rules& rules) {
 
 // Clone Hero 1.1.0.6142's generator (0x20D2B30), for every mode but 1.0. It reads
 // the measure lines of Clone Hero's grid (MeasureIndex) and starts at
-// the second line (`mov ebx, 1`). Each line takes the chord nearest it, a tie
-// going to the later chord, when that chord is within the distance limit; the
+// the second line (`mov ebx, 1`). Each line takes the chord chords_around
+// picks for it, when that chord is within the distance limit; the
 // fill then starts on the line, so its length is the chord tick minus the
 // line tick and may be 0 or negative for a chord on or before the line
 // (question 6, as recommended, of
@@ -194,24 +218,18 @@ void Song::place_fills_ch11(const core::Rules& rules) {
     const MeasureIndex& grid = timing().measure_index();
     const int64_t last_reachable = sequence.back().timecode.ticks() + max_distance;
 
-    // `next` is the first chord at or after the line, searched onward from
-    // the last chord looked at; the chord before it is the other candidate.
-    size_t next = 0;
     int64_t line = 1;
     for (;;) {
         const int64_t line_tick = grid.measure_line_tick(line);
         if (line_tick > last_reachable) break;
-        while (next < sequence.size() && sequence[next].timecode.ticks() < line_tick) ++next;
-        std::optional<size_t> best;
-        if (next < sequence.size()) best = next;
-        if (next > 0) {
-            const size_t before = next - 1;
-            if (!best.has_value() ||
-                line_tick - sequence[before].timecode.ticks() <
-                    sequence[*best].timecode.ticks() - line_tick)
-                best = before;
-        }
-        const int64_t chord_tick = sequence[*best].timecode.ticks();
+        const ChordsAround around = chords_around(sequence, line_tick);
+        const size_t best = *around.pick;  // the sequence is not empty
+        // `next` is the first chord at or after the line.
+        const size_t next =
+            around.before.has_value() && sequence[*around.before].timecode.ticks() == line_tick
+                ? *around.before
+                : around.after.value_or(sequence.size());
+        const int64_t chord_tick = sequence[best].timecode.ticks();
         if (std::llabs(chord_tick - line_tick) > max_distance) {
             // Out of reach here. The chords before this line only get farther
             // from later lines, so no line takes a chord until one is within
@@ -222,7 +240,7 @@ void Song::place_fills_ch11(const core::Rules& rules) {
                                           sequence[next].timecode.ticks() - max_distance));
             continue;
         }
-        sequence[*best].activation_length = chord_tick - line_tick;
+        sequence[best].activation_length = chord_tick - line_tick;
         // hydra_rules.ini refuses a cooldown below 1 (rules_fields); a Rules
         // value built in code gets the same floor, so the walk always moves.
         line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));

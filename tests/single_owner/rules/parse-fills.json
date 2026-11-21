@@ -220,6 +220,41 @@
         }
       ],
       "note": "Comparing a fill's tick with the coda tick. The readers only find the coda tick, through song.cpp's is_coda_event, and hand it to place_authored_fills, which alone decides which fills it skips."
+    },
+    {
+      "question": "Which chord is nearest a tick, a tie going to the later chord?",
+      "owner": "chords_around in src/core/song.cpp",
+      "owner_file": "src/core/song.cpp",
+      "owner_symbol": "chords_around",
+      "date": "2026-11-21",
+      "decision": "Agent rule 15 (merge the copies into one owner), plan docs/superpowers/plans/2026-11-21-ch10-fills.md, task T1, Owner map row O3",
+      "added_by": "ch10-T1",
+      "pattern": "timecode\\.ticks\\(\\)\\s+-\\s+(\\w+_)?tick\\b|\\b(\\w+_)?tick\\s+-\\s+\\S*timecode\\.ticks\\(\\)|\\([^()\\s]+\\s+-\\s+[^()\\s]+\\)\\s*(<|>)=?\\s*\\([^()\\s]+\\s+-\\s+[^()\\s]+\\)",
+      "must_match": [
+        "line_tick - sequence[before].timecode.ticks() <",
+        "sequence[*best].timecode.ticks() - line_tick)",
+        "pick = (after->first - f.end) <= (f.end - before->first) ? after : before;"
+      ],
+      "must_not_match": [
+        "ts.activation_length = ts.timecode.ticks() - starttick;",
+        "sequence[next].timecode.ticks() - max_distance));",
+        "if (to_after > to_before) out.pick = out.before;",
+        "const DecodeStep step = decode(frame - pos < chunk ? frame - pos : chunk);",
+        "const ChordsAround around = chords_around(sequence, line_tick);"
+      ],
+      "owner_lines": [
+        {
+          "file": "src/core/song.cpp",
+          "line_text": "const int64_t to_after = sequence[*out.after].timecode.ticks() - tick;",
+          "why": "chords_around, the owner: how far the chord after the tick sits from it"
+        },
+        {
+          "file": "src/core/song.cpp",
+          "line_text": "const int64_t to_before = tick - sequence[*out.before].timecode.ticks();",
+          "why": "chords_around, the owner: how far the chord at or before the tick sits from it"
+        }
+      ],
+      "note": "Measuring a chord's distance from a tick, or comparing two such distances, which is how a copy of the nearest-chord pick starts. Song::place_fills_ch11 and place_authored_fills (src/parse/song.cpp) call chords_around; place_authored_fills passes its own range limits in. Song::place_fills_ch10 still keeps its own nearest-chord walk, in a shape this pattern does not read, until the ch10-fills plan's task T3 replaces it."
     }
   ]
 }

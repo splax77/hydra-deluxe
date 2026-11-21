@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstdlib>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -297,6 +298,41 @@ TEST_CASE("generated fills: a chart with its own fills gets none generated") {
     CHECK_FALSE(song.generated_fills.has_value());
     CHECK(std::find(song.features.begin(), song.features.end(), kGeneratedFillsFeature) ==
           song.features.end());
+}
+
+TEST_CASE("chords_around: the nearer chord, a tie going to the later one, as the game picks") {
+    // The game's pick (docs/clone-hero/code/4045/fill_generator.cs, section
+    // F4): `after` is the first chord after the tick, `before` the last at or
+    // before it, and line 162 returns `before` only when
+    // after - tick > tick - before. Otherwise it returns `after`.
+    const int64_t tick = 100;
+    {
+        // Chords at 90 and 110: after - tick = 10, tick - before = 10.
+        // 10 > 10 is false, so the game returns the later chord, 110.
+        const Song song = song_on_grid({90, 110});
+        const ChordsAround around = chords_around(song.sequence, tick);
+        CHECK(around.before == std::optional<size_t>{0});
+        CHECK(around.after == std::optional<size_t>{1});
+        CHECK(around.pick == std::optional<size_t>{1});
+    }
+    {
+        // Chords at 95 and 110: after - tick = 10, tick - before = 5.
+        // 10 > 5 is true, so the game returns the earlier chord, 95.
+        const Song song = song_on_grid({95, 110});
+        const ChordsAround around = chords_around(song.sequence, tick);
+        CHECK(around.pick == std::optional<size_t>{0});
+    }
+    {
+        // Chords at 90, 100 and 110: the chord at 100 is the last at or
+        // before the tick, so before = 100 and after = 110. after - tick = 10,
+        // tick - before = 0, and 10 > 0 is true: the game returns the chord
+        // on the tick itself.
+        const Song song = song_on_grid({90, tick, 110});
+        const ChordsAround around = chords_around(song.sequence, tick);
+        CHECK(around.before == std::optional<size_t>{1});
+        CHECK(around.after == std::optional<size_t>{2});
+        CHECK(around.pick == std::optional<size_t>{1});
+    }
 }
 
 // ---- the corpus -----------------------------------------------------------

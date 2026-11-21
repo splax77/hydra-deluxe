@@ -7,6 +7,7 @@
 #define HYDRA_CORE_SONG_H
 
 #include <cstdint>
+#include <limits>
 #include <map>
 #include <optional>
 #include <string>
@@ -42,6 +43,24 @@ struct SongTimestamp {
 
     bool has_activation() const { return activation_length.has_value(); }
 };
+
+// The chords either side of a tick, and the one a fill takes there. Each is
+// an index into the chord sequence, or nullopt when there is none.
+struct ChordsAround {
+    std::optional<size_t> before;  // the last chord at or before the tick
+    std::optional<size_t> after;   // the first chord after the tick
+    std::optional<size_t> pick;    // the nearer of the two, a tie going to `after`
+};
+
+// The one owner of "which chord is nearest this tick", a tie going to the
+// later chord. It is Clone Hero's own search (docs/clone-hero/code/4045/
+// fill_generator.cs, section F4, the tie at line 162). `sequence` must be in
+// tick order, as both parsers emit it. A caller with a range drops the chord
+// before the tick when it sits earlier than `earliest`, and the chord after
+// it when it sits later than `latest`; the pick is made from what is left.
+ChordsAround chords_around(const std::vector<SongTimestamp>& sequence, int64_t tick,
+                           int64_t earliest = std::numeric_limits<int64_t>::min(),
+                           int64_t latest = std::numeric_limits<int64_t>::max());
 
 // A practice section ("Verse 2B", "Chorus 1"), from the chart's own section
 // markers. Display only: nothing in the search or the stored record reads these.
