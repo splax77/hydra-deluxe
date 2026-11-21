@@ -5,6 +5,7 @@
 // folder, with the other checks turned off.
 #include "doctest.h"
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <regex>
@@ -258,8 +259,14 @@ TEST_CASE("precheck check 1: a helper copied under new names prints C, the near 
     CHECK_FALSE(copied[0].why.empty());
     CHECK(same_name[0].why == copied[0].why);
     CHECK(varlen[0].why != copied[0].why);
-    // The hand-typed delta quotes its line and names the header that owns it.
-    CHECK(varlen[0].what.find("out.push_back(0x80 | (d >> 7));") != std::string::npos);
+    // The hand-typed delta quotes its line, read from the fixture file, and
+    // names the header that owns it.
+    const View varlen_file = make_view(hydra::read_file_text(fx.dir + "/tests/varlen.cpp"), codelex::Lang::Cpp);
+    const std::string varlen_line = varlen_file.line(varlen_file.raw, 2);
+    const std::string quoted =
+        varlen_line.substr((std::min)(varlen_line.find_first_not_of(' '), varlen_line.size()));
+    REQUIRE_FALSE(quoted.empty());
+    CHECK(varlen[0].what.find(quoted) != std::string::npos);
     CHECK(varlen[0].why.find("tests/midi_util.h") != std::string::npos);
     CHECK(count_matching(lines, "total_of|far_sum|first_copy|second_copy|tiny_b|TEST_CASE|midi_util\\.h:") == 0);
     CHECK(count_matching(lines, "^C tests/helpers_a\\.cpp:") == 0);
