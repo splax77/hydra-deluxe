@@ -58,9 +58,8 @@ bool ends_with_ci(std::string_view s, std::string_view suffix);
 
 // A scanned path as a key that reads the same on any machine: the part of
 // path below root, with every backslash turned into a forward slash.
-// "C:\in\a\notes.mid" under
-// "C:\in" or "C:\in\" is "a/notes.mid". A path that is not below root comes
-// back whole, slashes turned: one that does not start with root, one equal to
+// "C:\in\a\notes.mid" under "C:\in" or "C:\in\" is "a/notes.mid". A path that
+// is not below root comes back whole, slashes turned: one that does not start with root, one equal to
 // it, and one where root stops partway through a name ("C:/input/x" under
 // "C:/in"). Whole is what a bench dump should show for a path outside its
 // --dump-rel folder; a clipped tail would look like a real key. An empty root

@@ -319,9 +319,10 @@ Read:       the test above, all of it; to_multiplier (src/core/timing.cpp
 10 Same rule: tests/test_timing.cpp:72 states it and is replaced by this
             test (B14). tests/test_model.cpp:249 tests multiplier_step, a
             different question: what a chord's first and last notes pay.
-            tests/test_stars.cpp:47, 51 and 134 and
-            tests/test_replay.cpp:1717 and 1880 call to_multiplier for a
-            value and do not state where the steps sit.
+            tests/test_stars.cpp (lines 47, 51, 60-63, 134 and 229-236) and
+            tests/test_replay.cpp (lines 1671, 1717 and 1880) call
+            to_multiplier for a value or search for a step, and do not
+            state where the steps sit.
 11 Real:    Yes. Pitch Dark reaches all three steps in its first 20
             chords. A combo as long as the last line's input cannot
             happen; the line says why it is used (no combo, however long).
