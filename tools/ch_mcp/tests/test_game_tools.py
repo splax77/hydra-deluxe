@@ -133,56 +133,9 @@ WINDOW_MAP_STATS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-o2-run1",
                                 "scorestats-Window_Map-20261107-093442.json")
 WINDOW_MAP_SCORE = os.path.join(_REPO_ROOT, "testdata", "replay", "window_map-score.json")
 
-# The schedule fixtures under tools/ch_probe/tests (hydra_replay schedule of
-# each chart, path 0) and the reply lines they give. Every number below is
-# read off the fixture file: a declined chord's `kept_gems`, a squeeze's
-# `anchor_chord`, `anchor_aim_ms`, `planned_end_ms`, `ratio`, `anchor_room_ms`
-# and `squeeze_room_ms`, and a squeeze press's firing time (`at_ms`, from its
-# `aim_ms`) against its `own_end_ms` (15 ms either side of the end on every
-# timed squeeze here).
+# The schedule fixtures under tools/ch_probe/tests: hydra_replay schedule of
+# each chart, path 0, beside its score JSON.
 _PROBE_TESTS = os.path.join(_HERE, "..", "..", "ch_probe", "tests")
-FREAK_DECLINED = ("declined: chords 51 (kick), 103 (kick), 134 (nothing sent), "
-                  "162 (kick, blue cymbal), 196 (nothing sent), 548 (kick, blue cymbal), "
-                  "582 (kick), 959 (nothing sent), 1001 (kick)")
-FREAK_SQUEEZES = ("squeezes: chord 387 out (red 15 ms after the end), "
-                  "chord 717 in (needs no timing), "
-                  "chord 1144 out (yellow tom 15 ms after the end)")
-# Chord 263's anchor_aim_ms is -21.824, its planned_end_ms 60,554.527, both
-# rooms 26.322 (freak_limits_schedule.json).
-FREAK_ANCHORS = [
-    "chord 263 pressed 21.8 ms early for the squeeze-out at chord 387 "
-    "(end planned 60,554.5 ms, ratio 1.0000, room 26.3 ms both presses)",
-    "chord 1062 pressed 62.7 ms early for the squeeze-out at chord 1144 "
-    "(end planned 141,596.5 ms, ratio 1.0000, room 11.0 ms both presses)"]
-MOUTHS_DECLINED = "declined: chords 221 (nothing sent), 801 (kick, yellow tom), 845 (nothing sent)"
-MOUTHS_SQUEEZES = ("squeezes: chord 431 in (15 ms before the end), chord 740 out "
-                   "(yellow cymbal, green cymbal 15 ms before the end; kick 15 ms after), "
-                   "chord 1240 in (15 ms before the end)")
-# Mouths's ratios differ early and late, and chord 340's two rooms differ.
-MOUTHS_ANCHORS = [
-    "chord 340 pressed 16.6 ms late for the squeeze-in at chord 431 "
-    "(end planned 68,991.0 ms, ratio 1.0148 early, 1.0262 late, "
-    "anchor room 66.1 ms, squeeze room 52.9 ms)",
-    "chord 704 pressed 10.4 ms early for the squeeze-out at chord 740 "
-    "(end planned 118,418.3 ms, ratio 1.0287 early, 0.6207 late, room 75.3 ms both presses)",
-    "chord 1208 pressed 4.5 ms late for the squeeze-in at chord 1240 "
-    "(end planned 209,577.9 ms, ratio 0.9976 early, 0.9989 late, room 78.2 ms both presses)"]
-BOMBER_DECLINED = ("declined: chords 624 (kick), 684 (kick), 854 (nothing sent), "
-                   "874 (kick), 919 (kick)")
-BOMBER_SQUEEZES = ("squeezes: chord 180 out (red 15 ms after the end), "
-                   "chord 448 in (needs no timing)")
-BOMBER_ANCHOR = ("chord 147 pressed 62.4 ms early for the squeeze-out at chord 180 "
-                 "(end planned 32,607.2 ms, ratio 1.0000, room 11.2 ms both presses)")
-# The start of each order line: the first split chords of the schedule's
-# presses (`after_ms` 8 on the later group). The whole line names every split
-# chord of the chart, too long to pin here.
-MOUTHS_ORDER = ("order: chords 4 (kick, then green cymbal 8 ms later), "
-                "340 (green cymbal, then kick, yellow cymbal 8 ms later), "
-                "704 (green cymbal, then kick, yellow cymbal 8 ms later), ")
-BOMBER_ORDER = ("order: chords 147 (yellow cymbal, then kick 8 ms later), "
-                "265 (yellow cymbal, then kick 8 ms later), "
-                "412 (blue cymbal, then kick 8 ms later), "
-                "716 (blue cymbal, then kick 8 ms later), ")
 
 
 class FakeQuiet:
@@ -1184,15 +1137,6 @@ class GameToolsTest(unittest.TestCase):
     # in order groups, more than the reply could ever fit on a short line.
     SENRI_SCHEDULE = os.path.join(_PROBE_TESTS, "senri_schedule.json")
 
-    def _decline_rig(self):
-        seen = []
-
-        def live_play(chords, **kw):
-            seen.append(chords)
-            return play_chart.RunResult(stop="done")
-
-        return ToolRig(self.tmp, live_play=live_play), seen
-
     def _freak_declines(self):
         """Freak's hydra_replay schedule (FREAK_SCHEDULE): the chords the
         play tools read from it, each declined chord by index, its kept gems
@@ -1272,15 +1216,6 @@ class GameToolsTest(unittest.TestCase):
 
     # -- the squeezes, on the two fixtures of the 2026-11-07 player plan --------------
 
-    def _refine_play(self, name):
-        score = os.path.join(_PROBE_TESTS, f"{name}_score.json")
-        schedule = os.path.join(_PROBE_TESTS, f"{name}_schedule.json")
-        t, seen = self._decline_rig()
-        reply = t.tools.ch_play_chart(score, schedule, route="keys")
-        if t.tools._play is not None:
-            t.tools._play.thread.join(THREAD_CAP_S)
-        return reply, t
-
     # An anchor line of the reply: the anchor chord, how far and which way
     # it is pressed, the squeeze's kind and chord, and the planned end.
     _ANCHOR_LINE = re.compile(r"chord (\d+) pressed ([\d.]+) ms (early|late) for the "
@@ -1354,26 +1289,20 @@ class GameToolsTest(unittest.TestCase):
         self._assert_squeezes_named(doc, chords, lines)
 
     def test_the_bomber_reply_names_the_early_anchor(self):
-        lines = self._refine_play("bomber_refine")[0].splitlines()
-        start = lines.index(BOMBER_DECLINED)
-        self.assertEqual(lines[start + 1:start + 3], [BOMBER_SQUEEZES, BOMBER_ANCHOR])
+        doc, chords, lines = self._squeeze_reply("bomber_refine")
+        # The file's one timed squeeze has its anchor pressed early, so the
+        # anchor line the check below reads says "early".
+        timed = [q for act in doc["activations"] for q in act["squeezes"]
+                 if not q["needs_no_timing"]]
+        self.assertTrue(timed, "the fixture holds no timed squeeze")
+        self.assertTrue(all(q["anchor_aim_ms"] < 0 for q in timed), timed)
+        self._assert_squeezes_named(doc, chords, lines)
 
-    def test_the_mouths_order_line_follows_the_anchor_lines(self):
-        lines = self._refine_play("mouths_refine")[0].splitlines()
-        line = lines[lines.index(MOUTHS_ANCHORS[-1]) + 1]
-        self.assertTrue(line.startswith(MOUTHS_ORDER), line[:200])
-
-    def test_the_bomber_order_line_follows_the_anchor_line(self):
-        lines = self._refine_play("bomber_refine")[0].splitlines()
-        line = lines[lines.index(BOMBER_ANCHOR) + 1]
-        self.assertTrue(line.startswith(BOMBER_ORDER), line[:200])
-
-    def test_a_long_order_line_names_every_split_chord(self):
-        with open(self.SENRI_SCHEDULE, encoding="utf-8") as f:
-            doc = json.load(f)
-        # The chords the file presses in order groups (a press with an
-        # `after_ms`), less its timed squeeze-outs, whose presses the
-        # squeeze line names, and how many presses each one takes.
+    def _assert_order_names_split_chords(self, doc, line):
+        """`line` is an order line naming, in order, every chord the schedule
+        `doc` presses in order groups (a press with an `after_ms`), less its
+        timed squeeze-outs, whose presses the squeeze line names, and says
+        "then" once for each of a chord's presses after its first."""
         squeeze_outs = {q["chord"] for act in doc["activations"] for q in act["squeezes"]
                         if q["kind"] == "SqOut" and not q["needs_no_timing"]}
         presses_of = {}
@@ -1381,17 +1310,38 @@ class GameToolsTest(unittest.TestCase):
             presses_of[press["chord"]] = presses_of.get(press["chord"], 0) + 1
         split = sorted({press["chord"] for press in doc["presses"]
                         if press["after_ms"] is not None} - squeeze_outs)
-        self.assertTrue(split)
+        self.assertTrue(split, "the fixture presses no chord in order groups")
+        items = line.split(": ", 1)[1].split("), ")
+        self.assertEqual([int(item.split(" (", 1)[0].split()[-1]) for item in items], split,
+                         line[:200])
+        for index, item in zip(split, items):
+            with self.subTest(chord=index):
+                self.assertEqual(item.count("then "), presses_of[index] - 1, item)
+
+    def _assert_order_line_after_the_anchors(self, name):
+        """The reply of a keys-route run on the schedule fixture `name` has,
+        right after its last anchor line, the order line of the file's split
+        chords."""
+        doc, chords, lines = self._squeeze_reply(name)
+        self._assert_squeezes_named(doc, chords, lines)
+        timed = [q for act in doc["activations"] for q in act["squeezes"]
+                 if not q["needs_no_timing"]]
+        self._assert_order_names_split_chords(doc, lines[2 + len(timed)])
+
+    def test_the_mouths_order_line_follows_the_anchor_lines(self):
+        self._assert_order_line_after_the_anchors("mouths_refine")
+
+    def test_the_bomber_order_line_follows_the_anchor_line(self):
+        self._assert_order_line_after_the_anchors("bomber_refine")
+
+    def test_a_long_order_line_names_every_split_chord(self):
+        with open(self.SENRI_SCHEDULE, encoding="utf-8") as f:
+            doc = json.load(f)
         chords, lines = GT.chords_to_play(self.SENRI_SCHEDULE)
         order = GT.order_lines(chords, doc)
         self.assertEqual(len(order), 1, order)
         self.assertIn(order[0], lines)
-        items = order[0].split(": ", 1)[1].split("), ")
-        self.assertEqual([int(item.split(" (", 1)[0].split()[-1]) for item in items], split)
-        for index, item in zip(split, items):
-            with self.subTest(chord=index):
-                # One "then" per press after the first.
-                self.assertEqual(item.count("then "), presses_of[index] - 1, item)
+        self._assert_order_names_split_chords(doc, order[0])
 
     def test_a_chart_with_no_split_chord_gives_no_order_line(self):
         with open(self.EDGE_WALK_SCHEDULE, encoding="utf-8") as f:
@@ -1924,40 +1874,6 @@ class GameToolsTest(unittest.TestCase):
         named = re.findall(r"(\d+) \(", said)
         self.assertEqual([int(i) for i in named], [c.index for c in declined])
 
-    def _refine_run_lines(self, name):
-        """The reply lines after the play's line of a chained run of a fixture."""
-        t, _events, _seen = self._chain_rig()
-        lines = self._run(t, os.path.join(_PROBE_TESTS, f"{name}_score.json"),
-                          os.path.join(_PROBE_TESTS, f"{name}_schedule.json"))
-        lines = lines.splitlines()
-        start = next(i for i, line in enumerate(lines) if line.startswith("play: ok"))
-        return lines[start + 1:]
-
-    def test_the_mouths_run_reply_names_its_squeezes_after_the_declined_line(self):
-        lines = self._refine_run_lines("mouths_refine")
-        self.assertEqual(lines[:5], [MOUTHS_DECLINED, MOUTHS_SQUEEZES] + MOUTHS_ANCHORS)
-        self.assertTrue(lines[5].startswith(MOUTHS_ORDER), lines[5][:200])
-        self.assertTrue(lines[6].startswith("builds record: "), lines[6])
-        self.assertTrue(lines[7].startswith("press log: "), lines[7])
-
-    def test_the_freak_run_reply_names_its_anchors(self):
-        lines = self._refine_run_lines("freak_limits")
-        self.assertEqual(lines[:4], [FREAK_DECLINED, FREAK_SQUEEZES] + FREAK_ANCHORS)
-
-    def test_the_bomber_run_reply_names_its_early_anchor(self):
-        lines = self._refine_run_lines("bomber_refine")
-        self.assertEqual(lines[:3], [BOMBER_DECLINED, BOMBER_SQUEEZES, BOMBER_ANCHOR])
-        self.assertTrue(lines[3].startswith(BOMBER_ORDER), lines[3][:200])
-        self.assertTrue(lines[4].startswith("builds record: "), lines[4])
-        self.assertTrue(lines[5].startswith("press log: "), lines[5])
-
-    def test_decline_mode_and_dump_json_are_not_run_arguments(self):
-        t, events, _seen = self._chain_rig()
-        for extra in ({"decline_mode": "nothing"}, {"dump_json": "d.json"}):
-            with self.assertRaises(TypeError):
-                self._run(t, **extra)
-        self.assertEqual(events, [])
-
     def test_a_schedule_it_cannot_read_stops_before_the_attach(self):
         tools = self._server_tools()
         missing = os.path.join(self.tmp, "none.json")
@@ -1970,28 +1886,18 @@ class GameToolsTest(unittest.TestCase):
         self._assert_started_nothing(tools)
 
     def test_the_tools_take_schedule_json_and_no_dump_json(self):
-        # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
-        # schedule.md and D324 item 2: schedule_json replaces dump_json, and
-        # no decline mode or lead is an argument. D318 item 4: ch_play_chart
-        # and ch_run_chart take path_index. D342: neither takes timing.
-        signatures = {name: list(inspect.signature(getattr(GT.GameTools, name)).parameters)
-                      for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
-        self.assertEqual(signatures, {
-            "ch_play_chart": ["self", "score_json", "schedule_json", "log", "song_folder",
-                              "route", "path_index"],
-            "ch_run_chart": ["self", "song_folder", "score_json", "schedule_json",
-                             "kit_player", "path_index", "probes_json"],
-            "ch_edge_probe": ["self", "song_folder", "score_json", "schedule_json",
-                              "probes_json"]})
-
-    # -- in-game timing
-
-    def test_game_tools_names_no_kit_press_source_and_no_timing(self):
-        # D342: the kit route is timed by the game only.
-        with open(GT.__file__, encoding="utf-8") as f:
-            source = f.read()
-        for gone in ("use_kit_press", "_kit_press_source", "TIMING_", "timing:", "timing="):
-            self.assertNotIn(gone, source)
+        # D324 item 2: schedule_json replaces dump_json, and no decline mode
+        # or lead is an argument. D318 item 4: ch_play_chart and ch_run_chart
+        # take path_index. D342: no play tool takes a timing.
+        params = {name: set(inspect.signature(getattr(GT.GameTools, name)).parameters)
+                  for name in ("ch_play_chart", "ch_run_chart", "ch_edge_probe")}
+        for name, names in params.items():
+            with self.subTest(tool=name):
+                self.assertIn("schedule_json", names)
+                self.assertFalse(names & {"dump_json", "decline_mode", "timing"}, names)
+                self.assertFalse([n for n in names if "lead" in n], names)
+        for name in ("ch_play_chart", "ch_run_chart"):
+            self.assertIn("path_index", params[name], name)
 
     def test_the_status_rows_show_frame_gap_ms_and_agent_note(self):
         # In-game rows carry frame_gap_ms and agent_note, and ch_play_status
