@@ -138,6 +138,16 @@ std::optional<size_t> TrackState::LaneSweep::at(double t) const {
     return ends;
 }
 
+// The end edge comes from the span's end tick through the song's own timing
+// (the display-only sub-tick lookup), never from its end ms.
+std::pair<double, double> span_interval(const PreviewScene& scene, const PreviewSpan& s) {
+    if (!scene.timing)
+        throw std::invalid_argument("build_track_state: a scene with spans needs its song timing");
+    const double end_ms =
+        scene.timing->ms_index().ms_at_tick_f(static_cast<double>(s.end_tick) + kSpanEndTicks);
+    return {s_of(s.start_ms), s_of(end_ms)};
+}
+
 namespace {
 
 // One path-free moment: a note, a beat, or an SP phrase, solo or drum lane
@@ -148,17 +158,6 @@ struct Event {
     Kind kind;
     size_t index;  // into scene.notes or scene.beats; unused for an edge
 };
-
-// A span's [start, end] in seconds. The end edge comes from the span's end
-// tick through the song's own timing (the display-only sub-tick lookup),
-// never from its end ms.
-std::pair<double, double> span_interval(const PreviewScene& scene, const PreviewSpan& s) {
-    if (!scene.timing)
-        throw std::invalid_argument("build_track_state: a scene with spans needs its song timing");
-    const double end_ms =
-        scene.timing->ms_index().ms_at_tick_f(static_cast<double>(s.end_tick) + kSpanEndTicks);
-    return {s_of(s.start_ms), s_of(end_ms)};
-}
 
 // The overlay's span edges in list order, sorted by time with that order kept
 // among equal times. NaN edges have no place in time order and are left out;
