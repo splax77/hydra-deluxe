@@ -64,8 +64,11 @@ audio callback.
 
 What stays the same:
 
-Each reader's straight read with no seek gives exactly the old samples. The
-Opus decode is pinned bit for bit by a test, and that test is unchanged. The
+Each reader's straight read with no seek gives exactly the old samples. For
+Opus, tests check that reading the stream one frame at a time gives the same
+samples, bit for bit, as decoding the whole stem, and that the fixture decodes
+to a 220 Hz sine; no test compares the decode with a saved copy of the old
+output. The
 mix is not bit for bit: a stem that needs resampling is converted block by
 block, so a straight read of the mix matches the old whole-file mix within
 1e-6 per sample.
