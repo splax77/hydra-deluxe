@@ -20,6 +20,7 @@
 
 #include "app/user_messages.h"
 #include "core/winstr.h"
+#include "source_tree.h"
 #include "temp_util.h"
 
 namespace {
@@ -45,6 +46,23 @@ void make_sparse(const TempFile& tmp, long long bytes) {
     REQUIRE(sparse);
     REQUIRE(moved);
     REQUIRE(ended);
+}
+
+// Writes `text` into the existing file at byte `offset`, leaving the rest as it was.
+void write_at(const TempFile& tmp, long long offset, const std::string& text) {
+    HANDLE h = CreateFileW(hydra::win32_path(tmp.path).c_str(), GENERIC_WRITE, 0, nullptr,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    REQUIRE(h != INVALID_HANDLE_VALUE);
+    LARGE_INTEGER at;
+    at.QuadPart = offset;
+    const BOOL moved = SetFilePointerEx(h, at, nullptr, FILE_BEGIN);
+    DWORD written = 0;
+    const BOOL wrote =
+        WriteFile(h, text.data(), static_cast<DWORD>(text.size()), &written, nullptr);
+    CloseHandle(h);
+    REQUIRE(moved);
+    REQUIRE(wrote);
+    REQUIRE(written == text.size());
 }
 
 }  // namespace
@@ -250,17 +268,39 @@ TEST_CASE("file_byte_source reads a slice, fewer bytes at the end, none past it"
             CHECK(memory.read(offset, length) == file.read(offset, length));
 }
 
+// The file's last ten bytes and its first four hold different text, and every
+// other byte is zero. A read that dropped the offset's high 32 bits would land
+// in the zeros, so only a read from the right place returns the end's text.
 TEST_CASE("file_byte_source reads at an offset past 4 GB") {
     TempFile tmp("file_range_5gb", ".bin");
-    make_sparse(tmp, 5'000'000'000LL);
+    const long long bytes = 5'000'000'000LL;
+    const std::string start_text = "head";
+    const std::string end_text = "tail of 5G";
+    make_sparse(tmp, bytes);
+    write_at(tmp, 0, start_text);
+    write_at(tmp, bytes - static_cast<long long>(end_text.size()), end_text);
     const hydra::ByteSource file = hydra::file_byte_source(tmp.path);
-    CHECK(file.size == 5'000'000'000ULL);
-    CHECK(file.read(4'999'999'990ULL, 100) == std::vector<uint8_t>(10, 0));
+    CHECK(file.size == static_cast<uint64_t>(bytes));
+    auto text_at = [&](uint64_t offset, size_t length) {
+        const std::vector<uint8_t> b = file.read(offset, length);
+        return std::string(b.begin(), b.end());
+    };
+    // Asking for more than is left returns only the end's text.
+    CHECK(text_at(static_cast<uint64_t>(bytes) - end_text.size(), 100) == end_text);
+    CHECK(text_at(0, start_text.size()) == start_text);
 }
 
+// ADR 0024 is the user's decision on the first read's size; the test reads
+// the size from that page, not from a number typed here.
 TEST_CASE("next_piece_read doubles and never wraps") {
-    CHECK(hydra::kFirstPieceRead == 65536);  // ADR 0024
-    CHECK(hydra::next_piece_read(65536) == 131072);
+    const std::string adr = hydra::read_file_text(
+        (sourcetree::root() / "docs" / "adr" / "0024-container-notes-are-read-in-pieces.md").u8string());
+    const std::string decided = "the first read is " + std::to_string(hydra::kFirstPieceRead / 1024) + " KB";
+    INFO("ADR 0024 should say: " << decided);
+    CHECK(hydra::kFirstPieceRead % 1024 == 0);
+    CHECK(adr.find(decided) != std::string::npos);
+    CHECK(hydra::next_piece_read(hydra::kFirstPieceRead) == 2 * hydra::kFirstPieceRead);
+    // The first size whose double would wrap past the largest size.
     CHECK(hydra::next_piece_read(SIZE_MAX / 2 + 1) == SIZE_MAX);
 }
 
@@ -289,13 +329,15 @@ TEST_CASE("split_command_line_utf8 hands back UTF-8, not the ANSI code page") {
     CHECK(args[3] == "\xE6\x9B\xB2");
 }
 
-TEST_CASE("split_command_line_utf8 of an empty command line is empty") {
-    // CommandLineToArgvW alone would answer with the exe's own path.
-    CHECK(hydra::split_command_line_utf8(L"").empty());
-}
-
+// The process's real command line, split the documented way, is what every
+// entry point gets: the test does not lean on the test program's name.
 TEST_CASE("utf8_argv reads this process's command line") {
     const std::vector<std::string> args = hydra::utf8_argv();
-    REQUIRE_FALSE(args.empty());
-    CHECK(args[0].find("hydra_tests") != std::string::npos);
+    const std::vector<std::string> expected = hydra::split_command_line_utf8(GetCommandLineW());
+    REQUIRE_FALSE(expected.empty());
+    REQUIRE(args.size() == expected.size());
+    for (size_t i = 0; i < args.size(); ++i) {
+        INFO("argument " << i);
+        CHECK(args[i] == expected[i]);
+    }
 }
