@@ -149,6 +149,10 @@ std::string update_installer_name(const app::UpdateRelease& release);
 // The folder downloads go to: <temp>\HydraDeluxe-update.
 std::string update_folder();
 
+// Where Inno Setup writes its log: a file beside the download, in
+// update_folder. Defined in app_state.cpp, which hands it to the installer.
+std::string installer_log_path();
+
 // Starts the installer at `installer`, writing Inno Setup's log to `log`, and
 // returns a check that says whether its process has ended. Throws when the
 // installer could not be started, with Windows' reason as the text. The real
