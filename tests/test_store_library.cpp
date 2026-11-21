@@ -916,10 +916,16 @@ const TimedLibrary& timed_library() {
 }
 
 // Sets the scan stamp of the store file `path` to one kChartMetaStamp does not
-// read as current, as a file from an older build holds it.
+// read as current, as a file from an older build holds it: the newest stamp
+// below kChartMetaStamp.written that is not current. It never goes below 1,
+// and it fails the test if every stamp from 1 up is current, rather than use
+// a stamp newer than this build writes.
 void make_chart_meta_stamp_stale(const std::string& path) {
     int stale = kChartMetaStamp.written;
-    while (kChartMetaStamp.is_current(stale)) ++stale;
+    while (stale >= 1 && kChartMetaStamp.is_current(stale)) --stale;
+    INFO("kChartMetaStamp reads every stamp from 1 to ", kChartMetaStamp.written,
+         " as current, so no older stamp is stale");
+    REQUIRE(stale >= 1);
     const std::string sql = "UPDATE meta SET value = '" + std::to_string(stale) +
                             "' WHERE key = 'chart_meta_version'";
     exec_on_file(path, sql.c_str());

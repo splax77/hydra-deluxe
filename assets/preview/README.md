@@ -5,8 +5,8 @@ Onyx Music Game Toolkit (mtolly/onyx), release 20251011, taken from
 `C:\Program Files\OnyxToolkit\onyx-resources\`. **Do not edit these files.**
 To update, copy the same names again from a newer Onyx. Hydra's Preview is a
 faithful port of Onyx's 3D drum previewer (see
-`docs/adr/0008`), so the art must stay identical for the golden-image test
-(`tests/test_preview_golden.cpp`) to mean anything.
+`docs/adr/0008`), so the art must stay identical to Onyx's for the Preview
+to look like Onyx.
 
 ## What each file is for (Hydra name — Onyx name)
 
