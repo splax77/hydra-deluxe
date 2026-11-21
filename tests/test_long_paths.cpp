@@ -103,7 +103,7 @@ TEST_CASE("win32_path leaves a short path as it is") {
 TEST_CASE("win32_path prefixes a long path and makes it full") {
     LongDir dir("prefix");
     const std::wstring deep = hydra::utf8_to_wide(dir.deep);
-    REQUIRE(deep.size() > 300);
+    REQUIRE_FALSE(hydra::fits_shell(deep));  // past the shell's limit, so past the plain one too
     const std::wstring prefixed = L"\\\\?\\" + deep;
     CHECK(hydra::win32_path(deep) == prefixed);
 
