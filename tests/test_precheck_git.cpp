@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "code_lexer.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "precheck/check_rows.h"
 #include "precheck/checks.h"
@@ -26,6 +27,7 @@
 #include "precheck/items.h"
 #include "precheck/range.h"
 #include "single_owner/engine.h"
+#include "source_tree.h"
 #include "precheck_fixture.h"
 #include "temp_util.h"
 
@@ -89,26 +91,16 @@ ExeRun run_precheck(const std::vector<std::string>& args) {
     return r;
 }
 
-// The lines of `text`, split at each "\n".
-std::vector<std::string> text_lines(const std::string& text) {
-    std::vector<std::string> lines;
-    std::istringstream in(text);
-    for (std::string l; std::getline(in, l);) lines.push_back(l);
-    return lines;
+// The files of this repo git lists under any of `pathspecs`.
+std::set<std::string> listed(const std::vector<std::string>& pathspecs) {
+    std::set<std::string> files;
+    for (const std::string& spec : pathspecs)
+        for (const std::string& f : sourcetree::git_listed(sourcetree::root(), spec)) files.insert(f);
+    return files;
 }
 
-// Does `text` finish with `tail`?
-bool finishes_with(const std::string& text, const std::string& tail) {
-    return text.size() >= tail.size() && text.compare(text.size() - tail.size(), tail.size(), tail) == 0;
-}
-
-// The files git tracks in `repo` under `pathspecs`, names unquoted.
-std::set<std::string> tracked(const Repo& repo, const std::vector<std::string>& pathspecs) {
-    std::vector<std::string> args = {"-c", "core.quotePath=false", "ls-files", "--"};
-    args.insert(args.end(), pathspecs.begin(), pathspecs.end());
-    const std::vector<std::string> lines = repo.git(args);
-    return std::set<std::string>(lines.begin(), lines.end());
-}
+// This repo's root, as the precheck's --repo takes it.
+std::string source_root() { return sourcetree::root().u8string(); }
 
 // What hydra_precheck prints for `range` with the checks in `disabled` off,
 // built from the library calls its run makes. `passes` runs every check that
@@ -298,13 +290,12 @@ TEST_CASE("precheck: a file's text form drops a byte order mark and the last bre
 // Each tracked file of this repo, as git lists it, against what git's own
 // pathspecs and the scan's owners say it is.
 TEST_CASE("precheck: what kind of file each tracked file of this repo is") {
-    Repo repo(HYDRA_SOURCE_DIR);
-    const std::set<std::string> all = tracked(repo, {"."});
+    const std::set<std::string> all = listed({"."});
     REQUIRE_FALSE(all.empty());
 
     // top_folder: the folder git lists the file under, or nothing for a file
     // at the root.
-    const std::set<std::string> at_root = tracked(repo, {":(glob)*"});
+    const std::set<std::string> at_root = listed({":(glob)*"});
     std::map<std::string, std::set<std::string>> by_top;
     for (const std::string& f : all) {
         INFO(f);
@@ -315,7 +306,7 @@ TEST_CASE("precheck: what kind of file each tracked file of this repo is") {
     }
     for (const auto& [top, files] : by_top) {
         INFO(top);
-        const std::set<std::string> under = tracked(repo, {":(literal)" + top});
+        const std::set<std::string> under = listed({":(literal)" + top});
         for (const std::string& f : files) CHECK(under.count(f) == 1);
     }
 
@@ -332,7 +323,7 @@ TEST_CASE("precheck: what kind of file each tracked file of this repo is") {
         }
     }
     CHECK(implementations > 0);
-    const std::set<std::string> headers = tracked(repo, {":(glob)**/*.h"});
+    const std::set<std::string> headers = listed({":(glob)**/*.h"});
     REQUIRE_FALSE(headers.empty());
     for (const std::string& h : headers) {
         INFO(h);
@@ -342,22 +333,23 @@ TEST_CASE("precheck: what kind of file each tracked file of this repo is") {
 
     // test_file: all of tests/; under tools/, a file in a tests folder or a
     // test_*.py file; nothing else.
-    const std::set<std::string> under_tests = tracked(repo, {":(literal)tests"});
-    const std::set<std::string> under_tools = tracked(repo, {":(literal)tools"});
+    const std::set<std::string> under_tests = listed({":(literal)tests"});
+    const std::set<std::string> under_tools = listed({":(literal)tools"});
     const std::set<std::string> tool_tests =
-        tracked(repo, {":(glob,icase)tools/**/tests/**", ":(glob,icase)tools/**/test_*.py"});
+        listed({":(glob,icase)tools/**/tests/**", ":(glob,icase)tools/**/test_*.py"});
     REQUIRE_FALSE(under_tests.empty());
     REQUIRE_FALSE(tool_tests.empty());
     REQUIRE(tool_tests.size() < under_tools.size());
+    std::set<std::string> test_files = under_tests;
+    test_files.insert(tool_tests.begin(), tool_tests.end());
     for (const std::string& f : all) {
         INFO(f);
-        const bool expected = under_tests.count(f) == 1 || tool_tests.count(f) == 1;
-        CHECK(test_file(f) == expected);
+        CHECK(test_file(f) == (test_files.count(f) == 1));
     }
 
     // skipped_file: exactly the files of the scan's own folder.
     const std::string scan_folder = fs::path(single_owner::kRulesDir).parent_path().generic_string();
-    const std::set<std::string> scan_files = tracked(repo, {":(literal)" + scan_folder});
+    const std::set<std::string> scan_files = listed({":(literal)" + scan_folder});
     REQUIRE_FALSE(scan_files.empty());
     for (const std::string& f : all) {
         INFO(f);
@@ -452,7 +444,7 @@ TEST_CASE("precheck: a quoted numstat path loses both quotes") {
 
 // The items the real checks find on a range of this repo's history.
 TEST_CASE("precheck: items print in kind order, then file, line and text") {
-    Repo repo(HYDRA_SOURCE_DIR);
+    Repo repo(source_root());
     const Range range = resolve_range(repo, kRealRange, false, "");
     const LibraryRun once = library_run(repo, range, {}, 1);
     const std::vector<Item>& sorted = once.sorted;
@@ -503,12 +495,11 @@ TEST_CASE("precheck: items print in kind order, then file, line and text") {
 
     // The exe prints the same, and its summary names each kind's count, the
     // range and the tip as git abbreviates it.
-    const ExeRun r = run_precheck({"--repo", HYDRA_SOURCE_DIR, "--range", kRealRange});
+    const ExeRun r = run_precheck({"--repo", source_root(), "--range", kRealRange});
     CHECK(r.exit_code == 0);
     CHECK(r.out == once.out);
-    const std::vector<std::string> out_lines = text_lines(r.out);
-    REQUIRE_FALSE(out_lines.empty());
-    const std::string& summary = out_lines.back();
+    const std::string summary = summary_line(sorted, range);
+    CHECK(hydra::ends_with(r.out, summary + "\n"));
     INFO(summary);
     CHECK(summary.find(std::to_string(sorted.size()) + " items") != std::string::npos);
     for (const std::string& kind : kinds) {
@@ -518,7 +509,7 @@ TEST_CASE("precheck: items print in kind order, then file, line and text") {
     }
     CHECK(summary.find(kRealRange) != std::string::npos);
     const std::string short_tip = repo.git({"rev-parse", "--short=7", range.tip}).at(0);
-    CHECK(finishes_with(summary, " " + short_tip));
+    CHECK(hydra::ends_with(summary, " " + short_tip));
 }
 
 TEST_CASE("precheck: --disable takes only check numbers 1 to the number of checks") {
@@ -567,14 +558,14 @@ TEST_CASE("precheck: the exe prints what the library gives for a range and the w
     const Range range = resolve_range(repo, "main...feature", false, "");
     CHECK(r.out == library_run(repo, range, {2}, 1).out);
     CHECK(r.out.find(std::string("\n") + kSizePrefix) != std::string::npos);
-    CHECK(finishes_with(r.out, " " + short_tip + "\n"));
+    CHECK(hydra::ends_with(r.out, " " + short_tip + "\n"));
 
     const ExeRun whole = run_precheck({"--repo", fx.dir, "--whole-tree", "feature"});
     CHECK(whole.exit_code == 0);
     const Range whole_range = resolve_range(repo, "feature", true, "");
     CHECK(whole.out == library_run(repo, whole_range, {}, 1).out);
     CHECK(whole.out.find(kSizePrefix) == std::string::npos);
-    CHECK(finishes_with(whole.out, " " + short_tip + "\n"));
+    CHECK(hydra::ends_with(whole.out, " " + short_tip + "\n"));
 
     // Nothing in the fixture changed.
     CHECK(run_git(fx.dir, {"status", "--porcelain"}).empty());
@@ -583,12 +574,9 @@ TEST_CASE("precheck: the exe prints what the library gives for a range and the w
 TEST_CASE("precheck: --list-checks prints each check's number and name") {
     const ExeRun list = run_precheck({"--list-checks"});
     CHECK(list.exit_code == 0);
-    const std::vector<std::string> lines = text_lines(list.out);
-    REQUIRE(lines.size() == kChecks.size());
-    for (size_t i = 0; i < kChecks.size(); ++i) {
-        INFO(lines[i]);
-        CHECK(lines[i] == std::to_string(i + 1) + " " + std::string(kChecks[i].name));
-    }
+    std::string expected;
+    for (size_t i = 0; i < kChecks.size(); ++i) expected += std::to_string(i + 1) + " " + kChecks[i].name + "\n";
+    CHECK(list.out == expected);
 }
 
 TEST_CASE("precheck: the exe refuses a folder outside any git repository") {
