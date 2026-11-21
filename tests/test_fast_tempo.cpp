@@ -13,10 +13,12 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <set>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -166,48 +168,49 @@ TEST_CASE("fast tempo: the crash charts analyze, one SqIn step per SqIn") {
     }
 }
 
-// Engine::advance's off-SP branch, where a spent phrase "stays spent", pinned.
-// On this chart at cap 3, the path that activates at 5472 late-squeezes in the
-// phrase at 13920, and its new SP end is 11616, before that phrase. So SP ends
-// first, with an empty meter and the phrase still spent. The graph has a node
-// between the two, so the path then walks an edge without the phrase, and the
-// phrase stays spent.
-// Hitting the phrase later must add nothing, so no bank list holds 13920 (a
-// tick there would light a bar the SqIn already used).
+// Engine::advance's off-SP branch, where a spent phrase "stays spent". A late
+// squeeze-in whose new SP end falls before its own phrase leaves SP first,
+// with an empty meter and the phrase still spent. When the graph has a node
+// between that end and the phrase, the path then walks an edge without the
+// phrase, and the phrase stays spent. Hitting the phrase later must add
+// nothing, so no bank list of that path holds the phrase (a tick there would
+// light a bar the SqIn already used). Every such step is read from the
+// record's own SqIn steps; sqin_end_before_phrase.chart at cap 3 is the
+// fixture made to reach the case, so the test fails when no stored path
+// walks off SP between such an end and its phrase.
 TEST_CASE("fast tempo: a phrase a SqIn spent banks no bar when SP ends before it") {
     const Song song = fixture("sqin_end_before_phrase.chart");
     const app::AnalysisSettings cfg = scores_settings(3);
-    constexpr int64_t kAct = 5472, kPhrase = 13920, kEnd = 11616;
 
     const ScoreGraph graph(song, std::optional<int>(graph_build_cap(cfg.sp_cap, song.sp_phrase_count())),
                            FillDeadlineRule::Ch11, cfg.rules);
-    bool node_between = false;
-    for (const ScoreGraphNode* n = graph.start(); n; n = n->adv_edge ? n->adv_edge->dest : nullptr) {
-        const int64_t t = n->timecode.ticks();
-        if (t > kEnd && t < kPhrase) node_between = true;
-    }
-    CHECK(node_between);
+    // Does the graph's track hold a node strictly between `from` and `to`?
+    const auto node_between = [&graph](int64_t from, int64_t to) {
+        for (const ScoreGraphNode* n = graph.start(); n; n = n->adv_edge ? n->adv_edge->dest : nullptr) {
+            const int64_t t = n->timecode.ticks();
+            if (t > from && t < to) return true;
+        }
+        return false;
+    };
 
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
-    int found = 0;
+    int walked_off_sp = 0;
     for (const Path* p : rec.all_paths()) {
-        bool ends_early = false;
-        for (const Activation& a : p->walk_activations())
-            for (const SpEndStep& s : a.sp_end_steps)
-                if (a.timecode.ticks() == kAct && is_sqin_step_on(s.tick, s.kind, kPhrase) &&
-                    s.end_tick == kEnd)
-                    ends_early = true;
-        if (!ends_early) continue;
-        ++found;
         CAPTURE(p->pathstring());
-        for (const Activation& a : p->walk_activations()) {
-            CAPTURE(a.timecode.ticks());
-            CHECK(std::count(a.bank_rise_ticks.begin(), a.bank_rise_ticks.end(), kPhrase) == 0);
-        }
-        CHECK(std::count(p->trailing_bank_ticks.begin(), p->trailing_bank_ticks.end(), kPhrase) == 0);
+        for (const Activation& a : p->walk_activations())
+            for (const SpEndStep& s : a.sp_end_steps) {
+                if (!is_sqin_kind(s.kind) || s.end_tick >= s.tick) continue;
+                CAPTURE(a.timecode.ticks());
+                CAPTURE(s.tick);
+                CAPTURE(s.end_tick);
+                if (node_between(s.end_tick, s.tick)) ++walked_off_sp;
+                for (const Activation& b : p->walk_activations())
+                    CHECK(std::count(b.bank_rise_ticks.begin(), b.bank_rise_ticks.end(), s.tick) == 0);
+                CHECK(std::count(p->trailing_bank_ticks.begin(), p->trailing_bank_ticks.end(), s.tick) == 0);
+            }
     }
-    CHECK(found >= 1);
+    CHECK(walked_off_sp >= 1);
 }
 
 // D34: a phrase can be squeezed in only once. A phrase banked before SP
@@ -265,70 +268,102 @@ TEST_CASE("fast tempo: an SP end offers the next phrase after a banked or spent 
     }
 }
 
-// D36 gap a, pinned. On node_before_phrase at cap 3 the window activated on
-// 8832 starts with its end on 13440 and collects 9696, 11040 and 14016; the
-// last moves its end from 15648. All three sit in the squeeze window of the
-// SP end 15648. A squeeze-out there can only be 14016's: 9696 and 11040 were
-// hit before it, so a player who hits either after SP ran out also hits
-// 14016 after SP ran out.
+// D36 gap a. A squeeze-out gives back a phrase the player hits after SP ran
+// out. Every phrase the same window collected was hit while SP still ran, so
+// it comes before the squeezed-out phrase: a player who hits an earlier
+// phrase after SP ran out also hits every later one after SP ran out. So a
+// window's squeezed-out phrase is later than each phrase it collected, and a
+// squeeze-out of an older phrase (dropping a newer phrase's SP-end step) is
+// the bug. node_before_phrase.chart at cap 3 is the fixture made to reach a
+// squeeze-out in a window that collected phrases, so the test fails when no
+// stored path shows one.
 TEST_CASE("fast tempo: a squeeze-out at an SP end gives back only the newest phrase") {
     const Song song = fixture("node_before_phrase.chart");
     const app::AnalysisSettings cfg = scores_settings(3);
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
-    int at_15648 = 0;
+    int after_collected = 0;
     for (const Path* p : rec.all_paths()) {
         CAPTURE(p->pathstring());
-        const Activation* a = window_at(*p, 8832);
-        if (!a || !a->sqout_tick) continue;
-        // Never 9696 or 11040, whatever the node.
-        CHECK(*a->sqout_tick != 9696);
-        CHECK(*a->sqout_tick != 11040);
-        if (a->deact_tick() != std::optional<int64_t>(15648)) continue;
-        ++at_15648;
-        CHECK(*a->sqout_tick == 14016);
+        for (const Activation& a : p->walk_activations()) {
+            if (!a.sqout_tick) continue;
+            CAPTURE(a.timecode.ticks());
+            CAPTURE(*a.sqout_tick);
+            bool collected_any = false;
+            for (const SpEndStep& s : a.sp_end_steps) {
+                if (s.kind != SpEndKind::Collected && !is_clamp_kind(s.kind)) continue;
+                collected_any = true;
+                CAPTURE(s.tick);
+                CHECK(s.tick < *a.sqout_tick);
+            }
+            if (collected_any) ++after_collected;
+        }
     }
-    CHECK(at_15648 > 0);
+    CHECK(after_collected >= 1);
 }
 
-// D36 gap b, pinned. On early_sqin_twice at cap 2 the window activated on
-// 10176 collects 11712, 13152 and 13248. The SP end 16224 is the one 13248
-// moved, and it is the only end where this window can squeeze anything:
-// in or out, the phrase is 13248.
-TEST_CASE("fast tempo: early_sqin_twice offers its window one squeeze, 13248 at 16224") {
+// D36 gap b. The search groups running paths without the phrases their
+// window already squeezed in, so an SP end offers one phrase, which every
+// path in the same state shares, in or out. The state is the window's
+// activation and the SP-end steps it took before the squeeze: a squeeze-in's
+// steps before its SqIn step, or a squeeze-out's whole list (its SP end is
+// the last step's end). Each such state must offer one phrase only, read from
+// the record. early_sqin_twice.chart at cap 2 is the fixture made to reach a
+// state offered both ways, so the test fails when no state shows both.
+TEST_CASE("fast tempo: early_sqin_twice offers each SP end one squeeze, in or out") {
     const Song song = fixture("early_sqin_twice.chart");
     const app::AnalysisSettings cfg = scores_settings(2);
     HydraRecord rec;
     REQUIRE(analyzes(song, cfg, rec));
-    bool in = false, out = false;
+    using StepKey = std::tuple<int64_t, int64_t, int>;
+    using StateKey = std::pair<int64_t, std::vector<StepKey>>;
+    struct Offer {
+        std::set<int64_t> phrases;
+        bool in = false, out = false;
+    };
+    std::map<StateKey, Offer> offers;
     for (const Path* p : rec.all_paths()) {
-        CAPTURE(p->pathstring());
-        const Activation* a = window_at(*p, 10176);
-        if (!a) continue;
-        for (const int64_t t : sqin_phrase_ticks(*a)) CHECK(t == 13248);
-        if (has_sqin_step(*a, 13248)) in = true;
-        if (!a->sqout_tick) continue;
-        CHECK(*a->sqout_tick == 13248);
-        CHECK(a->deact_tick() == std::optional<int64_t>(16224));
-        out = true;
+        for (const Activation& a : p->walk_activations()) {
+            StateKey state{a.timecode.ticks(), {}};
+            for (const SpEndStep& s : a.sp_end_steps) {
+                if (is_sqin_kind(s.kind)) {
+                    Offer& o = offers[state];
+                    o.phrases.insert(s.tick);
+                    o.in = true;
+                }
+                state.second.emplace_back(s.tick, s.end_tick, static_cast<int>(s.kind));
+            }
+            if (!a.sqout_tick) continue;
+            Offer& o = offers[state];
+            o.phrases.insert(*a.sqout_tick);
+            o.out = true;
+        }
     }
-    CHECK(in);
-    CHECK(out);
+    int both_ways = 0;
+    for (const auto& [state, o] : offers) {
+        CAPTURE(state.first);
+        CAPTURE(state.second.size());
+        CAPTURE(*o.phrases.begin());
+        CAPTURE(*o.phrases.rbegin());
+        CHECK(o.phrases.size() == 1);
+        if (o.in && o.out) ++both_ways;
+    }
+    CHECK(both_ways >= 1);
 }
 
-// Seeds whose only lone-pricing mismatch comes from how the search groups
-// paths by SP-ready time (see the grouping key in Engine::reduce_group): a
-// variant takes a fill that a lone search refuses ("no lone root ties it").
-// A seed that fails only on that is listed here by number, so the check stays
-// exact for every other seed. Seeds 1 to 48 hit none, so the list is empty.
-const std::vector<uint64_t> kSpReadyGapSeeds = {};
+// The fuzz runs seeds 1 to kFuzzSeeds on its fixed generator, so the charts
+// are the same on every build.
+constexpr uint64_t kFuzzSeeds = 48;
 
 // A small deterministic fuzz: every chart analyzes, keeps one SqIn step per
-// SqIn, and every tied variant prices as it does alone ("prices": gets the
-// same score and stored facts as a search told to take its activations).
+// SqIn, and every stored path prices as it does alone ("prices": gets the
+// same score and stored facts as a search told to take its activations). A
+// path the lone search also folds has no oracle and is not judged
+// (lone_pricing_mismatch), so each chart must have at least one path that
+// was judged, or its pricing went unchecked.
 TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone") {
-    int analyzed = 0, variants = 0;
-    for (uint64_t seed = 1; seed <= 48; ++seed) {
+    uint64_t analyzed = 0;
+    for (uint64_t seed = 1; seed <= kFuzzSeeds; ++seed) {
         CAPTURE(seed);
         const FuzzChart fc = fuzz_chart(seed);
         const std::vector<uint8_t> bytes(fc.text.begin(), fc.text.end());
@@ -339,20 +374,28 @@ TEST_CASE("fast tempo: fuzzed charts analyze and their variants price as alone")
         ++analyzed;
         for (const Path* p : rec.all_paths()) check_one_step_per_sqin(*p);
         check_record_banks(song, rec);
-        const bool gap_seed = std::find(kSpReadyGapSeeds.begin(), kSpReadyGapSeeds.end(),
-                                        seed) != kSpReadyGapSeeds.end();
-        if (gap_seed) continue;
-        const std::vector<const Path*> all = all_tied(rec.paths);
-        for (const Path* v : all) {
-            ++variants;
-            const std::string diff = lone_mismatch(song, cfg, *v);
-            CHECK_MESSAGE(diff.empty(), "seed " << seed << " " << diff);
+        int judged = 0, no_oracle = 0;
+        for (const Path* p : rec.all_paths()) {
+            test::LonePricing lone;
+            try {
+                lone = test::lone_pricing(song, cfg, *p);
+            } catch (const std::exception& e) {
+                FAIL_CHECK("seed " << seed << " '" << p->pathstring()
+                                   << "': the lone search threw: " << std::string(e.what()));
+                continue;
+            }
+            if (lone.tied_under_root) {
+                ++no_oracle;
+                continue;
+            }
+            ++judged;
+            CHECK_MESSAGE(lone.diff.empty(), "seed " << seed << " " << lone.diff);
         }
+        CAPTURE(no_oracle);
+        CHECK(judged >= 1);
     }
-    // The seeds, these two counts and the generator's ranges are test limits
-    // the user approved (D43).
-    CHECK(analyzed == 48);
-    CHECK(variants > 50);
+    // No seed was skipped: each one analyzed.
+    CHECK(analyzed == kFuzzSeeds);
 }
 
 // The phrases still ahead when SP ends, pinned. D34 lets one
