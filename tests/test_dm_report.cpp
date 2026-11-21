@@ -4,9 +4,7 @@
 // shows. The library side is a real store: an analyzed corpus chart, or a
 // corpus chart folder scanned and analyzed the way the app does it.
 
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
+#include "loopback_server.h"  // first: it brings in winsock2.h ahead of windows.h
 
 #include "doctest.h"
 
@@ -1120,107 +1118,10 @@ TEST_CASE("settings_change_touches: every analysis setting but the SP cap marks 
 
 namespace {
 
-// A one-shot HTTP server on 127.0.0.1 for the real WinHTTP transport (the
-// Fetcher seam swaps http_get out wholesale, so it can't reach that code).
-// One thread accepts one connection, reads the request headers and sends
-// `reply`. With `stall` set it then sends nothing more and keeps the
-// connection open, like a render.com cold start (empty `reply`) or a body
-// that stops arriving (a reply of headers and a short body). A stall ends
-// when the server is destroyed, or at testwait's cap, so a cancel that never
-// works fails the test instead of hanging it.
-class LoopbackServer {
-public:
-    explicit LoopbackServer(std::string reply, bool stall = false)
-        : reply_(std::move(reply)), stall_(stall) {
-        WSADATA wsa;
-        REQUIRE(WSAStartup(MAKEWORD(2, 2), &wsa) == 0);
-        listener_ = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        REQUIRE(listener_ != INVALID_SOCKET);
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = 0;  // any free port
-        REQUIRE(bind(listener_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
-        REQUIRE(listen(listener_, 4) == 0);
-        int len = sizeof(addr);
-        REQUIRE(getsockname(listener_, reinterpret_cast<sockaddr*>(&addr), &len) == 0);
-        port_ = ntohs(addr.sin_port);
-        thread_ = std::thread([this] { serve_one(); });
-    }
-    ~LoopbackServer() {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            released_ = true;
-        }
-        release_.notify_all();   // ends a stall
-        closesocket(listener_);  // also unblocks an accept() still waiting
-        if (thread_.joinable()) thread_.join();
-        WSACleanup();
-    }
-    LoopbackServer(const LoopbackServer&) = delete;
-    LoopbackServer& operator=(const LoopbackServer&) = delete;
-
-    std::string url() const { return "http://127.0.0.1:" + std::to_string(port_); }
-
-    // True once the whole reply is sent (none, for an empty reply) and the
-    // connection is stalled: the client's request is in, and it now waits on
-    // a step only a cancel can end.
-    bool stalled() const { return stalled_.load(); }
-
-private:
-    void serve_one() {
-        SOCKET s = accept(listener_, nullptr, nullptr);
-        if (s == INVALID_SOCKET) return;
-        std::string request;
-        char buf[4096];
-        while (request.find("\r\n\r\n") == std::string::npos) {
-            int n = recv(s, buf, sizeof(buf), 0);
-            if (n <= 0) break;
-            request.append(buf, static_cast<size_t>(n));
-        }
-        size_t sent = 0;
-        while (sent < reply_.size()) {
-            int n = send(s, reply_.data() + sent,
-                         static_cast<int>(std::min<size_t>(reply_.size() - sent, 1 << 16)), 0);
-            if (n <= 0) break;
-            sent += static_cast<size_t>(n);
-        }
-        if (stall_) {
-            stalled_ = true;
-            std::unique_lock<std::mutex> lock(mutex_);
-            release_.wait_for(lock, testwait::kWaitCap, [this] { return released_; });
-            closesocket(s);
-            return;
-        }
-        // Graceful close: FIN, then wait for the client to hang up, so no
-        // unread bytes turn the close into a reset that drops the reply.
-        shutdown(s, SD_SEND);
-        while (recv(s, buf, sizeof(buf), 0) > 0) {}
-        closesocket(s);
-    }
-
-    std::string reply_;
-    bool stall_ = false;
-    std::atomic<bool> stalled_{false};
-    std::mutex mutex_;
-    std::condition_variable release_;
-    bool released_ = false;  // guarded by mutex_
-    SOCKET listener_ = INVALID_SOCKET;
-    unsigned short port_ = 0;
-    std::thread thread_;
-};
-
-std::string http_response(const std::string& status_line, const std::string& body) {
-    return "HTTP/1.1 " + status_line +
-           "\r\nContent-Type: application/json\r\nContent-Length: " +
-           std::to_string(body.size()) + "\r\nConnection: close\r\n\r\n" + body;
-}
-
-// The response headers of a 200 whose body is promised but never comes in
-// full: Content-Length is larger than what follows.
-std::string stalled_body_response(const std::string& body_start) {
-    return "HTTP/1.1 200 OK\r\nContent-Length: 1000\r\nConnection: close\r\n\r\n" + body_start;
-}
+// The shared local server, tests/loopback_server.h, in its one-shot form.
+using testnet::http_response;
+using testnet::LoopbackServer;
+using testnet::stalled_body_response;
 
 // What one cancelled call ended with. `error` is its exception text.
 // `cancel_to_return_ms` is how long it ran on after the cancel was set; it is
