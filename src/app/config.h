@@ -34,6 +34,12 @@ std::string exe_dir();
 // copy of the exe elsewhere never does.
 bool installed_by_setup();
 
+// Hydra's installer AppId, without its braces. installed_by_setup opens the
+// uninstall key Inno Setup names after it. installer/hydra.iss types the same
+// ID as its AppId, and tests/test_installer_app_id.cpp fails when the two
+// differ.
+extern const wchar_t kInstallerAppId[];
+
 // Test seam: true or false makes installed_by_setup answer that; empty puts
 // the registry check back. Tests set it through ScopedHook.
 void set_installed_for_test(std::optional<bool> installed);

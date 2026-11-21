@@ -35,19 +35,23 @@ std::string exe_dir() {
     return dir.empty() ? std::string(".") : dir;
 }
 
+const wchar_t kInstallerAppId[] = L"638FCDD7-88E0-438D-9C52-388C6C9CF4E3";
+
 namespace {
 
 std::optional<bool> g_installed_for_test;
 
-// The folder the installer registered under Hydra's frozen AppId
-// (installer/hydra.iss), empty when Hydra was never installed. The installer
-// runs in 64-bit mode, so its uninstall key is in the 64-bit view.
+// The folder the installer registered under kInstallerAppId, empty when Hydra
+// was never installed. Inno Setup names the uninstall key after the AppId,
+// braces included, with "_is1" after it. The installer runs in 64-bit mode,
+// so its uninstall key is in the 64-bit view.
 std::wstring registered_install_location() {
+    const std::wstring path =
+        std::wstring(L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{") +
+        kInstallerAppId + L"}_is1";
     HKEY key = nullptr;
-    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE,
-                      L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\"
-                      L"{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1",
-                      0, KEY_QUERY_VALUE | KEY_WOW64_64KEY, &key) != ERROR_SUCCESS)
+    if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.c_str(), 0, KEY_QUERY_VALUE | KEY_WOW64_64KEY,
+                      &key) != ERROR_SUCCESS)
         return {};
     const wchar_t* const name = L"InstallLocation";
     DWORD bytes = 0;
