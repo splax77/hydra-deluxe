@@ -490,9 +490,9 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
 
     // The first fill the player can activate on whose dot is past the
     // opening window: it has no item yet.
-    const std::optional<size_t> far = first_fill_where(h, FillRefusal::None, open);
-    IM_CHECK_RETV(far.has_value(), );
-    const int64_t far_tick = scene_of(h).fills[*far].chord_tick;
+    const std::optional<size_t> far_fill = first_fill_where(h, FillRefusal::None, open);
+    IM_CHECK_RETV(far_fill.has_value(), );
+    const int64_t far_tick = scene_of(h).fills[*far_fill].chord_tick;
     const double far_dot_ms = fill_dot_ms(h, far_tick);
     IM_CHECK(ctx->ItemInfo(fill_ref(far_tick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
 
@@ -504,7 +504,7 @@ void test_build_a_path_on_a_long_song(ImGuiTestContext* ctx) {
 
     // The hover on the fill: its card, with the decision list's figures.
     int64_t far_finish = 0;
-    IM_CHECK_RETV(card_shows_candidate(ctx, *far, far_finish), );
+    IM_CHECK_RETV(card_shows_candidate(ctx, *far_fill, far_finish), );
 
     // The click on it: one window at that fill, its compact row, the
     // engine's score for it, and the card's best finish as the best still in
