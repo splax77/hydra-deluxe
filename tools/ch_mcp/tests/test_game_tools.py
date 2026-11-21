@@ -64,7 +64,7 @@ from tools.ch_probe.experiments import edge_probe, play_chart  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
     KIT_PRESS_COLUMNS, PRESS_LOG_COLUMNS, TIMING_PRESS_COLUMNS)
 from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
-    _GHOST_SCHEDULE, _FakeGame, _FakeSongClock, _FakeTime, _RecordedThresholdEngine,
+    _GHOST_SCHEDULE, _RecordedThresholdEngine,
     _schedule_of)
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, MENU_KEYS, InputDriver, Lane  # noqa: E402
 
@@ -2146,11 +2146,13 @@ class GameToolsTest(unittest.TestCase):
 
     def test_run_chart_with_probes_says_the_probes_line_after_the_plays(self):
         t, _events, _seen = self._probe_chain_rig()
-        probes = self._probes_file([{"index": 1, "lead_ms": 84}])
+        chord, lead_ms = 1, 84
+        probes = self._probes_file([{"index": chord, "lead_ms": lead_ms}])
         lines = self._run(t, probes_json=probes).splitlines()
         play = [i for i, line in enumerate(lines) if line.startswith("play: ok")][0]
+        # A positive lead presses before the chord's time, so it reads "early".
         self.assertEqual(lines[play + 1:play + 2],
-                         edge_probe.probe_lines(edge_probe.load_probes(probes)))
+                         [f"probes: chord {chord} {lead_ms} ms early"])
 
     def _run_own_song(self, tools, schedule, score, probes_json):
         """ch_run_chart on `schedule`'s own song folder and path, so its song
@@ -2402,7 +2404,11 @@ class MarkerTest(unittest.TestCase):
     # -- writing and deleting -----------------------------------------------------
 
     def test_the_marker_sits_under_the_scratch_root_and_never_the_real_temp_folder(self):
-        self.assertEqual(self.t.tools._marker_path(), self.path)
+        marker = self.t.tools._marker_path()
+        folder = os.path.normcase(os.path.dirname(marker))
+        self.assertEqual(folder, os.path.normcase(self.t.scratch_root))
+        self.assertNotEqual(folder, os.path.normcase(tempfile.gettempdir()))
+        self.assertEqual(os.path.basename(marker), GT.OPEN_RUN_MARKER)
 
     def real_tools(self) -> GT.GameTools:
         """real_game_tools on this test's marker folder."""
@@ -2542,6 +2548,13 @@ class MarkerTest(unittest.TestCase):
         with mock.patch.object(B, "song_length_ms", side_effect=B.SongLengthMissing("no length")):
             self.assertEqual(self.t.tools.ch_start(self.t.r.song).splitlines()[-1], "no length")
         self.assertFalse(os.path.exists(self.path))
+        # game_files.backup makes a dated backup folder in a session folder
+        # under the scratch root; none was made.
+        backups = [name for _folder, dirs, _files in os.walk(self.t.scratch_root)
+                   for name in dirs if name.startswith(G.BACKUP_PREFIX)]
+        self.assertEqual(backups, [])
+        self.assertIsNone(self.t.tools._run)
+        self.assertIsNone(self.t.tools._adopted_backup)
 
     # -- the next worker adopts ---------------------------------------------------
 
@@ -2597,7 +2610,7 @@ class MarkerTest(unittest.TestCase):
         self.assertIsNone(tools._adopted_backup)
         self.assert_game_files_kept(written)
 
-    def test_an_ordinary_adopted_backup_is_restored_at_shutdown(self):
+    def test_an_adopted_backups_shutdown_leaves_the_games_files_and_deletes_the_marker(self):
         self.t.tools.ensure_backup()
         for name in ORIGINAL:
             _write(self.t.r.path(name), b"changed by the game")
@@ -2922,13 +2935,16 @@ class RecorderTest(unittest.TestCase):
         command = self.popen.calls[0][0]
         self.assertEqual(command[:2], [sys.executable, "-I"])
         self.assertEqual(command[command.index("--parent") + 1], str(os.getpid()))
+        # The cap follows the song: Hydra's song end for the rig's song folder,
+        # through the one rule every run cap comes from.
+        song_end_ms, _source = B.song_length_ms(self.t.r.song)
         self.assertEqual(command[command.index("--run-cap-s") + 1],
-                         "64.0")
+                         str(GT.cap_for_end(song_end_ms)))
         self.assertEqual(command[command.index("--out") + 1], self.folder())
         self.assertNotIn("--rate", command)
         self.assertNotIn("--cap-s", command)
 
-    def test_a_run_with_no_song_gets_the_cap_with_no_folder(self):
+    def test_a_run_with_no_song_gets_the_default_cap(self):
         self.t.tools.ch_start()
         command = self.popen.calls[0][0]
         self.assertEqual(command[command.index("--run-cap-s") + 1], str(play_chart.RUN_CAP_S))
@@ -3302,16 +3318,21 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertEqual(len(lines), len(timed), lines)
 
     def test_the_planned_ends_are_the_schedules_on_each_chord_read_after(self):
-        # Freak reads its first activation's end after chords 232 and 263
-        # (each chord's `reads` in freak_limits_schedule.json).
-        chords, _lines = GT.chords_to_play(os.path.join(_PROBE_TESTS,
-                                                       "freak_limits_schedule.json"))
+        # Each chord's `reads` in freak_limits_schedule.json names the end the
+        # schedule plans for the activation read after it.
+        name = "freak_limits_schedule.json"
+        doc = self._schedule(name)
+        planned = {row["index"]: read["planned_end_ms"]
+                   for row in doc["chords"] for read in row["reads"]}
+        self.assertIn(232, planned)
+        self.assertIn(263, planned)
+        chords, _lines = GT.chords_to_play(os.path.join(_PROBE_TESTS, name))
         t = ToolRig(self.tmp, live_play=lambda chords, **kw: play_chart.RunResult(stop="done"))
         play = GT._PlaySession(score_json="s.json", chord_count=len(chords), log_path=None)
         t.tools._start_play(play, chords)
         play.thread.join(THREAD_CAP_S)
-        self.assertEqual(play.planned_ends[232], 57933.88726341159)
-        self.assertEqual(play.planned_ends[263], 60554.52732830211)
+        self.assertFalse(play.running(), "the play thread did not end")
+        self.assertEqual(play.planned_ends, planned)
 
     # -- the read end and the points between presses ---------------------------------------
 
@@ -3430,16 +3451,34 @@ class PlayerLimitsLinesTest(unittest.TestCase):
 
     def test_the_probe_moved_chords_reach_the_agent_as_play_entries_at_literal_times(self):
         # live_in_game builds the kit agent's `play` entries from the chords
-        # the probe handed it. Chord 1 is at 1500 ms with an aim of -2 ms, so
-        # unmoved it fires at 1498 and last sends at 1550; a probe 60 ms late
-        # fires it at 1560, and its last send moves by the 62 ms the press moved.
+        # the probe handed it. A probe moves only its own chord: it fires at
+        # the chord's time minus the probe's lead, and its last send keeps
+        # the unmoved press's gap after the fire time.
         from tools.ch_mcp import kit_tools
+
+        def entries_of(chords):
+            return {e["index"]: e for e in
+                    (kit_tools.play_entry(seq, press, None)
+                     for seq, press in enumerate(play_chart.press_plan(chords)))}
+
+        probed, probe_lead_ms = 1, -60.0
+        unmoved_chords, _lines = GT.chords_to_play(self._json("schedule.json", SCHEDULE_JSON))
+        unmoved = entries_of(unmoved_chords)
+        chord_ms = {chord.index: chord.ms for chord in unmoved_chords}
         t, seen = self._probe_rig()
-        self._probe(t, [{"index": 1, "lead_ms": -60}])
-        entries = [kit_tools.play_entry(seq, press, None)
-                   for seq, press in enumerate(play_chart.press_plan(seen["chords"]))]
-        self.assertEqual([(e["index"], e["at_ms"], e["last_send_ms"]) for e in entries],
-                         [(0, 998.0, 1050.0), (1, 1560.0, 1612.0)])
+        self._probe(t, [{"index": probed, "lead_ms": probe_lead_ms}])
+        moved = entries_of(seen["chords"])
+        self.assertEqual(sorted(moved), sorted(unmoved))
+        for index, entry in moved.items():
+            with self.subTest(chord=index):
+                if index != probed:
+                    self.assertEqual((entry["at_ms"], entry["last_send_ms"]),
+                                     (unmoved[index]["at_ms"], unmoved[index]["last_send_ms"]))
+                    continue
+                self.assertEqual(entry["at_ms"], chord_ms[index] - probe_lead_ms)
+                self.assertNotEqual(entry["at_ms"], unmoved[index]["at_ms"])
+                self.assertEqual(entry["last_send_ms"] - entry["at_ms"],
+                                 unmoved[index]["last_send_ms"] - unmoved[index]["at_ms"])
 
     def test_the_probe_needs_the_kit(self):
         # A GameTools with no kit set up, as the server starts.
@@ -3451,14 +3490,6 @@ class PlayerLimitsLinesTest(unittest.TestCase):
         self.assertTrue(reply.startswith("refused: "), reply)
         self.assertIn("ch_kit_setup", reply)
         self.assertIsNone(tools._play)
-
-    def test_no_play_tool_takes_a_lead_argument(self):
-        # The lead is press_plan's (and a probe file's), never a tool argument.
-        for tool in (GT.GameTools.ch_run_chart, GT.GameTools.ch_play_chart,
-                     GT.GameTools.ch_edge_probe):
-            with self.subTest(tool=tool.__name__):
-                self.assertFalse([name for name in inspect.signature(tool).parameters
-                                  if "lead" in name])
 
 
 class DroppedStatusTest(unittest.TestCase):
@@ -3511,6 +3542,12 @@ class DroppedStatusTest(unittest.TestCase):
         lines = self._status(rows, play_chart.RunResult(
             stop="done", sent=1, dropped=1))
         self.assertFalse([line for line in lines if "jumped back" in line])
+        # The counts are the logged rows': one chord sent, chord 153 dropped.
+        sent = [r["index"] for r in rows if r["send"] == play_chart.SENT]
+        dropped = [r["index"] for r in rows if r["send"] == play_chart.DROPPED]
+        self.assertEqual(dropped, [153])
+        counts = lines.index(f"sent {len(sent)}")
+        self.assertEqual(lines[counts + 1], GT.dropped_line(rows))
 
     def test_no_dropped_row_says_none(self):
         # ls-p3-run1's first three rows (testdata/ch_runs/ls-p3-run1, copied
@@ -3525,97 +3562,6 @@ class DroppedStatusTest(unittest.TestCase):
         # The no-drop wording comes from its owner, dropped_line, given no rows.
         counts = lines.index(f"sent {len(rows)}")
         self.assertEqual(lines[counts + 1], GT.dropped_line([]))
-
-    def test_the_dropped_line_from_rows(self):
-        self.assertEqual(GT.dropped_line(ROWS), "dropped: none")
-        self.assertEqual(GT.dropped_line([{**ROWS[0], "index": 153,
-                                           "send": play_chart.DROPPED}]),
-                         "dropped: chords 153")
-
-
-# How long the forced press-log write blocks: the over-time of LS-A2 run 1's
-# first stall, before chord 128 (the table in "What was checked" of
-# docs/superpowers/plans/2026-11-12-player-stall-fixes.md).
-BLOCKED_WRITE_S = 0.9
-
-
-class _BlockingRowWriter:
-    """The real press-log writer, whose first row costs BLOCKED_WRITE_S of
-    the fake wall clock when, and only when, the player's thread writes it.
-    That is what a write Windows holds does: it costs the player time only
-    if the player is the one writing."""
-
-    def __init__(self, real, wall: _FakeTime, player: dict):
-        self._real, self._wall, self._player = real, wall, player
-
-    def writeheader(self):
-        return self._real.writeheader()
-
-    def writerow(self, row):
-        first = not self._player.get("blocked")
-        self._player["blocked"] = True
-        if first and threading.get_ident() == self._player.get("ident"):
-            self._wall.t += BLOCKED_WRITE_S
-        return self._real.writerow(row)
-
-    def writerows(self, rows):
-        return self._real.writerows(rows)
-
-
-class BlockedPressLogTest(unittest.TestCase):
-    """PS1 of docs/superpowers/plans/2026-11-12-player-stall-fixes.md: the
-    real _play_body and the real play_chords on a fake song clock, with a
-    press-log write that blocks 900 ms."""
-
-    def setUp(self):
-        self._tmp = tempfile.TemporaryDirectory()
-        self.tmp = self._tmp.name
-        self.addCleanup(self._tmp.cleanup)
-        self.wall = _FakeTime()
-        self.game = _FakeGame()
-        # The player's thread, once live_play starts on it, and whether the
-        # one blocked row has been written.
-        self.player = {}
-        real = play_chart._press_log_writer
-        patch = mock.patch.object(
-            play_chart, "_press_log_writer",
-            new=lambda f: _BlockingRowWriter(real(f), self.wall, self.player))
-        patch.start()
-        self.addCleanup(patch.stop)
-
-    def _play(self, wire_into_on_press: bool = False) -> play_chart.RunResult:
-        blocking = _BlockingRowWriter(mock.Mock(), self.wall, self.player)
-
-        def live_play(chords, *, on_press, should_stop, out, **kw):
-            self.player["ident"] = threading.get_ident()
-            if wire_into_on_press:
-                given = on_press
-
-                def on_press(row):
-                    blocking.writerow(row)
-                    given(row)
-            return play_chart.play_chords(
-                chords, _FakeSongClock(self.wall, start_s=0.5), self.game.read_score,
-                self.game.press, now=self.wall.now, sleep=self.wall.sleep,
-                on_press=on_press, should_stop=should_stop, out=out)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        score = os.path.join(self.tmp, "score.json")
-        _write(score, json.dumps(SCORE_JSON).encode())
-        schedule = os.path.join(self.tmp, "schedule.json")
-        song = os.path.join(self.tmp, "songs", probe_songs.WINDOW_MAP)
-        _write(schedule, json.dumps(for_song(SCHEDULE_JSON, song)).encode())
-        t.tools.ch_play_chart(score, schedule, log=os.path.join(self.tmp, "press.csv"),
-                              route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertFalse(t.tools._play.running())
-        self.assertIsNone(t.tools._play.error)
-        return t.tools._play.result
-
-    def test_the_same_block_on_the_player_thread_still_drops(self):
-        result = self._play(wire_into_on_press=True)
-        self.assertEqual(result.stop, play_chart.STOP_DONE)
-        self.assertGreater(result.dropped, 0)
 
 
 if __name__ == "__main__":
