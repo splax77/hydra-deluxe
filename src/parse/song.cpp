@@ -362,7 +362,7 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 // (0x20CFF60 calling 0x5DE030; finding 315, D30). The candidates are the last
 // chord at or before the fill end, which must not be before the fill start,
 // and the first chord after the end, which must be inside the landing window.
-// When both qualify the closer wins, and a tie goes to the later chord. A fill
+// When both qualify, the pick is chords_around's (core/song.h). A fill
 // with neither is dropped, even when one side has no chord at all (Clone
 // Hero's 0x5DE030 takes that side unbounded; D30 does not copy it). A later
 // fill that picks the same chord replaces the earlier one's length.
@@ -384,13 +384,9 @@ void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                           double slop_beats, std::optional<int64_t> coda_tick,
                           FillDeadlineRule fills_rule) {
     if (fills.empty() || song.sequence.empty()) return;
-    // The chord list with its ticks. Both parsers emit chords in tick order
+    // chords_around needs the chords in tick order. Both parsers emit them so
     // (.mid by its event times, .chart by D47's one sort in ChartParser), so
     // no sort here.
-    std::vector<std::pair<int64_t, size_t>> order;
-    order.reserve(song.sequence.size());
-    for (size_t i = 0; i < song.sequence.size(); ++i)
-        order.emplace_back(song.sequence[i].timecode.ticks(), i);
     const int64_t window_ticks =
         static_cast<int64_t>(song.tick_resolution() * slop_beats) + 1;
 
@@ -404,18 +400,9 @@ void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
                 continue;
             }
         }
-        const auto it = std::upper_bound(
-            order.begin(), order.end(), f.end,
-            [](int64_t t, const std::pair<int64_t, size_t>& c) { return t < c.first; });
-        const std::pair<int64_t, size_t>* after = it != order.end() ? &*it : nullptr;
-        const std::pair<int64_t, size_t>* before = it != order.begin() ? &*(it - 1) : nullptr;
-        if (before && before->first < f.start) before = nullptr;
-        if (after && after->first > f.end + window_ticks) after = nullptr;
-
-        const std::pair<int64_t, size_t>* pick = after ? after : before;
-        if (before && after)
-            pick = (after->first - f.end) <= (f.end - before->first) ? after : before;
-        if (pick) apply_fill_end(song, pick->second, f.start);
+        const ChordsAround around =
+            chords_around(song.sequence, f.end, f.start, f.end + window_ticks);
+        if (around.pick.has_value()) apply_fill_end(song, *around.pick, f.start);
     }
 }
 

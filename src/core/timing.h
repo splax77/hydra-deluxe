@@ -88,14 +88,15 @@ public:
     // mutually inverse, and agreeing with at() on integer ticks. NOT part of
     // the bit-for-bit scoring surface (see the header comment) -- never use
     // them in the graph or the engine's scoring path, apart from the Clone
-    // Hero 1.0 fill deadline below. tick_at_ms serves
+    // Hero 1.0 fill generator below. tick_at_ms serves
     // SongTiming::display_tick_at_ms, the tick a screen shows at a time,
     // which the Preview's time box, drain box and beat-line end and the Paths
-    // timeline's end (app/path_view.cpp) call. ms_at_tick_f
-    // serves the end of a shaded span (render/track_state.cpp) and the Clone
-    // Hero 1.0 fill deadline (search/graph.cpp), which is off the scoring
-    // surface on purpose. SongTiming::sp_end_ms (which only tests call) uses
-    // both.
+    // timeline's end (app/path_view.cpp) call, and the Clone Hero 1.0 fill
+    // generator (core/song.cpp's ch10_tick_at_second), which turns the game's
+    // float seconds back into ticks as the game does and so is off the
+    // bit-for-bit surface on purpose. ms_at_tick_f serves the end of a
+    // shaded span (render/track_state.cpp). SongTiming::sp_end_ms (which only
+    // tests call) uses both.
     double ms_at_tick_f(double ticks) const;
     double tick_at_ms(double ms) const;
 
