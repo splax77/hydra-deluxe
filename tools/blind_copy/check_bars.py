@@ -123,7 +123,7 @@ def b1(p):
 
 
 def b2(p):
-    matched = table(p["matched"], ("record", "test name", "test file"))
+    matched = table(p["matched"], ("record", "test name", "test file", "newest copy", "test state"))
     joined = table(p["joined"], ("test", "test file", "state"))
     seven = []
     for m in matched:
@@ -135,8 +135,18 @@ def b2(p):
                 seven.append(t)
     if len(seven) != B2_COUNT:
         return False, f"{B2_FILE} lines {B2_FIRST}-{B2_LAST} name {len(seven)} tests, not {B2_COUNT}"
-    state = {(j["test"], j["test file"]): j["state"] for j in joined}
-    bad = [f"{t[0]} is {state.get(t, 'not joined')}" for t in seven if state.get(t) != mr.FLAGGED]
+    # The flag is match_records.py's, on the newest record. A test with no
+    # hit, such as one that builds its own value, has no row in joined.tsv, so
+    # the state is read from matched.tsv; a row that joined.tsv does hold must agree.
+    state = {}
+    for m in matched:
+        if m["newest copy"] in ("yes", "tie"):
+            state.setdefault((m["test name"], m["test file"].removeprefix("code/")), m["test state"])
+    bad = [f"{t[0]} is {state.get(t, 'not matched')}" for t in seven if state.get(t) != mr.FLAGGED]
+    for j in joined:
+        t = (j["test"], j["test file"])
+        if t in seven and j["state"] != state.get(t):
+            bad.append(f"{t[0]} is {j['state']} in joined.tsv but {state.get(t)} in matched.tsv")
     if bad:
         return False, "; ".join(bad)
     return True, f"all {B2_COUNT} update tests are flagged"
@@ -153,6 +163,7 @@ def b3(p):
     have = {h["hit"] for h in hits}
     lines = {f"{s['hit_file']}:{s['hit_line']}" for s in seams}
     bad += [f"{h} has no outcome" for h in sorted(lines - have)]
+    bad += [f"{h} has an outcome but is not a hit line of seams.tsv" for h in sorted(have - lines)]
     counts = collections.Counter(h["outcome"] for h in hits)
     total = sum(counts[o] for o in k.OUTCOMES)
     if total != len(hits):
@@ -285,6 +296,17 @@ def b7(p):
             bad.append(f"{u['record']} is unmatched with no state")
     if len(joined) + len(unmatched) != len(matched):
         bad.append(f"{len(joined)} joined and {len(unmatched)} unmatched do not add up to {len(matched)} records")
+    # A joined record whose test has a hit is also a record of that test's
+    # row in joined.tsv; a joined record of a test with no hit has no row there.
+    if p.get("seams") and os.path.isfile(p["seams"]) and p.get("joined") and os.path.isfile(p["joined"]):
+        hit_tests = tests_with_hits(table(p["seams"], ("test", "test_file", "test_case")))
+        rows = {(j["test"], j["test file"]): j["records"].split(k.SEP.strip())
+                for j in table(p["joined"], ("test", "test file", "records"))}
+        for m in table(p["matched"], ("record", "test name", "test file", "newest copy")):
+            key = (m["test name"], m["test file"].removeprefix("code/"))
+            if m["match"] in joined_states and m["newest copy"] in ("yes", "tie") and key in hit_tests \
+                    and m["record"] not in [x.strip() for x in rows.get(key, [])]:
+                bad.append(f"{m['record']} is joined to {key[0]} but is not in its row of joined.tsv")
     if bad:
         return False, "; ".join(bad[:10])
     return True, f"{len(joined)} joined and {len(unmatched)} unmatched make {len(matched)} records"

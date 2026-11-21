@@ -32,6 +32,10 @@ def write(path, header, rows):
             f.write("\t".join(str(c) for c in r) + "\n")
 
 
+def joined_column(name):
+    return k.JOINED_COLUMNS.index(name)
+
+
 def matched_row(record, name, file, state, match=mr.SAME_PLACE):
     row = {c: "" for c in mr.COLUMNS}
     row.update({"record": record, "test name": name, "test file": file, "match": match, "state": state,
@@ -143,6 +147,19 @@ class Bars(unittest.TestCase):
         self.g.write()
         self.fails("B2", SEVEN[2])
 
+    def test_b2_flagged_test_with_no_hit_has_no_joined_row(self):
+        # The seventh update test builds its own value and has no hit.
+        self.g.seams = [s for s in self.g.seams if s[0] != SEVEN[6]]
+        self.g.rows = self.g.rows[:6] + self.g.rows[7:]
+        self.g.write()
+        self.assertTrue(self.bar("B2")[0], self.bar("B2")[1])
+
+    def test_b2_joined_row_that_disagrees_with_matched(self):
+        joined = [list(j) for j in self.g.joined]
+        joined[3][3] = mr.SOMETHING_ELSE
+        self.g.write(joined=joined)
+        self.fails("B2", SEVEN[3])
+
     def test_b3_hit_with_two_outcomes(self):
         self.g.rows.append(k.Row(f"{UPDATE}:10", outcome=k.WAIT))
         self.g.write()
@@ -157,6 +174,11 @@ class Bars(unittest.TestCase):
         self.g.rows[0].outcome = "fake data (set_fetcher)"
         self.g.write()
         self.fails("B3", "not one of the six")
+
+    def test_b3_outcome_for_a_line_the_search_never_hit(self):
+        self.g.rows.append(k.Row(f"{UPDATE}:99", outcome=k.WAIT))
+        self.g.write()
+        self.fails("B3", "not a hit line of seams.tsv")
 
     def test_b4_five_questions(self):
         self.g.write(questions=self.g.questions() + "## fake data, part two\ntests: 1\n")
@@ -204,6 +226,12 @@ class Bars(unittest.TestCase):
         self.g.unmatched = []
         self.g.write()
         self.fails("B7", "B1.md:5 is in neither file")
+
+    def test_b7_joined_record_missing_from_its_tests_row(self):
+        joined = [list(j) for j in self.g.joined]
+        joined[0][joined_column("records")] = ""
+        self.g.write(joined=joined)
+        self.fails("B7", "C13.md:551 is joined to")
 
     def test_b8_contradicted_with_no_answer(self):
         self.g.answers = [[k.FAKE, k.NOT_ANSWERED, ""]]
@@ -291,6 +319,11 @@ class Pilot2(unittest.TestCase):
             got = cb.check(p, ["B1", "B2", "B3", "B4"])
             for b in ("B1", "B2", "B3", "B4"):
                 self.assertFalse(got[b][0], f"{b}: {got[b][1]}")
+            # Each fails because pilot 2 wrote no such table, or no such
+            # four questions, not because a file was missing.
+            for b in ("B1", "B2", "B3"):
+                self.assertIn("has no column", got[b][1], b)
+            self.assertIn("not one per kind of flaw, four in all", got["B4"][1])
         finally:
             shutil.rmtree(tmp)
 
