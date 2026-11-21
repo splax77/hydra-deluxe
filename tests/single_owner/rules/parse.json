@@ -416,6 +416,11 @@
           "file": "tests/test_precheck_git.cpp",
           "line_text": "CHECK(hydra::ends_with(whole.out, \" \" + short_tip + \"\\n\"));",
           "why": "checks that hydra_precheck's output for the whole tree ends with the tip as git abbreviates it, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_check24.cpp",
+          "line_text": "if (text.size() <= tail.size() || !hydra::ends_with(text, tail)) return \"\";",
+          "why": "checks that a precheck item's text ends with the code line it prints, not a file format"
         }
       ],
       "scope": [
