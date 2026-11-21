@@ -199,8 +199,9 @@ struct ReplayChord {
     // core::paid_by_sp is true for it (decision D2). A squeezed-out chord
     // whose SP points are 0 reads false; a partly paid one reads true.
     bool in_sp = false;
-    // What the game's disc shows once this chord is hit: multiplier_after,
-    // doubled when in_sp (shown_multiplier), so only when SP paid something.
+    // multiplier_after, doubled when in_sp (shown_multiplier): doubled only
+    // when Star Power paid this chord something. It is Hydra's figure, not a
+    // claim about what the game's disc reads on a chord hit just after SP ends.
     int multiplier_shown = 1;
 
     ReplayScore points;

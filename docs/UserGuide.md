@@ -325,7 +325,7 @@ Where the chart marks a drum roll or trill, the highway lights a lane under it, 
 
 ### Choosing what to watch
 
-`Showing` picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (best all-0)`.
+`Showing` picks which path to draw. It lists the same paths as the Paths tab, in the same order. The all-0 path reads like `0 0 0 0  (Best all-0 path)`.
 
 `< Act` and `Act >` jump to the previous and next activation. `Show in Preview >` on the Paths tab lands here too. A jump lands on the activation chord with it already hit: the gem shows struck, and the score box counts it.
 
