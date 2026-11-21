@@ -45,9 +45,8 @@ DATA_EXTS = {
     ".jsonl", ".ini", ".csv", ".tsv", ".chart", ".mid", ".sng", ".srb",
     ".png", ".jpg", ".ico", ".ttf", ".obj", ".ogg", ".flac", ".wav", ".opus", ".mp3",
     ".db", ".bin", ".sig", ".log", ".reg", ".after-run", ".gitkeep",
-    # The repo's .exe is a saved release installer (testdata/update/real) and
-    # its .cs files are Clone Hero's C# (docs/clone-hero, testdata/ch_runs);
-    # neither is Hydra code.
+    # A saved release installer and Clone Hero's own C# are inputs to Hydra,
+    # not Hydra code, so they are copied whole.
     ".exe", ".cs",
 }
 
