@@ -2078,18 +2078,26 @@ class GameToolsTest(unittest.TestCase):
 
     def test_builds_json_in_the_run_folder(self):
         t, _events, _seen = self._chain_rig()
-        path = self._schedule_json(dict(SCHEDULE_JSON, hydra_replay_build="Nov  8 2026 17:56:03"))
-        self._run(t, schedule=path)
-        with open(os.path.join(t.tools.session_dir(), "builds-1.json"), encoding="utf-8") as f:
-            record = json.load(f)
-        # The chained start loads the state agent and the kit agent; the
-        # server did not launch this game for a human player, so no launch agent.
-        self.assertEqual([a["file"] for a in record["agents"]], ["state.js", "kit.js"])
-        self.assertEqual(record["hydra_replay_build"], "Nov  8 2026 17:56:03")
-        # A schedule with no build field says so in the next run's file.
-        self._run(t)
-        with open(os.path.join(t.tools.session_dir(), "builds-2.json"), encoding="utf-8") as f:
-            self.assertEqual(json.load(f)["hydra_replay_build"], build_stamp.NO_REPLAY_BUILD)
+        # Two runs, each on a real hydra_replay schedule with its own score:
+        # the Window Map probe song's (testdata/replay; the command that makes
+        # it is in tools/ch_probe/tests/test_s2_window_constants.py) and the
+        # early-fill prep's (EFL_*). Their hydra_replay builds differ.
+        window_map_schedule = os.path.join(_REPO_ROOT, "testdata", "replay",
+                                           "window_map-schedule.json")
+        runs = [(WINDOW_MAP_SCORE, window_map_schedule), (self.EFL_SCORE, self.EFL_SCHEDULE)]
+        expected = [build_stamp.builds_record(GT.run_agent_paths(None), GT.schedule_doc(schedule))
+                    for _score, schedule in runs]
+        self.assertNotEqual(expected[0]["hydra_replay_build"], expected[1]["hydra_replay_build"])
+        for n, ((score, schedule), want) in enumerate(zip(runs, expected), start=1):
+            with self.subTest(schedule=schedule):
+                index, _dump = self._schedule_source(schedule)
+                self._run(t, score=score, schedule=schedule, path_index=index)
+                # Run n's own numbered file in the run folder holds the
+                # builds record of that run's schedule and of the agents a
+                # run loads on a game the server did not launch.
+                with open(os.path.join(t.tools.session_dir(), f"builds-{n}.json"),
+                          encoding="utf-8") as f:
+                    self.assertEqual(json.load(f), want)
 
     def test_a_human_launch_adds_the_launch_agent_to_the_builds_record(self):
         # The builds record of a real ch_run_chart on a game the server
