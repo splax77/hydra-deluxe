@@ -21,6 +21,7 @@
 #include "app/preview_view.h"  // path_overlay_key
 #include "core/model.h"
 #include "core/timing.h"  // kSpActivationBars
+#include "search/pather.h"  // best_allzero_paths, search_allzero
 #include "analyzed_chart.h"
 #include "record_fixtures.h"
 #include "song_details_fixtures.h"
@@ -195,7 +196,7 @@ TEST_CASE("build_path_list: an all-0 path shows exactly when no listed path has 
     for_each_corpus_record([&](const HydraRecord& rec) {
         const std::vector<const Path*> flat = rec.all_paths();
         std::vector<const Path*> expected;
-        for (const Path* z : rec.all_allzero_paths()) {
+        for (const Path* z : best_allzero_paths(rec)) {
             const std::string key = path_overlay_key(z);
             const bool listed = std::any_of(flat.begin(), flat.end(), [&](const Path* p) {
                 return path_overlay_key(p) == key;
@@ -229,6 +230,63 @@ TEST_CASE("build_path_list: an all-0 path shows exactly when no listed path has 
     });
     // Burnout shows one under these settings.
     CHECK(charts_showing > 0);
+}
+
+// The chart's best all-0 path has one reader, best_allzero_paths, and it shares
+// its test (best_path_is_allzero) with analyze_chart's choice to skip the all-0
+// pass. So on every corpus chart: when the reader names the best path, the pass
+// was skipped; otherwise the reader gives the pass's paths, and a pass that left
+// nothing is one that, run on the same graph, finds nothing.
+TEST_CASE("best_allzero_paths: the best path when it is all-0, else the all-0 pass's paths") {
+    const AnalysisSettings cfg = scratch_settings().to_analysis_settings();
+    int from_pass = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        const std::vector<const Path*> got = best_allzero_paths(rec);
+        for (const Path* p : got) CHECK(p->is_allzero());
+        if (best_path_is_allzero(rec)) {
+            CHECK(rec.allzero_paths.empty());
+            CHECK(got == std::vector<const Path*>{&rec.best_path()});
+            continue;
+        }
+        CHECK(got == rec.all_allzero_paths());
+        if (!got.empty()) {
+            ++from_pass;
+            continue;
+        }
+        // Empty here must mean the chart has no all-0 path, not that the pass
+        // was skipped on a test the reader does not share.
+        CHECK(search_allzero(search_graph(song, cfg)).empty());
+    }
+    // Beg's best path is not all-0, and the pass finds one (the case below).
+    CHECK(from_pass > 0);
+}
+
+TEST_CASE("best_allzero_paths: Beg's is 0 0 0 at 319,890; a record whose best is all-0 gets it") {
+    // The figures the Paths tab showed in the V1 capture for Beg
+    // (docs/audit/2026-11-14-test-audit/exits/v1-before, item 13).
+    const std::string chart = corpus::chart_named("Evans Blue - Beg");
+    REQUIRE_FALSE(chart.empty());
+    const HydraRecord& beg = corpus::analyzed(chart, scratch_settings().to_analysis_settings());
+    REQUIRE_FALSE(beg.paths.empty());
+    CHECK_FALSE(best_path_is_allzero(beg));
+    const std::vector<const Path*> got = best_allzero_paths(beg);
+    REQUIRE_FALSE(got.empty());
+    CHECK(got.front()->pathstring() == "0 0 0");
+    CHECK(got.front()->totalscore() == 319890);
+
+    // The same record with that all-0 path as its best path, as analyze_chart
+    // leaves a chart whose best path is all-0: the reader returns the best path
+    // itself.
+    HydraRecord best_is_allzero = beg;
+    best_is_allzero.paths = {beg.allzero_paths.front()};
+    best_is_allzero.allzero_paths.clear();
+    REQUIRE(best_path_is_allzero(best_is_allzero));
+    CHECK(best_allzero_paths(best_is_allzero) ==
+          std::vector<const Path*>{&best_is_allzero.best_path()});
 }
 
 TEST_CASE("path_identity: engine paths share one exactly when score, starts and SP ends match") {
