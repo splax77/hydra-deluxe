@@ -31,10 +31,9 @@ using namespace hydra;
 namespace {
 
 // A hand-built 4/4 120 BPM song (record_fixtures.h owns the note type and the
-// song builder); a tick's ms (also record_fixtures.h).
+// song builder).
 using test::TailNote;
 using test::build_tail_song;
-using test::tick_ms;
 
 // The audit's constructed chart for finding 90 ("midsp"), 120 BPM 4/4, run at
 // cap 2. '1' activates at 10752; '0 1' activates at 4608, then at 11520. The
@@ -82,17 +81,97 @@ const Path* variant_at(const Path& leader, int64_t tick) {
             return &v;
     return nullptr;
 }
-using Step = std::tuple<int64_t, int64_t, SpEndKind>;
-std::vector<Step> steps_of(const Activation& a) {
-    std::vector<Step> out;
-    for (const SpEndStep& s : a.sp_end_steps) out.emplace_back(s.tick, s.end_tick, s.kind);
+// A root's tied variants, depth-first (record_fixtures.h).
+using test::collect_tied;
+
+// The settings run_search(graph, EngineOptions{DepthMode::Scores, depth}) on
+// a ScoreGraph at cap `cap` stands for, as test::lone_pricing reads them.
+SearchSettings scores_search(int cap, int depth) {
+    SearchSettings s;
+    s.sp_cap = cap;
+    s.depth_mode = DepthMode::Scores;
+    s.depth_value = depth;
+    return s;
+}
+
+// D3's promise: each path in `paths` stores what a search pricing its own
+// activations alone stores (test::lone_pricing). A path the lone search also
+// folded has no oracle; it fails here by name, never skipped. Returns how
+// many paths were compared.
+int check_each_prices_alone(const Song& song, const SearchSettings& settings,
+                            const std::vector<const Path*>& paths) {
+    int compared = 0;
+    for (const Path* p : paths) {
+        const test::LonePricing lone = test::lone_pricing(song, settings, *p);
+        CHECK_MESSAGE(lone.diff.empty(), lone.diff);
+        ++compared;
+    }
+    return compared;
+}
+
+// D3 for a variant folded while SP ran. Its first SP-end step is its own
+// activation, and its next step is a phrase that activation collects
+// (core::activation_can_squeeze). From that step on it holds its leader's
+// close: the leader's steps from that tick, its squeezes, its squeezed-out
+// note and its backend rows.
+void check_takes_leaders_close(const Activation& mine, const Activation& lead) {
+    REQUIRE(mine.sp_end_steps.size() >= 2);  // it folded with SP still running
+    CHECK(mine.sp_end_steps.front().tick == mine.timecode.ticks());
+    CHECK(mine.sp_end_steps.front().kind == SpEndKind::Activation);
+    const int64_t fold = mine.sp_end_steps[1].tick;
+    CHECK(core::activation_can_squeeze(mine.timecode.ticks(), fold));
+    std::vector<SpEndStep> leaders_after;
+    for (const SpEndStep& s : lead.sp_end_steps)
+        if (s.tick >= fold) leaders_after.push_back(s);
+    const std::vector<SpEndStep> mine_after(mine.sp_end_steps.begin() + 1,
+                                            mine.sp_end_steps.end());
+    CHECK(mine_after == leaders_after);
+    REQUIRE(mine.sqinouts.size() == lead.sqinouts.size());
+    for (size_t i = 0; i < mine.sqinouts.size(); ++i) {
+        CHECK(mine.sqinouts[i].kind == lead.sqinouts[i].kind);
+        CHECK(mine.sqinouts[i].offset_ms == lead.sqinouts[i].offset_ms);
+    }
+    CHECK(mine.sqout_tick == lead.sqout_tick);
+    CHECK(mine.backends == lead.backends);
+}
+
+// A root and one of its tied variants.
+struct TiedPair {
+    const Path* root;
+    const Path* variant;
+};
+
+// Every root that holds tied variants, paired with each of them.
+std::vector<TiedPair> tied_pairs(const std::vector<Path>& roots) {
+    std::vector<TiedPair> out;
+    for (const Path& r : roots) {
+        std::vector<const Path*> tied;
+        collect_tied(r, tied);
+        for (const Path* v : tied) out.push_back(TiedPair{&r, v});
+    }
     return out;
 }
 
-// D3's promise for a tied variant (record_fixtures.h).
-using test::lone_pricing_mismatch;
-// A root's tied variants, depth-first (record_fixtures.h).
-using test::collect_tied;
+// Where the bars each window of `p` spent arrived, then the trailing bars
+// (Path::bank_arrivals for every window and the stretch after the last).
+std::vector<std::vector<int64_t>> bank_arrivals_of(const Path& p) {
+    std::vector<std::vector<int64_t>> out;
+    for (size_t i = 0; i <= p.walk_activations().size(); ++i) out.push_back(p.bank_arrivals(i));
+    return out;
+}
+
+// The fills a search pricing `p`'s activations alone (search_target) lists
+// as passed over after the last one, read off the unfolded root of that
+// search that is `p` (path_identity). nullopt when no such root comes back.
+std::optional<std::vector<int64_t>> lone_trailing_fills(const ScoreGraph& graph, const Path& p) {
+    const TargetResult alone = search_target(graph, activation_pins(test::act_ticks(p)));
+    for (size_t i = 0; i < alone.paths.size(); ++i) {
+        const bool promoted = i < alone.promoted.size() && alone.promoted[i];
+        if (!promoted && path_identity(alone.paths[i]) == path_identity(p))
+            return alone.paths[i].trailing_skipped_fill_ticks;
+    }
+    return std::nullopt;
+}
 
 }  // namespace
 
@@ -109,23 +188,11 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's steps after
     REQUIRE(variant != nullptr);
     CHECK(variant->totalscore() == leader->totalscore());
 
-    const Activation& mine = variant->activations.back();
-    const Activation& lead = leader->activations.back();
-    CHECK(steps_of(lead) == std::vector<Step>{{10752, 13824, SpEndKind::Activation},
-                                              {11904, 14976, SpEndKind::Clamped},
-                                              {13056, 16128, SpEndKind::Clamped}});
-    // Its own activation step and its own clamp at the fold, then the
-    // leader's clamp at 13056.
-    CHECK(steps_of(mine) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
-                                              {11904, 14976, SpEndKind::Clamped},
-                                              {13056, 16128, SpEndKind::Clamped}});
-    CHECK(mine.deact_tick() == std::optional<int64_t>(16128));
-    CHECK(mine.clamp_tick() == std::optional<int64_t>(13056));
-    CHECK(mine.collected_phrase_ticks() == std::vector<int64_t>{11904, 13056});
-    // The real deactivation's rows, not the song's last notes.
-    CHECK(mine.backends == lead.backends);
-    CHECK(mine.sqinouts.empty());
-    CHECK(variant->pathstring() == "0 1");
+    // Its own activation step, then the leader's steps from the fold on, so
+    // the leader's clamp at 13056, after the fold, is its too; and the real
+    // deactivation's rows, not the song's last notes.
+    check_takes_leaders_close(variant->activations.back(), leader->activations.back());
+    check_each_prices_alone(song, scores_search(2, 6), {variant});
 
     for (const Path* p : flatten_paths(roots))
         CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
@@ -145,32 +212,24 @@ TEST_CASE("tied variants: a variant folded mid-SP takes its leader's closing SqI
     REQUIRE(in_var != nullptr);
     REQUIRE(out_var != nullptr);
 
-    // The leader collected 11328 in SP. The variant did not: it banked that
-    // phrase before activating at 11520, so the step is the leader's alone.
-    CHECK(in_lead->activations.back().collected_phrase_ticks() ==
-          std::vector<int64_t>{11328, 11904, 13056, 16224});
+    // Each leader closes on the squeeze its path string names, so there is a
+    // closing squeeze for the variant to take.
+    const Activation& in_close = in_lead->activations.back();
+    const Activation& out_close = out_lead->activations.back();
+    REQUIRE(in_close.sqinouts.size() == 1);
+    CHECK(in_close.sqinouts[0].kind == SqueezeKind::SqIn);
+    REQUIRE(out_close.sqinouts.size() == 1);
+    CHECK(out_close.sqinouts[0].kind == SqueezeKind::SqOut);
+    CHECK(out_close.sqout_tick.has_value());
+    CHECK_FALSE(out_close.backends.empty());  // 16032 and the squeezed-out 16224
 
-    // The SqIn side: a late SqIn on the phrase at 16224 moves the end to 17664.
-    const Activation& a = in_var->activations.back();
-    CHECK(steps_of(a) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
-                                           {11904, 14976, SpEndKind::Clamped},
-                                           {13056, 16128, SpEndKind::Clamped},
-                                           {16224, 17664, SpEndKind::SqIn}});
-    REQUIRE(a.sqinouts.size() == 1);
-    CHECK(a.sqinouts[0].kind == SqueezeKind::SqIn);
-    CHECK(in_var->pathstring() == "0 1+");
-
-    // The SqOut side: SP ends at 16128 and the phrase at 16224 has no step.
-    const Activation& b = out_var->activations.back();
-    CHECK(steps_of(b) == std::vector<Step>{{11520, 14592, SpEndKind::Activation},
-                                           {11904, 14976, SpEndKind::Clamped},
-                                           {13056, 16128, SpEndKind::Clamped}});
-    REQUIRE(b.sqinouts.size() == 1);
-    CHECK(b.sqinouts[0].kind == SqueezeKind::SqOut);
-    CHECK(b.sqout_tick == std::optional<int64_t>(16224));
-    CHECK_FALSE(b.backends.empty());  // 16032 and the squeezed-out 16224
-    CHECK(b.backends == out_lead->activations.back().backends);
-    CHECK(out_var->pathstring() == "0 1-");
+    // The leader collected 11328 in SP; the variant banked it before its own
+    // activation at 11520, so its steps after its activation start later
+    // (check_takes_leaders_close asks activation_can_squeeze). From there it
+    // takes the leader's SqIn or SqOut close.
+    check_takes_leaders_close(in_var->activations.back(), in_close);
+    check_takes_leaders_close(out_var->activations.back(), out_close);
+    check_each_prices_alone(song, scores_search(2, 6), {in_var, out_var});
 
     for (const Path* p : flatten_paths(roots))
         CHECK_MESSAGE(replay_stored_path(song, *p).faithful(), p->pathstring());
@@ -200,24 +259,30 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase folds into
 
     const Path* in_lead = test::path_named(rec.paths, "1+");
     REQUIRE(in_lead != nullptr);
-    // The leader's SqIn step sits on 12288, which it collected.
-    CHECK(steps_of(in_lead->activations.back()) ==
-          std::vector<Step>{{10752, 15360, SpEndKind::Activation}, {12288, 16896, SpEndKind::SqIn}});
-    // D32: '1+' ends its SP at 16896, where 12288 is still in the window.
-    // The window's chord does not make that end a squeeze choice, so '1+'
-    // does not run on in SP.
-    CHECK(in_lead->totalscore() == 6750);
+    const Activation& lead = in_lead->activations.back();
+    // The phrase the leader squeezed in: its SqIn step.
+    const SpEndStep* sqin = nullptr;
+    for (const SpEndStep& s : lead.sp_end_steps)
+        if (is_sqin_kind(s.kind)) sqin = &s;
+    REQUIRE(sqin != nullptr);
 
-    // '0 E0' is never folded into '1+' while SP runs (the group key keeps
-    // them apart). Both SP ends fall on 16896 with the same score, so it
-    // folds there, after SP, as a plain tied path with its own window.
+    // The path that activates at 13824 ties the leader and hangs off it.
     const Path* banked = variant_at(*in_lead, 13824);
     REQUIRE(banked != nullptr);
-    CHECK(banked->pathstring() == "0 E0");
+    CHECK(banked->totalscore() == in_lead->totalscore());
     const Activation& a = banked->activations.back();
-    CHECK(steps_of(a) == std::vector<Step>{{13824, 16896, SpEndKind::Activation}});
+    // It banked the leader's SqIn phrase before it activated, so it cannot
+    // squeeze that phrase.
+    CHECK_FALSE(core::activation_can_squeeze(a.timecode.ticks(), sqin->tick));
+    // It was never folded into '1+' while SP ran (the group key keeps them
+    // apart): its window is its own activation step alone, with no squeeze,
+    // and it folded where both SP ends fall, after SP.
+    REQUIRE(a.sp_end_steps.size() == 1);
+    CHECK(a.sp_end_steps.front().tick == a.timecode.ticks());
+    CHECK(a.sp_end_steps.front().kind == SpEndKind::Activation);
     CHECK(a.sqinouts.empty());
-    CHECK(banked->totalscore() == 6750);  // what hydra_replay prices 4608:7680,13824:16896 at
+    CHECK(a.deact_tick() == lead.deact_tick());
+    check_each_prices_alone(song, cfg, {banked});
 }
 
 // The same family with the leader's SqIn phrase on the variant's own
@@ -228,12 +293,14 @@ TEST_CASE("tied variants: a path that banked its leader's SqIn phrase folds into
 // analyze, and every variant on them must price as it does alone.
 TEST_CASE("tied variants: the banked-phrase charts analyze and every variant prices as alone") {
     const app::AnalysisSettings cfg = test::scores_settings(4);
-    for (const char* name : {"folded_sqin.chart", "relabel_case.chart"}) {
+    int compared = 0;
+    for (const std::string name : {"folded_sqin.chart", "relabel_case.chart"}) {
         CAPTURE(name);
         const Song song = load_songpath(
             corpus::root() + "/test_folded_sqin/" + name, ChartReading{});
         HydraRecord rec;
         REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
+        REQUIRE_FALSE(rec.paths.empty());
         for (const Path* p : rec.all_paths()) {
             CAPTURE(p->pathstring());
             for (const Activation& act : p->walk_activations()) {
@@ -243,11 +310,12 @@ TEST_CASE("tied variants: the banked-phrase charts analyze and every variant pri
                     CHECK(act.sp_end_steps[k].tick > act.timecode.ticks());
             }
         }
-        for (const Path* v : test::all_tied(rec.paths)) {
-            const std::string diff = lone_pricing_mismatch(song, cfg, *v);
-            CHECK_MESSAGE(diff.empty(), diff);
-        }
+        compared += check_each_prices_alone(song, cfg, test::all_tied(rec.paths));
     }
+    // A floor, so the lone-pricing loop cannot pass on no variant at all:
+    // folded_sqin holds a tied variant, the path that activates at 13824
+    // under '1+' (the case above requires it).
+    CHECK(compared > 0);
 }
 
 // Two charts that go from 120 to 4,000 BPM, read at cap 3, put several SP bars
@@ -287,12 +355,13 @@ TEST_CASE("clamped_sqin charts: every squeeze-out ends SP at the end its record 
     }
 }
 
-// The group key's banked phrase and the squeeze rule draw one line: a phrase
-// is banked exactly when activation_can_squeeze says the activation cannot
-// squeeze it. Here the expected answer comes from that rule by a plain scan,
-// so a banked_phrase_in_reach with its own boundary would drift from it. Every
-// chord takes a turn as the activation, so the chart's phrase chords give the
-// edge case: a phrase on the activation chord itself.
+// The group key's banked phrase and the search graph's squeeze window draw one
+// line. The expected answer is read off the window the graph lists on an SP
+// end (core::squeeze_window_phrases), not off the helpers
+// banked_phrase_in_reach itself walks with: of the phrase chords in the window
+// of an SP end on the activation, the last one the activation cannot squeeze
+// (core::activation_can_squeeze), or none. A banked_phrase_in_reach that
+// walked to a different chord, or used its own boundary, would drift from it.
 TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refuses") {
     const Song song = load_songpath(
         corpus::root() + "/test_folded_sqin/folded_sqin.chart", ChartReading{});
@@ -301,20 +370,16 @@ TEST_CASE("banked_phrase_in_reach banks exactly what activation_can_squeeze refu
     for (const SongTimestamp& act : seq) {
         const int64_t act_tick = act.timecode.ticks();
         CAPTURE(act_tick);
-        const SongTimestamp* banked = nullptr;
-        for (const SongTimestamp& c : seq)
-            if (c.flag_sp && !core::activation_can_squeeze(act_tick, c.timecode.ticks()))
-                banked = &c;
-        // A reach at the activation itself: any banked phrase within 500 ms
-        // before it counts.
-        const SongTimestamp* want =
-            banked && within_squeeze_window(offset_from_sp_end(banked->timecode.ms(),
-                                                               act.timecode.ms()))
-                ? banked
-                : nullptr;
+        // A reach at the activation itself: an SP end on the activation chord.
+        const SongTimestamp* want = nullptr;
+        for (const SongTimestamp* c : core::squeeze_window_phrases(song, act.timecode))
+            if (!core::activation_can_squeeze(act_tick, c->timecode.ticks())) want = c;
         CHECK(core::banked_phrase_in_reach(song, act_tick, act.timecode) == want);
         if (want && want->timecode.ticks() == act_tick) ++on_activation_chord;
     }
+    // A floor, so the walk reaches the boundary's own case, a phrase on the
+    // activation chord: every phrase chord, taken as the activation, is the
+    // phrase it banked last, and folded_sqin has phrase chords.
     CHECK(on_activation_chord > 0);
 }
 
@@ -341,11 +406,8 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart squeeze one phrase in once") 
     REQUIRE_NOTHROW(rec = analyze_chart(song, cfg));
     // One SqIn per phrase, and never out again once in (tests/bank_check.h).
     for (const Path* p : rec.all_paths()) bank_check::check_one_step_per_sqin(*p);
-    // The best path keeps its score: the second "+" never moved anything.
-    const Path* best = test::path_named(rec.paths, "0+");
-    REQUIRE(best != nullptr);
-    CHECK(best->totalscore() == 2650);  // pinned from one run
-    CHECK(rec.best_path().totalscore() == 2650);
+    // '0' squeezes the phrase on 26000 in once, and never a second time.
+    REQUIRE(test::path_named(rec.paths, "0+") != nullptr);
     CHECK(test::path_named(rec.paths, "0++") == nullptr);
     CHECK(test::path_named(rec.paths, "0+-") == nullptr);
 }
@@ -394,7 +456,10 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own p
 
 // The corpus-wide lone-pricing check for tied variants (D3) lives in
 // test_replay.cpp ("every tied variant stores what a search pricing it alone
-// stores"), at cap 4, depth 40, ms limit 10 and two more settings.
+// stores"), at cap 4, depth 40, ms limit 10 and two more settings. It also
+// covers the real chart audit finding 89 was found on (Don Broco - Actors at
+// those settings): test::windows_text, which it compares, holds each path's
+// trailing bars.
 
 TEST_CASE("tied variants: a variant that finished the song keeps its own bank") {
     // Cap 4. Two phrases fill 2 bars, then two fills. '0' activates at 2304;
@@ -408,25 +473,16 @@ TEST_CASE("tied variants: a variant that finished the song keeps its own bank") 
     ScoreGraph graph(song, 4);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 3});
 
-    auto check_banks = [](const std::vector<const Path*>& all) {
-        int tied = 0;
-        for (const Path* p : all) {
-            if (p->totalscore() != 400) continue;
-            ++tied;
-            REQUIRE(p->walk_activations().size() == 1);
-            const int64_t at = p->walk_activations().front().timecode.ticks();
-            const std::vector<int64_t> want =
-                at == 2304 ? std::vector<int64_t>{5760} : std::vector<int64_t>{};
-            CHECK_MESSAGE(p->trailing_bank_ticks == want, "activation at " << at);
-            CHECK(p->leftover_sp() == static_cast<int>(want.size()));
-        }
-        CHECK(tied == 2);
-    };
-    const std::vector<const Path*> all = flatten_paths(roots);
-    int variants = 0;
-    for (const Path* p : all) variants += p->var_point.has_value() ? 1 : 0;
-    REQUIRE(variants == 1);  // the two ties are one root and its variant
-    check_banks(all);
+    const std::vector<TiedPair> pairs = tied_pairs(roots);
+    REQUIRE(pairs.size() == 1);  // the two ties are one root and its variant
+    const Path& root = *pairs[0].root;
+    const Path& variant = *pairs[0].variant;
+    CHECK(variant.totalscore() == root.totalscore());
+    // The fold joined two different banks: one path banked the phrase at
+    // 5760 after its SP, the other spent it inside its SP.
+    CHECK(variant.trailing_bank_ticks != root.trailing_bank_ticks);
+    // Each keeps the bank a search pricing it alone gives it.
+    check_each_prices_alone(song, scores_search(4, 3), {&root, &variant});
 }
 
 // The chart the two tests below read: two tied first windows that the search
@@ -456,41 +512,22 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own banked 
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
 
-    const std::vector<int64_t> own_0{5760, 8448};
-    const std::vector<int64_t> own_1{8448, 9216};
-    int again = 0, never = 0, variants = 0;
-    for (const Path* p : flatten_paths(roots)) {
-        const ActivationWalk acts = p->walk_activations();
-        if (acts.empty()) continue;
-        const int64_t first = acts[0].timecode.ticks();
-        if (first != 2304 && first != 3072) continue;
-        const std::vector<int64_t>& own = first == 2304 ? own_0 : own_1;
-        CAPTURE(p->pathstring());
-        CAPTURE(first);
-        if (p->totalscore() == 1100) {
-            ++again;
-            REQUIRE(acts.size() == 2);
-            CHECK(acts[1].timecode.ticks() == 10752);
-            // '0' passed the fill at 9984 before the fold ('1' was refused
-            // there), so its second activation is "1", its own (D38).
-            CHECK(p->pathstring() == (first == 2304 ? "0 1" : "1 0"));
-            CHECK(acts[1].bank_rise_ticks == own);
-            CHECK(acts[1].sp_meter() == 2);
-            CHECK(p->trailing_bank_ticks.empty());
-        } else if (p->totalscore() == 850) {
-            ++never;
-            REQUIRE(acts.size() == 1);
-            CHECK(p->pathstring() == (first == 2304 ? "0" : "1"));
-            CHECK(p->trailing_bank_ticks == own);
-        } else {
-            continue;
-        }
-        variants += p->var_point.has_value() ? 1 : 0;
-        CHECK(replay_stored_path(song, *p).faithful());
+    const SearchSettings settings = scores_search(2, 10);
+    int differing = 0;
+    for (const TiedPair& t : tied_pairs(roots)) {
+        CAPTURE(t.root->pathstring());
+        CAPTURE(t.variant->pathstring());
+        CHECK(t.variant->totalscore() == t.root->totalscore());
+        // Each spends and keeps the bars a search pricing it alone gives it
+        // (test::windows_text holds every window's banked bars and the
+        // trailing ones).
+        check_each_prices_alone(song, settings, {t.root, t.variant});
+        CHECK(replay_stored_path(song, *t.variant).faithful());
+        if (bank_arrivals_of(*t.variant) != bank_arrivals_of(*t.root)) ++differing;
     }
-    CHECK(again == 2);
-    CHECK(never == 2);
-    CHECK(variants == 2);  // each pair is one root and its variant
+    // A floor, so the loop cannot pass on folds that joined equal banks:
+    // the two paths fold at 9984 holding bars banked at different ticks.
+    CHECK(differing > 0);
 }
 
 // The chart above, read for the fills each path passed over after its last
@@ -505,38 +542,24 @@ TEST_CASE("tied variants: a variant's trailing fills are its own") {
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
 
-    int again = 0, never = 0, variants = 0;
-    for (const Path* p : flatten_paths(roots)) {
-        const ActivationWalk acts = p->walk_activations();
-        if (acts.empty()) continue;
-        const int64_t first = acts[0].timecode.ticks();
-        if (first != 2304 && first != 3072) continue;
-        CAPTURE(p->pathstring());
-        CAPTURE(first);
-        if (p->totalscore() == 1100) {
-            ++again;
-            CHECK(p->trailing_skipped_fill_ticks.empty());
-        } else if (p->totalscore() == 850) {
-            ++never;
-            CHECK(p->trailing_skipped_fill_ticks ==
-                  (first == 2304 ? std::vector<int64_t>{9984, 10752} : std::vector<int64_t>{10752}));
-            // Priced alone, the path that activates only at `first`.
-            const TargetResult alone = search_target(graph, activation_pins({first}));
-            bool matched = false;
-            for (const Path& q : alone.paths)
-                if (q.pathstring() == p->pathstring() && q.totalscore() == p->totalscore()) {
-                    matched = true;
-                    CHECK(q.trailing_skipped_fill_ticks == p->trailing_skipped_fill_ticks);
-                }
-            CHECK(matched);
-        } else {
-            continue;
+    int differing = 0;
+    for (const TiedPair& t : tied_pairs(roots)) {
+        CAPTURE(t.root->pathstring());
+        CAPTURE(t.variant->pathstring());
+        // Each lists what a search pricing it alone lists.
+        for (const Path* p : {t.root, t.variant}) {
+            CAPTURE(p->pathstring());
+            REQUIRE(p->has_activations());
+            const std::optional<std::vector<int64_t>> alone = lone_trailing_fills(graph, *p);
+            REQUIRE_MESSAGE(alone.has_value(), "no unfolded lone root is this path");
+            CHECK(p->trailing_skipped_fill_ticks == *alone);
         }
-        variants += p->var_point.has_value() ? 1 : 0;
+        if (t.variant->trailing_skipped_fill_ticks != t.root->trailing_skipped_fill_ticks)
+            ++differing;
     }
-    CHECK(again == 2);
-    CHECK(never == 2);
-    CHECK(variants == 2);  // each pair is one root and its variant
+    // A floor, so the loop cannot pass on folds that joined equal lists: in
+    // the pair that never activates again only one passed the fill at 9984.
+    CHECK(differing > 0);
 }
 
 // D38: a variant folded between windows keeps its own early-fill facts for
@@ -559,61 +582,24 @@ TEST_CASE("tied variants: a variant folded between windows keeps its own early f
                                        {11520}, {12288}, {16128}});
     ScoreGraph graph(song, 2);
     const std::vector<Path> roots = run_search(graph, EngineOptions{DepthMode::Scores, 10});
-    const double ready_1 = tick_ms(song, 9619);
-    int seen = 0, variants = 0;
-    for (const Path* p : flatten_paths(roots)) {
-        const ActivationWalk acts = p->walk_activations();
-        if (acts.size() != 2 || acts[1].timecode.ticks() != 10752) continue;
-        const int64_t first = acts[0].timecode.ticks();
-        if (first != 2304 && first != 3072) continue;
-        CAPTURE(p->pathstring());
-        ++seen;
-        variants += p->var_point.has_value() ? 1 : 0;
-        const Activation& a = acts[1];
-        if (first == 2304) {
-            CHECK(p->pathstring() == "0 1");
-            CHECK(a.skipped_fill_ticks == std::vector<int64_t>{9984});
-            CHECK(a.e_offset == fill_e_offset(23000.0, 22000.0));
-            CHECK_FALSE(a.is_e_critical());
-        } else {
-            CHECK(p->pathstring() == "1 E0");
-            CHECK(a.skipped_fill_ticks.empty());
-            CHECK(a.e_offset == fill_e_offset(25000.0, ready_1));
-            CHECK(a.is_E0());
-            CHECK(*a.e_difficulty(true) == doctest::Approx(49.479).epsilon(1e-4));
-        }
-        SearchSettings s;
-        s.sp_cap = 2;
-        s.depth_mode = DepthMode::Scores;
-        s.depth_value = 10;
-        const std::string diff = lone_pricing_mismatch(song, s, *p);
-        CHECK_MESSAGE(diff.empty(), diff);
+    const SearchSettings settings = scores_search(2, 10);
+    int differing = 0;
+    for (const TiedPair& t : tied_pairs(roots)) {
+        CAPTURE(t.root->pathstring());
+        CAPTURE(t.variant->pathstring());
+        // Each keeps the early-fill facts a search pricing it alone gives it
+        // (test::windows_text holds every window's offset and passed fills).
+        check_each_prices_alone(song, settings, {t.root, t.variant});
+        // The pairs that take the same activation after the fold: one needs
+        // an early fill there and the other does not.
+        const ActivationWalk mine = t.variant->walk_activations();
+        const ActivationWalk lead = t.root->walk_activations();
+        if (mine.empty() || mine.size() != lead.size()) continue;
+        if (mine.back().timecode.ticks() != lead.back().timecode.ticks()) continue;
+        if (mine.back().is_E0() != lead.back().is_E0()) ++differing;
     }
-    CHECK(seen == 2);
-    CHECK(variants == 1);  // one root and its folded variant
-}
-
-TEST_CASE("tied variants: Don Broco - Actors at depth 40 shows each tied path's own bank") {
-    // Audit finding 89: paths 29 '7' and 30 '3' tie at 233,100. '7' ends the
-    // song with 1 bar of SP, '3' with 3.
-    std::string chart;
-    for (const std::string& p : corpus::chart_paths())
-        if (p.find("Don Broco - Actors") != std::string::npos) chart = p;
-    REQUIRE_FALSE(chart.empty());
-
-    SearchSettings s;
-    s.sp_cap = 4;
-    s.depth_mode = DepthMode::Scores;
-    s.depth_value = 40;
-    s.ms_filter = 10.0;
-    const HydraRecord& rec = corpus::analyzed(chart, s);
-
-    int seen = 0;
-    for (const Path* p : rec.all_paths()) {
-        if (p->totalscore() != 233100) continue;
-        const int64_t first = p->walk_activations().front().timecode.ticks();
-        if (first == 150720) { CHECK(p->leftover_sp() == 1); ++seen; }
-        if (first == 82560) { CHECK(p->leftover_sp() == 3); ++seen; }
-    }
-    CHECK(seen == 2);
+    // A floor, so the loop cannot pass on folds that joined equal early-fill
+    // facts: the pair that activates at 10752 after the fold at 9984 is one
+    // path with an E0 there and one without.
+    CHECK(differing > 0);
 }
