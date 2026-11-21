@@ -372,9 +372,9 @@ TEST_CASE("the fill on several workers writes the same figures as on one") {
     CHECK(four_counter.charts_total == want);
 }
 
-// A row the fill reads always has a squeeze-in, and its figure is the largest
+// A row the fill reads holds a squeeze, or an E0 fill, and its figure is the largest
 // difficulty over its squeezes and E0 fills (engine_hardest_ms). So a figure
-// that needs no hitting (timing_needs_hitting is false) means the squeeze-in
+// that needs no hitting (timing_needs_hitting is false) means a squeeze-in
 // itself needs none: it sits inside Star Power, before the SP end. The fill
 // writes that figure whole, sign included, and shown_timing shows no timing
 // for it. The case is the first corpus chart whose fresh save holds such a
@@ -491,7 +491,7 @@ TEST_CASE("a row under an older stamp is left alone by the fill") {
     const std::vector<int> emptied = fill_ranks(chart);
     REQUIRE_FALSE(emptied.empty());
     const std::string empty_rows =
-        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL AND sqin_count > 0";
+        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL";
     int64_t empty_before = 0;
     int replays = 0;
     Counter counter;

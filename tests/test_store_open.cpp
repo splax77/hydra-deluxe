@@ -1484,6 +1484,17 @@ std::vector<int> squeeze_in_ranks(const PreparedRecord& prepared) {
     return out;
 }
 
+// The ranks of `prepared`'s paths that hold a hardest figure, in rank order:
+// the figure the engine worked out when the record was built
+// (engine_hardest_ms), which a squeeze-out or a required early fill gives as
+// a squeeze-in does.
+std::vector<int> figure_ranks(const PreparedRecord& prepared) {
+    std::vector<int> out;
+    for (const PathRow& p : prepared.record.paths)
+        if (p.hardest_ms) out.push_back(p.rank);
+    return out;
+}
+
 // The first corpus chart, walking every one, whose fresh record holds two
 // squeeze-in paths or more. A chart the engine refuses (no notes at the
 // difficulty, or a file it cannot read) is passed over; any other exception
@@ -1542,17 +1553,17 @@ Profile in_other_mode(const Profile& profile, const std::string& name) {
 
 }  // namespace
 
-TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure and a squeeze-in "
-          "is a candidate") {
+TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure the engine "
+          "gives its path is a candidate") {
     const SqueezedChart& chart = squeezed_chart();
     const Profile profile = hardest_settings().profile();
-    const std::vector<int> squeezed = squeeze_in_ranks(chart.fresh);
-    REQUIRE(squeezed.size() >= 2);
-    // Every figure is emptied but the last squeeze-in rank's, which keeps the
-    // figure a fresh save holds. The candidates are the other squeeze-in
-    // ranks; an emptied rank with no squeeze-in is not one.
-    const int held = squeezed.back();
-    const std::vector<int> candidates(squeezed.begin(), squeezed.end() - 1);
+    const std::vector<int> figured = figure_ranks(chart.fresh);
+    REQUIRE(figured.size() >= 2);
+    // Every figure is emptied but the last figured rank's, which keeps the
+    // figure a fresh save holds. The candidates are the other figured ranks;
+    // an emptied rank whose path has no figure is not one.
+    const int held = figured.back();
+    const std::vector<int> candidates(figured.begin(), figured.end() - 1);
     RecordStore store(":memory:");
     save_squeezed(store, chart, profile, ranks_but(chart.fresh, held));
     const RecordLookup found = store.lookup_one(chart.entry.md5, profile);
