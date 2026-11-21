@@ -75,7 +75,7 @@ class TestMsToTicks(unittest.TestCase):
 # testdata/replay/window_map-score.json. Its manifest.json is the one
 # probe_songs wrote beside it: the song name, resolution and tempo.
 _PLAYED_SONG_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-10-28-l3",
-                                "Window Map")
+                                probe_songs.WINDOW_MAP)
 
 
 def _played_chart() -> tuple[str, dict]:
