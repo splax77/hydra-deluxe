@@ -138,7 +138,7 @@ How these files read: the 09-24, 09-25 and phase-6-recheck files are finding lis
 - docs/audit/2026-10-04-phase6-recheck/c.md: 1 question (298, D53 item 1) and the "numbers with no decision" list (D54); 2 blocks.
 - docs/audit/2026-10-04-phase6-recheck/d.md: 2 closures (341 and the 288 threshold); 1 block (341) plus the shared D54 block.
 - docs/audit/2026-10-10-test-suite-audit.md: 0 closures of the bad kind; no block.
-- C:\Users\Patrick\Downloads\Hydra\hydra-test\docs\handoffs\2026-10-25-test-audit\report.md: 0 closures of the bad kind (two items left "for you to decide"); no block.
+- The 2026-10-25 test audit's report (no longer kept): 0 closures of the bad kind (two items left "for you to decide"); no block.
 - docs/audit/2026-10-10-hook-audit.md: 6 decisions + 4 broken items; 3 blocks (media guard REOPEN, the batch of five broken-item exits).
 - docs/audit/2026-10-25-hook-design-audit.md: 2 closures (sleep gap, items 2 to 6); 2 blocks.
 

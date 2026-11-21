@@ -23,6 +23,7 @@ sys.path.insert(0, HERE)  # -I keeps this folder off the path
 import check_pointers  # noqa: E402
 
 SHOWN = os.path.join("memory", "note.md")  # how note.md in the temp memory folder is named in a line
+HANDOFFS = "docs/" + "handoffs/"  # joined, so this file names no handoff path
 
 
 def git(repo, *args):
@@ -307,6 +308,57 @@ class TestPointers(Base):
         self.assertIn("--memory", refusal)
         self.assertIn(no_such, refusal)
         self.assertIn(refusal, err)
+
+
+class TestHandoffCites(Base):
+    """No file may name a handoff (check_pointers.handoff_cites). The handoff paths below are
+    joined at run time, so this file names none itself."""
+
+    def commit(self, rel, text):
+        write(os.path.join(self.repo, rel), text)
+        git(self.repo, "add", rel)
+        git(self.repo, "commit", "-q", "-m", rel)
+
+    def cites(self, out):
+        return [line for line in self.broken(out) if line.endswith("(cites a handoff)")]
+
+    def test_a_tracked_file_naming_a_handoff_is_refused_even_with_a_git_show(self):
+        x, mem = HANDOFFS + "2026-11-01-x-handoff.md", HANDOFFS + "2026-10-07-memory-audit.md"
+        self.commit("src/code.cpp", "// see %s\n" % mem)
+        self.commit("docs/plan.md", "Read `%s` (removed; `git show abc1234:%s`).\n" % (x, x))
+        code, out, err = self.run_check()
+        self.assertEqual(code, 1, out + err)
+        self.assertEqual(sorted(self.cites(out)), [
+            "docs/plan.md:1: %s (cites a handoff)" % x,
+            "docs/plan.md:1: %s (cites a handoff)" % x,
+            "src/code.cpp:1: %s (cites a handoff)" % mem,
+        ], out)
+        self.assertIn("handoff cites: 3", out)
+
+    def test_a_memory_note_naming_a_handoff_is_refused(self):
+        y = HANDOFFS.replace("/", "\\") + "2026-11-02-y-handoff.md"
+        self.note("From %s we learned it.\n" % y)
+        code, out, err = self.run_check()
+        self.assertEqual(self.cites(out), [SHOWN + ":1: %s (cites a handoff)" % y], out + err)
+
+    def test_the_handoffs_folder_and_a_placeholder_pass(self):
+        self.commit(HANDOFFS + "2026-11-03-z-handoff.md", "Next: %s2026-11-01-x-handoff.md\n" % HANDOFFS)
+        self.commit("docs/how.md", "Write `%s<YYYY-MM-DD>-<slug>-handoff.md`.\n" % HANDOFFS)
+        code, out, err = self.run_check()
+        self.assertEqual(self.cites(out), [], out + err)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("handoff cites: 0", out)
+
+    def test_quoted_words_pass_only_on_cards_and_rulings(self):
+        x = HANDOFFS + "2026-11-01-x-handoff.md"
+        typed = '- "continue from %s" (22:49 UTC)\n' % x
+        self.commit("docs/sessions/2026-11-01-abcd1234.md", typed + "The handoff is %s.\n" % x)
+        self.commit("docs/plan.md", typed)
+        code, out, err = self.run_check()
+        self.assertEqual(sorted(self.cites(out)), [
+            "docs/plan.md:1: %s (cites a handoff)" % x,
+            "docs/sessions/2026-11-01-abcd1234.md:2: %s (cites a handoff)" % x,
+        ], out + err)
 
 
 if __name__ == "__main__":
