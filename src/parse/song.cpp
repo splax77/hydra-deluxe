@@ -598,9 +598,7 @@ std::string name_or_unknown(std::string name, std::string_view placeholder) {
 }  // namespace
 
 std::string title_or_unknown(std::string title) {
-    // A placeholder library rows from older scans can still hold.
-    static constexpr const char* kOldPlaceholder = "<unknown title>";
-    return name_or_unknown(std::move(title), kOldPlaceholder);
+    return name_or_unknown(std::move(title), kOldTitlePlaceholder);
 }
 
 // ---- rich-text tags ---------------------------------------------------------

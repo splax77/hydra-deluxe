@@ -93,6 +93,10 @@ void check_timing_maps(int64_t tick_resolution,
 inline constexpr int kDefaultTimeSigNumerator = 4;
 inline constexpr int kDefaultTimeSigDenominator = 4;
 
+// The feature name Song::check_activations adds to Song::features when it
+// places fills for a chart that has none of its own.
+inline constexpr const char* kGeneratedFillsFeature = "Auto-Generated Fills";
+
 // A parsed chart: the timestamp sequence plus the tempo/meter maps it was built
 // from. Timing is snapshotted once the maps are complete (build_timing).
 class Song {

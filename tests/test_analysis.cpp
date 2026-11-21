@@ -1207,12 +1207,12 @@ TEST_CASE("rescan cache: an old placeholder or blank title reads (unknown)") {
     REQUIRE(!items.empty());
 
     // Library rows from older scans (see title_or_unknown): a blank title from
-    // an empty `name =`, or the placeholder "<unknown title>".
+    // an empty `name =`, or the old placeholder (kOldTitlePlaceholder).
     hydra::store::RecordStore store(":memory:");
     std::vector<hydra::store::ChartLibraryEntry> entries;
     for (size_t i = 0; i < items.size(); ++i) {
         hydra::store::ChartLibraryEntry e = items[i];
-        e.title = i % 2 ? "<unknown title>" : "";
+        e.title = i % 2 ? hydra::kOldTitlePlaceholder : "";
         entries.push_back(std::move(e));
     }
     store.rebuild_chart_library(entries);

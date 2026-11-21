@@ -100,9 +100,13 @@ public:
 // What a song with no usable name is called everywhere it is shown.
 inline constexpr const char* kUnknownTitle = "(unknown)";
 
+// A placeholder name that library rows from older scans can still hold.
+// title_or_unknown turns it into kUnknownTitle.
+inline constexpr const char* kOldTitlePlaceholder = "<unknown title>";
+
 // The one fallback for a song's name. A blank name (an empty `name =`, a
-// missing name key, an empty .sng/.srb name) and the placeholder
-// "<unknown title>" both become kUnknownTitle. Library rows from older scans
+// missing name key, an empty .sng/.srb name) and kOldTitlePlaceholder both
+// become kUnknownTitle. Library rows from older scans
 // still hold those, so every place that shows a stored name reads it through
 // this.
 std::string title_or_unknown(std::string title);
