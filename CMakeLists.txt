@@ -627,7 +627,6 @@ add_library(hydra_uitest_harness STATIC
     tests/ui/uitest_paths.cpp
     tests/ui/uitest_report_windows.cpp
     tests/ui/live_protocol.h
-    tests/report_samples.cpp
 )
 # update_reply.h edits the release fixture with third_party/json.
 target_include_directories(hydra_uitest_harness PRIVATE third_party/json)
@@ -739,7 +738,6 @@ endforeach()
 file(GLOB hydra_test_sources CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/tests/test_*.cpp)
 add_executable(hydra_tests
     ${hydra_test_sources}
-    tests/report_samples.cpp
     # tests/single_owner/engine.cpp comes from hydra_precheck_lib (below).
     tests/single_owner/scan.cpp
     tests/single_owner/clones.cpp
