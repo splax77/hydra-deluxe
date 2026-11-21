@@ -86,7 +86,8 @@ double activation_fill_deadline_ms(const SongTiming& timing,
         static_cast<double>(fill_end_tick) -
         (static_cast<double>(fill_length_ticks) + res / 16.0));
     const double fill_len_ms = fend - fst;
-    const double preroll = std::max(250.0, std::min(fend - pad, 10000.0));
+    const double preroll =
+        std::max(kCh10FillLeadFloorMs, std::min(fend - pad, kCh10FillLeadCeilingMs));
     return fend - fill_len_ms - preroll;
 }
 

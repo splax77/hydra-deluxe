@@ -80,10 +80,8 @@ void for_each_row(Fn&& fn) {
         for_each_row_w([&](float row_w) { fn(count, row_w); });
 }
 
-// The row's top padding: the first line's text sits in the middle of the
-// row's first line (kRowLineH), so the padding is half of what the text line
-// leaves of it.
-float top_pad(float scale) { return (kRowLineH - kLine) * 0.5f * scale; }
+// The row's top padding at `scale`, from its owner (activation_row_layout.h).
+float top_pad(float scale) { return hydra::ui::activation_row_top_pad(kLine * scale, scale); }
 
 // Every position and size in `two` is twice the same one in `one`; the badge
 // lines are counts, so they match.
@@ -271,6 +269,8 @@ TEST_CASE("activation row: badges under the measure clear the bars by the row's 
             ++dropped;
             const float line = kLine * scale;
             const float pad = top_pad(scale);
+            // The text line sits in the middle of the row's first band.
+            CHECK(l.text_y + line * 0.5f == doctest::Approx(kRowLineH * scale * 0.5f));
             CHECK(l.text_y == doctest::Approx(pad));
             float above = l.text_y + line;  // the bars' line bottom, then each pill line's
             float line_top = 0.0f;
