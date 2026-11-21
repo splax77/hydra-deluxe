@@ -27,6 +27,27 @@ namespace {
 
 using corpus::json;
 
+// mido's name for a message type ("note_on", "set_tempo", ...), the spelling
+// the expected streams below are written in.
+std::string mido_name(hydra::Message::Type type) {
+    using T = hydra::Message::Type;
+    switch (type) {
+        case T::NoteOn: return "note_on";
+        case T::NoteOff: return "note_off";
+        case T::SetTempo: return "set_tempo";
+        case T::TimeSignature: return "time_signature";
+        case T::Text: return "text";
+        case T::Copyright: return "copyright";
+        case T::Lyrics: return "lyrics";
+        case T::Marker: return "marker";
+        case T::CueMarker: return "cue_marker";
+        case T::TrackName: return "track_name";
+        case T::InstrumentName: return "instrument_name";
+        case T::DeviceName: return "device_name";
+    }
+    return "unknown";
+}
+
 // Absolute-tick event view, built as JSON so a unit case can diff a parsed
 // file against a literal expected stream in one CHECK.
 json event_view(const hydra::MidiFile& mid) {
@@ -37,7 +58,7 @@ json event_view(const hydra::MidiFile& mid) {
         for (const auto& m : track.messages) {
             using T = hydra::Message::Type;
             tick += m.time;
-            const std::string name = hydra::message_type_name(m.type);
+            const std::string name = mido_name(m.type);
             const int note = m.note, velocity = m.velocity;
             if (m.type == T::NoteOn || m.type == T::NoteOff) {
                 events.push_back({tick, name, note, velocity});
@@ -119,22 +140,6 @@ TEST_CASE("midi: every corpus .mid reads through the lean reader and has a drum 
     }
     REQUIRE(mids > 0);
     MESSAGE("midi smoke: " << mids << " files");
-}
-
-// from_file reads through read_file_bytes, so a missing file fails as a
-// missing song file, with the words cannot_open_file_text gives for its path.
-TEST_CASE("midi: from_file on a missing path fails with the file owner's error") {
-    const std::string missing = corpus::first_chart_with_suffix(".mid") + ".missing";
-    std::optional<hydra::ErrorKind> kind;
-    std::string what;
-    try {
-        hydra::MidiFile::from_file(missing);
-    } catch (const hydra::KindedError& e) {
-        kind = e.kind();
-        what = e.what();
-    }
-    CHECK(kind == hydra::ErrorKind::SongFileMissing);
-    CHECK(what == hydra::cannot_open_file_text(missing));
 }
 
 TEST_CASE("midi: running status and zero-velocity note_on") {
@@ -365,19 +370,6 @@ TEST_CASE("midi: each string meta gets its type, its own name and attribute") {
         CHECK(msgs[i].str == "x");
     }
 
-    // message_type_name spells every type the reader emits, each its own
-    // way, and none falls through to the spelling it gives a value outside
-    // Message::Type.
-    const std::string outside = hydra::message_type_name(static_cast<T>(0xFF));
-    std::vector<std::string> names;
-    for (T type : {T::NoteOn, T::NoteOff, T::SetTempo, T::TimeSignature})
-        names.push_back(hydra::message_type_name(type));
-    for (const Want& w : want) names.push_back(hydra::message_type_name(w.type));
-    for (size_t i = 0; i < names.size(); ++i) {
-        CHECK_MESSAGE(!names[i].empty(), i);
-        CHECK_MESSAGE(names[i] != outside, names[i]);
-        for (size_t j = i + 1; j < names.size(); ++j) CHECK_MESSAGE(names[i] != names[j], names[i]);
-    }
 }
 
 TEST_CASE("midi: non-MIDI input is rejected") {

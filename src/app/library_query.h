@@ -109,8 +109,8 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
 std::string search_field(std::string_view song, std::string_view artist,
                          std::string_view charter, std::string_view path = {});
 
-// Whether a term limited to `term_field` counts in `column`: true when either
-// is Any or the two are the same field. The one rule for both matching
+// Whether a term limited to `term_field` counts in `column`: true when the
+// term is unfielded (Any) or the two are the same field. The one rule for both matching
 // (query_matches) and highlighting (match_spans).
 bool term_applies_to(QueryField term_field, QueryField column);
 

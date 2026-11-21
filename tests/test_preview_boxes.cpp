@@ -184,11 +184,12 @@ std::string drain_seconds(double ms) {
 }
 
 // How long the engine's rule makes `bars` bars of Star Power last from
-// `tick`: SongTiming::sp_end_ms, the timing owner's SP end for sp_bars_to_measures
-// measures on, minus the start. It adds no measures of its own.
+// `tick`: SongTiming::plusmeasure, the SP end the search's graph reads
+// (ScoreGraph::plusmeasure), sp_bars_to_measures measures on, minus the
+// start. It adds no measures of its own.
 double engine_sp_ms(const Song& song, int64_t tick, int64_t bars) {
-    const double from_ms = song.timing().timecode(tick).ms();
-    return song.timing().sp_end_ms(from_ms, sp_bars_to_measures(bars)) - from_ms;
+    const Timecode from = song.timing().timecode(tick);
+    return song.timing().plusmeasure(from, sp_bars_to_measures(bars)).ms() - from.ms();
 }
 
 // The replay chord struck at `ms` (struck_at), or none before the first.

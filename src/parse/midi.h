@@ -47,8 +47,7 @@ inline constexpr int kMidiDataValues = 128;
 // One event. A single struct covers channel and meta messages; only the fields
 // relevant to `type` are set.
 struct Message {
-    // Every kind of message the reader emits. The names mido gives them are
-    // spelled by message_type_name().
+    // Every kind of message the reader emits.
     enum class Type : uint8_t {
         NoteOn, NoteOff, SetTempo, TimeSignature,
         // Metas whose string is mido's `text` attribute.
@@ -84,9 +83,6 @@ struct Message {
     // one, as in mido and Clone Hero.
     bool is_note_on() const { return type == Type::NoteOn && velocity > 0; }
 };
-
-// mido's name for a message type ("note_on", "set_tempo", "track_name", ...).
-const char* message_type_name(Message::Type type);
 
 // The track names the song parser finds its tracks by. is_drums_track_name
 // and is_events_track_name are the only tests of them: MidiFile::drums_track
@@ -223,10 +219,6 @@ public:
     // reads each instrument once (see drums_track), and the drum names are
     // one instrument, so the drums count through drums_track.
     std::optional<int64_t> last_note_end_tick() const;
-
-    // Read and parse a file from disk. A file that cannot be read throws
-    // read_file_bytes' error; one that is not a MIDI file throws MidiError.
-    static MidiFile from_file(const std::string& path);
 
     int ticks_per_beat = 0;
     int format = 0;

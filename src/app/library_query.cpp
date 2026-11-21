@@ -327,7 +327,7 @@ bool term_matches(const QueryTerm& term, const SearchableRow& row) {
 }  // namespace
 
 bool term_applies_to(QueryField term_field, QueryField column) {
-    return term_field == QueryField::Any || column == QueryField::Any || term_field == column;
+    return term_field == QueryField::Any || term_field == column;
 }
 
 std::string fold_for_search(std::string_view text) {

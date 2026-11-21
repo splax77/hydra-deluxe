@@ -187,12 +187,11 @@ TEST_CASE("sng: the file table and each file decode") {
     REQUIRE(table.size() == 2);
     CHECK(table[0].name == "notes.mid");
     CHECK(table[1].name == "song.ogg");
-    auto got_mid = sng_decode_file(buf, table[0]);
-    auto got_ogg = sng_decode_file(buf, table[1]);
-    REQUIRE(got_mid.has_value());
-    REQUIRE(got_ogg.has_value());
-    CHECK(*got_mid == mid);
-    CHECK(*got_ogg == ogg);
+    std::vector<uint8_t> got_mid, got_ogg;
+    REQUIRE(sng_decode_file_into(buf, table[0], got_mid));
+    REQUIRE(sng_decode_file_into(buf, table[1], got_ogg));
+    CHECK(got_mid == mid);
+    CHECK(got_ogg == ogg);
 }
 
 TEST_CASE("sng: truncated input stops early instead of reading past the end") {
@@ -220,7 +219,9 @@ TEST_CASE("sng: truncated input stops early instead of reading past the end") {
     REQUIRE(wrapped_table.size() == 1);
     REQUIRE(wrapped_table[0].length == wrapping_length);
     CHECK(wrapped_table[0].offset + wrapped_table[0].length < wrapped_table[0].offset);
-    CHECK_FALSE(sng_decode_file(wrapped, wrapped_table[0]).has_value());
+    std::vector<uint8_t> wrapped_out = {42};
+    CHECK_FALSE(sng_decode_file_into(wrapped, wrapped_table[0], wrapped_out));
+    CHECK(wrapped_out == std::vector<uint8_t>{42});
     // The note loader refuses it too, through both of its reads.
     damaged_failure("wrapped.sng", wrapped);
 }
@@ -290,7 +291,6 @@ TEST_CASE("sng: unmasking into the caller's buffer undoes the stored masking") {
     std::vector<uint8_t> keep = {42};
     CHECK_FALSE(sng_decode_file_into(buf, bad, keep));
     CHECK(keep == std::vector<uint8_t>{42});
-    CHECK_FALSE(sng_decode_file(buf, bad).has_value());
 }
 
 // A real container is mostly audio; the notes are a small part of it.
@@ -377,7 +377,8 @@ TEST_CASE("sng: ranged reads fail a damaged container the way a whole read does"
     const std::vector<uint8_t> cut_notes(whole.begin(), whole.end() - 5);
     const std::vector<SngFileEntry> cut_notes_table = sng_read_file_table(cut_notes);
     REQUIRE(cut_notes_table.size() == 1);
-    CHECK_FALSE(sng_decode_file(cut_notes, cut_notes_table[0]).has_value());
+    std::vector<uint8_t> cut_out;
+    CHECK_FALSE(sng_decode_file_into(cut_notes, cut_notes_table[0], cut_out));
     CHECK(damaged_failure("cut_notes.sng", cut_notes).line != no_notes.line);
 
     // The file table is cut (make_sng puts the notes right after it): no
