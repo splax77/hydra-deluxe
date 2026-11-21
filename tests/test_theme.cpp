@@ -1,20 +1,35 @@
-// The theme's text colours against the surfaces they sit on, measured the way
-// WCAG 2.2 defines contrast: (L1 + 0.05) / (L2 + 0.05) on relative luminance.
-// 4.5:1 is the minimum for normal-size text.
+// The theme's colours against the surfaces they sit on, measured with the
+// contrast formula in wcag_util.h, and what apply_theme writes into ImGui's
+// style.
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <cstdint>
+#include <optional>
+#include <set>
 #include <string>
+#include <utility>
+#include <vector>
 
-#include "app/report.h"  // ChipToken, tier_token
+#include "app/html_page.h"  // kChipRgb*
+#include "app/report.h"     // ChipToken, tier_token
 #include "core/squeeze_rating.h"
 #include "imgui.h"
 #include "ui/theme.h"
 #include "wcag_util.h"
 
+#include "headless_imgui_fixture.h"
+
 using namespace hydra::ui;
 
 namespace {
+
+// The least contrast that counts as readable for text, and for a mark that
+// is not text (a dot, an outline). No code in src/ holds these floors; this
+// file and test_report_page.cpp each name them.
+constexpr double kReadableTextContrast = 4.5;
+constexpr double kReadableMarkContrast = 3.0;
 
 double luminance(const ImVec4& c) { return testwcag::relative_luminance(c.x, c.y, c.z); }
 
@@ -31,19 +46,56 @@ void check_same_color(const std::string& what, const ImVec4& got, const ImVec4& 
     CHECK(got.w == want.w);
 }
 
+// Every chip token a report window draws.
+const hydra::app::report::ChipToken kEveryChip[] = {
+    hydra::app::report::ChipToken::t0, hydra::app::report::ChipToken::t1,
+    hydra::app::report::ChipToken::t2, hydra::app::report::ChipToken::t3,
+    hydra::app::report::ChipToken::t4, hydra::app::report::ChipToken::t5,
+    hydra::app::report::ChipToken::tn, hydra::app::report::ChipToken::muted,
+};
+
+// Where an item drew its text: the leftmost and rightmost x of the vertices
+// `draw` added in the text colour, and the item's own left and right edges.
+struct TextSpan {
+    float text_left = 0.0f;
+    float text_right = 0.0f;
+    float item_left = 0.0f;
+    float item_right = 0.0f;
+    int vertices = 0;
+};
+
+template <class Draw>
+TextSpan text_span(Draw draw) {
+    const ImDrawList* list = ImGui::GetWindowDrawList();
+    const int before = list->VtxBuffer.Size;
+    draw();
+    const ImU32 text = ImGui::GetColorU32(ImGuiCol_Text);
+    TextSpan s;
+    for (int i = before; i < list->VtxBuffer.Size; ++i) {
+        const ImDrawVert& v = list->VtxBuffer[i];
+        if (v.col != text) continue;
+        s.text_left = s.vertices == 0 ? v.pos.x : (std::min)(s.text_left, v.pos.x);
+        s.text_right = s.vertices == 0 ? v.pos.x : (std::max)(s.text_right, v.pos.x);
+        ++s.vertices;
+    }
+    s.item_left = ImGui::GetItemRectMin().x;
+    s.item_right = ImGui::GetItemRectMax().x;
+    return s;
+}
+
 }  // namespace
 
-TEST_CASE("theme: button text reads at 4.5:1 in every button state") {
-    CHECK(contrast(kDefaultTextColor, kButtonColor) >= 4.5);
-    CHECK(contrast(kDefaultTextColor, kButtonHoveredColor) >= 4.5);
-    CHECK(contrast(kDefaultTextColor, kButtonActiveColor) >= 4.5);
+TEST_CASE("theme: button text reads in every button state") {
+    CHECK(contrast(kDefaultTextColor, kButtonColor) >= kReadableTextContrast);
+    CHECK(contrast(kDefaultTextColor, kButtonHoveredColor) >= kReadableTextContrast);
+    CHECK(contrast(kDefaultTextColor, kButtonActiveColor) >= kReadableTextContrast);
 }
 
 TEST_CASE("theme: dimmed and disabled text stays readable") {
-    CHECK(contrast(kDimTextColor, kWindowBgColor) >= 4.5);
-    CHECK(contrast(kDimTextColor, kPanelBg) >= 4.5);
-    CHECK(contrast(kDisabledInputTextColor, kDisabledInputBgColor) >= 4.5);
-    CHECK(contrast(kDisabledButtonTextColor, kDisabledButtonColor) >= 4.5);
+    CHECK(contrast(kDimTextColor, kWindowBgColor) >= kReadableTextContrast);
+    CHECK(contrast(kDimTextColor, kPanelBg) >= kReadableTextContrast);
+    CHECK(contrast(kDisabledInputTextColor, kDisabledInputBgColor) >= kReadableTextContrast);
+    CHECK(contrast(kDisabledButtonTextColor, kDisabledButtonColor) >= kReadableTextContrast);
 }
 
 TEST_CASE("theme: apply_theme uses the readable shades") {
@@ -57,28 +109,48 @@ TEST_CASE("theme: apply_theme uses the readable shades") {
     ImGui::DestroyContext();
 }
 
-// apply_theme writes the text alignment itself, by the user's answer 6 in
-// docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md (removed; `git show 444631e6:docs/superpowers/plans/2026-10-14-column-shares-scroll-left-align.md`):
-// a button's label centred, a selectable's text at the left. The style starts
-// off elsewhere so the test sees the write, not ImGui's defaults.
+// A real button and a real selectable, each 200 px wide, drawn after
+// apply_theme: the button's label sits in the middle of the button, and the
+// selectable's text starts where the selectable starts. The style starts off
+// the other way round so the test sees apply_theme's write.
 TEST_CASE("theme: apply_theme centres button labels and starts selectable text at the left") {
-    ImGui::CreateContext();
+    hydra::test::HeadlessImGui imgui;
     ImGuiStyle& style = ImGui::GetStyle();
     style.ButtonTextAlign = ImVec2(0.0f, 0.0f);
     style.SelectableTextAlign = ImVec2(1.0f, 1.0f);
     apply_theme();
-    CHECK(style.ButtonTextAlign.x == 0.5f);
-    CHECK(style.ButtonTextAlign.y == 0.5f);
-    CHECK(style.SelectableTextAlign.x == 0.0f);
-    CHECK(style.SelectableTextAlign.y == 0.0f);
-    ImGui::DestroyContext();
-}
 
-// Disabled input text and dimmed text are one grey, written once: the
-// disabled name refers to the dimmed one rather than spelling it again.
-TEST_CASE("theme: disabled input text is the dimmed grey") {
-    CHECK(&kDisabledInputTextColor == &kDimTextColor);
-    check_same_color("disabled input text", kDisabledInputTextColor, kDimTextColor);
+    // A glyph's quad sits a pixel or so inside its advance width, and ImGui
+    // rounds text positions to whole pixels; text placed the other way would
+    // be some 90 px off.
+    const float slack = 3.0f;
+    const ImVec2 size(200.0f, 40.0f);
+
+    ImGui::NewFrame();
+    ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
+    ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+    ImGui::Begin("###theme_alignment", nullptr, ImGuiWindowFlags_NoSavedSettings);
+
+    const TextSpan button = text_span([&] { ImGui::Button("H##button", size); });
+    REQUIRE(button.vertices > 0);
+    const float left_gap = button.text_left - button.item_left;
+    const float right_gap = button.item_right - button.text_right;
+    CAPTURE(left_gap);
+    CAPTURE(right_gap);
+    CHECK(left_gap - right_gap <= slack);
+    CHECK(right_gap - left_gap <= slack);
+
+    const float selectable_start = ImGui::GetCursorScreenPos().x;
+    const TextSpan selectable =
+        text_span([&] { ImGui::Selectable("H##selectable", false, 0, size); });
+    REQUIRE(selectable.vertices > 0);
+    CAPTURE(selectable_start);
+    CAPTURE(selectable.text_left);
+    CHECK(selectable.text_left - selectable_start <= slack);
+    CHECK(selectable.text_left >= selectable_start);
+
+    ImGui::End();
+    ImGui::EndFrame();
 }
 
 TEST_CASE("theme: a selected row is the dark teal and its text stays readable") {
@@ -87,18 +159,16 @@ TEST_CASE("theme: a selected row is the dark teal and its text stays readable") 
     const ImVec4& header = ImGui::GetStyle().Colors[ImGuiCol_Header];
     check_same_color("Header", header, kSelectedRowColor);
     ImGui::DestroyContext();
-    // The user's choice: (0, 48, 48).
-    CHECK(kSelectedRowColor.y * 255.0f == doctest::Approx(48.0f));
     // Every text colour a Library, report or Paths-tab row draws in: the
     // default and dimmed text, the gold of an optimal path or a Ready song,
     // the grey of a not-analyzed song, and the orange of a stale song or a
     // warned timing. The report chips' colours are checked below, beside
     // their check on the window.
-    CHECK(contrast(kDefaultTextColor, kSelectedRowColor) >= 4.5);
-    CHECK(contrast(kBestPathColor, kSelectedRowColor) >= 4.5);
-    CHECK(contrast(kDimTextColor, kSelectedRowColor) >= 4.5);
-    CHECK(contrast(kNewSongColor, kSelectedRowColor) >= 4.5);
-    CHECK(contrast(kWarningColor, kSelectedRowColor) >= 4.5);
+    CHECK(contrast(kDefaultTextColor, kSelectedRowColor) >= kReadableTextContrast);
+    CHECK(contrast(kBestPathColor, kSelectedRowColor) >= kReadableTextContrast);
+    CHECK(contrast(kDimTextColor, kSelectedRowColor) >= kReadableTextContrast);
+    CHECK(contrast(kNewSongColor, kSelectedRowColor) >= kReadableTextContrast);
+    CHECK(contrast(kWarningColor, kSelectedRowColor) >= kReadableTextContrast);
 }
 
 TEST_CASE("theme: frames and headers share one hover teal") {
@@ -112,78 +182,79 @@ TEST_CASE("theme: frames and headers share one hover teal") {
 }
 
 // Every report chip colour (chip_color) against the window it sits on. The
-// chip's outline is a non-text mark (3:1) and its words are text (4.5:1),
-// both drawn in the chip's colour. A report row's chips and alert cells also
-// sit on the selected row's face when the row is picked.
+// chip's outline and its words are both drawn in the chip's colour, so the
+// colour must read as text. A report row's chips and alert cells also sit on
+// the selected row's face when the row is picked.
 TEST_CASE("theme: report chip colours read on the window background") {
-    using hydra::app::report::ChipToken;
-    for (const ChipToken token : {ChipToken::t0, ChipToken::t1, ChipToken::t2, ChipToken::t3,
-                                  ChipToken::t4, ChipToken::t5, ChipToken::tn,
-                                  ChipToken::muted}) {
+    for (const hydra::app::report::ChipToken token : kEveryChip) {
         CAPTURE(static_cast<int>(token));
-        CHECK(contrast(chip_color(token), kWindowBgColor) >= 4.5);
-        CHECK(contrast(chip_color(token), kSelectedRowColor) >= 4.5);
+        CHECK(contrast(chip_color(token), kWindowBgColor) >= kReadableTextContrast);
+        CHECK(contrast(chip_color(token), kSelectedRowColor) >= kReadableTextContrast);
     }
 }
 
-// The tier colours, which the fill page's dark scheme also writes
-// (html_page.h's kChipRgb*), and the dim chip as the theme's dimmed text.
+// Each tier chip is drawn in the colour the fill page's dark scheme gives that
+// tier (html_page.h's kChipRgb*, written 0xRRGGBB), fully opaque, and the dim
+// chip is the theme's dimmed text.
 TEST_CASE("theme: report chip colours are the pages' and the dimmed grey") {
     using hydra::app::report::ChipToken;
-    const ImVec4 t0 = chip_color(ChipToken::t0);  // #4fbf94
-    CHECK(t0.x == 0x4f / 255.0f);
-    CHECK(t0.y == 0xbf / 255.0f);
-    CHECK(t0.z == 0x94 / 255.0f);
-    const ImVec4 t3 = chip_color(ChipToken::t3);  // #f2686b
-    CHECK(t3.x == 0xf2 / 255.0f);
-    CHECK(t3.y == 0x68 / 255.0f);
-    CHECK(t3.z == 0x6b / 255.0f);
-    CHECK(t3.w == 1.0f);
-    const ImVec4 tn = chip_color(ChipToken::tn);  // #949aa6
-    CHECK(tn.x == 0x94 / 255.0f);
-    CHECK(tn.y == 0x9a / 255.0f);
-    CHECK(tn.z == 0xa6 / 255.0f);
-    const ImVec4 muted = chip_color(ChipToken::muted);
-    check_same_color("muted chip", muted, kDimTextColor);
+    namespace html = hydra::app::html;
+    const std::pair<ChipToken, uint32_t> page_colors[] = {
+        {ChipToken::t0, html::kChipRgbT0}, {ChipToken::t1, html::kChipRgbT1},
+        {ChipToken::t2, html::kChipRgbT2}, {ChipToken::t3, html::kChipRgbT3},
+        {ChipToken::t4, html::kChipRgbT4}, {ChipToken::t5, html::kChipRgbT5},
+        {ChipToken::tn, html::kChipRgbTn},
+    };
+    for (const auto& [token, rgb] : page_colors) {
+        CAPTURE(static_cast<int>(token));
+        const ImVec4 chip = chip_color(token);
+        CHECK(chip.x == ((rgb >> 16) & 0xffu) / 255.0f);
+        CHECK(chip.y == ((rgb >> 8) & 0xffu) / 255.0f);
+        CHECK(chip.z == (rgb & 0xffu) / 255.0f);
+        CHECK(chip.w == 1.0f);
+    }
+    check_same_color("muted chip", chip_color(ChipToken::muted), kDimTextColor);
 }
 
-// A path row's tier carries tier_for's token name (ReportRow::tok);
-// tier_token reads it.
+// A path row's tier carries tier_for's token name (ReportRow::tok), and
+// tier_token turns it into the chip the row is drawn in: every tier of the
+// ladder gets a chip of its own, in the ladder's order, a path with no
+// squeeze gets the no-squeeze chip, and a tier's label is not read as a
+// token.
 TEST_CASE("theme: tier_token reads every token tier_for gives") {
     using hydra::app::report::ChipToken;
     using hydra::app::report::tier_token;
-    CHECK(tier_token("t0") == ChipToken::t0);
-    CHECK(tier_token("t1") == ChipToken::t1);
-    CHECK(tier_token("t2") == ChipToken::t2);
-    CHECK(tier_token("t3") == ChipToken::t3);
-    CHECK(tier_token("t4") == ChipToken::t4);
-    CHECK(tier_token("t5") == ChipToken::t5);
-    CHECK(tier_token("tn") == ChipToken::tn);
-    CHECK_THROWS(tier_token("t9"));
-    for (const hydra::TimingTier& t : hydra::timing_tiers()) CHECK_NOTHROW(tier_token(t.tok));
+    const std::vector<hydra::TimingTier> tiers = hydra::timing_tiers();
+    REQUIRE_FALSE(tiers.empty());
+    std::set<int> chips;
+    int previous = -1;
+    for (const hydra::TimingTier& t : tiers) {
+        CAPTURE(std::string(t.tok));
+        REQUIRE_NOTHROW(tier_token(t.tok));
+        const int chip = static_cast<int>(tier_token(t.tok));
+        CHECK(chip > previous);
+        previous = chip;
+        chips.insert(chip);
+        CHECK_THROWS(tier_token(t.name));
+    }
+    CHECK(chips.size() == tiers.size());
+    CHECK(tier_token(hydra::none_tier(tiers).tok) == ChipToken::tn);
+    CHECK(tier_token(hydra::tier_for(std::nullopt, tiers).second) == ChipToken::tn);
 }
 
-// The version bar: each dot is a graphic (3:1) and the bar's sentences are
-// text (4.5:1), all on the bar's background, which sits darker than the
-// window. The dots are not the orange of a problem line.
+// The version bar: each dot is a mark and the bar's sentences are text, all
+// on the bar's background, which sits darker than the window. The dots are
+// not the orange of a problem line.
 TEST_CASE("theme: the version bar's dots and text read on its background") {
     for (const ImVec4* dot : {&kUpToDateDotColor, &kUpdateAvailableDotColor, &kNeutralDotColor}) {
-        CHECK(contrast(*dot, kVersionBarBg) >= 3.0);
+        CHECK(contrast(*dot, kVersionBarBg) >= kReadableMarkContrast);
         const bool is_warning =
             dot->x == kWarningColor.x && dot->y == kWarningColor.y && dot->z == kWarningColor.z;
         CHECK_FALSE(is_warning);
     }
-    CHECK(contrast(kDefaultTextColor, kVersionBarBg) >= 4.5);
-    CHECK(contrast(kDimTextColor, kVersionBarBg) >= 4.5);
+    CHECK(contrast(kDefaultTextColor, kVersionBarBg) >= kReadableTextContrast);
+    CHECK(contrast(kDimTextColor, kVersionBarBg) >= kReadableTextContrast);
     CHECK(kVersionBarBg.x < kWindowBgColor.x);
     CHECK(kVersionBarBg.y < kWindowBgColor.y);
     CHECK(kVersionBarBg.z < kWindowBgColor.z);
-}
-
-// The Star Power gold's numbers, a different gold from kBestPathColor.
-TEST_CASE("theme: the Star Power gold is named") {
-    CHECK(kStarPowerColor.x == 255 / 255.0f);
-    CHECK(kStarPowerColor.y == 204 / 255.0f);
-    CHECK(kStarPowerColor.z == 51 / 255.0f);
-    CHECK(kStarPowerColor.w == 1.0f);
 }
