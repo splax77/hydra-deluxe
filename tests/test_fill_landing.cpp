@@ -27,34 +27,135 @@ int64_t activation_tick(const Song& song) {
     return -1;
 }
 
-// A .chart at `res` ticks per beat: chords at 0 and 3*res, a fill from 2*res
-// to 4*res, and one more chord `after` ticks past the fill end. Returns the
-// tick of the chord the fill landed on.
-int64_t chart_landing(int64_t res, int64_t after,
+// FL-03, the game's rule: a written fill may land on a chord up to
+// trunc(resolution x slop) + 1 ticks after its end, and the game's slop is a
+// fixed 1/32 of a beat. Hydra's place_authored_fills keeps its window private,
+// so the tests state the game's rule here and check Hydra against it.
+constexpr double kGameSlopBeats = 1.0 / 32;
+
+int64_t game_landing_window(int64_t res, double slop_beats) {
+    // static_cast truncates toward zero, as the game's cvttsd2si does.
+    return static_cast<int64_t>(static_cast<double>(res) * slop_beats) + 1;
+}
+
+// The window shape both readers' tests build, in beats of `res` ticks: a chord
+// at 0, a fill from beat 2 to beat 4, a chord inside the fill at beat 3, and
+// one more chord some ticks past the fill end.
+int64_t window_fill_start(int64_t res) { return 2 * res; }
+int64_t window_inner_chord(int64_t res) { return 3 * res; }
+int64_t window_fill_end(int64_t res) { return 4 * res; }
+
+// The window shape as a .chart at `res` ticks per beat, with the last chord
+// `past_end` ticks past the fill end. Returns the tick of the chord the fill
+// landed on.
+int64_t chart_landing(int64_t res, int64_t past_end,
                       const core::Rules& rules = core::default_rules()) {
     using testchart::line;
+    const int64_t fill_start = window_fill_start(res);
     const std::vector<uint8_t> data = testchart::chart_bytes(
-        testchart::section("ExpertDrums",
-                           line(0, "N 1 0") + line(2 * res, "S 64 " + std::to_string(2 * res)) +
-                               line(3 * res, "N 1 0") + line(4 * res + after, "N 1 0")),
+        testchart::section(
+            "ExpertDrums",
+            line(0, "N 1 0") +
+                line(fill_start,
+                     "S 64 " + std::to_string(window_fill_end(res) - fill_start)) +
+                line(window_inner_chord(res), "N 1 0") +
+                line(window_fill_end(res) + past_end, "N 1 0")),
         res);
     return activation_tick(load_songbytes_chart(data, ChartReading{Difficulty::Expert}, rules));
 }
 
-// The same shape as a .mid at 480 ticks per beat: chords at 0 and 1440, the
-// fill (pitch 120) from 960 to 1920, and one more chord `after` ticks later.
-int64_t mid_landing(uint8_t after) {
-    REQUIRE(after < 0x80);  // one delta byte
+// Delta-0 events placed at absolute ticks, in tick order: each event's zero
+// delta becomes the distance from the event before it.
+std::vector<uint8_t> timed_events(
+    const std::vector<std::pair<uint32_t, std::vector<uint8_t>>>& events) {
+    std::vector<uint8_t> t;
+    uint32_t at = 0;
+    for (const auto& [tick, event] : events) {
+        const std::vector<uint8_t> ev = testmidi::after(tick - at, event);
+        t.insert(t.end(), ev.begin(), ev.end());
+        at = tick;
+    }
+    return t;
+}
+
+// The .mid note numbers these tests write: a fill marker and three pads.
+constexpr uint8_t kMidFill = 120;
+constexpr uint8_t kMidKick = 96;
+constexpr uint8_t kMidRed = 97;
+constexpr uint8_t kMidYellow = 98;
+constexpr uint8_t kMidBlue = 99;
+
+std::vector<uint8_t> hit(uint8_t note) { return testmidi::note_on(note, 100); }
+// A zero-velocity note-on, the note-off most .mid files write.
+std::vector<uint8_t> release(uint8_t note) { return testmidi::note_on(note, 0); }
+
+// The .mid division testmidi::smf_tracks writes. Each .mid test REQUIREs the
+// parsed song reports it, so the positions below follow the real file.
+constexpr int64_t kMidRes = 480;
+
+// The window shape as a .mid, with the last red `past_end` ticks past the
+// fill end. Returns the tick of the chord the fill landed on.
+int64_t mid_landing(int64_t past_end) {
+    const auto at = [](int64_t tick) { return static_cast<uint32_t>(tick); };
     const std::vector<uint8_t> track = testmidi::concat({
         testmidi::track_name("PART DRUMS"),
-        {0x00, 0x90, 97, 100},          // tick 0: red
-        {0x87, 0x40, 0x90, 120, 100},   // tick 960: fill starts
-        {0x83, 0x60, 0x90, 97, 100},    // tick 1440: red, inside the fill
-        {0x83, 0x60, 0x80, 120, 0},     // tick 1920: fill ends
-        {after, 0x90, 97, 100},         // tick 1920 + after: red
+        timed_events({
+            {0, hit(kMidRed)},
+            {at(window_fill_start(kMidRes)), hit(kMidFill)},
+            {at(window_inner_chord(kMidRes)), hit(kMidRed)},
+            {at(window_fill_end(kMidRes)), testmidi::note_off(kMidFill)},
+            {at(window_fill_end(kMidRes) + past_end), hit(kMidRed)},
+        }),
         testmidi::end_of_track(),
     });
-    return activation_tick(load_songbytes_mid(testmidi::smf_drums(track), ChartReading{}));
+    const Song song = load_songbytes_mid(testmidi::smf_drums(track), ChartReading{});
+    REQUIRE(song.tick_resolution() == kMidRes);
+    return activation_tick(song);
+}
+
+// Lands the window shape's fill with its last chord one tick inside the
+// window, on its edge and one tick past it, and checks each against FL-03:
+// inside or on the edge the last chord takes the fill (it is closer than the
+// inner chord); past the edge the inner chord, at or before the end, takes it.
+template <class Landing>
+void check_window_edges(Landing landing, int64_t res, int64_t window) {
+    REQUIRE(window <= window_fill_end(res) - window_inner_chord(res));
+    for (int64_t past_end = window - 1; past_end <= window + 1; ++past_end) {
+        const int64_t expected = past_end <= window ? window_fill_end(res) + past_end
+                                                    : window_inner_chord(res);
+        const std::string msg = "last chord " + std::to_string(past_end) +
+                                " ticks past the fill end, window " + std::to_string(window);
+        CHECK_MESSAGE(landing(past_end) == expected, msg);
+    }
+}
+
+// A written fill and the chord a test expects it to land on.
+struct ExpectedLanding {
+    int64_t fill_start;
+    int64_t chord;
+};
+
+// Checks the song's chords are exactly `chords`, in order, that each expected
+// landing chord carries a fill running from its fill's start to the chord,
+// and that no other chord carries one.
+void check_landings(const Song& song, const std::vector<int64_t>& chords,
+                    const std::vector<ExpectedLanding>& landings) {
+    REQUIRE(song.sequence.size() == chords.size());
+    for (size_t i = 0; i < chords.size(); ++i) {
+        const SongTimestamp& ts = song.sequence[i];
+        REQUIRE(ts.timecode.ticks() == chords[i]);
+        const std::string msg = "chord at tick " + std::to_string(chords[i]);
+        INFO(msg);
+        const ExpectedLanding* want = nullptr;
+        for (const ExpectedLanding& l : landings)
+            if (l.chord == chords[i]) want = &l;
+        if (want == nullptr) {
+            CHECK_FALSE(ts.has_activation());
+            continue;
+        }
+        REQUIRE(ts.has_activation());
+        CHECK(*ts.activation_length == want->chord - want->fill_start);
+    }
 }
 
 // Whether the chord at `tick` carries a fill.
@@ -66,16 +167,10 @@ bool chord_has_fill(const Song& song, int64_t tick) {
 
 // An EVENTS track holding one text meta per (tick, text), in tick order.
 std::vector<uint8_t> events_track(const std::vector<std::pair<uint32_t, std::string>>& texts) {
-    std::vector<uint8_t> t = testmidi::track_name("EVENTS");
-    uint32_t at = 0;
-    for (const auto& [tick, text] : texts) {
-        const std::vector<uint8_t> ev = testmidi::after(tick - at, testmidi::text_event(text));
-        t.insert(t.end(), ev.begin(), ev.end());
-        at = tick;
-    }
-    const std::vector<uint8_t> end = testmidi::end_of_track();
-    t.insert(t.end(), end.begin(), end.end());
-    return t;
+    std::vector<std::pair<uint32_t, std::vector<uint8_t>>> events;
+    for (const auto& [tick, text] : texts) events.emplace_back(tick, testmidi::text_event(text));
+    return testmidi::concat(
+        {testmidi::track_name("EVENTS"), timed_events(events), testmidi::end_of_track()});
 }
 
 // The coda shape as a .mid at 480 ticks per beat. Fill A (240 to 480) lands
@@ -172,86 +267,91 @@ bool no_fill_at_all(const Song& song) {
 }  // namespace
 
 TEST_CASE("fill landing: .chart window is trunc(res/32) + 1 ticks") {
-    // Resolution 192: trunc(6.0) + 1 = 7. The fill ends at 768.
-    CHECK(chart_landing(192, 6) == 774);
-    CHECK(chart_landing(192, 7) == 775);  // the edge still lands
-    CHECK(chart_landing(192, 8) == 576);  // too far: the earlier chord takes it
+    const int64_t res = 192;
+    check_window_edges([res](int64_t past_end) { return chart_landing(res, past_end); }, res,
+                       game_landing_window(res, kGameSlopBeats));
 }
 
 TEST_CASE("fill landing: .mid window at resolution 480 is 16 ticks (the Thrice case)") {
-    CHECK(mid_landing(15) == 1935);
-    CHECK(mid_landing(16) == 1936);
-    CHECK(mid_landing(17) == 1440);
+    check_window_edges(mid_landing, kMidRes, game_landing_window(kMidRes, kGameSlopBeats));
 }
 
 TEST_CASE("fill landing: the extra tick applies on top of a user's slop of 0") {
+    const int64_t res = 192;
     core::Rules rules = core::default_rules();
     rules.fill_land_slop_beats = 0.0;
-    CHECK(chart_landing(192, 1, rules) == 769);
-    CHECK(chart_landing(192, 2, rules) == 576);
+    check_window_edges(
+        [res, &rules](int64_t past_end) { return chart_landing(res, past_end, rules); }, res,
+        game_landing_window(res, rules.fill_land_slop_beats));
 }
 
 // Fill B (D30): fills are placed after every chord is read. A fill whose next
 // fill starts before any chord reaches its end still lands, and so does the
-// next one. Resolution 192: the window is 6 + 1 = 7 ticks.
+// next one.
 TEST_CASE("fill landing: a fill is placed even when the next fill starts before its end chord (.chart)") {
+    using testchart::line;
+    const int64_t fill_length = 100;
+    const int64_t a_start = 100, a_chord = 150;  // A's only chord, inside A
+    const int64_t b_start = 180, b_chord = 250;  // B's only chord, inside B
+    const int64_t last_chord = 400;
+    // B starts before A ends, and before any chord past A's end.
+    REQUIRE(b_start < a_start + fill_length);
+    REQUIRE(a_chord < b_start);
+    const std::string fill = "S 64 " + std::to_string(fill_length);
     const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
-        "ExpertDrums",
-        "  0 = N 0 0\n"
-        "  100 = S 64 100\n"   // fill A: 100-200
-        "  150 = N 1 0\n"      // A's only chord, inside A
-        "  180 = S 64 100\n"   // fill B: 180-280, starts before a chord reaches 200
-        "  250 = N 2 0\n"      // B's only chord, inside B
-        "  400 = N 3 0\n"));
-    const Song song = load_songbytes_chart(data, ChartReading{});
-    REQUIRE(song.sequence.size() == 4);
-    CHECK_FALSE(song.sequence[0].has_activation());
-    REQUIRE(song.sequence[1].has_activation());
-    CHECK(*song.sequence[1].activation_length == 50);
-    REQUIRE(song.sequence[2].has_activation());
-    CHECK(*song.sequence[2].activation_length == 70);
-    CHECK_FALSE(song.sequence[3].has_activation());
+        "ExpertDrums", line(0, "N 0 0") + line(a_start, fill) + line(a_chord, "N 1 0") +
+                           line(b_start, fill) + line(b_chord, "N 2 0") +
+                           line(last_chord, "N 3 0")));
+    check_landings(load_songbytes_chart(data, ChartReading{}), {0, a_chord, b_chord, last_chord},
+                   {{a_start, a_chord}, {b_start, b_chord}});
 }
 
 TEST_CASE("fill landing: a fill is placed even when the next fill starts before its end chord (.mid)") {
-    // 480 ticks per beat: the window is 15 + 1 = 16 ticks.
-    using namespace testmidi;
-    const std::vector<uint8_t> track = concat({
-        track_name("PART DRUMS"),
-        note_on(96, 100),                // tick 0: kick
-        {0x81, 0x70, 0x90, 120, 100},    // tick 240: fill A on
-        {0x78, 0x90, 97, 100},           // tick 360: red, inside A
-        {0x78, 0x90, 120, 0},            // tick 480: fill A off
-        {0x14, 0x90, 120, 100},          // tick 500: fill B on, no chord since A's end
-        {0x64, 0x90, 98, 100},           // tick 600: yellow, inside B
-        {0x78, 0x90, 120, 0},            // tick 720: fill B off
-        {0x83, 0x60, 0x90, 99, 100},     // tick 1200: blue
-        end_of_track(),
+    const uint32_t a_start = 240, a_chord = 360, a_end = 480;
+    const uint32_t b_start = 500, b_chord = 600, b_end = 720;
+    const uint32_t last_chord = 1200;
+    // B starts before any chord past A's end.
+    REQUIRE(a_chord < a_end);
+    REQUIRE(a_end < b_start);
+    REQUIRE(b_start < b_chord);
+    const std::vector<uint8_t> track = testmidi::concat({
+        testmidi::track_name("PART DRUMS"),
+        timed_events({
+            {0, hit(kMidKick)},
+            {a_start, hit(kMidFill)},
+            {a_chord, hit(kMidRed)},
+            {a_end, release(kMidFill)},
+            {b_start, hit(kMidFill)},
+            {b_chord, hit(kMidYellow)},
+            {b_end, release(kMidFill)},
+            {last_chord, hit(kMidBlue)},
+        }),
+        testmidi::end_of_track(),
     });
-    const Song song = load_songbytes_mid(smf_drums(track), ChartReading{});
-    REQUIRE(song.sequence.size() == 4);
-    CHECK_FALSE(song.sequence[0].has_activation());
-    REQUIRE(song.sequence[1].has_activation());
-    CHECK(*song.sequence[1].activation_length == 120);
-    REQUIRE(song.sequence[2].has_activation());
-    CHECK(*song.sequence[2].activation_length == 100);
-    CHECK_FALSE(song.sequence[3].has_activation());
+    const Song song = load_songbytes_mid(testmidi::smf_drums(track), ChartReading{});
+    REQUIRE(song.tick_resolution() == kMidRes);
+    check_landings(song, {0, a_chord, b_chord, last_chord},
+                   {{a_start, a_chord}, {b_start, b_chord}});
 }
 
 TEST_CASE("fill landing: an earlier chord before the fill start is no candidate") {
-    // Fill 100-104. The chord at 99 is closer (5 ticks) but before the fill
-    // start, so only the chord at 110 (6 ticks, inside the 7-tick window)
-    // can take it.
-    const std::vector<uint8_t> data = testchart::chart_bytes(testchart::section(
-        "ExpertDrums",
-        "  99 = N 1 0\n"
-        "  100 = S 64 4\n"
-        "  110 = N 2 0\n"));
-    const Song song = load_songbytes_chart(data, ChartReading{});
-    REQUIRE(song.sequence.size() == 2);
-    CHECK_FALSE(song.sequence[0].has_activation());
-    REQUIRE(song.sequence[1].has_activation());
-    CHECK(*song.sequence[1].activation_length == 10);
+    using testchart::line;
+    const int64_t res = 192;
+    const int64_t fill_start = 100, fill_length = 4;
+    const int64_t fill_end = fill_start + fill_length;
+    const int64_t early_chord = fill_start - 1;
+    const int64_t late_chord = fill_end + game_landing_window(res, kGameSlopBeats) - 1;
+    // The early chord is the closer one, so only its place before the fill
+    // start keeps it from the fill.
+    REQUIRE(fill_end - early_chord < late_chord - fill_end);
+    const std::vector<uint8_t> data = testchart::chart_bytes(
+        testchart::section("ExpertDrums",
+                           line(early_chord, "N 1 0") +
+                               line(fill_start, "S 64 " + std::to_string(fill_length)) +
+                               line(late_chord, "N 2 0")),
+        res);
+    check_landings(load_songbytes_chart(data, ChartReading{}), {early_chord, late_chord},
+                   {{fill_start, late_chord}});
 }
 
 // D30: Clone Hero's one-side fallback (option B2) is not adopted.
