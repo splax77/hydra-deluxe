@@ -48,7 +48,7 @@
 #include "store/record_store.h"
 #include "store/stored_versions.h"  // kResultsStamp
 #include "store/upgrade_files.h"
-#include "store_fixtures.h"  // at_cap, no_paths_at_cap, saved_figures
+#include "store_fixtures.h"  // at_cap, at4, fixture, saved_figures
 #include "temp_util.h"
 #include "testdata_dirs.h"  // testdata_root
 
@@ -58,7 +58,6 @@ using namespace hydra::store;
 using hydra::test::at4;
 using hydra::test::at_cap;
 using hydra::test::exec_on_file;
-using hydra::test::no_paths_at_cap;
 using hydra::test::write_junk_db;
 // One integer straight out of a database file: how these tests look at a
 // table without the store growing an accessor for it.
@@ -468,42 +467,60 @@ constexpr const char* kRules = "rules";
 constexpr const char* kBoth = "both";
 constexpr const char* kNoStars = "nostars";
 
-// What the seed holds, counted once by hand: one library row per chart (six
-// charts), seven results, and two meta rows (the library's reader stamp and
-// the fill-rule stamp).
-constexpr int64_t kSeedCharts = 6;
-constexpr int64_t kSeedResults = 7;
-constexpr int64_t kSeedMeta = 2;
-// The results the conversion keeps: all but the no-stars row. Each becomes
-// one record.
-constexpr int64_t kKeptResults = 6;
-// The profiles those records are filed under, counted once by hand: one per
-// distinct mode, cap, lens, stamp and rules among the kept rows. "ready" and
-// "empty" share one; "other mode", "build", "rules" and "both" have one each.
-constexpr int64_t kSeedProfiles = 5;
-// The path rows the kept records hold: one rank-1 row for each kept result
-// with a score, so every one but "empty".
-constexpr int64_t kSeedPaths = 5;
+// What the seed file holds, read from it before any open. The conversion
+// keeps every result but the one the seed left a score and no stars
+// (kNoStars); each kept result becomes one record, filed under one profile
+// per distinct mode, cap, lens, stamp and rules among them, with a rank-1
+// path row when it has a score.
+struct V220Seed {
+    int64_t charts = 0;    // library rows
+    int64_t results = 0;   // results rows
+    int64_t kept = 0;      // results the conversion keeps
+    int64_t profiles = 0;  // distinct settings, stamps and rules among the kept
+    int64_t scored = 0;    // kept results with a score
+};
+
+// The fixture chart analyzed at the seed's 8-bar cap: the record every seeded
+// result is made from.
+const HydraRecord& analysis_at8() {
+    return ::corpus::analyzed(test::fixture_chart(), test::store_fixture_settings(8));
+}
+
 // The fill-rule label 2.2.0 to 2.7.0 kept for a whole file, as the seed
 // writes it. The conversion deletes it (D115 task A1-6c).
 constexpr const char* kSeedLabelSql = "INSERT INTO meta (key, value) VALUES ('engine_mode', 'ch10')";
 constexpr const char* kSeedLabelCountSql = "SELECT COUNT(*) FROM meta WHERE key = 'engine_mode'";
 
 // A database at `path` in the layout 2.2.0 to 2.7.0 wrote, with one row of
-// every kind the conversion treats differently, its files closed.
-void seed_v220_layout(const std::string& path) {
+// every kind the conversion treats differently, its files closed. Its
+// library rows are the rows a scan writes for the first corpus charts, filed
+// under the seed's ids; its records are the fixture chart's 8-bar analysis.
+// Returns what the file holds (V220Seed).
+V220Seed seed_v220_layout(const std::string& path) {
     remove_db(path);
+    const std::vector<std::string> ids{kReady, kRules, kBoth, kBuild, kNoPaths, kNoStars};
+    const HydraRecord& analysis = analysis_at8();
+    // The same analysis with every path taken out: analyzed, and nothing
+    // survived.
+    HydraRecord no_paths = analysis;
+    no_paths.paths.clear();
+    no_paths.allzero_paths.clear();
     {
         RecordStore seed(path);
-        seed.rebuild_chart_library({library_row("ready", "Ready"), library_row("empty", "Empty"),
-                                    library_row("build", "Build"), library_row("rules", "Rules"),
-                                    library_row("both", "Both"),
-                                    library_row("nostars", "No stars")});
-        seed.save(prepare_record(kReady, kMode8, at_cap(8)));
-        seed.save(prepare_record(kReady, kOtherMode8, at_cap(8)));
-        seed.save(prepare_record(kNoPaths, kMode8, no_paths_at_cap(8)));
-        test::add_stale_records(seed, at_cap(8), kMode8, kBuild, kRules, kBoth);
-        seed.save(prepare_record(kNoStars, kMode8, at_cap(8)));
+        const std::vector<std::string>& charts = ::corpus::chart_paths();
+        REQUIRE(charts.size() >= ids.size());
+        std::vector<ChartLibraryEntry> rows;
+        for (size_t i = 0; i < ids.size(); ++i) {
+            ChartLibraryEntry row = ::corpus::scanned_entry(charts[i]);
+            row.md5 = ids[i];
+            rows.push_back(row);
+        }
+        seed.rebuild_chart_library(rows);
+        seed.save(prepare_record(kReady, kMode8, analysis));
+        seed.save(prepare_record(kReady, kOtherMode8, analysis));
+        seed.save(prepare_record(kNoPaths, kMode8, no_paths));
+        test::add_stale_records(seed, analysis, kMode8, kBuild, kRules, kBoth);
+        seed.save(prepare_record(kNoStars, kMode8, analysis));
     }
     exec_on_file(path, test::v220_layout_sql().c_str());
     // 2.2.0 to 2.7.0 wrote the charts table without the album.
@@ -517,21 +534,38 @@ void seed_v220_layout(const std::string& path) {
     // lowercases them (ADR 0031), so the chart still reads under "ready".
     exec_on_file(path, "UPDATE results SET hyhash = 'READY' WHERE hyhash = 'ready';"
                        "UPDATE charts SET md5 = 'READY' WHERE md5 = 'ready';");
-    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM charts") == kSeedCharts);
-    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
-    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM meta") == kSeedMeta);
+    // The seed's own facts: every library row it wrote is there, the
+    // fill-rule label is in meta, the no-stars row kept its score, and the
+    // no-paths row has neither score nor stars.
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM charts") ==
+            static_cast<int64_t>(ids.size()));
+    REQUIRE(scalar_on_file(path, kSeedLabelCountSql) == 1);
+    REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = 'nostars'"
+                                 " AND stars IS NULL AND score IS NOT NULL") == 1);
     REQUIRE(scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash = 'empty'"
                                  " AND stars IS NULL AND score IS NULL") == 1);
     REQUIRE(classify_library_file(path) == LibraryFileKind::Convertible);
+
+    V220Seed out;
+    out.charts = scalar_on_file(path, "SELECT COUNT(*) FROM charts");
+    out.results = scalar_on_file(path, "SELECT COUNT(*) FROM results");
+    out.kept = scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash <> 'nostars'");
+    out.profiles = scalar_on_file(
+        path, "SELECT COUNT(*) FROM (SELECT DISTINCT chartmode, hyversion, sp_cap, ms_enabled,"
+              " ms_value, depth_mode, depth_value, legacy_fills, rules_fp FROM results"
+              " WHERE hyhash <> 'nostars')");
+    out.scored = scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash <> 'nostars'"
+                                      " AND score IS NOT NULL");
+    return out;
 }
 
 // What every row reads after the conversion: Ready stays Ready with its
 // numbers, Stale stays Stale for the same reason, the no-stars row is gone,
 // and the library and its reader stamp stayed whole.
-void check_converted_rows(RecordStore& store) {
+void check_converted_rows(RecordStore& store, const V220Seed& seed) {
     // The old results kept rank 1 only, so the converted record reads the
     // summary and best path the analysis's own record gives.
-    const RecordRow analysis_record = record_of(kReady, at_cap(8));
+    const RecordRow analysis_record = record_of(kReady, analysis_at8());
     const RecordLookup got_ready = store.lookup_one(kReady, kMode8);
     CHECK(got_ready.status == RecordStatus::Ready);
     CHECK(got_ready.record.summary() == analysis_record.summary());
@@ -553,13 +587,13 @@ void check_converted_rows(RecordStore& store) {
     CHECK(got_both.stale_build);
     CHECK(got_both.stale_rules);
     CHECK(store.lookup_one(kNoStars, kMode8).status == RecordStatus::NotAnalyzed);
-    CHECK(store.record_count() == kKeptResults);
-    CHECK(store.chart_library_count() == kSeedCharts);
+    CHECK(store.record_count() == seed.kept);
+    CHECK(store.chart_library_count() == seed.charts);
     // The library row stored in capitals reads lowercase, as its record does.
     CHECK(store.list_chart_library_copies("ready").size() == 1);
     // The scan cache reads only under a current reader stamp, so a full one
     // shows the stamp stayed in meta.
-    CHECK(store.chart_library_cache().size() == static_cast<size_t>(kSeedCharts));
+    CHECK(store.chart_library_cache().size() == static_cast<size_t>(seed.charts));
 }
 
 // The file is in this build's layout, with no results table left and
@@ -597,21 +631,21 @@ struct ProgressLog {
 TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into records and keeps "
           "every status") {
     const std::string path = testtemp::temp_path("convert_v220", ".db");
-    seed_v220_layout(path);
+    const V220Seed seed = seed_v220_layout(path);
 
     ProgressLog log;
     {
         RecordStore store(path, core::default_stamp(), log.fn());
         CHECK_FALSE(store.set_aside_path().has_value());
-        check_converted_rows(store);
+        check_converted_rows(store, seed);
     }
     check_converted_file(path);
     // The results became records: one profile per distinct settings, stamp
     // and rules, one record per kept row, a rank-1 path row for each with a
     // score, and every id lowercase.
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
-    CHECK(record_rows_in(path) == kKeptResults);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == kSeedPaths);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == seed.profiles);
+    CHECK(record_rows_in(path) == seed.kept);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths") == seed.scored);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths WHERE rank <> 1") == 0);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE song_id <> lower(song_id)") ==
           0);
@@ -623,20 +657,20 @@ TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into record
     int64_t last_converted = -1;
     for (const OpenProgress& p : log.reports) {
         if (p.step == OpenStep::Opening) continue;
-        CHECK(p.rows_total == kKeptResults);
+        CHECK(p.rows_total == seed.kept);
         CHECK(p.rows_done >= last_converted);
         last_converted = p.rows_done;
     }
-    CHECK(last_converted == kKeptResults);
+    CHECK(last_converted == seed.kept);
 
     // A second open finds no results and does nothing.
     ProgressLog again;
     {
         RecordStore store(path, core::default_stamp(), again.fn());
-        CHECK(store.record_count() == kKeptResults);
+        CHECK(store.record_count() == seed.kept);
     }
     CHECK(again.steps() == std::vector<OpenStep>{OpenStep::Opening});
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == kSeedProfiles);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == seed.profiles);
     remove_db(path);
 }
 
@@ -646,7 +680,7 @@ TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into record
 // open goes through.
 TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob") {
     const std::string path = testtemp::temp_path("convert_empty_rules_fp", ".db");
-    seed_v220_layout(path);
+    const V220Seed seed = seed_v220_layout(path);
     exec_on_file(path, "UPDATE results SET rules_fp = x'' WHERE hyhash = 'rules'");
     {
         RecordStore store(path);
@@ -654,7 +688,7 @@ TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob"
         CHECK(got_rules.status == RecordStatus::Stale);
         CHECK(got_rules.stale_rules);
     }
-    CHECK(record_rows_in(path) == kKeptResults);
+    CHECK(record_rows_in(path) == seed.kept);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE typeof(rules_fp) = 'blob'"
                                " AND length(rules_fp) = 0") == 1);
     remove_db(path);
@@ -675,7 +709,7 @@ TEST_CASE("an old result with no score converts to a record that kept no paths")
 
 TEST_CASE("a stop asked mid-conversion leaves the results table whole and throws Cancelled") {
     const std::string path = testtemp::temp_path("convert_cancelled", ".db");
-    seed_v220_layout(path);
+    const V220Seed seed = seed_v220_layout(path);
     const OpenProgressFn stop_at_two = [](const OpenProgress& p) {
         return !(p.step == OpenStep::ConvertingRecords && p.rows_done == 2);
     };
@@ -687,13 +721,13 @@ TEST_CASE("a stop asked mid-conversion leaves the results table whole and throws
     }
     // The conversion is one transaction: the two records it had filed are
     // gone with it, and the next open converts every row.
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results") == kSeedResults);
+    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM results") == seed.results);
     CHECK(record_rows_in(path) == 0);
     CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 0);
     CHECK(classify_library_file(path) == LibraryFileKind::Convertible);
     {
         RecordStore store(path);
-        check_converted_rows(store);
+        check_converted_rows(store, seed);
     }
     check_converted_file(path);
     remove_db(path);
