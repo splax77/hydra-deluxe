@@ -623,7 +623,16 @@ void test_file_open_error(ImGuiTestContext* ctx) {
 void check_open_song_stays(ImGuiTestContext* ctx, Harness& h, const std::string& file,
                            const std::string& bad_text, const char* sentence,
                            const std::string& detail) {
-    IM_CHECK_RETV(click_fill(ctx, kFirstFillTick), );
+    // The player's one window goes on the earliest fill the scene draws
+    // Offered, the engine's own pick for this chart.
+    hydra::ui::PreviewController* pc = h.app->preview();
+    IM_CHECK_RETV(pc != nullptr, );
+    const auto& fills = pc->scene().fills;
+    const auto offered = std::find_if(fills.begin(), fills.end(), [](const hydra::app::PreviewFill& f) {
+        return f.state == hydra::app::PreviewFillState::Offered;
+    });
+    IM_CHECK_RETV(offered != fills.end(), );
+    IM_CHECK_RETV(click_fill(ctx, offered->chord_tick), );
     const hydra::pathbuilder::OpenChart* open_song = h.app->state.chart();
     const uint64_t generation = h.app->state.history().generation();
     IM_CHECK_RETV(h.app->state.history().current().windows.size() == 1, );
