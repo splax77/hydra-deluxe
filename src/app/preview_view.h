@@ -254,18 +254,17 @@ struct PreviewScore {
 
 // One solo section's notes, as the solo box counts them. Path-free: a Hydra
 // path hits every note, so the notes hit at a moment are those of the chords
-// struck by then (struck_at).
+// struck by then (struck_at). Every figure is the engine's SoloFigures
+// (core/scoring.h, solo_figures); this adds only each chord's onset.
 struct PreviewSoloNotes {
-    // One of the solo's chords: its onset, and the solo's notes hit once it
-    // is struck, this chord's included. A chord's notes are
-    // solo_note_count's (core/scoring.h).
+    // One of the solo's chords: its onset, and SoloFigures::AtChord::notes_hit.
     struct Step {
         double ms = 0.0;
         int notes_hit = 0;
     };
     std::vector<Step> steps;  // in time order, never empty
-    int notes = 0;            // the solo's note total: the last step's notes_hit
-    int64_t bonus = 0;        // solo_bonus summed over the solo's chords
+    int notes = 0;            // SoloFigures::notes
+    int64_t bonus = 0;        // SoloFigures::bonus
 };
 
 // The whole chart as the Preview draws it. Notes are in tick order. Spans are
@@ -535,7 +534,8 @@ PreviewNextActBox build_next_act_box(const PreviewScene& scene, double now_ms, d
 std::string sp_meter_readout(const SpMeterCurve& curve, double now_ms);
 
 // One entry of the Preview's "Showing" list: the path's notation, with
-// "  (optimal)" on an Optimal path and "  (best all-0)" on the all-0 path.
+// "  (optimal)" on an Optimal path, and on the all-0 path two spaces and then
+// the all-0 name (kBestAllZeroLabel) in brackets.
 std::string preview_path_label(const PathButtonView& button);
 
 // Bars banked at `ms`: 0 before the curve begins, its final value after the

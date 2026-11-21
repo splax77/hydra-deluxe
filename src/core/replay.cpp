@@ -94,6 +94,9 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     const ChordScoreTable& table = options.table ? *options.table : built;
 
     ReplayScore cum;
+    // Each solo's running bonus comes from solo_figures, the one walk over a
+    // solo's chords, which the Preview's solo box reads too.
+    const std::vector<SoloFigures> solos = solo_figures(song);
     int64_t solo_pending = 0;
     size_t next_solo = 0;  // the first solo section not yet passed
 
@@ -226,8 +229,10 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
                 throw std::logic_error("replay: the solo chord at tick " +
                                        std::to_string(row.tick) +
                                        " is in no solo section");
-            solo_pending += row.points.solo;
-            if (song.solo_sections[next_solo].last == i) solo_pending = 0;
+            const SoloSection& section = song.solo_sections[next_solo];
+            solo_pending = section.last == i
+                               ? 0
+                               : solos[next_solo].steps[i - section.first].bonus_so_far;
         }
         row.cum_onscreen_total = cum.total() - solo_pending;
 
