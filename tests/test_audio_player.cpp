@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -71,7 +73,7 @@ TEST_CASE("read_frames while playing copies frames and advances the clock") {
     t.play();
 
     constexpr int64_t kAsked = 3;
-    std::vector<float> out(static_cast<size_t>(kAsked * t.channels()), -1.0f);
+    std::vector<float> out(static_cast<std::size_t>(kAsked * t.channels()), -1.0f);
     int64_t got = t.read_frames(out.data(), kAsked);
     CHECK(got == kAsked);
     CHECK(t.position_frames() == kAsked);
