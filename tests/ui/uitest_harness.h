@@ -273,16 +273,12 @@ void open_paths_folds(ImGuiTestContext* ctx);
 void scan_library(ImGuiTestContext* ctx);
 // Point the ref at the song panel child (//Hydra/##songpanel).
 void set_panel_ref(ImGuiTestContext* ctx);
-// Wait until the song panel's tab bar can't move under a click. The headline
-// above it (render_headline in details_panel.cpp) grows when the click's
-// record lands and pushes the tabs down, so a tab click whose mouse is still
-// on its way hovers empty space. Holds once the click has settled, or while a
-// closed ViewGate keeps it from landing.
-void wait_tabs_placed(ImGuiTestContext* ctx);
 // The longest the open helpers wait for the tabs to settle, in seconds.
 constexpr double kSettleWaitSeconds = 300;
 // Click row `index` of the library view, wait for the song panel, point the
-// ref at it, and land on its Paths tab. Waits for wait_tabs_placed first, so
+// ref at it, and land on its Paths tab. Waits for the tab bar to stop moving
+// first (the headline above it grows when the click's record lands and pushes
+// the tabs down; a closed ViewGate holds it), so
 // without a ViewGate the click's analysis has settled when it returns.
 void open_details(ImGuiTestContext* ctx, size_t index);
 // open_details with its own wait cap. False when the tabs had not settled

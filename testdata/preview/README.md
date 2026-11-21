@@ -53,8 +53,9 @@ in `golden.json` (the test checks this), or the comparison no longer lines up.
 ## The thresholds
 
 The test file owns the measurement: `max_channel_deltas` finds each pixel's
-difference, `over_share` finds the worst tile and the whole frame, and `kTile`
-is the tile size. This page only says what each key is for. Four keys in
+difference, and `over_share` finds the worst tile and the whole frame. This page
+only says what each key is for. `tile_side` is the side of a tile in half-res
+pixels (the user's decision of 2026-10-10, D297 item 3). Four more keys in
 `golden.json` set how close the frames must be, all in units of that code:
 
 1. `tolerance` caps the mean difference, out of 255.

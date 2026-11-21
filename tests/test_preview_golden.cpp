@@ -103,8 +103,9 @@ std::vector<uint8_t> render_chart(const std::string& chart, double time_ms, int 
         app::AnalysisResult r = app::analyze_chart_file(chart, settings);
         const Path* best = r.record.paths.empty() ? nullptr : &r.record.best_path();
         scene = app::build_preview_scene(r.song, best);
-    } catch (const std::exception&) {
-        scene = app::build_preview_scene(load_songpath(chart, settings.reading()), nullptr);
+    } catch (const std::exception& e) {
+        // A frame drawn without the path overlay would be compared as if it had one.
+        FAIL("the preview chart's analysis failed: " << e.what());
     }
 
     PreviewRenderer r(dev.Get(), ctx.Get(), HYDRA_ASSET_DIR);
@@ -148,10 +149,9 @@ std::vector<float> max_channel_deltas(const std::vector<float>& a, const std::ve
     return out;
 }
 
-constexpr int kTile = 16;  // tile side in half-res pixels; the user's decision of 2026-10-10 (D297 item 3)
-
 // For one per-pixel delta D: the share of unmasked pixels whose delta is over D,
-// in the worst kTile by kTile tile and in the whole frame. Edge tiles are
+// in the worst tile and in the whole frame. A tile is golden.json's tile_side
+// half-res pixels on each side. Edge tiles are
 // partial; a tile's share is over its own unmasked pixels.
 struct OverShare {
     double worst_tile_percent = 0.0;
@@ -171,25 +171,25 @@ struct TileCount {
     double percent() const { return percent_over(over, unmasked); }
 };
 
-std::vector<TileCount> tile_counts(const std::vector<float>& delta, int ow, int oh, float d, int& tw,
-                                   int& th) {
-    tw = (ow + kTile - 1) / kTile;
-    th = (oh + kTile - 1) / kTile;
+std::vector<TileCount> tile_counts(const std::vector<float>& delta, int ow, int oh, float d, int tile,
+                                   int& tw, int& th) {
+    tw = (ow + tile - 1) / tile;
+    th = (oh + tile - 1) / tile;
     std::vector<TileCount> t(static_cast<size_t>(tw) * th);
     for (int y = 0; y < oh; ++y)
         for (int x = 0; x < ow; ++x) {
             const float v = delta[static_cast<size_t>(y) * ow + x];
             if (v < 0.0f) continue;
-            TileCount& c = t[static_cast<size_t>(y / kTile) * tw + x / kTile];
+            TileCount& c = t[static_cast<size_t>(y / tile) * tw + x / tile];
             ++c.unmasked;
             if (v > d) ++c.over;
         }
     return t;
 }
 
-OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d) {
+OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d, int tile) {
     int tw, th;
-    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tw, th);
+    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tile, tw, th);
     OverShare s;
     size_t unmasked = 0, over = 0;
     for (int ty = 0; ty < th; ++ty)
@@ -210,9 +210,9 @@ OverShare over_share(const std::vector<float>& delta, int ow, int oh, float d) {
 }
 
 // Where the worst tile sits, in tile numbers and in full-size pixels (a tile is
-// kTile half-res pixels, so twice that at full size).
-std::string worst_tile_text(const OverShare& s) {
-    const int side = kTile * 2;
+// `tile` half-res pixels, so twice that at full size).
+std::string worst_tile_text(const OverShare& s, int tile) {
+    const int side = tile * 2;
     return "tile (" + std::to_string(s.worst_tx) + ", " + std::to_string(s.worst_ty) + "), full-res x " +
            std::to_string(s.worst_tx * side) + ".." + std::to_string((s.worst_tx + 1) * side) + ", y " +
            std::to_string(s.worst_ty * side) + ".." + std::to_string((s.worst_ty + 1) * side);
@@ -231,15 +231,15 @@ float delta_percentile(const std::vector<float>& delta, double q) {
 
 // Dev aid: the per-tile map (percent over the fixture's pixel_delta) and the
 // histogram of per-pixel deltas (integer bins), as CSV in the working folder.
-void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) {
+void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d, int tile) {
     std::ofstream tiles("preview_tiles.csv");
     tiles << "tile_x,tile_y,half_x,half_y,unmasked,pct_over_" << d << "\n";
     int tw = 0, th = 0;
-    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tw, th);
+    const std::vector<TileCount> t = tile_counts(delta, ow, oh, d, tile, tw, th);
     for (int ty = 0; ty < th; ++ty)
         for (int tx = 0; tx < tw; ++tx) {
             const TileCount& c = t[static_cast<size_t>(ty) * tw + tx];
-            tiles << tx << "," << ty << "," << tx * kTile << "," << ty * kTile << "," << c.unmasked << ","
+            tiles << tx << "," << ty << "," << tx * tile << "," << ty * tile << "," << c.unmasked << ","
                   << c.percent() << "\n";
         }
     std::vector<size_t> hist(256, 0);
@@ -252,50 +252,63 @@ void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) 
 
 }  // namespace
 
-// The budget arithmetic on a made-up delta map, with golden.json's own limits:
-// a 2 x 2 tile map whose first tile is all masked, and whose last tile holds
-// the only pixels over the per-pixel line.
+// The budget counting on a delta map built for it, with golden.json's own
+// limits: a 2 x 2 tile map whose first tile is all masked. The pixels over the
+// per-pixel line are counted from those limits, and each share is checked
+// against percent_over() on the counts the map was built with.
 TEST_CASE("preview golden: over_share counts one bad tile against golden.json's limits") {
     const nlohmann::json spec =
         nlohmann::json::parse(read_file_text(kFixtureDir + "/golden.json"));
     const float pixel_delta = spec["pixel_delta"].get<float>();
     const double tile_percent = spec["tile_percent"].get<double>();
     const double frame_percent = spec["frame_percent"].get<double>();
+    const int tile = spec["tile_side"].get<int>();
+    REQUIRE(tile > 0);
 
-    const int ow = 2 * kTile, oh = 2 * kTile;
+    const int ow = 2 * tile, oh = 2 * tile;
     std::vector<float> delta(static_cast<size_t>(ow) * oh, 0.0f);
     auto at = [&](int x, int y) -> float& { return delta[static_cast<size_t>(y) * ow + x]; };
-    for (int y = 0; y < kTile; ++y)
-        for (int x = 0; x < kTile; ++x) at(x, y) = -1.0f;  // tile (0, 0): masked
+    for (int y = 0; y < tile; ++y)
+        for (int x = 0; x < tile; ++x) at(x, y) = -1.0f;  // tile (0, 0): masked
 
     SUBCASE("a clean map has no share over the line") {
-        const OverShare s = over_share(delta, ow, oh, pixel_delta);
+        const OverShare s = over_share(delta, ow, oh, pixel_delta, tile);
         CHECK(s.worst_tile_percent == 0.0);
         CHECK(s.frame_percent == 0.0);
     }
 
-    SUBCASE("one bad tile") {
-        // 48 pixels over the line in tile (1, 1), and one exactly on it,
-        // which is not over.
-        for (int i = 0; i < 48; ++i) at(kTile + i % kTile, kTile + i / kTile) = pixel_delta + 1.0f;
-        at(kTile, oh - 1) = pixel_delta;
+    // A whole tile, and the unmasked pixels of the map: three tiles.
+    const size_t tile_pixels = static_cast<size_t>(tile) * static_cast<size_t>(tile);
+    const size_t unmasked = 3 * tile_pixels;
 
-        const OverShare s = over_share(delta, ow, oh, pixel_delta);
+    SUBCASE("one bad tile") {
+        // The fewest pixels over the line that put a tile over golden.json's
+        // tile budget, in tile (1, 1), and one exactly on the line, which is
+        // not over. The bad pixels fill rows from the tile's top, so the one
+        // on the line, in the tile's last row, stays apart from them.
+        const size_t bad = static_cast<size_t>(std::floor(tile_percent / 100.0 * static_cast<double>(tile_pixels))) + 1;
+        REQUIRE(bad <= tile_pixels - static_cast<size_t>(tile));
+        for (size_t i = 0; i < bad; ++i)
+            at(tile + static_cast<int>(i % static_cast<size_t>(tile)), tile + static_cast<int>(i / static_cast<size_t>(tile))) =
+                pixel_delta + 1.0f;
+        at(tile, oh - 1) = pixel_delta;
+
+        const OverShare s = over_share(delta, ow, oh, pixel_delta, tile);
         CHECK(s.worst_tx == 1);
         CHECK(s.worst_ty == 1);
-        CHECK(s.worst_tile_percent == doctest::Approx(18.75));  // 48 of 256
-        CHECK(s.frame_percent == doctest::Approx(6.25));        // 48 of 768 unmasked
+        CHECK(s.worst_tile_percent == doctest::Approx(percent_over(bad, tile_pixels)));
+        CHECK(s.frame_percent == doctest::Approx(percent_over(bad, unmasked)));
         CHECK(s.worst_tile_percent > tile_percent);
         CHECK(s.frame_percent > frame_percent);
     }
 
     SUBCASE("one stray pixel passes the tile budget but not the frame budget") {
         at(ow - 1, 0) = pixel_delta + 1.0f;
-        const OverShare s = over_share(delta, ow, oh, pixel_delta);
+        const OverShare s = over_share(delta, ow, oh, pixel_delta, tile);
         CHECK(s.worst_tx == 1);
         CHECK(s.worst_ty == 0);
-        CHECK(s.worst_tile_percent == doctest::Approx(0.390625));  // 1 of 256
-        CHECK(s.frame_percent == doctest::Approx(0.1302083));      // 1 of 768
+        CHECK(s.worst_tile_percent == doctest::Approx(percent_over(1, tile_pixels)));
+        CHECK(s.frame_percent == doctest::Approx(percent_over(1, unmasked)));
         CHECK(s.worst_tile_percent <= tile_percent);
         CHECK(s.frame_percent > frame_percent);
     }
@@ -310,7 +323,7 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     std::string spec_text = read_file_text(spec_path);
     nlohmann::json spec = nlohmann::json::parse(spec_text);
     for (const char* key : {"chart", "time_ms", "width", "height", "crop", "pro", "bass2x", "tolerance",
-                            "pixel_delta", "tile_percent", "frame_percent", "mask"}) {
+                            "pixel_delta", "tile_side", "tile_percent", "frame_percent", "mask"}) {
         INFO("golden.json key: " << key);
         REQUIRE(spec.contains(key));
     }
@@ -321,8 +334,10 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
     const bool pro = spec["pro"].get<bool>(), bass2x = spec["bass2x"].get<bool>();
     const double tolerance = spec["tolerance"].get<double>();
     const float pixel_delta = spec["pixel_delta"].get<float>();
+    const int tile = spec["tile_side"].get<int>();
     const double tile_percent = spec["tile_percent"].get<double>();
     const double frame_percent = spec["frame_percent"].get<double>();
+    REQUIRE(tile > 0);
     REQUIRE(w > 0);
     REQUIRE(h > 0);
 
@@ -395,12 +410,12 @@ TEST_CASE("preview golden: a Hydra frame matches the Onyx screenshot") {
                                                   << delta_percentile(delta, 90.0) << ", p99 "
                                                   << delta_percentile(delta, 99.0) << ", p99.9 "
                                                   << delta_percentile(delta, 99.9));
-    const OverShare s = over_share(delta, ow, oh, pixel_delta);
-    const std::string worst_tile_at = worst_tile_text(s);
+    const OverShare s = over_share(delta, ow, oh, pixel_delta, tile);
+    const std::string worst_tile_at = worst_tile_text(s, tile);
     MESSAGE("over delta " << pixel_delta << ": worst tile " << s.worst_tile_percent << "% (budget "
                           << tile_percent << "%) at " << worst_tile_at << "; whole frame " << s.frame_percent
                           << "% (budget " << frame_percent << "%)");
-    if (dump) write_delta_csvs(delta, ow, oh, pixel_delta);
+    if (dump) write_delta_csvs(delta, ow, oh, pixel_delta, tile);
     // Each budget is decided once here; the bitmap and the CHECKs both read these.
     const bool mean_ok = mae < tolerance;
     const bool tile_ok = s.worst_tile_percent <= tile_percent;

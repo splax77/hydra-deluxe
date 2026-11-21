@@ -3,6 +3,7 @@
 Run with: py -I tools/test_effort_test_scout.py
 """
 
+import importlib.util
 import json
 import os
 import shutil
@@ -13,6 +14,10 @@ import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 SCRIPT = os.path.join(HERE, "effort_test_scout.py")
+
+_spec = importlib.util.spec_from_file_location("effort_test_scout", SCRIPT)
+scout = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(scout)
 
 PATH = "tools/check_pointers.py"
 LINE = "    MAX_CALLS = 150"
@@ -71,15 +76,28 @@ class ScoutCheckTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(lines, ["pass (path found, line found)", "fail (path not found, line not found)"])
 
+    def refusal(self, question):
+        """The message find_question() refuses question with; it owns the wording."""
+        with self.assertRaises(ValueError) as caught:
+            scout.find_question(self.questions, question)
+        return str(caught.exception)
+
     def test_an_unknown_question_fails_loudly(self):
         code, lines, err = self.run_script("x", question="Q9")
         self.assertEqual((code, lines), (2, []))
-        self.assertIn("no question Q9", err)
+        message = self.refusal("Q9")
+        self.assertIn("Q9", message)  # names the id that was asked for
+        self.assertIn(self.questions, message)  # and the file it was looked for in
+        self.assertIn(message, err)
 
     def test_an_empty_key_fails_loudly(self):
-        code, _, err = self.run_script("x", question="Q2")
-        self.assertEqual(code, 2)
-        self.assertIn("empty key", err)
+        code, lines, err = self.run_script("x", question="Q2")
+        self.assertEqual((code, lines), (2, []))
+        message = self.refusal("Q2")
+        self.assertIn("Q2", message)  # names the question whose key is empty
+        self.assertIn(message, err)
+        # The refusal is for the empty key: Q1, whose key is filled, is found.
+        self.assertEqual(scout.find_question(self.questions, "Q1")["id"], "Q1")
 
     def test_a_missing_answer_file_fails_loudly(self):
         r = subprocess.run([sys.executable, "-I", SCRIPT, self.questions, "Q1",
