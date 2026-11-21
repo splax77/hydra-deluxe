@@ -386,6 +386,16 @@
           "file": "tests/ui/uitest_preview.cpp",
           "line_text": "IM_CHECK(hydra::ends_with(readout, cap_tail));",
           "why": "checks that the SP gauge's readout ends with the meter cap's tail, not a file format"
+        },
+        {
+          "file": "tests/test_dynamics_breakdown.cpp",
+          "line_text": "CHECK(ends_with(off.tail, dynamics_kick2x_status(false)));",
+          "why": "checks that the Dynamics tab's Kicks line tail ends with the 2x kick status words, not a file format"
+        },
+        {
+          "file": "tests/test_dynamics_breakdown.cpp",
+          "line_text": "CHECK(ends_with(whole, line.tail));",
+          "why": "checks that a two-part line read whole ends with its tail, not a file format"
         }
       ],
       "scope": [
