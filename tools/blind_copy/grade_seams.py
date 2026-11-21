@@ -171,6 +171,11 @@ def unit_name(body):
     return None, False
 
 
+def in_parens(head):
+    """True when the head text has more '(' than ')' so far."""
+    return head.count("(") > head.count(")")
+
+
 def top_units(file, text):
     """The file's top-level definitions and declarations, one Unit each.
     A namespace's own braces do not make a unit; what is inside them does."""
@@ -196,9 +201,16 @@ def top_units(file, text):
                 continue
             cur, opened = n, False
         close = False
-        for mk in marks[idx]:
+        spots = [i for i, c in enumerate(code[idx]) if c in "{};"]
+        for k, mk in enumerate(marks[idx]):
             base = len(ns)
             if mk == "{":
+                if cur is not None and not opened and depth == base and \
+                        in_parens("\n".join(code[cur - 1:idx]) + "\n" + code[idx][:spots[k]]):
+                    # A brace inside the head's open parenthesis, such as a
+                    # default argument `= {}`, is not the body.
+                    depth += 1
+                    continue
                 if cur is not None and not opened and depth == base:
                     head = "\n".join(lines[cur - 1:n])
                     if NAMESPACE_HEAD.match(head):
