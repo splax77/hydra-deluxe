@@ -984,6 +984,14 @@ shot list and the size limits.
 
 ### Every release: build and sign
 
+Before the build, the main session runs the live update test:
+`build-cpp\Release\hydra_tests.exe "-sf=*test_update_live*" --no-skip`. It
+asks the real GitHub for the latest release through Hydra's own network code,
+and checks that the reply still parses and names an installer and a signature.
+It makes one request and downloads no installer. An ordinary run of
+`hydra_tests.exe` skips it, so it runs only when named with `--no-skip`. If it
+fails, its output gives the job's own message; find out why before you build.
+
 ```
 .\installer\build_installer.ps1 -Sign
 ```
