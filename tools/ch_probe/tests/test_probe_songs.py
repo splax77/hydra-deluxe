@@ -196,8 +196,11 @@ class ProbeSongsTest(unittest.TestCase):
         # The song.ini probe_songs writes is the one an earlier run wrote for
         # Edge Walk, and read the way the tools read a song folder, its delay
         # shifts the audio by no ms, so a chart tick is the audio's ms.
-        self.assertEqual(P.song_ini(P.full_name(P.EDGE_WALK)),
-                         read_text(os.path.join(EDGE_WALK_SONG, "song.ini")))
+        # Read with universal newlines: git may check the copied song.ini out
+        # with CRLF line ends (.gitattributes keeps only charts byte-exact).
+        with open(os.path.join(EDGE_WALK_SONG, "song.ini"), encoding="utf-8") as f:
+            recorded_ini = f.read()
+        self.assertEqual(P.song_ini(P.full_name(P.EDGE_WALK)), recorded_ini)
         self.assertEqual(float(game_files.read_song_ini(EDGE_WALK_SONG)["delay"]), 0.0)
 
 
