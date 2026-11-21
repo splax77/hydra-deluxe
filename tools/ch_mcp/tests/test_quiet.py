@@ -505,6 +505,16 @@ class ScanTest(unittest.TestCase):
                          (Q.FolderAge(os.path.join(self.checkout, "build-cpp"), 9000.0),
                           Q.FolderAge(self.folder("a"), 500.0)))
 
+    def test_the_checkouts_own_worktrees_folder_is_read_too(self):
+        # Worktrees cut by hand live in <checkout>/worktrees, beside the
+        # .claude ones; a build in either must stop a launch.
+        hand = os.path.join(self.checkout, "worktrees")
+        self.file("a/build-cpp/old.obj", 9000)
+        self.file("b/build-cpp/new.obj", 2, under=hand)
+        self.assertEqual(self.scan().folders,
+                         (Q.FolderAge(self.folder("a"), 9000.0),
+                          Q.FolderAge(os.path.join(hand, "b", "build-cpp"), 2.0)))
+
     def test_no_worktrees_folder_still_reads_the_main_checkout(self):
         self.file("build-cpp/old.obj", 9000, under=self.checkout)
         self.assertEqual(len(self.scan().folders), 1)
