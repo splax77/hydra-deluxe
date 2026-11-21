@@ -5,4 +5,4 @@ B4 pass: four questions, each with its counts and quoted examples
 B5 pass: every row is open
 B6 pass: every uncovered name and unsorted hit is named
 B7 pass: 3614 joined and 2008 unmatched make 5622 records
-B8 pass: 179 contradicted, each through an answer
+B8 pass: 49 contradicted, each through an answer
