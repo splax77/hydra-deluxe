@@ -273,7 +273,8 @@ void AppState::tick_library(double now) {
                 batch_refreshed_at_ = now;
                 // The open song's panel shows the engine's own result, which
                 // a batch under the same settings finds again, so only the
-                // rows take the answers (D87 item 1).
+                // rows take the answers. No filed decision says whether the
+                // panel should follow a batch instead.
                 library.set_summaries_for(saved.answers);
                 // A lookup the batch could not make reads as any failed store
                 // read does (read_store).

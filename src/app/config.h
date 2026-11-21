@@ -353,7 +353,8 @@ struct AnalysisField {
 // sets, in the panel's order. Settings::with_analysis_defaults and
 // Settings::analysis_changes read it, and the Reset test in
 // tests/test_config.cpp walks it, so a new analysis setting is a new row here
-// (concept audit M13). Nothing can notice a field left out of it.
+// (concept audit M13). The second half of that test catches a keyed setting
+// left out of it.
 inline const std::array<AnalysisField, 11> kAnalysisFields{{
     {&Settings::view_difficulty, AnalysisSetting::Difficulty, KeyPart::ChartMode},
     {&Settings::view_prodrums, AnalysisSetting::ProDrums, KeyPart::ChartMode},

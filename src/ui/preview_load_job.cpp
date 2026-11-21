@@ -30,7 +30,9 @@ namespace {
 constexpr float kReadShare = 0.08f;
 constexpr float kOpenShare = 0.82f;
 constexpr float kSceneShare = 0.045f;
-// The highway gets what is left (about 0.055), so the slices add up to 1.
+// The highway's slice is what is left (about 0.055). Progress::fraction gives
+// where each step's slice starts, so the bar stops short of full while the
+// highway builds.
 
 // Whole megabytes (10^6 bytes, like file sizes), rounded to nearest.
 long long whole_mb(uint64_t bytes) {

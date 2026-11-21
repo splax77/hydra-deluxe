@@ -42,12 +42,13 @@ MENU_POLL_S = 0.5
 
 STEPS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "menu_steps.json")
 
-# The kit item the search step presses to move to the next song. No manual
-# page says which pads scroll: the plan only notes that the user's
-# settings.ini has drum_pad_scrolling = 1, and How to Play says the Blue fret
-# opens the search tool. So Blue is a guess: live step LS-K3, which was to
-# check it, was struck before it got that far (menu_steps.json's "about" says
-# so). The checked-in menu_steps.json has no search step.
+# The kit item the search step presses to move to the next song. Which pad
+# scrolls the song list is not checked on the game, and docs/clone-hero has no
+# page for it: the user's settings.ini has drum_pad_scrolling = 1, and How to
+# Play says the Blue fret opens the search tool, so Blue is an unchecked pick.
+# The tests in tools/ch_mcp/tests/test_menu_tools.py press it against a fake
+# game, so they check the driver's walk, not this pick. The checked-in
+# menu_steps.json has no search step.
 SEARCH_NEXT_ITEM = KIT_PREFIX + "blue"
 
 # The menu classes the expect words look at, by the name agent/menu.ts sends.
