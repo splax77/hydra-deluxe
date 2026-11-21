@@ -28,6 +28,7 @@
 #include "core/app_version.h"
 #include "core/error_kind.h"
 #include "core/winstr.h"
+#include "json.hpp"
 #include "net/http.h"
 #include "scoped_hook.h"
 #include "scratch_paths.h"
@@ -398,6 +399,28 @@ TEST_CASE("named_version is the app's name and the version") {
 }
 
 // ---- Update, the installer start and Cancel --------------------------------
+
+TEST_CASE("once the installer is started, Later, Skip and Update do nothing and no check runs") {
+    UpdateWorld w("update_started");
+    std::unique_ptr<AppState> app = offered_app(w);
+    app->update_now();
+    tick_until_download_step(*app, [&] { return app->update.phase == Phase::Launching; },
+        "the installer to start");
+    CHECK(app->update.text == hydra::ui::kUpdateLaunchingText);
+    REQUIRE(app->update.release.has_value());
+    CHECK(w.canned.launched ==
+          hydra::join_folder(w.folder, hydra::ui::update_installer_name(*app->update.release)));
+    // The buttons are ignored by phase: Hydra stays as it is until the
+    // installer closes it.
+    app->later();
+    app->skip_version();
+    app->update_now();
+    CHECK(app->update.phase == Phase::Launching);
+    CHECK(app->update.release.has_value());
+    CHECK(Settings::load_file(w.paths.ini).skipped_update_version.empty());
+    CHECK_FALSE(app->update_check_running());
+    CHECK(w.canned.downloads == 1);
+}
 
 TEST_CASE("an installer that ends while Hydra runs leaves decision 10's state and the file") {
     UpdateWorld w("update_declined");
