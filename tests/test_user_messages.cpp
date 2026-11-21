@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
 #include <new>
 #include <optional>
 #include <stdexcept>
@@ -22,6 +23,8 @@
 #include "net/http.h"  // http_get, set_fetcher
 #include "parse/midi.h"
 #include "program_scope.h"
+#include "store/library_file.h"   // kOldestConvertibleVersion
+#include "store/upgrade_files.h"  // set_aside_path
 #include "parse/song.h"
 
 using hydra::app::plain_error;
@@ -187,12 +190,22 @@ TEST_CASE("user_messages: stale_text names the real cause") {
 // The file name the notice shows is the one store::set_aside_path gave the
 // file, so the notice and the file on disk agree.
 TEST_CASE("user_messages: the set-aside notice names the file the store set aside") {
-    CHECK(hydra::app::old_library_set_aside_notice("C:\\Hydra\\hydra.db") ==
-          "This library file is from a Hydra version older than 2.2.0, so Hydra set it aside "
-          "as hydra.db.pre-2.2.0 and started a fresh library.");
-    CHECK(hydra::app::old_library_set_aside_notice("C:/some folder/library.db") ==
-          "This library file is from a Hydra version older than 2.2.0, so Hydra set it aside "
-          "as library.db.pre-2.2.0 and started a fresh library.");
+    for (const char* raw : {"C:\\Hydra\\hydra.db", "C:/some folder/library.db"}) {
+        const std::string db = raw;
+        const std::string set_aside = hydra::store::set_aside_path(db);
+        const std::string name = std::filesystem::u8path(set_aside).filename().u8string();
+        const std::string notice = hydra::app::old_library_set_aside_notice(db);
+        INFO("db " << db << " -> notice: " << notice);
+        REQUIRE_FALSE(name.empty());
+        // The notice names the set-aside file by its name alone, not its folder.
+        const std::string named = " as " + name + " ";
+        CHECK(notice.find(named) != std::string::npos);
+        CHECK(notice.find(db) == std::string::npos);
+        // The version it quotes is the cut-off the store set the file aside at.
+        const std::string cutoff = hydra::store::kOldestConvertibleVersion;
+        CHECK(notice.find(cutoff) != std::string::npos);
+        CHECK(name.find(cutoff) != std::string::npos);
+    }
 }
 
 // D268 ("Its own sentence"): the scan the app starts on open says the library
