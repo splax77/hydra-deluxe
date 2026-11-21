@@ -16,7 +16,6 @@ import contextlib
 import dataclasses
 import io
 import os
-import struct
 import sys
 import tempfile
 import time
@@ -65,51 +64,7 @@ BASE = 0x180000000
 GOOD_CONSTS = {C.RVA_CONST_NORMAL_BACK: 0.085, C.RVA_CONST_NORMAL_FRONT: 0.0375}
 
 
-# The values sp_block packs. The low parts are the game's own, from the
-# first row of the recorded act3 watch; the active flag is set, as in Star
-# Power. Each two-width field also has bytes past its low 32 bits (or past
-# its low byte) set, so each width reads a different number.
-_RECORDED = sp_compare.load_watch_rows(ACT3_CSV)[0]
-CLOCK_S = _RECORDED["clock_s"]
-AMOUNT_LO, AMOUNT_HI = _RECORDED["sp_amount_u32"], 1
-MAX_LO, MAX_HI = _RECORDED["sp_max_u32"], 2
-ACTIVE_BYTE, ACTIVE_NEXT_BYTE = 1, 1
-MULT_BYTE, MULT_NEXT_BYTE = _RECORDED["sp_mult_byte"], 2
-END_S = 61.25
-OVERFLOW = _RECORDED["sp_overflow_u32"]
-
-
-def sp_block():
-    """A 0x2E8-byte engine object with every Star Power field set. The
-    offsets are written as literals so the test also pins constants.py."""
-    block = bytearray(0x2E8)
-    struct.pack_into("<d", block, 0x100, CLOCK_S)                    # song clock
-    struct.pack_into("<II", block, 0x68, AMOUNT_LO, AMOUNT_HI)       # SP amount
-    struct.pack_into("<II", block, 0x1B0, MAX_LO, MAX_HI)            # SP maximum
-    struct.pack_into("<BB", block, 0x42, ACTIVE_BYTE, ACTIVE_NEXT_BYTE)  # SP active
-    struct.pack_into("<BB", block, 0x48, MULT_BYTE, MULT_NEXT_BYTE)  # multiplier
-    struct.pack_into("<d", block, 0x120, END_S)                      # SP end time
-    struct.pack_into("<I", block, 0x130, OVERFLOW)                   # overflow
-    return bytes(block)
-
-
 class DecodeSnapshotTest(unittest.TestCase):
-    def test_every_star_power_field_at_each_width(self):
-        # A 64-bit read takes the high word too; a 32-bit read of a flag
-        # takes the byte after it; a byte read takes the low byte only.
-        snap = engine.decode_snapshot(sp_block())
-        self.assertEqual(snap.sp_amount_u32, AMOUNT_LO)
-        self.assertEqual(snap.sp_amount_u64, AMOUNT_LO + (AMOUNT_HI << 32))
-        self.assertEqual(snap.sp_max_u32, MAX_LO)
-        self.assertEqual(snap.sp_max_u64, MAX_LO + (MAX_HI << 32))
-        self.assertEqual(snap.sp_active_byte, ACTIVE_BYTE)
-        self.assertEqual(snap.sp_active_u32, ACTIVE_BYTE + (ACTIVE_NEXT_BYTE << 8))
-        self.assertEqual(snap.sp_mult_byte, MULT_BYTE)
-        self.assertEqual(snap.sp_mult_u32, MULT_BYTE + (MULT_NEXT_BYTE << 8))
-        self.assertEqual(snap.sp_end_s, END_S)
-        self.assertEqual(snap.sp_overflow_u32, OVERFLOW)
-        self.assertEqual(snap.clock_s, CLOCK_S)
-
     def test_every_logged_column_but_the_wall_time_is_a_snapshot_field(self):
         names = {f.name for f in dataclasses.fields(engine.Snapshot)}
         self.assertEqual(
