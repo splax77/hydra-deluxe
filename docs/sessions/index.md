@@ -554,10 +554,14 @@
 - 2026-11-20 47ab11fd Wave 9 handoff documentation (2026-11-20) | agents, review, tests, docs | Ended with wave 9 merged into main and a wave 10 handoff written on its own branch; nothing was pushed and wave 10 has not started.
 - 2026-11-20 64222952 Wave 10 handoff documentation (2026-11-20) | tests, agents, review, docs, planning | Wave 10 finished: all 16 chunks were reviewed and merged into main, which is now at d0aab2c3, and nothing was pushed. [stale]
 - 2026-11-20 c37fb7e1 Wave 11 handoff documentation (2026-11-20) | tests, docs, agents, review, hooks | The session ended at 18:38 UTC with wave 11 merged, every docs test removed, and a wave 12 handoff written. Nothing is pushed.
-- 2026-11-20 388e7e82 Duplicate "none" and unclear dropdown buttons (2026-11-20) | squeeze, path, tests, docs, review | The session ended at 19:01 UTC with the fold fix merged into main and Hydra's build folder rebuilt from main. Nothing is pushed.
+- 2026-11-20 388e7e82 Duplicate "none" and unclear dropdown buttons (2026-11-20) | squeeze, path, tests, docs, review | The session ended at 19:01 UTC with the fold fix merged into main and Hydra's build folder rebuilt from main. Nothing is pushed. [stale]
 - 2026-11-20 79ad8d0f Wave 12 handoff test (2026-11-20) | tests, agents, review, planning, docs | Ended after the wave 13 handoff and the six-wave schedule were committed; wave 13 has not started.
 - 2026-11-20 f5c01069 Session card handoff (2026-11-20) | hooks, agents, review, transcripts, memory | The session ended with the gate fix, the card rewrites and the refiled rulings all merged, and the last fixes committed on main (a0506929). Nothing was pushed in either repo.
 - 2026-11-20 b60cf054 Wave13 handoff test fix (2026-11-20) | tests, agents, review, hooks, docs | The session ended with wave 13 finished and the wave 14 handoff written and committed on its own branch, with wave 14 not started.
+- 2026-11-20 c43465f7 List sorting behavior (2026-11-20) | agents, leaderboards, planning, review, tests | Ended with a handoff for the blind recheck. The picker sort and the fake-server removal were merged, and the recheck plan was reviewed but not started.
+- 2026-11-20 31e7ea72 Wave14 handoff test fix (2026-11-20) | agents, hooks, planning, review, tests | Ended with a handoff for wave 15, after all 20 wave 14 chunks were reviewed, built and merged.
+- 2026-11-21 f75eecad Blind recheck agent evaluation (2026-11-21) | agents, hooks, planning, review, tests | Ended with a handoff for the next session, after pilot 2 failed five of its eight checks and the script-first recheck plan was signed but not started.
+- 2026-11-21 a82bf5e7 Wave15 handoff test fix (2026-11-21) | agents, hooks, planning, review, tests | Ended with a handoff for wave 16, after all 20 wave 15 chunks were reviewed, built and merged, and nothing was pushed.
 
 ## Proposed tags
 
