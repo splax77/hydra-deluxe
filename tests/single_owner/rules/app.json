@@ -1471,12 +1471,17 @@
           "file": "src/parse/song.cpp",
           "line_text": "song.last_note_end_tick = last_note_end_tick_;",
           "why": "the .chart reader stores the last note's end"
+        },
+        {
+          "file": "src/core/song.cpp",
+          "line_text": "return song.last_note_end_tick.value_or(0) + song.tick_resolution();",
+          "why": "ch10_last_line_tick reads the stored value as F10 of the 1.0 game's fill generator does (the end of the latest note plus one beat, 0 with no note); it does not decide whether an end counts"
         }
       ],
       "scope": [
         "src"
       ],
-      "note": "The end event and the last note's end are read only by app::song_length_ms, through end_event_counts for the one-beat margin, so no second place decides where a song ends. The parsers store both; nothing else in src reads them."
+      "note": "The end event and the last note's end are read by app::song_length_ms, through end_event_counts for the one-beat margin, and by core's ch10_last_line_tick, which takes the stored last note's end plus one beat as the end of 1.0's measure-line walk (F10) and decides nothing about whether an end counts, so no second place decides where a song ends. The parsers store both; nothing else in src reads them."
     },
     {
       "question": "What does a failed length read leave in the store?",
