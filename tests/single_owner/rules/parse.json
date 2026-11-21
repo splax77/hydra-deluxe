@@ -383,6 +383,16 @@
           "why": "picks the repo root's .md pages as real files the merge-test picker must not count as shared code, not a chart format"
         },
         {
+          "file": "tests/test_layering.cpp",
+          "line_text": "if (arg.size() > open.size() + close.size() && arg.rfind(open, 0) == 0 && hydra::ends_with(arg, close)) {",
+          "why": "reads a CMake $<TARGET_PROPERTY:...,INTERFACE_INCLUDE_DIRECTORIES> argument, not a chart format"
+        },
+        {
+          "file": "tests/test_layering.cpp",
+          "line_text": "if (k.rfind(\"third_party/\", 0) == 0 && hydra::ends_with(k, tail)) return k;",
+          "why": "finds the vendored file an include path names, not a chart format"
+        },
+        {
           "file": "tests/ui/uitest_preview.cpp",
           "line_text": "IM_CHECK(hydra::ends_with(readout, cap_tail));",
           "why": "checks that the SP gauge's readout ends with the meter cap's tail, not a file format"
