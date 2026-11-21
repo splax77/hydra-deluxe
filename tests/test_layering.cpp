@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/strutil.h"
 #include "json.hpp"
 #include "single_owner/engine.h"
 #include "source_tree.h"
@@ -227,8 +228,7 @@ bool unresolved(const std::string& s) { return s.find("${") != std::string::npos
 // comes back unchanged.
 std::string include_folder_of(const std::string& arg) {
     const std::string open = "$<TARGET_PROPERTY:", close = ",INTERFACE_INCLUDE_DIRECTORIES>";
-    if (arg.size() > open.size() + close.size() && arg.rfind(open, 0) == 0 &&
-        arg.compare(arg.size() - close.size(), close.size(), close) == 0) {
+    if (arg.size() > open.size() + close.size() && arg.rfind(open, 0) == 0 && hydra::ends_with(arg, close)) {
         const std::string target = arg.substr(open.size(), arg.size() - open.size() - close.size());
         if (!target.empty() && target.find_first_of("$<>,:") == std::string::npos) return "target:" + target;
     }
@@ -415,9 +415,7 @@ std::string resolve(const std::string& rel, const std::string& include, const st
 std::string vendored_file(const std::string& include, const std::set<std::string>& known) {
     const std::string tail = "/" + include;
     for (const std::string& k : known)
-        if (k.rfind("third_party/", 0) == 0 && k.size() > tail.size() &&
-            k.compare(k.size() - tail.size(), tail.size(), tail) == 0)
-            return k;
+        if (k.rfind("third_party/", 0) == 0 && hydra::ends_with(k, tail)) return k;
     return {};
 }
 
