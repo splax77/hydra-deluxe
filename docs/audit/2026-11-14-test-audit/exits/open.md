@@ -7,7 +7,7 @@ The user's answer to question 3 (card `docs/sessions/2026-11-19-8e6a2908.md`): c
 Group 1, the runs:
 
 - `records/A12.md:173`: GONE. The docs tests were removed from main by debd48412 ("Remove the docs tests; the code lexer case moves to its own file"); no test in tests/ names a Premise map. There is nothing left to run.
-- `records/A16.md:382`: waits for the user. The test only prints read times and runs only when HYDRA_TIMING_DB names a library file; a run needs a copy of the user's library file.
+- `records/A16.md:382`: not a test, closed by the user. The test only prints read times and runs only when HYDRA_TIMING_DB names a library file, so it checks nothing. Asked whether to run it on a copy of the library file or close it as not a test, the user said "close it" (2026-11-21).
 - `records/A20.md:236`: holds. `hydra_tests "-tc=build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged"` passed, 11 of 11 assertions.
 - `records/A31.md:24`: holds. "StemReader: straight-through read equals the full decode" passed, 301 of 301 assertions.
 - `records/A31.md:233`: holds for both readings of the doubt above. "StemReader: a FLAC behind an ID3 tag decodes the same as the plain file" passed, 5 of 5, and "StemReader: a damaged Opus stem plays again after a seek to before the damage" passed.
@@ -21,7 +21,7 @@ Group 1, the runs:
 
 Group 2, the files: all six hold. `python -m pytest -rs test_frida_tools.py test_method_watch.py` in tools/ch_mcp/tests ran with the real dumps in hydra-data/ch-dumps (builds 4045, 6142 and 6161 present): 70 passed, 132 subtests passed, none skipped.
 
-A fresh closure checker (session e3d99f2b, task O1-check) read each closure against the code at ac50ea51: 17 PASS, A12 GONE, A16 waits, no REOPEN. It found the A31.md:233 doubt is the verdict file's: B1's "A31 SR14" line describes SR15 (A31.md:248), and both tests were run. Every test line cited above is stale; the names still match.
+A fresh closure checker (session e3d99f2b, task O1-check) read each closure against the code at ac50ea51: 17 PASS, A12 GONE, A16 waits (since closed by the user), no REOPEN. It found the A31.md:233 doubt is the verdict file's: B1's "A31 SR14" line describes SR15 (A31.md:248), and both tests were run. Every test line cited above is stale; the names still match.
 
 Group 3, the two scripts: by the user's choice, `tools/ch_probe/experiments/key_delivery_test.py` and `pad_flash_test.py` are not tests. They leave the test ledger; the scripts stay as experiments.
 
