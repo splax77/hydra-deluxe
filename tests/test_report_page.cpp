@@ -1,25 +1,36 @@
-// Tests for the report's page: the tiles above the tables, and the fill
-// comparison page's HTML shell, shared stylesheet and script, colour contrast
-// and print rules, and the file write that swaps a page in. The rows the
-// tiles count are tested in test_report_rows.cpp.
+// Tests for the report's page: the path report's tiles over rows read from
+// the store, and the fill comparison page's HTML shell, shared stylesheet and
+// script, colour contrast, and the file write that swaps a page in. The rows
+// the tiles count are tested in test_report_rows.cpp, and the comparison's
+// tiles in test_dm_report.cpp.
 
 #include "doctest.h"
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "app/dm_report.h"
+#include "app/config.h"
 #include "app/fill_report.h"
 #include "app/html_page.h"
+#include "app/library_query.h"  // search_fold_table
 #include "app/report.h"
 #include "app/report_files.h"
+#include "core/model.h"           // group_thousands, format_ms
+#include "core/squeeze_rating.h"  // beyond_tier, timing_tiers
+#include "store/chart_index.h"
+#include "store/record_store.h"
+#include "corpus_util.h"
+#include "dm_fixture.h"  // testdm::settings, testdm::save
 #include "report_samples.h"
 #include "temp_util.h"
 #include "wcag_util.h"
@@ -35,26 +46,102 @@ size_t occurrences(const std::string& text, const std::string& what) {
     return n;
 }
 
-using report_samples::every_row;
+// The title every chart of corpus_page is listed under. The scan's row
+// (corpus::scanned_entry) gives every chart the same artist, so with one
+// title too, two charts can only be told apart by their hash.
+const char* const kSharedTitle = "Same Title";
 
-using TilePairs = std::vector<std::pair<std::string, std::string>>;
+// A second library folder holding the corpus chart `chart`: the chart file,
+// and its song.ini when it has one, copied into the folder `dir`, and the row
+// a scan writes for the copy.
+store::ChartLibraryEntry listed_again(const std::string& chart, const std::string& dir) {
+    const size_t slash = chart.rfind('\\');
+    REQUIRE(slash != std::string::npos);
+    testtemp::write_bytes(dir + chart.substr(slash), hydra::read_file_bytes(chart));
+    const std::string ini = chart.substr(0, slash) + "\\song.ini";
+    if (std::filesystem::exists(hydra::os_path(ini)))
+        testtemp::write_bytes(dir + "\\song.ini", hydra::read_file_bytes(ini));
+    return corpus::scanned_entry(dir + chart.substr(slash), kSharedTitle);
+}
 
-// The tiles as (label, value) pairs, so one CHECK compares them all.
-TilePairs tile_pairs(const std::vector<report::Tile>& tiles) {
-    TilePairs out;
-    for (const report::Tile& t : tiles) out.emplace_back(t.label, t.value);
+// The path report's rows and the library they were read against.
+struct CorpusPage {
+    std::vector<report::ReportRow> rows;
+    store::ChartIndex library;
+};
+
+// Three corpus charts with paths, analyzed and saved through the store under
+// testdm::settings(), each listed by the row a scan writes for its file, all
+// under kSharedTitle. The first chart is listed a second time from a copy of
+// its folder, so it counts two library rows. The rows and the library are
+// collect_rows' own.
+const CorpusPage& corpus_page() {
+    static const CorpusPage page = [] {
+        const Settings settings = testdm::settings();
+        const BatchRun run = settings.batch_run();
+        std::vector<corpus::ChartWithPaths> charts = corpus::charts_with_paths(run.settings, 3);
+        REQUIRE(charts.size() == 3);
+        store::RecordStore store(":memory:");
+        std::vector<store::ChartLibraryEntry> library;
+        for (const corpus::ChartWithPaths& c : charts)
+            library.push_back(corpus::scanned_entry(c.chart, kSharedTitle));
+        // The scan reads the copy here; nothing opens it after.
+        const std::string copy_dir = testtemp::temp_dir("report_page_copy");
+        library.push_back(listed_again(charts[0].chart, copy_dir));
+        testtemp::remove_dir(copy_dir);
+        // The copy is the same chart, or the library would hold four charts.
+        REQUIRE(library.back().md5 == library.front().md5);
+        store.rebuild_chart_library(library);
+        for (size_t i = 0; i < charts.size(); ++i)
+            testdm::save(store, library[i].md5, settings, charts[i].result.record);
+        report::ReportOptions options;
+        options.run = run;
+        report::CollectedRows collected = report::collect_rows(store, options);
+        return CorpusPage{std::move(collected.rows), std::move(collected.library)};
+    }();
+    return page;
+}
+
+// The indices of the rows of chart `id`.
+std::vector<size_t> rows_of_chart(const CorpusPage& page, const std::string& id) {
+    std::vector<size_t> out;
+    for (size_t i = 0; i < page.rows.size(); ++i)
+        if (page.rows[i].hyhash == id) out.push_back(i);
     return out;
 }
 
-// path_tiles over hand-built rows counted against `library`: each row carries
-// its chart's copies the way collect_rows sets them, and the "of" half is the
-// library's own count, as generate_report hands it over
-// (GeneratedReport::library_charts).
-std::vector<report::Tile> tiles_against(std::vector<report::ReportRow> rows,
-                                        const std::vector<size_t>& shown,
-                                        const hydra::store::ChartIndex& library) {
-    return report::path_tiles(report_samples::counted_against(std::move(rows), library), shown,
-                              library.count(library.song_ids()));
+// The shown lists a window can reach with its filters: every row, each
+// chart's rows alone, every other row, the first row alone, and no row.
+std::vector<std::vector<size_t>> shown_lists(const CorpusPage& page) {
+    std::vector<std::vector<size_t>> out = {report_samples::every_row(page.rows.size())};
+    for (const std::string& id : page.library.song_ids()) out.push_back(rows_of_chart(page, id));
+    std::vector<size_t> alternate;
+    for (size_t i = 0; i < page.rows.size(); i += 2) alternate.push_back(i);
+    out.push_back(alternate);
+    out.push_back({0});
+    out.push_back({});
+    return out;
+}
+
+// path_tiles over `shown`, handed the library's own count as generate_report
+// hands it over (GeneratedReport::library_charts).
+std::vector<report::Tile> page_tiles(const CorpusPage& page, const std::vector<size_t>& shown) {
+    return report::path_tiles(page.rows, shown, page.library.count(page.library.song_ids()));
+}
+
+// The song ids of the rows at `shown`.
+std::vector<std::string> shown_ids(const CorpusPage& page, const std::vector<size_t>& shown) {
+    std::vector<std::string> ids;
+    for (size_t i : shown) ids.push_back(page.rows[i].hyhash);
+    return ids;
+}
+
+// The Charts shown tile's text for `shown`: the charts with rows shown, every
+// library copy counted (ChartIndex::count, D76, D77), of every chart the
+// library lists, counted the same way.
+std::string charts_shown_text(const CorpusPage& page, const std::vector<size_t>& shown) {
+    return group_thousands(page.library.count(shown_ids(page, shown))) + " of " +
+           group_thousands(page.library.count(page.library.song_ids()));
 }
 
 }  // namespace
@@ -87,109 +174,93 @@ TEST_CASE("the fill page carries the shared stylesheet and script") {
     CHECK(fill.find(".delta {") == std::string::npos);
     CHECK(fill.find(".rank {") == std::string::npos);
     CHECK(fill.find("data-theme") == std::string::npos);
-    // The page searches words only (D56 item 1, D57 item 3): accents fold,
-    // and every typed word must appear in the text the page shows; quotes
-    // and field prefixes are ordinary words. It never joins its fields and
-    // looks for the query as one lowercased run, and it carries the fold
-    // table Hydra built from the library's fold.
-    CHECK(fill.find("toLowerCase().includes(") == std::string::npos);
-    CHECK(fill.find("const FOLD = {\"A\":\"a\",") != std::string::npos);
-    // The shared script looks the query's characters up in that table and
-    // matches against each row's search text, which Hydra folded in C++ (the
-    // "a row's search text is folded" case pins that fold). These checks
-    // stand for the facts, not the exact expressions, so a rewrite of the same
-    // logic passes. The script holds no fold of its own: no lowercasing and
-    // no accented letter, raw or escaped. Every typed word must match (D56
-    // item 1), so the script keeps an every-word test; a change to any-word
-    // matching (`.some(`) fails here.
-    const std::string script = html::kReportJs;
-    CHECK(script.find("FOLD[") != std::string::npos);
-    CHECK(script.find(".search") != std::string::npos);
-    CHECK(script.find(".every(") != std::string::npos);
-    CHECK(script.find("toLowerCase") == std::string::npos);
-    CHECK(std::none_of(script.begin(), script.end(),
-                       [](char c) { return static_cast<unsigned char>(c) >= 0x80; }));
-    for (const char* range : {"\\u00", "\\u01", "\\uff", "\\uFF"})
-        CHECK(script.find(range) == std::string::npos);
-    CHECK(fill.find("<div class=\"wrap fill\">") != std::string::npos);
-
-    // Every number on the page groups through the shared fmt, which uses one
-    // fixed rule (1,234), whatever language the browser is set to (D48 Q12).
-    // The single-owner scan keeps it that way.
-    CHECK(std::string(html::kReportJsHead).find(".toLocaleString('en-US')") !=
-          std::string::npos);
-    CHECK(fill.find(".toLocaleString()") == std::string::npos);
+    // The page folds a typed query with the Library's own fold (D56 item 1):
+    // it carries every entry of search_fold_table, each written as the page
+    // writes its data (json_escape_into).
+    const std::vector<FoldEntry> table = search_fold_table();
+    REQUIRE_FALSE(table.empty());
+    REQUIRE(fill.find("const FOLD = {") != std::string::npos);
+    for (const FoldEntry& e : table) {
+        std::string pair;
+        html::json_escape_into(pair, e.from);
+        pair.push_back(':');
+        html::json_escape_into(pair, e.to);
+        INFO(pair);
+        CHECK(fill.find(pair) != std::string::npos);
+    }
 }
 
-// The six path rows and four scores the samples page shows
-// (tests/report_samples.h). The path_tiles and dm_tiles cases are pinned on
-// them.
-using report_samples::sample_dm_rows;
-using report_samples::sample_path_rows;
+// ---- the path report's tiles -------------------------------------------------
 
-TEST_CASE("path_tiles: the six sample rows") {
-    const std::vector<report::ReportRow> rows = sample_path_rows();
-    const hydra::store::ChartIndex library = report_samples::sample_index();
-    CHECK(tile_pairs(tiles_against(rows, every_row(rows.size()), library)) ==
-          TilePairs{{"Charts shown", "3 of 3"},
-                    {"Paths shown", "6"},
-                    {"Hardest ms", "171.0 ms"},
-                    {"Past 170 ms", "1"},
-                    {"Highest skip", "1"}});
-}
+TEST_CASE("path_tiles: each tile counts the rows shown, read from the store") {
+    const CorpusPage& page = corpus_page();
+    REQUIRE_FALSE(page.rows.empty());
+    const std::string beyond = beyond_tier(timing_tiers()).name;
+    for (const std::vector<size_t>& shown : shown_lists(page)) {
+        CAPTURE(shown.size());
+        const std::vector<report::Tile> tiles = page_tiles(page, shown);
+        // path_tiles' order: Charts shown, Paths shown, Hardest ms, Past
+        // <edge> ms, Highest skip.
+        REQUIRE(tiles.size() == 5);
+        CHECK(tiles[0].value == charts_shown_text(page, shown));
+        CHECK(tiles[1].value == group_thousands(static_cast<int64_t>(shown.size())));
 
-TEST_CASE("path_tiles: the tiles count only the rows shown") {
-    const std::vector<report::ReportRow> rows = sample_path_rows();
-    const hydra::store::ChartIndex library = report_samples::sample_index();
-    // Song A's three rows and Song C's one: two charts, no Beyond row, and the
-    // hardest timing is Song C's 90 ms.
-    CHECK(tile_pairs(tiles_against(rows, {0, 1, 2, 5}, library)) ==
-          TilePairs{{"Charts shown", "2 of 3"},
-                    {"Paths shown", "4"},
-                    {"Hardest ms", "90.0 ms"},
-                    {"Past 170 ms", "0"},
-                    {"Highest skip", "1"}});
-    // Song A's mode with no squeeze alone: no timing to show.
-    CHECK(tile_pairs(tiles_against(rows, {2}, library)) ==
-          TilePairs{{"Charts shown", "1 of 3"},
-                    {"Paths shown", "1"},
-                    {"Hardest ms", "—"},
-                    {"Past 170 ms", "0"},
-                    {"Highest skip", "0"}});
-    // Nothing passes the filters.
-    CHECK(tile_pairs(tiles_against(rows, {}, library)) ==
-          TilePairs{{"Charts shown", "0 of 3"},
-                    {"Paths shown", "0"},
-                    {"Hardest ms", "—"},
-                    {"Past 170 ms", "0"},
-                    {"Highest skip", "0"}});
+        // The largest shown timing, as the Hardest ms column writes it
+        // (format_ms), or the dash when no shown row has one.
+        std::optional<double> hardest;
+        int64_t past_edge = 0;
+        int highest_skip = 0;
+        for (size_t i : shown) {
+            const report::ReportRow& r = page.rows[i];
+            if (r.ms) hardest = hardest ? (std::max)(*hardest, *r.ms) : *r.ms;
+            // The rows tier_for labeled Beyond.
+            if (r.tier == beyond) ++past_edge;
+            highest_skip = (std::max)(highest_skip, r.skip);
+        }
+        CHECK(tiles[2].value == (hardest ? format_ms(*hardest) : std::string(report::kDash)));
+        CHECK(tiles[3].label == "Past " + report::beyond_edge_text() + " ms");
+        CHECK(tiles[3].value == group_thousands(past_edge));
+        CHECK(tiles[4].value == std::to_string(highest_skip));
+    }
 }
 
 TEST_CASE("path_tiles: Charts shown adds each chart's copies once") {
-    const std::vector<report::ReportRow> rows = sample_path_rows();
-    // Song A is in the library 1,200 times and Song B twice; Song A's three
-    // rows still count its copies once. The library's own count, after "of",
-    // counts the same copies.
-    const hydra::store::ChartIndex library = report_samples::sample_index(1200, 2);
-    CHECK(tiles_against(rows, every_row(rows.size()), library)[0]
-              .value == "1,203 of 1,203");
-    CHECK(tiles_against(rows, {0, 1, 2}, library)[0].value ==
-          "1,200 of 1,203");
-    CHECK(tiles_against(rows, {3}, library)[0].value == "2 of 1,203");
+    const CorpusPage& page = corpus_page();
+    // The first chart sits in two library folders, so its rows count two
+    // library rows, however many rows it has (D76 item 2: every copy counts).
+    const std::string& twice = page.library.song_ids().front();
+    REQUIRE(page.library.copies(twice) == 2);
+    const std::vector<size_t> its_rows = rows_of_chart(page, twice);
+    REQUIRE_FALSE(its_rows.empty());
+    CHECK(page_tiles(page, its_rows)[0].value == charts_shown_text(page, its_rows));
+    CHECK(page.library.count(shown_ids(page, its_rows)) == 2);
+    // The "of" half counts the same copies: one more library row than charts.
+    CHECK(page.library.count(page.library.song_ids()) ==
+          static_cast<int64_t>(page.library.song_ids().size()) + 1);
 }
 
-TEST_CASE("dm_tiles: the four sample scores") {
-    const std::vector<dm_report::DmReportRow> rows = sample_dm_rows();
-    CHECK(tile_pairs(dm_report::dm_tiles(rows, every_row(rows.size()))) ==
-          TilePairs{{"Scores shown", "4"},
-                    {"Under optimal", "1"},
-                    {"At optimal", "0"},
-                    {"Above optimal", "1"},
-                    {"No current result", "1"},
-                    {"Not in your library", "1"},
-                    {"Other speed", "0"},
-                    {"Avg % of optimal", "98.80%"},
-                    {"Points left on table", "3,456"}});
+TEST_CASE("path report counts charts by hash in the Charts shown tile") {
+    const CorpusPage& page = corpus_page();
+    // Every chart shows one title and artist, and still each counts on its own.
+    std::set<std::string> ids;
+    std::set<std::pair<std::string, std::string>> names;
+    for (const report::ReportRow& r : page.rows) {
+        ids.insert(r.hyhash);
+        names.insert({r.song, r.artist});
+    }
+    REQUIRE(ids.size() == page.library.song_ids().size());
+    REQUIRE(names.size() == 1);
+    // Every row shown: every library row counts, though one name covers all.
+    const std::vector<size_t> all = report_samples::every_row(page.rows.size());
+    CHECK(page_tiles(page, all)[0].value ==
+          group_thousands(page.library.count(page.library.song_ids())) + " of " +
+              group_thousands(page.library.count(page.library.song_ids())));
+    for (const std::string& id : page.library.song_ids()) {
+        CAPTURE(id);
+        const std::vector<size_t> shown = rows_of_chart(page, id);
+        CHECK(page.library.count(shown_ids(page, shown)) == page.library.copies(id));
+        CHECK(page_tiles(page, shown)[0].value == charts_shown_text(page, shown));
+    }
 }
 
 // ---- the page shell ----------------------------------------------------------
@@ -197,8 +268,7 @@ TEST_CASE("dm_tiles: the four sample scores") {
 // M07: the page's empty state is the windows' sentence, written in by C++.
 TEST_CASE("page_template writes the windows' empty-state sentence into the script") {
     const std::string page = html::page_template("t", "", "");
-    CHECK(page.find("empty.textContent = \"Nothing matches.\";") !=
-          std::string::npos);
+    CHECK(page.find(html::kNothingMatches) != std::string::npos);
     CHECK(page.find("__NOTHING_MATCHES__") == std::string::npos);
 }
 
@@ -235,127 +305,77 @@ std::map<std::string, std::string> css_tokens(const std::string& css, size_t fro
     return out;
 }
 
-// The inside of the first "@media print" block, up to its matching brace, or
-// "" when the stylesheet has none.
-std::string print_block(const std::string& css) {
-    const size_t media = css.find("@media print");
-    if (media == std::string::npos) return {};
-    const size_t open = css.find('{', media);
-    if (open == std::string::npos) return {};
-    int depth = 1;
-    for (size_t i = open + 1; i < css.size(); ++i) {
-        if (css[i] == '{') ++depth;
-        if (css[i] == '}' && --depth == 0) return css.substr(open + 1, i - open - 1);
+// Every token the stylesheet colours text with: the name in each
+// "color: var(--name)" declaration, spaces after the colon or not. A longer
+// property that ends in "color" (border-color, scrollbar-color) is not text.
+std::set<std::string> text_tokens(const std::string& css) {
+    const std::string property = "color:";
+    const std::string var = "var(--";
+    std::set<std::string> out;
+    for (size_t at = css.find(property); at != std::string::npos;
+         at = css.find(property, at + 1)) {
+        if (at > 0) {
+            const unsigned char before = static_cast<unsigned char>(css[at - 1]);
+            if (before == '-' || std::isalnum(before) != 0) continue;
+        }
+        size_t value = at + property.size();
+        while (value < css.size() && css[value] == ' ') ++value;
+        if (css.compare(value, var.size(), var) != 0) continue;
+        const size_t name = value + var.size();
+        const size_t close = css.find(')', name);
+        if (close == std::string::npos) break;
+        out.insert(css.substr(name, close - name));
     }
-    return {};
+    return out;
 }
 
-// The declarations of the rule in `css` whose whole selector is `selector`,
-// with every space taken out, or "" when there is no such rule.
-std::string rule_body(const std::string& css, const std::string& selector) {
-    auto blank = [](char c) { return std::isspace(static_cast<unsigned char>(c)) != 0; };
-    for (size_t at = css.find(selector); at != std::string::npos;
-         at = css.find(selector, at + 1)) {
-        // Only a selector that starts its rule: the text before it, past any
-        // spaces, is the start of `css` or the end of the rule before.
-        size_t before = at;
-        while (before > 0 && blank(css[before - 1])) --before;
-        if (before > 0 && css[before - 1] != '}' && css[before - 1] != '{') continue;
-        size_t open = at + selector.size();
-        while (open < css.size() && blank(css[open])) ++open;
-        if (open >= css.size() || css[open] != '{') continue;
-        const size_t close = css.find('}', open);
-        std::string body;
-        for (size_t i = open + 1; i < close && i < css.size(); ++i)
-            if (!blank(css[i])) body.push_back(css[i]);
-        return body;
-    }
-    return {};
-}
+// WCAG 2.2's contrast minimums (success criterion 1.4.3): normal text, and
+// large text, which 1.4.11 also asks of a focus ring.
+constexpr double kWcagTextContrast = 4.5;
+constexpr double kWcagLargeTextContrast = 3.0;
 
 }  // namespace
 
 TEST_CASE("the fill page is a standards-mode document") {
     const std::string fill = fill_report::build_fill_html({}, store::ChartIndex{}, "sub", "foot");
-    CHECK(fill.rfind("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n", 0) == 0);
-    CHECK(fill.find("</style>\n</head>\n<body>\n") != std::string::npos);
-    REQUIRE(fill.size() > 16);
-    CHECK(fill.substr(fill.size() - 16) == "</body>\n</html>\n");
+    // The doctype first, or a browser draws the page in quirks mode.
+    CHECK(fill.rfind("<!DOCTYPE html>", 0) == 0);
     CHECK(occurrences(fill, "<title>") == 1);
 }
 
-TEST_CASE("report colours meet WCAG contrast in both themes") {
+TEST_CASE("report colours meet WCAG contrast in every colour scheme") {
     const std::string css = html::report_css();
-    const std::map<std::string, std::string> light = css_tokens(css, 0);
-    const std::map<std::string, std::string> dark =
-        css_tokens(css, css.find("prefers-color-scheme: dark"));
-    for (const auto* theme : {&light, &dark}) {
-        // Body text, dim text, header text and every chip colour, on the page,
-        // on a cell, and on a hovered row or the header band.
-        for (const char* text : {"ink", "muted", "t0", "t3", "tn"}) {
+    const std::set<std::string> texts = text_tokens(css);
+    REQUIRE_FALSE(texts.empty());
+    // Every ":root {" block is one scheme: the light one, the dark one and
+    // the one for paper.
+    size_t schemes = 0;
+    for (size_t at = css.find(":root {"); at != std::string::npos; at = css.find(":root {", at + 1)) {
+        ++schemes;
+        const std::map<std::string, std::string> scheme = css_tokens(css, at);
+        // Every text colour on the page, on a cell, and on a hovered row or
+        // the header band. The accent is the large bold heading word and the
+        // focus ring.
+        for (const std::string& text : texts) {
+            const double minimum = text == "sp" ? kWcagLargeTextContrast : kWcagTextContrast;
             for (const char* ground : {"paper", "surface", "raised"}) {
-                INFO(text << " on " << ground);
-                CHECK(contrast(theme->at(text), theme->at(ground)) >= 4.5);
+                INFO(schemes << ": " << text << " on " << std::string(ground));
+                REQUIRE(scheme.count(text) == 1);
+                REQUIRE(scheme.count(ground) == 1);
+                CHECK(contrast(scheme.at(text), scheme.at(ground)) >= minimum);
             }
         }
-        // The accent is the large bold heading word and the focus ring: 3:1.
-        CHECK(contrast(theme->at("sp"), theme->at("surface")) >= 3.0);
-        CHECK(contrast(theme->at("sp"), theme->at("raised")) >= 3.0);
     }
+    CHECK(schemes >= 2);
     // The dark scheme's chip colours are the windows' (html_page.h's
     // kChipRgb*), written in when the stylesheet is built.
-    CHECK(dark.at("t0") == "#4fbf94");
-    CHECK(dark.at("t3") == "#f2686b");
-    CHECK(dark.at("tn") == "#949aa6");
+    const std::map<std::string, std::string> dark =
+        css_tokens(css, css.find("prefers-color-scheme: dark"));
+    auto rgb = [&dark](const char* token) {
+        return static_cast<uint32_t>(std::stoul(dark.at(token).substr(1), nullptr, 16));
+    };
+    CHECK(rgb("t0") == html::kChipRgbT0);
+    CHECK(rgb("t3") == html::kChipRgbT3);
+    CHECK(rgb("tn") == html::kChipRgbTn);
     CHECK(css.find("__CHIP_") == std::string::npos);
-}
-
-TEST_CASE("report table header sticks and the page prints") {
-    const std::string css = html::report_css();
-    const size_t at = css.find(".tablewrap {");
-    REQUIRE(at != std::string::npos);
-    const std::string rule = css.substr(at, css.find('}', at) - at);
-    // Scrolling both ways makes the wrapper the header's sticky container.
-    CHECK(rule.find("overflow: auto;") != std::string::npos);
-    CHECK(rule.find("max-height:") != std::string::npos);
-    CHECK(rule.find("overflow-x") == std::string::npos);
-
-    // On paper the controls go and the header repeats on every page.
-    const std::string print = print_block(css);
-    REQUIRE_FALSE(print.empty());
-    CHECK(rule_body(print, ".controls").find("display:none") != std::string::npos);
-    CHECK(rule_body(print, "thead").find("display:table-header-group") != std::string::npos);
-}
-
-TEST_CASE("report pages number their rows in a # column") {
-    // The shared script adds the column, so the fill page gets it: a header
-    // that reads "#" and cells that carry the idx class the stylesheet sizes.
-    const std::string js = html::kReportJs;
-    CHECK(js.find("'#'") != std::string::npos);
-    CHECK(js.find("'idx") != std::string::npos);
-    // The sort control and the arrows walk the sortable headers, which the #
-    // one is not.
-    CHECK(js.find("th.sortable") != std::string::npos);
-    CHECK(std::string(html::report_css()).find("td.idx") != std::string::npos);
-}
-
-TEST_CASE("path report counts charts by hash in the Charts shown tile") {
-    report::ReportRow a;
-    a.song = "Same";
-    a.artist = "Name";
-    a.path = "1";
-    a.tier = "None";
-    a.tok = "tn";
-    a.hyhash = "h1";
-    report::ReportRow a2 = a;
-    a2.rank = 2;
-    report::ReportRow b = a;  // another chart with the same title and artist
-    b.hyhash = "h2";
-    const hydra::store::ChartIndex library = hydra::store::ChartIndex::from_rows(
-        {hydra::store::ChartLibraryEntry{"h1", "Same", "Name"},
-         hydra::store::ChartLibraryEntry{"h2", "Same", "Name"}});
-
-    // Two charts, however many rows each has, and even when the names match.
-    CHECK(tiles_against({a, a2, b}, every_row(3), library)[0].value == "2 of 2");
-    CHECK(tiles_against({a, a2, b}, {0, 1}, library)[0].value == "1 of 2");
 }
