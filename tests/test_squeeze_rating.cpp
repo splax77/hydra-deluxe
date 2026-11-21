@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include "app/path_view.h"
 #include "core/squeeze_rating.h"
 #include "core/rules.h"
 #include "corpus_util.h"
@@ -1125,4 +1126,55 @@ TEST_CASE("beyond_edge_ms: where the ladder's Beyond band starts") {
     CHECK(beyond_edge_ms() == nominal_budget_ms());
     CHECK(tier_for(beyond_edge_ms(), tiers).first != beyond);
     CHECK(tier_for(beyond_edge_ms() + 0.001, tiers).first == beyond);
+}
+
+// The Paths tab's backend rows print the figures rate_activation worked out,
+// never figures of their own. Pitch Dark (testdata/input/test_pitch_dark_ratio)
+// has backend rows on scaled sides of its SP ends under the app's default
+// settings, so some rows carry an eff. figure and a scaled budget. Each such
+// row's "(eff. X)" suffix and tooltip must name that row's effective_ms and
+// budget_ms from the rating, and the tooltip's normal budget must be
+// nominal_budget_ms; a row the rating gave no figure shows none.
+TEST_CASE("build_activations: the Paths tab's backend rows print rate_activation's figures") {
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const SongTiming& timing = song.timing();
+    const core::Rules& rules = core::default_rules();
+    const std::string normal_budget = format_ms(nominal_budget_ms());
+    int rows_with_figure = 0;
+    for (const Path* path : rec.all_paths()) {
+        CAPTURE(path->pathstring());
+        const std::vector<Activation> acts = path->all_activations();
+        // No backend limit, so every stored row shows, in the rating's order.
+        const app::ActivationsView view =
+            app::build_activations(*path, rec, &timing, std::nullopt, rules);
+        REQUIRE(view.acts.size() == acts.size());
+        for (size_t i = 0; i < acts.size(); ++i) {
+            CAPTURE(i);
+            const ActivationRating rate = rate_activation(acts[i], rules.backend_leeway_ms);
+            const std::vector<app::BackendRowView>& rows = view.acts[i].backends;
+            REQUIRE(rows.size() == rate.backends.size());
+            for (size_t r = 0; r < rows.size(); ++r) {
+                const NoteRating& note = rate.backends[r].note;
+                CAPTURE(rows[r].rating);
+                CAPTURE(rows[r].tooltip);
+                if (!note.effective_ms) {
+                    CHECK(rows[r].rating.find("eff.") == std::string::npos);
+                    CHECK(rows[r].tooltip.empty());
+                    continue;
+                }
+                ++rows_with_figure;
+                const std::string eff = format_ms(*note.effective_ms);
+                CHECK(rows[r].rating.find("(eff. " + eff + ")") != std::string::npos);
+                CHECK(rows[r].tooltip.find("Effectively " + eff + " on the normal " +
+                                           normal_budget) != std::string::npos);
+                CHECK(rows[r].tooltip.find("squeeze budget is " + format_ms(note.budget_ms) +
+                                           ", not " + normal_budget) != std::string::npos);
+            }
+        }
+    }
+    REQUIRE(rows_with_figure > 0);
 }
