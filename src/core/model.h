@@ -66,6 +66,13 @@ struct ChordNote;
 bool lane_allows_flag(NoteColor c);
 void set_lane_flag(ChordNote& note);
 bool lane_flag(const ChordNote& note);
+// Clone Hero 1.1's drum lane bit for a note: its colour, and for a pad that
+// has both, its cymbal flag. The one home of the game's lane bit values and
+// of their order (every cymbal bit above every tom bit): the note shuffle
+// (parse/note_shuffle.cpp), a drum lane's lowest and highest pads (lane_pads
+// in parse/song.cpp) and Chord::activation_note all read it. Throws
+// std::logic_error for a note with no lane.
+uint32_t lane_bit(const ChordNote& note);
 std::string color_str(NoteColor c);         // "Kick"/"Red"/...
 std::string dynamic_str(NoteDynamicType t); // "none"/"ghost"/"accent"
 // The display word for a dynamic: dynamic_str capitalised, and "" for
@@ -265,7 +272,8 @@ public:
     void apply_ghost(NoteColor color);
     void apply_accent(NoteColor color);
 
-    // Highest-priority note (Green→Blue→Yellow→Red→Kick); throws if empty.
+    // The note Clone Hero flags to activate Star Power on this chord; the
+    // rank and its sources are in model.cpp. Throws if the chord is empty.
     const ChordNote& activation_note() const;
 
 private:
