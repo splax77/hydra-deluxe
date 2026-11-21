@@ -2097,9 +2097,19 @@ class LoadRefusalTest(unittest.TestCase):
         self.assertRegex(message, rf"\bchord {doc['chords'][2]['index']}\b")
         self.assertRegex(message, r"\bno gems\b")
 
-    def test_an_empty_chord_list_is_refused_in_ch_play_charts_words(self):
-        doc = _schedule_of({"chords": []})
-        self.assertTrue(self._refusal(doc).endswith("schedule.json has no chords to play"))
+    def test_an_empty_chord_list_is_refused_before_the_presses_are_read(self):
+        # The Freak fixture with its chord list emptied. Its presses still
+        # name chords, so a refusal of a later step would name an entry of
+        # `presses`, and a missing key is named in backticks. The empty-list
+        # refusal comes first, starts with the file it read and names the
+        # chords it lacks. play_chart.load_schedule types its wording inline,
+        # so no owner gives the sentence to compare whole.
+        message, doc = self._freak_refusal(lambda doc: doc.update(chords=[]))
+        self.assertTrue(doc["presses"])
+        self.assertIn("chords", message)
+        self.assertLess(message.index("schedule.json"), message.index("chords"), message)
+        self.assertNotRegex(message, r"\bentry \d+ of `")
+        self.assertNotIn("`chords`", message)
 
     def test_a_press_naming_a_missing_chord_or_gem_is_refused(self):
         # A chord number one past the file's last, and a gem one past the
