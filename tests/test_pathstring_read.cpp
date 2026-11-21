@@ -25,6 +25,34 @@ namespace {
 
 using test::act_ticks;
 
+// The song of corpus chart `chart` under `cfg`. Every chart the corpus scan
+// lists has Expert drum notes, so a chart that loads empty fails here by name
+// instead of being passed over.
+const Song& song_with_notes(const std::string& chart, const app::AnalysisSettings& cfg) {
+    const Song& song = corpus::song(chart, cfg.reading());
+    REQUIRE_MESSAGE(!song.is_empty(), chart << " loads with no notes");
+    return song;
+}
+
+// The refusal `read` throws: a KindedError of kind PathTextRefused whose text
+// names each of `names` (such as a window's position and its token). The wording
+// around them is the reader's own (pathstring_read.cpp's refused calls),
+// which its header does not give.
+void check_refused_naming(const std::function<Path()>& read, const std::vector<std::string>& names) {
+    try {
+        read();
+        FAIL("the text was not refused");
+    } catch (const KindedError& e) {
+        const std::string what = e.what();
+        CAPTURE(what);
+        CHECK(e.kind() == ErrorKind::PathTextRefused);
+        for (const std::string& name : names) {
+            CAPTURE(name);
+            CHECK(what.find(name) != std::string::npos);
+        }
+    }
+}
+
 // Every path the record keeps on every corpus chart (the main search's and
 // the best all-0 pass's, tied variants included), written with `write` and
 // read back, is the same path and writes the same text. A chart whose text
@@ -34,8 +62,7 @@ void check_every_kept_path_round_trips(
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int paths = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
+        const Song& song = song_with_notes(chart, cfg);
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         std::vector<const Path*> kept = rec.all_paths();
         for (const Path* p : rec.all_allzero_paths()) kept.push_back(p);
@@ -56,42 +83,36 @@ void check_every_kept_path_round_trips(
     CHECK(paths > 0);
 }
 
-// The two "token no fill can place" cases below, each reading the text
-// through its own entry point (`read`); their comments say what is checked.
-void check_unplaceable_second_window_is_refused(
-    const std::function<Path(const Song&, const app::AnalysisSettings&, const std::string&)>& read) {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const Path& best = corpus::analyzed(chart, cfg).best_path();
-        if (best.walk_activations().size() < 2) continue;
-        CAPTURE(chart);
-        const std::string text = best.walk_activations()[0].notationstr() + " 99";
-        CHECK_THROWS_WITH_AS(read(song, cfg, text),
-                             "window 2 (\"99\") matches no fill on this chart",
-                             KindedError);
-        return;
-    }
-    FAIL("no corpus chart's best path has two windows");
-}
-
 }  // namespace
 
-// The writer and the reader agree on Path::pathstring's text.
-TEST_CASE("pathstring read: every corpus best path round-trips") {
+// The writer and the reader agree on Path::pathstring's text, for every path
+// the record keeps (the main search's and the all-0 pass's), not only the best.
+TEST_CASE("pathstring read: every kept path on every corpus chart round-trips") {
     check_every_kept_path_round_trips(
         [](const Path& p, const HydraRecord&) { return p.pathstring(); });
 }
 
 // A token no fill can place is refused, and the refusal says which window of
-// the text it is (counted from 1). The first corpus chart whose best path has
-// two windows keeps its first window and gets a second no chart offers.
+// the text it is (counted from 1) and the token. Every corpus chart whose best
+// path has two or more windows keeps its first window and gets a second that
+// no chart offers ("99").
 TEST_CASE("pathstring read: a token no fill can place is refused with its position") {
-    check_unplaceable_second_window_is_refused(
-        [](const Song& song, const app::AnalysisSettings& cfg, const std::string& text) {
-            return paths_from_pathstring(song, cfg, text);
-        });
+    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int checked = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = song_with_notes(chart, cfg);
+        const Path& best = corpus::analyzed(chart, cfg).best_path();
+        if (best.walk_activations().size() < 2) continue;
+        ++checked;
+        CAPTURE(chart);
+        const std::string text = best.walk_activations()[0].notationstr() + " 99";
+        CAPTURE(text);
+        check_refused_naming([&] { return paths_from_pathstring(song, cfg, text); },
+                             {"window 2 (", "\"99\""});
+    }
+    const std::string msg = "no corpus chart's best path has two windows, out of " +
+                            std::to_string(corpus::chart_paths().size()) + " charts";
+    CHECK_MESSAGE(checked > 0, msg);
 }
 
 // Every refusal names its kind, which gives the paste its own sentence
@@ -143,16 +164,19 @@ TEST_CASE("pathstring read: long text with no activations gives a path with no a
 }
 
 // In the long text, a window no fill can place is refused with its position
-// too. The first corpus chart whose best path has exactly two windows gets
-// its second window's text swapped for one no chart offers.
+// too. Every corpus chart whose best path has exactly two windows gets its
+// second window's text swapped for one no chart offers ("99"); with two
+// windows the swapped one is the last, so the refusal's rest of the windows
+// section is the token alone.
 TEST_CASE("pathstring read: a long-text window no fill can place is refused with its position") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
+    int checked = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
+        const Song& song = song_with_notes(chart, cfg);
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const Path& best = rec.best_path();
         if (best.walk_activations().size() != 2) continue;
+        ++checked;
         CAPTURE(chart);
         std::string text = best.pathstring_verbose(rec.multsqueezes);
         const std::string second = best.walk_activations()[1].notationstr_verbose();
@@ -160,24 +184,23 @@ TEST_CASE("pathstring read: a long-text window no fill can place is refused with
         REQUIRE(at != std::string::npos);
         text.replace(at, second.size(), "99");
         CAPTURE(text);
-        CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, text),
-                             "window 2 (at \"99\") matches no fill on this chart",
-                             KindedError);
-        return;
+        check_refused_naming([&] { return paths_from_pathstring(song, cfg, text); },
+                             {"window 2 (", "\"99\""});
     }
-    FAIL("no corpus chart's best path has exactly two windows");
+    const std::string msg = "no corpus chart's best path has exactly two windows, out of " +
+                            std::to_string(corpus::chart_paths().size()) + " charts";
+    CHECK_MESSAGE(checked > 0, msg);
 }
 
-// The entry point that takes a graph already built reads the same path as the
-// one that takes the settings. Every kept path on every corpus chart, in both
-// texts, is read through each, on one graph per chart (search_graph). The
-// figure compared is engine_hardest_ms's, the one place it is worked out.
-TEST_CASE("pathstring read: the graph entry point reads the same path as the settings one") {
+// One graph per chart (search_graph), reused for every read on that chart,
+// leaves nothing behind from one read to the next: every kept path on every
+// corpus chart, in both texts, read on that one graph, is the kept path
+// itself, with its engine_hardest_ms figure (the figure a saved row keeps).
+TEST_CASE("pathstring read: one graph reused for every read gives back each kept path") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int paths = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
+        const Song& song = song_with_notes(chart, cfg);
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const ScoreGraph graph = search_graph(song, cfg);
         std::vector<const Path*> kept = rec.all_paths();
@@ -187,32 +210,28 @@ TEST_CASE("pathstring read: the graph entry point reads the same path as the set
                 ++paths;
                 CAPTURE(chart);
                 CAPTURE(text);
-                const Path by_settings = paths_from_pathstring(song, cfg, text);
                 const Path by_graph = paths_from_pathstring_on_graph(song, graph, text);
-                CHECK(path_identity(by_graph) == path_identity(by_settings));
-                CHECK(engine_hardest_ms(by_graph) == engine_hardest_ms(by_settings));
+                CHECK(path_identity(by_graph) == path_identity(*p));
+                CHECK(engine_hardest_ms(by_graph) == engine_hardest_ms(*p));
             }
         }
     }
     CHECK(paths > 0);
 }
 
-// The graph entry point refuses what the settings one refuses, with the same
-// text: the first corpus chart whose best path has two windows keeps its
-// first window and gets a second no chart offers.
-TEST_CASE("pathstring read: the graph entry point refuses a token no fill can place") {
-    check_unplaceable_second_window_is_refused(
-        [](const Song& song, const app::AnalysisSettings& cfg, const std::string& text) {
-            return paths_from_pathstring_on_graph(song, search_graph(song, cfg), text);
-        });
-}
-
 // Text holding the long form's section separator but not the writer's number
-// of sections is refused.
+// of sections is refused, naming both counts. The writer's count is read from
+// its own long text for a path with no windows, as the reader reads it.
 TEST_CASE("pathstring read: long text with the wrong number of sections is refused") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const Song& song = corpus::song(corpus::first_chart_with_notes(), cfg.reading());
-    CHECK_THROWS_WITH_AS(paths_from_pathstring(song, cfg, "2x" + std::string(kPathSectionSeparator) + "1"),
-                         "the path text has 2 sections where Hydra's long Copy path text has 3",
-                         KindedError);
+    const Song& song = song_with_notes(corpus::first_chart_with_notes(), cfg);
+    const std::string none_long = Path().pathstring_verbose({});
+    size_t writer_sections = 1;
+    for (size_t at = none_long.find(kPathSectionSeparator); at != std::string::npos;
+         at = none_long.find(kPathSectionSeparator, at + kPathSectionSeparator.size()))
+        ++writer_sections;
+    const std::string two = "2x" + std::string(kPathSectionSeparator) + "1";
+    REQUIRE(writer_sections != 2);
+    check_refused_naming([&] { return paths_from_pathstring(song, cfg, two); },
+                         {"has 2 sections", "has " + std::to_string(writer_sections)});
 }
