@@ -1,5 +1,0 @@
-tests/test_cli.cpp
-tests/test_docs_match_code.cpp
-tests/test_fills_and_skips.cpp
-tests/test_library_jobs.cpp
-tests/test_store_open.cpp

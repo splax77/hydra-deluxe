@@ -1,4 +1,0 @@
-timeout 120
-wait-idle
-state
-text

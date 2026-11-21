@@ -267,7 +267,8 @@ TEST_CASE("best_allzero_paths: the best path when it is all-0, else the all-0 pa
 
 TEST_CASE("best_allzero_paths: Beg's is 0 0 0 at 319,890; a record whose best is all-0 gets it") {
     // The figures the Paths tab showed in the V1 capture for Beg
-    // (docs/audit/2026-11-14-test-audit/exits/v1-before, item 13).
+    // (docs/audit/2026-11-14-test-audit/exits/v1-before, item 13; removed,
+    // read it with `git show b2287e56:docs/audit/2026-11-14-test-audit/exits/v1-before`).
     const std::string chart = corpus::chart_named("Evans Blue - Beg");
     REQUIRE_FALSE(chart.empty());
     const HydraRecord& beg = corpus::analyzed(chart, scratch_settings().to_analysis_settings());
