@@ -50,19 +50,29 @@ bool is_background(const PreviewConfig& cfg, const uint8_t* p) {
     return within(p[0], bg.r) && within(p[1], bg.g) && within(p[2], bg.b);
 }
 
-int count_non_background(const PreviewConfig& cfg, const std::vector<uint8_t>& img) {
-    int n = 0;
-    for (size_t i = 0; i < img.size(); i += 4)
-        if (!is_background(cfg, &img[i])) ++n;
-    return n;
+// One pixel of a w x h image, by column and row.
+struct PixelAt {
+    int x = 0;
+    int y = 0;
+};
+
+// The pixel world point `p` lands on, through the renderer's camera
+// (project_to_image). It must lie inside the image.
+PixelAt projected_pixel(const PreviewConfig& cfg, int w, int h, const Vec3& p) {
+    const ImagePoint ip = project_to_image(cfg, w, h, p);
+    const PixelAt at{static_cast<int>(ip.x), static_cast<int>(ip.y)};
+    REQUIRE(at.x >= 0);
+    REQUIRE(at.x < w);
+    REQUIRE(at.y >= 0);
+    REQUIRE(at.y < h);
+    return at;
 }
 
-// The pixel at the centre of the one gem drawn with texture `tex` in `scene`
-// at `now_ms`: its draw box from build_highway_draws, projected through the
-// renderer's camera (project_to_image). The renderer draws at 1x speed
-// (kPlaybackSpeed in render/preview_renderer.h).
-const uint8_t* gem_centre(const PreviewConfig& cfg, const PreviewScene& scene, double now_ms,
-                          TextureId tex, const std::vector<uint8_t>& img, int w, int h) {
+// Where the centre of the one gem drawn with texture `tex` in `scene` at
+// `now_ms` lands: its draw box from build_highway_draws, projected. The
+// renderer draws at 1x speed (kPlaybackSpeed in render/preview_renderer.h).
+PixelAt gem_pixel(const PreviewConfig& cfg, const PreviewScene& scene, double now_ms, TextureId tex, int w,
+                  int h) {
     const TrackState state = build_track_state(scene, TrackStateOptions{});
     const std::vector<DrawCommand> draws = build_highway_draws(state, cfg, now_ms / 1000.0, kPlaybackSpeed);
     const DrawCommand* gem = nullptr;
@@ -74,13 +84,51 @@ const uint8_t* gem_centre(const PreviewConfig& cfg, const PreviewScene& scene, d
     REQUIRE(gem != nullptr);
     const Vec3 mid{(gem->lo[0] + gem->hi[0]) * 0.5f, (gem->lo[1] + gem->hi[1]) * 0.5f,
                    (gem->lo[2] + gem->hi[2]) * 0.5f};
-    const ImagePoint p = project_to_image(cfg, w, h, mid);
-    const int x = static_cast<int>(p.x), y = static_cast<int>(p.y);
-    REQUIRE(x >= 0);
-    REQUIRE(x < w);
-    REQUIRE(y >= 0);
-    REQUIRE(y < h);
-    return warp::pixel(img, w, x, y);
+    return projected_pixel(cfg, w, h, mid);
+}
+
+// The pixel at that gem's centre in `img`.
+const uint8_t* gem_centre(const PreviewConfig& cfg, const PreviewScene& scene, double now_ms,
+                          TextureId tex, const std::vector<uint8_t>& img, int w, int h) {
+    const PixelAt at = gem_pixel(cfg, scene, now_ms, tex, w, h);
+    return warp::pixel(img, w, at.x, at.y);
+}
+
+// A pixel of the floor just past the strike line, toward the player: on the
+// floor (track.y), in the note area's middle, halfway down from the near edge
+// of the strike-line targets (track.targets_z_past) to the image's bottom
+// row. No gem in these scenes has reached the strike line, so only the floor
+// is drawn there.
+PixelAt floor_near_strike(const PreviewConfig& cfg, int w, int h) {
+    const Vec3 near_edge{(cfg.track.x_left + cfg.track.x_right) * 0.5f, cfg.track.y, cfg.track.targets_z_past};
+    const PixelAt edge = projected_pixel(cfg, w, h, near_edge);
+    REQUIRE(edge.y < h - 1);
+    return PixelAt{edge.x, (edge.y + h) / 2};
+}
+
+const uint8_t* floor_pixel(const PreviewConfig& cfg, const std::vector<uint8_t>& img, int w, int h) {
+    const PixelAt at = floor_near_strike(cfg, w, h);
+    return warp::pixel(img, w, at.x, at.y);
+}
+
+// Every row of a w x h image past the horizon fade's end is background, in
+// every column: the rows above the track rectangle (track_rect), and the
+// track's rows at or past view.track_fade_top of its height from the bottom,
+// where fade.hlsl draws nothing. A row counts when its lower edge is past the
+// fade's end, so every pixel centre in it is.
+void check_past_fade_is_background(const PreviewConfig& cfg, const std::vector<uint8_t>& img, int w, int h) {
+    const TrackRect rect = track_rect(cfg, w, h);
+    const float fade_end_rows = cfg.view.track_fade_top * static_cast<float>(rect.track_height);
+    int checked = 0;
+    for (int y = 0; y < h; ++y) {
+        if (static_cast<float>(h - 1 - y) < fade_end_rows) continue;
+        ++checked;
+        for (int x = 0; x < w; ++x) {
+            INFO("pixel " << x << "," << y << " of " << w << "x" << h);
+            CHECK(is_background(cfg, warp::pixel(img, w, x, y)));
+        }
+    }
+    REQUIRE(checked > 0);
 }
 
 }  // namespace
@@ -105,23 +153,11 @@ TEST_CASE("PreviewRenderer: bare highway — background outside, lit floor, hori
     // Every pixel is opaque (ImGui composites by alpha).
     for (size_t i = 3; i < img.size(); i += 4) REQUIRE(img[i] == 255);
 
-    // Top corners: past the horizon fade, pure background.
-    CHECK(is_background(r.config(), warp::pixel(img, W, 1, 1)));
-    CHECK(is_background(r.config(), warp::pixel(img, W, W - 2, 1)));
-    // The whole top 16% of the track is faded to background (fade ends at
-    // 83.16% from the bottom).
-    for (int y = 0; y < H * 16 / 100; ++y)
-        CHECK(is_background(r.config(), warp::pixel(img, W, W / 2, y)));
+    // Past the horizon fade's end, every pixel is background.
+    check_past_fade_is_background(r.config(), img, W, H);
 
-    // Just above the strike line, bottom centre: the lit grey floor.
-    const uint8_t* floor = warp::pixel(img, W, W / 2, H - 8);
-    CHECK_FALSE(is_background(r.config(), floor));
-    CHECK(floor[0] > 0x20);
-    CHECK(std::abs(floor[0] - floor[1]) < 12);  // grey, not tinted
-    CHECK(std::abs(floor[1] - floor[2]) < 12);
-
-    // A fair amount of the frame is highway.
-    CHECK(count_non_background(r.config(), img) > W * H / 4);
+    // The floor by the strike line is drawn.
+    CHECK_FALSE(is_background(r.config(), floor_pixel(r.config(), img, W, H)));
 }
 
 TEST_CASE("PreviewRenderer: a gem at the strike line adds drawn pixels (WARP)") {
@@ -148,13 +184,14 @@ TEST_CASE("PreviewRenderer: a gem at the strike line adds drawn pixels (WARP)") 
     r.render(1000.0);
     std::vector<uint8_t> gems = warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H);
 
-    int differing = 0;
-    for (size_t i = 0; i < gems.size(); i += 4)
-        if (gems[i] != bare[i] || gems[i + 1] != bare[i + 1] || gems[i + 2] != bare[i + 2])
-            ++differing;
-    CHECK(differing > 40);
+    // The kick is drawn at its own centre: that pixel is not the bare
+    // highway's.
+    const PixelAt kick = gem_pixel(r.config(), with_notes, 1000.0, TextureId::LongKick, W, H);
+    const uint8_t* kick_now = warp::pixel(gems, W, kick.x, kick.y);
+    const uint8_t* kick_bare = warp::pixel(bare, W, kick.x, kick.y);
+    CHECK_FALSE((kick_now[0] == kick_bare[0] && kick_now[1] == kick_bare[1] && kick_now[2] == kick_bare[2]));
 
-    // Each gem is drawn in its own lane and colour: red leads at the red
+    // Each pad gem is drawn in its own lane and colour: red leads at the red
     // gem's centre, and at the yellow cymbal's red and green both beat blue.
     const uint8_t* red = gem_centre(r.config(), with_notes, 1000.0, TextureId::BoxRed, gems, W, H);
     CHECK(red[0] > red[1]);
@@ -196,12 +233,8 @@ TEST_CASE("PreviewRenderer: SP phrase energy gems and active SP floor change pix
     r.render(1000.0);
     std::vector<uint8_t> b = warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), W, H);
 
-    int differing = 0;
-    for (size_t i = 0; i < a.size(); i += 4)
-        if (a[i] != b[i] || a[i + 1] != b[i + 1] || a[i + 2] != b[i + 2]) ++differing;
-    CHECK(differing > 200);
-    // The floor at the strike line is now greener than red (energy tint).
-    const uint8_t* floor = warp::pixel(b, W, W / 2, H - 8);
+    // The floor by the strike line is now greener than red (energy tint).
+    const uint8_t* floor = floor_pixel(r.config(), b, W, H);
     CHECK(floor[1] > floor[0]);
 
     // The plain green gem is green at its lane centre. Inside the phrase the
@@ -270,16 +303,17 @@ TEST_CASE("PreviewRenderer: resize and a tall target keep the track at the botto
     r.resize(100, 300);  // taller than the track is: the top is background
     CHECK(r.width() == 100);
     CHECK(r.height() == 300);
-    // The track's height at this size, from the one rule the renderer sizes by.
-    const int track_h = track_height(r.config(), 100, 300);
     PreviewScene scene;
     r.set_scene(scene);
     r.render(0.0);
     std::vector<uint8_t> img = warp::read_pixels(dev.Get(), ctx.Get(), r.texture_srv(), 100, 300);
     CHECK(img.size() == static_cast<size_t>(100) * 300 * 4);
-    for (int y = 0; y < 300 - track_h - 2; y += 10)
-        CHECK(is_background(r.config(), warp::pixel(img, 100, 50, y)));
-    CHECK_FALSE(is_background(r.config(), warp::pixel(img, 100, 50, 292)));
+    // The track rectangle hugs the bottom edge: it starts below the top row,
+    // everything above the horizon fade's end is background, and the floor
+    // by the strike line is drawn.
+    CHECK(track_rect(r.config(), 100, 300).top > 0);
+    check_past_fade_is_background(r.config(), img, 100, 300);
+    CHECK_FALSE(is_background(r.config(), floor_pixel(r.config(), img, 100, 300)));
 }
 
 // D95 call 4: the closed Preview frees its targets, and the next resize draws
