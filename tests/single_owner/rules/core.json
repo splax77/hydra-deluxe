@@ -1199,13 +1199,16 @@
       "date": "2026-10-04",
       "decision": "container ranged-reads derive-once review of 860cbd8, finding 2 (2026-10-04)",
       "added_by": "container ranged reads",
-      "pattern": "std::min\\(\\s*\\w+\\s*-\\s*\\w+\\s*,\\s*k\\w+\\)|\\w+\\s*>=\\s*\\w+\\)\\s*return\\s*\\{\\s*nullptr\\s*,\\s*0\\s*\\}",
+      "pattern": "std::min\\(\\s*\\w+\\s*-\\s*\\w+\\s*,\\s*k(?!\\w*Ms\\b)\\w+\\)|\\w+\\s*>=\\s*\\w+\\)\\s*return\\s*\\{\\s*nullptr\\s*,\\s*0\\s*\\}",
+      "note": "A cap named in milliseconds is a time, never a byte count, so the pattern skips it.",
       "must_match": [
         "if (pos >= size) return {nullptr, 0};",
-        "const size_t n = std::min(size - pos, kMaxPiece);"
+        "const size_t n = std::min(size - pos, kMaxPiece);",
+        "const size_t n = std::min(len - off, kChunkBytes);"
       ],
       "must_not_match": [
-        "return static_cast<size_t>(std::min<uint64_t>(length, available));"
+        "return static_cast<size_t>(std::min<uint64_t>(length, available));",
+        "std::max(kCh10FillLeadFloorMs, std::min(fend - pad, kCh10FillLeadCeilingMs));"
       ],
       "scope": [
         "src"
