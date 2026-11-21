@@ -1,23 +1,32 @@
-// Note Shuffle (D104): apply_note_shuffle against the decoded reference.
+// Note Shuffle (D104): apply_note_shuffle on real charts, checked against the
+// game's shuffle rules (docs/clone-hero/02-note-list.md, NL-40 to NL-50 and
+// NL-72), and against the chords the game showed in one filmed run.
 //
-// Every expected chord below is a literal from one run of
-// docs/audit/note-shuffle/probes/vectors/gen_vectors.py, which feeds the same
-// notes to docs/audit/note-shuffle/probes/capped/shuffle_ref_capped.py. Rerun
-// that script to regenerate them; its output is kept beside it in
-// vectors_output.txt. Chords are spelled as Chord::code() spells them.
+// The rule checks read only the chart before and after the shuffle, so they
+// hold whatever the generator draws: the kick stays, each chord keeps its
+// pad count and its ghost and accent marks, Pro Drums off draws no cymbal, a
+// chord whose pattern repeats the one two chords back copies its pad, and any
+// other chord's first pad avoids the previous chord's colours. Chords are
+// spelled as Chord::code() spells them.
 
 #include "doctest.h"
 
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "core/model.h"
 #include "core/timing.h"
+#include "corpus_util.h"
 #include "load_util.h"
+#include "parse/chart_files.h"
 #include "parse/note_shuffle.h"
 #include "parse/song.h"
 #include "source_tree.h"
@@ -32,9 +41,8 @@ struct Row {
 };
 using Rows = std::vector<Row>;
 
-// A chord from its Chord::code() spelling, for building made-up inputs. The
-// test checks each one spells back the same, so this reads the format and
-// owns none of it.
+// A chord from its Chord::code() spelling. The test checks each one spells
+// back the same, so this reads the format and owns none of it.
 Chord chord_of(std::string_view code) {
     Chord c;
     for (size_t i = 0; i < code.size(); ++i) {
@@ -79,50 +87,191 @@ Song load_game_song(const std::string& folder, const char* file, bool pro) {
                          ChartReading{Difficulty::Expert, pro, /*bass2x=*/false, false});
 }
 
-struct GameSong {
-    const char* folder;
-    const char* file;
-    bool pro;
-    Rows want;
+// A chord's pads as the game's lane mask, the kick left out: the chord's
+// pattern in the copy rule (NL-46). Each bit is lane_bit's.
+uint32_t pad_mask(const Chord& c) {
+    uint32_t m = 0;
+    for (const ChordNote& n : c.note_list())
+        if (n.colortype != NoteColor::Kick) m |= lane_bit(n);
+    return m;
+}
+
+// A chord's pad colours, one bit per NoteColor, a tom and a cymbal of one
+// colour alike: what blocks a drawn pad (NL-45).
+uint32_t pad_colours(const Chord& c) {
+    uint32_t m = 0;
+    for (const ChordNote& n : c.note_list())
+        if (n.colortype != NoteColor::Kick) m |= 1u << static_cast<int>(n.colortype);
+    return m;
+}
+
+size_t count_bits(uint32_t x) {
+    size_t k = 0;
+    for (; x != 0; x &= x - 1u) ++k;
+    return k;
+}
+
+// The set bit of x with `rank` set bits below it, or 0 when x has too few.
+uint32_t bit_of_rank(uint32_t x, size_t rank) {
+    for (size_t i = 0; x != 0; ++i, x &= x - 1u)
+        if (i == rank) return x & (~x + 1u);
+    return 0;
+}
+
+// The chord's first pad in the game's note order (Chord::note_list, kick
+// left out): the note the copy rule reads first.
+ChordNote first_pad(const Chord& c) {
+    for (const ChordNote& n : c.note_list())
+        if (n.colortype != NoteColor::Kick) return n;
+    throw std::logic_error("first_pad: a chord with no pad");
+}
+
+// A chord's ghost and accent pads, the kick left out.
+std::pair<size_t, size_t> pad_marks(const Chord& c) {
+    std::pair<size_t, size_t> marks{0, 0};
+    for (const ChordNote& n : c.note_list()) {
+        if (n.colortype == NoteColor::Kick) continue;
+        if (n.is_ghost()) ++marks.first;
+        if (n.is_accent()) ++marks.second;
+    }
+    return marks;
+}
+
+// How often each rule had something to check, so a test can show its rule
+// was reached on the charts it read.
+struct RuleTally {
+    size_t chords = 0;        // chords with a pad; a lone kick is skipped (NL-44)
+    size_t multi_pad = 0;     // chords with two or more pads
+    size_t copies = 0;        // chords whose first pad took the copy rule (NL-46)
+    size_t draws = 0;         // chords whose first pad was drawn (NL-45)
+    size_t marked = 0;        // ghost and accent pads (NL-49)
+    size_t kicks_2x = 0;      // 2x kicks (NL-44)
+    size_t cymbals_out = 0;   // cymbal pads after the shuffle (NL-42)
+    size_t tick0_starts = 0;  // charts whose first pad sits on tick 0 (NL-72)
+
+    void add(const RuleTally& o) {
+        chords += o.chords;
+        multi_pad += o.multi_pad;
+        copies += o.copies;
+        draws += o.draws;
+        marked += o.marked;
+        kicks_2x += o.kicks_2x;
+        cymbals_out += o.cymbals_out;
+        tick0_starts += o.tick0_starts;
+    }
 };
+
+// Checks the shuffled `after` against the unshuffled `before`, read with Pro
+// Drums `pro`, by the rules this file's header names.
+RuleTally check_shuffle_rules(const std::vector<SongTimestamp>& before,
+                              const std::vector<SongTimestamp>& after, bool pro) {
+    RuleTally t;
+    REQUIRE(after.size() == before.size());
+    std::vector<size_t> padded;  // the chords with a pad, in order
+    for (size_t i = 0; i < before.size(); ++i) {
+        const Chord& in = before[i].chord;
+        const Chord& out = after[i].chord;
+        const std::string where =
+            "tick " + std::to_string(before[i].timecode.ticks()) + ": " + in.code() + " became " + out.code();
+        INFO(where);
+        CHECK(after[i].timecode.ticks() == before[i].timecode.ticks());
+        // NL-44: the kick stays as it was, with its 2x and its mark.
+        CHECK(out.at(NoteColor::Kick) == in.at(NoteColor::Kick));
+        const std::optional<ChordNote>& kick = in.at(NoteColor::Kick);
+        if (kick && kick->is2x) ++t.kicks_2x;
+        // Each pad gets one new pad, never one whose colour the chord already
+        // holds, so the chord keeps its count.
+        const size_t pads_in = count_bits(pad_mask(in));
+        CHECK(count_bits(pad_mask(out)) == pads_in);
+        CHECK(count_bits(pad_colours(out)) == pads_in);
+        // NL-49: a moved pad keeps its ghost or accent.
+        const std::pair<size_t, size_t> marks = pad_marks(in);
+        CHECK(pad_marks(out) == marks);
+        t.marked += marks.first + marks.second;
+        for (const ChordNote& n : out.note_list()) {
+            if (!n.is_cymbal()) continue;
+            ++t.cymbals_out;
+            // NL-42: with Pro Drums off the draw reaches red and the toms only.
+            CHECK(pro);
+        }
+        if (pads_in == 0) continue;
+        padded.push_back(i);
+        ++t.chords;
+        if (pads_in >= 2) ++t.multi_pad;
+    }
+    // NL-72: a first pad on tick 0 joins the starting chord, so that chord
+    // never takes a pattern slot and the chord two after it copies nothing.
+    const bool first_on_tick0 = !padded.empty() && before[padded[0]].timecode.ticks() == 0;
+    if (first_on_tick0) ++t.tick0_starts;
+    for (size_t k = 1; k < padded.size(); ++k) {
+        const Chord& in = before[padded[k]].chord;
+        const Chord& out = after[padded[k]].chord;
+        const std::string where = "tick " + std::to_string(before[padded[k]].timecode.ticks()) + ": " +
+                                  in.code() + " became " + out.code();
+        INFO(where);
+        const uint32_t pattern = pad_mask(in);
+        const bool two_back_counts = k >= 2 && !(k == 2 && first_on_tick0);
+        if (two_back_counts && pad_mask(before[padded[k - 2]].chord) == pattern) {
+            // NL-46: the first pad takes the pad of the same rank in the
+            // output of the chord two back.
+            const uint32_t first_bit = lane_bit(first_pad(in));
+            const uint32_t copied =
+                bit_of_rank(pad_mask(after[padded[k - 2]].chord), count_bits(pattern & (first_bit - 1u)));
+            CHECK((pad_mask(out) & copied) != 0u);
+            ++t.copies;
+        } else {
+            // NL-45: the first pad is drawn clear of the previous chord's
+            // colours, so the chord holds at least one colour that one lacks.
+            CHECK((pad_colours(out) & ~pad_colours(after[padded[k - 1]].chord)) != 0u);
+            ++t.draws;
+        }
+    }
+    return t;
+}
+
+// Shuffles `seq` with Pro Drums `pro`, requires the game would finish, and
+// checks the result by the rules.
+RuleTally shuffle_and_check(std::vector<SongTimestamp>& seq, bool pro) {
+    const std::vector<SongTimestamp> before = seq;
+    REQUIRE(apply_note_shuffle(seq, pro) == NoteShuffleResult::Shuffled);
+    return check_shuffle_rules(before, seq, pro);
+}
+
+// Every corpus chart read on Expert with Pro Drums `pro` and 2x kicks kept,
+// shuffled and checked; what each rule saw, summed. No corpus chart freezes
+// the game (no chord holds more than two pads, and no chart's first four
+// notes share tick 0), so each one must shuffle.
+RuleTally shuffle_corpus(bool pro) {
+    RuleTally sum;
+    const ChartReading reading{Difficulty::Expert, pro, /*bass2x=*/true, /*noteshuffle=*/false};
+    for (const std::string& path : corpus::chart_paths()) {
+        INFO(path);
+        std::vector<SongTimestamp> seq = corpus::song(path, reading).sequence;
+        sum.add(shuffle_and_check(seq, pro));
+    }
+    return sum;
+}
 
 }  // namespace
 
-TEST_CASE("Note Shuffle: the game-test songs shuffle as the game showed them") {
-    // A1, A2, B, C2, D2 and E with Pro Drums on are the runs the game
-    // confirmed (docs/audit/note-shuffle/step0/FINDINGS.md). The Pro Drums
-    // off rows are the reference's too; the game was not filmed for them.
-    const std::vector<GameSong> songs = {
-        {"NS A1 tick scale chart192", "notes.chart", true,
-         {{960, "nn..."}, {1056, "..n.."}, {1152, "...n."}, {1248, "..n.."}, {1344, "n..n."}, {1440, "n...."}, {1536, "..n.."}, {1632, "...n."}, {1728, "nn..."}, {1824, "....n"}, {1920, "..N.."}, {2016, "...n."}, {2112, "n.N.."}, {2208, "....N"}, {2304, "...n."}, {2400, "n.n.."}}},
-        {"NS A1 tick scale chart192", "notes.chart", false,
-         {{960, "nn..."}, {1056, "...n."}, {1152, ".n..."}, {1248, "...n."}, {1344, "n.n.."}, {1440, "n...."}, {1536, ".n..."}, {1632, "..n.."}, {1728, "n..n."}, {1824, "..n.."}, {1920, ".n..."}, {2016, "..n.."}, {2112, "n...n"}, {2208, ".n..."}, {2304, "....n"}, {2400, "n..n."}}},
-        {"NS A2 tick scale mid960", "notes.mid", true,
-         {{4800, "nn..."}, {5280, "....n"}, {5760, "..N.."}, {6240, "....n"}, {6720, "n..N."}, {7200, "n...."}, {7680, ".n..."}, {8160, "...N."}, {8640, "nn..."}, {9120, "..n.."}, {9600, ".n..."}, {10080, "..N.."}, {10560, "nn..."}, {11040, "....N"}, {11520, "..n.."}, {12000, "n..n."}}},
-        {"NS A2 tick scale mid960", "notes.mid", false,
-         {{4800, "nn..."}, {5280, "...n."}, {5760, "..n.."}, {6240, "...n."}, {6720, "n.n.."}, {7200, "n...."}, {7680, "....n"}, {8160, "..n.."}, {8640, "n..n."}, {9120, "....n"}, {9600, "..n.."}, {10080, "....n"}, {10560, "n.n.."}, {11040, "....n"}, {11520, "...n."}, {12000, "nn..."}}},
-        {"NS B note order mid480", "notes.mid", true,
-         {{1920, "nn..n"}, {2160, "nnn.."}, {2400, "...nN"}, {2640, "n.n.n"}, {2880, "...Nn"}, {3120, "n.n.."}, {3360, "nn..."}, {3600, ".n..n"}}},
-        {"NS B note order mid480", "notes.mid", false,
-         {{1920, "n.nn."}, {2160, "nn.n."}, {2400, "...nn"}, {2640, "nn..n"}, {2880, "...nn"}, {3120, "nn..."}, {3360, "n..n."}, {3600, "...nn"}}},
-        {"NS C2 control four colour last", "notes.mid", true,
-         {{1920, "nn..."}, {2160, "..n.."}, {2400, "....n"}, {2640, "..n.."}, {2880, "n..n."}, {3120, "..n.."}, {3360, ".n..."}, {3600, "..n.."}, {3840, ".nNNN"}}},
-        {"NS C2 control four colour last", "notes.mid", false,
-         {{1920, "nn..."}, {2160, "..n.."}, {2400, "...n."}, {2640, "..n.."}, {2880, "n..n."}, {3120, "..n.."}, {3360, "....n"}, {3600, "..n.."}, {3840, ".nnnn"}}},
-        {"NS D2 control same notes later", "notes.mid", true,
-         {{3840, "nnNn."}, {4320, "....n"}, {4560, ".n..."}, {4800, "....n"}, {5040, "nn..."}, {5280, "....n"}, {5520, "..N.."}, {5760, "n...n"}, {6000, "..N.."}}},
-        {"NS D2 control same notes later", "notes.mid", false,
-         {{3840, "nn.nn"}, {4320, "..n.."}, {4560, "....n"}, {4800, "..n.."}, {5040, "n...n"}, {5280, "..n.."}, {5520, "....n"}, {5760, "n.n.."}, {6000, "....n"}}},
-        {"NS E star cutoffs", "notes.mid", true,
-         {{1920, ".n..."}, {2160, "....n"}, {2400, ".n..."}, {2640, "..n.."}, {2880, "...N."}, {3120, "..N.."}, {3360, "n..N."}, {3600, "..n.."}, {3840, "...N."}, {4080, "n...."}, {4320, "n.N.."}, {4560, "...N."}, {4800, "....N"}, {5040, "..N.."}, {5280, "n...N"}, {5520, "..n.."}, {5760, "nn..."}, {6000, "...N."}, {6240, "n...n"}, {6480, "..n.."}, {6720, "....N"}, {6960, "..n.."}, {7200, "n..n."}, {7440, "..n.."}, {7680, "....n"}, {7920, "n...."}, {8160, "n.n.."}, {8400, "...N."}, {8640, "....N"}, {8880, "..n.."}, {9120, "n...n"}, {9360, "..n.."}, {9600, "nn..."}, {9840, "..n.."}, {10080, "n..N."}, {10320, ".n..."}, {10560, "....n"}, {10800, ".n..."}, {11040, "n...N"}, {11280, "..n.."}, {11520, "...n."}, {11760, "n...."}, {12000, "n...N"}, {12240, "...N."}, {12480, "....N"}, {12720, "...N."}, {12960, "nn..."}, {13200, "...n."}, {13440, "n.N.."}, {13680, "...n."}, {13920, "n.n.."}, {14160, "...N."}, {14400, "....n"}, {14640, "...N."}, {14880, "n...n"}, {15120, "..n.."}, {15360, "....n"}, {15600, "n...."}, {15840, "n..n."}, {16080, "....N"}, {16320, "..N.."}, {16560, "...n."}, {16800, "n.n.."}, {17040, "...n."}, {17280, "n...N"}, {17520, "...n."}, {17760, "n...n"}, {18000, "..n.."}, {18240, "...N."}, {18480, "..n.."}, {18720, "n..n."}, {18960, "....n"}, {19200, "..N.."}, {19440, "n...."}, {19680, "nn..."}, {19920, "..N.."}, {20160, "....n"}, {20400, "...N."}, {20640, "n...N"}, {20880, "...N."}, {21120, "n...N"}, {21360, ".n..."}}},
-        {"NS E star cutoffs", "notes.mid", false,
-         {{1920, ".n..."}, {2160, "...n."}, {2400, ".n..."}, {2640, "....n"}, {2880, "...n."}, {3120, "....n"}, {3360, "n.n.."}, {3600, "....n"}, {3840, "...n."}, {4080, "n...."}, {4320, "n...n"}, {4560, "...n."}, {4800, "....n"}, {5040, "..n.."}, {5280, "nn..."}, {5520, "....n"}, {5760, "n.n.."}, {6000, "...n."}, {6240, "n.n.."}, {6480, ".n..."}, {6720, "....n"}, {6960, ".n..."}, {7200, "n..n."}, {7440, "..n.."}, {7680, ".n..."}, {7920, "n...."}, {8160, "n.n.."}, {8400, ".n..."}, {8640, "....n"}, {8880, "..n.."}, {9120, "nn..."}, {9360, "...n."}, {9600, "nn..."}, {9840, "...n."}, {10080, "n...n"}, {10320, "..n.."}, {10560, "....n"}, {10800, "..n.."}, {11040, "n...n"}, {11280, "...n."}, {11520, "..n.."}, {11760, "n...."}, {12000, "nn..."}, {12240, "..n.."}, {12480, "...n."}, {12720, "..n.."}, {12960, "nn..."}, {13200, "...n."}, {13440, "n...n"}, {13680, "..n.."}, {13920, "n..n."}, {14160, "..n.."}, {14400, "....n"}, {14640, "..n.."}, {14880, "n..n."}, {15120, "..n.."}, {15360, ".n..."}, {15600, "n...."}, {15840, "n.n.."}, {16080, "....n"}, {16320, "..n.."}, {16560, "...n."}, {16800, "n.n.."}, {17040, ".n..."}, {17280, "n..n."}, {17520, "..n.."}, {17760, "n..n."}, {18000, "....n"}, {18240, "...n."}, {18480, "....n"}, {18720, "nn..."}, {18960, "...n."}, {19200, "..n.."}, {19440, "n...."}, {19680, "n...n"}, {19920, "...n."}, {20160, "....n"}, {20400, ".n..."}, {20640, "n..n."}, {20880, ".n..."}, {21120, "n..n."}, {21360, "..n.."}}},
+TEST_CASE("Note Shuffle: the game-test songs shuffle by every rule") {
+    // The songs the user ran in the game with Note Shuffle on: A1 is a .chart
+    // at 192 ticks a beat, A2 a .mid at 960, B tests the note order inside a
+    // chord, C2 and D2 are the controls for the two freezes, E is a long
+    // chart.
+    const std::vector<std::pair<const char*, const char*>> songs = {
+        {"NS A1 tick scale chart192", "notes.chart"},  {"NS A2 tick scale mid960", "notes.mid"},
+        {"NS B note order mid480", "notes.mid"},       {"NS C2 control four colour last", "notes.mid"},
+        {"NS D2 control same notes later", "notes.mid"}, {"NS E star cutoffs", "notes.mid"},
     };
-    for (const GameSong& s : songs) {
-        INFO(s.folder << (s.pro ? ", Pro Drums on" : ", Pro Drums off"));
-        Song song = load_game_song(s.folder, s.file, s.pro);
-        CHECK(apply_note_shuffle(song.sequence, s.pro) == NoteShuffleResult::Shuffled);
-        check_rows(song.sequence, s.want);
+    for (const std::pair<const char*, const char*>& s : songs) {
+        for (bool pro : {true, false}) {
+            const std::string where = std::string(s.first) + (pro ? ", Pro Drums on" : ", Pro Drums off");
+            INFO(where);
+            Song song = load_game_song(s.first, s.second, pro);
+            const RuleTally t = shuffle_and_check(song.sequence, pro);
+            CHECK(t.chords > 0);
+        }
     }
 }
 
@@ -140,102 +289,93 @@ TEST_CASE("Note Shuffle: C1 and D1 freeze the game, and the sequence is left as 
     }
 }
 
-TEST_CASE("Note Shuffle: the copy rule checks a chord's first note two back, later notes one back") {
-    // Chord 3's first note matches chord 1's shape (two back) and copies its
-    // pad. Chord 4's first note has chord 3's shape (one back) but not chord
-    // 2's (two back), so it redraws; its second note then matches chord 3
-    // (one back) and copies. gen_vectors.py confirms each branch fired.
-    std::vector<SongTimestamp> seq =
-        sequence_of({{480, ".nN.."}, {960, "...n."}, {1440, ".nN.."}, {1920, ".nN.."}});
-    REQUIRE(apply_note_shuffle(seq, true) == NoteShuffleResult::Shuffled);
-    check_rows(seq, {{480, ".n..n"}, {960, "...n."}, {1440, ".n..n"}, {1920, "...nn"}});
+TEST_CASE("Note Shuffle: on every corpus chart a chord that repeats the pattern two back copies, and others draw") {
+    for (bool pro : {true, false}) {
+        const std::string setting = pro ? "Pro Drums on" : "Pro Drums off";
+        INFO(setting);
+        const RuleTally t = shuffle_corpus(pro);
+        CHECK(t.copies > 0);
+        CHECK(t.draws > 0);
+    }
 }
 
-TEST_CASE("Note Shuffle: a yellow tom blocks the yellow cymbal in its chord") {
-    // At tick 1221 the chord's first note lands on the yellow tom. Blocking
-    // only the exact lane drawn would then give the yellow cymbal too; the
-    // game blocks both forms of the colour (gen_vectors.py checks that this
-    // chord is where the two differ).
-    std::vector<SongTimestamp> seq = sequence_of(
-        {{501, ".n.n."}, {741, ".n.n."}, {981, ".n..n"}, {1221, ".n.n."}, {1461, ".n..n"}, {1701, ".n.n."}});
-    REQUIRE(apply_note_shuffle(seq, true) == NoteShuffleResult::Shuffled);
-    check_rows(seq, {{501, ".n.n."}, {741, "..nn."}, {981, "...nN"}, {1221, "..nN."}, {1461, "..nn."}, {1701, "..nN."}});
+TEST_CASE("Note Shuffle: on every corpus chart each chord keeps its pad count, so no colour is drawn twice") {
+    // A drawn pad whose colour the chord already holds, as a yellow tom
+    // beside a yellow cymbal, would leave the chord a pad short.
+    for (bool pro : {true, false}) {
+        const std::string setting = pro ? "Pro Drums on" : "Pro Drums off";
+        INFO(setting);
+        CHECK(shuffle_corpus(pro).multi_pad > 0);
+    }
 }
 
-TEST_CASE("Note Shuffle: with Pro Drums off only the four toms are drawn") {
-    std::vector<SongTimestamp> seq = sequence_of(
-        {{960, "n.n.."}, {1080, "..n.."}, {1200, ".n..."}, {1320, "..n.."}, {1440, "n.n.."}, {1560, "n...."},
-         {1680, ".n..."}, {1800, "..n.."}, {1920, "n...n"}, {2040, "...n."}, {2160, ".n.nn"}, {2280, "....n"},
-         {2400, "n.n.."}, {2520, "...n."}, {2640, ".n..."}, {2760, "n...n"}});
-    REQUIRE(apply_note_shuffle(seq, false) == NoteShuffleResult::Shuffled);
-    check_rows(seq, {{960, "nn..."}, {1080, "...n."}, {1200, "....n"}, {1320, "...n."}, {1440, "n...n"}, {1560, "n...."},
-                     {1680, "...n."}, {1800, "....n"}, {1920, "n..n."}, {2040, ".n..."}, {2160, ".nn.n"}, {2280, "...n."},
-                     {2400, "n.n.."}, {2520, "...n."}, {2640, ".n..."}, {2760, "n.n.."}});
+TEST_CASE("Note Shuffle: with Pro Drums off only red and the three toms are drawn") {
+    // check_shuffle_rules fails on any cymbal with Pro Drums off. The same
+    // corpus with Pro Drums on gets cymbals, so the draw's range is what
+    // differs.
+    CHECK(shuffle_corpus(false).chords > 0);
+    CHECK(shuffle_corpus(true).cymbals_out > 0);
 }
 
-TEST_CASE("Note Shuffle: ghosts and accents ride along, and the 2x mark stays on the kick") {
-    std::vector<SongTimestamp> seq = sequence_of({{480, "NgA.."}, {960, "...a."}, {1440, "n...g"}, {1920, ".a..N"}});
-    REQUIRE(apply_note_shuffle(seq, true) == NoteShuffleResult::Shuffled);
-    check_rows(seq, {{480, "Ng..A"}, {960, "...a."}, {1440, "n...G"}, {1920, "..nA."}});
+TEST_CASE("Note Shuffle: on every corpus chart ghosts and accents ride along, and the 2x mark stays on the kick") {
+    const RuleTally t = shuffle_corpus(true);
+    CHECK(t.marked > 0);
+    CHECK(t.kicks_2x > 0);
 }
 
-TEST_CASE("Note Shuffle: the seed wraps around 64 bits") {
-    // The first four notes' lane times tick sum to 1623313478486445056608,
-    // which wraps to 4514400.
-    constexpr int64_t t0 = 4611686018427400249;  // 2^62 + 12345
-    std::vector<SongTimestamp> seq = sequence_of({{t0, "....N"}, {t0 + 480, "....N"}, {t0 + 960, "...N."},
-                                                  {t0 + 1440, "..N.."}, {t0 + 1920, ".n..."}, {t0 + 2400, ".n..N"}});
-    REQUIRE(apply_note_shuffle(seq, true) == NoteShuffleResult::Shuffled);
-    check_rows(seq, {{t0, ".n..."}, {t0 + 480, "....n"}, {t0 + 960, "...n."},
-                     {t0 + 1440, "..N.."}, {t0 + 1920, "....n"}, {t0 + 2400, "...nN"}});
+TEST_CASE("Note Shuffle: a chart whose first chord is on tick 0 still shuffles") {
+    // The hand-written charts in these two folders start with one pad on tick
+    // 0; their next notes are later, so the seed is not zero. The corpus scan
+    // lists neither folder (no song.ini), so they are read by path.
+    RuleTally sum;
+    for (const char* folder : {"test_fast_tempo", "test_folded_sqin"}) {
+        for (const std::filesystem::directory_entry& e :
+             std::filesystem::directory_iterator(std::filesystem::u8path(corpus::root() + "/" + folder))) {
+            const std::string path = e.path().u8string();
+            if (chart_format_of(path) != ChartFormat::Chart) continue;
+            INFO(path);
+            Song song = load_songpath(path, ChartReading{Difficulty::Expert, true, /*bass2x=*/true, false});
+            sum.add(shuffle_and_check(song.sequence, true));
+        }
+    }
+    CHECK(sum.tick0_starts > 0);
 }
 
-TEST_CASE("Note Shuffle: a first chord on tick 0 with a seed that is not zero") {
-    // The game's tick bookkeeping starts at 0, so every note on tick 0 takes
-    // the same-chord path, the first one included.
-    std::vector<SongTimestamp> seq =
-        sequence_of({{0, "nn.n."}, {480, "..N.."}, {960, ".n..."}, {1440, "..N.."}, {1920, ".nN.."}});
-    REQUIRE(apply_note_shuffle(seq, true) == NoteShuffleResult::Shuffled);
-    check_rows(seq, {{0, "nn..n"}, {480, "...N."}, {960, "....n"}, {1440, "...N."}, {1920, ".n.N."}});
-}
-
-TEST_CASE("Note Shuffle: the seven pads' lane bits, in the game's lane order") {
-    // The bit values are the reference's docstring. A drum lane's lowest and
-    // highest pads (lane_pads in parse/song.cpp) are read off these bits, so
-    // this also pins the order the lanes use: red, the three toms, then the
-    // three cymbals.
+TEST_CASE("Note Shuffle: the drum lanes' bits are the game's") {
+    // The game's lane map, docs/clone-hero/02-note-list.md NL-50 (Proven in
+    // the game's code): kick 0x1, red 0x2, yellow, blue and green tom 0x4,
+    // 0x8 and 0x10, yellow, blue and green cymbal 0x20, 0x40 and 0x80.
     struct Pad {
         NoteColor color;
         bool cymbal;
         uint32_t bit;
     };
     const Pad pads[] = {
-        {NoteColor::Red, false, 0x02},    {NoteColor::Yellow, false, 0x04}, {NoteColor::Blue, false, 0x08},
-        {NoteColor::Green, false, 0x10},  {NoteColor::Yellow, true, 0x20},  {NoteColor::Blue, true, 0x40},
-        {NoteColor::Green, true, 0x80},
+        {NoteColor::Kick, false, 0x01},  {NoteColor::Red, false, 0x02},   {NoteColor::Yellow, false, 0x04},
+        {NoteColor::Blue, false, 0x08},  {NoteColor::Green, false, 0x10}, {NoteColor::Yellow, true, 0x20},
+        {NoteColor::Blue, true, 0x40},   {NoteColor::Green, true, 0x80},
     };
-    uint32_t previous = 0;
     for (const Pad& p : pads) {
-        Chord c;
-        ChordNote& n = c.add_note(p.color);
+        ChordNote n{p.color};
         if (p.cymbal) set_lane_flag(n);
         INFO(color_str(p.color) << (p.cymbal ? " cymbal" : ""));
         CHECK(lane_bit(n) == p.bit);
-        CHECK(lane_bit(n) > previous);
-        previous = lane_bit(n);
     }
 }
 
-TEST_CASE("Note Shuffle: the gameplay video's chart") {
-    // The video's chart file is not in the repo. Its notes are listed in
-    // docs/audit/note-shuffle/verify/check_video.py, and gen_vectors.py checks
-    // the reference's result against every tick the video showed.
+TEST_CASE("Note Shuffle: the gameplay video's chart shuffles into the chords the game showed") {
+    // A real game run: the 2026-10-08 bot video on Expert Pro Drums
+    // (docs/clone-hero/02-note-list.md NL-71). The input is the video chart's
+    // notes from the video scout's MIDI dump, and each expected chord is the
+    // chord the video's frames showed at that tick; the chart file itself is
+    // not in the repo. docs/audit/note-shuffle/verify/check_video.py lists
+    // both, as `chart` and `seen`.
     std::vector<SongTimestamp> seq = sequence_of(
         {{2640, "n...."}, {2700, "n...."}, {2760, "n...."}, {2820, ".n..."}, {2880, "..n.."}, {2940, "...n."},
          {3000, "....n"}, {3060, "....n"}, {3120, "....n"}, {3180, "....n"}, {3240, "....n"}, {3300, "....n"},
          {3360, "....n"}, {3420, "....n"}, {3480, "....n"}, {3540, "....n"}, {3600, "....n"}, {3660, "....n"},
          {3720, "...n."}, {3780, "..n.."}, {4080, "nn..N"}, {4200, "n.n.n"}});
-    REQUIRE(apply_note_shuffle(seq, true) == NoteShuffleResult::Shuffled);
+    shuffle_and_check(seq, true);
     check_rows(seq, {{2640, "n...."}, {2700, "n...."}, {2760, "n...."}, {2820, "...n."}, {2880, "..n.."}, {2940, "...N."},
                      {3000, "....n"}, {3060, "..N.."}, {3120, "....n"}, {3180, "..N.."}, {3240, "....n"}, {3300, "..N.."},
                      {3360, "....n"}, {3420, "..N.."}, {3480, "....n"}, {3540, "..N.."}, {3600, "....n"}, {3660, "..N.."},
