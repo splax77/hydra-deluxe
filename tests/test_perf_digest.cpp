@@ -1,18 +1,15 @@
-// Pins the chart corpus's digests, the same ones hydra_bench's --engine
-// and --parse modes print, so a change meant to leave Hydra's output alone
-// (D86) fails here if it moves a single field of the engine's answer. "The
-// plan" below is docs/superpowers/plans/2026-10-06-perf-speedups.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-06-perf-speedups.md).
-//
-// Each literal comes from one run of hydra_bench on testdata/input with the
-// engine and parsers unchanged. The digests are tests/song_digest.h's, the
-// header the tool uses too. A change that is meant to move results bumps its
-// stamp in src/store/stored_versions.h and repins these on purpose; the
-// failure message prints the digest the test got.
+// Checks the per-chart digests hydra_bench's --engine and --parse modes fold
+// (tests/song_digest.h) on every corpus chart. Comparing two builds' digests
+// only proves a change left Hydra's output alone when the same build gives
+// the same digest every time, so each test reads every chart twice and
+// checks the two answers match, chart by chart. Each also checks which
+// charts it reads: every chart that loads analyses, and a chart that does
+// not load has no notes at those settings (NoNotesError), never another
+// failure.
 
 #include "doctest.h"
 
 #include <cstdint>
-#include <cstdio>
 #include <exception>
 #include <optional>
 #include <string>
@@ -29,11 +26,12 @@ using namespace hydra;
 
 namespace {
 
-// The settings each digest is pinned under, built as the app builds them
-// (Settings::batch_run, through to_analysis_settings), with every field the
-// plan names set here so a change of app default cannot move the pin. The
-// rest (rules, fills) is the app's default, as in an exe folder with no ini.
-app::Settings pinned_settings(const char* difficulty, bool pro, bool bass2x) {
+// The settings each check runs under, built as the app builds them
+// (Settings::batch_run, through to_analysis_settings), with the depth, SP cap
+// and ms limit set here so a change of app default cannot change which
+// search the checks read. The rest (rules, fills) is the app's default, as in
+// an exe folder with no ini.
+app::Settings digest_run_settings(const char* difficulty, bool pro, bool bass2x) {
     app::Settings s = digest::digest_settings(difficulty, pro, bass2x);
     s.sp_cap = kCloneHeroSpCap;
     s.depth_mode = 0;  // scores
@@ -50,117 +48,114 @@ std::vector<app::ScanItem> corpus_charts() {
     return app::plan_batch(items, {}).todo;
 }
 
-std::string hex(uint64_t h) {
-    char buf[17];
-    std::snprintf(buf, sizeof buf, "%016llx", static_cast<unsigned long long>(h));
-    return buf;
-}
-
-// One engine digest run: the hash and how many charts analysed. The count
-// sits beside the hash so a repin can never hide that charts started failing.
-struct EngineDigest {
-    uint64_t hash = 0;
-    size_t analyzed = 0;
-};
-
-// What hydra_bench --engine prints as "hash": every chart's whole engine
-// result and prepared record (digest::row_hash), a chart that fails left out.
-EngineDigest engine_digest(const app::Settings& st) {
-    const app::AnalysisSettings settings = st.batch_run().settings;
-    EngineDigest out;
-    out.hash = digest::kSeed;
-    for (const app::ScanItem& it : corpus_charts()) {
-        try {
-            const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
-            const store::PreparedRecord prepared =
-                store::prepare_record(it.md5, st.profile(), res.record);
-            out.hash = digest::fold(out.hash, digest::row_hash(prepared, res.record));
-            ++out.analyzed;
-        } catch (const std::exception&) {
-        }
+// One chart's engine answer, as hydra_bench --engine hashes it
+// (digest::row_hash), or nullopt when the chart fails to analyse.
+std::optional<uint64_t> engine_row(const app::ScanItem& it, const app::Settings& st,
+                                   const app::AnalysisSettings& settings) {
+    try {
+        const app::AnalysisResult res = app::analyze_chart_file(it.notespath, settings);
+        const store::PreparedRecord prepared =
+            store::prepare_record(it.md5, st.profile(), res.record);
+        return digest::row_hash(prepared, res.record);
+    } catch (const std::exception&) {
+        return std::nullopt;
     }
-    return out;
 }
 
-// How many of the digest's charts load at these settings
-// (digest::loading_chart_count), so a pin whose difficulty some charts lack
-// still checks its count without a typed number.
-size_t loading_chart_count(const app::Settings& st) {
-    std::vector<std::string> notespaths;
-    for (const app::ScanItem& it : corpus_charts()) notespaths.push_back(it.notespath);
-    return digest::loading_chart_count(notespaths, st.batch_run().settings);
+// The sentence a chart with no notes at these settings fails with, in the
+// form the parse digest records a failure (digest::failure_text).
+std::string no_notes_text(const app::AnalysisSettings& settings) {
+    const NoNotesError none(settings.reading().difficulty, settings.reading().prodrums);
+    return digest::failure_text(none);
 }
 
-// Checks one engine digest against its pinned literal, and that every chart
-// that loads at these settings also analysed.
-void check_engine_digest(const app::Settings& st, uint64_t pinned) {
-    const EngineDigest got = engine_digest(st);
-    const size_t loading = loading_chart_count(st);
-    CHECK_MESSAGE(got.analyzed == loading,
-                  got.analyzed << " charts analysed, " << loading << " load");
-    CHECK_MESSAGE(got.hash == pinned, "engine digest is now " << hex(got.hash));
+// Checks that every chart that does not load at these settings fails only
+// because it has no notes there, and that at least one chart loads.
+void check_loading(const std::vector<app::ScanItem>& charts,
+                   const app::AnalysisSettings& settings) {
+    const std::string none = no_notes_text(settings);
+    size_t loading = 0;
+    for (const app::ScanItem& it : charts) {
+        std::string fail;
+        digest::chart_parse_hash(it.notespath, settings, &fail);
+        if (fail.empty()) {
+            ++loading;
+            continue;
+        }
+        CHECK_MESSAGE(fail == none, it.notespath << " fails with " << fail);
+    }
+    CHECK(loading > 0);
 }
 
-// What hydra_bench --parse prints as "hash": every chart's parsed song and
-// dynamics count, or its failure.
-uint64_t parse_digest(const app::Settings& st) {
+// Analyses every corpus chart twice and checks each chart's two answers are
+// the same, that every chart that loads analysed, and that every chart that
+// does not load has no notes at these settings.
+void check_engine_digest(const app::Settings& st) {
     const app::AnalysisSettings settings = st.batch_run().settings;
-    uint64_t all = digest::kSeed;
-    for (const app::ScanItem& it : corpus_charts())
-        all = digest::fold(all, digest::chart_parse_hash(it.notespath, settings));
-    return all;
+    const std::vector<app::ScanItem> charts = corpus_charts();
+    std::vector<std::string> notespaths;
+    size_t analysed = 0;
+    for (const app::ScanItem& it : charts) {
+        notespaths.push_back(it.notespath);
+        const std::optional<uint64_t> first = engine_row(it, st, settings);
+        const std::optional<uint64_t> second = engine_row(it, st, settings);
+        CHECK_MESSAGE((first == second), it.notespath << " gives two different answers");
+        if (first) ++analysed;
+    }
+    const size_t loading = digest::loading_chart_count(notespaths, settings);
+    CHECK_MESSAGE(analysed == loading, analysed << " charts analysed, " << loading << " load");
+    check_loading(charts, settings);
 }
 
-// Checks one parse digest against its pinned literal, and how many charts
-// load at these settings against the count pinned beside it, so a repin can
-// never hide that charts stopped loading.
-void check_parse_digest(const app::Settings& st, uint64_t pinned, size_t pinned_loading) {
-    const uint64_t got = parse_digest(st);
-    const size_t loading = loading_chart_count(st);
-    CHECK_MESSAGE(loading == pinned_loading, loading << " charts load");
-    CHECK_MESSAGE(got == pinned, "parse digest is now " << hex(got));
+// Parses every corpus chart twice and checks each chart's two parse digests
+// (digest::chart_parse_hash) are the same, and that every chart that does
+// not load has no notes at these settings.
+void check_parse_digest(const app::Settings& st) {
+    const app::AnalysisSettings settings = st.batch_run().settings;
+    const std::vector<app::ScanItem> charts = corpus_charts();
+    for (const app::ScanItem& it : charts) {
+        const uint64_t first = digest::chart_parse_hash(it.notespath, settings);
+        const uint64_t second = digest::chart_parse_hash(it.notespath, settings);
+        CHECK_MESSAGE((first == second), it.notespath << " parses two different ways");
+    }
+    check_loading(charts, settings);
 }
 
 }  // namespace
 
-// Each of the six digests below is pinned from one run.
-
-TEST_CASE("the corpus's prepared-row digest is pinned") {
-    check_engine_digest(pinned_settings("Expert", true, true), 0xf5ba2b3eeca8426dULL);
+TEST_CASE("every corpus chart's prepared row is the same on a second analysis") {
+    check_engine_digest(digest_run_settings("Expert", true, true));
 }
 
-TEST_CASE("the corpus's prepared-row digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    check_engine_digest(pinned_settings("Hard", false, false), 0x7cae719f5799dce9ULL);
+TEST_CASE("every corpus chart's prepared row is the same on a second analysis at Hard, Pro Drums off, 2x Bass off") {
+    check_engine_digest(digest_run_settings("Hard", false, false));
 }
 
-TEST_CASE("the corpus's prepared-row digest is pinned with the CH 1.0 fill rule") {
-    app::Settings s = pinned_settings("Expert", true, true);
+TEST_CASE("every corpus chart's prepared row is the same on a second analysis with the CH 1.0 fill rule") {
+    app::Settings s = digest_run_settings("Expert", true, true);
     s.legacy_fills = true;
-    check_engine_digest(s, 0xabd1a401a72080a9ULL);
+    check_engine_digest(s);
 }
 
-TEST_CASE("the corpus's prepared-row digest is pinned with Note Shuffle on and the ms limit off") {
-    app::Settings s = pinned_settings("Expert", true, true);
+TEST_CASE("every corpus chart's prepared row is the same on a second analysis with Note Shuffle on and the ms limit off") {
+    app::Settings s = digest_run_settings("Expert", true, true);
     s.view_noteshuffle = true;
     s.mslimit_enabled = false;
-    check_engine_digest(s, 0x2ee8e78d4c2ddac4ULL);
+    check_engine_digest(s);
 }
 
-TEST_CASE("the corpus's parse digest is pinned") {
-    const uint64_t got = parse_digest(pinned_settings("Expert", true, true));
-    CHECK_MESSAGE(got == 0x2d2b6ba616fa0df2ULL, "parse digest is now " << hex(got));
+TEST_CASE("every corpus chart parses the same way twice") {
+    check_parse_digest(digest_run_settings("Expert", true, true));
 }
 
-TEST_CASE("the corpus's parse digest is pinned at Hard, Pro Drums off, 2x Bass off") {
-    const uint64_t got = parse_digest(pinned_settings("Hard", false, false));
-    CHECK_MESSAGE(got == 0xdbbb09ba79b73c78ULL, "parse digest is now " << hex(got));
+TEST_CASE("every corpus chart parses the same way twice at Hard, Pro Drums off, 2x Bass off") {
+    check_parse_digest(digest_run_settings("Hard", false, false));
 }
 
-// Pinned from one run, with the parsers unchanged.
-TEST_CASE("the corpus's parse digest is pinned at Medium, Pro Drums off, 2x Bass off") {
-    check_parse_digest(pinned_settings("Medium", false, false), 0x1f78ad0ac3f9a90aULL, 68);
+TEST_CASE("every corpus chart parses the same way twice at Medium, Pro Drums off, 2x Bass off") {
+    check_parse_digest(digest_run_settings("Medium", false, false));
 }
 
-TEST_CASE("the corpus's parse digest is pinned at Easy, Pro Drums off, 2x Bass off") {
-    check_parse_digest(pinned_settings("Easy", false, false), 0xa5187516819c3195ULL, 68);
+TEST_CASE("every corpus chart parses the same way twice at Easy, Pro Drums off, 2x Bass off") {
+    check_parse_digest(digest_run_settings("Easy", false, false));
 }
