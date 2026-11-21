@@ -127,15 +127,22 @@ def test_a_missing_script_json_is_reported_by_its_path(tmp_path):
 
 REAL_DLL = os.path.join(game_files.GAME_DIR, "GameAssembly.dll")
 REAL_DUMPS = os.path.join(build_facts.DUMPS_ROOT, "6142")
-REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-PIN = os.path.join(REPO, "docs", "audit", "drum-lanes", "play", "f20deec0.asm")
-
-
-def test_real_dll_matches_the_committed_listing():
+def test_a_real_method_lists_from_its_start_to_its_padding():
+    # The dump's own method addresses are the independent measure: the
+    # listing of a method the dump names starts on that method's first byte,
+    # stays inside it, and stops at the padding before the next named method.
+    # 0x20DEEC0 is the drum-lanes play method the drum-lanes audit read.
     for path in (REAL_DLL, os.path.join(REAL_DUMPS, chdis.SCRIPT_FILE)):
         if not os.path.isfile(path):
             pytest.skip(f"no {path} on this machine")
-    with open(PIN, encoding="utf-8") as f:
-        pin_first = f.readline().rstrip("\n")
-    lines = chdis.Image(REAL_DLL, REAL_DUMPS).lines(0x20DEEC0, 64)
-    assert lines[0] == pin_first
+    image = chdis.Image(REAL_DLL, REAL_DUMPS)
+    rva = 0x20DEEC0
+    assert rva in image.names
+    next_method = min(a for a in image.names if a > rva)
+    lines = image.lines(rva, next_method - rva)
+    assert lines
+    addrs = [int(line.split(":", 1)[0], 16) for line in lines]
+    assert addrs[0] == rva
+    assert addrs == sorted(set(addrs))
+    assert addrs[-1] < next_method
+    assert lines[-1].split(":", 1)[1].split()[0] == "int3"
