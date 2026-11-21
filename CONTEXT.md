@@ -446,7 +446,7 @@ lines through `ini_not_key_value_text`, `ini_unknown_key_text` and
 in src/app/ini_errors.h (D270 call 4); a scan row (ini-errors.json) holds
 that. A number outside its range loads at the nearest edge in the settings
 file, so `sp_cap=0` reads 1, where `hydra_rules.ini` refuses a number below
-one of its five floors (D270 calls 1 to 3). A key Hydra used to write is
+one of its four floors (D270 calls 1 to 3). A key Hydra used to write is
 skipped, not refused: `kRetiredSettingsKeys` (src/app/config.h) and
 `kRetiredRulesKeys` (src/app/rules_file.cpp) list them, and
 `is_retired_key` asks. A live key of the same name wins. A retired settings
@@ -645,20 +645,10 @@ setting picks which game version's generator runs, in one place:
 
 Clone Hero 1.1 (the default) follows the game's own generator, whose rules
 are docs/clone-hero/04-fills.md (FL-13 to FL-18). hydra_rules.ini can change
-its 4-line step and its half-beat distance (`fill_cooldown_measures` and
-`fill_max_distance_beats`).
+its half-beat distance (`fill_max_distance_beats`); its 4-line step is fixed,
+as in the game (`kLinesAfterFill` in src/core/song.cpp).
 
-Clone Hero 1.0 mode keeps Hydra's own model of 1.0's fill rule (the user's
-call, 2026-10-14; docs/adr/0023), and counts measures on the same grid as 1.1
-(`MeasureIndex`; the user's call, 2026-10-24). It puts the fill on the chord
-nearest a measure line, within half a beat (no extra tick), half a grid
-measure long at the chord (`kCh10FillLengthMeasures`, fixed; the old
-`fill_length_measures` key is read and ignored), and at least 4 lines after
-the last one. When two chords sit equally near the line, the later one gets
-the fill. The distance and the length are cut down to whole ticks.
-`Song::place_fills_ch10` holds it, and `Song::place_fills_ch11` the 1.1
-generator. How the game's own 1.0 generator differs is
-docs/clone-hero/04-fills.md (FL-36).
+Clone Hero 1.0 mode places generated fills by old Clone Hero 1.0's own fill code (the user's call, 2026-11-21). The rules are FL-35 to FL-42 in docs/clone-hero/04-fills.md, held by `Song::place_fills_ch10`.
 
 `Song::generated_fills` records which generator ran (empty for authored
 fills): the one answer to "was this fill generated". The Preview reads it to
@@ -666,7 +656,7 @@ draw a 1.1 generated fill as the half measure before its chord
 (`drawn_fill_start_tick`, the user's call, 2026-10-19), because the fill's
 engine length is often 0. That is display only: it changes no length the
 deadline math reads, and authored and 1.0 fills are drawn from their own
-length.
+start.
 
 **Fill rule**:
 Which Clone Hero version's fill rules a run follows, 1.1 or 1.0:
