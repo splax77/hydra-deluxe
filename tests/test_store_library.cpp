@@ -8,15 +8,21 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <map>
 #include <memory>
+#include <set>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <vector>
 
+#include "app/analysis.h"  // discover_charts, hash_chart_file
+#include "audio_chart_fixtures.h"  // copy_file_utf8, write_text_file
 #include "core/error_kind.h"  // Cancelled
 #include "core/model.h"
 #include "db_file_util.h"  // exec_on_file, scalar_on_file
@@ -25,8 +31,9 @@
 #include "record_fixtures.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
+#include "store/stored_versions.h"  // kChartMetaStamp
 #include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
-#include "store_fixtures.h"  // at_cap, at4
+#include "store_fixtures.h"  // at_cap, at4, fixture, fixture_chart, store_fixture_settings
 #include "temp_util.h"
 #include "wait_util.h"  // wait_until, WaitTimeout, kWaitCap
 
@@ -65,6 +72,121 @@ ChartNames names_of(RecordStore& store, const std::string& id) {
     return ChartNames{naming->title, naming->artist, naming->charter, naming->album};
 }
 
+// The library rows the real scan (app::discover_charts) writes for the
+// corpus, scanned once per run: each row a rescan could match
+// (sig_can_show_unchanged), the first row of each md5 only.
+const std::vector<ChartLibraryEntry>& scanned_corpus() {
+    static const std::vector<ChartLibraryEntry> rows = [] {
+        std::pair<std::vector<ChartLibraryEntry>, std::vector<std::string>> scan =
+            hydra::app::discover_charts({corpus::root()});
+        if (!scan.second.empty())
+            throw std::runtime_error("corpus scan error: " + scan.second.front());
+        std::vector<ChartLibraryEntry> out;
+        std::set<std::string> md5s;
+        for (ChartLibraryEntry& e : scan.first)
+            if (sig_can_show_unchanged(e.sig) && md5s.insert(e.md5).second)
+                out.push_back(std::move(e));
+        return out;
+    }();
+    return rows;
+}
+
+// The first `n` rows of scanned_corpus: `n` different charts.
+std::vector<ChartLibraryEntry> corpus_rows(size_t n) {
+    const std::vector<ChartLibraryEntry>& all = scanned_corpus();
+    REQUIRE(all.size() >= n);
+    return std::vector<ChartLibraryEntry>(all.begin(),
+                                          all.begin() + static_cast<std::ptrdiff_t>(n));
+}
+
+// The first scanned_corpus row of a chart other than `md5`.
+ChartLibraryEntry corpus_row_other_than(const std::string& md5) {
+    for (const ChartLibraryEntry& e : scanned_corpus())
+        if (e.md5 != md5) return e;
+    FAIL("the corpus scan lists no chart but " << md5);
+    return ChartLibraryEntry{};
+}
+
+// The folder that holds the chart file `notespath`.
+std::string folder_of(const std::string& notespath) {
+    const size_t slash = notespath.find_last_of("\\/");
+    REQUIRE(slash != std::string::npos);
+    return notespath.substr(0, slash);
+}
+
+// Writes a song.ini into `dir` that names its chart `names`, as a chart
+// editor saves one.
+void write_song_ini(const std::string& dir, const ChartNames& names) {
+    audiochart::write_text_file(dir + "\\song.ini",
+                                "[song]\nname = " + names.title + "\nartist = " + names.artist +
+                                    "\ncharter = " + names.charter + "\nalbum = " + names.album +
+                                    "\n");
+}
+
+// One song folder of a scratch charts folder: the folder's name, the corpus
+// chart file copied into it, and the names its song.ini gives.
+struct SongFolder {
+    std::string folder;
+    std::string chart;
+    ChartNames names;
+};
+
+// Writes each of `songs` under the scratch folder testtemp::temp_dir(tag),
+// emptied first: its corpus chart file, copied byte for byte under its own
+// file name, and its song.ini. Returns the scratch folder.
+std::string write_song_folders(const std::string& tag, const std::vector<SongFolder>& songs) {
+    const std::string root = testtemp::temp_dir(tag);
+    testtemp::remove_dir(root);
+    for (const SongFolder& song : songs) {
+        const std::string dir = root + "\\" + song.folder;
+        std::filesystem::create_directories(hydra::os_path(dir));
+        audiochart::copy_file_utf8(song.chart,
+                                   dir + song.chart.substr(folder_of(song.chart).size()));
+        write_song_ini(dir, song.names);
+    }
+    return root;
+}
+
+// The library rows the real scan writes for the charts folder `root`, in the
+// order it lists them. Fails when the scan reports an error.
+std::vector<ChartLibraryEntry> scan_folder(const std::string& root) {
+    std::pair<std::vector<ChartLibraryEntry>, std::vector<std::string>> scan =
+        hydra::app::discover_charts({root});
+    const std::string first_error = scan.second.empty() ? std::string() : scan.second.front();
+    INFO(first_error);
+    REQUIRE(scan.second.empty());
+    return scan.first;
+}
+
+// The first of `rows` that lists chart `md5`: the copy the scan listed first.
+const ChartLibraryEntry& first_listed(const std::vector<ChartLibraryEntry>& rows,
+                                      const std::string& md5) {
+    for (const ChartLibraryEntry& e : rows)
+        if (e.md5 == md5) return e;
+    FAIL("the scan lists no copy of " << md5);
+    return rows.front();
+}
+
+// A scan stamp this build does not read as current (kChartMetaStamp): one
+// below the stamp it writes, as an older build wrote it.
+int stale_chart_meta_stamp() {
+    const int stale = kChartMetaStamp.written - 1;
+    REQUIRE_FALSE(kChartMetaStamp.is_current(stale));
+    return stale;
+}
+
+// The SQL that sets the store file's scan stamp to `stamp`.
+std::string set_chart_meta_stamp_sql(int stamp) {
+    return "UPDATE meta SET value = '" + std::to_string(stamp) +
+           "' WHERE key = 'chart_meta_version';";
+}
+
+// Takes the scan stamp out of the store file at `path`, as a file from
+// before the stamp holds none.
+void drop_chart_meta_stamp(const std::string& path) {
+    exec_on_file(path, "DELETE FROM meta WHERE key = 'chart_meta_version'");
+}
+
 }  // namespace
 
 TEST_CASE("a library entry filled by position keeps its first seven fields in place") {
@@ -88,26 +210,28 @@ TEST_CASE("a library entry filled by position keeps its first seven fields in pl
 TEST_CASE("a failed library rebuild keeps the previous scan") {
     // The rebuild's transaction opens before anything changes, so an insert
     // that fails leaves the library and its rescan cache as they were. A
-    // trigger that refuses one md5 makes an insert fail partway.
+    // trigger that refuses one chart's md5 makes an insert fail partway. The
+    // rows are the corpus scan's.
+    const std::vector<ChartLibraryEntry> rows = corpus_rows(4);
     const std::string path = testtemp::temp_path("rebuild_fail", ".db");
     std::remove(path.c_str());
     {
         RecordStore store(path);
-        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
+        store.rebuild_chart_library({rows[0], rows[1]});
     }
-    exec_on_file(path,
-                 "CREATE TRIGGER refuse_boom BEFORE INSERT ON charts WHEN NEW.md5 = 'boom'"
-                 " BEGIN SELECT RAISE(ABORT, 'boom'); END;");
+    const std::string trigger = "CREATE TRIGGER refuse_one BEFORE INSERT ON charts WHEN NEW.md5 = '" +
+                                rows[3].md5 + "' BEGIN SELECT RAISE(ABORT, 'refused'); END;";
+    exec_on_file(path, trigger.c_str());
     {
         RecordStore store(path);
-        CHECK_THROWS(
-            store.rebuild_chart_library({library_row("c", "C"), library_row("boom", "Boom")}));
+        CHECK_THROWS(store.rebuild_chart_library({rows[2], rows[3]}));
         CHECK(store.chart_library_count() == 2);
         const ChartLibraryCache cache = store.chart_library_cache();
-        CHECK(cache.count("C:\\charts\\a\\notes.chart") == 1);
-        CHECK(cache.count("C:\\charts\\b\\notes.chart") == 1);
+        CHECK(cache.size() == 2);
+        CHECK(cache.count(rows[0].notespath) == 1);
+        CHECK(cache.count(rows[1].notespath) == 1);
         // No transaction was left open: the next rebuild goes through.
-        store.rebuild_chart_library({library_row("c", "C")});
+        store.rebuild_chart_library({rows[2]});
         CHECK(store.chart_library_count() == 1);
     }
     std::remove(path.c_str());
@@ -116,34 +240,48 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
 TEST_CASE("a result's names follow the latest scan") {
     // Library names win in the reports, so a scan brings a fixed song.ini in:
     // a result's names come from the library (ChartIndex), and a rescan after
-    // song.ini changed renames it.
+    // song.ini changed renames it. Two folders hold copies of one corpus
+    // chart; the real scan reads them, and the chart's record is the
+    // engine's analysis of it.
+    const std::string root = write_song_folders(
+        "names_follow_scan",
+        {SongFolder{"first", hydra::test::fixture_chart(),
+                    ChartNames{"Scanned Title", "Scanned Artist", "Scanned Charter",
+                               "Scanned Album"}},
+         SongFolder{"second", hydra::test::fixture_chart(),
+                    ChartNames{"Second Copy", "Second Artist", "Second Charter",
+                               "Second Album"}}});
+    const std::vector<ChartLibraryEntry> scanned = scan_folder(root);
+    REQUIRE(scanned.size() == 2);
+    const std::string id = scanned[0].md5;
+    REQUIRE(scanned[1].md5 == id);  // one chart, two copies
+    REQUIRE(scanned[0].title != scanned[1].title);
     RecordStore store(":memory:");
-    ChartLibraryEntry first = library_row("h", "Scanned Title");
-    first.album = "Scanned Album";
-    ChartLibraryEntry second = library_row("h", "Second Copy");
-    second.notespath = "C:\\charts\\copy\\notes.chart";
-    store.rebuild_chart_library({first, second});
-    store.save(prepare_record("h", at4(), at_cap(4)));
-    // The scan found two copies of the chart; the first one it listed names
-    // it.
-    CHECK(names_of(store, "h").title == "Scanned Title");
-    CHECK(names_of(store, "h").album == "Scanned Album");
+    store.rebuild_chart_library(scanned);
+    store.save(prepare_record(id, at4(), hydra::test::fixture().record));
+    // The first copy the scan listed names it.
+    CHECK(names_of(store, id).title == scanned[0].title);
+    CHECK(names_of(store, id).album == scanned[0].album);
 
-    ChartLibraryEntry renamed = library_row("h", "New Title");
-    renamed.artist = "New Artist";
-    renamed.charter = "New Charter";
-    renamed.album = "New Album";
-    store.rebuild_chart_library({renamed, second});
-    CHECK(names_of(store, "h").title == "New Title");
-    CHECK(names_of(store, "h").artist == "New Artist");
-    CHECK(names_of(store, "h").charter == "New Charter");
-    CHECK(names_of(store, "h").album == "New Album");
+    // The naming copy's song.ini changes, and the next scan reads it.
+    write_song_ini(folder_of(scanned[0].notespath),
+                   ChartNames{"New Title", "New Artist", "New Charter", "New Album"});
+    const std::vector<ChartLibraryEntry> rescanned = scan_folder(root);
+    REQUIRE(rescanned.size() == 2);
+    REQUIRE(rescanned[0].notespath == scanned[0].notespath);
+    REQUIRE(rescanned[0].title != scanned[0].title);
+    store.rebuild_chart_library(rescanned);
+    CHECK(names_of(store, id).title == rescanned[0].title);
+    CHECK(names_of(store, id).artist == rescanned[0].artist);
+    CHECK(names_of(store, id).charter == rescanned[0].charter);
+    CHECK(names_of(store, id).album == rescanned[0].album);
     // The rescans kept the chart's record.
-    CHECK(store.lookup_one("h", at4()).status == RecordStatus::Ready);
+    CHECK(store.lookup_one(id, at4()).status == RecordStatus::Ready);
 
     // A chart the scan found but nobody analyzed has no result to count.
-    store.rebuild_chart_library({renamed, library_row("x", "Never Analyzed")});
+    store.rebuild_chart_library({rescanned[0], corpus_row_other_than(id)});
     CHECK(store.record_count() == 1);
+    testtemp::remove_dir(root);
 }
 
 // ---- store speed (2026-09-26 audit, Task 9) --------------------------------
@@ -165,20 +303,36 @@ TEST_CASE("the library table's md5 index exists") {
 TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     // D51 call 10 (finding 63): one rule names a chart the scan found twice,
     // the first copy it listed. Every chart takes its names from the library
-    // (ChartIndex), a single copy included.
+    // (ChartIndex), a single copy included. Two corpus charts, the first in
+    // two folders, are read by the real scan and analyzed by the engine.
+    const std::vector<corpus::ChartWithPaths> charts =
+        corpus::charts_with_paths(hydra::test::store_fixture_settings(), 2);
+    REQUIRE(charts.size() == 2);
+    const std::string twice = hydra::app::hash_chart_file(charts[0].chart);
+    const std::string once = hydra::app::hash_chart_file(charts[1].chart);
+    REQUIRE(twice != once);
+    const std::string root = write_song_folders(
+        "first_copy_names",
+        {SongFolder{"copy_a", charts[0].chart,
+                    ChartNames{"Scanned Title", "Artist", "Charter", "Album"}},
+         SongFolder{"copy_b", charts[0].chart,
+                    ChartNames{"Second Copy", "Artist", "Charter", "Album"}},
+         SongFolder{"single", charts[1].chart,
+                    ChartNames{"Single Copy", "Artist", "Charter", "Album"}}});
+    const std::vector<ChartLibraryEntry> scanned = scan_folder(root);
+    REQUIRE(scanned.size() == 3);
     RecordStore store(":memory:");
-    const ChartLibraryEntry first = library_row("h", "Scanned Title");
-    ChartLibraryEntry second = library_row("h", "Second Copy");
-    second.notespath = "C:\\charts\\copy\\notes.chart";
-    store.rebuild_chart_library({first, second, library_row("s", "Single Copy")});
+    store.rebuild_chart_library(scanned);
+    REQUIRE(listed_copies(store) == std::map<std::string, int>{{twice, 2}, {once, 1}});
 
-    store.save(prepare_record("h", at4(), at_cap(4)));
-    store.save(prepare_record("s", at4(), at_cap(4)));
+    store.save(prepare_record(twice, at4(), charts[0].result.record));
+    store.save(prepare_record(once, at4(), charts[1].result.record));
     std::map<std::string, std::string> names;
     for (const RecordRow& record : store.ready_records(at4()))
         names[record.song_id] = names_of(store, record.song_id).title;
-    CHECK(names ==
-          std::map<std::string, std::string>{{"h", "Scanned Title"}, {"s", "Single Copy"}});
+    CHECK(names == std::map<std::string, std::string>{{twice, first_listed(scanned, twice).title},
+                                                      {once, first_listed(scanned, once).title}});
+    testtemp::remove_dir(root);
 }
 
 TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
@@ -187,7 +341,7 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
     // reads every chart again and stamps the table it writes.
     const std::string path = testtemp::temp_path("chart_meta_stamp", ".db");
     std::remove(path.c_str());
-    const ChartLibraryEntry entry = library_row("a", "A");
+    const ChartLibraryEntry entry = corpus_rows(1).front();
     {
         RecordStore store(path);
         store.rebuild_chart_library({entry});
@@ -196,16 +350,16 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
         RecordStore store(path);
         CHECK(store.chart_library_cache().count(entry.notespath) == 1);
     }
-    exec_on_file(path, "DELETE FROM meta WHERE key = 'chart_meta_version'");
+    drop_chart_meta_stamp(path);
     {
         RecordStore store(path);
         CHECK(store.chart_library_cache().empty());
         store.rebuild_chart_library({entry});
         CHECK(store.chart_library_cache().count(entry.notespath) == 1);
     }
-    // A file the scan stamped before it read albums: its rows hold no album,
-    // so its cache is dropped too.
-    exec_on_file(path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    // A file an older build's scan stamped: its rows may not hold what this
+    // build reads, so its cache is dropped too.
+    exec_on_file(path, set_chart_meta_stamp_sql(stale_chart_meta_stamp()).c_str());
     {
         RecordStore store(path);
         CHECK(store.chart_library_cache().empty());
@@ -216,19 +370,19 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
 TEST_CASE("the library is out of date only when it has rows and its reader stamp is not current") {
     const std::string path = testtemp::temp_path("library_out_of_date", ".db");
     std::remove(path.c_str());
-    const ChartLibraryEntry entry = library_row("a", "A");
+    const ChartLibraryEntry entry = corpus_rows(1).front();
     {
         RecordStore store(path);
         CHECK_FALSE(store.chart_library_out_of_date());
         store.rebuild_chart_library({entry});
         CHECK_FALSE(store.chart_library_out_of_date());
     }
-    exec_on_file(path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    exec_on_file(path, set_chart_meta_stamp_sql(stale_chart_meta_stamp()).c_str());
     {
         RecordStore store(path);
         CHECK(store.chart_library_out_of_date());
     }
-    exec_on_file(path, "DELETE FROM meta WHERE key = 'chart_meta_version'");
+    drop_chart_meta_stamp(path);
     {
         RecordStore store(path);
         CHECK(store.chart_library_out_of_date());
@@ -239,16 +393,17 @@ TEST_CASE("the library is out of date only when it has rows and its reader stamp
 }
 
 TEST_CASE("a library from before the album column is out of date after the open adds it") {
-    // The charts table and scan stamp a build from before the album wrote, as
-    // seed_without_album in test_store_open.cpp makes them.
+    // The charts table and scan stamp a build from before the album wrote:
+    // no album column, and a stamp this build does not read as current.
     const std::string path = testtemp::temp_path("library_out_of_date_album", ".db");
     std::remove(path.c_str());
     {
         RecordStore seed(path);
-        seed.rebuild_chart_library({library_row("a", "A")});
+        seed.rebuild_chart_library({corpus_rows(1).front()});
     }
-    exec_on_file(path, "ALTER TABLE charts DROP COLUMN album;"
-                       "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';");
+    const std::string before_album =
+        "ALTER TABLE charts DROP COLUMN album;" + set_chart_meta_stamp_sql(stale_chart_meta_stamp());
+    exec_on_file(path, before_album.c_str());
     {
         RecordStore store(path);
         CHECK(store.chart_library_count() == 1);
