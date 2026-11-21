@@ -200,16 +200,17 @@ void reset_app(Harness& h, const std::string& rules_text, bool wait_store,
     // the dmleaderboards picker talks to the real server and shows its real
     // errors. Headless, the GUI tests have no network: a fake server's reply
     // says nothing about real data, so any fetch fails loudly instead. The
-    // update tests install their own fetcher over this one (uitest_library.cpp,
-    // UpdateSeams).
+    // update tests clear this fetcher for their length, so GitHubReplay's
+    // address map answers (uitest_library.cpp, UpdateSeams).
     if (!h.attached) {
         hydra::net::set_fetcher([](const std::string& url, const std::atomic<bool>*) -> std::string {
             throw std::runtime_error("hydra_uitest has no network: the GUI tests never fetch " +
                                      url);
         });
     }
-    // No test downloads from the network. The update tests install their own
-    // downloader over this one (uitest_library.cpp, UpdateSeams).
+    // No test downloads from the network. The update tests clear this
+    // downloader for their length, so the address map answers
+    // (uitest_library.cpp, UpdateSeams).
     hydra::net::set_downloader([](const std::string& url, const std::string&, uint64_t,
                                   std::atomic<uint64_t>*, const std::atomic<bool>*) {
         throw std::runtime_error("hydra_uitest has no canned download for " + url);

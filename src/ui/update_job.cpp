@@ -16,7 +16,6 @@ namespace hydra::ui {
 
 namespace {
 
-std::string g_update_folder_for_test;
 InstallerLauncher g_launcher_for_test;
 
 void remove_file(const std::string& path) {
@@ -84,14 +83,11 @@ std::string update_installer_name(const app::UpdateRelease& release) {
 }
 
 std::string update_folder() {
-    if (!g_update_folder_for_test.empty()) return g_update_folder_for_test;
     std::error_code ec;
     const std::filesystem::path temp = std::filesystem::temp_directory_path(ec);
     if (ec) throw std::runtime_error("the temp folder could not be found: " + ec.message());
     return wide_to_utf8((temp / L"HydraDeluxe-update").native());
 }
-
-void set_update_folder_for_test(std::string folder) { g_update_folder_for_test = std::move(folder); }
 
 InstallerEnded launch_installer(const std::string& installer, const std::string& log) {
     if (g_launcher_for_test) return g_launcher_for_test(installer, log);
