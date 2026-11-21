@@ -191,14 +191,56 @@ class MatchRecordsTest(unittest.TestCase):
                         + record("### helper_rows (tests/t.cpp:1)", "a loop", "no")})
         code, lines = self.fx.run()
         self.assertEqual(code, 0, lines)
-        self.assertEqual(self.shared_rows(), [("A.md", "4", "Shared answers (S-EN)", "9", "None."),
-                                              ("A.md", "5", "Shared answers (S-EN)", "11", "Yes."),
-                                              ("A.md", "13", "Group P (test_x.py)", "11", "yes.")])
+        self.assertEqual(self.shared_rows(),
+                         [("A.md", "4", "Shared answers (S-EN)", "9", "None.", "under a shared heading"),
+                          ("A.md", "5", "Shared answers (S-EN)", "11", "Yes.", "under a shared heading"),
+                          ("A.md", "13", "Group P (test_x.py)", "11", "yes.", "under a shared heading")])
         rows = by_record(self.fx.rows())
         # The group heading closes the record above it, so its row is not that record's.
         self.assertEqual(rows["A.md:7"]["line 11"], "A.md:10: no")
         self.assertEqual(rows["A.md:7"]["state"], mr.SOMETHING_ELSE)
         self.assertEqual(rows["A.md:15"]["line 11"], "A.md:18: no")
+
+    # A record ends at a section heading of its own level or a higher one; a row
+    # after that heading is listed with it, never given to the record above.
+    def test_a_row_past_a_same_or_higher_level_heading_is_listed_not_given_to_the_record_above(self):
+        self.fx.commit({"A.md": "### every start checks (tests/t.cpp:4)\n9 Stand-in: None.\n"
+                        "#### Deeper notes\n11 Real: Yes.\n\n"
+                        "### Not a record, the whole file\n11 Real: yes.\n\n"
+                        + record("### helper_rows (tests/t.cpp:1)", "a loop", "no")
+                        + "## Higher heading\n9 Stand-in: none.\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        # The deeper heading keeps its row with the record; the same-level and higher ones do not.
+        self.assertEqual(rows["A.md:1"]["line 11"], "A.md:4: Yes.")
+        self.assertEqual(rows["A.md:1"]["state"], mr.FLAGGED)
+        self.assertEqual(rows["A.md:9"]["line 9"], "A.md:11: a loop")
+        self.assertEqual(self.shared_rows(),
+                         [("A.md", "7", "Not a record, the whole file", "11", "yes.", mr.ENDED_WHY),
+                          ("A.md", "15", "Higher heading", "9", "none.", mr.ENDED_WHY)])
+
+    # `file, name at line N` in the parenthesis is a place; neither half alone is.
+    def test_a_place_written_as_file_and_name_at_line(self):
+        self.fx.commit({"A.md": record("## a note (tools/test_x.py, `test_one` at line 2, whole file lines 1 to 4)",
+                                       "x", "no")
+                        + record("## every start checks (a prose note, `main` at line 46)", "x", "no")
+                        + record("## every start checks (tests/t.cpp, whole file lines 1 to 4)", "x", "no")})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["match"], rows["A.md:1"]["test name"]), (mr.SAME_PLACE, "test_one"))
+        self.assertEqual(set(rows), {"A.md:1"})
+
+    # `test_name: what it checks` names the test before the colon; a name no test has matches nothing.
+    def test_a_name_before_the_colon_is_tried(self):
+        self.fx.commit({"A.md": record("## test_one: it checks a thing (tools/test_x.py:2)", "x", "no")
+                        + record("## no_such_test: it checks a thing (tools/test_x.py:2)", "x", "no")})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["match"], rows["A.md:1"]["test name"]), (mr.SAME_PLACE, "test_one"))
+        self.assertEqual(rows["A.md:6"]["match"], mr.NO_TEST)
 
     # Kind 1 of brief sfr-t2c: record titles that are not headings.
     def test_a_plain_line_ending_in_a_place_is_a_title(self):

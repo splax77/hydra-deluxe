@@ -12,8 +12,8 @@ copy of commit 539c6de0 that the recheck reads, under its `code/` folder.
 It writes `matched.tsv` (one row per record), `unmatched.tsv` (the records
 that join no test, with their state), `sections.tsv` (the headings that
 are not records) and `shared_rows.tsv` (the line 9 and 11 rows a shared or
-group section gives to many records, which the script never assigns to a
-test) into --out. The rules it applies are the plan's section
+group section gives to many records, and the rows left with no record because
+a heading ended theirs; the script never assigns them to a test) into --out. The rules it applies are the plan's section
 "T2: Join each test to its newest old record"
 (docs/superpowers/plans/2026-11-20-script-first-recheck.md), with the reading
 rules of briefs sfr-t2b and sfr-t2c in place of the plan's `## ` heading
@@ -47,6 +47,11 @@ REPO = os.path.dirname(os.path.dirname(HERE))
 # The `git grep -E` patterns the script's own counts are checked against.
 # They are written apart from the reader below on purpose: a line the grep
 # finds and the reader does not read makes the counts differ, and the run stops.
+# The old audit's records answer questions 1 to 11 (line 11 is the last).
+# No record line opens with a higher number: `git grep -E "^12 [A-Z]"` over the
+# audit folder at the records commit finds none.
+LAST_ANSWER = 11
+
 HEADING = "^#{2,4} "
 LEVEL1 = "^# "
 
@@ -54,7 +59,7 @@ LEVEL1 = "^# "
 def answer_grep(n):
     """Every line holding answer n: at the line's start, or after a full stop
     on a line that opens with another numbered answer or with `Read:`."""
-    return (rf"^((- )?(\*\*)?({n}(\*\*)?[ :]|([1-9]|1[0-2])([-/][0-9]+)*(\*\*)?[ :].*\. {n}[ :])"
+    return (rf"^((- )?(\*\*)?({n}(\*\*)?[ :]|([1-9]|1[0-{LAST_ANSWER - 10}])([-/][0-9]+)*(\*\*)?[ :].*\. {n}[ :])"
             rf"|Read:.*\. {n}[ :])")
 
 
@@ -65,7 +70,10 @@ HEAD_LINE_RE = re.compile(r"^(?P<level>#{2,4}) (?P<text>.*)$")
 TAIL_RE = re.compile(r"^(?P<rest>.*?)\s*\((?P<inner>[^()]*)\)\s*$")
 FULL_PLACE_RE = re.compile(r"^(?P<file>[^\s:]+\.[A-Za-z0-9]+):(?P<line>\d+)")
 SHORT_PLACE_RE = re.compile(r"^(?::|line )(?P<line>\d+)")
-BARE_LINE_RE = re.compile(r"^\d+(?:-\d+)?$")
+IDENTIFIER_RE = re.compile(r"^\w+$")
+FILE_ONLY_RE =re.compile(r"^[^\s:]+\.[A-Za-z0-9]+$")
+AT_LINE_RE = re.compile(r"^`?(?P<name>[\w.]+)`? at line (?P<line>\d+)$")
+BARE_LINE_RE =re.compile(r"^\d+(?:-\d+)?$")
 FILE_TOKEN_RE = re.compile(r"[\w./-]*[\w-]\.(?:cpp|h|hpp|cc|cxx|py)\b")
 # A leading record number ("44. ") or record label ("PL1. ", "E1 ").
 LEAD_NUMBER_RE = re.compile(r"^\d+[a-z]?\.\s+")
@@ -88,6 +96,9 @@ SHARED_HEADING_RE = re.compile(r"\b(?:shared|group)\b", re.IGNORECASE)
 ANSWER_START_RE = re.compile(r"^(?P<dash>- )?(?P<bold>\*\*)?(?P<num>\d+(?:[-/]\d+)*)(?:\*\*)?(?P<sep>[ :])")
 ANSWER_INLINE_RE = re.compile(r"(?<=\. )(?P<num>\d+(?:[-/]\d+)*)(?P<sep>[ :])")
 LABELS = {9: "Stand-in:", 11: "Real:"}
+
+SHARED_WHY = "under a shared heading"
+ENDED_WHY = "its record was ended by a heading"
 
 SAME_PLACE = "same test, same place"
 MOVED = "same test, moved"
@@ -135,8 +146,9 @@ def grep_lines(repo, commit, pattern, folder):
 
 
 class Record:
-    def __init__(self, file, line, heading, from_heading=True):
+    def __init__(self, file, line, heading, from_heading=True, level=0):
         self.file = file
+        self.level = level   # the heading's `#` count; 0 for a title that is not a heading
         self.line = line
         self.heading = heading
         self.from_heading = from_heading   # False for a title that is not a heading
@@ -184,6 +196,14 @@ def parse_heading(text):
             elif p and not full and not short:
                 tail_names.append(p)
     if place is None:
+        # `file, name at line N`: the file is one part and the line follows "at line".
+        files = [p for p in parts if FILE_ONLY_RE.match(p)]
+        at = [AT_LINE_RE.match(p) for p in parts]
+        at = [a for a in at if a]
+        if files and at:
+            place = (files[0], int(at[0].group("line")))
+            tail_names = [at[0].group("name")]
+    if place is None:
         return None
     rest = unquote(m.group("rest"))
     names = []
@@ -191,7 +211,12 @@ def parse_heading(text):
         base = unquote(base)
         names.append(base)
         if ": " in base:
-            names.append(base.split(": ", 1)[1])
+            # `group: name` names the test after the colon; `test_name: what it
+            # checks` names it before. Both are tried; a name no test has matches nothing.
+            head, after = base.split(": ", 1)
+            names.append(after)
+            if IDENTIFIER_RE.match(head):
+                names.append(head)
     names = list(dict.fromkeys(n for n in names if n))
     return place, (names, [n for n in dict.fromkeys(tail_names) if n not in names])
 
@@ -269,7 +294,7 @@ def answers(line):
         marks, last, start, dash, bold = [], 0, 0, False, False
     elif m:
         nums = [int(x) for x in re.split(r"[-/]", m.group("num"))]
-        if not 1 <= nums[0] <= 12:
+        if not 1 <= nums[0] <= LAST_ANSWER:
             return []
         marks = [(m.start("num"), m.end(), m.group("num"), m.group("sep"), False)]
         last, start, dash, bold = max(nums), m.end(), bool(m.group("dash")), bool(m.group("bold"))
@@ -277,7 +302,7 @@ def answers(line):
         return []
     for im in ANSWER_INLINE_RE.finditer(line, start):
         inums = [int(x) for x in re.split(r"[-/]", im.group("num"))]
-        if inums[0] > last and inums[0] <= 12:
+        if inums[0] > last and inums[0] <= LAST_ANSWER:
             marks.append((im.start("num"), im.end(), im.group("num"), im.group("sep"),
                           "read" if line.startswith("Read:") else True))
             last = max(inums)
@@ -319,7 +344,7 @@ class Read:
     def __init__(self):
         self.records, self.sections = [], []
         self.loose = {9: [], 11: []}       # rows under no record and no shared heading
-        self.shared = []                   # (file, line, heading above, 9 or 11, answer) under a shared heading
+        self.shared = []                   # (file, line, heading above, 9 or 11, answer, why listed)
         self.titles = 0                    # records read from a title that is not a heading
         self.lines = {9: 0, 11: 0}         # record lines holding a row
         self.line_set = {9: set(), 11: set()}
@@ -328,8 +353,8 @@ class Read:
         self.unread = []                   # a range or list of numbers that covers 9 or 11
 
 
-def open_record(name, n, text, parsed, file_above, from_heading):
-    rec = Record(name, n, text, from_heading)
+def open_record(name, n, text, parsed, file_above, from_heading, level=0):
+    rec = Record(name, n, text, from_heading, level)
     (rec.place_file, rec.place_line), rec.names = parsed
     if not rec.place_file:
         # A short place takes its file from the nearest heading above that names one.
@@ -343,10 +368,13 @@ def open_record(name, n, text, parsed, file_above, from_heading):
 
 def read_records(repo, commit, folder):
     """A record heading opens a record; it runs until the next record heading
-    or `# ` heading. A row belongs to the nearest record heading above it,
-    past any section heading in between, except a shared heading, which
-    closes the record: a row under no record goes to `shared` when its
-    nearest heading is a shared one, else to `loose`.
+    or `# ` heading, or a section heading of the same level or a higher one
+    (fewer `#`), or any section heading for a title that is not a heading,
+    or a shared heading. A row belongs to the open record, past the deeper
+    section headings in between. A row under no record goes to `shared` when
+    the heading above it is a shared one, or when a section heading ended its
+    record (it is listed with that heading, never given to an earlier
+    record); else it goes to `loose`.
 
     While no record heading is open, a title that is not a heading
     (parse_title) opens a record, but only once a numbered answer row
@@ -363,7 +391,7 @@ def read_records(repo, commit, folder):
         name = path.rsplit("/", 1)[-1]
         lines = [raw.rstrip("\r") for raw in text.split("\n")]
         aliases = read_aliases(lines)
-        cur, crossed, file_above, pending, above, skip = None, False, [], None, "", 0
+        cur, crossed, file_above, pending, above, skip, ended = None, False, [], None, "", 0, False
         for n, line in enumerate(lines, 1):
             if skip:
                 skip -= 1
@@ -373,11 +401,14 @@ def read_records(repo, commit, folder):
                 pending, above = None, h.group("text")
                 parsed = parse_heading(h.group("text"))
                 if parsed:
-                    cur, crossed = open_record(name, n, h.group("text"), parsed, file_above, True), False
+                    cur = open_record(name, n, h.group("text"), parsed, file_above, True, len(h.group("level")))
+                    crossed, ended = False, False
                     got.records.append(cur)
                 else:
                     got.sections.append((name, n, h.group("text")))
                     crossed = True
+                    if cur is not None and (not cur.from_heading or len(h.group("level")) <= cur.level):
+                        cur, ended = None, True
                     if SHARED_HEADING_RE.search(h.group("text")):
                         cur = None
                 named = [parsed[0][0]] if parsed and parsed[0][0] else files_named(h.group("text"))
@@ -385,7 +416,7 @@ def read_records(repo, commit, folder):
                     file_above = named
                 continue
             if re.match(LEVEL1, line):
-                cur, crossed, pending, above = None, False, None, line[2:]
+                cur, crossed, pending, above, ended = None, False, None, line[2:], False
                 named = files_named(line)
                 file_above = named
                 continue
@@ -397,7 +428,7 @@ def read_records(repo, commit, folder):
             found = answers(line)
             if found and pending:
                 cur = open_record(name, pending[0], pending[1], pending[2], file_above, False)
-                crossed, pending = False, None
+                crossed, pending, ended = False, None, False
                 got.records.append(cur)
                 got.titles += 1
             seen = set()
@@ -416,7 +447,9 @@ def read_records(repo, commit, folder):
                 seen.add(k)
                 if cur is None:
                     if SHARED_HEADING_RE.search(above):
-                        got.shared.append((name, n, above, k, t))
+                        got.shared.append((name, n, above, k, t, SHARED_WHY))
+                    elif ended:
+                        got.shared.append((name, n, above, k, t, ENDED_WHY))
                     else:
                         got.loose[k].append(f"{name}:{n}")
                     continue
@@ -661,11 +694,12 @@ def run(out, copy=COPY, repo=REPO, records_commit=RECORDS_COMMIT, folder=RECORDS
     for w, c in sorted(why.items()):
         say(f"  {SOMETHING_ELSE} because {w}: {c}")
     for k in (9, 11):
-        shared_k = sum(1 for s in got.shared if s[3] == k)
-        say(f"line {k} rows: script {owned[k] + shared_k + len(got.loose[k])} on {got.lines[k]} lines, git grep "
-            f"{grep_rows[k]} lines; owned by a record {owned[k]} ({got.across[k]} of them past a "
-            f"section heading), under a shared heading {shared_k}, "
-            f"under neither {len(got.loose[k])}")
+        shared_k = sum(1 for s in got.shared if s[3] == k and s[5] == SHARED_WHY)
+        ended_k = sum(1 for s in got.shared if s[3] == k and s[5] == ENDED_WHY)
+        say(f"line {k} rows: script {owned[k] + shared_k + ended_k + len(got.loose[k])} on {got.lines[k]} lines, "
+            f"git grep {grep_rows[k]} lines; owned by a record {owned[k]} ({got.across[k]} of them past a "
+            f"section heading), under a shared heading {shared_k}, listed because a heading ended "
+            f"their record {ended_k}, under neither {len(got.loose[k])}")
         for s, c in sorted(got.shapes[k].items()):
             say(f"  shape {s}: {c}")
     say(f"ranges or lists of answer numbers covering line 9 or 11, not read: {len(got.unread)}")
@@ -705,9 +739,9 @@ def run(out, copy=COPY, repo=REPO, records_commit=RECORDS_COMMIT, folder=RECORDS
         for name, n, text in got.sections:
             f.write(f"{name}:{n}\t{cell(text)}\n")
     with open(os.path.join(out, "shared_rows.tsv"), "w", encoding="utf-8", newline="\n") as f:
-        f.write("file\tline\tsection heading\tanswer\trow\n")
-        for name, n, text, k, t in got.shared:
-            f.write(f"{name}\t{n}\t{cell(text)}\t{k}\t{cell(t)}\n")
+        f.write("file\tline\tsection heading\tanswer\trow\tlisted because\n")
+        for name, n, text, k, t, why in got.shared:
+            f.write(f"{name}\t{n}\t{cell(text)}\t{k}\t{cell(t)}\t{why}\n")
     say(f"wrote matched.tsv ({len(records)} rows), unmatched.tsv ({len(unmatched)} rows), "
         f"sections.tsv ({len(got.sections)} rows) and shared_rows.tsv ({len(got.shared)} rows) to {out}")
     return 0
