@@ -61,7 +61,8 @@ void test_paste_refused_keeps_path(ImGuiTestContext* ctx) {
     // The refusal is the sentence for a path text that does not fit, and its
     // detail names the pasted window.
     const hydra::KindedError refused(hydra::ErrorKind::PathTextRefused, "");
-    IM_CHECK_STR_EQ(h.app->refusal().c_str(), hydra::app::plain_error(refused).c_str());
+    const std::string refused_sentence = hydra::app::plain_error(refused);
+    IM_CHECK_STR_EQ(h.app->refusal().c_str(), refused_sentence.c_str());
     IM_CHECK(h.app->refusal_detail().find("\"99\"") != std::string::npos);
     IM_CHECK(on_screen(h, h.app->refusal()));
     IM_CHECK(on_screen(h, h.app->refusal_detail()));
