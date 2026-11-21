@@ -17,24 +17,9 @@ namespace hydra {
 
 namespace {
 
-// The game's drum lane bits (the reference's docstring).
-constexpr uint32_t kKickBit = 0x1;
-constexpr uint32_t kRedBit = 0x2;
-
-}  // namespace
-
-uint32_t lane_bit(const ChordNote& note) {
-    switch (note.colortype) {
-        case NoteColor::Kick: return kKickBit;
-        case NoteColor::Red: return kRedBit;
-        case NoteColor::Yellow: return note.is_cymbal() ? 0x20u : 0x04u;
-        case NoteColor::Blue: return note.is_cymbal() ? 0x40u : 0x08u;
-        case NoteColor::Green: return note.is_cymbal() ? 0x80u : 0x10u;
-    }
-    throw std::logic_error("note shuffle: a note with no lane");
-}
-
-namespace {
+// The kick's and red's lane bits, read off lane_bit (core/model.h).
+const uint32_t kKickBit = lane_bit(ChordNote{NoteColor::Kick});
+const uint32_t kRedBit = lane_bit(ChordNote{NoteColor::Red});
 
 // The note `note` becomes on lane `bit`: same ghost or accent, colour and
 // cymbal flag from the lane.

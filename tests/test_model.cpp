@@ -1152,6 +1152,64 @@ TEST_CASE("Chord rowstr / notationstr / disco flip") {
     CHECK_FALSE(d.at(NoteColor::Red).has_value());
 }
 
+// Chord::activation_note picks the note Clone Hero flags: the highest lane
+// bit among the pads, the kick only with no pad. Each case gives both games'
+// bits. 1.1 (6142, NL-50): kick 0x1, red 0x2, yellow tom 0x4, blue tom 0x8,
+// green tom 0x10, yellow cymbal 0x20, blue cymbal 0x40, green cymbal 0x80.
+// 1.0 (4045, docs/clone-hero/code/4045/fill_generator.cs, section F8; F3
+// masks the pads with 0x7F):
+// red 0x1, yellow tom 0x2, blue tom 0x4, green tom 0x8, yellow cymbal 0x10,
+// blue cymbal 0x20, green cymbal 0x40, kick 0x80.
+TEST_CASE("Chord::activation_note: the pad the game flags, cymbals over toms") {
+    struct Pad {
+        NoteColor color;
+        bool cymbal;
+    };
+    struct Case {
+        const char* name;
+        std::vector<Pad> notes;
+        NoteColor want_color;
+        bool want_cymbal;
+    };
+    const Case cases[] = {
+        // 1.1: 0x20 > 0x10. 1.0: 0x10 > 0x08. August Burns Red - White Washed m132.
+        {"yellow cymbal + green tom", {{NoteColor::Yellow, true}, {NoteColor::Green, false}},
+         NoteColor::Yellow, true},
+        // 1.1: 0x40 > 0x10. 1.0: 0x20 > 0x08. Synovial - Neibolt m57.
+        {"blue cymbal + green tom", {{NoteColor::Blue, true}, {NoteColor::Green, false}},
+         NoteColor::Blue, true},
+        // 1.1: 0x80 > 0x40. 1.0: 0x40 > 0x20.
+        {"green cymbal + blue cymbal", {{NoteColor::Green, true}, {NoteColor::Blue, true}},
+         NoteColor::Green, true},
+        // 1.1: 0x40 > 0x20. 1.0: 0x20 > 0x10.
+        {"yellow cymbal + blue cymbal", {{NoteColor::Yellow, true}, {NoteColor::Blue, true}},
+         NoteColor::Blue, true},
+        // 1.1: 0x10 > 0x04. 1.0: 0x08 > 0x02.
+        {"green tom + yellow tom", {{NoteColor::Green, false}, {NoteColor::Yellow, false}},
+         NoteColor::Green, false},
+        // 1.1: 0x04 > 0x02. 1.0: 0x02 > 0x01.
+        {"red + yellow tom", {{NoteColor::Red, false}, {NoteColor::Yellow, false}},
+         NoteColor::Yellow, false},
+        // 1.1: 0x02 > 0x01. 1.0: the kick's 0x80 is masked out, red 0x01 is left.
+        {"kick + red", {{NoteColor::Kick, false}, {NoteColor::Red, false}},
+         NoteColor::Red, false},
+        // 1.1: 0x01 is the only bit. 1.0: no pad is set, so the kick.
+        {"kick alone", {{NoteColor::Kick, false}}, NoteColor::Kick, false},
+    };
+    for (const Case& k : cases) {
+        CAPTURE(k.name);
+        Chord c;
+        for (const Pad& p : k.notes) {
+            c.add_note(p.color);
+            if (p.cymbal) c.apply_cymbal(p.color);
+        }
+        const ChordNote& got = c.activation_note();
+        CHECK(got.colortype == k.want_color);
+        CHECK(got.is_cymbal() == k.want_cymbal);
+    }
+    CHECK_THROWS(Chord{}.activation_note());
+}
+
 TEST_CASE("a ghost or accent kick scores double, like a pad") {
     // A plain kick is the base points (kNoteBasePoints); a ghost or accent
     // kick is worth twice a plain one, the same doubling a red pad gets.
