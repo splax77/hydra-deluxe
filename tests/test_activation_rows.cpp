@@ -34,6 +34,15 @@ using song_details::kDot;
 
 namespace {
 
+// The chords to give build_activations for a hand-built path that has no
+// song: none at all. No chord sits on any tick, so the owner
+// (core::squeeze_window_ends, core::early_fill_window_end) gives no Dynamic
+// Hit Window row. A path from a real song passes chord_times(song) instead.
+const ChordTimes& no_chords() {
+    static const ChordTimes none;
+    return none;
+}
+
 // D269: inside SP or on the end, the squeezed-out row's word is past the
 // first tier exactly when its badge is orange (SPSqueeze::is_difficult). Past
 // the end the badge needs no timing, while the word is banded on the row's
@@ -100,7 +109,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     auto view_of = [&rec](const Activation& act) {
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+        ActivationsView v = build_activations(p, rec, nullptr, no_chords());
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -239,7 +248,7 @@ ActivationRowView scale_row_of(const Activation& act) {
     HydraRecord rec;
     Path p;
     p.activations.push_back(act);
-    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+    ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     return v.acts[0];
 }
@@ -595,8 +604,8 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     p.activations.push_back(act);
 
     auto view_at = [&](std::optional<double> limit) {
-        ActivationsView v = limit ? build_activations(p, rec, nullptr, test::no_chords(), limit)
-                                  : build_activations(p, rec, nullptr, test::no_chords());
+        ActivationsView v = limit ? build_activations(p, rec, nullptr, no_chords(), limit)
+                                  : build_activations(p, rec, nullptr, no_chords());
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -649,7 +658,7 @@ TEST_CASE("build_activations: the backend limit says how many rows it hides on e
         }
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, test::no_chords(), limit);
+        ActivationsView v = build_activations(p, rec, nullptr, no_chords(), limit);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -709,7 +718,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
 
     Path p;
     p.activations.push_back(far);
-    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+    ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
@@ -725,7 +734,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     near.sqinouts[0].offset_ms = -5.0;
     Path q;
     q.activations.push_back(near);
-    v = build_activations(q, rec, nullptr, test::no_chords());
+    v = build_activations(q, rec, nullptr, no_chords());
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "260");
     CHECK(v.acts[0].backends[0].rating ==
@@ -763,7 +772,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
 
     Path p;
     p.activations.push_back(act);
-    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+    ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     const std::vector<BackendRowView>& b = v.acts[0].backends;
     REQUIRE(b.size() == std::size(rows_at));
@@ -900,7 +909,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     p.activations.push_back(act);
     HydraRecord rec;
 
-    ActivationsView view = build_activations(p, rec, &timing, test::no_chords(), std::nullopt,
+    ActivationsView view = build_activations(p, rec, &timing, no_chords(), std::nullopt,
                                              core::default_rules(), 10000.0);
     REQUIRE(view.acts.size() == 1);
     REQUIRE(view.acts[0].song_fraction.has_value());
@@ -910,7 +919,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     CHECK(view.summary == "1" + kDot + "no SP left over");
 
     // No timing: no fraction, whatever the length.
-    ActivationsView blind = build_activations(p, rec, nullptr, test::no_chords(), std::nullopt,
+    ActivationsView blind = build_activations(p, rec, nullptr, no_chords(), std::nullopt,
                                               core::default_rules(), 10000.0);
     CHECK_FALSE(blind.acts[0].song_fraction.has_value());
     CHECK(blind.timeline_start.empty());
@@ -1278,7 +1287,7 @@ TEST_CASE("squeeze sentences: a squeezed-out row far past the end names its chor
     Path p;
     p.activations.push_back(far);
     HydraRecord rec;
-    const ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+    const ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
     const ActivationRating rate = rate_activation(far);
@@ -1392,7 +1401,7 @@ Path near_one_path(const TransferScale& post) {
 // The one row build_activations makes for `p`, a path with no song.
 ActivationRowView only_row(const Path& p) {
     HydraRecord rec;
-    const ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+    const ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     return v.acts[0];
 }
@@ -1485,7 +1494,7 @@ TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
     Path p;
     p.activations.push_back(act);
 
-    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
+    ActivationsView v = build_activations(p, rec, nullptr, no_chords());
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
     CHECK(v.acts[0].scale_warn);  // Q6: orange
