@@ -50,6 +50,12 @@ function Invoke-Tool([string]$path, [string[]]$arguments) {
     return [pscustomobject]@{ Code = $LASTEXITCODE; Output = $out }
 }
 
+# The message the keygen refuses with, read in this shell so no console wraps
+# it; empty when it did not refuse.
+function Get-Refusal([hashtable]$arguments) {
+    try { & $keygen @arguments | Out-Null; return '' } catch { return $_.Exception.Message }
+}
+
 function Read-PublicKey([string]$path) {
     $hex = ([System.IO.File]::ReadAllText($path)).Trim()
     if ($hex.Length -ne 128) { throw "$path does not hold 128 hex digits" }
@@ -102,14 +108,18 @@ try {
     Check 'that signature verifies with the printed public key' (Test-Signature $sample ([System.IO.File]::ReadAllBytes($realSig)) (Read-PublicKey $realPublic))
     Check 'that signature does not verify with the test key' (-not (Test-Signature $sample ([System.IO.File]::ReadAllBytes($realSig)) $testPublic))
 
-    # The keygen's refusals.
+    # The keygen's refusals. Each must fail for its own reason, so the message
+    # is read too: a crash on a bad path would also exit nonzero.
     $r = Invoke-Tool $keygen @('-KeyPath', $realKey)
-    Check 'release_keygen.ps1 refuses to overwrite a key file' ($r.Code -ne 0)
+    $why = Get-Refusal @{ KeyPath = $realKey }
+    Check 'release_keygen.ps1 refuses to overwrite a key file, naming it' ($r.Code -ne 0 -and $why.Contains($realKey) -and $why -match 'already exists')
     $inRepo = Join-Path $repoRoot "testdata\update\should-not-exist-$PID.xml"
     $r = Invoke-Tool $keygen @('-KeyPath', $inRepo)
-    Check 'release_keygen.ps1 refuses a protected key inside the repo' ($r.Code -ne 0 -and -not (Test-Path -LiteralPath $inRepo))
+    $why = Get-Refusal @{ KeyPath = $inRepo }
+    Check 'release_keygen.ps1 refuses a protected key inside the repo, naming the path' ($r.Code -ne 0 -and $why.Contains($inRepo) -and $why -match 'inside the repo' -and -not (Test-Path -LiteralPath $inRepo))
     $r = Invoke-Tool $keygen @('-TestKey')
-    Check 'release_keygen.ps1 -TestKey needs an explicit -KeyPath' ($r.Code -ne 0)
+    $why = Get-Refusal @{ TestKey = $true }
+    Check 'release_keygen.ps1 -TestKey needs an explicit -KeyPath' ($r.Code -ne 0 -and $why -match '-TestKey needs an explicit -KeyPath')
 } finally {
     Remove-Item -LiteralPath $scratch -Recurse -Force -ErrorAction SilentlyContinue
     # Only there if the in-repo refusal above failed.
