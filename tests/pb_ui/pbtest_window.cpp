@@ -532,14 +532,17 @@ void test_drag_stays_in_the_window(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(on_screen(h, window), );
 
     // The rows' item spans the track from its start to its end, so an x in
-    // it is the layout's x less the item's left edge.
+    // it is the layout's x less the item's left edge. The window reads the
+    // pointer from io.MousePos, which ImGui's UpdateMouseInputs floors to a
+    // whole pixel each frame, so the x the window sees is the floored one.
     const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
     hydra::ui::TimelineLayout layout;
     layout.width = rows.GetWidth();
     layout.length_ms = len;
     layout.view = hydra::ui::open_view(len);
     const auto clock_at = [&](float x) {
-        return hydra::app::build_time_box(pc->scene(), hydra::ui::timeline_ms_at(layout, x - rows.Min.x), len)
+        const float seen = std::floor(x);
+        return hydra::app::build_time_box(pc->scene(), hydra::ui::timeline_ms_at(layout, seen - rows.Min.x), len)
             .timestamp;
     };
 
