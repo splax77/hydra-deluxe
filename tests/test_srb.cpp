@@ -26,6 +26,7 @@
 #include "app/user_messages.h"
 #include "byte_source_util.h"
 #include "core/bounds.h"
+#include "core/error_kind.h"
 #include "core/winstr.h"
 #include "corpus_util.h"
 #include "midi_util.h"
@@ -127,18 +128,32 @@ TEST_CASE("srb: malformed containers throw instead of crashing") {
                          std::runtime_error);
 }
 
+namespace {
+
+// Loads `srb` and checks it fails the way any damaged chart does: an error of
+// kind ChartUnreadable, so the player reads plain_error's own sentence for
+// that kind, never the reader's raw text. Returns the raw text, for a check
+// of which failure fired.
+std::string unreadable_chart_text(const std::vector<uint8_t>& srb) {
+    try {
+        load_songbytes_srb(srb, ChartReading{});
+    } catch (const KindedError& e) {
+        CHECK(e.kind() == ErrorKind::ChartUnreadable);
+        CHECK(app::plain_error(e) ==
+              app::plain_error(KindedError(ErrorKind::ChartUnreadable, "")));
+        return e.what();
+    }
+    FAIL("the .srb loaded");
+    return {};
+}
+
+}  // namespace
+
 TEST_CASE("srb: a truncated file reads as an unreadable chart") {
     std::vector<uint8_t> whole = make_srb(make_metadata("notes.mid", "N", "A", "C"),
                                           read_bytes(corpus_chart_path(".mid")), {});
     whole.resize(whole.size() / 2);
-    try {
-        load_songbytes_srb(whole, ChartReading{});
-        FAIL("a truncated .srb loaded");
-    } catch (const std::exception& e) {
-        CHECK(app::plain_error(e) ==
-              "Hydra couldn't read this chart file. It may be damaged or in a format Hydra "
-              "doesn't support; try downloading the song again.");
-    }
+    unreadable_chart_text(whole);
 }
 
 // The fuzzer's testdata/fuzz/srb/endless-zeros.srb. Its notes stream's
@@ -149,18 +164,10 @@ TEST_CASE("srb: a truncated file reads as an unreadable chart") {
 // corrupt as soon as the output passes what the bytes read could make
 // (kMaxBytesPerInputByte in parse/srb.cpp owns that limit).
 TEST_CASE("srb: a stream that makes bytes from no input is corrupt, not inflated to the cap") {
-    const std::vector<uint8_t> file = {0x00, 0x00, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0xBD, 0x01,
-                                       0x1F, 0x00, 0x3F, 0x6E, 0x71, 0x73, 0x73, 0x73, 0x73,
-                                       0x21, 0x9B, 0x00, 0x00, 0xF4, 0x00, 0x00, 0x00, 0x00,
-                                       0x01, 0x08, 0x01, 0x00, 0x00, 0x0A};
-    CHECK_THROWS_WITH(load_songbytes_srb(file, ChartReading{}), "SRB stream is corrupt.");
-    try {
-        load_songbytes_srb(file, ChartReading{});
-    } catch (const std::exception& e) {
-        CHECK(app::plain_error(e) ==
-              "Hydra couldn't read this chart file. It may be damaged or in a format Hydra "
-              "doesn't support; try downloading the song again.");
-    }
+    const std::vector<uint8_t> file =
+        read_bytes(corpus::testdata_root() + "/fuzz/srb/endless-zeros.srb");
+    // "corrupt", the guard's words, not "exceeds size limit", the cap's.
+    CHECK(unreadable_chart_text(file) == "SRB stream is corrupt.");
 }
 
 // Finding 61; D27.
@@ -190,6 +197,19 @@ std::vector<uint8_t> noise(size_t n, uint32_t seed) {
     return out;
 }
 
+// The most a reader that follows the piece rule (kFirstPieceRead, then
+// next_piece_read, in core/winstr.h) takes in to inflate a stream of `n`
+// compressed bytes: whole pieces until they cover the stream.
+uint64_t piece_reads_covering(uint64_t n) {
+    uint64_t total = 0;
+    size_t ask = kFirstPieceRead;
+    while (total < n) {
+        total += ask;
+        ask = next_piece_read(ask);
+    }
+    return total;
+}
+
 }  // namespace
 
 // The real bundles are 12-57 MB, nearly all of it audio and art past a notes
@@ -205,7 +225,19 @@ TEST_CASE("srb: the note loader reads the metadata and notes streams, not the re
     const Song via_reads = load_songpath_reading(
         testbytes::counting(file_byte_source(path), bytes_read), path, ChartReading{});
     CHECK(songs_equal(via_reads, load_songbytes_srb(srb, ChartReading{})));
-    CHECK(bytes_read < (2u << 20));
+
+    // Where the two streams the loader needs lie in the file, by the readers'
+    // own end offsets.
+    const SrbMetadataRead meta = srb_read_metadata(memory_byte_source(srb));
+    uint64_t notes_end = 0;
+    srb_inflate_stream_reading(memory_byte_source(srb), meta.notes_offset, kSrbMaxStream,
+                               &notes_end);
+    const uint64_t allowed = piece_reads_covering(meta.notes_offset - kSrbHeaderSize) +
+                             piece_reads_covering(notes_end - meta.notes_offset);
+    // The tail is big enough that a load reading the whole file breaks the
+    // bound.
+    REQUIRE(allowed < srb.size());
+    CHECK(bytes_read <= allowed);
 }
 
 TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole buffer") {
