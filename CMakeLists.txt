@@ -536,6 +536,7 @@ add_library(hydra_uibase STATIC
     src/ui/generation.h
     src/ui/label_layout.h
     src/ui/preview_panel.h
+    src/ui/preview_panel_layout.h
     src/ui/report_state.h
     src/ui/text_role.h
     src/ui/timeline_view.h
