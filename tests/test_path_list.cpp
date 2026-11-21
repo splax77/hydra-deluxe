@@ -375,6 +375,7 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     const AnalysisResult& ar = burnout();
     const HydraRecord& rec = ar.record;
     const SongTiming& timing = ar.song.timing();
+    const ChordTimes chords = chord_times(ar.song);
     PathsTabCache cache;
 
     // The buttons: once per record generation and score range, however many
@@ -391,17 +392,17 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     // The details: once per (path, record, backend limit).
     const Path& best = rec.best_path();
     for (int frame = 0; frame < 5; ++frame)
-        cache.details(best, rec, 8, &timing, std::nullopt, core::default_rules());
+        cache.details(best, rec, 8, &timing, chords, std::nullopt, core::default_rules());
     CHECK(cache.details_builds() == 1);
-    cache.details(best, rec, 8, &timing, 30.0, core::default_rules());
+    cache.details(best, rec, 8, &timing, chords, 30.0, core::default_rules());
     CHECK(cache.details_builds() == 2);
-    cache.details(best, rec, 9, &timing, 30.0, core::default_rules());
+    cache.details(best, rec, 9, &timing, chords, 30.0, core::default_rules());
     CHECK(cache.details_builds() == 3);
     const std::vector<const Path*> all = rec.all_paths();
     REQUIRE(all.size() > 1);
     const Path& other = *all[1];
     REQUIRE(&other != &best);
-    cache.details(other, rec, 9, &timing, 30.0, core::default_rules());
+    cache.details(other, rec, 9, &timing, chords, 30.0, core::default_rules());
     CHECK(cache.details_builds() == 4);
 
     // What the cache hands back after each move is the selected path's own,
@@ -410,7 +411,7 @@ TEST_CASE("PathsTabCache: views are built once and rebuilt only when their input
     for (const Path* p : {&other, &best}) {
         CAPTURE(p->pathstring());
         const PathsTabCache::Details& d =
-            cache.details(*p, rec, 9, &timing, 30.0, core::default_rules());
+            cache.details(*p, rec, 9, &timing, chords, 30.0, core::default_rules());
         CHECK(d.activations.acts.size() == p->walk_activations().size());
         REQUIRE_FALSE(d.breakdown.empty());
         CHECK(d.breakdown.back().find(group_thousands(p->totalscore())) != std::string::npos);
@@ -520,9 +521,10 @@ TEST_CASE("multiplier squeeze: the note names follow the Pro Drums setting") {
     const AnalysisResult& ar = burnout();
     const HydraRecord& rec = ar.record;
     const SongTiming& timing = ar.song.timing();
+    const ChordTimes chords = chord_times(ar.song);
     auto squeezes_of = [&](bool pro_drums) {
         PathsTabCache cache;
-        return cache.details(rec.best_path(), rec, 1, &timing, std::nullopt,
+        return cache.details(rec.best_path(), rec, 1, &timing, chords, std::nullopt,
                              core::default_rules(), std::nullopt, pro_drums).squeezes;
     };
     // Each row names its chord and its how-to in the words of the setting it
@@ -583,6 +585,7 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     const AnalysisResult& ar = burnout();
     const HydraRecord& rec = ar.record;
     const SongTiming& timing = ar.song.timing();
+    const ChordTimes chords = chord_times(ar.song);
     const Path& best = rec.best_path();
     PathsTabCache cache;
 
@@ -590,15 +593,15 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     // needs a row for "all open" to mean anything.
     const size_t rows = best.walk_activations().size();
     REQUIRE(rows > 0);
-    cache.details(best, rec, 1, &timing, std::nullopt, core::default_rules());
+    cache.details(best, rec, 1, &timing, chords, std::nullopt, core::default_rules());
     REQUIRE(cache.ui().act_open.size() == rows);
     CHECK(cache.ui().act_open == std::vector<char>(rows, 0));
     cache.ui().set_all(true);
 
     // A display setting rebuilds the rows but keeps what is unfolded.
-    cache.details(best, rec, 1, &timing, 30.0, core::default_rules());
+    cache.details(best, rec, 1, &timing, chords, 30.0, core::default_rules());
     CHECK(cache.ui().all_open());
-    cache.details(best, rec, 1, &timing, 30.0, core::default_rules(), 126000.0);
+    cache.details(best, rec, 1, &timing, chords, 30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().all_open());
     CHECK(cache.details_builds() == 3);
 
@@ -606,7 +609,7 @@ TEST_CASE("PathsTabCache: folds reset for a new path, not for a display setting"
     const std::vector<const Path*> all = rec.all_paths();
     REQUIRE(all.size() > 1);
     const Path& other = *all[1];
-    cache.details(other, rec, 1, &timing, 30.0, core::default_rules(), 126000.0);
+    cache.details(other, rec, 1, &timing, chords, 30.0, core::default_rules(), 126000.0);
     CHECK(cache.ui().act_open.size() == other.walk_activations().size());
     CHECK(cache.ui().act_open == std::vector<char>(other.walk_activations().size(), 0));
     CHECK_FALSE(cache.ui().all_open());

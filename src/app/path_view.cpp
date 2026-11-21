@@ -224,12 +224,11 @@ std::optional<WindowRowView> early_fill_window_view(const Activation& act,
 
 // `record` is unused; the parameter stays so the callers keep their shape.
 ActivationsView build_activations(const Path& path, const HydraRecord& /*record*/,
-                                  const SongTiming* timing,
+                                  const SongTiming* timing, const ChordTimes& chords,
                                   std::optional<double> backend_limit_ms,
                                   const core::Rules& rules,
                                   std::optional<double> song_length_ms,
-                                  bool pro_drums,
-                                  const ChordTimes* chords) {
+                                  bool pro_drums) {
     ActivationsView view;
 
     const ActivationWalk acts = path.walk_activations();
@@ -333,11 +332,9 @@ ActivationsView build_activations(const Path& path, const HydraRecord& /*record*
             if (br.squeezed_out) squeezed_out = &br;
         av.squeeze_sentences = squeeze_sentences(act, squeezed_out, rate.note_effective_ms);
         av.squeeze_windows.resize(act.sqinouts.size());
-        if (chords) {
-            for (size_t k = 0; k < act.sqinouts.size(); ++k)
-                av.squeeze_windows[k] = squeeze_window_view(act, k, *chords);
-            av.early_fill_window = early_fill_window_view(act, *chords);
-        }
+        for (size_t k = 0; k < act.sqinouts.size(); ++k)
+            av.squeeze_windows[k] = squeeze_window_view(act, k, chords);
+        av.early_fill_window = early_fill_window_view(act, chords);
 
         av.backends.reserve(rate.backends.size());
         // The rows the backend limit hides, by side of the SP end. A hidden
@@ -607,23 +604,23 @@ void PathsTabUi::click_row(size_t i) {
 
 const PathsTabCache::Details& PathsTabCache::details(
     const Path& path, const HydraRecord& record, int record_generation,
-    const SongTiming* timing, std::optional<double> backend_limit_ms,
-    const core::Rules& rules, std::optional<double> song_length_ms, bool pro_drums,
-    const ChordTimes* chords) {
+    const SongTiming* timing, const ChordTimes& chords,
+    std::optional<double> backend_limit_ms, const core::Rules& rules,
+    std::optional<double> song_length_ms, bool pro_drums) {
     const bool new_path = record_generation != details_generation_ || &path != details_path_;
     if (new_path || backend_limit_ms != details_backend_limit_ms_ ||
         song_length_ms != details_song_length_ms_ || pro_drums != details_pro_drums_ ||
-        chords != details_chords_) {
+        &chords != details_chords_) {
         details_.squeezes = multsqueeze_views(record, pro_drums);
-        details_.activations = build_activations(path, record, timing, backend_limit_ms, rules,
-                                                 song_length_ms, pro_drums, chords);
+        details_.activations = build_activations(path, record, timing, chords, backend_limit_ms,
+                                                 rules, song_length_ms, pro_drums);
         details_.breakdown = build_score_breakdown(path);
         details_generation_ = record_generation;
         details_path_ = &path;
         details_backend_limit_ms_ = backend_limit_ms;
         details_song_length_ms_ = song_length_ms;
         details_pro_drums_ = pro_drums;
-        details_chords_ = chords;
+        details_chords_ = &chords;
         // What is unfolded belongs to the path; a display setting keeps it.
         if (new_path) ui_.reset(details_.activations.acts.size());
         ++details_builds_;

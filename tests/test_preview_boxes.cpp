@@ -1311,8 +1311,8 @@ TEST_CASE("scrub marks: an activation sits at the Paths timeline's fraction when
     CHECK(marks[0] != doctest::Approx(scene.activations[0].ms / c.last_note_ms));
 
     const ActivationsView view =
-        build_activations(path, HydraRecord{}, &c.song.timing(), std::nullopt,
-                          core::default_rules(), c.audio_end_ms);
+        build_activations(path, HydraRecord{}, &c.song.timing(), chord_times(c.song),
+                          std::nullopt, core::default_rules(), c.audio_end_ms);
     REQUIRE(view.acts.size() == 1);
     REQUIRE(view.acts[0].song_fraction.has_value());
     CHECK(marks[0] == *view.acts[0].song_fraction);

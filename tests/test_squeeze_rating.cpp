@@ -1142,6 +1142,7 @@ TEST_CASE("build_activations: the Paths tab's backend rows print rate_activation
     const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
     const SongTiming& timing = song.timing();
+    const ChordTimes chords = chord_times(song);
     const core::Rules& rules = core::default_rules();
     const std::string normal_budget = format_ms(nominal_budget_ms());
     int rows_with_figure = 0;
@@ -1150,7 +1151,7 @@ TEST_CASE("build_activations: the Paths tab's backend rows print rate_activation
         const std::vector<Activation> acts = path->all_activations();
         // No backend limit, so every stored row shows, in the rating's order.
         const app::ActivationsView view =
-            app::build_activations(*path, rec, &timing, std::nullopt, rules);
+            app::build_activations(*path, rec, &timing, chords, std::nullopt, rules);
         REQUIRE(view.acts.size() == acts.size());
         for (size_t i = 0; i < acts.size(); ++i) {
             CAPTURE(i);

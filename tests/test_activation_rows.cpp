@@ -100,7 +100,7 @@ TEST_CASE("build_activations: the early fill reads positive = early on both line
     auto view_of = [&rec](const Activation& act) {
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr);
+        ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -142,7 +142,7 @@ TEST_CASE("build_activations: rows and backend rows line up") {
     const Path& best = ar.record.best_path();
     const SongTiming& timing = ar.song.timing();
 
-    ActivationsView view = build_activations(best, ar.record, &timing);
+    ActivationsView view = build_activations(best, ar.record, &timing, chord_times(ar.song));
     CHECK(view.acts.size() == best.all_activations().size());
 
     std::vector<Activation> acts = best.all_activations();
@@ -198,7 +198,7 @@ void for_each_corpus_row(Visit&& visit) {
         CAPTURE(path.pathstring());
         const SongTiming& timing = song.timing();
         const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView view = build_activations(path, rec, &timing);
+        const ActivationsView view = build_activations(path, rec, &timing, chord_times(song));
         REQUIRE(view.acts.size() == acts.size());
         for (size_t i = 0; i < acts.size(); ++i) {
             CAPTURE(i);
@@ -233,13 +233,13 @@ bool names_side(const std::string& line, const std::string& side) {
     return line.find("(" + side + ")") != std::string::npos;
 }
 
-// The one row build_activations makes for `act`, with no timing. The record
-// argument is unused by build_activations.
+// The one row build_activations makes for `act`, with no timing and no song.
+// The record argument is unused by build_activations.
 ActivationRowView scale_row_of(const Activation& act) {
     HydraRecord rec;
     Path p;
     p.activations.push_back(act);
-    ActivationsView v = build_activations(p, rec, nullptr);
+    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
     REQUIRE(v.acts.size() == 1);
     return v.acts[0];
 }
@@ -321,7 +321,7 @@ TEST_CASE("build_activations: Pitch Dark's first scale line names both sides and
     REQUIRE(rate.sqins_read[0].late);
     REQUIRE(is_scaled(rate.scales->sqins[0].late));
 
-    const ActivationsView view = build_activations(*pd.path, *pd.rec, &timing);
+    const ActivationsView view = build_activations(*pd.path, *pd.rec, &timing, chord_times(*pd.song));
     REQUIRE(view.acts.size() == acts.size());
     const ActivationRowView& av = view.acts[0];
     CAPTURE(av.scale_warning);
@@ -524,8 +524,9 @@ TEST_CASE("build_activations: on every corpus activation the overfill warning na
         CAPTURE(path.pathstring());
         const SongTiming& timing = song.timing();
         const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView with_timing = build_activations(path, rec, &timing);
-        const ActivationsView without_timing = build_activations(path, rec, nullptr);
+        const ChordTimes chords = chord_times(song);
+        const ActivationsView with_timing = build_activations(path, rec, &timing, chords);
+        const ActivationsView without_timing = build_activations(path, rec, nullptr, chords);
         REQUIRE(with_timing.acts.size() == acts.size());
         REQUIRE(without_timing.acts.size() == acts.size());
         for (size_t i = 0; i < acts.size(); ++i) {
@@ -563,7 +564,7 @@ TEST_CASE("build_activations: Pitch Dark's overfill warning names the clamped no
     const std::string clamped_measure = format_measure(timing, *clamp);
     REQUIRE(clamped_measure != format_measure(act.timecode));
 
-    const ActivationsView view = build_activations(*pd.path, *pd.rec, &timing);
+    const ActivationsView view = build_activations(*pd.path, *pd.rec, &timing, chord_times(*pd.song));
     REQUIRE(view.acts.size() == acts.size());
     CHECK(view.acts[0].overfill_warning == "SP overfilled at " + clamped_measure);
 }
@@ -594,8 +595,8 @@ TEST_CASE("build_activations: the backend limit hides far rows but never "
     p.activations.push_back(act);
 
     auto view_at = [&](std::optional<double> limit) {
-        ActivationsView v = limit ? build_activations(p, rec, nullptr, limit)
-                                  : build_activations(p, rec, nullptr);
+        ActivationsView v = limit ? build_activations(p, rec, nullptr, test::no_chords(), limit)
+                                  : build_activations(p, rec, nullptr, test::no_chords());
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -648,7 +649,7 @@ TEST_CASE("build_activations: the backend limit says how many rows it hides on e
         }
         Path p;
         p.activations.push_back(act);
-        ActivationsView v = build_activations(p, rec, nullptr, limit);
+        ActivationsView v = build_activations(p, rec, nullptr, test::no_chords(), limit);
         REQUIRE(v.acts.size() == 1);
         return v.acts[0];
     };
@@ -708,7 +709,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
 
     Path p;
     p.activations.push_back(far);
-    ActivationsView v = build_activations(p, rec, nullptr);
+    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "0");
@@ -724,7 +725,7 @@ TEST_CASE("build_activations: a squeezed-out row past the leeway is worth 0") {
     near.sqinouts[0].offset_ms = -5.0;
     Path q;
     q.activations.push_back(near);
-    v = build_activations(q, rec, nullptr);
+    v = build_activations(q, rec, nullptr, test::no_chords());
     REQUIRE(v.acts[0].backends.size() == 1);
     CHECK(v.acts[0].backends[0].points == "260");
     CHECK(v.acts[0].backends[0].rating ==
@@ -762,7 +763,7 @@ TEST_CASE("build_activations: plain rows past the leeway show 0") {
 
     Path p;
     p.activations.push_back(act);
-    ActivationsView v = build_activations(p, rec, nullptr);
+    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
     REQUIRE(v.acts.size() == 1);
     const std::vector<BackendRowView>& b = v.acts[0].backends;
     REQUIRE(b.size() == std::size(rows_at));
@@ -867,7 +868,7 @@ TEST_CASE("activation rows: each of Burnout's rows reads its activation") {
     const SongTiming& timing = ar.song.timing();
     const std::vector<Activation> acts = best.all_activations();
 
-    ActivationsView view = build_activations(best, rec, &timing);
+    ActivationsView view = build_activations(best, rec, &timing, chord_times(ar.song));
     REQUIRE(view.acts.size() == acts.size());
     for (size_t i = 0; i < acts.size(); ++i) {
         const ActivationRowView& av = view.acts[i];
@@ -899,7 +900,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     p.activations.push_back(act);
     HydraRecord rec;
 
-    ActivationsView view = build_activations(p, rec, &timing, std::nullopt,
+    ActivationsView view = build_activations(p, rec, &timing, test::no_chords(), std::nullopt,
                                              core::default_rules(), 10000.0);
     REQUIRE(view.acts.size() == 1);
     REQUIRE(view.acts[0].song_fraction.has_value());
@@ -909,7 +910,7 @@ TEST_CASE("activation timeline: onset over the song's length, and the end measur
     CHECK(view.summary == "1" + kDot + "no SP left over");
 
     // No timing: no fraction, whatever the length.
-    ActivationsView blind = build_activations(p, rec, nullptr, std::nullopt,
+    ActivationsView blind = build_activations(p, rec, nullptr, test::no_chords(), std::nullopt,
                                               core::default_rules(), 10000.0);
     CHECK_FALSE(blind.acts[0].song_fraction.has_value());
     CHECK(blind.timeline_start.empty());
@@ -1096,7 +1097,7 @@ TEST_CASE("activation badges: the row is difficult exactly when a badge is orang
         CAPTURE(chart);
         CAPTURE(path.pathstring());
         const SongTiming& timing = song.timing();
-        const ActivationsView v = build_activations(path, rec, &timing);
+        const ActivationsView v = build_activations(path, rec, &timing, chord_times(song));
         for (const ActivationRowView& av : v.acts) {
             CAPTURE(av.number);
             bool any_warn = false;
@@ -1277,7 +1278,7 @@ TEST_CASE("squeeze sentences: a squeezed-out row far past the end names its chor
     Path p;
     p.activations.push_back(far);
     HydraRecord rec;
-    const ActivationsView v = build_activations(p, rec, nullptr);
+    const ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
     REQUIRE(v.acts.size() == 1);
     REQUIRE(v.acts[0].squeeze_sentences.size() == 1);
     const ActivationRating rate = rate_activation(far);
@@ -1300,12 +1301,13 @@ TEST_CASE("squeeze sentences at the SP end: the squeeze-in earns, the squeeze-ou
     const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
     const SongTiming& timing = song.timing();
+    const ChordTimes chords = chord_times(song);
     int on_end_in = 0;
     int on_end_out = 0;
     for (const Path& path : rec.paths) {
         CAPTURE(path.pathstring());
         const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView view = build_activations(path, rec, &timing);
+        const ActivationsView view = build_activations(path, rec, &timing, chords);
         REQUIRE(view.acts.size() == acts.size());
         for (size_t i = 0; i < acts.size(); ++i) {
             REQUIRE(view.acts[i].squeeze_sentences.size() == acts[i].sqinouts.size());
@@ -1387,10 +1389,10 @@ Path near_one_path(const TransferScale& post) {
     return p;
 }
 
-// The one row build_activations makes for `p`.
+// The one row build_activations makes for `p`, a path with no song.
 ActivationRowView only_row(const Path& p) {
     HydraRecord rec;
-    const ActivationsView v = build_activations(p, rec, nullptr);
+    const ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
     REQUIRE(v.acts.size() == 1);
     return v.acts[0];
 }
@@ -1483,7 +1485,7 @@ TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
     Path p;
     p.activations.push_back(act);
 
-    ActivationsView v = build_activations(p, rec, nullptr);
+    ActivationsView v = build_activations(p, rec, nullptr, test::no_chords());
     REQUIRE(v.acts.size() == 1);
     CHECK(v.acts[0].scale_warning == "Transfer scale unknown.");
     CHECK(v.acts[0].scale_warn);  // Q6: orange
@@ -1499,15 +1501,16 @@ TEST_CASE("build_activations: an unknown scale says so and shows no eff.") {
 TEST_CASE("activation rows: the chord names its notes in the Pro Drums setting's words") {
     int rows_the_setting_changes = 0;
     int rows_the_setting_keeps = 0;
-    for_each_corpus_path([&](const std::string& chart, const Song& /*song*/, const HydraRecord& rec,
+    for_each_corpus_path([&](const std::string& chart, const Song& song, const HydraRecord& rec,
                              const Path& path) {
         CAPTURE(chart);
         CAPTURE(path.pathstring());
         const std::vector<Activation> acts = path.all_activations();
-        const ActivationsView pro = build_activations(path, rec, nullptr, std::nullopt,
+        const ChordTimes chords = chord_times(song);
+        const ActivationsView pro = build_activations(path, rec, nullptr, chords, std::nullopt,
                                                       core::default_rules(), std::nullopt,
                                                       /*pro_drums=*/true);
-        const ActivationsView plain = build_activations(path, rec, nullptr, std::nullopt,
+        const ActivationsView plain = build_activations(path, rec, nullptr, chords, std::nullopt,
                                                         core::default_rules(), std::nullopt,
                                                         /*pro_drums=*/false);
         REQUIRE(pro.acts.size() == acts.size());
@@ -1574,11 +1577,11 @@ const AnalysisResult& late_sqin_twice() {
     return ar;
 }
 
-// `path`'s rows as the Paths tab builds them, with `chords` (null for none).
-ActivationsView window_rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes* chords) {
+// `path`'s rows as the Paths tab builds them, with `chords`.
+ActivationsView window_rows_of(const AnalysisResult& ar, const Path& path, const ChordTimes& chords) {
     const SongTiming& timing = ar.song.timing();
-    return build_activations(path, ar.record, &timing, std::nullopt, core::default_rules(),
-                             std::nullopt, /*pro_drums=*/true, chords);
+    return build_activations(path, ar.record, &timing, chords, std::nullopt, core::default_rules(),
+                             std::nullopt, /*pro_drums=*/true);
 }
 
 // The place of `act`'s only squeeze of `kind`.
@@ -1606,7 +1609,7 @@ SqOutRowCounts sqout_rows_against_owner(const AnalysisResult& ar) {
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
-    const ActivationsView view = window_rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, chords);
     REQUIRE(view.acts.size() == acts.size());
     SqOutRowCounts counts;
     for (size_t i = 0; i < acts.size(); ++i) {
@@ -1662,7 +1665,7 @@ TEST_CASE("dynamic hit window: Burnout's squeeze out is safe") {
 
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
-    const ActivationsView view = window_rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, chords);
     int unbadged = 0;
     for (const ActivationRowView& av : view.acts) {
         if (!av.badges.empty()) continue;
@@ -1715,7 +1718,7 @@ TEST_CASE("dynamic hit window: an early fill gets one window, required or option
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
-    const ActivationsView view = window_rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, chords);
     REQUIRE(view.acts.size() == acts.size());
     REQUIRE(acts.size() >= 4);
     CHECK(acts[2].is_E0());
@@ -1752,7 +1755,7 @@ TEST_CASE("dynamic hit window: a squeeze in that needs no timing still gets its 
     const Path& best = ar.record.best_path();
     const ChordTimes chords = chord_times(ar.song);
     const std::vector<Activation> acts = best.all_activations();
-    const ActivationsView view = window_rows_of(ar, best, &chords);
+    const ActivationsView view = window_rows_of(ar, best, chords);
     REQUIRE(view.acts.size() == acts.size());
     REQUIRE_FALSE(acts.empty());
     REQUIRE_FALSE(acts[0].sqinouts.empty());
@@ -1794,13 +1797,13 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         REQUIRE(p.activations.size() >= 2);
         const size_t k = only_squeeze(p.activations[1], SqueezeKind::SqIn);
         REQUIRE_FALSE(p.activations[1].sqinouts[k].needs_no_timing());
-        const std::optional<WindowRowView> unedited = window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k];
+        const std::optional<WindowRowView> unedited = window_rows_of(ar, p, chords).acts[1].squeeze_windows[k];
         REQUIRE(unedited.has_value());
         for (const double offset : {0.0, -0.1}) {
             CAPTURE(offset);
             p.activations[1].sqinouts[k].offset_ms = offset;
             REQUIRE(timing_needs_hitting(p.activations[1].sqinouts[k].difficulty()) == (offset >= 0.0));
-            const std::optional<WindowRowView> row = window_rows_of(ar, p, &chords).acts[1].squeeze_windows[k];
+            const std::optional<WindowRowView> row = window_rows_of(ar, p, chords).acts[1].squeeze_windows[k];
             REQUIRE(row.has_value());
             CHECK(row->windows == unedited->windows);
         }
@@ -1816,7 +1819,7 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         REQUIRE(p.activations.size() >= 4);
         REQUIRE(p.activations[3].is_E0());
         REQUIRE(format_ms(fill_timing(p.activations[3]).ms) == format_ms(0.0));
-        REQUIRE(window_rows_of(ar, p, &chords).acts[3].early_fill_window.has_value());
+        REQUIRE(window_rows_of(ar, p, chords).acts[3].early_fill_window.has_value());
         const std::optional<WindowEnds> unedited = early_fill_window_end(p.activations[3], chords);
         REQUIRE(unedited.has_value());
         REQUIRE(unedited->ends.size() == 1);
@@ -1824,7 +1827,7 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         Activation& act = p.activations[3];
         act.e_offset = spare;
         REQUIRE(act.is_E0());
-        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[3];
+        const ActivationRowView av = window_rows_of(ar, p, chords).acts[3];
         CHECK(av.early_fill.find(figure_of(fill_timing(act))) != std::string::npos);
         CHECK(av.early_fill.find("(required)") != std::string::npos);
         REQUIRE(av.early_fill_window.has_value());
@@ -1842,12 +1845,12 @@ TEST_CASE("dynamic hit window: a row for every timing badge, edited figures too"
         p.activations = ar.record.best_path().all_activations();
         REQUIRE(p.activations.size() >= 4);
         REQUIRE(p.activations[3].is_E0());
-        const std::optional<WindowRowView> unedited = window_rows_of(ar, p, &chords).acts[3].early_fill_window;
+        const std::optional<WindowRowView> unedited = window_rows_of(ar, p, chords).acts[3].early_fill_window;
         REQUIRE(unedited.has_value());
         test::set_skips(p.activations[3], 1);
         REQUIRE_FALSE(p.activations[3].is_E0());
         // A skip changes neither the SP-ready note nor the figure.
-        const ActivationRowView av = window_rows_of(ar, p, &chords).acts[3];
+        const ActivationRowView av = window_rows_of(ar, p, chords).acts[3];
         CHECK(av.early_fill.find("(optional)") != std::string::npos);
         REQUIRE(av.early_fill_window.has_value());
         CHECK(av.early_fill_window->windows == unedited->windows);
@@ -1864,7 +1867,7 @@ TEST_CASE("dynamic hit window: the row sits alongside and changes no other field
         const std::vector<Activation> acts = ar.record.best_path().all_activations();
         REQUIRE_FALSE(acts.empty());
         const ChordTimes chords = chord_times(ar.song);
-        const ActivationsView view = window_rows_of(ar, ar.record.best_path(), &chords);
+        const ActivationsView view = window_rows_of(ar, ar.record.best_path(), chords);
         REQUIRE_FALSE(view.acts.empty());
         const size_t k = only_squeeze(acts[0], SqueezeKind::SqOut);
         REQUIRE(view.acts[0].squeeze_windows.size() == acts[0].sqinouts.size());
@@ -1874,7 +1877,7 @@ TEST_CASE("dynamic hit window: the row sits alongside and changes no other field
         const Path& best = ar->record.best_path();
         const std::vector<Activation> acts = best.all_activations();
         const ChordTimes chords = chord_times(ar->song);
-        const ActivationsView with = window_rows_of(*ar, best, &chords);
+        const ActivationsView with = window_rows_of(*ar, best, chords);
         REQUIRE(with.acts.size() == acts.size());
         for (size_t i = 0; i < acts.size(); ++i) check_row_reads_activation(i, acts[i], with.acts[i]);
     }
@@ -1928,9 +1931,9 @@ TEST_CASE("dynamic hit window: every corpus row") {
         const SongTiming& timing = song.timing();
         for (const Path& path : rec.paths) {
             const std::vector<Activation> acts = path.all_activations();
-            const ActivationsView view = build_activations(path, rec, &timing, std::nullopt,
+            const ActivationsView view = build_activations(path, rec, &timing, chords, std::nullopt,
                                                            core::default_rules(), std::nullopt,
-                                                           /*pro_drums=*/true, &chords);
+                                                           /*pro_drums=*/true);
             REQUIRE(view.acts.size() == acts.size());
             for (size_t i = 0; i < acts.size(); ++i) {
                 const Activation& act = acts[i];

@@ -735,11 +735,13 @@ void render_path_panel(AppState& app, const Path*& selected_path) {
     ImGui::BeginChild("##pathdetails", ImVec2(0.0f, 0.0f));
     if (selected_path) {
         // details() first: a new path resets ui() before anything reads it.
+        // The chords are set with the record (AppState's view job), so a
+        // shown record always has them.
         const app::PathsTabCache::Details& d = cache.details(
             *selected_path, record, generation,
-            app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
-            app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums,
-            app.viewed.chords ? &*app.viewed.chords : nullptr);
+            app.viewed.timing ? &*app.viewed.timing : nullptr, *app.viewed.chords,
+            app.settings.backend_limit(), app.settings.rules, app.viewed.song_length_ms,
+            app.settings.view_prodrums);
         app::PathsTabUi& ui = cache.ui();
         render_activations(d.activations, ui);
         render_path_footer(app, d, ui);

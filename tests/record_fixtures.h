@@ -23,6 +23,7 @@
 #include "app/config.h"
 #include "app/display_format.h"
 #include "core/model.h"
+#include "core/note_window.h"
 #include "parse/song.h"
 #include "search/engine.h"
 #include "search/graph.h"
@@ -616,6 +617,15 @@ inline void check_lines(const std::vector<std::string>& got, const std::vector<s
 // A tick's time in ms on a hand-built song, read off the song's own tempo map.
 inline double tick_ms(const Song& song, int64_t tick) {
     return song.timing().ms_index().at(tick);
+}
+
+// The chords to give app::build_activations for a hand-built path that has no
+// song: none at all. No chord sits on any tick, so the owner
+// (core::squeeze_window_ends, core::early_fill_window_end) gives no Dynamic
+// Hit Window row. A path from a real song passes chord_times(song) instead.
+inline const ChordTimes& no_chords() {
+    static const ChordTimes none;
+    return none;
 }
 
 }  // namespace hydra::test
