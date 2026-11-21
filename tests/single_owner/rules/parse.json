@@ -381,6 +381,11 @@
           "file": "tests/test_precheck_pick.cpp",
           "line_text": "if (hydra::ends_with(f, \".md\")) files.push_back(f);",
           "why": "picks the repo root's .md pages as real files the merge-test picker must not count as shared code, not a chart format"
+        },
+        {
+          "file": "tests/ui/uitest_preview.cpp",
+          "line_text": "IM_CHECK(hydra::ends_with(readout, cap_tail));",
+          "why": "checks that the SP gauge's readout ends with the meter cap's tail, not a file format"
         }
       ],
       "scope": [
