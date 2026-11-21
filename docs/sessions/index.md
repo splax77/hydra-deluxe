@@ -1,6 +1,6 @@
 # Session index
 
-9 sessions are kept locally and have no line here.
+10 sessions are kept locally and have no line here.
 
 - 2026-08-09 62055a3c Freeze error diagnosis (2026-08-09) | batch-running, library, path, report-table, performance, tests | Ended with the freeze fixed, the library analyzed to 18,022 records, and a sortable path report with a score column. The conversation shows no commit, so the changes sit in the working tree.
 - 2026-08-10 571ec5d5 Hydra uncapped starpower version (2026-08-10) | sp-cap, path, performance, batch-running | Ended at 12:42 UTC with all six big charts finishing uncapped, the slowest in 98.8 seconds.
@@ -562,6 +562,13 @@
 - 2026-11-20 31e7ea72 Wave14 handoff test fix (2026-11-20) | agents, hooks, planning, review, tests | Ended with a handoff for wave 15, after all 20 wave 14 chunks were reviewed, built and merged.
 - 2026-11-21 f75eecad Blind recheck agent evaluation (2026-11-21) | agents, hooks, planning, review, tests | Ended with a handoff for the next session, after pilot 2 failed five of its eight checks and the script-first recheck plan was signed but not started.
 - 2026-11-21 a82bf5e7 Wave15 handoff test fix (2026-11-21) | agents, hooks, planning, review, tests | Ended with a handoff for wave 16, after all 20 wave 15 chunks were reviewed, built and merged, and nothing was pushed.
+- 2026-11-21 27eb3425 Wave16 handoff test fix (2026-11-21) | tests, agents, review, hooks, planning | The session ended with all 20 wave 16 chunks merged and the wave 17 handoff written and committed; nothing was pushed.
+- 2026-11-21 3396b39c Script-first recheck handoff (2026-11-21) | tests, agents, planning, review, docs | The session ended with a handoff written on `claude/sfr-handoff2`, and the plan waiting for the user's yes, with no build and no library run.
+- 2026-11-21 c9413f4f Wave17 handoff test fix (2026-11-21) | agents, review, tests, hooks, planning | The session ended after wave 17 with 19 of its 20 chunks merged, and C271 carried over to wave 18.
+- 2026-11-21 d7762ae5 Script-first recheck T3 handoff (2026-11-21) | tests, planning, review, agents, docs | The session ended with the update-check rewrite plan reviewed and committed on `claude/real-inputs-plan`, and a start handoff written on `claude/real-inputs-start-handoff`, with no build started.
+- 2026-11-21 b7badf92 Wave18 handoff test fix (2026-11-21) | tests, planning, docs, review, agents | The session ended with C271's last row finished and reviewed, and both handoffs written and committed; nothing was pushed.
+- 2026-11-21 16950a03 Real inputs start handoff (2026-11-21) | tests, agents, review, planning | The session ended with all three waves of the real-inputs update plan merged into local `main` (last merge d6510f8), and nothing pushed.
+- 2026-11-21 069082c4 Wave 18 start handoff test (2026-11-21) | tests, agents, review, planning, docs | The session ended with wave 18 merged, the user's three test answers merged, and a handoff written to close the test-fix plan; nothing was pushed.
 
 ## Proposed tags
 
