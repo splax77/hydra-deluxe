@@ -77,14 +77,26 @@ TEST_CASE("commit_settings analyzes the open song again on an SP cap change") {
     const ChartLibraryEntry song = corpus_chart("click_cap");
     std::unique_ptr<AppState> app = app_with(paths, {song});
     click(*app, song);
+    REQUIRE(app->viewed.ready());
 
-    app->settings.sp_cap = 8;
+    // Any cap other than the seeded one asks a different question. Before the
+    // change, the store holds no record for the new cap's profile.
+    const int new_cap = app->settings.sp_cap + 1;
+    Settings changed = app->settings;
+    changed.sp_cap = new_cap;
+    REQUIRE(app->store->lookup_one(song.md5, changed.profile()).status ==
+            RecordStatus::NotAnalyzed);
+
+    app->settings.sp_cap = new_cap;
     app->commit_settings();
     REQUIRE(app->view_job != nullptr);
-    CHECK(app->view_job->profile().cap == app->settings.cap_query());
     settle(*app);
     CHECK(app->viewed.ready());
     CHECK(row_of(*app, song.md5).status == RecordStatus::Ready);
+    // The analysis ran under the new cap: its record is saved under that profile.
+    CHECK(app->store->lookup_one(song.md5, app->settings.profile()).status ==
+          RecordStatus::Ready);
+    CHECK(Settings::load_file(paths.ini).sp_cap == new_cap);
 }
 
 TEST_CASE("commit_settings analyzes again when the ms limit or the score range changes") {
@@ -99,18 +111,21 @@ TEST_CASE("commit_settings analyzes again when the ms limit or the score range c
     app->settings.mslimit_value = seeded_ms + 5;
     app->commit_settings();
     REQUIRE(app->view_job != nullptr);
-    CHECK(app->view_job->profile().lens == app->settings.lens());
     CHECK(Settings::load_file(paths.ini).mslimit_value == seeded_ms + 5);
     settle(*app);
     CHECK(app->viewed.ready());
+    // The analysis ran under the new limit: its record is saved under that profile.
+    CHECK(app->store->lookup_one(song.md5, app->settings.profile()).status ==
+          RecordStatus::Ready);
 
     // The score range is part of the same identity.
     app->settings.depth_value += 1;
     app->commit_settings();
     REQUIRE(app->view_job != nullptr);
-    CHECK(app->view_job->profile().lens == app->settings.lens());
     settle(*app);
     CHECK(app->viewed.ready());
+    CHECK(app->store->lookup_one(song.md5, app->settings.profile()).status ==
+          RecordStatus::Ready);
 }
 
 // A burst of setting changes (a held +/- box) runs one job at a time and ends
@@ -209,7 +224,7 @@ TEST_CASE("a number setting edited outside its range lands on the edge the file 
     const std::string hand_ini = temp_path("appstate_range_hand", ".ini");
     {
         std::ofstream f(hand_ini, std::ios::trunc);
-        f << "mslimit_value=900\ndepth_value=-1\n";
+        f << "mslimit_value=900\ndepth_value=-1\nsp_cap=0\n";
     }
     const Settings hand = Settings::load_file(hand_ini);
     std::remove(hand_ini.c_str());
@@ -220,6 +235,7 @@ TEST_CASE("a number setting edited outside its range lands on the edge the file 
     CHECK(saved.depth_value == hand.depth_value);
     // The cap floors at 1 bar (D51 call 16), in the file as in the box.
     CHECK(saved.sp_cap == 1);
+    CHECK(saved.sp_cap == hand.sp_cap);
 }
 
 // ---- a settings change whose reads fail (D73 item 3) -----------------------
@@ -230,7 +246,8 @@ TEST_CASE("a settings change whose reads fail shows no other settings' record") 
     app->select(library_entry(0), hydra::ui::SelectionSource::Click);
     hydra::test::exec_on_file(paths.db, "DROP TABLE records;");
 
-    app->settings.sp_cap = 8;
+    // Any cap other than the seeded one: the change must read the store again.
+    app->settings.sp_cap += 1;
     app->commit_settings();
 
     CHECK(app->status_message == kDatabaseReadSentence);
