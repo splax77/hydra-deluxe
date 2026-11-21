@@ -3547,7 +3547,7 @@ class DroppedStatusTest(unittest.TestCase):
         dropped = [r["index"] for r in rows if r["send"] == play_chart.DROPPED]
         self.assertEqual(dropped, [153])
         counts = lines.index(f"sent {len(sent)}")
-        self.assertEqual(lines[counts + 1], f"dropped: chords {dropped[0]}")
+        self.assertEqual(lines[counts + 1], GT.dropped_line(rows))
 
     def test_no_dropped_row_says_none(self):
         # ls-p3-run1's first three rows (testdata/ch_runs/ls-p3-run1, copied
