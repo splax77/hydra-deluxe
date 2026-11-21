@@ -1034,44 +1034,47 @@
     },
     {
       "question": "How big is each Preview overlay box at a scale?",
-      "owner": "overlay_box_sizes and line_height in src/ui/preview_panel.cpp",
+      "owner": "overlay_box_sizes and line_height in src/ui/preview_panel.cpp, with their factors in src/ui/preview_panel_layout.h",
       "owner_file": "src/ui/preview_panel.cpp",
       "owner_symbol": "overlay_box_sizes",
       "date": "2026-10-05",
       "decision": "audit finding R7.18; phase 6 task J3-5 (D53, D54)",
       "added_by": "J3-5",
-      "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f",
-      "anchor": "* 1.",
+      "pattern": "\\* 1\\.25f|\\* 1\\.8f|\\* 1\\.2f|\\b(kOverlayLineHeight|kBigTypeScale|kBigTypeLineHeight)\\s*=(?!=)",
       "must_match": [
         "const float line_h = size * 1.25f;",
-        "const float score_size = score.available ? size * 1.8f : size;"
+        "const float score_size = score.available ? size * 1.8f : size;",
+        "constexpr float kBigTypeScale = 1.8f;"
       ],
       "must_not_match": [
         "const float line_h = line_height(size);",
-        "s.pad = px(8.0f) * scale;"
+        "s.pad = px(8.0f) * scale;",
+        "float line_height(float size) { return size * kOverlayLineHeight; }",
+        "s.big_size = s.size * kBigTypeScale;"
       ],
       "owner_lines": [
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "float line_height(float size) { return size * 1.25f; }",
-          "why": "line_height, the owner"
+          "file": "src/ui/preview_panel_layout.h",
+          "line_text": "inline constexpr float kOverlayLineHeight = 1.25f;",
+          "why": "the line height line_height steps by, the owner's factor"
         },
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "s.big_size = s.size * 1.8f;",
-          "why": "overlay_box_sizes, the owner"
+          "file": "src/ui/preview_panel_layout.h",
+          "line_text": "inline constexpr float kBigTypeScale = 1.8f;",
+          "why": "the large type's size overlay_box_sizes sets, the owner's factor"
         },
         {
-          "file": "src/ui/preview_panel.cpp",
-          "line_text": "auto big_line = [](float sz) { return sz * 1.2f; };",
-          "why": "overlay_box_sizes, the owner"
+          "file": "src/ui/preview_panel_layout.h",
+          "line_text": "inline constexpr float kBigTypeLineHeight = 1.2f;",
+          "why": "the large type's line height overlay_box_sizes sets, the owner's factor"
         }
       ],
       "scope": [
         "src/ui/preview_panel.cpp",
+        "src/ui/preview_panel_layout.h",
         "src/ui/preview_tab.cpp"
       ],
-      "note": "These factors belong to the Preview's overlay boxes, so only the Preview panel and tab are scanned."
+      "note": "These factors belong to the Preview's overlay boxes, so only the Preview panel, its layout header and the tab are scanned. The row flags a factor typed in again and a second definition of one of the header's names. It has no anchor, because a definition need not hold the typed factor's text; the scope is three files, so the regex on every line costs nothing."
     },
     {
       "question": "When a Preview scene lands or is dropped, what moves with it?",

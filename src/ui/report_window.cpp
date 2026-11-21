@@ -5,6 +5,7 @@
 #include <ctime>
 
 #include "app/html_page.h"   // kNothingMatches
+#include "app/user_messages.h"  // kReportCancelled
 #include "imgui_internal.h"  // TableSetColumnSortDirection, the window's item rects
 #include "ui/app_shell.h"    // report_window_class, place_report_window
 #include "ui/text_role.h"
@@ -188,7 +189,7 @@ bool state_body(const Frame& f) {
             return true;
         }
         case ReportBuild::Cancelled:
-            ImGui::TextUnformatted("Report cancelled.");
+            ImGui::TextUnformatted(app::kReportCancelled);
             if (ImGui::Button("Try again")) call(cb.try_again);
             return true;
         case ReportBuild::Failed:

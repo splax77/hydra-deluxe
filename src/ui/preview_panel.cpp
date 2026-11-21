@@ -12,6 +12,7 @@
 #include "imgui_internal.h"  // SetKeyOwner, owner-aware IsKeyPressed
 #include "render/overlay_layout.h"
 #include "ui/preview_controller.h"
+#include "ui/preview_panel_layout.h"
 #include "ui/preview_timeline.h"  // draw_scrub_marks, draw_star
 #include "ui/text_role.h"
 #include "ui/theme.h"
@@ -147,13 +148,7 @@ void name_box(const char* label, ImVec2 min, ImVec2 max) {
 
 // One line of overlay text at `size`: the time box's, the drain box's, the
 // next-activation box's and the gauge's "SP" label all step by it.
-float line_height(float size) { return size * 1.25f; }
-
-// The next-activation box's notation line over its other lines' size. The
-// user approved the ratio through the Preview mock (option B, D111), where the
-// notation line is 17px and the box's other lines 12px. The mock:
-// docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html (removed; git show 444631e6:docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html)
-constexpr float kNextActNotationScale = 17.0f / 12.0f;
+float line_height(float size) { return size * kOverlayLineHeight; }
 
 // The score box's star row: kMaxStars stars, each as tall as a line of text
 // at `size`, with a fifth of that between them. The overlay font has no star
@@ -236,7 +231,7 @@ OverlayTextBoxes overlay_box_sizes(float scale, const render::PreviewConfig& cfg
     OverlayTextBoxes s;
     s.size = px(cfg.text.time_box_size) * scale;
     s.inset = px(cfg.text.time_box_margin) * scale;
-    s.gap = px(6.0f) * scale;
+    s.gap = px(kOverlayPanelGap) * scale;
     s.line_h = line_height(s.size);
     const ImU32 white = IM_COL32(255, 255, 255, 255);
     const ImU32 grey = IM_COL32(200, 200, 200, 255);
@@ -250,8 +245,8 @@ OverlayTextBoxes overlay_box_sizes(float scale, const render::PreviewConfig& cfg
     // line at the time box's size. "Score unavailable" is at the time box's
     // size too and has no stars.
     // The large type, which the solo box's first line uses too.
-    auto big_line = [](float sz) { return sz * 1.2f; };
-    s.big_size = s.size * 1.8f;
+    auto big_line = [](float sz) { return sz * kBigTypeLineHeight; };
+    s.big_size = s.size * kBigTypeScale;
     s.big_line_h = big_line(s.big_size);
     s.score_size = score.available ? s.big_size : s.size;
     s.score_line_h = big_line(s.score_size);
@@ -502,10 +497,10 @@ void draw_preview_panel(PreviewController& controller, PreviewPanelState& state,
         const bool drain_drawn = drain.shown;
 
         // The gauge's geometry, which is not scaled.
-        const float bar_w = px(14.0f);
-        const float gauge_inset = px(10.0f);  // from the image's right edge
-        const float v_margin = px(10.0f);
-        const float d_gap = px(6.0f);  // between the drain box and the gauge
+        const float bar_w = px(kGaugeBarWidth);
+        const float gauge_inset = px(kGaugeInset);  // from the image's right edge
+        const float v_margin = px(kGaugeVMargin);
+        const float d_gap = px(kDrainGaugeGap);  // between the drain box and the gauge
         const float gauge_left = img_max.x - gauge_inset - bar_w;
 
         // Scale-1 sizes, and the extents the fit needs (image pixels).
@@ -542,7 +537,6 @@ void draw_preview_panel(PreviewController& controller, PreviewPanelState& state,
         auto width_at = [&](float sz) {
             return [&text_width, sz](const std::string& s) { return text_width(sz, s.c_str()); };
         };
-        constexpr size_t kHeaderCountWords = 3;
         auto next_sizes = [](const OverlayTextBoxes& s) {
             return std::array<float, 3>{s.size, s.size * kNextActNotationScale, s.size};
         };
