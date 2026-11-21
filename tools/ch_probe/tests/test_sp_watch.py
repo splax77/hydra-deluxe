@@ -65,15 +65,18 @@ BASE = 0x180000000
 GOOD_CONSTS = {C.RVA_CONST_NORMAL_BACK: 0.085, C.RVA_CONST_NORMAL_FRONT: 0.0375}
 
 
-# The values sp_block packs. Each two-width field has bytes past its low
-# 32 bits (or past its low byte) set, so each width reads a different number.
-CLOCK_S = 12.5
-AMOUNT_LO, AMOUNT_HI = 7680, 1
-MAX_LO, MAX_HI = 6144, 2
+# The values sp_block packs. The low parts are the game's own, from the
+# first row of the recorded act3 watch; the active flag is set, as in Star
+# Power. Each two-width field also has bytes past its low 32 bits (or past
+# its low byte) set, so each width reads a different number.
+_RECORDED = sp_compare.load_watch_rows(ACT3_CSV)[0]
+CLOCK_S = _RECORDED["clock_s"]
+AMOUNT_LO, AMOUNT_HI = _RECORDED["sp_amount_u32"], 1
+MAX_LO, MAX_HI = _RECORDED["sp_max_u32"], 2
 ACTIVE_BYTE, ACTIVE_NEXT_BYTE = 1, 1
-MULT_BYTE, MULT_NEXT_BYTE = 8, 2
+MULT_BYTE, MULT_NEXT_BYTE = _RECORDED["sp_mult_byte"], 2
 END_S = 61.25
-OVERFLOW = 1
+OVERFLOW = _RECORDED["sp_overflow_u32"]
 
 
 def sp_block():
