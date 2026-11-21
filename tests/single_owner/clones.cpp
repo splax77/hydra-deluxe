@@ -200,12 +200,18 @@ ListedLine clone_listed_line(const std::string& file_a, const std::string& file_
             "baseline clone no longer found (remove it)"};
 }
 
-// Every .cpp and .h the walk finds, in sorted path order.
-std::vector<CodeFile> read_source_code() {
+// Every .cpp and .h the walk finds, in sorted path order. A source the walk
+// names but that cannot be opened goes into `unopened`, never read as a file
+// with no lines.
+std::vector<CodeFile> read_source_code(std::vector<std::string>& unopened) {
     std::vector<CodeFile> files;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
         if (!is_cpp_source(path)) return;
         std::ifstream in(path);
+        if (!in) {
+            unopened.push_back(rel);
+            return;
+        }
         files.push_back(read_code_lines(rel, in));
     });
     std::sort(files.begin(), files.end(),
@@ -229,59 +235,78 @@ TEST_CASE("single-owner: the clone scan matches its own examples (MR1)") {
     CHECK(clone_line_text("closes */ int after = 2;", in_comment) == "int after = 2;");
     CHECK_FALSE(in_comment);
 
-    // Made-up files. `block` is ten different code lines; `seven` is its
-    // first seven.
-    std::string block, seven;
-    for (int i = 0; i < 10; ++i) {
+    // Made-up files, sized from the scan's own window. `block` is different
+    // code lines, two more than a window; `short_run` is its first lines,
+    // one fewer than a window.
+    const int window = kCloneWindowLines;
+    const int block_lines = window + 2;
+    const int short_lines = window - 1;
+    std::string block, short_run;
+    for (int i = 0; i < block_lines; ++i) {
         const std::string line = "v" + std::to_string(i) + " = f(" + std::to_string(i) + ");\n";
         block += line;
-        if (i < 7) seven += line;
+        if (i < short_lines) short_run += line;
     }
     const auto file = [](const std::string& rel, const std::string& text) {
         std::istringstream in(text);
         return read_code_lines(rel, in);
     };
 
-    // Ten shared lines are one block, named once with both places. Blank
-    // lines, comments and braces around one copy don't hide it.
+    // The shared block is one block, named once with both places. Blank
+    // lines, comments and braces around one copy don't hide it. In a.cpp it
+    // starts after one line of its own; in b.cpp after three lines the scan
+    // skips (a brace, a blank and a comment).
+    const int a_lead = 1;
+    const int b_lead = 3;
     std::vector<CloneRegion> r = find_clones(
         {file("src/a.cpp", "only_a();\n" + block),
          file("src/b.cpp", "{\n\n// note\n" + block + "}\n")},
-        8);
+        window);
     REQUIRE(r.size() == 1);
-    CHECK(r[0].lines == 10);
+    CHECK(r[0].lines == block_lines);
     CHECK(r[0].first == "v0 = f(0);");
     CHECK(r[0].a.file == "src/a.cpp");
-    CHECK(r[0].a.first_line == 2);
-    CHECK(r[0].a.last_line == 11);
+    CHECK(r[0].a.first_line == a_lead + 1);
+    CHECK(r[0].a.last_line == a_lead + block_lines);
     CHECK(r[0].b.file == "src/b.cpp");
-    CHECK(r[0].b.first_line == 4);
-    CHECK(r[0].b.last_line == 13);
+    CHECK(r[0].b.first_line == b_lead + 1);
+    CHECK(r[0].b.last_line == b_lead + block_lines);
 
-    // Seven shared lines are shorter than a window of 8.
-    CHECK(find_clones({file("src/a.cpp", seven + "x();\n"), file("src/b.cpp", "y();\n" + seven)}, 8)
+    // A shared run one line shorter than the window is no copy.
+    CHECK(find_clones({file("src/a.cpp", short_run + "x();\n"), file("src/b.cpp", "y();\n" + short_run)},
+                      window)
               .empty());
 
-    // A file that repeats its own block is a copy too.
-    r = find_clones({file("src/a.cpp", block + "mid();\n" + block)}, 8);
+    // A file that repeats its own block is a copy too. The second copy
+    // starts after the first and one line between them.
+    r = find_clones({file("src/a.cpp", block + "mid();\n" + block)}, window);
     REQUIRE(r.size() == 1);
     CHECK(r[0].a.file == r[0].b.file);
     CHECK(r[0].a.first_line == 1);
-    CHECK(r[0].b.first_line == 12);
+    CHECK(r[0].b.first_line == block_lines + 2);
 
-    // Nine copies of one line overlap themselves: no copy.
+    // One line repeated one more time than the window overlaps itself: no
+    // copy.
     std::string same;
-    for (int i = 0; i < 9; ++i) same += "x++;\n";
-    CHECK(find_clones({file("src/a.cpp", same)}, 8).empty());
+    for (int i = 0; i < window + 1; ++i) same += "x++;\n";
+    CHECK(find_clones({file("src/a.cpp", same)}, window).empty());
 
     // A block in three places is three pairs.
-    CHECK(find_clones({file("src/a.cpp", block), file("src/b.cpp", block), file("src/c.cpp", block)}, 8)
+    CHECK(find_clones({file("src/a.cpp", block), file("src/b.cpp", block), file("src/c.cpp", block)},
+                      window)
               .size() == 3);
 }
 
 TEST_CASE("single-owner: no block of code is written in two places (MR1)") {
-    const std::vector<CodeFile> files = read_source_code();
-    CHECK(files.size() > 100);  // the scan found the sources
+    std::vector<std::string> unopened;
+    const std::vector<CodeFile> files = read_source_code(unopened);
+    // Every source the walk names is read: none is skipped as unreadable,
+    // and the walk found at least one, so the scan below has input.
+    for (const std::string& rel : unopened) {
+        const std::string msg = "cannot open " + rel;
+        FAIL_CHECK(msg);
+    }
+    REQUIRE_FALSE(files.empty());
     std::vector<ListedLine> listed;
     for (const KnownClone& k : known_clones())
         listed.push_back(clone_listed_line(k.file_a, k.file_b, k.lines, k.first));

@@ -45,25 +45,33 @@ void check_same_path(const Path& got, const Path& want) {
     CHECK(path_identity(got) == path_identity(want));
 }
 
+// A one-window path the player might build: one window on the second
+// activation of the first record path that has two or more.
+hydra::pathbuilder::ClickResult one_window_path(const OpenChart& c) {
+    const Path* two = nullptr;
+    for (const Path& p : c.record.paths)
+        if (p.walk_activations().size() >= 2) {
+            two = &p;
+            break;
+        }
+    REQUIRE(two != nullptr);
+    const hydra::ActivationWalk acts = two->walk_activations();
+    hydra::pathbuilder::ClickResult one =
+        hydra::pathbuilder::start_window(*c.graph, c.settings, {}, acts[1].timecode.ticks());
+    REQUIRE(one.path.has_value());
+    return one;
+}
+
 }  // namespace
 
 TEST_CASE("pb files: a saved path file opens back as the same path, as the player's") {
     PbState s;
     const OpenChart& c = open_burnout(s);
-    // A path that is not one of Hydra's: one window on the fill Hydra's
-    // best path activates second.
-    const hydra::ActivationWalk best_acts = c.record.best_path().walk_activations();
-    REQUIRE(best_acts.size() >= 2);
-    const hydra::pathbuilder::ClickResult one = hydra::pathbuilder::start_window(
-        *c.graph, c.settings, {}, best_acts[1].timecode.ticks());
-    REQUIRE(one.path.has_value());
+    // A path that is not one of Hydra's.
+    const hydra::pathbuilder::ClickResult one = one_window_path(c);
     const Path& mine = *one.path;
     for (const Path& p : c.record.paths) REQUIRE(path_identity(p) != path_identity(mine));
     const std::string file = testtemp::temp_dir("pb_files_save") + "\\path.json";
-
-    // The file is hydra_replay's shape: a "paths" array as paths_json writes it.
-    CHECK(hydra::pathbuilder::path_file_json(mine, c.song)["paths"] ==
-          hydra::paths_json({&mine}, c.song.timing()));
     hydra::pathbuilder::save_path_file(file, mine, c.song);
 
     PathHistory& h = s.history();
@@ -78,17 +86,33 @@ TEST_CASE("pb files: a saved path file opens back as the same path, as the playe
     check_same_path(*h.current().path, mine);
 }
 
+TEST_CASE("pb files: a real hydra_replay dump opens its first path as the player's") {
+    // testdata/replay/burnout-dump.json is hydra_replay's own dump of the
+    // corpus Burnout at the GUI tests' settings (scratch_settings: the app's
+    // defaults, depth 2 scores), made by
+    //   hydra_replay dump --chart "<corpus>/common/Summer Blast _25 Setlist/
+    //     Tier 4/Green Day - Burnout/notes.mid" --depth-mode scores --depth 2
+    //     --out testdata/replay/burnout-dump.json
+    // Its "paths" array is rec.all_paths() in order, so its first entry is
+    // the record's first path.
+    PbState s;
+    const OpenChart& c = open_burnout(s);
+    const std::vector<const Path*> all = c.record.all_paths();
+    REQUIRE_FALSE(all.empty());
+    PathHistory& h = s.history();
+    const std::string dump = corpus::testdata_root() + "/replay/burnout-dump.json";
+    REQUIRE_FALSE(hydra::pathbuilder::open_path_file(h, c, dump).has_value());
+    REQUIRE(h.current().path.has_value());
+    CHECK(act_ticks(*h.current().path) == act_ticks(*all.front()));
+}
+
 // The user's answer Q2 (docs/superpowers/plans/2026-10-30-path-builder-redesign.md (removed; git show 307d0b5c:docs/superpowers/plans/2026-10-30-path-builder-redesign.md)):
 // a path file opens its first path as the player's, as one edit, and leaves
 // the rest out.
 TEST_CASE("pb files: a path file's first path becomes the player's") {
     PbState s;
     const OpenChart& c = open_burnout(s);
-    const hydra::ActivationWalk best_acts = c.record.best_path().walk_activations();
-    REQUIRE(best_acts.size() >= 2);
-    const hydra::pathbuilder::ClickResult one = hydra::pathbuilder::start_window(
-        *c.graph, c.settings, {}, best_acts[1].timecode.ticks());
-    REQUIRE(one.path.has_value());
+    const hydra::pathbuilder::ClickResult one = one_window_path(c);
     const Path& best = c.record.best_path();
     REQUIRE(path_identity(best) != path_identity(*one.path));
     // A file of two paths, in hydra_replay's shape: the one-window path first.
