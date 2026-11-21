@@ -52,17 +52,16 @@ Check3Run run_check3(const std::string& dir, const std::string& spelling, bool w
     return run;
 }
 
-bool holds(const std::string& text, const std::string& part) { return text.find(part) != std::string::npos; }
-
 // A D item's text names the number it flags, the line it read it from and
 // `about`: what the number is, or the record a citation names.
 void check_names(const Item& item, const std::string& number, const std::string& code, const std::string& about) {
-    INFO(item.file + ":" + std::to_string(item.line));
+    const std::string where = item.file + ":" + std::to_string(item.line);
+    INFO(where);
     CHECK(item.kind == "D");
     CHECK(item.what.rfind(number, 0) == 0);
-    CHECK(holds(item.what, code));
-    CHECK(holds(item.why, number));
-    CHECK(holds(item.why, about));
+    CHECK(item.what.find(code) != std::string::npos);
+    CHECK(item.why.find(number) != std::string::npos);
+    CHECK(item.why.find(about) != std::string::npos);
 }
 
 bool is_digit(char c) { return c >= '0' && c <= '9'; }
