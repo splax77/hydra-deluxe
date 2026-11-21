@@ -332,6 +332,8 @@ jobs:
       - name: Check the compiler is 19.51
         run: |
           $banner = (& cl.exe 2>&1 | Out-String)
+          # Only the banner decides here, not cl's own exit code.
+          $global:LASTEXITCODE = 0
           Write-Host $banner
           if ($banner -notmatch 'Version 19\.51\.') { throw "expected cl 19.51, got: $banner" }
 

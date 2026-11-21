@@ -385,11 +385,11 @@ In nlohmann's `basic_json` constructor, the jump that skips the shared
 `mov qword ptr [rdi+8],rax` after storing a new object's map pointer now lands
 on that `mov`. The map pointer is overwritten with a tree node's, and every
 JSON object the tests parse is corrupt. The coverage tool from Visual Studio
-2022 (17.14.3) breaks the same 14.52 exe the same way. Coverage builds with 14.51
-passed in CI every night through 2026-11-17. What in 14.52's output makes the
-tool pad these spots is not known. A local build with 14.52
-reproduces the crash: build the `coverage` preset, instrument `hydra_tests`,
-and run `hydra_tests.exe -sf=*single_owner*`.
+2022 (17.14.3) breaks the same 14.52 exe the same way. Coverage builds with
+14.51 passed in CI every night through 2026-11-17. What in 14.52's output makes
+the tool pad these spots is not known. A local build with 14.52 reproduces the
+crash: build the `coverage` preset, instrument `hydra_tests`, and run
+`hydra_tests.exe -sf=*single_owner*`.
 
 ## The report windows
 
