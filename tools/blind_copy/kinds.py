@@ -582,7 +582,7 @@ class Sorter:
                             if key in seen:
                                 continue
                             seen.add(key)
-                            rows.append(x.copy(hit, via or f"{hp}:{hn}"))
+                            rows.append(x.copy(hit, via or x.via or x.hit))
             if rows:
                 break
         if not rows:
@@ -866,7 +866,8 @@ def summary(lines, rows):
 
 
 def run(copy, seams_path, coverage_path, matched_path, out, repo=None, at=None, answers_path=None,
-        base=BASE, say=sys.stdout.write):
+        base=BASE, say=None):
+    say = say or sys.stdout.write
     seams = read_tsv(seams_path)
     coverage = read_tsv(coverage_path)
     matched = read_tsv(matched_path)
