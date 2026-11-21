@@ -1,16 +1,13 @@
 // Where the Preview's Playhead gets its audio from.
 //
 // A MixSource is a cursor over one playable signal: read the next N frames,
-// or jump to any frame. Two kinds exist:
-//   * BufferSource plays an already-decoded buffer. Tests and any caller that
-//     still holds a whole DecodedAudio use it.
-//   * StreamMix plays several stems at once, straight from their compressed
-//     bytes. Every stem is read at one shared position, converted to the
-//     output rate and channel count as it is read, and added into the output.
-//     Because one cursor drives all stems, they can never drift apart, and no
-//     decoded copy of the whole song ever exists.
+// or jump to any frame. StreamMix is the one kind Hydra plays: several stems
+// at once, straight from their compressed bytes. Every stem is read at one
+// shared position, converted to the output rate and channel count as it is
+// read, and added into the output. Because one cursor drives all stems, they
+// can never drift apart, and no decoded copy of the whole song ever exists.
 //
-// Neither type is thread-safe. The audio device thread drives a source through
+// StreamMix is not thread-safe. The audio device thread drives a source through
 // the Playhead, under the Preview Transport's lock (ui/preview_transport.h).
 
 #ifndef HYDRA_AUDIO_STREAM_MIX_H
@@ -37,22 +34,6 @@ public:
     virtual int64_t read(float* out, int64_t frames) = 0;
     // Moves to `frame`, clamped to [0, length_frames()]. Never throws.
     virtual void seek(int64_t frame) = 0;
-};
-
-// Plays a buffer that is already decoded and mixed.
-class BufferSource : public MixSource {
-public:
-    explicit BufferSource(DecodedAudio audio);
-    int channels() const override { return audio_.channels; }
-    int sample_rate() const override { return audio_.sample_rate; }
-    int64_t length_frames() const override { return length_; }
-    int64_t read(float* out, int64_t frames) override;
-    void seek(int64_t frame) override;
-
-private:
-    DecodedAudio audio_;
-    int64_t length_ = 0;
-    int64_t pos_ = 0;
 };
 
 // Mixes N stems while reading them.

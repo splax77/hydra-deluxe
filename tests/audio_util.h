@@ -2,7 +2,8 @@
 // testdata/audio lives, its bytes, the FLAC fixture with its length zeroed, a
 // small ID3 tag, a PCM16 WAV writer, a block
 // reader and a sample-difference measure for a MixSource, a rough frequency
-// check for the 220 Hz sine fixtures, and a recognizable stereo ramp.
+// check for the 220 Hz sine fixtures, and a recognizable stereo ramp with a
+// source that plays it.
 
 #ifndef HYDRA_TESTS_AUDIO_UTIL_H
 #define HYDRA_TESTS_AUDIO_UTIL_H
@@ -12,7 +13,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "doctest.h"
@@ -99,6 +102,38 @@ inline hydra::audio::DecodedAudio make_ramp(int frames) {
         a.samples[i * 2 + 1] = static_cast<float>(i) + 0.5f;
     }
     return a;
+}
+
+// Plays a buffer that is already decoded, for a Playhead under test. Hydra
+// itself plays a StreamMix; only tests hold a whole DecodedAudio.
+class BufferSource : public hydra::audio::MixSource {
+public:
+    explicit BufferSource(hydra::audio::DecodedAudio audio)
+        : audio_(std::move(audio)), length_(audio_.frames()) {}
+    int channels() const override { return audio_.channels; }
+    int sample_rate() const override { return audio_.sample_rate; }
+    int64_t length_frames() const override { return length_; }
+    int64_t read(float* out, int64_t frames) override {
+        const int64_t n = std::clamp<int64_t>(length_ - pos_, 0, std::max<int64_t>(frames, 0));
+        if (n > 0) {
+            const std::size_t ch = static_cast<std::size_t>(audio_.channels);
+            std::memcpy(out, audio_.samples.data() + static_cast<std::size_t>(pos_) * ch,
+                        static_cast<std::size_t>(n) * ch * sizeof(float));
+            pos_ += n;
+        }
+        return n;
+    }
+    void seek(int64_t frame) override { pos_ = std::clamp<int64_t>(frame, 0, length_); }
+
+private:
+    hydra::audio::DecodedAudio audio_;
+    int64_t length_ = 0;
+    int64_t pos_ = 0;
+};
+
+// make_ramp(frames) as a source a Playhead plays.
+inline std::unique_ptr<hydra::audio::MixSource> ramp_source(int frames) {
+    return std::make_unique<BufferSource>(make_ramp(frames));
 }
 
 // Reads `frames` frames from `src` (or to its end) in `block`-frame pieces.

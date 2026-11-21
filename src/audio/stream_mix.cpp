@@ -14,24 +14,6 @@
 
 namespace hydra::audio {
 
-// ---- BufferSource ---------------------------------------------------------
-
-BufferSource::BufferSource(DecodedAudio audio)
-    : audio_(std::move(audio)), length_(audio_.frames()) {}
-
-int64_t BufferSource::read(float* out, int64_t frames) {
-    const int64_t n = std::clamp<int64_t>(length_ - pos_, 0, std::max<int64_t>(frames, 0));
-    if (n > 0) {
-        const std::size_t ch = static_cast<std::size_t>(audio_.channels);
-        std::memcpy(out, audio_.samples.data() + static_cast<std::size_t>(pos_) * ch,
-                    static_cast<std::size_t>(n) * ch * sizeof(float));
-        pos_ += n;
-    }
-    return n;
-}
-
-void BufferSource::seek(int64_t frame) { pos_ = std::clamp<int64_t>(frame, 0, length_); }
-
 // ---- StreamMix ------------------------------------------------------------
 
 // One stem: its reader, and the converter that turns the reader's frames into
