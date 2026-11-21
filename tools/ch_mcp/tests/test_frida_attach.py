@@ -435,7 +435,7 @@ class DetachTest(Workspace):
         # One line, naming the cap that passed and how many messages came.
         self.assertEqual(len(self.lines), 1)
         self.assertRegex(self.lines[0], rf"\bcap of {SHORT_CAP_S:g} s\b")
-        self.assertRegex(self.lines[0], r"\b1 messages seen\b")
+        self.assertRegex(self.lines[0], r"\b1 message seen\b")
 
     def test_attaches_to_the_game_by_process_name(self):
         # The name the running game had in a real run, read from that run's
@@ -1258,6 +1258,7 @@ class SummaryTest(Workspace):
         self.assertEqual(code, 0)
         # The first line names the cap and how many messages came.
         self.assertRegex(self.lines[0], rf"\bcap of {SHORT_CAP_S:g} s\b")
+        self.assertGreater(len(msgs), 1)
         self.assertRegex(self.lines[0], rf"\b{len(msgs)} messages seen\b")
         self.summary_checks(self.lines[1:6], [m["payload"] for m in msgs],
                             FA.END_CAP)

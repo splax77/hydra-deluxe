@@ -1676,16 +1676,17 @@ class GameTools:
         writer that failed leaves the log to one whole write of the rows."""
         cap_s = C.LOG_WRITER_CAP_S
         rows = list(play.rows)
+        counted = f"{len(rows)} row{'' if len(rows) == 1 else 's'}"
         if not play.writer.stop(cap_s):
             return (f"press log: {play.log_path} may lack its last rows: its writer "
                     f"did not finish within {cap_s:g} s; this status holds all "
-                    f"{len(rows)} rows")
+                    f"{counted}")
         if play.writer.error is not None:
             try:
                 play_chart.write_press_log(play.log_path, rows)
             except OSError as e:
                 return f"press log not written to {play.log_path}: {e}"
-        return f"press log: {play.log_path} ({len(rows)} rows)"
+        return f"press log: {play.log_path} ({counted})"
 
     @staticmethod
     def _stop_reason(play: _PlaySession) -> str:
@@ -1735,7 +1736,9 @@ class GameTools:
                 elif presses_sent == result.sent:
                     sent = f"sent {result.sent} presses for {chords}"
                 else:
-                    sent = f"sent {result.sent} messages ({presses_sent} presses) for {chords}"
+                    messages = f"{result.sent} message{'' if result.sent == 1 else 's'}"
+                    presses = f"{presses_sent} press{'' if presses_sent == 1 else 'es'}"
+                    sent = f"sent {messages} ({presses}) for {chords}"
                 lines.append(sent + (f", declined {result.declined}" if result.declined else ""))
                 lines.append(dropped_line(rows))
                 if jumped:
