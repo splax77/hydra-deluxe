@@ -13,7 +13,7 @@
 #include "app/config.h"          // Settings: the sp_cap setting's floor
 #include "app/display_format.h"  // clock_str, kFactSeparator
 #include "core/replay.h"
-#include "core/scoring.h"  // solo_bonus, solo_note_count
+#include "core/scoring.h"  // solo_figures
 
 namespace hydra::app {
 
@@ -328,18 +328,20 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> song_len
         }
     }
     // Solo spans: one per section the song names (Song::solo_sections), from
-    // its first chord to its last. Beside each, the notes the solo box
-    // counts (solo_note_count) and the bonus (solo_bonus).
-    for (const SoloSection& s : song.solo_sections) {
+    // its first chord to its last. Beside each, the engine's figures for that
+    // solo (solo_figures), each step placed at its chord's onset.
+    const std::vector<SoloFigures> figures = solo_figures(song);
+    for (size_t k = 0; k < song.solo_sections.size(); ++k) {
+        const SoloSection& s = song.solo_sections[k];
         scene.solos.push_back(span_from_ticks(song, song.sequence[s.first].timecode.ticks(),
                                               song.sequence[s.last].timecode.ticks()));
+        const SoloFigures& f = figures[k];
         PreviewSoloNotes notes;
-        for (size_t i = s.first; i <= s.last; ++i) {
-            const SongTimestamp& ts = song.sequence[i];
-            notes.bonus += solo_bonus(ts.chord, ts.flag_solo);
-            notes.notes += solo_note_count(ts.chord, ts.flag_solo);
-            notes.steps.push_back({ts.timecode.ms(), notes.notes});
-        }
+        notes.notes = f.notes;
+        notes.bonus = f.bonus;
+        notes.steps.reserve(f.steps.size());
+        for (const SoloFigures::Step& step : f.steps)
+            notes.steps.push_back({song.sequence[step.chord].timecode.ms(), step.notes_hit});
         scene.solo_notes.push_back(std::move(notes));
     }
     // Drum lanes: each one's span as the chart wrote it, lighting the pads

@@ -78,6 +78,26 @@ int solo_note_count(const Chord& chord, bool flag_solo);
 // the chord is in a solo section (flag_solo), else 0.
 int solo_bonus(const Chord& chord, bool flag_solo);
 
+// One solo section's figures (Song::solo_sections), the one walk over a
+// solo's chords. The Preview's solo box shows them and the replay withholds
+// the running bonus until the section's last chord; each chord's share is
+// solo_note_count's and solo_bonus's.
+struct SoloFigures {
+    // One of the section's chords, at Song::sequence position `chord`: the
+    // section's notes and bonus once this chord is hit, this chord's included.
+    struct Step {
+        size_t chord = 0;
+        int notes_hit = 0;
+        int64_t bonus_so_far = 0;
+    };
+    std::vector<Step> steps;  // one per chord, first to last; never empty
+    int notes = 0;            // the solo's note total: the last step's notes_hit
+    int64_t bonus = 0;        // the solo's bonus: the last step's bonus_so_far
+};
+
+// The figures of every solo section in `song`, in Song::solo_sections order.
+std::vector<SoloFigures> solo_figures(const Song& song);
+
 // One chord's points, the same on every path: category_scores at the chart's
 // running combo, plus solo_bonus. Only the doubling depends on the path, and
 // core::backend_row_value prices that from `sp` and `sqout_sp`.

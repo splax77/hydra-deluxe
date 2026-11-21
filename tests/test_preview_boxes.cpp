@@ -1151,6 +1151,65 @@ TEST_CASE("solo box: the same with or without a path") {
     }
 }
 
+TEST_CASE("solo box: reads the engine's solo_figures, with or without a path") {
+    // Snakeskin Boots' one solo. The box's figures are solo_figures' (core/
+    // scoring.h), and its "+N" is the bonus the replay pays over the solo:
+    // the sum of its rows' points.solo. The box built with no path reads the
+    // same lines as the box built with the chart's best path.
+    const AnalysisSettings cfg = Settings().to_analysis_settings();
+    const std::string chart = corpus::chart_named("Jack Wall - Snakeskin Boots");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    REQUIRE(song.solo_sections.size() == 1);
+    const SoloSection& sec = song.solo_sections.front();
+    REQUIRE(sec.last > sec.first);
+    const std::vector<SoloFigures> figures = solo_figures(song);
+    REQUIRE(figures.size() == 1);
+    const SoloFigures& f = figures.front();
+
+    // What the replay pays over the solo, on the chart's best path.
+    const Path& best = corpus::analyzed(chart, cfg).best_path();
+    const ReplayResult r = replay_stored_path(song, best, cfg.rules).result;
+    REQUIRE(r.chords.size() == song.sequence.size());
+    int64_t paid = 0;
+    for (size_t i = sec.first; i <= sec.last; ++i) paid += r.chords[i].points.solo;
+    REQUIRE(paid > 0);
+    CHECK(f.bonus == paid);
+
+    const PreviewScene bare = build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules);
+    const PreviewScene with_path = build_preview_scene(song, &best, cfg.sp_cap, cfg.rules);
+    REQUIRE(bare.solo_notes.size() == 1);
+    const PreviewSoloNotes& shown = bare.solo_notes.front();
+    CHECK(shown.notes == f.notes);
+    CHECK(shown.bonus == f.bonus);
+    REQUIRE(shown.steps.size() == f.steps.size());
+    for (size_t j = 0; j < f.steps.size(); ++j) {
+        INFO("step " << j);
+        CHECK(shown.steps[j].ms == song.sequence[f.steps[j].chord].timecode.ms());
+        CHECK(shown.steps[j].notes_hit == f.steps[j].notes_hit);
+    }
+
+    // On each chord before the last: the percent and count of the notes hit
+    // so far, solo_percent over the figures' two counts.
+    for (size_t j = 0; j + 1 < f.steps.size(); ++j) {
+        const double ms = song.sequence[f.steps[j].chord].timecode.ms();
+        INFO("chord " << f.steps[j].chord << " at " << ms << " ms");
+        const PreviewSoloBox a = solo_box_at(bare, ms);
+        const PreviewSoloBox b = solo_box_at(with_path, ms);
+        CHECK(a.headline == std::to_string(solo_percent(f.steps[j].notes_hit, f.notes)) + "%");
+        CHECK(a.detail ==
+              group_thousands(f.steps[j].notes_hit) + " / " + counted(f.notes, "note", "notes"));
+        CHECK(a.shown == b.shown);
+        CHECK(a.headline == b.headline);
+        CHECK(a.detail == b.detail);
+    }
+    // kSoloResultMs after the last chord: the bonus the replay paid.
+    const double last_ms = song.sequence[sec.last].timecode.ms();
+    const double bonus_ms = moment_after(last_ms, kSoloResultMs);
+    CHECK(solo_box_at(bare, bonus_ms).headline == "+" + group_thousands(paid));
+    CHECK(solo_box_at(with_path, bonus_ms).headline == "+" + group_thousands(paid));
+}
+
 TEST_CASE("solo box: none on a chart without solos") {
     // The fill song names no solo, so at none of its chords is there a box.
     const Song song = make_fill_song();

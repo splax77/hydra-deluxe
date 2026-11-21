@@ -211,6 +211,42 @@ TEST_CASE("replay: a solo's bonus reaches the on-screen total on the section's l
     CHECK(held_somewhere);
 }
 
+// solo_figures (core/scoring.h) is the one walk over a solo's chords. On a
+// corpus chart with a solo, each step's running bonus is what the replay's
+// rows paid over the solo up to that chord, the solo's bonus is the whole of
+// it, and the on-screen total holds back exactly the running bonus until the
+// solo's last chord.
+TEST_CASE("solo_figures: each solo's bonus is what the replay pays over it") {
+    const std::string chart = corpus::chart_named("Jack Wall - Snakeskin Boots");
+    REQUIRE_FALSE(chart.empty());
+    const Song& song = corpus::song(chart, ChartReading{});
+    REQUIRE_FALSE(song.solo_sections.empty());
+    const std::vector<SoloFigures> figures = solo_figures(song);
+    REQUIRE(figures.size() == song.solo_sections.size());
+
+    const ReplayResult r = replay_path(song, {});
+    REQUIRE(r.chords.size() == song.sequence.size());
+    for (size_t k = 0; k < figures.size(); ++k) {
+        CAPTURE(k);
+        const SoloSection& sec = song.solo_sections[k];
+        const SoloFigures& f = figures[k];
+        REQUIRE(f.steps.size() == sec.last - sec.first + 1);
+        int64_t paid = 0;
+        for (size_t i = sec.first; i <= sec.last; ++i) {
+            CAPTURE(i);
+            const SoloFigures::Step& step = f.steps[i - sec.first];
+            CHECK(step.chord == i);
+            paid += r.chords[i].points.solo;
+            CHECK(step.bonus_so_far == paid);
+            const int64_t held = r.chords[i].cum.total() - r.chords[i].cum_onscreen_total;
+            CHECK(held == (i == sec.last ? 0 : paid));
+        }
+        CHECK(paid > 0);
+        CHECK(f.bonus == paid);
+        CHECK(f.notes == f.steps.back().notes_hit);
+    }
+}
+
 // A targeted search is only useful if it gives back the same path the ordinary
 // search would have found. So take every path the ordinary search DID find,
 // hand its activation ticks back to search_target, and require the engine to

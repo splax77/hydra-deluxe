@@ -254,18 +254,17 @@ struct PreviewScore {
 
 // One solo section's notes, as the solo box counts them. Path-free: a Hydra
 // path hits every note, so the notes hit at a moment are those of the chords
-// struck by then (struck_at).
+// struck by then (struck_at). Every figure is the engine's SoloFigures
+// (core/scoring.h, solo_figures); this adds only each chord's onset.
 struct PreviewSoloNotes {
-    // One of the solo's chords: its onset, and the solo's notes hit once it
-    // is struck, this chord's included. A chord's notes are
-    // solo_note_count's (core/scoring.h).
+    // One of the solo's chords: its onset, and SoloFigures::Step::notes_hit.
     struct Step {
         double ms = 0.0;
         int notes_hit = 0;
     };
     std::vector<Step> steps;  // in time order, never empty
-    int notes = 0;            // the solo's note total: the last step's notes_hit
-    int64_t bonus = 0;        // solo_bonus summed over the solo's chords
+    int notes = 0;            // SoloFigures::notes
+    int64_t bonus = 0;        // SoloFigures::bonus
 };
 
 // The whole chart as the Preview draws it. Notes are in tick order. Spans are
