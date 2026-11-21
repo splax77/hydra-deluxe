@@ -2109,7 +2109,7 @@
       "added_by": "UPD-T2a",
       "pattern": "638FCDD7-88E0-438D-9C52-388C6C9CF4E3|\\bInstallLocation\\b",
       "must_match": [
-        "L\"SOFTWARE\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Uninstall\\\\{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1\";",
+        "constexpr wchar_t kHydraAppId[] = L\"638FCDD7-88E0-438D-9C52-388C6C9CF4E3\";",
         "RegGetValueW(key, nullptr, L\"InstallLocation\", RRF_RT_REG_SZ, nullptr, buf, &n);"
       ],
       "must_not_match": [
@@ -2119,8 +2119,8 @@
       "owner_lines": [
         {
           "file": "src/app/config.cpp",
-          "line_text": "L\"{638FCDD7-88E0-438D-9C52-388C6C9CF4E3}_is1\",",
-          "why": "installed_by_setup, the owner: the installer's uninstall key for Hydra's frozen AppId"
+          "line_text": "const wchar_t kInstallerAppId[] = L\"638FCDD7-88E0-438D-9C52-388C6C9CF4E3\";",
+          "why": "installed_by_setup, the owner: Hydra's frozen installer AppId, which names the uninstall key it opens"
         },
         {
           "file": "src/app/config.cpp",
