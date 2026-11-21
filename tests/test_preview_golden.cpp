@@ -252,9 +252,10 @@ void write_delta_csvs(const std::vector<float>& delta, int ow, int oh, float d) 
 
 }  // namespace
 
-// The budget arithmetic on a made-up delta map, with golden.json's own limits:
-// a 2 x 2 tile map whose first tile is all masked, and whose last tile holds
-// the only pixels over the per-pixel line.
+// The budget counting on a delta map built for it, with golden.json's own
+// limits: a 2 x 2 tile map whose first tile is all masked. The pixels over the
+// per-pixel line are counted from those limits, and each share is checked
+// against percent_over() on the counts the map was built with.
 TEST_CASE("preview golden: over_share counts one bad tile against golden.json's limits") {
     const nlohmann::json spec =
         nlohmann::json::parse(read_file_text(kFixtureDir + "/golden.json"));
@@ -274,17 +275,26 @@ TEST_CASE("preview golden: over_share counts one bad tile against golden.json's 
         CHECK(s.frame_percent == 0.0);
     }
 
+    // A whole tile, and the unmasked pixels of the map: three tiles.
+    const size_t tile_pixels = static_cast<size_t>(kTile) * kTile;
+    const size_t unmasked = 3 * tile_pixels;
+
     SUBCASE("one bad tile") {
-        // 48 pixels over the line in tile (1, 1), and one exactly on it,
-        // which is not over.
-        for (int i = 0; i < 48; ++i) at(kTile + i % kTile, kTile + i / kTile) = pixel_delta + 1.0f;
+        // The fewest pixels over the line that put a tile over golden.json's
+        // tile budget, in tile (1, 1), and one exactly on the line, which is
+        // not over. The bad pixels fill rows from the tile's top, so the one
+        // on the line, in the tile's last row, stays apart from them.
+        const size_t bad = static_cast<size_t>(std::floor(tile_percent / 100.0 * static_cast<double>(tile_pixels))) + 1;
+        REQUIRE(bad <= tile_pixels - kTile);
+        for (size_t i = 0; i < bad; ++i)
+            at(kTile + static_cast<int>(i % kTile), kTile + static_cast<int>(i / kTile)) = pixel_delta + 1.0f;
         at(kTile, oh - 1) = pixel_delta;
 
         const OverShare s = over_share(delta, ow, oh, pixel_delta);
         CHECK(s.worst_tx == 1);
         CHECK(s.worst_ty == 1);
-        CHECK(s.worst_tile_percent == doctest::Approx(18.75));  // 48 of 256
-        CHECK(s.frame_percent == doctest::Approx(6.25));        // 48 of 768 unmasked
+        CHECK(s.worst_tile_percent == doctest::Approx(percent_over(bad, tile_pixels)));
+        CHECK(s.frame_percent == doctest::Approx(percent_over(bad, unmasked)));
         CHECK(s.worst_tile_percent > tile_percent);
         CHECK(s.frame_percent > frame_percent);
     }
@@ -294,8 +304,8 @@ TEST_CASE("preview golden: over_share counts one bad tile against golden.json's 
         const OverShare s = over_share(delta, ow, oh, pixel_delta);
         CHECK(s.worst_tx == 1);
         CHECK(s.worst_ty == 0);
-        CHECK(s.worst_tile_percent == doctest::Approx(0.390625));  // 1 of 256
-        CHECK(s.frame_percent == doctest::Approx(0.1302083));      // 1 of 768
+        CHECK(s.worst_tile_percent == doctest::Approx(percent_over(1, tile_pixels)));
+        CHECK(s.frame_percent == doctest::Approx(percent_over(1, unmasked)));
         CHECK(s.worst_tile_percent <= tile_percent);
         CHECK(s.frame_percent > frame_percent);
     }
