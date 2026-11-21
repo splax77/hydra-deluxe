@@ -2,6 +2,10 @@
 
 A handoff is the note one session leaves so the next session can carry on. It is another agent's summary, so CLAUDE.md rule 9 applies to it: before any new work starts from a handoff, every claim in it is checked against the code. This page says what shape a handoff takes, so its claims can be checked, and how the check runs. The `/handoff` command (`.claude/commands/handoff.md`) writes one in this shape.
 
+## A handoff is never a source
+
+A handoff proves nothing. It exists only as a summary the next session can pick up. So no file names a handoff: not a doc, a plan, an audit record, a session card, a memory note or a code comment. A fact a session learns from a handoff is checked against the code, a ruling or a card, and that is what gets cited. A card may say a session ended with a handoff, but it gives no path. Only the handoff's own folder names handoff files. `tools/check_pointers.py` refuses a dated handoff path anywhere else (`handoff_cites`).
+
 ## Where a handoff lives
 
 A handoff is a markdown file at `docs/handoffs/<YYYY-MM-DD>-<slug>-handoff.md`, committed on a branch. The date in the name is the day it was written. The checker reads that date to decide what "changed since" means.

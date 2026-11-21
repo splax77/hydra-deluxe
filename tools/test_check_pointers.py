@@ -309,5 +309,44 @@ class TestPointers(Base):
         self.assertIn(refusal, err)
 
 
+class TestHandoffCites(Base):
+    """No file may name a handoff (check_pointers.handoff_cites)."""
+
+    def commit(self, rel, text):
+        write(os.path.join(self.repo, rel), text)
+        git(self.repo, "add", rel)
+        git(self.repo, "commit", "-q", "-m", rel)
+
+    def cites(self, out):
+        return [line for line in self.broken(out) if line.endswith("(cites a handoff)")]
+
+    def test_a_tracked_file_naming_a_handoff_is_refused_even_with_a_git_show(self):
+        self.commit("src/code.cpp", "// see docs/handoffs/2026-10-07-memory-audit.md\n")
+        self.commit("docs/plan.md", "Read `docs/handoffs/2026-11-01-x-handoff.md` (removed; "
+                    "`git show abc1234:docs/handoffs/2026-11-01-x-handoff.md`).\n")
+        code, out, err = self.run_check()
+        self.assertEqual(code, 1, out + err)
+        self.assertEqual(sorted(self.cites(out)), [
+            "docs/plan.md:1: docs/handoffs/2026-11-01-x-handoff.md (cites a handoff)",
+            "docs/plan.md:1: docs/handoffs/2026-11-01-x-handoff.md (cites a handoff)",
+            "src/code.cpp:1: docs/handoffs/2026-10-07-memory-audit.md (cites a handoff)",
+        ], out)
+        self.assertIn("handoff cites: 3", out)
+
+    def test_a_memory_note_naming_a_handoff_is_refused(self):
+        self.note("From docs\\handoffs\\2026-11-02-y-handoff.md we learned it.\n")
+        code, out, err = self.run_check()
+        self.assertEqual(self.cites(out), [SHOWN + ":1: docs\\handoffs\\2026-11-02-y-handoff.md (cites a handoff)"],
+                         out + err)
+
+    def test_the_handoffs_folder_and_a_placeholder_pass(self):
+        self.commit("docs/handoffs/2026-11-03-z-handoff.md", "Next: docs/handoffs/2026-11-01-x-handoff.md\n")
+        self.commit("docs/how.md", "Write `docs/handoffs/<YYYY-MM-DD>-<slug>-handoff.md`.\n")
+        code, out, err = self.run_check()
+        self.assertEqual(self.cites(out), [], out + err)
+        self.assertEqual(code, 0, out + err)
+        self.assertIn("handoff cites: 0", out)
+
+
 if __name__ == "__main__":
     unittest.main()

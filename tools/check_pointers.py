@@ -11,8 +11,10 @@ is_pointer() which names count. A pointer to a file that left the repo is not br
 own line says how to read the file from git history (Pointers.has_fallback()). On the rulings
 pages a pointer inside the user's quoted words is not checked, since those words stay as the
 user typed them (in_quotes()). Each broken pointer prints as
-"file:line: pointer (missing | retired | found at <other place>)", then one summary line.
-Exit 0 when nothing is broken, 1 when something is, 2 on a bad argument. With
+"file:line: pointer (missing | retired | found at <other place>)". Apart from those pointers,
+handoff_cites() reads every tracked file and memory note for a line that names a handoff, which
+no file may do, and prints each as "file:line: path (cites a handoff)". One summary line ends it.
+Exit 0 when nothing is broken and nothing cites a handoff, 1 otherwise, 2 on a bad argument. With
 --session-start (the SessionStart hook's form) it always exits 0 and prints a hook reply
 only when something is broken, or when the check itself failed.
 """
@@ -40,6 +42,11 @@ GIT_SHOW = re.compile(r"`git show ([0-9a-fA-F]{7,40}):([^`\s]+)`")
 HOOKS_REPO_WORDS = "hooks repo"
 # The folder of the rulings pages, below the repo root; they quote the user word for word.
 RULINGS_FOLDER = os.path.join("docs", "agents", "rulings")
+# Where handoffs live, below the repo root, and the dated name a written handoff file takes
+# there. A placeholder date such as <YYYY-MM-DD> is no handoff, so it does not match.
+HANDOFFS_FOLDER = "docs/handoffs/"
+HANDOFF_DATED = r"docs[/\\]handoffs[/\\][0-9]{4}-[0-9]{2}-[0-9]{2}-"  # also git grep -E's form
+HANDOFF_PATH = re.compile(HANDOFF_DATED + r"[^\s`'\")\]]*")
 
 
 def _slashes(p):
@@ -263,8 +270,33 @@ def check(repo_root, memory, gates):
     return broken, checked
 
 
-def summary(broken, checked):
-    return "pointers: %d checked, %d broken" % (checked, len(broken))
+def handoff_cites(repo_root, memory):
+    """Every line outside the handoffs folder that names a dated handoff file, as
+    "file:line: <path> (cites a handoff)". A handoff is never a source (docs/agents/handoff.md,
+    "A handoff is never a source"), so no wording and no git show beside it makes such a line
+    pass. It reads every tracked text file through git grep (the start-of-session hook has a
+    few seconds) and the top-level memory notes."""
+    code, out = check_handoff.git(repo_root, ["grep", "-n", "-I", "-E", HANDOFF_DATED,
+                                              "--", ".", ":!" + HANDOFFS_FOLDER])[:2]
+    if code not in (0, 1):  # 1 is git grep's "nothing found"
+        raise RuntimeError("git grep failed in %s" % repo_root)
+    cites = []
+    for hit in out.splitlines():
+        shown, n, line = hit.split(":", 2)
+        for m in HANDOFF_PATH.finditer(line):
+            cites.append("%s:%s: %s (cites a handoff)" % (shown, n, m.group(0)))
+    for shown, full in documents(repo_root, memory):
+        if _inside(repo_root, full):
+            continue
+        with open(full, encoding="utf-8", errors="replace") as f:
+            for n, line in enumerate(f.read().splitlines(), 1):
+                for m in HANDOFF_PATH.finditer(line):
+                    cites.append("%s:%d: %s (cites a handoff)" % (shown, n, m.group(0)))
+    return cites
+
+
+def summary(broken, checked, cites=()):
+    return "pointers: %d checked, %d broken; handoff cites: %d" % (checked, len(broken), len(cites))
 
 
 def folders(args):
@@ -290,16 +322,18 @@ def main(argv):
     args = ap.parse_args(argv)
     if args.session_start:
         try:
-            broken, checked = check(folders(args), args.memory, args.gates)
+            root = folders(args)
+            broken, checked = check(root, args.memory, args.gates)
+            cites = handoff_cites(root, args.memory)
         except Exception as e:  # a hook that fails says so and never blocks the session
             print(json.dumps({"systemMessage": "check_pointers.py could not check the doc pointers, so "
                               "nothing was checked: %s: %s" % (type(e).__name__, e)}))
             return 0
-        if broken:
-            context = ("Broken file pointers in the agent docs and memory notes "
-                       "(tools/check_pointers.py; the memory notes are in %s). "
+        if broken or cites:
+            context = ("Broken file pointers in the agent docs and memory notes, and lines that "
+                       "cite a handoff (tools/check_pointers.py; the memory notes are in %s). "
                        "Fix them alongside the user's request:\n" % args.memory
-                       + "\n".join(broken) + "\n" + summary(broken, checked))
+                       + "\n".join(broken + cites) + "\n" + summary(broken, checked, cites))
             print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart",
                                                      "additionalContext": context}}))
         return 0
@@ -308,10 +342,11 @@ def main(argv):
     except ValueError as e:
         ap.error(str(e))
     broken, checked = check(root, args.memory, args.gates)
-    for line in broken:
+    cites = handoff_cites(root, args.memory)
+    for line in broken + cites:
         print(line)
-    print(summary(broken, checked))
-    return 1 if broken else 0
+    print(summary(broken, checked, cites))
+    return 1 if broken or cites else 0
 
 
 if __name__ == "__main__":
