@@ -25,14 +25,9 @@ namespace {
 
 using test::act_ticks;
 
-// The song of corpus chart `chart` under `cfg`. Every chart the corpus scan
-// lists has Expert drum notes, so a chart that loads empty fails here by name
-// instead of being passed over.
-const Song& song_with_notes(const std::string& chart, const app::AnalysisSettings& cfg) {
-    const Song& song = corpus::song(chart, cfg.reading());
-    REQUIRE_MESSAGE(!song.is_empty(), chart << " loads with no notes");
-    return song;
-}
+// The corpus loops below pass over no chart: corpus::analyzed checks each
+// chart with require_notes, so a chart that loads with no notes throws
+// NoNotesError and fails the case, with the chart captured first.
 
 // The refusal `read` throws: a KindedError of kind PathTextRefused whose text
 // names each of `names` (such as a window's position and its token). The wording
@@ -62,14 +57,14 @@ void check_every_kept_path_round_trips(
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int paths = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = song_with_notes(chart, cfg);
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading());
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         std::vector<const Path*> kept = rec.all_paths();
         for (const Path* p : rec.all_allzero_paths()) kept.push_back(p);
         for (const Path* p : kept) {
             ++paths;
             const std::string text = write(*p, rec);
-            CAPTURE(chart);
             CAPTURE(text);
             const Path got = paths_from_pathstring(song, cfg, text);
             CHECK(act_ticks(got) == act_ticks(*p));
@@ -100,11 +95,11 @@ TEST_CASE("pathstring read: a token no fill can place is refused with its positi
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int checked = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = song_with_notes(chart, cfg);
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading());
         const Path& best = corpus::analyzed(chart, cfg).best_path();
         if (best.walk_activations().size() < 2) continue;
         ++checked;
-        CAPTURE(chart);
         const std::string text = best.walk_activations()[0].notationstr() + " 99";
         CAPTURE(text);
         check_refused_naming([&] { return paths_from_pathstring(song, cfg, text); },
@@ -172,12 +167,12 @@ TEST_CASE("pathstring read: a long-text window no fill can place is refused with
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int checked = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = song_with_notes(chart, cfg);
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading());
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const Path& best = rec.best_path();
         if (best.walk_activations().size() != 2) continue;
         ++checked;
-        CAPTURE(chart);
         std::string text = best.pathstring_verbose(rec.multsqueezes);
         const std::string second = best.walk_activations()[1].notationstr_verbose();
         const size_t at = text.rfind(second + std::string(kPathSectionSeparator));
@@ -200,7 +195,8 @@ TEST_CASE("pathstring read: one graph reused for every read gives back each kept
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int paths = 0;
     for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = song_with_notes(chart, cfg);
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading());
         const HydraRecord& rec = corpus::analyzed(chart, cfg);
         const ScoreGraph graph = search_graph(song, cfg);
         std::vector<const Path*> kept = rec.all_paths();
@@ -208,7 +204,6 @@ TEST_CASE("pathstring read: one graph reused for every read gives back each kept
         for (const Path* p : kept) {
             for (const std::string& text : {p->pathstring(), p->pathstring_verbose(rec.multsqueezes)}) {
                 ++paths;
-                CAPTURE(chart);
                 CAPTURE(text);
                 const Path by_graph = paths_from_pathstring_on_graph(song, graph, text);
                 CHECK(path_identity(by_graph) == path_identity(*p));
@@ -224,7 +219,7 @@ TEST_CASE("pathstring read: one graph reused for every read gives back each kept
 // its own long text for a path with no windows, as the reader reads it.
 TEST_CASE("pathstring read: long text with the wrong number of sections is refused") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const Song& song = song_with_notes(corpus::first_chart_with_notes(), cfg);
+    const Song& song = corpus::song(corpus::first_chart_with_notes(), cfg.reading());
     const std::string none_long = Path().pathstring_verbose({});
     size_t writer_sections = 1;
     for (size_t at = none_long.find(kPathSectionSeparator); at != std::string::npos;
