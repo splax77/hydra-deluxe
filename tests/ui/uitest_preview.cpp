@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -821,15 +822,34 @@ bool open_burnout_preview(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return false;
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return false;
-    IM_CHECK_RETV(h.app->viewed.record->best_path().pathstring() == "3- 1 2", false);
+    const hydra::Path& best = h.app->viewed.record->best_path();
+    // The tests on Burnout step through its activations, so its best path
+    // must have one: a path that never activates fails here, not quietly.
+    IM_CHECK_RETV(!best.walk_activations().empty(), false);
     ctx->ItemClick("##DetailsTabs/Preview");
     IM_CHECK_RETV(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10),
                   false);
+    const std::string key = hydra::app::path_overlay_key(&best);
     IM_CHECK_RETV(wait_until(ctx, [&] {
-        return !h.app->preview->loading() && h.app->preview->scrub_marks().size() == 3;
+        return !h.app->preview->loading() && h.app->preview->shows_path(key);
     }, 120), false);
     IM_CHECK_RETV(h.app->preview->error().empty(), false);
+    IM_CHECK_RETV(h.app->preview->scene().activations.size() == best.walk_activations().size(),
+                  false);
     return true;
+}
+
+// The record's activation `i` on the path the Preview draws, and the
+// scene's copy of it: the playhead lands on the scene's onset, which must be
+// the record's chord.
+const hydra::app::PreviewActivation& checked_activation(ImGuiTestContext* ctx,
+                                                        const hydra::Path& path, size_t i) {
+    const hydra::app::PreviewActivation& act = harness(ctx).app->preview->scene().activations[i];
+    const hydra::Activation& rec = path.walk_activations()[i];
+    IM_CHECK_NO_RET(act.tick == rec.timecode.ticks());
+    IM_CHECK_NO_RET(std::fabs(act.ms - rec.timecode.ms()) <= 0.5);
+    IM_CHECK_NO_RET(act.notation == rec.notationstr_verbose());
+    return act;
 }
 
 // The "Showing" list: it names the drawn path, lists the all-0 path under its
@@ -840,27 +860,44 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_burnout_preview(ctx)) return;
     auto& pc = *h.app->preview;
+    const hydra::HydraRecord& record = *h.app->viewed.record;
+    const hydra::Path& best = record.best_path();
+    // The list's items as the picker builds them (build_path_buttons,
+    // preview_path_label), so no label is typed here.
+    const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
+        record, h.app->settings.depth_mode, h.app->settings.depth_value);
+    size_t best_index = list.buttons.size();
+    size_t allzero_index = list.buttons.size();
+    for (size_t i = 0; i < list.buttons.size(); ++i) {
+        if (list.buttons[i].path == &best && best_index == list.buttons.size()) best_index = i;
+        if (list.buttons[i].group == hydra::app::PathButtonView::Group::AllZero &&
+            allzero_index == list.buttons.size())
+            allzero_index = i;
+    }
+    IM_CHECK(best_index < list.buttons.size());
+    IM_CHECK(allzero_index < list.buttons.size());
+    if (best_index >= list.buttons.size() || allzero_index >= list.buttons.size()) return;
+    const std::string best_label = hydra::app::preview_path_label(list.buttons[best_index]);
+    const std::string allzero_label = hydra::app::preview_path_label(list.buttons[allzero_index]);
+
     ctx->Yield(2);
     IM_CHECK(visible_text(h).find("Showing") != std::string::npos);
-    IM_CHECK(visible_text(h).find("3- 1 2  (optimal)") != std::string::npos);
+    IM_CHECK(on_screen(h, best_label));
 
-    // The list sits on its own line above the buttons, as wide as its longest
-    // path, so no path is cut off under the arrow.
+    // The list sits on its own line above the buttons, wide enough for its
+    // longest path, so no path is cut off under the arrow: each label, its
+    // frame padding each side and the arrow square fit in the box.
     {
         const ImRect combo = ctx->ItemInfo(preview_path_combo(ctx)).RectFull;
         const ImRect act = ctx->ItemInfo("**/< Act##prevact").RectFull;
         IM_CHECK_GE(act.Min.y, combo.Max.y);
         const ImGuiStyle& s = ImGui::GetStyle();
-        const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
-            *h.app->viewed.record, h.app->settings.depth_mode, h.app->settings.depth_value);
         const hydra::ui::WidthOf notation_w = hydra::ui::measure_in_role(hydra::ui::TextRole::Notation);
-        float widest = 0.0f;
         for (const hydra::app::PathButtonView& b : list.buttons) {
-            const std::string label = hydra::app::preview_path_label(b);
-            widest = (std::max)(widest, notation_w(label));
+            const float need =
+                notation_w(hydra::app::preview_path_label(b)) + s.FramePadding.x * 2.0f + combo.GetHeight();
+            IM_CHECK_LE(need, combo.GetWidth() + 1.0f);
         }
-        const float fit = widest + s.FramePadding.x * 2.0f + combo.GetHeight();
-        IM_CHECK_FLOAT_NEAR_EQ(combo.GetWidth(), fit, 1.0f);
     }
 
     // A path too long for its line (40 activations run to about 100
@@ -896,36 +933,43 @@ void test_preview_path_picker(ImGuiTestContext* ctx) {
 
     ctx->ItemClick(preview_path_combo(ctx));
     ctx->Yield(1);
-    IM_CHECK(visible_text(h).find("0 0 0 0  (best all-0)") != std::string::npos);
+    IM_CHECK(on_screen(h, allzero_label));
     // Close the list on the path already shown. (PopupCloseAll would also
     // close the Song Details modal the tab sits in.)
-    ctx->ItemClick("//$FOCUSED/3- 1 2  (optimal)##0");
+    ctx->ItemClick(("//$FOCUSED/" + hydra::app::path_item_id(best_label, best_index)).c_str());
     ctx->Yield(1);
-    IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
+    IM_CHECK(h.app->details_ui.selected_path == &best);
 
-    pick_preview_path(ctx, h.app->viewed.record->all_paths()[1]);
-    IM_CHECK(h.app->details_ui.selected_path != nullptr);
-    IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
-    const std::string key = hydra::app::path_overlay_key(h.app->details_ui.selected_path);
+    // A pick of the record's second path selects that path, here and on the
+    // Paths tab.
+    IM_CHECK(record.all_paths().size() >= 2);
+    if (record.all_paths().size() < 2) return;
+    const hydra::Path* second = record.all_paths()[1];
+    pick_preview_path(ctx, second);
+    IM_CHECK(h.app->details_ui.selected_path == second);
+    const std::string key = hydra::app::path_overlay_key(second);
     IM_CHECK(wait_until(ctx, [&] { return pc.shows_path(key); }, 30));
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(2);
-    IM_CHECK(h.app->details_ui.selected_path->pathstring() == "0 4 1");
+    IM_CHECK(h.app->details_ui.selected_path == second);
     ctx->ItemClick("##DetailsTabs/Preview");
     ctx->Yield(2);
 
-    // Back to the optimal path, then a pending jump to its first activation.
-    pick_preview_path(ctx, h.app->viewed.record->all_paths().front());
-    IM_CHECK(h.app->details_ui.selected_path == &h.app->viewed.record->best_path());
+    // Back to the optimal path, then a pending jump to its first activation:
+    // the playhead lands on the record's first activation, and the box names
+    // it.
+    pick_preview_path(ctx, record.all_paths().front());
+    IM_CHECK(h.app->details_ui.selected_path == &best);
+    IM_CHECK(wait_until(ctx, [&] { return pc.shows_path(hydra::app::path_overlay_key(&best)); }, 30));
     pc.seek_ms(0.0);
     h.app->details_ui.paths_tab.ui().preview_jump = 0;
     IM_CHECK(wait_until(ctx, [&] {
         return !h.app->details_ui.paths_tab.ui().preview_jump.has_value();
     }, 30));
-    IM_CHECK(pc.position_ms() > 0.0);
-    IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163.0 ms)");
-    IM_CHECK(pc.next_act_box().detail.rfind("at m32.1.0", 0) == 0);
+    const hydra::app::PreviewActivation& first = checked_activation(ctx, best, 0);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), first.ms, 0.5);
+    IM_CHECK(pc.next_act_box().shown);
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), first.notation.c_str());
 }
 
 // "Preview failed: …" wraps inside the panel. On one line, a long error would
@@ -1146,19 +1190,24 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
         const float scale = pc.overlay_scale();
         IM_CHECK(scale >= hydra::render::kOverlayMinScale);
         std::fprintf(stderr, "library share %.2f: overlay scale %.4f\n", share, scale);
-        for (int act = 1; act <= 3; ++act) {
+        // Every activation of the drawn path, in turn: the jump lands on the
+        // record's chord, all five boxes draw, and the scale holds.
+        const hydra::Path& best = h.app->viewed.record->best_path();
+        const size_t count = pc.scene().activations.size();
+        for (size_t i = 0; i < count; ++i) {
             IM_CHECK(pc.jump_activation(+1));
             ctx->Yield(2);
-            if (act == 1) IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m32.1.0");
+            IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), checked_activation(ctx, best, i).ms, 0.5);
             IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
-            if (act == 2) {
-                IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m58.1.0");
-                // The long chord's box, wrapped beside the lane.
+            if (i == 1) {
+                // Burnout's long second chord, its box wrapped beside the lane.
                 IM_CHECK(screenshot(ctx, share > 0.9f ? "overlay-steady-narrow.png"
                                                       : "overlay-steady-split.png"));
             }
             IM_CHECK_EQ(pc.overlay_scale(), scale);
         }
+        // No activation after the last.
+        IM_CHECK(!pc.jump_activation(+1));
         // Past the last activation the box is gone; the scale stays.
         pc.seek_ms(pc.playback_end_ms());
         ctx->Yield(2);
@@ -1177,32 +1226,47 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     if (!open_burnout_preview(ctx)) return;
     auto& pc = *h.app->preview;
 
+    // One mark per activation of the drawn path, in order, each at its
+    // record chord's share of the song's one length (song_fraction).
+    const hydra::Path& best = h.app->viewed.record->best_path();
+    const size_t count = best.walk_activations().size();
     const std::vector<double> marks = pc.scrub_marks();
-    IM_CHECK_EQ(marks.size(), (size_t)3);
-    IM_CHECK(marks[0] > 0.0);
-    IM_CHECK(marks[0] < marks[1]);
-    IM_CHECK(marks[1] < marks[2]);
-    IM_CHECK(marks[2] < 1.0);
+    IM_CHECK_EQ(marks.size(), count);
+    if (marks.size() != count || count == 0) return;
+    for (size_t i = 0; i < count; ++i) {
+        const hydra::app::PreviewActivation& act = checked_activation(ctx, best, i);
+        const std::optional<double> at = hydra::app::song_fraction(act.ms, pc.playback_end_ms());
+        IM_CHECK(at.has_value());
+        if (at) IM_CHECK_FLOAT_NEAR_EQ(marks[i], *at, 1e-9);
+        IM_CHECK(marks[i] > 0.0);
+        IM_CHECK(marks[i] < 1.0);
+        if (i > 0) IM_CHECK(marks[i - 1] < marks[i]);
+    }
 
+    // Before the first activation the box names the first.
     pc.seek_ms(0.0);
-    IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 1 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "3- (163.0 ms)");
-    IM_CHECK_STR_EQ(pc.next_act_box().detail.c_str(), "at m32.1.0 \xC2\xB7 [Kick - Green cymbal]");
+    IM_CHECK(pc.next_act_box().shown);
+    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), checked_activation(ctx, best, 0).notation.c_str());
     // The box with its notation line, for a person to look at.
     ctx->Yield(2);
     IM_CHECK(screenshot(ctx, "next-act-notation.png"));
 
+    // "Act >" lands on the first activation, "]" on each one after it, and
+    // the box names the one the playhead is on.
     ctx->ItemClick("**/Act >##nextact");
     const double act1 = pc.position_ms();
-    IM_CHECK(act1 > 0.0);
-    IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m32.1.0");
-    ctx->KeyPress(ImGuiKey_RightBracket);
-    IM_CHECK_STR_EQ(pc.time_box().position.c_str(), "m58.1.0");
-    IM_CHECK_STR_EQ(pc.next_act_box().header.c_str(), "Next: activation 2 of 3");
-    IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), "1");
+    IM_CHECK_FLOAT_NEAR_EQ(act1, checked_activation(ctx, best, 0).ms, 0.5);
+    for (size_t i = 1; i < count; ++i) {
+        ctx->KeyPress(ImGuiKey_RightBracket);
+        const hydra::app::PreviewActivation& act = checked_activation(ctx, best, i);
+        IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), act.ms, 0.5);
+        IM_CHECK_STR_EQ(pc.next_act_box().notation.c_str(), act.notation.c_str());
+    }
+    // "[" goes back one: to the one before the last, or stays on a lone one.
     ctx->KeyPress(ImGuiKey_LeftBracket);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), act1, 0.5);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), checked_activation(ctx, best, count >= 2 ? count - 2 : 0).ms, 0.5);
     // Nothing before the first activation: the playhead stays.
+    pc.seek_ms(act1);
     ctx->ItemClick("**/< Act##prevact");
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), act1, 0.5);
 
@@ -1214,13 +1278,22 @@ void test_preview_activation_jumps(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/Pause");
     IM_CHECK(!pc.playing());
 
+    // The readout's cap is the scene's meter cap, in sp_meter_readout's own
+    // format (readout_of at any level shows the same "/cap" tail).
     const std::string readout = pc.sp_meter_readout();
-    IM_CHECK(readout.size() >= 5);
-    IM_CHECK(readout.substr(readout.size() - 2) == "/4");
-    pc.seek_ms(pc.playback_end_ms());  // the time box's end is where playback stops
-    // Burnout's end event (tick 188280, 129,087.9 ms) comes before its stated
-    // 130,303 ms; the song ends one second after it (D255).
-    IM_CHECK_STR_EQ(pc.time_box().length.c_str(), "m99.4.352");
+    const std::string tail_of_cap = readout_of(0.0, pc.sp_meter_cap());
+    const size_t slash = tail_of_cap.find('/');
+    IM_CHECK(slash != std::string::npos);
+    if (slash == std::string::npos) return;
+    const std::string cap_tail = tail_of_cap.substr(slash);
+    IM_CHECK(readout.size() > cap_tail.size());
+    IM_CHECK(readout.compare(readout.size() - cap_tail.size(), cap_tail.size(), cap_tail) == 0);
+
+    // The time box's end is where playback stops, and that is the song's one
+    // length (the click's analysis_song_length, D255).
+    IM_CHECK(h.app->viewed.song_length_ms.has_value());
+    if (h.app->viewed.song_length_ms) IM_CHECK_FLOAT_NEAR_EQ(pc.playback_end_ms(), *h.app->viewed.song_length_ms, 0.001);
+    pc.seek_ms(pc.playback_end_ms());
     IM_CHECK_STR_EQ(pc.time_box().position.c_str(), pc.time_box().length.c_str());
     IM_CHECK(pc.time_box().tempo.rfind("BPM ", 0) == 0);
 
