@@ -68,6 +68,13 @@ inline const std::string& charts_search_hint() {
     return hint;
 }
 
+// The path report window's hint: what path_search_text folds for its rows
+// (app/path_report_view.cpp).
+inline const std::string& path_report_search_hint() {
+    static const std::string hint = search_hint({"song", "artist", "charter", "path notation"});
+    return hint;
+}
+
 // ---- the shared report page -----------------------------------------------
 // The fill page is one stylesheet and one script wrapped around its own
 // title, body markup and PAGE settings (docs/adr/0016). Both stay ASCII, so a
