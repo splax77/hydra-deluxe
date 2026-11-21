@@ -1205,9 +1205,8 @@ void test_panel_headline(ImGuiTestContext* ctx) {
     }, 5));
     text = visible_text(h);
     IM_CHECK(text.find(best.pathstring()) != std::string::npos);
-    IM_CHECK(h.app->viewed.summary.stars.has_value());
-    if (ctx->IsError()) return;
-    IM_CHECK_EQ(*h.app->viewed.summary.stars, hydra::path_stars(best));
+    IM_CHECK(h.app->viewed.summary.has_scored_best_path());
+    IM_CHECK(h.app->viewed.summary.stars == std::optional<int>(hydra::path_stars(best)));
     const std::string facts = std::string("Optimal path") + hydra::app::kFactSeparator +
                               hydra::counted(hydra::path_stars(best), "star", "stars");
     IM_CHECK(text.find(facts) != std::string::npos);
