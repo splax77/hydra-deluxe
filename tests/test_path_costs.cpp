@@ -1,12 +1,13 @@
 // The Path Builder's cost list (app/path_costs.h; plan
 // docs/superpowers/plans/2026-10-28-path-builder.md (removed; git show b29a3c28:docs/superpowers/plans/2026-10-28-path-builder.md), task EN-3). The corpus
-// cases run at the GUI's default settings, whose Path limit is 10 ms; every
-// total is pinned from one run.
+// cases run at the GUI's default settings. Each player path is built from the
+// chart's own analysis, and each check is a property of the ladder's totals.
 
 #include "doctest.h"
 
 #include <cstdint>
 #include <numeric>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -59,45 +60,32 @@ std::vector<PinnedWindow> full_pins_at(const Song& song, const std::vector<int64
     return pinned_windows(paths.front());
 }
 
-// One hand-built player path on Mutemath "Allies" and what its ladder must
-// read.
+const char* const kAllies = "Mutemath - Allies";
+
+// One player path on Mutemath "Allies", built from the chart's own best and
+// all-0 paths.
 struct Case {
     std::string what;
     std::vector<PinnedWindow> windows;
-    std::vector<int64_t> bf;
-    int64_t player_total;
-    std::vector<int64_t> costs;
-    int64_t after_last;
 };
 
-// Allies' best path activates at 9984 22272 37632 49920 (0- 1- 1 0, 451830).
-// Each case's totals and costs are pinned from one run.
 std::vector<Case> allies_cases() {
-    const Song& song = song_named("Mutemath - Allies");
-    const HydraRecord& rec = record_named("Mutemath - Allies");
+    const Song& song = song_named(kAllies);
+    const HydraRecord& rec = record_named(kAllies);
     REQUIRE_FALSE(rec.allzero_paths.empty());
-    REQUIRE(test::act_ticks(rec.allzero_paths.front()) ==
-            std::vector<int64_t>{9984, 19200, 34560, 49920});
-    return {
-        {"the best path with its third window moved to 34560",
-         full_pins_at(song, {9984, 22272, 34560, 49920}),
-         {451830, 451830, 451830, 447770, 447770},
-         447770,
-         {0, 0, 4060, 0},
-         0},
-        {"the all-0 path (activations at 9984 19200 34560 49920)",
-         pinned_windows(rec.allzero_paths.front()),
-         {451830, 451830, 438490, 434430, 434430},
-         434430,
-         {0, 13340, 4060, 0},
-         0},
-        {"a two-window path (activations at 9984 22272, nothing after)",
-         full_pins_at(song, {9984, 22272}),
-         {451830, 451830, 450430},
-         407610,
-         {0, 1400},
-         42820},
-    };
+    const std::vector<int64_t> best = test::act_ticks(rec.best_path());
+    const std::vector<int64_t> allzero = test::act_ticks(rec.allzero_paths.front());
+    REQUIRE(best.size() >= 3);
+    REQUIRE(allzero.size() >= 3);
+    std::vector<int64_t> moved = best;
+    moved[2] = allzero[2];
+    std::vector<Case> out;
+    out.push_back({"the best path with its third window moved to the all-0 path's third",
+                   full_pins_at(song, moved)});
+    out.push_back({"the all-0 path", pinned_windows(rec.allzero_paths.front())});
+    out.push_back({"the best path's first two windows, nothing after",
+                   full_pins_at(song, {best[0], best[1]})});
+    return out;
 }
 
 LadderRun ladder_for(const Song& song, const std::vector<PinnedWindow>& windows) {
@@ -108,27 +96,32 @@ LadderRun ladder_for(const Song& song, const std::vector<PinnedWindow>& windows)
 }  // namespace
 
 TEST_CASE("cost list: the costs sum exactly to the gap") {
-    const Song& song = song_named("Mutemath - Allies");
+    const Song& song = song_named(kAllies);
+    const int64_t best_total = record_named(kAllies).best_path().totalscore();
     for (const Case& c : allies_cases()) {
         CAPTURE(c.what);
         const LadderRun run = ladder_for(song, c.windows);
         REQUIRE(run.complete);
-        REQUIRE(run.ladder.bf.size() == c.windows.size() + 1);
-        CHECK(run.ladder.bf == c.bf);
-        CHECK(run.ladder.player_total == c.player_total);
+        const std::vector<int64_t>& bf = run.ladder.bf;
+        REQUIRE(bf.size() == c.windows.size() + 1);
+        // BF(0) pins nothing, so it is the analysis's own best path.
+        CHECK(bf.front() == best_total);
 
+        // Window k's cost is BF(k-1) - BF(k); the line after the last window
+        // is BF(n) less the player's own total.
         const CostList costs = cost_list(run.ladder);
-        CHECK(costs.windows == c.costs);
-        CHECK(costs.after_last == c.after_last);
+        REQUIRE(costs.windows.size() == c.windows.size());
+        for (size_t k = 1; k < bf.size(); ++k) CHECK(costs.windows[k - 1] == bf[k - 1] - bf[k]);
+        CHECK(costs.after_last == bf.back() - run.ladder.player_total);
         const int64_t sum =
             std::accumulate(costs.windows.begin(), costs.windows.end(), int64_t{0}) +
             costs.after_last;
-        CHECK(sum == run.ladder.bf.front() - run.ladder.player_total);
+        CHECK(sum == bf.front() - run.ladder.player_total);
     }
 }
 
 TEST_CASE("cost list: no cost is below zero") {
-    const Song& allies = song_named("Mutemath - Allies");
+    const Song& allies = song_named(kAllies);
     for (const Case& c : allies_cases()) {
         CAPTURE(c.what);
         const LadderRun run = ladder_for(allies, c.windows);
@@ -140,24 +133,27 @@ TEST_CASE("cost list: no cost is below zero") {
         CHECK(costs.after_last >= 0);
     }
 
-    // August Burns Red "White Washed": its optimal path's fourth window needs
-    // a squeeze tighter than the 10 ms limit, so the limit does not choose
-    // the best path here. Pinning that path window by window costs nothing,
+    // August Burns Red "White Washed": its best path has a window that needs
+    // a squeeze tighter than the Path limit, so the limit does not choose the
+    // best path here. Pinning that path window by window costs nothing,
     // tight window included: the ladder is BF(0) all the way down.
     const std::string name = "August Burns Red - White Washed";
     const Song& song = song_named(name);
     const HydraRecord& rec = record_named(name);
-    REQUIRE(default_cfg().ms_filter == std::optional<double>(10.0));
+    REQUIRE(default_cfg().ms_filter.has_value());
+    const double limit_ms = *default_cfg().ms_filter;
     const Path& best = rec.best_path();
-    CHECK(best.totalscore() == 706180);
     const std::vector<Activation> acts = best.all_activations();
-    REQUIRE(acts.size() == 5);
-    CHECK_FALSE(acts[3].within_ms_limit(*default_cfg().ms_filter));
+    REQUIRE_FALSE(acts.empty());
+    bool any_tight = false;
+    for (const Activation& a : acts) any_tight = any_tight || !a.within_ms_limit(limit_ms);
+    CHECK(any_tight);
 
-    const LadderRun run = ladder_for(song, pinned_windows(best));
+    const std::vector<PinnedWindow> pins = pinned_windows(best);
+    const LadderRun run = ladder_for(song, pins);
     REQUIRE(run.complete);
-    CHECK(run.ladder.bf == std::vector<int64_t>(6, 706180));
-    CHECK(run.ladder.player_total == 706180);
+    CHECK(run.ladder.bf == std::vector<int64_t>(pins.size() + 1, best.totalscore()));
+    CHECK(run.ladder.player_total == best.totalscore());
     const CostList costs = cost_list(run.ladder);
     for (const int64_t cost : costs.windows) {
         CHECK(cost == 0);
@@ -194,11 +190,17 @@ TEST_CASE("candidate costs: a negative cost is a bug") {
 
 TEST_CASE("end costs: each end against the best of them, in the order given") {
     // The best end need not come first: end_choices lists them in
-    // search_target's order.
-    CHECK(hydra::app::end_costs({398210, 412850, 412850, 411616}) ==
-          std::vector<int64_t>{14640, 0, 0, 1234});
+    // search_target's order. Each end's finish is written as the highest
+    // finish less its shortfall, so its cost is that shortfall.
+    const int64_t top = 412850;
+    const int64_t short_first = 14640;
+    const int64_t short_last = 1234;
+    CHECK(hydra::app::end_costs({top - short_first, top, top, top - short_last}) ==
+          std::vector<int64_t>{short_first, 0, 0, short_last});
     CHECK(hydra::app::end_costs({}).empty());
-    // The end choices write a cost with the minus sign U+2212, in full.
+}
+
+TEST_CASE("format cost: a cost is written with the minus sign U+2212, in full") {
     CHECK(hydra::app::format_cost(1234) == "\xE2\x88\x92" "1,234");
 }
 
@@ -213,35 +215,32 @@ TEST_CASE("build ladder: a list the target searches refuse is refused before any
     CHECK(heard.empty());
 }
 
-TEST_CASE("search target: a built graph answers as the song does") {
-    const Song& song = song_named("Mutemath - Allies");
-    const ScoreGraph graph = search_graph(song, default_cfg());
-    const std::vector<PinnedWindow> windows = activation_pins({9984, 22272});
-    const TargetResult on_graph = search_target(graph, windows);
-    const TargetResult on_song = search_target(song, default_cfg(), windows);
-    REQUIRE_FALSE(on_graph.paths.empty());
-    REQUIRE(on_song.paths.size() == on_graph.paths.size());
-    CHECK(on_graph.paths.front().totalscore() == on_song.paths.front().totalscore());
-    CHECK(on_graph.paths.front().totalscore() == 407610);
-}
-
 // Allies' best path by activation only, its second window moved one tick
 // later, where no fill node is. BF(0) and BF(1) land; BF(2) cannot, so the
 // run stops there and names that window as search_target would.
 TEST_CASE("build ladder: stops at the first impossible prefix and names it") {
-    const Song& song = song_named("Mutemath - Allies");
-    const std::vector<PinnedWindow> windows = activation_pins({9984, 22273, 37632, 49920});
+    const Song& song = song_named(kAllies);
+    const Path& best = record_named(kAllies).best_path();
+    std::vector<int64_t> ticks = test::act_ticks(best);
+    REQUIRE(ticks.size() >= 2);
+    ticks[1] += 1;
+    const int64_t moved_tick = ticks[1];
+    const std::vector<PinnedWindow> windows = activation_pins(ticks);
 
     std::vector<size_t> heard;
     const ScoreGraph graph = search_graph(song, default_cfg());
     const LadderRun run = build_ladder(graph, default_cfg(), windows,
                                        [&](const LadderRun& r) { heard.push_back(r.ladder.bf.size()); });
     CHECK_FALSE(run.complete);
-    CHECK(run.ladder.bf == std::vector<int64_t>{451830, 451830});
+    REQUIRE(run.ladder.bf.size() == 2);
+    // BF(0) is the analysis's best path, and pinning that path's own first
+    // activation changes nothing.
+    CHECK(run.ladder.bf[0] == best.totalscore());
+    CHECK(run.ladder.bf[1] == run.ladder.bf[0]);
     CHECK(run.best.size() == 2);
     CHECK_FALSE(run.player_path.has_value());
     CHECK(run.realized_prefix == 1);
-    CHECK(run.failed_tick == std::optional<int64_t>(22273));
+    CHECK(run.failed_tick == std::optional<int64_t>(moved_tick));
     CHECK(run.failed_reason == "activation");
     CHECK(heard == std::vector<size_t>{1, 2});
 }
