@@ -265,7 +265,8 @@ public:
     void apply_ghost(NoteColor color);
     void apply_accent(NoteColor color);
 
-    // Highest-priority note (Green→Blue→Yellow→Red→Kick); throws if empty.
+    // The note Clone Hero flags to activate Star Power on this chord; the
+    // rank and its sources are in model.cpp. Throws if the chord is empty.
     const ChordNote& activation_note() const;
 
 private:

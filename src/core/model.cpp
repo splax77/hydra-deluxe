@@ -306,11 +306,24 @@ void Chord::apply_accent(NoteColor color) {
     add_dynamic_mark(*at(color), NoteDynamicType::Accent);
 }
 
+// The note Clone Hero flags as the chord's activation note. Both versions
+// keep the highest set bit of the chord's lane flags, and the kick only when
+// no pad is set. Clone Hero 1.0 (4045): docs/clone-hero/code/4045/
+// fill_generator.cs, section F3, masks the pads with 0x7F. Clone Hero 1.1
+// (6142): FL-09 on docs/clone-hero/04-fills.md, with the lane bits of NL-50
+// on docs/clone-hero/02-note-list.md (Hydra's copy of those bits is lane_bit
+// in src/parse/note_shuffle.cpp, which core cannot include). In both versions
+// every cymbal bit sits above every tom bit, so a cymbal outranks a tom of
+// any colour. Red has no cymbal in this model (ChordNote::is_cymbal), and a
+// chord holds one note per colour, so the order below names exactly one note.
 const ChordNote& Chord::activation_note() const {
-    const NoteColor order[kLanes] = {NoteColor::Green, NoteColor::Blue,
-                                NoteColor::Yellow, NoteColor::Red,
-                                NoteColor::Kick};
-    for (NoteColor c : order) {
+    const NoteColor pads[] = {NoteColor::Green, NoteColor::Blue, NoteColor::Yellow};
+    for (bool cymbal : {true, false})
+        for (NoteColor c : pads) {
+            const std::optional<ChordNote>& slot = at(c);
+            if (slot.has_value() && slot->is_cymbal() == cymbal) return *slot;
+        }
+    for (NoteColor c : {NoteColor::Red, NoteColor::Kick}) {
         const std::optional<ChordNote>& slot = at(c);
         if (slot.has_value()) return *slot;
     }
