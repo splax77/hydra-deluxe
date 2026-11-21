@@ -296,9 +296,6 @@ ENGINE_EMPTY_WINDOW_S = 0.001
 # engine_finder.find_live_engine: a clock that moved more than this between
 # its two reads belongs to the song that is playing.
 ENGINE_CLOCK_MOVED_S = 1e-6
-# experiments/watch_window.round_start_report: the furthest the round start
-# (OFF_ROUND_START) may sit from its nearest note for the report's check to pass.
-ROUND_START_MAX_GAP_MS = 10.0
 # experiments/live.SongClock: a clock change seen within this of the
 # previous read is fresh, so the time since it can be filled in.
 CLOCK_FRESH_S = 0.002
