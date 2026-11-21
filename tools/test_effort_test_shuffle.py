@@ -8,11 +8,13 @@ import importlib.util
 import json
 import os
 import random
+import re
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
+import types
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -20,6 +22,11 @@ SCRIPT = os.path.join(HERE, "effort_test_shuffle.py")
 BRIEF = os.path.join(HERE, "effort_test_scorer_brief.md")
 
 BRANCHES = ["claude/eff-quiet-%d" % n for n in range(1, 7)]
+
+
+def read_brief():
+    with open(BRIEF, encoding="utf-8") as f:
+        return f.read()
 
 
 def load_script():
@@ -89,7 +96,8 @@ class ShuffleTest(unittest.TestCase):
             key = json.load(f)
         self.assertEqual(key["task"], "quiet")
         self.assertEqual(key["base"], self.base)
-        self.assertEqual(sorted(key["runs"]), ["R1", "R2", "R3", "R4", "R5", "R6"])
+        # The labels are the ones the script's own labelled() gives six branches.
+        self.assertEqual(sorted(key["runs"]), sorted(load_script().labelled(BRANCHES, random.Random(0))))
         self.assertEqual(sorted(key["runs"].values()), BRANCHES)
 
     def test_each_labelled_file_holds_the_run_the_key_says(self):
@@ -103,9 +111,20 @@ class ShuffleTest(unittest.TestCase):
 
     def test_the_bundle_holds_only_the_labelled_files_and_no_run_name(self):
         self.assertEqual(self.run_script().returncode, 0)
-        names = sorted(os.listdir(self.out))
-        self.assertEqual(names, sorted(["R%d.diff" % n for n in range(1, 7)] +
-                                       ["R%d.test.txt" % n for n in range(1, 7)]))
+        with open(self.key, encoding="utf-8") as f:
+            labels = set(json.load(f)["runs"])
+        names = os.listdir(self.out)
+        files_of = {}
+        for name in names:
+            label, _, kind = name.partition(".")
+            files_of.setdefault(label, set()).add(kind)
+        # Every file belongs to a label in the key, every label has a file, and every label has
+        # the same kinds of file, so nothing but the labelled runs' files is in the bundle.
+        self.assertEqual(set(files_of), labels)
+        kinds = files_of[min(labels)]
+        self.assertTrue(kinds)
+        for label in labels:
+            self.assertEqual(files_of[label], kinds, label)
         for name in names:
             self.assertNotIn("eff-quiet", self.bundle_file(name))
 
@@ -121,26 +140,52 @@ class ShuffleTest(unittest.TestCase):
         orders = {tuple(module.labelled(BRANCHES, rng).values()) for _ in range(20)}
         self.assertGreater(len(orders), 1)
 
-    def assert_refused(self, result, words):
+    def inputs(self, runs=None, key=None):
+        """The script's parsed arguments for check_inputs, as run_script passes them."""
+        return types.SimpleNamespace(run=[list(r) for r in (self.runs if runs is None else runs)],
+                                     key=key or self.key, out=self.out)
+
+    def assert_inputs_pass(self, runs=None, key=None):
+        load_script().check_inputs(self.inputs(runs, key))
+
+    def assert_refused(self, runs=None, key=None):
+        """Runs the script and checks it exits 2 with the reason the script's check_inputs gives.
+
+        Returns that reason, so a test can check it names the right thing."""
+        result = self.run_script(runs=runs, key=key)
         self.assertEqual(result.returncode, 2)
-        self.assertIn(words, result.stderr)
+        module = load_script()
+        with self.assertRaises(module.CannotShuffle) as caught:
+            module.check_inputs(self.inputs(runs, key))
+        reason = str(caught.exception)
+        self.assertIn(reason, result.stderr)
+        return reason
 
     def test_a_count_other_than_six_is_refused(self):
-        self.assert_refused(self.run_script(runs=self.runs[:5]), "got 5 runs, need 6")
+        need = load_script().RUNS_PER_TASK
+        self.assertEqual(len(self.runs), need)
+        self.assert_inputs_pass()
+        runs = self.runs[:need - 1]
+        reason = self.assert_refused(runs=runs)
+        self.assertIn(str(len(runs)), reason)
+        self.assertIn(str(need), reason)
         self.assertFalse(os.path.exists(self.key))
 
     def test_a_repeated_branch_is_refused(self):
-        self.assert_refused(self.run_script(runs=self.runs[:5] + self.runs[:1]), "named twice")
+        self.assert_inputs_pass()
+        self.assert_refused(runs=self.runs[:-1] + self.runs[:1])
 
     def test_an_existing_key_is_never_overwritten(self):
+        self.assert_inputs_pass()
         with open(self.key, "w", encoding="utf-8") as f:
             f.write("first shuffle")
-        self.assert_refused(self.run_script(), "already exists")
+        self.assertIn(self.key, self.assert_refused())
         with open(self.key, encoding="utf-8") as f:
             self.assertEqual(f.read(), "first shuffle")
 
     def test_a_key_inside_the_bundle_is_refused(self):
-        self.assert_refused(self.run_script(key=os.path.join(self.out, "key.json")), "outside the bundle")
+        self.assert_inputs_pass()
+        self.assert_refused(key=os.path.join(self.out, "key.json"))
 
     def test_a_key_in_a_folder_beside_the_bundle_is_allowed(self):
         folder = self.out + "-keys"
@@ -149,9 +194,10 @@ class ShuffleTest(unittest.TestCase):
 
     def test_a_full_bundle_folder_is_refused(self):
         os.mkdir(self.out)
+        self.assert_inputs_pass()
         with open(os.path.join(self.out, "old.diff"), "w", encoding="utf-8") as f:
             f.write("old")
-        self.assert_refused(self.run_script(), "not empty")
+        self.assertIn(self.out, self.assert_refused())
 
     def test_an_unknown_branch_writes_nothing(self):
         result = self.run_script(runs=self.runs[:5] + [("claude/gone", self.runs[5][1])])
@@ -159,19 +205,35 @@ class ShuffleTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.key))
         self.assertFalse(os.path.exists(self.out))
 
+    def test_the_brief_names_every_label_and_bundle_file_the_script_writes(self):
+        # The brief shows one attempt's files, under the first label, and names the label range.
+        self.assertEqual(self.run_script().returncode, 0)
+        brief = read_brief()
+        labels = list(load_script().labelled(BRANCHES, random.Random(0)))
+        first = labels[0]
+        for label in (first, labels[-1]):
+            self.assertRegex(brief, r"\b%s\b" % label)
+        for named in re.findall(r"\bR\d+\b", brief):
+            self.assertIn(named, labels)
+        first_files = [name for name in os.listdir(self.out) if name.partition(".")[0] == first]
+        self.assertTrue(first_files)
+        for name in first_files:
+            self.assertIn("`%s`" % name, brief)
+
 
 class ScorerBriefTest(unittest.TestCase):
     def test_the_brief_holds_no_level_cost_or_agent_id(self):
-        with open(BRIEF, encoding="utf-8") as f:
-            brief = f.read().lower()
-        for word in ("high", "medium", "low", "$", "agent-"):
-            self.assertNotIn(word, brief)
-
-    def test_the_brief_names_the_three_inputs_and_the_labels(self):
-        with open(BRIEF, encoding="utf-8") as f:
-            brief = f.read()
-        for words in ("<checklist file>", "<reference diff file>", "<bundle folder>", "R1 to R6"):
-            self.assertIn(words, brief)
+        # The brief is a template: what the scorer learns beyond its fixed text comes only through
+        # its <...> slots, so no slot may ask for an effort level, a cost or an agent id. The level
+        # names belong to Claude Code, and no Hydra file owns a list of them, so they are matched
+        # here as whole words, never as parts of words such as "follow".
+        brief = read_brief().lower()
+        for slot in re.findall(r"<([^<>]+)>", brief):
+            for word in ("level", "effort", "cost", "agent"):
+                self.assertNotIn(word, slot.split(), slot)
+        for level in ("high", "medium", "low"):
+            self.assertIsNone(re.search(r"\b%s\b" % level, brief), level)
+        self.assertNotIn("$", brief)
 
 
 if __name__ == "__main__":
