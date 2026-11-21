@@ -45,6 +45,10 @@ DATA_EXTS = {
     ".jsonl", ".ini", ".csv", ".tsv", ".chart", ".mid", ".sng", ".srb",
     ".png", ".jpg", ".ico", ".ttf", ".obj", ".ogg", ".flac", ".wav", ".opus", ".mp3",
     ".db", ".bin", ".sig", ".log", ".reg", ".after-run", ".gitkeep",
+    # The repo's .exe is a saved release installer (testdata/update/real) and
+    # its .cs files are Clone Hero's C# (docs/clone-hero, testdata/ch_runs);
+    # neither is Hydra code.
+    ".exe", ".cs",
 }
 
 STRIPPED, COPIED, LEFT_OUT, UNKNOWN = "stripped", "copied", "left out", "unknown"
