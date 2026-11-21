@@ -1,11 +1,10 @@
 """Unit tests for engine.py, run with no game and no debugger.
 
-The whole point of the engine model taking a ProcessHandle and a Debugger
-through its constructor is that we can hand it fakes here. The fakes are dumb:
-the fake process returns whatever double or dword we told it to for a given
-address, and the fake debugger fires the breakpoint callback the instant it is
-set. The score-rise check runs on a real run's press log instead, and the
-engine class's field types come from the real 1.1 build's class dump.
+The whole point of the engine model taking a ProcessHandle through its
+constructor is that we can hand it a fake here. The fake memory returns
+whatever double or dword we told it to for a given address. The score-rise
+check runs on a real run's press log instead, and the engine class's field
+types come from the real 1.1 build's class dump.
 
 The process is a real Process from the shared builder in fakes.py, so the
 address maths and the decoding are production's.
@@ -43,72 +42,18 @@ except ImportError:  # pragma: no cover - run as a script from this folder
     import fakes  # type: ignore[no-redef]  # noqa: E402
 
 
-# --- fakes -------------------------------------------------------------------
-
-
-class FakeThreadContext:
-    """A register snapshot. Only rcx matters for capture_object."""
-
-    def __init__(self, rcx):
-        self.rcx = rcx
-        self.rip = 0
-
-    def xmm0_double(self):
-        return 0.0
-
-
-class FakeDebugger:
-    """A stand-in for the real Debugger.
-
-    set_breakpoint fires the callback right away with a thread context carrying
-    the rcx we were built with. That mimics the real thing catching the
-    constructor -- minus the wait -- so capture_object() completes in one call.
-    """
-
-    def __init__(self, ctor_rcx):
-        self._ctor_rcx = ctor_rcx
-        self.breakpoints = []
-        self.run_called = False
-
-    def attach(self, pid):
-        pass
-
-    def set_breakpoint(self, addr, callback):
-        self.breakpoints.append(addr)
-        callback(self, FakeThreadContext(rcx=self._ctor_rcx))
-
-    def clear_breakpoint(self, addr):
-        pass
-
-    def read(self, addr, size):
-        raise NotImplementedError
-
-    def write(self, addr, data):
-        raise NotImplementedError
-
-    def run(self, until=None):
-        # Should never be reached in these tests, because set_breakpoint already
-        # captured the pointer. Flag it so a regression shows up.
-        self.run_called = True
-
-    def stop(self):
-        pass
-
-
 # --- helpers -----------------------------------------------------------------
 
 OBJ = 0x1234000  # a made-up but fixed engine object address
 MODULE_BASE = 0x7FF000000000  # a made-up but fixed GameAssembly.dll base
 
 
-def make_engine(object_ptr=OBJ, doubles=None, dwords=None, consts=None,
-                memory=None):
-    """An EngineModel over a real Process on fake memory, plus a fake
-    debugger. The FakeMemory records every read."""
+def make_engine(doubles=None, dwords=None, consts=None, memory=None):
+    """An EngineModel over a real Process on fake memory, with no engine
+    object adopted yet. The FakeMemory records every read."""
     proc, mem = fakes.fake_process(memory, MODULE_BASE, doubles=doubles,
                                    dwords=dwords, consts=consts)
-    dbg = FakeDebugger(ctor_rcx=object_ptr)
-    return engine.EngineModel(proc, dbg), proc, dbg, mem
+    return engine.EngineModel(proc), proc, mem
 
 
 # --- tests: offset arithmetic ------------------------------------------------
@@ -149,10 +94,11 @@ class TestEngineClassFields(unittest.TestCase):
 
 
 class TestFieldReads(unittest.TestCase):
-    def test_reads_before_capture_raise(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles={})
+    def test_reads_before_use_object_raise(self):
+        eng, proc, mem = make_engine(doubles={OBJ + C.OFF_SONG_CLOCK: 3.5})
         with self.assertRaises(RuntimeError):
-            eng.total_window()
+            eng.song_clock()
+        self.assertEqual(mem.reads, [])
 
 
 # --- tests: precision-mode bit -----------------------------------------------
@@ -217,8 +163,7 @@ def every_rdata_rva():
 class TestConstants(unittest.TestCase):
     def test_reads_every_expected_rva(self):
         rvas = every_rdata_rva()
-        eng, proc, dbg, mem = make_engine(
-            object_ptr=OBJ, consts={rva: 0.0 for rva in rvas})
+        eng, proc, mem = make_engine(consts={rva: 0.0 for rva in rvas})
         eng.constants()
         addrs_read = [addr for addr, _ in mem.reads]
         for rva in rvas:
@@ -232,24 +177,16 @@ class TestConstants(unittest.TestCase):
 class TestSongClock(unittest.TestCase):
     def test_reads_the_song_clock_field(self):
         doubles = {OBJ + C.OFF_SONG_CLOCK: 3.5}
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ, doubles=doubles)
-        eng.capture_object()
+        eng, proc, mem = make_engine(doubles=doubles)
+        eng.use_object(OBJ)
         self.assertEqual(eng.song_clock(), 3.5)
 
 
-class TestScoreAndFoundObject(unittest.TestCase):
+class TestFoundObject(unittest.TestCase):
     def test_dyn_threshold_reads_its_field(self):
-        eng, proc, dbg, mem = make_engine(object_ptr=OBJ,
-                                     dwords={OBJ + C.OFF_DYN_THRESHOLD: 64})
-        eng.capture_object()
+        eng, proc, mem = make_engine(dwords={OBJ + C.OFF_DYN_THRESHOLD: 64})
+        eng.use_object(OBJ)
         self.assertEqual(eng.dyn_threshold(), 64)
-
-    def test_capture_without_a_debugger_raises(self):
-        # No process either: the guard must refuse before anything is read,
-        # so a reordered guard fails here with an AttributeError on None.
-        eng = engine.EngineModel(None)
-        with self.assertRaises(RuntimeError):
-            eng.capture_object()
 
 
 if __name__ == "__main__":
