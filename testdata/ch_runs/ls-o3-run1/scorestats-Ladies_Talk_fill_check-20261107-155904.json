@@ -1,0 +1,186 @@
+{
+  "game_version": "v1.1.0.6142-final",
+  "checksum": "9569049A5F3100D1EB759359E6EAAEF5",
+  "song_name": "Hydra Probe - Ladies Talk [Kiyo Sen] (Drumeo Performance)",
+  "artist_name": "Senri Kawaguchi",
+  "charter_name": "\u003Ccolor=#e02222\u003EBlood\u003C/color\u003Eline",
+  "playback_speed": 100,
+  "game_mode": "Quickplay",
+  "score_timestamp": "2026-11-07T20:59:04.3052254Z",
+  "band_score": 1229730,
+  "band_stars": 7,
+  "player_count": 1,
+  "players": [
+    {
+      "instrument": "ProDrums",
+      "difficulty": "Expert",
+      "profile_name": "",
+      "modifiers": [
+        "DoubleKick"
+      ],
+      "remote_network_player": false,
+      "lefty_flip": false,
+      "no_fail": true,
+      "video_calibration": 0.0299999993,
+      "audio_calibration": 0,
+      "controller_type": "Drums",
+      "score": 1229730,
+      "base_score": 222935,
+      "solo_bonus_total": 58000,
+      "squeezed_score": 3940,
+      "clean_play_bonus": 0,
+      "note_score": 168235,
+      "sustain_score": 0,
+      "sp_score": 283720,
+      "combo_score": 665075,
+      "notes_hit": 2996,
+      "total_notes": 2996,
+      "max_streak": 2996,
+      "end_streak": 2996,
+      "excess_hits": 0,
+      "sp_phrases_earned": 25,
+      "sp_phrases_total": 25,
+      "sp_activations": 8,
+      "time_in_sp": 75.2899246,
+      "sp_ticks_accumulated": 90000,
+      "sp_bar_ticks": 14400,
+      "stars": 7,
+      "avg_multiplier": 5.25592661,
+      "squeezed_notes": 16,
+      "squeeze_note_losses": 0,
+      "frets_ghosted": 0,
+      "accent_notes_hit": 368,
+      "accent_notes_total": 368,
+      "ghost_notes_hit": 726,
+      "ghost_notes_total": 726,
+      "is_fc": true,
+      "versus_winner": true,
+      "is_bot": false,
+      "is_pfc": true,
+      "failed_in_run_time": -1,
+      "section_count": 24,
+      "section_stats": [
+        {
+          "section_name": "Intro",
+          "notes_hit": 87,
+          "notes_count": 87
+        },
+        {
+          "section_name": "Verse 1a",
+          "notes_hit": 142,
+          "notes_count": 142
+        },
+        {
+          "section_name": "Verse 1b",
+          "notes_hit": 142,
+          "notes_count": 142
+        },
+        {
+          "section_name": "Verse 1c",
+          "notes_hit": 138,
+          "notes_count": 138
+        },
+        {
+          "section_name": "Verse 2a",
+          "notes_hit": 132,
+          "notes_count": 132
+        },
+        {
+          "section_name": "Verse 2b",
+          "notes_hit": 138,
+          "notes_count": 138
+        },
+        {
+          "section_name": "Verse 2c",
+          "notes_hit": 140,
+          "notes_count": 140
+        },
+        {
+          "section_name": "Chorus 1a",
+          "notes_hit": 151,
+          "notes_count": 151
+        },
+        {
+          "section_name": "Chorus 1b",
+          "notes_hit": 146,
+          "notes_count": 146
+        },
+        {
+          "section_name": "Verse 3",
+          "notes_hit": 129,
+          "notes_count": 129
+        },
+        {
+          "section_name": "Drum solo 1a",
+          "notes_hit": 55,
+          "notes_count": 55
+        },
+        {
+          "section_name": "Drum solo 1b",
+          "notes_hit": 83,
+          "notes_count": 83
+        },
+        {
+          "section_name": "Drum solo 1c",
+          "notes_hit": 87,
+          "notes_count": 87
+        },
+        {
+          "section_name": "Drum solo 1d",
+          "notes_hit": 78,
+          "notes_count": 78
+        },
+        {
+          "section_name": "Drum solo 2a",
+          "notes_hit": 104,
+          "notes_count": 104
+        },
+        {
+          "section_name": "Drum solo 2b",
+          "notes_hit": 90,
+          "notes_count": 90
+        },
+        {
+          "section_name": "Verse 4a",
+          "notes_hit": 139,
+          "notes_count": 139
+        },
+        {
+          "section_name": "Verse 4b",
+          "notes_hit": 140,
+          "notes_count": 140
+        },
+        {
+          "section_name": "Verse 4c",
+          "notes_hit": 148,
+          "notes_count": 148
+        },
+        {
+          "section_name": "Verse 4d",
+          "notes_hit": 144,
+          "notes_count": 144
+        },
+        {
+          "section_name": "Chorus 2a",
+          "notes_hit": 154,
+          "notes_count": 154
+        },
+        {
+          "section_name": "Chorus 2b",
+          "notes_hit": 150,
+          "notes_count": 150
+        },
+        {
+          "section_name": "Verse 5a",
+          "notes_hit": 140,
+          "notes_count": 140
+        },
+        {
+          "section_name": "Verse 5b",
+          "notes_hit": 139,
+          "notes_count": 139
+        }
+      ]
+    }
+  ]
+}
