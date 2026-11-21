@@ -396,6 +396,26 @@
           "file": "tests/test_dynamics_breakdown.cpp",
           "line_text": "CHECK(ends_with(whole, line.tail));",
           "why": "checks that a two-part line read whole ends with its tail, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(r.out, summary + \"\\n\"));",
+          "why": "checks that hydra_precheck's output ends with its summary line, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(summary, \" \" + short_tip));",
+          "why": "checks that hydra_precheck's summary line ends with the tip as git abbreviates it, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(r.out, \" \" + short_tip + \"\\n\"));",
+          "why": "checks that hydra_precheck's output for a range ends with the tip as git abbreviates it, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_git.cpp",
+          "line_text": "CHECK(hydra::ends_with(whole.out, \" \" + short_tip + \"\\n\"));",
+          "why": "checks that hydra_precheck's output for the whole tree ends with the tip as git abbreviates it, not a file format"
         }
       ],
       "scope": [
