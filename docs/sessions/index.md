@@ -555,6 +555,7 @@
 - 2026-11-20 64222952 Wave 10 handoff documentation (2026-11-20) | tests, agents, review, docs, planning | Wave 10 finished: all 16 chunks were reviewed and merged into main, which is now at d0aab2c3, and nothing was pushed. [stale]
 - 2026-11-20 c37fb7e1 Wave 11 handoff documentation (2026-11-20) | tests, docs, agents, review, hooks | The session ended at 18:38 UTC with wave 11 merged, every docs test removed, and a wave 12 handoff written. Nothing is pushed.
 - 2026-11-20 388e7e82 Duplicate "none" and unclear dropdown buttons (2026-11-20) | squeeze, path, tests, docs, review | The session ended at 19:01 UTC with the fold fix merged into main and Hydra's build folder rebuilt from main. Nothing is pushed.
+- 2026-11-20 79ad8d0f Wave 12 handoff test (2026-11-20) | tests, agents, review, planning, docs | Ended after the wave 13 handoff and the six-wave schedule were committed; wave 13 has not started.
 
 ## Proposed tags
 
