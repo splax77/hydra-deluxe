@@ -74,6 +74,10 @@ void render_dm_picker_modal(AppState& app);
 std::string scan_folders_found_text(int64_t folders_seen);
 std::string scan_reused_text(int64_t charts_cached);
 
+// The running batch strip's lead word and "N of M" count, the start of its
+// first line: the strip and the GUI tests.
+std::string batch_strip_progress(bool stopping, bool paused, int64_t completed, int64_t total);
+
 // The settings lines the batch confirm lists, in the confirm's order.
 struct BatchSettingsSummary {
     std::string difficulty;   // "Expert · Pro Drums · 2x Bass"
