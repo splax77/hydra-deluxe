@@ -137,6 +137,14 @@ class EdgeProbeTest(unittest.TestCase):
         at = self._pressed_at(moved, chords, {early.index, late.index})
         self.assertAlmostEqual(at[early.index], early.ms - 88.72)
         self.assertAlmostEqual(at[late.index], late.ms + 82.72)
+        # A moved press keeps its send window: last_send_ms moves by as much
+        # as the press itself.
+        was = {chord.index: chord for chord in chords}
+        for chord in moved:
+            if chord.index in (early.index, late.index):
+                for now, then in zip(chord.presses, was[chord.index].presses):
+                    self.assertAlmostEqual(now.last_send_ms - then.last_send_ms,
+                                           now.chart_ms - then.chart_ms)
 
     def test_a_probe_chord_not_in_the_score_file_is_refused_and_only_it_is_named(self):
         chords = _freak_chords()
