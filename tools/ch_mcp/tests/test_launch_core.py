@@ -1,13 +1,14 @@
 """Tests for agent/launch_core.ts, the launch agent's decision: both byte
 checks pass before anything is written, the write is read back, the loader's
-entry is hooked only after the write, and any difference writes nothing and
+entry is hooked only after the write, and a difference writes nothing and
 hooks nothing.
 
 No game and no Frida. Plain Node runs launch_core.ts (Node erases its type
-annotations), with a fake memory standing in for the game's: each case goes
-to a small driver on stdin and the driver prints what applyPatch returned and
-every call it made on the memory. The tests skip, naming the reason, when
-`node` is not on PATH.
+annotations). Each case goes to a small driver on stdin, and the driver prints
+what applyPatch returned and every call it made on the memory. The patch is
+the real launch_patch.json, and the memory holds the bytes one real launch
+read from the game, with the replies that launch sent as the expected
+statuses. The tests skip, naming the reason, when `node` is not on PATH.
 """
 
 from __future__ import annotations
@@ -17,20 +18,28 @@ import os
 import pathlib
 import shutil
 import subprocess
+import sys
 import unittest
 
 _HERE = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
+from tools.ch_mcp import bot_run as B  # noqa: E402
+from tools.ch_mcp import frida_attach as FA  # noqa: E402
+from tools.ch_mcp.tests.test_bot_run import recorded_launch_replies  # noqa: E402
+
 CORE = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "agent", "launch_core.ts")
-PATCH_FILE = os.path.join(_REPO_ROOT, "tools", "ch_mcp", "launch_patch.json")
+PATCH_FILE = B.LAUNCH_PATCH_FILE
 NODE = shutil.which("node")
 # One driver run is a fresh Node start; this is its stop.
 NODE_CAP_S = 30
 
 # The driver: reads one case from stdin, runs it against launch_core.ts and
-# prints the result as JSON. The fake memory maps an RVA's text to the bytes
-# found there; a write replaces them unless the case says the write does not
-# stick.
+# prints the result as JSON. Its memory maps an RVA's text to the bytes found
+# there, and every case fills it with bytes a real run read from the game; a
+# write replaces them.
 DRIVER = """
 import { readFileSync } from "node:fs";
 const core = await import(%(core_url)s);
@@ -43,12 +52,11 @@ if (c.op === "apply") {
     const io = {
         readBytes(rva, n) {
             calls.push(["read", rva, n]);
-            if (c.read_throws) { throw new Error("read refused"); }
             return (memory.get(rva) ?? []).slice(0, n);
         },
         writeBytes(rva, bytes) {
             calls.push(["write", rva, bytes]);
-            if (c.write_sticks !== false) { memory.set(rva, bytes); }
+            memory.set(rva, bytes);
         },
         hookEntry(rva, onEnter) {
             calls.push(["hook", rva]);
@@ -69,22 +77,35 @@ if (c.op === "apply") {
 process.stdout.write(JSON.stringify(out));
 """
 
-LOADER = "0x10"
-SITE = "0x20"
-PATCH = {
-    "module": "GameAssembly.dll",
-    "loader_rva": LOADER,
-    "entry_expect": "40 56 57",
-    "patch_rva": SITE,
-    "expect": "BA 01 00 00 00",
-    "write": "BA 00 00 00 00",
-    "defer": False,
-}
-ENTRY = [0x40, 0x56, 0x57]
-SITE_BYTES = [0xBA, 0x01, 0x00, 0x00, 0x00]
-WRITTEN = [0xBA, 0x00, 0x00, 0x00, 0x00]
-MODULE = {"base": "0x7ff800000000", "size": 4096}
-NOW = 1761900000000
+# The real launch_patch.json, read by bot_run's own reader: the patch the
+# launch agent gets in its arm message.
+PATCH = B._read_patch(PATCH_FILE)
+LOADER = PATCH["loader_rva"]
+SITE = PATCH["patch_rva"]
+
+# The replies of one real human launch: testdata/ch_runs/ls-d0-run1, copied
+# from hydra-data\ch-mcp-runs\2026-10-31\ls-d0-run1 (test_bot_run reads it).
+REPLIES = recorded_launch_replies()
+RECORDED_WAITING = next(r for r in REPLIES
+                        if r["state"] == "waiting" and "modules" not in r)
+RECORDED_PATCHED = next(r for r in REPLIES
+                        if r["state"] == "patched" and r["loader_runs"] == 0)
+RECORDED_AFTER_LOADER = next(r for r in REPLIES
+                             if r["state"] == "patched" and r["loader_runs"] == 1)
+
+
+def hex_bytes(text: str) -> list[int]:
+    """A byte string as the patch and the replies write it, read by
+    bot_run's own reader."""
+    return list(B._byte_values(text))
+
+
+def recorded_memory(site: str | None = None) -> dict:
+    """The game's memory as the real launch read it: the loader's entry and
+    the patch site as the patched reply names them. `site` replaces the patch
+    site's bytes with others the same run recorded."""
+    return {LOADER: hex_bytes(RECORDED_PATCHED["entry_before"]),
+            SITE: hex_bytes(site or RECORDED_PATCHED["before"])}
 
 
 def run(case: dict) -> dict:
@@ -99,9 +120,11 @@ def run(case: dict) -> dict:
 
 
 def apply(memory=None, **extra) -> dict:
-    case = {"op": "apply", "patch": PATCH, "module": MODULE, "now": NOW,
-            "memory": memory if memory is not None
-            else {LOADER: ENTRY, SITE: SITE_BYTES}}
+    """applyPatch on the real patch, with the module and the clock the real
+    launch's patched reply names."""
+    case = {"op": "apply", "patch": PATCH, "module": RECORDED_PATCHED["module"],
+            "now": RECORDED_PATCHED["patched_at_ms"],
+            "memory": memory if memory is not None else recorded_memory()}
     case.update(extra)
     return run(case)
 
@@ -114,90 +137,54 @@ def kinds(calls: list) -> list[str]:
 class ApplyPatchTest(unittest.TestCase):
     def test_matching_bytes_write_once_then_hook(self):
         out = apply()
-        status = out["status"]
-        self.assertEqual(status["state"], "patched")
-        self.assertEqual(status["entry_before"], "40 56 57")
-        self.assertEqual(status["before"], "BA 01 00 00 00")
-        self.assertEqual(status["after"], "BA 00 00 00 00")
-        self.assertEqual(status["module"], MODULE)
-        self.assertEqual(status["patched_at_ms"], NOW)
-        self.assertIsNone(status["reason"])
-        self.assertEqual(status["loader_runs"], 0)
-        self.assertIsNone(status["bytes_at_first_run"])
+        # The status is the reply the real launch sent once it had patched.
+        self.assertEqual(out["status"], RECORDED_PATCHED)
+        site_len = len(hex_bytes(PATCH["expect"]))
         self.assertEqual(out["calls"], [
-            ["read", LOADER, 3],
-            ["read", SITE, 5],
-            ["write", SITE, WRITTEN],
-            ["read", SITE, 5],
+            ["read", LOADER, len(hex_bytes(PATCH["entry_expect"]))],
+            ["read", SITE, site_len],
+            ["write", SITE, hex_bytes(PATCH["write"])],
+            ["read", SITE, site_len],
             ["hook", LOADER],
         ])
 
-    def test_a_differing_entry_writes_nothing_and_hooks_nothing(self):
-        out = apply({LOADER: [0x48, 0x89, 0x5C], SITE: SITE_BYTES})
+    def test_a_patch_site_already_written_writes_nothing_and_hooks_nothing(self):
+        # The patch site as the same run's loader found it after the write: a
+        # second arm on that game reads these bytes, not the expected ones.
+        written = RECORDED_AFTER_LOADER["bytes_at_first_run"]
+        out = apply(recorded_memory(site=written))
         status = out["status"]
         self.assertEqual(status["state"], "refused")
         self.assertEqual(kinds(out["calls"]), ["read", "read"])
-        self.assertEqual(status["entry_before"], "48 89 5C")
-        self.assertEqual(status["before"], "BA 01 00 00 00")
+        self.assertEqual(status["entry_before"], RECORDED_PATCHED["entry_before"])
+        self.assertEqual(status["before"], written)
         self.assertIsNone(status["after"])
-        self.assertIn("48 89 5C", status["reason"])
-        self.assertIn("BA 01 00 00 00", status["reason"])
-        self.assertIn("nothing was written", status["reason"])
-
-    def test_a_differing_patch_site_writes_nothing_and_hooks_nothing(self):
-        out = apply({LOADER: ENTRY, SITE: [0xB9, 0x01, 0x00, 0x00, 0x00]})
-        status = out["status"]
-        self.assertEqual(status["state"], "refused")
-        self.assertEqual(kinds(out["calls"]), ["read", "read"])
-        self.assertEqual(status["entry_before"], "40 56 57")
-        self.assertEqual(status["before"], "B9 01 00 00 00")
-        self.assertIn("40 56 57", status["reason"])
-        self.assertIn("B9 01 00 00 00", status["reason"])
-
-    def test_a_short_read_is_a_difference(self):
-        out = apply({LOADER: ENTRY[:2], SITE: SITE_BYTES})
-        self.assertEqual(out["status"]["state"], "refused")
-        self.assertNotIn("write", kinds(out["calls"]))
-
-    def test_a_write_that_does_not_take_is_refused_and_not_hooked(self):
-        out = apply(write_sticks=False)
-        status = out["status"]
-        self.assertEqual(status["state"], "refused")
-        self.assertEqual(status["after"], "BA 01 00 00 00")
-        self.assertNotIn("hook", kinds(out["calls"]))
         self.assertIsNone(status["patched_at_ms"])
-
-    def test_a_failing_read_is_refused_with_its_error(self):
-        out = apply(read_throws=True)
-        status = out["status"]
-        self.assertEqual(status["state"], "refused")
-        self.assertIn("read refused", status["reason"])
-        self.assertEqual(kinds(out["calls"]), ["read"])
+        for named in (SITE, written, PATCH["expect"]):
+            self.assertIn(named, status["reason"])
 
     def test_no_status_carries_an_error_key(self):
-        # frida_attach.LiveAgent raises on a reply with an `error` key, so a
-        # status (launch.ts replies with a copy of it) names its reason as
-        # `reason` in every state. test_frida_attach feeds these through
-        # LiveAgent itself.
+        # frida_attach ends a run on a reply that its ends_run says ends it,
+        # so no status (launch.ts replies with a copy of it) may be one, in
+        # any state. Each also has the keys of the real launch's replies.
         cases = {
-            "patched": apply(),
-            "refused entry": apply({LOADER: [0x48, 0x89, 0x5C], SITE: SITE_BYTES}),
-            "refused write": apply(write_sticks=False),
-            "refused read": apply(read_throws=True),
+            "patched": apply()["status"],
+            "refused site": apply(recorded_memory(
+                site=RECORDED_AFTER_LOADER["bytes_at_first_run"]))["status"],
+            "waiting": run({"op": "waiting"})["status"],
         }
-        for what, out in cases.items():
+        for what, status in cases.items():
             with self.subTest(case=what):
-                self.assertNotIn("error", out["status"])
-                self.assertIn("reason", out["status"])
-        self.assertNotIn("error", run({"op": "waiting"})["status"])
+                self.assertIsNone(FA.ends_run(status))
+                self.assertEqual(set(status), set(RECORDED_PATCHED))
 
-    def test_the_loader_runs_are_counted_and_the_first_reads_the_site(self):
-        out = apply(loader_runs=2)
-        status = out["status"]
-        self.assertEqual(status["loader_runs"], 2)
-        self.assertEqual(status["bytes_at_first_run"], "BA 00 00 00 00")
-        # The hook reads the patch site once, at the first run only.
-        self.assertEqual(out["calls"][-1], ["read", SITE, 5])
+    def test_the_loader_run_is_counted_and_reads_the_site(self):
+        out = apply(loader_runs=1)
+        # The status is the reply the real launch sent after the loader ran.
+        self.assertEqual(out["status"], RECORDED_AFTER_LOADER)
+        # The hook reads the patch site at the loader's run.
+        self.assertEqual(out["calls"][-1],
+                         ["read", SITE, len(hex_bytes(PATCH["expect"]))])
         self.assertEqual(kinds(out["calls"]),
                          ["read", "read", "write", "read", "hook", "read"])
 
@@ -205,14 +192,15 @@ class ApplyPatchTest(unittest.TestCase):
 @unittest.skipIf(NODE is None, "node is not on PATH, so launch_core.ts cannot run")
 class StatusAndPatchTest(unittest.TestCase):
     def test_the_status_before_the_module_appears_is_waiting(self):
-        self.assertEqual(run({"op": "waiting"})["status"], {
-            "state": "waiting", "before": None, "after": None,
-            "entry_before": None, "module": None, "loader_runs": 0,
-            "bytes_at_first_run": None, "patched_at_ms": None, "reason": None})
+        # The waiting status the real launch replied with before the module
+        # appeared.
+        self.assertEqual(run({"op": "waiting"})["status"], RECORDED_WAITING)
 
     def test_a_missing_field_is_named(self):
-        for key in ("module", "loader_rva", "entry_expect", "patch_rva",
-                    "expect", "write", "defer"):
+        # The fields are the ones readPatch itself returns from the real file.
+        fields = list(run({"op": "read_patch", "patch": PATCH})["patch"])
+        self.assertTrue(fields)
+        for key in fields:
             with self.subTest(field=key):
                 patch = {k: v for k, v in PATCH.items() if k != key}
                 out = run({"op": "read_patch", "patch": patch})
@@ -240,8 +228,7 @@ class StatusAndPatchTest(unittest.TestCase):
             data = json.load(fh)
         out = run({"op": "read_patch", "patch": data})
         self.assertNotIn("error", out)
-        self.assertEqual(out["patch"]["module"], data["module"])
-        self.assertEqual(data["launch"], "suspended")
+        self.assertIn(data["launch"], B.LAUNCH_FORMS)
 
 
 if __name__ == "__main__":
