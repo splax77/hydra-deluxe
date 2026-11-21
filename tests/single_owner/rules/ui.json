@@ -982,6 +982,11 @@
           "file": "src/ui/activation_row_layout.h",
           "line_text": "inline constexpr float kRowMinBarsX = 200.0f;   // the bars never start before this",
           "why": "kRowMinBarsX, the owner"
+        },
+        {
+          "file": "tests/test_list_scroll.cpp",
+          "line_text": "ImGui::BeginChild(\"##rows\", ImVec2(0.0f, 200.0f));",
+          "why": "the height of the test's own scrolling list of Selectables, not an activation row"
         }
       ],
       "scope": [
