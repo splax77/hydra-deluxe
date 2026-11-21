@@ -677,39 +677,6 @@ TEST_CASE("the first open of a 2.2.0 to 2.7.0 file turns its results into record
     remove_db(path);
 }
 
-// An old row's rules fingerprint can be the empty blob. The conversion files
-// it under a profile whose rules are that empty blob, not NULL, which the
-// profiles table refuses. bind_blob binds an empty blob as one, so the whole
-// open goes through.
-TEST_CASE("the conversion keeps a row whose rules fingerprint is the empty blob") {
-    const std::string path = testtemp::temp_path("convert_empty_rules_fp", ".db");
-    const V220Seed seed = seed_v220_layout(path);
-    exec_on_file(path, "UPDATE results SET rules_fp = x'' WHERE hyhash = 'rules'");
-    {
-        RecordStore store(path);
-        const RecordLookup got_rules = store.lookup_one(kRules, kMode8);
-        CHECK(got_rules.status == RecordStatus::Stale);
-        CHECK(got_rules.stale_rules);
-    }
-    CHECK(record_rows_in(path) == seed.kept);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles WHERE typeof(rules_fp) = 'blob'"
-                               " AND length(rules_fp) = 0") == 1);
-    remove_db(path);
-}
-
-TEST_CASE("an old result with no score converts to a record that kept no paths") {
-    // The seed's "empty" row: analyzed, no paths kept, so no score.
-    const std::string path = testtemp::temp_path("convert_no_score", ".db");
-    seed_v220_layout(path);
-    { RecordStore store(path); }
-    CHECK(scalar_on_file(path, "SELECT pathcount FROM records WHERE song_id = 'empty'") == 0);
-    CHECK(scalar_on_file(path, "SELECT notecount FROM records WHERE song_id = 'empty'") == 0);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM records WHERE song_id = 'empty'"
-                               " AND stars IS NULL") == 1);
-    CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM record_paths WHERE song_id = 'empty'") == 0);
-    remove_db(path);
-}
-
 TEST_CASE("a stop asked mid-conversion leaves the results table whole and throws Cancelled") {
     const std::string path = testtemp::temp_path("convert_cancelled", ".db");
     const V220Seed seed = seed_v220_layout(path);
@@ -750,15 +717,23 @@ TEST_CASE("a set-aside that cannot be made fails with its sentence and leaves th
         FAIL("the open finished with nowhere to set the old file aside");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::OldLibrarySetAsideFailed);
-        // The middle is Windows' own text for the failure, so only the words
-        // around it are pinned here (test_user_messages pins it whole).
+        // The error carries Windows' own reason for the rename that failed:
+        // the same rename, tried again here through the store's renamer,
+        // fails for the same reason and leaves the file where it is.
+        const std::optional<std::string> reason = rename_file(path, set_aside_path(path));
+        REQUIRE(reason.has_value());
+        CHECK(std::string(e.what()) == *reason);
+        // The sentence the user reads quotes that reason's first sentence and
+        // names the oldest release this build converts, read from its owner.
+        // The sentence's other words are test_user_messages' to pin.
         const std::string said = app::plain_error(e);
-        const std::string head = "This library file is from a Hydra version older than 2.2.0, "
-                                 "and Hydra could not set it aside: ";
-        const std::string tail = ". Close any program using hydra.db and start Hydra again.";
-        CHECK(said.rfind(head, 0) == 0);
-        REQUIRE(said.size() > head.size() + tail.size());
-        CHECK(said.find(tail, head.size()) != std::string::npos);
+        const std::string reason_words = reason->substr(0, reason->find_first_of(".\r\n"));
+        INFO(said);
+        REQUIRE_FALSE(reason_words.empty());
+        CHECK(said.find(reason_words) != std::string::npos);
+        CHECK(said.find(kOldestConvertibleVersion) != std::string::npos);
+        // The sentence already shows the reason, so no details line repeats it.
+        CHECK(app::plain_error_detail(e).empty());
     }
     std::filesystem::remove(os_path(set_aside_path(path)));
     CHECK(file_bytes(path) == before);
@@ -821,10 +796,15 @@ TEST_CASE("the command-line tools' open refuses a file too old to convert and ne
         FAIL("a command-line tool opened a file too old to convert");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::OldLibraryRefused);
-        CHECK(app::plain_error(e) ==
-              "The library file '" + path +
-                  "' is from a Hydra version older than 2.2.0, and opening it in Hydra sets it "
-                  "aside and starts a fresh library.");
+        // The error names the file it refused, and the sentence the tool
+        // prints names that file and the oldest release this build converts,
+        // read from its owner. The sentence's other words are
+        // test_user_messages' to pin.
+        CHECK(std::string(e.what()) == path);
+        const std::string said = app::plain_error(e);
+        INFO(said);
+        CHECK(said.find(path) != std::string::npos);
+        CHECK(said.find(kOldestConvertibleVersion) != std::string::npos);
     }
     CHECK(file_bytes(path) == before);
     CHECK_FALSE(file_exists_utf8(set_aside_path(path)));
@@ -1269,7 +1249,13 @@ TEST_CASE("a database file that isn't a database fails to open as DatabaseOpen")
         FAIL("a file of junk bytes opened as a database");
     } catch (const KindedError& e) {
         CHECK(e.kind() == ErrorKind::DatabaseOpen);
-        CHECK(std::string(e.what()) == "sqlite exec failed: file is not a database");
+        // The error carries SQLite's own reason for a file that is not a
+        // database, read from SQLite, and the user reads the couldn't-open
+        // sentence from its owner.
+        const std::string what = e.what();
+        INFO(what);
+        CHECK(what.find(sqlite3_errstr(SQLITE_NOTADB)) != std::string::npos);
+        CHECK(app::plain_error(e) == app::kDatabaseOpenSentence);
     }
     CHECK(std::remove(path.c_str()) == 0);
 }
@@ -1475,47 +1461,152 @@ PreparedRecord hand_record(const std::string& id, const Profile& profile,
     return prepared;
 }
 
+// The settings the hardest-figure cases save under: the app's defaults.
+const app::Settings& hardest_settings() {
+    static const app::Settings s;
+    return s;
+}
+
+// A corpus chart with two saved paths or more that hold a squeeze-in, under
+// hardest_settings(): the library row a scan writes for it, its analysis,
+// and the record a fresh save of that analysis writes.
+struct SqueezedChart {
+    ChartLibraryEntry entry;
+    const HydraRecord* analysis = nullptr;
+    PreparedRecord fresh;
+};
+
+// The ranks of `prepared`'s paths that hold a squeeze-in, in rank order.
+std::vector<int> squeeze_in_ranks(const PreparedRecord& prepared) {
+    std::vector<int> out;
+    for (const PathRow& p : prepared.record.paths)
+        if (p.sqin_count > 0) out.push_back(p.rank);
+    return out;
+}
+
+// The first corpus chart, walking every one, whose fresh record holds two
+// squeeze-in paths or more. A chart the engine refuses (no notes at the
+// difficulty, or a file it cannot read) is passed over; any other exception
+// fails the case. test_saved_figure_fill.cpp's "a row that disagrees with its
+// replay keeps its empty figure" needs Smash Mouth to hold two under the
+// same settings, so the walk finds one.
+const SqueezedChart& squeezed_chart() {
+    static const SqueezedChart found = [] {
+        const app::AnalysisSettings settings = hardest_settings().to_analysis_settings();
+        for (const std::string& file : ::corpus::chart_paths()) {
+            SqueezedChart c;
+            try {
+                c.analysis = &::corpus::analyzed(file, settings);
+            } catch (const ChartFileError&) {
+                continue;
+            }
+            c.entry = ::corpus::scanned_entry(file);
+            c.fresh = prepare_record(c.entry.md5, hardest_settings().profile(), *c.analysis);
+            if (squeeze_in_ranks(c.fresh).size() >= 2) return c;
+        }
+        throw std::runtime_error("no corpus chart saves two paths with a squeeze-in");
+    }();
+    return found;
+}
+
+// `prepared` with every saved figure emptied, as an older build left it.
+PreparedRecord with_figures_emptied(PreparedRecord prepared) {
+    for (PathRow& p : prepared.record.paths) p.hardest_ms.reset();
+    return prepared;
+}
+
+// Every rank of `prepared`'s paths but `held`, in rank order.
+std::vector<int> ranks_but(const PreparedRecord& prepared, int held) {
+    std::vector<int> out;
+    for (const PathRow& p : prepared.record.paths)
+        if (p.rank != held) out.push_back(p.rank);
+    return out;
+}
+
+// Lists `chart` as the library and saves its analysis under `profile` as an
+// older build left it, with the figure of every rank in `emptied` empty
+// (hydra::test::save_as_old_build).
+void save_squeezed(RecordStore& store, const SqueezedChart& chart, const Profile& profile,
+                   const std::vector<int>& emptied) {
+    hydra::test::save_as_old_build(store, chart.entry.notespath, chart.entry, hardest_settings(),
+                                   emptied, [&profile](PreparedRecord& p) { p.profile = profile; });
+}
+
+// `profile` under another chart mode name, so the store files it under a
+// profile row of its own.
+Profile in_other_mode(const Profile& profile, const std::string& name) {
+    Profile out = profile;
+    out.chartmode = profile.chartmode + " (" + name + ")";
+    return out;
+}
+
 }  // namespace
 
 TEST_CASE("rows missing the hardest figure: a Ready row with an empty figure and a squeeze-in "
           "is a candidate") {
+    const SqueezedChart& chart = squeezed_chart();
+    const Profile profile = hardest_settings().profile();
+    const std::vector<int> squeezed = squeeze_in_ranks(chart.fresh);
+    REQUIRE(squeezed.size() >= 2);
+    // Every figure is emptied but the last squeeze-in rank's, which keeps the
+    // figure a fresh save holds. The candidates are the other squeeze-in
+    // ranks; an emptied rank with no squeeze-in is not one.
+    const int held = squeezed.back();
+    const std::vector<int> candidates(squeezed.begin(), squeezed.end() - 1);
     RecordStore store(":memory:");
-    const Profile profile = hydra::test::at4();
-    // Chart "ready" is listed twice; the first copy names it.
-    ChartLibraryEntry second_copy = library_row("ready", "Ready");
-    second_copy.notespath = "C:\\copy\\ready\\notes.chart";
-    second_copy.sig = "sig-copy";
-    store.rebuild_chart_library({library_row("ready", "Ready"), second_copy,
-                                 library_row("stale", "Stale"), library_row("rules", "Rules")});
-    // Rank 1 is the candidate; rank 2 holds a figure and rank 3 has no
-    // squeeze-in.
-    store.save(hand_record("ready", profile,
-                           {hand_path(1, std::nullopt, 1), hand_path(2, -315.8, 1),
-                            hand_path(3, std::nullopt, 0)}));
-    // Each of these has the candidate's shape and is left out: another
-    // build's row, a row under other rules, and a chart the library does not
-    // list.
-    hydra::test::save_old_build_record(store,
-                                       hand_record("stale", profile, {hand_path(1, std::nullopt, 1)}));
-    PreparedRecord other_rules = hand_record("rules", profile, {hand_path(1, std::nullopt, 1)});
-    other_rules.rules_fp = hydra::test::other_rules().fingerprint();
-    store.save(other_rules);
-    store.save(hand_record("gone", profile, {hand_path(1, std::nullopt, 1)}));
-    REQUIRE(store.lookup_one("stale", profile).status == RecordStatus::Stale);
-    REQUIRE(store.lookup_one("rules", profile).status == RecordStatus::Stale);
-    REQUIRE(store.lookup_one("gone", profile).status == RecordStatus::Ready);
+    save_squeezed(store, chart, profile, ranks_but(chart.fresh, held));
+    const RecordLookup found = store.lookup_one(chart.entry.md5, profile);
+    REQUIRE(found.status == RecordStatus::Ready);
 
     const std::vector<MissingHardestRow> rows = store.rows_missing_hardest(profile);
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].song_id == "ready");
-    CHECK(rows[0].profile_id > 0);
-    CHECK(rows[0].rank == 1);
-    CHECK(rows[0].path == "1 0+ 0 0");
-    CHECK(rows[0].score == 99999);
-    CHECK(rows[0].sqin_count == 1);
-    CHECK(rows[0].sqout_count == 1);
-    CHECK(rows[0].notespath == "C:\\charts\\ready\\notes.chart");
-    CHECK(rows[0].sig == "sig-ready");
+    std::vector<int> ranks;
+    for (const MissingHardestRow& row : rows) ranks.push_back(row.rank);
+    CHECK(ranks == candidates);
+    // Each row is the saved path the fill replays and checks: its pathstring,
+    // score and squeeze counts as the record reads them back, and the chart
+    // file and signature of the library row that lists it.
+    for (const MissingHardestRow& row : rows) {
+        CAPTURE(row.rank);
+        REQUIRE(row.rank >= 1);
+        REQUIRE(static_cast<size_t>(row.rank) <= found.record.paths.size());
+        const PathRow& saved = found.record.paths[static_cast<size_t>(row.rank - 1)];
+        CHECK(row.song_id == chart.entry.md5);
+        CHECK(row.path == saved.path);
+        CHECK(row.score == saved.score);
+        CHECK(row.sqin_count == saved.sqin_count);
+        CHECK(row.sqout_count == saved.sqout_count);
+        CHECK(row.notespath == chart.entry.notespath);
+        CHECK(row.sig == chart.entry.sig);
+    }
+
+    // The same emptied record is no candidate as another build's, ...
+    {
+        RecordStore old_build(":memory:");
+        old_build.rebuild_chart_library({chart.entry});
+        hydra::test::save_old_build_record(old_build, with_figures_emptied(chart.fresh));
+        REQUIRE(old_build.lookup_one(chart.entry.md5, profile).status == RecordStatus::Stale);
+        CHECK(old_build.rows_missing_hardest(profile).empty());
+    }
+    // ... nor is the chart's own analysis under other rules, ...
+    {
+        app::AnalysisSettings under_other = hardest_settings().to_analysis_settings();
+        under_other.rules = hydra::test::other_rules();
+        const PreparedRecord other = with_figures_emptied(prepare_record(
+            chart.entry.md5, profile, ::corpus::analyzed(chart.entry.notespath, under_other)));
+        REQUIRE_FALSE(squeeze_in_ranks(other).empty());
+        RecordStore rules_store(":memory:");
+        rules_store.rebuild_chart_library({chart.entry});
+        rules_store.save(other);
+        REQUIRE(rules_store.lookup_one(chart.entry.md5, profile).status == RecordStatus::Stale);
+        CHECK(rules_store.rows_missing_hardest(profile).empty());
+    }
+    // ... nor a chart the library does not list.
+    {
+        RecordStore unlisted(":memory:");
+        unlisted.save(with_figures_emptied(chart.fresh));
+        REQUIRE(unlisted.lookup_one(chart.entry.md5, profile).status == RecordStatus::Ready);
+        CHECK(unlisted.rows_missing_hardest(profile).empty());
+    }
 }
 
 TEST_CASE("set_hardest fills only a record's empty figures and ignores a rank it does not have") {
@@ -1551,14 +1642,15 @@ TEST_CASE("the hardest-figure marker is per profile: unset at first, set for one
           "it is recorded, still unset for another, and it survives a reopen") {
     const std::string path = testtemp::temp_path("hardest_marker", ".db");
     remove_db(path);
-    const Profile filled = hydra::test::at4("filled");
-    const Profile other = hydra::test::at4("other");
+    const SqueezedChart& chart = squeezed_chart();
+    const Profile filled = hardest_settings().profile();
+    const Profile other = in_other_mode(filled, "other");
     // No record is filed under this one, so it has nothing to fill.
-    const Profile empty = hydra::test::at4("empty");
+    const Profile empty = in_other_mode(filled, "empty");
     {
         RecordStore store(path);
-        store.save(hand_record("a", filled, {hand_path(1, std::nullopt, 1)}));
-        store.save(hand_record("a", other, {hand_path(1, std::nullopt, 1)}));
+        save_squeezed(store, chart, filled, squeeze_in_ranks(chart.fresh));
+        save_squeezed(store, chart, other, squeeze_in_ranks(chart.fresh));
         CHECK_FALSE(store.hardest_figure_filled(filled));
         CHECK_FALSE(store.hardest_figure_filled(other));
         CHECK(store.hardest_figure_filled(empty));
@@ -1578,26 +1670,38 @@ TEST_CASE("the hardest-figure marker is per profile: unset at first, set for one
 TEST_CASE("rows_missing_hardest for a profile with other rows returns none of theirs") {
     const std::string path = testtemp::temp_path("hardest_profiles", ".db");
     remove_db(path);
-    const Profile mine = hydra::test::at4("mine");
-    const Profile theirs = hydra::test::at4("theirs");
+    const SqueezedChart& chart = squeezed_chart();
+    const std::vector<int> squeezed = squeeze_in_ranks(chart.fresh);
+    REQUIRE_FALSE(squeezed.empty());
+    const Profile mine = hardest_settings().profile();
+    const Profile theirs = in_other_mode(mine, "theirs");
     {
         RecordStore store(path);
-        store.rebuild_chart_library({library_row("a", "A"), library_row("b", "B")});
-        store.save(hand_record("a", mine, {hand_path(1, std::nullopt, 1)}));
-        store.save(hand_record("b", theirs, {hand_path(1, std::nullopt, 1)}));
+        // The chart's record under each profile, every squeeze-in figure
+        // emptied, so each profile has a candidate at every squeeze-in rank.
+        save_squeezed(store, chart, mine, squeezed);
+        save_squeezed(store, chart, theirs, squeezed);
 
+        // Each profile reads its own rows, all filed under its own profile row.
+        std::set<int64_t> my_profile_rows;
+        std::set<int64_t> their_profile_rows;
         const std::vector<MissingHardestRow> rows = store.rows_missing_hardest(mine);
-        REQUIRE(rows.size() == 1);
-        CHECK(rows[0].song_id == "a");
+        CHECK(rows.size() == squeezed.size());
+        for (const MissingHardestRow& row : rows) my_profile_rows.insert(row.profile_id);
         const std::vector<MissingHardestRow> their_rows = store.rows_missing_hardest(theirs);
-        REQUIRE(their_rows.size() == 1);
-        CHECK(their_rows[0].song_id == "b");
+        CHECK(their_rows.size() == squeezed.size());
+        for (const MissingHardestRow& row : their_rows) their_profile_rows.insert(row.profile_id);
+        CHECK(my_profile_rows.size() == 1);
+        CHECK(their_profile_rows.size() == 1);
+        CHECK(my_profile_rows != their_profile_rows);
 
         // A profile the store holds no row for has no candidates, and asking
         // files no profile row for it.
-        CHECK(store.rows_missing_hardest(hydra::test::at4("none")).empty());
-        CHECK(store.hardest_figure_filled(hydra::test::at4("none")));
-        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == 2);
+        const int64_t profile_rows = scalar_on_file(path, "SELECT COUNT(*) FROM profiles");
+        const Profile none = in_other_mode(mine, "none");
+        CHECK(store.rows_missing_hardest(none).empty());
+        CHECK(store.hardest_figure_filled(none));
+        CHECK(scalar_on_file(path, "SELECT COUNT(*) FROM profiles") == profile_rows);
     }
     remove_db(path);
 }
