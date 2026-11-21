@@ -101,7 +101,7 @@ struct Fixture {
         write_fixture_file(dir, "tests/test_two.cpp", "TEST_CASE(\"two\") {\n    int k = 0;\n    CHECK(k == 0);\n}\n");
         // A MIDI varlen delta typed by hand: printed outside its owner.
         write_fixture_file(dir, "tests/varlen.cpp", "void put(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
-        write_fixture_file(dir, kVarlenOwner, "inline void put_varlen(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
+        write_fixture_file(dir, "tests/midi_util.h", "inline void put_varlen(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
         commit_all(dir, "feature");
     }
     ~Fixture() { testtemp::remove_dir(dir); }
