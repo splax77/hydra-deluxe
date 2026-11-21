@@ -339,10 +339,6 @@ def scan_ps(text):
             e = _line_end(text, i)
             if e > i and text[e - 1] == "\r":
                 e -= 1
-            at_line_start = text[text.rfind("\n", 0, i) + 1:i].strip() == ""
-            if at_line_start and re.match(r"#requires\b", text[i:e], re.I):
-                i = e
-                continue
             flush(i)
             segs.append(("comment", i, e, "line"))
             i = start = e

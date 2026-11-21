@@ -148,8 +148,8 @@ class PowerShellTraps(unittest.TestCase):
     def test_hash_inside_a_bare_word_is_kept(self):
         self.assertEqual(strip("Write-Output a#b\n", "ps1"), "Write-Output a#b\n")
 
-    def test_requires_line_is_kept(self):
-        self.assertEqual(strip("#Requires -Version 7\n# gone\n", "ps1"), "#Requires -Version 7\n\n")
+    def test_requires_line_is_a_comment_like_any_other(self):
+        self.assertEqual(strip("#Requires -Version 7\n$x = 1\n", "ps1"), "\n$x = 1\n")
 
 
 class EachFileType(unittest.TestCase):
