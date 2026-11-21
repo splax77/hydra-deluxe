@@ -268,14 +268,14 @@ void set_opus_head_gain(std::vector<unsigned char>& head, int16_t q78) {
     head.at(17) = static_cast<unsigned char>(u >> 8);
 }
 
-// The linear output gain the OpusHead of `file`'s first stream asks for: its
-// Q7.8 dB field as 10^(dB / 20), in float, as OpusReader::start_link
-// (opus_reader.cpp) computes it. That owner is private to the reader.
+// The linear output gain the OpusHead of `file`'s first stream asks for, as
+// the reader's owner (detail::opus_output_gain) turns its Q7.8 dB field into
+// a multiplier.
 float opus_head_gain(const std::vector<uint8_t>& file) {
     const std::vector<std::vector<unsigned char>> pk = opus_packets(file);
     REQUIRE(!pk.empty());
     const int16_t q78 = static_cast<int16_t>(opus_head_u16(pk[0], 16));
-    return q78 == 0 ? 1.0f : static_cast<float>(std::pow(10.0, q78 / (20.0 * 256.0)));
+    return detail::opus_output_gain(q78);
 }
 
 // Every sample of `x` times `gain`, the multiply the reader applies.
