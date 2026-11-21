@@ -362,6 +362,16 @@ class MatchRecordsTest(unittest.TestCase):
                          (mr.SAME_PLACE, "every start checks"))
         self.assertEqual(rows["A.md:6"]["match"], mr.NO_TEST)
 
+    def test_a_bare_record_number_is_dropped_before_one_identifier(self):
+        self.fx.commit({"A.md": record("### 3 helper_rows (tests/t.cpp:1)", "x", "no")
+                        + record("### 3 helper_rows and more (tests/t.cpp:1)", "x", "no")})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["match"], rows["A.md:1"]["test name"]),
+                         (mr.SAME_PLACE, "helper_rows"))
+        self.assertEqual(rows["A.md:6"]["match"], mr.NO_TEST)
+
     # 3. A short place takes its file from the nearest heading above that names one.
     def test_a_short_place_takes_the_file_named_above(self):
         self.fx.commit({"A.md": record("### every start checks (:4)", "x", "no")

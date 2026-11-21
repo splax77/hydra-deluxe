@@ -201,6 +201,17 @@ class Grading(Base):
         out = self.run_grader(old)
         self.assertIn("code/tests/s.cpp:7 | set_fetcher | found", out)
 
+    def test_a_brace_default_argument_does_not_end_the_unit(self):
+        text = ("size_t helper(int a,\n"
+                "              const std::function<void()>& f = {}) {\n"
+                "    return a;\n"
+                "}\n\n"
+                "void test_next(Ctx* c) {\n"
+                "    run();\n"
+                "}\n")
+        got = [(u.name, u.start, u.end) for u in gs.top_units("t.cpp", text)]
+        self.assertEqual(got, [("helper", 1, 4), ("test_next", 6, 8)])
+
     def test_namespace_and_test_case_names(self):
         self.write("code/tests/u.cpp", UPDATE_STYLE)
         facts = ('## offered; Later keeps a button\nlocation: code/tests/u.cpp:9\n'
