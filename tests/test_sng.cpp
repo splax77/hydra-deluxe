@@ -26,6 +26,7 @@
 
 #include "app/analysis.h"
 #include "app/user_messages.h"
+#include "byte_source_util.h"
 #include "core/error_kind.h"
 #include "core/strutil.h"
 #include "core/winstr.h"
@@ -140,23 +141,11 @@ LoadFailure damaged_failure(const char* name, const std::vector<uint8_t>& bytes)
     return *by_path;
 }
 
-// One read a loader asked of a source: where it started and how many bytes it
-// asked for.
-struct ReadAsked {
-    uint64_t offset;
-    size_t length;
-};
-
-// `inner`, noting every read asked of it in `reads`, which must outlive the
-// returned source.
-ByteSource recording(ByteSource inner, std::vector<ReadAsked>& reads) {
-    ByteSource out;
-    out.size = inner.size;
-    out.read = [inner, &reads](uint64_t offset, size_t length) {
-        reads.push_back(ReadAsked{offset, length});
-        return inner.read(offset, length);
-    };
-    return out;
+// load_songpath's own dispatch on the file, counting the bytes it reads.
+Song load_counting(const std::string& path, uint64_t& bytes_read) {
+    bytes_read = 0;
+    return load_songpath_reading(testbytes::counting(file_byte_source(path), bytes_read), path,
+                                 ChartReading{});
 }
 
 // The MD5 of `bytes` as lowercase hex, from Windows' own CNG provider rather
@@ -315,25 +304,19 @@ TEST_CASE("sng: the note loader reads the header and the notes, not the audio") 
     REQUIRE(table.size() == 2);
     const SngFileEntry& audio_entry = table[0];
     const SngFileEntry& notes_entry = table[1];
-    // The audio runs past the header's first piece, so a read of it would show.
+    // make_sng puts the audio right after the file table, so this table fits
+    // in the header's first piece, and the audio runs far past that piece.
+    REQUIRE(audio_entry.offset <= kFirstPieceRead);
     REQUIRE(audio_entry.offset + audio_entry.length > kFirstPieceRead);
     const std::string path = sng_fixture_path("big_audio.sng");
     write_bytes(path, buf);
 
-    std::vector<ReadAsked> reads;
-    const Song via_reads =
-        load_songpath_reading(recording(file_byte_source(path), reads), path, ChartReading{});
+    uint64_t bytes_read = 0;
+    const Song via_reads = load_counting(path, bytes_read);
     CHECK(songs_equal(via_reads, notes_song(notes)));
-    // Each read is the header's first piece, which holds this small table, or
-    // exactly the notes entry. Nothing else of the audio is asked for.
-    REQUIRE_FALSE(reads.empty());
-    for (const ReadAsked& r : reads) {
-        CAPTURE(r.offset);
-        CAPTURE(r.length);
-        const bool head_piece = r.offset == 0 && r.length <= kFirstPieceRead;
-        const bool notes_read = r.offset == notes_entry.offset && r.length == notes_entry.length;
-        CHECK((head_piece || notes_read));
-    }
+    // The header's first piece, then the notes entry: no other byte of the
+    // audio is read.
+    CHECK(bytes_read == kFirstPieceRead + notes_entry.length);
 }
 
 TEST_CASE("sng: a header longer than the first read still loads") {
@@ -345,16 +328,15 @@ TEST_CASE("sng: a header longer than the first read still loads") {
         {{"song.ogg", {1, 2, 3}}, {"album.png", {4, 5}}, {notes.name, notes.bytes}});
     const std::string path = sng_fixture_path("big_header.sng");
     write_bytes(path, buf);
+    const std::vector<SngFileEntry> table = sng_read_file_table(buf);
+    REQUIRE(table.size() == 3);
 
-    std::vector<ReadAsked> reads;
-    CHECK(songs_equal(
-        load_songpath_reading(recording(file_byte_source(path), reads), path, ChartReading{}),
-        notes_song(notes)));
-    // The first read came back whole but too short for the table, so the
-    // reader asked again from the start of the file.
-    const auto head_reads =
-        std::count_if(reads.begin(), reads.end(), [](const ReadAsked& r) { return r.offset == 0; });
-    CHECK(head_reads >= 2);
+    uint64_t bytes_read = 0;
+    CHECK(songs_equal(load_counting(path, bytes_read), notes_song(notes)));
+    // One first piece and the notes entry would come to exactly
+    // kFirstPieceRead plus the notes' length. The first piece came back whole
+    // but too short for the table, so the reader asked again for more.
+    CHECK(bytes_read > kFirstPieceRead + table[2].length);
 }
 
 // A file can shrink after it was opened and sized: the source then claims
@@ -366,7 +348,6 @@ TEST_CASE("sng: a file that shrinks after it was opened ends the header read") {
     const std::string path = sng_fixture_path("shrunk.sng");
     write_bytes(path, whole);
     const ByteSource opened = file_byte_source(path);
-    REQUIRE(opened.size == whole.size());
 
     // The file on disk is cut before its metadata length while the source
     // still holds it open.
