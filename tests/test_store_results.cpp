@@ -519,9 +519,8 @@ TEST_CASE("lookups on one thread and saves on another share one store without er
     // is the store lock (StoreConnection::mutex in store/record_store.h), held
     // for the whole save frame and for the lookup. This case runs the two
     // side by side and checks every lookup came back whole and nothing
-    // threw. It does not force a lookup to land inside a save, so it cannot
-    // prove the lock covers the whole save; it would likely, not surely,
-    // catch a store that lost its lock.
+    // threw. That the save holds the lock at every step is the next case's
+    // proof.
     // The writer saves two corpus charts' real analyses in turn under one
     // chart id, so a lookup that read half of one save would match neither.
     RecordStore store(":memory:");
@@ -558,6 +557,42 @@ TEST_CASE("lookups on one thread and saves on another share one store without er
     CHECK(failure.empty());
     CHECK(all_whole);
     CHECK(reads > 0);
+}
+
+TEST_CASE("a save holds the store lock from its first sqlite step to after its commit") {
+    // At each step of the save (set_after_save_step_for_test), a second
+    // thread tries the store lock. It must fail every time: the saving thread
+    // holds it. A save that let the lock go before any step, its COMMIT
+    // included, turns a step's probe false.
+    RecordStore store(":memory:");
+    const Profile at4 = profile_at(4);
+    const HydraRecord& analysis = analysis_at(4);
+    // The record has paths, so the save runs its path steps too.
+    REQUIRE_FALSE(prepare_record("h", at4, analysis).record.paths.empty());
+    // A record already there, so the save's replace deletes real rows.
+    save_record(store, "h", at4, analysis);
+
+    auto held_elsewhere = [&] {
+        bool held = false;
+        std::thread probe([&] { held = store.writer_lock_held_by_other_thread_for_test(); });
+        probe.join();
+        return held;
+    };
+    int steps = 0;
+    int steps_unheld = 0;
+    store.set_after_save_step_for_test([&] {
+        ++steps;
+        if (!held_elsewhere()) ++steps_unheld;
+    });
+    save_record(store, "h", at4, analysis);
+    store.set_after_save_step_for_test({});
+
+    CHECK(steps > 0);
+    CHECK(steps_unheld == 0);
+    // Outside a save the probe gets the lock, so each true probe above was
+    // the save's lock.
+    CHECK_FALSE(held_elsewhere());
+    CHECK(store.lookup_one("h", at4).status == RecordStatus::Ready);
 }
 
 // D79: the batch's skip list (settled_song_ids, which app::charts_with_result
