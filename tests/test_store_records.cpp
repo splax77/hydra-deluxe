@@ -1,7 +1,6 @@
 // The store's one save and one lookup (D115): prepare_record, failure_record,
-// RecordStore::save, lookup, lookup_one, settled_song_ids, ready_song_ids and
-// ready_records, the status rules a
-// lookup answers by (which stamps read Ready, why a record is Stale, what reads
+// RecordStore::save, lookup, lookup_one and settled_song_ids, the status rules
+// a lookup answers by (which stamps read Ready, why a record is Stale, what reads
 // Not analyzed), the store's readers (RecordStore::reader, StoreReader, and
 // RecordStore::open_own_reader, OwnReader, with its hold). How saved
 // records read back across caps, lenses and the corpus is in
@@ -1202,9 +1201,6 @@ TEST_CASE("store: settled_song_ids lists exactly lookup's Ready and CantAnalyze 
     CHECK(settled_by_lookup == std::unordered_map<std::string, RecordStatus>{
                                    {"ready", RecordStatus::Ready},
                                    {"failed", RecordStatus::CantAnalyze}});
-    // ready_song_ids and ready_records leave the failure out.
-    CHECK(store.ready_song_ids(profile) == std::unordered_set<std::string>{"ready"});
-    CHECK(store.ready_records(profile).size() == 1);
 }
 
 TEST_CASE("store: a profile whose only record is a failure is kept") {
@@ -1269,46 +1265,6 @@ TEST_CASE("store: lookup's three answers against sibling profiles") {
               .status == RecordStatus::NotAnalyzed);
 }
 
-TEST_CASE("store: ready_song_ids and ready_records list exactly lookup's Ready charts") {
-    // The real v2.12.1 library's records are another build's (Stale).
-    OldLibrary old("ready_lists");
-    RecordStore store(old.path);
-    const Profile profile = OldLibrary::profile();
-    // Two real charts' analyses with different best scores: the better one
-    // is listed first.
-    const std::vector<app::AnalysisResult> charts =
-        corpus::analyzed_with_paths(OldLibrary::settings(), 6);
-    const app::AnalysisResult* high = nullptr;
-    const app::AnalysisResult* low = nullptr;
-    for (const app::AnalysisResult& a : charts)
-        for (const app::AnalysisResult& b : charts)
-            if (!high && record_of("x", a.record).paths.front().score >
-                             record_of("x", b.record).paths.front().score) {
-                high = &a;
-                low = &b;
-            }
-    REQUIRE(high != nullptr);
-    const PreparedRecord low_saved = prepare_record("low", profile, low->record);
-    store.save(low_saved);
-    store.save(prepare_record("high", profile, high->record));
-    store.save(prepare_record("rules", profile, other_rules_analysis(OldLibrary::settings())));
-
-    std::vector<std::string> ids = OldLibrary::song_ids();
-    ids.insert(ids.end(), {"low", "high", "rules", "never"});
-    std::unordered_set<std::string> ready_by_lookup;
-    const std::vector<RecordLookup> found = store.lookup(ids, profile);
-    for (size_t i = 0; i < ids.size(); ++i)
-        if (found[i].status == RecordStatus::Ready) ready_by_lookup.insert(ids[i]);
-    CHECK(store.ready_song_ids(profile) == ready_by_lookup);
-    CHECK(ready_by_lookup == std::unordered_set<std::string>{"low", "high"});
-
-    const std::vector<RecordRow> listed = store.ready_records(profile);
-    REQUIRE(listed.size() == 2);
-    CHECK(listed[0].song_id == "high");
-    CHECK(listed[1].song_id == "low");
-    CHECK(listed[1] == low_saved.record);
-}
-
 TEST_CASE("store: a save inside a save group is one SAVEPOINT; a failed one undoes only its chart") {
     RecordStore store(":memory:");
     // Two path rows at one rank break record_paths' key, so this save fails
@@ -1365,7 +1321,7 @@ TEST_CASE("store: every stamp this build accepts reads Ready and a retired stamp
     CHECK(current_record_version() == std::string(kResultsStamp.written));
 
     // Every accepted stamp reads Ready, through lookup and the skip list it
-    // backs (ready_song_ids).
+    // backs (settled_song_ids).
     RecordStore store(":memory:");
     int n = 0;
     for (const std::string_view stamp : kResultsStamp.accepted) {
@@ -1374,14 +1330,16 @@ TEST_CASE("store: every stamp this build accepts reads Ready and a retired stamp
         const std::string id = "accepted" + std::to_string(n++);
         store.save_under_build_for_test(prepare_record(id, at4(), fixture().record), stamp_text);
         CHECK(store.lookup_one(id, at4()).status == RecordStatus::Ready);
-        CHECK(store.ready_song_ids(at4()).count(id) == 1u);
+        const auto settled = store.settled_song_ids(at4());
+        REQUIRE(settled.count(id) == 1u);
+        CHECK(settled.at(id) == RecordStatus::Ready);
     }
 
     // kOldBuildStamp, a stamp this build does not accept, reads Stale.
     REQUIRE_FALSE(kResultsStamp.is_current(hydra::test::kOldBuildStamp));
     hydra::test::save_old_build_record(store, prepare_record("old", at4(), fixture().record));
     CHECK(store.lookup_one("old", at4()).status == RecordStatus::Stale);
-    CHECK(store.ready_song_ids(at4()).count("old") == 0u);
+    CHECK(store.settled_song_ids(at4()).count("old") == 0u);
 
     // A real release's stamp: the v2.12.1 library's profile carries none
     // this build accepts, so its records read Stale and none is on the skip
@@ -1401,7 +1359,7 @@ TEST_CASE("store: every stamp this build accepts reads Ready and a retired stamp
         CHECK(got.status == RecordStatus::Stale);
         CHECK(got.stale_build);
     }
-    CHECK(old_store.ready_song_ids(profile).empty());
+    CHECK(old_store.settled_song_ids(profile).empty());
 }
 
 TEST_CASE("store: a record made under other rules reads Stale until the store runs those rules") {
@@ -1413,8 +1371,7 @@ TEST_CASE("store: a record made under other rules reads Stale until the store ru
         RecordStore store(":memory:");
         store.save(prepare_record("h", at4(), other_rules_analysis()));
         CHECK(store.lookup_one("h", at4()).status == RecordStatus::Stale);
-        CHECK(store.ready_song_ids(at4()).empty());
-        CHECK(store.ready_records(at4()).empty());
+        CHECK(store.settled_song_ids(at4()).empty());
     }
 
     // A record made under the default rules reads Stale to a store running
@@ -1430,7 +1387,7 @@ TEST_CASE("store: a record made under other rules reads Stale until the store ru
         const RecordLookup got = store.lookup_one("h", at4());
         CHECK(got.status == RecordStatus::Stale);
         CHECK(got.stale_rules);
-        CHECK(store.ready_song_ids(at4()).empty());
+        CHECK(store.settled_song_ids(at4()).empty());
     }
     {
         // A store gated on "no usable rules" (a bad hydra_rules.ini) reads
@@ -1465,7 +1422,8 @@ TEST_CASE("store: the other rules' record a save kept reads Ready under those ru
         const RecordLookup got = store.lookup_one("h", at4());
         CHECK(got.status == RecordStatus::Ready);
         CHECK(got.record == foreign.record);
-        CHECK(store.ready_song_ids(at4()).count("h") == 1);
+        CHECK(store.settled_song_ids(at4()) ==
+              std::unordered_map<std::string, RecordStatus>{{"h", RecordStatus::Ready}});
     }
 }
 
