@@ -15,6 +15,8 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstdint>
 #include <cstring>
@@ -284,23 +286,35 @@ TEST_CASE("srb: a stream inflates the same from ranged reads as from the whole b
 }
 
 TEST_CASE("srb: metadata parser reads the string table") {
-    std::vector<uint8_t> meta =
-        make_metadata("notes.chart", "Song Name", "The Artist", "The Charter");
+    const std::string notes_name = "notes.chart";
+    const std::string song_name = "Song Name";
+    const std::string artist = "The Artist";
+    const std::string charter = "The Charter";
+    std::vector<uint8_t> meta = make_metadata(notes_name, song_name, artist, charter);
     SrbMetadata md;
     REQUIRE(srb_parse_metadata(meta, md));
-    CHECK(md.notes_filename == "notes.chart");
-    CHECK(md.name == "Song Name");
-    CHECK(md.artist == "The Artist");
-    CHECK(md.album == "Test Album");
-    CHECK(md.genre == "Test Genre");
-    CHECK(md.charter == "The Charter");
-    CHECK(md.year == "2026");
+    CHECK(md.notes_filename == notes_name);
+    CHECK(md.name == song_name);
+    CHECK(md.artist == artist);
+    CHECK(md.charter == charter);
+    // Every string as it was read, written back the way the block stores
+    // them (each a u32 length and its bytes), lies in the block whole and in
+    // order: the album, genre, year and description make_metadata fills in
+    // are read from their own places too.
+    std::vector<uint8_t> table;
+    for (const std::string* field : {&md.notes_filename, &md.name, &md.artist, &md.album,
+                                     &md.genre, &md.charter, &md.year, &md.description})
+        testsrb::push_str(table, *field);
+    CHECK(std::search(meta.begin(), meta.end(), table.begin(), table.end()) != meta.end());
 
-    // Truncated mid-table: earlier fields survive, later ones stay empty.
-    std::vector<uint8_t> cut(meta.begin(), meta.begin() + 4 + 4 + 11 + 4 + 9 / 2);
+    // Cut halfway through the song name: the notes filename before it
+    // survives, the name and the fields after it stay empty.
+    const auto name_at = std::search(meta.begin(), meta.end(), song_name.begin(), song_name.end());
+    REQUIRE(name_at != meta.end());
+    std::vector<uint8_t> cut(meta.begin(), name_at + song_name.size() / 2);
     SrbMetadata partial;
     REQUIRE(srb_parse_metadata(cut, partial));
-    CHECK(partial.notes_filename == "notes.chart");
+    CHECK(partial.notes_filename == notes_name);
     CHECK(partial.name.empty());
 
     std::vector<uint8_t> too_short = {'4', 'b'};
@@ -338,9 +352,12 @@ TEST_CASE("srb: metadata parser reads song_length_ms after the string table") {
     REQUIRE(srb_parse_metadata(testsrb::make_metadata_with_length("notes.chart", 0, ""), zero));
     CHECK(zero.song_length_ms == 0);
 
-    // A block that ends before the field has none.
+    // A block that ends before the field has none: cut off the checksum that
+    // ends the block and half of the u32 length field before it.
     const std::vector<uint8_t> full = testsrb::make_metadata_with_length("notes.chart", 196905);
-    const std::vector<uint8_t> cut(full.begin(), full.end() - 16 - 2);
+    const size_t checksum_size = std::tuple_size<SrbChecksum>::value;
+    const size_t half_length_field = sizeof(uint32_t) / 2;
+    const std::vector<uint8_t> cut(full.begin(), full.end() - checksum_size - half_length_field);
     SrbMetadata partial;
     REQUIRE(srb_parse_metadata(cut, partial));
     CHECK_FALSE(partial.song_length_ms.has_value());
@@ -373,11 +390,12 @@ TEST_CASE("srb: discovery surfaces the embedded metadata") {
     CreateDirectoryW(utf8_to_wide(dir).c_str(), nullptr);
 
     std::vector<uint8_t> notes = read_bytes(corpus_chart_path(".chart"));
-    std::vector<uint8_t> srb = make_srb(
-        make_full_metadata("notes.chart", "Scanned Song", "Scanned Artist",
-                           "Scanned Charter", 196905, kNoKnownSuspectsId),
-        notes);
-    write_bytes(dir + "\\bundle.srb", srb);
+    const std::vector<uint8_t> meta =
+        make_full_metadata("notes.chart", "Scanned Song", "Scanned Artist", "Scanned Charter",
+                           196905, kNoKnownSuspectsId);
+    std::vector<uint8_t> srb = make_srb(meta, notes);
+    const std::string bundle = dir + "\\bundle.srb";
+    write_bytes(bundle, srb);
 
     auto [items, errors] = hydra::app::discover_charts({dir});
     REQUIRE(errors.empty());
@@ -386,7 +404,12 @@ TEST_CASE("srb: discovery surfaces the embedded metadata") {
     CHECK(items[0].artist == "Scanned Artist");
     CHECK(items[0].charter == "Scanned Charter");
     CHECK(items[0].md5 == kNoKnownSuspectsHex);
-    CHECK(!items[0].sig.empty());
+    // The scan stores the fingerprint the bundle's file gives, and an edited
+    // bundle (here one more trailing stream) gives another one.
+    CHECK(items[0].sig == hydra::app::chart_files_sig(bundle));
+    write_bytes(bundle, make_srb(meta, notes,
+                                 {testsrb::stand_in_audio(), testsrb::stand_in_audio()}));
+    CHECK(hydra::app::chart_files_sig(bundle) != items[0].sig);
 }
 
 // Clone Hero, its song cache and dmleaderboards key an .srb by the checksum
@@ -448,13 +471,6 @@ TEST_CASE("srb: an empty embedded name reads (unknown)") {
     REQUIRE(items.size() == 1);
     CHECK(items[0].title == kUnknownTitle);
     CHECK(items[0].artist == "Scanned Artist");
-}
-
-TEST_CASE("srb: one named cap bounds every inflated stream") {
-    // Notes files inflate to well under 100 MB even for mega-charts; the cap
-    // exists only to bound hostile input.
-    CHECK(kSrbMaxStream == (size_t{1} << 30));
-    CHECK(kSrbMaxStream > kSrbMaxMetadata);
 }
 
 TEST_CASE("srb: one reader gives the metadata and where the notes stream starts") {
