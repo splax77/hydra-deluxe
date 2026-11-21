@@ -94,7 +94,7 @@ int64_t measure_length_at(const Song& song, int64_t tick) {
 // force at their chords. 1.0 sizes a fill by that measure alone, so every
 // 1.0 fill has one share whatever its meter or its chord's distance to the
 // line.
-bool same_measure_share(const Song& a, const SongTimestamp& fa, const Song& b,
+bool one_measure_share(const Song& a, const SongTimestamp& fa, const Song& b,
                         const SongTimestamp& fb) {
     return *fa.activation_length * measure_length_at(b, fb.timecode.ticks()) ==
            *fb.activation_length * measure_length_at(a, fa.timecode.ticks());
@@ -164,7 +164,7 @@ TEST_CASE("generated fills: Clone Hero 1.0 mode sizes fills by the measure, 1.1 
     for (const SongTimestamp& ts : old.sequence) {
         INFO("chord tick " << ts.timecode.ticks());
         REQUIRE(ts.has_activation());
-        CHECK(same_measure_share(old, ts, ref, ref.sequence[0]));
+        CHECK(one_measure_share(old, ts, ref, ref.sequence[0]));
     }
 }
 
@@ -180,7 +180,7 @@ TEST_CASE("generated fills: a chord exactly on the line has length 0") {
     const Song song = song_with_chords({line});
     CHECK(fills_of(song) == Fills{{line, line}});
     REQUIRE(song.sequence[0].has_activation());
-    CHECK(*song.sequence[0].activation_length == song.sequence[0].timecode.ticks() - line);
+    CHECK(*song.sequence[0].activation_length == 0);
 }
 
 TEST_CASE("generated fills: a chord just before its line has a negative length") {
@@ -268,7 +268,7 @@ TEST_CASE("generated fills: Clone Hero 1.0 mode reads the same restarted grid") 
         INFO("chord tick " << ts.timecode.ticks());
         CHECK(measure_length_at(song, ts.timecode.ticks()) !=
               measure_length_at(ref, ref.sequence[0].timecode.ticks()));
-        CHECK(same_measure_share(song, ts, ref, ref.sequence[0]));
+        CHECK(one_measure_share(song, ts, ref, ref.sequence[0]));
     }
 }
 
@@ -281,7 +281,7 @@ TEST_CASE("generated fills: a 1.0 fill whose chord sits on a meter change takes 
     CHECK(measure_length_at(song, change) != measure_length_at(song, change - 1));
     const Song ref = ch10_reference();
     REQUIRE(ref.sequence[0].has_activation());
-    CHECK(same_measure_share(song, song.sequence[0], ref, ref.sequence[0]));
+    CHECK(one_measure_share(song, song.sequence[0], ref, ref.sequence[0]));
 }
 
 TEST_CASE("generated fills: a chart with its own fills gets none generated") {
