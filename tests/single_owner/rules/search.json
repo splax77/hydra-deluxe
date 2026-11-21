@@ -31,6 +31,11 @@
           "file": "tests/test_sp_end.cpp",
           "line_text": "return song.timing().plusmeasure(song.timecode(from_tick), sp_bars_to_measures(bars)).ticks();",
           "why": "the expected side of the SP-end tests: the end a hand-built song's own measure count gives, compared with the history the engine stored; add_act_edge and add_deact_edge are private to ScoreGraph, so a test cannot call them"
+        },
+        {
+          "file": "tests/test_preview_boxes.cpp",
+          "line_text": "return song.timing().plusmeasure(from, sp_bars_to_measures(bars)).ms() - from.ms();",
+          "why": "engine_sp_ms, the expected side of the drain-box tests: the SP length the graph's rule gives from a tick, compared with the box's text; add_act_edge and add_deact_edge are private to ScoreGraph, so a test cannot call them"
         }
       ],
       "scope": [
@@ -78,7 +83,7 @@
         "options.target_act_ticks = ticks;"
       ],
       "must_not_match": [
-        "const std::vector<Path> kept = search_target(song, cfg, want);"
+        "const std::vector<Path> kept = search_target(song, cfg, activation_pins(want)).paths;"
       ],
       "owner_lines": [
         {
@@ -483,7 +488,7 @@
     },
     {
       "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
-      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::needs_timing in src/core/model.cpp (the zero test)",
+      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::difficulty in src/core/model.cpp (the zero test: empty when nothing needs timing)",
       "owner_file": "src/search/pather.cpp",
       "owner_symbol": "allzero_options",
       "date": "2026-10-04",

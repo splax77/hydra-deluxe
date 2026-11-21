@@ -109,8 +109,8 @@ SearchableRow make_searchable(std::string_view title, std::string_view artist,
 std::string search_field(std::string_view song, std::string_view artist,
                          std::string_view charter, std::string_view path = {});
 
-// Whether a term limited to `term_field` counts in `column`: true when either
-// is Any or the two are the same field. The one rule for both matching
+// Whether a term limited to `term_field` counts in `column`: true when the
+// term is unfielded (Any) or the two are the same field. The one rule for both matching
 // (query_matches) and highlighting (match_spans).
 bool term_applies_to(QueryField term_field, QueryField column);
 
@@ -120,13 +120,13 @@ bool term_applies_to(QueryField term_field, QueryField column);
 struct RowFacts {
     std::optional<int> stars;
     // The best path's shown timing (shown_timing, core/model.h): nullopt = the
-    // path needs no timing (Path::needs_timing).
+    // path needs no timing (an empty Path::difficulty).
     std::optional<double> hardest_ms;
 };
 
 // True when every term counts (see term_applies_to) and every filter holds.
 // A row with no facts matches no filter. A path that needs no timing
-// (Path::needs_timing) passes any squeeze<= or squeeze< limit and matches no
+// (an empty Path::difficulty) passes any squeeze<= or squeeze< limit and matches no
 // squeeze>= or squeeze> filter, since it has nothing to squeeze. Allocates
 // nothing.
 bool query_matches(const LibraryQuery& q, const SearchableRow& row, const RowFacts& facts);

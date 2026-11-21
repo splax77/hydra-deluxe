@@ -6,31 +6,13 @@
 #include <stdexcept>
 #include <utility>
 
-#include "audio/mixer.h"  // stem_converter_config, shared with mix_stems
+#include "audio/mixer.h"  // stem_converter_config
 #include "core/error_kind.h"
 
 // miniaudio's configuration macros come from the miniaudio target.
 #include "miniaudio.h"
 
 namespace hydra::audio {
-
-// ---- BufferSource ---------------------------------------------------------
-
-BufferSource::BufferSource(DecodedAudio audio)
-    : audio_(std::move(audio)), length_(audio_.frames()) {}
-
-int64_t BufferSource::read(float* out, int64_t frames) {
-    const int64_t n = std::clamp<int64_t>(length_ - pos_, 0, std::max<int64_t>(frames, 0));
-    if (n > 0) {
-        const std::size_t ch = static_cast<std::size_t>(audio_.channels);
-        std::memcpy(out, audio_.samples.data() + static_cast<std::size_t>(pos_) * ch,
-                    static_cast<std::size_t>(n) * ch * sizeof(float));
-        pos_ += n;
-    }
-    return n;
-}
-
-void BufferSource::seek(int64_t frame) { pos_ = std::clamp<int64_t>(frame, 0, length_); }
 
 // ---- StreamMix ------------------------------------------------------------
 
@@ -196,7 +178,7 @@ StreamMix::StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rat
         const int in_rate = r->sample_rate();
         const int64_t in_len = std::max<int64_t>(r->length_frames(), 0);
         s->reader = std::move(r);
-        // The same converter setup mix_stems uses, so the output matches.
+        // The same converter setup the whole-stem test reference uses.
         const StemConverter sc =
             stem_converter_config(in_rate, s->in_channels, out_rate, out_channels);
         s->passthrough = sc.passthrough;

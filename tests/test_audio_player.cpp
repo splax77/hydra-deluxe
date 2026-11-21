@@ -15,10 +15,10 @@
 #include "audio_util.h"
 
 using namespace hydra::audio;
-using testaudio::make_ramp;
+using testaudio::ramp_source;
 
 TEST_CASE("Playhead starts paused at the start with the mix's format") {
-    Playhead t(make_ramp(4800));
+    Playhead t(ramp_source(4800));
     CHECK_FALSE(t.playing());
     CHECK(t.position_frames() == 0);
     CHECK(t.length_frames() == 4800);
@@ -48,7 +48,7 @@ TEST_CASE("ms_of_frames and frames_of_ms convert at the sample rate") {
 }
 
 TEST_CASE("play, pause, and toggle drive the playhead state") {
-    Playhead t(make_ramp(10));
+    Playhead t(ramp_source(10));
     t.play();
     CHECK(t.playing());
     t.pause();
@@ -60,7 +60,7 @@ TEST_CASE("play, pause, and toggle drive the playhead state") {
 }
 
 TEST_CASE("read_frames while paused writes silence and does not advance") {
-    Playhead t(make_ramp(10));
+    Playhead t(ramp_source(10));
     std::vector<float> out(8, -1.0f);  // 4 stereo frames, sentinel-filled
     int64_t got = t.read_frames(out.data(), 4);
     CHECK(got == 0);
@@ -69,7 +69,7 @@ TEST_CASE("read_frames while paused writes silence and does not advance") {
 }
 
 TEST_CASE("read_frames while playing copies frames and advances the clock") {
-    Playhead t(make_ramp(5));
+    Playhead t(ramp_source(5));
     t.play();
 
     constexpr int64_t kAsked = 3;
@@ -85,7 +85,7 @@ TEST_CASE("read_frames while playing copies frames and advances the clock") {
 }
 
 TEST_CASE("read_frames past the end zero-fills, auto-pauses, clamps position") {
-    Playhead t(make_ramp(5));
+    Playhead t(ramp_source(5));
     t.play();
     t.seek_frames(3);  // two frames left
 
@@ -128,7 +128,7 @@ TEST_CASE("read_frames counts only the frames a short source really gave") {
 }
 
 TEST_CASE("seek clamps to the valid range in both frames and ms") {
-    Playhead t(make_ramp(100));
+    Playhead t(ramp_source(100));
     t.seek_frames(40);
     CHECK(t.position_frames() == 40);
     t.seek_frames(-10);
@@ -140,7 +140,7 @@ TEST_CASE("seek clamps to the valid range in both frames and ms") {
 }
 
 TEST_CASE("Playhead applies the output gain to served frames") {
-    Playhead t(make_ramp(100));
+    Playhead t(ramp_source(100));
     CHECK(t.gain() == doctest::Approx(1.0f));
     t.set_gain(0.25f);
     CHECK(t.gain() == doctest::Approx(0.25f));

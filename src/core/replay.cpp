@@ -68,30 +68,10 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
     ReplayResult out;
     out.chords.reserve(song.sequence.size());
 
-    // Every chord's path-free points, the same table ScoreGraph::build sums:
-    // the caller's, when it handed one in, or one built here.
+    // Every chord's path-free points, the same table ScoreGraph::build sums.
     const ChordScoreDetail detail =
         options.scores_only ? ChordScoreDetail::ChordsOnly : ChordScoreDetail::WithNotes;
-    ChordScoreTable built;
-    if (options.table) {
-        if (options.table->rows.size() != song.sequence.size())
-            throw std::logic_error("replay: the chord-score table handed in has " +
-                                   std::to_string(options.table->rows.size()) +
-                                   " rows for a chart of " +
-                                   std::to_string(song.sequence.size()) + " chords");
-        // A ChordsOnly table keeps no notes; a WithNotes one keeps every note,
-        // so on a chart with notes it has some.
-        const bool has_notes = !options.table->notes.empty();
-        const bool wants_notes = !options.scores_only && song.note_count() > 0;
-        if (has_notes != wants_notes)
-            throw std::logic_error(std::string("replay: a ") +
-                                   (options.scores_only ? "scores-only" : "full") +
-                                   " replay was handed a chord-score table " +
-                                   (has_notes ? "with" : "without") + " its notes");
-    } else {
-        built = chord_score_table(song, rules.sqout_rule, detail);
-    }
-    const ChordScoreTable& table = options.table ? *options.table : built;
+    const ChordScoreTable table = chord_score_table(song, rules.sqout_rule, detail);
 
     ReplayScore cum;
     // Each solo's running bonus comes from solo_figures, the one walk over a
@@ -253,15 +233,6 @@ ReplayScore score_of(const Path& path) {
     s.accent = path.score_accents;
     s.ghost = path.score_ghosts;
     return s;
-}
-
-void assign_score(Path& path, const ReplayScore& s) {
-    path.notes_points = s.notes;
-    path.score_combo = s.combo;
-    path.score_sp = s.sp;
-    path.score_solo = s.solo;
-    path.score_accents = s.accent;
-    path.score_ghosts = s.ghost;
 }
 
 std::vector<int64_t> sqin_phrase_ticks(const Activation& act) {

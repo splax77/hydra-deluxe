@@ -94,8 +94,7 @@ public:
     // timeline's end (app/path_view.cpp) call. ms_at_tick_f
     // serves the end of a shaded span (render/track_state.cpp) and the Clone
     // Hero 1.0 fill deadline (search/graph.cpp), which is off the scoring
-    // surface on purpose. SongTiming::sp_end_ms (which only tests call) uses
-    // both.
+    // surface on purpose.
     double ms_at_tick_f(double ticks) const;
     double tick_at_ms(double ms) const;
 
@@ -209,9 +208,8 @@ public:
     double elapsed_at(int i) const { return elapsed_[i]; }
     int count() const { return static_cast<int>(starts_.size()); }
 
-    // Continuous measure position <-> tick, inverse of each other.
+    // Continuous measure position at a tick.
     double measures_at(double ticks) const;
-    double tick_at(double measures) const;
 
     // The tick `add` whole measures after (or, negative, before) `ticks`,
     // walked span by span in exact fractions and floored to a whole tick
@@ -306,15 +304,11 @@ public:
     // the scoring surface.
     double ms_per_measure_at(int64_t ticks) const;
 
-    // Continuous measure position <-> tick on MeasureCount, and the exact
-    // (sub-tick, piecewise-composed) SP end for an activation hit at
-    // `act_hit_ms` holding SP for `end_measures` measures. All display-layer
-    // only, like ms_per_measure_at: they interpolate in doubles with no
-    // plusmeasure tick rounding, so they must never feed the
+    // Continuous measure position at a tick on MeasureCount. Display-layer
+    // only, like ms_per_measure_at: it interpolates in doubles with no
+    // plusmeasure tick rounding, so it must never feed the
     // graph/engine/stored records.
     double measures_at_tick_f(double ticks) const;
-    double tick_at_measures_f(double measures) const;
-    double sp_end_ms(double act_hit_ms, int64_t end_measures) const;
 
     // The tick a playhead at `ms` shows: tick_at_ms rounded to the nearest
     // tick, and never below 0. This is the one rule for which tick the

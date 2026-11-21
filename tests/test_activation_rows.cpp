@@ -1050,7 +1050,7 @@ TEST_CASE("activation badges: a squeeze that needs no timing keeps its badge, gr
     CHECK_FALSE(timings[0].required);
     CHECK_FALSE(badges[0].warn);
     badge_word_of(badges[0], figure_of(timings[0]));
-    CHECK_FALSE(free_in.needs_timing());
+    CHECK_FALSE(free_in.difficulty().has_value());
     // Beside a timed squeeze, both show in list order.
     free_in.sqinouts.push_back(SPSqueeze{SqueezeKind::SqIn, 1.0});
     const std::vector<ActivationTiming> two = free_in.badge_timings();
@@ -1073,7 +1073,7 @@ TEST_CASE("path button: a squeeze exactly on the SP end shows its 0.0 ms") {
     REQUIRE(timings.size() == 1);
     CHECK(timings[0].required);
     CHECK_FALSE(timings[0].difficult);
-    CHECK(on_end_in.needs_timing());
+    CHECK(on_end_in.difficulty().has_value());
     CHECK(only_button(on_end_in).timing == format_ms(0.0));
 }
 
@@ -1135,7 +1135,7 @@ TEST_CASE("activation badges: the badges, the copied path and the path button sh
                     joined.empty() ? act.notationstr() : act.notationstr() + " (" + joined + ")";
                 CHECK(verbose == expected);
             }
-            CHECK(b.timing.empty() == !b.path->needs_timing());
+            CHECK(b.timing.empty() == !b.path->difficulty().has_value());
             if (!b.timing.empty()) {
                 ++buttons_with_timing;
                 bool among = false;
@@ -1155,7 +1155,7 @@ TEST_CASE("activation badges: an optional fill and a free squeeze show, the butt
     REQUIRE_FALSE(act.is_E0());
     REQUIRE(act.sqinouts[0].needs_no_timing());
     CHECK(activation_badges(act).size() == 2);
-    CHECK_FALSE(act.needs_timing());
+    CHECK_FALSE(act.difficulty().has_value());
     CHECK(only_button(act).timing.empty());
 }
 

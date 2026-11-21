@@ -30,6 +30,7 @@
 #include "app/user_messages.h"
 #include "core/error_kind.h"
 #include "core/model.h"
+#include "core/winstr.h"  // read_file_bytes
 #include "chart_text.h"
 #include "corpus_util.h"
 #include "midi_util.h"
@@ -174,7 +175,7 @@ bool chart_text_has_notes(const std::string& path, const std::string& section) {
 // pitches: its kick, its 2x kick and the four pads after the kick
 // (DifficultyChartCodes), read with the file reader and not the song parser.
 bool mid_track_has_notes(const std::string& path, Difficulty difficulty) {
-    const MidiFile file = MidiFile::from_file(path);
+    const MidiFile file = MidiFile(read_file_bytes(path));
     const MidiTrack* drums = file.drums_track();
     if (drums == nullptr) return false;
     const DifficultyChartCodes& codes = difficulty_chart_codes(difficulty);
@@ -701,7 +702,7 @@ TEST_CASE("drum lanes: each corpus lane is a lane line or marker of its own file
         } else if (format == ChartFormat::Mid) {
             // Each lane starts on a marker note's note-on and ends on its
             // note-off, both read from the drum track by the file reader.
-            const MidiFile file = MidiFile::from_file(path);
+            const MidiFile file = MidiFile(read_file_bytes(path));
             const MidiTrack* track = file.drums_track();
             REQUIRE(track != nullptr);
             std::map<int, int64_t> open;  // marker pitch -> its note-on tick
@@ -1166,7 +1167,7 @@ TEST_CASE("mid: Won't Get Fooled Again (O) reads each kick's velocity as its dyn
 
     // Each tick's kick and 2x kick note-on velocities, from the file.
     const DifficultyChartCodes& codes = difficulty_chart_codes(Difficulty::Expert);
-    const MidiFile file = MidiFile::from_file(path);
+    const MidiFile file = MidiFile(read_file_bytes(path));
     const MidiTrack* track = file.drums_track();
     REQUIRE(track != nullptr);
     std::map<int64_t, std::vector<int>> kick_velocities;

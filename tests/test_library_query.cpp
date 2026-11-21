@@ -467,9 +467,6 @@ TEST_CASE("library query: a term applies to its own column, and Any applies ever
     CHECK(term_applies_to(QueryField::Any, QueryField::Album));
     CHECK_FALSE(term_applies_to(QueryField::Album, QueryField::Artist));
     CHECK_FALSE(term_applies_to(QueryField::Artist, QueryField::Album));
-    // A column of Any counts every term (match_spans' rule).
-    CHECK(term_applies_to(QueryField::Title, QueryField::Any));
-    CHECK(term_applies_to(QueryField::Any, QueryField::Any));
 }
 
 TEST_CASE("library query: unknown field names are words and empty field values are dropped") {

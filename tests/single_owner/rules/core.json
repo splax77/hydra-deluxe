@@ -1015,11 +1015,6 @@
           "file": "src/core/timing.h",
           "line_text": "double tick_at_ms(double ms) const;",
           "why": "the ms-to-tick map's declaration"
-        },
-        {
-          "file": "src/core/timing.cpp",
-          "line_text": "double t = ms_.tick_at_ms(act_hit_ms);",
-          "why": "sp_end_ms keeps the fractional tick for its continuous map; no screen shows it"
         }
       ],
       "note": "A time turned into a tick outside the timing code. display_tick_at_ms is the one rule for which tick a screen shows at a time (D48, Q23). The row flags every raw tick_at_ms call, so a rounding of any kind (llround, round, floor, a cast) is caught, and so is one split over two lines, whose second line still holds the call. The second line of \"std::llround(\\n timing->ms_index().tick_at_ms(ms));\"."
@@ -2378,9 +2373,9 @@
     },
     {
       "question": "Which Path field holds which ReplayScore category?",
-      "owner": "score_of and assign_score in src/core/replay.cpp",
-      "owner_file": "src/core/replay.cpp",
-      "owner_symbol": "score_of",
+      "owner": "score_of in src/core/replay.cpp (Path to ReplayScore) and set_path_score in tests/preview_song_fixtures.h (the reverse, which only test fixtures need)",
+      "owner_file": "tests/preview_song_fixtures.h",
+      "owner_symbol": "set_path_score",
       "date": "2026-10-05",
       "decision": "audit finding 282; phase 6 task J4-5 (D53, D54)",
       "added_by": "J4-5",
@@ -2394,9 +2389,9 @@
       ],
       "owner_lines": [
         {
-          "file": "src/core/replay.cpp",
+          "file": "tests/preview_song_fixtures.h",
           "line_text": "path.score_ghosts = s.ghost;",
-          "why": "assign_score, the owner"
+          "why": "set_path_score, the owner"
         }
       ],
       "scope": [
@@ -2404,7 +2399,7 @@
         "tools",
         "tests"
       ],
-      "note": "Copying a ReplayScore into a Path field by field anywhere but assign_score."
+      "note": "Copying a ReplayScore into a Path field by field anywhere but set_path_score."
     },
     {
       "question": "Which SP cap does the leaderboard comparison need? (tests)",

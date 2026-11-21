@@ -37,8 +37,6 @@
 
 namespace hydra {
 
-struct ChordScoreTable;  // core/scoring.h
-
 // One activation's Star Power window, in ticks. `deact_tick` is the
 // deactivation node D — for a stored activation, the tick the search
 // stamped onto it; it need not be a chord tick.
@@ -237,12 +235,6 @@ struct ReplayOptions {
     // Set it field by field (`ReplayOptions o; o.scores_only = true;`): the
     // project is C++17, which has no designated initializers.
     bool scores_only = false;
-    // A chord-score table already built for this song, or null to build one.
-    // It must come from chord_score_table (core/scoring.h) for the same song,
-    // under rules.sqout_rule, at the detail scores_only calls for; replay_path
-    // throws std::logic_error when its size or detail does not fit. Lets a
-    // caller that replays one song many times build the table once.
-    const ChordScoreTable* table = nullptr;
 };
 
 // Score `song` under `windows` (any order; they are sorted here). An empty
@@ -260,13 +252,6 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
 // caller can compare it against a ReplayResult::final with operator==
 // instead of listing all six fields at each comparison site.
 ReplayScore score_of(const Path& path);
-
-// Writes a ReplayScore's six categories into a Path's score fields. It is
-// score_of's reverse: the two are the only pairing between Path and
-// ReplayScore. Other code copies the six between other shapes (the engine's
-// copy-out, a variant taking its leader's scores); Path's fields stay the one
-// list of categories.
-void assign_score(Path& path, const ReplayScore& score);
 
 // The Star Power windows a stored path describes: one per activation, with
 // its deactivation node read straight off the record (Activation::deact_tick,

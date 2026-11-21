@@ -8,9 +8,6 @@
 
 namespace hydra::audio {
 
-Playhead::Playhead(DecodedAudio mixed)
-    : Playhead(std::make_unique<BufferSource>(std::move(mixed))) {}
-
 Playhead::Playhead(std::unique_ptr<MixSource> source)
     : source_(std::move(source)),
       channels_(source_ ? source_->channels() : 0),
