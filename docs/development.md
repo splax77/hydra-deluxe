@@ -135,6 +135,17 @@ itself; `tools\build_slot.ps1` owns those limits.
 `tools\build_slot.ps1 -Repo <worktree>` builds another worktree under the pass
 the caller already holds.
 
+A build folder remembers the Visual Studio install and the compiler, linker
+and librarian it was first set up with. A Visual Studio update can remove that
+compiler version or move the install to a new version. CMake then refuses to
+set the folder up again ("is not a full path to an existing compiler tool",
+"could not find specified instance of Visual Studio"), and running it again
+does not always help. So before it configures, `build_cpp.ps1` asks
+`tools\stale_toolchain.ps1` whether anything the folder saved is gone. If so,
+it prints why and configures with `--fresh`, which drops the folder's saved
+settings and finds the installed tools again. The next build then compiles
+everything once. `tools\test_stale_toolchain.ps1` is its self-test.
+
 A second lock stops a build that skips `build_cpp.ps1`. `Directory.Build.targets`
 at the repo root makes every Visual Studio project fail without a claimed pass,
 so a hand-run `cmake --build` is refused. Under the limit, Visual Studio builds

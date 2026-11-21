@@ -7,7 +7,7 @@ and tools/new_worktree.ps1, which no longer builds.
 
 It compiles nothing and takes no real slot. Every case uses its own slot folder
 in a temporary fixture. The fixture holds a copy of the real build_cpp.ps1,
-build_slot.ps1, cmake_presets.ps1 and CMakePresets.json, with a find_cmake.ps1
+build_slot.ps1, cmake_presets.ps1, stale_toolchain.ps1 and CMakePresets.json, with a find_cmake.ps1
 that hands back a fake cmake. The fake writes down its arguments and what the
 slot folder holds at that moment.
 
@@ -94,7 +94,7 @@ try {
     New-Item -ItemType Directory -Force -Path (Join-Path $fakeRepo 'tools') | Out-Null
     Copy-Item (Join-Path $repoRoot 'build_cpp.ps1') $fakeRepo
     Copy-Item (Join-Path $repoRoot 'CMakePresets.json') $fakeRepo
-    Copy-Item $slotScript, (Join-Path $PSScriptRoot 'cmake_presets.ps1') (Join-Path $fakeRepo 'tools')
+    Copy-Item $slotScript, (Join-Path $PSScriptRoot 'cmake_presets.ps1'), (Join-Path $PSScriptRoot 'stale_toolchain.ps1') (Join-Path $fakeRepo 'tools')
     $fakeCMake = Join-Path $fixture 'fake_cmake.ps1'
     Set-Content (Join-Path $fakeRepo 'tools\find_cmake.ps1') "function Find-CMake { '$fakeCMake' }"
     Set-Content $fakeCMake @'

@@ -40,6 +40,7 @@ $root = $PSScriptRoot
 
 . (Join-Path $root "tools\find_cmake.ps1")
 . (Join-Path $root "tools\cmake_presets.ps1")
+. (Join-Path $root "tools\stale_toolchain.ps1")
 $cmake = Find-CMake
 Write-Host "Using cmake: $cmake"
 
@@ -78,8 +79,15 @@ try {
     # The installer's build always configures, so it always takes its preset's
     # settings (link-time optimization on, GUI tests out), even in a build
     # folder made before a preset changed. It is built rarely; this costs seconds.
-    if ($Configure -or $Preset -eq "ship" -or -not (Test-Path (Join-Path $buildDir "CMakeCache.txt"))) {
-        & $cmake --preset $Preset
+    # A Visual Studio update can remove the toolset, or move the install, that
+    # the folder saved; CMake then refuses the folder until its saved settings
+    # go. tools/stale_toolchain.ps1 says when, and --fresh clears them.
+    $stale = Get-StaleToolchainReason $buildDir
+    if ($stale) { Write-Host "Configuring $buildDir from scratch (--fresh): $stale." }
+    if ($stale -or $Configure -or $Preset -eq "ship" -or -not (Test-Path (Join-Path $buildDir "CMakeCache.txt"))) {
+        $configureArgs = @("--preset", $Preset)
+        if ($stale) { $configureArgs += "--fresh" }
+        & $cmake @configureArgs
         if ($LASTEXITCODE -ne 0) { throw "configure failed" }
     }
 
