@@ -699,6 +699,17 @@ public:
     // test stores an old-build record this way (it reads Stale for another
     // build).
     void save_under_build_for_test(const PreparedRecord& prepared, const std::string& build);
+    // Test seam: every save calls `fn` on the saving thread after each of its
+    // steps that makes sqlite calls, the last one after its COMMIT or
+    // RELEASE, so a test can check the store's lock at each. Empty to stop.
+    void set_after_save_step_for_test(std::function<void()> fn) {
+        after_save_step_for_test_ = std::move(fn);
+    }
+    // For the tests: tries the writer's lock (StoreConnection::mutex) and
+    // lets it go again; true when another thread holds it. The lock is
+    // recursive, so the thread that holds it always gets it: call this from
+    // a thread other than the one being checked.
+    bool writer_lock_held_by_other_thread_for_test();
 
     // A save group (D86 items 1 and 2): one transaction around several
     // save calls, which the batch's writer opens so it commits once per group
@@ -896,6 +907,9 @@ private:
     std::atomic<bool> fail_next_reader_open_for_test_{false};
     // What set_between_lookup_reads_for_test set.
     std::function<void()> between_lookup_reads_for_test_;
+    // What set_after_save_step_for_test set, and the save's call of it.
+    std::function<void()> after_save_step_for_test_;
+    void after_save_step();
     // The fingerprint of the rules this process runs under. A row stamped
     // with anything but `fixed` reads Stale. Computed once, when the store
     // opens.
