@@ -45,7 +45,7 @@ REC_CLAIM = ('claim: "the comment says the reply is real" | from: record records
 
 def count(contra, rest, total):
     return ("count: records the facts contradict: %d | records resting on a comment, name or"
-            " claim word: %d | total: %d" % (contra, rest, total))
+            " claim word: %d | total records in either count, each counted once: %d" % (contra, rest, total))
 
 
 def good_lines():
@@ -136,7 +136,7 @@ class Rows(Base):
         self.assertRejects(self.with_row(row), "facts line 99 is not in the facts file")
 
     def test_facts_range_past_the_end(self):
-        row = A_CLAIM.replace("facts: 3", "facts: 5-7")
+        row = A_CLAIM.replace("facts: 3", "facts: 3, 7")
         self.assertRejects(self.with_row(row), "facts line 7 is not in the facts file")
 
     def test_facts_zero(self):
@@ -144,7 +144,7 @@ class Rows(Base):
         self.assertRejects(self.with_row(row), "facts line 0 is not in the facts file")
 
     def test_facts_list_and_range_pass(self):
-        row = A_CLAIM.replace("facts: 3", "facts: 2, 5-6")
+        row = A_CLAIM.replace("facts: 3", "facts: 2-3")
         self.assertEqual(self.run_check(self.with_row(row)), [])
 
     def test_quote_not_at_its_line(self):
@@ -216,6 +216,50 @@ class Lines(Base):
                 lines[3] = row
                 self.assertRejects(lines, "the word '%s' outside a quote" % word)
 
+    def test_verdict_word_other_forms(self):
+        for word in ("truly", "Accurate", "matches", "valid", "confirms", "as designed",
+                     "as  designed", "by design", "correctly", "inconsistent", "tr​ue",
+                     "ｔrue"):
+            with self.subTest(word=word):
+                lines = good_lines()
+                lines[3] = ('open: "the comment says the reply is real" | settled by: it %s'
+                            % word)
+                got = self.run_check(lines)
+                self.assertTrue(any("outside a quote" in r for _, r in got), got)
+
+    def test_verdict_word_in_the_from_path_passes(self):
+        os.makedirs(os.path.join(self.root, "tests", "valid"))
+        self.write(os.path.join(self.root, "tests", "valid", "t.cpp"), SOURCE)
+        row = A_CLAIM.replace("tests/t.cpp:2", "tests/valid/t.cpp:2")
+        self.assertEqual(self.run_check(self.with_row(row)), [])
+
+    def test_verdict_word_in_a_facts_test_name_passes(self):
+        self.write(self.facts, [ln.replace("test_b", "test valid") for ln in FACTS])
+        lines = [ln.replace("test_b", "test valid") for ln in good_lines()]
+        self.assertEqual(self.run_check(lines), [])
+
+    def test_tiny_quote(self):
+        for q in ("a", "the", "state", " the reply comes"):
+            with self.subTest(q=q):
+                row = A_CLAIM.replace('"the reply comes from a recorded server"', '"%s"' % q)
+                self.assertRejects(self.with_row(row), "quote a whole phrase")
+
+    def test_empty_quote(self):
+        row = A_CLAIM.replace('"the reply comes from a recorded server"', '""')
+        self.assertRejects(self.with_row(row), "quote a whole phrase")
+
+    def test_facts_line_from_another_test(self):
+        row = A_CLAIM.replace("facts: 3", "facts: 6")
+        self.assertRejects(self.with_row(row), "not in the facts section of 'test_a'")
+
+    def test_facts_range_into_another_test(self):
+        row = A_CLAIM.replace("facts: 3", "facts: 2-3, 5")
+        self.assertRejects(self.with_row(row), "not in the facts section of 'test_a'")
+
+    def test_facts_heading_line(self):
+        row = A_CLAIM.replace("facts: 3", "facts: 1")
+        self.assertRejects(self.with_row(row), "not in the facts section of 'test_a'")
+
     def test_verdict_word_inside_a_quote_passes(self):
         lines = list(good_lines())
         self.write(os.path.join(self.root, "tests", "t.cpp"),
@@ -278,6 +322,21 @@ class Counts(Base):
         lines = good_lines()
         lines[2] = REC_CLAIM.replace("facts: none | result: no fact backs this",
                                      "facts: 3 | result: the facts contradict this")
+        lines[-1] = count(1, 1, 1)
+        self.assertEqual(self.run_check(lines), [])
+
+    def test_record_in_both_counts_is_not_counted_twice(self):
+        lines = good_lines()
+        lines[2] = REC_CLAIM.replace("facts: none | result: no fact backs this",
+                                     "facts: 3 | result: the facts contradict this")
+        lines[-1] = count(1, 1, 2)
+        self.assertRejects(lines, "total is 2; the rows give 1 records in either count")
+
+    def test_total_counts_each_record_once_across_two_records(self):
+        lines = good_lines()
+        lines.insert(3, REC_CLAIM.replace("facts: none | result: no fact backs this",
+                                          "facts: 3 | result: the facts contradict this")
+                     .replace("rests on: a comment", "rests on: nothing"))
         lines[-1] = count(1, 1, 2)
         self.assertEqual(self.run_check(lines), [])
 
@@ -286,7 +345,7 @@ class Counts(Base):
 
     def test_count_line_missing_a_count(self):
         lines = good_lines()
-        lines[-1] = "count: records the facts contradict: 0 | total: 1"
+        lines[-1] = "count: records the facts contradict: 0 | total records in either count, each counted once: 1"
         self.assertRejects(lines, "count line: ")
 
     def test_line_after_the_count_line(self):

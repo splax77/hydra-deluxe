@@ -14,16 +14,19 @@ Every line of the file is blank or one of these five kinds:
     claim: "<exact quote>" | from: <kind> <path>:<line> | rests on: <rest> | facts: <lines> | result: <phrase>
     claims: none
     open: "<exact quote of a claim row in the same section>" | settled by: <the search or run>
-    count: records the facts contradict: <N> | records resting on a comment, name or claim word: <M> | total: <T>
+    count: records the facts contradict: <N> | records resting on a comment, name or claim word: <M> | total records in either count, each counted once: <T>
 
 The words each field may hold are the lists below (KINDS, RESTS, RESULTS). `<path>` is
 relative to main's root, forward or back slashes. `<lines>` is `none`, or line numbers of the
-facts file, single (`12`) or ranges (`12-14`), joined by ", ". The count line comes once, last.
+facts file, single (`12`) or ranges (`12-14`), joined by ", ". The count line comes once, last. Its total counts a record row once even when
+the row is in both counts. A `facts:` line number must lie in the facts section of the claim's
+own test. A quote must be a whole phrase of at least MIN_QUOTE characters.
 """
 
 import os
 import re
 import sys
+import unicodedata
 
 KINDS = ("comment", "name", "message", "record")
 RESTS = ("nothing", "a comment", "a name", "a claim word")
@@ -32,12 +35,25 @@ UNBACKED = "no fact backs this"
 CONTRADICT = "the facts contradict this"
 RESULTS = (BACKED, UNBACKED, CONTRADICT)
 CLAIM_FIELDS = ("from", "rests on", "facts", "result")
+TOTAL_LABEL = "total records in either count, each counted once"
 COUNT_LABELS = ("records the facts contradict", "records resting on a comment, name or claim word",
-                "total")
-# Verdict words pass 2 may never write of a comment or record (plan fix 3); quotes are exempt.
-VERDICT_WORDS = re.compile(r"\b(true|holds|consistent|correct)\b", re.IGNORECASE)
+                TOTAL_LABEL)
+# Verdict words pass 2 may never write of a comment or record (plan fix 3), with their other
+# forms. Quotes, and the `from:` path (it must name a real file on main), are exempt.
+VERDICT_WORDS = re.compile(
+    r"\b(tru(?:e|ly|th)|hold(?:s|ing)?|held|(?:in)?consisten\w*|(?:in)?correct\w*|"
+    r"(?:in)?accura\w*|match(?:es|ed|ing)?|(?:in)?valid\w*|confirm\w*|verif\w*|false|wrong|"
+    r"agree\w*|accept\w*|as\s+designed|by\s+design|works\s+as)\b", re.IGNORECASE)
+# A quote shorter than this could sit in almost any line, so it proves nothing about its line.
+MIN_QUOTE = 10
 
 SEP = " | "
+
+
+def plain(text):
+    """Text with look-alike letters folded and zero-width characters dropped, for the word scan."""
+    text = unicodedata.normalize("NFKC", text)
+    return "".join(c for c in text if unicodedata.category(c) != "Cf")
 
 
 def read_lines(path):
@@ -53,6 +69,19 @@ def read_lines(path):
 def facts_tests(facts_lines):
     """Test names of the facts file's `## ` lines, in order."""
     return [ln[3:].strip() for ln in facts_lines if ln.startswith("## ")]
+
+
+def facts_sections(facts_lines):
+    """Test name -> (first, last) facts line numbers under its `## ` line, heading excluded."""
+    spans = {}
+    name = None
+    for n, ln in enumerate(facts_lines, 1):
+        if ln.startswith("## "):
+            name = ln[3:].strip()
+            spans.setdefault(name, [n + 1, n])
+        elif name is not None and spans[name][1] == n - 1:
+            spans[name][1] = n
+    return {k: tuple(v) for k, v in spans.items()}
 
 
 def split_quote(body):
@@ -90,8 +119,11 @@ def parse_fields(rest, names):
     return [v for _, v in got]
 
 
-def parse_facts_field(value, n_facts, facts_lines):
-    """List of facts line numbers, [] for `none`, or a reason string."""
+def parse_facts_field(value, n_facts, facts_lines, span, test):
+    """List of facts line numbers, [] for `none`, or a reason string.
+
+    Every line must fall inside the facts section of the claim's own test (`span`).
+    """
     if value == "none":
         return []
     nums = []
@@ -108,6 +140,8 @@ def parse_facts_field(value, n_facts, facts_lines):
                 return "facts line %d is not in the facts file (it has %d lines)" % (n, n_facts)
             if not facts_lines[n - 1].strip():
                 return "facts line %d is blank" % n
+            if span is None or not span[0] <= n <= span[1]:
+                return "facts line %d is not in the facts section of '%s'" % (n, test)
             nums.append(n)
     return nums
 
@@ -141,6 +175,7 @@ def check(compare_path, facts_path, main_root):
     lines = read_lines(compare_path)
     facts_lines = read_lines(facts_path)
     wanted = facts_tests(facts_lines)
+    spans = facts_sections(facts_lines)
     src = SourceCache(main_root)
 
     sections = {}          # test name -> line of its `## `
@@ -151,6 +186,7 @@ def check(compare_path, facts_path, main_root):
     opens = []             # (line, test, quote) to match against the section's claims
     tally_contra = 0
     tally_rest = 0
+    tally_either = 0       # record rows in either count, each once
     count_line = None
     last_content = 0
 
@@ -166,8 +202,11 @@ def check(compare_path, facts_path, main_root):
             if ln.startswith(prefix):
                 q = split_quote(ln[len(prefix):])
                 if q:
-                    outside = prefix + q[1]
-        m = VERDICT_WORDS.search(outside)
+                    pieces = [p for p in q[1].split(SEP) if not p.startswith("from: ")]
+                    outside = prefix + SEP.join(pieces)
+        if ln.startswith("## ") and ln[3:].strip() in wanted:
+            outside = ""
+        m = VERDICT_WORDS.search(plain(outside))
         if m:
             out.append((n, "the word '%s' outside a quote; pass 2 never judges a comment or record"
                         % m.group(1)))
@@ -223,8 +262,9 @@ def check(compare_path, facts_path, main_root):
                 out.append((n, "claim row does not open with a double-quoted quote then ' | '"))
                 continue
             quote, rest = q
-            if not quote:
-                out.append((n, "claim row has an empty quote"))
+            if len(quote) < MIN_QUOTE or quote != quote.strip():
+                out.append((n, "claim row's quote is under %d characters or has spaces at its"
+                            " ends; quote a whole phrase" % MIN_QUOTE))
                 continue
             got = parse_fields(rest, CLAIM_FIELDS)
             if isinstance(got, str):
@@ -247,7 +287,8 @@ def check(compare_path, facts_path, main_root):
             if rest_on not in RESTS:
                 out.append((n, "rests on '%s' is not one of: %s" % (rest_on, "; ".join(RESTS))))
 
-            nums = parse_facts_field(facts, len(facts_lines), facts_lines)
+            nums = parse_facts_field(facts, len(facts_lines), facts_lines, spans.get(section),
+                                     section)
             if isinstance(nums, str):
                 out.append((n, nums))
                 nums = None
@@ -268,8 +309,11 @@ def check(compare_path, facts_path, main_root):
             if fm and fm.group(1) == "record":
                 if result == CONTRADICT:
                     tally_contra += 1
-                if rest_on in ("a comment", "a name", "a claim word"):
+                rests = rest_on in ("a comment", "a name", "a claim word")
+                if rests:
                     tally_rest += 1
+                if rests or result == CONTRADICT:
+                    tally_either += 1
             continue
 
         if ln.startswith("open: "):
@@ -309,8 +353,9 @@ def check(compare_path, facts_path, main_root):
         if rest_c != tally_rest:
             out.append((n, "count of records resting on a comment, name or claim word is %d;"
                         " the rows give %d" % (rest_c, tally_rest)))
-        if total != tally_contra + tally_rest:
-            out.append((n, "total is %d; the rows give %d" % (total, tally_contra + tally_rest)))
+        if total != tally_either:
+            out.append((n, "total is %d; the rows give %d records in either count"
+                        % (total, tally_either)))
 
     out.sort(key=lambda r: r[0])
     return out
