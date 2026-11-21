@@ -109,7 +109,7 @@ TEST_CASE("theme: apply_theme uses the readable shades") {
     ImGui::DestroyContext();
 }
 
-// A real button and a real selectable, each 200 px wide, drawn after
+// A real button and a real selectable, each 240 px wide, drawn after
 // apply_theme: the button's label sits in the middle of the button, and the
 // selectable's text starts where the selectable starts. The style starts off
 // the other way round so the test sees apply_theme's write.
@@ -122,13 +122,13 @@ TEST_CASE("theme: apply_theme centres button labels and starts selectable text a
 
     // A glyph's quad sits a pixel or so inside its advance width, and ImGui
     // rounds text positions to whole pixels; text placed the other way would
-    // be some 90 px off.
+    // be some 100 px off.
     const float slack = 3.0f;
-    const ImVec2 size(200.0f, 40.0f);
+    const ImVec2 size(240.0f, 40.0f);
 
     ImGui::NewFrame();
     ImGui::SetNextWindowPos(ImGui::GetMainViewport()->WorkPos);
-    ImGui::SetNextWindowSize(ImVec2(400.0f, 200.0f));
+    ImGui::SetNextWindowSize(ImVec2(480.0f, 160.0f));
     ImGui::Begin("###theme_alignment", nullptr, ImGuiWindowFlags_NoSavedSettings);
 
     const TextSpan button = text_span([&] { ImGui::Button("H##button", size); });
