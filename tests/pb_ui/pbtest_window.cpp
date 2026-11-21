@@ -36,6 +36,7 @@
 #include "render/highway_draw.h"      // far_time, time_to_z
 #include "render/overlay_layout.h"    // project_to_image
 #include "render/preview_renderer.h"  // kPlaybackSpeed
+#include "ui/fonts.h"  // px
 #include "ui/preview_controller.h"
 #include "ui/preview_timeline.h"  // timeline_fill_ms, timeline_ms_at
 #include "ui/timeline_view.h"     // open_view, readout and the window's moves
@@ -254,22 +255,26 @@ void test_head_row_wraps(ImGuiTestContext* ctx) {
     const std::string below = any_ref("##label_activations");
     const auto rect = [&](const std::string& ref) { return ctx->ItemInfo(ref.c_str()).RectFull; };
 
-    // Everything fits: each place is the one a row that never wraps gives,
-    // from one run of that row.
-    constexpr float kRowY = 32.0f;
-    constexpr float kUndoX = 588.6f;
-    constexpr float kStartOverX = 638.6f;
-    constexpr float kBelowY = 194.8f;
+    // Everything fits: the four items share one line, each to the right of
+    // the one before. The places measured here are the row that never wraps,
+    // which the narrow windows below are read against.
+    const std::string* const items[] = {&undo, &start_over, &finish, &best};
+    const float row_y = rect(undo).Min.y;
+    for (size_t i = 1; i < 4; ++i) {
+        IM_CHECK_FLOAT_NEAR_EQ(rect(*items[i]).Min.y, row_y, 0.5f);
+        IM_CHECK_GT(rect(*items[i]).Min.x, rect(*items[i - 1]).Max.x);
+    }
+    float normal_x[4] = {};
+    for (size_t i = 0; i < 4; ++i) normal_x[i] = rect(*items[i]).Min.x;
+    const float normal_below_y = rect(below).Min.y;
+    IM_CHECK_GE(normal_below_y, rect(undo).Max.y);
     const auto check_normal = [&] {
-        IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, kUndoX, 0.5f);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.x, kStartOverX, 0.5f);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(finish).Min.x, 714.6f, 0.5f);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.x, 864.0f, 0.5f);
-        for (const std::string* item : {&undo, &start_over, &finish, &best})
-            IM_CHECK_FLOAT_NEAR_EQ(rect(*item).Min.y, kRowY, 0.5f);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(below).Min.y, kBelowY, 0.5f);
+        for (size_t i = 0; i < 4; ++i) {
+            IM_CHECK_FLOAT_NEAR_EQ(rect(*items[i]).Min.x, normal_x[i], 0.5f);
+            IM_CHECK_FLOAT_NEAR_EQ(rect(*items[i]).Min.y, row_y, 0.5f);
+        }
+        IM_CHECK_FLOAT_NEAR_EQ(rect(below).Min.y, normal_below_y, 0.5f);
     };
-    check_normal();
     const float best_gap = rect(best).Min.x - rect(finish).Max.x;
 
     // Every item ends inside the window, and what lies under the row starts
@@ -284,7 +289,7 @@ void test_head_row_wraps(ImGuiTestContext* ctx) {
             lowest = (std::max)(lowest, rect(*item).Max.y);
         }
         IM_CHECK_GE(rect(below).Min.y, lowest);
-        IM_CHECK_GT(rect(below).Min.y, kBelowY);
+        IM_CHECK_GT(rect(below).Min.y, normal_below_y);
     };
     const auto left_edge = [&] { return ctx->GetWindowByRef(h.home_ref.c_str())->WorkRect.Min.x; };
 
@@ -295,11 +300,11 @@ void test_head_row_wraps(ImGuiTestContext* ctx) {
         FrameWidth narrow(h, kWidth);
         ctx->Yield(3);
         check_inside(kWidth);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, kUndoX, 0.5f);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.x, kStartOverX, 0.5f);
-        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.y, kRowY, 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, normal_x[0], 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.x, normal_x[1], 0.5f);
+        IM_CHECK_FLOAT_NEAR_EQ(rect(start_over).Min.y, row_y, 0.5f);
         IM_CHECK_FLOAT_NEAR_EQ(rect(finish).Min.x, left_edge(), 0.5f);
-        IM_CHECK_GT(rect(finish).Min.y, kRowY);
+        IM_CHECK_GT(rect(finish).Min.y, row_y);
         IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.y, rect(finish).Min.y, 0.5f);
         IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.x - rect(finish).Max.x, best_gap, 0.5f);
     }
@@ -313,7 +318,7 @@ void test_head_row_wraps(ImGuiTestContext* ctx) {
         ctx->Yield(3);
         check_inside(kWidth);
         IM_CHECK_FLOAT_NEAR_EQ(rect(undo).Min.x, left_edge(), 0.5f);
-        IM_CHECK_GT(rect(undo).Min.y, kRowY);
+        IM_CHECK_GT(rect(undo).Min.y, row_y);
         IM_CHECK_FLOAT_NEAR_EQ(rect(finish).Min.y, rect(undo).Min.y, 0.5f);
         IM_CHECK_FLOAT_NEAR_EQ(rect(best).Min.x, left_edge(), 0.5f);
         IM_CHECK_GT(rect(best).Min.y, rect(finish).Min.y);
@@ -343,25 +348,33 @@ void drag(ImGuiTestContext* ctx, ImVec2 from, ImVec2 to) {
 // playing: the scrollbar's two buttons, a wheel notch over the rows, a drag
 // of the scrollbar's thumb, and the click of a list row whose fill is off
 // screen, whose hover scrolls nothing. Each step reads the scrollbar's
-// readout, from one run.
+// readout, worked out by the window's own moves (ui/timeline_view.h) from the
+// song's length as the Preview ends it (PreviewController::playback_end_ms).
 void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = long_song_notes();
     reset_app(h);
-    IM_CHECK(wait_idle(ctx));
+    IM_CHECK_RETV(wait_idle(ctx), );
     ctx->Yield(2);
-    // The Preview's end is app::song_length_ms: the chart's stated 5:58.957
-    // plus the end pad, so the readouts end "of 5:59" (from one run).
-    const std::string length = "5:59";
+    hydra::ui::PreviewController* pc = h.app->preview();
+    IM_CHECK_RETV(pc != nullptr, );
+    const double len = pc->playback_end_ms();
+    // The song is longer than the window, or nothing here can scroll.
+    IM_CHECK_RETV(len > hydra::ui::kTimelineWindowMs, );
+    const hydra::ui::TimelineView opening = hydra::ui::open_view(len);
+    const std::string opening_text = hydra::ui::readout(opening, len);
+    const std::string length = opening_text.substr(opening_text.rfind(" of ") + 4);
     // Gives the last action two frames, then reads the readout; the whole
     // line it sits in is logged when it is not the one expected.
-    auto reads = [&](const char* expected) {
+    auto reads = [&](const std::string& expected) {
         ctx->Yield(2);
         const bool shown = on_screen(h, expected);
-        if (!shown) ctx->LogError("readout line: [%s]", readout_line(h, length).c_str());
+        if (!shown)
+            ctx->LogError("readout line: [%s], expected [%s]", readout_line(h, length).c_str(),
+                          expected.c_str());
         return shown;
     };
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    IM_CHECK(reads(opening_text));
     IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
 
     const std::string forward = any_ref(hydra::ui::kScrollForwardLabel);
@@ -370,49 +383,85 @@ void test_scroll_the_timeline(ImGuiTestContext* ctx) {
     ctx->SetRef(h.home_ref.c_str());
 
     // The buttons: one window forward stops at the song's end, then one back.
+    const hydra::ui::TimelineView paged = hydra::ui::page(opening, 1, len);
+    IM_CHECK_LE(paged.start_ms + paged.span_ms, len);
     ctx->ItemClick(forward.c_str());
-    IM_CHECK(reads("2:59 – 5:59 of 5:59"));
+    IM_CHECK(reads(hydra::ui::readout(paged, len)));
     ctx->ItemClick(back.c_str());
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
+    IM_CHECK(reads(hydra::ui::readout(hydra::ui::page(paged, -1, len), len)));
 
     // A wheel notch down over the rows, away from the Fills row so no fill
-    // is hovered: a third of the window later.
+    // is hovered: one notch later in the song.
     const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
     ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, rows.Min.y + rows.GetHeight() * 0.4f));
     ctx->MouseWheelY(-1.0f);
-    IM_CHECK(reads("1:00 – 4:00 of 5:59"));
+    IM_CHECK(reads(hydra::ui::readout(hydra::ui::wheel(opening, 1.0, len), len)));
 
-    // A drag of the scrollbar's thumb, a tenth of the bar to the right, moves
-    // the window later by about a tenth of the song.
+    // A drag of the scrollbar's thumb a tenth of the bar to the right keeps
+    // the moment under the pointer under it, so the window starts that share
+    // of the song later. The share is of the bar inside its border
+    // (preview_timeline.cpp's kBorderW, one px on each side, which no header
+    // gives), so it lies between the drag over the whole bar and the drag
+    // over the bar less that border.
     ctx->ItemClick(back.c_str());
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
-    drag(ctx, point_across(ctx, bar, 0.25f), point_across(ctx, bar, 0.35f));
-    IM_CHECK(reads("0:36 – 3:36 of 5:59"));
+    IM_CHECK(reads(opening_text));
+    const float bar_w = ctx->ItemInfo(bar.c_str()).RectFull.GetWidth();
+    IM_CHECK_RETV(bar_w > 2.0f * hydra::ui::px(1.0f), );
+    const ImVec2 grab = point_across(ctx, bar, 0.25f);
+    const ImVec2 to = point_across(ctx, bar, 0.35f);
+    drag(ctx, grab, to);
+    const double moved_px = static_cast<double>(to.x - grab.x);
+    const auto dragged = [&](double inner_w) {
+        return hydra::ui::readout(
+            hydra::ui::clamp({moved_px / inner_w * len, opening.span_ms}, len), len);
+    };
+    const std::string least = dragged(bar_w);
+    const std::string most = dragged(bar_w - 2.0f * hydra::ui::px(1.0f));
+    ctx->Yield(2);
+    const bool drag_shown = on_screen(h, least) || on_screen(h, most);
+    if (!drag_shown)
+        ctx->LogError("readout line: [%s], expected [%s] or [%s]", readout_line(h, length).c_str(),
+                      least.c_str(), most.c_str());
+    IM_CHECK(drag_shown);
 
-    // Hovering the list row of a fill past the window (its chord at 3:58,
-    // from one run) moves the window nowhere. A click on the row centres the
-    // window on that fill, whose own item is then on the timeline; before the
-    // click it has none.
-    static constexpr int64_t kLateFillTick = 162240;
+    // The first fill the engine lists for the empty path whose own time is
+    // past the window: hovering its list row moves the window nowhere. A
+    // click on the row centres the window on that fill, whose own item is
+    // then on the timeline; before the click it has none.
+    const hydra::app::PreviewScene& scene = pc->scene();
+    std::optional<size_t> late;
+    for (const int64_t tick : scene.trailing_skipped_fill_ticks) {
+        const std::optional<size_t> fill = hydra::app::fill_index_on_chord(scene, tick);
+        if (fill && !hydra::ui::in_view(opening, hydra::ui::timeline_fill_ms(scene.fills[*fill]))) {
+            late = fill;
+            break;
+        }
+    }
+    IM_CHECK_RETV(late.has_value(), );
+    const int64_t late_tick = scene.fills[*late].chord_tick;
+    const std::string centred = hydra::ui::readout(
+        hydra::ui::centre_on(opening, hydra::ui::timeline_fill_ms(scene.fills[*late]), len), len);
     ctx->ItemClick(back.c_str());
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
-    IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
-    ctx->MouseMove(choice_ref(kLateFillTick).c_str());
-    IM_CHECK(reads("0:00 – 3:00 of 5:59"));
-    IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
-    ctx->ItemClick(choice_ref(kLateFillTick).c_str());
+    IM_CHECK(reads(opening_text));
+    IM_CHECK(ctx->ItemInfo(fill_ref(late_tick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
+    ctx->MouseMove(choice_ref(late_tick).c_str());
+    IM_CHECK(reads(opening_text));
+    IM_CHECK(ctx->ItemInfo(fill_ref(late_tick).c_str(), ImGuiTestOpFlags_NoError).ID == 0);
+    ctx->ItemClick(choice_ref(late_tick).c_str());
     IM_CHECK(wait_for_edit(ctx));
-    IM_CHECK(reads("2:28 – 5:28 of 5:59"));
-    IM_CHECK(ctx->ItemInfo(fill_ref(kLateFillTick).c_str(), ImGuiTestOpFlags_NoError).ID != 0);
+    IM_CHECK(reads(centred));
+    IM_CHECK(ctx->ItemInfo(fill_ref(late_tick).c_str(), ImGuiTestOpFlags_NoError).ID != 0);
     // The window stays there when the pointer leaves the row.
     move_off_timeline(ctx);
-    IM_CHECK(reads("2:28 – 5:28 of 5:59"));
+    IM_CHECK(reads(centred));
 }
 
 // A press and drag on a song longer than its window: the clock stays inside
 // the window however far past the track the pointer goes, and neither the
 // drag, nor a wheel notch during it, nor the release moves the window. Each
-// clock and readout is from one run.
+// clock is the Preview's time box (build_time_box) at the moment the timeline
+// reads under the pointer (timeline_ms_at, D304 item 7), over the window the
+// song opens with (open_view).
 void test_drag_stays_in_the_window(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = long_song_notes();
@@ -421,29 +470,52 @@ void test_drag_stays_in_the_window(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     ctx->SetRef(h.home_ref.c_str());
     move_off_timeline(ctx);
-    const std::string window = "0:00 – 3:00 of 5:59";
+    hydra::ui::PreviewController* pc = h.app->preview();
+    IM_CHECK_RETV(pc != nullptr, );
+    const double len = pc->playback_end_ms();
+    IM_CHECK_RETV(len > hydra::ui::kTimelineWindowMs, );
+    const std::string window = hydra::ui::readout(hydra::ui::open_view(len), len);
     IM_CHECK_RETV(on_screen(h, window), );
 
+    // The rows' item spans the track from its start to its end, so an x in
+    // it is the layout's x less the item's left edge.
     const ImRect rows = ctx->ItemInfo(any_ref("##timeline").c_str()).RectFull;
+    hydra::ui::TimelineLayout layout;
+    layout.width = rows.GetWidth();
+    layout.length_ms = len;
+    layout.view = hydra::ui::open_view(len);
+    const auto clock_at = [&](float x) {
+        return hydra::app::build_time_box(pc->scene(), hydra::ui::timeline_ms_at(layout, x - rows.Min.x), len)
+            .timestamp;
+    };
+
     const float saved_y = rows.Min.y + rows.GetHeight() * 0.4f;
     ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, saved_y));
     ctx->MouseDown(ImGuiMouseButton_Left);
-    ctx->MouseMoveToPos(ImVec2(rows.Max.x + 40.0f, saved_y));
+    const float past_right = rows.Max.x + 40.0f;
+    ctx->MouseMoveToPos(ImVec2(past_right, saved_y));
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "3:00.000 / 5:59.957"));
+    // Past the right edge the clock is the window's end.
+    IM_CHECK(hydra::ui::timeline_ms_at(layout, past_right - rows.Min.x) ==
+             layout.view.start_ms + layout.view.span_ms);
+    IM_CHECK(on_screen(h, clock_at(past_right)));
     IM_CHECK(on_screen(h, window));
     ctx->MouseWheelY(-1.0f);
     ctx->Yield(2);
     IM_CHECK(on_screen(h, window));
-    ctx->MouseMoveToPos(ImVec2(rows.Min.x - 40.0f, rows.Max.y + 40.0f));
+    const float past_left = rows.Min.x - 40.0f;
+    ctx->MouseMoveToPos(ImVec2(past_left, rows.Max.y + 40.0f));
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "0:00.000 / 5:59.957"));
+    // Past the left edge it is the window's start.
+    IM_CHECK(hydra::ui::timeline_ms_at(layout, past_left - rows.Min.x) == layout.view.start_ms);
+    IM_CHECK(on_screen(h, clock_at(past_left)));
     IM_CHECK(on_screen(h, window));
-    ctx->MouseMoveToPos(ImVec2(rows.GetCenter().x, saved_y));
+    const float middle = rows.GetCenter().x;
+    ctx->MouseMoveToPos(ImVec2(middle, saved_y));
     ctx->Yield(2);
     ctx->MouseUp(ImGuiMouseButton_Left);
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "1:29.913 / 5:59.957"));
+    IM_CHECK(on_screen(h, clock_at(middle)));
     IM_CHECK(on_screen(h, window));
     move_off_timeline(ctx);
 }
@@ -601,23 +673,42 @@ void test_bad_rules_refused(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, detail));
 }
 
+// The open chart's best path total under the rules it was opened with (the
+// engine's record), as the head row's "Best possible" figure writes it
+// (group_thousands; the ladder's bf[0] is Hydra's best path, path_costs.h).
+std::string best_possible_figure(Harness& h) {
+    return hydra::group_thousands(h.app->state.chart()->record.best_path().totalscore());
+}
+
 // A rule from the file reaches what the builder computes, and a later open
-// reads the file again: the same chart under a wider backend leeway, then with
-// the file gone. The figures are from one run; the default's is
-// pbtest_build.cpp's.
+// reads the file again: the same chart on the defaults, under a wider backend
+// leeway, then with the file gone. Each figure is the engine's best path total
+// for the rules that open read.
 void test_rules_reach_the_builder(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg.clear();
     reset_app(h);
     const ScratchRules rules;
+    rules.remove();
+    h.app->open(corpus::burnout_notes());
+    IM_CHECK_RETV(wait_idle(ctx), );
+    ctx->Yield(2);
+    IM_CHECK_RETV(h.app->state.chart() != nullptr, );
+    const std::string default_best = best_possible_figure(h);
+    IM_CHECK(on_screen(h, default_best));
+
     IM_CHECK_RETV(rules.write("backend_leeway_ms = 500\n"), );
     h.app->open(corpus::burnout_notes());
     IM_CHECK_RETV(wait_idle(ctx), );
     ctx->Yield(2);
     IM_CHECK_RETV(h.app->state.chart() != nullptr, );
     IM_CHECK(h.app->state.chart()->settings.rules.backend_leeway_ms == 500.0);
-    IM_CHECK(on_screen(h, "381,075"));
-    IM_CHECK(!on_screen(h, "378,315"));
+    // The wider leeway changes Burnout's best path, so the search ran under
+    // the file's rules, and the screen shows that total, not the default's.
+    const std::string wide_best = best_possible_figure(h);
+    IM_CHECK_RETV(wide_best != default_best, );
+    IM_CHECK(on_screen(h, wide_best));
+    IM_CHECK(!on_screen(h, default_best));
 
     rules.remove();
     h.app->open(corpus::burnout_notes());
@@ -626,7 +717,9 @@ void test_rules_reach_the_builder(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(h.app->state.chart() != nullptr, );
     IM_CHECK(h.app->state.chart()->settings.rules.backend_leeway_ms ==
              hydra::core::default_rules().backend_leeway_ms);
-    IM_CHECK(on_screen(h, "378,315"));
+    IM_CHECK(best_possible_figure(h) == default_best);
+    IM_CHECK(on_screen(h, default_best));
+    IM_CHECK(!on_screen(h, wide_best));
 }
 
 }  // namespace
