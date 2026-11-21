@@ -465,7 +465,7 @@ TEST_CASE("precheck self-test: the fixture's planted items, each check off, the 
     SelfTestRun whole;
     const std::vector<std::string> whole_items = items_of(fx.dir, {"--whole-tree", "feature"}, &whole);
     check_items("whole tree", whole_items, {expect[1], expect[3]}, {});
-    CHECK(starting(whole.lines, "check 3 skipped: ") == "check 3 skipped: -WholeTree has no \"new\" numbers");
+    CHECK(starting(whole.lines, "check 3 skipped: ") == "check 3 skipped: --whole-tree has no \"new\" numbers");
     CHECK(starting(whole.lines, precheck::kSizePrefix).empty());
     check_fixture_clean(fx.dir);
 }
