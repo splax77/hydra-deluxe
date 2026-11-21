@@ -200,6 +200,20 @@ TEST_CASE("activation row: badges beside the bars never overlap them") {
     }
 }
 
+TEST_CASE("activation row: the badges never move the bars") {
+    // Rows of one path share a measure width, so their bars start at the same x
+    // whatever badges each row has, at every swept width.
+    const float w = longest_badge_w();
+    for_each_row([&](size_t count, float row_w) {
+        CAPTURE(count);
+        CAPTURE(row_w);
+        const ActivationRowLayout none = layout(mono(11), kBars12, {}, row_w);
+        const ActivationRowLayout badged =
+            layout(mono(11), kBars12, std::vector<float>(count, w), row_w);
+        CHECK(badged.bars_x == doctest::Approx(none.bars_x));
+    });
+}
+
 TEST_CASE("activation row: a pill that just touches the bars drops under the measure") {
     // One of the longest badge on a 640 px row beside "m32.1.0", whose bars
     // start at kRowMinBarsX. The pill ends one pad past kRowBadgeRight in from
