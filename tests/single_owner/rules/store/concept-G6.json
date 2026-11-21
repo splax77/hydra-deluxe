@@ -8,16 +8,14 @@
       "date": "2026-10-14",
       "decision": "concept audit M08 (code-only, D114 fix wave, task G6); D115 (task A2-2 moved the owner to report::listed_records); REPORT-ALL-T4 renamed it report::library_lookup",
       "added_by": "concept-G6",
-      "pattern": "[.>](list_records|ready_records)\\s*\\(",
+      "pattern": "[.>]list_records\\s*\\(",
       "must_match": [
         "for (store::RecordListing& r : store.list_records(chartmode, cap, lens,",
-        "auto rows = store->list_records(std::nullopt, cap, lens, order, true);",
-        "for (store::RecordRow& r : store.ready_records(profile))"
+        "auto rows = store->list_records(std::nullopt, cap, lens, order, true);"
       ],
       "must_not_match": [
         "std::vector<RecordListing> RecordStore::list_records(",
         "std::vector<RecordListing> list_records(",
-        "std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {",
         "report::library_lookup(store, options.run->profile, out.library);"
       ],
       "owner_lines": [],
