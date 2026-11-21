@@ -47,13 +47,7 @@ from tools.ch_probe.experiments.overlay_logs import (
     PRESS_COLUMNS_BEFORE_IN_GAME, PRESS_COLUMNS_BEFORE_TIMING, PRESS_COLUMNS_WITH_HIT,
     PRESS_COLUMNS_WITHOUT_PLAYER, PRESS_COLUMNS_WITHOUT_RETIME, PRESS_COLUMNS_WITHOUT_WALL,
     PRESS_LOG_COLUMNS, RETIME_PRESS_COLUMNS, TIMING_PRESS_COLUMNS, WALL_PRESS_COLUMNS)
-from tools.ch_probe.experiments.play_chart import STOP_DONE
-
-# The route words; game_tools.ROUTE_KEYS and ROUTE_KIT own them, and a test
-# pins these to them. Written out because game_tools imports the whole MCP
-# side, which this script never needs.
-ROUTE_KEYS = "keys"
-ROUTE_KIT = "kit"
+from tools.ch_probe.experiments.play_chart import ROUTE_KEYS, ROUTE_KIT, STOP_DONE
 
 # The words hydra_replay writes in a note's "dynamic" for a ghost and an
 # accent; dynamic_str in src/core/model.cpp owns them.

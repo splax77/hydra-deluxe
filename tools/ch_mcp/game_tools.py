@@ -64,11 +64,10 @@ OPEN_RUN_MARKER = "ch_open_run.json"
 _ERROR_INVALID_PARAMETER = 87
 _STILL_ACTIVE = 259
 
-# ch_play_chart's two routes: the virtual kit inside the game, or keys sent to
-# the focused game window (the plan docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "The
-# tools").
-ROUTE_KIT = "kit"
-ROUTE_KEYS = "keys"
+# ch_play_chart's two routes (the plan docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "The
+# tools"); play_chart owns their words.
+ROUTE_KIT = play_chart.ROUTE_KIT
+ROUTE_KEYS = play_chart.ROUTE_KEYS
 ROUTES = (ROUTE_KIT, ROUTE_KEYS)
 # ch_play_chart's reply when no route is given and the kit is not set up. It
 # names the kit setup and not the keys route, so no run takes the keyboard

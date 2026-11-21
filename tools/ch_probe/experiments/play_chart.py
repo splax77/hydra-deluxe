@@ -84,6 +84,12 @@ DROPPED = "dropped"
 # Power was off right after the press, so the plan's times stand.
 NO_ACTIVATION_READ = "no activation read"
 
+# The words for the two routes a chart is played by: the virtual kit inside
+# the game (live_in_game) or keys sent to the focused game window
+# (live_play). ch_play_chart's `route` and score_compare's `--route` take them.
+ROUTE_KIT = "kit"
+ROUTE_KEYS = "keys"
+
 # What a press row says in `retimed` about a press the schedule gave a
 # `fallback` (design point 5 of
 # docs/superpowers/plans/2026-11-08-replay-press-schedule.md): a squeeze-out's

@@ -1110,5 +1110,40 @@ class GapSummaryTest(unittest.TestCase):
         self._assert_a_gap_of_the_file(rows, got, None)
 
 
+class HeaderIntTest(unittest.TestCase):
+    """sp_compare reads Hydra's Star Power multiplier from its C++ owner."""
+
+    def _header(self, text):
+        folder = tempfile.mkdtemp()
+        self.addCleanup(lambda: __import__("shutil").rmtree(folder, ignore_errors=True))
+        path = os.path.join(folder, "timing.h")
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return path
+
+    def test_the_multiplier_is_the_one_timing_h_line(self):
+        # The real header: its one kStarPowerMultiplier line is the value.
+        with open(sp_compare.TIMING_H, encoding="utf-8") as f:
+            lines = [line for line in f
+                     if "constexpr int kStarPowerMultiplier =" in line]
+        self.assertEqual(len(lines), 1)
+        value = lines[0].split("=")[1].strip().rstrip(";").strip()
+        self.assertEqual(sp_compare.SP_MULTIPLIER, int(value))
+
+    def test_a_header_without_the_name_is_refused(self):
+        path = self._header("inline constexpr int kOther = 3;\n")
+        with self.assertRaises(ValueError):
+            sp_compare.header_int(path, "kStarPowerMultiplier")
+
+    def test_a_name_given_twice_is_refused(self):
+        path = self._header("inline constexpr int kX = 2;\ninline constexpr int kX = 3;\n")
+        with self.assertRaises(ValueError):
+            sp_compare.header_int(path, "kX")
+
+    def test_a_longer_name_is_not_the_name(self):
+        path = self._header("inline constexpr int kXY = 4;\ninline constexpr int kX = 5;\n")
+        self.assertEqual(sp_compare.header_int(path, "kX"), 5)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -52,6 +52,7 @@ import csv
 import json
 import math
 import os
+import re
 import sys
 from dataclasses import dataclass, field
 from typing import NamedTuple
@@ -102,9 +103,24 @@ def press_reach(schedule_path: str) -> dict:
         reach[press.index] = PressReach(min(lo, press.at_ms), max(hi, press.at_ms))
     return reach
 
-# Hydra's Star Power multiplier, copied because this script cannot read C++.
-# The owner is kStarPowerMultiplier in src/core/timing.h.
-SP_MULTIPLIER = 2
+def header_int(path: str, name: str) -> int:
+    """The value a C++ header gives `name` in an `inline constexpr int`
+    line. Raises ValueError when the header holds no such line, so a renamed
+    or moved constant stops the script instead of leaving it a guess."""
+    with open(path, encoding="utf-8") as f:
+        text = f.read()
+    found = re.findall(
+        rf"^\s*inline\s+constexpr\s+int\s+{re.escape(name)}\s*=\s*(\d+)\s*;", text, re.M)
+    if len(found) != 1:
+        raise ValueError(f"{path} gives {name} as an inline constexpr int "
+                         f"{len(found)} times, not once")
+    return int(found[0])
+
+
+# Hydra's Star Power multiplier, read from its owner, kStarPowerMultiplier in
+# src/core/timing.h.
+TIMING_H = os.path.join(_REPO_ROOT, "src", "core", "timing.h")
+SP_MULTIPLIER = header_int(TIMING_H, "kStarPowerMultiplier")
 
 # The game's full meter in units per tick of the chart's resolution: SP-11 in
 # docs/clone-hero/05-star-power.md. D319 item 2 checks sp_max against it, and
