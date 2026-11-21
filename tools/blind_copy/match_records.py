@@ -9,15 +9,17 @@ of the November 14 test audit; nothing is checked out. The tests the
 headings are matched against are read from the stripped copy (--copy), the
 copy of commit 539c6de0 that the recheck reads, under its `code/` folder.
 
-It writes `matched.tsv` (one row per record) and `unmatched.tsv` (the records
-that join no test, with their state) into --out. The rules it applies are the
-plan's section "T2: Join each test to its newest old record"
-(docs/superpowers/plans/2026-11-20-script-first-recheck.md); this script adds
-none of its own beyond what its comments name.
+It writes `matched.tsv` (one row per record), `unmatched.tsv` (the records
+that join no test, with their state) and `sections.tsv` (the headings that
+are not records) into --out. The rules it applies are the plan's section
+"T2: Join each test to its newest old record"
+(docs/superpowers/plans/2026-11-20-script-first-recheck.md), with the reading
+rules of brief sfr-t2b in place of the plan's `## ` heading rule; this script
+adds none of its own beyond what its comments name.
 
 It stops, writing nothing, when one of its counts disagrees with git's, when
-a line 9 row sits where no record of the plan's heading rule reaches it, or
-when blame times cannot tell any repeated test's copies apart.
+a line 9 or line 11 row sits under no record heading, or when blame times
+cannot tell any repeated test's copies apart.
 """
 
 import argparse
@@ -40,15 +42,36 @@ COPY = r"C:\Users\Patrick\Downloads\Hydra\hydra-blind"
 RECORDS_DIR = "docs/audit/2026-11-14-test-audit/records/"
 REPO = os.path.dirname(os.path.dirname(HERE))
 
-# One pattern each, used both for the script's own reading and for the
-# `git grep` count it is checked against.
-HEADING = "^## "
-LINE9 = "^9 Stand-in:"
-LINE11 = "^11 Real:"
+# The `git grep -E` patterns the script's own counts are checked against.
+# They are written apart from the reader below on purpose: a line the grep
+# finds and the reader does not read makes the counts differ, and the run stops.
+HEADING = "^#{2,4} "
 LEVEL1 = "^# "
 
-HEAD_RE = re.compile(r"^## (?P<rest>.*) \((?P<inner>[^()]*)\)\s*$")
-PLACE_RE = re.compile(r"^(?P<file>.+):(?P<line>\d[\d, -]*)$")
+
+def answer_grep(n):
+    """Every line holding answer n: at the line's start, or after a full stop
+    on a line that opens with another numbered answer or with `Read:`."""
+    return (rf"^((- )?(\*\*)?({n}(\*\*)?[ :]|([1-9]|1[0-2])([-/][0-9]+)*(\*\*)?[ :].*\. {n}[ :])"
+            rf"|Read:.*\. {n}[ :])")
+
+
+LINE9 = answer_grep(9)
+LINE11 = answer_grep(11)
+
+HEAD_LINE_RE = re.compile(r"^(?P<level>#{2,4}) (?P<text>.*)$")
+TAIL_RE = re.compile(r"^(?P<rest>.*?)\s*\((?P<inner>[^()]*)\)\s*$")
+FULL_PLACE_RE = re.compile(r"^(?P<file>[^\s:]+\.[A-Za-z0-9]+):(?P<line>\d+)")
+SHORT_PLACE_RE = re.compile(r"^(?::|line )(?P<line>\d+)")
+BARE_LINE_RE = re.compile(r"^\d+(?:-\d+)?$")
+FILE_TOKEN_RE = re.compile(r"[\w./-]*[\w-]\.(?:cpp|h|hpp|cc|cxx|py)\b")
+# A leading record number ("44. ") or record label ("PL1. ", "E1 ").
+LEAD_NUMBER_RE = re.compile(r"^\d+[a-z]?\.\s+")
+LEAD_LABEL_RE = re.compile(r"^[A-Z]{1,4}-?\d+[a-z]?\.?\s+")
+
+ANSWER_START_RE = re.compile(r"^(?P<dash>- )?(?P<bold>\*\*)?(?P<num>\d+(?:[-/]\d+)*)(?:\*\*)?(?P<sep>[ :])")
+ANSWER_INLINE_RE = re.compile(r"(?<=\. )(?P<num>\d+(?:[-/]\d+)*)(?P<sep>[ :])")
+LABELS = {9: "Stand-in:", 11: "Real:"}
 
 SAME_PLACE = "same test, same place"
 MOVED = "same test, moved"
@@ -83,17 +106,33 @@ def grep_count(repo, commit, pattern, folder):
     return total
 
 
+def grep_lines(repo, commit, pattern, folder):
+    """`<file name>:<line>` for each line the pattern finds."""
+    code, out = git(repo, "grep", "-n", "-E", pattern, commit, "--", folder)
+    if code not in (0, 1):
+        raise Stop(f"git grep failed for {pattern!r} at {commit}")
+    found = set()
+    for line in out.splitlines():
+        path, n = line.split(":", 3)[1:3]
+        found.add(f"{path.rsplit('/', 1)[-1]}:{n}")
+    return found
+
+
 class Record:
     def __init__(self, file, line, heading):
         self.file = file
         self.line = line
         self.heading = heading
-        self.line9 = None   # (record line, text after the label)
-        self.line11 = None
+        self.line9 = []   # (record line, answer text) for each line 9 row it owns
+        self.line11 = []
+        self.place_file = ""   # the file the heading's place names, "" for a short place
+        self.place_line = 0
+        self.names = ([], [])  # name candidates from the heading's text, then from its parenthesis
         self.test_file = ""
         self.test_name = ""
         self.test_lines = []
         self.match = NO_TEST
+        self.note = ""
         self.flag = SOMETHING_ELSE
         self.why = ""
         self.newest = ""
@@ -101,37 +140,186 @@ class Record:
         self.time9 = None
 
 
+def unquote(s):
+    return s.strip().strip("`\"'").strip()
+
+
+def parse_heading(text):
+    """A record heading's place and name candidates, or None for a section
+    heading. A record heading's final parenthesis holds a place: `file:line`,
+    `:line` or `line N`, or is a bare line number. Its other parts, such as
+    a backticked test name, are name candidates."""
+    m = TAIL_RE.match(text)
+    if not m:
+        return None
+    inner = m.group("inner").strip()
+    parts = [unquote(p) for p in re.split(r",\s*|\s+and\s+", inner)]
+    place, tail_names = None, []
+    if BARE_LINE_RE.match(unquote(inner)):
+        place = ("", int(re.match(r"\d+", unquote(inner)).group(0)))
+    else:
+        for p in parts:
+            full, short = FULL_PLACE_RE.match(p), SHORT_PLACE_RE.match(p)
+            if place is None and full:
+                place = (full.group("file"), int(full.group("line")))
+            elif place is None and short:
+                place = ("", int(short.group("line")))
+            elif p and not full and not short:
+                tail_names.append(p)
+    if place is None:
+        return None
+    rest = unquote(m.group("rest"))
+    names = []
+    for base in (rest, LEAD_NUMBER_RE.sub("", rest), LEAD_LABEL_RE.sub("", rest)):
+        base = unquote(base)
+        names.append(base)
+        if ": " in base:
+            names.append(base.split(": ", 1)[1])
+    names = list(dict.fromkeys(n for n in names if n))
+    return place, (names, [n for n in dict.fromkeys(tail_names) if n not in names])
+
+
+def files_named(text):
+    """The files a heading names. A bare file name beside the same file with
+    its folder is one file, not two."""
+    found = list(dict.fromkeys(unquote(t) for t in FILE_TOKEN_RE.findall(text)))
+    bases = {f.rsplit("/", 1)[-1] for f in found if "/" in f}
+    return [f for f in found if "/" in f or f not in bases]
+
+
+def answers(line):
+    """The numbered answers on one record line: (number text, answer text,
+    separator, dash, bold, after another answer). The first answer opens the
+    line, or the line opens with `Read:`; each later one follows a full stop
+    and carries a higher number."""
+    m = ANSWER_START_RE.match(line)
+    if line.startswith("Read:"):
+        marks, last, start, dash, bold = [], 0, 0, False, False
+    elif m:
+        nums = [int(x) for x in re.split(r"[-/]", m.group("num"))]
+        if not 1 <= nums[0] <= 12:
+            return []
+        marks = [(m.start("num"), m.end(), m.group("num"), m.group("sep"), False)]
+        last, start, dash, bold = max(nums), m.end(), bool(m.group("dash")), bool(m.group("bold"))
+    else:
+        return []
+    for im in ANSWER_INLINE_RE.finditer(line, start):
+        inums = [int(x) for x in re.split(r"[-/]", im.group("num"))]
+        if inums[0] > last and inums[0] <= 12:
+            marks.append((im.start("num"), im.end(), im.group("num"), im.group("sep"),
+                          "read" if line.startswith("Read:") else True))
+            last = max(inums)
+    out = []
+    for i, (_, end, num, sep, inline) in enumerate(marks):
+        stop = marks[i + 1][0] if i + 1 < len(marks) else len(line)
+        out.append((num, line[end:stop].strip(), sep, dash, bold, inline))
+    return out
+
+
+def answer_text(n, text):
+    """The answer with any bold marks and the line's label dropped. Returns
+    (text, whether a label was there)."""
+    t = text.strip().lstrip("*").strip()
+    labelled = t.startswith(LABELS[n])
+    if labelled:
+        t = t[len(LABELS[n]):]
+    return t.lstrip("*").strip(), labelled
+
+
+def shape(sep, dash, bold, labelled, inline):
+    words = ["labelled" if labelled else "no label"]
+    if dash:
+        words.append("after '- '")
+    if bold:
+        words.append("in bold")
+    if sep == ":":
+        words.append("number then ':'")
+    if inline == "read":
+        words.append("inside a 'Read:' line")
+    elif inline:
+        words.append("after another answer on its line")
+    return ", ".join(words)
+
+
+class Read:
+    """What read_records found, beside the records themselves."""
+
+    def __init__(self):
+        self.records, self.sections = [], []
+        self.loose = {9: [], 11: []}       # rows under no record
+        self.lines = {9: 0, 11: 0}         # record lines holding a row
+        self.line_set = {9: set(), 11: set()}
+        self.shapes = {9: collections.Counter(), 11: collections.Counter()}
+        self.across = {9: 0, 11: 0}        # rows that reach their record across a section heading
+        self.unread = []                   # a range or list of numbers that covers 9 or 11
+
+
 def read_records(repo, commit, folder):
-    """Every `## ` heading opens a record that runs to the next `## ` or `# `.
-    Returns the records and the line 9 and line 11 rows no record owns."""
+    """A record heading opens a record; it runs until the next record heading
+    or `# ` heading. A row belongs to the nearest record heading above it,
+    past any section heading in between."""
     code, out = git(repo, "ls-tree", "--name-only", commit, folder)
     if code != 0:
         raise Stop(f"git ls-tree failed for {folder} at {commit}")
-    records, loose9, loose11 = [], [], []
+    got = Read()
     for path in out.splitlines():
         code, text = git(repo, "show", f"{commit}:{path}")
         if code != 0:
             raise Stop(f"git show failed for {path} at {commit}")
         name = path.rsplit("/", 1)[-1]
-        cur = None
+        cur, crossed, file_above = None, False, []
         for n, raw in enumerate(text.split("\n"), 1):
             line = raw.rstrip("\r")
-            if re.match(HEADING, line):
-                cur = Record(name, n, line[3:])
-                records.append(cur)
+            h = HEAD_LINE_RE.match(line)
+            if h:
+                parsed = parse_heading(h.group("text"))
+                if parsed:
+                    cur, crossed = Record(name, n, h.group("text")), False
+                    (cur.place_file, cur.place_line), cur.names = parsed
+                    if not cur.place_file:
+                        # A short place takes its file from the nearest heading above that names one.
+                        cur.place_file = file_above[0] if len(file_above) == 1 else ""
+                        if len(file_above) > 1:
+                            cur.note = "the nearest heading above names more than one file"
+                        elif not file_above:
+                            cur.note = "no heading above names a file"
+                    got.records.append(cur)
+                else:
+                    got.sections.append((name, n, h.group("text")))
+                    crossed = True
+                named = [parsed[0][0]] if parsed and parsed[0][0] else files_named(h.group("text"))
+                if named:
+                    file_above = named
                 continue
             if re.match(LEVEL1, line):
-                cur = None
+                cur, crossed = None, False
+                named = files_named(line)
+                file_above = named
                 continue
-            for pat, attr, loose in ((LINE9, "line9", loose9), (LINE11, "line11", loose11)):
-                m = re.match(pat, line)
-                if not m:
+            seen = set()
+            for num, ans, sep, dash, bold, inline in answers(line):
+                nums = [int(x) for x in re.split(r"[-/]", num)]
+                if len(nums) > 1:
+                    covered = range(nums[0], nums[-1] + 1) if "-" in num else nums
+                    if 9 in covered or 11 in covered:
+                        got.unread.append(f"{name}:{n}: {line}")
                     continue
-                if cur is None or getattr(cur, attr) is not None:
-                    loose.append(f"{name}:{n}")
-                else:
-                    setattr(cur, attr, (n, line[m.end():].strip()))
-    return records, loose9, loose11
+                k = nums[0]
+                if k not in (9, 11):
+                    continue
+                t, labelled = answer_text(k, ans)
+                got.shapes[k][shape(sep, dash, bold, labelled, inline)] += 1
+                seen.add(k)
+                if cur is None:
+                    got.loose[k].append(f"{name}:{n}")
+                    continue
+                (cur.line9 if k == 9 else cur.line11).append((n, t))
+                if crossed:
+                    got.across[k] += 1
+            for k in seen:
+                got.lines[k] += 1
+                got.line_set[k].add(f"{name}:{n}")
+    return got
 
 
 def unescape(s):
@@ -170,7 +358,23 @@ class Tests:
     its first line, and a comment above a TEST_CASE would become that line."""
 
     def __init__(self, copy):
-        self.copy, self.cache = copy, {}
+        self.copy, self.cache, self.by_base = copy, {}, None
+
+    def resolve(self, file):
+        """A file with a folder as written; a bare file name only when exactly
+        one file in the copy has that name. Returns (path or None, note)."""
+        if "/" in file:
+            return file, ""
+        if self.by_base is None:
+            self.by_base = collections.defaultdict(list)
+            root = os.path.join(self.copy, "code")
+            for d, _, files in os.walk(root):
+                for f in files:
+                    self.by_base[f].append(os.path.relpath(os.path.join(d, f), root).replace("\\", "/"))
+        hits = self.by_base.get(file, [])
+        if len(hits) == 1:
+            return hits[0], ""
+        return None, f"bare file name {file} names {len(hits)} files in the copy"
 
     def names(self, path):
         if path not in self.cache:
@@ -187,38 +391,46 @@ class Tests:
 
 
 def match(rec, tests):
-    m = HEAD_RE.match("## " + rec.heading)
-    p = PLACE_RE.match(m.group("inner").strip()) if m else None
-    if not p:
+    rec.match = NO_TEST
+    if not rec.place_file:
         return
-    rest, file = m.group("rest").strip(), p.group("file").strip()
-    first = int(re.match(r"\d+", p.group("line")).group(0))
+    file, note = tests.resolve(rec.place_file)
+    if file is None:
+        rec.note = note
+        return
     rec.test_file = file
     names = tests.names(file)
     if names is None:
         rec.match = GONE
         return
-    candidates = [rest]
-    if ": " in rest:
-        candidates.append(rest.split(": ", 1)[1])
-    for cand in candidates:
-        if cand in names:
-            rec.test_name = cand
-            rec.test_lines = names[cand]
-            rec.match = SAME_PLACE if first in names[cand] else MOVED
-            return
-    rec.match = NO_TEST
+    # The heading's own text is tried first; the names inside its parenthesis
+    # only when the text names no test.
+    rest, tail = rec.names
+    hits = list(dict.fromkeys(c for c in rest if c in names)) or \
+        list(dict.fromkeys(c for c in tail if c in names))
+    if len(hits) > 1:
+        # Two candidates name two different tests; the script does not pick one.
+        rec.note = "the heading names more than one test: " + ", ".join(hits)
+        return
+    if hits:
+        rec.test_name = hits[0]
+        rec.test_lines = names[hits[0]]
+        rec.match = SAME_PLACE if rec.place_line in names[hits[0]] else MOVED
 
 
 def flag(rec):
-    missing = [n for n, row in (("line 9", rec.line9), ("line 11", rec.line11)) if row is None]
+    missing = [n for n, rows in (("line 9", rec.line9), ("line 11", rec.line11)) if not rows]
     if missing:
         rec.flag, rec.why = SOMETHING_ELSE, "no " + " and no ".join(missing)
         return
+    twice = [n for n, rows in (("line 9", rec.line9), ("line 11", rec.line11)) if len(rows) > 1]
+    if twice:
+        rec.flag, rec.why = SOMETHING_ELSE, "two or more rows for " + " and ".join(twice)
+        return
     by = []
-    if rec.line9[1].lower().startswith("none"):
+    if rec.line9[0][1].lower().startswith("none"):
         by.append("line 9")
-    if rec.line11[1].lower().startswith("yes"):
+    if rec.line11[0][1].lower().startswith("yes"):
         by.append("line 11")
     rec.flag = FLAGGED if by else SOMETHING_ELSE
     rec.why = " and ".join(by)
@@ -251,13 +463,14 @@ def pick_newest(records, repo, commit, folder):
     blames = {}
     repeated = timed_repeated = all_tied = 0
     for copies in by_test.values():
-        timed = [r for r in copies if r.line9 is not None]
+        timed = [r for r in copies if r.line9]
         if len(copies) > 1:
             repeated += 1
             for r in timed:
                 if r.file not in blames:
                     blames[r.file] = blame_times(repo, commit, folder + r.file)
-                r.time9 = blames[r.file][r.line9[0]]
+                # A record holding two line 9 rows is timed by the later one.
+                r.time9 = max(blames[r.file][n] for n, _ in r.line9)
             if len(timed) > 1:
                 timed_repeated += 1
                 if len({r.time9 for r in timed}) == 1:
@@ -284,15 +497,19 @@ def cell(s):
     return str(s).replace("\t", " ").replace("\r", " ").replace("\n", " ")
 
 
-COLUMNS = ["record", "heading", "match", "test file", "test name", "test lines at " + TESTS_COMMIT,
-           "state", "flagged by or missing", "newest copy", "test state", "line 9", "line 11"]
+COLUMNS = ["record", "heading", "match", "match note", "test file", "test name",
+           "test lines at " + TESTS_COMMIT, "state", "flagged by or missing", "newest copy", "test state",
+           "line 9", "line 11"]
+
+
+def quote(r, rows):
+    return " | ".join(f"{r.file}:{n}: {t}" for n, t in rows)
 
 
 def row(r):
-    q9 = f"{r.file}:{r.line9[0]}: {r.line9[1]}" if r.line9 else ""
-    q11 = f"{r.file}:{r.line11[0]}: {r.line11[1]}" if r.line11 else ""
-    return [f"{r.file}:{r.line}", r.heading, r.match, r.test_file, r.test_name,
-            ",".join(str(x) for x in r.test_lines), r.flag, r.why, r.newest, r.test_state, q9, q11]
+    return [f"{r.file}:{r.line}", r.heading, r.match, r.note, r.test_file, r.test_name,
+            ",".join(str(x) for x in r.test_lines), r.flag, r.why, r.newest, r.test_state,
+            quote(r, r.line9), quote(r, r.line11)]
 
 
 def write(path, rows):
@@ -303,7 +520,8 @@ def write(path, rows):
 
 
 def run(out, copy=COPY, repo=REPO, records_commit=RECORDS_COMMIT, folder=RECORDS_DIR, say=print):
-    records, loose9, loose11 = read_records(repo, records_commit, folder)
+    got = read_records(repo, records_commit, folder)
+    records = got.records
     tests = Tests(copy)
     for r in records:
         match(r, tests)
@@ -311,35 +529,56 @@ def run(out, copy=COPY, repo=REPO, records_commit=RECORDS_COMMIT, folder=RECORDS
     repeated, timed_repeated, all_tied = pick_newest(records, repo, records_commit, folder)
 
     heads = grep_count(repo, records_commit, HEADING, folder)
-    rows9 = grep_count(repo, records_commit, LINE9, folder)
-    rows11 = grep_count(repo, records_commit, LINE11, folder)
-    own9 = sum(1 for r in records if r.line9) + len(loose9)
-    own11 = sum(1 for r in records if r.line11) + len(loose11)
+    grep_rows = {9: grep_count(repo, records_commit, LINE9, folder),
+                 11: grep_count(repo, records_commit, LINE11, folder)}
+    owned = {9: sum(len(r.line9) for r in records), 11: sum(len(r.line11) for r in records)}
     states = collections.Counter(r.match for r in records)
     flags = collections.Counter(r.flag for r in records)
     unmatched = [r for r in records if r.match in (GONE, NO_TEST)]
+    notes = collections.Counter(re.sub(r"(bare file name) \S+ (names \d+) .*", r"\1 that \2 files",
+                                       r.note.split(":")[0]) for r in unmatched if r.note)
 
     say(f"records read at {records_commit}; tests read from the stripped copy {copy}")
-    say(f"headings: {len(records)} matched or listed; git grep counts {heads} `## ` headings")
+    say(f"headings: {len(records)} record headings and {len(got.sections)} section headings; "
+        f"git grep counts {heads} `##`, `###` and `####` headings")
     for s in (SAME_PLACE, MOVED, GONE, NO_TEST):
         say(f"  {s}: {states[s]}")
+    for note, c in sorted(notes.items()):
+        say(f"    of the unmatched, {note}: {c}")
     say(f"states: {FLAGGED} {flags[FLAGGED]}, {SOMETHING_ELSE} {flags[SOMETHING_ELSE]}")
-    say(f"line 9 rows: script {own9}, git grep {rows9}; owned by a record {own9 - len(loose9)}, "
-        f"reached by no record {len(loose9)}")
-    say(f"line 11 rows: script {own11}, git grep {rows11}; owned by a record {own11 - len(loose11)}, "
-        f"reached by no record {len(loose11)}")
+    for s in (SAME_PLACE, MOVED, GONE, NO_TEST):
+        c = collections.Counter(r.flag for r in records if r.match == s)
+        say(f"  {s}: {FLAGGED} {c[FLAGGED]}, {SOMETHING_ELSE} {c[SOMETHING_ELSE]}")
+    why = collections.Counter(r.why for r in records if r.flag == SOMETHING_ELSE and r.why)
+    for w, c in sorted(why.items()):
+        say(f"  {SOMETHING_ELSE} because {w}: {c}")
+    for k in (9, 11):
+        say(f"line {k} rows: script {owned[k] + len(got.loose[k])} on {got.lines[k]} lines, git grep "
+            f"{grep_rows[k]} lines; owned by a record {owned[k]} ({got.across[k]} of them past a "
+            f"section heading), under no record {len(got.loose[k])}")
+        for s, c in sorted(got.shapes[k].items()):
+            say(f"  shape {s}: {c}")
+    say(f"ranges or lists of answer numbers covering line 9 or 11, not read: {len(got.unread)}")
+    for u in got.unread:
+        say("  " + u[:200])
     say(f"tests with more than one record: {repeated}; with two or more line 9 rows to time: "
         f"{timed_repeated}; of those, every copy at one blame time: {all_tied}")
 
     stops = []
-    if len(records) != heads:
-        stops.append(f"{len(records)} headings matched or listed, but git grep counts {heads}")
-    if own9 != rows9:
-        stops.append(f"the script counts {own9} line 9 rows, git grep counts {rows9}")
-    if loose9:
-        stops.append(f"{len(loose9)} line 9 rows sit under no `## ` record of their own (a second "
-                     f"row in one record, or a row before any `## ` heading); the plan's heading "
-                     f"rule does not reach them. First ones: {', '.join(loose9[:5])}")
+    if len(records) + len(got.sections) != heads:
+        stops.append(f"{len(records) + len(got.sections)} headings read, but git grep counts {heads}")
+    for k in (9, 11):
+        if got.lines[k] != grep_rows[k]:
+            found = grep_lines(repo, records_commit, LINE11 if k == 11 else LINE9, folder)
+            only_grep = sorted(found - got.line_set[k])
+            only_script = sorted(got.line_set[k] - found)
+            stops.append(f"the script reads line {k} rows on {got.lines[k]} lines, git grep finds "
+                         f"{grep_rows[k]} lines. Found only by git grep ({len(only_grep)}): "
+                         f"{', '.join(only_grep[:20])}. Read only by the script ({len(only_script)}): "
+                         f"{', '.join(only_script[:20])}")
+        if got.loose[k]:
+            stops.append(f"{len(got.loose[k])} line {k} rows sit under no record heading. First ones: "
+                         f"{', '.join(got.loose[k][:5])}")
     if timed_repeated and all_tied == timed_repeated:
         stops.append("blame gives one time to every copy of every repeated test, so no newest copy "
                      "can be picked")
@@ -351,7 +590,12 @@ def run(out, copy=COPY, repo=REPO, records_commit=RECORDS_COMMIT, folder=RECORDS
     os.makedirs(out, exist_ok=True)
     write(os.path.join(out, "matched.tsv"), records)
     write(os.path.join(out, "unmatched.tsv"), unmatched)
-    say(f"wrote matched.tsv ({len(records)} rows) and unmatched.tsv ({len(unmatched)} rows) to {out}")
+    with open(os.path.join(out, "sections.tsv"), "w", encoding="utf-8", newline="\n") as f:
+        f.write("heading line\theading\n")
+        for name, n, text in got.sections:
+            f.write(f"{name}:{n}\t{cell(text)}\n")
+    say(f"wrote matched.tsv ({len(records)} rows), unmatched.tsv ({len(unmatched)} rows) and "
+        f"sections.tsv ({len(got.sections)} rows) to {out}")
     return 0
 
 

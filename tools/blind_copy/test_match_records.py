@@ -107,7 +107,7 @@ class MatchRecordsTest(unittest.TestCase):
                         + record("## helper_rows (tests/t.cpp:1-2)", "x", "no")
                         + record("## LaunchTest (tools/test_x.py:1)", "x", "no")
                         + record("## a gone test (tests/gone.cpp:3)", "x", "no")
-                        + record("## Records", "x", "no")
+                        + record("## Records (tests/t.cpp:9)", "x", "no")
                         + record("## no such test (tests/t.cpp:4)", "x", "no")})
         code, lines = self.fx.run()
         self.assertEqual(code, 0, lines)
@@ -130,7 +130,7 @@ class MatchRecordsTest(unittest.TestCase):
         self.fx.commit({"A.md": record("## every start checks (tests/t.cpp:4)", "a loop stands in", "YES, the corpus.")
                         + record("## helper_rows (tests/t.cpp:1)", "none.", "a made-up chart")
                         + record("## LaunchTest (tools/test_x.py:1)", "the fake fetcher", "no, typed")
-                        + record("## Records", "NONE", None)})
+                        + record("## Records (tests/t.cpp:9)", "NONE", None)})
         code, lines = self.fx.run()
         self.assertEqual(code, 0, lines)
         rows = by_record(self.fx.rows())
@@ -170,13 +170,15 @@ class MatchRecordsTest(unittest.TestCase):
         self.assertTrue(any(line.startswith("STOP: blame gives one time") for line in lines), lines)
         self.assertFalse(os.path.exists(self.fx.out))
 
-    def test_stops_on_a_line_9_no_record_reaches(self):
-        self.fx.commit({"A.md": "## Records\n\n"
-                        + record("### every start checks (tests/t.cpp:4)", "None.", "Yes.")
-                        + record("### helper_rows (tests/t.cpp:1)", "None.", "Yes.")})
+    def test_stops_on_a_row_under_no_record_heading(self):
+        self.fx.commit({"A.md": "# A\n\n## Shared answers\n9 Stand-in: None.\n11 Real: Yes.\n\n"
+                        + record("### every start checks (tests/t.cpp:4)", "None.", "Yes.")})
         code, lines = self.fx.run()
         self.assertEqual(code, 1)
-        self.assertTrue(any("1 line 9 rows sit under no" in line for line in lines), lines)
+        self.assertTrue(any(line.startswith("STOP: 1 line 9 rows sit under no record heading")
+                            for line in lines), lines)
+        self.assertTrue(any(line.startswith("STOP: 1 line 11 rows sit under no record heading")
+                            for line in lines), lines)
         self.assertFalse(os.path.exists(self.fx.out))
 
     def test_counts_match_git_grep(self):
@@ -184,8 +186,115 @@ class MatchRecordsTest(unittest.TestCase):
                         + record("## Counts")})
         code, lines = self.fx.run()
         self.assertEqual(code, 0, lines)
-        self.assertIn("headings: 2 matched or listed; git grep counts 2 `## ` headings", lines)
-        self.assertTrue(any(line.startswith("line 9 rows: script 1, git grep 1;") for line in lines), lines)
+        self.assertIn("headings: 1 record headings and 1 section headings; git grep counts 2 "
+                      "`##`, `###` and `####` headings", lines)
+        self.assertTrue(any(line.startswith("line 9 rows: script 1 on 1 lines, git grep 1 lines;")
+                            for line in lines), lines)
+
+    # 1. Record headings at three levels; any other heading is a section.
+    def test_record_headings_are_levels_two_to_four_with_a_place(self):
+        self.fx.commit({"A.md": "## Records\n\n"
+                        + record("### every start checks (tests/t.cpp:4)", "None.", "Yes.")
+                        + record("#### helper_rows (tests/t.cpp:1)", "a loop", "no")
+                        + "### Shared answers (S-EN)\n\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual(rows["A.md:3"]["match"], mr.SAME_PLACE)
+        self.assertEqual(rows["A.md:8"]["match"], mr.SAME_PLACE)
+        self.assertEqual(set(rows), {"A.md:3", "A.md:8"})
+        with open(os.path.join(self.fx.out, "sections.tsv"), encoding="utf-8") as f:
+            sections = [line.split("\t")[0] for line in f.read().splitlines()[1:]]
+        self.assertEqual(sections, ["A.md:1", "A.md:13"])
+
+    # 2. A leading record number is dropped; a bare number with no full stop is not.
+    def test_a_leading_record_number_is_dropped(self):
+        self.fx.commit({"A.md": record("### 44. every start checks (tests/t.cpp:4)", "x", "no")
+                        + record("### 44 every start checks (tests/t.cpp:4)", "x", "no")})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["match"], rows["A.md:1"]["test name"]),
+                         (mr.SAME_PLACE, "every start checks"))
+        self.assertEqual(rows["A.md:6"]["match"], mr.NO_TEST)
+
+    # 3. A short place takes its file from the nearest heading above that names one.
+    def test_a_short_place_takes_the_file_named_above(self):
+        self.fx.commit({"A.md": record("### every start checks (:4)", "x", "no")
+                        + "# File tests/t.cpp\n\n"
+                        + record("### every start checks (:4)", "x", "no")
+                        + record("### helper_rows (line 1)", "x", "no")})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["match"], rows["A.md:1"]["match note"]),
+                         (mr.NO_TEST, "no heading above names a file"))
+        self.assertEqual((rows["A.md:8"]["match"], rows["A.md:8"]["test file"]), (mr.SAME_PLACE, "tests/t.cpp"))
+        self.assertEqual(rows["A.md:13"]["match"], mr.SAME_PLACE)
+
+    # 4. Names inside the parenthesis, and bare file names.
+    def test_bracketed_names_and_bare_file_names(self):
+        self.fx.commit({"A.md": record("### paths-list: the list (`helper_rows`, tests/t.cpp:1)", "x", "no")
+                        + record("### LaunchTest (test_x.py:1)", "x", "no")
+                        + record("### LaunchTest (`test_y.py:1`)", "x", "no")})
+        other = os.path.join(self.fx.copy, "code", "tests", "py")
+        os.makedirs(other)
+        for folder in ("tools", os.path.join("tests", "py")):
+            with open(os.path.join(self.fx.copy, "code", folder, "test_y.py"), "w", encoding="utf-8") as f:
+                f.write(PY)
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["match"], rows["A.md:1"]["test name"]), (mr.SAME_PLACE, "helper_rows"))
+        self.assertEqual((rows["A.md:6"]["match"], rows["A.md:6"]["test file"]), (mr.SAME_PLACE, "tools/test_x.py"))
+        self.assertEqual((rows["A.md:11"]["match"], rows["A.md:11"]["match note"]),
+                         (mr.NO_TEST, "bare file name test_y.py names 2 files in the copy"))
+
+    # 5. Each line shape is read; a number inside prose or a numbered list is not.
+    def test_line_shapes(self):
+        self.fx.commit({"A.md": "### every start checks (tests/t.cpp:4)\n- 9 Stand-in: None.\n- **11 Real:** no\n\n"
+                        "### helper_rows (tests/t.cpp:1)\n8 Deleted: 3. 9 none. 10 records 13, 16, 70. 11 yes.\n\n"
+                        "### LaunchTest (tools/test_x.py:1)\nRead: 1-3. 1: a claim. 9: a loop. 11: yes, real.\n\n"
+                        "### a gone test (tests/gone.cpp:3)\n5 Reason: 9 and 10 straddle the step.\n"
+                        "9. Numbers on screen.\n11 No, typed.\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["state"], rows["A.md:1"]["flagged by or missing"]), (mr.FLAGGED, "line 9"))
+        self.assertEqual(rows["A.md:1"]["line 11"], "A.md:3: no")
+        self.assertEqual((rows["A.md:5"]["state"], rows["A.md:5"]["flagged by or missing"]),
+                         (mr.FLAGGED, "line 9 and line 11"))
+        self.assertEqual(rows["A.md:5"]["line 9"], "A.md:6: none.")
+        self.assertEqual((rows["A.md:8"]["state"], rows["A.md:8"]["flagged by or missing"]), (mr.FLAGGED, "line 11"))
+        self.assertEqual((rows["A.md:11"]["state"], rows["A.md:11"]["flagged by or missing"]),
+                         (mr.SOMETHING_ELSE, "no line 9"))
+        self.assertIn("  shape labelled, after '- ', in bold: 1", lines)
+        self.assertIn("  shape no label, after another answer on its line: 1", lines)
+        self.assertIn("  shape no label, number then ':', inside a 'Read:' line: 1", lines)
+
+    # 6. A row belongs to the nearest record heading above it; two rows make it something else.
+    def test_rows_belong_to_the_nearest_record_heading(self):
+        self.fx.commit({"A.md": "### every start checks (tests/t.cpp:4)\n9 Stand-in: None.\n"
+                        "#### Notes\n9 none.\n11 Real: Yes.\n\n"
+                        + record("### helper_rows (tests/t.cpp:1)", "a loop", None)
+                        + "#### More notes\n11 Real: Yes.\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:1"]["state"], rows["A.md:1"]["flagged by or missing"]),
+                         (mr.SOMETHING_ELSE, "two or more rows for line 9"))
+        self.assertEqual(rows["A.md:1"]["line 9"], "A.md:2: None. | A.md:4: none.")
+        self.assertEqual((rows["A.md:7"]["state"], rows["A.md:7"]["flagged by or missing"]), (mr.FLAGGED, "line 11"))
+
+    # 7. A line git grep finds and the reader does not read stops the run.
+    def test_stops_when_the_reader_misses_a_line_git_grep_finds(self):
+        self.fx.commit({"A.md": record("### every start checks (tests/t.cpp:4)", "None.", "Yes.")
+                        + "8-10 as record 2. 9 none.\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 1)
+        self.assertTrue(any(line.startswith("STOP: the script reads line 9 rows on 1 lines, git grep finds 2 lines. "
+                                            "Found only by git grep (1): A.md:6") for line in lines), lines)
+        self.assertIn("  A.md:6: 8-10 as record 2. 9 none.", lines)
 
 
 if __name__ == "__main__":
