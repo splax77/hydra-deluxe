@@ -104,18 +104,25 @@ TEST_CASE("the running version parses through parse_version") {
 }
 
 TEST_CASE("the v2.10.2 reply reads into the six fields") {
-    const hydra::app::UpdateRelease r = hydra::app::parse_latest_release_json(fixture().dump());
-    CHECK(r.version == AppVersion{2, 10, 2});
-    CHECK(r.notes == fixture()["body"].get<std::string>());
+    // Every expected value is read out of the saved reply itself, so no value
+    // is typed twice. The reply is GitHub's answer to
+    // GET https://api.github.com/repos/splax77/hydra-deluxe/releases/latest,
+    // saved in commit 6825325a2 (2026-10-22) after v2.10.2 was published on
+    // 2026-10-20; only the .sig asset was added by hand.
+    const json reply = fixture();
+    const json& installer = reply["assets"][asset_index(reply, kInstaller)];
+    const json& signature = reply["assets"][asset_index(reply, kSignature)];
+    const hydra::app::UpdateRelease r = hydra::app::parse_latest_release_json(reply.dump());
+    CHECK(r.version == *parse_version(reply["tag_name"].get<std::string>()));
+    CHECK(r.notes == reply["body"].get<std::string>());
     CHECK_FALSE(r.notes.empty());
-    CHECK(r.installer_url ==
-          "https://github.com/splax77/hydra-deluxe/releases/download/v2.10.2/"
-          "HydraDeluxe-2.10.2-setup.exe");
-    CHECK(r.installer_size == 33241389);
-    CHECK(r.digest == "86f386c3ecd13f835930cff691e0c3986fb264cf5313500991a4bddb122f9963");
-    CHECK(r.sig_url ==
-          "https://github.com/splax77/hydra-deluxe/releases/download/v2.10.2/"
-          "HydraDeluxe-2.10.2-setup.exe.sig");
+    CHECK(r.installer_url == installer["browser_download_url"].get<std::string>());
+    CHECK(r.installer_size == installer["size"].get<uint64_t>());
+    // GitHub writes the digest as "sha256:" and the hex; the reader keeps the hex.
+    CHECK("sha256:" + r.digest == installer["digest"].get<std::string>());
+    CHECK(r.sig_url == signature["browser_download_url"].get<std::string>());
+    // The installer's and the signature's fields are not mixed up.
+    CHECK(r.installer_url != r.sig_url);
 }
 
 TEST_CASE("a reply with no notes reads with empty notes") {

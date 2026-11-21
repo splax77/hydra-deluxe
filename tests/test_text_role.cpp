@@ -142,10 +142,15 @@ TEST_CASE("text_role: baseline_shift sits a role's baseline on the default font'
     const float mono_ascent = mono->GetFontBaked(18.0f)->Ascent;
     const float deflt_ascent = deflt->GetFontBaked(18.0f)->Ascent;
     MESSAGE("ascent at 18 px: default " << deflt_ascent << ", mono " << mono_ascent);
-    const float top = 100.0f;
     const float shift = hydra::ui::baseline_shift(TextRole::Figure);
     MESSAGE("Figure's shift at 18 px: " << shift);
-    CHECK(std::fabs((top + shift + mono_ascent) - (top + deflt_ascent)) <= 0.5f);
+    // The two baselines must match exactly, with no tolerance. When neither
+    // ascent is more than twice the other, the float difference of the two is
+    // exact, so a correct shift added back to the mono ascent gives the
+    // default ascent to the last bit. The two REQUIREs hold that premise.
+    REQUIRE(mono_ascent <= 2.0f * deflt_ascent);
+    REQUIRE(deflt_ascent <= 2.0f * mono_ascent);
+    CHECK(mono_ascent + shift == deflt_ascent);
 
     // A default-font role is the line's anchor and stays put.
     CHECK(hydra::ui::baseline_shift(TextRole::Label) == 0.0f);

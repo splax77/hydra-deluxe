@@ -36,12 +36,18 @@ TEST_CASE("clock_str: the total rounds to whole ms before it splits") {
     CHECK(clock_str(0.0) == "0:00.000");
 }
 
-TEST_CASE("group_thousands matches Python {:,}") {
+// D48 Q12: counts take commas from 1,000. The checks sit on each digit
+// boundary: no comma below 1,000, the first at 1,000, a second at 1,000,000,
+// and none in front of a group of exactly three digits.
+TEST_CASE("group_thousands: a comma every three digits, minus first") {
     CHECK(group_thousands(0) == "0");
     CHECK(group_thousands(999) == "999");
     CHECK(group_thousands(1000) == "1,000");
     CHECK(group_thousands(228710) == "228,710");
     CHECK(group_thousands(1234567) == "1,234,567");
+    // The input is signed: a score gap such as the leaderboard report's delta
+    // (dm_report_view.cpp) can be below zero. The minus goes first and is not
+    // counted as a digit, so it never reads "-,234,567".
     CHECK(group_thousands(-1234567) == "-1,234,567");
 }
 
