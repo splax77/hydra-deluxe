@@ -45,9 +45,9 @@ TEST_CASE("group_thousands: a comma every three digits, minus first") {
     CHECK(group_thousands(1000) == "1,000");
     CHECK(group_thousands(228710) == "228,710");
     CHECK(group_thousands(1234567) == "1,234,567");
-    // The input is signed: a score gap such as the leaderboard report's delta
-    // (dm_report_view.cpp) can be below zero. The minus goes first and is not
-    // counted as a digit, so it never reads "-,234,567".
+    // The input is a signed int64_t, so the sign branch has to hold on its
+    // own: the minus goes first and is not counted as a digit, so a negative
+    // never reads "-,234,567".
     CHECK(group_thousands(-1234567) == "-1,234,567");
 }
 
