@@ -23,6 +23,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -138,6 +139,37 @@ std::string copy_of_old_database(const std::string& file, const std::string& tag
     return path;
 }
 
+// One corpus chart as a scan and an analysis give it: the library row
+// discover_charts writes for the first chart it names an album for, and that
+// chart's record at 4 bars (store_fixture_settings). A chart the analysis
+// cannot read is passed over.
+struct ScannedChart {
+    ChartLibraryEntry row;
+    HydraRecord record;
+};
+
+const ScannedChart& scanned_chart() {
+    static const ScannedChart found = [] {
+        const auto scan = hydra::app::discover_charts({corpus::root()});
+        for (const ChartLibraryEntry& item : scan.first) {
+            if (item.album.empty()) continue;
+            try {
+                return ScannedChart{item,
+                                    corpus::analyzed(item.notespath, test::store_fixture_settings())};
+            } catch (const std::exception&) {
+                continue;
+            }
+        }
+        throw std::runtime_error("no corpus chart the scan names an album for can be analyzed");
+    }();
+    return found;
+}
+
+// The scanned chart's record, filed under its own song id and `profile`.
+PreparedRecord scanned_record(const Profile& profile) {
+    return prepare_record(scanned_chart().row.md5, profile, scanned_chart().record);
+}
+
 }  // namespace
 
 // ---- store correctness (2026-09-26 audit, Task 1) --------------------------
@@ -148,15 +180,18 @@ TEST_CASE("store: a new database carries 0 in user_version and reads its own row
     // gives a file nobody wrote it on.
     const std::string path = testtemp::temp_path("user_version", ".db");
     std::remove(path.c_str());
-    const Profile profile{"mode", CapQuery::at(4), Lens{}};
+    const Profile profile = at4();
+    const PreparedRecord saved = scanned_record(profile);
     {
         RecordStore store(path);
-        store.save(prepare_record("h", profile, at_cap(4)));
+        store.save(saved);
     }
     CHECK(scalar_on_file(path,"PRAGMA user_version") == 0);
     {
         RecordStore reopened(path);
-        CHECK(reopened.lookup_one("h", profile).status == RecordStatus::Ready);
+        const RecordLookup got = reopened.lookup_one(scanned_chart().row.md5, profile);
+        REQUIRE(got.status == RecordStatus::Ready);
+        CHECK(got.record == saved.record);
     }
     std::remove(path.c_str());
 }
@@ -251,9 +286,12 @@ TEST_CASE("classify_library_file names each generation of library file") {
 
 TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in place") {
     const std::string path = testtemp::temp_path("lacks_failure_columns", ".db");
-    const Profile profile{"mode", CapQuery::at(4), Lens{}};
+    const Profile profile = at4();
     remove_db(path);
-    PreparedRecord real = prepare_record("real", profile, at_cap(4));
+    // A store this build writes from a real analysis. No file a 2.8.0 release
+    // wrote is checked in, so the two columns it lacked are taken out below.
+    const PreparedRecord real = scanned_record(profile);
+    const std::string real_id = scanned_chart().row.md5;
     {
         RecordStore seed(path);
         seed.save(real);
@@ -266,7 +304,7 @@ TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in plac
     {
         RecordStore store(path);
         // The old record reads as it did.
-        const RecordLookup got = store.lookup_one("real", profile);
+        const RecordLookup got = store.lookup_one(real_id, profile);
         REQUIRE(got.status == RecordStatus::Ready);
         CHECK(got.record == real.record);
         CHECK(store.record_count() == 1);
@@ -281,7 +319,7 @@ TEST_CASE("a 2.8.0 file without the failure columns opens and gains them in plac
     // A second open finds a Current file and changes nothing.
     {
         RecordStore reopened(path);
-        CHECK(reopened.lookup_one("real", profile).status == RecordStatus::Ready);
+        CHECK(reopened.lookup_one(real_id, profile).status == RecordStatus::Ready);
         CHECK(reopened.lookup_one("failed", profile).status == RecordStatus::CantAnalyze);
     }
     remove_db(path);
@@ -319,61 +357,68 @@ bool charts_have_album(const std::string& path) {
                                 " WHERE name = 'album'") == 1;
 }
 
-// A file at `path` with one library row and one record, written by this
-// build and closed, then given back the charts table and the scan stamp a
-// build from before the album wrote.
-void seed_without_album(const std::string& path, const Profile& profile) {
+// A file at `path` with one library row and one record, the scanned chart's
+// (scanned_chart), written by this build and closed, then given back the
+// charts table and a scan stamp this build does not accept, as a build from
+// before the album wrote them. Returns the chart's song id.
+std::string seed_without_album(const std::string& path, const Profile& profile) {
     remove_db(path);
     {
         RecordStore seed(path);
-        seed.rebuild_chart_library({library_row("a", "A")});
-        seed.save(prepare_record("a", profile, at_cap(4)));
+        seed.rebuild_chart_library({scanned_chart().row});
+        seed.save(scanned_record(profile));
     }
-    exec_on_file(path, "ALTER TABLE charts DROP COLUMN album;"
-                       "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version';");
+    const int older_stamp = kChartMetaStamp.written - 1;
+    REQUIRE_FALSE(kChartMetaStamp.is_current(older_stamp));
+    exec_on_file(path, ("ALTER TABLE charts DROP COLUMN album;"
+                        "UPDATE meta SET value = '" +
+                        std::to_string(older_stamp) + "' WHERE key = 'chart_meta_version';")
+                           .c_str());
+    return scanned_chart().row.md5;
 }
 
 }  // namespace
 
 TEST_CASE("a file whose charts table has no album column opens and gains it in place") {
     const std::string path = testtemp::temp_path("lacks_album_column", ".db");
-    const Profile profile{"mode", CapQuery::at(4), Lens{}};
-    seed_without_album(path, profile);
+    const Profile profile = at4();
+    const std::string id = seed_without_album(path, profile);
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksAlbumColumn);
+    // The row a scan of the chart writes again, album and all.
+    const ChartLibraryEntry& rescanned = scanned_chart().row;
+    REQUIRE_FALSE(rescanned.album.empty());
     {
         RecordStore store(path);
         // The old rows read as they did, with an empty album, and the old
         // stamp hands back no cache, so the next scan reads every chart.
         CHECK(store.chart_library_count() == 1);
-        CHECK(store.chart_index().naming("a")->album.empty());
+        CHECK(store.chart_index().naming(id)->album.empty());
         CHECK(store.chart_library_cache().empty());
-        CHECK(store.lookup_one("a", profile).status == RecordStatus::Ready);
-        ChartLibraryEntry rescanned = library_row("a", "A");
-        rescanned.album = "Album A";
+        CHECK(store.lookup_one(id, profile).status == RecordStatus::Ready);
         store.rebuild_chart_library({rescanned});
-        CHECK(store.chart_index().naming("a")->album == "Album A");
+        CHECK(store.chart_index().naming(id)->album == rescanned.album);
     }
     CHECK(charts_have_album(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
     // A second open finds a Current file and reads the album the scan wrote.
     {
         RecordStore reopened(path);
-        CHECK(reopened.chart_index().naming("a")->album == "Album A");
-        CHECK(reopened.chart_library_cache().count(library_row("a", "A").notespath) == 1);
+        CHECK(reopened.chart_index().naming(id)->album == rescanned.album);
+        CHECK(reopened.chart_library_cache().count(rescanned.notespath) == 1);
     }
     remove_db(path);
 }
 
 TEST_CASE("a 2.8.0 file gains the failure columns and the album column in one open") {
     const std::string path = testtemp::temp_path("lacks_failure_and_album", ".db");
-    const Profile profile{"mode", CapQuery::at(4), Lens{}};
-    seed_without_album(path, profile);
+    const Profile profile = at4();
+    const std::string id = seed_without_album(path, profile);
     exec_on_file(path, "ALTER TABLE records DROP COLUMN failure_text;"
                        "ALTER TABLE records DROP COLUMN failure_kind;");
     REQUIRE(classify_library_file(path) == LibraryFileKind::LacksFailureColumns);
     {
         RecordStore store(path);
-        CHECK(store.lookup_one("a", profile).status == RecordStatus::Ready);
+        CHECK(store.lookup_one(id, profile).status == RecordStatus::Ready);
         CHECK(store.chart_library_count() == 1);
     }
     CHECK(charts_have_album(path));
