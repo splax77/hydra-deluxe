@@ -870,6 +870,20 @@ TEST_CASE("hydra_replay refuses --ms, --efill and --depth values that are not wh
     }
 }
 
+// The old skipped-fill decline option is gone: hydra_replay sends any flag it
+// does not know to unknown_option_line and exits 2, as it does for a typo.
+TEST_CASE("hydra_replay refuses --decline as an unknown option") {
+    CliSandbox box("replay_decline");
+    const fs::path replay = box.copy_tool(HYDRA_REPLAY_EXE);
+    const std::string chart = (box.songs / "fixture" / "notes.chart").u8string();
+    const std::string out = (box.dir / "dump.json").u8string();
+    const RunResult r = run_exe(replay, {"dump", "--chart", chart, "--decline", "kick_only", "--out", out});
+    INFO("printed: " << r.output);
+    CHECK(r.exit_code == 2);
+    CHECK(contains(r.output, hydra::unknown_option_line("--decline")));
+    CHECK_FALSE(fs::exists(fs::u8path(out)));
+}
+
 // `hydra_replay score` writes each window's two times beside its ticks, read
 // through the chart's own tempo map, so a reader with no chord on the end
 // still has the end's time. The chart is the sandbox's corpus chart. The
