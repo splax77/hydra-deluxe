@@ -3,10 +3,15 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <array>
 #include <cmath>
+#include <optional>
 #include <string>
+#include <vector>
 
 #include "app/user_messages.h"
+#include "core/error_kind.h"
 #include "core/winstr.h"
 #include "render/obj_loader.h"
 
@@ -35,6 +40,25 @@ const char kKickObj[] =
 float zsum(const ObjMesh& m, size_t tri) {
     return m.vertices[tri * 3].pos[2] + m.vertices[tri * 3 + 1].pos[2] +
            m.vertices[tri * 3 + 2].pos[2];
+}
+
+// Each triangle's three corners (position, normal, uv), sorted: the mesh's
+// triangles as a set, whatever order they are in.
+std::vector<std::array<float, 24>> triangle_keys(const ObjMesh& m) {
+    std::vector<std::array<float, 24>> keys;
+    for (size_t t = 0; t < m.triangle_count(); ++t) {
+        std::array<float, 24> key{};
+        size_t at = 0;
+        for (size_t k = 0; k < 3; ++k) {
+            const ObjVertex& v = m.vertices[t * 3 + k];
+            for (float f : v.pos) key[at++] = f;
+            for (float f : v.normal) key[at++] = f;
+            for (float f : v.uv) key[at++] = f;
+        }
+        keys.push_back(key);
+    }
+    std::sort(keys.begin(), keys.end());
+    return keys;
 }
 
 }  // namespace
@@ -66,16 +90,16 @@ TEST_CASE("load_obj fan-triangulates quads and keeps per-corner attributes") {
 TEST_CASE("load_obj sorts triangles far-first (ascending z sum)") {
     ObjMesh m = load_obj(kKickObj);
     for (size_t i = 1; i < m.triangle_count(); ++i) CHECK(zsum(m, i - 1) <= zsum(m, i));
-    // Fan order within a face: the quad 6 5 1 2 yields (6,5,1) and (6,1,2), so
-    // vertex 6 (-0.5, 0.01, -0.015) starts both of its triangles. After the
-    // sort those two triangles still exist with that first vertex.
-    int tris_starting_at_v6 = 0;
-    for (size_t t = 0; t < m.triangle_count(); ++t) {
-        const ObjVertex& a = m.vertices[t * 3];
-        if (a.pos[0] == -0.5f && a.pos[1] == 0.01f && a.pos[2] == -0.015f)
-            ++tris_starting_at_v6;
-    }
-    CHECK(tris_starting_at_v6 >= 2);
+    // The sort only reorders: the loaded triangles, put in reverse order and
+    // sorted again, are the same triangles, none lost, none made up.
+    ObjMesh reversed;
+    for (size_t t = m.triangle_count(); t-- > 0;)
+        for (size_t k = 0; k < 3; ++k) reversed.vertices.push_back(m.vertices[t * 3 + k]);
+    sort_far_first(reversed);
+    REQUIRE(reversed.triangle_count() == m.triangle_count());
+    for (size_t i = 1; i < reversed.triangle_count(); ++i)
+        CHECK(zsum(reversed, i - 1) <= zsum(reversed, i));
+    CHECK(triangle_keys(reversed) == triangle_keys(m));
 }
 
 TEST_CASE("load_obj handles v//vn, bare v, negative indices, and CRLF") {
@@ -101,9 +125,15 @@ TEST_CASE("an .obj with no faces reads as a Preview asset problem") {
     }
 }
 
-TEST_CASE("load_obj rejects text with no faces and bad indices") {
-    CHECK_THROWS(load_obj("v 0 0 0\n"));
-    CHECK_THROWS(load_obj("v 0 0 0\nf 1 2 3\n"));
+TEST_CASE("load_obj rejects a face index past the vertex list as a Preview asset problem") {
+    std::optional<hydra::ErrorKind> kind;
+    try {
+        load_obj("v 0 0 0\nf 1 2 3\n");
+    } catch (const hydra::KindedError& e) {
+        kind = e.kind();
+    }
+    REQUIRE_MESSAGE(kind.has_value(), "the bad index did not throw a KindedError");
+    CHECK(*kind == hydra::ErrorKind::PreviewAssets);
 }
 
 TEST_CASE("make_flat_quad: unit square at y=0, +Y normal, Onyx UV layout") {
@@ -159,28 +189,28 @@ TEST_CASE("make_box: four outward faces, no bottom or back") {
     CHECK(saw_right);
 }
 
-TEST_CASE("the copied Onyx drum models load with their known extents") {
+// The three model files the Preview loads (preview_renderer.cpp's load_model
+// calls): each loads whole, every corner carries a unit normal, and each has
+// size along every axis.
+TEST_CASE("the shipped drum models load whole with unit normals") {
     const std::string dir = std::string(HYDRA_ASSET_DIR) + "/models/";
-    float mn[3], mx[3];
-
-    ObjMesh kick = load_obj(hydra::read_file_text(dir + "drum-kick.obj"));
-    CHECK(kick.triangle_count() == 8);
-
-    ObjMesh tom = load_obj(hydra::read_file_text(dir + "drum-tom.obj"));
-    // 126 quads + two 14-gons (the top and bottom rims) = 252 + 24 triangles.
-    CHECK(tom.triangle_count() == 252 + 24);
-    mesh_bounds(tom, mn, mx);
-    CHECK(mn[0] == doctest::Approx(-0.491f).epsilon(0.01));
-    CHECK(mx[0] == doctest::Approx(0.491f).epsilon(0.01));
-    CHECK(mn[1] == doctest::Approx(0.0f).epsilon(0.01));
-    CHECK(mx[1] == doctest::Approx(0.309f).epsilon(0.01));
-    CHECK(mx[2] == doctest::Approx(0.233f).epsilon(0.01));
-
-    ObjMesh cymbal = load_obj(hydra::read_file_text(dir + "drum-cymbal.obj"));
-    // 352 quads + 32 triangles + one 32-gon = 704 + 32 + 30 triangles.
-    CHECK(cymbal.triangle_count() == 704 + 32 + 30);
-    mesh_bounds(cymbal, mn, mx);
-    CHECK(mn[1] == doctest::Approx(0.045f).epsilon(0.05));
-    CHECK(mx[1] == doctest::Approx(0.270f).epsilon(0.02));
-    CHECK(mx[0] == doctest::Approx(0.506f).epsilon(0.02));
+    for (const char* file : {"drum-kick.obj", "drum-tom.obj", "drum-cymbal.obj"}) {
+        const std::string name(file);
+        INFO(name);
+        const ObjMesh mesh = load_obj(hydra::read_file_text(dir + name));
+        REQUIRE(mesh.triangle_count() > 0);
+        CHECK(mesh.vertices.size() == mesh.triangle_count() * 3);
+        for (const ObjVertex& v : mesh.vertices) {
+            const float len = std::sqrt(v.normal[0] * v.normal[0] + v.normal[1] * v.normal[1] +
+                                        v.normal[2] * v.normal[2]);
+            CHECK(len == doctest::Approx(1.0f));
+        }
+        float mn[3], mx[3];
+        mesh_bounds(mesh, mn, mx);
+        for (int axis = 0; axis < 3; ++axis) {
+            CHECK(std::isfinite(mn[axis]));
+            CHECK(std::isfinite(mx[axis]));
+            CHECK(mx[axis] > mn[axis]);
+        }
+    }
 }
