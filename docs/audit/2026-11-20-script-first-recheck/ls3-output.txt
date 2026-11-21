@@ -8,4 +8,4 @@ outcome: replaces nothing | rows: 18 | hit lines: 18
 outcome: unsorted | rows: 13 | hit lines: 10
 hit lines with more than one outcome: 1
 marked rows: 32
-results: contradicted 49, flagged 18, no record 27, says something else 26, stand-in found, record stands 161
+results: contradicted 40, flagged 18, no record 27, says something else 26, stand-in found, record stands 170
