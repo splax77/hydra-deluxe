@@ -78,6 +78,9 @@ FILE_TOKEN_RE = re.compile(r"[\w./-]*[\w-]\.(?:cpp|h|hpp|cc|cxx|py)\b")
 # A leading record number ("44. ") or record label ("PL1. ", "E1 ").
 LEAD_NUMBER_RE = re.compile(r"^\d+[a-z]?\.\s+")
 LEAD_LABEL_RE = re.compile(r"^[A-Z]{1,4}-?\d+[a-z]?\.?\s+")
+# A record number with no full stop ("3 test_column_order"), dropped only when a
+# single identifier follows; "44 every start checks" may be a test's own words.
+LEAD_BARE_NUMBER_RE = re.compile(r"^\d+\s+(?=[A-Za-z_]\w*$)")
 
 # Record titles that are not headings (brief sfr-t2c, kind 1): a bold title
 # with a place in brackets just after it, a plain line ending in a place, or a
@@ -207,7 +210,8 @@ def parse_heading(text):
         return None
     rest = unquote(m.group("rest"))
     names = []
-    for base in (rest, LEAD_NUMBER_RE.sub("", rest), LEAD_LABEL_RE.sub("", rest)):
+    for base in (rest, LEAD_NUMBER_RE.sub("", rest), LEAD_LABEL_RE.sub("", rest),
+                 LEAD_BARE_NUMBER_RE.sub("", rest)):
         base = unquote(base)
         names.append(base)
         if ": " in base:
