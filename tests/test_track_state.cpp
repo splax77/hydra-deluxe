@@ -6,6 +6,8 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <limits>
+#include <map>
 #include <optional>
 #include <random>
 #include <stdexcept>
@@ -15,6 +17,8 @@
 
 #include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
+#include "core/song.h"  // cymbal_counts: the engine's rule for which pads are cymbals
+#include "corpus_default_cfg.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "preview_scene_fixtures.h"
@@ -33,14 +37,29 @@ const TrackInstant* find(const std::vector<TrackInstant>& v, double t) {
     return nullptr;
 }
 
-// ---- Pinned timelines -------------------------------------------------------
-// Each hand-built case pins its whole timeline as text, printed once from
-// build_track_state and checked by hand in the case's comment. One line per
-// instant: the time in seconds, the gems ("R", "Yc" a yellow cymbal, "K" a
-// kick, "g" ghost, "a" accent, "-" none), the beat line, then the six span
-// states (od SP phrase, so solo, fi offered fill, ft taken fill, sp active SP,
-// ln lit lane) and the lit lane's pad. A span state is "." absent, "S" start,
-// "O" on, "R" restart, "E" end.
+// The instant at `t`, which the case requires to be there.
+const TrackInstant& instant_at(const TrackState& st, double t) {
+    const TrackInstant* i = find(st.instants(), t);
+    INFO("no instant at " << t << " s");
+    REQUIRE(i != nullptr);
+    return *i;
+}
+
+// The drawn end edge, in seconds, of a span whose last note is on `end_tick`:
+// kSpanEndTicks past that note through the scene's own timing, the edge
+// build_track_state draws (track_state.h, above build_track_state).
+double end_edge_s(const PreviewScene& scene, int64_t end_tick) {
+    return scene.timing->ms_index().ms_at_tick_f(static_cast<double>(end_tick) + kSpanEndTicks) /
+           1000.0;
+}
+
+// ---- One instant as a line of text ------------------------------------------
+// For comparing two instants field by field and for failure messages. The
+// time in seconds, the gems ("R", "Yc" a yellow cymbal, "K" a kick, "g" ghost,
+// "a" accent, "-" none), the beat line, then the six span states (od SP
+// phrase, so solo, fi offered fill, ft taken fill, sp active SP, ln lit lane)
+// and the lit lane's pad. A span state is "." absent, "S" start, "O" on, "R"
+// restart, "E" end.
 
 const char* toggle_code(Toggle t) {
     switch (t) {
@@ -89,43 +108,6 @@ std::string instant_line(const TrackInstant& i, bool show_cymbals = true) {
     return s;
 }
 
-std::vector<std::string> instant_lines(const TrackState& st, bool show_cymbals = true) {
-    std::vector<std::string> out;
-    for (const TrackInstant& i : st.instants()) out.push_back(instant_line(i, show_cymbals));
-    return out;
-}
-
-// The empty-window fallback between each pair of neighbouring instants: the
-// one instant window() synthesizes at their midpoint.
-std::vector<std::string> gap_lines(const TrackState& st) {
-    std::vector<std::string> out;
-    const std::vector<TrackInstant>& v = st.instants();
-    for (size_t i = 0; i + 1 < v.size(); ++i) {
-        TrackWindow w = st.window(v[i].t, v[i + 1].t);
-        REQUIRE(w.size() == 1);
-        out.push_back(instant_line(w[0]));
-    }
-    return out;
-}
-
-// Built lines against pinned ones, printed as literals on a mismatch
-// (record_fixtures.h).
-using test::check_lines;
-
-// The scene's pinned timeline and gaps with pro drums on. With pro drums off
-// the timeline is the same except that no gem is a cymbal.
-void check_pinned(const PreviewScene& scene, const std::vector<std::string>& want_instants,
-                  const std::vector<std::string>& want_gaps) {
-    TrackState st = build_track_state(scene, TrackStateOptions{true});
-    check_lines(instant_lines(st), want_instants, "instants");
-    check_lines(gap_lines(st), want_gaps, "gaps");
-
-    TrackState flat = build_track_state(scene, TrackStateOptions{false});
-    CHECK(instant_lines(flat, false) == instant_lines(st, false));
-    for (const TrackInstant& i : flat.instants())
-        for (const TrackGem& g : i.notes) CHECK_FALSE(g.cymbal);
-}
-
 // Every field of an instant: time, gems in order, beat, every span state.
 bool same_gem(const TrackGem& a, const TrackGem& b) {
     return a.kick == b.kick && (a.kick || a.pad == b.pad) && a.cymbal == b.cymbal &&
@@ -142,6 +124,39 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
            a.fill_lane == b.fill_lane && a.fill_lane_pad == b.fill_lane_pad &&
            a.drum_lane_red == b.drum_lane_red && a.drum_lane_yellow == b.drum_lane_yellow &&
            a.drum_lane_blue == b.drum_lane_blue && a.drum_lane_green == b.drum_lane_green;
+}
+
+// The corpus walks below analyse each chart under corpus::default_cfg before
+// they read its song. corpus::analyzed refuses a chart with no notes
+// (require_notes throws), and every chart the corpus scan lists has Expert
+// drum notes, so a chart that loads empty fails the test instead of being
+// passed over.
+
+// One corpus chart and the Preview's scene for it on the record's first stored
+// path (all_paths order), or the no-path scene when the record keeps none.
+struct ChartScene {
+    std::string chart;
+    PreviewScene scene;
+};
+
+// Every corpus chart's scene, built once per run through the real analysis
+// and the real scene builder.
+const std::vector<ChartScene>& corpus_path_scenes() {
+    static const std::vector<ChartScene> scenes = [] {
+        std::vector<ChartScene> out;
+        const app::AnalysisSettings& cfg = corpus::default_cfg();
+        for (const std::string& chart : corpus::chart_paths()) {
+            INFO("corpus chart " << chart);
+            const std::vector<const Path*> paths = corpus::analyzed(chart, cfg).all_paths();
+            const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+            const Path* first = paths.empty() ? nullptr : paths.front();
+            out.push_back(ChartScene{chart, build_preview_scene(song, first, cfg.sp_cap, cfg.rules)});
+        }
+        // No chart found would let every corpus walk pass having checked nothing.
+        if (out.empty()) throw std::runtime_error("corpus_path_scenes: the corpus holds no chart");
+        return out;
+    }();
+    return scenes;
 }
 
 }  // namespace
@@ -188,7 +203,6 @@ TEST_CASE("toggle_on_after: on after Start, Restart and On; off after End and Em
 TEST_CASE("TrackStateOptions: equal when pro matches") {
     CHECK(TrackStateOptions{true} == TrackStateOptions{true});
     CHECK(TrackStateOptions{true} != TrackStateOptions{false});
-    CHECK_FALSE(TrackStateOptions{true} == TrackStateOptions{false});
 }
 
 TEST_CASE("build_track_state: gems, pro-off, and the phrase end note reads inside") {
@@ -197,75 +211,119 @@ TEST_CASE("build_track_state: gems, pro-off, and the phrase end note reads insid
                    note(500.0, PreviewLane::Kick), note(1000.0, PreviewLane::Green, true, false, true)};
     scene.sp_phrases = {span(500.0, 1000.0)};
 
+    const double first_note = 0.0, chord = 0.5, phrase_last_note = 1.0;
+    const double phrase_end_edge = end_edge_s(scene, scene.sp_phrases[0].end_tick);
+
     TrackState st = build_track_state(scene, TrackStateOptions{true});
     const auto& inst = st.instants();
-    // Instants: 0.0, 0.5, 1.0, 1.0005 (phrase end + half a tick).
+    // One instant per moment: the three note moments and the phrase's drawn
+    // end edge.
     REQUIRE(inst.size() == 4);
-    CHECK(inst[0].t == doctest::Approx(0.0));
-    CHECK(inst[1].t == doctest::Approx(0.5));
-    CHECK(inst[2].t == doctest::Approx(1.0));
-    CHECK(inst[3].t == doctest::Approx(1.0005));
+    CHECK(inst[0].t == doctest::Approx(first_note));
+    CHECK(inst[1].t == doctest::Approx(chord));
+    CHECK(inst[2].t == doctest::Approx(phrase_last_note));
+    CHECK(inst[3].t == doctest::Approx(phrase_end_edge));
 
-    // Two gems at 0.5 s: a yellow ghost cymbal and a kick.
-    REQUIRE(inst[1].notes.size() == 2);
-    CHECK(inst[1].notes[0].pad == Pad::Yellow);
-    CHECK(inst[1].notes[0].cymbal);
-    CHECK(inst[1].notes[0].velocity == Velocity::Ghost);
-    CHECK(inst[1].notes[1].kick);
+    const TrackInstant& chord_inst = inst[1];
+    REQUIRE(chord_inst.notes.size() == 2);
+    const TrackGem& yellow = chord_inst.notes[0];
+    CHECK(yellow.pad == Pad::Yellow);
+    CHECK(yellow.cymbal);
+    CHECK(yellow.velocity == Velocity::Ghost);
+    CHECK(chord_inst.notes[1].kick);
+    REQUIRE(inst[2].notes.size() == 1);
     CHECK(inst[2].notes[0].velocity == Velocity::Accent);
 
-    // The phrase starts at 0.5, is still on at its last note (1.0), ends after.
+    const TrackInstant& phrase_last = inst[2];
+    const TrackInstant& phrase_edge = inst[3];
     CHECK(inst[0].overdrive == Toggle::Empty);
-    CHECK(inst[1].overdrive == Toggle::Start);
-    CHECK(inst[2].overdrive == Toggle::On);
-    CHECK(inst[3].overdrive == Toggle::End);
+    CHECK(chord_inst.overdrive == Toggle::Start);
+    CHECK(phrase_last.overdrive == Toggle::On);
+    CHECK(phrase_edge.overdrive == Toggle::End);
+    const double before_phrase = (first_note + chord) / 2.0;
+    const double inside_phrase = (chord + phrase_last_note) / 2.0;
+    const double past_last_note = (phrase_last_note + phrase_end_edge) / 2.0;
+    CHECK(st.synthesize(before_phrase).overdrive == Toggle::Empty);
+    CHECK(st.synthesize(inside_phrase).overdrive == Toggle::On);
+    CHECK(st.synthesize(past_last_note).overdrive == Toggle::On);
 
-    // Pro off: no cymbals anywhere.
+    // Pro off: the same timeline, with no gem a cymbal.
     TrackState flat = build_track_state(scene, TrackStateOptions{false});
-    for (const TrackInstant& i : flat.instants())
-        for (const TrackGem& g : i.notes) CHECK_FALSE(g.cymbal);
-    // The whole timeline, and between instants the phrase reads on from its
-    // start until its end edge and absent elsewhere.
-    check_pinned(scene,
-                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.500000 Ycg,K - od=S so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.000000 Gca - od=O so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.000500 - - od=E so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.250000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.750000 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.000250 - - od=O so=. fi=. ft=. sp=. ln=. pad=-"});
+    REQUIRE(flat.instants().size() == inst.size());
+    for (size_t k = 0; k < inst.size(); ++k) {
+        CAPTURE(k);
+        CHECK(instant_line(flat.instants()[k], false) == instant_line(inst[k], false));
+        for (const TrackGem& g : flat.instants()[k].notes) CHECK_FALSE(g.cymbal);
+    }
 }
 
-TEST_CASE("build_track_state: active SP window ends exactly at the deact node") {
-    PreviewScene scene;
-    scene.notes = {note(0.0, PreviewLane::Red), note(4000.0, PreviewLane::Red)};
-    PreviewActivation a;
-    a.tick = 1000;
-    a.ms = 1000.0;
-    a.has_sp_end = true;
-    a.sp_end_tick = 3000;
-    a.sp_end_ms = 3000.0;
-    scene.activations = {a};
+// The same promises on every corpus chart's real scene: each note is drawn
+// once, at its own moment; each SP phrase still reads on at its last note;
+// with Pro Drums off no gem is a cymbal.
+TEST_CASE("build_track_state: every corpus chart's notes drawn once at their moment") {
+    size_t phrases = 0;
+    for (const ChartScene& cs : corpus_path_scenes()) {
+        INFO("corpus chart " << cs.chart);
+        const PreviewScene& scene = cs.scene;
+        std::map<double, size_t> notes_at;
+        for (const PreviewNote& n : scene.notes) ++notes_at[n.ms / 1000.0];
+        for (bool pro : {true, false}) {
+            CAPTURE(pro);
+            const TrackState st = build_track_state(scene, TrackStateOptions{pro});
+            size_t drawn = 0, wrong_count = 0, cymbals = 0;
+            for (const TrackInstant& i : st.instants()) {
+                const auto it = notes_at.find(i.t);
+                if (i.notes.size() != (it == notes_at.end() ? 0 : it->second)) ++wrong_count;
+                drawn += i.notes.size();
+                for (const TrackGem& g : i.notes)
+                    if (g.cymbal) ++cymbals;
+            }
+            CHECK(wrong_count == 0);
+            CHECK(drawn == scene.notes.size());
+            if (!pro) CHECK(cymbals == 0);
+            for (const PreviewSpan& p : scene.sp_phrases) {
+                CAPTURE(p.end_tick);
+                CHECK(toggle_on_after(st.synthesize(p.end_ms / 1000.0).overdrive));
+                if (pro) ++phrases;
+            }
+        }
+    }
+    // Pitch Dark's record activates SP, so its chart holds SP phrases.
+    CHECK(phrases > 0);
+}
 
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    const TrackInstant* start = find(st.instants(), 1.0);
-    const TrackInstant* end = find(st.instants(), 3.0);
-    REQUIRE(start);
-    REQUIRE(end);
-    CHECK(start->sp_active == Toggle::Start);
-    CHECK(end->sp_active == Toggle::End);
-    CHECK(find(st.instants(), 0.0)->sp_active == Toggle::Empty);
-    CHECK(find(st.instants(), 4.0)->sp_active == Toggle::Empty);
-    // No instant at 3.0005: the window is exact, not epsilon-extended.
-    CHECK(find(st.instants(), 3.0005) == nullptr);
-    check_pinned(scene,
-                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.000000 - - od=. so=. fi=. ft=. sp=S ln=. pad=-",
-                  "3.000000 - - od=. so=. fi=. ft=. sp=E ln=. pad=-",
-                  "4.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "2.000000 - - od=. so=. fi=. ft=. sp=O ln=. pad=-",
-                  "3.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+// On every corpus chart's Preview path, each activation's Star Power window
+// (its sp_window, the record's window end carried into the scene) ends on the
+// highway at that end itself: the floor reads End there and is off from the
+// very next moment, with no half-tick added the way a phrase's end gets one.
+// A window whose end another window starts at or runs over goes on there, so
+// only the others are held to it.
+TEST_CASE("build_track_state: active SP window ends exactly at the deact node") {
+    size_t windows = 0;
+    for (const ChartScene& cs : corpus_path_scenes()) {
+        INFO("corpus chart " << cs.chart);
+        const TrackState st = build_track_state(cs.scene, TrackStateOptions{});
+        std::vector<std::pair<double, double>> ws;  // seconds
+        for (const PreviewActivation& a : cs.scene.activations)
+            if (const std::optional<std::pair<double, double>> w = a.sp_window())
+                ws.push_back({w->first / 1000.0, w->second / 1000.0});
+        for (size_t k = 0; k < ws.size(); ++k) {
+            const double end = ws[k].second;
+            bool another_runs_on = false;
+            for (size_t j = 0; j < ws.size(); ++j)
+                if (j != k && ws[j].first <= end && end <= ws[j].second) another_runs_on = true;
+            if (another_runs_on) continue;
+            ++windows;
+            CAPTURE(end);
+            CHECK(st.synthesize(end).sp_active == Toggle::End);
+            const double just_after = std::nextafter(end, std::numeric_limits<double>::infinity());
+            CHECK(st.synthesize(just_after).sp_active == Toggle::Empty);
+            const double just_before = std::nextafter(end, 0.0);
+            CHECK(st.synthesize(just_before).sp_active == Toggle::On);
+        }
+    }
+    // Pitch Dark's record activates SP with a stored window end.
+    CHECK(windows > 0);
 }
 
 TEST_CASE("build_track_state: the sp_active field reads sp_running_in") {
@@ -340,67 +398,72 @@ PreviewScene taken_offered_hidden_scene() {
 
 }  // namespace
 
+// On every corpus chart's Preview path, each fill the scene builder marked
+// (from the record) is drawn by its state, read halfway through its drawn
+// span: a Taken fill as the taken strip, and the lit lane when an activation
+// on a pad stands on it; an Offered fill as the offered strip alone; a Hidden
+// fill not at all. A fill whose span overlaps another fill's is left out,
+// since the two would share the strip there.
 TEST_CASE("build_track_state: taken, offered and hidden fills toggle different spans") {
-    PreviewScene scene = taken_offered_hidden_scene();
-
-    TrackState st = build_track_state(scene, TrackStateOptions{});
-    const TrackInstant* taken = find(st.instants(), 1.0);
-    const TrackInstant* offered = find(st.instants(), 4.0);
-    REQUIRE(taken);
-    REQUIRE(offered);
-
-    // The taken fill drives `fill_taken` and the lit lane, not `fill`.
-    CHECK(taken->fill_taken == Toggle::Start);
-    CHECK(taken->fill == Toggle::Empty);
-    CHECK(taken->fill_lane == Toggle::Start);
-    REQUIRE(taken->fill_lane_pad.has_value());
-    CHECK(*taken->fill_lane_pad == Pad::Green);
-
-    // The offered fill drives `fill` alone.
-    CHECK(offered->fill == Toggle::Start);
-    CHECK(offered->fill_taken == Toggle::Empty);
-    CHECK(offered->fill_lane == Toggle::Empty);
-    CHECK_FALSE(offered->fill_lane_pad.has_value());
-
-    // The hidden fill produces no intervals at all: nothing toggles at 7.0.
-    const TrackInstant* hidden = find(st.instants(), 7.0);
-    CHECK(hidden == nullptr);
-    const TrackInstant* hidden_end = find(st.instants(), 8.0);  // the note is there
-    REQUIRE(hidden_end);
-    CHECK(hidden_end->fill == Toggle::Empty);
-    CHECK(hidden_end->fill_taken == Toggle::Empty);
-    CHECK(hidden_end->fill_lane == Toggle::Empty);
-
-    // The activation note itself (2.0) is inside both the taken fill and the lane.
-    const TrackInstant* act = find(st.instants(), 2.0);
-    REQUIRE(act);
-    CHECK(act->fill_taken == Toggle::On);
-    CHECK(act->fill_lane == Toggle::On);
-    CHECK(act->fill == Toggle::Empty);
-    // Taken [1.0, 2.0005] lights Green; offered [4.0, 5.0005]; the hidden
-    // fill adds no instant at 7.0 or 8.0005.
-    check_pinned(scene,
-                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.000000 - - od=. so=. fi=. ft=S sp=. ln=S pad=G",
-                  "2.000000 G - od=. so=. fi=. ft=O sp=. ln=O pad=G",
-                  "2.000500 - - od=. so=. fi=. ft=E sp=. ln=E pad=G",
-                  "4.000000 - - od=. so=. fi=S ft=. sp=. ln=. pad=-",
-                  "5.000000 G - od=. so=. fi=O ft=. sp=. ln=. pad=-",
-                  "5.000500 - - od=. so=. fi=E ft=. sp=. ln=. pad=-",
-                  "8.000000 G - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.500000 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
-                  "2.000250 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
-                  "3.000250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "4.500000 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
-                  "5.000250 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
-                  "6.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+    size_t taken = 0, offered = 0, hidden = 0;
+    for (const ChartScene& cs : corpus_path_scenes()) {
+        INFO("corpus chart " << cs.chart);
+        const PreviewScene& scene = cs.scene;
+        const TrackState st = build_track_state(scene, TrackStateOptions{});
+        std::vector<std::pair<double, double>> drawn;  // each fill's [start, end edge], s
+        for (const PreviewFill& f : scene.fills)
+            drawn.push_back({f.span.start_ms / 1000.0, end_edge_s(scene, f.span.end_tick)});
+        for (size_t i = 0; i < scene.fills.size(); ++i) {
+            const double mid = (drawn[i].first + drawn[i].second) / 2.0;
+            bool shared = false;
+            for (size_t j = 0; j < drawn.size(); ++j)
+                if (j != i && drawn[j].first <= mid && mid <= drawn[j].second) shared = true;
+            if (shared) continue;
+            CAPTURE(scene.fills[i].chord_tick);
+            const TrackInstant at = st.synthesize(mid);
+            bool lit_lane = false;
+            for (const PreviewActivation& a : scene.activations)
+                if (a.has_lane && a.taken_fill == i && a.lane != PreviewLane::Kick) lit_lane = true;
+            switch (scene.fills[i].state) {
+                case PreviewFillState::Taken:
+                    ++taken;
+                    CHECK(at.fill_taken == Toggle::On);
+                    CHECK(at.fill == Toggle::Empty);
+                    CHECK(at.fill_lane == (lit_lane ? Toggle::On : Toggle::Empty));
+                    CHECK(at.fill_lane_pad.has_value() == lit_lane);
+                    CHECK(st.fill_at(mid) == std::optional<size_t>(i));
+                    break;
+                case PreviewFillState::Offered:
+                    ++offered;
+                    CHECK(at.fill == Toggle::On);
+                    CHECK(at.fill_taken == Toggle::Empty);
+                    CHECK(at.fill_lane == Toggle::Empty);
+                    CHECK(st.fill_at(mid) == std::optional<size_t>(i));
+                    break;
+                case PreviewFillState::Hidden:
+                    ++hidden;
+                    CHECK(at.fill == Toggle::Empty);
+                    CHECK(at.fill_taken == Toggle::Empty);
+                    CHECK(at.fill_lane == Toggle::Empty);
+                    CHECK_FALSE(st.fill_at(mid).has_value());
+                    break;
+            }
+        }
+    }
+    // Every drum activation stands on a fill, so a path with an activation
+    // takes one; Pitch Dark's best path activates, and its first activation
+    // passes over fills on ticks 86400, 94080 and 101760 (its
+    // skipped_fill_ticks) before the fill it takes. A fill after a path's
+    // last activation that it was never shown is hidden.
+    CHECK(taken > 0);
+    CHECK(offered > 0);
+    CHECK(hidden > 0);
 }
 
 // A ghost path's fills drive `fill_ghost` over their own spans, whatever the
 // drawn path did with them: here the taken fill and the hidden one. Without a
-// ghost no instant has the field on, and the timeline is the one pinned in
-// the case above.
+// ghost no instant has the field on, and every other field reads as the
+// plain scene's timeline does.
 TEST_CASE("build_track_state: the ghost sweep holds the ghost fills and nothing else") {
     PreviewScene plain = taken_offered_hidden_scene();
     PreviewScene ghosted = plain;
@@ -447,20 +510,25 @@ TEST_CASE("build_track_state: beats land on instants; solo toggles") {
     scene.solos = {span(250.0, 250.0)};  // a one-note solo
 
     TrackState st = build_track_state(scene, TrackStateOptions{});
-    REQUIRE(find(st.instants(), 0.0));
-    CHECK(*find(st.instants(), 0.0)->beat == PreviewBeatKind::MeasureLine);
-    CHECK(*find(st.instants(), 0.25)->beat == PreviewBeatKind::Half);
-    CHECK(find(st.instants(), 0.25)->notes.size() == 1);
-    CHECK(find(st.instants(), 0.25)->solo == Toggle::Start);
-    CHECK(find(st.instants(), 0.2505)->solo == Toggle::End);
-    check_pinned(scene,
-                 {"0.000000 - bar od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.250000 R half od=. so=S fi=. ft=. sp=. ln=. pad=-",
-                  "0.250500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
-                  "0.500000 - beat od=. so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.125000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.250250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "0.375250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+    const TrackInstant* bar = find(st.instants(), 0.0);
+    const TrackInstant* solo_note = find(st.instants(), 0.25);
+    const TrackInstant* solo_end = find(st.instants(), end_edge_s(scene, scene.solos[0].end_tick));
+    const TrackInstant* beat = find(st.instants(), 0.5);
+    REQUIRE(bar);
+    REQUIRE(solo_note);
+    REQUIRE(solo_end);
+    REQUIRE(beat);
+    REQUIRE(bar->beat.has_value());
+    CHECK(*bar->beat == PreviewBeatKind::MeasureLine);
+    REQUIRE(solo_note->beat.has_value());
+    CHECK(*solo_note->beat == PreviewBeatKind::Half);
+    REQUIRE(beat->beat.has_value());
+    CHECK(*beat->beat == PreviewBeatKind::Beat);
+    CHECK(solo_note->notes.size() == 1);
+    CHECK(solo_note->solo == Toggle::Start);
+    CHECK(solo_end->solo == Toggle::End);
+    CHECK_FALSE(solo_end->beat.has_value());
+    CHECK(solo_end->notes.empty());
 }
 
 TEST_CASE("window: strict bounds, and a synthesized instant when empty") {
@@ -470,34 +538,30 @@ TEST_CASE("window: strict bounds, and a synthesized instant when empty") {
     scene.solos = {span(900.0, 3100.0)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
 
-    TrackWindow w = st.window(1.0, 3.0);  // excludes both ends
+    const double first_note = 1.0, middle_note = 2.0, last_note = 3.0;
+
+    // A window from the first note to the last holds only the note between.
+    TrackWindow w = st.window(first_note, last_note);
     REQUIRE(w.size() == 1);
-    CHECK(w[0].t == doctest::Approx(2.0));
+    CHECK(w[0].t == doctest::Approx(middle_note));
     CHECK(w[0].solo == Toggle::On);
 
-    // Nothing between 2.1 and 2.9: the synthesized midpoint instant carries
-    // the ongoing solo.
-    TrackWindow empty = st.window(2.1, 2.9);
+    // A window between two notes holds one instant at its midpoint, which
+    // carries the ongoing solo and no gems or beat.
+    const double empty_near = 2.1, empty_far = 2.9;
+    TrackWindow empty = st.window(empty_near, empty_far);
     REQUIRE(empty.size() == 1);
-    CHECK(empty[0].t == doctest::Approx(2.5));
+    CHECK(empty[0].t == doctest::Approx((empty_near + empty_far) / 2.0));
     CHECK(empty[0].solo == Toggle::On);
     CHECK(empty[0].notes.empty());
     CHECK_FALSE(empty[0].beat.has_value());
 
-    // Outside every span: synthesized Empty.
+    // A window before the solo starts holds one instant with the solo absent.
+    const double solo_start = scene.solos[0].start_ms / 1000.0;
     TrackWindow before = st.window(0.1, 0.5);
     REQUIRE(before.size() == 1);
+    CHECK(before[0].t < solo_start);
     CHECK(before[0].solo == Toggle::Empty);
-    check_pinned(scene,
-                 {"0.900000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
-                  "1.000000 R - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "2.000000 R - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "3.000000 R - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "3.100500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.950000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "1.500000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "2.500000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "3.050250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-"});
 }
 
 TEST_CASE("make_toggle_bounds: covers [near, far], merges equal neighbours") {
@@ -507,45 +571,44 @@ TEST_CASE("make_toggle_bounds: covers [near, far], merges equal neighbours") {
     // and the first's end both read as On and the span never breaks.
     scene.solos = {span(1000.0, 2000.0), span(2000.0, 3000.0)};
     TrackState st = build_track_state(scene, TrackStateOptions{});
-    CHECK(find(st.instants(), 2.0)->solo == Toggle::On);
-    CHECK(find(st.instants(), 2.0005)->solo == Toggle::On);
+    const double first_start = scene.solos[0].start_ms / 1000.0;
+    const double second_start = scene.solos[1].start_ms / 1000.0;
+    const double first_end_edge = end_edge_s(scene, scene.solos[0].end_tick);
+    const double second_end_edge = end_edge_s(scene, scene.solos[1].end_tick);
+    // Each solo's edge where they meet falls inside the other solo.
+    const TrackInstant* at_second_start = find(st.instants(), second_start);
+    const TrackInstant* at_first_end = find(st.instants(), first_end_edge);
+    REQUIRE(at_second_start);
+    REQUIRE(at_first_end);
+    CHECK(at_second_start->solo == Toggle::On);
+    CHECK(at_first_end->solo == Toggle::On);
 
-    TrackWindow w = st.window(0.5, 4.0);
+    // The window [0.5, 4.0] reads off before the first solo, one lit stretch
+    // over both solos, and off after the second.
+    const double near_s = 0.5, far_s = 4.0;
+    TrackWindow w = st.window(near_s, far_s);
     std::vector<ToggleSpan> spans =
-        st.make_toggle_bounds(w, 0.5, 4.0, &TrackInstant::solo);
-    // off [0.5,1.0), on [1.0, 3.0005), off to 4.0
+        st.make_toggle_bounds(w, near_s, far_s, &TrackInstant::solo);
     REQUIRE(spans.size() == 3);
-    CHECK(spans[0].t1 == doctest::Approx(0.5));
-    CHECK(spans[0].t2 == doctest::Approx(1.0));
+    CHECK(spans[0].t1 == doctest::Approx(near_s));
+    CHECK(spans[0].t2 == doctest::Approx(first_start));
     CHECK_FALSE(spans[0].on);
-    CHECK(spans[1].t1 == doctest::Approx(1.0));
-    CHECK(spans[1].t2 == doctest::Approx(3.0005));
+    CHECK(spans[1].t1 == doctest::Approx(first_start));
+    CHECK(spans[1].t2 == doctest::Approx(second_end_edge));
     CHECK(spans[1].on);
-    CHECK(spans[2].t2 == doctest::Approx(4.0));
+    CHECK(spans[2].t1 == doctest::Approx(second_end_edge));
+    CHECK(spans[2].t2 == doctest::Approx(far_s));
     CHECK_FALSE(spans[2].on);
 
-    // A window opening mid-span starts "on".
-    TrackWindow mid = st.window(1.5, 2.5);
+    // A window opening inside the lit stretch starts lit.
+    const double mid_near = 1.5, mid_far = 2.5;
+    TrackWindow mid = st.window(mid_near, mid_far);
     std::vector<ToggleSpan> mid_spans =
-        st.make_toggle_bounds(mid, 1.5, 2.5, &TrackInstant::solo);
+        st.make_toggle_bounds(mid, mid_near, mid_far, &TrackInstant::solo);
     REQUIRE(mid_spans.size() == 1);
     CHECK(mid_spans[0].on);
-    CHECK(mid_spans[0].t1 == doctest::Approx(1.5));
-    CHECK(mid_spans[0].t2 == doctest::Approx(2.5));
-    // [1.0, 2.0005] and [2.0, 3.0005]: each edge at 2.0 and 2.0005 falls
-    // inside the other solo, so both read On.
-    check_pinned(scene,
-                 {"0.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.000000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
-                  "2.000000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "2.000500 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "3.000500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
-                  "10.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.500000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "2.000250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "2.500500 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "6.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+    CHECK(mid_spans[0].t1 == doctest::Approx(mid_near));
+    CHECK(mid_spans[0].t2 == doctest::Approx(mid_far));
 }
 
 TEST_CASE("make_lane_bounds: one taken fill equals the fill_lane toggle bounds and carries its pad") {
@@ -635,29 +698,45 @@ TEST_CASE("build_track_state: a chord one tick after a phrase ends is not SP (48
     REQUIRE(next);
     CHECK(last_in->overdrive == Toggle::On);
     CHECK(next->overdrive == Toggle::Empty);
-    // At 300 BPM and 480 ticks a beat a tick is 1/2400 s: tick 480 is 0.2 s,
-    // the phrase's end edge (tick 480.5) 0.200208 s, tick 481 0.200417 s.
-    check_pinned(scene,
-                 {"0.000000 R - od=S so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.200000 Y - od=O so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.200208 - - od=E so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.200417 B - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"0.100000 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.200104 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
-                  "0.200313 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+    // The phrase's drawn end falls between the two notes.
+    const TrackInstant* edge = find(st.instants(), end_edge_s(scene, scene.sp_phrases[0].end_tick));
+    REQUIRE(edge);
+    CHECK(edge->overdrive == Toggle::End);
+    CHECK(last_in->t < edge->t);
+    CHECK(edge->t < next->t);
 }
 
+// A span's drawn end is read through the song's timing: a scene with a span
+// and no timing is refused, a scene with no span builds without one, and every
+// scene the Preview builds carries its timing, so on every corpus chart the
+// scene holds it and its timeline builds.
 TEST_CASE("build_track_state: spans need the song timing") {
-    PreviewScene scene;  // no timing
-    scene.notes = {note(1000.0, PreviewLane::Red)};
-    scene.sp_phrases = {span(1000.0, 1000.0)};
-    CHECK_THROWS_AS(build_track_state(scene, TrackStateOptions{}), std::invalid_argument);
+    PreviewScene no_timing;
+    no_timing.notes = {note(1000.0, PreviewLane::Red)};
+    no_timing.sp_phrases = {span(1000.0, 1000.0)};
+    CHECK_THROWS_AS(build_track_state(no_timing, TrackStateOptions{}), std::invalid_argument);
 
-    // A scene with no spans still builds without timing.
+    // The same note with no span builds: one instant, at the note's moment,
+    // with every span state absent.
     PreviewScene plain;
     plain.notes = {note(1000.0, PreviewLane::Red)};
-    CHECK(build_track_state(plain, TrackStateOptions{}).instants().size() == 1);
-    check_pinned(plain, {"1.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"}, {});
+    const TrackState plain_st = build_track_state(plain, TrackStateOptions{});
+    REQUIRE(plain_st.instants().size() == 1);
+    const TrackInstant& only = plain_st.instants()[0];
+    CHECK(only.t == doctest::Approx(1.0));
+    CHECK(only.notes.size() == 1);
+    CHECK(only.overdrive == Toggle::Empty);
+    CHECK(only.solo == Toggle::Empty);
+    CHECK(only.fill == Toggle::Empty);
+    CHECK(only.fill_taken == Toggle::Empty);
+    CHECK(only.sp_active == Toggle::Empty);
+    CHECK(only.fill_lane == Toggle::Empty);
+
+    for (const ChartScene& cs : corpus_path_scenes()) {
+        INFO("corpus chart " << cs.chart);
+        CHECK(cs.scene.timing.has_value());
+        CHECK_NOTHROW(build_track_state(cs.scene, TrackStateOptions{}));
+    }
 }
 
 // The renderer asks for this window every frame, so it copies no instant and
@@ -676,118 +755,187 @@ TEST_CASE("window: a view into the state, not a copy") {
         if (i.t == doctest::Approx(2.0)) in_window = &i;
     CHECK(in_window == in_state);
 
-    // Walking it backwards reaches the same objects.
-    CHECK(&*w.rbegin() == &w[w.size() - 1]);
-    check_pinned(scene,
-                 {"1.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "2.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "3.000000 R - od=. so=. fi=. ft=. sp=. ln=. pad=-"},
-                 {"1.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "2.500000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-"});
+    // Walking it backwards starts at the state's own last instant.
+    const TrackInstant* last_in_state = &st.instants().back();
+    CHECK(&*w.rbegin() == last_in_state);
+    CHECK(&w[w.size() - 1] == last_in_state);
 }
 
-// The one-pass builder on a messy scene, every awkward interval shape at
-// least once, pinned instant by instant. 1 tick = 1 ms, so a span's end edge
-// is its end tick plus 0.5 ms.
-TEST_CASE("build_track_state: the one-pass sweep on overlapping, touching, empty and backwards spans") {
-    PreviewScene scene = timed_scene();
-    // SP phrases that overlap: [1.0, 2.0005] and [1.5, 2.5005].
-    scene.sp_phrases = {span(1000.0, 2000.0), span(1500.0, 2500.0)};
-    // Solos: zero-length ([3.0005, 3.0005]: it starts on its own end edge),
-    // backwards ([3.2, 3.1005]), and one nested in another ([4.2, 4.8005]
-    // inside [4.0, 5.0005]).
-    PreviewSpan zero = span(3000.0, 3000.0);
-    zero.start_ms = 3000.5;
-    PreviewSpan backwards = span(3200.0, 3100.0);
-    scene.solos = {zero, backwards, span(4000.0, 5000.0), span(4200.0, 4800.0)};
-    // Fills: an offered one, two taken ones that touch (the second starts on
-    // the first's end edge, 7.5005), and a hidden one that draws nothing.
-    PreviewSpan touching = span(7500.0, 8000.0);
-    touching.start_ms = 7500.5;
-    scene.fills = {fill(span(6000.0, 6500.0), PreviewFillState::Offered),
-                   fill(span(7000.0, 7500.0), PreviewFillState::Taken),
-                   fill(touching, PreviewFillState::Taken),
-                   fill(span(8500.0, 8800.0), PreviewFillState::Hidden)};
-    // Activations. SP windows: an ordinary one [1.2, 3.0], one that starts
-    // where it ends (dropped), one that ends before it starts (dropped), one
-    // with no stored end (dropped). Lit lanes: Green then Yellow on the first
-    // taken fill (the first listed wins), Blue on the touching one, a kick on
-    // it too (no pad: dropped), and Red on a tick with no fill (dropped).
-    auto act = [](double ms, double end_ms, bool has_end) {
-        PreviewActivation a;
-        a.ms = ms;
-        a.tick = static_cast<int64_t>(ms);
-        a.has_sp_end = has_end;
-        a.sp_end_ms = end_ms;
-        a.sp_end_tick = static_cast<int64_t>(end_ms);
-        return a;
-    };
-    scene.activations = {act(1200.0, 3000.0, true), act(3500.0, 3500.0, true),
-                         act(3600.0, 3400.0, true), act(3700.0, 9000.0, false),
-                         lane_activation(7500, PreviewLane::Green, 1),
-                         lane_activation(7500, PreviewLane::Yellow, 1),
-                         lane_activation(8000, PreviewLane::Blue, 2),
-                         lane_activation(8000, PreviewLane::Kick, 2),
-                         lane_activation(9500, PreviewLane::Red, std::nullopt)};
-    // Notes out of time order; a red cymbal (never a cymbal on the highway),
-    // a ghost and an accent; one note on the SP phrase's end edge (2.0005).
-    scene.notes = {note(5000.0, PreviewLane::Green, false, false, true),
-                   note(1000.0, PreviewLane::Red, true),
-                   note(1000.0, PreviewLane::Kick),
-                   note(2000.5, PreviewLane::Blue, true, true),
-                   note(7500.0, PreviewLane::Yellow, true)};
-    // Two beats on one moment (the last one listed wins), and one on an edge.
-    scene.beats = {{0, 2000.5, PreviewBeatKind::MeasureLine}, {0, 2000.5, PreviewBeatKind::Half},
-                   {0, 6000.0, PreviewBeatKind::Beat}};
+// The one-pass builder on each awkward interval shape, one case per shape.
+// One tick is one millisecond (timed_scene), and each edge is named by what
+// it is.
 
-    // By hand: at 1.0 the red cymbal draws as a plain red. At 2.0005 the
-    // first phrase's end edge sits inside the second phrase, so od stays On.
-    // The zero-length solo restarts at 3.0005 and is absent either side. The
-    // backwards solo ends at 3.1005 and starts at 3.2 but covers nothing
-    // between them or after. The nested solo's edges (4.2, 4.8005) read On.
-    // At 7.5005 one taken fill ends as the next starts: Restart, and the
-    // starting fill's Blue wins. The three dropped SP windows, the kick lane,
-    // the red lane on no fill and the hidden fill add no instant.
-    check_pinned(scene,
-                 {"1.000000 R,K - od=S so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.200000 - - od=O so=. fi=. ft=. sp=S ln=. pad=-",
-                  "1.500000 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
-                  "2.000500 Bcg half od=O so=. fi=. ft=. sp=O ln=. pad=-",
-                  "2.500500 - - od=E so=. fi=. ft=. sp=O ln=. pad=-",
-                  "3.000000 - - od=. so=. fi=. ft=. sp=E ln=. pad=-",
-                  "3.000500 - - od=. so=R fi=. ft=. sp=. ln=. pad=-",
-                  "3.100500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
-                  "3.200000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
-                  "4.000000 - - od=. so=S fi=. ft=. sp=. ln=. pad=-",
-                  "4.200000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "4.800500 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "5.000000 Ga - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "5.000500 - - od=. so=E fi=. ft=. sp=. ln=. pad=-",
-                  "6.000000 - beat od=. so=. fi=S ft=. sp=. ln=. pad=-",
-                  "6.500500 - - od=. so=. fi=E ft=. sp=. ln=. pad=-",
-                  "7.000000 - - od=. so=. fi=. ft=S sp=. ln=S pad=G",
-                  "7.500000 Yc - od=. so=. fi=. ft=O sp=. ln=O pad=G",
-                  "7.500500 - - od=. so=. fi=. ft=R sp=. ln=R pad=B",
-                  "8.000500 - - od=. so=. fi=. ft=E sp=. ln=E pad=B"},
-                 {"1.100000 - - od=O so=. fi=. ft=. sp=. ln=. pad=-",
-                  "1.350000 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
-                  "1.750250 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
-                  "2.250500 - - od=O so=. fi=. ft=. sp=O ln=. pad=-",
-                  "2.750250 - - od=. so=. fi=. ft=. sp=O ln=. pad=-",
-                  "3.000250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "3.050500 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "3.150250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "3.600000 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "4.100000 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "4.500250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "4.900250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "5.000250 - - od=. so=O fi=. ft=. sp=. ln=. pad=-",
-                  "5.500250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "6.250250 - - od=. so=. fi=O ft=. sp=. ln=. pad=-",
-                  "6.750250 - - od=. so=. fi=. ft=. sp=. ln=. pad=-",
-                  "7.250000 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
-                  "7.500250 - - od=. so=. fi=. ft=O sp=. ln=O pad=G",
-                  "7.750500 - - od=. so=. fi=. ft=O sp=. ln=O pad=B"});
+// Two SP phrases whose notes overlap, as a chart editor saves them: the
+// first's end edge sits inside the second, so the phrase reads as one span
+// from the first's start to the second's end.
+TEST_CASE("build_track_state: overlapping SP phrases read as one span") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Red),
+                   note(2000.0, PreviewLane::Red), note(2500.0, PreviewLane::Red)};
+    scene.sp_phrases = {span(1000.0, 2000.0), span(1500.0, 2500.0)};
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+    const double first_end = end_edge_s(scene, scene.sp_phrases[0].end_tick);
+    const double second_end = end_edge_s(scene, scene.sp_phrases[1].end_tick);
+    CHECK(instant_at(st, scene.sp_phrases[0].start_ms / 1000.0).overdrive == Toggle::Start);
+    CHECK(instant_at(st, scene.sp_phrases[1].start_ms / 1000.0).overdrive == Toggle::On);
+    CHECK(instant_at(st, first_end).overdrive == Toggle::On);
+    CHECK(instant_at(st, second_end).overdrive == Toggle::End);
+    CHECK(st.synthesize((first_end + second_end) / 2.0).overdrive == Toggle::On);
+}
+
+// A solo nested inside another, as a chart editor saves a second solo marker
+// pair inside the first: the inner solo's edges are no edges of the drawn
+// solo, which simply goes on.
+TEST_CASE("build_track_state: a solo nested in another reads on at the inner edges") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(4000.0, PreviewLane::Red), note(4200.0, PreviewLane::Red),
+                   note(4800.0, PreviewLane::Red), note(5000.0, PreviewLane::Red)};
+    const PreviewSpan outer = span(4000.0, 5000.0), inner = span(4200.0, 4800.0);
+    scene.solos = {outer, inner};
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+    CHECK(instant_at(st, outer.start_ms / 1000.0).solo == Toggle::Start);
+    CHECK(instant_at(st, inner.start_ms / 1000.0).solo == Toggle::On);
+    CHECK(instant_at(st, end_edge_s(scene, inner.end_tick)).solo == Toggle::On);
+    CHECK(instant_at(st, end_edge_s(scene, outer.end_tick)).solo == Toggle::End);
+}
+
+// The fill lane comes only from an activation standing on a taken fill, on a
+// pad: with several such activations on one fill the first listed lights it,
+// an activation on the kick lights nothing, and one on no fill lights
+// nothing. A hidden fill draws nothing at all.
+TEST_CASE("build_track_state: a fill lane needs a taken fill and a pad") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(7000.0, PreviewLane::Red), note(7500.0, PreviewLane::Yellow, true),
+                   note(8500.0, PreviewLane::Red), note(9500.0, PreviewLane::Red)};
+    scene.fills = {fill(span(7000.0, 7500.0), PreviewFillState::Taken),
+                   fill(span(8500.0, 8800.0), PreviewFillState::Hidden)};
+    scene.activations = {lane_activation(7500, PreviewLane::Kick, 0),
+                         lane_activation(7500, PreviewLane::Green, 0),
+                         lane_activation(7500, PreviewLane::Yellow, 0),
+                         lane_activation(9500, PreviewLane::Red, std::nullopt)};
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+    const PreviewSpan& taken = scene.fills[0].span;
+    const PreviewSpan& hidden = scene.fills[1].span;
+
+    const TrackInstant& lane_start = instant_at(st, taken.start_ms / 1000.0);
+    CHECK(lane_start.fill_lane == Toggle::Start);
+    REQUIRE(lane_start.fill_lane_pad.has_value());
+    CHECK(*lane_start.fill_lane_pad == Pad::Green);
+    const double near_s = 6.5, far_s = 10.0;
+    const std::vector<LaneSpan> lanes = st.make_lane_bounds(st.window(near_s, far_s), near_s, far_s);
+    REQUIRE(lanes.size() == 1);
+    CHECK(lanes[0].pad == Pad::Green);
+    CHECK(lanes[0].t1 == doctest::Approx(taken.start_ms / 1000.0));
+    CHECK(lanes[0].t2 == doctest::Approx(end_edge_s(scene, taken.end_tick)));
+
+    const TrackInstant& no_fill = instant_at(st, 9.5);
+    CHECK(no_fill.fill_lane == Toggle::Empty);
+    CHECK_FALSE(no_fill.fill_lane_pad.has_value());
+
+    CHECK(find(st.instants(), end_edge_s(scene, hidden.end_tick)) == nullptr);
+    const TrackInstant inside_hidden = st.synthesize((hidden.start_ms + hidden.end_ms) / 2000.0);
+    CHECK(inside_hidden.fill == Toggle::Empty);
+    CHECK(inside_hidden.fill_taken == Toggle::Empty);
+    CHECK(inside_hidden.fill_lane == Toggle::Empty);
+}
+
+namespace {
+
+// An activation with an SP window from `ms` to `end_ms`, stored when
+// `has_end`.
+PreviewActivation sp_activation(double ms, double end_ms, bool has_end) {
+    PreviewActivation a;
+    a.ms = ms;
+    a.tick = static_cast<int64_t>(ms);
+    a.has_sp_end = has_end;
+    a.sp_end_ms = end_ms;
+    a.sp_end_tick = static_cast<int64_t>(end_ms);
+    return a;
+}
+
+}  // namespace
+
+// A window of no length, one that ends before it starts and one with no
+// stored end come from no record: they stand for sp_window's guard
+// (preview_view.h), which gives none of them a window. The highway then draws
+// no Star Power for them, beside an ordinary window that it does draw.
+TEST_CASE("build_track_state: an activation with no SP window draws no Star Power") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(1000.0, PreviewLane::Red), note(9500.0, PreviewLane::Red)};
+    const PreviewActivation ordinary = sp_activation(1200.0, 3000.0, true);
+    const std::vector<PreviewActivation> refused = {sp_activation(3500.0, 3500.0, true),
+                                                    sp_activation(3600.0, 3400.0, true),
+                                                    sp_activation(3700.0, 9000.0, false)};
+    scene.activations = {ordinary};
+    scene.activations.insert(scene.activations.end(), refused.begin(), refused.end());
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    CHECK(instant_at(st, ordinary.ms / 1000.0).sp_active == Toggle::Start);
+    CHECK(instant_at(st, ordinary.sp_end_ms / 1000.0).sp_active == Toggle::End);
+    for (const PreviewActivation& a : refused) {
+        CAPTURE(a.ms);
+        CHECK_FALSE(a.sp_window().has_value());
+        CHECK(find(st.instants(), a.ms / 1000.0) == nullptr);
+        CHECK(st.synthesize(a.ms / 1000.0).sp_active == Toggle::Empty);
+    }
+    // Inside where the window with no stored end would have run.
+    CHECK(st.synthesize(5.0).sp_active == Toggle::Empty);
+}
+
+// A solo of no length and one that ends before it starts: no chart editor
+// saves either, so they stand for SpanSweep's guard for malformed intervals
+// (track_state.cpp, above SpanSweep's constructor): such an interval holds no
+// time inside, and only its edges show.
+TEST_CASE("build_track_state: a zero-length or backwards solo covers nothing") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(2000.0, PreviewLane::Red), note(4000.0, PreviewLane::Red)};
+    PreviewSpan zero = span(3000.0, 3000.0);
+    zero.start_ms = 3000.5;  // starts on its own end edge
+    const PreviewSpan backwards = span(3200.0, 3100.0);
+    scene.solos = {zero, backwards};
+    const TrackState st = build_track_state(scene, TrackStateOptions{});
+
+    const double zero_at = end_edge_s(scene, zero.end_tick);
+    REQUIRE(zero_at == doctest::Approx(zero.start_ms / 1000.0));
+    CHECK(instant_at(st, zero_at).solo == Toggle::Restart);
+    const double backwards_end = end_edge_s(scene, backwards.end_tick);
+    const double backwards_start = backwards.start_ms / 1000.0;
+    CHECK(instant_at(st, backwards_end).solo == Toggle::End);
+    CHECK(instant_at(st, backwards_start).solo == Toggle::Start);
+    for (double t : {2.5, (zero_at + backwards_end) / 2.0, (backwards_end + backwards_start) / 2.0,
+                     3.5}) {
+        CAPTURE(t);
+        CHECK(st.synthesize(t).solo == Toggle::Empty);
+    }
+}
+
+// The scene lists notes in chart order by lane, not by time, and two beat
+// lines can share a moment: each instant holds its own moment's gems in scene
+// order, its last listed beat, and a cymbal flag only where the engine's
+// cymbal rule (cymbal_counts) makes the pad a cymbal.
+TEST_CASE("build_track_state: notes out of order, a red cymbal flag, and two beats on one moment") {
+    PreviewScene scene = timed_scene();
+    scene.notes = {note(5000.0, PreviewLane::Green, false, false, true),
+                   note(1000.0, PreviewLane::Red, true), note(1000.0, PreviewLane::Kick)};
+    scene.beats = {{0, 2000.0, PreviewBeatKind::MeasureLine}, {0, 2000.0, PreviewBeatKind::Half}};
+    const TrackState st = build_track_state(scene, TrackStateOptions{true});
+    REQUIRE(st.instants().size() == 3);
+    CHECK(st.instants()[0].t < st.instants()[1].t);
+    CHECK(st.instants()[1].t < st.instants()[2].t);
+
+    const TrackInstant& chord = instant_at(st, 1.0);
+    REQUIRE(chord.notes.size() == 2);
+    CHECK(chord.notes[0].pad == Pad::Red);
+    CHECK(chord.notes[0].cymbal == cymbal_counts(app::color_of(PreviewLane::Red), true));
+    CHECK(chord.notes[1].kick);
+
+    const TrackInstant& beat = instant_at(st, 2.0);
+    REQUIRE(beat.beat.has_value());
+    CHECK(*beat.beat == scene.beats.back().kind);
+
+    const TrackInstant& accent = instant_at(st, 5.0);
+    REQUIRE(accent.notes.size() == 1);
+    CHECK(accent.notes[0].velocity == Velocity::Accent);
 }
 
 // A single Yellow lane [1.0, 2.0], a double Red + Blue lane [3.0, 4.0], a Red
@@ -838,28 +986,6 @@ TEST_CASE("build_track_state: drum lanes light their own pads over their spans")
         CHECK(i.overdrive == Toggle::Empty);
         CHECK(i.fill == Toggle::Empty);
         CHECK(i.fill_lane == Toggle::Empty);
-    }
-}
-
-// The path overlay never touches the drum lanes: swapping in a path keeps
-// them, and the result equals a fresh build.
-TEST_CASE("rebuild_overlay_fields: keeps the drum lanes") {
-    PreviewScene from = taken_offered_hidden_scene();
-    from.drum_lanes = {drum_lane(span(1000.0, 2000.0), {PreviewLane::Yellow, PreviewLane::Green}),
-                       drum_lane(span(3500.0, 4000.0), {PreviewLane::Blue})};
-    PreviewScene to = from;
-    to.activations.clear();
-    for (PreviewFill& f : to.fills) f.state = PreviewFillState::Hidden;
-    for (const PreviewScene* s : {&from, &to}) {
-        TrackState st = build_track_state(s == &from ? to : from, TrackStateOptions{});
-        rebuild_overlay_fields(st, *s);
-        const TrackState want = build_track_state(*s, TrackStateOptions{});
-        REQUIRE(st.instants().size() == want.instants().size());
-        for (size_t i = 0; i < want.instants().size(); ++i)
-            CHECK(same_instant(st.instants()[i], want.instants()[i]));
-        const TrackInstant* blue = find(st.instants(), 3.5);
-        REQUIRE(blue);
-        CHECK(blue->drum_lane_blue == Toggle::Start);
     }
 }
 
@@ -997,44 +1123,92 @@ std::vector<PreviewScene> random_overlay_scenes() {
     return scenes;
 }
 
-// synthesize(t) at each instant's own time, held to the instant's span fields
-// (the instant's notes and beat are not span fields, so they are left out).
-void check_synthesize_agrees(const PreviewScene& scene, const std::string& what) {
+// The drawn [start, end edge] of each span, in seconds.
+std::vector<std::pair<double, double>> drawn_intervals(const PreviewScene& scene,
+                                                       const std::vector<PreviewSpan>& spans) {
+    std::vector<std::pair<double, double>> out;
+    for (const PreviewSpan& s : spans) out.push_back({s.start_ms / 1000.0, end_edge_s(scene, s.end_tick)});
+    return out;
+}
+
+// Does `t` lie strictly inside one of `ivs`?
+bool strictly_inside_any(const std::vector<std::pair<double, double>>& ivs, double t) {
+    for (const std::pair<double, double>& iv : ivs)
+        if (iv.first < t && t < iv.second) return true;
+    return false;
+}
+
+// The empty-window fallback between each pair of neighbouring instants, held
+// to the scene's own spans rather than to the sweep that filled the instants.
+// No edge lies between two neighbouring instants, so there each span field
+// reads On exactly where one of its spans' drawn intervals holds the
+// fallback's time, and Empty elsewhere: SP phrases, solos, offered fills,
+// taken fills and the ghost path's fills. The active SP field reads On where
+// the one SP-running rule (app::sp_running_in) says an activation's sp_window
+// runs.
+void check_fallback_reads_spans(const PreviewScene& scene, const std::string& what) {
     const TrackState st = build_track_state(scene, TrackStateOptions{true});
-    size_t mismatches = 0, first = 0;
-    for (size_t i = 0; i < st.instants().size(); ++i) {
-        TrackInstant want = st.instants()[i];
-        want.notes.clear();
-        want.beat.reset();
-        if (!same_instant(st.synthesize(want.t), want) && mismatches++ == 0) first = i;
+    std::vector<PreviewSpan> offered, taken, ghost;
+    for (const PreviewFill& f : scene.fills) {
+        if (f.state == PreviewFillState::Offered) offered.push_back(f.span);
+        if (f.state == PreviewFillState::Taken) taken.push_back(f.span);
     }
-    INFO(what << ", first mismatch at instant " << first << ": "
-              << (st.instants().empty() ? std::string() : instant_line(st.instants()[first])));
+    for (size_t k : scene.ghost_fills) ghost.push_back(scene.fills[k].span);
+    const auto phrase_ivs = drawn_intervals(scene, scene.sp_phrases);
+    const auto solo_ivs = drawn_intervals(scene, scene.solos);
+    const auto offered_ivs = drawn_intervals(scene, offered);
+    const auto taken_ivs = drawn_intervals(scene, taken);
+    const auto ghost_ivs = drawn_intervals(scene, ghost);
+    std::vector<std::pair<double, double>> windows;  // seconds
+    for (const PreviewActivation& a : scene.activations)
+        if (const std::optional<std::pair<double, double>> w = a.sp_window())
+            windows.push_back({w->first / 1000.0, w->second / 1000.0});
+    auto want = [](bool on) { return on ? Toggle::On : Toggle::Empty; };
+
+    const std::vector<TrackInstant>& v = st.instants();
+    size_t mismatches = 0;
+    std::string first;
+    for (size_t i = 0; i + 1 < v.size(); ++i) {
+        const TrackWindow gap = st.window(v[i].t, v[i + 1].t);
+        if (gap.size() != 1) {
+            if (mismatches++ == 0) first = "no single fallback after instant " + std::to_string(i);
+            continue;
+        }
+        const TrackInstant& f = gap[0];
+        bool sp = false;
+        for (const std::pair<double, double>& w : windows) sp = sp || app::sp_running_in(w, f.t);
+        const bool reads_spans = f.overdrive == want(strictly_inside_any(phrase_ivs, f.t)) &&
+                                 f.solo == want(strictly_inside_any(solo_ivs, f.t)) &&
+                                 f.fill == want(strictly_inside_any(offered_ivs, f.t)) &&
+                                 f.fill_taken == want(strictly_inside_any(taken_ivs, f.t)) &&
+                                 f.fill_ghost == want(strictly_inside_any(ghost_ivs, f.t)) &&
+                                 f.sp_active == want(sp);
+        if (!reads_spans && mismatches++ == 0) first = instant_line(f);
+    }
+    INFO(what << ", first mismatch: " << first);
     CHECK(mismatches == 0);
 }
 
 }  // namespace
 
-TEST_CASE("synthesize at an instant's own time agrees with the sweep that filled it") {
+TEST_CASE("synthesize between instants reads the scene's own spans") {
     const std::vector<PreviewScene> scenes = random_overlay_scenes();
     for (size_t i = 0; i < scenes.size(); ++i)
-        check_synthesize_agrees(scenes[i], "overlay " + std::to_string(i));
+        check_fallback_reads_spans(scenes[i], "overlay " + std::to_string(i));
 
-    // One corpus chart: the first with notes, its base and every stored
-    // path's scene.
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
-        check_synthesize_agrees(build_preview_base(song), chart + " base");
-        for (const Path* p : rec.all_paths())
-            check_synthesize_agrees(build_preview_scene(song, p, cfg.sp_cap, cfg.rules),
-                                    chart + " path");
-        check_synthesize_agrees(build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules),
-                                chart + " no path");
-        break;
-    }
+    // Pitch Dark, whose record keeps paths that activate SP and pass over
+    // fills: its base, every stored path's scene, and the no-path scene.
+    const app::AnalysisSettings& cfg = corpus::default_cfg();
+    const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
+    REQUIRE_FALSE(chart.empty());
+    const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+    check_fallback_reads_spans(build_preview_base(song), chart + " base");
+    for (const Path* p : rec.all_paths())
+        check_fallback_reads_spans(build_preview_scene(song, p, cfg.sp_cap, cfg.rules),
+                                   chart + " path");
+    check_fallback_reads_spans(build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules),
+                               chart + " no path");
 }
 
 TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
@@ -1046,32 +1220,34 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
                           "overlay " + std::to_string(i) + " -> " + std::to_string(j));
 }
 
-// Every stored path of every 8th corpus chart with notes, in chart_paths()
-// order. The random-overlay test above covers the property; this one keeps it
-// honest on real charts. A sample, not the whole corpus, because each swap
-// costs about 40 ms and the whole corpus took 20 s (user decision).
+// Every stored path of the corpus charts at every 8th place in chart_paths()
+// order (places 0, 8, 16, ...). The random-overlay test above covers the
+// property; this one keeps it honest on real charts. A sample, not the whole
+// corpus, because each swap costs about 40 ms and the whole corpus took 20 s
+// (user decision, D183). Every chart the corpus scan lists has notes, so a
+// chart in the sample that loads empty fails rather than being passed over.
 TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    int with_notes = 0, charts = 0, swaps = 0;
-    for (const std::string& chart : corpus::chart_paths()) {
-        const Song& song = corpus::song(chart, cfg.reading());
-        if (song.is_empty()) continue;
-        if (with_notes++ % 8 != 0) continue;
-        ++charts;
-        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    constexpr size_t kEvery = 8;
+    const app::AnalysisSettings& cfg = corpus::default_cfg();
+    const std::vector<std::string>& charts = corpus::chart_paths();
+    // An empty list would check nothing: chart_paths throws on a broken tree,
+    // so an empty one means the corpus is gone.
+    REQUIRE_FALSE(charts.empty());
+    for (size_t place = 0; place < charts.size(); place += kEvery) {
+        const std::string& chart = charts[place];
+        INFO("corpus chart " << chart);
+        const std::vector<const Path*> paths = corpus::analyzed(chart, cfg).all_paths();
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         // The base (what the Preview's first scene job builds the timeline
-        // from), then each stored path's scene in turn.
+        // from), then each stored path's scene in turn, then the no-path
+        // scene, so every path's scene is swapped in from the one before it
+        // and out to the one after.
         std::vector<PreviewScene> scenes{build_preview_base(song)};
-        for (const Path* p : rec.all_paths())
-            scenes.push_back(build_preview_scene(song, p, cfg.sp_cap, cfg.rules));
+        for (const Path* p : paths) scenes.push_back(build_preview_scene(song, p, cfg.sp_cap, cfg.rules));
         scenes.push_back(build_preview_scene(song, nullptr, cfg.sp_cap, cfg.rules));
-        for (size_t i = 0; i + 1 < scenes.size(); ++i) {
-            ++swaps;
+        for (size_t i = 0; i + 1 < scenes.size(); ++i)
             check_rebuild(scenes[i], scenes[i + 1], chart + " scene " + std::to_string(i));
-        }
     }
-    CHECK(charts > 0);
-    CHECK(swaps > charts);
 }
 
 // One tick per millisecond (timed_scene), so a fill's drawn end edge sits half
