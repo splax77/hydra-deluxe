@@ -133,7 +133,7 @@ The game's rule: the note builder compares the track's written-fill list count w
 One end: a chart whose written fills all land: neither generates fills, same result.
 Other end: a chart whose only written fills reach no chord: Hydra generates fills across the chart, the game generates none.
 
-Hydra today: `place_authored_fills` (src/parse/song.cpp line 381) drops the unlanded fills, then `Song::check_activations` (src/core/song.cpp lines 138 and 139) returns only if a chord holds one. A written fill the coda skipped is not this case: it stops generation as in the game (src/core/song.cpp line 137, rows FL-27 and FL-08).
+Hydra today: `place_authored_fills` (src/parse/song.cpp line 383) drops the unlanded fills, then `Song::check_activations` (src/core/song.cpp lines 138 and 139) returns only if a chord holds one. A written fill the coda skipped is not this case: it stops generation as in the game (src/core/song.cpp line 137, rows FL-27 and FL-08).
 
 ### Q-39 A 1.0 written fill's landing window has no +1
 
@@ -142,7 +142,7 @@ The game's rule (1.0): a written fill lands no later than end + resolution x 6 /
 One end: a chord inside res/32: both builds and Hydra land it.
 Other end: a chord exactly res/32 + 1 ticks after the end: 1.1 and Hydra land it, 1.0 drops the fill.
 
-Hydra today: `place_authored_fills` (src/parse/song.cpp lines 392 and 393) uses 1.1's +1 under both rules.
+Hydra today: `place_authored_fills` (src/parse/song.cpp lines 390 and 391) uses 1.1's +1 under both rules.
 
 ### Q-51 Hydra pays every accent and ghost; the game pays one only when the hit is marked as performed
 
@@ -269,7 +269,7 @@ The game's rule (page 4, FL-10): when two written fills pick one chord, the game
 One end: two fills that start on the same tick. Both sides agree.
 Other end: at resolution 480, fills from 9600 and from 10080 that both end on a chord at 10560. The game clears the flag at current tick 7680; Hydra prices the deadline at current tick 8160. Two charts in the library have such chords, and keeping only the earlier fill changes neither best score: Pangaea - A Gateway to Nothing stays 722,900 and RAT KING - Open Hands to the Void stays 260,970 (user-answers.md lines 24 and 25).
 
-What Hydra does: `place_authored_fills` in src/parse/song.cpp line 416 keeps the later fill's length through `apply_fill_end` (line 352).
+What Hydra does: `place_authored_fills` in src/parse/song.cpp line 405 keeps the later fill's length through `apply_fill_end` (line 354).
 
 Ruling: the user, 2026-11-08: "Record it only" (docs/audit/2026-11-08-clone-hero-unknowns/user-answers.md line 25). Page row FL-10.
 

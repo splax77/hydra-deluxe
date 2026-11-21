@@ -377,7 +377,7 @@ void apply_fill_end(Song& song, size_t index, int64_t starttick) {
 // event, which each reader finds through is_coda_event. Clone Hero 1.1's track
 // finish marks the fills from the coda on (0x215DA70, the setge at 0x215DB6D)
 // and the landing step passes over a marked fill (0x20CFF60). Build 1.0 skips
-// only a fill on the coda tick (code/4045/fill_generator.cs line 88), and
+// only a fill on the coda tick (code/4045/fill_generator.cs line 90), and
 // FillDeadlineRule::Ch10 follows it (FL-08, FL-39, Q-40). A skipped fill
 // still marks the song (Song::coda_skipped_fill), so no fill is generated.
 void place_authored_fills(Song& song, const std::vector<AuthoredFill>& fills,
