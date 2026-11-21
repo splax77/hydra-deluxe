@@ -52,7 +52,8 @@ std::string timing_page_block(const std::string& id) {
         corpus::read_bytes((sourcetree::root() / "docs" / "clone-hero" / "03-timing.md").string());
     const std::string heading = "### " + id + " ";
     const size_t at = page.find(heading);
-    REQUIRE_MESSAGE(at != std::string::npos, std::string("03-timing.md has no block ") + id);
+    const std::string missing = "03-timing.md has no block " + id;
+    REQUIRE_MESSAGE(at != std::string::npos, missing);
     const size_t end = page.find("\n### ", at + heading.size());
     return page.substr(at, end == std::string::npos ? std::string::npos : end - at);
 }
