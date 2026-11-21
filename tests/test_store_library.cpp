@@ -316,8 +316,8 @@ TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     store.save(prepare_record(twice, at4(), charts[0].result.record));
     store.save(prepare_record(once, at4(), charts[1].result.record));
     std::map<std::string, std::string> names;
-    for (const RecordRow& record : store.ready_records(at4()))
-        names[record.song_id] = names_of(store, record.song_id).title;
+    for (const auto& [id, status] : store.settled_song_ids(at4()))
+        if (status == RecordStatus::Ready) names[id] = names_of(store, id).title;
     CHECK(names == std::map<std::string, std::string>{{twice, first_listed(scanned, twice).title},
                                                       {once, first_listed(scanned, once).title}});
     testtemp::remove_dir(root);

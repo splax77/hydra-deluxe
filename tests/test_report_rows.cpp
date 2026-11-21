@@ -827,7 +827,8 @@ TEST_CASE("report lists only the wanted cap and names it") {
         testdm::save(store, entry.md5, settings, result.record);
     };
     save_at(8, false);
-    REQUIRE(store.ready_records(fixture_settings(8).profile()).size() == 1);
+    REQUIRE(store.lookup_one(entry.md5, fixture_settings(8).profile()).status ==
+            store::RecordStatus::Ready);
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
