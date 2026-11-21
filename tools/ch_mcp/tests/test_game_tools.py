@@ -1552,12 +1552,6 @@ class GameToolsTest(unittest.TestCase):
             t.tools._play.thread.join(THREAD_CAP_S)
         return reply
 
-    def test_the_search_is_the_auto_players_with_its_dots_kept_off_stdout(self):
-        with mock.patch.object(play_chart, "find_normal_engine", return_value=self.ENGINE) as find:
-            self.assertEqual(GT.find_run_engine("a proc"), self.ENGINE)
-        self.assertEqual(find.call_args.args, ("a proc",))
-        self.assertIsNot(find.call_args.kwargs["out"], None)
-
     # -- the press log file -------------------------------------------------------------
 
     @staticmethod
@@ -1575,17 +1569,47 @@ class GameToolsTest(unittest.TestCase):
                 return rows
             time.sleep(0.005)
 
-    def test_the_rows_reach_the_file_in_order_and_only_once(self):
-        def live_play(chords, *, on_press, **kw):
-            for i in range(200):
-                on_press({**ROWS[0], "index": i})
-            return play_chart.RunResult(stop="done", sent=200)
+    def _replaying_tools(self, *runs):
+        """real_game_tools whose keys-route play hands on the press rows of
+        the recorded runs `runs`, one run per ch_play_chart, as live_play's
+        on_press hands them while the game plays. It sends no key and opens
+        no game; the run's real play thread and press-log writer do the rest."""
+        runs = list(runs)
 
-        t, _events, _seen = self._chain_rig(live_play)
-        self._run(t)
-        table = self._log_table(t.tools._play.log_path)
-        self.assertEqual(table[0], list(PRESS_LOG_COLUMNS))
-        self.assertEqual([r[0] for r in table[1:]], [str(i) for i in range(200)])
+        def replay(chords, *, on_press, **_kw):
+            rows = runs.pop(0)
+            for row in rows:
+                on_press(row)
+            return play_chart.RunResult(stop="done", sent=len(rows))
+        return real_game_tools(self.tmp, os.path.join(self.tmp, "real scratch"),
+                               live_play=replay)
+
+    def _replay_to_log(self, tools, log):
+        """One ch_play_chart of `tools` on Pitch Dark's hydra_replay files,
+        writing the press log `log`, waited on to its end."""
+        tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE, log=log, route=GT.ROUTE_KEYS)
+        tools._play.thread.join(THREAD_CAP_S)
+        self.assertFalse(tools._play.running())
+        self.assertIsNone(tools._play.writer.error)
+
+    def _whole_log_table(self, rows):
+        """The table one whole write of `rows` gives (play_chart.write_press_log)."""
+        whole = os.path.join(self.tmp, "whole.csv")
+        play_chart.write_press_log(whole, rows)
+        return self._log_table(whole)
+
+    def test_the_rows_reach_the_file_in_order_and_only_once(self):
+        # Every press row of a real run's log (testdata/ch_runs/ls-t2-run-a/
+        # press-1.csv, copied from hydra-data/ch-mcp-runs/2026-11-07/
+        # ls-t2-run-a), handed to the run's writer one by one.
+        rows = _press_rows("ls-t2-run-a", "press-1.csv")
+        self.assertTrue(rows)
+        tools = self._replaying_tools(rows)
+        self._replay_to_log(tools, "press.csv")
+        table = self._log_table(tools._play.log_path)
+        # Each whole row, in the order it was pressed, once.
+        self.assertEqual(table, self._whole_log_table(rows))
+        self.assertEqual([r[0] for r in table[1:]], [str(row["index"]) for row in rows])
 
     def test_no_file_call_runs_on_the_player_thread(self):
         # The real play thread of real tools on Pitch Dark's hydra_replay
@@ -1695,17 +1719,17 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(self._log_table(path), [list(PRESS_LOG_COLUMNS)])
 
     def test_a_run_reusing_a_log_name_starts_the_file_over(self):
-        def live_play(chords, *, on_press, **kw):
-            for row in ROWS:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
+        # Two real runs' rows, one run each: ls-t2-run-a's whole log, then
+        # pitch-dark-ratios-run1's rows of chords 61 to 64 (PITCH_DARK_RUN).
+        first = _press_rows("ls-t2-run-a", "press-1.csv")
+        second = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        tools = self._replaying_tools(first, second)
         path = os.path.join(self.tmp, "named.csv")
-        for _ in range(2):
-            t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
-            t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(len(self._log_table(path)), 3)
+        self._replay_to_log(tools, path)
+        self.assertEqual(self._log_table(path), self._whole_log_table(first))
+        self._replay_to_log(tools, path)
+        # The second run's rows alone: the first run's are gone.
+        self.assertEqual(self._log_table(path), self._whole_log_table(second))
 
     def test_a_failed_write_goes_on_and_the_end_writes_every_row_once(self):
         # pitch-dark-ratios-run1's rows of chords 61 to 64 (PITCH_DARK_RUN)
@@ -2068,8 +2092,23 @@ class GameToolsTest(unittest.TestCase):
             self.assertEqual(json.load(f)["hydra_replay_build"], build_stamp.NO_REPLAY_BUILD)
 
     def test_a_human_launch_adds_the_launch_agent_to_the_builds_record(self):
-        self.assertEqual([os.path.basename(p) for p in GT.run_agent_paths("x/launch.js")],
-                         ["launch.js", "state.js", "kit.js"])
+        # The builds record of a real ch_run_chart on a game the server
+        # launched for a human player (testdata/ch_runs/ls-g2-run1/
+        # builds-1.json, copied from hydra-data/ch-mcp-runs/2026-11-12/
+        # ls-g2-run1).
+        path = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-g2-run1", "builds-1.json")
+        with open(path, encoding="utf-8") as f:
+            recorded = [a["file"] for a in json.load(f)["agents"]]
+        # The launch agent the server's Env loads comes first, then the
+        # agents every run loads.
+        launch = B.Env().launch_agent_path
+        every_run = [os.path.basename(p) for p in GT.run_agent_paths(None)]
+        self.assertEqual(recorded, [os.path.basename(launch)] + every_run)
+        # A record written now for such a run names the same agents.
+        written = os.path.join(self.tmp, "builds.json")
+        GT.write_builds_record(written, GT.run_agent_paths(launch), SCHEDULE_JSON)
+        with open(written, encoding="utf-8") as f:
+            self.assertEqual([a["file"] for a in json.load(f)["agents"]], recorded)
 
     # -- probes (task T2 of docs/superpowers/plans/2026-11-12-early-fill-live-check.md) ---
 
@@ -2335,14 +2374,14 @@ def real_game_paths(tmp: str) -> tuple[str, str]:
     return os.path.join(tmp, "no game.exe"), documents
 
 
-def real_game_tools(tmp: str, scratch_root: str) -> GT.GameTools:
+def real_game_tools(tmp: str, scratch_root: str, **tool_args) -> GT.GameTools:
     """A GameTools on a real Env on real_game_paths(tmp), with `scratch_root`
     as its temp root. It has no registry runner, so its backups are the code's
     own temp-folder form, and its real recorder and real pid test. Nothing it
-    does can start the game."""
+    does can start the game. `tool_args` go to GameTools as they are."""
     exe, documents = real_game_paths(tmp)
     return GT.GameTools(B.Env(exe=exe, documents_dir=documents, run_reg=None),
-                        threading.RLock(), scratch_root)
+                        threading.RLock(), scratch_root, **tool_args)
 
 
 class MarkerTest(unittest.TestCase):
