@@ -132,9 +132,8 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
 // drum notes, so a chart that loads empty fails the test instead of being
 // passed over.
 
-// One corpus chart and the Preview's scene for it: the record's first stored
-// path (the scene the Preview opens on), or the no-path scene when the record
-// keeps none.
+// One corpus chart and the Preview's scene for it on the record's first stored
+// path (all_paths order), or the no-path scene when the record keeps none.
 struct ChartScene {
     std::string chart;
     PreviewScene scene;
