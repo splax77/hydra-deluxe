@@ -1,6 +1,6 @@
 # Record-layout databases for tools/test_compare_db.py
 
-These three files are what today's `hydra_batch` writes. `tools/test_compare_db.py` compares them with `tools/compare_db.py`, to check the record tables (`profiles`, `records`, `record_paths`) on real data. Nothing here is written by hand. Their stored-results stamp (`kResultsStamp` in `src/store/stored_versions.h`) is the one the build that wrote them carried, and no test reads it, so a stamp bump leaves these files as they are.
+These three files are what today's `hydra_batch` writes. `tools/test_compare_db.py` compares them with `tools/compare_db.py`, to check the record tables (`profiles`, `records`, `record_paths`) on real data. Nothing here is written by hand. Their stored-results stamp (`kResultsStamp` in `src/store/stored_versions.h`) is the one the build that wrote them carried, and no test checks it against the current stamp (the compare reads the stored column only to match one file against another), so a stamp bump leaves these files as they are.
 
 | File | What it holds |
 |---|---|
