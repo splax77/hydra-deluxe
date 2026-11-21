@@ -340,7 +340,7 @@ PreviewScene build_preview_base(const Song& song, std::optional<double> song_len
         notes.notes = f.notes;
         notes.bonus = f.bonus;
         notes.steps.reserve(f.steps.size());
-        for (const SoloFigures::Step& step : f.steps)
+        for (const SoloFigures::AtChord& step : f.steps)
             notes.steps.push_back({song.sequence[step.chord].timecode.ms(), step.notes_hit});
         scene.solo_notes.push_back(std::move(notes));
     }

@@ -257,7 +257,7 @@ struct PreviewScore {
 // struck by then (struck_at). Every figure is the engine's SoloFigures
 // (core/scoring.h, solo_figures); this adds only each chord's onset.
 struct PreviewSoloNotes {
-    // One of the solo's chords: its onset, and SoloFigures::Step::notes_hit.
+    // One of the solo's chords: its onset, and SoloFigures::AtChord::notes_hit.
     struct Step {
         double ms = 0.0;
         int notes_hit = 0;

@@ -234,12 +234,12 @@ TEST_CASE("solo_figures: each solo's bonus is what the replay pays over it") {
         int64_t paid = 0;
         for (size_t i = sec.first; i <= sec.last; ++i) {
             CAPTURE(i);
-            const SoloFigures::Step& step = f.steps[i - sec.first];
+            const SoloFigures::AtChord& step = f.steps[i - sec.first];
             CHECK(step.chord == i);
             paid += r.chords[i].points.solo;
             CHECK(step.bonus_so_far == paid);
-            const int64_t held = r.chords[i].cum.total() - r.chords[i].cum_onscreen_total;
-            CHECK(held == (i == sec.last ? 0 : paid));
+            const int64_t held = i == sec.last ? 0 : paid;
+            CHECK(r.chords[i].cum_onscreen_total + held == r.chords[i].cum.total());
         }
         CHECK(paid > 0);
         CHECK(f.bonus == paid);

@@ -85,12 +85,12 @@ int solo_bonus(const Chord& chord, bool flag_solo);
 struct SoloFigures {
     // One of the section's chords, at Song::sequence position `chord`: the
     // section's notes and bonus once this chord is hit, this chord's included.
-    struct Step {
+    struct AtChord {
         size_t chord = 0;
         int notes_hit = 0;
         int64_t bonus_so_far = 0;
     };
-    std::vector<Step> steps;  // one per chord, first to last; never empty
+    std::vector<AtChord> steps;  // one per chord, first to last; never empty
     int notes = 0;            // the solo's note total: the last step's notes_hit
     int64_t bonus = 0;        // the solo's bonus: the last step's bonus_so_far
 };
