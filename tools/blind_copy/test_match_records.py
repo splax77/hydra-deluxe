@@ -170,16 +170,118 @@ class MatchRecordsTest(unittest.TestCase):
         self.assertTrue(any(line.startswith("STOP: blame gives one time") for line in lines), lines)
         self.assertFalse(os.path.exists(self.fx.out))
 
-    def test_stops_on_a_row_under_no_record_heading(self):
-        self.fx.commit({"A.md": "# A\n\n## Shared answers\n9 Stand-in: None.\n11 Real: Yes.\n\n"
+    def test_stops_on_a_row_under_no_record_and_no_shared_heading(self):
+        self.fx.commit({"A.md": "# A\n\n## Notes\n9 Stand-in: None.\n11 Real: Yes.\n\n"
                         + record("### every start checks (tests/t.cpp:4)", "None.", "Yes.")})
         code, lines = self.fx.run()
         self.assertEqual(code, 1)
-        self.assertTrue(any(line.startswith("STOP: 1 line 9 rows sit under no record heading")
-                            for line in lines), lines)
-        self.assertTrue(any(line.startswith("STOP: 1 line 11 rows sit under no record heading")
-                            for line in lines), lines)
+        self.assertIn("STOP: 1 line 9 rows sit under no record and no shared heading: A.md:4", lines)
+        self.assertIn("STOP: 1 line 11 rows sit under no record and no shared heading: A.md:5", lines)
         self.assertFalse(os.path.exists(self.fx.out))
+
+    def shared_rows(self):
+        with open(os.path.join(self.fx.out, "shared_rows.tsv"), encoding="utf-8") as f:
+            return [tuple(line.split("\t")) for line in f.read().splitlines()[1:]]
+
+    # Kind 2 of brief sfr-t2c: rows a shared or group section gives to many records.
+    def test_rows_under_a_shared_heading_are_listed_not_given_to_a_test(self):
+        self.fx.commit({"A.md": "# A\n\n## Shared answers (S-EN)\n9 Stand-in: None.\n11 Real: Yes.\n\n"
+                        + record("### every start checks (tests/t.cpp:4)", "a loop", "no")
+                        + "## Group P (test_x.py)\n- 11 Real: yes.\n\n"
+                        + record("### helper_rows (tests/t.cpp:1)", "a loop", "no")})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        self.assertEqual(self.shared_rows(), [("A.md", "4", "Shared answers (S-EN)", "9", "None."),
+                                              ("A.md", "5", "Shared answers (S-EN)", "11", "Yes."),
+                                              ("A.md", "13", "Group P (test_x.py)", "11", "yes.")])
+        rows = by_record(self.fx.rows())
+        # The group heading closes the record above it, so its row is not that record's.
+        self.assertEqual(rows["A.md:7"]["line 11"], "A.md:10: no")
+        self.assertEqual(rows["A.md:7"]["state"], mr.SOMETHING_ELSE)
+        self.assertEqual(rows["A.md:15"]["line 11"], "A.md:18: no")
+
+    # Kind 1 of brief sfr-t2c: record titles that are not headings.
+    def test_a_plain_line_ending_in_a_place_is_a_title(self):
+        self.fx.commit({"A.md": "### Records\n\n"
+                        "five-lane: every start checks (tests/t.cpp:4)\nRead: lines 4-5.\n"
+                        "1 Claim: x.\n9 Stand-in: None.\n11 Real: no\n\n"
+                        "A note on the fixture (tests/t.cpp:1).\n\n"
+                        "The helper is read too (tests/t.cpp:1)\n\n"
+                        "helper_rows (tests/t.cpp:1)\n1 Claim: y.\n9 Stand-in: a loop\n11 Real: no\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        # The two prose lines have no answer row before the next title, so neither is a record.
+        self.assertEqual(set(rows), {"A.md:3", "A.md:13"})
+        self.assertEqual((rows["A.md:3"]["match"], rows["A.md:3"]["test name"]), (mr.SAME_PLACE, "every start checks"))
+        self.assertEqual((rows["A.md:3"]["state"], rows["A.md:3"]["line 9"]), (mr.FLAGGED, "A.md:6: None."))
+        self.assertEqual(rows["A.md:13"]["match"], mr.SAME_PLACE)
+        self.assertIn("records read from a title that is not a heading: 2", lines)
+        self.assertIn("headings: 0 record headings and 1 section headings; git grep counts 1 "
+                      "`##`, `###` and `####` headings", lines)
+
+    def test_a_prose_line_ending_in_a_short_place_is_not_a_title(self):
+        self.fx.commit({"A.md": "# tests/t.cpp\n\n## Records\n\n"
+                        "The loop is read as one test (see :12)\n1 Claim: x.\n9 Stand-in: None.\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 1)
+        self.assertIn("STOP: 1 line 9 rows sit under no record and no shared heading: A.md:7", lines)
+
+    def test_a_plain_line_over_a_line_holding_only_its_place_is_a_title(self):
+        self.fx.commit({"A.md": "## Splits\n\n```\nDelta round: window\nupdate state: every start checks\n"
+                        "            (tests/t.cpp:4)\nRead:       lines 4-5;\n            and more.\n"
+                        "Old verdict: Keep.\n1 Claim:    x.\n7 Failure:  a wrong row\n"
+                        "            (tests/t.cpp:1)\n9 Stand-in: None.\n11 Real:    no\n```\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        # The answer that wraps onto a line holding only a place opens no record.
+        self.assertEqual(set(rows), {"A.md:5"})
+        self.assertEqual((rows["A.md:5"]["match"], rows["A.md:5"]["test name"]), (mr.SAME_PLACE, "every start checks"))
+        self.assertEqual((rows["A.md:5"]["line 9"], rows["A.md:5"]["line 11"]), ("A.md:13: None.", "A.md:14: no"))
+
+    def test_a_bold_line_with_a_place_is_a_title(self):
+        self.fx.commit({"A.md": "## tests/t.cpp\n\n"
+                        "**Read, production side.** `tests/t.cpp` lines 1-9 (all of it)\n\n"
+                        "**BP-20 helper_rows** (`:1-2`) 2: nonzero. Verdict: Keep.\n\n"
+                        "**10. every start checks ** (4). Read 4-5.\n1 Claim: x.\n9 Stand-in: None.\n"
+                        "11 Real: no\n\n"
+                        "**helper_rows** (tests/t.cpp:1)\n- 4/8: 2 is typed.\n- 9: a loop. 11 Real: no\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        # Bold text with no place after it, and a bold title with no answer row under it, are no records.
+        self.assertEqual(set(rows), {"A.md:7", "A.md:12"})
+        self.assertEqual((rows["A.md:7"]["match"], rows["A.md:7"]["test name"]), (mr.SAME_PLACE, "every start checks"))
+        self.assertEqual(rows["A.md:7"]["state"], mr.FLAGGED)
+        self.assertEqual((rows["A.md:12"]["match"], rows["A.md:12"]["line 11"]), (mr.SAME_PLACE, "A.md:14: no"))
+
+    def test_a_short_file_name_is_read_only_where_the_file_defines_it(self):
+        self.fx.commit({"A.md": "# A\n\nShort names. T = tests/t.cpp. P = tools/test_x.py.\n\n## Records\n\n```\n"
+                        "update state: every start checks   (T:4)\nRead: T:4-5.\n1 Claim: x.\n"
+                        "9 Stand-in: None.\n11 Real: no\n```\n\n```\nLaunchTest   (P:1)\n1 Claim: y.\n"
+                        "9 Stand-in: a loop\n11 Real: no\n```\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual((rows["A.md:8"]["match"], rows["A.md:8"]["test file"]), (mr.SAME_PLACE, "tests/t.cpp"))
+        self.assertEqual((rows["A.md:16"]["match"], rows["A.md:16"]["test file"]), (mr.SAME_PLACE, "tools/test_x.py"))
+
+    def test_a_short_file_name_the_file_does_not_define_is_no_title(self):
+        self.fx.commit({"A.md": "## Records\n\n```\nevery start checks   (T:4)\n1 Claim: x.\n"
+                        "9 Stand-in: None.\n```\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 1)
+        self.assertIn("STOP: 1 line 9 rows sit under no record and no shared heading: A.md:6", lines)
+
+    def test_a_title_line_inside_a_heading_record_opens_no_record(self):
+        self.fx.commit({"A.md": "### every start checks (tests/t.cpp:4)\n1 Claim: x.\n"
+                        "helper_rows (tests/t.cpp:1)\n9 Stand-in: None.\n11 Real: no\n"})
+        code, lines = self.fx.run()
+        self.assertEqual(code, 0, lines)
+        rows = by_record(self.fx.rows())
+        self.assertEqual(set(rows), {"A.md:1"})
+        self.assertEqual(rows["A.md:1"]["line 9"], "A.md:4: None.")
 
     def test_counts_match_git_grep(self):
         self.fx.commit({"A.md": record("## every start checks (tests/t.cpp:4)", "None.", "Yes.")
