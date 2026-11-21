@@ -187,7 +187,9 @@ TEST_CASE("pick names: a data member with parentheses is not a function") {
     for (int n = 2; n <= 7; ++n) CHECK(names_of(text, {n}) == "Panel:body");
 }
 
-TEST_CASE("pick names: the plan's worked example shapes in one file") {
+// A comment line names the declaration under it, inside an anonymous
+// namespace and at file scope alike; a changed constant line names its value.
+TEST_CASE("pick names: a comment names the constant or function below it, and a constant line its value") {
     const std::string text =
         "namespace hydra {\n"                                        // 1
         "namespace {\n"                                              // 2
