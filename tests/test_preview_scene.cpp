@@ -1092,14 +1092,16 @@ TEST_CASE("preview path label: the notation and which list it came from") {
                     optimal_notes.insert(note);
                     break;
                 case PathButtonView::Group::AllZero:
-                    CHECK_FALSE(note.empty());
+                    // The all-0 note is the name every list gives that path.
+                    CHECK(note == "  (" + std::string(kBestAllZeroLabel) + ")");
                     allzero_notes.insert(note);
                     break;
             }
         }
     }
-    // Every list's note is the same on every button of that list.
+    // Every list's note is the same on every button of that list, and the
+    // corpus holds an all-0 button, or the check above never meets one.
     CHECK(optimal_notes.size() == 1);
-    CHECK(allzero_notes.size() <= 1);
+    CHECK(allzero_notes.size() == 1);
     for (const std::string& n : allzero_notes) CHECK(optimal_notes.count(n) == 0);
 }

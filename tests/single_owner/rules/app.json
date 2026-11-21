@@ -1652,15 +1652,17 @@
       "date": "2026-10-29",
       "decision": "Path Builder plan, task PB-2a (one owner for the label the Paths tab and the Path Builder share)",
       "added_by": "PB-2a",
-      "pattern": "^[^/]*\"Best all-0 path\"",
-      "anchor": "\"Best all-0 path\"",
+      "pattern": "^[^/]*\"[^\"]*Best all-0 path",
+      "anchor": "Best all-0 path",
       "must_match": [
         ": \"Best all-0 path\";",
-        "add(i == 0 ? \"Best all-0 path\" : \"All-0 path \" + std::to_string(i + 1),"
+        "add(i == 0 ? \"Best all-0 path\" : \"All-0 path \" + std::to_string(i + 1),",
+        "return button.notation + \"  (Best all-0 path)\";"
       ],
       "must_not_match": [
         ": app::kBestAllZeroLabel;",
         "add(i == 0 ? std::string(app::kBestAllZeroLabel) : \"All-0 path \" + std::to_string(i + 1),",
+        "return button.notation + \"  (\" + std::string(kBestAllZeroLabel) + \")\";",
         "std::string label;  // \"Best path\", \"Path 2\", \"Best all-0 path\", a branch's name"
       ],
       "owner_lines": [
@@ -1674,7 +1676,7 @@
         "src",
         "tools"
       ],
-      "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
+      "note": "The Paths tab's heading over the all-0 section and the Path Builder's left-list row each typed this name, and the Preview picker's all-0 item typed its own name in brackets; the pattern also catches the name typed inside a longer literal. A line whose literal comes after a // is a comment naming the row, not a copy. Tests are out of scope: a GUI test pins the text it reads on screen."
     },
     {
       "question": "Which code lets go of the parked jobs whose threads have ended?",
