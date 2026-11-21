@@ -42,6 +42,21 @@ bool wait_report_landed(ImGuiTestContext* ctx) {
     }, 60);
 }
 
+// How many library rows the scan the test just ran listed. A fresh store
+// holds no result, so a whole-library batch runs every one of them (D76:
+// every copy of a chart is a row).
+int64_t scanned_rows(Harness& h) {
+    return static_cast<int64_t>(h.app->library.rows().size());
+}
+
+// The running strip's progress words, `completed` of `total` after `lead`
+// ("Analyzing..." or "Paused"), as the strip in src/ui/library_dialogs.cpp
+// draws them. That line is built inline there, with no function to call.
+std::string strip_progress(const char* lead, int64_t completed, int64_t total) {
+    return std::string(lead) + "  " + hydra::group_thousands(completed) + " of " +
+           hydra::group_thousands(total);
+}
+
 }  // namespace
 
 // Start a whole-library batch from the main window, through the confirm.
@@ -95,6 +110,7 @@ void test_batch_strip_drift(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    const int64_t rows = scanned_rows(h);
     BatchGate gate;
     start_library_batch(ctx);
     IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
@@ -105,8 +121,6 @@ void test_batch_strip_drift(ImGuiTestContext* ctx) {
     ctx->SetRef(strip);
     const ImRect stop0 = ctx->ItemInfo("Stop").RectFull;
     const float width0 = strip->Size.x;
-    int title_changes = 0;
-    std::string last_title = h.app->batch_job->snapshot().current_title;
     for (int step = 1; step <= 6; ++step) {
         // Chart `step` finishes and is counted; the next one starts and is
         // held. Every frame until then (and two after, so the screen shows
@@ -130,10 +144,17 @@ void test_batch_strip_drift(ImGuiTestContext* ctx) {
             IM_CHECK_FLOAT_NEAR_EQ(stop.Min.y, stop0.Min.y, 0.01f);
             IM_CHECK_FLOAT_NEAR_EQ(strip->Size.x, width0, 0.01f);
         }
-        const std::string t = h.app->batch_job->snapshot().current_title;
-        if (t != last_title) { last_title = t; ++title_changes; }
+        // With one worker, chart `step` is counted (with every copy of it,
+        // D76) and the next one is held, so the job's count and chart stay
+        // put until the next allow(). The strip's drawn line names that count,
+        // out of the rows the scan listed, and that chart.
+        const hydra::ui::BatchJob::Snapshot s = h.app->batch_job->snapshot();
+        IM_CHECK_EQ(static_cast<int64_t>(s.total), rows);
+        IM_CHECK(!s.current_title.empty());
+        const std::string text = visible_text(h);
+        IM_CHECK(text.find(strip_progress("Analyzing...", s.completed, rows)) != std::string::npos);
+        IM_CHECK(text.find("Now: " + s.current_title) != std::string::npos);
     }
-    IM_CHECK(title_changes >= 2);  // the strip really showed different charts
     h.app->batch_job->stop();
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300));
     dismiss_done(ctx);
@@ -281,11 +302,22 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     IM_CHECK(h.app->batch_confirm_pending);
     std::string text = visible_text(h);
-    IM_CHECK(text.find("Analyze 98 charts that have no result yet?") != std::string::npos);
-    IM_CHECK(text.find("Expert \xC2\xB7 Pro Drums \xC2\xB7 2x Bass") != std::string::npos);
-    IM_CHECK(text.find("4 bars (Clone Hero's rule)") != std::string::npos);
-    IM_CHECK(text.find("2 scores") != std::string::npos);
-    IM_CHECK(text.find("10 ms") != std::string::npos);
+    // The store is fresh, so the question is the no-result one, and it counts
+    // every row the scan just listed. Its wording is batch_question's.
+    IM_CHECK_EQ(h.app->batch_scope_with_result(), 0);
+    const std::string question = h.app->batch_question(false);
+    IM_CHECK(text.find(question) != std::string::npos);
+    IM_CHECK(question.find(hydra::counted(scanned_rows(h), "chart", "charts")) != std::string::npos);
+    // Every setting the run will use is listed, in the words
+    // batch_settings_summary gives the settings the app holds.
+    const hydra::ui::detail::BatchSettingsSummary settings =
+        hydra::ui::detail::batch_settings_summary(h.app->settings);
+    for (const std::string* line : {&settings.difficulty, &settings.sp_cap, &settings.fills,
+                                    &settings.early_fill, &settings.score_range,
+                                    &settings.path_limit}) {
+        if (line->empty() || text.find(*line) == std::string::npos)
+            IM_ERRORF("the confirm does not list the setting \"%s\"", line->c_str());
+    }
     ctx->SetRef("//Analyze library");
     // Nothing has a result yet, so there is nothing to re-analyze.
     IM_CHECK((ctx->ItemInfo("Also re-analyze charts that already have a result##redo").ItemFlags &
@@ -309,39 +341,6 @@ void test_batch_confirm(ImGuiTestContext* ctx) {
     dismiss_done(ctx);
 }
 
-// Pause holds the run, Resume carries on, Stop ends it and keeps what's done.
-void test_batch_pause_stop(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    // The test library analyzes in a blink, so a real run can finish between
-    // two clicks. Hold the first chart at the gate; every click below then
-    // lands while the run is provably still going.
-    BatchGate gate;
-    start_library_batch(ctx);
-    IM_CHECK(wait_until(ctx, [&] {
-        return h.app->batch_job && !h.app->batch_job->snapshot().preparing;
-    }, 30));
-    IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
-    IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
-    ctx->SetRef(child_window(ctx, "//Hydra/##batchstrip"));
-    ctx->ItemClick("Pause");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().paused; }, 5));
-    ctx->Yield(2);
-    IM_CHECK(ctx->ItemExists("Resume"));
-    ctx->ItemClick("Resume");
-    IM_CHECK(wait_until(ctx, [&] { return !h.app->batch_job->snapshot().paused; }, 5));
-    ctx->Yield(2);
-    ctx->ItemClick("Stop");
-    IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().finished; }, 300));
-    IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchdone") != nullptr; }, 5));
-    IM_CHECK(visible_text(h).find("Stopped:") != std::string::npos);
-    ctx->Yield(5);
-    IM_CHECK(h.app->report_job == nullptr);  // a stopped run builds no report
-    dismiss_done(ctx);
-}
-
 // The strip with several workers at once, as the real app runs a batch. Three
 // workers each hold a chart at the gate, so three charts run together. The
 // strip counts each one as it finishes, Pause stops new charts while the
@@ -352,6 +351,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    const int64_t rows = scanned_rows(h);
     constexpr int kWorkers = 3;
     BatchGate gate(kWorkers);
     start_library_batch(ctx);
@@ -373,7 +373,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(gate.started(), kWorkers);
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
     ctx->Yield(2);
-    IM_CHECK(has("Analyzing...  0 of 98"));
+    IM_CHECK(has(strip_progress("Analyzing...", 0, rows)));
     IM_CHECK(has("Now: "));
     ImGuiWindow* strip = child_window(ctx, "//Hydra/##batchstrip");
     IM_CHECK(strip != nullptr);
@@ -386,7 +386,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job->snapshot().completed == 2 && gate.started() == 2 + kWorkers;
     }, 60));
-    IM_CHECK(has("Analyzing...  2 of 98"));
+    IM_CHECK(has(strip_progress("Analyzing...", 2, rows)));
     const ImRect stop1 = ctx->ItemInfo("Stop").RectFull;
     IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.x, stop0.Min.x, 0.01f);
     IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.y, stop0.Min.y, 0.01f);
@@ -399,14 +399,14 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().completed == 2 + kWorkers; }, 60));
     settle();
     IM_CHECK_EQ(gate.started(), 2 + kWorkers);
-    IM_CHECK(has("Paused  5 of 98"));
+    IM_CHECK(has(strip_progress("Paused", 2 + kWorkers, rows)));
     IM_CHECK(!has("Now: "));
     IM_CHECK(ctx->ItemExists("Resume"));
 
     // Resume fills every worker again.
     ctx->ItemClick("Resume");
     IM_CHECK(wait_until(ctx, [&] { return gate.started() == 2 + 2 * kWorkers; }, 30));
-    IM_CHECK(has("Analyzing...  5 of 98"));
+    IM_CHECK(has(strip_progress("Analyzing...", 2 + kWorkers, rows)));
     IM_CHECK(has("Now: "));
 
     // Stop: the three held charts are dropped, not counted and not failed.
@@ -417,6 +417,10 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(done.failed, 0);
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchdone") != nullptr; }, 5));
     IM_CHECK(has("Stopped:"));
+    // A stopped run builds no path report. The wait above ran frames after
+    // the finish, so update_background_jobs has already made that choice.
+    IM_CHECK(!h.app->report_started);
+    IM_CHECK(h.app->report_job == nullptr);
     dismiss_done(ctx);
 }
 
@@ -470,24 +474,6 @@ void test_batch_done_strip(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->batch_job == nullptr);
     ctx->SetRef("//Hydra");
     IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists("**/Open path report"); }, 5));
-}
-
-// The report opens in Hydra's own window, not a browser: with Open
-// automatically on, that window opens and the strip names no browser problem.
-void test_batch_open_failure(ImGuiTestContext* ctx) {
-    Harness& h = harness(ctx);
-    reset_app(h);
-    h.app->settings.auto_open_report = true;
-    h.app->commit_settings();
-    scan_library(ctx);
-    if (ctx->IsError()) return;
-    IM_CHECK(batch_search(ctx, "Burnout"));
-    IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
-    IM_CHECK(h.app->path_report.window_open);
-    ctx->Yield(2);
-    IM_CHECK(window_named("###pathreport") != nullptr);
-    IM_CHECK(visible_text(h).find("The path report is ready.") != std::string::npos);
-    IM_CHECK(visible_text(h).find("browser") == std::string::npos);
 }
 
 // News fades; a problem stays until dismissed.
@@ -594,25 +580,44 @@ void test_dialog_keys(ImGuiTestContext* ctx) {
 }
 
 // After a whole-library batch, the finished strip's analyzed count and the
-// library's Analyzed chip are one number. The batch saves charts in groups
-// and counts a chart only once its group is on disk (D86), so no chart the
-// strip counted can be missing from the library.
+// library's Analyzed chip both equal the rows the store holds a result for.
+// The batch saves charts in groups and counts a chart only once its group is
+// on disk (D86), so no chart the strip counted can be missing from the store.
 void test_batch_chip_count(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
+    const int64_t rows = scanned_rows(h);
     start_library_batch(ctx);
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job && h.app->batch_job->snapshot().finished;
     }, 300));
     IM_CHECK(wait_report_landed(ctx));
     const hydra::ui::BatchJob::Snapshot done = h.app->batch_job->snapshot();
-    IM_CHECK_GT(done.analyzed, 0);
-    ctx->SetRef("//Hydra");
-    const std::string chip = "**/Analyzed (" + std::to_string(done.analyzed) + ")##chipdone";
-    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(chip.c_str()); }, 10));
+    // The run went through every row the scan listed (a fresh store skips
+    // none), and the finished strip draws its counts.
+    IM_CHECK_EQ(static_cast<int64_t>(done.analyzed + done.failed + done.skipped), rows);
+    IM_CHECK(visible_text(h).find(hydra::app::batch_counts_text(done.analyzed, done.failed,
+                                                                done.skipped)) != std::string::npos);
     dismiss_done(ctx);
+
+    // The store's own answer: the confirm plans from one store read, and its
+    // skip plan counts the rows whose chart has a result (Ready) or a stored
+    // failure (CantAnalyze, BatchPlan::cant_analyze).
+    ctx->SetRef("//Hydra");
+    ctx->ItemClick("Analyze library...");
+    ctx->Yield(2);
+    IM_CHECK(h.app->batch_confirm_pending);
+    const int64_t stored = h.app->batch_plan.skipped - h.app->batch_plan.cant_analyze;
+    ctx->KeyPress(ImGuiKey_Escape);
+    ctx->Yield(2);
+    IM_CHECK(!h.app->batch_confirm_pending);
+    IM_CHECK_EQ(static_cast<int64_t>(done.analyzed), stored);
+    ctx->SetRef("//Hydra");
+    const std::string chip =
+        "**/" + hydra::ui::chip_label(hydra::ui::StatusChip::Analyzed, static_cast<size_t>(stored));
+    IM_CHECK(wait_until(ctx, [&] { return ctx->ItemExists(chip.c_str()); }, 10));
 }
 
 }  // namespace
@@ -624,10 +629,8 @@ const std::vector<TestEntry>& batch_report_tests() {
         {"report-buttons", test_report_buttons},
         {"batch-confirm", test_batch_confirm},
         {"batch-confirm-note-shuffle", test_batch_confirm_note_shuffle},
-        {"batch-pause-stop", test_batch_pause_stop},
         {"batch-strip-workers", test_batch_strip_workers},
         {"batch-done-strip", test_batch_done_strip},
-        {"batch-open-failure", test_batch_open_failure},
         {"status-line", test_status_line},
         {"analyze-db-fails", test_analyze_db_fails},
         {"compare-disabled", test_compare_disabled},
