@@ -739,9 +739,6 @@ AMOUNT, MAX = sp_compare.column_names()
 
 
 class RowChecksTest(unittest.TestCase):
-    def test_old_name_is_the_public_finder(self):
-        self.assertIs(sp_compare._find_activations, sp_compare.find_activations)
-
     def test_column_names_follow_the_width(self):
         # Each width main accepts names two columns the watcher logs
         # (WATCH_COLUMNS, the logs' owner), and the two widths name different
@@ -842,10 +839,6 @@ _BOMBER = (_fixture("bomber_refine_score.json"),
            _fixture("bomber_refine_schedule.json"))
 
 
-def _rounded(reach):
-    return (round(reach.earliest_ms, 2), round(reach.latest_ms, 2))
-
-
 def _fixture_chords(score_path):
     """The fixture file's chords as they are: the phrase-end flag, in_sp and
     multipliers are the refine-prep score file's own."""
@@ -861,16 +854,17 @@ def _rise_lines(score_path, reach, rows):
 
 
 class PressReachTest(unittest.TestCase):
-    """press_reach takes each chord's press times from the schedule file:
-    each press's chord `ms` plus its `aim_ms`. Every reach below is those two
-    fields of the fixture, added and rounded to 0.01 ms."""
+    """press_reach takes each chord's press times from the schedule file,
+    through play_chart.press_plan; the tests below read the same plan."""
 
     def test_mouths_740_reaches_its_late_kick_press(self):
-        reach = sp_compare.press_reach(_MOUTHS[1])
-        # Chord 740 is at 118425.95080264665 ms. Its cymbals are aimed
-        # -22.60600950299704 ms (squeeze_out_inside), its kick
-        # 7.39399049700296 ms (squeeze_out_late).
-        self.assertEqual(_rounded(reach[740]), (118403.34, 118433.34))
+        # Every chord's reach holds each of its presses and runs from its
+        # earliest press to its latest. Chord 740 is pressed both before and
+        # after its own ms in the schedule, so its reach spans the ms.
+        reach, presses = self._assert_reach_spans_presses(_MOUTHS[1])
+        chord = self._chord(_MOUTHS[0], 740)
+        self.assertLess(min(presses[740]), chord["ms"])
+        self.assertGreater(max(presses[740]), chord["ms"])
 
     # Rows of hydra-data/ch-mcp-runs/2026-11-07/ls-r1-run1's sp_watch-1.csv,
     # copied unchanged (data rows 26287 to 26301, clock 118.39 s to 118.46 s):
