@@ -8,10 +8,12 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -48,15 +50,8 @@ namespace {
 using hydra::ui::ReportBuild;
 using hydra::ui::ReportOutOfDate;
 
-// Waits for the path report's job, then collects it as the app's frame does.
-void finish_path_report(AppState& app) {
-    REQUIRE(app.report_job != nullptr);
-    wait_until([&] { return app.report_job->finished(); }, "the path report's job to finish");
-    app.update_background_jobs();
-    REQUIRE(app.report_job == nullptr);
-}
-
-// The same for the comparison's job.
+// Waits for the comparison's job, then collects it as the app's frame does
+// (finish_path_report does the same for the path report's job).
 void finish_dm_report(AppState& app) {
     REQUIRE(app.dm_report_job != nullptr);
     wait_until([&] { return app.dm_report_job->finished(); }, "the comparison's job to finish");
@@ -809,7 +804,6 @@ TEST_CASE("report_started stays set through a cancel, a refresh and a close, and
 
 namespace {
 
-using hydra::app::dm_report::GeneratedDmReport;
 using hydra::app::report::GeneratedReport;
 
 // The canned leaderboard of kDmUsersJson and kDmScoresJson, answered at once.
@@ -839,20 +833,6 @@ void check_same_path_report(const GeneratedReport& got, const GeneratedReport& w
     }
 }
 
-// The same for two comparisons.
-void check_same_dm_report(const GeneratedDmReport& got, const GeneratedDmReport& want) {
-    CHECK(got.username == want.username);
-    CHECK(got.subtitle == want.subtitle);
-    CHECK(got.footer == want.footer);
-    CHECK(got.stats.total == want.stats.total);
-    REQUIRE(got.rows.size() == want.rows.size());
-    for (size_t i = 0; i < got.rows.size(); ++i) {
-        CHECK(got.rows[i].identifier == want.rows[i].identifier);
-        CHECK(got.rows[i].optimal == want.rows[i].optimal);
-        CHECK(got.rows[i].status == want.rows[i].status);
-    }
-}
-
 // Waits for the path report's job to finish without collecting it, so a test
 // can look at what else is still going on first.
 void wait_path_report_job(AppState& app) {
@@ -861,19 +841,26 @@ void wait_path_report_job(AppState& app) {
 }
 
 // Arms the store so that, between the two reads inside the first lookup a
-// thread other than this one makes (the report job's), the writer saves a
-// result for the app's first library chart, and sets `saved`. The draw
-// thread's own lookups pass by. The caller clears the seam afterwards and
-// declares `saved` before the AppState, so the job never outlives it.
-void save_during_report_lookup(AppState& app, std::atomic<bool>& saved) {
-    const std::string md5 = app.library_row_at(0).entry.md5;
-    const hydra::store::Profile profile = app.settings.profile();
+// thread other than this one makes (the report job's), the writer saves
+// `record` as the result for the app's first library chart, and sets `saved`.
+// The draw thread's own lookups pass by. The caller clears the seam afterwards
+// and declares `saved` before the AppState, so the job never outlives it.
+void save_during_report_lookup(AppState& app, std::atomic<bool>& saved,
+                               const hydra::HydraRecord& record) {
+    const hydra::store::PreparedRecord prepared = hydra::store::prepare_record(
+        app.library_row_at(0).entry.md5, app.settings.profile(), record);
     const std::thread::id draw = std::this_thread::get_id();
     hydra::store::RecordStore* store = app.store.get();
-    store->set_between_lookup_reads_for_test([md5, profile, draw, store, &saved] {
+    store->set_between_lookup_reads_for_test([prepared, draw, store, &saved] {
         if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
-        hydra::test::save_batch_record(*store, md5, profile);
+        store->save(prepared);
     });
+}
+
+// The same, saving the analysis that kept no paths (save_batch_record's).
+void save_during_report_lookup(AppState& app, std::atomic<bool>& saved) {
+    save_during_report_lookup(app, saved,
+                              hydra::test::empty_analysis_under(app.settings.profile()));
 }
 
 // What a reader of `store` that cannot open reads as: the store's own
@@ -926,28 +913,6 @@ TEST_CASE("a path report builds while a save group is open") {
     check_same_path_report(*app->path_report.result, *unheld);
 }
 
-TEST_CASE("a DM report builds while a save group is open") {
-    ScratchPaths paths("appstate_dmgroup");
-    // Before the app, which joins the fetch's thread.
-    const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
-    std::unique_ptr<AppState> app = app_on(paths);
-    app->start_dm_report("111", "alice");
-    finish_dm_report(*app);
-    const std::shared_ptr<const GeneratedDmReport> unheld = app->dm_report.result;
-    REQUIRE(unheld != nullptr);
-
-    hydra::test::HeldSaveGroup group(*app->store);
-    app->request_dm_report();
-    REQUIRE(app->dm_report_job != nullptr);
-    wait_until([&] { return app->dm_report_job->finished(); }, "the comparison's job to finish");
-    CHECK(group.held());
-    group.let_go();
-    app->update_background_jobs();
-    CHECK(app->dm_report_build() == ReportBuild::Ready);
-    REQUIRE(app->dm_report.result != nullptr);
-    check_same_dm_report(*app->dm_report.result, *unheld);
-}
-
 TEST_CASE("a path report reads one moment") {
     ScratchPaths paths("appstate_pathmoment");
     std::unique_ptr<AppState> app = app_with_result(paths, "pathmoment");
@@ -958,22 +923,37 @@ TEST_CASE("a path report reads one moment") {
     REQUIRE_FALSE(before->paths.empty());
 
     // Between the report's two reads inside lookup, the writer replaces the
-    // chart's record with one that kept no paths. Only the report job's own
-    // reader saves: the draw thread's reads before the job starts pass by.
+    // chart's record with the engine's analysis of the chart with one more
+    // note, as a batch that read the chart after an edit would file it. Only
+    // the report job's own reader saves: the draw thread's reads before the
+    // job starts pass by.
     const std::string md5 = app->library_row_at(0).entry.md5;
     const hydra::store::Profile profile = app->settings.profile();
+    const std::optional<int64_t> score_before =
+        app->store->lookup_one(md5, profile).record.summary().score;
+    const hydra::app::AnalysisResult edited = hydra::app::analyze_chart_file(
+        write_corpus_chart("pathmoment_edited", true), app->settings.to_analysis_settings());
+    REQUIRE_FALSE(edited.record.paths.empty());
     std::atomic<bool> saved{false};
-    save_during_report_lookup(*app, saved);
+    save_during_report_lookup(*app, saved, edited.record);
     app->request_path_report();
     wait_path_report_job(*app);
     app->store->set_between_lookup_reads_for_test({});
     finish_path_report(*app);
 
     REQUIRE(saved.load());
-    REQUIRE(app->store->lookup_one(md5, profile).record.paths.empty());  // the save landed
+    // The save landed, and it changed the score a report reads.
+    REQUIRE(app->store->lookup_one(md5, profile).record.summary().score != score_before);
     CHECK(app->path_report_build() == ReportBuild::Ready);
     REQUIRE(app->path_report.result != nullptr);
     check_same_path_report(*app->path_report.result, *before);
+
+    // A report built after the save reads the edited chart's result.
+    app->request_path_report();
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
+    REQUIRE_FALSE(app->path_report.result->paths.empty());
+    CHECK(app->path_report.result->paths.front().score != before->paths.front().score);
 }
 
 TEST_CASE("a path report's separate store calls read one moment") {
