@@ -105,7 +105,7 @@ Send splits alone or in small groups. The user approved that rule on 2026-10-29 
 
 ### 8. Record
 
-Each answer becomes a D-record in `docs/audit/2026-10-03-fix-decisions.md`. A record for a split names both sides and quotes the question's text, so a later audit can test "does this ruling name both sides?" by reading one entry. A triage file that tracks findings (such as `docs/audit/2026-10-03-fix-triage.json`) records each finding's exit and its evidence, not just a status word. "fixed" alone is the kind of status that hid finding 306.
+Each answer becomes a D-record in `docs/audit/2026-10-03-fix-decisions.md`. A record for a split names both sides and quotes the question's text, so a later audit can test "does this ruling name both sides?" by reading one entry. A triage file that tracks findings (such as `docs/audit/2026-10-03-fix-triage.json` (removed; `git show b2287e562:docs/audit/2026-10-03-fix-triage.json`)) records each finding's exit and its evidence, not just a status word. "fixed" alone is the kind of status that hid finding 306.
 
 The merge that fixes a finding updates its row in the same step. On 2026-10-05 the triage file still showed 192 of 396 findings open after phase 6 had fixed its share, because no merge had marked its rows.
 
