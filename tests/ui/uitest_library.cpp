@@ -18,6 +18,7 @@
 #include "../db_file_sql.h"          // tests/ is not on the runner's include path
 #include "../old_layout_fixture.h"
 #include "../testdata_dirs.h"  // root
+#include "../text_split.h"      // split_on
 #include "../wait_util.h"       // kWaitCap
 #include "app/config.h"
 #include "core/model.h"  // kMaxEarlyFillWindowMs
@@ -2109,19 +2110,37 @@ void test_version_bar(ImGuiTestContext* ctx) {
 
     // B3: the offer, its three buttons, and the notes on hover of the
     // sentence, which ends just left of the Update button. The notes are the
-    // ones the check found (UpdateState::found), drawn whole.
+    // ones the check found (UpdateState::found). The check reads them one
+    // paragraph at a time, so it never depends on how line breaks are spelled:
+    // the screen text writes them its own way (LogRenderedText in
+    // third_party/imgui/imgui.cpp). Every paragraph is checked at each step,
+    // so a tooltip that draws only part of the notes, or leaves part behind,
+    // fails too.
     auto notes_show_on_hover = [&] {
         IM_CHECK_NO_RET(h.app->update.found.has_value());
         if (ctx->IsError()) return;
-        const std::string notes = h.app->update.found->notes;
-        IM_CHECK_NO_RET(!notes.empty());
+        std::vector<std::string> paragraphs;
+        for (std::string piece : split_on(h.app->update.found->notes, "\n")) {
+            if (!piece.empty() && piece.back() == '\r') piece.pop_back();
+            if (!piece.empty()) paragraphs.push_back(piece);
+        }
+        IM_CHECK_NO_RET(!paragraphs.empty());
+        if (ctx->IsError()) return;
+        auto all_shown = [&] {
+            return std::all_of(paragraphs.begin(), paragraphs.end(),
+                               [&](const std::string& p) { return on_screen(h, p); });
+        };
+        auto none_shown = [&] {
+            return std::none_of(paragraphs.begin(), paragraphs.end(),
+                                [&](const std::string& p) { return on_screen(h, p); });
+        };
         const ImRect update_rect = ctx->ItemInfo("**/Update##update").RectFull;
-        IM_CHECK_NO_RET(!on_screen(h, notes));
+        IM_CHECK_NO_RET(none_shown());
         ctx->MouseMoveToPos(ImVec2(update_rect.Min.x - ImGui::GetStyle().ItemSpacing.x - hydra::ui::px(10),
                                    update_rect.GetCenter().y));
-        IM_CHECK_NO_RET(wait_until(ctx, [&] { return on_screen(h, notes); }, 5));
+        IM_CHECK_NO_RET(wait_until(ctx, all_shown, 5));
         ctx->MouseMoveToPos(ImVec2(update_rect.Max.x + hydra::ui::px(40), update_rect.GetCenter().y));
-        IM_CHECK_NO_RET(wait_until(ctx, [&] { return !on_screen(h, notes); }, 5));
+        IM_CHECK_NO_RET(wait_until(ctx, none_shown, 5));
     };
     seams.serve(update_fixtures::real_reply_at("v" + newer));
     restart_app(seams, {});
