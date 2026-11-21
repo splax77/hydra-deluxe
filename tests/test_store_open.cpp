@@ -476,7 +476,7 @@ struct V220Seed {
     int64_t charts = 0;    // library rows
     int64_t results = 0;   // results rows
     int64_t kept = 0;      // results the conversion keeps
-    int64_t profiles = 0;  // distinct settings, stamps and rules among the kept
+    int64_t profiles = 0;  // profiles the store filed the kept records under
     int64_t scored = 0;    // kept results with a score
 };
 
@@ -522,6 +522,13 @@ V220Seed seed_v220_layout(const std::string& path) {
         test::add_stale_records(seed, analysis, kMode8, kBuild, kRules, kBoth);
         seed.save(prepare_record(kNoStars, kMode8, analysis));
     }
+    // What the store this build wrote holds before it is turned back into the
+    // old layout: one profile per distinct settings, stamp and rules, as the
+    // store itself filed them, and the rank-1 path rows the old results kept.
+    // The no-stars row shares the "ready" profile, so it adds none.
+    const int64_t profiles_filed = scalar_on_file(path, "SELECT COUNT(*) FROM profiles");
+    const int64_t scored_kept = scalar_on_file(
+        path, "SELECT COUNT(*) FROM record_paths WHERE rank = 1 AND song_id <> 'nostars'");
     exec_on_file(path, test::v220_layout_sql().c_str());
     // 2.2.0 to 2.7.0 wrote the charts table without the album.
     exec_on_file(path, "ALTER TABLE charts DROP COLUMN album");
@@ -550,12 +557,8 @@ V220Seed seed_v220_layout(const std::string& path) {
     out.charts = scalar_on_file(path, "SELECT COUNT(*) FROM charts");
     out.results = scalar_on_file(path, "SELECT COUNT(*) FROM results");
     out.kept = scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash <> 'nostars'");
-    out.profiles = scalar_on_file(
-        path, "SELECT COUNT(*) FROM (SELECT DISTINCT chartmode, hyversion, sp_cap, ms_enabled,"
-              " ms_value, depth_mode, depth_value, legacy_fills, rules_fp FROM results"
-              " WHERE hyhash <> 'nostars')");
-    out.scored = scalar_on_file(path, "SELECT COUNT(*) FROM results WHERE hyhash <> 'nostars'"
-                                      " AND score IS NOT NULL");
+    out.profiles = profiles_filed;
+    out.scored = scored_kept;
     return out;
 }
 
