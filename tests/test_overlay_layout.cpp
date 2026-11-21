@@ -31,14 +31,15 @@ TEST_CASE("track_rect: the clamped size, the aspect and the top row") {
 
     // A wide image: its width times the config's ratio is taller than the
     // image, so the image's height sets the track.
-    const TrackRect wide = track_rect(cfg, 1920, 1080);
-    REQUIRE(1920.0f * cfg.view.height_width_ratio > 1080.0f);
-    CHECK(wide.width == 1920);
-    CHECK(wide.height == 1080);
+    const int wide_w = 1920, wide_h = 1080;
+    const TrackRect wide = track_rect(cfg, wide_w, wide_h);
+    REQUIRE(wide_w * cfg.view.height_width_ratio > wide_h);
+    CHECK(wide.width == wide_w);
+    CHECK(wide.height == wide_h);
     CHECK(wide.track_height == wide.height);
     CHECK(wide.top == 0);
     CHECK(wide.aspect == static_cast<float>(wide.width) / static_cast<float>(wide.track_height));
-    CHECK(track_height(cfg, 1920, 1080) == wide.track_height);
+    CHECK(track_height(cfg, wide_w, wide_h) == wide.track_height);
 
     // A tall image: its width times the ratio sets the track, which hugs the
     // image's bottom edge.
