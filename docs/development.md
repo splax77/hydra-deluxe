@@ -240,7 +240,7 @@ build folder; the install rules stage them beside the shipped exes.
 ### mimalloc trial numbers
 
 These are the measurements behind D88, copied as written from the trial's
-report, `docs/handoffs/2026-10-07-mimalloc-trial.md` (removed; `git show 444631e6:docs/handoffs/2026-10-07-mimalloc-trial.md`).
+report, which is no longer in the repo.
 The trial linked mimalloc v3.5.3 into `hydra_batch` only, built both exes from
 commit c2fdb43 so only the allocator differed, and ran each through the
 benchmark lock on a fresh copy of the real database.

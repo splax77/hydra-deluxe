@@ -1,6 +1,6 @@
 # Player fixes before Freak run 2: drop a late press, and model the frame delays
 
-Date: 2026-11-08. Planner: Fable, task PL-FREAK-PLAN, session 6341c618. Follows `docs/superpowers/plans/2026-11-07-player-limits.md` (the approved limits plan) and the handoff `docs/handoffs/2026-11-07-player-limits-handoff.md` (in the `handoff-player-limits` worktree, not on main). The user chose "Planner for both": fix both causes of Freak run 1 before run 2, not a bigger margin.
+Date: 2026-11-08. Planner: Fable, task PL-FREAK-PLAN, session 6341c618. Follows `docs/superpowers/plans/2026-11-07-player-limits.md` (the approved limits plan) and a handoff. The user chose "Planner for both": fix both causes of Freak run 1 before run 2, not a bigger margin.
 
 ## The plain version
 

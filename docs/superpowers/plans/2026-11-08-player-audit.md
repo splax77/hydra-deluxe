@@ -44,7 +44,7 @@ Before any finder starts, the main session and every brief point at what is alre
 - the Clone Hero reference under `docs/clone-hero/`, and `docs/agents/clone-hero-mcp.md`;
 - the session cards in `docs/sessions/` tagged `clone-hero`, found by grep of `docs/sessions/index.md`.
 
-The handoff from session 6341c618 (`docs/handoffs/2026-11-08-session-6341c618-findings-handoff.md` on branch `claude/handoff-6341c618-findings`) is another agent's summary. Its findings go to the verifiers as candidates to check, not to the finders as facts, so the finders do not anchor on it.
+The handoff from session 6341c618 is another agent's summary. Its findings go to the verifiers as candidates to check, not to the finders as facts, so the finders do not anchor on it.
 
 ## The kinds of problem the audit looks for
 
@@ -133,5 +133,5 @@ None. The audit is read-only and starts no game, build or run.
 | P7d: `server.py` imports `tools.hydra_ui_mcp`; `game_tools.py` imports `foreground`, `recorder_link` and `install_chart`; `bot_run.py` and `walk_edges.py` import `probe_songs`; `frida_tools.py` imports `build_facts`; `prep_inputs.py` imports `game_tools`. | code | the import lines of `tools/ch_mcp/server.py`, `game_tools.py` (lines 31 to 32), `bot_run.py`, `frida_tools.py` (line 29), `tools/ch_probe/experiments/walk_edges.py` (line 52) and `tools/ch_probe/prep_inputs.py` (line 35) | checked 2026-11-08 by grep |
 | P8: The four run folders the 6341c618 handoff names exist. | run | `C:\Users\Patrick\Downloads\Hydra\hydra-data\ch-mcp-runs\2026-11-08\ls-m0-run1`, `ls-m1-run1`, `ls-m2-run1` and `...\2026-11-07\ls-f1-run1` | checked 2026-11-08 by Test-Path |
 | P9: The audit's stages, exits and brief contents are those of the audit method page. | code | `docs/agents/audit-method.md` | checked 2026-11-08 |
-| P10: Every family can be judged by reading code and the existing run folders, with no new run. | unchecked | `docs/handoffs/2026-11-08-session-6341c618-findings-handoff.md` only reports that the last session found its misses from run files | S3 |
+| P10: Every family can be judged by reading code and the existing run folders, with no new run. | unchecked | unchecked: only a handoff reports that the last session found its misses from run files | S3 |
 | P11: Hydra's path search had its own audits. | unchecked | `docs/audit/2026-10-03-derivation-audit.md` and `docs/audit/2026-10-11-concept-audit/` are named, not opened for this | question 1 |

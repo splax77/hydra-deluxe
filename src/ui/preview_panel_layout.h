@@ -16,8 +16,7 @@ inline constexpr float kOverlayLineHeight = 1.25f;
 
 // The next-activation box's notation line over its other lines' size. The
 // user approved the ratio through the Preview mock (option B, D111), where the
-// notation line is 17px and the box's other lines 12px. The mock:
-// docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html (removed; git show 444631e6:docs/handoffs/2026-10-10-preview-next-act-stars-mock/preview_mock.html)
+// notation line is 17px and the box's other lines 12px.
 inline constexpr float kNextActNotationScale = 17.0f / 12.0f;
 
 // How many of the next-activation header's last words stay on one line, so
