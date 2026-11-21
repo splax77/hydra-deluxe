@@ -9,6 +9,7 @@
   "bass2x": true,
   "tolerance": 7,
   "pixel_delta": 32,
+  "tile_side": 16,
   "tile_percent": 9.4,
   "frame_percent": 0.08,
   "mask": [[0, 0, 232, 112], [600, 628, 180, 52]]

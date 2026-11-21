@@ -537,8 +537,8 @@ void open_details(ImGuiTestContext* ctx, size_t index) {
 }
 
 namespace {
-// Whether the tab bar can no longer move within `seconds`; the one wait
-// wait_tabs_placed and open_details_within share.
+// Whether the tab bar can no longer move within `seconds`; the wait
+// open_details_within makes before it clicks a tab.
 bool tabs_placed_within(ImGuiTestContext* ctx, double seconds) {
     Harness& h = harness(ctx);
     return wait_until(ctx, [&] { return h.app->view_settled() || !g_view_gate_open.load(); },
@@ -562,10 +562,6 @@ bool open_details_within(ImGuiTestContext* ctx, size_t index, double settle_seco
     if (!tabs_placed_within(ctx, settle_seconds)) return false;
     ctx->ItemClick("##DetailsTabs/Paths");
     return true;
-}
-
-void wait_tabs_placed(ImGuiTestContext* ctx) {
-    IM_CHECK(tabs_placed_within(ctx, kSettleWaitSeconds));
 }
 
 // Narrow the library with `search` typed into the search box, then open the
