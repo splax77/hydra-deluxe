@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -189,6 +190,32 @@ TEST_CASE("make_box: four outward faces, no bottom or back") {
     CHECK(saw_right);
 }
 
+namespace {
+
+// The fewest decimals any component of a `vn` line in `obj` is written with,
+// or -1 when the text has no `vn` line. It reads plain decimals ("0.6442"),
+// the form the shipped models use.
+int coarsest_normal_decimals(const std::string& obj) {
+    std::istringstream in(obj);
+    std::string line;
+    int fewest = -1;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        std::istringstream words(line);
+        std::string tag;
+        if (!(words >> tag) || tag != "vn") continue;
+        std::string component;
+        while (words >> component) {
+            const size_t dot = component.find('.');
+            const int decimals = dot == std::string::npos ? 0 : static_cast<int>(component.size() - dot - 1);
+            if (fewest < 0 || decimals < fewest) fewest = decimals;
+        }
+    }
+    return fewest;
+}
+
+}  // namespace
+
 // The three model files the Preview loads (preview_renderer.cpp's load_model
 // calls): each loads whole, every corner carries a unit normal, and each has
 // size along every axis.
@@ -197,13 +224,28 @@ TEST_CASE("the shipped drum models load whole with unit normals") {
     for (const char* file : {"drum-kick.obj", "drum-tom.obj", "drum-cymbal.obj"}) {
         const std::string name(file);
         INFO(name);
-        const ObjMesh mesh = load_obj(hydra::read_file_text(dir + name));
+        const std::string text = hydra::read_file_text(dir + name);
+        const ObjMesh mesh = load_obj(text);
         REQUIRE(mesh.triangle_count() > 0);
         CHECK(mesh.vertices.size() == mesh.triangle_count() * 3);
+        // load_obj keeps each normal as the file writes it (object.hlsl
+        // normalizes it again per pixel), so a normal is as unit as the
+        // file's digits allow. A component written to N decimals is less than
+        // one unit in its last place, 10^-N, from the value it stands for (a
+        // writer that rounds to nearest gets within half that; a whole unit
+        // also covers one that truncates). Three components each off by at
+        // most 10^-N move the vector by at most sqrt(3) * 10^-N, so its
+        // length is within that of 1. The tom and cymbal write 4 decimals:
+        // 1.73e-4. The kick writes 1 ("1.0", "0.0"): 0.173.
+        const int decimals = coarsest_normal_decimals(text);
+        REQUIRE(decimals >= 0);
+        const double tolerance = std::sqrt(3.0) * std::pow(10.0, -decimals);
         for (const ObjVertex& v : mesh.vertices) {
-            const float len = std::sqrt(v.normal[0] * v.normal[0] + v.normal[1] * v.normal[1] +
-                                        v.normal[2] * v.normal[2]);
-            CHECK(len == doctest::Approx(1.0f));
+            const double x = v.normal[0], y = v.normal[1], z = v.normal[2];
+            const double len = std::sqrt(x * x + y * y + z * z);
+            const double off_unit = std::fabs(len - 1.0);
+            INFO("normal length ", len, ", tolerance ", tolerance);
+            CHECK(off_unit <= tolerance);
         }
         float mn[3], mx[3];
         mesh_bounds(mesh, mn, mx);

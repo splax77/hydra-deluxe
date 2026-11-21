@@ -431,7 +431,9 @@ std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<
                 const std::string file = resolve(rel, inc, folders, known);
                 if (!file.empty()) {
                     const std::set<std::string> owners = m.owners(file);
-                    if (owners.empty()) continue;  // a test helper header, free to include
+                    // In no target's source list: a test helper header, or a
+                    // vendored header in an include folder lib adds. Free to include.
+                    if (owners.empty()) continue;
                     if (std::any_of(owners.begin(), owners.end(),
                                     [&](const std::string& t) { return allowed.count(t) > 0; }))
                         continue;
@@ -471,7 +473,7 @@ std::string read_text(const fs::path& path) {
 
 struct Repo {
     BuildModel build;
-    std::set<std::string> known;
+    std::set<std::string> known;  // the walked files and git's third_party files
     std::map<std::string, std::string> texts;  // every code file the walk lists
     std::vector<ExternalRow> externals;
 };
@@ -484,6 +486,12 @@ const Repo& repo() {
             out.known.insert(rel);
             if (is_code(rel)) out.texts[rel] = read_text(path);
         });
+        // The vendored headers under third_party are files too. The walk
+        // above does not read them, but a target's include folders reach
+        // into them (hydra_tests adds third_party/doctest), so an include
+        // resolves against them the way the compiler's search does.
+        for (const std::string& rel : sourcetree::git_listed(sourcetree::root(), "third_party"))
+            out.known.insert(rel);
         out.externals = parse_externals(read_text(sourcetree::root() / "tests/layering/externals.json"));
         return out;
     }();
@@ -585,22 +593,29 @@ TEST_CASE("layering: the CMake reader, pinned on a made-up file") {
 
     const std::vector<ExternalRow> externals{{"secret*.h", "secret", "", {"secret.h"}},
                                              {"json.hpp", "", "third_party/json", {"json.hpp"}}};
+    // third_party/json/json.hpp is a vendored file no target lists: base finds
+    // it through its own folder, mid falls back to the externals row.
     const std::set<std::string> known{"src/base/a.cpp", "src/base/a.h",  "src/mid/b.cpp",
-                                      "src/mid/b.h",    "src/top/c.cpp", "src/top/c.h"};
+                                      "src/mid/b.h",    "src/top/c.cpp", "src/top/c.h",
+                                      "third_party/json/json.hpp"};
     const std::map<std::string, std::string> texts{
         {"src/base/a.cpp", "#include \"base/a.h\"\n#include <vector>\n#include \"json.hpp\"\n"},
         {"src/base/a.h", "#include \"mid/b.h\"\n"},  // the wrong way
         {"src/mid/b.cpp", "#include \"mid/b.h\"\n#include \"base/a.h\"\n  #  include <secret.h>\n"},
         {"src/mid/b.h", "#include \"json.hpp\"\n"},
-        {"src/top/c.cpp", "#include \"top/c.h\"\n#include \"mid/b.h\"\n#include \"base/a.h\"\n"},
+        {"src/top/c.cpp", "#include \"top/c.h\"\n#include \"mid/b.h\"\n#include \"base/a.h\"\n#include \"gone.h\"\n"},
         {"src/top/c.h", "#include <secret.h>\n"},
     };
     CHECK(joined(wrong_way_includes(m, texts, known, externals, {})) ==
           "src/base/a.h: include \"mid/b.h\" reaches target mid, which base does not link\n"
           "src/mid/b.h: include \"json.hpp\" reaches include folder third_party/json, which mid does not add\n"
+          "src/top/c.cpp: include \"gone.h\" names no file top can see and no externals.json row\n"
           "src/top/c.h: include \"secret.h\" reaches target secret, which top does not link\n");
     CHECK(wrong_way_includes(m, texts, known, externals,
-                             {{"src/base/a.h", "mid/b.h"}, {"src/mid/b.h", "json.hpp"}, {"src/top/c.h", "secret.h"}})
+                             {{"src/base/a.h", "mid/b.h"},
+                              {"src/mid/b.h", "json.hpp"},
+                              {"src/top/c.cpp", "gone.h"},
+                              {"src/top/c.h", "secret.h"}})
               .empty());
 }
 
