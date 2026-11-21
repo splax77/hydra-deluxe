@@ -1020,8 +1020,10 @@ struct HydraRecord {
     // search keeps paths by score band, not by shape, so this path is usually
     // below the band and absent from `paths`. Empty when the search did not run,
     // found nothing, or was not needed because the best path is already all-0
-    // (attach_allzero in search/pather.cpp). Deliberately NOT part of all_paths(): the reports and
-    // the summary columns must keep counting generated paths only.
+    // (attach_allzero in search/pather.cpp). The chart's all-0 answer is
+    // best_allzero_paths (search/pather.h), which reads this field and the best
+    // path both; ask it, not this field. Deliberately NOT part of all_paths():
+    // the reports and the summary columns must keep counting generated paths only.
     std::vector<Path> allzero_paths;
 
     const Path& best_path() const { return paths.at(0); }
