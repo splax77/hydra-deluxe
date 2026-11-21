@@ -1979,7 +1979,7 @@ struct UpdateSeams {
     // test releases it, so the download never ends and no installer start
     // can come.
     void hold_download() { replay->server().pause(replay->installer_route(), 1); }
-    bool download_held() const { return replay->server().held(replay->installer_route()); }
+    bool download_held() { return replay->server().held(replay->installer_route()); }
 
     // Stops the server while the address map stays, so the check is really
     // refused, as by a server that is down.
