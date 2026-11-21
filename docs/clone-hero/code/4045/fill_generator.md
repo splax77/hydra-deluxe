@@ -154,7 +154,7 @@ F11 (`BeatGrid.AddLine`): every beat adds its second to the beat list; only a ME
 F12 (StrikeCore's ranges): the start index is clamped to the list, and a start outside it gives an empty walk. A
 forward walk runs from the start to the end; a reverse walk runs from the start down to index 0.
 
-F13 (`Mathf.RoundToInt`): `(int)Math.Round(f)`, which rounds a half to even. So 1.5 gives 2, 2.5 gives 2 and 0.5
+F13 (Unity's Mathf.RoundToInt, from UnityEngine.CoreModule.dll, not the game's code): `(int)Math.Round(f)`, which rounds a half to even. So 1.5 gives 2, 2.5 gives 2 and 0.5
 gives 0, and at resolution 24 the 64th note of line 39 is 2 ticks.
 
 Limits of this reading: the obfuscator renames every field, so the role names above are my reading of how each is used.

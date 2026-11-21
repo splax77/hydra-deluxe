@@ -89,12 +89,12 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 7
 
 ### FL-09 A landed fill flags one note of its chord
 
-Rule: A landed written fill sets the activation flag 0x800 on one note of its chord and makes a record: the fill start tick at `+0x28`, the chord at `+0x20`, the chord tick minus the fill start at `+0x30`, and an "active" byte at `+0x38` set to 1. The flagged note is picked by `0x20D51D0`: it keeps the highest set bit of the chord's lane pattern and returns the first note whose type word holds that bit, which is the note on the highest pad.
+Rule: A landed written fill sets the activation flag 0x800 on one note of its chord and makes a record: the fill start tick at `+0x28`, the chord at `+0x20`, the chord tick minus the fill start at `+0x30`, and an "active" byte at `+0x38` set to 1. The flagged note is picked by `0x20D51D0`: it keeps the highest set bit of the chord's lane pattern and returns the first note whose type word holds that bit, which is the note on the highest pad. The 1.1 lane bits are KickOrange 1, TomRed 2, TomYellow 4, TomBlue 8, TomGreen 16, CymbalYellow 32, CymbalBlue 64 and CymbalGreen 128 (NL-50), so the order is Green cymbal, Blue cymbal, Yellow cymbal, Green tom, Blue tom, Yellow tom, Red, then the kick, which wins only a chord with no pad: the same order as 1.0 (FL-37).
 Label: Proven in the game's code
 Evidence: `code/6142/fill_to_activation_20CFF60.asm` line 106 (`or dword ptr [rax + 0x7c], 0x800`) and lines 129 to 139 (the record fields). Lines 99 to 102 call `0x20D51D0` with an all-ones mask (0xffffffff in edx). In `docs/audit/drum-lanes/f20d51d0.asm`, lines 29 to 31 AND that mask with the chord's pattern, lines 33 to 47 smear the bits down and keep only the highest one, and lines 71 to 74 return the first note whose `+0x80` word holds it.
 Game code (6142): RVA `0x20CFF60`, `code/6142/fill_to_activation_20CFF60.asm` lines 99 to 147; the pad pick RVA `0x20D51D0`, `docs/audit/drum-lanes/f20d51d0.asm` lines 29 to 74.
-Hydra: `SongTimestamp::activation_length` (src/core/song.h line 35) on the chord, and `Chord::activation_note` for the note; Hydra keeps no per-note flag.
-Ruling: none needed: same rule
+Hydra: `SongTimestamp::activation_length` (src/core/song.h line 35) on the chord, and `Chord::activation_note` for the note, which follows this order (task T9 of the 1.0 fills plan); Hydra keeps no per-note flag.
+Ruling: the user, 2026-11-21, answering whether Hydra's activation note ranks pads as the game does: "Match the game".
 Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 77057df2 (docs-gaps search).
 
 ### FL-10 Two written fills that pick the same chord
