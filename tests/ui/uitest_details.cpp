@@ -557,12 +557,19 @@ void test_stars(ImGuiTestContext* ctx) {
     const size_t table_at = text.find(hydra::app::kAverageMultiplierLabel);
     IM_CHECK(table_at != std::string::npos);
     if (ctx->IsError()) return;
-    // Each star's row, in star order after the table's headers: its cutoff,
-    // then its with-solo figure, both star_cutoffs()'s. The tab draws a row's
-    // cells one after another, so a figure found after the previous row's
-    // last cell is in its own row, not in a headline or another row.
+    // Each star's row, in star order after the table's headers: its factor
+    // (kStarMultipliers, one decimal as the tab words it), its cutoff, then
+    // its with-solo figure, the last two star_cutoffs()'s. The tab draws a
+    // row's cells one after another, so a figure found after the previous
+    // row's last cell is in its own row, not in a headline or another row.
     size_t at = table_at;
     for (int stars = 1; stars <= hydra::kMaxStars; ++stars) {
+        char factor[16];
+        std::snprintf(factor, sizeof(factor), "%.1f",
+                      static_cast<double>(hydra::kStarMultipliers[stars - 1]));
+        at = text.find(factor, at);
+        IM_CHECK(at != std::string::npos);
+        if (ctx->IsError()) return;
         at = text.find(hydra::group_thousands(sc.cutoffs[stars - 1]), at);
         IM_CHECK(at != std::string::npos);
         if (ctx->IsError()) return;
@@ -1228,7 +1235,12 @@ void test_panel_headline(ImGuiTestContext* ctx) {
         if (b.path == &best) best_button = &b;
     IM_CHECK(best_button != nullptr);
     if (ctx->IsError()) return;
-    IM_CHECK(best_button->timing.empty() || text.find(best_button->timing) != std::string::npos);
+    // Some path in the list carries a hardest timing, and it is on screen
+    // (a chart whose list names none would check nothing).
+    bool timing_shown = false;
+    for (const hydra::app::PathButtonView& b : list.buttons)
+        if (!b.timing.empty() && text.find(b.timing) != std::string::npos) timing_shown = true;
+    IM_CHECK(timing_shown);
     // The click's record is the engine's own, so the panel never calls it out
     // of date; only the library's tooltip can (D87 item 6).
     IM_CHECK(text.find("Out of date") == std::string::npos);
