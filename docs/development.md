@@ -374,6 +374,23 @@ into each test process ahead of mimalloc, and the mimalloc tests fail.
 
 To instrument again after a test run, relink first (delete the exe and build).
 
+The CI coverage job builds with the 14.51 compiler (cl 19.51), which it
+installs next to the image's newest. The 14.52 compiler (cl 19.52, from
+Visual Studio 18.12) breaks the coverage build. A plain 14.52 build passes
+every test. Instrumented, it crashes, even with only one source file
+instrumented. The tool rewrites the whole exe, and in places it pads the code
+after an unconditional jump so the next block starts on a 16-byte boundary.
+It leaves a short jump over that padding unchanged, so the jump lands early.
+In nlohmann's `basic_json` constructor, the jump that skips the shared
+`mov qword ptr [rdi+8],rax` after storing a new object's map pointer now lands
+on that `mov`. The map pointer is overwritten with a tree node's, and every
+JSON object the tests parse is corrupt. The coverage tool from Visual Studio
+2022 (17.14.3) breaks the same 14.52 exe the same way. Coverage builds with 14.51
+passed in CI every night through 2026-11-17. What in 14.52's output makes the
+tool pad these spots is not known. A local build with 14.52
+reproduces the crash: build the `coverage` preset, instrument `hydra_tests`,
+and run `hydra_tests.exe -sf=*single_owner*`.
+
 ## The report windows
 
 The path report and the dmleaderboards comparison are Hydra windows, each its
