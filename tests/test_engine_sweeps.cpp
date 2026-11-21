@@ -417,19 +417,15 @@ TEST_CASE("every fresh activation stores known transfer scales and backends from
             // a record fresh off the engine should never be missing it.
             if (!act.deact_tick().has_value()) return "activation missing deact_tick";
 
-            // A backend row's offset_ms is the gap from the deactivation
-            // node to that row, in ms. Walking a row's offset back to a
-            // tick has to land on the same node copy-out stamped -- if it
-            // didn't, the backend rows and deact_tick would be describing
-            // two different SP ends.
+            // Every backend row's offset_ms is offset_from_sp_end from the
+            // node deact_tick names. If a row measured from any other SP end,
+            // the backend rows and deact_tick would describe two different SP
+            // ends. Both sides read the same Timecodes, so they agree exactly.
+            const double sp_end_ms = song.timecode(*act.deact_tick()).ms();
             for (const BackendSqueeze& b : act.backends) {
                 if (!b.offset_ms.has_value()) continue;
-                const int64_t implied =
-                    *b.offset_ms == 0.0 ? b.timecode.ticks()
-                                        : std::llround(song.timing().ms_index().tick_at_ms(
-                                              b.timecode.ms() - *b.offset_ms));
-                if (implied != *act.deact_tick())
-                    return "backend-implied deact tick disagrees with the stored one";
+                if (*b.offset_ms != offset_from_sp_end(b.timecode.ms(), sp_end_ms))
+                    return "a backend row measures from another SP end than deact_tick";
             }
             return "";
         });

@@ -317,36 +317,32 @@ TEST_CASE("search: SP ready 70 ms before a fill's deadline marks the activation 
 // before fill A's deadline, and fill C scores more. Passing A over keeps a
 // path all-0 only when A was its early fill (an E1, allzero_activation): so
 // at 85 the best all-0 path activates at C, and at 60, where A is a plain
-// fill, it activates at A.
-//
-// The record states the all-0 answer in one of two ways (attach_allzero in
-// search/pather.cpp): when the best path is itself all-0 inside the all-0
-// pass's limit, it is the answer and allzero_paths stays empty; otherwise the
-// answer is allzero_paths' first path.
+// fill, it activates at A. The all-0 answer is read through its one reader,
+// best_allzero_paths (search/pather.h).
 TEST_CASE("all-0 pass: passing over a fill with 70 ms to spare is an E1 at 85, a skip at 60") {
     const int64_t ready = ef_tick_at(fill_a_deadline_ms() - kBetweenWindowsMs);
     const Song song = early_fill_song(ready, /*second_fill=*/true);
-    const double allzero_limit = *allzero_options().ms_filter;
 
     // At 85 the best path passes A over as an E1, so it is the all-0 answer.
     const HydraRecord wide = analyze_chart(song, window_settings(kHitWindowMs));
     REQUIRE(!wide.paths.empty());
     CAPTURE(wide.best_path().pathstring());
     CHECK(test::act_ticks(wide.best_path()) == std::vector<int64_t>{kEfFillC});
-    CHECK(wide.best_path().is_allzero());
-    CHECK(wide.best_path().within_ms_limit(allzero_limit));
-    CHECK(wide.allzero_paths.empty());
+    const std::vector<const Path*> wide_allzero = best_allzero_paths(wide);
+    REQUIRE(!wide_allzero.empty());
+    CHECK(wide_allzero.front() == &wide.best_path());
     check_window_carried(wide, kHitWindowMs);
 
     // At 60 passing A over is a plain skip, so the best path is not all-0 and
-    // the all-0 pass's own answer activates at A.
+    // the all-0 answer is another path, one that activates at A.
     const HydraRecord narrow = analyze_chart(song, window_settings(kDefaultEarlyFillWindowMs));
     REQUIRE(!narrow.paths.empty());
     CAPTURE(narrow.best_path().pathstring());
-    CHECK_FALSE(narrow.best_path().is_allzero());
-    REQUIRE(!narrow.allzero_paths.empty());
-    CAPTURE(narrow.allzero_paths.front().pathstring());
-    CHECK(test::act_ticks(narrow.allzero_paths.front()) == std::vector<int64_t>{kEfFillA});
+    const std::vector<const Path*> narrow_allzero = best_allzero_paths(narrow);
+    REQUIRE(!narrow_allzero.empty());
+    CAPTURE(narrow_allzero.front()->pathstring());
+    CHECK(narrow_allzero.front() != &narrow.best_path());
+    CHECK(test::act_ticks(*narrow_allzero.front()) == std::vector<int64_t>{kEfFillA});
     check_window_carried(narrow, kDefaultEarlyFillWindowMs);
 }
 
@@ -402,45 +398,36 @@ TEST_CASE("Skipped fills: every corpus root passes over real fills in order") {
 
 namespace {
 
-// The bars the Preview's meter holds at a chart tick: sp_meter_bars_at over
-// the scene the path draws.
-double bars_at(const app::PreviewScene& scene, const Song& song, int64_t tick) {
-    return app::sp_meter_bars_at(scene.sp_meter, song.timecode(tick).ms());
+// Whether the fill chord at `t` spawns for a path whose Star Power came ready
+// at chart tick `ready`, under the window `cfg` searched under (fill_refuses).
+// The ready tick's ms is the engine's own: the search reads the same note's
+// Timecode the bar's arrival tick comes from.
+bool fill_spawns(const Song& song, const SongTimestamp& chord, int64_t ready,
+                 const app::AnalysisSettings& cfg) {
+    const double deadline = activation_fill_deadline_ms(song.timing(), chord.timecode.ticks(),
+                                                        *chord.activation_length, fill_rule_for(cfg.legacy_fills));
+    return !fill_refuses(fill_e_offset(deadline, song.timecode(ready).ms()), cfg.early_fill_window_ms);
 }
 
-bool is_scene_fill(const app::PreviewScene& scene, int64_t tick) {
-    return std::any_of(scene.fills.begin(), scene.fills.end(),
-                       [tick](const app::PreviewFill& f) { return f.chord_tick == tick; });
-}
-
-// Whether the fill that ends at `chord_tick` spawns on the scene's meter: the
-// meter held an activation's worth by the fill's deadline, late by no more
-// than the early-fill window `cfg` searched under (fill_refuses).
-bool meter_spawns_fill(const app::PreviewScene& scene, const Song& song, int64_t chord_tick,
-                       const app::AnalysisSettings& cfg) {
-    const SongTimestamp* chord = fill_chord_at(song, chord_tick);
-    REQUIRE(chord != nullptr);
-    const double deadline = activation_fill_deadline_ms(song.timing(), chord_tick, *chord->activation_length,
-                                                        fill_rule_for(cfg.legacy_fills));
-    return app::sp_meter_bars_at(scene.sp_meter, deadline + cfg.early_fill_window_ms) >= kSpActivationBars;
-}
-
-// Each listed tick comes after the path's last activation, in chart order,
-// is a fill in the scene, the meter there holds at least kSpActivationBars,
-// and the fill spawned under the window `cfg` searched under.
+// Each listed tick comes after the path's last activation, in chart order, and
+// is a fill chord of the chart. The path had enough Star Power saved by then
+// (Path::trailing_sp_ready_tick, the engine's stored arrival), and the fill
+// spawned under the window `cfg` searched under (fill_spawns).
 void check_trailing(const Song& song, const Path& p, const app::AnalysisSettings& cfg) {
     const ActivationWalk walk = p.walk_activations();
     const int64_t last_act = walk.size() > 0 ? walk[walk.size() - 1].timecode.ticks() : -1;
-    const app::PreviewScene scene = app::build_preview_scene(song, &p, cfg.sp_cap, cfg.rules);
     const std::vector<int64_t>& listed = p.trailing_skipped_fill_ticks;
+    const std::optional<int64_t> ready = p.trailing_sp_ready_tick();
+    if (!listed.empty()) REQUIRE(ready.has_value());
     for (size_t k = 0; k < listed.size(); ++k) {
         const int64_t t = listed[k];
         CAPTURE(t);
         CHECK(t > last_act);
         if (k > 0) CHECK(t > listed[k - 1]);
-        CHECK(is_scene_fill(scene, t));
-        CHECK(bars_at(scene, song, t) >= kSpActivationBars);
-        CHECK(meter_spawns_fill(scene, song, t, cfg));
+        const SongTimestamp* chord = fill_chord_at(song, t);
+        REQUIRE(chord != nullptr);
+        CHECK(*ready <= t);
+        CHECK(fill_spawns(song, *chord, *ready, cfg));
     }
 }
 
@@ -517,9 +504,9 @@ TEST_CASE("trailing fills: a full pin of a corpus path agrees with the free sear
 
 // The empty path of the Path Builder's start: search_target over no windows
 // declines every fill, so it lists exactly the fills the game shows. A fill
-// is shown when the meter held an activation's worth by its deadline, late by
-// no more than the early-fill window (fill_refuses).
-TEST_CASE("trailing fills: the path with no activation lists every fill the meter allows") {
+// chord of the chart is shown when the path's stored ready tick lets it spawn
+// (fill_spawns); before the path has an activation's worth saved, none is.
+TEST_CASE("trailing fills: the path with no activation lists every fill its saved Star Power allows") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     int listed = 0, unlisted = 0;
     for (const std::string& chart : corpus::chart_paths()) {
@@ -530,12 +517,13 @@ TEST_CASE("trailing fills: the path with no activation lists every fill the mete
         const Path& empty = t.paths[0];
         CHECK(empty.walk_activations().size() == 0);
         check_trailing(song, empty, cfg);
-        const app::PreviewScene scene = app::build_preview_scene(song, &empty, cfg.sp_cap, cfg.rules);
+        const std::optional<int64_t> ready = empty.trailing_sp_ready_tick();
         const std::vector<int64_t>& list = empty.trailing_skipped_fill_ticks;
-        for (const app::PreviewFill& f : scene.fills) {
-            CAPTURE(f.chord_tick);
-            const bool shown = meter_spawns_fill(scene, song, f.chord_tick, cfg);
-            const bool is_listed = std::find(list.begin(), list.end(), f.chord_tick) != list.end();
+        for (const SongTimestamp* f : fill_chords(song)) {
+            const int64_t tick = f->timecode.ticks();
+            CAPTURE(tick);
+            const bool shown = ready.has_value() && fill_spawns(song, *f, *ready, cfg);
+            const bool is_listed = std::find(list.begin(), list.end(), tick) != list.end();
             CHECK(is_listed == shown);
             ++(is_listed ? listed : unlisted);
         }
