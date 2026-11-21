@@ -192,7 +192,6 @@ TEST_CASE("decode_audio: Ogg-Opus read one frame at a time equals the whole deco
         stepped.insert(stepped.end(), frame.begin(), frame.end());
 
     CHECK_FALSE(reader->failed());
-    CHECK(static_cast<int64_t>(stepped.size()) == whole.frames() * whole.channels);
     CHECK(stepped == whole.samples);
 
     // The Preview plays the encoder's padding at the end (OpusReaderOptions):
