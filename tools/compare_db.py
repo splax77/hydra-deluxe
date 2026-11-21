@@ -127,6 +127,10 @@ import sqlite3
 import sys
 from pathlib import Path
 
+# Every table any store layout has written, old layouts included, so an old
+# file still compares in full. The current store writes only some of them
+# (src/store/record_store.cpp). test_compare_db.py checks this list against
+# the checked-in stores of each layout.
 TABLES = [
     "results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta",
     "profiles", "records", "record_paths",

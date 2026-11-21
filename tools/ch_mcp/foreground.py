@@ -17,8 +17,9 @@ import ctypes
 import threading
 from typing import Callable, List, Optional, Tuple
 
-# How often the front window is read, in seconds (the user's answer to the
-# plan's question 4).
+# How often the front window is read, in seconds: question 4, "The foreground
+# poll", of the plan named above, where the user chose "Every 0.1 s
+# (Recommended)".
 FOREGROUND_POLL_S = 0.1
 
 
