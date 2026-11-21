@@ -3,21 +3,25 @@
 
 #include "doctest.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 #include <filesystem>
-#include <fstream>
-#include <iterator>
 #include <optional>
+#include <regex>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/model.h"
 #include "core/note_window.h"
 #include "core/song.h"
 #include "record_fixtures.h"  // test::build_fixture_song
-#include "source_tree.h"  // for_each_source_file, the shared walk of the repo
+#include "corpus_util.h"  // corpus::read_bytes
+#include "source_tree.h"  // for_each_source_file, root: the shared walk of the repo
 
 using namespace hydra;
 namespace fs = std::filesystem;
@@ -32,12 +36,53 @@ Song red_chords(const std::vector<int64_t>& ticks) {
     return test::build_fixture_song(192, 120.0, notes);
 }
 
-// A side at the floor and at the cap: half of TM-21's whole window at a
-// summed gap of 75 and of 170 (TM-22 prints them as 48.15 and 85.72).
-const doctest::Approx kFloorSide = doctest::Approx(96.2931672 / 2);
-const doctest::Approx kCapSide = doctest::Approx(171.4313075 / 2);
+// A side at the floor and at the cap: half the whole window when both
+// half-gaps are held at the front clamp, and when both are held at the back
+// clamp (TM-22). The first test checks those two whole windows against the
+// values TM-21's page prints.
+const double kFloorSideMs = whole_window_ms(2 * kWindowFrontMs) / 2;
+const double kCapSideMs = whole_window_ms(2 * kWindowBackMs) / 2;
+const doctest::Approx kFloorSide = doctest::Approx(kFloorSideMs);
+const doctest::Approx kCapSide = doctest::Approx(kCapSideMs);
 
-// A literal pinned to more places than the plan prints.
+// The "### <id>" block of the page docs/clone-hero/03-timing.md, from its
+// heading to the next heading.
+std::string timing_page_block(const std::string& id) {
+    const std::string page =
+        corpus::read_bytes((sourcetree::root() / "docs" / "clone-hero" / "03-timing.md").string());
+    const std::string heading = "### " + id + " ";
+    const size_t at = page.find(heading);
+    const std::string missing = "03-timing.md has no block " + id;
+    REQUIRE_MESSAGE(at != std::string::npos, missing);
+    const size_t end = page.find("\n### ", at + heading.size());
+    return page.substr(at, end == std::string::npos ? std::string::npos : end - at);
+}
+
+// One worked value a page prints: the whole window `ms`, to `decimals`
+// places, at the summed gap `x`.
+struct PageValue {
+    double ms = 0.0;
+    int decimals = 0;
+    double x = 0.0;
+};
+
+// Every "<ms> ms at x = <x>" in `block`, in page order.
+std::vector<PageValue> worked_values(const std::string& block) {
+    std::vector<PageValue> out;
+    const std::regex value(R"(([0-9]+)\.([0-9]+) ms at x = ([0-9]+))");
+    for (std::sregex_iterator it(block.begin(), block.end(), value), stop; it != stop; ++it) {
+        const std::smatch& m = *it;
+        PageValue v;
+        v.ms = std::stod(m[1].str() + "." + m[2].str());
+        v.decimals = static_cast<int>(m[2].length());
+        v.x = std::stod(m[3].str());
+        out.push_back(v);
+    }
+    return out;
+}
+
+// Equal to nine places: for an expected value worked out from the same
+// inputs the code is given.
 doctest::Approx pinned(double v) { return doctest::Approx(v).epsilon(1e-9); }
 
 // Chords 768 ticks (2,000 ms) apart, so every side is the cap. The
@@ -70,42 +115,62 @@ TwoSqueezes two_squeezes() {
 }  // namespace
 
 TEST_CASE("note window: the window formula and clamps are pinned") {
-    // TM-21's two end values, as the plan pins them.
-    CHECK(whole_window_ms(170.0) == pinned(171.4313075));
-    CHECK(whole_window_ms(75.0) == pinned(96.2931672));
-    // TM-21's three worked values.
-    CHECK(whole_window_ms(170.0) == doctest::Approx(171.4313).epsilon(1e-6));
-    CHECK(whole_window_ms(75.0) == doctest::Approx(96.2932).epsilon(1e-6));
-    CHECK(whole_window_ms(80.0) == doctest::Approx(102.2586).epsilon(1e-6));
-    // TM-22: the floor and the cap of a side.
+    // Every worked value TM-21's evidence line prints, each to the places
+    // the page gives it.
+    const std::vector<PageValue> values = worked_values(timing_page_block("TM-21"));
+    REQUIRE_FALSE(values.empty());
+    std::set<double> xs;
+    for (const PageValue& v : values) {
+        CAPTURE(v.x);
+        CAPTURE(v.ms);
+        xs.insert(v.x);
+        CHECK(std::abs(whole_window_ms(v.x) - v.ms) <= 0.5 * std::pow(10.0, -v.decimals));
+    }
+    // The page's values include the summed gaps at both clamps, so the floor
+    // and the cap of a side above stand on the page.
+    CHECK(xs.count(2 * kWindowFrontMs) == 1);
+    CHECK(xs.count(2 * kWindowBackMs) == 1);
+    // TM-22: a side is held at the floor when both neighbours are close, and
+    // at the cap when both are far.
     CHECK(window_side_ms(1.0, 1.0) == kFloorSide);
     CHECK(window_side_ms(10000.0, 10000.0) == kCapSide);
-    // TM-19: a missing neighbour, or one at the same time, gives the back.
-    CHECK(half_gap_ms(std::nullopt) == 85.0);
-    CHECK(half_gap_ms(0.0) == 85.0);
-    CHECK(half_gap_ms(10.0) == 37.5);
-    CHECK(half_gap_ms(100.0) == 50.0);
-    // Freak's chord 263: 56.18 ms from both neighbours.
-    CHECK(window_side_ms(56.18, 56.18) == kFloorSide);
+    // TM-19: a missing neighbour, or one at the same time, gives the back;
+    // a close one is held at the front; between the clamps it is half the gap.
+    CHECK(half_gap_ms(std::nullopt) == kWindowBackMs);
+    CHECK(half_gap_ms(0.0) == kWindowBackMs);
+    CHECK(half_gap_ms(10.0) == kWindowFrontMs);
+    CHECK(half_gap_ms(100.0) == 100.0 / 2);
 }
 
-TEST_CASE("note window: the formula constants live in one file") {
-    // The two formula constants, as the plan's search found them. Only C++
-    // under src/ and tools/ counts: tools/ch_probe/SPEC.md and the schedule
-    // files under tools/ch_probe/tests/ carry them as prose and data.
-    int files = 0;
+TEST_CASE("note window: the formula's two coefficients are written in one C++ file") {
+    // The two coefficients kFormulaLinear and kFormulaSquare, each as its
+    // first five significant digits, read from the constant itself. A file
+    // holds one when that digit run appears in it with every '.' taken out,
+    // so 0.011092437 and 1.1092e-2 both count. kFormulaScale (170) and
+    // kFormulaOffsetMs (20) are too common to search for. Only C++ under src/
+    // and tools/ counts: tools/ch_probe/SPEC.md and the schedule files under
+    // tools/ch_probe/tests/ carry the coefficients as prose and data.
+    std::vector<std::string> needles;
+    for (const double coefficient : {kFormulaLinear, kFormulaSquare}) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "%.4e", coefficient);  // such as "1.1092e-02"
+        const std::string mantissa(buf, std::strchr(buf, 'e'));
+        std::string digits;
+        for (const char ch : mantissa)
+            if (ch != '.') digits += ch;
+        REQUIRE(digits.size() == 5);
+        needles.push_back(digits);
+    }
     std::set<std::string> holders;
     sourcetree::for_each_source_file([&](const fs::path& path, const std::string& rel) {
         if (rel.rfind("src/", 0) != 0 && rel.rfind("tools/", 0) != 0) return;
         const std::string ext = path.extension().string();
         if (ext != ".h" && ext != ".cpp") return;
-        ++files;
-        std::ifstream in(path, std::ios::binary);
-        const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-        for (const char* needle : {"0110924", "2.628539"})
+        std::string text = corpus::read_bytes(path.string());
+        text.erase(std::remove(text.begin(), text.end(), '.'), text.end());
+        for (const std::string& needle : needles)
             if (text.find(needle) != std::string::npos) holders.insert(rel);
     });
-    CHECK(files > 0);
     CHECK(holders == std::set<std::string>{"src/core/note_window.h"});
 }
 
@@ -117,7 +182,7 @@ TEST_CASE("note window: chord_times lists the song's chords") {
     REQUIRE(chords.sides_ms.size() == 4);
     CHECK(chords.ticks[1] == 20);
     CHECK(chords.ms[3] == song.timecode(2000).ms());
-    CHECK(chords.sides_ms == chord_sides_ms(chords.ms));
+    CHECK(chords.sides_ms[3] == kCapSide);  // far from chord 2, and last
     CHECK(chords.sides_ms[1] == kFloorSide);  // 52.08 ms from both neighbours
     CHECK(chords.at(40) == std::optional<int>(2));
     CHECK_FALSE(chords.at(41).has_value());
@@ -137,15 +202,20 @@ TEST_CASE("note window: chord_times carries the chord at each place") {
     CHECK(chords.chords[static_cast<size_t>(*c)].notationstr() == "[KR   ]");
 }
 
-TEST_CASE("note window: the squeeze-out sums from the mockup") {
-    // Dead on Arrival (O), activation 4: room to spare. Prints as 24.1.
-    const double doa = squeeze_safe_ms(85.72, 1.033, 79.41, 143.88);
-    CHECK(doa == pinned(24.07876));
-    CHECK_FALSE(safe_is_short(doa));
-    // Tapped Out, activation 4: out of reach. Prints as 65.9 short.
-    const double tapped = squeeze_safe_ms(77.85, 1.0014, 71.97, 215.8);
-    CHECK(tapped == pinned(-65.87101));
-    CHECK(safe_is_short(tapped));
+TEST_CASE("note window: a squeeze's safe sum is the anchor's side through the ratio, plus the squeezed side, less the timing") {
+    // Free inputs, each term a different size, so a dropped or swapped term
+    // shows.
+    const double anchor_side = kCapSideMs;
+    const double ratio = 1.033;
+    const double squeezed_side = kFloorSideMs;
+    const double room = squeeze_safe_ms(anchor_side, ratio, squeezed_side, 0.0);
+    CHECK(room == pinned(anchor_side * ratio + squeezed_side));
+    const double needed = 30.0;
+    CHECK(squeeze_safe_ms(anchor_side, ratio, squeezed_side, needed) == pinned(room - needed));
+    // The sum is safe while the timing needs less than the room the two
+    // sides give, and short once it needs more.
+    CHECK_FALSE(safe_is_short(squeeze_safe_ms(anchor_side, ratio, squeezed_side, room - 1.0)));
+    CHECK(safe_is_short(squeeze_safe_ms(anchor_side, ratio, squeezed_side, room + 1.0)));
 }
 
 TEST_CASE("note window: exactly 0 is safe, anything below is short") {
@@ -165,22 +235,35 @@ TEST_CASE("note window: each squeeze reads its own side of its own scale") {
     CHECK(t.act.squeeze_chord_tick(1) == std::optional<int64_t>(3840));
     CHECK_FALSE(t.act.squeeze_chord_tick(2).has_value());
 
-    // The SqOut, anchor pressed early: the early side of transfer_post
-    // (2.0, not 4.0).
+    // The SqOut's anchor is pressed early, so its sum counts the early side
+    // of transfer_post, not the late one.
+    const SPSqueeze& sqout = t.act.sqinouts[1];
+    REQUIRE(squeeze_presses(sqout).anchor == Press::Early);
     const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
     REQUIRE(out.has_value());
     REQUIRE(out->ends.size() == 2);
     CHECK(out->ends[0].side_ms == kCapSide);
     CHECK(out->ends[1].side_ms == kCapSide);
-    CHECK(out->safe_ms == pinned(157.14696125214215));
+    const auto out_sum = [&](double ratio) {
+        return squeeze_safe_ms(out->ends[0].side_ms, ratio, out->ends[1].side_ms, sqout.difficulty());
+    };
+    CHECK(out->safe_ms == pinned(out_sum(t.act.transfer_post->early)));
+    CHECK(out->safe_ms != doctest::Approx(out_sum(t.act.transfer_post->late)));
 
-    // The SqIn, anchor pressed late: the late side of its own transfer
-    // (1.5, not 3.0), never transfer_post's.
+    // The SqIn's anchor is pressed late, so its sum counts the late side of
+    // its own transfer: not its early side, and never transfer_post's.
+    const SPSqueeze& sqin = t.act.sqinouts[0];
+    REQUIRE(squeeze_presses(sqin).anchor == Press::Late);
     const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
     REQUIRE(in.has_value());
     REQUIRE(in->ends.size() == 2);
     CHECK(in->ends[1].side_ms == kCapSide);
-    CHECK(in->safe_ms == pinned(194.2891343767851));
+    const auto in_sum = [&](double ratio) {
+        return squeeze_safe_ms(in->ends[0].side_ms, ratio, in->ends[1].side_ms, sqin.difficulty());
+    };
+    CHECK(in->safe_ms == pinned(in_sum(sqin.transfer->late)));
+    CHECK(in->safe_ms != doctest::Approx(in_sum(sqin.transfer->early)));
+    CHECK(in->safe_ms != doctest::Approx(in_sum(t.act.transfer_post->late)));
 
     // A place past the activation's squeezes has no row.
     CHECK_FALSE(squeeze_window_ends(t.act, 2, chords).has_value());
@@ -261,9 +344,8 @@ SPSqueeze squeeze_at(SqueezeKind kind, double offset_ms) {
     return q;
 }
 
-// The early and late sides of Dead on Arrival (O) activation 3's scale, as
-// the plan's figures give them.
-const TransferScale kDoaScale{1.0044, 0.9970};
+// A stored scale whose two sides differ, so reading the wrong one shows.
+const TransferScale kTwoSidedScale{1.0044, 0.9970};
 
 }  // namespace
 
@@ -295,11 +377,6 @@ TEST_CASE("note window: squeeze_presses follows the sentence, not the kind") {
     }
 }
 
-TEST_CASE("note window: transfer_side reads the early side for an early press") {
-    CHECK(transfer_side(kDoaScale, Press::Early) == 1.0044);
-    CHECK(transfer_side(kDoaScale, Press::Late) == 0.9970);
-}
-
 TEST_CASE("note window: role_word gives the row's words") {
     CHECK(std::string(role_word(EndRole::Frontend)) == "frontend");
     CHECK(std::string(role_word(EndRole::Backend)) == "backend");
@@ -308,9 +385,12 @@ TEST_CASE("note window: role_word gives the row's words") {
 
 TEST_CASE("note window: squeeze_window_ends lists the anchor, then the squeezed note") {
     // two_squeezes' activation, on a song whose squeezed-out chord (3840) has
-    // a neighbour 20 ticks (52.08 ms) after it, so its side is not the cap.
+    // a neighbour 20 ticks after it.
     const TwoSqueezes t = two_squeezes();
-    const ChordTimes chords = chord_times(red_chords({0, 768, 1536, 2304, 3072, 3840, 3860}));
+    const Song song = red_chords({0, 768, 1536, 2304, 3072, 3840, 3860});
+    const ChordTimes chords = chord_times(song);
+    const double squeezed_gap_before = song.timecode(3840).ms() - song.timecode(3072).ms();
+    const double squeezed_gap_after = song.timecode(3860).ms() - song.timecode(3840).ms();
 
     // The squeeze out: the anchor (768) is the frontend and the squeezed
     // chord (3840) the backend.
@@ -322,7 +402,10 @@ TEST_CASE("note window: squeeze_window_ends lists the anchor, then the squeezed 
     CHECK(out->ends[0].side_ms == kCapSide);
     CHECK(out->ends[1].role == EndRole::Backend);
     CHECK(out->ends[1].tick == 3840);
-    CHECK(out->ends[1].side_ms == pinned(71.97216363656233));
+    // The backend's side is its own chord's, from that chord's two gaps; the
+    // near neighbour keeps it below the cap.
+    CHECK(out->ends[1].side_ms == pinned(window_side_ms(squeezed_gap_before, squeezed_gap_after)));
+    CHECK(out->ends[1].side_ms != kCapSide);
 
     // The squeeze in has a timing, so its squeezed chord (2304) is pressed
     // early. It is still the backend: the row names the anchor (768) the
@@ -340,35 +423,51 @@ TEST_CASE("note window: squeeze_window_ends lists the anchor, then the squeezed 
 }
 
 TEST_CASE("note window: the anchor's scale side follows its press") {
-    // Every side here is the cap; only the scale side and the figure move
-    // the sum. A pick by kind gives the other side in the two cases without
-    // a timing.
+    // Every side here is the cap, and both stored scales are kTwoSidedScale.
     TwoSqueezes t = two_squeezes();
     const ChordTimes chords = chord_times(t.song);
-    t.act.transfer_post = kDoaScale;
-    t.act.sqinouts[0].transfer = kDoaScale;
+    t.act.transfer_post = kTwoSidedScale;
+    t.act.sqinouts[0].transfer = kTwoSidedScale;
+    const double anchor_side = chords.sides_ms[static_cast<size_t>(*chords.at(768))];
 
-    SUBCASE("with a timing: early for a squeeze out, late for a squeeze in") {
-        const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);  // offset -100
-        REQUIRE(out.has_value());
-        CHECK(out->safe_ms == pinned(71.80845637793124));
-        const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);  // offset 20
-        REQUIRE(in.has_value());
-        CHECK(in->safe_ms == pinned(151.17416054017596));
+    // Squeeze `k` with its offset set to `offset_ms`: the figure it needs,
+    // the way its anchor is pressed, and its row's safe sum.
+    struct Row {
+        double needed;
+        Press anchor;
+        double safe;
+    };
+    const auto row_at = [&](size_t k, double offset_ms) {
+        t.act.sqinouts[k].offset_ms = offset_ms;
+        const SPSqueeze& q = t.act.sqinouts[k];
+        const std::optional<WindowEnds> row = squeeze_window_ends(t.act, k, chords);
+        REQUIRE(row.has_value());
+        CHECK(row->ends[0].role == EndRole::Frontend);
+        CHECK(row->ends[0].tick == 768);  // the anchor, whichever way it is pressed
+        return Row{q.difficulty(), squeeze_presses(q).anchor, row->safe_ms};
+    };
+
+    // Between an offset that needs a timing and one that needs none, the
+    // anchor's press turns round, so the sum moves by the anchor's side times
+    // the change of scale side, less the change of the figure needed. A side
+    // picked by kind would move it by the figure alone.
+    SUBCASE("a squeeze in") {
+        const Row timed = row_at(0, 20.0);
+        const Row untimed = row_at(0, -20.0);
+        REQUIRE(timed.anchor == Press::Late);
+        REQUIRE(untimed.anchor == Press::Early);
+        CHECK(untimed.safe - timed.safe ==
+              doctest::Approx(anchor_side * (kTwoSidedScale.early - kTwoSidedScale.late) -
+                              (untimed.needed - timed.needed)));
     }
-    SUBCASE("needing no timing: early for a squeeze in, late for a squeeze out") {
-        t.act.sqinouts[0].offset_ms = -20.0;
-        t.act.sqinouts[1].offset_ms = 10.0;
-        const std::optional<WindowEnds> in = squeeze_window_ends(t.act, 0, chords);
-        REQUIRE(in.has_value());
-        CHECK(in->ends[0].role == EndRole::Frontend);
-        CHECK(in->ends[0].tick == 768);  // the anchor
-        CHECK(in->safe_ms == pinned(191.80845637793124));
-        const std::optional<WindowEnds> out = squeeze_window_ends(t.act, 1, chords);
-        REQUIRE(out.has_value());
-        CHECK(out->ends[0].role == EndRole::Frontend);
-        CHECK(out->ends[0].tick == 768);  // the anchor
-        CHECK(out->safe_ms == pinned(181.17416054017596));
+    SUBCASE("a squeeze out") {
+        const Row timed = row_at(1, -100.0);
+        const Row untimed = row_at(1, 10.0);
+        REQUIRE(timed.anchor == Press::Early);
+        REQUIRE(untimed.anchor == Press::Late);
+        CHECK(untimed.safe - timed.safe ==
+              doctest::Approx(anchor_side * (kTwoSidedScale.late - kTwoSidedScale.early) -
+                              (untimed.needed - timed.needed)));
     }
 }
 
@@ -376,19 +475,21 @@ TEST_CASE("note window: the early fill end reads the SP-ready note") {
     TwoSqueezes t = two_squeezes();
     const ChordTimes chords = chord_times(t.song);
 
-    t.act.e_offset = -10.0;  // ready 10 ms after the deadline: figure +10.0
+    t.act.e_offset = -10.0;  // ready 10 ms after the deadline
+    REQUIRE(early_fill_difficulty(t.act.e_offset) == 10.0);
     std::optional<WindowEnds> row = early_fill_window_end(t.act, chords);
     REQUIRE(row.has_value());
     REQUIRE(row->ends.size() == 1);
     CHECK(row->ends[0].role == EndRole::SpReady);
     CHECK(row->ends[0].tick == 768);
     CHECK(row->ends[0].side_ms == kCapSide);
-    CHECK(row->safe_ms == pinned(75.71565375071405));
+    CHECK(row->safe_ms == pinned(kCapSideMs - 10.0));
 
-    t.act.e_offset = 10.0;  // time to spare: figure -10.0
+    t.act.e_offset = 10.0;  // time to spare
+    REQUIRE(early_fill_difficulty(t.act.e_offset) == -10.0);
     row = early_fill_window_end(t.act, chords);
     REQUIRE(row.has_value());
     REQUIRE(row->ends.size() == 1);
     CHECK(row->ends[0].role == EndRole::SpReady);  // whichever sign the figure has
-    CHECK(row->safe_ms == pinned(95.71565375071405));
+    CHECK(row->safe_ms == pinned(kCapSideMs + 10.0));
 }
