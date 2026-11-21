@@ -100,8 +100,7 @@ namespace detail {
 struct OpusReaderOptions {
     // Stop each link at its last page's granule position minus pre-skip (end
     // trimming, RFC 7845 section 4.4) instead of playing the encoder's padding
-    // at the very end. Off by default: the Preview plays the padding, and the
-    // pinned decode test holds that output.
+    // at the very end. Off by default: the Preview plays the padding.
     bool trim_end = false;
 };
 
