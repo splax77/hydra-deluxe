@@ -15,6 +15,7 @@
 
 #include "core/backend_value.h"
 #include "core/timing.h"  // kSpActivationBars
+#include "search/pather.h"  // best_allzero_paths
 
 namespace hydra::app {
 
@@ -498,11 +499,12 @@ PathListView build_path_list(const HydraRecord& record) {
         view.groups.back().paths.push_back(p);
     }
 
-    // An all-0 path is only worth showing when the generated list does not
-    // already contain it. "The same path" is path_identity, the one rule the
-    // Preview's overlay key reads too. A duplicate hides only itself (D51
-    // call 4b); the section shows when any all-0 path survives.
-    for (const Path* z : record.all_allzero_paths()) {
+    // The chart's all-0 answer is best_allzero_paths'. An all-0 path is only
+    // worth showing when the generated list does not already contain it.
+    // "The same path" is path_identity, the one rule the Preview's overlay key
+    // reads too. A duplicate hides only itself (D51 call 4b); the section
+    // shows when any all-0 path survives.
+    for (const Path* z : best_allzero_paths(record)) {
         const std::string identity = path_identity(*z);
         const bool listed = std::any_of(flat.begin(), flat.end(), [&](const Path* p) {
             return path_identity(*p) == identity;

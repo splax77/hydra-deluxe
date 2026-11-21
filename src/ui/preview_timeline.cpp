@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include "app/display_format.h"  // format_duration
+#include "core/model.h"   // sp_ready_tick
 #include "core/timing.h"  // kSpActivationBars
 #include "imgui_internal.h"  // IM_PI
 #include "render/overlay_layout.h"  // ellipsize
@@ -490,28 +491,16 @@ std::optional<TimelineLayout> timeline_layout(const app::PreviewScene& scene, do
                                  fr.y1 - metrics.band_inset}});
     }
 
-    // Where enough is saved: the saved line read against the activate line
-    // (a smaller y is higher), from the end of the last activation's band, so
-    // the phrase count is compared only where activate_y was placed. A
-    // segment that crosses the line splits where its straight line meets it,
-    // as it is drawn.
-    float from_x = x_of(0.0);
-    for (const TimelineBand& b : out.bands) from_x = std::max(from_x, b.rect.x1);
-    for (size_t i = 0; i + 1 < out.saved_line.size(); i += 2) {
-        const TimelinePoint a = out.saved_line[i], b = out.saved_line[i + 1];
-        const bool a_in = a.y <= out.activate_y, b_in = b.y <= out.activate_y;
-        if (!a_in && !b_in) continue;
-        float x0 = a.x, x1 = b.x;
-        if (a_in != b_in) {
-            const float cross = a.x + (out.activate_y - a.y) / (b.y - a.y) * (b.x - a.x);
-            (a_in ? x1 : x0) = cross;
-        }
-        x0 = std::max(x0, from_x);
-        if (!(x1 > x0)) continue;
-        if (!out.saved_enough.empty() && out.saved_enough.back().x1 >= x0)
-            out.saved_enough.back().x1 = std::max(out.saved_enough.back().x1, x1);
-        else
-            out.saved_enough.push_back({x0, saved.y0, x1, saved.y1});
+    // Where enough is saved after the last activation: the engine's rule over
+    // the trailing bars (hydra::sp_ready_tick), placed through the song's own
+    // timing, held no earlier than the end of the last activation's band.
+    // The stretch runs to the end of the saved row.
+    const std::optional<int64_t> ready = hydra::sp_ready_tick(scene.trailing_bank_ticks);
+    if (ready && scene.timing && !out.saved_line.empty()) {
+        float x0 = x_of(scene.timing->ms_index().at(*ready));
+        for (const TimelineBand& b : out.bands) x0 = std::max(x0, b.rect.x1);
+        const float x1 = out.saved_line.back().x;
+        if (x1 > x0) out.saved_enough.push_back({x0, saved.y0, x1, saved.y1});
     }
 
     const float best_w = measure(metrics.cost_width, marks.best_label);

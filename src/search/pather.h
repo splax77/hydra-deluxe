@@ -72,6 +72,19 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
 // EngineOptions' default (score depth 0: the top score and its ties).
 EngineOptions allzero_options();
 
+// Whether the record's best path is already the chart's best all-0 path: it
+// passes the test search_allzero's paths pass (Path::is_allzero, inside the
+// limit allzero_options sets). analyze_chart then skips the all-0 pass and
+// leaves allzero_paths empty. False for a record with no paths.
+bool best_path_is_allzero(const HydraRecord& record);
+
+// The chart's best all-0 path first, then the rest the all-0 pass kept, in
+// HydraRecord::all_allzero_paths order. When best_path_is_allzero, the best
+// path alone: its own variants belong to the main search and are listed in
+// all_paths(). Empty when the chart has no all-0 path. The one reader of
+// that answer; the Paths tab asks it.
+std::vector<const Path*> best_allzero_paths(const HydraRecord& record);
+
 // The engine's own pricing of one specific path: activate at exactly
 // `act_ticks` (node ticks of the activation fills, ascending) and at no other
 // fill. Every squeeze variant of that path comes back, best score first, with
