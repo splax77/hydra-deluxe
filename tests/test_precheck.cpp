@@ -341,8 +341,13 @@ struct SelfTestFixture {
         // The scan rows and known copies come from this repository's own
         // files, so the fixture tests them as they are today.
         const fs::path root = sourcetree::root();
-        for (const auto& [name, path] : single_owner::rule_files(root / single_owner::kRulesDir))
-            write_fixture_file(dir, std::string(single_owner::kRulesDir) + "/" + name, read_lf(path));
+        // Each file keeps its place under the rules folder; the names
+        // rule_files gives carry a "rules/" prefix that is not a folder.
+        const fs::path rules_dir = root / single_owner::kRulesDir;
+        for (const auto& file : single_owner::rule_files(rules_dir)) {
+            const std::string under = fs::relative(file.second, rules_dir).generic_u8string();
+            write_fixture_file(dir, std::string(single_owner::kRulesDir) + "/" + under, read_lf(file.second));
+        }
         write_fixture_file(dir, single_owner::kBaselineFile, read_lf(root / single_owner::kBaselineFile));
         commit_all(dir, "main");
         fixture_git(dir, {"checkout", "-q", "-b", "feature"});
