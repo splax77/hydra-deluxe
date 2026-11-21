@@ -758,22 +758,35 @@ TEST_CASE("a dropped click that wrote a new hash still reloads the library") {
     check_row_shows_saved(*app, new_md5);
 }
 
-// D115 question 4, for a click the user let go: its save changed what both
-// reports read, so both say the library changed.
-TEST_CASE("a dropped click's save marks both reports out of date") {
+// D115 question 4, for a click the user let go: its save changed what the
+// path report read, so it says the library changed. The report is built from
+// one chart's stored result; the window's Cancel on its confirm lists what is
+// stored, so no batch analyzes the second chart before its click. (The
+// comparison's half needs a leaderboard reply, and no saved real one is
+// checked in, so only the path report is checked here.)
+TEST_CASE("a dropped click's save marks the path report out of date") {
     ScratchPaths paths("appstate_click_marks_insave");
-    const ChartLibraryEntry song = corpus_chart("click_marks_insave");
-    std::unique_ptr<AppState> app = app_with(paths, {song});
-    app->path_report.result = std::make_shared<const hydra::app::report::GeneratedReport>();
-    app->dm_report.result = std::make_shared<const hydra::app::dm_report::GeneratedDmReport>();
+    const ChartLibraryEntry built_from = corpus_chart("click_marks_insave");
+    const ChartLibraryEntry song = corpus_chart("click_marks_insave_dropped", true);
+    REQUIRE(built_from.md5 != song.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {built_from, song});
+    click(*app, built_from);
+    REQUIRE(app->viewed.ready());
+    app->report_confirm_above = 0;
+    app->request_path_report();
+    REQUIRE(app->path_report_awaits_confirm());
+    REQUIRE(app->batch_job == nullptr);
+    app->cancel_path_report();  // the window's Cancel: list what is stored
+    finish_path_report(*app);
+    REQUIRE(app->path_report.result != nullptr);
     REQUIRE(app->path_report.out_of_date == ReportOutOfDate::None);
-    REQUIRE(app->dm_report.out_of_date == ReportOutOfDate::None);
 
     act_during_save(*app, song, [&] { app->close_details(); });
 
     CHECK(app->viewed.state == ViewedSong::State::None);
+    REQUIRE(app->store->lookup_one(song.md5, app->settings.profile()).status ==
+            hydra::store::RecordStatus::Ready);  // the dropped click's save landed
     CHECK(app->path_report.out_of_date == ReportOutOfDate::Library);
-    CHECK(app->dm_report.out_of_date == ReportOutOfDate::Library);
 }
 
 // ---- a failed click (the user's answers 1 and 6, 2026-10-15) ----------------
