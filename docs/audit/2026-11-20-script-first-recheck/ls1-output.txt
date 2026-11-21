@@ -6,7 +6,7 @@ file kind: tests/fuzz .cpp | files: 6 | no test: 6 | tests: 0 | hits: 0
 skipped: tests/fuzz .dict | files: 1
 file kind: tests/fuzz .h | files: 1 | no test: 0 | tests: 1 | hits: 0
 skipped: tests/layering .json | files: 2
-file kind: tests/pb_ui .cpp | files: 6 | no test: 0 | tests: 15 | hits: 0
+file kind: tests/pb_ui .cpp | files: 6 | no test: 0 | tests: 35 | hits: 0
 file kind: tests/pb_ui .h | files: 1 | no test: 0 | tests: 1 | hits: 0
 file kind: tests/single_owner .cpp | files: 4 | no test: 0 | tests: 27 | hits: 0
 file kind: tests/single_owner .h | files: 4 | no test: 2 | tests: 5 | hits: 0
@@ -20,7 +20,7 @@ skipped: tests/single_owner/rules/search .json | files: 3
 skipped: tests/single_owner/rules/store .json | files: 5
 skipped: tests/single_owner/rules/tests .json | files: 1
 skipped: tests/single_owner/rules/ui .json | files: 15
-file kind: tests/ui .cpp | files: 13 | no test: 0 | tests: 49 | hits: 127
+file kind: tests/ui .cpp | files: 13 | no test: 0 | tests: 179 | hits: 372
 file kind: tests/ui .h | files: 4 | no test: 1 | tests: 9 | hits: 8
 skipped: tests/ui/scripts .txt | files: 1
 file kind: tools .cpp | files: 4 | no test: 0 | tests: 10 | hits: 0
@@ -55,7 +55,7 @@ file kind: tools/precheck .cpp | files: 19 | no test: 0 | tests: 43 | hits: 0
 file kind: tools/precheck .h | files: 15 | no test: 9 | tests: 7 | hits: 0
 no tests: tests/fuzz .cpp | files: 6
 no hits: tests/fuzz .h | files: 1 | tests: 1
-no hits: tests/pb_ui .cpp | files: 6 | tests: 15
+no hits: tests/pb_ui .cpp | files: 6 | tests: 35
 no hits: tests/pb_ui .h | files: 1 | tests: 1
 no hits: tests/single_owner .cpp | files: 4 | tests: 27
 no hits: tests/single_owner .h | files: 4 | tests: 5
@@ -73,8 +73,8 @@ no hits: tools/mutate .h | files: 1 | tests: 8
 no hits: tools/mutate .py | files: 14 | tests: 43
 no hits: tools/precheck .cpp | files: 19 | tests: 43
 no hits: tools/precheck .h | files: 15 | tests: 7
-tests: 2901
-hits: 476
+tests: 3051
+hits: 721
 no test hits: 0
 kinds: 81
 kind: BatchGate (tests/ui/uitest_batch_reports.cpp) | hits: 4
@@ -93,9 +93,9 @@ kind: ScopedHook (tests/test_library_jobs.cpp) | hits: 2
 kind: ScopedHook (tests/test_song_panel_state.cpp) | hits: 1
 kind: ScopedHook (tests/test_update_state.cpp) | hits: 52
 kind: ScopedHook (tests/ui/uitest_details.cpp) | hits: 1
-kind: ScopedHook (tests/ui/uitest_harness.h) | hits: 23
+kind: ScopedHook (tests/ui/uitest_harness.h) | hits: 39
 kind: ScopedHook (tests/ui/uitest_library.cpp) | hits: 6
-kind: ScopedHook (tests/ui/uitest_report_windows.cpp) | hits: 1
+kind: ScopedHook (tests/ui/uitest_report_windows.cpp) | hits: 2
 kind: UpdateSeams (tests/ui/uitest_library.cpp) | hits: 1
 kind: UpdateWorld (tests/test_update_state.cpp) | hits: 13
 kind: ViewGate (tests/ui/uitest_details.cpp) | hits: 10
@@ -116,20 +116,20 @@ kind: set_app_batch_analyzer_for_test (tests/app_state_fixtures.h) | hits: 18
 kind: set_app_batch_analyzer_for_test (tests/test_app_library.cpp) | hits: 1
 kind: set_app_batch_analyzer_for_test (tests/test_app_reports.cpp) | hits: 4
 kind: set_app_batch_analyzer_for_test (tests/test_song_panel_state.cpp) | hits: 1
-kind: set_app_batch_analyzer_for_test (tests/ui/uitest_harness.cpp) | hits: 5
+kind: set_app_batch_analyzer_for_test (tests/ui/uitest_harness.cpp) | hits: 8
 kind: set_audio_device_factory (tests/test_preview_controller.cpp) | hits: 12
 kind: set_between_lookup_reads_for_test (tests/test_app_reports.cpp) | hits: 4
 kind: set_between_lookup_reads_for_test (tests/test_store_records.cpp) | hits: 2
 kind: set_downloader (tests/test_dm_report.cpp) | hits: 1
 kind: set_downloader (tests/test_http_download.cpp) | hits: 1
 kind: set_downloader (tests/test_update_state.cpp) | hits: 13
-kind: set_downloader (tests/ui/uitest_harness.cpp) | hits: 18
+kind: set_downloader (tests/ui/uitest_harness.cpp) | hits: 123
 kind: set_downloader (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_fetcher (tests/test_app_reports.cpp) | hits: 2
 kind: set_fetcher (tests/test_dm_report.cpp) | hits: 3
 kind: set_fetcher (tests/test_library_jobs.cpp) | hits: 3
 kind: set_fetcher (tests/test_update_state.cpp) | hits: 13
-kind: set_fetcher (tests/ui/uitest_harness.cpp) | hits: 18
+kind: set_fetcher (tests/ui/uitest_harness.cpp) | hits: 123
 kind: set_fetcher (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_installed_for_test (tests/test_update_release.cpp) | hits: 1
 kind: set_installed_for_test (tests/test_update_state.cpp) | hits: 16
@@ -139,22 +139,22 @@ kind: set_launcher_for_test (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_lookup_hold_for_test (tests/test_app_library.cpp) | hits: 1
 kind: set_lookup_hold_for_test (tests/test_library_jobs.cpp) | hits: 4
 kind: set_report_hold_for_test (tests/test_app_reports.cpp) | hits: 7
-kind: set_report_hold_for_test (tests/ui/uitest_report_windows.cpp) | hits: 1
+kind: set_report_hold_for_test (tests/ui/uitest_report_windows.cpp) | hits: 2
 kind: set_scan_hold_for_test (tests/test_library_jobs.cpp) | hits: 1
 kind: set_scan_hold_for_test (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_seam (tests/test_app_click.cpp) | hits: 10
 kind: set_sibling_dir_for_test (tests/test_launch.cpp) | hits: 1
-kind: set_sibling_dir_for_test (tests/ui/uitest_details.cpp) | hits: 1
+kind: set_sibling_dir_for_test (tests/ui/uitest_details.cpp) | hits: 2
 kind: set_store_open_gate_for_test (tests/test_app_library.cpp) | hits: 3
 kind: set_store_open_gate_for_test (tests/test_library_jobs.cpp) | hits: 3
-kind: set_store_open_gate_for_test (tests/ui/uitest_harness.cpp) | hits: 14
+kind: set_store_open_gate_for_test (tests/ui/uitest_harness.cpp) | hits: 17
 kind: set_update_folder_for_test (tests/test_update_state.cpp) | hits: 13
 kind: set_update_folder_for_test (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_view_after_save_check_for_test (tests/test_app_click.cpp) | hits: 5
 kind: set_view_analyzer_for_test (tests/app_state_fixtures.h) | hits: 3
 kind: set_view_analyzer_for_test (tests/test_app_click.cpp) | hits: 2
 kind: set_view_analyzer_for_test (tests/ui/uitest_details.cpp) | hits: 1
-kind: set_view_analyzer_for_test (tests/ui/uitest_harness.cpp) | hits: 4
+kind: set_view_analyzer_for_test (tests/ui/uitest_harness.cpp) | hits: 14
 kind: set_view_before_save_check_for_test (tests/test_app_click.cpp) | hits: 3
 kind: set_wal_autocheckpoint_for_test (tests/test_store_records.cpp) | hits: 1
 kind: wal_autocheckpoint_for_test (tests/test_store_open.cpp) | hits: 3

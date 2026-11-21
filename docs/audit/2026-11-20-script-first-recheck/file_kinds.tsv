@@ -6,7 +6,7 @@ tests/fuzz .cpp	read	6	6	0	0
 tests/fuzz .dict	skipped	1			
 tests/fuzz .h	read	1	0	1	0
 tests/layering .json	skipped	2			
-tests/pb_ui .cpp	read	6	0	15	0
+tests/pb_ui .cpp	read	6	0	35	0
 tests/pb_ui .h	read	1	0	1	0
 tests/single_owner .cpp	read	4	0	27	0
 tests/single_owner .h	read	4	2	5	0
@@ -20,7 +20,7 @@ tests/single_owner/rules/search .json	skipped	3
 tests/single_owner/rules/store .json	skipped	5			
 tests/single_owner/rules/tests .json	skipped	1			
 tests/single_owner/rules/ui .json	skipped	15			
-tests/ui .cpp	read	13	0	49	127
+tests/ui .cpp	read	13	0	179	372
 tests/ui .h	read	4	1	9	8
 tests/ui/scripts .txt	skipped	1			
 tools .cpp	read	4	0	10	0
