@@ -146,6 +146,33 @@ class Grading(Base):
         self.assertIn("hit: offered; Later keeps a button | code/tests/u.cpp:4 | set_fetcher, ScopedHook | found", out)
         self.assertNotIn("test: World", out)
 
+    def outside_copy(self):
+        self.write("code/tests/main_t.cpp",
+                   '#include "help.h"\n\nvoid test_uses_outside() {\n    make_world();\n    SEAM_UP(x);\n'
+                   '    Gate g;\n}\n')
+        self.write("code/tests/help.h",
+                   '#pragma once\n#define SEAM_UP(x) \\\n    hydra::net::set_fetcher(x)\n'
+                   'void make_world();\nstruct Gate {\n    ScopedHook seam_;\n};\n')
+        self.write("code/tests/help.cpp",
+                   '#include "help.h"\n\nvoid make_world() {\n    hydra::app::set_other_thing([] { return 1; });\n}\n')
+        return "tests/main_t.cpp:1-7"
+
+    def test_seam_in_a_helper_defined_outside_the_slice(self):
+        out = self.run_grader("", ranges=self.outside_copy())
+        self.assertIn("miss: test_uses_outside | code/tests/help.cpp:4 | set_ call given a lambda", out)
+
+    def test_seam_in_a_macro_and_a_wrapper_type_outside_the_slice(self):
+        out = self.run_grader("", ranges=self.outside_copy())
+        self.assertIn("miss: test_uses_outside | code/tests/help.h:3 | set_fetcher", out)
+        self.assertIn("miss: test_uses_outside | code/tests/help.h:6 | ScopedHook", out)
+
+    def test_outside_hit_is_found_when_the_facts_cite_it(self):
+        facts = ("## test_uses_outside\nlocation: code/tests/main_t.cpp:3\n"
+                 f"input: world | source: {ff.REPLACES} | trace: code/tests/help.cpp:4\n")
+        out = self.run_grader(facts, ranges=self.outside_copy())
+        self.assertIn("hit: test_uses_outside | code/tests/help.cpp:4 | set_ call given a lambda | found", out)
+        self.assertIn("miss: test_uses_outside | code/tests/help.h:6 | ScopedHook", out)
+
     def test_bad_range_is_an_error(self):
         facts = self.write("facts.md", "")
         r = subprocess.run([sys.executable, "-I", SCRIPT, self.copy, "tests/s.cpp", facts],
@@ -208,6 +235,25 @@ class Patterns(unittest.TestCase):
         for name in sorted(holders):
             with self.subTest(holder=name):
                 self.assertTrue(wrapper.regex.search(f"    {name} gate;"), name)
+
+    def test_a_lambda_given_to_any_set_call_is_a_hit(self):
+        for line in ("hydra::app::set_other_thing([] { return 1; });",
+                     "set_x(a, [&](int v) { use(v); });", "pc.set_y(", "set_z([=] {"):
+            with self.subTest(line=line):
+                self.assertTrue(self.labels(line), line)
+        self.assertFalse(self.labels("set_sort(a, b);"))
+
+    def test_compound_assignment_to_selected_is_a_hit(self):
+        self.assertIn("selected-> assignment", self.labels("h.app->selected->plays += 1;"))
+        self.assertNotIn("selected-> assignment", self.labels("if (h.app->selected->plays <= 1) {"))
+
+    def test_the_scoped_hook_class_itself_is_not_a_hit(self):
+        for line in ("class ScopedHook {", "    ~ScopedHook() { clear_(); }",
+                     "    ScopedHook(const ScopedHook&) = delete;"):
+            with self.subTest(line=line):
+                self.assertNotIn("ScopedHook", self.labels(line))
+        self.assertIn("ScopedHook", self.labels("    ScopedHook seam_;"))
+        self.assertIn("ScopedHook", self.labels("    const ScopedHook seam(set, fn);"))
 
     def test_wrapper_line_skips_references_and_definitions(self):
         for line in ("std::unique_ptr<AppState> offered_app(UpdateWorld& w) {", "struct UpdateWorld {"):

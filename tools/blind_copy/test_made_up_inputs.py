@@ -32,6 +32,10 @@ def facts_with(*sources):
         if src == ff.REPLACES:
             out += (f"input: in{i} | source: {src} | replaces: hydra::net::fetch"
                     f" | stands in: throws code/tests/s.cpp:6 | trace: code/tests/s.cpp:{i + 1}\n")
+        elif src == ff.TESTDATA:
+            out += f"input: in{i} | source: {src} | trace: code/tests/s.cpp:{i + 1} -> code/testdata/x/real.chart\n"
+        elif src == ff.NETWORK:
+            out += f"input: in{i} | source: {src} | trace: code/tests/s.cpp:{i + 1} -> code/tests/r/reply.json\n"
         else:
             out += f"input: in{i} | source: {src} | trace: code/tests/s.cpp:{i + 1}\n"
     return out
@@ -73,6 +77,27 @@ class Rows(unittest.TestCase):
 
     def test_testdata_and_network_give_no_row(self):
         self.assertEqual(self.table(facts_with(ff.TESTDATA, ff.NETWORK)), [])
+
+    def test_a_real_label_without_a_real_file_cite_is_listed(self):
+        head = "## test_one\nlocation: code/tests/s.cpp:5\n"
+        for label, trace in (
+                (ff.TESTDATA, "code/tests/s.cpp:1 -> code/testdata"),
+                (ff.TESTDATA, "code/tests/s.cpp:1"),
+                (ff.TESTDATA, "code/tests/s.cpp:1 -> code/tests/r/reply.json"),
+                (ff.NETWORK, "code/tests/s.cpp:1 -> code/tests/s.cpp"),
+                (ff.NETWORK, "code/tests/s.cpp:1 -> code/tests"),
+                (ff.NETWORK, "code/tests/s.cpp:1")):
+            with self.subTest(label=label, trace=trace):
+                rows = self.table(head + f"input: in | source: {label} | trace: {trace}\n")
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0][2], label)
+
+    def test_an_unknown_or_missing_source_is_listed(self):
+        head = "## test_one\nlocation: code/tests/s.cpp:5\n"
+        for line in ("input: in | source: a fixture file | trace: code/tests/s.cpp:1\n",
+                     "input: in | trace: code/tests/s.cpp:1\n"):
+            with self.subTest(line=line):
+                self.assertEqual(len(self.table(head + line)), 1)
 
     def test_replaced_function_and_stand_in_are_carried(self):
         rows = self.table(facts_with(ff.REPLACES))

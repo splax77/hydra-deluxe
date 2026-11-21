@@ -2,8 +2,10 @@
 
     py -I tools/blind_copy/made_up_inputs.py <facts> <grader output> [<out file>]
 
-It writes one row for every `input:` whose source word is in
-facts_format.MADE_UP_SOURCES, and one row for every `miss:` line of
+It writes one row for every `input:` except one that says "a file under
+testdata" or "a real network reply" and cites a file that can back the label
+(see facts_format.excusing_bare), so an unknown or missing source word is
+listed. It also writes one row for every `miss:` line of
 grade_seams.py's output. Every row is open: this script never closes one.
 With no <out file> it writes to stdout.
 """
@@ -38,15 +40,26 @@ def stand_in_word(text):
     return text
 
 
+def is_real(inp, trace):
+    """True only for an input labelled a file under testdata or a real network
+    reply whose trace cites a file that can back the label. Any other source,
+    an unknown word and a missing source included, stays on the list, and so
+    does a real label with no such cite (check_facts.py checks the file is there)."""
+    if inp.source not in (ff.TESTDATA, ff.NETWORK):
+        return False
+    cites = [ff.parse_cite(part.strip()) for part in trace.split(ff.TRACE_SEP)]
+    return any(c is not None and ff.excusing_bare(inp.source, c) for c in cites)
+
+
 def facts_rows(facts):
     out = []
     for s in ff.read_lenient(facts):
         for inp in s.inputs:
-            if inp.source not in ff.MADE_UP_SOURCES:
-                continue
             trace = inp.raw.split("trace: ", 1)[1] if "trace: " in inp.raw else ""
+            if is_real(inp, trace):
+                continue
             cites = trace or "; ".join(c.text for c in inp.trace) or NONE
-            out.append(row(s.name, inp.name, inp.source, inp.replaces or NONE,
+            out.append(row(s.name, inp.name, inp.source or "no source word", inp.replaces or NONE,
                            stand_in_word(inp.stands_in), cites, BY_FACTS))
     return out
 

@@ -24,6 +24,8 @@ void test_one() {
     int got = compute(3);
     IM_CHECK(got == 7);
 }
+// only a comment says plainly
+auto c = load("notes.chart"); auto r = fetch("release.json");
 """ + "\n" * 50
 
 SECTION = "## test_one\nlocation: code/tests/t.cpp:4\n"
@@ -33,9 +35,9 @@ BUILT = "input: argument three | source: a value the test builds in code | trace
 REPLACED = (f"input: analyzer | source: {ff.REPLACES} | replaces: hydra::app::analyze"
             " | stands in: throws code/tests/t.cpp:2 | trace: code/tests/t.cpp:4 -> code/tests/t.cpp:1-3\n")
 TESTDATA_GOOD = ("input: chart | source: a file under testdata"
-                 " | trace: code/tests/t.cpp:5 -> code/testdata/song/notes.chart\n")
+                 " | trace: code/tests/t.cpp:9 -> code/testdata/song/notes.chart\n")
 NETWORK_GOOD = ("input: reply | source: a real network reply"
-                " | trace: code/tests/t.cpp:5 -> code/tests/replies/release.json\n")
+                " | trace: code/tests/t.cpp:9 -> code/tests/replies/release.json\n")
 CLEAN = SECTION + CHECK + BUILT + REPLACED + TESTDATA_GOOD + NETWORK_GOOD
 
 
@@ -50,6 +52,12 @@ class Base(unittest.TestCase):
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(text)
+
+    def write(self, rel, text):
+        path = os.path.join(self.copy, *rel.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
 
     def errors(self, facts_text):
         path = os.path.join(self.copy, "facts.md")
@@ -89,8 +97,8 @@ class Testdata(Base):
 
     def test_no_path(self):
         self.assertRejected(
-            SECTION + "input: chart | source: a file under testdata | trace: code/tests/t.cpp:5\n",
-            "must cite that path under code/testdata")
+            SECTION + "input: chart | source: a file under testdata | trace: code/tests/t.cpp:9\n",
+            "must cite a file or folder inside code/testdata")
 
     def test_path_not_there(self):
         self.assertRejected(
@@ -101,8 +109,21 @@ class Testdata(Base):
     def test_a_tests_path_is_not_testdata(self):
         self.assertRejected(
             SECTION + "input: chart | source: a file under testdata"
-            " | trace: code/tests/replies/release.json\n",
-            "must cite that path under code/testdata")
+            " | trace: code/tests/t.cpp:9 -> code/tests/replies/release.json\n",
+            "must cite a file or folder inside code/testdata")
+
+    def test_the_testdata_folder_itself_is_no_cite(self):
+        self.assertRejected(
+            SECTION + "input: chart | source: a file under testdata"
+            " | trace: code/tests/t.cpp:9 -> code/testdata\n",
+            "must cite a file or folder inside code/testdata")
+
+    def test_an_unrelated_real_file_is_no_cite(self):
+        self.write("code/testdata/song/other.chart", "[Song]\n")
+        self.assertRejected(
+            SECTION + "input: chart | source: a file under testdata"
+            " | trace: code/tests/t.cpp:9 -> code/testdata/song/other.chart\n",
+            "the trace's code must name it")
 
 
 class Network(Base):
@@ -111,8 +132,21 @@ class Network(Base):
 
     def test_no_path(self):
         self.assertRejected(
-            SECTION + "input: reply | source: a real network reply | trace: code/tests/t.cpp:5\n",
+            SECTION + "input: reply | source: a real network reply | trace: code/tests/t.cpp:9\n",
             "must cite its recorded reply file")
+
+    def test_a_source_file_is_no_reply(self):
+        self.assertRejected(
+            SECTION + "input: reply | source: a real network reply"
+            " | trace: code/tests/t.cpp:9 -> code/tests/t.cpp\n",
+            "must cite its recorded reply file")
+
+    def test_an_unrelated_real_file_is_no_reply(self):
+        self.write("code/tests/replies/other.json", "{}\n")
+        self.assertRejected(
+            SECTION + "input: reply | source: a real network reply"
+            " | trace: code/tests/t.cpp:9 -> code/tests/replies/other.json\n",
+            "the trace's code must name it")
 
     def test_path_not_there(self):
         self.assertRejected(
@@ -184,6 +218,24 @@ class Rejections(Base):
     def test_check_side_that_is_not_code(self):
         self.assertRejected(SECTION + CHECK.replace("check: got |", "check: got, only when shown |"),
                             "left side is not code")
+
+    def test_check_side_with_parentheses_is_allowed_when_it_is_code(self):
+        self.assertEqual(self.errors(SECTION + CHECK.replace("check: got |", "check: compute(3) |")), [])
+
+    def test_check_side_found_only_in_a_comment(self):
+        self.assertRejected(SECTION + CHECK.replace("check: got |", "check: only a comment says plainly |"),
+                            "left side is not code")
+
+    def test_check_side_that_is_a_fragment_of_a_word(self):
+        self.assertRejected(SECTION + CHECK.replace("check: got |", "check: omput |"), "left side is not code")
+
+    def test_test_name_that_is_not_code(self):
+        self.assertRejected(SECTION.replace("## test_one", "## the fake looks fine") + BUILT,
+                            "test name is not code")
+
+    def test_input_name_that_is_a_sentence(self):
+        self.assertRejected(SECTION + BUILT.replace("argument three", "a made up value that is fine " * 3),
+                            "input name is longer")
 
     def test_same_function_yes_needs_a_line(self):
         self.assertRejected(SECTION + CHECK.replace("same function: no", "same function: yes"),

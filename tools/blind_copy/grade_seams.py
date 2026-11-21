@@ -8,7 +8,12 @@ facts cite them, with or without the leading `code/`. The forms searched for
 are in seam_patterns.txt.
 
 A test owns a hit on its own lines, and a hit inside any helper in the slice
-its body names, directly or through another helper. A hit is found when an
+its body names, directly or through another helper. It also owns the hits in
+a helper, type or macro outside the slice that the test or one of those slice
+helpers names, when it is defined in a slice file, in a file the slice files
+include from tests/, or in the .cpp of such a header; those are read one step
+only. A seam two steps into such a file, or in a file the slice does not
+include, is not found. A hit is found when an
 `input:` row of that test cites its line under one of the seam source words in
 facts_format.py; otherwise it is a miss. It reads only `## `, `location:` and
 `input:` rows, so it also grades facts written before facts_format.py.
@@ -138,6 +143,7 @@ class Unit:
         self.is_test_case = is_test_case
         self.text = text
         self.code = code
+        self.tokens = set(re.findall(r"\w+", code))
 
     def label(self):
         return self.name or f"{self.file}:{self.start}"
@@ -215,6 +221,60 @@ def top_units(file, text):
     return units
 
 
+def macro_units(file, text):
+    """One Unit per `#define NAME`, with its continued lines."""
+    lines = text.split("\n")
+    _, code = code_marks(text)
+    out = []
+    idx = 0
+    while idx < len(lines):
+        m = re.match(r"\s*#\s*define\s+(\w+)", lines[idx])
+        if not m:
+            idx += 1
+            continue
+        end = idx
+        while end < len(lines) - 1 and lines[end].rstrip().endswith("\\"):
+            end += 1
+        body = "\n".join(lines[idx:end + 1])
+        out.append(Unit(file, idx + 1, end + 1, m.group(1), False, body, "\n".join(code[idx:end + 1])))
+        idx = end + 1
+    return out
+
+
+INCLUDE = re.compile(r'^\s*#\s*include\s+"([^"]+)"', re.M)
+
+
+def scope_files(copy, files):
+    """The slice files, the quoted-include closure of them under code/tests,
+    and the .cpp that shares each header's name: the files whose helpers,
+    types and macros a test can reach. Paths are as the facts cite them."""
+    seen = []
+    todo = list(files)
+    while todo:
+        path = todo.pop()
+        if path in seen:
+            continue
+        real = ff.copy_file(copy, path)
+        if real is None or not os.path.isfile(real):
+            continue
+        seen.append(path)
+        with open(real, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        here = os.path.dirname(path)
+        for inc in INCLUDE.findall(text):
+            for base in (here, "code/tests", "code"):
+                cand = os.path.normpath(os.path.join(base, inc)).replace("\\", "/")
+                if cand.startswith("code/tests/") and os.path.isfile(ff.copy_file(copy, cand) or ""):
+                    todo.append(cand)
+                    break
+        stem, ext = os.path.splitext(path)
+        if ext == ".h":
+            sibling = stem + ".cpp"
+            if os.path.isfile(ff.copy_file(copy, sibling) or ""):
+                todo.append(sibling)
+    return seen
+
+
 def parse_ranges(arg):
     out = []
     for part in arg.split(","):
@@ -275,15 +335,47 @@ def grade(copy, ranges, facts, patterns=None):
                 break
     tests = [u for u in slice_units if id(u) not in helpers]
 
+    # Helpers, types and macros outside the slice: in the slice files' own
+    # other lines, in the files they include, and in each header's .cpp.
+    in_slice = {(u.file, u.start) for u in slice_units}
+    outside = []
+    file_lines = {}
+    for path in scope_files(copy, files):
+        real = ff.copy_file(copy, path)
+        with open(real, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        file_lines[path] = text.split("\n")
+        for u in top_units(path, text) + macro_units(path, text):
+            if u.name and not u.is_test_case and (u.file, u.start) not in in_slice:
+                outside.append(u)
+    pool = [u for u in named if id(u) in helpers] + outside
+    by_name = {}
+    for u in pool:
+        by_name.setdefault(u.name, []).append(u)
+
     def reached(t):
         seen, todo = [], [t]
         while todo:
             u = todo.pop()
-            for h in named:
-                if id(h) in helpers and h not in seen and h is not t and names(u.code, h.name):
-                    seen.append(h)
-                    todo.append(h)
+            for tok in u.tokens:
+                for h in by_name.get(tok, ()):
+                    if h not in seen and h is not t:
+                        seen.append(h)
+                        # Slice helpers lead on to what they name. A helper
+                        # outside the slice is read one step only: following
+                        # the whole harness would give every test every seam.
+                        if id(h) in helpers:
+                            todo.append(h)
         return seen
+
+    def outside_hits(u):
+        out = []
+        lines = file_lines.get(u.file, [])
+        for n in range(u.start, min(u.end, len(lines)) + 1):
+            labels = [p.label for p in patterns if p.regex.search(lines[n - 1])]
+            if labels:
+                out.append((u.file, n, labels))
+        return out
 
     def sections_of(t):
         out = []
@@ -302,9 +394,12 @@ def grade(copy, ranges, facts, patterns=None):
         own = [t] + reached(t)
         secs = sections_of(t)
         test_rows.append((t, bool(secs)))
-        for path, n, labels in hits:
-            if not any(ff.same_path(u.file, path) and u.start <= n <= u.end for u in own):
-                continue
+        mine = [h for h in hits
+                if any(ff.same_path(u.file, h[0]) and u.start <= h[1] <= u.end for u in own)]
+        for u in own:
+            if u is not t:
+                mine += [h for h in outside_hits(u) if h[:2] not in {x[:2] for x in mine}]
+        for path, n, labels in mine:
             found = any(
                 inp.source in ff.SEAM_SOURCES and any(c.covers(path, n) for c in inp.trace)
                 for s in secs for inp in s.inputs)

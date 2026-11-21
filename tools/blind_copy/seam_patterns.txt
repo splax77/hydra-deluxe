@@ -11,7 +11,9 @@
 for_test name | \b\w+_for_test\b | tests/ui/uitest_details.cpp | : seam(hydra::ui::set_view_analyzer_for_test,
 set_fetcher | \bset_fetcher\b | tests/test_update_state.cpp | fetcher(hydra::net::set_fetcher,
 set_downloader | \bset_downloader\b | tests/test_update_state.cpp | downloader(hydra::net::set_downloader,
-ScopedHook | \bScopedHook\b | tests/ui/uitest_details.cpp | ScopedHook seam;
+ScopedHook | (?<!class )(?<!~)\bScopedHook\b(?![(&]) | tests/ui/uitest_details.cpp | ScopedHook seam;
 set_audio_device_factory | \bset_audio_device_factory\b | tests/test_preview_controller.cpp | pc.set_audio_device_factory(no_device_factory());
-selected-> assignment | \bselected->\w+(?:(?:\.|->)\w+|\[[^\]]*\])*\s*=(?!=) | tests/ui/uitest_details.cpp | h.app->selected->artist = "Green Day";
+set_ call given a lambda | \bset_\w+\s*\((?:[^;]*[\s(,])?\[[^\]]*\]\s*[({] | tests/test_library_jobs.cpp | job.set_lookup_hold_for_test([&lookups] { ++lookups; });
+set_ call whose argument is on the next line | \bset_\w+\s*\(\s*$ | tests/test_library_jobs.cpp | job.set_analyzer_for_test(
+selected-> assignment | \bselected->\w+(?:(?:\.|->)\w+|\[[^\]]*\])*\s*(?:[-+*/%&|^]|<<|>>)?=(?!=) | tests/ui/uitest_details.cpp | h.app->selected->artist = "Green Day";
 seam wrapper object | ^\s*(?:const\s+)?(?:BatchGate|ViewGate|OpenGate|ScanHold|ReportHold|SaveGate|UpdateWorld|UpdateSeams|FailingAnalyzer)\s+\w+\s*(?:[({;]|$) | tests/ui/uitest_details.cpp | ViewGate gate;

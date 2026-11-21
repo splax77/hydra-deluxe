@@ -19,6 +19,8 @@ import facts_format as ff  # noqa: E402
 BRACKETS = re.compile(r"[()\[\]{}]")
 FUNCTION_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(::[A-Za-z_][A-Za-z0-9_]*)*$")
 WORD_SIDES = ("true", "false")
+# An input name is a short label; a sentence does not fit.
+MAX_NAME = 60
 
 
 class Checker:
@@ -47,8 +49,15 @@ class Checker:
             return ""
         if path not in self.text_of:
             with open(path, encoding="utf-8", errors="replace") as f:
-                self.text_of[path] = " ".join(f.read().split())
+                self.text_of[path] = ff.strip_comments(f.read())
         return self.text_of[path]
+
+    def code_lines(self, cite_path):
+        """The file's lines with comments blanked, or []."""
+        return self.collapsed_text(cite_path).split("\n")
+
+    def range_text(self, c):
+        return " ".join(self.code_lines(c.path)[c.a - 1:c.b])
 
     def cite(self, n, text, what):
         """The parsed cite, or None after recording why it is rejected."""
@@ -146,8 +155,8 @@ class Checker:
         if side in WORD_SIDES:
             return
         want = " ".join(side.split())
-        if not any(want in self.collapsed_text(p) for p in files):
-            self.err(n, f"check's {what} side is not code in the test's file or its cited files: {side!r}")
+        if not any(ff.contains_code(" ".join(self.collapsed_text(p).split()), want) for p in files):
+            self.err(n, f"check's {what} side is not code (outside comments) in the test's file or its cited files: {side!r}")
 
     def input_line(self, n, body):
         fields = body.split(ff.SEP)
@@ -155,6 +164,8 @@ class Checker:
             self.err(n, "input needs a name, a source and a trace")
             return
         self.plain_field(n, fields[0], "input name")
+        if len(fields[0]) > MAX_NAME:
+            self.err(n, f"input name is longer than {MAX_NAME} characters: {fields[0]!r}")
         source = self.keyed(n, fields[1], "source")
         if source is None:
             return
@@ -181,13 +192,27 @@ class Checker:
         if trace is None:
             return
         cites = self.cites(n, trace, ff.TRACE_SEP, "trace")
-        bare = [c for c in cites if c.kind == "bare"]
+        if source in (ff.TESTDATA, ff.NETWORK):
+            self.excuse(n, source, cites)
+
+    def excuse(self, n, source, cites):
+        """A label that says the input is real must cite the real file, and
+        that file must be named in the code the trace cites."""
+        traced = " ".join(self.range_text(c) for c in cites if c.kind == "line")
+        for c in cites:
+            if not ff.excusing_bare(source, c):
+                continue
+            path = ff.copy_file(self.copy, c.path)
+            if source == ff.NETWORK and not os.path.isfile(path):
+                continue
+            if c.path.split("/")[-1].lower() in traced.lower():
+                return
         if source == ff.TESTDATA:
-            if not any(c.path.split("/")[1] == "testdata" for c in bare):
-                self.err(n, "an input from a file under testdata must cite that path under code/testdata, with no line")
-        elif source == ff.NETWORK:
-            if not any(os.path.isfile(ff.copy_file(self.copy, c.path)) for c in bare):
-                self.err(n, "a real network reply must cite its recorded reply file under code/testdata or code/tests, with no line")
+            self.err(n, "an input from a file under testdata must cite a file or folder inside code/testdata, "
+                        "with no line, and the trace's code must name it")
+        else:
+            self.err(n, "a real network reply must cite its recorded reply file (not source code) under "
+                        "code/testdata or code/tests, with no line, and the trace's code must name it")
 
     def stands_in(self, n, text):
         for word in sorted(ff.STAND_IN_WORDS, key=len, reverse=True):
@@ -232,6 +257,10 @@ class Checker:
                     self.err(n, f"location must be one line cite: {body!r}")
                     continue
                 section.location = c
+                if c is not None and c.kind == "line":
+                    name = section.name.strip().strip('"')
+                    if not ff.contains_code(" ".join(self.collapsed_text(c.path).split()), name):
+                        self.err(section.lineno, f"test name is not code in {c.path}: {section.name!r}")
             elif kind == "check":
                 counts["checks"] += 1
                 self.check_line(n, body, section)

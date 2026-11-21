@@ -61,10 +61,11 @@ LINE_CITE_ANYWHERE = re.compile(r"code/(?P<path>[^\s:|;,()\[\]]+):(?P<a>\d+)(?:-
 
 FORMAT_TEXT = f"""\
 The facts file has these line kinds and no others. Blank lines are allowed.
-Fields are separated by "{SEP}". No field except a cite and a check's two
-sides may hold parentheses or brackets, and nothing may follow the last field.
+Fields are separated by "{SEP}". No field except a check's two sides may hold
+parentheses or brackets, and nothing may follow the last field. An input name
+is at most 60 characters.
 
-## <test name>
+## <test name: the test function's name, or the TEST_CASE string, as it is written in the code>
 location: <cite of the test's first line>
 check: <left> | <right> | left made at: <cites> | right made at: <cites> | same function: <yes <line cite>, no, or cannot tell>
 input: <name> | source: <source word> | trace: <cites>
@@ -74,8 +75,8 @@ between source and trace:
 
 input: <name> | source: {REPLACES} | replaces: <function name> | stands in: <stand-in word> <cite> | trace: <cites>
 
-A check's left and right are code copied from the copy, or the word true or
-false. Cites in a "made at" field are joined by "{CITE_SEP.strip()}" with a space each side.
+A check's left and right are code copied from the copy (comments do not count),
+or the word true or false. Cites in a "made at" field are joined by "{CITE_SEP.strip()}" with a space each side.
 Cites in a trace are joined by "{TRACE_SEP.strip()}" with a space each side.
 
 A cite is one of:
@@ -85,10 +86,11 @@ A cite is one of:
   library                  code outside the copy
   cannot tell
 
-An input whose source is "{TESTDATA}" cites the file or folder under
-code/testdata it comes from, with no line. An input whose source is
-"{NETWORK}" cites the recorded reply file under code/testdata or code/tests,
-with no line.
+An input whose source is "{TESTDATA}" cites the file or folder inside
+code/testdata it comes from (never code/testdata itself), with no line. An
+input whose source is "{NETWORK}" cites the recorded reply file, which is not
+source code, inside code/testdata or code/tests, with no line. In both, the
+code that the trace's line cites show must name that file or folder.
 
 Source words, one of:
 """ + "".join(f"  {w}\n" for w in SOURCE_WORDS) + """
@@ -155,6 +157,71 @@ def line_count(path):
     """Newline count of a file, the number wc -l prints."""
     with open(path, "rb") as f:
         return f.read().count(b"\n")
+
+
+def strip_comments(text):
+    """The text with // and /* */ comments blanked, string and char literals
+    kept. Line breaks stay, so line numbers stay."""
+    out = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if text.startswith("//", i):
+            while i < n and text[i] != "\n":
+                i += 1
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            end = n if end < 0 else end + 2
+            out.append("\n" * text.count("\n", i, end))
+            out.append(" ")
+            i = end
+        elif ch in "\"'":
+            j = i + 1
+            while j < n and text[j] != ch and text[j] != "\n":
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i:j + 1])
+            i = j + 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def contains_code(haystack, needle):
+    """True when needle is in haystack on identifier boundaries, so a side
+    cannot be a fragment of a longer word."""
+    start = 0
+    while True:
+        at = haystack.find(needle, start)
+        if at < 0:
+            return False
+        before = haystack[at - 1] if at else " "
+        after = haystack[at + len(needle)] if at + len(needle) < len(haystack) else " "
+        if not (needle[0].isalnum() or needle[0] == "_") or not (before.isalnum() or before == "_"):
+            if not (needle[-1].isalnum() or needle[-1] == "_") or not (after.isalnum() or after == "_"):
+                return True
+        start = at + 1
+
+
+# A reply file is data, never a source file.
+CODE_SUFFIXES = (".cpp", ".h", ".hpp", ".c", ".cc", ".py", ".cmake")
+
+
+def excusing_bare(source, cite):
+    """True when a bare cite may back the label `source` ("a file under
+    testdata" or "a real network reply"): it names something inside
+    code/testdata, or for a reply a file inside code/testdata or code/tests
+    that is not source code. The folder code/testdata itself never does."""
+    if cite.kind != "bare":
+        return False
+    parts = cite.path.split("/")
+    if len(parts) < 3:
+        return False
+    if source == TESTDATA:
+        return parts[1] == "testdata"
+    if source == NETWORK:
+        return parts[1] in ("testdata", "tests") and not parts[-1].lower().endswith(CODE_SUFFIXES)
+    return False
 
 
 def field_value(field, key):
