@@ -14,6 +14,7 @@
     {"header": "opus*.h", "target": "opus", "must_match": ["opus.h", "opus_multistream.h"]},
     {"header": "ogg/*.h", "target": "ogg", "must_match": ["ogg/ogg.h"]},
     {"header": "winhttp.h", "target": "winhttp", "must_match": ["winhttp.h"]},
+    {"header": "mimalloc.h", "include_dir": "target:mimalloc", "must_match": ["mimalloc.h"]},
     {"header": "json.hpp", "include_dir": "third_party/json", "must_match": ["json.hpp"]},
     {"header": "stb_image.h", "include_dir": "third_party/stb", "must_match": ["stb_image.h"]}
   ]
