@@ -30,7 +30,6 @@
 #include "db_file_util.h"  // exec_on_file, write_junk_db
 #include "display_fixtures.h"  // save_batch_record
 #include "library_fixtures.h"  // library_entry
-#include "parse/song.h"  // NoNotesError
 #include "scoped_hook.h"
 #include "scratch_paths.h"
 #include "scratch_settings.h"
@@ -297,63 +296,14 @@ namespace {
 // How many charts the order tests' library holds.
 constexpr int kHeldCharts = 4;
 
-// An analysis whose best path scores `score` under the default settings.
-hydra::HydraRecord scored_record(int64_t score) {
-    hydra::HydraRecord record = hydra::test::empty_analysis_under(Settings{}.profile());
-    hydra::Path best;
-    best.notes_points = score;
-    record.paths.push_back(best);
-    return record;
-}
-
-// A result stored behind the view's back, as one song's analysis stores it.
-void save_scored(AppState& app, int chart, int64_t score) {
-    app.store->save(hydra::store::prepare_record(library_entry(chart).md5, app.settings.profile(),
-                                                 scored_record(score)));
-}
-
-// A library of kHeldCharts charts with no results, under Best path, highest
-// first. With every row unscored they read in title order, library_entry's.
-std::unique_ptr<AppState> app_under_best_path(const ScratchPaths& paths) {
-    std::vector<ChartLibraryEntry> charts;
-    for (int i = 0; i < kHeldCharts; ++i) charts.push_back(library_entry(i));
-    std::unique_ptr<AppState> app = app_with(paths, charts);
-    app->library.set_sort(hydra::ui::LibrarySort::BestPath, false);
-    return app;
-}
-
-// The rows on screen, top to bottom, as library_entry numbers.
-std::vector<int> shown(const AppState& app) {
-    std::vector<int> out;
-    for (size_t i = 0; i < app.library_shown_count(); ++i)
-        for (int chart = 0; chart < kHeldCharts; ++chart)
-            if (app.library_row_at(i).entry.md5 == library_entry(chart).md5) out.push_back(chart);
-    return out;
-}
-
 // Lets a batch's charts through one at a time, so a test knows exactly what the
 // batch has stored at each tick with no sleep and no race. A chart waits here
 // for its turn; its progress callback throws once Stop is pressed, so a chart
-// still waiting is neither stored nor counted. The n-th chart through scores
-// n * 1000, so each chart outscores the ones before it.
+// still waiting is neither stored nor counted.
 struct ChartGate {
     std::atomic<int> started{0};
     std::atomic<int> allowed{0};
 };
-
-hydra::app::ChartAnalyzer gated_scores(std::shared_ptr<ChartGate> gate) {
-    return [gate](const std::string&, const hydra::app::AnalysisSettings&,
-                  const std::function<void(float)>& on_progress) {
-        const int turn = ++gate->started;
-        wait_until(
-            [&] {
-                on_progress(0.0f);
-                return gate->allowed.load() >= turn;
-            },
-            "the test to let a chart through");
-        return hydra::app::AnalysisResult{scored_record(int64_t{1000} * turn), hydra::Song(192)};
-    };
-}
 
 // Lets `charts` charts in all through the gate and waits until the batch counts
 // them and has put the store's answer for each in its tray. A chart is counted
@@ -473,13 +423,18 @@ std::optional<int64_t> held_row_score(const AppState& app, int chart) {
     return row_of(app, held_entry(chart).md5).summary.score;
 }
 
+// The score the store's own read gives chart `md5` under the app's settings;
+// none when the store holds no Ready, scored result for it.
+std::optional<int64_t> stored_score(AppState& app, const std::string& md5) {
+    const hydra::store::RecordLookup stored = app.store->lookup_one(md5, app.settings.profile());
+    if (stored.status != RecordStatus::Ready) return std::nullopt;
+    return stored.record.summary().score;
+}
+
 // Whether held chart `chart`'s row shows the score the store's own read gives
 // for it under the app's settings, and the store holds a scored result for it.
 bool row_shows_stored_score(AppState& app, int chart) {
-    const hydra::store::RecordLookup stored =
-        app.store->lookup_one(held_entry(chart).md5, app.settings.profile());
-    if (stored.status != RecordStatus::Ready) return false;
-    const std::optional<int64_t> score = stored.record.summary().score;
+    const std::optional<int64_t> score = stored_score(app, held_entry(chart).md5);
     return score.has_value() && held_row_score(app, chart) == score;
 }
 
@@ -600,16 +555,6 @@ TEST_CASE("a batch dismissed before a tick saw it finish still sorts") {
 
 // ---- the rows take the batch's answers, not a store read --------------------
 
-namespace {
-
-// Whether chart `chart`'s row reads "<score>  <path>" with this score, as
-// best_path_label writes it.
-bool row_scores(const AppState& app, int chart, const char* score) {
-    return row_of(app, library_entry(chart).md5).best_label().find(score) == 0;
-}
-
-}  // namespace
-
 // A tick takes the batch's tray and asks the store nothing, so a save group
 // holding the store's lock does not hold the frame.
 TEST_CASE("a tick during a batch does not wait for the store") {
@@ -631,51 +576,55 @@ TEST_CASE("a tick during a batch does not wait for the store") {
 // batch reaches its row at the next whole read, not at a batch tick.
 TEST_CASE("a tick during a batch re-reads no row the batch did not save") {
     ScratchPaths paths("appstate_tickonlysaved");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
     auto gate = std::make_shared<ChartGate>();
-    start_redo_batch(*app, gated_scores(gate));
-    let_through(*app, *gate, 1);  // chart 0
-    save_scored(*app, 3, 5000);   // behind the batch's back
-    app->tick_library(0.0);
-    CHECK(row_scores(*app, 0, "1,000"));
-    CHECK(row_of(*app, library_entry(3).md5).status == RecordStatus::NotAnalyzed);
+    start_redo_batch(*app, gated_engine(gate));
+    let_through(*app, *gate, 1);       // held chart 0
+    save_held_result(*app, kTopHeld);  // behind the batch's back
+    REQUIRE(stored_score(*app, held_entry(kTopHeld).md5).has_value());
+    app->tick_library(refresh_frame(0));
+    CHECK(row_shows_stored_score(*app, 0));
+    CHECK(row_of(*app, held_entry(kTopHeld).md5).status == RecordStatus::NotAnalyzed);
 }
 
 TEST_CASE("a batch's end re-reads no row the batch did not save") {
     ScratchPaths paths("appstate_endonlysaved");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
-    // A batch over chart 0 alone, so it finishes with nothing stopped.
-    app->set_search(library_entry(0).md5);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
+    // A batch over held chart 0 alone, so it finishes with nothing stopped.
+    app->set_search("\"" + held_entry(0).title + "\"");
     REQUIRE(app->library_shown_count() == 1);
     auto gate = std::make_shared<ChartGate>();
-    start_redo_batch(*app, gated_scores(gate));
+    start_redo_batch(*app, gated_engine(gate));
     app->set_search("");
     gate->allowed.store(1);
     wait_batch_finished(*app);
     REQUIRE(app->batch_job->snapshot().run_error.empty());
     REQUIRE_FALSE(app->batch_job->is_cancelled());
-    save_scored(*app, 3, 5000);  // behind the batch's back, before the end's tick
+    save_held_result(*app, kTopHeld);  // behind the batch's back, before the end's tick
+    REQUIRE(stored_score(*app, held_entry(kTopHeld).md5).has_value());
     app->tick_library(0.0);
-    CHECK(row_scores(*app, 0, "1,000"));
-    CHECK(row_of(*app, library_entry(3).md5).status == RecordStatus::NotAnalyzed);
+    CHECK(row_shows_stored_score(*app, 0));
+    CHECK(row_of(*app, held_entry(kTopHeld).md5).status == RecordStatus::NotAnalyzed);
 }
 
 // The charts a run that fails as a whole saved never reach the tray
-// (run_batch reports none of its open group), so its end reads every row.
+// (run_batch reports none of its open group), so its end reads every row. A
+// pool of no workers is a run that fails as a whole (run_work_pool refuses
+// it), so the engine never runs.
 TEST_CASE("a batch that fails as a whole still re-reads every row when it ends") {
     ScratchPaths paths("appstate_errorreread");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
     {
         const ScopedHook seam(hydra::ui::set_app_batch_analyzer_for_test,
-                              gated_scores(std::make_shared<ChartGate>()), /*workers=*/0);
+                              gated_engine(std::make_shared<ChartGate>()), /*workers=*/0);
         app->start_batch(true);
     }
     REQUIRE(app->batch_job != nullptr);
     wait_batch_finished(*app);
     REQUIRE_FALSE(app->batch_job->snapshot().run_error.empty());
-    save_scored(*app, 3, 5000);  // behind the batch's back
+    save_held_result(*app, kTopHeld);  // behind the batch's back
     app->tick_library(0.0);
-    CHECK(row_scores(*app, 3, "5,000"));
+    CHECK(row_shows_stored_score(*app, kTopHeld));
 }
 
 // The batch's lookup fails once (the records table moved aside between chart
@@ -684,9 +633,9 @@ TEST_CASE("a batch that fails as a whole still re-reads every row when it ends")
 TEST_CASE("a lookup the batch could not make shows the store's problem") {
     ScratchPaths paths("appstate_traylookupfails");
     std::atomic<int> lookups{0};  // before the app, so it outlives the batch's thread
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
     auto gate = std::make_shared<ChartGate>();
-    start_redo_batch(*app, gated_scores(gate));
+    start_redo_batch(*app, gated_engine(gate));
     // Set after start(), while the gate holds every chart: the batch thread
     // reads the seam only once a chart is through, and letting the chart
     // through (the gate's atomic, then run_batch's own hand-off) orders this
@@ -695,7 +644,7 @@ TEST_CASE("a lookup the batch could not make shows the store's problem") {
         if (lookups++ == 0)
             hydra::test::exec_on_file(db, "ALTER TABLE records RENAME TO records_aside");
     });
-    const std::vector<int> before = shown(*app);
+    const std::vector<int> before = shown_held(*app);
     gate->allowed.store(1);
     double now = 0.0;
     wait_until(
@@ -705,13 +654,13 @@ TEST_CASE("a lookup the batch could not make shows the store's problem") {
         },
         "the batch's lookup to fail");
     const std::string from_tick = app->status_message;
-    CHECK(row_of(*app, library_entry(0).md5).status == RecordStatus::NotAnalyzed);
-    CHECK(shown(*app) == before);
+    CHECK(row_of(*app, held_entry(0).md5).status == RecordStatus::NotAnalyzed);
+    CHECK(shown_held(*app) == before);
     CHECK(app->library.counts().analyzed == 0);
 
     // The same failure through the window's own row read (read_store).
     app->dismiss_status();
-    CHECK_FALSE(app->refresh_library_row(library_entry(0).md5));
+    CHECK_FALSE(app->refresh_library_row(held_entry(0).md5));
     CHECK(app->status_is_problem);
     CHECK(app->status_message == from_tick);
     CHECK_FALSE(from_tick.empty());
@@ -719,57 +668,80 @@ TEST_CASE("a lookup the batch could not make shows the store's problem") {
     hydra::test::exec_on_file(paths.db, "ALTER TABLE records_aside RENAME TO records");
 }
 
-// O4: the one answer for a chart fills every row that lists it.
+namespace {
+
+// A library row for a copy of testdata file `relative` (under testdata/) in
+// folder `tag`, with the song.ini a folder chart needs to be scanned.
+ChartLibraryEntry copied_testdata_chart(const std::string& relative, const std::string& tag) {
+    const std::string dir = testtemp::temp_dir(tag);
+    const std::vector<uint8_t> bytes =
+        hydra::read_file_bytes(corpus::testdata_root() + "\\" + relative);
+    const std::string notes = dir + "\\notes.chart";
+    audiochart::write_text_file(notes, std::string(bytes.begin(), bytes.end()));
+    write_click_ini(dir);
+    return entry_for(notes, "Click " + tag);
+}
+
+}  // namespace
+
+// O4: the one answer for a chart fills every row that lists it. The same
+// corpus chart sits in two folders; a third chart, one note longer, hashes
+// differently.
 TEST_CASE("a chart in two folders gets both rows from one batch result") {
     ScratchPaths paths("appstate_traycopy");
-    ChartLibraryEntry copy = library_entry(0);
-    copy.title = "Song hash000 copy";
-    copy.notespath = "C:\\charts\\copy\\notes.chart";
-    std::unique_ptr<AppState> app = app_with(paths, {library_entry(0), copy, library_entry(1)});
-    app->set_search(library_entry(0).md5);
+    const ChartLibraryEntry first = corpus_chart("traycopy");
+    const ChartLibraryEntry copy = corpus_chart("traycopy_copy");
+    const ChartLibraryEntry other = corpus_chart("trayother", true);
+    REQUIRE(first.md5 == copy.md5);
+    REQUIRE(first.notespath != copy.notespath);
+    REQUIRE(other.md5 != first.md5);
+    std::unique_ptr<AppState> app = app_with(paths, {first, copy, other});
+    app->set_search("traycopy");
     REQUIRE(app->library_shown_count() == 2);
-    start_redo_batch(*app, [](const std::string&, const hydra::app::AnalysisSettings&,
-                              const std::function<void(float)>&) {
-        return hydra::app::AnalysisResult{scored_record(7000), hydra::Song(192)};
-    });
+    auto gate = std::make_shared<ChartGate>();
+    gate->allowed.store(1);
+    start_redo_batch(*app, gated_engine(gate));
     wait_batch_finished(*app);
+    REQUIRE(app->batch_job->snapshot().failed == 0);
     REQUIRE(app->batch_job->answered_count() == 1);  // one chart, one answer
     app->set_search("");
     app->tick_library(0.0);
 
+    const std::optional<int64_t> stored = stored_score(*app, first.md5);
+    REQUIRE(stored.has_value());
     int rows = 0;
     for (size_t i = 0; i < app->library_shown_count(); ++i) {
         const hydra::ui::LibraryRow& row = app->library_row_at(i);
-        if (row.entry.md5 != library_entry(0).md5) continue;
+        if (row.entry.md5 != first.md5) continue;
         ++rows;
         CHECK(row.status == RecordStatus::Ready);
-        CHECK(row.best_label().find("7,000") == 0);
+        CHECK(row.summary.score == stored);
     }
     CHECK(rows == 2);
-    CHECK(row_of(*app, library_entry(1).md5).status == RecordStatus::NotAnalyzed);
+    CHECK(row_of(*app, other.md5).status == RecordStatus::NotAnalyzed);
 }
 
 // O7 and O13: a failure the store keeps reaches its row as the store's
 // answer, read here by a second app's own row read on the same file; a
-// failure the store does not keep leaves its row as it was.
+// failure the store does not keep leaves its row as it was. A chart with no
+// Expert notes (testdata/parse_edge/c15_unterminated_drums.chart, which
+// expected_expert.tsv lists as NoNotesError) is a failure the store keeps; a
+// chart whose file is gone is one it does not keep.
 TEST_CASE("a failed chart whose failure the batch stored shows on its row, and one it did not "
           "store keeps its row") {
     ScratchPaths paths("appstate_trayfailures");
-    std::unique_ptr<AppState> app = app_with(paths, {library_entry(0), library_entry(1)});
-    const std::string kept = library_entry(0).md5;
-    const std::string not_kept = library_entry(1).md5;
+    const ChartLibraryEntry no_notes =
+        copied_testdata_chart("parse_edge\\c15_unterminated_drums.chart", "trayfailures_nonotes");
+    const ChartLibraryEntry gone = corpus_chart("trayfailures_gone");
+    REQUIRE(no_notes.md5 != gone.md5);
+    std::filesystem::remove(std::filesystem::u8path(gone.notespath));
+    std::unique_ptr<AppState> app = app_with(paths, {no_notes, gone});
+    const std::string kept = no_notes.md5;
+    const std::string not_kept = gone.md5;
     const RecordStatus not_kept_before = row_of(*app, not_kept).status;
-    const std::string not_kept_path = library_entry(1).notespath;
-    start_redo_batch(*app, [not_kept_path](const std::string& path,
-                                           const hydra::app::AnalysisSettings&,
-                                           const std::function<void(float)>&)
-                               -> hydra::app::AnalysisResult {
-        // A song file that cannot be opened is a failure the store does not
-        // keep; a chart with no notes is one it keeps.
-        if (path == not_kept_path)
-            throw hydra::KindedError(hydra::ErrorKind::SongFileMissing, "cannot open file: x");
-        throw hydra::NoNotesError(hydra::Difficulty::Expert, true);
-    });
+    auto gate = std::make_shared<ChartGate>();
+    gate->allowed.store(2);
+    start_redo_batch(*app, gated_engine(gate));
     wait_batch_finished(*app);
     REQUIRE(app->batch_job->snapshot().failed == 2);
     app->tick_library(0.0);
@@ -777,6 +749,7 @@ TEST_CASE("a failed chart whose failure the batch stored shows on its row, and o
     AppState second(Settings{}, std::make_unique<RecordStore>(paths.db));
     second.refresh_library_row(kept);
     second.refresh_library_row(not_kept);
+    CHECK(row_of(second, kept).status != RecordStatus::NotAnalyzed);  // the store kept it
     CHECK(row_of(*app, kept).status == row_of(second, kept).status);
     CHECK(row_of(*app, kept).best_label() == row_of(second, kept).best_label());
     CHECK(row_of(*app, not_kept).status == not_kept_before);
@@ -785,14 +758,14 @@ TEST_CASE("a failed chart whose failure the batch stored shows on its row, and o
 
 TEST_CASE("a paused batch's stored results reach their rows") {
     ScratchPaths paths("appstate_traypaused");
-    std::unique_ptr<AppState> app = app_under_best_path(paths);
+    std::unique_ptr<AppState> app = app_on_held_charts(paths);
     auto gate = std::make_shared<ChartGate>();
-    start_redo_batch(*app, gated_scores(gate));
+    start_redo_batch(*app, gated_engine(gate));
     let_through(*app, *gate, 1);
     app->batch_job->pause();
     REQUIRE(app->batch_job->snapshot().paused);
     app->tick_library(0.0);
-    CHECK(row_scores(*app, 0, "1,000"));
+    CHECK(row_shows_stored_score(*app, 0));
     CHECK(app->library.counts().analyzed == 1);
 }
 
@@ -1581,6 +1554,14 @@ TEST_CASE("a library reload whose reads fail keeps the library and says so") {
 
 namespace {
 
+// An AppState opened, as the window opens one, on the app's own scan of the
+// corpus with the engine's result for one corpus chart stored
+// (seed_scanned_corpus).
+std::unique_ptr<AppState> app_on_seeded_corpus(const ScratchPaths& paths) {
+    REQUIRE(seed_scanned_corpus(paths) > 0);
+    return std::make_unique<AppState>(scratch_settings(), std::make_unique<RecordStore>(paths.db));
+}
+
 // The first row on screen, other than chart `skip`'s, whose chart the library
 // lists once, so the store's copies of it are that row alone.
 size_t first_single_copy_row(const AppState& app, const std::string& skip) {
@@ -1658,12 +1639,12 @@ TEST_CASE("select_chart on a hidden chart does not wait for a save") {
 // is off then), so the test calls open_batch_confirm directly.
 TEST_CASE("opening the batch confirm does not wait for a save") {
     ScratchPaths paths("appstate_readerconfirm");
-    std::unique_ptr<AppState> app = app_on(paths);
+    std::unique_ptr<AppState> app = app_on_seeded_corpus(paths);
     CHECK(returns_while_held(*app->store, [&] { app->open_batch_confirm(); }));
     REQUIRE(app->batch_confirm_pending);
 
     // The same questions from a second app on the same file, nothing held.
-    AppState second(Settings{}, std::make_unique<RecordStore>(paths.db));
+    AppState second(scratch_settings(), std::make_unique<RecordStore>(paths.db));
     second.open_batch_confirm();
     REQUIRE(second.batch_confirm_pending);
     CHECK(app->batch_question(false) == second.batch_question(false));
@@ -1674,17 +1655,19 @@ TEST_CASE("opening the batch confirm does not wait for a save") {
 // cap directly and makes the re-read a settings change makes.
 TEST_CASE("a settings change re-reads the rows without waiting for a save") {
     ScratchPaths paths("appstate_readersettings");
-    std::unique_ptr<AppState> app = app_on(paths);
-    const std::string seeded = library_entry(0).md5;
+    std::unique_ptr<AppState> app = app_on_seeded_corpus(paths);
+    const std::string seeded = hydra::app::hash_chart_file(scratch_chart_with_paths().chart);
     const RecordStatus seeded_before = row_of(*app, seeded).status;
-    app->settings.sp_cap = kSeededCap + 1;
+    REQUIRE(seeded_before == RecordStatus::Ready);
+    app->settings.sp_cap = app->settings.sp_cap + 1;
     CHECK(returns_while_held(*app->store, [&] { app->refresh_library_summaries(); }));
 
     // A second app opened under the changed settings reads every row itself.
     AppState second(app->settings, std::make_unique<RecordStore>(paths.db));
     REQUIRE(row_of(second, seeded).status != seeded_before);  // the change reaches a row
-    for (int i = 0; i < kChartCount; ++i) {
-        const std::string md5 = library_entry(i).md5;
+    REQUIRE(app->library_shown_count() == second.library_shown_count());
+    for (size_t i = 0; i < app->library_shown_count(); ++i) {
+        const std::string md5 = app->library_row_at(i).entry.md5;
         CHECK(row_of(*app, md5).status == row_of(second, md5).status);
         CHECK(row_of(*app, md5).best_label() == row_of(second, md5).best_label());
     }
@@ -1693,17 +1676,17 @@ TEST_CASE("a settings change re-reads the rows without waiting for a save") {
 // O22: a read the reader cannot make reads as any failed store read does.
 TEST_CASE("a failed reader read shows the store's problem") {
     ScratchPaths paths("appstate_readerfails");
-    std::unique_ptr<AppState> app = app_on(paths);
+    std::unique_ptr<AppState> app = app_on_seeded_corpus(paths);
+    REQUIRE_FALSE(app->selected.has_value());
     // The app's first read opened the reader. Closed here, so the next read
     // opens it again, and the store's seam makes that open fail.
     dynamic_cast<hydra::store::StoreReader&>(app->store->reader()).close();
     app->store->fail_next_reader_open_for_test();
-    const auto chart = row_of(*app, library_entry(5).md5).entry;
+    const auto chart = app->library_row_at(first_single_copy_row(*app, "")).entry;
     app->select(chart, hydra::ui::SelectionSource::Click);
     CHECK(app->status_is_problem);
     const std::string from_select = app->status_message;
-    REQUIRE(app->selected.has_value());
-    CHECK(app->selected->md5 == library_entry(0).md5);  // the click selected nothing
+    CHECK_FALSE(app->selected.has_value());  // the click selected nothing
 
     // The same failure, read straight from the reader.
     app->store->fail_next_reader_open_for_test();
