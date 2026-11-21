@@ -11,6 +11,7 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -143,18 +144,18 @@ TEST_CASE("chart index: the store lists the library in scan order, not by name")
 
     // The stored rows, row by row, in scan order; the name-ordered listing
     // reads the same rows another way round.
-    auto notespaths = [](const std::vector<ChartLibraryEntry>& rows) {
-        std::vector<std::string> out;
-        for (const ChartLibraryEntry& e : rows) out.push_back(e.notespath);
-        return out;
-    };
-    const std::vector<std::string> scanned = notespaths(items);
-    CHECK(notespaths(store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted)) == scanned);
-    std::vector<std::string> by_name = notespaths(store.list_chart_library(0, -1));
-    std::vector<std::string> scanned_sorted = scanned;
-    std::sort(by_name.begin(), by_name.end());
-    std::sort(scanned_sorted.begin(), scanned_sorted.end());
-    CHECK(by_name == scanned_sorted);
+    const std::vector<ChartLibraryEntry> stored =
+        store.list_chart_library(0, -1, {}, LibraryOrder::Unsorted);
+    REQUIRE(stored.size() == items.size());
+    std::multiset<std::string> scanned;
+    for (size_t i = 0; i < items.size(); ++i) {
+        INFO("scan row " << i);
+        CHECK(stored[i].notespath == items[i].notespath);
+        scanned.insert(items[i].notespath);
+    }
+    std::multiset<std::string> listed_by_name;
+    for (const ChartLibraryEntry& e : store.list_chart_library(0, -1)) listed_by_name.insert(e.notespath);
+    CHECK(listed_by_name == scanned);
 }
 
 TEST_CASE("chart index: an empty library lists nothing") {
