@@ -775,7 +775,14 @@
         "tools",
         "tests"
       ],
-      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. A scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question."
+      "note": "A brace list of a scan row's fields, md5 first, pushed into the library's entries or built as a ChartLibraryEntry. A scan row is the library entry itself (the ScanItem alias), so no conversion is needed and a positional copy is always a stray. The ScanJob's list of ScanItems read back from the library (items_) is the other direction, a different question.",
+      "owner_lines": [
+        {
+          "file": "tests/test_store_library.cpp",
+          "line_text": "const ChartLibraryEntry e{scanned.md5, scanned.title, scanned.artist, scanned.charter,",
+          "why": "the test of the positional fill itself: it fills an entry by position on purpose, to show the store treats it as the scan's own row, so a field added among the first seven fails here"
+        }
+      ]
     },
     {
       "question": "How many workers does a batch get?",

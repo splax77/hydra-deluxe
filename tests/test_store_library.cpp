@@ -177,9 +177,8 @@ TEST_CASE("a library entry filled by position keeps its first seven fields in pl
     // the rescan cache finds it by its path with its fingerprint, and the
     // library names the chart by its title.
     const ChartLibraryEntry& scanned = scanned_corpus().front();
-    const ChartLibraryEntry e{scanned.md5,       scanned.title,      scanned.artist,
-                              scanned.charter,   scanned.notespath,  scanned.rootfolder,
-                              scanned.sig};
+    const ChartLibraryEntry e{scanned.md5, scanned.title, scanned.artist, scanned.charter,
+                              scanned.notespath, scanned.rootfolder, scanned.sig};
     RecordStore store(":memory:");
     store.rebuild_chart_library({e});
     const ChartLibraryCache cache = store.chart_library_cache();
