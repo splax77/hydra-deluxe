@@ -1,0 +1,14 @@
+[
+  {
+    "value": "Accuracy: {0:0.0} ms\nAverage: {1:0.0} ms",
+    "address": "0x3CB9140"
+  },
+  {
+    "value": "Accuracy: {0}\n",
+    "address": "0x3CB91F0"
+  },
+  {
+    "value": "Show Accuracy",
+    "address": "0x3CF2838"
+  }
+]

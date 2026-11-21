@@ -1,14 +1,21 @@
 """Tests for tools/compare_db.py, the whole-library "identical results" check.
 
-Each test builds two tiny databases by hand and runs the script on them the
-way a task does, reading its printed lines and its exit code. SCHEMA is a
-cut-down stand-in for an older store layout, which compare_db still has to
-compare. It gives compare_db these shapes: a table keyed by result_id, a table
-that refers to result_id, a plain keyed table and the scan-order charts table.
-The record tables (RECORD_SCHEMA) stand in for the layout the store writes
-today, and add a table that refers to profiles by profile_id.
+Every database these tests compare was written by a real Hydra build from
+charts in the checked-in corpus. Each test runs the script on two of them the
+way a task does, and reads its printed lines and its exit code.
+
+The old-layout pair is in testdata/store; its README.md says which release
+and command wrote each file. The two files hold the same three charts, run
+once with Clone Hero 1.1 fills and once with --legacy-fills, so one chart's
+analysis differs and the others' do not. The record-layout files are in
+testdata/replay/compare_db; its README.md gives the hydra_batch commands that
+write them.
+
+An expected count is worked out here by reading both files with plain
+sqlite3, row by row, never by re-running compare_db's own SQL.
 """
 
+import re
 import sqlite3
 import subprocess
 import sys
@@ -16,174 +23,21 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = Path(__file__).with_name("compare_db.py")
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 
-SCHEMA = """
-CREATE TABLE results (
-  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,
-  sp_cap INTEGER NOT NULL, bestpath TEXT NOT NULL, structure BLOB NOT NULL,
-  score INTEGER,
-  UNIQUE (hyhash, chartmode, sp_cap));
-CREATE TABLE paths (
-  hyhash TEXT NOT NULL, chartmode TEXT NOT NULL, phash TEXT NOT NULL,
-  payload BLOB NOT NULL, PRIMARY KEY (hyhash, chartmode, phash));
-CREATE TABLE path_refs (
-  result_id INTEGER NOT NULL, hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,
-  phash TEXT NOT NULL, PRIMARY KEY (result_id, phash));
-CREATE TABLE charts (md5 TEXT, name TEXT, path TEXT);
-CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
-"""
+import compare_db  # noqa: E402
 
-# Two charts' results, each with one path node.
-RESULTS = [
-    ("aaaa", "drums", 4, "best-a", b"\x01\x02", 1000),
-    ("bbbb", "drums", 4, "best-b", b"\x03\x04", 2000),
-]
+SCRIPT = HERE / "compare_db.py"
+REPO = HERE.parent
+STORE = REPO / "testdata" / "store"
+CH11 = STORE / "v1.8.4-schema2.db"
+LEGACY = STORE / "v1.8.4-schema2-legacy-fills.db"
 
-
-def make_db(path, order, payload_b=b"\x10\x11\x12"):
-    """Write a tiny store. `order` lists RESULTS indexes in the order they are
-    inserted, so the result_id each chart gets depends on it, the way worker
-    threads finishing in another order change it in a real batch."""
-    con = sqlite3.connect(path)
-    con.executescript(SCHEMA)
-    for i in order:
-        hyhash, mode, cap, best, structure, score = RESULTS[i]
-        cur = con.execute(
-            "INSERT INTO results (hyhash, chartmode, sp_cap, bestpath, structure, score)"
-            " VALUES (?, ?, ?, ?, ?, ?)",
-            (hyhash, mode, cap, best, structure, score),
-        )
-        payload = payload_b if hyhash == "bbbb" else b"\x20\x21"
-        con.execute(
-            "INSERT INTO paths VALUES (?, ?, ?, ?)", (hyhash, mode, "p-" + hyhash, payload)
-        )
-        con.execute(
-            "INSERT INTO path_refs VALUES (?, ?, ?, ?)",
-            (cur.lastrowid, hyhash, mode, "p-" + hyhash),
-        )
-    con.executemany(
-        "INSERT INTO charts VALUES (?, ?, ?)",
-        [("aaaa", "Song A", "a/notes.chart"), ("bbbb", "Song B", "b/notes.mid")],
-    )
-    con.execute("INSERT INTO meta VALUES ('version', '1')")
-    con.commit()
-    con.close()
-
-
-# The summary-only layout of ADR 0026: results without structure, and no detail
-# tables. It is newer than SCHEMA, but the store no longer writes it either.
-NEW_SCHEMA = """
-CREATE TABLE results (
-  result_id INTEGER PRIMARY KEY, hyhash TEXT NOT NULL, chartmode TEXT NOT NULL,
-  sp_cap INTEGER NOT NULL, bestpath TEXT NOT NULL, score INTEGER,
-  UNIQUE (hyhash, chartmode, sp_cap));
-CREATE TABLE charts (md5 TEXT, name TEXT, path TEXT);
-CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT);
-"""
-
-# The detail tables an old file also held, beyond paths and path_refs.
-OLD_DETAIL_SCHEMA = """
-CREATE TABLE songmeta (hyhash TEXT PRIMARY KEY, song_length_ms INTEGER);
-CREATE TABLE dynamics (hyhash TEXT PRIMARY KEY, ghosts INTEGER);
-INSERT INTO songmeta VALUES ('aaaa', 120000);
-INSERT INTO dynamics VALUES ('aaaa', 7);
-"""
-
-
-def make_old_db(path, order):
-    """An old-layout store: make_db's tables plus songmeta and dynamics."""
-    make_db(path, order)
-    con = sqlite3.connect(path)
-    con.executescript(OLD_DETAIL_SCHEMA)
-    con.commit()
-    con.close()
-
-
-def make_new_db(path, order, score_b=2000):
-    """A summary-only store holding the same summaries as make_db's, with
-    chart bbbb's score set to score_b."""
-    con = sqlite3.connect(path)
-    con.executescript(NEW_SCHEMA)
-    for i in order:
-        hyhash, mode, cap, best, _structure, score = RESULTS[i]
-        if hyhash == "bbbb":
-            score = score_b
-        con.execute(
-            "INSERT INTO results (hyhash, chartmode, sp_cap, bestpath, score)"
-            " VALUES (?, ?, ?, ?, ?)",
-            (hyhash, mode, cap, best, score),
-        )
-    con.executemany(
-        "INSERT INTO charts VALUES (?, ?, ?)",
-        [("aaaa", "Song A", "a/notes.chart"), ("bbbb", "Song B", "b/notes.mid")],
-    )
-    con.execute("INSERT INTO meta VALUES ('version', '1')")
-    con.commit()
-    con.close()
-
-
-# The record tables (D115). profiles is the store's own layout; records and
-# record_paths keep only a few value columns, enough to give compare_db a
-# table that refers to profiles by a per-file id.
-RECORD_SCHEMA = """
-CREATE TABLE profiles (
-  id INTEGER PRIMARY KEY, chartmode TEXT NOT NULL, sp_cap INTEGER NOT NULL,
-  ms_enabled INTEGER NOT NULL, ms_value INTEGER NOT NULL, depth_mode INTEGER NOT NULL,
-  depth_value INTEGER NOT NULL, legacy_fills INTEGER NOT NULL,
-  efill_window_ms INTEGER NOT NULL,
-  hyversion TEXT NOT NULL, rules_fp BLOB NOT NULL,
-  UNIQUE (chartmode, sp_cap, ms_enabled, ms_value, depth_mode, depth_value, legacy_fills,
-          efill_window_ms, hyversion, rules_fp));
-CREATE TABLE records (
-  song_id TEXT NOT NULL, profile_id INTEGER NOT NULL, pathcount INTEGER NOT NULL,
-  notecount INTEGER NOT NULL, PRIMARY KEY (song_id, profile_id)) WITHOUT ROWID;
-CREATE TABLE record_paths (
-  song_id TEXT NOT NULL, profile_id INTEGER NOT NULL, rank INTEGER NOT NULL,
-  path TEXT NOT NULL, score INTEGER NOT NULL,
-  PRIMARY KEY (song_id, profile_id, rank)) WITHOUT ROWID;
-"""
-
-# Two profiles that differ only in the SP cap.
-PROFILES = [
-    ("drums", 4, 0, 0, 0, 0, 0, 60, "2.8.0", b"\x01"),
-    ("drums", 8, 0, 0, 0, 0, 0, 60, "2.8.0", b"\x01"),
-]
-
-# (song_id, PROFILES index, pathcount, notecount, best path, its score)
-RECORDS = [
-    ("aaaa", 0, 1, 300, "1-2", 1000),
-    ("aaaa", 1, 1, 300, "1-2-3", 1100),
-    ("bbbb", 0, 1, 400, "2", 2000),
-]
-
-
-def add_records(path, profile_order, score_aaaa_cap8=1100):
-    """Add the record tables to a store from make_db. `profile_order` lists
-    PROFILES indexes in the order they are inserted, so the id each profile
-    gets depends on it, the way two files number the same profile differently."""
-    con = sqlite3.connect(path)
-    con.executescript(RECORD_SCHEMA)
-    ids = {}
-    for i in profile_order:
-        cur = con.execute(
-            "INSERT INTO profiles (chartmode, sp_cap, ms_enabled, ms_value, depth_mode,"
-            " depth_value, legacy_fills, efill_window_ms, hyversion, rules_fp)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            PROFILES[i],
-        )
-        ids[i] = cur.lastrowid
-    for song, prof, pathcount, notecount, best, score in RECORDS:
-        if song == "aaaa" and PROFILES[prof][1] == 8:
-            score = score_aaaa_cap8
-        con.execute(
-            "INSERT INTO records VALUES (?, ?, ?, ?)", (song, ids[prof], pathcount, notecount)
-        )
-        con.execute(
-            "INSERT INTO record_paths VALUES (?, ?, 0, ?, ?)", (song, ids[prof], best, score)
-        )
-    con.commit()
-    con.close()
+RECORD_FILES = REPO / "testdata" / "replay" / "compare_db"
+BOTH_DEFAULT_FIRST = RECORD_FILES / "profiles-default-first.db"
+BOTH_LEGACY_FIRST = RECORD_FILES / "profiles-legacy-first.db"
+DEFAULT_ONLY = RECORD_FILES / "profiles-default-only.db"
 
 
 def run_compare(a, b, *flags):
@@ -202,112 +56,211 @@ def table_line(stdout, table):
     raise AssertionError(f"no line for {table} in:\n{stdout}")
 
 
-def test_result_id_order_alone_compares_clean(tmp_path):
-    a, b = tmp_path / "A.db", tmp_path / "B.db"
-    make_db(a, [0, 1])
-    make_db(b, [1, 0])  # same rows, result_ids swapped
-    code, out = run_compare(a, b)
-    assert code == 0, out
-    assert table_line(out, "results") == "results: 2 rows compared, 0 differ"
-    assert table_line(out, "path_refs") == "path_refs: 2 rows compared, 0 differ"
-    assert table_line(out, "paths") == "paths: 2 rows compared, 0 differ"
-    assert table_line(out, "charts") == "charts: 2 rows compared, 0 differ"
-    assert table_line(out, "meta") == "meta: 1 rows compared, 0 differ"
+def counts(stdout, table):
+    """(rows compared, rows that differ) from a table's line."""
+    line = table_line(stdout, table)
+    m = re.match(re.escape(table) + r": (\d+) rows compared, (\d+) differ", line)
+    assert m, line
+    return int(m.group(1)), int(m.group(2))
 
 
-def test_tables_print_in_the_fixed_order(tmp_path):
-    a, b = tmp_path / "A.db", tmp_path / "B.db"
-    make_db(a, [0, 1])
-    make_db(b, [0, 1])
-    _, out = run_compare(a, b)
+def listed_keys(stdout, table):
+    """The differing keys printed under a table's line."""
+    lines = stdout.splitlines()
+    start = lines.index(table_line(stdout, table)) + 1
+    keys = []
+    for line in lines[start:]:
+        if not line.startswith("  "):
+            break
+        if not line.startswith("  ..."):
+            keys.append(line)
+    return keys
+
+
+def read(db, sql, params=()):
+    """Rows from a checked-in file, opened read-only so nothing writes beside it."""
+    assert Path(db).exists(), f"{db} is missing; its folder's README.md says how it is made"
+    con = sqlite3.connect(Path(db).resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        return con.execute(sql, params).fetchall()
+    finally:
+        con.close()
+
+
+def tables(db):
+    return {
+        name
+        for (name,) in read(
+            db,
+            "SELECT name FROM sqlite_master WHERE type = 'table'"
+            " AND name NOT LIKE 'sqlite\\_%' ESCAPE '\\'",
+        )
+    }
+
+
+def columns(db, table):
+    return [row[1] for row in read(db, f"PRAGMA table_info({compare_db.ident(table)})")]
+
+
+def keyed(db, sql, n_keys):
+    """{first n_keys columns: the rest} for each row sql reads; fails on a
+    repeated key, so a key that does not name one row is caught here."""
+    rows = read(db, sql)
+    out = {tuple(r[:n_keys]): tuple(r[n_keys:]) for r in rows}
+    assert len(out) == len(rows), f"{sql} does not key one row each in {db}"
+    return out
+
+
+def differing(a, b):
+    """Keys whose values differ between two keyed() reads, or that one lacks."""
+    return {k for k in a.keys() | b.keys() if a.get(k) != b.get(k)}
+
+
+def results_by_chart(db, left_out):
+    """Each chart's results row, without the columns in left_out. Both files
+    hold one row per chart, under one set of settings."""
+    cols = [c for c in columns(db, "results") if c not in left_out and c != "hyhash"]
+    sql = "SELECT hyhash, " + ", ".join(compare_db.ident(c) for c in cols) + " FROM results"
+    return keyed(db, sql, 1)
+
+
+def names_key(stdout, table, column, value):
+    """True when a key printed under the table names column=value."""
+    text = f"{column}={compare_db.show(value)}"
+    return any(text in key for key in listed_keys(stdout, table))
+
+
+def test_result_id_order_alone_compares_clean():
+    # A chart whose analysis is the same in both files but whose result_id is
+    # not: the batch's workers finished in another order.
+    ids_a = dict(read(CH11, "SELECT hyhash, result_id FROM results"))
+    ids_b = dict(read(LEGACY, "SELECT hyhash, result_id FROM results"))
+    own_id = compare_db.OWN_IDS["results"]
+    rows_a = results_by_chart(CH11, [own_id])
+    rows_b = results_by_chart(LEGACY, [own_id])
+    changed = differing(rows_a, rows_b)
+    renumbered = {h for h in ids_a if ids_a[h] != ids_b.get(h) and (h,) not in changed}
+    assert renumbered, "the two files hold no chart that only changed its result_id"
+
+    # Each path_refs row, named by its result's chart in place of the result_id.
+    refs_sql = (
+        "SELECT r.hyhash, p.phash, p.hyhash, p.chartmode FROM path_refs p"
+        f" JOIN results r ON r.{own_id} = p.{own_id}"
+    )
+    refs_changed = differing(keyed(CH11, refs_sql, 2), keyed(LEGACY, refs_sql, 2))
+
+    code, out = run_compare(CH11, LEGACY)
+    assert code == 1, out  # the chart whose fills differ is a real difference
+    assert counts(out, "results") == (len(rows_a.keys() | rows_b.keys()), len(changed)), out
+    assert counts(out, "path_refs")[1] == len(refs_changed), out
+    for h in renumbered:
+        assert not names_key(out, "results", "hyhash", h), out
+        assert not names_key(out, "path_refs", "result_hyhash", h), out
+
+
+def test_every_table_a_real_store_holds_is_compared_once():
+    # Every real store generation checked in, old layouts and the record layout.
+    held = set().union(*(tables(db) for db in sorted(STORE.glob("*.db"))))
+    assert held <= set(compare_db.TABLES), sorted(held - set(compare_db.TABLES))
+
+    _, out = run_compare(CH11, LEGACY)
     names = [line.split(":")[0] for line in out.splitlines() if not line.startswith(" ")]
-    assert names == [
-        "results", "paths", "path_refs", "songmeta", "dynamics", "charts", "meta",
-        "profiles", "records", "record_paths",
-    ]
+    assert sorted(names) == sorted(compare_db.TABLES), out
+    assert len(set(names)) == len(names), out
 
 
-def test_one_changed_payload_byte_is_reported(tmp_path):
-    a, b = tmp_path / "A.db", tmp_path / "B.db"
-    make_db(a, [0, 1])
-    make_db(b, [0, 1], payload_b=b"\x10\x11\x13")
-    code, out = run_compare(a, b)
+def test_one_changed_payload_is_reported():
+    sql = "SELECT hyhash, chartmode, phash, payload FROM paths"
+    changed = differing(keyed(CH11, sql, 3), keyed(LEGACY, sql, 3))
+    assert changed, "the two files hold the same path payloads"
+    charts_changed = {h for h, _mode, _phash in changed}
+
+    code, out = run_compare(CH11, LEGACY)
     assert code == 1, out
-    assert table_line(out, "paths") == "paths: 2 rows compared, 1 differ"
-    assert "bbbb" in out
-    assert table_line(out, "results") == "results: 2 rows compared, 0 differ"
+    assert counts(out, "paths")[1] == len(changed), out
+    for key in listed_keys(out, "paths"):
+        assert any(f"hyhash={compare_db.show(h)}" in key for h in charts_changed), key
 
 
-def test_chart_scan_order_is_part_of_the_answer(tmp_path):
-    a, b = tmp_path / "A.db", tmp_path / "B.db"
-    make_db(a, [0, 1])
-    make_db(b, [0, 1])
-    con = sqlite3.connect(b)
-    con.execute("DELETE FROM charts")
-    con.executemany(
-        "INSERT INTO charts VALUES (?, ?, ?)",
-        [("bbbb", "Song B", "b/notes.mid"), ("aaaa", "Song A", "a/notes.chart")],
-    )
-    con.commit()
-    con.close()
-    code, out = run_compare(a, b)
+def test_summary_only_leaves_out_detail_tables_and_columns():
+    detail = (tables(CH11) | tables(LEGACY)) - set(compare_db.SUMMARY_TABLES)
+    assert detail, "neither file holds a table the summary-only compare leaves out"
+
+    _, plain = run_compare(CH11, LEGACY)
+    code, out = run_compare(CH11, LEGACY, compare_db.SUMMARY_ONLY)
+    skipped = table_line(out, "skipped tables").split(": ", 1)[1].split(", ")
+    assert set(skipped) == detail, out
+    for table in detail:
+        table_line(plain, table)  # the plain compare does read it
+        assert not any(line.startswith(table + ":") for line in out.splitlines()), out
+    left_out = table_line(out, "skipped results columns").split(": ", 1)[1].split(", ")
+    assert set(compare_db.SUMMARY_LEFT_OUT) <= set(left_out), out
+
+
+def test_summary_only_reports_a_changed_score():
+    left_out = compare_db.SUMMARY_LEFT_OUT
+    assert columns(CH11, "results") == columns(LEGACY, "results")
+    changed = {h for (h,) in differing(
+        results_by_chart(CH11, left_out), results_by_chart(LEGACY, left_out))}
+    scores_a = dict(read(CH11, "SELECT hyhash, score FROM results"))
+    scores_b = dict(read(LEGACY, "SELECT hyhash, score FROM results"))
+    rescored = {h for h in scores_a if scores_a[h] != scores_b.get(h)}
+    assert rescored, "no chart's score differs between the two files"
+
+    code, out = run_compare(CH11, LEGACY, compare_db.SUMMARY_ONLY)
     assert code == 1, out
-    assert table_line(out, "charts") == "charts: 2 rows compared, 2 differ"
+    assert counts(out, "results")[1] == len(changed), out
+    for h in rescored:
+        assert names_key(out, "results", "hyhash", h), out
 
 
-def test_summary_only_old_layout_matches_new_layout(tmp_path):
-    a, b = tmp_path / "old.db", tmp_path / "new.db"
-    make_old_db(a, [0, 1])
-    make_new_db(b, [1, 0])  # result_ids swapped too
-    code, out = run_compare(a, b, "--summary-only")
+def profiles_by_settings(db):
+    """{every profiles column but its id: that id}."""
+    own_id = compare_db.OWN_IDS["profiles"]
+    cols = [c for c in columns(db, "profiles") if c != own_id]
+    sql = "SELECT " + ", ".join(compare_db.ident(c) for c in cols) + f", {own_id} FROM profiles"
+    return {k: v for k, (v,) in keyed(db, sql, len(cols)).items()}
+
+
+@pytest.mark.parametrize("flags", [[], [compare_db.SUMMARY_ONLY]])
+def test_profile_id_order_alone_compares_clean(flags):
+    ids_a = profiles_by_settings(BOTH_DEFAULT_FIRST)
+    ids_b = profiles_by_settings(BOTH_LEGACY_FIRST)
+    assert ids_a.keys() == ids_b.keys(), "the two files hold different profiles"
+    assert ids_a != ids_b, "the two files number their profiles the same way"
+
+    code, out = run_compare(BOTH_DEFAULT_FIRST, BOTH_LEGACY_FIRST, *flags)
     assert code == 0, out
-    assert table_line(out, "results") == "results: 2 rows compared, 0 differ"
-    assert table_line(out, "charts") == "charts: 2 rows compared, 0 differ"
-    assert table_line(out, "meta") == "meta: 1 rows compared, 0 differ"
-    assert table_line(out, "skipped tables") == (
-        "skipped tables: dynamics, path_refs, paths, songmeta"
-    )
-    assert table_line(out, "skipped results columns") == (
-        "skipped results columns: result_id, structure"
-    )
+    for table in ("profiles", "records", "record_paths"):
+        assert counts(out, table)[1] == 0, out
 
 
-def test_summary_only_reports_one_changed_score(tmp_path):
-    a, b = tmp_path / "old.db", tmp_path / "new.db"
-    make_old_db(a, [0, 1])
-    make_new_db(b, [0, 1], score_b=2001)
-    code, out = run_compare(a, b, "--summary-only")
+def test_records_of_a_profile_one_file_lacks_are_reported():
+    own_id = compare_db.OWN_IDS["profiles"]
+    only_in_a = profiles_by_settings(BOTH_DEFAULT_FIRST).keys() - profiles_by_settings(
+        DEFAULT_ONLY).keys()
+    assert only_in_a, "the default-only file holds every profile the other file does"
+    lacking = [profiles_by_settings(BOTH_DEFAULT_FIRST)[k] for k in only_in_a]
+    marks = ", ".join("?" * len(lacking))
+    record_songs = [s for (s,) in read(
+        BOTH_DEFAULT_FIRST, f"SELECT song_id FROM records WHERE profile_id IN ({marks})", lacking)]
+    songs = set(record_songs)
+    (n_paths,) = read(
+        BOTH_DEFAULT_FIRST, f"SELECT COUNT(*) FROM record_paths WHERE profile_id IN ({marks})",
+        lacking)[0]
+    assert songs, "the profile only one file holds has no records"
+    legacy = read(
+        BOTH_DEFAULT_FIRST, f"SELECT legacy_fills FROM profiles WHERE {own_id} IN ({marks})",
+        lacking)
+
+    code, out = run_compare(BOTH_DEFAULT_FIRST, DEFAULT_ONLY)
     assert code == 1, out
-    assert table_line(out, "results") == "results: 2 rows compared, 1 differ"
-    assert "hyhash='bbbb'" in out
-
-
-@pytest.mark.parametrize("flags", [[], ["--summary-only"]])
-def test_profile_id_order_alone_compares_clean(tmp_path, flags):
-    a, b = tmp_path / "A.db", tmp_path / "B.db"
-    make_db(a, [0, 1])
-    make_db(b, [0, 1])
-    add_records(a, [0, 1])
-    add_records(b, [1, 0])  # same profiles, ids swapped
-    code, out = run_compare(a, b, *flags)
-    assert code == 0, out
-    assert table_line(out, "profiles") == "profiles: 2 rows compared, 0 differ"
-    assert table_line(out, "records") == "records: 3 rows compared, 0 differ"
-    assert table_line(out, "record_paths") == "record_paths: 3 rows compared, 0 differ"
-
-
-def test_one_changed_record_path_is_reported(tmp_path):
-    a, b = tmp_path / "A.db", tmp_path / "B.db"
-    make_db(a, [0, 1])
-    make_db(b, [0, 1])
-    add_records(a, [0, 1])
-    add_records(b, [1, 0], score_aaaa_cap8=1101)
-    code, out = run_compare(a, b)
-    assert code == 1, out
-    assert table_line(out, "record_paths") == "record_paths: 3 rows compared, 1 differ"
-    assert "song_id='aaaa'" in out
-    assert "profile_sp_cap=8" in out
-    assert table_line(out, "records") == "records: 3 rows compared, 0 differ"
+    assert counts(out, "profiles")[1] == len(only_in_a), out
+    assert counts(out, "records")[1] == len(record_songs), out
+    assert counts(out, "record_paths")[1] == n_paths, out
+    for key in listed_keys(out, "records"):
+        assert any(f"song_id={compare_db.show(s)}" in key for s in songs), key
+        assert any(f"legacy_fills={compare_db.show(v)}" in key for (v,) in legacy), key
 
 
 if __name__ == "__main__":

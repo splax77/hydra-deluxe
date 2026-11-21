@@ -54,6 +54,70 @@ TEST_CASE("offered; Later keeps a button") {
 }
 """
 
+# Lines 1-24. A UI file: two runnable test functions listed in a TestEntry
+# table, and a helper that also takes the context but is not listed.
+UI_STYLE = """namespace {
+
+void open_panel(ImGuiTestContext* ctx) {
+    hydra::ui::set_view_analyzer_for_test(fake);
+}
+
+void test_close(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+    open_panel(ctx);
+}
+
+void test_plain(ImGuiTestContext* ctx) {
+    IM_CHECK(1 == 1);
+}
+
+}
+
+const std::vector<TestEntry>& area_tests() {
+    static const std::vector<TestEntry> entries = {
+        {"close", test_close},
+        {"plain", test_plain},
+    };
+    return entries;
+}
+"""
+
+# Lines 1-7. A name table whose function does not take the test context.
+HANDLER_TABLE = """void on_click(int x) {
+    hydra::net::set_fetcher(fake);
+}
+
+const Handler handlers[] = {
+    {"click", on_click},
+};
+"""
+
+
+# Lines 1-20. Test a is registered by a call. `decoy` only holds a commented-out
+# call and a string that looks like an entry, so it registers nothing.
+CALL_STYLE = """void test_a(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+}
+
+void test_b(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+}
+
+void test_c(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+}
+
+void register_all(Harness& h) {
+    uitest::register_test(h, "a", test_a);
+}
+
+void decoy(Harness& h) {
+    // register_test(h, "b", test_b);
+    const char* s = "{\\"c\\", test_c}";
+    test_b(nullptr);
+}
+"""
+
 
 def section(name, line, *inputs):
     out = f"## {name}\nlocation: code/tests/s.cpp:{line}\n"
@@ -145,6 +209,35 @@ class Grading(Base):
         self.assertIn("test: offered; Later keeps a button | code/tests/u.cpp:9-12 | facts section: yes", out)
         self.assertIn("hit: offered; Later keeps a button | code/tests/u.cpp:4 | set_fetcher, ScopedHook | found", out)
         self.assertNotIn("test: World", out)
+
+    def test_a_registered_ui_function_is_a_test_and_its_table_is_not(self):
+        self.write("code/tests/ui.cpp", UI_STYLE)
+        out = self.run_grader(section("test_close", 7), ranges="tests/ui.cpp:1-24")
+        self.assertIn("test: test_close | code/tests/ui.cpp:7-10", out)
+        self.assertIn("test: test_plain | code/tests/ui.cpp:12-14", out)
+        self.assertNotIn("test: area_tests", out)
+        self.assertIn("miss: test_close | code/tests/ui.cpp:8 | set_fetcher", out)
+        self.assertIn("miss: test_close | code/tests/ui.cpp:4 | for_test name", out)
+        self.assertNotIn("area_tests | code/tests/ui.cpp", out)
+        self.assertNotIn("test_plain | code/tests/ui.cpp:", out.split("test: test_plain")[1])
+
+    def test_an_unlisted_context_helper_stays_a_helper(self):
+        self.write("code/tests/ui.cpp", UI_STYLE)
+        out = self.run_grader(section("test_close", 7), ranges="tests/ui.cpp:1-24")
+        self.assertNotIn("test: open_panel", out)
+
+    def test_a_register_test_call_lists_a_test_but_a_comment_or_string_does_not(self):
+        self.write("code/tests/c.cpp", CALL_STYLE)
+        out = self.run_grader(section("test_a", 1), ranges="tests/c.cpp:1-21")
+        self.assertIn("test: test_a | code/tests/c.cpp:1-3", out)
+        self.assertNotIn("test: register_all", out)
+        self.assertIn("test: decoy | code/tests/c.cpp:17-21", out)
+
+    def test_a_name_table_without_the_test_context_registers_no_test(self):
+        self.write("code/tests/h.cpp", HANDLER_TABLE)
+        out = self.run_grader(section("on_click", 1), ranges="tests/h.cpp:1-7")
+        self.assertNotIn("test: on_click", out)
+        self.assertIn("hit: code/tests/h.cpp:5 | code/tests/h.cpp:2 | set_fetcher", out)
 
     def outside_copy(self):
         self.write("code/tests/main_t.cpp",

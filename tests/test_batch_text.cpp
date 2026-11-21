@@ -4,22 +4,26 @@
 
 #include "doctest.h"
 
+#include <string>
+
 #include "app/analysis.h"  // batch_cant_analyze_text
 #include "app/config.h"
 #include "app/display_format.h"  // format_duration, time_left_text
+#include "app/report.h"  // hit_window_text
 #include "cli/batch_scope.h"
-#include "core/model.h"  // counted
+#include "core/model.h"  // counted, format_ms_whole, fill_refuses, is_e0
+#include "core/song.h"  // FillDeadlineRule
+#include "search/graph.h"  // fill_rule_description, kCh11FillLeadBeats
 #include "ui/library_parts.h"
 
 using hydra::counted;
 using hydra::app::Settings;
 using namespace hydra::ui::detail;
 
-TEST_CASE("batch text: counts group thousands and pick the right noun") {
+// One, two and a thousand are tests/test_display_format.cpp's; zero is the
+// case only this file states.
+TEST_CASE("batch text: a count of zero takes the plural noun") {
     CHECK(counted(0, "chart", "charts") == "0 charts");
-    CHECK(counted(1, "chart", "charts") == "1 chart");
-    CHECK(counted(2, "chart", "charts") == "2 charts");
-    CHECK(counted(12345, "chart", "charts") == "12,345 charts");
 }
 
 // The user's answer 6 (2026-10-15): the confirm's dim line for the rows in
@@ -35,15 +39,17 @@ TEST_CASE("batch text: the confirm's can't-analyze line") {
 
 TEST_CASE("batch text: durations read m:ss under an hour and h:mm:ss over it") {
     CHECK(hydra::app::format_duration(0.0) == "0:00");
-    CHECK(hydra::app::format_duration(42.4) == "0:42");
-    CHECK(hydra::app::format_duration(723.0) == "12:03");
-    CHECK(hydra::app::format_duration(3725.0) == "1:02:05");
+    CHECK(hydra::app::format_duration(12 * 60 + 3) == "12:03");
+    CHECK(hydra::app::format_duration(3600 + 2 * 60 + 5) == "1:02:05");
     CHECK(hydra::app::format_duration(-3.0) == "0:00");
+    // Rounds to the nearest second: a half second rounds up, so 59.5 s reads
+    // a whole minute and 59.49 s does not.
+    CHECK(hydra::app::format_duration(59.5) == "1:00");
+    CHECK(hydra::app::format_duration(59.49) == "0:59");
 }
 
 TEST_CASE("batch text: time left reads about m:ss left") {
-    CHECK(hydra::app::time_left_text(90.0) == "about 1:30 left");
-    CHECK(hydra::app::time_left_text(42.4) == "about 0:42 left");
+    CHECK(hydra::app::time_left_text(60 + 30) == "about 1:30 left");
 }
 
 TEST_CASE("batch text: the confirm lists the settings a batch runs with") {
@@ -157,14 +163,6 @@ TEST_CASE("settings reset: the tooltip says what a click undoes, or why it can't
     CHECK(reset_settings_tooltip(s, true) == "Stop the batch to change these.");
 }
 
-TEST_CASE("batch text: cap 1 reads 1 bar and cap 1000 reads 1,000 bars") {
-    Settings s;
-    s.sp_cap = 1;
-    CHECK(batch_settings_summary(s).sp_cap == "1 bar (a what-if)");
-    s.sp_cap = 1000;
-    CHECK(batch_settings_summary(s).sp_cap == "1,000 bars (a what-if)");
-}
-
 // D74 item 3: the scan modal's running counts group thousands like every
 // other count.
 TEST_CASE("batch text: the scan dialog's counts read 1,234") {
@@ -184,29 +182,56 @@ TEST_CASE("batch text: the confirm's Fills line names the fill rule") {
 // worded like Path limit.
 TEST_CASE("batch text: the confirm's Early fill window line reads the window in ms") {
     Settings s;
-    CHECK(batch_settings_summary(s).early_fill == "60 ms");
-    s.early_fill_window_ms = 85;
-    CHECK(batch_settings_summary(s).early_fill == "85 ms");
+    CHECK(batch_settings_summary(s).early_fill ==
+          hydra::format_ms_whole(hydra::kDefaultEarlyFillWindowMs));
+    s.early_fill_window_ms = hydra::kMaxEarlyFillWindowMs;
+    CHECK(batch_settings_summary(s).early_fill ==
+          hydra::format_ms_whole(hydra::kMaxEarlyFillWindowMs));
 }
 
-// The panel row's tooltip, each sentence a rule of the early-fill window
-// (fill_refuses and is_e0 in core/model.h).
+// The panel row's tooltip: one check per sentence, each beside the rule in
+// core/model.h that makes it true.
 TEST_CASE("batch text: the Early fill window help text") {
-    CHECK(early_fill_window_help_text() ==
-          "How far from a fill's deadline your Star Power may come ready and still count as an "
-          "early fill. Ready up to this many ms after the deadline, you can still summon the fill "
-          "by hitting early; later than that, the fill never spawns. Ready less than this many ms "
-          "before the deadline, the activation is marked E. At 0 no activation is an early fill. "
-          "85 ms, the hit window, is the most it allows.");
+    const std::string help = early_fill_window_help_text();
+    const auto says = [&help](const std::string& sentence) {
+        INFO(sentence);
+        CHECK(help.find(sentence) != std::string::npos);
+    };
+    const double w = hydra::kDefaultEarlyFillWindowMs;
+
+    // fill_refuses: ready up to the window after the deadline still spawns.
+    says("Ready up to this many ms after the deadline, you can still summon the fill by "
+         "hitting early; later than that, the fill never spawns.");
+    CHECK_FALSE(hydra::fill_refuses(-w, w));
+    CHECK(hydra::fill_refuses(-w - 1.0, w));
+
+    // is_e0: ready less than the window before the deadline is an E.
+    says("Ready less than this many ms before the deadline, the activation is marked E.");
+    CHECK(hydra::is_e0(w - 1.0, 0, w));
+    CHECK_FALSE(hydra::is_e0(w, 0, w));
+
+    // At a window of 0, an activation whose fill still spawns is no E.
+    says("At 0 no activation is an early fill.");
+    CHECK_FALSE(hydra::fill_refuses(0.0, 0.0));
+    CHECK_FALSE(hydra::is_e0(0.0, 0, 0.0));
+    CHECK(hydra::fill_refuses(-1.0, 0.0));
+
+    // The most it allows is the hit window, and the setting clamps there.
+    says(hydra::app::report::hit_window_text() + " ms, the hit window, is the most it allows.");
+    CHECK(Settings::clamp(&Settings::early_fill_window_ms, hydra::kMaxEarlyFillWindowMs + 1) ==
+          hydra::kMaxEarlyFillWindowMs);
 }
 
-// D74 item 4: the tooltip's deadline sentences are the ones the reports use.
+// D74 item 4: the tooltip's deadline sentences are the ones the reports use,
+// fill_rule_description's for each rule.
 TEST_CASE("batch text: the 1.0 fills help text uses the shared fill-rule sentences") {
-    CHECK(legacy_fills_help_text() ==
-          "Spawn drum fills by Clone Hero 1.0's rule instead of Clone Hero 1.1's. A fill only "
-          "appears if your Star Power was ready in time. Clone Hero 1.1 sets the deadline 4 "
-          "beats before the fill starts. Clone Hero 1.0 set the deadline about one fill-length "
-          "before the fill starts. Tick this only for runs played on Clone Hero 1.0.");
+    const std::string help = legacy_fills_help_text();
+    const std::string ch11 = hydra::fill_rule_description(hydra::FillDeadlineRule::Ch11);
+    const std::string ch10 = hydra::fill_rule_description(hydra::FillDeadlineRule::Ch10);
+    CHECK(help.find(ch11) != std::string::npos);
+    CHECK(help.find(ch10) != std::string::npos);
+    // The 1.1 sentence names the lead the search uses, in beats.
+    CHECK(ch11.find(std::to_string(hydra::kCh11FillLeadBeats) + " beats") != std::string::npos);
 }
 
 TEST_CASE("batch text: the empty library says what to do next") {

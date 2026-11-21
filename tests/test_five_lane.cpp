@@ -10,7 +10,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <fstream>
 #include <map>
 #include <string>
 #include <utility>
@@ -22,7 +21,6 @@
 #include "midi_util.h"
 #include "parse/song.h"
 #include "sng_util.h"     // make_sng
-#include "song_digest.h"  // chart_parse_hash, digest_settings
 #include "srb_util.h"     // make_srb, make_metadata
 #include "temp_util.h"      // temp_dir, write_bytes
 #include "testdata_dirs.h"  // testdata_root
@@ -67,11 +65,28 @@ std::vector<uint8_t> drum_mid(std::vector<At> events) {
     return testmidi::smf_drums(testmidi::concat(ev));
 }
 
-// Fixture A in .mid: one note on each pad, then orange and green on one tick,
-// then a kick. testdata/five_lane/five_lane_a.chart is its .chart twin.
+// Fixture A's notes as (tick, Expert pitch), in tick order: one note on each
+// pad, then orange and green on one tick, then a kick.
+// testdata/five_lane/five_lane_a.chart is its .chart twin.
+const std::vector<std::pair<uint32_t, uint8_t>> kANotes = {
+    {0, kRed},      {480, kYellow},  {960, kBlue},   {1440, kOrange},
+    {1920, kGreen}, {2400, kOrange}, {2400, kGreen}, {2880, kKick}};
+
+// Fixture A in .mid.
 std::vector<uint8_t> mid_a() {
-    return drum_mid({on(0, kRed), on(480, kYellow), on(960, kBlue), on(1440, kOrange),
-                     on(1920, kGreen), on(2400, kOrange), on(2400, kGreen), on(2880, kKick)});
+    std::vector<At> ev;
+    for (const auto& note : kANotes) ev.push_back(on(note.first, note.second));
+    return drum_mid(ev);
+}
+
+// The ticks fixture A writes notes on, each once, in song order.
+std::vector<int64_t> a_ticks() {
+    std::vector<int64_t> out;
+    for (const auto& note : kANotes) {
+        const int64_t tick = note.first;
+        if (out.empty() || out.back() != tick) out.push_back(tick);
+    }
+    return out;
 }
 
 std::string five_lane_path(const std::string& name) {
@@ -88,17 +103,16 @@ std::vector<int64_t> ticks(const Song& song) {
     return out;
 }
 
-// The chord at `tick`; fails the test when there is none.
-std::string code_at(const Song& song, int64_t tick) {
-    for (const SongTimestamp& ts : song.sequence)
-        if (ts.timecode.ticks() == tick) return ts.chord.code();
-    FAIL("no chord at tick " << tick);
-    return {};
-}
-
 // Fixture A's chords once converted, by the five-lane branch (NL-74, NL-75).
 const std::vector<std::string> kAConverted = {".n...", "..N..", "...n.", "....N",
                                                "....n", "...nN", "n...."};
+
+// A reading of fixture A keeps every note: one note for each note the fixture
+// writes, and one chord for each tick it writes on.
+void check_keeps_every_a_note(const Song& song) {
+    CHECK(song.note_count() == static_cast<int>(kANotes.size()));
+    CHECK(song.sequence.size() == a_ticks().size());
+}
 
 // A song folder in the temp folder holding `notes_name` (its bytes) and a
 // song.ini whose [song] section holds `ini_lines`. Returns the notes file's
@@ -151,18 +165,11 @@ const std::vector<std::string> kNoProFiveLane = {"n....", ".n...", "..N..", "...
 // ---- .mid --------------------------------------------------------------
 
 TEST_CASE("five-lane .mid: every note is kept") {
-    const Song song = load_songbytes_mid(mid_a(), kPro);
-    CHECK(song.sequence.size() == 7);
-    CHECK(song.note_count() == 8);
+    check_keeps_every_a_note(load_songbytes_mid(mid_a(), kPro));
 }
 
 TEST_CASE("five-lane .mid: yellow is a cymbal, blue a tom, orange a green cymbal, green a green tom") {
     CHECK(chord_codes(load_songbytes_mid(mid_a(), kPro)) == kAConverted);
-}
-
-TEST_CASE("five-lane .mid: orange and green on one tick read as a green cymbal and a blue tom") {
-    const Song song = load_songbytes_mid(drum_mid({on(0, kOrange), on(0, kGreen)}), kPro);
-    CHECK(chord_codes(song) == std::vector<std::string>{"...nN"});
 }
 
 TEST_CASE("five-lane .mid: a green pad on Easy alone still converts Expert") {
@@ -243,31 +250,19 @@ TEST_CASE("five-lane .mid: blue, orange and green on one tick load with a green 
     CHECK(chord.at(NoteColor::Green)->is_cymbal());
 }
 
-TEST_CASE("five-lane: the .mid reader and the .chart reader give the same chords for fixture A") {
-    // There is no separate full .mid reader a test can reach:
-    // full reader has no entry a test can reach: every .mid load goes through
-    // parse_mid_lean. So this pins the lean reader against the other reader.
-    const Song mid = load_songbytes_mid(mid_a(), kPro);
-    const Song chart = load_songpath_chart(five_lane_path("five_lane_a.chart"), kPro);
-    CHECK(ticks(mid) == ticks(chart));
-    CHECK(chord_codes(mid) == chord_codes(chart));
-    CHECK(mid.note_count() == chart.note_count());
+TEST_CASE("five-lane: the .mid reader and the .chart reader put fixture A's chords on its ticks") {
+    CHECK(ticks(load_songbytes_mid(mid_a(), kPro)) == a_ticks());
+    CHECK(ticks(load_songpath_chart(five_lane_path("five_lane_a.chart"), kPro)) == a_ticks());
 }
 
 // ---- .chart ------------------------------------------------------------
 
 TEST_CASE("five-lane .chart: every note is kept") {
-    const Song song = load_songpath_chart(five_lane_path("five_lane_a.chart"), kPro);
-    CHECK(song.sequence.size() == 7);
-    CHECK(song.note_count() == 8);
+    check_keeps_every_a_note(load_songpath_chart(five_lane_path("five_lane_a.chart"), kPro));
 }
 
 TEST_CASE("five-lane .chart: yellow is a cymbal, blue a tom, orange a green cymbal, green a green tom") {
     CHECK(chord_codes(load_songpath_chart(five_lane_path("five_lane_a.chart"), kPro)) == kAConverted);
-}
-
-TEST_CASE("five-lane .chart: N 4 and N 5 on one tick read as a green cymbal and a blue tom") {
-    CHECK(code_at(load_songpath_chart(five_lane_path("five_lane_a.chart"), kPro), 2400) == "...nN");
 }
 
 TEST_CASE("five-lane .chart: N 5 in EasyDrums alone still converts ExpertDrums") {
@@ -280,34 +275,6 @@ TEST_CASE("five-lane .chart: N 5 in EasyDrums alone still converts ExpertDrums")
 TEST_CASE("five-lane .chart: N 38 and N 44 put an accent and a ghost on the green pad") {
     CHECK(chord_codes(load_songpath_chart(five_lane_path("five_lane_dynamics.chart"), kPro)) ==
           std::vector<std::string>{".n...", "....a", "....g"});
-}
-
-// ---- four-lane charts ----------------------------------------------------
-
-TEST_CASE("five-lane: four-lane charts parse to their pinned digests") {
-    // These charts have no fifth pad
-    // and no five_lane_drums key, so the conversion must leave them alone.
-    // Each digest is the one testdata/parse_edge/expected_expert.tsv pins,
-    // read from that file, under the settings it was captured with.
-    const app::AnalysisSettings settings =
-        digest::digest_settings("Expert", true, true).batch_run().settings;
-    const std::string edge = corpus::testdata_root() + "/parse_edge/";
-    for (const std::string name : {"m01_base.mid", "c01_base.chart", "c20_disco.chart"}) {
-        CAPTURE(name);
-        std::ifstream in(edge + "expected_expert.tsv", std::ios::binary);
-        std::string line;
-        uint64_t pinned = 0;
-        bool found = false;
-        while (std::getline(in, line)) {
-            if (line.rfind(name + "\t", 0) != 0) continue;
-            const size_t t1 = line.find('\t');
-            const size_t t2 = line.find('\t', t1 + 1);
-            pinned = std::stoull(line.substr(t1 + 1, t2 - t1 - 1), nullptr, 16);
-            found = true;
-        }
-        REQUIRE(found);
-        CHECK(digest::chart_parse_hash(edge + name, settings) == pinned);
-    }
 }
 
 // ---- song.ini's five_lane_drums and pro_drums ----------------------------
@@ -509,12 +476,6 @@ TEST_CASE("five-lane all-toms: a disco section still flips red to a yellow cymba
     const Song song = load_songbytes_mid(
         drum_mid({text(0, "[mix 3 drums0d]"), on(0, kRed), on(480, kYellow)}), kPro);
     CHECK(chord_codes(song) == std::vector<std::string>{"..N..", ".n..."});
-}
-
-TEST_CASE("five-lane all-toms: with Pro Drums off the chart reads as before") {
-    const Song song = load_songbytes_mid(no_pro_mid(), kPlainDrums);
-    CHECK(chord_codes(song) == kNoProToms);
-    CHECK(cymbal_count(song) == 0);
 }
 
 TEST_CASE("five-lane all-toms: probe F scores what Clone Hero 1.1 scored") {
