@@ -22,6 +22,7 @@
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 #include <sqlite3.h>
@@ -1496,4 +1497,75 @@ TEST_CASE("store: a Stale lookup says why (another build or other rules), a Read
     CHECK(ready.status == RecordStatus::Ready);
     CHECK_FALSE(ready.stale_build);
     CHECK_FALSE(ready.stale_rules);
+}
+
+// The fill of the saved hardest figure replays the rows the store picks
+// (rows_missing_hardest). With every figure emptied, as an older build left
+// it, the store must pick a row exactly when the engine's own figure
+// (engine_hardest_ms) gives its path one: a row it skips keeps an empty
+// figure for good, and a row with no figure costs a replay for nothing. The
+// charts are the four V1 read the figure on. Allies' paths hold squeeze-outs
+// and Trippin's early fills, so between them the store must pick rows that
+// hold no squeeze-in.
+TEST_CASE("store: rows missing the hardest figure are exactly the paths the engine gives one") {
+    const app::Settings settings;
+    const Profile profile = settings.profile();
+    const std::vector<std::string> names = {
+        "Evans Blue - Beg", "Mutemath - Allies", "Green Day - Burnout",
+        "Trippin on a Hole in a Paper Heart"};
+
+    std::vector<ChartLibraryEntry> library;
+    std::vector<PreparedRecord> saves;
+    // Every saved row, by chart and rank, and whether the engine gives its
+    // path a figure.
+    struct SavedRow {
+        std::string song_id;
+        int rank = 0;
+        bool has_figure = false;
+    };
+    std::vector<SavedRow> rows;
+    int figure_without_squeeze_in = 0;
+    for (const std::string& name : names) {
+        CAPTURE(name);
+        const std::string file = corpus::chart_named(name);
+        REQUIRE_FALSE(file.empty());
+        const ChartLibraryEntry entry = corpus::scanned_entry(file, name);
+        const HydraRecord& analysis = corpus::analyzed(file, settings.to_analysis_settings());
+        const std::vector<const Path*> engine_paths = analysis.all_paths();
+        PreparedRecord prepared = prepare_record(entry.md5, profile, analysis);
+        REQUIRE_FALSE(prepared.record.paths.empty());
+        for (PathRow& p : prepared.record.paths) {
+            REQUIRE(static_cast<size_t>(p.rank) <= engine_paths.size());
+            const bool has_figure =
+                engine_hardest_ms(*engine_paths[static_cast<size_t>(p.rank - 1)]).has_value();
+            rows.push_back({entry.md5, p.rank, has_figure});
+            if (has_figure && p.sqin_count == 0) ++figure_without_squeeze_in;
+            p.hardest_ms.reset();
+        }
+        library.push_back(entry);
+        saves.push_back(std::move(prepared));
+    }
+    // Without such a row the case could not tell the select from one that
+    // asks only for a squeeze-in.
+    REQUIRE(figure_without_squeeze_in > 0);
+
+    RecordStore store(":memory:");
+    store.rebuild_chart_library(library);
+    for (const PreparedRecord& p : saves) {
+        store.save(p);
+        REQUIRE(store.lookup_one(p.record.song_id, profile).status == RecordStatus::Ready);
+    }
+
+    std::set<std::pair<std::string, int>> picked;
+    for (const MissingHardestRow& row : store.rows_missing_hardest(profile))
+        picked.insert({row.song_id, row.rank});
+    size_t with_figure = 0;
+    for (const SavedRow& row : rows) {
+        CAPTURE(row.song_id);
+        CAPTURE(row.rank);
+        CHECK(picked.count({row.song_id, row.rank}) == (row.has_figure ? 1u : 0u));
+        if (row.has_figure) ++with_figure;
+    }
+    // And the store picks no row beyond the ones saved here.
+    CHECK(picked.size() == with_figure);
 }

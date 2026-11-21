@@ -372,9 +372,9 @@ TEST_CASE("the fill on several workers writes the same figures as on one") {
     CHECK(four_counter.charts_total == want);
 }
 
-// A row the fill reads always has a squeeze-in, and its figure is the largest
+// A row the fill reads holds a squeeze, or an E0 fill, and its figure is the largest
 // difficulty over its squeezes and E0 fills (engine_hardest_ms). So a figure
-// that needs no hitting (timing_needs_hitting is false) means the squeeze-in
+// that needs no hitting (timing_needs_hitting is false) means a squeeze-in
 // itself needs none: it sits inside Star Power, before the SP end. The fill
 // writes that figure whole, sign included, and shown_timing shows no timing
 // for it. The case is the first corpus chart whose fresh save holds such a
@@ -481,17 +481,25 @@ TEST_CASE("a result this build saves holds a saved figure on every path with a s
 }
 
 // A row saved under a results stamp this build does not accept is never read
-// by the fill, even with an empty figure and a squeeze-in: the fill reads no
-// chart, calls neither the progress callback nor the replay, and the row is
-// as it was. The rows emptied are the ones the fill reads on Smash Mouth
-// under the current stamp; here they sit under an older one.
+// by the fill, even with an empty figure the engine gives its path: the fill
+// reads no chart, calls neither the progress callback nor the replay, and the
+// row is as it was. The rows emptied are the ones the fill reads on Smash
+// Mouth under the current stamp; here they sit under an older one.
 TEST_CASE("a row under an older stamp is left alone by the fill") {
     const testtemp::ScopedFile db("older_stamp_fill", ".db");
     const CorpusChart chart = named_chart(kSmashMouth);
     const std::vector<int> emptied = fill_ranks(chart);
     REQUIRE_FALSE(emptied.empty());
+    // Only the emptied ranks are counted: a path the engine gives no figure
+    // is empty in a fresh save too.
+    std::string rank_list;
+    for (int rank : emptied) {
+        if (!rank_list.empty()) rank_list += ",";
+        rank_list += std::to_string(rank);
+    }
     const std::string empty_rows =
-        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL AND sqin_count > 0";
+        "SELECT COUNT(*) FROM record_paths WHERE hardest_ms IS NULL AND rank IN (" +
+        rank_list + ")";
     int64_t empty_before = 0;
     int replays = 0;
     Counter counter;
@@ -504,7 +512,7 @@ TEST_CASE("a row under an older stamp is left alone by the fill") {
         REQUIRE(store.lookup_one(chart.entry.md5, fill_settings().profile()).status ==
                 hydra::store::RecordStatus::Stale);
         empty_before = hydra::test::scalar_on_file(db.path, empty_rows);
-        // Every emptied row is one the fill would read under the current stamp.
+        // The older build's save keeps every emptied row empty.
         REQUIRE(empty_before == static_cast<int64_t>(emptied.size()));
 
         const hydra::app::PathReplay replay = [&](const hydra::Song& song,

@@ -1639,10 +1639,16 @@ std::vector<MissingHardestRow> RecordStore::rows_missing_hardest(const Profile& 
     // Which charts the library lists, and the copy that names each, are
     // ChartIndex's answers.
     const ChartIndex library = chart_index();
+    // A row needs the figure when its own columns say the path holds one of
+    // the things engine_hardest_ms reads. path_row_of writes those columns
+    // from the same walk, so this picks a row exactly when the engine would
+    // give its path a figure, and replays no path that has none.
     const std::string sql =
         "SELECT song_id, profile_id, rank, path, score, sqin_count, sqout_count"
         " FROM record_paths WHERE profile_id IN (" + placeholders(ids.size()) +
-        ") AND hardest_ms IS NULL AND sqin_count > 0 ORDER BY song_id, profile_id, rank";
+        ") AND hardest_ms IS NULL"
+        " AND (sqin_count > 0 OR sqout_count > 0 OR hardest_efill IS NOT NULL)"
+        " ORDER BY song_id, profile_id, rank";
     Stmt s = prepare_read(writer_.db, sql.c_str());
     for (size_t i = 0; i < ids.size(); ++i) sqlite3_bind_int64(s, static_cast<int>(i + 1), ids[i]);
     while (step_row(s)) {
