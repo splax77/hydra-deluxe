@@ -172,14 +172,16 @@ void write_big_opus(const std::string& path, uint64_t min_bytes) {
 
 // ---- the bar's numbers -------------------------------------------------------
 
-TEST_CASE("Preview load progress: the bar never moves backwards") {
+TEST_CASE("Preview load progress: the bar never moves backwards, and the audio fills its slice by bytes") {
     const uint64_t total = 625028440;
+    // Every step in load order, with the audio bytes at none, a quarter, a
+    // half and all of them.
     const std::vector<P> script = {
         make(S::Reading, 0, 0),
         make(S::Reading, 0, total),  // audio already counting, chart not parsed
-        make(S::Opening, 4u << 20, total),
-        make(S::Opening, 100000000, total),
-        make(S::Opening, 312000000, total),
+        make(S::Opening, 0, total),
+        make(S::Opening, total / 4, total),
+        make(S::Opening, total / 2, total),
         make(S::Opening, total, total),
         make(S::Building, total, total),
         make(S::Highway, total, total),
@@ -194,9 +196,19 @@ TEST_CASE("Preview load progress: the bar never moves backwards") {
         prev = f;
     }
     CHECK(script.front().fraction() == 0.0f);
-    // Opening audio owns most of the bar: halfway through the bytes is well
-    // past a third of it.
-    CHECK(make(S::Opening, total / 2, total).fraction() > 0.4f);
+    // Opening audio fills its slice of the bar by the shared progress bar rule
+    // (app::progress_fraction of the bytes), and the bar has no gap or jump
+    // when the audio is all open and building starts.
+    const float open_start = make(S::Opening, 0, total).fraction();
+    const float building = make(S::Building, total, total).fraction();
+    CHECK(make(S::Opening, total, total).fraction() == doctest::Approx(building));
+    for (const P& p : script) {
+        if (p.step != S::Opening) continue;
+        CAPTURE(p.bytes_done);
+        const float fill = hydra::app::progress_fraction(static_cast<double>(p.bytes_done),
+                                                         static_cast<double>(p.bytes_total));
+        CHECK(p.fraction() == doctest::Approx(open_start + (building - open_start) * fill));
+    }
 }
 
 TEST_CASE("Preview load progress: labels name the step, in real units") {

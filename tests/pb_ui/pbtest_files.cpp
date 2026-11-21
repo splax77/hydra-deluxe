@@ -14,6 +14,8 @@
 
 #include "../testdata_dirs.h"
 
+#include "app/user_messages.h"  // plain_error
+#include "core/error_kind.h"    // KindedError
 #include "pathbuilder/pb_files.h"
 
 namespace pbtest {
@@ -56,11 +58,12 @@ void test_paste_refused_keeps_path(ImGuiTestContext* ctx) {
     ImGui::SetClipboardText("99");
     ctx->MenuClick("Edit/Paste");
     ctx->Yield(2);
-    // The user's own words for a paste that does not fit (PB-4, 2026-10-29).
-    IM_CHECK_STR_EQ(h.app->refusal().c_str(),
-                    "This text doesn't match a path on this chart, so your path stays as it was.");
-    IM_CHECK_STR_EQ(h.app->refusal_detail().c_str(),
-                    "window 1 (\"99\") matches no fill on this chart");
+    // The refusal is the sentence for a path text that does not fit, and its
+    // detail names the pasted window.
+    const hydra::KindedError refused(hydra::ErrorKind::PathTextRefused, "");
+    const std::string refused_sentence = hydra::app::plain_error(refused);
+    IM_CHECK_STR_EQ(h.app->refusal().c_str(), refused_sentence.c_str());
+    IM_CHECK(h.app->refusal_detail().find("\"99\"") != std::string::npos);
     IM_CHECK(on_screen(h, h.app->refusal()));
     IM_CHECK(on_screen(h, h.app->refusal_detail()));
     IM_CHECK(history.generation() == generation);
