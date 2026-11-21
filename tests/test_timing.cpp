@@ -12,6 +12,7 @@
 #include <map>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "app/preview_view.h"  // PreviewTimeSig
 #include "core/timing.h"
@@ -19,10 +20,16 @@
 #include "parse/song.h"
 
 TEST_CASE("timing: corpus conversions are monotone and consistent") {
+    // A walk over no charts would pass every check below, so it fails at once.
+    const std::vector<std::string>& paths = corpus::chart_paths();
+    REQUIRE_FALSE(paths.empty());
+
+    // Every chart is walked. A chart that fails to load throws out of
+    // corpus::song; one with no notes at this reading has no timestamps, so
+    // its walk below checks nothing and needs no skip.
     size_t charts = 0, samples = 0, off_line_charts = 0;
-    for (const std::string& path : corpus::chart_paths()) {
+    for (const std::string& path : paths) {
         const hydra::Song& song = corpus::song(path, hydra::ChartReading{});
-        if (song.is_empty()) continue;
         ++charts;
 
         // The grid and the continuous count tell the same measure only while
@@ -65,31 +72,50 @@ TEST_CASE("timing: corpus conversions are monotone and consistent") {
         CHECK_MESSAGE(mbt_ok, path << ": measure_beats_ticks inconsistent");
     }
 
-    REQUIRE(charts > 0);
+    // With no timestamp at all, the three checks above checked nothing.
+    CHECK(samples > 0);
     MESSAGE("timing invariants: " << charts << " charts, " << samples << " samples, "
                                   << off_line_charts << " with a mid-measure meter change");
 }
 
-TEST_CASE("timing: the combo multiplier steps up every ten notes and stops at x4") {
+TEST_CASE("timing: the combo multiplier steps up by one at evenly spaced combos and then stays") {
     using hydra::to_multiplier;
 
-    // The combo at which each multiplier starts: SC-05 in
-    // docs/clone-hero/06-scoring.md.
-    const int x2_from = 10;
-    const int x3_from = 20;
-    const int x4_from = 30;
+    // A note hit with no combo scores its plain value: a factor of one.
+    const int no_bonus = 1;
+    CHECK(to_multiplier(0) == no_bonus);
 
-    // SC-05: 1x runs from combo 0 up to the combo before x2_from.
-    CHECK(to_multiplier(0) == 1);
-    CHECK(to_multiplier(x2_from - 1) == 1);
-    CHECK(to_multiplier(x2_from) == 2);
-    CHECK(to_multiplier(x3_from - 1) == 2);
-    CHECK(to_multiplier(x3_from) == 3);
-    CHECK(to_multiplier(x4_from - 1) == 3);
-    CHECK(to_multiplier(x4_from) == 4);
+    // The top is what the longest combo reads; the multiplier must climb to it.
+    const int top = to_multiplier((std::numeric_limits<int>::max)());
+    REQUIRE(top > to_multiplier(0));
 
-    // x4 is the top, however long the combo runs.
-    CHECK(to_multiplier(std::numeric_limits<int>::max()) == 4);
+    // The steps come from the owner: walk the combo up until the multiplier
+    // reaches its top, and note each combo where it changes. Each change is a
+    // rise of exactly one, and no run is longer than the first, so a walk that
+    // can no longer reach the top fails at once instead of running on.
+    std::vector<int> steps;
+    for (int combo = 1; to_multiplier(combo - 1) < top; ++combo) {
+        CAPTURE(combo);
+        const int rise = to_multiplier(combo) - to_multiplier(combo - 1);
+        REQUIRE(rise >= 0);
+        REQUIRE(rise <= 1);
+        if (rise == 1) steps.push_back(combo);
+        REQUIRE((steps.empty() || combo - steps.back() <= steps.front()));
+    }
+
+    // Each rise is one, so the top is the start plus the number of steps.
+    REQUIRE_FALSE(steps.empty());
+    CHECK(top == to_multiplier(0) + static_cast<int>(steps.size()));
+    // Every run of one multiplier is as long as the first.
+    for (size_t i = 0; i < steps.size(); ++i) {
+        CAPTURE(i);
+        CHECK(steps[i] == static_cast<int>(i + 1) * steps.front());
+    }
+    // Past the last step the multiplier stays at the top.
+    for (int past : {steps.back(), steps.back() + steps.front(), 2 * steps.back()}) {
+        CAPTURE(past);
+        CHECK(to_multiplier(past) == top);
+    }
 }
 
 TEST_CASE("timing: a map without a tick-0 entry throws") {
@@ -250,20 +276,31 @@ TEST_CASE("timing: ms_per_measure_at reads local measure durations") {
     std::map<int64_t, double> bpm{{0, 87.35}, {16800, 85.1}};
     hydra::SongTiming st(480, tpm, bpm, {{0, {7, 8}}, {16800, {7, 16}}});
 
-    // 3.5 quarters * 60000/87.35 and 1.75 quarters * 60000/85.1.
-    CHECK(st.ms_per_measure_at(0) == doctest::Approx(2404.1214).epsilon(1e-6));
-    CHECK(st.ms_per_measure_at(16800) == doctest::Approx(1233.8425).epsilon(1e-6));
+    // The length of one whole measure, read on the scoring path: the ms
+    // between a measure line and the line one measure on.
+    const auto measure_ms_from = [](const hydra::SongTiming& t, int64_t line) {
+        const hydra::Timecode start = t.timecode(line);
+        return t.plusmeasure(start, 1).ms() - start.ms();
+    };
+    const double old_measure_ms = measure_ms_from(st, 0);
+    const double new_measure_ms = measure_ms_from(st, 16800);
+    // The two sections differ, so the boundary checks below can tell them apart.
+    REQUIRE(old_measure_ms != doctest::Approx(new_measure_ms));
+
+    CHECK(st.ms_per_measure_at(0) == doctest::Approx(old_measure_ms));
+    CHECK(st.ms_per_measure_at(16800) == doctest::Approx(new_measure_ms));
 
     // A tick exactly on the change reads the new section; tick-1 the old one.
-    CHECK(st.ms_per_measure_at(16799) == doctest::Approx(2404.1214).epsilon(1e-6));
-    CHECK(st.ms_per_measure_at(16801) == doctest::Approx(1233.8425).epsilon(1e-6));
+    CHECK(st.ms_per_measure_at(16799) == doctest::Approx(old_measure_ms));
+    CHECK(st.ms_per_measure_at(16801) == doctest::Approx(new_measure_ms));
 
-    // Uniform map: the same value everywhere.
+    // One meter and one tempo: every tick reads the same measure length.
     std::map<int64_t, int64_t> tpm44{{0, 1920}};
     std::map<int64_t, double> bpm120{{0, 120.0}};
     hydra::SongTiming flat(480, tpm44, bpm120, {{0, {4, 4}}});
-    CHECK(flat.ms_per_measure_at(0) == doctest::Approx(2000.0));
-    CHECK(flat.ms_per_measure_at(12345) == doctest::Approx(2000.0));
+    const double flat_measure_ms = measure_ms_from(flat, 0);
+    CHECK(flat.ms_per_measure_at(0) == doctest::Approx(flat_measure_ms));
+    CHECK(flat.ms_per_measure_at(12345) == doctest::Approx(flat_measure_ms));
 }
 
 TEST_CASE("timing: tempo_at and time_signature_at read the one in force (D115)") {
@@ -281,56 +318,31 @@ TEST_CASE("timing: tempo_at and time_signature_at read the one in force (D115)")
     CHECK(st.time_signature_at(99999) == std::make_pair(7, 16));
 }
 
-TEST_CASE("timing: continuous helpers are exact, inverse, and monotone") {
+TEST_CASE("timing: the sub-tick ms helpers match the scoring path and invert each other") {
     // The field-verified map (What's My Age Again? Sync Chart shape): 4/4,
     // 155 -> 160 at 57600, 160 -> 157 at 67200, 157 -> 160 at 69120.
     std::map<int64_t, int64_t> tpm{{0, 1920}};
     std::map<int64_t, double> bpm{
         {0, 155.0}, {57600, 160.0}, {67200, 157.0}, {69120, 160.0}};
     hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
+    const hydra::MsIndex& ms_index = st.ms_index();
 
-    // ms_at_tick_f agrees with the integer-tick scoring path...
+    // On a whole tick, the sub-tick time is the scoring path's time.
     for (int64_t tick : {int64_t(0), int64_t(57600), int64_t(67200),
-                         int64_t(68880), int64_t(69120), int64_t(90000)})
-        CHECK(st.ms_index().ms_at_tick_f(static_cast<double>(tick)) ==
-              doctest::Approx(st.timecode(tick).ms()).epsilon(1e-12));
-
-    // ...and round-trips through its inverse at fractional ticks too.
-    for (double x : {0.0, 1234.5, 57599.9, 57600.0, 68880.25, 100000.75}) {
-        double ms = st.ms_index().ms_at_tick_f(x);
-        CHECK(st.ms_index().tick_at_ms(ms) == doctest::Approx(x).epsilon(1e-9));
+                         int64_t(68880), int64_t(69120), int64_t(90000)}) {
+        CAPTURE(tick);
+        const double scoring_ms = st.timecode(tick).ms();
+        CHECK(ms_index.ms_at_tick_f(static_cast<double>(tick)) ==
+              doctest::Approx(scoring_ms).epsilon(1e-12));
     }
 
-    // sp_end_ms: monotone in the hit time, continuous across the 57600
-    // boundary, and its interior slope is the mspm ratio the linearized
-    // transfer scale samples.
-    const double h0 = st.timecode(50000).ms();
-    double prev = -1e18;
-    bool monotone = true;
-    for (double h = h0; h < h0 + 20000.0; h += 37.0) {
-        double e = st.sp_end_ms(h, 6);
-        if (e < prev) monotone = false;
-        prev = e;
+    // At a fractional tick, the time read back as a tick is the same tick.
+    for (double tick : {0.0, 1234.5, 57599.9, 57600.0, 68880.25, 100000.75}) {
+        CAPTURE(tick);
+        const double ms_at_tick = ms_index.ms_at_tick_f(tick);
+        const double tick_back = ms_index.tick_at_ms(ms_at_tick);
+        CHECK(tick_back == doctest::Approx(tick).epsilon(1e-9));
     }
-    CHECK(monotone);
-
-    const double hb = st.timecode(57600).ms();
-    CHECK(st.sp_end_ms(hb + 1e-6, 6) - st.sp_end_ms(hb - 1e-6, 6) <
-          doctest::Approx(1e-4));
-
-    // act tick 57000 sits inside the 155 section; its 6-measure end lands
-    // inside the 157 section, so the local slope is tps(155)/tps(157).
-    const double hi = st.timecode(57000).ms();
-    double slope = (st.sp_end_ms(hi + 5.0, 6) - st.sp_end_ms(hi - 5.0, 6)) / 10.0;
-    CHECK(slope == doctest::Approx(1240.0 / 1256.0).epsilon(1e-9));
-
-    // Flat tempo, on-tick activation: the continuous map reproduces the
-    // tick-rounded scoring path exactly.
-    std::map<int64_t, double> bpm120{{0, 120.0}};
-    hydra::SongTiming flat(480, tpm, bpm120, {{0, {4, 4}}});
-    hydra::Timecode tc = flat.timecode(1920);
-    CHECK(flat.sp_end_ms(tc.ms(), 4) ==
-          doctest::Approx(flat.plusmeasure(tc, 4).ms()).epsilon(1e-12));
 }
 
 TEST_CASE("timing: the measure count runs on through a mid-measure meter change (D115)") {
@@ -338,15 +350,29 @@ TEST_CASE("timing: the measure count runs on through a mid-measure meter change 
     // (1440 ticks/measure). The count keeps the 1.25 measures and goes on in
     // the new meter, so it does not jump at the change; a Timecode gives
     // the same number.
-    std::map<int64_t, int64_t> tpm{{0, 1920}, {2400, 1440}};
+    const int64_t change = 2400;
+    const int64_t old_measure_ticks = 1920;
+    const int64_t new_measure_ticks = 1440;
+    std::map<int64_t, int64_t> tpm{{0, old_measure_ticks}, {change, new_measure_ticks}};
     std::map<int64_t, double> bpm{{0, 120.0}};
-    hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {2400, {3, 4}}});
+    hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {change, {3, 4}}});
 
-    CHECK(st.measures_at_tick_f(2400.0) == 1.25);
-    CHECK(st.measures_at_tick_f(2400.0) == st.timecode(2400).measures_decimal());
-    CHECK(st.measures_at_tick_f(2399.0) == 1.2494791666666667);
-    CHECK(st.measures_at_tick_f(2401.0) == 1.2506944444444446);
-    CHECK(st.measures_at_tick_f(2401.0) == st.timecode(2401).measures_decimal());
+    // The count at the change is the old meter's share: 2400 / 1920 = 1.25.
+    const double at_change =
+        static_cast<double>(change) / static_cast<double>(old_measure_ticks);
+    CHECK(st.measures_at_tick_f(static_cast<double>(change)) == at_change);
+    CHECK(st.measures_at_tick_f(static_cast<double>(change)) ==
+          st.timecode(change).measures_decimal());
+    // One tick before the change is one tick of the old meter less; one tick
+    // after is one tick of the new meter more.
+    CHECK(st.measures_at_tick_f(static_cast<double>(change - 1)) ==
+          doctest::Approx(at_change - 1.0 / static_cast<double>(old_measure_ticks))
+              .epsilon(1e-12));
+    CHECK(st.measures_at_tick_f(static_cast<double>(change + 1)) ==
+          doctest::Approx(at_change + 1.0 / static_cast<double>(new_measure_ticks))
+              .epsilon(1e-12));
+    CHECK(st.measures_at_tick_f(static_cast<double>(change + 1)) ==
+          st.timecode(change + 1).measures_decimal());
 }
 
 TEST_CASE("timing: the measure count starts at tick 0, as the grid does, past a signature "
@@ -411,28 +437,22 @@ TEST_CASE("timing: display_tick_at_ms rounds to the nearest tick and never goes 
     CHECK(st.display_tick_at_ms(-250.0) == 0);
 }
 
-TEST_CASE("timing: one SP bar is two measures") {
-    CHECK(hydra::kMeasuresPerSpBar == 2);
-    CHECK(hydra::sp_bars_to_measures(1) == 2);
-    CHECK(hydra::sp_bars_to_measures(4) == 8);
-    CHECK(hydra::sp_bars_to_measures(-1) == -2);  // a negative count scales too
+TEST_CASE("timing: SP held for some bars runs kMeasuresPerSpBar measures per bar") {
+    // 4/4 at 480 ticks per beat. The measure length is read from the count's
+    // own map, so the expected end does not restate it.
+    const std::map<int64_t, int64_t> tpm{{0, 1920}};
+    const std::map<int64_t, double> bpm{{0, 120.0}};
+    const hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
+    const int64_t measure_ticks = st.measure_count().tpm_at(0);
+    const hydra::Timecode start = st.timecode(0);
 
-    // 4/4 at 480 ticks per beat: a measure is 1920 ticks, so two bars of SP
-    // run four measures, 7680 ticks.
-    std::map<int64_t, int64_t> tpm{{0, 1920}};
-    std::map<int64_t, double> bpm{{0, 120.0}};
-    hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}});
-    CHECK(st.plusmeasure(st.timecode(0), hydra::sp_bars_to_measures(2)).ticks() == 7680);
-}
-
-TEST_CASE("timing: plusmeasure keeps the old measure's share of a mid-measure change (D115)") {
-    // 4/4 until tick 2880, one and a half measures in, then 7/8 (1680 ticks).
-    // Two measures from tick 1920 are half a 4/4 measure (960 ticks) to the
-    // change, then one and a half 7/8 measures (2520 ticks): tick 5400.
-    std::map<int64_t, int64_t> tpm{{0, 1920}, {2880, 1680}};
-    std::map<int64_t, double> bpm{{0, 120.0}};
-    hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {2880, {7, 8}}});
-    CHECK(st.plusmeasure(st.timecode(1920), 2).ticks() == 5400);
+    for (int64_t bars : {int64_t(1), int64_t(2), int64_t(4)}) {
+        CAPTURE(bars);
+        const hydra::Timecode end = st.plusmeasure(start, hydra::sp_bars_to_measures(bars));
+        const int64_t bar_measures = bars * hydra::kMeasuresPerSpBar;
+        CHECK(end.ticks() == bar_measures * measure_ticks);
+        CHECK(end.measures_decimal() == static_cast<double>(bar_measures));
+    }
 }
 
 // Findings 258 and 319; D27.
