@@ -438,6 +438,24 @@ namespace {
 
 const char* yes_no(bool b) { return b ? "yes" : "no"; }
 
+// The open song's state as the state verb prints it, one case per
+// ViewedSong::State value by name, so the words cannot drift from the enum's
+// order. A value with no case here prints as its number, never as another
+// value's word.
+std::string view_state_word(hydra::ui::ViewedSong::State s) {
+    using State = hydra::ui::ViewedSong::State;
+    switch (s) {
+        case State::None: return "none";
+        case State::Analyzing: return "analyzing";
+        case State::Ready: return "ready";
+        case State::Cancelled: return "cancelled";
+        case State::Failed: return "failed";
+        case State::FileMissing: return "file-missing";
+        case State::AnalysisOff: return "analysis-off";
+    }
+    return "state-" + std::to_string(static_cast<int>(s));
+}
+
 }  // namespace
 
 std::string state_text(Harness& h) {
@@ -466,11 +484,7 @@ std::string state_text(Harness& h) {
                 a.settings.chartmode_key().c_str(), yes_no(a.settings.view_prodrums),
                 yes_no(a.settings.view_bass2x), a.settings.depth_value,
                 yes_no(a.settings.auto_open_report));
-    static const char* const kViewStates[] = {"none",      "analyzing",    "ready",
-                                               "cancelled", "failed",       "file-missing",
-                                               "rules-broken"};
-    out.appendf("  viewed=%s view_job=%s view_pending=%s\n",
-                kViewStates[static_cast<int>(a.viewed.state)],
+    out.appendf("  viewed=%s view_job=%s view_pending=%s\n", view_state_word(a.viewed.state).c_str(),
                 a.view_job ? (a.view_job->finished() ? "finished" : "running") : "-",
                 yes_no(a.view_pending));
     out.appendf("  jobs: scan=%s batch=%s report=%s dm_fetch=%s dm_report=%s\n",
