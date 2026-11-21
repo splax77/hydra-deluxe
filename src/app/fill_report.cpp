@@ -86,10 +86,12 @@ function scoreText(r, s) {
   return s === null && r.status === STATUS.inBoth ? 'no paths' : fmt(s);
 }
 
-// How many charts a set of rows counts as: each row's library copies, "k", as
-// tally_fill_rows adds them up in fill_report.cpp. The count beside the
-// filters and every chart tile read this; the test "fill page: the tiles add
-// up the copies tally_fill_rows adds up" checks the two agree.
+// How many charts a set of rows counts as: each row's library copies, "k",
+// added up. The count beside the filters and every chart tile read this. It
+// agrees with tally_fill_rows (ChartIndex::count) because collect_fill_rows
+// gives each chart id one row and "k" is that id's copies; the test "fill
+// page: each row's data carries its library copies and the script every
+// status" checks each row's "k".
 const charts = rs => rs.reduce((a, r) => a + r.k, 0);
 
 const PAGE = {
@@ -290,8 +292,7 @@ std::vector<FillCompareRow> collect_fill_rows(store::RecordStore& store,
 FillCompareStats tally_fill_rows(const std::vector<FillCompareRow>& rows,
                                  const store::ChartIndex& chart_index) {
     // The page's stats() adds up each row's "k", the same index's copies, by
-    // the same statuses; the test "fill page: the tiles add up the copies
-    // tally_fill_rows adds up" pins the two together.
+    // the same statuses; see the note on `charts` in the page script above.
     std::vector<std::string> all, same, ch10_higher, ch11_higher, only_old, only_new, in_both;
     for (const FillCompareRow& r : rows) {
         all.push_back(r.hyhash);
