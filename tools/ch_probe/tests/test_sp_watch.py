@@ -4,8 +4,8 @@ Power fields engine.decode_snapshot reads.
 No game. The watch's row, its frozen-clock end, its wall-time cap and its
 should_stop run on the real clock over reads played back from real watch CSVs
 under testdata/ch_runs. The read-only open goes through the real opener and
-the real process list. The row-on-change test still uses a fake wall clock
-that moves only when the code sleeps, and the two progress-dot tests a real
+the real process list. The row-on-change test runs on the real clock over
+hand-built snapshots. The two progress-dot tests use a real
 Process over fake memory (tests/fakes.py) and the real capped engine finder
 over a fake scan that never finds a song.
 """
@@ -65,52 +65,50 @@ BASE = 0x180000000
 GOOD_CONSTS = {C.RVA_CONST_NORMAL_BACK: 0.085, C.RVA_CONST_NORMAL_FRONT: 0.0375}
 
 
-class FakeClock:
-    """A wall clock that moves only when the code under test sleeps."""
-
-    def __init__(self, start=1000.0, step=None):
-        self.t = start
-        self.step = step          # when set, every sleep moves this far
-        self.sleeps = []
-
-    def now(self):
-        return self.t
-
-    def sleep(self, seconds):
-        self.sleeps.append(seconds)
-        self.t += seconds if self.step is None else self.step
+# The values sp_block packs. The low parts are the game's own, from the
+# first row of the recorded act3 watch; the active flag is set, as in Star
+# Power. Each two-width field also has bytes past its low 32 bits (or past
+# its low byte) set, so each width reads a different number.
+_RECORDED = sp_compare.load_watch_rows(ACT3_CSV)[0]
+CLOCK_S = _RECORDED["clock_s"]
+AMOUNT_LO, AMOUNT_HI = _RECORDED["sp_amount_u32"], 1
+MAX_LO, MAX_HI = _RECORDED["sp_max_u32"], 2
+ACTIVE_BYTE, ACTIVE_NEXT_BYTE = 1, 1
+MULT_BYTE, MULT_NEXT_BYTE = _RECORDED["sp_mult_byte"], 2
+END_S = 61.25
+OVERFLOW = _RECORDED["sp_overflow_u32"]
 
 
 def sp_block():
     """A 0x2E8-byte engine object with every Star Power field set. The
-    offsets are written as literals so the test also pins constants.py.
-    Each two-width field has bytes past its low 32 bits (or past its low
-    byte) set, so each width reads a different number."""
+    offsets are written as literals so the test also pins constants.py."""
     block = bytearray(0x2E8)
-    struct.pack_into("<d", block, 0x100, 12.5)               # song clock
-    struct.pack_into("<II", block, 0x68, 7680, 1)            # SP amount
-    struct.pack_into("<II", block, 0x1B0, 6144, 2)           # SP maximum
-    struct.pack_into("<I", block, 0x42, 0x0101)              # SP active
-    struct.pack_into("<I", block, 0x48, 0x0208)              # multiplier
-    struct.pack_into("<d", block, 0x120, 61.25)              # SP end time
-    struct.pack_into("<I", block, 0x130, 1)                  # overflow
+    struct.pack_into("<d", block, 0x100, CLOCK_S)                    # song clock
+    struct.pack_into("<II", block, 0x68, AMOUNT_LO, AMOUNT_HI)       # SP amount
+    struct.pack_into("<II", block, 0x1B0, MAX_LO, MAX_HI)            # SP maximum
+    struct.pack_into("<BB", block, 0x42, ACTIVE_BYTE, ACTIVE_NEXT_BYTE)  # SP active
+    struct.pack_into("<BB", block, 0x48, MULT_BYTE, MULT_NEXT_BYTE)  # multiplier
+    struct.pack_into("<d", block, 0x120, END_S)                      # SP end time
+    struct.pack_into("<I", block, 0x130, OVERFLOW)                   # overflow
     return bytes(block)
 
 
 class DecodeSnapshotTest(unittest.TestCase):
     def test_every_star_power_field_at_each_width(self):
+        # A 64-bit read takes the high word too; a 32-bit read of a flag
+        # takes the byte after it; a byte read takes the low byte only.
         snap = engine.decode_snapshot(sp_block())
-        self.assertEqual(snap.sp_amount_u32, 7680)
-        self.assertEqual(snap.sp_amount_u64, 4294974976)
-        self.assertEqual(snap.sp_max_u32, 6144)
-        self.assertEqual(snap.sp_max_u64, 8589940736)
-        self.assertEqual(snap.sp_active_byte, 1)
-        self.assertEqual(snap.sp_active_u32, 257)
-        self.assertEqual(snap.sp_mult_byte, 8)
-        self.assertEqual(snap.sp_mult_u32, 520)
-        self.assertEqual(snap.sp_end_s, 61.25)
-        self.assertEqual(snap.sp_overflow_u32, 1)
-        self.assertEqual(snap.clock_s, 12.5)
+        self.assertEqual(snap.sp_amount_u32, AMOUNT_LO)
+        self.assertEqual(snap.sp_amount_u64, AMOUNT_LO + (AMOUNT_HI << 32))
+        self.assertEqual(snap.sp_max_u32, MAX_LO)
+        self.assertEqual(snap.sp_max_u64, MAX_LO + (MAX_HI << 32))
+        self.assertEqual(snap.sp_active_byte, ACTIVE_BYTE)
+        self.assertEqual(snap.sp_active_u32, ACTIVE_BYTE + (ACTIVE_NEXT_BYTE << 8))
+        self.assertEqual(snap.sp_mult_byte, MULT_BYTE)
+        self.assertEqual(snap.sp_mult_u32, MULT_BYTE + (MULT_NEXT_BYTE << 8))
+        self.assertEqual(snap.sp_end_s, END_S)
+        self.assertEqual(snap.sp_overflow_u32, OVERFLOW)
+        self.assertEqual(snap.clock_s, CLOCK_S)
 
     def test_every_logged_column_but_the_wall_time_is_a_snapshot_field(self):
         names = {f.name for f in dataclasses.fields(engine.Snapshot)}
@@ -149,18 +147,25 @@ def snapshots(seq):
 
 class WatchTest(unittest.TestCase):
     def test_writes_a_row_only_when_a_logged_field_changes(self):
-        rows = []
-        clock = FakeClock()
+        # The watch runs on the real clock; the sleep it asks for is recorded
+        # and then slept.
+        rows, slept = [], []
+
+        def sleep(seconds):
+            slept.append(seconds)
+            time.sleep(seconds)
+
         summary = sp_watch.watch(
             snapshots([snap_at(1.0), snap_at(1.0), snap_at(1.01),
                        snap_at(1.01, sp_amount_u32=96),
                        OSError("gone")]),
-            rows.append, now=clock.now, sleep=clock.sleep)
-        self.assertEqual([r[1] for r in rows], [1.0, 1.01, 1.01])
-        self.assertEqual([r[3] for r in rows], [0, 0, 96])
+            rows.append, sleep=sleep)
+        written = [dict(zip(WATCH_COLUMNS, r)) for r in rows]
+        self.assertEqual([r["clock_s"] for r in written], [1.0, 1.01, 1.01])
+        self.assertEqual([r["sp_amount_u32"] for r in written], [0, 0, 96])
         self.assertEqual(summary.rows, 3)
         self.assertEqual(summary.reason, "lost the engine (gone)")
-        self.assertEqual(clock.sleeps, [0.004] * 4)
+        self.assertEqual(slept, [sp_watch.POLL_S] * 4)
 
     def test_a_frozen_clock_ends_the_run_with_a_final_row(self):
         # The recorded reads before the run's final row, then the last of them

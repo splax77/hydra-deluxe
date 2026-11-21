@@ -237,10 +237,6 @@ def find_activations(rows: list) -> list:
     return found
 
 
-# A second name for find_activations; only test_sp_compare.py reads it.
-_find_activations = find_activations
-
-
 class Rise(NamedTuple):
     """One rise of the Star Power amount between two consecutive rows."""
     ms: float      # the clock of the row the new amount shows on
