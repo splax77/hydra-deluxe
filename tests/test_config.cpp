@@ -1040,9 +1040,9 @@ TEST_CASE("settings summary: the early-fill window, off its default") {
 }
 
 // load_icons reads each file icon_files() names from resource_dir(). The
-// build copies resource/ beside the exes (CMakeLists.txt, the Hydra target's
-// post-build step), so the folder resource_dir() gives this exe must hold
-// every one of them.
+// build copies resource/ beside each exe that reads it (CMakeLists.txt, the
+// post-build steps of Hydra, HydraPathBuilder and hydra_tests), so the folder
+// resource_dir() gives this exe must hold every one of them.
 TEST_CASE("config: resource_dir is the resource folder beside the exe") {
     namespace fs = std::filesystem;
     const std::string dir = hydra::app::resource_dir();
