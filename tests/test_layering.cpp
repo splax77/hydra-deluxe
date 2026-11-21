@@ -355,9 +355,16 @@ const ExternalRow* external_for(const std::vector<ExternalRow>& rows, const std:
 
 // ---- The include check ----
 
-// The text of every `#include "x"` or `#include <x>` line in a file.
-std::vector<std::string> includes_of(const std::string& text) {
-    std::vector<std::string> out;
+// One `#include "x"` or `#include <x>` line: the x, and which of the two forms
+// named it.
+struct IncludeLine {
+    std::string text;
+    bool quoted = false;  // "x" rather than <x>
+};
+
+// Every `#include "x"` or `#include <x>` line in a file.
+std::vector<IncludeLine> includes_of(const std::string& text) {
+    std::vector<IncludeLine> out;
     std::istringstream in(text);
     std::string line;
     while (std::getline(in, line)) {
@@ -368,7 +375,7 @@ std::vector<std::string> includes_of(const std::string& text) {
         i = line.find_first_not_of(" \t", i + 7);
         if (i == std::string::npos || (line[i] != '"' && line[i] != '<')) continue;
         const size_t end = line.find(line[i] == '"' ? '"' : '>', i + 1);
-        if (end != std::string::npos) out.push_back(line.substr(i + 1, end - i - 1));
+        if (end != std::string::npos) out.push_back({line.substr(i + 1, end - i - 1), line[i] == '"'});
     }
     return out;
 }
@@ -405,6 +412,9 @@ using Gap = std::pair<std::string, std::string>;  // (file, include text)
 
 // One line per include that reaches past its library's links, skipping the
 // listed gaps. `texts` holds the files to read, `known` every repo file.
+// A quoted include that names no repo file its library can see, and no
+// externals row, is one line too: the check cannot place it, so it fails
+// rather than pass it unread.
 std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<std::string, std::string>& texts,
                                             const std::set<std::string>& known,
                                             const std::vector<ExternalRow>& externals,
@@ -412,7 +422,8 @@ std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<
     std::vector<std::string> out;
     for (const auto& [rel, text] : texts) {
         if (!scanned(m, rel)) continue;
-        for (const std::string& inc : includes_of(text)) {
+        for (const IncludeLine& line : includes_of(text)) {
+            const std::string& inc = line.text;
             if (gaps.count({rel, inc})) continue;
             for (const std::string& lib : m.owners(rel)) {
                 const std::set<std::string> allowed = m.allowed(lib);
@@ -429,7 +440,13 @@ std::vector<std::string> wrong_way_includes(const BuildModel& m, const std::map<
                     continue;
                 }
                 const ExternalRow* row = external_for(externals, inc);
-                if (!row) continue;
+                if (!row) {
+                    // An <x> with no row is a standard or Windows SDK header.
+                    if (line.quoted)
+                        out.push_back(rel + ": include \"" + inc + "\" names no file " + lib +
+                                      " can see and no externals.json row");
+                    continue;
+                }
                 if (!row->target.empty() && !allowed.count(row->target))
                     out.push_back(rel + ": include \"" + inc + "\" reaches target " + row->target + ", which " +
                                   lib + " does not link");
@@ -606,26 +623,8 @@ TEST_CASE("layering: externals rows match their own examples") {
     }
 }
 
-TEST_CASE("layering: every known gap names a real include and is not past its date") {
-    const std::string today = single_owner::today_iso();
-    std::vector<std::string> bad;
-    for (const KnownGap& g : known_gaps()) {
-        const std::string name = gap_name(g);
-        auto it = repo().texts.find(g.file);
-        const bool real = it != repo().texts.end() && [&] {
-            const std::vector<std::string> incs = includes_of(it->second);
-            return std::find(incs.begin(), incs.end(), g.include) != incs.end();
-        }();
-        if (!real) bad.push_back(name + ": no such include line; delete the entry");
-        if (const std::string due = single_owner::baseline_due(name, g.dates, today); !due.empty())
-            bad.push_back(due);
-    }
-    INFO(joined(bad));
-    CHECK(bad.empty());
-}
-
-// Without this case a new wrong-way include could hide behind a new entry,
-// since an entry that names a real include passes the case above.
+// Without this case a new wrong-way include could hide behind a new entry:
+// the include check skips every listed gap.
 TEST_CASE("layering: no known gap is left") {
     std::vector<std::string> left;
     for (const KnownGap& g : known_gaps())
@@ -634,16 +633,26 @@ TEST_CASE("layering: no known gap is left") {
     CHECK(left.empty());
 }
 
-TEST_CASE("layering: every src file is in one library") {
+// At least one library's source list names each src code file; the include
+// check reads only files a list names. An empty walk read nothing, so it fails.
+TEST_CASE("layering: every src file is in a library's source list") {
     std::vector<std::string> bad;
-    for (const auto& [rel, text] : repo().texts)
-        if (rel.rfind("src/", 0) == 0 && repo().build.owners(rel).empty())
-            bad.push_back(rel + ": in no library's source list");
+    size_t src_files = 0;
+    for (const auto& [rel, text] : repo().texts) {
+        if (rel.rfind("src/", 0) != 0) continue;
+        ++src_files;
+        if (repo().build.owners(rel).empty()) bad.push_back(rel + ": in no library's source list");
+    }
+    REQUIRE_MESSAGE(src_files > 0, "the walk found no code file under src/");
     INFO(joined(bad));
     CHECK(bad.empty());
 }
 
 TEST_CASE("layering: every include stays inside its library's links") {
+    size_t src_scanned = 0;
+    for (const auto& [rel, text] : repo().texts)
+        if (rel.rfind("src/", 0) == 0 && scanned(repo().build, rel)) ++src_scanned;
+    REQUIRE_MESSAGE(src_scanned > 0, "the include check would read no code file under src/");
     std::set<Gap> gaps;
     for (const KnownGap& g : known_gaps()) gaps.insert({g.file, g.include});
     const std::vector<std::string> bad =
