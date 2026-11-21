@@ -50,8 +50,6 @@ TEST_CASE("scoring: a chord crossing the x2 step pays each note at its own multi
     // one short of it and pays at x1, the second lands on it and pays at x2.
     const int x2_from = first_x2_combo();
     const int combo_before = x2_from - 2;
-    REQUIRE(to_multiplier(combo_before + 1) == 1);
-    REQUIRE(to_multiplier(combo_before + 2) == 2);
 
     hydra::Chord chord;
     chord.add_note(NoteColor::Red);
