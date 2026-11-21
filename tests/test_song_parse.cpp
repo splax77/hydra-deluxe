@@ -60,7 +60,7 @@ void check_invariants(const Song& song, const std::string& what,
     // chart's own fills only. That length is answer 6 in
     // docs/superpowers/plans/2026-10-12-one-record-per-chart.md (removed; `git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart.md`).
     const bool generated = std::find(song.features.begin(), song.features.end(),
-                                     "Auto-Generated Fills") != song.features.end();
+                                     kGeneratedFillsFeature) != song.features.end();
     int64_t prev = -1;
     for (const SongTimestamp& ts : song.sequence) {
         // Strictly increasing: two chords never share a tick.
