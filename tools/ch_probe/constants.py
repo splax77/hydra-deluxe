@@ -232,6 +232,7 @@ EXPECT_PRECISION_BACK_S = 0.040
 EXPECT_NORMAL_BACK_MS = s_to_ms(EXPECT_NORMAL_BACK_S)
 
 # Tolerance (ms) for calling a live-read constant "the value we expected".
+# An engineering choice: no rule or ruling names it.
 CONST_MATCH_TOLERANCE_MS = 0.5
 
 # --- Measured whole-window cap and floor (normal mode) ------------------------
@@ -257,7 +258,8 @@ CAP_FROM_GAP_MS = 2 * EXPECT_NORMAL_BACK_MS               # 170
 FLOOR_UP_TO_GAP_MS = 2 * s_to_ms(EXPECT_NORMAL_FRONT_S)   # 75
 
 # How close a stored reading must be to count as the cap or the floor. The
-# measured values agree with these to 0.00001 ms.
+# measured values agree with these to 0.00001 ms. The 0.01 is an engineering
+# choice, wide enough for that gap; no rule or ruling names it.
 WINDOW_MATCH_TOLERANCE_MS = 0.01
 
 # How far a stored window (or the +0x2e0 double) must move between two reads

@@ -41,7 +41,8 @@ GAME_ASSEMBLIES = (
 )
 
 READER_SCRIPT = os.path.join(_HERE, "mono_reader.ps1")
-# The time cap for one reader run, in seconds.
+# The time cap for one reader run, in seconds. An engineering choice; no rule
+# or ruling names it.
 READER_CAP_S = 300.0
 
 

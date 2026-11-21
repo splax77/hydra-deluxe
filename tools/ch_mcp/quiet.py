@@ -27,6 +27,8 @@ from tools.ch_mcp import game_files
 # averaged over, and how young a build folder's newest file must be to count as
 # a build at work.
 QUIET_CPU_PCT = 30
+# QUIET_SAMPLE_S and BUILD_RECENT_S are engineering choices; no rule or ruling
+# names them.
 QUIET_SAMPLE_S = 5
 BUILD_RECENT_S = 60
 
