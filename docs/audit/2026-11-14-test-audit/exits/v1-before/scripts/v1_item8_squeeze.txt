@@ -1,0 +1,93 @@
+# V1 item 8: the Library's squeeze figure and the path report's "Hardest ms" column for paths with SqOut squeezes or early fills and no SqIn.
+# Run: hydra_uitest.exe --script <this file>
+# A fresh analysis writes the figure for every row (path_row_of), so this run shows the figure as a new analysis makes it. The gap item 8 names
+# (RecordStore::rows_missing_hardest skips rows with sqin_count = 0) only shows on rows an older build left empty; see the report for the old-store check.
+# Charts (best path from the R1 dump, no SqIn):
+#   Evans Blue - Beg: "1- 0 0 E0", one squeeze-out and an early fill.
+#   Mutemath - Allies: "0- 1- 1 0", two squeeze-outs.
+#   Green Day - Burnout: "3- 1 2", one squeeze-out.
+#   Stone Temple Pilots - Trippin' on a Hole in a Paper Heart: "0 0 E2 E0", early fills only, no squeeze at all.
+timeout 600
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+wait-idle
+
+# Analyze the four charts with a shown-only batch each (never the whole corpus).
+type **/##search | Beg
+wait 0.3
+click Analyze shown (1)...
+wait 0.3
+click //Analyze library/Start analyzing
+wait-idle
+type **/##search | Allies
+wait 0.3
+click Analyze shown (1)...
+wait 0.3
+click //Analyze library/Start analyzing
+wait-idle
+type **/##search | Burnout
+wait 0.3
+click Analyze shown (1)...
+wait 0.3
+click //Analyze library/Start analyzing
+wait-idle
+type **/##search | Hole in a Paper Heart
+wait 0.3
+click Analyze shown (1)...
+wait 0.3
+click //Analyze library/Start analyzing
+wait-idle
+
+# Library: the squeeze filter reads the same stored figure (src/app/library_query.cpp:457-469); a row with no figure is left out of squeeze>= and squeeze<=.
+type **/##search | squeeze>=0
+wait 0.4
+text
+state
+type **/##search | squeeze<=1000
+wait 0.4
+text
+state
+type **/##search |
+wait 0.3
+
+# Paths tab of each chart: the per-path "ms" figure.
+open Beg
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.3
+text | ms
+open Allies
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.3
+text | ms
+open Burnout
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.3
+text | ms
+open Trippin' on a Hole in a Paper Heart
+wait-idle
+click **/##DetailsTabs/Paths
+wait 0.3
+text | ms
+
+# Path report: the "Hardest ms" column, one chart at a time through the report's own search box.
+click Open path report
+wait-idle
+wait 0.5
+window //###pathreport
+type ##search | Beg
+wait 0.3
+text
+type ##search | Mutemath
+wait 0.3
+text
+type ##search | Burnout
+wait 0.3
+text
+type ##search | Stone Temple
+wait 0.3
+text
+quit

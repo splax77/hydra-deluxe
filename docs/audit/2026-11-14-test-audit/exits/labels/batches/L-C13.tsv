@@ -1,0 +1,100 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+count	counts/T5-IR3.md:15	records/D2.md:42	FG:48	X9,X10	0.1 typed constant required back; scripted windows	not in the run
+count	counts/T5-IR3.md:16	records/D2.md:57	FG:52	X9	scripted handles, fake clock	not in the run
+count	counts/T5-IR3.md:17	records/D2.md:72	FG:59	X9	scripted handles	not in the run
+count	counts/T5-IR3.md:18	records/D2.md:87	FG:66	X9	scripted handles	not in the run
+count	counts/T5-IR3.md:19	records/D2.md:102	FG:71	X9	scripted handles	not in the run
+count	counts/T5-IR3.md:20	records/D2.md:117	FG:78	X9	scripted handles	not in the run
+count	counts/T5-IR3.md:21	records/D2.md:132	FG:84	X9	scripted handles; 0.0 comes from the fake clock	not in the run
+count	counts/T5-IR3.md:22	records/D2.md:147	FG:92	X9,X10	scripted handles; line text typed	not in the run
+count	counts/T5-IR3.md:23	records/D2.md:177	FG:124	X9,X10	scripted handles; line text typed	not in the run
+count	counts/T5-IR3.md:24	records/D2.md:192	FG:130	X9,X10,X11	"broken poll fake; text typed; ""no desktop"" typed in and required back"	not in the run
+count	counts/T5-IR3.md:25	records/D2.md:230	DF:139	X9	hand-cut dump.cs fragment	not in the run
+count	counts/T5-IR3.md:26	records/D2.md:242	DF:145	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:27	records/D2.md:253	DF:149	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:28	records/D2.md:264	DF:155	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:29	records/D2.md:275	DF:160	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:30	records/D2.md:286	DF:166	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:31	records/D2.md:297	DF:170	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:32	records/D2.md:308	DF:174	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:33	records/D2.md:319	DF:180	X9	hand-written class line	not in the run
+count	counts/T5-IR3.md:34	records/D2.md:330	DF:186	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:35	records/D2.md:352	DF:200	X10	hand-written broken dump; error text regex typed	not in the run
+count	counts/T5-IR3.md:36	records/D2.md:366	DF:207	X9,X11	hand-cut fragment; ctor RVA and version typed in, returned	not in the run
+count	counts/T5-IR3.md:37	records/D2.md:377	DF:215	X9,X10	hand-cut fragment; message typed	not in the run
+count	counts/T5-IR3.md:38	records/D2.md:388	DF:219	X9,X10	hand-written second class; message typed	not in the run
+count	counts/T5-IR3.md:39	records/D2.md:399	DF:223	X9	hand-cut fragment	not in the run
+count	counts/T5-IR3.md:40	records/D2.md:410	DF:235	X9,X10	hand-written dump file; file name typed	not in the run
+count	counts/T5-IR3.md:41	records/D2.md:436	DF:288	X9,X10	fake subprocess runner; message and 600 typed	not in the run
+count	counts/T5-IR3.md:42	records/D2.md:459	DF:304	X9,X10	fake runner; messages typed	not in the run
+count	counts/T5-IR3.md:43	records/D2.md:470	DF:312	X9,X10	fake runner; message typed	not in the run
+count	counts/T5-IR3.md:44	records/D2.md:484	DF:453	X9,X10	tiny dump; column line typed	not in the run
+count	counts/T5-IR3.md:45	records/D2.md:495	DF:457	X9	tiny dump, hand-written page	not in the run
+count	counts/T5-IR3.md:46	records/D2.md:506	DF:464	X9	tiny dump, hand page	not in the run
+count	counts/T5-IR3.md:47	records/D2.md:517	DF:471	X9,X10	hand page; error shape typed	not in the run
+count	counts/T5-IR3.md:48	records/D2.md:528	DF:479	X9	tiny dump, hand page	not in the run
+count	counts/T5-IR3.md:49	records/D2.md:540	DF:486	X9	tiny dump, hand page	not in the run
+count	counts/T5-IR3.md:50	records/D2.md:551	DF:492	X9	hand constants file	not in the run
+count	counts/T5-IR3.md:51	records/D2.md:562	DF:501	X9	tiny dump	not in the run
+count	counts/T5-IR3.md:52	records/D2.md:573	DF:510	X9	tiny dump	not in the run
+count	counts/T5-IR3.md:53	records/D2.md:584	DF:523	X9	typed name strings, no real dump name	not in the run
+count	counts/T5-IR3.md:54	records/D2.md:595	DF:529	X9	hand-built facts dict, hand page	not in the run
+count	counts/T5-IR3.md:55	records/D2.md:606	DF:538	X11	hand DLL bytes; version typed in, returned in header	not in the run
+count	counts/T5-IR3.md:57	records/D2.md:629	DF:557	X9	tiny dump, hand page, hand-edited table	not in the run
+count	counts/T5-IR3.md:58	records/D2.md:640	DF:570	X9	hand page	not in the run
+count	counts/T5-IR3.md:59	records/D2.md:651	DF:577	X9,X11	hand-built facts dict; version typed in, returned (591)	not in the run
+count	counts/T5-IR3.md:62	records/D2.md:698	DF:696	X9	map dump, hand page	not in the run
+count	counts/T5-IR3.md:63	records/D2.md:709	DF:704	X10	hand page; message text typed	not in the run
+count	counts/T5-IR3.md:64	records/D2.md:720	DF:713	X10	hand map; message text typed	not in the run
+count	counts/T5-IR3.md:66	records/D2.md:753	DF:753	X10	hand map; message typed	not in the run
+count	counts/T5-IR3.md:67	records/D2.md:786	DF:818	X9,X10	hand map; message typed	not in the run
+count	counts/T5-IR3.md:68	records/D2.md:805	FA:256	X9,X11	fake frida, fake messages; written messages equal messages typed in	not in the run
+count	counts/T5-IR3.md:69	records/D2.md:817	FA:269	X9,X11	fake frida; start dict typed, posted back	not in the run
+count	counts/T5-IR3.md:70	records/D2.md:829	FA:279	X9,X10	fake frida; message typed	not in the run
+count	counts/T5-IR3.md:71	records/D2.md:841	FA:288	X9	fake session that raises	not in the run
+count	counts/T5-IR3.md:72	records/D2.md:853	FA:294	X9	fake session that raises	not in the run
+count	counts/T5-IR3.md:73	records/D2.md:878	FA:307	X9,X11	"fake messages; ""GameManager not found"" in and out"	not in the run
+count	counts/T5-IR3.md:74	records/D2.md:890	FA:315	X9,X11	"hand-written error message; ""TypeError: boom"" in and out"	not in the run
+count	counts/T5-IR3.md:75	records/D2.md:902	FA:322	X9	fake session	not in the run
+count	counts/T5-IR3.md:76	records/D2.md:914	FA:328	X9,X10	fake detach reason; message typed	not in the run
+count	counts/T5-IR3.md:77	records/D2.md:928	FA:345	X9,X10	"fake session; ""detach reported: ..."" typed"	not in the run
+count	counts/T5-IR3.md:78	records/D2.md:980	FA:379	X9,X10	fake frida with no process; message typed	not in the run
+count	counts/T5-IR3.md:79	records/D2.md:992	FA:386	X9,X10	fake frida; hand-built agent file; message typed	not in the run
+count	counts/T5-IR3.md:80	records/D2.md:1003	FA:396	X9,X10	fake frida; hand-built agent; message typed	not in the run
+count	counts/T5-IR3.md:81	records/D2.md:1017	FA:505	X9,X11	fake session; STATE typed in, returned and logged	not in the run
+count	counts/T5-IR3.md:82	records/D2.md:1029	FA:517	X9,X11	fake session; event typed in, heard back	not in the run
+count	counts/T5-IR3.md:83	records/D2.md:1041	FA:530	X9,X10	fake frida; message typed	not in the run
+count	counts/T5-IR3.md:84	records/D2.md:1053	FA:541	X9,X10	fake session; messages typed	not in the run
+count	counts/T5-IR3.md:85	records/D2.md:1065	FA:556	X9,X10,X11	"fake session; message typed, ""bad script"" in and out"	not in the run
+count	counts/T5-IR3.md:86	records/D2.md:1077	FA:566	X9	fake session	not in the run
+count	counts/T5-IR3.md:87	records/D2.md:1089	FA:573	X9,X11	hand replies returned unchanged	not in the run
+count	counts/T5-IR3.md:88	records/D2.md:1101	FA:582	X9,X11	hand MENU reply returned	not in the run
+count	counts/T5-IR3.md:89	records/D2.md:1113	FA:587	X9,X10	fake session; message typed	not in the run
+count	counts/T5-IR3.md:90	records/D2.md:1125	FA:595	X9	hand replies; the id matching is real behaviour	not in the run
+count	counts/T5-IR3.md:91	records/D2.md:1137	FA:605	X9,X11	typed reply and message returned	not in the run
+count	counts/T5-IR3.md:92	records/D2.md:1149	FA:616	X9,X10	fake session; message typed	not in the run
+count	counts/T5-IR3.md:93	records/D2.md:1161	FA:624	X9	fake session	not in the run
+count	counts/T5-IR3.md:94	records/D2.md:1173	FA:633	X9,X10	fake detach; messages typed	not in the run
+count	counts/T5-IR3.md:95	records/D2.md:1185	FA:647	X9,X10	fake detach; message typed	not in the run
+count	counts/T5-IR3.md:96	records/D2.md:1197	FA:665	X9,X10,X11	"fake post that raises; message and ""the connection is closed"" in and out"	not in the run
+count	counts/T5-IR3.md:97	records/D2.md:1209	FA:678	X9,X10,X11	hand error reply; text typed in and out	not in the run
+count	counts/T5-IR3.md:98	records/D2.md:1221	FA:688	X9,X11	hand reply required back whole	not in the run
+count	counts/T5-IR3.md:99	records/D2.md:1233	FA:696	X10	typed default (None) of an attribute; no fake input	not in the run
+count	counts/T5-IR3.md:100	records/D2.md:1245	FA:699	X9,X10,X11	hand message; text typed in and out	not in the run
+count	counts/T5-IR3.md:101	records/D2.md:1257	FA:707	X9,X10	fake session; messages typed	not in the run
+count	counts/T5-IR3.md:102	records/D2.md:1269	FA:719	X9,X10	fake detach; message typed	not in the run
+count	counts/T5-IR3.md:103	records/D2.md:1281	FA:726	X9,X10	fake session; message typed	not in the run
+count	counts/T5-IR3.md:104	records/D2.md:1293	FA:739	X9,X11	fake frida; pid 1234 typed in, seen back	not in the run
+count	counts/T5-IR3.md:105	records/D2.md:1317	FA:754	X9,X10,X11	fake frida; message typed, pid typed in and out	not in the run
+count	counts/T5-IR3.md:106	records/D2.md:1377	FA:852	X9,X10,X11	fake session, fake write that raises; message typed; replies typed	not in the run
+count	counts/T5-IR3.md:107	records/D2.md:1401	FA:875	X9,X10	fake frida; message typed	not in the run
+count	counts/T5-IR3.md:108	records/D2.md:1415	FA:886	X9,X10	hand-built RunResult and samples; summary lines typed	not in the run
+count	counts/T5-IR3.md:109	records/D2.md:1439	FA:906	X9,X10,X11	hand RunResult; lines typed; error text in and out	not in the run
+count	counts/T5-IR3.md:110	records/D2.md:1451	FA:919	X9,X10	fake frida, hand-built agent; lines typed	not in the run
+count	counts/T5-IR3.md:111	records/D2.md:1463	FA:941	X9,X10	fake frida; lines typed	not in the run
+count	counts/T5-IR3.md:113	records/D2.md:1587	FA:1072	X10,X12	"kit.ts source text pinned ('""LoadMap"", 5' count 1); the comment cites a removed plan as the reason"	not in the run
+count	counts/T5-IR3.md:114	records/D2.md:1757	FA:1279	X10	exact source line and words pinned	not in the run
+count	counts/T5-IR3.md:115	records/D2.md:1781	FA:1289	X10	typed function names and call text pinned in kit.ts	not in the run
+count	counts/T5-IR3.md:116	records/D2.md:1807	FA:1311	X10	typed source strings in gamemanager.ts	not in the run
+count	counts/T5-IR3.md:117	records/D2.md:1857	FA:1399	X10	typed API names and call counts pinned in launch.ts	not in the run
+count	counts/T5-IR3.md:118	records/D2.md:1895	FA:1440	X9,X10,X11	"launch_core run on fake memory (LC.apply, write_sticks, read_throws); fake frida; status in and out; ""nothing was written"" typed"	not in the run

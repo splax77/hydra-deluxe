@@ -1,0 +1,74 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+count	counts/T5-IR13.md:13	records/D1.md:17	the_command_line_has_song_and_player_only :174	X9,X10	"Rig fakes launch, game, clock, dump; flag names and ""Drums,Expert"" typed"	not in the run
+count	counts/T5-IR13.md:14	records/D1.md:25	a_relative_song_path_reaches_the_game_absolute :181	X9	Rig fakes	not in the run
+count	counts/T5-IR13.md:15	records/D1.md:41	profile_appears_only_when_passed :198	X10	expected list is typed flag names	not in the run
+count	counts/T5-IR13.md:16	records/D1.md:49	poll_notices_the_change_copies_it_and_restores :204	X9,X10,X11	"fake clock and game, made-up scorestats JSON; log lines typed; b""game wrote this"" typed in and read back"	not in the run
+count	counts/T5-IR13.md:17	records/D1.md:57	the_exit_check_reports_a_game_that_stays :221	X9,X10	"fakes; message with ""30 s"" typed"	not in the run
+count	counts/T5-IR13.md:18	records/D1.md:82	a_restore_failure_stops_the_run_with_its_name :251	X9,X10	mock.patch restore_all raising a made-up error; message text and exit code 2 typed	not in the run
+count	counts/T5-IR13.md:19	records/D1.md:90	a_restore_failure_on_the_cap_path_runs_no_exit_check :263	X9,X10	same made-up error; message typed	not in the run
+count	counts/T5-IR13.md:20	records/D1.md:98	no_wait_starts_the_game_polls_nothing_restores_nothing :275	X9,X10	fakes; pid 4242 and the whole --no-wait line typed	not in the run
+count	counts/T5-IR13.md:21	records/D1.md:106	restore_command_line_leaves_settings_ini_changed :297	X9	Rig fakes	not in the run
+count	counts/T5-IR13.md:22	records/D1.md:114	the_length_is_hydras_end_from_a_dump_of_the_folders_chart :307	X9,X11	FAKE dump stands in for Hydra; 193934.0 set in and required back	not in the run
+count	counts/T5-IR13.md:23	records/D1.md:122	no_length_anywhere_starts_nothing :315	X9,X10	"fake dump returning null; ""song_length_ms is null"" typed"	not in the run
+count	counts/T5-IR13.md:24	records/D1.md:130	a_folder_with_no_chart_starts_nothing :324	X9,X10	Rig fakes; message typed	not in the run
+count	counts/T5-IR13.md:25	records/D1.md:137	pro_drums_chart_with_a_drums_player_prints_a_note :332	X9,X10	fakes; note text typed	not in the run
+count	counts/T5-IR13.md:26	records/D1.md:170	start_run_takes_a_song_end_already_read_without_a_dump :396	X9,X11	"fake dump counted; (4000.0, ""given"") typed in and read back"	not in the run
+count	counts/T5-IR13.md:27	records/D1.md:178	start_run_with_no_song_launches_the_bare_exe_after_a_backup :405	X9,X10	"fake exe path r""C:\fake\Clone Hero.exe"" is the expected value"	not in the run
+count	counts/T5-IR13.md:28	records/D1.md:186	wait_stats_on_a_no_song_run_says_so_without_sleeping :415	X9,X10	fakes; message typed	not in the run
+count	counts/T5-IR13.md:29	records/D1.md:194	wait_stats_copies_a_changed_file_and_names_the_seconds :422	X9,X10,X11	made-up scorestats bytes echoed; message typed	not in the run
+count	counts/T5-IR13.md:30	records/D1.md:202	finish_run_with_stop_stops_the_game_and_leaves_every_file :431	X9,X10	"fake game; ""stopped the game (--stop)"" typed"	not in the run
+count	counts/T5-IR13.md:31	records/D1.md:210	finish_run_says_a_caller_given_stop_line_instead_of_the_flag_one :442	X9,X10	fake game; stop text typed	not in the run
+count	counts/T5-IR13.md:32	records/D1.md:218	finish_run_reports_a_game_that_outlives_the_stop_and_still_restores :449	X9,X10	StuckGame fake; two long messages typed	not in the run
+count	counts/T5-IR13.md:34	records/D1.md:243	before_launch_runs_after_the_backup_and_before_the_launch :495	X9	fake launch	not in the run
+count	counts/T5-IR13.md:35	records/D1.md:251	a_launch_that_raises_restores_the_key_and_leaves_what_before_launch_changed :509	X9,X10	FakeReg and an OSError the test raises; message typed	not in the run
+count	counts/T5-IR13.md:36	records/D1.md:259	the_key_is_backed_up_and_restored_with_the_envs_runner :528	X9,X10	FakeReg; message typed	not in the run
+count	counts/T5-IR13.md:37	records/D1.md:267	a_registry_restore_failure_stops_like_a_file_one :539	X9,X10	FakeReg with import_works False; messages typed	not in the run
+count	counts/T5-IR13.md:38	records/D1.md:284	the_game_opens_minimized_without_the_focus :575	X9,X10	FakePopen; checks 7 equals a typed 7	not in the run
+count	counts/T5-IR13.md:39	records/D1.md:296	the_caps_and_the_poll_are_the_users_answers :713	X10,X12	"pins four typed constants; the name and reason cite ""the user's answer"" in a plan"	not in the run
+count	counts/T5-IR13.md:40	records/D1.md:309	the_order_is_start_attach_load_arm_resume_status :732	X9,X10,X11,X12	"FakeLaunchAgent; PATCH is ""the values the plan gives for build 6142"" (:586-590); module text typed into the fake reply and required back"	not in the run
+count	counts/T5-IR13.md:41	records/D1.md:321	a_refused_status_kills_the_game_and_names_the_bytes :756	X9,X10,X12	fake agent; message and bytes come from the plan's PATCH	not in the run
+count	counts/T5-IR13.md:42	records/D1.md:327	an_attach_that_never_returns_ends_at_its_cap_and_kills_the_game :767	X9,X10	"fake thread and wait_thread; ""20 s (LAUNCH_ATTACH_CAP_S)"" typed"	not in the run
+count	counts/T5-IR13.md:43	records/D1.md:334	an_attach_that_fails_kills_the_game :783	X9,X10,X11	fake agent raising a made-up AttachFailed; its own text required back	not in the run
+count	counts/T5-IR13.md:44	records/D1.md:340	an_arm_reply_that_never_comes_ends_at_its_cap_without_a_resume :791	X9,X10	"made-up ReadFailed; ""cap of 5 s"" typed"	not in the run
+count	counts/T5-IR13.md:45	records/D1.md:346	a_refused_arm_reply_kills_the_game_without_a_resume :800	X9,X10	hand-written refused reply; bytes typed	not in the run
+count	counts/T5-IR13.md:46	records/D1.md:352	an_idle_arm_reply_is_a_fault_that_kills_the_game_without_a_resume :807	X9	hand-written idle reply	not in the run
+count	counts/T5-IR13.md:47	records/D1.md:361	an_idle_status_after_the_arm_is_a_fault_named_at_once :819	X9,X10	fake replies; 0.5 typed (record says it is one LAUNCH_POLL_S)	not in the run
+count	counts/T5-IR13.md:48	records/D1.md:366	a_refusal_for_a_failed_read_back_carries_the_agents_reason :826	X9,X11	reason text typed into the fake reply and required back	not in the run
+count	counts/T5-IR13.md:49	records/D1.md:381	a_bad_launch_form_or_a_missing_agent_starts_nothing :865	X9,X10	"Rig and fake agent; messages and ""npm run build:launch"" typed"	not in the run
+count	counts/T5-IR13.md:50	records/D1.md:386	a_stale_stamp_refuses_naming_the_file_and_the_build_command :876	X9,X10	"Rig; ""launch.ts changed since it was built"" typed"	not in the run
+count	counts/T5-IR13.md:51	records/D1.md:393	the_real_env_uses_the_real_seams_and_files :898	X10	"launch.js and ""launch_patch.json"" typed"	not in the run
+count	counts/T5-IR13.md:52	records/D1.md:429	the_three_words :952	X9,X10	"hand-written launch.ts status replies; ""yes"", ""no"", ""not yet"" typed"	not in the run
+count	counts/T5-IR13.md:53	records/D1.md:440	a_list_of_numbers_reads_like_the_same_hex_text :975	X9	hand-written reply	not in the run
+count	counts/T5-IR13.md:54	records/D1.md:447	no_song_folder_is_refused_before_the_backup :998	X9,X10	"Rig and fake agent; ""runs only with --song"" typed"	not in the run
+count	counts/T5-IR13.md:55	records/D1.md:452	the_backup_comes_before_the_paused_start_and_the_run_keeps_the_launch :1009	X9,X10	fakes; log name built from the fake stamp typed	not in the run
+count	counts/T5-IR13.md:56	records/D1.md:458	a_failed_human_launch_restores_the_backup :1029	X9,X10	fake refused reply; message typed	not in the run
+count	counts/T5-IR13.md:57	records/D1.md:487	install_refuses_a_name_that_is_not_a_plain_folder_name :1107	X9,X10	fake ogg writer and FAKE dump; message typed	not in the run
+count	counts/T5-IR13.md:58	records/D1.md:496	install_copies_no_other_audio :1129	X9,X11	fake ogg writer; 90000 set into the fake dump and read back	not in the run
+count	counts/T5-IR13.md:59	records/D1.md:501	the_copys_title_gets_the_probe_prefix :1147	X9,X10	"fakes; ""Hydra Probe - "" typed"	not in the run
+count	counts/T5-IR13.md:60	records/D1.md:506	every_other_byte_of_the_song_ini_stays :1155	X10	the hand-written song.ini is input the real code reads (not X9 under the user's ruling); prefix typed. Note the test still runs with a fake ogg writer (:1144), but that is this test's helper, not the 	not in the run
+count	counts/T5-IR13.md:62	records/D1.md:557	test_build_facts.py build_number_is_the_fourth_dotted_number :67	X10	"version strings fed to the real function are not X9 under the ruling; ""6142"" typed"	not in the run
+count	counts/T5-IR13.md:63	records/D1.md:562	test_build_facts.py build_number_refuses_a_version_without_one :72	X10	whole message typed	not in the run
+count	counts/T5-IR13.md:64	records/D1.md:691	test_build_stamp.py builds_record_holds_each_stamp_and_the_replay_build :168	X11	2.9.1+abc typed in and required back	not in the run
+count	counts/T5-IR13.md:66	records/D1.md:785	test_compare_scorestats.py matching_pair_prints_every_line :121	X9,X10,X12	hand-built Hydra dump and scorestats; whole line text typed; checksum cites a saved run (:52-54)	not in the run
+count	counts/T5-IR13.md:67	(not joined)	test_compare_scorestats.py fails_on_notes_hit_phrases_score_... :144	X9,X12,snapshot	"TARGET numbers (1095, 222935, 1229730) are ""the numbers LS-O5's pass line names"": pinned from one run"	no joined record
+count	counts/T5-IR13.md:68	records/D1.md:795	test_compare_scorestats.py total_notes_equal_to_the_chord_count_fails :158	X9	hand-built scorestats and Hydra dump	not in the run
+count	counts/T5-IR13.md:74	records/A47.md:19	test_open_asks :991	X9	BatchGate wraps the analyzer so workers wait	not in the run
+count	counts/T5-IR13.md:76	records/A47.md:52	test_open_analyzes :1112	X9,X10	"a test analyzer is installed that calls the real one; ""Charts shown"" typed"	not in the run
+count	counts/T5-IR13.md:77	records/A47.md:84	test_dm_handover :1206	X9	CannedDm: canned dmleaderboards replies	not in the run
+count	counts/T5-IR13.md:78	records/A47.md:100	test_row_click :1257	X9	CannedDm	not in the run
+count	counts/T5-IR13.md:81	records/A47.md:182	test_out_of_date :1548	X9,X10	BatchGate; the two warning sentences retyped	not in the run
+count	counts/T5-IR13.md:88	records/A23.md:162	squeezed-out chord past the leeway :386	X9	hand-built ReplayWindow	caught 16, reaches 67, shared 0, caught-nothing no
+count	counts/T5-IR13.md:89	records/A23.md:209	squeezed-out chord SP pays nothing :418	X9	hand-built ReplayWindow	caught 14, reaches 67, shared 0, caught-nothing no
+count	counts/T5-IR13.md:90	records/A23.md:229	squeeze-out warning ignores a zero-paying window :462	X9	hand-built windows a and b	caught 15, reaches 70, shared 0, caught-nothing no
+count	counts/T5-IR13.md:91	records/A23.md:248	shown_multiplier :493	X10	typed 2 and 8 instead of kStarPowerMultiplier (:403 reads it by name)	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR13.md:92	records/A23.md:266	path JSON names the squeezed-out chord :508	X9,X11	hand-written dump; 11532 and 31.25 typed in and read back	caught 0, reaches 0, shared 0, caught-nothing yes
+count	counts/T5-IR13.md:93	records/A23.md:306	dump carries each window's SqIn phrases :611	X9,snapshot	"hand-written old dump; ""0++"" and ""17360"" come from one run"	caught 86, reaches 570, shared 0, caught-nothing no
+count	counts/T5-IR13.md:94	records/A23.md:350	paths_json constant tempo :736	X9	hand-built Activation on a made-up timing	caught 1, reaches 40, shared 0, caught-nothing no
+count	counts/T5-IR13.md:102	records/A20.md:88	fill chord before its measure line :115	X9	activation_length set by hand to -120, a parser output	caught 7, reaches 57, shared 0, caught-nothing no
+count	counts/T5-IR13.md:105	records/A20.md:188	skips :234	X9	hand-built Path and Activation	caught 8, reaches 92, shared 0, caught-nothing no
+count	counts/T5-IR13.md:106	records/A20.md:204	second activation skips 0 :249	X9	hand-built Paths	caught 8, reaches 92, shared 0, caught-nothing no
+count	counts/T5-IR13.md:107	records/A20.md:220	fill stays taken :271	X9	hand-built Path with a made-up passed-over list	caught 8, reaches 92, shared 0, caught-nothing no
+count	counts/T5-IR13.md:113	records/A20.md:455	passed-over fills on several activations :805	X9	hand-built Path	caught 8, reaches 92, shared 0, caught-nothing no
+count	counts/T5-IR13.md:114	records/A20.md:471	each activation names its fill :821	X9	hand-built Paths	caught 7, reaches 92, shared 0, caught-nothing no
+count	counts/T5-IR13.md:115	records/A20.md:488	ghost path lists its taken fills :863	X9	hand-built Paths	caught 7, reaches 93, shared 0, caught-nothing no
+count	counts/T5-IR13.md:116	records/A20.md:555	preview path label :994	X9,X10	"hand-built PathButtonView; "" (optimal)"" and "" (best all-0)"" typed"	caught 0, reaches 0, shared 0, caught-nothing yes

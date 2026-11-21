@@ -1,0 +1,17 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+record	records/window-WN6.md:76	records/window-WN6.md:76	1. build-a-path-by-clicking (`tests/pb_ui/pbtest_build.cpp:135`)	Rewrite		not in the run
+record	records/window-WN6.md:92	records/window-WN6.md:92	2. build-a-path-on-a-long-song (`pbtest_build.cpp:334`)	Rewrite		not in the run
+record	records/window-WN6.md:108	records/window-WN6.md:108	3. finish-for-me (`pbtest_coach.cpp:76`)	Rewrite		not in the run
+record	records/window-WN6.md:124	records/window-WN6.md:124	4. locked-fill-says-left-to-right (`pbtest_coach.cpp:141`)	Rewrite		not in the run
+record	records/window-WN6.md:172	records/window-WN6.md:172	7. hover-moves-nothing (`pbtest_coach.cpp:360`)	Rewrite		not in the run
+record	records/window-WN6.md:188	records/window-WN6.md:188	8. fill-click-moves-clock (`pbtest_coach.cpp:485`)	Rewrite		not in the run
+record	records/window-WN6.md:204	records/window-WN6.md:204	9. fill-card (`pbtest_coach.cpp:517`)	Rewrite		not in the run
+record	records/window-WN6.md:220	records/window-WN6.md:220	10. row-click-moves-clock (`pbtest_coach.cpp:545`)	Rewrite		not in the run
+record	records/window-WN6.md:236	records/window-WN6.md:236	11. open-starts-empty (`pbtest_window.cpp:68`)	Rewrite		not in the run
+record	records/window-WN6.md:252	records/window-WN6.md:252	12. scroll-the-timeline (`pbtest_window.cpp:341`)	Rewrite		not in the run
+record	records/window-WN6.md:300	records/window-WN6.md:300	15. rules-reach-the-builder (`pbtest_window.cpp:592`)	Rewrite		not in the run
+record	records/window-WN7.md:198	records/window-WN7.md:198	1. path buttons: Burnout's list, in the mockup's groups (tests/test_path_list.cpp:268)	Rewrite		caught 28, reaches 69, shared 5, caught-nothing no
+record	records/window-WN7.md:215	records/window-WN7.md:215	2. PathsTabCache: folds reset for a new path, not for a display setting (tests/test_path_list.cpp:398)	Rewrite		caught 19, reaches 132, shared 0, caught-nothing no
+record	records/window-WN7.md:232	records/window-WN7.md:232	3. pb files: a saved path file opens back as the same path, as the player's (tests/test_pb_files.cpp:50)	Rewrite		caught 125, reaches 788, shared 0, caught-nothing no
+record	records/window-WN7.md:266	records/window-WN7.md:266	5. score box stars: the analyzed chart ends on the path's own star count (tests/test_preview_boxes.cpp:498)	Rewrite		caught 12, reaches 115, shared 0, caught-nothing no
+record	records/window-WN8.md:145	records/window-WN8.md:145	Delta round: window, replaces records/A10.md record 1	Rewrite		none

@@ -1,0 +1,31 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open audit late_sqin_twice
+wait-idle
+click **/Expand all
+text
+click **/Stars
+text
+click **/Preview
+wait-idle
+type **/##scrub | 15.500000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_start_15500.0ms.png | **/##highway_image
+type **/##scrub | 4.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_sp_ready_4000.0ms.png | **/##highway_image
+type **/##scrub | 18.635000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_sqin1_end_18635.0ms.png | **/##highway_image
+type **/##scrub | 18.875000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_sqin2_end_18875.0ms.png | **/##highway_image
+type **/##scrub | 19.115000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_sqin3_end_19115.0ms.png | **/##highway_image
+type **/##scrub | 19.355000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_sqin4_end_19355.0ms.png | **/##highway_image
+type **/##scrub | 19.594000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_end_minus_1ms_19594.0ms.png | **/##highway_image
+type **/##scrub | 19.595000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_a1_end_19595.0ms.png | **/##highway_image
+type **/##scrub | 0.000000
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/late_sqin_twice_song_start_0.0ms.png | **/##highway_image

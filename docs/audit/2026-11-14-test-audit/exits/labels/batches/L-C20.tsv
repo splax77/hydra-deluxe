@@ -1,0 +1,123 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+count	counts/T5-KR1.md:19	records/D8.md:34	MW :165	X10	"refusal text ""; no method watch started"" typed"	not in the run
+count	counts/T5-KR1.md:20	(not joined)	MW :175	X9	backup line and the agent's summary are hand-written stand-ins	no joined record
+count	counts/T5-KR1.md:21	records/D8.md:53	MW :181	X9,X10	made-up summary; refusal sentence typed	not in the run
+count	counts/T5-KR1.md:22	(not joined)	MW :205	X9,X10	made-up summary; refusal text typed	no joined record
+count	counts/T5-KR1.md:23	(not joined)	MW :253	X10	npm run build:menuhooks typed	no joined record
+count	counts/T5-KR1.md:24	(not joined)	MW :324	X9,X10	three hand-written agent payloads; log file name typed	no joined record
+count	counts/T5-KR1.md:25	records/D8.md:194	MW :371	X9,X10	hand-built dump facts; message typed	not in the run
+count	counts/T5-KR1.md:28	records/D8.md:219	MW :396	X10	whole build command typed	not in the run
+count	counts/T5-KR1.md:29	(not joined)	MF :155	X9,X10	hand-written copy of mono_reader.ps1 output; message typed	no joined record
+count	counts/T5-KR1.md:30	(not joined)	MF :185	X9,X10,X11	"made-up child reply; message typed; ""BadImageFormatException"" typed in, required back"	no joined record
+count	counts/T5-KR1.md:33	(not joined)	PS :175	X9	score the game would read is made up (7, 57, 58, 59)	no joined record
+count	counts/T5-KR1.md:45	records/D8.md:519	Q :87	X9	made-up process rows	not in the run
+count	counts/T5-KR1.md:46	records/D8.md:525	Q :93	X9	made-up process rows	not in the run
+count	counts/T5-KR1.md:47	records/D8.md:558	Q :123	X9	all readers (processes, CPU, scan) are made up	not in the run
+count	counts/T5-KR1.md:48	records/D8.md:564	Q :126	X9	made-up CPU reading	not in the run
+count	counts/T5-KR1.md:49	(not joined)	Q :145	X9	made-up folder row	no joined record
+count	counts/T5-KR1.md:50	(not joined)	Q :148	X9	made-up sampler	no joined record
+count	counts/T5-KR1.md:51	records/D8.md:605	Q :154	X9,X10	"made-up process rows; ""X.exe: running"" lines typed"	not in the run
+count	counts/T5-KR1.md:52	records/D8.md:625	Q :178	X9,X10,X11	"made-up reader failure; line typed; ""no list"" typed in, required back"	not in the run
+count	counts/T5-KR1.md:53	(not joined)	Q :185	X9,X10,X11	"same shape; ""no counter"""	no joined record
+count	counts/T5-KR1.md:54	records/D8.md:637	Q :190	X9,X10,X11	"same shape; ""no disk"""	not in the run
+count	counts/T5-KR1.md:55	(not joined)	Q :195	X9,X10,X11	"made-up scan result; line typed; ""f: denied"" echoed"	no joined record
+count	counts/T5-KR1.md:56	records/D8.md:649	Q :201	X9,X10	"made-up scan result; line typed (""cap of 3 s"", ""of 5"")"	not in the run
+count	counts/T5-KR1.md:57	records/D8.md:655	Q :209	X9,X10,X11	"made-up reader failures; lines typed; ""m"", ""p"" echoed"	not in the run
+count	counts/T5-KR1.md:58	records/D8.md:680	Q :228	X9,X10	made-up process row; line typed	not in the run
+count	counts/T5-KR1.md:63	records/D8.md:717	Q :313	X10	"line typed, ""(a file 2 s old)"""	not in the run
+count	counts/T5-KR1.md:70	records/D8.md:780	Q :392	X9,X10,X11	"made-up child reply; text typed; ""bad"" echoed"	not in the run
+count	counts/T5-KR1.md:72	records/D8.md:830	RL :138	X9,X10	fake pid 777; line typed	not in the run
+count	counts/T5-KR1.md:73	(not joined)	RL :145	X9,X10	fake pids 777, 778; lines typed	no joined record
+count	counts/T5-KR1.md:74	(not joined)	RL :155	X9,X10	fake pid in typed line	no joined record
+count	counts/T5-KR1.md:75	(not joined)	RL :160	X9,X10,X11	"made-up start error; text typed; ""no python"" echoed"	no joined record
+count	counts/T5-KR1.md:77	(not joined)	RL :176	X9,X10,X11	"made-up pipe failure; text typed; ""the pipe is closed"" echoed"	no joined record
+count	counts/T5-KR1.md:79	records/D8.md:873	RL :186	X9,X10	fake process exit code 0 and pid; stop line typed	not in the run
+count	counts/T5-KR1.md:80	records/D8.md:894	RL :212	X9,X10,X11	"made-up PermissionError(""denied""); text typed and echoed"	not in the run
+count	counts/T5-KR1.md:81	(not joined)	RL :222	X9,X10	"fake wait/close/terminate; ""still runs"" typed"	no joined record
+count	counts/T5-KR1.md:82	records/D8.md:907	RL :235	X9,X10	fake exit code 3; line typed	not in the run
+count	counts/T5-KR1.md:83	records/D8.md:932	RL :260	X10	line typed	not in the run
+count	counts/T5-KR1.md:84	records/D8.md:938	RL :265	X10	line typed	not in the run
+count	counts/T5-KR1.md:85	records/D8.md:944	RL :274	X9,X10	hand-written samples.csv rows; line typed	not in the run
+count	counts/T5-KR1.md:86	records/D8.md:950	RL :280	X9,X10	hand-written rows; line typed	not in the run
+count	counts/T5-KR1.md:87	(not joined)	RL :286	X9,X10	hand-written rows with chosen line ends; line typed	no joined record
+count	counts/T5-KR1.md:88	records/D8.md:962	RL :292	X9,X10	hand-written csv; substring typed	not in the run
+count	counts/T5-KR1.md:89	(not joined)	RL :297	X9,X10	fake exit code and rows; line typed	no joined record
+count	counts/T5-KR1.md:92	records/D8.md:1011	SV :73	X10	nothing open typed	not in the run
+count	counts/T5-KR1.md:93	(not joined)	SV :80	X10,X11	"line typed; ""the-backup"" set in and read back"	no joined record
+count	counts/T5-KR1.md:94	(not joined)	SV :92	X9	the reply is wrapped in a hand-written service envelope	no joined record
+count	counts/T5-KR1.md:95	records/D8.md:1036	SV :95	X9,X10,X11	"same envelope; expected line typed; ""the-backup"" echoed"	not in the run
+count	counts/T5-KR1.md:96	(not joined)	SV :112	X9,X10	"hand-built ""ended"" state objects; ""nothing open"" typed"	no joined record
+count	counts/T5-KR1.md:97	records/D8.md:1062	SV :128	X9	hand-built state objects set into private fields	not in the run
+count	counts/T5-KR1.md:98	records/D8.md:1095	SV :213	X11	"song, ""s.json"", ""p.json"" typed in, required back"	not in the run
+count	counts/T5-KR1.md:99	(not joined)	SV :222	X11	same, plus 3	no joined record
+count	counts/T5-KR1.md:100	(not joined)	SV :249	X11	5 typed in, 5 required back	no joined record
+count	counts/T5-KR1.md:102	records/D8.md:1133	SV :277	X10,X11	"default False typed; ""song"" echoed"	not in the run
+count	counts/T5-KR1.md:103	(not joined)	SV :286	X10,X11	defaults 0 and None typed; strings echoed	no joined record
+count	counts/T5-KR1.md:104	records/D8.md:1145	SV :298	X11	ProDrums,Expert typed in and back	not in the run
+count	counts/T5-KR1.md:105	records/D8.md:1151	SV :309	X10,X11	absent names typed; 192 and file names echoed	not in the run
+count	counts/T5-KR1.md:106	(not joined)	SV :327	X10,X11	"argument names and defaults typed; ""AB"", 100 echoed"	no joined record
+count	counts/T5-KR1.md:108	(not joined)	SV :349	X10,X11	"default None typed; ""System"" echoed"	no joined record
+count	counts/T5-KR1.md:109	records/D8.md:1175	SV :358	X10,X11	"default None typed; 0.748 and ""Green"" echoed"	not in the run
+count	counts/T5-KR2.md:20	records/D12.md:94	test_play_in_game.py:265	X9	agent event `seq 7` hand-built in a FakePlayer	not in the run
+count	counts/T5-KR2.md:21	records/D12.md:114	test_play_in_game.py:293	X9	"made-up stop reason ""melted"" through a FakePlayer"	not in the run
+count	counts/T5-KR2.md:22	records/D12.md:207	test_prep_inputs.py:132	X9,X10	hand-written stub for hydra_replay with typed stderr; asserts the typed failure line	not in the run
+count	counts/T5-KR2.md:23	(not joined)	test_prep_inputs.py:151	X9,X10	stub fails with typed exit 3 and text, both required back in the message	no joined record
+count	counts/T5-KR2.md:24	records/D12.md:222	test_prep_inputs.py:158	X10	"pins the typed ""hydra_replay not found:"" line"	not in the run
+count	counts/T5-KR2.md:31	records/D12.md:541	test_process.py:92	X9	hand-built fake game memory	not in the run
+count	counts/T5-KR2.md:32	records/D12.md:547	test_process.py:98	X9	hand-built fake game memory	not in the run
+count	counts/T5-KR2.md:33	records/D12.md:553	test_process.py:104	X9	fake memory holding a typed constant 85.0	not in the run
+count	counts/T5-KR2.md:34	(not joined)	test_process.py:110	X9	fake memory returning a short read	no joined record
+count	counts/T5-KR2.md:35	(not joined)	test_process.py:119	X9,X11	fake writer; bytes written come straight back from it	no joined record
+count	counts/T5-KR2.md:36	records/D12.md:577	test_process.py:134	X10	typed 0.085/0.0375 s as the expected game constants	not in the run
+count	counts/T5-KR2.md:37	records/D12.md:595	test_process.py:148	X10	same typed constants	not in the run
+count	counts/T5-KR2.md:38	(not joined)	test_process.py:153	X10	typed 85.0/37.5	no joined record
+count	counts/T5-KR2.md:39	records/D12.md:607	test_process.py:169	X9,X10	fake memory holding typed 0.085/0.0375	not in the run
+count	counts/T5-KR2.md:40	records/D12.md:619	test_process.py:177	X9,X10	fake memory with typed 0.025 against typed 0.085	not in the run
+count	counts/T5-KR2.md:41	records/D12.md:682	test_s2_window_constants.py:35	X10	checks the constants equal a committed measurement table, so typed number against typed number	not in the run
+count	counts/T5-KR2.md:42	records/D12.md:788	test_score_compare.py:115	X9	"hand-built `_SCORE` and presses, made-up route ""mouse"""	not in the run
+count	counts/T5-KR2.md:43	records/D12.md:800	test_score_compare.py:123	X9	hand-built Press and score	not in the run
+count	counts/T5-KR2.md:44	records/D12.md:825	test_score_compare.py:163	X9	hand-built presses, expected -1.5 follows from the typed 1.5	not in the run
+count	counts/T5-KR2.md:46	records/D12.md:837	test_score_compare.py:172	X11	typed row written then required back	not in the run
+count	counts/T5-KR2.md:49	(not joined)	test_score_compare.py:283	X11	typed 1.5 and 212.4 required back	no joined record
+count	counts/T5-KR2.md:50	records/D12.md:916	test_score_compare.py:308	X11	"typed 3.25 and ""retime_missed"" required back"	not in the run
+count	counts/T5-KR2.md:51	records/D12.md:922	test_score_compare.py:319	X9	hand-typed row under the owner's header	not in the run
+count	counts/T5-KR2.md:52	records/D12.md:928	test_score_compare.py:326	X10	four hand-written headers; regex pins the message start	not in the run
+count	counts/T5-KR2.md:58	records/E3.md:60	test_refusals.py:75	X9,X10,X11	"hand-typed `call()` payload; typed ""no, because"" required back; typed message note"	not in the run
+count	counts/T5-KR2.md:65	records/E3.md:418	test_ref_judge.py:377	X10	"typed ""did not give a verdict"""	not in the run
+count	counts/T5-KR2.md:66	records/E3.md:423	test_ref_judge.py:385	X9,X10	hand-written judge that raises	not in the run
+count	counts/T5-KR2.md:67	records/E3.md:428	test_ref_judge.py:393	X9,X10	"hand-written judge printing ""allow please"""	not in the run
+count	counts/T5-KR2.md:68	records/E3.md:433	test_ref_judge.py:401	X9,X10	judge replaced by a sleeping lambda; typed message	not in the run
+count	counts/T5-KR2.md:69	records/E3.md:440	test_ref_judge.py:412	X10	"made-up line ""not a ref update line"""	not in the run
+count	counts/T5-KR2.md:70	records/E3.md:446	test_ref_judge.py:418	X10	typed message	not in the run
+count	counts/T5-KR2.md:71	records/E3.md:451	test_ref_judge.py:431	X10	"typed trailer key ""Session:"""	not in the run
+count	counts/T5-KR2.md:72	records/E3.md:456	test_ref_judge.py:442	X9,X11	"hand-written raising rules; ""rules broke"" required back"	not in the run
+count	counts/T5-KR2.md:73	records/E3.md:465	test_ref_judge.py:498	X9,X10	"hand-written ""refuse"" rules; typed ""put back"""	not in the run
+count	counts/T5-KR2.md:74	(not joined)	test_ref_judge.py:503	X9,X10	same	no joined record
+count	counts/T5-KR2.md:75	records/E3.md:476	test_ref_judge.py:510	X9	"hand-written ""allow"" rules"	not in the run
+count	counts/T5-KR2.md:76	records/E3.md:481	test_ref_judge.py:518	X9	same	not in the run
+count	counts/T5-KR2.md:77	records/E3.md:486	test_ref_judge.py:527	X9,X10	"fake rules; typed ""Run git status"""	not in the run
+count	counts/T5-KR2.md:78	records/E3.md:491	test_ref_judge.py:538	X9,X10	same	not in the run
+count	counts/T5-KR2.md:79	records/E3.md:496	test_ref_judge.py:552	X9	fake rules	not in the run
+count	counts/T5-KR2.md:80	records/E3.md:502	test_ref_judge.py:562	X9	fake rules	not in the run
+count	counts/T5-KR2.md:81	(not joined)	test_ref_judge.py:571	X9,X10	fake rules; typed message	no joined record
+count	counts/T5-KR2.md:82	records/E3.md:512	test_ref_judge.py:580	X9,X10,X11	"fake rules, mocks, typed ""restore broke"" required back"	not in the run
+count	counts/T5-KR2.md:83	(not joined)	test_ref_judge.py:610	X10	typed selftest line	no joined record
+count	counts/T5-KR2.md:84	(not joined)	test_ref_judge.py:626	X9,X10	"hand-written judge printing ""WRONG"""	no joined record
+count	counts/T5-KR2.md:87	(not joined)	test_ref_judge.py:795	X9	hand-written broken rules module	no joined record
+count	counts/T5-KR2.md:88	records/E3.md:583	test_ref_judge.py:806	X9,X11	broken module's text required back	not in the run
+count	counts/T5-KR2.md:89	records/E3.md:587	test_ref_judge.py:814	X10	typed message words	not in the run
+count	counts/T5-KR2.md:90	records/E3.md:593	test_ref_judge.py:832	X9	"fake ""refuse"" rules"	not in the run
+count	counts/T5-KR2.md:96	records/D7.md:39	test_machine_recorder.py:161	X12,snapshot	typed counts pinned from one capture; comment cites Get-Process	not in the run
+count	counts/T5-KR2.md:98	records/D7.md:106	test_machine_recorder.py:252	snapshot	typed 18 read from one saved sample	not in the run
+count	counts/T5-KR2.md:100	records/D7.md:261	test_machine_recorder.py:638	X10	typed stop words	not in the run
+count	counts/T5-KR2.md:103	records/D7.md:346	test_machine_recorder.py:822	X11	typed 9 required back	not in the run
+count	counts/T5-KR2.md:104	records/D7.md:382	test_machine_recorder.py:896	X10	"typed ""stdin closed"""	not in the run
+count	counts/T5-KR2.md:105	records/D7.md:387	test_machine_recorder.py:903	X10	"typed ""cap"""	not in the run
+count	counts/T5-KR2.md:106	records/D7.md:392	test_machine_recorder.py:915	X10	"typed ""parent gone"""	not in the run
+count	counts/T5-KR2.md:108	records/D7.md:705	test_machine_report.py:537	X9,X10	hand-built recording; typed message	not in the run
+count	counts/T5-KR2.md:109	records/D7.md:761	test_machine_report.py:664	X9,X10	hand-built recording; typed refusal text	not in the run
+count	counts/T5-KR2.md:110	records/D7.md:767	test_machine_report.py:675	X9,X10	hand-built recording; typed first line	not in the run
+count	counts/T5-KR2.md:111	records/D7.md:801	test_menu_tools.py:226	X9	fake game, kit and clock	not in the run
+count	counts/T5-KR2.md:112	records/D7.md:820	test_menu_tools.py:279	X9,X10	scripted fake menu reads; typed refusal text	not in the run
+count	counts/T5-KR2.md:118	(not joined)	test_menu_tools.py:541	X9,X10	hand-written steps file, FakeKit and FakeFrida; typed text	no joined record
+count	counts/T5-KR2.md:119	records/D7.md:974	test_menu_tools.py:563	X10	"typed ""song_loaded"" label pinned against a data file"	not in the run

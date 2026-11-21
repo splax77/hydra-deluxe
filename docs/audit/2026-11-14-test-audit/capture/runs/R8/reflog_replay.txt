@@ -1,0 +1,157 @@
+
+reflog replay: 294 moves; {"carry": 71, "no-gate": 26, "no-review-needed": 96, "refused": 65, "verdict": 36}
+refused hydra fc5df54d16..be044b34fc: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at fc5df54d16.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app be044b34fc.
+refused hydra be044b34fc..47ac739612: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at be044b34fc.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 47ac739612.
+test_every_historical_main_move_allows (gates.tests.test_review_rules.ReflogReplay.test_every_historical_main_move_allows) ... FAIL
+
+======================================================================
+FAIL: test_every_historical_main_move_allows (gates.tests.test_review_rules.ReflogReplay.test_every_historical_main_move_allows)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "C:\Users\Patrick\.claude\gates\tests\test_review_rules.py", line 1006, in test_every_historical_main_move_allows
+    self.assertEqual([r[:3] for r in refused], known)
+    ~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Lists differ: [('hydra', 'fc5df54d16', 'be044b34fc'), ('hydra', 'be0[2476 chars]05')] != [('hydra', 'f7f64cb18c', 'fa19f5c942')]
+
+First differing element 0:
+('hydra', 'fc5df54d16', 'be044b34fc')
+('hydra', 'f7f64cb18c', 'fa19f5c942')
+
+First list contains 64 additional elements.
+First extra element 1:
+('hydra', 'be044b34fc', '47ac739612')
+
+Diff is 2772 characters long. Set self.maxDiff to None to see it.
+
+----------------------------------------------------------------------
+Ran 1 test in 115.906s
+
+FAILED (failures=1)
+refused hydra 47ac739612..2a110c2216: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 47ac739612.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 2a110c2216.
+refused hydra 9bc6ce063c..60bca2728a: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 9bc6ce063c.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 60bca2728a.
+refused hydra 60bca2728a..06d39ee542: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 60bca2728a.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 06d39ee542.
+refused hydra ff8bea5685..6de1c26c7b: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at ff8bea5685.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 6de1c26c7b.
+refused hydra 87d8d28fc6..5d461f6e55: main was not moved: 9 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 87d8d28fc6.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 5d461f6e55.
+refused hydra 5926f52315..46779ed137: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 5926f52315.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 46779ed137.
+refused hydra 46779ed137..334fac1250: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 46779ed137.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 334fac1250.
+refused hydra 334fac1250..e6aa2f28b9: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 334fac1250.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app e6aa2f28b9.
+refused hydra e6aa2f28b9..cafc3a7487: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at e6aa2f28b9.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app cafc3a7487.
+refused hydra cafc3a7487..d2ad541123: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at cafc3a7487.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app d2ad541123.
+refused hydra d2ad541123..c41a087d0e: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at d2ad541123.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app c41a087d0e.
+refused hydra 656b147a39..abfbf1ebb8: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 656b147a39.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app abfbf1ebb8.
+refused hydra 7cab8cd445..5de3c1b479: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 7cab8cd445.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 5de3c1b479.
+refused hydra 1d8621adfd..c4ca3b36c1: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 1d8621adfd.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app c4ca3b36c1.
+refused hydra 320ee71fd5..2145469d34: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 320ee71fd5.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 2145469d34.
+refused hydra 2145469d34..4b3dcd92da: main was not moved: 6 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 2145469d34.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 4b3dcd92da.
+refused hydra 4b3dcd92da..9c8b5a652e: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 4b3dcd92da.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 9c8b5a652e.
+refused hydra 8470649de2..70d827974f: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 8470649de2.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 70d827974f.
+refused hydra 70d827974f..f937974b0d: main was not moved: 9 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 70d827974f.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app f937974b0d.
+refused hydra f937974b0d..07594feeab: main was not moved: 7 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at f937974b0d.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 07594feeab.
+refused hydra 07594feeab..332fc1bbe3: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 07594feeab.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 332fc1bbe3.
+refused hydra 8682fcfe20..e86fe98113: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 8682fcfe20.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app e86fe98113.
+refused hydra 7ed30c7c07..555cc5b216: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 7ed30c7c07.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 555cc5b216.
+refused hydra bcf2d2f0e9..3e92158278: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at bcf2d2f0e9.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 3e92158278.
+refused hydra 607806a6ae..a0e34bf426: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 607806a6ae.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app a0e34bf426.
+refused hydra a0e34bf426..56aeeca108: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at a0e34bf426.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 56aeeca108.
+refused hydra b0180a2c26..f3629d7406: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at b0180a2c26.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app f3629d7406.
+refused hydra 7a13fde79f..bf5d9ed3b9: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 7a13fde79f.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app bf5d9ed3b9.
+refused hydra 3fd7a36e02..81e005e611: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 3fd7a36e02.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 81e005e611.
+refused hydra c86de25a14..52e71f9fe1: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at c86de25a14.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 52e71f9fe1.
+refused hydra 52e71f9fe1..ce5a5a0186: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 52e71f9fe1.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app ce5a5a0186.
+refused hydra 3d4f27dc76..7c3adacb5e: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 3d4f27dc76.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 7c3adacb5e.
+refused hydra d8b50ac68b..adac620f60: main was not moved: 4 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at d8b50ac68b.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app adac620f60.
+refused hydra adac620f60..1cf69d8832: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at adac620f60.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 1cf69d8832.
+refused hydra ee1bbe4eea..c53e083557: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at ee1bbe4eea.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app c53e083557.
+refused hydra f38f6a9585..9de568a1a5: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at f38f6a9585.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 9de568a1a5.
+refused hydra 9de568a1a5..e5792b73be: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 9de568a1a5.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app e5792b73be.
+refused hydra 7fe58f7914..e9a963d2d3: main was not moved: 10 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 7fe58f7914.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app e9a963d2d3.
+refused hydra ef27b55b72..2ad5cec7d1: main was not moved: 12 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at ef27b55b72.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 2ad5cec7d1.
+refused hydra 5058ad22fc..b8c4e77275: main was not moved: 6 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 5058ad22fc.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app b8c4e77275.
+refused hydra b8c4e77275..00d66476f2: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at b8c4e77275.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 00d66476f2.
+refused hydra d5b5893c8c..39bf525978: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at d5b5893c8c.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 39bf525978.
+refused hydra 39bf525978..72db8e9268: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 39bf525978.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 72db8e9268.
+refused hydra 72db8e9268..462e9771bf: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 72db8e9268.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 462e9771bf.
+refused hydra f917b5beb7..657f009aff: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at f917b5beb7.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 657f009aff.
+refused hydra b91b4c60ff..f88ac83807: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at b91b4c60ff.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app f88ac83807.
+refused hydra 68adfbccb2..ebc9019fd0: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 68adfbccb2.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app ebc9019fd0.
+refused hydra ebc9019fd0..78147babbd: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at ebc9019fd0.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 78147babbd.
+refused hydra d278eb3aec..ab9a4742f6: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at d278eb3aec.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app ab9a4742f6.
+refused hydra 938c6fdcf3..8df30c81c7: main was not moved: 12 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 938c6fdcf3.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 8df30c81c7.
+refused hydra 47a7c9d852..deac5b867e: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 47a7c9d852.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app deac5b867e.
+refused hydra 22de8e426b..0b5f7f03c3: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 22de8e426b.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 0b5f7f03c3.
+refused hydra 5d4103a67f..9c09eeda0d: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 5d4103a67f.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 9c09eeda0d.
+refused hydra 3a7931fa25..3f68a213b7: main was not moved: 2 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 3a7931fa25.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 3f68a213b7.
+refused hydra 12648253ed..78a50e3297: main was not moved: 5 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 12648253ed.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 78a50e3297.
+refused hydra 78a50e3297..48e3dd370f: main was not moved: 9 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 78a50e3297.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 48e3dd370f.
+refused hydra 48e3dd370f..9dd3551045: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 48e3dd370f.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 9dd3551045.
+refused hydra f7f64cb18c..fa19f5c942: main was not moved: no reviewer verdict is recorded for fa19f5c942 or any commit before it on its branch. Also: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at f7f64cb18c.
+Instead: dispatch a reviewer (subagent_type reviewer) with the brief docs/agents/derive-once-review.md and the key fa19f5c9421d3273f5be1b7ba65bb14307c9829a, or the user sends just: waive derive-once fa19f5c942. Open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app fa19f5c942.
+refused hydra 209cf10850..a3cc428e37: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 209cf10850.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app a3cc428e37.
+refused hydra 44a8c082c1..775ada53a8: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 44a8c082c1.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 775ada53a8.
+refused hydra 84243f2b33..6978e7437c: main was not moved: 1 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 84243f2b33.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app 6978e7437c.
+refused hydra 6978e7437c..b7d457d584: main was not moved: 3 file(s) under src/ui change and no real-app check is recorded for a commit on this branch after its last src/ui change. It stays at 6978e7437c.
+Instead: open the branch's build with hydra_start('window') on the library snapshot, look at the change and stop the session (the helper writes the record), or the user sends just: waive real-app b7d457d584.
+refused hydra d80889d1d7..f4c87ac805: main was not moved: no reviewer verdict is recorded for f4c87ac805 or any commit before it on its branch. It stays at d80889d1d7.
+Instead: dispatch a reviewer (subagent_type reviewer) with the brief docs/agents/derive-once-review.md and the key f4c87ac80599ff8c76efbb8e25419313e89b074c, or the user sends just: waive derive-once f4c87ac805.

@@ -1,0 +1,34 @@
+# DL4 6 setup: the button is drawn by the library toolbar, so scan first.
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+# DL4 6: fresh database, nothing changed. Button label should read "Analysis settings: defaults".
+text | Analysis settings
+rect **/###analysissettings
+# DL4 6: open the panel; the "Early fill window" row should show the default, 60 ms.
+click **/###analysissettings
+wait 0.3
+text | Early fill window
+dump | earlyfillwindow
+screenshot r4d_panel_default.png
+# DL4 6: change the window to 85 (top of the 0..85 range); label should name it.
+type //$FOCUSED/**/##earlyfillwindow | 85
+wait 0.3
+text | Early fill window
+text | Analysis settings
+# DL4 6: back to the default value 60 by typing it; label should return to "defaults".
+type //$FOCUSED/**/##earlyfillwindow | 60
+wait 0.3
+text | Analysis settings
+# DL4 6: change to 0, then use Reset to defaults; the window box should read 60 again.
+type //$FOCUSED/**/##earlyfillwindow | 0
+wait 0.3
+text | Analysis settings
+click //$FOCUSED/**/Reset to defaults
+wait 0.3
+text | Early fill window
+text | Analysis settings
+# Close the panel.
+key Escape
+wait 0.3
+text | Analysis settings

@@ -1,0 +1,28 @@
+{
+ "chartmode": "Expert Pro Drums, 2x Bass",
+ "hydra_replay_build": "Nov 15 2026 09:58:31",
+ "hyhash": "b7dc904f8c0da5b7b82e400aad6e094c",
+ "paths": [
+  {
+   "activations": [],
+   "index": 0,
+   "pathstring": "(No activations.)",
+   "score": {
+    "accent": 0,
+    "combo": 115635,
+    "ghost": 0,
+    "notes": 39660,
+    "solo": 0,
+    "sp": 0
+   },
+   "total": 155295
+  }
+ ],
+ "result": {
+  "bestpath": "(No activations.)",
+  "score": 155295
+ },
+ "song_length_ms": 169250.0,
+ "source": "analyzed",
+ "sp_cap": 4
+}

@@ -1,0 +1,93 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+record	records/A9.md:15	records/A9.md:15	1. settings round-trip through an INI file (tests/test_config.cpp:75)	Rewrite		caught 21, reaches 40, shared 0, caught-nothing no
+record	records/A9.md:31	records/A9.md:31	2. settings: load and save name the same keys (tests/test_config.cpp:102)	Rewrite		caught 19, reaches 40, shared 0, caught-nothing no
+record	records/A9.md:47	records/A9.md:47	3. the updater's settings round-trip and survive Reset to defaults (tests/test_config.cpp:136)	Rewrite		caught 18, reaches 40, shared 0, caught-nothing no
+record	records/A9.md:63	records/A9.md:63	4. the 1.0 fills setting reaches the search and the result's key together (tests/test_config.cpp:169)	Rewrite		caught 0, reaches 10, shared 0, caught-nothing yes
+record	records/A9.md:79	records/A9.md:79	5. command-line settings take the fill rule from the flag, the rest from the INI (tests/test_config.cpp:184)	Rewrite		caught 11, reaches 37, shared 0, caught-nothing no
+record	records/A9.md:95	records/A9.md:95	6. load_tool_settings gives the tools' settings, or exit code 2 for a refused file (tests/test_config.cpp:208)	Rewrite		caught 11, reaches 25, shared 0, caught-nothing no
+record	records/A9.md:111	records/A9.md:111	7. a missing INI yields defaults (tests/test_config.cpp:232)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A9.md:127	records/A9.md:127	8. config: the default depth is the search's, 4 (tests/test_config.cpp:249)	Remove		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A9.md:143	records/A9.md:143	9. blank and comment lines load, and keys and values are trimmed (tests/test_config.cpp:255)	Rewrite		caught 11, reaches 25, shared 0, caught-nothing no
+record	records/A9.md:159	records/A9.md:159	10. a bad line refuses (tests/test_config.cpp:271)	Rewrite		caught 18, reaches 38, shared 0, caught-nothing no
+record	records/A9.md:175	records/A9.md:175	11. settings: a value outside its range loads at the nearest edge (tests/test_config.cpp:311)	Rewrite		caught 9, reaches 24, shared 0, caught-nothing no
+record	records/A9.md:191	records/A9.md:191	12. Settings::clamp is the one range every caller asks (tests/test_config.cpp:339)	Rewrite		caught 2, reaches 3, shared 0, caught-nothing no
+record	records/A9.md:207	records/A9.md:207	13. settings: a # after a value is a comment (tests/test_config.cpp:362)	Rewrite		caught 11, reaches 31, shared 0, caught-nothing no
+record	records/A9.md:223	records/A9.md:223	14. settings: on/off keys take 0 or 1 only (tests/test_config.cpp:373)	Remove		caught 10, reaches 17, shared 0, caught-nothing no
+record	records/A9.md:239	records/A9.md:239	15. chartmode_key builds its difficulty word from difficulty() (tests/test_config.cpp:382)	Remove		caught 5, reaches 10, shared 0, caught-nothing no
+record	records/A9.md:255	records/A9.md:255	16. chartmode_key: Note Shuffle off leaves every key as it was, on adds an ending (tests/test_config.cpp:428)	Rewrite		caught 4, reaches 11, shared 0, caught-nothing no
+record	records/A9.md:271	records/A9.md:271	17. with_chartmode rebuilds the settings behind every key, shuffled or not (tests/test_config.cpp:447)	Rewrite		caught 5, reaches 11, shared 0, caught-nothing no
+record	records/A9.md:287	records/A9.md:287	18. with_reading: reading() gives back the reading written, the rest kept (tests/test_config.cpp:469)	Remove		caught 3, reaches 9, shared 0, caught-nothing no
+record	records/A9.md:303	records/A9.md:303	19. the default ChartReading is Expert, Pro Drums, 2x Bass, no Note Shuffle (tests/test_config.cpp:482)	Rewrite		caught 1, reaches 8, shared 0, caught-nothing no
+record	records/A9.md:319	records/A9.md:319	20. view_noteshuffle: off by default, and the INI key loads and saves it (tests/test_config.cpp:488)	Remove		caught 17, reaches 40, shared 0, caught-nothing no
+record	records/A9.md:335	records/A9.md:335	21. view_difficulty round-trips, and a junk value refuses (tests/test_config.cpp:509)	Remove		caught 17, reaches 45, shared 0, caught-nothing no
+record	records/A9.md:351	records/A9.md:351	22. view_difficulty matches any case and loads as the real name (tests/test_config.cpp:526)	Rewrite		caught 12, reaches 23, shared 0, caught-nothing no
+record	records/A9.md:367	records/A9.md:367	23. profile carries the chartmode, the SP cap and the lens (tests/test_config.cpp:549)	Rewrite		caught 2, reaches 10, shared 0, caught-nothing no
+record	records/A9.md:383	records/A9.md:383	24. profile moves with every key part (tests/test_config.cpp:602)	Rewrite		caught 2, reaches 10, shared 0, caught-nothing no
+record	records/A9.md:399	records/A9.md:399	25. profile_at_clone_hero_cap differs from profile only in the cap (tests/test_config.cpp:613)	Rewrite		caught 0, reaches 10, shared 0, caught-nothing yes
+record	records/A9.md:415	records/A9.md:415	26. profile_with_fills differs from profile only in the fill rule (tests/test_config.cpp:629)	Rewrite		caught 0, reaches 10, shared 0, caught-nothing yes
+record	records/A9.md:431	records/A9.md:431	27. each retired settings key loads silently and is never written back (tests/test_config.cpp:649)	Rewrite		caught 8, reaches 19, shared 0, caught-nothing no
+record	records/A9.md:447	records/A9.md:447	28. hit_window_ms in an older file is skipped, whatever it says, and dropped on save (tests/test_config.cpp:672)	Rewrite		caught 10, reaches 26, shared 0, caught-nothing no
+record	records/A9.md:478	records/A9.md:478	30. legacy_fills_for reads fill_rule_for backwards (tests/test_config.cpp:703)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A9.md:494	records/A9.md:494	31. batch_run bundles one Settings' profile and search settings (tests/test_config.cpp:711)	Rewrite		caught 4, reaches 11, shared 0, caught-nothing no
+record	records/A9.md:510	records/A9.md:510	32. sp_cap: 0 reads 1, auto and junk refuse, retired keys are skipped (tests/test_config.cpp:734)	Rewrite		caught 16, reaches 40, shared 0, caught-nothing no
+record	records/A9.md:526	records/A9.md:526	33. to_analysis_settings maps the cap (tests/test_config.cpp:758)	Rewrite		caught 1, reaches 9, shared 0, caught-nothing no
+record	records/A9.md:542	records/A9.md:542	34. to_analysis_settings maps depth_mode onto the search's enum (tests/test_config.cpp:782)	Remove		caught 1, reaches 9, shared 0, caught-nothing no
+record	records/A9.md:558	records/A9.md:558	35. save_file replaces the settings file through a temp and a rename (tests/test_config.cpp:797)	Rewrite		caught 15, reaches 40, shared 0, caught-nothing no
+record	records/A9.md:574	records/A9.md:574	36. save_file writes CRLF line ends and no bare LF (tests/test_config.cpp:810)	Rewrite		caught 4, reaches 6, shared 0, caught-nothing no
+record	records/A9.md:590	records/A9.md:590	37. save_file that cannot land keeps the old file whole and leaves no .tmp (tests/test_config.cpp:827)	Rewrite		caught 16, reaches 41, shared 0, caught-nothing no
+record	records/A9.md:606	records/A9.md:606	38. lens: depth_mode is the search's unit, so a stray in-memory int files as scores (tests/test_config.cpp:847)	Remove		caught 1, reaches 2, shared 0, caught-nothing no
+record	records/A9.md:622	records/A9.md:622	39. settings reset: puts back each panel setting and keeps the rest (tests/test_config.cpp:875)	Rewrite		caught 5, reaches 22, shared 0, caught-nothing no
+record	records/A9.md:639	records/A9.md:639	40. config: resource_dir is the resource folder beside the exe (tests/test_config.cpp:920)	Rewrite		caught 2, reaches 14, shared 0, caught-nothing no
+record	records/A9.md:655	records/A9.md:655	41. config: describe_settings uses the app's words (tests/test_config.cpp:930)	Rewrite		caught 7, reaches 16, shared 0, caught-nothing no
+record	records/A9.md:671	records/A9.md:671	42. version: the window title and taskbar id are the build's (tests/test_config.cpp:952)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A9.md:691	records/A9.md:691	43. s2 offspeed: one base speed, read everywhere (tests/test_dm_other_speed.cpp:27)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A9.md:707	records/A9.md:707	44. s2 offspeed: an off-speed score on a listed chart is 'other speed'; on an unlisted one, 'not in library' (tests/test_dm_other_speed.cpp:36)	Rewrite		caught 48, reaches 719, shared 0, caught-nothing no
+record	records/A9.md:723	records/A9.md:723	45. s2 offspeed: the counts sentence names other speeds only when there are some (tests/test_dm_other_speed.cpp:76)	Rewrite		caught 7, reaches 10, shared 0, caught-nothing no
+record	records/A9.md:739	records/A9.md:739	46. s2 offspeed: the subtitle counts every score; the Other speed tile counts 'other speed' (tests/test_dm_other_speed.cpp:92)	Rewrite		caught 38, reaches 149, shared 6, caught-nothing no
+record	records/B1.md:19	records/B1.md:19	1. hydra_batch fills a new database under the rule it ran under (tests/test_cli.cpp:183)	Rewrite		caught 113, reaches 398, shared 33, caught-nothing no
+record	records/B1.md:53	records/B1.md:53	3. hydra_batch --legacy-fills writes the tool's own hydra.db under the 1.0 rule (tests/test_cli.cpp:241)	Rewrite		caught 109, reaches 100, shared 48, caught-nothing no
+record	records/B1.md:70	records/B1.md:70	4. hydra_batch refuses a library file too old to convert in one sentence (tests/test_cli.cpp:267)	Rewrite		caught 90, reaches 1, shared 37, caught-nothing no
+record	records/B1.md:87	records/B1.md:87	5. hydra_batch refuses an unknown option (tests/test_cli.cpp:284)	Rewrite		caught 88, reaches 1, shared 35, caught-nothing no
+record	records/B1.md:137	records/B1.md:137	8. hydra_batch --whole-library refuses a chart folder that cannot be read (tests/test_cli.cpp:333)	Rewrite		caught 116, reaches 57, shared 55, caught-nothing no
+record	records/B1.md:154	records/B1.md:154	9. hydra_batch names a bad hydra_rules.ini and stops (tests/test_cli.cpp:377)	Rewrite		caught 88, reaches 1, shared 35, caught-nothing no
+record	records/B1.md:171	records/B1.md:171	10. hydra_batch names a bad hydra_settings.ini and stops (tests/test_cli.cpp:395)	Rewrite		caught 88, reaches 1, shared 35, caught-nothing no
+record	records/B1.md:188	records/B1.md:188	11. hydra_fillcompare names a bad hydra_settings.ini and stops (tests/test_cli.cpp:411)	Rewrite		caught 88, reaches 1, shared 35, caught-nothing no
+record	records/B1.md:203	records/B1.md:203	12. hydra_batch writes a 1.0 run and a 1.1 run into one database (tests/test_cli.cpp:428)	Rewrite		caught 113, reaches 113, shared 52, caught-nothing no
+record	records/B1.md:252	records/B1.md:252	15. hydra_batch names the cap with the one count rule (tests/test_cli.cpp:510)	Rewrite		caught 91, reaches 6, shared 35, caught-nothing no
+record	records/B1.md:268	records/B1.md:268	16. hydra_fillcompare reads the tool's own hydra.db without --db (tests/test_cli.cpp:528)	Rewrite		caught 113, reaches 77, shared 52, caught-nothing no
+record	records/B1.md:300	records/B1.md:300	18. hydra_fillcompare compares both rules out of one database (tests/test_cli.cpp:580)	Rewrite		caught 115, reaches 725, shared 18, caught-nothing no
+record	records/B1.md:332	records/B1.md:332	20. hydra_replay score writes act_ms and deact_ms for each window (tests/test_cli.cpp:678)	Rewrite		caught 92, reaches 1, shared 39, caught-nothing no
+record	records/B1.md:387	records/B1.md:387	23. dynamics_breakdown: played_total includes/excludes 2x kick (tests/test_dynamics_breakdown.cpp:128)	Rewrite		caught 11, reaches 40, shared 0, caught-nothing no
+record	records/B1.md:404	records/B1.md:404	24. dynamics_breakdown: Alpha Wolf - Acid Romance (real chart) (tests/test_dynamics_breakdown.cpp:155)	Rewrite		caught 81, reaches 321, shared 0, caught-nothing no
+record	records/B1.md:437	records/B1.md:437	26. dynamics_breakdown: the row table, row by row (tests/test_dynamics_breakdown.cpp:221)	Remove		caught 1, reaches 1, shared 0, caught-nothing no
+record	records/B1.md:470	records/B1.md:470	28. dynamics_breakdown: a row's note is the note the table names (tests/test_dynamics_breakdown.cpp:257)	Remove		caught 6, reaches 9, shared 0, caught-nothing no
+record	records/B1.md:519	records/B1.md:519	31. dynamics_breakdown: the header's 2x kick fact, empty with no 2x kicks (tests/test_dynamics_breakdown.cpp:292)	Rewrite		caught 10, reaches 17, shared 0, caught-nothing no
+record	records/B1.md:583	records/B1.md:583	35. dynamics_breakdown: the fact dot is the separator's dot alone (tests/test_dynamics_breakdown.cpp:361)	Rewrite		caught 1, reaches 1, shared 0, caught-nothing no
+record	records/B1.md:649	records/B1.md:649	39. dynamics_breakdown: row labels pro vs non-pro (tests/test_dynamics_breakdown.cpp:399)	Rewrite		caught 11, reaches 13, shared 0, caught-nothing no
+record	records/B1.md:682	records/B1.md:682	41. dynamics_breakdown: every row's counts on The Decade Of Statues, pinned (tests/test_dynamics_breakdown.cpp:438)	Rewrite		caught 77, reaches 354, shared 0, caught-nothing no
+record	records/B1.md:699	records/B1.md:699	42. dynamics_breakdown: the rules never change a chart's Dynamics count (tests/test_dynamics_breakdown.cpp:473)	Rewrite		caught 82, reaches 567, shared 0, caught-nothing no
+record	records/B1.md:720	records/B1.md:720	43. fuzz regressions: every file under testdata/fuzz/<target> is rejected without crashing (tests/test_fuzz_regressions.cpp:46)	Rewrite		caught 9, reaches 559, shared 0, caught-nothing no
+record	records/B1.md:738	records/B1.md:738	44. fuzz seeds: write every target's seed folder when HYDRA_FUZZ_SEED_DIR is set (tests/test_fuzz_regressions.cpp:81)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/B2.md:23	records/B2.md:23	Read: lines 62-73 and the helper song_with_chords (29-46); S-G.	Rewrite		caught 6, reaches 30, shared 0, caught-nothing no
+record	records/B2.md:55	records/B2.md:55	Read: lines 88-91; S-G.	Rewrite		caught 3, reaches 34, shared 0, caught-nothing no
+record	records/B2.md:71	records/B2.md:71	Read: lines 93-96; S-G; FL-16.	Rewrite		caught 5, reaches 29, shared 0, caught-nothing no
+record	records/B2.md:84	records/B2.md:84	Read: lines 98-103; S-G; FL-16 (D115 item 4, cited in the comment, was not opened: item text not found by me).	Rewrite		caught 8, reaches 32, shared 0, caught-nothing no
+record	records/B2.md:109	records/B2.md:109	Read: lines 119-123; place_fills_ch11 (src/core/song.cpp:196-215); FL-15.	Rewrite		caught 4, reaches 32, shared 0, caught-nothing no
+record	records/B2.md:122	records/B2.md:122	Read: lines 125-130; place_fills_ch11 (src/core/song.cpp:229); rules fill_cooldown_measures (src/core/rules.h:39); FL-17.	Rewrite		caught 4, reaches 32, shared 0, caught-nothing no
+record	records/B2.md:147	records/B2.md:147	Read: lines 138-145; S-G; FL-17.	Rewrite		caught 6, reaches 37, shared 0, caught-nothing no
+record	records/B2.md:159	records/B2.md:159	Read: lines 147-153; song_with_chords' apply_timesig use (29-37); FL-26 title only (04-fills.md:264, body not opened).	Rewrite		caught 6, reaches 46, shared 0, caught-nothing no
+record	records/B2.md:189	records/B2.md:189	Read: lines 170-185; check_activations (src/core/song.cpp:108-120); FL-27 title, FL-35 rule (04-fills.md:366-372); kTestFillRule not read.	Rewrite		caught 3, reaches 21, shared 0, caught-nothing no
+record	records/B2.md:201	records/B2.md:201	Read: lines 187-281; kFillPins (203-235).	Rewrite		several
+record	records/B2.md:227	records/B2.md:227	Read: lines 60-85; S-M.	Rewrite		caught 20, reaches 70, shared 0, caught-nothing no
+record	records/B2.md:381	records/B2.md:381	Read: lines 278-300; meta_message (midi.cpp:107-144); S-M.	Remove		caught 13, reaches 49, shared 0, caught-nothing no
+record	records/B2.md:553	records/B2.md:553	Read: lines 602-614.	Rewrite		caught 30, reaches 153, shared 0, caught-nothing no
+record	records/B2.md:608	records/B2.md:608	Read: lines 697-705; CR-24 (the case-sensitive search, string_contains_197F670.md cited).	Rewrite		caught 30, reaches 174, shared 0, caught-nothing no
+record	records/B2.md:620	records/B2.md:620	"Read: lines 707-713; CR-24 (""[prc"" has no veto)."	Rewrite		caught 31, reaches 175, shared 0, caught-nothing no
+record	records/B2.md:644	records/B2.md:644	Read: lines 739-763.	Rewrite		caught 34, reaches 176, shared 0, caught-nothing no
+record	records/B2.md:719	records/B2.md:719	Read: lines 24-57, 81-85; S-P.	Rewrite		none
+record	records/B2.md:734	records/B2.md:734	Read: lines 59-77, 87-95; read_short 97-117.	Rewrite		none
+record	records/B2.md:771	records/B2.md:771	Read: lines 124-130; read_long and windows_section (pathstring_read.cpp:119-172).	Rewrite		several
+record	records/B2.md:794	records/B2.md:794	Read: lines 145-169; read_long 146-172.	Rewrite		several
+record	records/B2.md:804	records/B2.md:804	Read: lines 171-198; pathstring_read.cpp:176-179.	Rewrite		several
+record	records/B2.md:817	records/B2.md:817	Read: lines 200-208; pathstring_read.cpp:176-179.	Remove		several
+record	records/B2.md:829	records/B2.md:829	Read: lines 210-218; windows_section (pathstring_read.cpp:123-140).	Rewrite		several

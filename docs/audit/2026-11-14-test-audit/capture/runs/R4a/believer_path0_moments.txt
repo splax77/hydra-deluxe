@@ -1,0 +1,64 @@
+> timeout 300
+> click Scan library
+> wait-text Continue
+> click **/Continue
+> wait-idle
+> open I'm A Believer (The Monkees cover)
+> wait-idle
+> click **/Preview
+> wait-idle
+> type **/##scrub | 50.9753418
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_start_50975.3ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_start_50975.3ms.png
+> type **/##scrub | 30.5725403
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_sp_ready_30572.5ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_sp_ready_30572.5ms.png
+> type **/##scrub | 62.6263046
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_end_minus_1ms_62626.3ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_end_minus_1ms_62626.3ms.png
+> type **/##scrub | 62.6273041
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_end_62627.3ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a1_end_62627.3ms.png
+> type **/##scrub | 100.515221
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_start_100515.2ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_start_100515.2ms.png
+> type **/##scrub | 83.0383759
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_sp_ready_83038.4ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_sp_ready_83038.4ms.png
+> type **/##scrub | 109.255577
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_sqin1_end_109255.6ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_sqin1_end_109255.6ms.png
+> type **/##scrub | 112.164604
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_end_minus_1ms_112164.6ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_end_minus_1ms_112164.6ms.png
+> type **/##scrub | 112.165604
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_end_112165.6ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a2_end_112165.6ms.png
+> type **/##scrub | 141.322906
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_start_141322.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_start_141322.9ms.png
+> type **/##scrub | 135.492004
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_sp_ready_135492.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_sp_ready_135492.0ms.png
+> type **/##scrub | 147.149048
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_end_minus_1ms_147149.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_end_minus_1ms_147149.0ms.png
+> type **/##scrub | 147.15004
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_end_147150.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a3_end_147150.0ms.png
+> type **/##scrub | 167.558365
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_start_167558.4ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_start_167558.4ms.png
+> type **/##scrub | 161.727066
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_sp_ready_161727.1ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_sp_ready_161727.1ms.png
+> type **/##scrub | 173.391205
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_end_minus_1ms_173391.2ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_end_minus_1ms_173391.2ms.png
+> type **/##scrub | 173.392197
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_end_173392.2ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_a4_end_173392.2ms.png
+> type **/##scrub | 0
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_song_start_0.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/believer_path0_moments_song_start_0.0ms.png
+[PASS] hydra/script

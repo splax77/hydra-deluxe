@@ -1,0 +1,27 @@
+# R4c-slow: a click's analysis held long enough by a wide search on real settings (slow.ini: the harness settings with sp_cap=32, depth_value=20000 scores; the engine takes 0.89 s on this chart at those settings).
+# Serves DL3 7 (a click cancelled) and the progress box, which the first R4c run could not reach because the corpus charts analyze in a blink at score range 2.
+timeout 300
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+wait-idle
+text | Analysis settings
+type **/##search | Decade of Statues
+wait 0.3
+# DL3 7: the click's progress box, then Cancel.
+click **/(b) The Decade of Statues
+wait-text Analyzing chart
+click **/Cancel
+wait-text Analysis cancelled.
+screenshot click_cancelled_box.png
+text
+state
+screenshot click_cancelled.png
+# Try again restarts it; let this one finish.
+click **/Try again
+wait-text Analyzing chart
+state
+wait-idle
+text | Best path
+state
+quit

@@ -1,0 +1,23 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open audit folded_sqin
+wait-idle
+click **/Expand all
+text
+click **/Stars
+text
+click **/Preview
+wait-idle
+type **/##scrub | 25.3300018
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_start_25330.0ms.png | **/##highway_image
+type **/##scrub | 6
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_sp_ready_6000.0ms.png | **/##highway_image
+type **/##scrub | 25.809
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_end_minus_1ms_25809.0ms.png | **/##highway_image
+type **/##scrub | 25.8100014
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_a1_end_25810.0ms.png | **/##highway_image
+type **/##scrub | 0
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/folded_sqin_song_start_0.0ms.png | **/##highway_image

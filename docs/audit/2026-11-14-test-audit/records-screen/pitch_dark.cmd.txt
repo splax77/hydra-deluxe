@@ -1,0 +1,20 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open Pitch Dark
+wait-idle
+click **/Expand all
+text
+click **/Stars
+text
+click **/Preview
+wait-idle
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_0_start.png
+click **/Act >##nextact
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_1_act.png
+click **/Act >##nextact
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_2_act.png
+click **/Act >##nextact
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/pitch_dark_preview_3_act.png

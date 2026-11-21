@@ -1,0 +1,14 @@
+timeout 300
+click Scan library
+wait-text Continue
+click **/Continue
+wait-idle
+open audit flammarker_ingame
+wait-idle
+text
+click **/Stars
+text
+click **/Preview
+wait-idle
+type **/##scrub | 0
+screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/flammarker_ingame_song_start_0.0ms.png | **/##highway_image

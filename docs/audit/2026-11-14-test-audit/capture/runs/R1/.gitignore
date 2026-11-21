@@ -1,0 +1,3 @@
+# The schedule and score files are 183 MB; the R1 command in capture/RUNS.md writes them again in about 10 s.
+*.schedule.json
+*.score.json

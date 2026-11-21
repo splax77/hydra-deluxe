@@ -1,0 +1,43 @@
+> click Scan library
+> wait-idle
+A dialog is open: "Scanning charts" (buttons: Continue). Close it first.
+> click //Scanning charts/Continue
+> text | Analysis settings
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+> rect **/###analysissettings
+"Analysis settings: Score range 2 scores###analysissettings" id=0xB7DC11A6 rect=(619,58 257x24)
+> click **/###analysissettings
+> wait 0.3
+> text | Early fill window
+    | Early fill window (?) |
+> dump | earlyfillwindow
+window "##Popup_2cd77690" id=0x0E54559D pos=(619,82) size=(341,393) popup
+      "##earlyfillwindow" id=0xEEAFCE5F rect=(753,320 44x24) inputable
+> screenshot r4d_panel_default.png
+screenshot: C:\Users\Patrick\Downloads\Hydra\hydra-test\worktrees\test-audit-records\docs\audit\2026-11-14-test-audit\capture\runs\R4d\r4d_panel_default.png
+> type //$FOCUSED/**/##earlyfillwindow | 85
+> wait 0.3
+> text | Early fill window
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Early fill window 85 ms · Score range 2 scores ]
+    | Early fill window (?) |
+> text | Analysis settings
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Early fill window 85 ms · Score range 2 scores ]
+> type //$FOCUSED/**/##earlyfillwindow | 60
+> wait 0.3
+> text | Analysis settings
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ]
+> type //$FOCUSED/**/##earlyfillwindow | 0
+> wait 0.3
+> text | Analysis settings
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: Early fill window 0 ms · Score range 2 scores ]
+> click //$FOCUSED/**/Reset to defaults
+> wait 0.3
+> text | Early fill window
+    | Early fill window (?) |
+> text | Analysis settings
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: defaults ]
+> key Escape
+> wait 0.3
+> text | Analysis settings
+[ Manage folders... (1) ] [ Scan library ] [ Analyze library... ] [ Compare with dmleaderboards... ] [ Analysis settings: defaults ] [ Open path report ]
+[PASS] hydra/script

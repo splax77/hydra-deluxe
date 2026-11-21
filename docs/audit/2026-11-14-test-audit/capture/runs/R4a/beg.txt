@@ -1,0 +1,172 @@
+> timeout 300
+> click Scan library
+> wait-text Continue
+> click **/Continue
+> wait-idle
+> open Beg
+> wait-idle
+> click **/Expand all
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Beg } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Beg
+common\IB24\T1 | Evans Blue | 328,150  1- 0 0 E0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Beg
+Evans Blue · charted by highfine
+328,150
+1- 0 0 E0
+Optimal path · 7 stars
+/ Paths \
+Optimal
+> 328,150 1 path
+    1- 0 0 E0 0.0 ms
+Within 2 scores
+> 327,670 1 path
+    3 0- E0 0.0 ms
+> 327,350 1 path
+    3 2
+Best all-0 path
+319,890 · 0 0 0
+8,260 below optimal
+Activations 4 · no SP left over [ Collapse all ]
+m1 m93
+1 1- m31.1.0 3 bars squeeze out 0.0 ms
+Chord [Kick - Blue cymbal] [ Show in Preview > ]
+Hit the [K Y  ] note more than 0.0 ms late so it lands after Star Power ends. It scores 200 fewer points, and its SP phrase banks for later.
+--------------------------------
+Dynamic Hit Window: frontend 84.4 ms [K  B ]
+backend 84.4 ms [K Y  ] 168.7 ms safe
+> Backend timings · 2 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -312.5 | [  Y  ] | 260 | Normal |
+| 0.0 | [K Y  ] | 260 | Normal <-- squeezed out (-200) |
+2 0 m53.1.0 2 bars
+Chord [Kick - Green cymbal] [ Show in Preview > ]
+> Backend timings · 5 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -468.8 | [  Y  ] | 200 | Normal |
+| -312.5 | [   B ] | 200 | Normal |
+| -156.2 | [K    ] | 200 | Normal |
+| 0.0 | [K Y G] | 720 | Normal |
+| 468.8 | [K    ] | 0 | Beyond (uncounted) |
+3 0 m67.1.0 2 bars
+Chord [Kick - Yellow cymbal - Green cymbal]
+[ Show in Preview > ]
+> Backend timings · 3 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -312.5 | [K    ] | 200 | Normal |
+| 0.0 | [K Y G] | 720 | Normal |
+| 468.8 | [K    ] | 0 | Beyond (uncounted) |
+4 E0 m83.1.0 2 bars early fill 0.0 ms
+Chord [Kick - Green cymbal] [ Show in Preview > ]
+Early fill: 0.0 ms (required)
+--------------------------------
+Dynamic Hit Window: 84.4 ms [K   G]
+84.4 ms safe
+> Backend timings · 0 notes near the SP end
+None.
+[ Multiplier squeeze ] none [ Score breakdown ] [ Copy path ]
+None.
+Average Multiplier:  4.938x
+
+Notes:               66,050
+Combo Bonus:         196,500
+Star Power:          65,200
+Solo Bonus:          0
+Accent Notes:        200
+Ghost Notes:         200
+
+Total Score:         328,150
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/Stars
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ Beg } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| Beg
+common\IB24\T1 | Evans Blue | 328,150  1- 0 0 E0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] Beg
+Evans Blue · charted by highfine
+328,150
+1- 0 0 E0
+Optimal path · 7 stars
+/ Paths \ / Preview \ / Dynamics \ / Stars \
+Base score: 66,450
+| Stars | Average Multiplier | Cutoff |
+| 1 | 0.1 | 6,645 |
+| 2 | 0.5 | 33,225 |
+| 3 | 1.0 | 66,450 |
+| 4 | 2.0 | 132,900 |
+| 5 | 2.8 | 186,060 |
+| 6 | 3.6 | 239,220 |
+| 7 | 4.4 | 292,380 |
+A star counts once your score, without the solo bonus, reaches its cutoff.
+> click **/Preview
+> wait-idle
+> type **/##scrub | 74.0799103
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_start_74079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_start_74079.9ms.png
+> type **/##scrub | 44.0799065
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_sp_ready_44079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_sp_ready_44079.9ms.png
+> type **/##scrub | 89.0799103
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_sqout1_end_89079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_sqout1_end_89079.9ms.png
+> type **/##scrub | 89.0789032
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_end_minus_1ms_89078.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_end_minus_1ms_89078.9ms.png
+> type **/##scrub | 89.0799103
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_end_89079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a1_end_89079.9ms.png
+> type **/##scrub | 129.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_start_129079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_start_129079.9ms.png
+> type **/##scrub | 111.57991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_sp_ready_111579.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_sp_ready_111579.9ms.png
+> type **/##scrub | 144.078903
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_end_minus_1ms_144078.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_end_minus_1ms_144078.9ms.png
+> type **/##scrub | 144.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_end_144079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a2_end_144079.9ms.png
+> type **/##scrub | 164.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_start_164079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_start_164079.9ms.png
+> type **/##scrub | 156.57991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_sp_ready_156579.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_sp_ready_156579.9ms.png
+> type **/##scrub | 174.078903
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_end_minus_1ms_174078.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_end_minus_1ms_174078.9ms.png
+> type **/##scrub | 174.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_end_174079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a3_end_174079.9ms.png
+> type **/##scrub | 204.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_start_204079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_start_204079.9ms.png
+> type **/##scrub | 199.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_sp_ready_199079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_sp_ready_199079.9ms.png
+> type **/##scrub | 214.078903
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_end_minus_1ms_214078.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_end_minus_1ms_214078.9ms.png
+> type **/##scrub | 214.07991
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_end_214079.9ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_a4_end_214079.9ms.png
+> type **/##scrub | 0
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_song_start_0.0ms.png | **/##highway_image
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/capture/runs/R4a/beg_song_start_0.0ms.png
+[PASS] hydra/script

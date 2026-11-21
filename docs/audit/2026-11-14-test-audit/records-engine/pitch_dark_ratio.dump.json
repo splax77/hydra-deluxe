@@ -1,0 +1,604 @@
+{
+ "chartmode": "Expert Pro Drums, 2x Bass",
+ "hydra_replay_build": "Nov 15 2026 09:58:31",
+ "hyhash": "1125c9a5976d58a9ed44b63376147043",
+ "paths": [
+  {
+   "activations": [
+    {
+     "act_tick": 109440,
+     "chord_code": "n.N..",
+     "deact_tick": 132240,
+     "end_anchor_tick": 113040,
+     "end_scale_early": 1.018989991144981,
+     "end_scale_late": 1.018989991144981,
+     "from_record": true,
+     "nominal_deact_tick": 124800,
+     "skipped_fill_ticks": [
+      86400,
+      94080,
+      101760
+     ],
+     "skips": 3,
+     "sp_meter": 4,
+     "sp_ready_ms": 64645.157999999996,
+     "sp_ready_tick": 82320,
+     "sqin_ticks": [
+      128520
+     ],
+     "sqinouts": [
+      {
+       "kind": "SqIn",
+       "offset_ms": 94.33950000000186
+      }
+     ],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 186.33499999999185,
+     "steady_ms_after_end": 189.8735000000015,
+     "steady_ms_before_act": 931.6750000000029,
+     "steady_ms_before_end": 569.6205000000045
+    },
+    {
+     "act_tick": 178560,
+     "chord_code": "n.N..",
+     "deact_tick": 206280,
+     "end_anchor_tick": 182280,
+     "end_scale_early": 1.050632736287025,
+     "end_scale_late": 1.050632736287025,
+     "from_record": true,
+     "nominal_deact_tick": 194400,
+     "skipped_fill_ticks": [
+      155520,
+      170880
+     ],
+     "skips": 2,
+     "sp_meter": 4,
+     "sp_ready_ms": 118982.69899999996,
+     "sp_ready_tick": 151440,
+     "sqin_ticks": [
+      202480
+     ],
+     "sqinouts": [
+      {
+       "kind": "SqIn",
+       "offset_ms": 33.333333333343035
+      }
+     ],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 90.36149999999907,
+     "steady_ms_after_end": 94.93674999999348,
+     "steady_ms_before_act": 271.0844999999972,
+     "steady_ms_before_end": 284.81025000000955
+    },
+    {
+     "act_tick": 237120,
+     "chord_code": "n....",
+     "deact_tick": 245760,
+     "end_anchor_tick": 237120,
+     "end_scale_early": 1.6428556095204874,
+     "end_scale_late": 0.9875767838498188,
+     "from_record": true,
+     "nominal_deact_tick": 245760,
+     "skipped_fill_ticks": [
+      229440
+     ],
+     "skips": 1,
+     "sp_meter": 2,
+     "sp_ready_ms": 179351.50775000002,
+     "sp_ready_tick": 225360,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 3018.8640000000014,
+     "steady_ms_after_end": 745.3399999999965,
+     "steady_ms_before_act": 1490.679999999993,
+     "steady_ms_before_end": 408.1620000000112
+    }
+   ],
+   "index": 0,
+   "pathstring": "3+ 2+ 1",
+   "score": {
+    "accent": 0,
+    "combo": 187740,
+    "ghost": 0,
+    "notes": 63725,
+    "solo": 29800,
+    "sp": 112620
+   },
+   "total": 393885
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 109440,
+     "chord_code": "n.N..",
+     "deact_tick": 128400,
+     "end_anchor_tick": 113040,
+     "end_scale_early": 1.012579493922237,
+     "end_scale_late": 1.012579493922237,
+     "from_record": true,
+     "nominal_deact_tick": 124800,
+     "skipped_fill_ticks": [
+      86400,
+      94080,
+      101760
+     ],
+     "skips": 3,
+     "sp_meter": 4,
+     "sp_ready_ms": 64645.157999999996,
+     "sp_ready_tick": 82320,
+     "sqin_ticks": [],
+     "sqinouts": [
+      {
+       "kind": "SqOut",
+       "offset_ms": 94.33950000000186
+      }
+     ],
+     "sqout_tick": 128520,
+     "steady_ms_after_act": 186.33499999999185,
+     "steady_ms_after_end": 943.3949999999895,
+     "steady_ms_before_act": 931.6750000000029,
+     "steady_ms_before_end": 188.67900000000373
+    },
+    {
+     "act_tick": 140160,
+     "chord_code": "n.N.N",
+     "deact_tick": 147840,
+     "end_anchor_tick": 140160,
+     "end_scale_early": 1.0849670490197707,
+     "end_scale_late": 1.1071439642879286,
+     "from_record": true,
+     "nominal_deact_tick": 147840,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 106890.58299999997,
+     "sp_ready_tick": 136080,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 774.1919999999955,
+     "steady_ms_after_end": 428.5709999999963,
+     "steady_ms_before_act": 361.4459999999963,
+     "steady_ms_before_end": 392.1570000000065
+    },
+    {
+     "act_tick": 178560,
+     "chord_code": "n.N..",
+     "deact_tick": 198720,
+     "end_anchor_tick": 178560,
+     "end_scale_early": 1.3422800000000001,
+     "end_scale_late": 1.2330793157926385,
+     "from_record": true,
+     "nominal_deact_tick": 190080,
+     "skipped_fill_ticks": [
+      170880
+     ],
+     "skips": 1,
+     "sp_meter": 3,
+     "sp_ready_ms": 127441.15799999998,
+     "sp_ready_tick": 162240,
+     "sqin_ticks": [
+      194080
+     ],
+     "sqinouts": [
+      {
+       "kind": "SqIn",
+       "offset_ms": -303.02999999999884
+      }
+     ],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 731.7080000000133,
+     "steady_ms_after_end": 451.1270000000077,
+     "steady_ms_before_act": 375.0,
+     "steady_ms_before_end": 805.3679999999877
+    },
+    {
+     "act_tick": 229440,
+     "chord_code": "n..N.",
+     "deact_tick": 240960,
+     "end_anchor_tick": 229440,
+     "end_scale_early": 1.0,
+     "end_scale_late": 0.9810150453634241,
+     "from_record": true,
+     "nominal_deact_tick": 240960,
+     "skipped_fill_ticks": [
+      221760
+     ],
+     "skips": 1,
+     "sp_meter": 3,
+     "sp_ready_ms": 169729.54375,
+     "sp_ready_tick": 213120,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 774.19200000001,
+     "steady_ms_after_end": 1518.988000000012,
+     "steady_ms_before_act": 1132.0739999999932,
+     "steady_ms_before_end": 3018.8640000000014
+    }
+   ],
+   "index": 1,
+   "pathstring": "3- 0 1+ 1",
+   "score": {
+    "accent": 0,
+    "combo": 187740,
+    "ghost": 0,
+    "notes": 63725,
+    "solo": 29800,
+    "sp": 111440
+   },
+   "total": 392705
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 109440,
+     "chord_code": "n.N..",
+     "deact_tick": 128400,
+     "end_anchor_tick": 113040,
+     "end_scale_early": 1.012579493922237,
+     "end_scale_late": 1.012579493922237,
+     "from_record": true,
+     "nominal_deact_tick": 124800,
+     "skipped_fill_ticks": [
+      86400,
+      94080,
+      101760
+     ],
+     "skips": 3,
+     "sp_meter": 4,
+     "sp_ready_ms": 64645.157999999996,
+     "sp_ready_tick": 82320,
+     "sqin_ticks": [],
+     "sqinouts": [
+      {
+       "kind": "SqOut",
+       "offset_ms": 94.33950000000186
+      }
+     ],
+     "sqout_tick": 128520,
+     "steady_ms_after_act": 186.33499999999185,
+     "steady_ms_after_end": 943.3949999999895,
+     "steady_ms_before_act": 931.6750000000029,
+     "steady_ms_before_end": 188.67900000000373
+    },
+    {
+     "act_tick": 140160,
+     "chord_code": "n.N.N",
+     "deact_tick": 147840,
+     "end_anchor_tick": 140160,
+     "end_scale_early": 1.0849670490197707,
+     "end_scale_late": 1.1071439642879286,
+     "from_record": true,
+     "nominal_deact_tick": 147840,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 106890.58299999997,
+     "sp_ready_tick": 136080,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 774.1919999999955,
+     "steady_ms_after_end": 428.5709999999963,
+     "steady_ms_before_act": 361.4459999999963,
+     "steady_ms_before_end": 392.1570000000065
+    },
+    {
+     "act_tick": 178560,
+     "chord_code": "n.N..",
+     "deact_tick": 198720,
+     "end_anchor_tick": 178560,
+     "end_scale_early": 1.3422800000000001,
+     "end_scale_late": 1.2330793157926385,
+     "from_record": true,
+     "nominal_deact_tick": 190080,
+     "skipped_fill_ticks": [
+      170880
+     ],
+     "skips": 1,
+     "sp_meter": 3,
+     "sp_ready_ms": 127441.15799999998,
+     "sp_ready_tick": 162240,
+     "sqin_ticks": [
+      194080
+     ],
+     "sqinouts": [
+      {
+       "kind": "SqIn",
+       "offset_ms": -303.02999999999884
+      }
+     ],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 731.7080000000133,
+     "steady_ms_after_end": 451.1270000000077,
+     "steady_ms_before_act": 375.0,
+     "steady_ms_before_end": 805.3679999999877
+    },
+    {
+     "act_tick": 221760,
+     "chord_code": "n.N..",
+     "deact_tick": 233280,
+     "end_anchor_tick": 221760,
+     "end_scale_early": 0.9748434496868994,
+     "end_scale_late": 1.032256,
+     "from_record": true,
+     "nominal_deact_tick": 229440,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 169729.54375,
+     "sp_ready_tick": 213120,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 3750.0,
+     "steady_ms_after_end": 774.19200000001,
+     "steady_ms_before_act": 774.19200000001,
+     "steady_ms_before_end": 1509.4320000000007
+    }
+   ],
+   "index": 2,
+   "pathstring": "3- 0 1+ 0",
+   "score": {
+    "accent": 0,
+    "combo": 187740,
+    "ghost": 0,
+    "notes": 63725,
+    "solo": 29800,
+    "sp": 110620
+   },
+   "total": 391885
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 86400,
+     "chord_code": "n..N.",
+     "deact_tick": 94080,
+     "end_anchor_tick": 86400,
+     "end_scale_early": 1.0844130360358608,
+     "end_scale_late": 0.9371070119498168,
+     "from_record": true,
+     "nominal_deact_tick": 94080,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 64645.157999999996,
+     "sp_ready_tick": 82320,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 402.68399999999383,
+     "steady_ms_after_end": 754.7160000000003,
+     "steady_ms_before_act": 359.2810000000027,
+     "steady_ms_before_end": 389.60899999999674
+    },
+    {
+     "act_tick": 117120,
+     "chord_code": "n..N.",
+     "deact_tick": 132480,
+     "end_anchor_tick": 117120,
+     "end_scale_early": 1.0253206936865669,
+     "end_scale_late": 0.9371070119498168,
+     "from_record": true,
+     "nominal_deact_tick": 128640,
+     "skipped_fill_ticks": [
+      109440
+     ],
+     "skips": 1,
+     "sp_meter": 3,
+     "sp_ready_ms": 82755.93100000001,
+     "sp_ready_tick": 105360,
+     "sqin_ticks": [
+      128520
+     ],
+     "sqinouts": [
+      {
+       "kind": "SqIn",
+       "offset_ms": -94.33949999998731
+      }
+     ],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 402.68399999999383,
+     "steady_ms_after_end": 1132.0739999999932,
+     "steady_ms_before_act": 740.7379999999976,
+     "steady_ms_before_end": 759.494000000006
+    },
+    {
+     "act_tick": 178560,
+     "chord_code": "n.N..",
+     "deact_tick": 202440,
+     "end_anchor_tick": 182280,
+     "end_scale_early": 1.1066660026670652,
+     "end_scale_late": 1.1066660026670652,
+     "from_record": true,
+     "nominal_deact_tick": 194400,
+     "skipped_fill_ticks": [
+      155520,
+      170880
+     ],
+     "skips": 2,
+     "sp_meter": 4,
+     "sp_ready_ms": 118982.69899999996,
+     "sp_ready_tick": 151440,
+     "sqin_ticks": [],
+     "sqinouts": [
+      {
+       "kind": "SqOut",
+       "offset_ms": 33.333333333343035
+      }
+     ],
+     "sqout_tick": 202480,
+     "steady_ms_after_act": 90.36149999999907,
+     "steady_ms_after_end": 100.0,
+     "steady_ms_before_act": 271.0844999999972,
+     "steady_ms_before_end": 300.0
+    },
+    {
+     "act_tick": 229440,
+     "chord_code": "n..N.",
+     "deact_tick": 240960,
+     "end_anchor_tick": 229440,
+     "end_scale_early": 1.0,
+     "end_scale_late": 0.9810150453634241,
+     "from_record": true,
+     "nominal_deact_tick": 240960,
+     "skipped_fill_ticks": [
+      221760
+     ],
+     "skips": 1,
+     "sp_meter": 3,
+     "sp_ready_ms": 169729.54375,
+     "sp_ready_tick": 213120,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 774.19200000001,
+     "steady_ms_after_end": 1518.988000000012,
+     "steady_ms_before_act": 1132.0739999999932,
+     "steady_ms_before_end": 3018.8640000000014
+    }
+   ],
+   "index": 3,
+   "pathstring": "0 1+ 2- 1",
+   "score": {
+    "accent": 0,
+    "combo": 187740,
+    "ghost": 0,
+    "notes": 63725,
+    "solo": 29800,
+    "sp": 109560
+   },
+   "total": 390825
+  },
+  {
+   "activations": [
+    {
+     "act_tick": 86400,
+     "chord_code": "n..N.",
+     "deact_tick": 94080,
+     "end_anchor_tick": 86400,
+     "end_scale_early": 1.0844130360358608,
+     "end_scale_late": 0.9371070119498168,
+     "from_record": true,
+     "nominal_deact_tick": 94080,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 64645.157999999996,
+     "sp_ready_tick": 82320,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 402.68399999999383,
+     "steady_ms_after_end": 754.7160000000003,
+     "steady_ms_before_act": 359.2810000000027,
+     "steady_ms_before_end": 389.60899999999674
+    },
+    {
+     "act_tick": 117120,
+     "chord_code": "n..N.",
+     "deact_tick": 132480,
+     "end_anchor_tick": 117120,
+     "end_scale_early": 1.0253206936865669,
+     "end_scale_late": 0.9371070119498168,
+     "from_record": true,
+     "nominal_deact_tick": 128640,
+     "skipped_fill_ticks": [
+      109440
+     ],
+     "skips": 1,
+     "sp_meter": 3,
+     "sp_ready_ms": 82755.93100000001,
+     "sp_ready_tick": 105360,
+     "sqin_ticks": [
+      128520
+     ],
+     "sqinouts": [
+      {
+       "kind": "SqIn",
+       "offset_ms": -94.33949999998731
+      }
+     ],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 402.68399999999383,
+     "steady_ms_after_end": 1132.0739999999932,
+     "steady_ms_before_act": 740.7379999999976,
+     "steady_ms_before_end": 759.494000000006
+    },
+    {
+     "act_tick": 178560,
+     "chord_code": "n.N..",
+     "deact_tick": 202440,
+     "end_anchor_tick": 182280,
+     "end_scale_early": 1.1066660026670652,
+     "end_scale_late": 1.1066660026670652,
+     "from_record": true,
+     "nominal_deact_tick": 194400,
+     "skipped_fill_ticks": [
+      155520,
+      170880
+     ],
+     "skips": 2,
+     "sp_meter": 4,
+     "sp_ready_ms": 118982.69899999996,
+     "sp_ready_tick": 151440,
+     "sqin_ticks": [],
+     "sqinouts": [
+      {
+       "kind": "SqOut",
+       "offset_ms": 33.333333333343035
+      }
+     ],
+     "sqout_tick": 202480,
+     "steady_ms_after_act": 90.36149999999907,
+     "steady_ms_after_end": 100.0,
+     "steady_ms_before_act": 271.0844999999972,
+     "steady_ms_before_end": 300.0
+    },
+    {
+     "act_tick": 221760,
+     "chord_code": "n.N..",
+     "deact_tick": 233280,
+     "end_anchor_tick": 221760,
+     "end_scale_early": 0.9748434496868994,
+     "end_scale_late": 1.032256,
+     "from_record": true,
+     "nominal_deact_tick": 229440,
+     "skipped_fill_ticks": [],
+     "skips": 0,
+     "sp_meter": 2,
+     "sp_ready_ms": 169729.54375,
+     "sp_ready_tick": 213120,
+     "sqin_ticks": [],
+     "sqinouts": [],
+     "sqout_tick": -1,
+     "steady_ms_after_act": 3750.0,
+     "steady_ms_after_end": 774.19200000001,
+     "steady_ms_before_act": 774.19200000001,
+     "steady_ms_before_end": 1509.4320000000007
+    }
+   ],
+   "index": 4,
+   "pathstring": "0 1+ 2- 0",
+   "score": {
+    "accent": 0,
+    "combo": 187740,
+    "ghost": 0,
+    "notes": 63725,
+    "solo": 29800,
+    "sp": 108740
+   },
+   "total": 390005
+  }
+ ],
+ "result": {
+  "bestpath": "3+ 2+ 1",
+  "score": 393885
+ },
+ "song_length_ms": 224642.0,
+ "source": "analyzed",
+ "sp_cap": 4
+}

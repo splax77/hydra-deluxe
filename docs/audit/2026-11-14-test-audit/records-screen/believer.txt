@@ -1,0 +1,139 @@
+> timeout 300
+> click Scan library
+> wait-text Continue
+> click **/Continue
+> wait-idle
+> open I'm A Believer (The Monkees cover)
+> wait-idle
+> click **/Expand all
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ I'm A Believer (The Monkees cover) } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| I'm A Believer (The Monkees cover)
+common\IB24\T1 | | 354,615  1 0+ 0 0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] I'm A Believer (The Monkees cover)
+Smash Mouth · charted by highfine
+354,615
+1 0+ 0 0
+Optimal path · 7 stars
+/ Paths \
+Optimal
+> 354,615 1 path
+    1 0+ 0 0 0.0 ms
+Within 2 scores
+> 354,155 2 paths
+    1 0+ 2 0.0 ms
+    1 0+ 1 0.0 ms
+> 352,135 1 path
+    1 1 0 0
+Best all-0 path
+350,295 · 0- 0 0+ 0 0 0.0 ms
+4,320 below optimal
+Activations 4 · no SP left over [ Collapse all ]
+m1 m129
+1 1 m36.1.0 3 bars
+Chord [Kick - Green cymbal] [ Show in Preview > ]
+Frontend timing scales x0.99 (early) at the SP end.
+> Backend timings · 6 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -363.2 | [KR   ] | 400 | Normal (eff. 364.3 ms) |
+| -272.4 | [ R   ] | 200 | Normal (eff. 273.2 ms) |
+| -181.6 | [ R   ] | 200 | Normal (eff. 182.1 ms) |
+| -90.8 | [ R   ] | 200 | Normal (eff. 91.1 ms) |
+| 0.0 | [K   G] | 460 | Normal (eff. 0.0 ms) |
+| 364.3 | [ R B ] | 0 | Beyond (uncounted) |
+2 0+ m70.1.0 3 bars squeeze in 0.0 ms
+Chord [Kick - Blue cymbal] [ Show in Preview > ]
+Hit the SP phrase's last note more than 0.0 ms early (eff. 0.0 ms) so it lands before Star Power ends. The phrase then counts while Star Power runs, which makes Star Power last longer.
+--------------------------------
+Dynamic Hit Window:
+frontend 85.7 ms [K  B ]
+backend 85.7 ms [K   G] 171.6 ms safe
+Frontend timing scales x1.002 (late) at the SP end; x0.999 (early) at the SqIn's SP end.
+> Backend timings · 4 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -363.8 | [ R B ] | 460 | Normal |
+| -181.9 | [K  B ] | 460 | Normal |
+| 0.0 | [K   G] | 460 | Normal |
+| 363.8 | [ R B ] | 0 | Beyond (uncounted) (eff. 363.4 ms) |
+3 0 m98.1.0 2 bars
+Chord [Kick - Green cymbal] [ Show in Preview > ]
+Frontend timing scales x0.997 (early) at the SP end.
+> Backend timings · 3 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -364.2 | [ RY  ] | 460 | Normal (eff. 364.7 ms) |
+| 0.0 | [K Y  ] | 460 | Normal (eff. 0.0 ms) |
+| 364.2 | [ RY  ] | 0 | Beyond (uncounted) |
+4 0 m116.1.0 2 bars
+Chord [Kick - Yellow cymbal] [ Show in Preview > ]
+> Backend timings · 3 notes near the SP end
+| Timing | Chord | Points | Rating |
+| -364.7 | [ RY  ] | 460 | Normal |
+| 0.0 | [K Y  ] | 460 | Normal |
+| 364.5 | [ RY  ] | 0 | Beyond (uncounted) |
+[ Multiplier squeeze ] +15 [ Score breakdown ] [ Copy path ]
+4x   (+15 pts):   [Kick - Blue cymbal]
+Hit [Kick] first.
+Average Multiplier:  4.943x
+
+Notes:               71,640
+Combo Bonus:         211,935
+Star Power:          70,940
+Solo Bonus:          0
+Accent Notes:        0
+Ghost Notes:         100
+
+Total Score:         354,615
+[ ] Hide backend rows beyond
+{ 50 } [ - ] [ + ]
+ms
+/ Preview \ / Dynamics \ / Stars \
+> click **/Stars
+> text
+Hydra Deluxe 3.1.1 Only the installed copy of Hydra Deluxe checks for updates.
+[ Manage folders... (1) ] [ Scan library ] [ Analyze shown (1)... ] [ Compare with dmleaderboards... ] [ Analysis settings: Score range 2 scores ] [ Open path report ]
+Library 1 of 98 charts
+{ I'm A Believer (The Monkees cover) } [ X ]
+Type any words, or narrow it down. Search tips
+[ All (1) ] [ Not analyzed (0) ] [ Stale (0) ] [ Analyzed (1) ] [ Can't analyze (0) ]
+| Title | Artist | Best path |
+| I'm A Believer (The Monkees cover)
+common\IB24\T1 | | 354,615  1 0+ 0 0 |
+[ Open in Path Builder ] [ Hide library ] [ < ] [ > ] [ X ] I'm A Believer (The Monkees cover)
+Smash Mouth · charted by highfine
+354,615
+1 0+ 0 0
+Optimal path · 7 stars
+/ Paths \ / Preview \ / Dynamics \ / Stars \
+Base score: 71,740
+| Stars | Average Multiplier | Cutoff |
+| 1 | 0.1 | 7,174 |
+| 2 | 0.5 | 35,870 |
+| 3 | 1.0 | 71,740 |
+| 4 | 2.0 | 143,480 |
+| 5 | 2.8 | 200,872 |
+| 6 | 3.6 | 258,264 |
+| 7 | 4.4 | 315,656 |
+A star counts once your score, without the solo bonus, reaches its cutoff.
+> click **/Preview
+> wait-idle
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_0_start.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_0_start.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_1_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_1_act.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_2_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_2_act.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_3_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_3_act.png
+> click **/Act >##nextact
+> screenshot C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_4_act.png
+screenshot: C:/Users/Patrick/Downloads/Hydra/hydra-test/worktrees/test-audit-records/docs/audit/2026-11-14-test-audit/records-screen/believer_preview_4_act.png
+[PASS] hydra/script

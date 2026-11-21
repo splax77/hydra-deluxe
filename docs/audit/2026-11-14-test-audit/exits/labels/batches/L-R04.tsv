@@ -1,0 +1,93 @@
+kind	row	record	test_or_title	faults_or_verdict	counter_reason	run
+record	records/A24.md:21	records/A24.md:21	1. paths_json writes the end ratio the search stored (tests/test_replay.cpp:835)	Rewrite		caught 1, reaches 24, shared 0, caught-nothing no
+record	records/A24.md:60	records/A24.md:60	3. result block: an empty record writes a null score and an empty bestpath (tests/test_replay.cpp:871)	Rewrite		caught 68, reaches 619, shared 0, caught-nothing no
+record	records/A24.md:98	records/A24.md:98	5. a window ending on a phrase note with no offset is flagged (tests/test_replay.cpp:917)	Rewrite		caught 72, reaches 365, shared 0, caught-nothing no
+record	records/A24.md:120	records/A24.md:120	6. per-note sp points sum to the chord's sp points (tests/test_replay.cpp:994)	Rewrite		caught 63, reaches 359, shared 0, caught-nothing no
+record	records/A24.md:139	records/A24.md:139	7. fixtures: mark_phrase_end sets the flag and the phrase start together (tests/test_replay.cpp:1059)	Remove		caught 3, reaches 21, shared 0, caught-nothing no
+record	records/A24.md:175	records/A24.md:175	9. a typed squeeze-out on a chord the engine never squeezes out is refused (tests/test_replay.cpp:1110)	Rewrite		caught 9, reaches 31, shared 0, caught-nothing no
+record	records/A24.md:193	records/A24.md:193	10. a typed squeeze-out offset halfway between two phrase chords is refused (tests/test_replay.cpp:1139)	Rewrite		caught 13, reaches 34, shared 0, caught-nothing no
+record	records/A24.md:212	records/A24.md:212	11. a typed squeeze-out on a phrase banked before the activation is refused (tests/test_replay.cpp:1165)	Rewrite		caught 21, reaches 83, shared 0, caught-nothing no
+record	records/A24.md:231	records/A24.md:231	12. a typed squeeze-out on the phrase after a banked one is the engine's (tests/test_replay.cpp:1200)	Remove		caught 22, reaches 82, shared 0, caught-nothing no
+record	records/A24.md:267	records/A24.md:267	14. the squeeze-out warning quotes the whole drop under sqout_rule (tests/test_replay.cpp:1272)	Rewrite		caught 19, reaches 73, shared 0, caught-nothing no
+record	records/A24.md:306	records/A24.md:306	16. offered_phrase: the newest step's phrase early, the first unsqueezed one late (tests/test_replay.cpp:1350)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A24.md:323	records/A24.md:323	17. sqout_chords: a window's newest phrase at or before D, or the first after D (tests/test_replay.cpp:1375)	Rewrite		caught 3, reaches 21, shared 0, caught-nothing no
+record	records/A24.md:339	records/A24.md:339	18. category_scores reports the multiplier each note was paid at (tests/test_replay.cpp:1395)	Rewrite		caught 1, reaches 14, shared 0, caught-nothing no
+record	records/A24.md:357	records/A24.md:357	19. category_scores prices a dynamic cymbal's bonus at its own note (tests/test_replay.cpp:1420)	Rewrite		caught 1, reaches 13, shared 0, caught-nothing no
+record	records/A24.md:374	records/A24.md:374	20. replay reports the multipliers category_scores applied (tests/test_replay.cpp:1445)	Remove		caught 14, reaches 64, shared 0, caught-nothing no
+record	records/A24.md:390	records/A24.md:390	21. replay copies each note's dynamics bonus (tests/test_replay.cpp:1477)	Rewrite		caught 19, reaches 72, shared 0, caught-nothing no
+record	records/A24.md:408	records/A24.md:408	22. replay names each note's dynamic (tests/test_replay.cpp:1489)	Rewrite		caught 21, reaches 72, shared 0, caught-nothing no
+record	records/A24.md:426	records/A24.md:426	23. chord_score_table: literal rows on a hand-built chart (tests/test_replay.cpp:1517)	Rewrite		caught 4, reaches 34, shared 0, caught-nothing no
+record	records/A24.md:444	records/A24.md:444	24. replay multipliers agree with the combo on every corpus chord (tests/test_replay.cpp:1595)	Rewrite		caught 100, reaches 60, shared 69, caught-nothing no
+record	records/A24.md:464	records/A24.md:464	25. replay score fields: one list in schema order (tests/test_replay.cpp:1624)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A24.md:483	records/A24.md:483	26. assign_score and score_of are each other's reverse (tests/test_replay.cpp:1635)	Remove		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A24.md:500	records/A24.md:500	27. replay: scores_only leaves chord_code and notes empty and every score the same (tests/test_replay.cpp:1649)	Rewrite		caught 129, reaches 80, shared 94, caught-nothing no
+record	records/A25.md:47	records/A25.md:47	P2. the fill page carries the shared stylesheet and script (tests/test_report_page.cpp:82)	Rewrite		caught 5, reaches 10, shared 3, caught-nothing no
+record	records/A25.md:64	records/A25.md:64	P3. path_tiles: the six sample rows (tests/test_report_page.cpp:130)	Rewrite		caught 7, reaches 14, shared 0, caught-nothing no
+record	records/A25.md:80	records/A25.md:80	P4. path_tiles: the tiles count only the rows shown (tests/test_report_page.cpp:141)	Rewrite		caught 4, reaches 14, shared 0, caught-nothing no
+record	records/A25.md:96	records/A25.md:96	P5. path_tiles: Charts shown adds each chart's copies once (tests/test_report_page.cpp:168)	Rewrite		caught 5, reaches 14, shared 0, caught-nothing no
+record	records/A25.md:112	records/A25.md:112	P6. dm_tiles: the four sample scores (tests/test_report_page.cpp:181)	Rewrite		caught 9, reaches 12, shared 0, caught-nothing no
+record	records/A25.md:128	records/A25.md:128	P7. page_template writes the windows' empty-state sentence into the script (tests/test_report_page.cpp:198)	Rewrite		caught 3, reaches 47, shared 0, caught-nothing no
+record	records/A25.md:144	records/A25.md:144	P8. the fill page is a standards-mode document (tests/test_report_page.cpp:278)	Rewrite		caught 1, reaches 10, shared 0, caught-nothing no
+record	records/A25.md:160	records/A25.md:160	P9. report colours meet WCAG contrast in both themes (tests/test_report_page.cpp:287)	Rewrite		caught 1, reaches 0, shared 1, caught-nothing no
+record	records/A25.md:244	records/A25.md:244	R2. report rows list every stored record (4 bars) (tests/test_report_rows.cpp:230)	Remove		caught 28, reaches 927, shared 0, caught-nothing no
+record	records/A25.md:276	records/A25.md:276	R4. path report: a batch's records read back as a fresh analysis's rows (tests/test_report_rows.cpp:253)	Rewrite		caught 30, reaches 949, shared 0, caught-nothing no
+record	records/A25.md:308	records/A25.md:308	R6. all_paths lists paths best first on every corpus chart (tests/test_report_rows.cpp:376)	Rewrite		caught 113, reaches 363, shared 66, caught-nothing no
+record	records/A25.md:341	records/A25.md:341	R8. path report: the Charts shown tile counts what generate_report counts (tests/test_report_rows.cpp:430)	Rewrite		caught 30, reaches 914, shared 0, caught-nothing no
+record	records/A25.md:357	records/A25.md:357	R9. generate_report hands over its rows, subtitle and footer (tests/test_report_rows.cpp:451)	Rewrite		caught 30, reaches 914, shared 0, caught-nothing no
+record	records/A25.md:503	records/A25.md:503	R18. fill_rule_for: the legacy_fills flag names one fill rule (tests/test_report_rows.cpp:755)	Remove		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A25.md:535	records/A25.md:535	R20. tier_for walks the timing_tiers table edge by edge (tests/test_report_rows.cpp:786)	Rewrite		caught 3, reaches 3, shared 0, caught-nothing no
+record	records/A25.md:567	records/A25.md:567	R22. generate_report: one seam frames the report for every entry point (tests/test_report_rows.cpp:812)	Rewrite		caught 37, reaches 916, shared 0, caught-nothing no
+record	records/A25.md:664	records/A25.md:664	R28. tier_for over a built table matches the one-argument form (tests/test_report_rows.cpp:951)	Remove		caught 0, reaches 3, shared 0, caught-nothing yes
+record	records/A26.md:13	records/A26.md:13	RG1. run guard: an unquoted filter split at its dot is refused (tests/test_run_guard.cpp:15)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A26.md:29	records/A26.md:29	RG2. run guard: a filter given twice is refused, however many dashes or dt- prefix it has (tests/test_run_guard.cpp:25)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A26.md:76	records/A26.md:76	RG5. run guard: a real run whose include filter matched nothing is refused (tests/test_run_guard.cpp:55)	Rewrite		caught 0, reaches 0, shared 0, caught-nothing yes
+record	records/A26.md:141	records/A26.md:141	RU3. rules: every key in the file is read (tests/test_rules.cpp:85)	Rewrite		caught 10, reaches 30, shared 0, caught-nothing no
+record	records/A26.md:202	records/A26.md:202	RU7. rules: no rules value has the no-rules fingerprint (tests/test_rules.cpp:149)	Remove		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A26.md:308	records/A26.md:308	RU14. BackendSqueeze::summarystr: the tier edges for both row kinds (tests/test_rules.cpp:250)	Rewrite		caught 5, reaches 5, shared 0, caught-nothing no
+record	records/A26.md:324	records/A26.md:324	RU15. rules: the leeway changes what the engine counts (tests/test_rules.cpp:269)	Rewrite		caught 66, reaches 321, shared 31, caught-nothing no
+record	records/A26.md:339	records/A26.md:339	RU16. rules: max_tied_paths caps the tied paths the engine keeps (tests/test_rules.cpp:298)	Remove		caught 54, reaches 285, shared 29, caught-nothing no
+record	records/A26.md:354	records/A26.md:354	RU17. rules: max_tied_paths is one count per score, inside paths first (tests/test_rules.cpp:318)	Rewrite		caught 78, reaches 619, shared 0, caught-nothing no
+record	records/A26.md:369	records/A26.md:369	RU18. rules: a path over the Path limit stays kept when it ties the optimal score (tests/test_rules.cpp:349)	Rewrite		caught 116, reaches 32, shared 78, caught-nothing no
+record	records/A26.md:384	records/A26.md:384	RU19. rules: a path over the Path limit below the best score is dropped even as a tie (tests/test_rules.cpp:384)	Rewrite		caught 108, reaches 9, shared 76, caught-nothing no
+record	records/A26.md:429	records/A26.md:429	RU22. rules: the retired fill_length_measures key is read and ignored (tests/test_rules.cpp:443)	Remove		caught 7, reaches 27, shared 0, caught-nothing no
+record	records/A26.md:444	records/A26.md:444	RU23. rules: the retired Auto keys are read and ignored (tests/test_rules.cpp:456)	Remove		caught 7, reaches 27, shared 0, caught-nothing no
+record	records/A26.md:474	records/A26.md:474	RU25. rules: the default stamp is built once and matches a fresh record (tests/test_rules.cpp:487)	Rewrite		caught 0, reaches 2, shared 0, caught-nothing yes
+record	records/A26.md:489	records/A26.md:489	RU26. rules: a run is stamped with the rules fingerprint at cap 4 and at cap 8 (tests/test_rules.cpp:496)	Rewrite		caught 51, reaches 292, shared 27, caught-nothing no
+record	records/A26.md:541	records/A26.md:541	RV3. report view shares its result's rows instead of copying them (tests/test_report_view.cpp:241)	Rewrite		caught 0, reaches 13, shared 0, caught-nothing yes
+record	records/A26.md:602	records/A26.md:602	RV7. report view sort: Timing sorts in ladder order, not by name (tests/test_report_view.cpp:329)	Rewrite		caught 3, reaches 17, shared 0, caught-nothing no
+record	records/A26.md:633	records/A26.md:633	RV9. path report cells read as the page wrote them (tests/test_report_view.cpp:399)	Rewrite		caught 9, reaches 12, shared 0, caught-nothing no
+record	records/A26.md:648	records/A26.md:648	RV10. path report: Timing choices and the keep-rule (tests/test_report_view.cpp:435)	Rewrite		caught 11, reaches 12, shared 0, caught-nothing no
+record	records/A26.md:679	records/A26.md:679	RV12. dm comparison cells read as the page wrote them (tests/test_report_view.cpp:519)	Rewrite		caught 12, reaches 16, shared 0, caught-nothing no
+record	records/A26.md:694	records/A26.md:694	RV13. dm comparison: Status choices, the keep-rule, sort and count line (tests/test_report_view.cpp:556)	Rewrite		caught 8, reaches 30, shared 0, caught-nothing no
+record	records/A27.md:22	records/A27.md:22	SF1. a saved path with a squeeze-in on the SP end gets its figure back (tests/test_saved_figure_fill.cpp:93)	Rewrite		caught 163, reaches 817, shared 0, caught-nothing no
+record	records/A27.md:85	records/A27.md:85	SF5. a chart whose replay throws keeps its rows empty, and the fill goes on (tests/test_saved_figure_fill.cpp:168)	Rewrite		caught 184, reaches 959, shared 1, caught-nothing no
+record	records/A27.md:101	records/A27.md:101	SF6. the fill on several workers writes the same figures as on one (tests/test_saved_figure_fill.cpp:212)	Rewrite		caught 98, reaches 982, shared 0, caught-nothing no
+record	records/A27.md:117	records/A27.md:117	SF7. an inside-Star-Power squeeze-in fills a negative figure that shows as none (tests/test_saved_figure_fill.cpp:286)	Rewrite		caught 136, reaches 790, shared 0, caught-nothing no
+record	records/A27.md:133	records/A27.md:133	SF8. the fill hands every row of one chart the same graph (tests/test_saved_figure_fill.cpp:308)	Rewrite		caught 154, reaches 814, shared 0, caught-nothing no
+record	records/A27.md:164	records/A27.md:164	SF10. a row under an older stamp is left alone by the fill (tests/test_saved_figure_fill.cpp:371)	Rewrite		caught 93, reaches 138, shared 70, caught-nothing no
+record	records/A27.md:184	records/A27.md:184	SA1. map_song_stems maps a file, leaves a missing file empty and moves bytes in (tests/test_song_audio.cpp:59)	Rewrite		caught 11, reaches 20, shared 0, caught-nothing no
+record	records/A27.md:201	records/A27.md:201	SA2. open_song_stems skips a stem that will not open and reports its progress (tests/test_song_audio.cpp:83)	Rewrite		caught 20, reaches 110, shared 0, caught-nothing no
+record	records/A27.md:217	records/A27.md:217	SA3. mix_song_stems pads a negative offset in front (tests/test_song_audio.cpp:117)	Rewrite		caught 18, reaches 51, shared 0, caught-nothing no
+record	records/A27.md:239	records/A27.md:239	ST1. search_target: a path missing a named activation is dropped, the rest kept (tests/test_search_target.cpp:104)	Rewrite		caught 99, reaches 512, shared 0, caught-nothing no
+record	records/A27.md:256	records/A27.md:256	ST2. search_target: a variant that took every named activation outlives its dropped root (tests/test_search_target.cpp:141)	Rewrite		caught 105, reaches 547, shared 0, caught-nothing no
+record	records/A27.md:272	records/A27.md:272	ST3. search_target: a kept root's tied variant that missed a named activation is dropped (tests/test_search_target.cpp:198)	Rewrite		caught 100, reaches 523, shared 0, caught-nothing no
+record	records/A27.md:303	records/A27.md:303	ST5. search_target: every corpus path pinned in full comes back alone, the same (tests/test_search_target.cpp:274)	Rewrite		caught 97, reaches 338, shared 42, caught-nothing no
+record	records/A27.md:334	records/A27.md:334	ST7. search_target: activation pins return the tick search's paths and its failing tick (tests/test_search_target.cpp:345)	Rewrite		caught 86, reaches 531, shared 0, caught-nothing no
+record	records/A27.md:350	records/A27.md:350	ST8. search_target: the binary search names the last or a middle window that breaks (tests/test_search_target.cpp:370)	Rewrite		caught 93, reaches 325, shared 19, caught-nothing no
+record	records/A27.md:366	records/A27.md:366	ST9. free after: with nothing pinned the search is the plain search (tests/test_search_target.cpp:397)	Rewrite		caught 62, reaches 354, shared 34, caught-nothing no
+record	records/A27.md:434	records/A27.md:434	SI1. .mid: practice sections come from the first EVENTS track only, and the time box names the one in force (tests/test_song_input.cpp:34)	Rewrite		caught 35, reaches 207, shared 0, caught-nothing no
+record	records/A27.md:497	records/A27.md:497	SI5. .chart: a modifier with no note under it is skipped (tests/test_song_input.cpp:111)	Rewrite		caught 52, reaches 204, shared 0, caught-nothing no
+record	records/A28.md:80	records/A28.md:80	4. graph: every deactivation edge lists the chords squeeze_window_phrases names (tests/test_sp_end.cpp:179)	Rewrite		caught 4, reaches 59, shared 3, caught-nothing no
+record	records/A28.md:96	records/A28.md:96	5. graph: a squeeze choice before or after the SP end, pinned (tests/test_sp_end.cpp:212)	Rewrite		caught 4, reaches 68, shared 0, caught-nothing no
+record	records/A28.md:112	records/A28.md:112	6. graph: the tick and ms tests of 'after the SP end' agree across a tempo change on the end (tests/test_sp_end.cpp:265)	Rewrite		caught 3, reaches 67, shared 0, caught-nothing no
+record	records/A28.md:128	records/A28.md:128	7. SP cap overfill: where the end lands and which note clamped it (tests/test_sp_end.cpp:327)	Rewrite		caught 15, reaches 254, shared 0, caught-nothing no
+record	records/A28.md:192	records/A28.md:192	11. collected phrases: the corpus agrees with the squeezes and the SP end (tests/test_sp_end.cpp:445)	Rewrite		caught 37, reaches 328, shared 3, caught-nothing no
+record	records/A28.md:208	records/A28.md:208	12. SP end history: a late squeeze-in is a SqIn step on its phrase (tests/test_sp_end.cpp:475)	Rewrite		caught 11, reaches 273, shared 0, caught-nothing no
+record	records/A28.md:224	records/A28.md:224	13. SP end history: an early squeeze-in measures from the end before it (tests/test_sp_end.cpp:492)	Rewrite		caught 25, reaches 288, shared 0, caught-nothing no
+record	records/A28.md:240	records/A28.md:240	14. SP end history: a squeeze-out measures from the deact node (tests/test_sp_end.cpp:515)	Rewrite		caught 29, reaches 291, shared 0, caught-nothing no
+record	records/A28.md:256	records/A28.md:256	15. search: scales anchor on the collecting note and the SqIn's own end (tests/test_sp_end.cpp:543)	Rewrite		caught 29, reaches 289, shared 0, caught-nothing no
+record	records/A28.md:288	records/A28.md:288	17. squeeze-out: one SqOut, last, and its offset is the search's and D's, on every corpus path (tests/test_sp_end.cpp:635)	Rewrite		caught 36, reaches 327, shared 3, caught-nothing no
+record	records/A28.md:304	records/A28.md:304	18. SP end history: a squeezed-out phrase leaves no step (tests/test_sp_end.cpp:676)	Remove		caught 30, reaches 291, shared 0, caught-nothing no
+record	records/A28.md:352	records/A28.md:352	21. SP end history: every corpus activation is consistent (tests/test_sp_end.cpp:759)	Rewrite		caught 37, reaches 14, shared 37, caught-nothing no
+record	records/A28.md:384	records/A28.md:384	23. Bank: every corpus path banks in order (tests/test_sp_end.cpp:821)	Rewrite		caught 41, reaches 14, shared 41, caught-nothing no
+record	records/A28.md:400	records/A28.md:400	24. graph: a deactivation edge's rows are a range of the graph's rows (tests/test_sp_end.cpp:837)	Rewrite		caught 6, reaches 52, shared 3, caught-nothing no
