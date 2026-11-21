@@ -219,10 +219,14 @@ TEST_CASE("the engine's limit walk agrees with Activation::within_ms_limit") {
 
     check_sweep_tally(tally);
     CHECK(charts == corpus_chart_count());
-    // Both walks must have had something to say no to and yes to, or the
-    // case proves nothing.
-    CHECK(kept_checked > 0);
-    CHECK(model_rejected > 0);
+    // Each direction above is a check only if the corpus gave it a path to
+    // judge; a direction with none would pass with nothing tested.
+    const std::string no_kept =
+        "no kept path below the optimum: the engine-keeps direction tested nothing";
+    CHECK_MESSAGE(kept_checked > 0, no_kept);
+    const std::string no_rejected =
+        "no deep path over the limit: the engine-drops direction tested nothing";
+    CHECK_MESSAGE(model_rejected > 0, no_rejected);
     MESSAGE("checked " << charts << " charts, " << kept_checked << " kept paths, "
                        << model_rejected << " deep paths over the limit");
 }

@@ -7,12 +7,16 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "app/preview_source.h"
 #include "audio/decode.h"
+#include "audio/stem_reader.h"
 #include "audio_util.h"
 #include "midi_util.h"  // testmidi::concat
 
@@ -80,12 +84,26 @@ TEST_CASE("sniff_format: a FLAC behind an ID3 tag is Flac, a tagged MP3 stays Mp
 }
 
 TEST_CASE("audio_sniff: the ID3v2 tag length counts the header, the size and the footer") {
+    using testmidi::concat;
     const std::vector<uint8_t> tag = id3_tag(0);
     const std::vector<uint8_t> tag_footer = id3_tag(0x10);
-    CHECK(id3v2_tag_length(tag.data(), tag.size()) == 30);
-    CHECK(id3v2_tag_length(tag_footer.data(), tag_footer.size()) == 40);
-
     const std::vector<uint8_t> flac = read_fixture("sine220.flac");
+
+    // The length is where the audio behind the tag starts. With a real FLAC
+    // after each tag, the length must land on the FLAC's first byte: it covers
+    // every byte of the tag (its header, the size its header gives, and the
+    // footer when flag 0x10 is set) and none of the audio.
+    for (const std::vector<uint8_t>* t : {&tag, &tag_footer}) {
+        const std::vector<uint8_t> tagged = concat({*t, flac});
+        const std::size_t length = id3v2_tag_length(tagged.data(), tagged.size());
+        CHECK(length == t->size());
+        REQUIRE(length <= tagged.size() - flac.size());
+        CHECK(std::equal(flac.begin(), flac.end(), tagged.begin() + length));
+    }
+    // The footer is counted: the same tag with the footer flag is longer.
+    CHECK(id3v2_tag_length(tag_footer.data(), tag_footer.size()) >
+          id3v2_tag_length(tag.data(), tag.size()));
+
     CHECK(id3v2_tag_length(flac.data(), flac.size()) == 0);
     CHECK(id3v2_tag_length(tag.data(), 9) == 0);
 }
@@ -158,22 +176,31 @@ TEST_CASE("decode_audio: Ogg-Opus fixture decodes to the 220 Hz sine at 48 kHz")
     CHECK(estimate_freq_hz(out, 0) == doctest::Approx(220.0).epsilon(0.01));
 }
 
-// FNV-1a with a shortened offset basis (the published one less its last digit)
-// over the decoded float bytes. It pins the Opus decoder's exact output,
-// so reusing one decode buffer cannot change a single sample. If libopus is
-// ever upgraded, re-capture both numbers from a build of the old code first.
-TEST_CASE("decode_audio: Ogg-Opus output is pinned bit for bit") {
-    constexpr int64_t kPinnedFrames = 240648;                 // pinned from one run
-    constexpr uint64_t kPinnedHash = 10485106968528604345ull; // pinned from one run
+// The Opus reader reuses one decode buffer across reads. Reading the stream
+// one frame per call, so every call meets the reused buffer mid-packet, must
+// give the same samples bit for bit as decode_audio's read of the whole stem.
+TEST_CASE("decode_audio: Ogg-Opus read one frame at a time equals the whole decode") {
+    const std::vector<uint8_t> bytes = read_fixture("sine220.opus");
+    const DecodedAudio whole = decode_audio(bytes);
+    REQUIRE(whole.frames() > 0);
 
-    const DecodedAudio a = decode_audio(read_fixture("sine220.opus"));
-    uint64_t h = 1469598103934665603ull;
-    const auto* p = reinterpret_cast<const uint8_t*>(a.samples.data());
-    for (size_t i = 0; i < a.samples.size() * sizeof(float); ++i) {
-        h ^= p[i];
-        h *= 1099511628211ull;
-    }
-    MESSAGE("opus fingerprint: frames=" << a.frames() << " hash=" << h);
-    CHECK(a.frames() == kPinnedFrames);
-    CHECK(h == kPinnedHash);
+    std::unique_ptr<StemReader> reader = open_stem_reader(StemBytes{bytes, nullptr});
+    REQUIRE(reader->channels() == whole.channels);
+    std::vector<float> stepped;
+    std::vector<float> frame(static_cast<std::size_t>(reader->channels()));
+    while (reader->read(frame.data(), 1) == 1)
+        stepped.insert(stepped.end(), frame.begin(), frame.end());
+
+    CHECK_FALSE(reader->failed());
+    CHECK(static_cast<int64_t>(stepped.size()) == whole.frames() * whole.channels);
+    CHECK(stepped == whole.samples);
+
+    // The Preview plays the encoder's padding at the end (OpusReaderOptions):
+    // the whole decode runs past the stream's last granule, where a trimmed
+    // reader stops.
+    hydra::audio::detail::OpusReaderOptions trim;
+    trim.trim_end = true;
+    const std::unique_ptr<StemReader> trimmed =
+        hydra::audio::detail::open_opus_reader(StemBytes{bytes, nullptr}, nullptr, trim);
+    CHECK(trimmed->length_frames() < whole.frames());
 }
