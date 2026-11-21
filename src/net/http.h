@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <vector>
 
 #include "core/error_kind.h"  // NetService
 
@@ -59,6 +60,20 @@ using Downloader = std::function<void(const std::string& url, const std::string&
                                       uint64_t size_cap, std::atomic<uint64_t>* received,
                                       const std::atomic<bool>* cancel)>;
 void set_downloader(Downloader downloader);
+
+// Test seam for the address only: while the map is non-empty, http_get and
+// http_download send a URL that begins with a pair's `from` to its `to`
+// instead, with the rest of the URL kept, through the same WinHTTP code as
+// any other request. `from` matches only up to a boundary: the URL ends there
+// or goes on with '/', '?' or '#', so "https://github.com" does not match
+// "https://github.com.example". A URL no pair matches throws std::logic_error
+// naming it, and nothing is sent. An installed Fetcher or Downloader still
+// comes first. An empty map restores normal addresses.
+struct AddressPair {
+    std::string from;  // such as "https://api.github.com"
+    std::string to;    // such as "http://127.0.0.1:50123"
+};
+void set_address_map_for_test(std::vector<AddressPair> map);
 
 }  // namespace hydra::net
 
