@@ -5,6 +5,7 @@ How agents are run: status lines, parallel work, budgets, approvals, and how far
 Under Confirmed are the user's exact words, filed with the user's approval or through the backfill route; under Unconfirmed are older lines written by sessions, which guide sessions as working rules but are never cited as the user's ruling.
 
 ## Confirmed
+- **2026-11-21** "a handoff isnt proof of anything. it should never be cited anywhere by anything. it only exists as a summary the next session can pick up." (session 9f61bc5c)
 - **2026-11-21** chose "Yes, 120 s" to "Build pass limit: a pass from hydra_build_pass runs out if no build claims it within 120 seconds ($BuildPassUnclaimedSeconds in tools/build_slot.ps1). Only an unconfirmed session line records 120 s as your rule. The test now reads the limit from the lock file either way. Is 120 seconds your rule?" (session 069082c4)
 - **2026-11-07** "i want a limit of three builds at once, strictly enforced. agents are never allowed to start their own builds, only the main session, with a limit of one build per session." (session e3e9069c)
 - **2026-11-07** "any tests that require a build are done by the main session, not agents." (session e3e9069c)
