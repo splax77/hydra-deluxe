@@ -438,7 +438,7 @@ TEST_CASE("squeeze rule: twin SP ends a tick apart each squeeze only their own p
         CAPTURE(act);
         const doctest::Approx own_ms = doctest::Approx(w.own_ms).epsilon(1e-9);
         int squeezes = 0;
-        const std::vector<Path> kept = search_target(song, cfg, {act});
+        const std::vector<Path> kept = search_target(song, cfg, activation_pins({act})).paths;
         for (const Path* p : flatten_paths(kept)) {
             CAPTURE(p->pathstring());
             for (const Activation& a : p->walk_activations()) {

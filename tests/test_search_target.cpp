@@ -235,13 +235,14 @@ TEST_CASE("search_target: a path missing a named activation is dropped, the rest
     for (const Path* p : roots_and_tied(raw)) missed_one = missed_one || !takes(act_ticks(*p));
     REQUIRE(missed_one);
 
-    std::vector<bool> promoted;
-    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &promoted);
+    const TargetResult found = search_target(song, cfg, activation_pins(kSeed5Fills));
+    const std::vector<Path>& kept = found.paths;
+    const std::vector<bool>& promoted = found.promoted;
     REQUIRE_FALSE(kept.empty());
     check_kept_from(raw, kept, promoted, takes);
 
     // A tick that is no fill node is still unrealizable: nothing comes back.
-    CHECK(search_target(song, cfg, {kSeed5Fills[0], kSeed5Fills[1] + 1}).empty());
+    CHECK(search_target(song, cfg, activation_pins({kSeed5Fills[0], kSeed5Fills[1] + 1})).paths.empty());
 }
 
 // A dropped root's variants: the engine can fold a path that takes every
@@ -258,8 +259,9 @@ TEST_CASE("search_target: a variant that took every named activation outlives it
     const std::vector<Path> raw = unfiltered_target(song, cfg, kSeed5Fills);
     REQUIRE(tied_case(raw, takes, false, true));
 
-    std::vector<bool> was_promoted;
-    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &was_promoted);
+    const TargetResult found = search_target(song, cfg, activation_pins(kSeed5Fills));
+    const std::vector<Path>& kept = found.paths;
+    const std::vector<bool>& was_promoted = found.promoted;
     check_kept_from(raw, kept, was_promoted, takes);
     const Path* promoted = first_promoted(kept, was_promoted);
     REQUIRE(promoted != nullptr);
@@ -285,8 +287,9 @@ TEST_CASE("lone_pricing: a variant search_target promoted is tied under a root")
     const Song song = seed5_with_note_after_last_phrase(fc);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
 
-    std::vector<bool> was_promoted;
-    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &was_promoted);
+    const TargetResult found = search_target(song, cfg, activation_pins(kSeed5Fills));
+    const std::vector<Path>& kept = found.paths;
+    const std::vector<bool>& was_promoted = found.promoted;
     const Path* promoted = first_promoted(kept, was_promoted);
     REQUIRE(promoted != nullptr);
     HydraRecord rec;
@@ -310,8 +313,9 @@ TEST_CASE("search_target: a kept root's tied variant that missed a named activat
     const std::vector<Path> raw = unfiltered_target(song, cfg, want);
     REQUIRE(tied_case(raw, takes, true, false));
 
-    std::vector<bool> promoted;
-    const std::vector<Path> kept = search_target(song, cfg, want, &promoted);
+    const TargetResult found = search_target(song, cfg, activation_pins(want));
+    const std::vector<Path>& kept = found.paths;
+    const std::vector<bool>& promoted = found.promoted;
     REQUIRE_FALSE(kept.empty());
     check_kept_from(raw, kept, promoted, takes);
 }
@@ -331,8 +335,9 @@ TEST_CASE("keep_target_paths: every kept path and tied variant took exactly the 
         CAPTURE(best.pathstring());
         const std::vector<int64_t> want = act_ticks(best);
 
-        std::vector<bool> promoted;
-        const std::vector<Path> kept = search_target(*c.song, cfg, want, &promoted);
+        const TargetResult found = search_target(*c.song, cfg, activation_pins(want));
+        const std::vector<Path>& kept = found.paths;
+        const std::vector<bool>& promoted = found.promoted;
         REQUIRE_FALSE(kept.empty());
         check_kept_from(unfiltered_target(*c.song, cfg, want), kept, promoted,
                         exactly_ticks(want));
@@ -374,8 +379,9 @@ TEST_CASE("search_target: a full pin no path realizes names its window and why")
     const FuzzChart fc = fuzz_chart(5);
     const Song song = chart_song(fc.text);
     const app::AnalysisSettings cfg = scores_settings(fc.cap);
-    std::vector<bool> promoted;
-    const std::vector<Path> kept = search_target(song, cfg, kSeed5Fills, &promoted);
+    const TargetResult found = search_target(song, cfg, activation_pins(kSeed5Fills));
+    const std::vector<Path>& kept = found.paths;
+    const std::vector<bool>& promoted = found.promoted;
     const Path* path = nullptr;
     for (size_t i = 0; i < kept.size() && !path; ++i)
         if (!promoted[i] && kept[i].variants.empty()) path = &kept[i];

@@ -152,7 +152,7 @@ TEST_CASE("SP end clamp: two ends clamped to one tick each keep their own squeez
         // no other path can crowd it out of its group, and a wrong squeeze-out
         // would show.
         const std::vector<SqOutSeen> seen =
-            sqouts_of(search_target(song, test::scores_settings(2), {act}), 3456);
+            sqouts_of(search_target(song, test::scores_settings(2), activation_pins({act})).paths, 3456);
         const int64_t own_end = act == 2304 ? 5376 : 5568;
         const double own_ms = act == 2304 ? -250.0 : -275.0;  // 3456 against own_end
         INFO("activation at " << act);
@@ -252,7 +252,8 @@ TEST_CASE("SP end clamp: a plain bar tying the ceiling squeezes out only for its
     CHECK(cx->sqout_node);
 
     for (int64_t act : {int64_t{1920}, int64_t{2112}}) {
-        const std::vector<Path> paths = search_target(song, test::scores_settings(2), {act});
+        const std::vector<Path> paths =
+            search_target(song, test::scores_settings(2), activation_pins({act})).paths;
         const int64_t own_end = act == 1920 ? 4992 : 5184;
         const double own_ms = act == 1920 ? -200.0 : -225.0;  // 3456 against own_end
         INFO("activation at " << act);

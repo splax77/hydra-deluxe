@@ -78,7 +78,7 @@
         "options.target_act_ticks = ticks;"
       ],
       "must_not_match": [
-        "const std::vector<Path> kept = search_target(song, cfg, want);"
+        "const std::vector<Path> kept = search_target(song, cfg, activation_pins(want)).paths;"
       ],
       "owner_lines": [
         {
@@ -483,7 +483,7 @@
     },
     {
       "question": "Does this path need any timing, and what is the all-0 list's 0 ms limit?",
-      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::needs_timing in src/core/model.cpp (the zero test)",
+      "owner": "allzero_options in src/search/pather.cpp (the 0 ms limit) and Path::difficulty in src/core/model.cpp (the zero test: empty when nothing needs timing)",
       "owner_file": "src/search/pather.cpp",
       "owner_symbol": "allzero_options",
       "date": "2026-10-04",

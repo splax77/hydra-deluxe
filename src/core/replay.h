@@ -261,13 +261,6 @@ ReplayResult replay_path(const Song& song, std::vector<ReplayWindow> windows,
 // instead of listing all six fields at each comparison site.
 ReplayScore score_of(const Path& path);
 
-// Writes a ReplayScore's six categories into a Path's score fields. It is
-// score_of's reverse: the two are the only pairing between Path and
-// ReplayScore. Other code copies the six between other shapes (the engine's
-// copy-out, a variant taking its leader's scores); Path's fields stay the one
-// list of categories.
-void assign_score(Path& path, const ReplayScore& score);
-
 // The Star Power windows a stored path describes: one per activation, with
 // its deactivation node read straight off the record (Activation::deact_tick,
 // stamped by the search) and, when the activation squeezed out, the SqOut

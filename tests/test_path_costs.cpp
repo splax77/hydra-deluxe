@@ -55,7 +55,7 @@ const HydraRecord& record_named(const std::string& name) {
 // The path search_target prices for activations at exactly `ticks`, best
 // variant, as full pins.
 std::vector<PinnedWindow> full_pins_at(const Song& song, const std::vector<int64_t>& ticks) {
-    const std::vector<Path> paths = search_target(song, default_cfg(), ticks);
+    const std::vector<Path> paths = search_target(song, default_cfg(), activation_pins(ticks)).paths;
     REQUIRE_FALSE(paths.empty());
     return pinned_windows(paths.front());
 }

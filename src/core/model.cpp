@@ -524,11 +524,6 @@ std::optional<double> Activation::difficulty() const {
     return h->ms;
 }
 
-// D51 call 4 and D302: hardest() only names a timing that needs hitting, and
-// difficulty() leaves out an optional early fill. So this is false with nothing
-// to time, and false too when an optional early fill is all hardest() names.
-bool Activation::needs_timing() const { return difficulty().has_value(); }
-
 bool Activation::within_ms_limit(double limit_ms) const {
     for (const SPSqueeze& sq : sqinouts)
         if (!sq.within_limit(limit_ms)) return false;
@@ -677,13 +672,6 @@ std::optional<double> Path::difficulty() const {
         }
     }
     return best;
-}
-
-// The same activations difficulty() walks (D51 call 4).
-bool Path::needs_timing() const {
-    for (const Activation& act : walk_activations())
-        if (act.needs_timing()) return true;
-    return false;
 }
 
 bool Path::within_ms_limit(double limit_ms) const {
