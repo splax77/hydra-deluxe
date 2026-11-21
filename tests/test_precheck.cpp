@@ -13,6 +13,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <map>
 #include <regex>
 #include <sstream>
 #include <string>
@@ -307,6 +308,26 @@ std::string read_lf(const fs::path& path) {
 
 std::string planted_rules_path() { return std::string(single_owner::kRulesDir) + "/planted/fixture.json"; }
 
+// The files the feature branch adds, by path.
+std::map<std::string, std::string> feature_texts() {
+    return {{"tests/helpers_b.cpp", kHelpersB},
+            {"tests/test_offsets.cpp", offsets_text()},
+            {"tests/test_stray_scan.cpp", stray_scan_text()},
+            {planted_rules_path(), kPlantedRules},
+            {"src/app/new_types.h", kNewTypes},
+            {"src/app/new_helpers.cpp", kNewHelpers}};
+}
+
+// How many lines git counts in `text` when a commit adds it: one per line
+// break, and one more for a last line with no break after it.
+long long git_line_count(const std::string& text) {
+    long long n = 0;
+    for (char c : text)
+        if (c == '\n') ++n;
+    if (!text.empty() && text.back() != '\n') ++n;
+    return n;
+}
+
 struct SelfTestFixture {
     std::string dir = testtemp::temp_dir("precheck_selftest");
     SelfTestFixture() {
@@ -325,14 +346,7 @@ struct SelfTestFixture {
         write_fixture_file(dir, single_owner::kBaselineFile, read_lf(root / single_owner::kBaselineFile));
         commit_all(dir, "main");
         fixture_git(dir, {"checkout", "-q", "-b", "feature"});
-        commit_texts(dir,
-                     {{"tests/helpers_b.cpp", kHelpersB},
-                      {"tests/test_offsets.cpp", offsets_text()},
-                      {"tests/test_stray_scan.cpp", stray_scan_text()},
-                      {planted_rules_path(), kPlantedRules},
-                      {"src/app/new_types.h", kNewTypes},
-                      {"src/app/new_helpers.cpp", kNewHelpers}},
-                     "feature");
+        commit_texts(dir, feature_texts(), "feature");
     }
     ~SelfTestFixture() { testtemp::remove_dir(dir); }
 };
@@ -406,15 +420,18 @@ TEST_CASE("precheck self-test: the fixture's planted items, each check off, the 
         check_fixture_clean(fx.dir);
     }
 
-    // Range size. The feature range is small: its line is pinned from one run.
-    CHECK(starting(feature.lines, precheck::kSizePrefix) ==
-          "range size: 86 changed lines (86 added, 0 deleted), not counting third_party/ or testdata/");
+    // Range size. The feature range adds the lines of the files the fixture
+    // wrote and deletes none; the line's wording is size_line's.
+    long long feature_added = 0;
+    for (const auto& [rel, text] : feature_texts()) feature_added += git_line_count(text);
+    CHECK(starting(feature.lines, precheck::kSizePrefix) == precheck::size_line(precheck::RangeSize{feature_added, 0}));
     CHECK(starting(feature.lines, precheck::kLargeRangePrefix).empty());
 
     // A range over the threshold, but only in the folders left out of the
     // count, gets no note.
+    const long long over_lines = precheck::kLargeRangeLines + 1;
     std::string over_limit;
-    for (long long i = 1; i <= precheck::kLargeRangeLines + 1; ++i)
+    for (long long i = 1; i <= over_lines; ++i)
         over_limit += (i > 1 ? "\n" : "") + std::string("line ") + std::to_string(i);
     fixture_git(fx.dir, {"checkout", "-q", "-b", "vendored", "feature"});
     for (const std::string& folder : precheck::size_excluded_folders())
@@ -422,8 +439,7 @@ TEST_CASE("precheck self-test: the fixture's planted items, each check off, the 
     commit_all(fx.dir, "vendored");
     SelfTestRun vendored;
     (void)items_of(fx.dir, {"--range", "feature...vendored"}, &vendored);
-    CHECK(starting(vendored.lines, precheck::kSizePrefix) ==
-          "range size: 0 changed lines (0 added, 0 deleted), not counting third_party/ or testdata/");
+    CHECK(starting(vendored.lines, precheck::kSizePrefix) == precheck::size_line(precheck::RangeSize{}));
     CHECK(starting(vendored.lines, precheck::kLargeRangePrefix).empty());
     check_fixture_clean(fx.dir);
 
@@ -433,8 +449,7 @@ TEST_CASE("precheck self-test: the fixture's planted items, each check off, the 
     commit_all(fx.dir, "big");
     SelfTestRun big;
     (void)items_of(fx.dir, {"--range", "feature...big"}, &big);
-    CHECK(starting(big.lines, precheck::kSizePrefix) ==
-          "range size: 401 changed lines (401 added, 0 deleted), not counting third_party/ or testdata/");
+    CHECK(starting(big.lines, precheck::kSizePrefix) == precheck::size_line(precheck::RangeSize{over_lines, 0}));
     const std::string note = starting(big.lines, precheck::kLargeRangePrefix);
     CHECK_FALSE(note.empty());
     CHECK(note.find(" | ") == std::string::npos);  // one note line
@@ -450,53 +465,52 @@ TEST_CASE("precheck self-test: the fixture's planted items, each check off, the 
     check_fixture_clean(fx.dir);
 }
 
-// The first-review ranges of the 2026-10-04 gate, with the scan rows at
-// HEAD (the rows that name these findings came after the commits), must name
-// the findings the reviewers wrote by hand.
-TEST_CASE("precheck self-test: the step 1 range names its reviewed findings") {
+// A merge commit of this repository's own history, as its first review ran
+// it: the branch it merged, with the scan rows at HEAD. The exe must find
+// items there, and every item must sit on a line the range adds, as git's own
+// diff of the range says. A clone without the commit fails by name.
+static void check_real_range(const std::string& label, const std::string& merge) {
     const std::string repo = sourcetree::root().u8string();
-    if (!have_commit(repo, "c6debcd")) {
-        MESSAGE("step 1 range skipped: c6debcd is not in this repository");
-        return;
+    const std::string missing =
+        label + ": " + merge + " is not in this repository; a shallow or partial clone lacks it, so fetch the whole history";
+    REQUIRE_MESSAGE(have_commit(repo, merge), missing);
+    const std::string range = merge + "^2..." + merge;
+    const std::vector<std::string> lines = items_of(repo, {"--range", range, "--rules-at", "HEAD"});
+    REQUIRE_FALSE(lines.empty());
+    check_items(label, lines, {}, kRealAbsent);
+    const precheck::AddedLines added = precheck::AddedLines::parse_diff(
+        precheck::run_git(repo, {"diff", "--no-color", "--no-ext-diff", "--no-renames", "-U0", range}));
+    const std::regex where("^\\w (\\S+):(\\d+)  ");
+    for (const std::string& l : lines) {
+        INFO(label << ": not on a line the range adds: " << l);
+        std::smatch m;
+        REQUIRE(std::regex_search(l, m, where));
+        CHECK(added.added(m[1].str(), std::stoi(m[2].str())));
     }
-    const std::vector<std::string> lines = items_of(repo, {"--range", "c6debcd^2...c6debcd", "--rules-at", "HEAD"});
-    check_items("step 1", lines,
-                {{"C", "tests/test_fast_tempo.cpp", "collect_variants.*test_search\\.cpp"},
-                 {"C", "tests/test_fast_tempo.cpp", "windows_text.*test_search\\.cpp"},
-                 {"B", "tests/test_search.cpp", "plusmeasure\\(act\\.timecode"},
-                 {"B", "tests/test_search.cpp", "fabs.*500\\.0"},
-                 {"B", "tests/test_search.cpp", "early == 1\\.0"},
-                 {"D", "src/search/engine.cpp", "0xFFFF"},
-                 {"D", "tests/test_fast_tempo.cpp", "seed <= 48"},
-                 {"E", "tests/test_model.cpp", kSourceMacro},
-                 {"E", "tests/test_preview_view.cpp", "preview_view\\.cpp"}},
-                kRealAbsent);
 }
 
-TEST_CASE("precheck self-test: the step 2 range names its reviewed findings") {
-    const std::string repo = sourcetree::root().u8string();
-    if (!have_commit(repo, "11b9d44")) {
-        MESSAGE("step 2 range skipped: 11b9d44 is not in this repository");
-        return;
-    }
-    const std::vector<std::string> lines = items_of(repo, {"--range", "11b9d44^2...11b9d44", "--rules-at", "HEAD"});
-    check_items("step 2", lines,
-                {{"C", "tests/test_s2_parser_owners.cpp", "deflate_raw.*test_srb\\.cpp"},
-                 {"C", "tests/test_s2_offspeed.cpp", "fill_store.*test_dm_report\\.cpp"},
-                 {"C", "tests/test_s2_disco.cpp", "chart_with.*test_song\\.cpp"},
-                 {"C", "tests/test_s2_dynamics_tag.cpp", "MThd"},
-                 {"B", "tests/test_song.cpp", "want = read =="},
-                 {"B", "tools/ch_probe/tests/test_s2_window_constants.py", "WINDOW_CAP_MS / 2"},
-                 {"D", "tools/ch_probe/tests/test_s2_window_constants.py", "\\b75 in:"},
-                 {"E", "tests/test_s2_stamps.cpp", "stored_versions\\.h"}},
-                kRealAbsent);
+TEST_CASE("precheck self-test: every item on the step 1 range sits on a line it adds") {
+    check_real_range("step 1", "c6debcd");
+}
+
+TEST_CASE("precheck self-test: every item on the step 2 range sits on a line it adds") {
+    check_real_range("step 2", "11b9d44");
 }
 
 TEST_CASE("precheck self-test: a folder that is not a git repository fails by name") {
     const std::string plain = testtemp::temp_dir("precheck_selftest_plain");
     const SelfTestRun run = precheck_on(plain, {});
     CHECK(run.code != 0);
-    CHECK(run.err == "not a git repository: " + plain + "\n");
+    // The sentence is the one precheck::Repo throws for this folder.
+    std::string expected;
+    try {
+        (void)precheck::Repo(plain);
+    } catch (const precheck::GitError& e) {
+        expected = e.what();
+    }
+    REQUIRE_FALSE(expected.empty());
+    CHECK(expected.find(plain) != std::string::npos);
+    CHECK(run.err == expected + "\n");
     testtemp::remove_dir(plain);
 }
 
