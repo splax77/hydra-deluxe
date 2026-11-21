@@ -1022,6 +1022,7 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
         // right box carries its longest line.
         {"themata", "Themata"},
     };
+    int swept_with_rows = 0;  // Paths sweeps whose best path drew activation rows
     for (const Chart& c : charts) {
         open_titled(ctx, c.search, c.title);
         if (ctx->IsError()) return;
@@ -1035,13 +1036,19 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
             set_panel_ref(ctx);
             ctx->ItemClick("**/##DetailsTabs/Paths");
             ctx->Yield(2);
-            // Each chart's best path has activations, so its rows carry the
-            // Expand all toggle; it reads Collapse all once the first share
-            // has opened them. Neither means the rows were never drawn.
-            IM_CHECK(!h.app->viewed.record->best_path().activations.empty());
-            if (ctx->ItemExists("**/Expand all")) ctx->ItemClick("**/Expand all");
-            ctx->Yield(2);
-            IM_CHECK(ctx->ItemExists("**/Collapse all"));
+            // A best path with activations draws its rows under the Expand all
+            // toggle, which reads Collapse all once the first share has opened
+            // them; neither toggle there means the rows were never drawn. A
+            // best path with none (Themata's) draws no toggle at all.
+            if (h.app->viewed.record->best_path().activations.empty()) {
+                IM_CHECK(!ctx->ItemExists("**/Expand all"));
+                IM_CHECK(!ctx->ItemExists("**/Collapse all"));
+            } else {
+                ++swept_with_rows;
+                if (ctx->ItemExists("**/Expand all")) ctx->ItemClick("**/Expand all");
+                ctx->Yield(2);
+                IM_CHECK(ctx->ItemExists("**/Collapse all"));
+            }
             if (ctx->IsError()) return;
             open_paths_folds(ctx);  // the backend tables and the two folds under the rows
             overflowing_windows(at + "Paths", found);
@@ -1068,6 +1075,9 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
             if (ctx->IsError()) return;
         }
     }
+    // The sweep must have opened real activation rows on some chart, or the
+    // Paths checks above measured nothing.
+    IM_CHECK(swept_with_rows > 0);
     for (const std::string& f : found) std::fprintf(stderr, "OVERFLOW %s\n", f.c_str());
     IM_CHECK_EQ(found.size(), (size_t)0);
 }
