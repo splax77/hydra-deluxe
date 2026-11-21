@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,6 +24,7 @@
 #include "bytes_util.h"
 
 #include "audio/decode.h"
+#include "audio/mixer.h"
 #include "audio/stream_mix.h"
 #include "core/winstr.h"
 #include "testdata_dirs.h"  // testdata_root
@@ -175,6 +177,45 @@ inline double estimate_freq_hz(const hydra::audio::DecodedAudio& a, int channel)
     }
     const double dur = static_cast<double>(hi - lo) / a.sample_rate;
     return (crossings / 2.0) / dur;
+}
+
+// The whole-stem mix a StreamMix read start to end must equal: each stem is
+// converted to `out_rate` and `out_channels` through stem_converter_config (the
+// converter StreamMix uses), then added into the mix in order, the mix growing
+// with silence where a stem is longer. Empty input gives an empty mix at the
+// requested format. Throws std::runtime_error if a converter fails.
+inline hydra::audio::DecodedAudio mix_stems(const std::vector<hydra::audio::DecodedAudio>& stems,
+                                            int out_rate, int out_channels) {
+    hydra::audio::DecodedAudio out;
+    out.sample_rate = out_rate;
+    out.channels = out_channels;
+    for (const hydra::audio::DecodedAudio& s : stems) {
+        if (s.channels <= 0 || s.samples.empty()) continue;
+        const hydra::audio::StemConverter sc = hydra::audio::stem_converter_config(
+            s.sample_rate, s.channels, out_rate, out_channels);
+        std::vector<float> stem;
+        if (sc.passthrough) {
+            stem = s.samples;
+        } else {
+            ma_data_converter conv;
+            if (ma_data_converter_init(&sc.config, nullptr, &conv) != MA_SUCCESS)
+                throw std::runtime_error("mix_stems: data converter init failed");
+            ma_uint64 in_frames = static_cast<ma_uint64>(s.frames());
+            ma_uint64 out_frames = 0;
+            ma_data_converter_get_expected_output_frame_count(&conv, in_frames, &out_frames);
+            stem.resize(static_cast<std::size_t>(out_frames) * out_channels);
+            ma_uint64 in_consumed = in_frames;
+            ma_uint64 out_produced = out_frames;
+            const ma_result r = ma_data_converter_process_pcm_frames(
+                &conv, s.samples.data(), &in_consumed, stem.data(), &out_produced);
+            ma_data_converter_uninit(&conv, nullptr);
+            if (r != MA_SUCCESS) throw std::runtime_error("mix_stems: data converter process failed");
+            stem.resize(static_cast<std::size_t>(out_produced) * out_channels);
+        }
+        if (stem.size() > out.samples.size()) out.samples.resize(stem.size(), 0.0f);
+        for (std::size_t i = 0; i < stem.size(); ++i) out.samples[i] += stem[i];
+    }
+    return out;
 }
 
 }  // namespace testaudio

@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "audio/mixer.h"  // stem_converter_config, shared with mix_stems
+#include "audio/mixer.h"  // stem_converter_config
 #include "core/error_kind.h"
 
 // miniaudio's configuration macros come from the miniaudio target.
@@ -178,7 +178,7 @@ StreamMix::StreamMix(std::vector<std::unique_ptr<StemReader>> stems, int out_rat
         const int in_rate = r->sample_rate();
         const int64_t in_len = std::max<int64_t>(r->length_frames(), 0);
         s->reader = std::move(r);
-        // The same converter setup mix_stems uses, so the output matches.
+        // The same converter setup the whole-stem test reference uses.
         const StemConverter sc =
             stem_converter_config(in_rate, s->in_channels, out_rate, out_channels);
         s->passthrough = sc.passthrough;

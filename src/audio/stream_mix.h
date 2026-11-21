@@ -38,7 +38,8 @@ public:
 
 // Mixes N stems while reading them.
 //
-// The result matches mix_stems() of every stem fully decoded, with
+// The result matches the whole-stem mix (testaudio::mix_stems in
+// tests/audio_util.h) of every stem fully decoded, with
 // `front_pad_frames` of silence in front: same length, same samples (within
 // float rounding of resampling in blocks instead of in one call).
 //

@@ -28,6 +28,7 @@
 
 using namespace hydra::audio;
 using testaudio::max_diff;
+using testaudio::mix_stems;
 using testaudio::read_fixture;
 using testaudio::read_frames;
 

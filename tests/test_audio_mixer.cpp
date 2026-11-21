@@ -17,6 +17,7 @@
 
 using namespace hydra::audio;
 using testaudio::estimate_freq_hz;
+using testaudio::mix_stems;
 
 namespace {
 
