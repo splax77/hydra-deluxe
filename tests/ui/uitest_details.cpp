@@ -1040,7 +1040,7 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
             // toggle, which reads Collapse all once the first share has opened
             // them; neither toggle there means the rows were never drawn. A
             // best path with none (Themata's) draws no toggle at all.
-            if (h.app->viewed.record->best_path().activations.empty()) {
+            if (!h.app->viewed.record->best_path().has_activations()) {
                 IM_CHECK(!ctx->ItemExists("**/Expand all"));
                 IM_CHECK(!ctx->ItemExists("**/Collapse all"));
             } else {
