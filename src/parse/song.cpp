@@ -99,7 +99,7 @@ struct LanePads {
 };
 
 // Where a note sits in that bit order: the position of its lane bit
-// (lane_bit, parse/note_shuffle.h), so the order is read off the game's bit
+// (lane_bit, core/model.h), so the order is read off the game's bit
 // table and has no second copy here.
 int lane_bit_rank(const ChordNote& note) {
     int rank = 0;

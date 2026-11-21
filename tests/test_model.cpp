@@ -1156,7 +1156,8 @@ TEST_CASE("Chord rowstr / notationstr / disco flip") {
 // bit among the pads, the kick only with no pad. Each case gives both games'
 // bits. 1.1 (6142, NL-50): kick 0x1, red 0x2, yellow tom 0x4, blue tom 0x8,
 // green tom 0x10, yellow cymbal 0x20, blue cymbal 0x40, green cymbal 0x80.
-// 1.0 (4045, the lane enum; fill_generator.cs F3 masks the pads with 0x7F):
+// 1.0 (4045, docs/clone-hero/code/4045/fill_generator.cs, section F8; F3
+// masks the pads with 0x7F):
 // red 0x1, yellow tom 0x2, blue tom 0x4, green tom 0x8, yellow cymbal 0x10,
 // blue cymbal 0x20, green cymbal 0x40, kick 0x80.
 TEST_CASE("Chord::activation_note: the pad the game flags, cymbals over toms") {

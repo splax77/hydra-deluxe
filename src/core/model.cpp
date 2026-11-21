@@ -105,6 +105,17 @@ bool lane_flag(const ChordNote& note) {
     return note.colortype == NoteColor::Kick ? note.is2x : note.is_cymbal();
 }
 
+uint32_t lane_bit(const ChordNote& note) {
+    switch (note.colortype) {
+        case NoteColor::Kick: return 0x1u;
+        case NoteColor::Red: return 0x2u;
+        case NoteColor::Yellow: return note.is_cymbal() ? 0x20u : 0x04u;
+        case NoteColor::Blue: return note.is_cymbal() ? 0x40u : 0x08u;
+        case NoteColor::Green: return note.is_cymbal() ? 0x80u : 0x10u;
+    }
+    throw std::logic_error("lane_bit: a note with no lane");
+}
+
 std::string Chord::code() const {
     std::string out(kLanes, '.');
     for (size_t i = 0; i < kLanes; ++i) {
@@ -306,27 +317,23 @@ void Chord::apply_accent(NoteColor color) {
     add_dynamic_mark(*at(color), NoteDynamicType::Accent);
 }
 
-// The note Clone Hero flags as the chord's activation note. Both versions
-// keep the highest set bit of the chord's lane flags, and the kick only when
-// no pad is set. Clone Hero 1.0 (4045): docs/clone-hero/code/4045/
-// fill_generator.cs, section F3, masks the pads with 0x7F. Clone Hero 1.1
-// (6142): FL-09 on docs/clone-hero/04-fills.md, with the lane bits of NL-50
-// on docs/clone-hero/02-note-list.md (Hydra's copy of those bits is lane_bit
-// in src/parse/note_shuffle.cpp, which core cannot include). In both versions
-// every cymbal bit sits above every tom bit, so a cymbal outranks a tom of
-// any colour. Red has no cymbal in this model (ChordNote::is_cymbal), and a
-// chord holds one note per colour, so the order below names exactly one note.
+// The note Clone Hero flags as the chord's activation note: the pad with the
+// highest lane_bit, and the kick only when the chord has no pad. Clone Hero
+// 1.0 (4045) keeps the highest set bit of the pads masked with 0x7F
+// (docs/clone-hero/code/4045/fill_generator.cs, section F3); 1.1 (6142) keeps
+// the highest set bit of all (FL-09 on docs/clone-hero/04-fills.md). Both
+// rank the pads the way lane_bit does, a cymbal above every tom, so one order
+// serves both.
 const ChordNote& Chord::activation_note() const {
-    const NoteColor pads[] = {NoteColor::Green, NoteColor::Blue, NoteColor::Yellow};
-    for (bool cymbal : {true, false})
-        for (NoteColor c : pads) {
-            const std::optional<ChordNote>& slot = at(c);
-            if (slot.has_value() && slot->is_cymbal() == cymbal) return *slot;
-        }
-    for (NoteColor c : {NoteColor::Red, NoteColor::Kick}) {
-        const std::optional<ChordNote>& slot = at(c);
-        if (slot.has_value()) return *slot;
+    const ChordNote* best_pad = nullptr;
+    const ChordNote* kick = nullptr;
+    for (const std::optional<ChordNote>& slot : notemap_) {
+        if (!slot.has_value()) continue;
+        if (slot->colortype == NoteColor::Kick) kick = &*slot;
+        else if (!best_pad || lane_bit(*slot) > lane_bit(*best_pad)) best_pad = &*slot;
     }
+    if (best_pad) return *best_pad;
+    if (kick) return *kick;
     throw std::runtime_error("activation_note on empty chord");
 }
 
