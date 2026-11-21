@@ -157,7 +157,7 @@ std::string cng_md5_hex(const std::vector<uint8_t>& bytes) {
     ULONG got = 0;
     REQUIRE(BCRYPT_SUCCESS(BCryptGetProperty(alg, BCRYPT_HASH_LENGTH,
                                              reinterpret_cast<PUCHAR>(&digest_len),
-                                             sizeof(digest_len), &got, 0)));
+                                             static_cast<ULONG>(sizeof(digest_len)), &got, 0)));
     BCRYPT_HASH_HANDLE hash = nullptr;
     REQUIRE(BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0)));
     REQUIRE(BCRYPT_SUCCESS(BCryptHashData(hash, const_cast<PUCHAR>(bytes.data()),
