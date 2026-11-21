@@ -61,8 +61,8 @@ struct ChordsAround {
 // A caller that searches on from a chord, as Clone Hero 1.0's generator does,
 // passes its index as `search_from`: no chord before that index is `after`.
 ChordsAround chords_around(const std::vector<SongTimestamp>& sequence, int64_t tick,
-                           int64_t earliest = std::numeric_limits<int64_t>::min(),
-                           int64_t latest = std::numeric_limits<int64_t>::max(),
+                           int64_t earliest = (std::numeric_limits<int64_t>::min)(),
+                           int64_t latest = (std::numeric_limits<int64_t>::max)(),
                            size_t search_from = 0);
 
 // A practice section ("Verse 2B", "Chorus 1"), from the chart's own section
