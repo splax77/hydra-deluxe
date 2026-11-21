@@ -174,10 +174,11 @@ static void check_fill_spans_follow_song(const Song& song, const PreviewScene& s
     CHECK(k == scene.fills.size());
 }
 
-TEST_CASE("build_preview_scene: a generated fill draws the half measure before its chord") {
+TEST_CASE("build_preview_scene: a fill draws to its chord from where drawn_fill_start_tick puts it") {
     // Each corpus chart read with Clone Hero 1.1's fill rule (kTestFillRule)
-    // and again with 1.0's. Pitch Dark's fills are generated, and
-    // test_fast_tempo's charts write their own.
+    // and again with 1.0's, each drawn span checked against the engine's own
+    // values as check_fill_spans_follow_song says. Pitch Dark's fills are
+    // generated, and test_fast_tempo's charts write their own.
     const AnalysisSettings cfg = Settings().to_analysis_settings();
     int ch11_half = 0, ch11_own = 0, ch10_half = 0, ch10_own = 0;
     for (const std::string& chart : corpus::chart_paths()) {

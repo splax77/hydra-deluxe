@@ -424,12 +424,14 @@ std::vector<std::vector<int64_t>> fill_spans(const hydra::app::PreviewScene& sce
 // The "1.0 fills" setting reaches the Preview: the notes it reads carry the
 // Clone Hero 1.0 generator's fills, the same as the chart loaded under that
 // rule directly, and not 1.1's (D115). The chart has no fills of its
-// own. Both generators count on the same grid and both draw a fill half a
-// measure back from its chord, so the chart sits on the one rule they still
-// differ on: 1.1's distance limit is one tick wider than 1.0's. At resolution
-// 480 in 4/4 a measure is 1920 ticks and half a beat 240. The chord 10 ticks
-// past the line at 1920 gets a fill under both rules. The chord 241 ticks past
-// the line at 11520, five lines on, gets one under 1.1 only.
+// own. It sits where the two rules' reach from a measure line differs: the
+// game's 0.25 s under 1.0, against 1.1's half beat plus one tick. At 120 BPM
+// those are equal apart from that tick. Worked from the chart: resolution 480
+// at 120 BPM (kSync44At120), so a tick is 0.5/480 s, 0.25 s is 240 ticks and
+// a 4/4 measure is 1920 ticks. The chord 10 ticks past the line at 1920 gets
+// a fill under both rules. The chord 241 ticks (0.2510 s) past the line at
+// 11520 is beyond 1.0's reach and inside 1.1's, so it gets one under 1.1
+// only; the lines at 9600 and 13440 are farther from it.
 TEST_CASE("a Preview read under the 1.0 fills rule draws the 1.0 generator's fills") {
     using namespace testchart;
     const std::string notes = testtemp::temp_dir("prev_fills10") + "\\notes.chart";

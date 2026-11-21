@@ -67,8 +67,8 @@ PreviewSpan span_from_ticks(const Song& song, int64_t start, int64_t end) {
 constexpr double kGeneratedFillDrawnMeasures = 0.5;
 
 // Where the Preview starts drawing the fill that ends on `ts`. An authored
-// fill, and a Clone Hero 1.0 generated fill (already that half measure long,
-// by place_fills_ch10), draw from fill_start_tick. A Clone Hero 1.1 generated
+// fill, and a Clone Hero 1.0 generated fill, draw from fill_start_tick: the
+// start the chart or place_fills_ch10 gave it. A Clone Hero 1.1 generated
 // fill starts on its measure line, often at its own chord, so it draws
 // kGeneratedFillDrawnMeasures of the grid measure in force at the chord
 // (MeasureIndex) before the chord instead.
