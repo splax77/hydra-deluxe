@@ -288,11 +288,11 @@ TEST_CASE("path_identity and pathstring: corpus paths share one exactly when the
                 const bool same_identity = ids[i] == ids[j];
                 const bool same_text = texts[i] == texts[j];
                 CHECK_MESSAGE(same_identity == same_text,
-                              "the two same-path tests disagree: path '" + texts[j] +
-                                  "' (identity " + ids[j] + ") and path '" + texts[i] +
-                                  "' (identity " + ids[i] + "): " +
-                                  (same_identity ? "same identity, different text"
-                                                 : "same text, different identity"));
+                              ("the two same-path tests disagree: path '" + texts[j] +
+                               "' (identity " + ids[j] + ") and path '" + texts[i] +
+                               "' (identity " + ids[i] + "): " +
+                               (same_identity ? "same identity, different text"
+                                              : "same text, different identity")));
             }
         }
     });
