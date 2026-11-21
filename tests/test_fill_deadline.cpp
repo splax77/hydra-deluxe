@@ -2,23 +2,47 @@
 // activation_fill_deadline_ms).
 //
 // A fill only spawns if the SP meter was full by some deadline. Clone Hero 1.1
-// puts that deadline a flat 4 beats before the fill starts. Clone Hero 1.0 put
-// it roughly one fill-length earlier, clamped to 250..10000 ms.
+// puts that deadline kCh11FillLeadBeats beats before the fill starts
+// (docs/clone-hero/04-fills.md FL-19, FL-20). Clone Hero 1.0 puts it the
+// fill's own length plus a 64th note before the fill starts, that lead held
+// between 0.25 s and 10 s (FL-42).
 //
-// No chart fixtures here: the deadline is pure timing math, so the timing is
-// built by hand. The expected values are literals from one run of the code.
+// The deadline tests walk every fill of every corpus chart and check each
+// deadline against the game's rule on that fill's own ticks and timing.
 
 #include "doctest.h"
 
+#include <cstdint>
+#include <filesystem>
+#include <limits>
 #include <map>
 #include <string>
+#include <vector>
 
 #include "search/graph.h"
+#include "ui/library_parts.h"  // legacy_fills_help_text
+#include "core/model.h"        // fill_start_tick
+#include "core/song.h"
+#include "corpus_util.h"
 
 using hydra::FillDeadlineRule;
+using hydra::FillRuleNameStyle;
 using hydra::SongTiming;
 
 namespace {
+
+// FL-42's clamp on the 1.0 lead: "held between 0.25 s and 10 s" (the game's
+// code/4045/fill_deadline.cs lines 21 to 29). graph.cpp types the same two
+// numbers inside activation_fill_deadline_ms and exposes no constant.
+constexpr double kCh10LeadFloorMs = 250.0;
+constexpr double kCh10LeadCeilingMs = 10000.0;
+
+// The tolerance for two deadlines computed in a different order of the same
+// sums: far above a double's rounding, far below a tick at any corpus tempo.
+constexpr double kSameDeadline = 1e-9;
+
+// The open end of a band of leads that has only one bound.
+constexpr double kNoBound = std::numeric_limits<double>::infinity();
 
 // A flat song: one meter section, one tempo section. 4/4 at `res` ticks per
 // quarter note is 4*res ticks per measure.
@@ -38,144 +62,163 @@ double ch11(const SongTiming& t, int64_t fill_end, int64_t fill_length) {
                                               FillDeadlineRule::Ch11);
 }
 
+// Calls visit(timing, fill_end, fill_length) for every fill of every corpus
+// chart: the activation chord's tick and its activation_length, as the
+// graph passes them (ScoreGraph::add_act_edge). The fast-tempo fixtures
+// (testdata/input/test_fast_tempo, 2,000 and 4,000 BPM) sit in a folder with
+// no song.ini, so the corpus scan never lists them; they are read by path.
+template <typename Visit>
+void for_each_corpus_fill(Visit&& visit) {
+    std::vector<std::string> charts = corpus::chart_paths();
+    for (const auto& entry :
+         std::filesystem::directory_iterator(corpus::root() + "/test_fast_tempo"))
+        charts.push_back(entry.path().string());
+    for (const std::string& chart : charts) {
+        CAPTURE(chart);
+        const hydra::Song& song = corpus::song(chart, hydra::ChartReading{});
+        for (const hydra::SongTimestamp& ts : song.sequence)
+            if (ts.has_activation())
+                visit(song.timing(), ts.timecode.ticks(), *ts.activation_length);
+    }
+}
+
+// FL-42's 1.0 lead before its clamp: from a 64th note (the resolution / 16
+// ticks) before the fill's start to the fill's end, in real time.
+double ch10_unclamped_lead_ms(const SongTiming& t, int64_t fill_end, int64_t fill_length) {
+    const double sixty_fourth_ticks = static_cast<double>(t.tick_resolution()) / 16.0;
+    const double before_start =
+        static_cast<double>(hydra::fill_start_tick(fill_end, fill_length)) - sixty_fourth_ticks;
+    return t.ms_index().at(fill_end) - t.ms_index().ms_at_tick_f(before_start);
+}
+
+double fill_start_ms(const SongTiming& t, int64_t fill_end, int64_t fill_length) {
+    return t.ms_index().at(hydra::fill_start_tick(fill_end, fill_length));
+}
+
+// Checks the 1.0 deadline of every corpus fill whose unclamped lead lies in
+// [lo, hi]: it is the fill's start less lead(unclamped lead). Returns how
+// many fills it checked.
+template <typename Lead>
+int check_ch10_deadlines(double lo, double hi, Lead lead) {
+    int checked = 0;
+    for_each_corpus_fill([&](const SongTiming& t, int64_t fill_end, int64_t fill_length) {
+        const double unclamped = ch10_unclamped_lead_ms(t, fill_end, fill_length);
+        if (unclamped < lo || unclamped > hi) return;
+        ++checked;
+        CAPTURE(fill_end);
+        CAPTURE(fill_length);
+        CHECK(ch10(t, fill_end, fill_length) ==
+              doctest::Approx(fill_start_ms(t, fill_end, fill_length) - lead(unclamped))
+                  .epsilon(kSameDeadline));
+    });
+    return checked;
+}
+
 }  // namespace
 
-TEST_CASE("fill deadline: CH 1.0 anchor value") {
-    // res 192 at 100 BPM is 320 ticks/second, so 3.125 ms per tick.
-    // fill_end 3840 = 12000 ms, fill start 3456 = 10800 ms (1200 ms long).
-    // The pad reaches back 384 + 192/16 = 396 ticks from the end, to tick
-    // 3444 = 10762.5 ms, so the preroll is 1237.5 ms (inside the clamp).
-    // Deadline = 12000 - 1200 - 1237.5.
-    SongTiming t = flat_timing(192, 100.0);
-    CHECK(ch10(t, 3840, 384) == doctest::Approx(9562.5));
+TEST_CASE("fill deadline: CH 1.0 is the fill's start less its length and a 64th note") {
+    // Every fill whose lead lies inside FL-42's clamp: the lead is the fill's
+    // own length plus a 64th note at that fill's tempo.
+    const int checked = check_ch10_deadlines(kCh10LeadFloorMs, kCh10LeadCeilingMs,
+                                             [](double unclamped) { return unclamped; });
+    REQUIRE(checked > 0);
 }
 
-TEST_CASE("fill deadline: CH 1.0 lead over two fill lengths, one per tempo") {
-    // How far the deadline sits before the tick two fill-lengths back, one
-    // lead per tempo. activation_fill_deadline_ms in search/graph.cpp owns the
-    // rule. The leads were pinned from one run of that code.
-    struct TempoLead {
-        double bpm;
-        double lead_ms;
-    };
-    const TempoLead want[] = {
-        {70.0, 53.571428571425713},
-        {100.0, 37.5},
-        {140.0, 26.785714285712857},
-        {240.0, 15.625},
-        {400.0, 9.375},
-    };
-    for (const TempoLead& w : want) {
-        CAPTURE(w.bpm);
-        SongTiming t = flat_timing(192, w.bpm);
-        const int64_t fill_end = 3840, fill_length = 384;
-        const double two_back = t.ms_index().at(fill_end - 2 * fill_length);
-        CHECK(two_back - ch10(t, fill_end, fill_length) == doctest::Approx(w.lead_ms));
-    }
+TEST_CASE("fill deadline: CH 1.0 lead is held at 250 ms at the least") {
+    // The fast-tempo fixtures' fills (a 384-tick fill at 4,000 BPM leads by
+    // about 31 ms) fall under FL-42's 0.25 s floor.
+    const int checked = check_ch10_deadlines(-kNoBound, kCh10LeadFloorMs,
+                                             [](double) { return kCh10LeadFloorMs; });
+    REQUIRE(checked > 0);
 }
 
-TEST_CASE("fill deadline: CH 1.0 pad stays fractional at odd resolutions") {
-    // res 200 makes the pad 12.5 ticks. Integer division would make it 12 and
-    // land the deadline half a tick late, so this case fails loudly if anyone
-    // writes `res / 16` on integers.
-    //
-    // res 200 at 100 BPM is 333.33 ticks/second, so 3 ms per tick.
-    // fill_end 4000 = 12000 ms, fill start 3600 = 10800 ms (1200 ms long).
-    // Pad reaches to tick 4000 - 412.5 = 3587.5 = 10762.5 ms, preroll 1237.5.
-    SongTiming t = flat_timing(200, 100.0);
-    CHECK(ch10(t, 4000, 400) == doctest::Approx(9562.5));
-    // What integer division would have produced, pinned so the two can't be
-    // confused: pad to tick 3588 = 10764 ms, preroll 1236, deadline 9564.
-    CHECK(ch10(t, 4000, 400) != doctest::Approx(9564.0));
+TEST_CASE("fill deadline: CH 1.0 lead is held at 10000 ms at the most") {
+    // Chaotrope - Senescence (shortened) has a 4,992-tick fill (26 beats) at
+    // 150 BPM, res 192: its unclamped lead is (4992 + 12) ticks at 2.083 ms a
+    // tick, about 10,425 ms, over FL-42's 10 s ceiling.
+    const int checked = check_ch10_deadlines(kCh10LeadCeilingMs, kNoBound,
+                                             [](double) { return kCh10LeadCeilingMs; });
+    REQUIRE(checked > 0);
 }
 
-TEST_CASE("fill deadline: CH 1.0 preroll clamps at 250 ms") {
-    // 400 BPM at res 192 is 0.78125 ms per tick. A 96-tick fill's raw preroll
-    // is (96 + 12) * 0.78125 = 84.375 ms, well under the 250 ms floor.
-    SongTiming t = flat_timing(192, 400.0);
-    const int64_t fill_end = 3840, fill_length = 96;
-    const double fend = t.ms_index().at(fill_end);
-    const double fill_len_ms = fend - t.ms_index().at(fill_end - fill_length);
-    CHECK(fill_len_ms == doctest::Approx(75.0));
-    CHECK(ch10(t, fill_end, fill_length) == doctest::Approx(2675.0));
+TEST_CASE("fill deadline: CH 1.1 is the fill's start less 4 beats") {
+    // FL-19: the deadline is kCh11FillLeadBeats quarter notes before the
+    // fill's start; FL-20: that lead is the resolution times 4 in every meter.
+    int checked = 0;
+    for_each_corpus_fill([&](const SongTiming& t, int64_t fill_end, int64_t fill_length) {
+        ++checked;
+        CAPTURE(fill_end);
+        CAPTURE(fill_length);
+        const int64_t lead_ticks = hydra::kCh11FillLeadBeats * t.tick_resolution();
+        const int64_t deadline_tick = hydra::fill_start_tick(fill_end, fill_length) - lead_ticks;
+        CHECK(ch11(t, fill_end, fill_length) ==
+              doctest::Approx(t.timecode(deadline_tick).ms()).epsilon(kSameDeadline));
+    });
+    REQUIRE(checked > 0);
 }
 
-TEST_CASE("fill deadline: CH 1.0 preroll clamps at 10000 ms") {
-    // 20 BPM at res 192 is 15.625 ms per tick. A 1000-tick fill's raw preroll
-    // is (1000 + 12) * 15.625 = 15812.5 ms, over the 10 s ceiling.
-    SongTiming t = flat_timing(192, 20.0);
-    const int64_t fill_end = 3840, fill_length = 1000;
-    const double fend = t.ms_index().at(fill_end);
-    const double fill_len_ms = fend - t.ms_index().at(fill_end - fill_length);
-    CHECK(fill_len_ms == doctest::Approx(15625.0));
-    CHECK(ch10(t, fill_end, fill_length) == doctest::Approx(34375.0));
-}
-
-TEST_CASE("fill deadline: CH 1.1 is unchanged 4-beats-before math") {
-    // activation_fill_deadline_ms in search/graph.cpp owns the 1.1 rule. These
-    // deadlines were pinned from one run of that code, one per resolution,
-    // tempo and fill length, so a change to the rule fails here instead of
-    // being repeated here.
-    const double want[2][3][3] = {
-        // res 192: 90, 120 and 200 BPM; fills of 96, 384 and 960 ticks.
-        {{23666.666666666668, 22666.666666666668, 20666.666666666668},
-         {17750.0, 17000.0, 15500.0},
-         {10650.0, 10200.0, 9300.0}},
-        // res 480: the same tempos and fill lengths.
-        {{7866.6666666666661, 7466.666666666667, 6666.666666666667},
-         {5900.0, 5600.0, 5000.0},
-         {3540.0, 3360.0, 3000.0}},
-    };
-    const int64_t resolutions[] = {192, 480};
-    const double tempos[] = {90.0, 120.0, 200.0};
-    const int64_t fill_lengths[] = {96, 384, 960};
-    for (size_t r = 0; r < 2; ++r) {
-        for (size_t b = 0; b < 3; ++b) {
-            SongTiming t = flat_timing(resolutions[r], tempos[b]);
-            for (size_t f = 0; f < 3; ++f) {
-                CAPTURE(resolutions[r]);
-                CAPTURE(tempos[b]);
-                CAPTURE(fill_lengths[f]);
-                const int64_t fill_end = 7680;
-                CHECK(ch11(t, fill_end, fill_lengths[f]) == doctest::Approx(want[r][b][f]));
-            }
-        }
-    }
-}
-
-TEST_CASE("fill deadline: the two rules genuinely differ") {
-    // A short fill is stricter under 1.1 (4 beats is the longer wait), a long
-    // one is looser -- the whole reason the comparison report exists.
-    SongTiming t = flat_timing(192, 120.0);
+TEST_CASE("fill deadline: a fill shorter than 4 beats less a 64th is stricter under 1.1") {
+    // 1.1 leads by kCh11FillLeadBeats beats (FL-19); 1.0 by the fill's length
+    // plus a 64th note (FL-42). The two leads are equal for a fill of
+    // kCh11FillLeadBeats beats less a 64th note. At 120 BPM, res 192, every
+    // fill below stays inside FL-42's 0.25 s to 10 s clamp.
+    const int64_t res = 192;
+    SongTiming t = flat_timing(res, 120.0);
     const int64_t fill_end = 7680;
+    const int64_t sixty_fourth = res / 16;  // whole: every corpus resolution is a multiple of 16
+    const int64_t crossover = hydra::kCh11FillLeadBeats * res - sixty_fourth;
+    const int64_t half_beat = res / 2;
+    const int64_t ten_beats = 10 * res;
 
-    // Short fill (96 ticks = half a beat): 1.1's deadline comes earlier.
-    CHECK(ch11(t, fill_end, 96) < ch10(t, fill_end, 96));
-
-    // Long fill (1920 ticks = 10 beats): 1.0's deadline comes earlier.
-    CHECK(ch10(t, fill_end, 1920) < ch11(t, fill_end, 1920));
+    CHECK(ch11(t, fill_end, half_beat) < ch10(t, fill_end, half_beat));
+    CHECK(ch11(t, fill_end, crossover - 1) < ch10(t, fill_end, crossover - 1));
+    CHECK(ch10(t, fill_end, crossover) ==
+          doctest::Approx(ch11(t, fill_end, crossover)).epsilon(kSameDeadline));
+    CHECK(ch10(t, fill_end, crossover + 1) < ch11(t, fill_end, crossover + 1));
+    CHECK(ch10(t, fill_end, ten_beats) < ch11(t, fill_end, ten_beats));
 }
 
-TEST_CASE("fill rule names: one long and one short name per rule, and no (legacy)") {
-    using hydra::FillRuleNameStyle;
-    const std::string long10 = hydra::fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Long);
-    const std::string long11 = hydra::fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Long);
-    const std::string short10 =
-        hydra::fill_rule_name(FillDeadlineRule::Ch10, FillRuleNameStyle::Short);
-    const std::string short11 =
-        hydra::fill_rule_name(FillDeadlineRule::Ch11, FillRuleNameStyle::Short);
-    CHECK(long10 == "Clone Hero 1.0");
-    CHECK(long11 == "Clone Hero 1.1");
-    CHECK(short10 == "CH 1.0");
-    CHECK(short11 == "CH 1.1");
-    for (const std::string& name : {long10, long11, short10, short11})
-        CHECK(name.find("(legacy)") == std::string::npos);
+TEST_CASE("fill rule names: each rule's names are its own, on the 1.0 fills tooltip too") {
+    const FillDeadlineRule rules[] = {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11};
+    const std::string tooltip = hydra::ui::detail::legacy_fills_help_text();
+    std::vector<std::string> names;
+    for (FillDeadlineRule rule : rules) {
+        const std::string long_name = hydra::fill_rule_name(rule, FillRuleNameStyle::Long);
+        const std::string short_name = hydra::fill_rule_name(rule, FillRuleNameStyle::Short);
+        CAPTURE(long_name);
+        CAPTURE(short_name);
+        CHECK(long_name != short_name);
+        // The tooltip names both rules in sentences, so in the long style.
+        CHECK(tooltip.find(long_name) != std::string::npos);
+        names.push_back(long_name);
+        names.push_back(short_name);
+    }
+    // No name is shared between the two rules or the two styles.
+    for (size_t i = 0; i < names.size(); ++i)
+        for (size_t j = i + 1; j < names.size(); ++j) CHECK(names[i] != names[j]);
+    // D48 (Q13): no rule is called "(legacy)", in its names or on the tooltip.
+    names.push_back(tooltip);
+    for (const std::string& text : names) {
+        CAPTURE(text);
+        CHECK(text.find("(legacy)") == std::string::npos);
+    }
 }
 
-TEST_CASE("fill rule descriptions: one sentence per rule") {
-    const std::string d10 = hydra::fill_rule_description(FillDeadlineRule::Ch10);
-    const std::string d11 = hydra::fill_rule_description(FillDeadlineRule::Ch11);
-    CHECK(d10 == "Clone Hero 1.0 set the deadline about one fill-length before the fill starts.");
-    CHECK(d11 == "Clone Hero 1.1 sets the deadline 4 beats before the fill starts.");
-    CHECK(d10 != d11);
+TEST_CASE("fill rule descriptions: each rule's sentence names it and its lead") {
+    const std::string tooltip = hydra::ui::detail::legacy_fills_help_text();
+    const FillDeadlineRule rules[] = {FillDeadlineRule::Ch10, FillDeadlineRule::Ch11};
+    for (FillDeadlineRule rule : rules) {
+        const std::string sentence = hydra::fill_rule_description(rule);
+        CAPTURE(sentence);
+        // The sentence opens on its own rule's name.
+        CHECK(sentence.rfind(hydra::fill_rule_name(rule, FillRuleNameStyle::Long), 0) == 0);
+        // The 1.0 fills tooltip prints the owner's sentence whole.
+        CHECK(tooltip.find(sentence) != std::string::npos);
+    }
+    // 1.1's lead is the beat count the deadline is computed with (FL-19).
+    CHECK(hydra::fill_rule_description(FillDeadlineRule::Ch11)
+              .find(std::to_string(hydra::kCh11FillLeadBeats) + " beats") != std::string::npos);
+    // 1.0's lead is the fill's own length (FL-42).
+    CHECK(hydra::fill_rule_description(FillDeadlineRule::Ch10).find("fill-length") !=
+          std::string::npos);
 }
