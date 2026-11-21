@@ -31,6 +31,7 @@
 #include "record_fixtures.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
+#include "store/stored_versions.h"  // kChartMetaStamp
 #include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
 #include "store_fixtures.h"  // at_cap, at4, fixture, fixture_chart, store_fixture_settings
 #include "temp_util.h"
@@ -914,6 +915,16 @@ const TimedLibrary& timed_library() {
     return library;
 }
 
+// Sets the scan stamp of the store file `path` to one kChartMetaStamp does not
+// read as current, as a file from an older build holds it.
+void make_chart_meta_stamp_stale(const std::string& path) {
+    int stale = kChartMetaStamp.written;
+    while (kChartMetaStamp.is_current(stale)) ++stale;
+    const std::string sql = "UPDATE meta SET value = '" + std::to_string(stale) +
+                            "' WHERE key = 'chart_meta_version'";
+    exec_on_file(path, sql.c_str());
+}
+
 }  // namespace
 
 TEST_CASE("the reader lists a chart's copies as the writer does") {
@@ -944,7 +955,7 @@ TEST_CASE("the reader lists the library by name as the writer does") {
     }
     // A stamp that is not current (chart_meta_current): the writer's rows
     // carry no timing, and neither do the reader's.
-    exec_on_file(file.path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    make_chart_meta_stamp_stale(file.path);
     {
         RecordStore store(file.path);
         const std::vector<ChartLibraryEntry> want = store.list_chart_library(0, -1);
@@ -1038,7 +1049,7 @@ TEST_CASE("the reader builds the chart index the writer builds") {
     }
     // A stamp that is not current (chart_meta_current): the writer's naming
     // rows carry no timing, and neither do the reader's.
-    exec_on_file(file.path, "UPDATE meta SET value = '5' WHERE key = 'chart_meta_version'");
+    make_chart_meta_stamp_stale(file.path);
     {
         RecordStore store(file.path);
         const ChartIndex want = store.chart_index();
