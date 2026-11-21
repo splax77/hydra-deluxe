@@ -35,6 +35,9 @@ NONE_WORD = "none"
 NOTHING_WORD = "nothing"
 CANNOT_TELL = ff.CANNOT_TELL
 CITES_KEY = "cites"
+# The arguments every run needs, as the usage in the header names them; at
+# least one trace file follows them.
+USAGE_ARGS = ("copy", "kinds.md")
 
 # A trace states facts. These words state what someone wanted or where a
 # finding stands, which only the main session and the user decide. The first
@@ -261,7 +264,7 @@ def main(argv):
     if argv == ["--format"]:
         sys.stdout.write(FORMAT_TEXT)
         return 0
-    if len(argv) < 3:
+    if len(argv) <= len(USAGE_ARGS):
         sys.stderr.write(__doc__)
         return 2
     copy, kinds_path, traces = argv[0], argv[1], argv[2:]

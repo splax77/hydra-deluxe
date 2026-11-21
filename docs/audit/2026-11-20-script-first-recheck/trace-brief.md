@@ -8,7 +8,7 @@ The message that launched you gives four things this brief leaves open: your tas
 
 ## The job
 
-A test sometimes swaps a piece of production code for a stand-in: a small piece of test code that runs in its place. A search script has already found where the tests do this and sorted the finds into kinds. A kind is one stand-in form in one file. Its heading is a word, a space, then the path of the file the hit is in, in parentheses. Each kind's section in your launch message gives its hit count, the tests that use it and its hit lines.
+A test sometimes swaps a piece of production code for a stand-in: a small piece of test code that runs in its place. A search script has already found where the tests do this and sorted the finds into kinds. A kind is one stand-in form in one file. Its heading is the form's name (a word or a short phrase), a space, then the path of the file the hit is in, in parentheses. Each kind's section in your launch message gives its hit count, the tests that use it and its hit lines.
 
 For each kind, start at its hit lines, find the stand-in's code, and answer three questions with line cites.
 
@@ -16,7 +16,7 @@ For each kind, start at its hit lines, find the stand-in's code, and answer thre
 2. Which file under `code/testdata` or `code/tests` is that value read from, if any? Cite the file or folder with no line. Write `none` when the value is built in the test's code, and cite the lines that build it. Write `cannot tell` when you could not find where it comes from.
 3. What does the test change in that value, or in the file's content, before the stand-in hands it over? Name each field, line or part it rewrites, with the lines that rewrite it. Write `nothing` when it is handed over as it was read or built, and cite the line that hands it over.
 
-The paths in a kind's heading and hit lines name files under the copy's `code` folder. Every cite you write starts with `code/`.
+The paths in a kind's heading and hit lines name files under the copy's `code` folder. Every cite you write starts with `code/`. A cite `code/x/y.cpp:5` is line 5 of `C:\Users\Patrick\Downloads\Hydra\hydra-blind\code\x\y.cpp`. Read it with a full path. Give Grep and Glob a `path` inside `C:\Users\Patrick\Downloads\Hydra\hydra-blind`, because a search with no path is refused.
 
 If a kind's stand-ins do not all give back the same thing, write one case per different thing. Each case is its own three lines. Never fold two different answers into one line.
 
