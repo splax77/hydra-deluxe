@@ -8,8 +8,8 @@ facts cite them, with or without the leading `code/`. The forms searched for
 are in seam_patterns.txt.
 
 A test is a TEST_CASE, a UI test (see ui_registrations), or a top-level unit
-nothing else in its file names. A test owns a hit on its own lines, and a hit inside any helper in the slice
-its body names, directly or through another helper. It also owns the hits in
+nothing else in its file names. A test owns a hit on its own lines, and a hit
+inside any helper in the slice its body names, directly or through another helper. It also owns the hits in
 a helper, type or macro outside the slice that the test or one of those slice
 helpers names, when it is defined in a slice file, in a file the slice files
 include from tests/, or in the .cpp of such a header; those are read one step
@@ -36,7 +36,10 @@ TYPE_HEAD = re.compile(r"^\s*(?:template\s*<[^>]*>\s*)?(?:struct|class|union|enu
 CALL_HEAD = re.compile(r"([A-Za-z_]\w*)\s*\(")
 STRING = re.compile(r'"((?:[^"\\]|\\.)*)"')
 UI_TEST_HEAD = re.compile(r"\(\s*ImGuiTestContext\s*\*\s*\w*\s*\)")
-REG_ENTRY = re.compile(r'\{\s*"[^"]*"\s*,\s*&?([A-Za-z_]\w*)\s*\}')
+# Matched on a unit's code, where comments are gone and a string literal is
+# cut out, so a test's name is the empty gap before the comma.
+REG_ENTRY = re.compile(r"\{\s*,\s*&?([A-Za-z_]\w*)\s*\}")
+REG_CALL = re.compile(r"\bregister_test\s*\(\s*\w+\s*,\s*,\s*&?([A-Za-z_]\w*)\s*\)")
 
 
 class Pattern:
@@ -301,14 +304,16 @@ def ui_registrations(units):
 
     A UI test is a function the Dear ImGui test engine runs: its head takes an
     `ImGuiTestContext*`, and a table in the same file lists it by name in a
-    `{"<name>", <function>}` entry. Such a function is a test although the
+    `{"<name>", <function>}` entry or a `register_test(<engine>, "<name>",
+    <function>)` call, read from code with comments and strings cut out. Such a function is a test although the
     table names it, and the table is not a test. Returns two sets of unit ids."""
     runnable = {u.name: u for u in units
                 if u.name and UI_TEST_HEAD.search(u.text.split("{", 1)[0])}
     registered, tables = set(), set()
     for u in units:
-        listed = [runnable[n] for n in REG_ENTRY.findall(u.text)
-                  if n in runnable and n != u.name and n in u.tokens]
+        listed = [runnable[n]
+                  for n in REG_ENTRY.findall(u.code) + REG_CALL.findall(u.code)
+                  if n in runnable and n != u.name]
         if listed:
             registered.update(id(t) for t in listed)
             tables.add(id(u))

@@ -93,6 +93,32 @@ const Handler handlers[] = {
 """
 
 
+# Lines 1-20. Test a is registered by a call. `decoy` only holds a commented-out
+# call and a string that looks like an entry, so it registers nothing.
+CALL_STYLE = """void test_a(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+}
+
+void test_b(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+}
+
+void test_c(ImGuiTestContext* ctx) {
+    hydra::net::set_fetcher(fake);
+}
+
+void register_all(Harness& h) {
+    uitest::register_test(h, "a", test_a);
+}
+
+void decoy(Harness& h) {
+    // register_test(h, "b", test_b);
+    const char* s = "{\\"c\\", test_c}";
+    test_b(nullptr);
+}
+"""
+
+
 def section(name, line, *inputs):
     out = f"## {name}\nlocation: code/tests/s.cpp:{line}\n"
     for src, cites in inputs:
@@ -199,6 +225,13 @@ class Grading(Base):
         self.write("code/tests/ui.cpp", UI_STYLE)
         out = self.run_grader(section("test_close", 7), ranges="tests/ui.cpp:1-24")
         self.assertNotIn("test: open_panel", out)
+
+    def test_a_register_test_call_lists_a_test_but_a_comment_or_string_does_not(self):
+        self.write("code/tests/c.cpp", CALL_STYLE)
+        out = self.run_grader(section("test_a", 1), ranges="tests/c.cpp:1-21")
+        self.assertIn("test: test_a | code/tests/c.cpp:1-3", out)
+        self.assertNotIn("test: register_all", out)
+        self.assertIn("test: decoy | code/tests/c.cpp:17-21", out)
 
     def test_a_name_table_without_the_test_context_registers_no_test(self):
         self.write("code/tests/h.cpp", HANDLER_TABLE)
