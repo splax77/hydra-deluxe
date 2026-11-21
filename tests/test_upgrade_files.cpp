@@ -9,6 +9,7 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -37,13 +38,24 @@ void put(const std::string& path, const std::string& text) {
 
 bool there(const std::string& path) { return file_exists_utf8(path); }
 
-// How many files and folders sit in the folder that holds `db`.
-size_t entries_beside(const std::string& db) {
+// The names of `paths`, sorted and joined with " | " as names_beside lists
+// them. One string, so a failed comparison prints both lists whole.
+std::string names_of(std::vector<std::string> paths) {
+    for (std::string& p : paths) p = std::filesystem::u8path(p).filename().u8string();
+    std::sort(paths.begin(), paths.end());
+    std::string joined;
+    for (const std::string& name : paths) joined += (joined.empty() ? "" : " | ") + name;
+    return joined;
+}
+
+// The names of the files and folders in the folder that holds `db`, so a
+// failed comparison names the stray or missing one.
+std::string names_beside(const std::string& db) {
     const std::string dir = std::filesystem::u8path(db).parent_path().u8string();
-    size_t n = 0;
-    for ([[maybe_unused]] const auto& entry : std::filesystem::directory_iterator(os_path(dir)))
-        ++n;
-    return n;
+    std::vector<std::string> paths;
+    for (const auto& entry : std::filesystem::directory_iterator(os_path(dir)))
+        paths.push_back(entry.path().u8string());
+    return names_of(std::move(paths));
 }
 
 // set_aside_old_library's answer while another program holds `held_path`
@@ -100,8 +112,7 @@ TEST_CASE("set_aside_old_library moves the file and its side files, replacing an
     CHECK(read_file_text(aside) == "old");
     CHECK(read_file_text(aside + "-wal") == "old's log");
     CHECK_FALSE(there(aside + "-shm"));  // the earlier file's index went with it
-    // Only the new set-aside file and its log are left in the folder.
-    CHECK(entries_beside(db) == 2);
+    CHECK(names_beside(db) == names_of({aside, aside + "-wal"}));
 }
 
 TEST_CASE("set_aside_old_library leaves the file in place when it is held open") {
@@ -127,8 +138,7 @@ TEST_CASE("set_aside_old_library keeps an earlier set-aside file when the move f
     CHECK(read_file_text(aside) == "earlier");
     CHECK(read_file_text(aside + "-wal") == "earlier's log");
     CHECK_FALSE(there(aside + "-shm"));
-    // Nothing else is left in the folder.
-    CHECK(entries_beside(db) == 3);
+    CHECK(names_beside(db) == names_of({db, aside, aside + "-wal"}));
 }
 
 // A run that stopped part way left the earlier set-aside file under its
@@ -141,7 +151,7 @@ TEST_CASE("set_aside_old_library puts back an earlier set-aside file a stopped r
     REQUIRE(set_aside_while_held(db, db).has_value());
     CHECK(read_file_text(db) == "old");
     CHECK(read_file_text(aside) == "earlier");
-    CHECK(entries_beside(db) == 2);
+    CHECK(names_beside(db) == names_of({db, aside}));
 }
 
 // The same when the file moves but a side file cannot: the moved file comes
@@ -185,7 +195,7 @@ TEST_CASE("set_aside_old_library drops a stopped run's file that sits beside a s
     put(aside + ".replaced", "older still");
     CHECK_FALSE(set_aside_old_library(db).has_value());
     CHECK(read_file_text(aside) == "old");
-    CHECK(entries_beside(db) == 1);
+    CHECK(names_beside(db) == names_of({aside}));
 }
 
 // A folder at the set-aside name is not a file to move or replace: the move
@@ -202,5 +212,5 @@ TEST_CASE("set_aside_old_library leaves the file in place when a folder has the 
     CHECK(read_file_text(db) == "old");
     CHECK(read_file_text(db + "-wal") == "old's log");
     CHECK(is_directory_utf8(aside));
-    CHECK(entries_beside(db) == 3);
+    CHECK(names_beside(db) == names_of({db, db + "-wal", aside}));
 }

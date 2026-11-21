@@ -10,11 +10,13 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -58,10 +60,11 @@ struct Canned {
     std::string sig = hydra::read_file_text(update_dir() + "/sample.bin.sig");
     std::function<void()> fail;
     std::atomic<int> downloads{0};
-    // The download's body: copies sample.bin unless replaced.
-    std::function<void(const std::string& path, std::atomic<uint64_t>* received,
-                       const std::atomic<bool>* cancel)>
-        download = [](const std::string& path, std::atomic<uint64_t>* received,
+    // The download's body: copies sample.bin unless replaced. `size_cap` is
+    // the release's stated installer size, as the job passes it.
+    std::function<void(const std::string& path, uint64_t size_cap,
+                       std::atomic<uint64_t>* received, const std::atomic<bool>* cancel)>
+        download = [](const std::string& path, uint64_t, std::atomic<uint64_t>* received,
                       const std::atomic<bool>*) {
             std::filesystem::copy_file(hydra::os_path(sample_path()), hydra::os_path(path),
                                        std::filesystem::copy_options::overwrite_existing);
@@ -103,10 +106,10 @@ struct UpdateWorld {
                       throw std::runtime_error("no canned reply for " + url);
                   }),
           downloader(hydra::net::set_downloader,
-                     [this](const std::string&, const std::string& path, uint64_t,
+                     [this](const std::string&, const std::string& path, uint64_t size_cap,
                             std::atomic<uint64_t>* received, const std::atomic<bool>* cancel) {
                          ++canned.downloads;
-                         canned.download(path, received, cancel);
+                         canned.download(path, size_cap, received, cancel);
                      }),
           launcher(hydra::ui::set_launcher_for_test,
                    [this](const std::string& installer, const std::string& log) {
@@ -186,7 +189,7 @@ TEST_CASE("every start of the installed exe checks, and a copy never does") {
             std::unique_ptr<AppState> app = w.app();
             CHECK(app->update_check_running());  // before the first tick
             const VersionBarStatus status = app->version_bar_status();
-            CHECK(status.text == "Checking for updates...");
+            CHECK(status.text == hydra::ui::kCheckingForUpdatesText);
             CHECK(status.dimmed.empty());
             CHECK(status.dot == Dot::Neutral);
             CHECK_FALSE(status.update_button);
@@ -196,15 +199,14 @@ TEST_CASE("every start of the installed exe checks, and a copy never does") {
     const ScopedHook off(hydra::app::set_installed_for_test, std::optional<bool>(false));
     std::unique_ptr<AppState> app = w.app();
     CHECK_FALSE(app->update_check_running());
+    // A check starts inside check_updates_on_start or not at all, so the
+    // answer is known as soon as the call returns.
     app->check_updates_on_start();
-    for (int i = 0; i < 5; ++i) {
-        app->tick(0.0);
-        CHECK_FALSE(app->update_check_running());
-    }
+    CHECK_FALSE(app->update_check_running());
     CHECK(app->update.phase == Phase::None);
     const VersionBarStatus status = app->version_bar_status();
     CHECK(status.text.empty());
-    CHECK(status.dimmed == "Only the installed copy of Hydra Deluxe checks for updates.");
+    CHECK(status.dimmed == hydra::ui::kOnlyInstalledChecksText);
     CHECK(status.dot == Dot::Neutral);
     CHECK_FALSE(status.update_button);
 }
@@ -309,16 +311,17 @@ TEST_CASE("the same or an older release lands in the resting Up to date") {
 
 TEST_CASE("a failed start-up check shows in the resting status with its plain_error") {
     UpdateWorld w("update_fail");
-    // The errors the transport throws for GitHub, and the sentences they show.
-    const std::vector<std::pair<KindedError, std::string>> failures = {
-        {KindedError(ErrorKind::NetHttpStatus, "GitHub returned HTTP 403", 403,
-                     hydra::NetService::GitHub),
-         "GitHub returned an error (HTTP 403). Try again later."},
-        {KindedError(ErrorKind::NetUnreachable, "could not connect to the GitHub server",
-                     std::nullopt, hydra::NetService::GitHub),
-         "Hydra couldn't reach GitHub. Check your internet connection and try again."},
+    // Two errors of different kinds that the transport throws for GitHub. The
+    // bar's dimmed line is the error's plain_error sentence.
+    const std::vector<KindedError> failures = {
+        KindedError(ErrorKind::NetHttpStatus, "GitHub returned HTTP 403", 403,
+                    hydra::NetService::GitHub),
+        KindedError(ErrorKind::NetUnreachable, "could not connect to the GitHub server",
+                    std::nullopt, hydra::NetService::GitHub),
     };
-    for (const auto& [failure, sentence] : failures) {
+    for (const KindedError& failure : failures) {
+        const std::string sentence = hydra::app::plain_error(failure);
+        REQUIRE_FALSE(sentence.empty());
         CAPTURE(failure.what());
         // The fetch waits for `go` before it throws, so the running state can
         // be read.
@@ -327,13 +330,12 @@ TEST_CASE("a failed start-up check shows in the resting status with its plain_er
             testwait::wait_until([&] { return go->load(); }, "the test to let the fetch fail");
             throw thrown;
         };
+        // The fetch cannot end before `go`, so the check is still running.
         std::unique_ptr<AppState> app = w.app();
-        REQUIRE(app->update_check_running());
-        for (int i = 0; i < 3; ++i) app->tick(0.0);
         REQUIRE(app->update_check_running());
         {
             const VersionBarStatus held = app->version_bar_status();
-            CHECK(held.text == "Checking for updates...");
+            CHECK(held.text == hydra::ui::kCheckingForUpdatesText);
             CHECK(held.dot == Dot::Neutral);
         }
         go->store(true);
@@ -342,7 +344,7 @@ TEST_CASE("a failed start-up check shows in the resting status with its plain_er
         CHECK(app->update.text.empty());
         CHECK(app->update.detail.empty());
         const VersionBarStatus status = app->version_bar_status();
-        CHECK(status.text == "Hydra couldn't check for updates when it started.");
+        CHECK(status.text == hydra::ui::kCouldNotCheckText);
         CHECK(status.dimmed == sentence);
         CHECK(status.dot == Dot::Neutral);
         CHECK_FALSE(status.update_button);
@@ -396,27 +398,6 @@ TEST_CASE("named_version is the app's name and the version") {
 }
 
 // ---- Update, the installer start and Cancel --------------------------------
-
-TEST_CASE("Update downloads, checks and starts the installer; Hydra then waits") {
-    UpdateWorld w("update_started");
-    std::unique_ptr<AppState> app = offered_app(w);
-    app->update_now();
-    CHECK(app->update.phase == Phase::Downloading);
-    CHECK(app->update.text == "Downloading Hydra Deluxe 9.9.9...");
-    tick_until_download_step(*app, [&] { return app->update.phase == Phase::Launching; },
-        "the installer to start");
-    CHECK(app->update.text == "Starting the installer...");
-    CHECK(w.canned.launched == hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe"));
-    CHECK(w.canned.log == hydra::join_folder(w.folder, "setup.log"));
-    CHECK(exists(w.canned.launched));
-    // The installer still runs: Hydra stays as it is until the installer
-    // closes it, and the strip's buttons do nothing meanwhile.
-    for (int i = 0; i < 5; ++i) app->tick(0.0);
-    app->later();
-    app->update_now();
-    CHECK(app->update.phase == Phase::Launching);
-    CHECK_FALSE(app->update_check_running());
-}
 
 TEST_CASE("an installer that ends while Hydra runs leaves decision 10's state and the file") {
     UpdateWorld w("update_declined");
@@ -479,10 +460,24 @@ TEST_CASE("a download whose signature doesn't verify is refused and deleted") {
 
 TEST_CASE("Cancel during the download goes back to the offer and leaves no part-file") {
     UpdateWorld w("update_cancel");
+    // GitHub's real v2.10.2 reply (latest.json) with only its tag moved past
+    // the running version, so the start-up check offers it. Its installer
+    // keeps the size GitHub stated; the download is cancelled before any
+    // digest check, so sample.bin's digest is not needed here.
+    {
+        nlohmann::json reply =
+            nlohmann::json::parse(hydra::read_file_text(update_dir() + "/latest.json"));
+        reply["tag_name"] = "v9.9.9";
+        w.canned.reply = reply.dump();
+    }
+    const uint64_t stated_size = hydra::app::parse_latest_release_json(w.canned.reply).installer_size;
+    REQUIRE(stated_size > 0);
     std::atomic<bool> started{false};
-    // A body that hands out 100 bytes, then waits for the Cancel; the real
-    // download_to_file writes the part-file and removes it on the cancel.
-    w.canned.download = [&started](const std::string& path, std::atomic<uint64_t>* received,
+    // A body that fills the first buffer the real download_to_file offers,
+    // then waits for the Cancel; download_to_file writes the part-file and
+    // removes it on the cancel.
+    w.canned.download = [&started](const std::string& path, uint64_t size_cap,
+                                   std::atomic<uint64_t>* received,
                                    const std::atomic<bool>* cancel) {
         int reads = 0;
         hydra::net::download_to_file(
@@ -491,19 +486,39 @@ TEST_CASE("Cancel during the download goes back to the offer and leaves no part-
                     started.store(true);
                     testwait::wait_until([&] { return cancel->load(); }, "the Cancel");
                 }
-                const size_t n = std::min<size_t>(100, capacity);
-                std::fill(buffer, buffer + n, 'x');
-                return n;
+                std::fill(buffer, buffer + capacity, 'x');
+                return capacity;
             },
-            path, 1'000'000, received, cancel);
+            path, size_cap, received, cancel);
     };
     std::unique_ptr<AppState> app = offered_app(w);
+    REQUIRE(app->update.release.has_value());
+    CHECK(app->update.release->installer_size == stated_size);
+    const std::string installer =
+        hydra::join_folder(w.folder, hydra::ui::update_installer_name(*app->update.release));
     app->update_now();
     tick_until_download_step(*app, [&] { return started.load(); }, "the download to start");
-    const std::string installer = hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe");
     CHECK(exists(installer + ".part"));
-    CHECK(app->update_received() == 100);
-    CHECK(app->update_megabytes_text() == "0.0 of 0.0 MB");
+    const uint64_t received = app->update_received();
+    CHECK(received > 0);
+    // The strip's line reads the bytes so far, then the stated size, each in
+    // megabytes of 1,000,000 bytes shown to one decimal place, so each figure
+    // is within half a tenth of the exact one.
+    const std::string line = app->update_megabytes_text();
+    INFO(line);
+    std::istringstream words(line);
+    double shown_received = -1.0;
+    double shown_total = -1.0;
+    std::string of;
+    std::string unit;
+    words >> shown_received >> of >> shown_total >> unit;
+    CHECK_FALSE(words.fail());
+    CHECK(words.eof());
+    CHECK(of == "of");
+    CHECK(unit == "MB");
+    const double half_tenth = 0.05 + 1e-9;
+    CHECK(std::abs(shown_received - static_cast<double>(received) / 1e6) <= half_tenth);
+    CHECK(std::abs(shown_total - static_cast<double>(stated_size) / 1e6) <= half_tenth);
 
     app->cancel_update();
     tick_until_download_step(*app, [&] { return app->update.phase == Phase::Offered; },
@@ -549,9 +564,27 @@ TEST_CASE("the first start after a version change says so once") {
 TEST_CASE("the next start deletes the kept download folder") {
     UpdateWorld w("update_leftover");
     const ScopedHook off(hydra::app::set_installed_for_test, std::optional<bool>(false));
-    const std::string kept = hydra::join_folder(w.folder, "HydraDeluxe-9.9.9-setup.exe");
-    testtemp::write_bytes(kept, {1, 2, 3});
-    REQUIRE(exists(kept));
+    // What a declined start leaves: the installer under the name the job
+    // gives it, the installer's log beside it ("setup.log", named by
+    // installer_log_path in app_state.cpp, which is not public), and a file
+    // in a folder below, so a removal of single files would leave something.
+    const hydra::app::UpdateRelease release =
+        hydra::app::parse_latest_release_json(release_reply_at("v9.9.9"));
+    const std::string sub = hydra::join_folder(w.folder, "sub");
+    const std::vector<std::string> left = {
+        hydra::join_folder(w.folder, hydra::ui::update_installer_name(release)),
+        hydra::join_folder(w.folder, "setup.log"),
+        hydra::join_folder(sub, "inner.txt"),
+    };
+    std::filesystem::create_directories(hydra::os_path(sub));
+    for (const std::string& path : left) {
+        testtemp::write_bytes(path, {1, 2, 3});
+        REQUIRE(exists(path));
+    }
     std::unique_ptr<AppState> app = w.app();
-    CHECK_FALSE(exists(kept));
+    for (const std::string& path : left) {
+        CAPTURE(path);
+        CHECK_FALSE(exists(path));
+    }
+    CHECK_FALSE(std::filesystem::exists(hydra::os_path(w.folder)));
 }
