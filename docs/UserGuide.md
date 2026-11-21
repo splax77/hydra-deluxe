@@ -10,7 +10,7 @@ Hydra Deluxe has one main screen. The version bar runs along the top of the wind
 
 ![The toolbar, the library and Burnout open in the song panel on its Paths tab](images/main-screen.png)
 
-*The main screen with the 97 charts of Hydra Deluxe's test library loaded, and Burnout open on its Paths tab. The chips above the table count the charts in each state.*
+*The main screen with the 98 charts of Hydra Deluxe's test library loaded, and Burnout open on its Paths tab. The chips above the table count the charts in each state.*
 
 Click a song and the song panel opens beside the library. Drag the library's right edge to give either side more room. Hydra Deluxe remembers the width.
 
@@ -190,11 +190,11 @@ The chips above the table filter by state: `All`, `Not analyzed`, `Stale`, `Anal
 
 ### The search box
 
-Type in the search box, which reads `Search song, artist, album, charter, or folder` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 97 charts`. The text that matched is highlighted in gold. When no song matches, the list says `Nothing matches.`
+Type in the search box, which reads `Search song, artist, album, charter, or folder` while it's empty, to narrow the list. `Ctrl+F` jumps to it. `Escape` or its `X` clears it. The heading above shows how many songs match, like `Library 5 of 98 charts`. The text that matched is highlighted in gold. When no song matches, the list says `Nothing matches.`
 
 ![The search box holding squeeze<=20, with the Search tips list open under it](images/search-tips.png)
 
-*A search for `squeeze<=20` keeps 87 of the 97 test charts. The `Search tips` list under the box shows every filter.*
+*A search for `squeeze<=20` keeps 87 of the 98 test charts. The `Search tips` list under the box shows every filter.*
 
 The line under the box reads `Type any words, or narrow it down.` Click `Search tips`, the link after it, to see every filter, one per line: an example to type, then what it does. `Escape` or a click outside closes the list and leaves your search as it was.
 
@@ -356,7 +356,7 @@ A position reads like `m27.2.450`: measure 27, beat 2, and 450 ticks into that b
 
 The score box, under it, shows the running score in large type, then a row of seven stars, then the multiplier and combo, like `x4 · combo 212`. The stars you have earned so far are filled in gold. A last line says which star comes next and how many points it still needs, like `star 3 in 595`; once you have all seven, that line goes away. Stars count your score without the solo bonus, as Clone Hero does, so a solo's bonus raises the score but never the stars. The box appears once the song is analyzed. It reads `Score unavailable` when the path can't be replayed to its stored score.
 
-The SP meter, at the right edge, is a gauge of banked Star Power, one line per bar, with the bars shown under it. It rises one bar at each phrase you collect and drains through each activation, reaching empty exactly where the path's SP ends. It holds as many bars as the result's SP cap. Before the song is analyzed, it uses the SP cap from the Analysis settings, the one the next analysis will run at. A chart with no Star Power still shows the meter, empty, and the drain box.
+The SP meter, at the right edge, is a gauge of banked Star Power, one line per bar, with the bars shown under it. It rises one bar at each phrase you collect and drains through each activation, reaching empty where the path's SP ends. When a squeeze-out ends SP early, on the squeezed note, the gauge stops there and drops what is left. It holds as many bars as the result's SP cap. Before the song is analyzed, it uses the SP cap from the Analysis settings, the one the next analysis will run at. A chart with no Star Power still shows the meter, empty, and the drain box.
 
 The drain box, at the top right beside the meter, shows how long one bar of SP lasts at the current tempo, like `1 bar / 2.5 s`. While SP is running on the path it reads `SP drain` and `empties in` the time left, in teal like the floor. Otherwise it reads `SP drain (if activated)` and `full meter`: how long a full meter would last at the current tempo.
 
@@ -464,9 +464,9 @@ The window never changes its rows behind your back. After a batch, a report buil
 
 The path report is one table of paths, squeeze timings and scores for the songs in your library, under your current Analysis settings: the difficulty, Pro Drums, 2x Bass, Note Shuffle, SP cap, `1.0 fills`, score range and path limit. Each chart shows its top 5 paths. A song that can't be analyzed has no rows, and neither has a song with no result. Lines above the table count both.
 
-![The path report over the 97 test charts, sorted by Score](images/path-report.png)
+![The path report over the 98 test charts, sorted by Score](images/path-report.png)
 
-*The path report on the 97 test charts, sorted by `Score` with the highest first. `Optimal paths only` is checked, so it lists each chart's optimal paths.*
+*The path report on the 98 test charts, sorted by `Score` with the highest first. `Optimal paths only` is checked, so it lists each chart's optimal paths.*
 
 When you open the report and it needs building, Hydra Deluxe first analyzes every song with no current result under your settings, `Stale` ones included. This is an ordinary batch: the strip under the toolbar shows it, with `Pause` and `Stop`, and the Analysis settings stay locked while it runs. The window's first line reads `Analyzing n of N charts` over a progress bar, with the same counts as the strip. Its `Cancel` button stops the batch the way `Stop` does. A stopped batch builds no report, so the window then shows `Report cancelled.` with `Try again`. If a batch you started yourself was already running, the window shows that batch instead, and `Cancel` leaves it running. When more than 500 songs need analyzing, the report window asks first. Its first line reads `Analyze N charts that have no result yet?`, with `Cancel` and `Analyze` buttons. `Analyze` starts the batch. `Cancel` skips the analysis, and the report builds from the results already saved. At 500 or fewer, the analysis starts at once. When every song already has a result, the report builds straight away.
 
