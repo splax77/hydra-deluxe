@@ -1,0 +1,10 @@
+hit lines read: 193
+rows written: 266
+outcome: fake data | rows: 124 | hit lines: 61
+outcome: forced wait | rows: 72 | hit lines: 68
+outcome: forced failure | rows: 28 | hit lines: 28
+outcome: test code run mid-step | rows: 11 | hit lines: 11
+outcome: replaces nothing | rows: 18 | hit lines: 18
+outcome: unsorted | rows: 13 | hit lines: 10
+hit lines with more than one outcome: 1
+marked rows: 32
