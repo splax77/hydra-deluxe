@@ -58,7 +58,6 @@ function Invoke-Tool([string]$Mode) {
 }
 function Time-Of([string]$Rel) { [IO.File]::GetLastWriteTimeUtc((Join-Path $repo $Rel)) }
 
-$old = [datetime]::new(2000, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)
 $sentinel = [datetime]::new(2010, 6, 1, 0, 0, 0, [DateTimeKind]::Utc)
 
 try {
@@ -86,13 +85,19 @@ try {
     # Case 2: an ancestor record and one changed file.
     Write-Text 'src/a.cpp' "int a() { return 3; }`n"
     $c2 = Commit 'change a'
+    # Every unchanged file starts newer than the saved object, as a fresh
+    # checkout leaves it, so only the script can make it older.
+    $unchanged = @(Invoke-FixtureGit @('ls-files') | ForEach-Object { "$_".Trim() } | Where-Object { $_ -and $_ -ne 'src/a.cpp' })
+    $objectTime = [IO.File]::GetLastWriteTimeUtc((Join-Path $build 'object.obj'))
+    foreach ($f in $unchanged) { [IO.File]::SetLastWriteTimeUtc((Join-Path $repo $f), $objectTime.AddSeconds(1)) }
     $before = [datetime]::UtcNow.AddSeconds(-5)
     $r = Invoke-Tool '-Prepare'
     Check ($r.Code -eq 0) "ancestor: exit $($r.Code):`n$($r.Text)"
     Check (Test-Path (Join-Path $build 'object.obj')) "ancestor: the folder was deleted:`n$($r.Text)"
     Check ((Time-Of 'src/a.cpp') -ge $before) "ancestor: src/a.cpp is not 'now' ($(Time-Of 'src/a.cpp'))"
-    foreach ($f in '.gitignore', 'CMakeLists.txt', 'src/b.cpp', 'docs/notes.md') {
-        Check ((Time-Of $f) -eq $old) "ancestor: $f has $(Time-Of $f), not 2000-01-01"
+    Check ($unchanged.Count -gt 0) 'ancestor: git lists no unchanged tracked file'
+    foreach ($f in $unchanged) {
+        Check ((Time-Of $f) -lt $objectTime -and (Time-Of $f) -lt (Time-Of 'src/a.cpp')) "ancestor: $f has $(Time-Of $f), not older than the saved object ($objectTime) and the changed src/a.cpp ($(Time-Of 'src/a.cpp'))"
     }
     Check ($r.Text -match 'warm build') "ancestor: no 'warm build' line:`n$($r.Text)"
 
