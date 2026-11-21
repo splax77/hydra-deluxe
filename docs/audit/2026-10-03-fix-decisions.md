@@ -42,7 +42,7 @@ D256 (2026-10-21) replaces this 1e-9 tolerance with a thousandth; see D256 below
 
 **D16 (Task 8 review), 2026-10-03.** When two or more SqIns share one scale, the details line says "at each SqIn's SP end". A single SqIn still says "at the SqIn's SP end".
 
-**D17 (Task 8 review), 2026-10-03.** The transfer-scale hover hint names the note SP is measured from: early and late hits scale differently when that note (the activation, or the collecting note when the cap clamps) or the SP end sits exactly on a signature or tempo change.
+**D17 (Task 8 review), 2026-10-03.** The transfer-scale hover hint names the note SP is measured from: early and late hits scale differently when that note (the activation, or the collecting note when the cap clamps) or the SP end sits exactly on a signature or tempo change. Superseded 2026-11-21: the tooltip wording the user approved on 2026-10-10 (commit 6e477a669, card 35360d51) moved the clamp case to its own hint, `kOverfillHint`, on the "SP overfilled at ..." line, and the transfer-scale hint speaks only of the activation and the SP end. On 2026-11-21 the user chose "Close it" to keeping it that way (session 63088e3d).
 
 **D18 (Task 17 review, older bug), 2026-10-03.** An activation can't squeeze out a phrase that came before it started. Hydra allowed it, and since Task 5 that also stored an empty SP-end history. It is fixed in step 1, but only after a read-only count across the library shows how many charts and paths it touches. You see that count before any score change lands.
 

@@ -140,9 +140,11 @@ Hydra today: `place_authored_fills` (src/parse/song.cpp line 381) drops the unla
 The game's rule (1.0): candidates are the second measure line, then every fourth line, the next line after a miss (`i = 1; i += 4; i -= 3`); a chord counts within 0.25 s of real time (`num5 > 0.25f`); the fill starts half way in real time between the previous line and the chosen line and ends a 64th note after the activation note (code/4045/fill_generator.cs lines 30 to 77; rows FL-36, FL-42).
 
 One end: a steady-tempo chart with chords on the lines: the two may pick the same chords; the deadlines agree at a steady tempo.
-Other end: a fast tempo where half a beat is longer than 0.25 s, or a chord on the first measure line, or a tempo change inside a fill: the chosen chords, the fill starts and the deadlines can differ.
+Other end: any tempo but 120 BPM, where half a beat is longer (slower) or shorter (faster) than 0.25 s, or a chord on the first measure line, or a tempo change inside a fill: the chosen chords, the fill starts and the deadlines can differ.
 
 Hydra today: `Song::place_fills_ch10` (src/core/song.cpp lines 138 to 170): nearest chord per line, half a beat limit, fill half a grid measure long. D115 item 6 and card c0e1259d ("Keep 1.0 exactly as before") were decided before the 1.0 code was read.
+
+Answer: on 2026-11-21 the user chose "Match the old game" to whether Hydra's 1.0 mode should match old Clone Hero 1.0 or stay as it is (session 63088e3d). The change is not made yet; it waits for its own plan.
 
 ### Q-39 A 1.0 written fill's landing window has no +1
 
