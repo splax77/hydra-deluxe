@@ -13,7 +13,6 @@
 
 #include "doctest.h"
 
-#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -34,8 +33,6 @@ using update_fixtures::GitHubReplay;
 using update_fixtures::ScopedTempFolder;
 
 namespace {
-
-bool file_exists(const std::string& path) { return std::filesystem::exists(os_path(path)); }
 
 // Starts `job` and waits for it to finish, by testwait's cap.
 template <class Job>
@@ -102,11 +99,11 @@ TEST_CASE("update jobs, real: the saved installer downloads and passes the key b
     // cover. Compared outside CHECK, so a failure prints the sizes, not 30 MB
     // of bytes.
     const std::string saved = read_file_text(replay.installer_file());
-    const std::string got = file_exists(job.installer_path()) ? read_file_text(job.installer_path()) : "";
+    const std::string got = file_exists_utf8(job.installer_path()) ? read_file_text(job.installer_path()) : "";
     const bool same = got == saved;
     CHECK_MESSAGE(same, "the file at " << job.installer_path() << " holds " << got.size()
                                        << " bytes; the saved installer holds " << saved.size());
-    CHECK_FALSE(file_exists(job.installer_path() + ".part"));
+    CHECK_FALSE(file_exists_utf8(job.installer_path() + ".part"));
     CHECK(replay.server().requests(replay.installer_route()) == 1);
     CHECK(replay.server().requests(replay.signature_route()) == 1);
 }
@@ -128,8 +125,8 @@ TEST_CASE("update jobs, real: another release's real signature is refused and no
     CHECK_FALSE(job.ok());
     CHECK(job.outcome() == ui::JobOutcome::Failed);
     CHECK(job.message() == app::kUpdateUnverifiedSentence);
-    CHECK_FALSE(file_exists(job.installer_path()));
-    CHECK_FALSE(file_exists(job.installer_path() + ".part"));
+    CHECK_FALSE(file_exists_utf8(job.installer_path()));
+    CHECK_FALSE(file_exists_utf8(job.installer_path() + ".part"));
     // The installer really came down, and the signature was asked for: the
     // refusal is the check's, not a failed transfer's.
     CHECK(replay.server().requests(replay.installer_route()) == 1);
