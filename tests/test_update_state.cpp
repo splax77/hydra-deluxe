@@ -26,6 +26,7 @@
 #include "app/config.h"
 #include "app/user_messages.h"
 #include "core/app_version.h"
+#include "core/strutil.h"
 #include "core/winstr.h"
 #include "json.hpp"
 #include "net/http.h"
@@ -143,9 +144,7 @@ uint64_t saved_installer_size() {
     std::optional<uint64_t> size;
     for (const nlohmann::json& asset : reply.at("assets")) {
         const std::string name = asset.at("name").get<std::string>();
-        if (name.size() < suffix.size() ||
-            name.compare(name.size() - suffix.size(), suffix.size(), suffix) != 0)
-            continue;
+        if (!hydra::ends_with(name, suffix)) continue;
         REQUIRE_MESSAGE(!size.has_value(), "the saved reply has two assets ending " << suffix);
         size = asset.at("size").get<uint64_t>();
     }
