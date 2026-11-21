@@ -1,6 +1,6 @@
 # Clone Hero 1.0 (build 4045): how the game makes and places drum fills
 
-Source: `fill_generator.cs` beside this file. It holds eight methods copied unchanged from
+Source: `fill_generator.cs` beside this file. Its F1 to F5 are copied unchanged from
 `ilspycmd` output of `C:\Clone Hero\1.0 old\Clone Hero\Clone Hero_Data\Managed\Assembly-CSharp.dll`
 (decompiled 2026-10-30, session b02ab3e6-76ac-4735-8576-04b87f32bb8d). Build 4045 is a Mono
 build, so there are no addresses; a rule is cited as `Game code (4045): Class.Method`. The game's names
@@ -93,9 +93,17 @@ tick, or 0 (not -1) when there is none. `LastAtOrBefore` (lines 184 to 193), cal
 of the last chord whose tick is at or before the target, or -1. `NearestChord` compares the two: with neither it
 returns -1; with only one it returns that one; with both, it returns the earlier chord when the later one is farther
 from the target than the earlier one is, else the later chord. A chord exactly on the target is the "at or before"
-one at distance 0, so it wins. A tie goes to the later chord. Because `FirstAfter` returns 0 when no chord follows,
-a target after the last chord compares chord 0 against the last chord and picks chord 0 (the far one); the 0.25 s test
-in F1 then throws it out.
+one at distance 0, so it wins. A tie goes to the later chord. The tick field both helpers read is a `uint` (F8).
+
+A target after the last chord takes chord 0. `FirstAfter` returns 0 (line 180), so line 147 starts the reverse search
+at index 0, and the walk from index 0 downward (F12) visits only chord 0, which is at or before the target. Both
+candidates are chord 0, so chord 0 comes back whatever the type of the subtraction at line 162. The 0.25 s test in F1
+then throws it out, unless chord 0 is itself the last chord.
+
+Two consequences the plan had wrong. First, `FirstAfter` never returns -1, so `NearestChord` never returns -1 on a
+chord list that is not empty, and F1's miss branch at lines 45 to 49 never runs: only the 0.25 s test at lines 53 to 56
+rejects a line. Second, the reverse search at line 148 walks down to index 0. It is not bounded by the last chord F1
+used, so it can return a chord before that one.
 
 ## F5: the measure lines, `BeatGrid.BuildLines` (lines 197 to 255)
 
@@ -113,6 +121,41 @@ changes the kinds list only, not the list of measure times. Lines 241 to 248: ev
 time in seconds to a list; a MEASURE also adds that time to the measure-line list `measureLines` that F1 walks (the
 class `BeatGrid`, method `AddLine` at full-decompile lines 28 to 36). I read the field holding the numerator as
 `numerator` and the denominator as `denominator` from how the step uses them; the chart parser's fields were not traced.
+
+## F6 to F13: the helpers, read 2026-11-21 (session 63088e3d)
+
+F6 (`TrackBuilder.ActivationNoteFor`): F1 and F2 pass false as its first flag, so it calls F3.
+
+F7 (`BitMath.HighestSetBit`, `BitMath.LowestSetBit`): the first smears the bits right and keeps the top one; the
+second keeps the bottom one, `x & ~(x - 1)`.
+
+F8 (the lanes): a drum chord's lane bits come from each note's kind (`TrackBuilder.DrumLaneBit`, through
+`TrackBuilder.LaneBitsFor`). The bits are TomRed 0x1, TomYellow 0x2, TomBlue 0x4, TomGreen 0x8, CymbalYellow 0x10,
+CymbalBlue 0x20, CymbalGreen 0x40, KickOrange 0x80, DoubleKickOrange 0x100. F3's pad mask is 0x7F, so the highest pad
+bit ranks every cymbal above every tom. The order F3 picks in is Green cymbal, Blue cymbal, Yellow cymbal, Green tom,
+Blue tom, Yellow tom, Red, then the lowest kick bit (kick before 2x kick). A .mid chart's yellow, blue and green notes
+are cymbals until tom markers 110 to 112 turn them into toms; a .chart's are toms until cymbal markers 66 to 68 turn
+them into cymbals. A chord's tick is a `uint` and its time a `float`, copied from its note when the chord is built.
+
+F9 (the clock): a chart object's second is `Chart.TickToSeconds` of its tick, a float with no rounding: the start
+second of the last tempo at or before the tick, plus the ticks since that tempo / timing resolution * 60 / BPM, where
+BPM is the stored milli-BPM / 1000. Each measure line's second is the same conversion of its beat's tick (F11).
+`Chart.SecondsBetween` is the difference of two such seconds, or 0 when the ticks are equal. `Chart.SecondsToTick`
+clamps a negative second to 0, takes the last tempo whose start second is strictly before the given second, and adds
+`(uint)Math.Round(seconds since that tempo * BPM / 60 * timing resolution)` to its tick, so a half rounds to even.
+The timing resolution is the chart's resolution times the song speed (1 at 100%); the 64th note and the beat step
+use the chart's own resolution.
+
+F10 (the last tick): F5 walks to the largest note tick plus sustain length over every track and difficulty of the
+chart, plus one beat of the timing resolution, and includes that tick.
+
+F11 (`BeatGrid.AddLine`): every beat adds its second to the beat list; only a MEASURE also adds it to `measureLines`.
+
+F12 (StrikeCore's ranges): the start index is clamped to the list, and a start outside it gives an empty walk. A
+forward walk runs from the start to the end; a reverse walk runs from the start down to index 0.
+
+F13 (`Mathf.RoundToInt`): `(int)Math.Round(f)`, which rounds a half to even. So 1.5 gives 2, 2.5 gives 2 and 0.5
+gives 0, and at resolution 24 the 64th note of line 39 is 2 ticks.
 
 Limits of this reading: the obfuscator renames every field, so the role names above are my reading of how each is used.
 The numbers 12, 6, 192, 0.25 and 4 are literals in live code. The dead twin `DrumsPlayer.UnusedFillCheckTwin` has scrambled

@@ -39,3 +39,23 @@ build	typedef_index	class	member	name	what
 4045		ʵʼʴʿʼʷʷˀʶˁʷ		BitMath	A static class of bit helpers; read from fill_generator.cs lines 125 and 129.
 4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʷʹʾˁʳʸʲʾʴʾʿ	HighestSetBit	Returns the highest set bit of a value; called at fill_generator.cs line 125.
 4045		ʵʼʴʿʼʷʷˀʶˁʷ	ʴʽʸʿʼʸˁʷʿʹʸ	LowestSetBit	Returns the lowest set bit of a value, x & ~(x - 1); called at fill_generator.cs line 129.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʿʹʽʽʵʻʺʸʻʵʳ	ActivationNoteFor	Calls PickActivationNote when its first flag is false; read from fill_generator.cs F6.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʺʷʸˀʷʴʿʲʵʼʾ	LaneBitsFor	Gives a note's lane bits by instrument; read from fill_generator.cs F8.
+4045		ʶˀʵˁʹʿˀʶʿʲʾ	ʴʺʵʽʻʷʴˀʸʹʺ	DrumLaneBit	Maps a drum note's kind to its lane bit; read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʾʺʸʻʼʲˀˀʽʵʽ	DrumLanes	The drum lane bit enum, toms 0x1 to 0x8, cymbals 0x10 to 0x40, kicks 0x80 and 0x100; read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʿˀʸʻʺʸʳʺʴʻʿ	lane	A note's lane bits (ushort); read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʲʸʺʺʼʷʵʵʶʵˁ	time	The chord's time in seconds (float), copied from its note; read from fill_generator.cs F8.
+4045		ʼˀˀʸʸʶʳʼʳʸʶ	ʵʿʵʲʽʽʽʵʸˀʾ	tick	The chord's tick (uint); read from fill_generator.cs F8.
+4045		ʷʹʿʴʿʿˁʳʳʸʳ	ʸʴʶʳʻˁʶˀʻʸˀ	MidDrumNoteKind	Maps a .mid drum note number to a note kind, yellow, blue and green as cymbals; read from fill_generator.cs F8.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ˀʻʺʷʾʿʿʻʼʲʿ	timingResolution	The resolution times the song speed, used by the clock; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ˀʳˁʻʵʺʻʳˁʸʽ	resolution	The chart's own resolution, used for the 64th note and the beat step; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʹʴʶʸʾʲʶˀʼʺʷ	TickToSeconds	A tick's second, float, no rounding; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʽˀˀʻʹʶˁʽˁˁʽ	TicksToSecondsAtTempo	Seconds for a tick span at one tempo; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʸʳʾʸʼʹʽʾʿʸʵ	SecondsBetween	Seconds between two ticks, 0 when equal; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʵʲˁˀʲʳʼʶʾˀʺ	SecondsToTick	A second's tick, rounded half to even; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ˀʽʹʷʺˁʵʹˁʻʲ	SecondsToTicksAtTempo	Ticks for a span of seconds at one tempo, Math.Round; read from fill_generator.cs F9.
+4045		ʷʽʻʻʿʵˀˁʽʳʶ	ʿʼʿʿʵʵʲʿʷˁʻ	LastTick	The last note end over all tracks plus one beat; read from fill_generator.cs F10.
+4045		ˀʺʷʺʵʾʼʿʹʼʸ	ʿʼʿʿʵʵʲʿʷˁʻ	LastTick	A track's last note tick plus sustain; read from fill_generator.cs F10.
+4045		ʼʹʵˁʸʳʾʺˁʳʽ		Tempo	A tempo change: milli-BPM and its start second; read from fill_generator.cs F9.
+4045		ʼʺˀʲʺˀʼˁʽʸʸ		ChartObject	The base class of chart objects: tick and its second; read from fill_generator.cs F9.
+4045		ʿʺʶʹʲʳʶʺʶʸʶ	ʶʷʽʺʿʹʻʼʴʶʽ<T, TList>	LastAtOrBeforeTick	Binary search for the last item at or before a tick; read from fill_generator.cs F9.

@@ -3,7 +3,7 @@
 This page covers written fills, the fills the game generates, their deadlines, and when a fill shows up.
 It describes build 1.1 (v1.1.0.6142), and build 1.0 (v1.0.0.4045) under its own heading.
 "The decompile" on this page means Ghidra's full decompile of build 6142, which `code/README.md` describes; it is not in the repo.
-Last write-back: 2026-11-12.
+Last write-back: 2026-11-21.
 
 ## Written fills
 
@@ -375,9 +375,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-36 The 1.0 generator differs from Hydra's 1.0 generator
 
-Rule: The 1.0 generator tries the second measure line first and then every fourth line, and after a line with no chord close enough it tries the very next line. A chord counts as close enough within 0.25 seconds of real time of the line. The fill starts half way, in real time, between the previous measure line and the chosen line, and ends one 64th note (resolution x 12 / 192 ticks) after the chord's activation note. Hydra's 1.0 generator keeps the nearest chord per line, does not start at the second line, uses a limit of half a beat, and makes the fill half a grid measure long.
+Rule: The 1.0 generator tries the second measure line first and then every fourth line, and after a line with no chord close enough it tries the very next line. A chord counts as close enough within 0.25 seconds of real time of the line. The fill starts half way, in real time, between the previous measure line and the chosen line, and ends one 64th note (resolution x 12 / 192 ticks) after the chord's activation note. Hydra's 1.0 generator keeps the nearest chord per line, does not start at the second line, uses a limit of half a beat, and makes the fill half a grid measure long. Only the 0.25 s test ever rejects a line: the nearest-chord search never comes back empty on a chord list that has chords, and a line after the last chord takes chord 0, which the 0.25 s test then rejects. The search for the chord at or before the line is not bounded by the last chord used. The line's second becomes a tick by rounding a half to even, and the 64th note is `RoundToInt(12 * resolution / 192)`, also half to even (2 ticks at resolution 24).
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 30 to 77: line 40 (`i = 1`), 44 to 49 and 53 to 56 (`i += 4`; `i -= 3` on a miss), line 53 (`num5 > 0.25f`), lines 39, 42, 43 and 58 to 74 (the fill's start and end). Hydra's side: `Song::place_fills_ch10` in src/core/song.cpp lines 139 to 171 and `kCh10FillLengthMeasures` at line 127.
+Evidence: `code/4045/fill_generator.cs` lines 30 to 77: line 40 (`i = 1`), 44 to 49 and 53 to 56 (`i += 4`; `i -= 3` on a miss), line 53 (`num5 > 0.25f`), lines 39, 42, 43 and 58 to 74 (the fill's start and end). The search and its two facts are F4 with F12, explained in `code/4045/fill_generator.md` under F4; the converters are F9 and the rounding F13. Hydra's side: `Song::place_fills_ch10` in src/core/song.cpp lines 139 to 171 and `kCh10FillLengthMeasures` at line 127.
 Game code (4045): the 1.0 generator (scrambled name), `code/4045/fill_generator.cs` lines 30 to 77.
 Hydra: `Song::place_fills_ch10` in src/core/song.cpp line 139.
 Ruling: open split: see questions page Q-38. D115 item 6 says "Clone Hero 1.0 mode keeps its old fill generator exactly." (the decision log's words), and card c0e1259d has the user choosing "Keep 1.0 exactly as before (Recommended)"; neither names the game's side.
@@ -385,13 +385,13 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-37 The 1.0 fill's activation note is the highest pad
 
-Rule: The 1.0 fill's activation note is the highest drum pad in the chord (the highest set bit of the pad lanes); a chord with only kicks uses the lowest kick bit.
+Rule: The 1.0 fill's activation note is the highest drum pad in the chord (the highest set bit of the pad lanes); a chord with only kicks uses the lowest kick bit. Every cymbal bit is above every tom bit, so the order is Green cymbal, Blue cymbal, Yellow cymbal, Green tom, Blue tom, Yellow tom, Red, then kick before 2x kick. A chord with a cymbal and a tom in a higher lane, such as Yellow cymbal with Green tom, takes the cymbal.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 117 to 141, with the two bit helpers named in `code/4045/fill_generator.md`.
+Evidence: `code/4045/fill_generator.cs` lines 117 to 141, with the bit helpers (F7), the lane bits (F8) and the wrapper F1 calls (F6), explained in `code/4045/fill_generator.md` under F3, F6, F7 and F8.
 Game code (4045): a scrambled method of the 1.0 note builder, `code/4045/fill_generator.cs` lines 117 to 141.
-Hydra: `Chord::activation_note` in src/core/model.cpp; not compared with this rule.
-Ruling: none found
-Found: 2026-10-30, session b02ab3e6 (the reference build).
+Hydra: `Chord::activation_note` in src/core/model.cpp follows this order under both rules (task T9 of the 1.0 fills plan, same merge).
+Ruling: the user, 2026-11-21, answering whether Hydra's activation note ranks pads as the game does: "Match the game".
+Found: 2026-10-30, session b02ab3e6 (the reference build); the pad order 2026-11-21, session 63088e3d.
 
 ### FL-38 A 1.0 written fill lands within a 32nd note, with no +1
 
@@ -415,9 +415,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build); 2026-11-08, session 7
 
 ### FL-40 The 1.0 measure lines restart at every meter change
 
-Rule: In 1.0 the measure lines come from a beat walk that restarts its counters at every time-signature change. A numerator of 1 makes every beat after the first a beat, not a measure.
+Rule: In 1.0 the measure lines come from a beat walk that restarts its counters at every time-signature change. A numerator of 1 makes every beat after the first a beat, not a measure. Only beats stored as measures reach the list the generator walks. The walk runs from tick 0 up to and including the chart's last tick: the latest note end (tick plus sustain) over every track and difficulty, plus one beat.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_generator.cs` lines 197 to 255 (209 to 214, 215 to 218 and 221 to 231). That the two fields are the numerator and denominator is a reading from how the step uses them, not checked.
+Evidence: `code/4045/fill_generator.cs` lines 197 to 255 (209 to 214, 215 to 218 and 221 to 231), with `AddLine` (F11) and the last tick (F10) explained in `code/4045/fill_generator.md`. That the two fields are the numerator and denominator is a reading from how the step uses them, not checked.
 Game code (4045): a scrambled grid method, `code/4045/fill_generator.cs` lines 197 to 255.
 Hydra: `MeasureIndex`, used by `Song::place_fills_ch10` at src/core/song.cpp line 140; the numerator-1 case was not compared.
 Ruling: none found
@@ -435,9 +435,9 @@ Found: 2026-10-30, session b02ab3e6 (the reference build).
 
 ### FL-42 The 1.0 deadline is the fill's own length, held between 0.25 s and 10 s
 
-Rule: A 1.0 fill loses its activation flag when it starts earlier than now plus the larger of its own length and 0.25 s; fills starting more than 10 s ahead are never examined. So the lead is the fill's length (to the activation note plus a 64th note), held between 0.25 s and 10 s of real time.
+Rule: A 1.0 fill loses its activation flag when it starts earlier than now plus the larger of its own length and 0.25 s; fills starting more than 10 s ahead are never examined. So the lead is the fill's length (to the activation note plus a 64th note), held between 0.25 s and 10 s of real time. That length is the float difference of two tick-to-second conversions, with no rounding; the 64th note itself is a whole number of ticks, rounded half to even.
 Label: Proven in the game's code
-Evidence: `code/4045/fill_deadline.cs` lines 17 to 31 (21 to 24 the 10 s stop, 25 to 29 the 0.25 s and length test). Hydra's Ch10 branch: preroll = max(250, min(fill end - pad, 10000)) ms, with the pad measured from the tick resolution / 16 before the fill start (src/search/graph.cpp lines 82 to 90). The public Python Hydra 1.2 had the same formula (`git show ce3edf94^:hydra/hypath.py` lines 226 to 236). The two agree at a steady tempo; across a tempo change the 64th note is measured from a different tick. Over the library's 18,494 drum charts on 2026-08-30, Hydra scored 17,815 the same under the 1.0 and 1.1 deadlines, 600 higher under 1.0 and 79 higher under 1.1, the largest gain Night Verses at +28,900 (card d69fdea1 line 23; the report build-cpp/fillcompare/fill_compare.html is not committed). A chart can score higher under 1.1 because a fill longer than 4 beats needs more lead under 1.0 (FL-19). These are Hydra's numbers under the two deadlines with Hydra's own fill generator, not game runs; FL-36 shows the game's 1.0 generator differs from Hydra's, so they are not the game's 1.0 scores.
+Evidence: `code/4045/fill_deadline.cs` lines 17 to 31 (21 to 24 the 10 s stop, 25 to 29 the 0.25 s and length test); the length's converters are F9 and the rounding F13 in `code/4045/fill_generator.cs`, explained in `code/4045/fill_generator.md`. Hydra's Ch10 branch: preroll = max(250, min(fill end - pad, 10000)) ms, with the pad measured from the tick resolution / 16 before the fill start (src/search/graph.cpp lines 82 to 90). The public Python Hydra 1.2 had the same formula (`git show ce3edf94^:hydra/hypath.py` lines 226 to 236). The two agree at a steady tempo; across a tempo change the 64th note is measured from a different tick. Over the library's 18,494 drum charts on 2026-08-30, Hydra scored 17,815 the same under the 1.0 and 1.1 deadlines, 600 higher under 1.0 and 79 higher under 1.1, the largest gain Night Verses at +28,900 (card d69fdea1 line 23; the report build-cpp/fillcompare/fill_compare.html is not committed). A chart can score higher under 1.1 because a fill longer than 4 beats needs more lead under 1.0 (FL-19). These are Hydra's numbers under the two deadlines with Hydra's own fill generator, not game runs; FL-36 shows the game's 1.0 generator differs from Hydra's, so they are not the game's 1.0 scores.
 Game code (4045): a scrambled method of `DrumsPlayer`, `code/4045/fill_deadline.cs` lines 17 to 31.
 Hydra: `activation_fill_deadline_ms` (the `FillDeadlineRule::Ch10` branch) in src/search/graph.cpp lines 62 to 91.
 Ruling: none needed: same rule at a steady tempo; the tempo-change difference is part of Q-38
