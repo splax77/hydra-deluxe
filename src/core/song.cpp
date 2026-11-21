@@ -161,7 +161,8 @@ constexpr size_t kLinesAfterFill = 4;
 // How far in real time, in seconds, a chord may sit from its measure line and
 // still take a 1.0 generated fill: the game's `num5 > 0.25f`, so exactly this
 // far still takes it (fill_generator.cs line 55). The user asked for this
-// rule ("Yes, add them", docs/superpowers/plans/2026-11-21-ch10-fills.md).
+// rule ("Yes, add them", docs/superpowers/plans/2026-11-21-ch10-fills.md
+// (removed; git show 7fd19fcb0:docs/superpowers/plans/2026-11-21-ch10-fills.md)).
 constexpr float kCh10FillReachSeconds = 0.25f;
 
 // The game's tick-to-seconds (F9, fill_generator.cs lines 535 to 545): a

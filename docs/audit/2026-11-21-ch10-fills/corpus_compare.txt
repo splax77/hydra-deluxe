@@ -1,0 +1,18 @@
+The 1.0 fills change across testdata/input, in place of the fill compare report (LS-7 to LS-9).
+
+The user chose to drop the fill compare report on 2026-11-21 ("yes drop it"). The report needs a chart library
+built with hydra_batch --whole-library, which the plan's constraint 7 forbids. It shows only the 1.0 and 1.1 best
+scores, which hydra_replay dump also gives.
+
+Before: hydra_replay from worktrees/tff-ui (built 2026-11-21 at 1825de9c0, the same code as main at b3d709e95).
+After: hydra_replay from worktrees/ch10-join (built 2026-11-21 at fd949aef4, every code task of the plan).
+Each chart: hydra_replay dump --chart <chart> [--legacy-fills] --out <json>, comparing result.score and
+result.bestpath.
+
+Charts: 98 (every notes.mid, notes.chart, .sng and .srb under testdata/input). Every dump was read on both sides.
+Charts whose best 1.0 path has an activation: 69.
+Best score or best path that changed under 1.1: 0.
+Best score or best path that changed under 1.0: 0.
+
+The 1.0 change moves fill start ticks and early-fill difficulty (see after_fills*.txt and after_screens.txt), not
+any best score or path on this corpus.
