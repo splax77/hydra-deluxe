@@ -1,5 +1,28 @@
 # The open list: the 20 records nobody could settle by reading
 
+## How each was settled (main session, session e3d99f2b, 2026-11-21)
+
+The user's answer to question 3 (card `docs/sessions/2026-11-19-8e6a2908.md`): chose "Run the 12, use the files, drop the 2 scripts as tests". The runs below were made on main at ac50ea5193bf6a0eb3ddd032785d3d930dc36909, built in worktrees/tf-r1-build.
+
+Group 1, the runs:
+
+- `records/A12.md:173`: GONE. The docs tests were removed from main by debd48412 ("Remove the docs tests; the code lexer case moves to its own file"); no test in tests/ names a Premise map. There is nothing left to run.
+- `records/A16.md:382`: waits for the user. The test only prints read times and runs only when HYDRA_TIMING_DB names a library file; a run needs a copy of the user's library file.
+- `records/A20.md:236`: holds. `hydra_tests "-tc=build_preview_scene: under the 1.0 rule the offered fill is the one the engine charged"` passed, 11 of 11 assertions.
+- `records/A31.md:24`: holds. "StemReader: straight-through read equals the full decode" passed, 301 of 301 assertions.
+- `records/A31.md:233`: holds for both readings of the doubt above. "StemReader: a FLAC behind an ID3 tag decodes the same as the plain file" passed, 5 of 5, and "StemReader: a damaged Opus stem plays again after a seek to before the damage" passed.
+- `records/A38.md:88`: holds. A script with `expect-text zzqq-not-on-screen` failed with exit 1 ('"zzqq-not-on-screen" is not on screen'); one with `expect-not-text Scan library` failed with exit 1 ('"Scan library" is on screen'); a script with the true forms of both passed.
+- `records/A44.md:129`: holds. `hydra_uitest --test paths-long-path` passed.
+- `records/A45.md:105`: holds. `hydra_uitest --test preview-overlay-fit` passed.
+- `records/A45.md:250`: holds. `hydra_uitest --test settings-change-holds-layout` passed.
+- `records/window-WN3.md:243`: holds. "clamped_sqin charts: every squeeze-out ends SP at the end its record names" passed, 271 of 271.
+- `records/C11.md:686`: holds. "SP end clamp: a folded variant's Clamped step on its leader's SqIn phrase becomes SqIn" passed, 2 of 2.
+- `records/delta-DL1.md:303`: holds. "the log keeps growing while a hold is open" passed, 6 of 6.
+
+Group 2, the files: all six hold. `python -m pytest -rs test_frida_tools.py test_method_watch.py` in tools/ch_mcp/tests ran with the real dumps in hydra-data/ch-dumps (builds 4045, 6142 and 6161 present): 70 passed, 132 subtests passed, none skipped.
+
+Group 3, the two scripts: by the user's choice, `tools/ch_probe/experiments/key_delivery_test.py` and `pad_flash_test.py` are not tests. They leave the test ledger; the scripts stay as experiments.
+
 T8 step E6 (`docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md`). Written by the main session, session f3bbb32b, 2026-11-16.
 
 The by-reading pass judged 397 clean Investigate records. For 20 of them the scout could not tell whether the test's claim holds, because settling it needs a run, a file from outside the repo, or a person watching the live game (`capture/byreading/SUMMARY.md`, "Cannot tell (20)"). Each row below names the record, its test, what its verdict file says would settle it, and the mutation run's numbers where the run held that test.
