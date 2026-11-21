@@ -26,6 +26,9 @@ constexpr RetiredKey kRetiredRulesKeys[] = {
     // A generated fill starts where its game version's generator puts it
     // (D115 item 4; Song::check_activations), so its length is not a rule.
     {"fill_length_measures", "2.8.0"},
+    // Both games step a fixed four measure lines after a generated fill
+    // (kLinesAfterFill in core/song.cpp), so the step is not a rule.
+    {"fill_cooldown_measures", "3.2.0"},
 };
 
 [[noreturn]] void bad(const std::string& path, const std::string& key,
