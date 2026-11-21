@@ -347,6 +347,13 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     const int64_t rows = scanned_rows(h);
+    // The words themselves, pinned as literals: the strip checks below call
+    // the function, so only these fail if a lead word or the count text changes.
+    IM_CHECK_STR_EQ(batch_strip_progress(false, false, 0, 3).c_str(), "Analyzing...  0 of 3");
+    IM_CHECK_STR_EQ(batch_strip_progress(false, true, 2, 10).c_str(), "Paused  2 of 10");
+    IM_CHECK_STR_EQ(batch_strip_progress(true, false, 1234, 5678).c_str(),
+                    "Stopping...  1,234 of 5,678");
+    IM_CHECK_STR_EQ(batch_strip_progress(true, true, 1, 2).c_str(), "Stopping...  1 of 2");
     constexpr int kWorkers = 3;
     BatchGate gate(kWorkers);
     start_library_batch(ctx);
