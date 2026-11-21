@@ -6,6 +6,7 @@
 #pragma once
 
 #include <map>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -33,6 +34,11 @@ struct View {
 
 // The views of `text`, lexed as `lang`.
 View make_view(const std::string& text, codelex::Lang lang);
+
+// The inside of one codelex String piece of `text`: the span [first, second)
+// that both make_view and code_mask blank, so each keeps the same prefix and
+// quotes around it. Nothing when the piece has no inside to blank.
+std::optional<std::pair<size_t, size_t>> string_inside(const std::string& text, const codelex::Piece& p);
 
 // Which lexer a file's views use: Python for is_py files, C++ for every
 // other file.

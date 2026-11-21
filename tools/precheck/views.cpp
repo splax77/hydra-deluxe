@@ -26,19 +26,23 @@ View make_view(const std::string& text, codelex::Lang lang) {
             blank(v.no_comments, p.begin, p.end);
             blank(v.code, p.begin, p.end);
         } else if (p.kind == codelex::Kind::String) {
-            // Keep any prefix and the opening quote, and the last character
-            // when it closes the literal (an unclosed one ends at its line);
-            // blank what is between.
-            const size_t open = text.find_first_of("\"'", p.begin);
-            if (open == std::string::npos || open + 1 >= p.end) continue;
-            const bool closed = text[p.end - 1] == text[open];
-            blank(v.code, open + 1, closed ? p.end - 1 : p.end);
+            if (const auto inside = string_inside(text, p)) blank(v.code, inside->first, inside->second);
         }
     }
     v.line_starts.push_back(0);
     for (size_t i = 0; i < text.size(); ++i)
         if (text[i] == '\n') v.line_starts.push_back(i + 1);
     return v;
+}
+
+std::optional<std::pair<size_t, size_t>> string_inside(const std::string& text, const codelex::Piece& p) {
+    // Keep any prefix and the opening quote, and the last character when it
+    // closes the literal (an unclosed one ends at its line); the inside is
+    // what is between.
+    const size_t open = text.find_first_of("\"'", p.begin);
+    if (open == std::string::npos || open + 1 >= p.end) return std::nullopt;
+    const bool closed = text[p.end - 1] == text[open];
+    return std::make_pair(open + 1, closed ? p.end - 1 : p.end);
 }
 
 int View::line_of(size_t offset) const {

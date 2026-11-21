@@ -4,6 +4,7 @@
 
 #include "code_lexer.h"
 #include "core/winstr.h"
+#include "views.h"
 
 namespace precheck {
 
@@ -35,18 +36,15 @@ std::optional<std::string> code_mask(const std::string& text, const std::string&
         } else if (p.kind == codelex::Kind::Comment) {
             blank(text, p.begin, p.end, out);
         } else {
-            // Keep the prefix and the opening quote; keep the last character
-            // when it closes the literal (an unclosed one ends at its line).
-            const size_t open = text.find_first_of("\"'", p.begin);
-            if (open == std::string::npos || open + 1 >= p.end) {
+            // The same inside make_view blanks; what is around it is kept.
+            const auto inside = string_inside(text, p);
+            if (!inside) {
                 out.append(text, p.begin, p.end - p.begin);
                 continue;
             }
-            const bool closed = text[p.end - 1] == text[open];
-            const size_t inner_end = closed ? p.end - 1 : p.end;
-            out.append(text, p.begin, open + 1 - p.begin);
-            blank(text, open + 1, inner_end, out);
-            if (closed) out += text[p.end - 1];
+            out.append(text, p.begin, inside->first - p.begin);
+            blank(text, inside->first, inside->second, out);
+            out.append(text, inside->second, p.end - inside->second);
         }
     }
     return out;
