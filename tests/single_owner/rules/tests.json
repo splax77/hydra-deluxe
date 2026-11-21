@@ -333,11 +333,6 @@
           "why": "\"malformed lines keep their handling\" joins the sections with stray text between them, which chart_text cannot write"
         },
         {
-          "file": "tests/test_song_input.cpp",
-          "line_text": "Song s = parse(song + \"[Song]\\n{\\n  Resolution = 480\\n}\\n\" + sync +",
-          "why": "\"malformed lines keep their handling\" repeats the [Song] section to pin that the later one replaces it, which chart_text cannot write"
-        },
-        {
           "file": "tests/test_app_click.cpp",
           "line_text": "{ std::ofstream f(chart); f << \"[Song]\\n\"; }",
           "why": "a placeholder .chart that only has to exist on disk; no case parses it"
