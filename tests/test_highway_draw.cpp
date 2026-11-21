@@ -235,15 +235,17 @@ float pad_centre(const PreviewConfig& cfg, Pad pad) {
 // beat 0.25 s on, drawn at now 1.0 s and speed 1.
 constexpr double kFrameNow = 1.0;
 
-TrackState frame_state() {
+PreviewScene frame_scene() {
     PreviewScene scene = timed_scene();
     scene.notes = {note(1000.0, PreviewLane::Red), note(1500.0, PreviewLane::Yellow, true),
                    note(1500.0, PreviewLane::Kick)};
     scene.solos = {span(900.0, 1200.0)};
     scene.fills = {fill(span(1300.0, 1500.0), PreviewFillState::Offered)};
     scene.beats = {{0, 1000.0, PreviewBeatKind::MeasureLine}, {0, 1250.0, PreviewBeatKind::Half}};
-    return build_track_state(scene, TrackStateOptions{});
+    return scene;
 }
+
+TrackState frame_state() { return build_track_state(frame_scene(), TrackStateOptions{}); }
 
 std::vector<DrawCommand> frame_draws(const PreviewConfig& cfg) {
     return build_highway_draws(frame_state(), cfg, kFrameNow, 1.0);
@@ -460,16 +462,17 @@ TEST_CASE("build_highway_draws: each beat line is drawn once at its own depth") 
     CHECK(halves == 1);
 }
 
-// The offered fill draws one lane strip on each pad, from its start to
-// kSpanEndTicks past its 1.5 s end note (timed_scene() has one tick per
-// millisecond, hence the 1000), and no other lane strip.
+// The offered fill draws one lane strip on each pad, from its start to the
+// end edge span_interval gives it, and no other lane strip.
 TEST_CASE("build_highway_draws: an offered fill draws one strip on each lane over its span") {
     const PreviewConfig& cfg = shipped_preview_config();
     const std::vector<DrawCommand> cmds = frame_draws(cfg);
     const HighwayView v = view_at(cfg, kFrameNow);
+    const PreviewScene scene = frame_scene();
+    const double fill_end = span_interval(scene, scene.fills[0].span).second;
     for (const Pad p : kPads) {
         CAPTURE(static_cast<int>(p));
-        CHECK(strips_over(cmds, cfg, v, p, 1.3, 1.5 + kSpanEndTicks / 1000.0).size() == 1);
+        CHECK(strips_over(cmds, cfg, v, p, 1.3, fill_end).size() == 1);
     }
     int lanes = 0;
     for (const DrawCommand& c : cmds)
@@ -779,6 +782,7 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
     scene.activations = {a};
     TrackState st = build_track_state(scene, TrackStateOptions{});
     std::vector<DrawCommand> cmds = build_highway_draws(st, cfg, 1.0, 1.0);
+    const double fill_end = span_interval(scene, scene.fills[0].span).second;
     float green_x1, green_x2;
     pad_x(cfg, Pad::Green, green_x1, green_x2);
     int lanes = 0, lit_green = 0;
@@ -791,9 +795,8 @@ TEST_CASE("build_highway_draws: the taken fill lights its lane with the lit targ
             ++lit_green;
             // The extra pass covers the fill's stretch, not the strike line.
             CHECK(c.lo[2] == doctest::Approx(time_to_z(cfg, 1.0, 1.3, 1.0)));
-            // kSpanEndTicks past the 1.5 s note, at one tick per millisecond.
-            CHECK(c.hi[2] ==
-                  doctest::Approx(time_to_z(cfg, 1.0, 1.5 + kSpanEndTicks / 1000.0, 1.0)));
+            // It ends at the fill's drawn end edge.
+            CHECK(c.hi[2] == doctest::Approx(time_to_z(cfg, 1.0, fill_end, 1.0)));
             CHECK(c.lo[0] == doctest::Approx(green_x1));  // the green lane's x span
             CHECK(c.hi[0] == doctest::Approx(green_x2));
         }

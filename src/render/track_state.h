@@ -39,6 +39,12 @@ inline bool toggle_on_after(Toggle t) {
 // per beat and 300 BPM one tick is only 0.417 ms.)
 constexpr double kSpanEndTicks = 0.5;
 
+// A span's drawn [start, end] in seconds, the edges build_track_state gives
+// every SP phrase, solo, drum lane and fill. Its end edge is worked out in
+// track_state.cpp from kSpanEndTicks and scene.timing. Throws
+// std::invalid_argument when the scene carries no timing.
+std::pair<double, double> span_interval(const app::PreviewScene& scene, const app::PreviewSpan& s);
+
 // The four pads, left to right. Kick is separate (TrackGem::kick).
 enum class Pad { Red = 0, Yellow = 1, Blue = 2, Green = 3 };
 

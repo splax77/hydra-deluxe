@@ -45,12 +45,12 @@ const TrackInstant& instant_at(const TrackState& st, double t) {
     return *i;
 }
 
-// The drawn end edge, in seconds, of a span whose last note is on `end_tick`:
-// kSpanEndTicks past that note through the scene's own timing, the edge
-// build_track_state draws (track_state.h, above build_track_state).
+// The drawn end edge, in seconds, of a span whose last note is on `end_tick`,
+// as span_interval (track_state.h) gives it.
 double end_edge_s(const PreviewScene& scene, int64_t end_tick) {
-    return scene.timing->ms_index().ms_at_tick_f(static_cast<double>(end_tick) + kSpanEndTicks) /
-           1000.0;
+    PreviewSpan s;
+    s.end_tick = end_tick;
+    return span_interval(scene, s).second;
 }
 
 // ---- One instant as a line of text ------------------------------------------
