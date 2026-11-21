@@ -93,7 +93,9 @@ class StallHarnessTest(unittest.TestCase):
         dump = run.read("stall-1.txt")
         self.assertIn(f"step: {SH.STEP_HANDOFF}", dump)
         self.assertIn(SH.per_row_append.__name__, dump)
-        self.assertNotIn("dropped 0 chords in all", run.text())
+        # The block makes the per-row sink drop chords, as the press logs say.
+        self.assertTrue(any(row[overlay_logs.SEND_COLUMN] == play_chart.DROPPED
+                            for rows in run.press_logs().values() for row in rows))
 
     def test_the_writer_sink_drops_nothing_under_a_forced_stall(self):
         run = _Run(self)
