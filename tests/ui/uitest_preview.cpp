@@ -20,6 +20,7 @@
 #include "ui/app_state.h"
 #include "ui/preview_controller.h"
 #include "ui/preview_load_job.h"
+#include "ui/preview_panel.h"  // kJumpSeconds, kStepMs, jump_back_label, jump_forward_label
 #include "ui/text_role.h"  // font_for, measure_in_role
 
 namespace uitest {
@@ -27,9 +28,18 @@ namespace uitest {
 namespace {
 
 // How long chart 0 of testdata/input must run for the Preview tests below:
-// their jumps and steps go from 10 s to 15 s, so the song has to reach past
-// that. A guard against the fixture, not a rule of the app.
+// their jumps and steps start at 10 s and go one jump further, so the song
+// has to reach past that. A guard against the fixture, not a rule of the app.
 constexpr double kChart0MinMs = 16000.0;
+
+// How far one jump and one step move the playhead: the panel's own sizes
+// (preview_panel.h), which its buttons, keys and labels are built from.
+constexpr double kJumpMs = hydra::ui::kJumpSeconds * 1000.0;
+constexpr double kPanelStepMs = static_cast<double>(hydra::ui::kStepMs);
+// The tests below park at 10 s and jump one jump on, which must stay inside
+// chart 0.
+constexpr double kParkMs = 10000.0;
+static_assert(kParkMs + kJumpMs < kChart0MinMs, "chart 0 must reach one jump past the park");
 
 void test_preview(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
@@ -38,42 +48,12 @@ void test_preview(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    // The loading bar's numbers: reading sits at 0, opening audio fills most
-    // of the bar by bytes, the scene and the highway fill the tail. The test
-    // charts load too fast to catch on screen, so pin the math down here
-    // (tests/test_preview_load_progress.cpp has the rest).
-    {
-        using P = hydra::ui::PreviewLoadJob::Progress;
-        using S = hydra::ui::PreviewLoadJob::Step;
-        // Locals, not P{...} inline: the braces' commas split the IM_CHECK
-        // macro arguments.
-        const P reading{S::Reading, 0, 0};
-        const P open0{S::Opening, 0, 4000000};
-        const P open2{S::Opening, 2000000, 4000000};
-        const P building{S::Building, 4000000, 4000000};
-        const P highway{S::Highway, 4000000, 4000000};
-        IM_CHECK_EQ(reading.fraction(), 0.0f);
-        IM_CHECK_STR_EQ(reading.label().c_str(), "Reading chart");
-        IM_CHECK_FLOAT_NEAR_EQ(open0.fraction(), 0.08f, 1e-5f);
-        IM_CHECK_FLOAT_NEAR_EQ(open2.fraction(), 0.49f, 1e-5f);
-        IM_CHECK_STR_EQ(open2.label().c_str(), "Opening audio: 2 of 4 MB");
-        IM_CHECK_FLOAT_NEAR_EQ(building.fraction(), 0.90f, 1e-5f);
-        IM_CHECK_STR_EQ(building.label().c_str(), "Building scene");
-        IM_CHECK_FLOAT_NEAR_EQ(highway.fraction(), 0.945f, 1e-5f);
-        IM_CHECK_STR_EQ(highway.label().c_str(), "Building highway");
-    }
-
+    // The loading bar's numbers and labels are PreviewLoadJob::Progress's,
+    // pinned in tests/test_preview_load_progress.cpp, and the bar during a
+    // real load is preview-load-bar's (uitest_details.cpp). This checks the
+    // loaded Preview and its Play and Pause.
     ctx->ItemClick("**/Preview");
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
-    // While the load is in flight the tab shows a step label and a progress
-    // bar, not a bare "Loading..." (a big chart decodes for seconds). The
-    // test charts load fast, so only check when we actually caught it loading.
-    if (h.app->preview->loading()) {
-        std::string text = visible_text(h);
-        IM_CHECK(text.find("Loading preview:") != std::string::npos);
-        IM_CHECK(text.find('%') != std::string::npos);
-        IM_CHECK(!h.app->preview->load_progress().label.empty());
-    }
     IM_CHECK(wait_until(ctx, [&] { return !h.app->preview->loading(); }, 120));
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
     IM_CHECK(!h.app->preview->playing());
@@ -258,42 +238,44 @@ void test_preview_controls(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(end.stars, hydra::path_stars(*shown));
     IM_CHECK_EQ(end.next_star.empty(), end.stars == hydra::kMaxStars);
 
-    // 5 s jumps, clamped to 0 and to where playback stops (playback_end_ms,
-    // the song's length). The audio's own length plays no part in it;
-    // test_preview_controller.cpp pins songs that end before and after their
-    // audio.
-    pc.seek_ms(10000.0);
-    pc.jump_ms(5000.0);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 15000.0, 0.5);
-    pc.jump_ms(-5000.0);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.5);
-    pc.jump_ms(-60000.0);
+    // Jumps of the panel's size (kJumpMs), clamped to 0 and to where playback
+    // stops (playback_end_ms, the song's length). The audio's own length
+    // plays no part in it; test_preview_controller.cpp pins songs that end
+    // before and after their audio.
+    pc.seek_ms(kParkMs);
+    pc.jump_ms(kJumpMs);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs + kJumpMs, 0.5);
+    pc.jump_ms(-kJumpMs);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs, 0.5);
+    pc.jump_ms(-(pc.playback_end_ms() + kJumpMs));
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 0.0, 0.5);
-    pc.jump_ms(pc.playback_end_ms() + 60000.0);
+    pc.jump_ms(pc.playback_end_ms() + kJumpMs);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.5);
 
     // A jump while playing keeps playing.
-    pc.seek_ms(10000.0);
+    pc.seek_ms(kParkMs);
     pc.play();
     IM_CHECK(pc.playing());
-    pc.jump_ms(5000.0);
+    pc.jump_ms(kJumpMs);
     IM_CHECK(pc.playing());
 
-    // A step pauses, and one step each way returns to the same moment.
+    // A step of the panel's size (kPanelStepMs) pauses, and one step each
+    // way returns to the same moment.
     pc.step_ms(0.0);  // pause and snap onto the displayed moment
     IM_CHECK(!pc.playing());
-    pc.seek_ms(12000.0);
-    pc.step_ms(10.0);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 12010.0, 0.001);
-    pc.step_ms(-10.0);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 12000.0, 0.001);
+    pc.seek_ms(kParkMs);
+    pc.step_ms(kPanelStepMs);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs + kPanelStepMs, 0.001);
+    pc.step_ms(-kPanelStepMs);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs, 0.001);
 
-    // A step stops at 0 and at where playback stops.
-    pc.seek_ms(5.0);
-    pc.step_ms(-10.0);
+    // A step stops at 0 and at where playback stops: from half a step
+    // inside either end, a whole step lands on the end.
+    pc.seek_ms(kPanelStepMs / 2.0);
+    pc.step_ms(-kPanelStepMs);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 0.0, 0.001);
-    pc.seek_ms(pc.playback_end_ms() - 5.0);
-    pc.step_ms(10.0);
+    pc.seek_ms(pc.playback_end_ms() - kPanelStepMs / 2.0);
+    pc.step_ms(kPanelStepMs);
     IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), pc.playback_end_ms(), 0.001);
 }
 
@@ -370,6 +352,8 @@ void check_solo_hugs_highway(ImGuiTestContext* ctx, const hydra::ui::PreviewCont
     IM_CHECK_NO_RET(std::fabs(solo.Min.x - (railing + gap)) <= kSamePlace);
 }
 
+std::string readout_of(double bars, int cap);  // defined below, by its first users
+
 // The solo box on a chart with solos: the running percent and count, the end
 // message on the last note, the bonus after it, then hidden. Its values are
 // build_solo_box's, pinned by the unit tests; this checks the panel feeds it
@@ -388,29 +372,35 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active(); }, 10));
     auto& pc = *h.app->preview;
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 120));
-    IM_CHECK(!pc.solo_boxes().empty());
+    // The chart's solo sections as the scene read them: Levitating's
+    // [ExpertDrums] has one "solo" event (tick 132480, ended at 140160).
+    const std::vector<hydra::app::PreviewSoloNotes>& solos = pc.scene().solo_notes;
+    IM_CHECK(!solos.empty());
+    if (solos.empty()) return;
+    const hydra::app::PreviewSoloNotes& solo = solos.front();
+    const double start_ms = solo.steps.front().ms;
+    const double last_ms = solo.steps.back().ms;
+    IM_CHECK(start_ms > 0.0);
+    IM_CHECK(last_ms > start_ms);
 
-    // Before anything is played: no solo yet.
+    // Before the solo's first chord: no solo yet.
     pc.seek_ms(0.0);
     ctx->Yield(2);
     IM_CHECK(!pc.solo_box().shown);
     IM_CHECK(ctx->ItemInfo("**/##solo_box", ImGuiTestOpFlags_NoError).ID == 0);
     const float scale = pc.overlay_scale();
+    pc.seek_ms(start_ms - 1.0);
+    IM_CHECK(!pc.solo_box().shown);
 
-    // Walk the playhead to the first solo, so the test needs no timing of
-    // its own: the first moment the box shows is on its first chord.
-    constexpr double kStepMs = 10.0;
-    double start_ms = -1.0;
-    for (double t = 0.0; t <= pc.playback_end_ms() && start_ms < 0.0; t += kStepMs) {
-        pc.seek_ms(t);
-        if (pc.solo_box().shown) start_ms = t;
-    }
-    IM_CHECK(start_ms >= 0.0);
+    // On the solo's first chord: the percent of its notes struck so far
+    // (solo_percent, the game's rounding) and the solo's note total.
     pc.seek_ms(start_ms);
     const hydra::app::PreviewSoloBox first = pc.solo_box();
-    IM_CHECK(first.headline.size() >= 2 && first.headline.back() == '%');
-    IM_CHECK(first.detail.size() > 6 &&
-             first.detail.compare(first.detail.size() - 6, 6, " notes") == 0);
+    IM_CHECK(first.shown);
+    const std::string first_percent =
+        std::to_string(hydra::app::solo_percent(solo.steps.front().notes_hit, solo.notes)) + "%";
+    IM_CHECK_STR_EQ(first.headline.c_str(), first_percent.c_str());
+    IM_CHECK(first.detail.find(hydra::group_thousands(solo.notes)) != std::string::npos);
     std::fprintf(stderr, "first solo at %.0f ms: %s, %s\n", start_ms, first.headline.c_str(),
                  first.detail.c_str());
 
@@ -423,46 +413,58 @@ void test_preview_solo_box(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(pc.overlay_scale(), scale);
     const float playing_left = ctx->ItemInfo("**/##solo_box").RectFull.Min.x;
 
-    // The chart has no Star Power phrase, yet the gauge and the drain box
-    // show: the gauge empty, the drain box in its idle form.
+    // The chart has no Star Power phrase (the scene's phrases are read from
+    // its notes' SP flags), yet the gauge and the drain box show: the gauge
+    // empty, the drain box in its idle form.
+    IM_CHECK(pc.scene().sp_phrases.empty());
     IM_CHECK(pc.has_sp_gauge());
     IM_CHECK(ctx->ItemInfo("**/##sp_gauge", ImGuiTestOpFlags_NoError).ID != 0);
     IM_CHECK(ctx->ItemInfo("**/##drain_box", ImGuiTestOpFlags_NoError).ID != 0);
-    IM_CHECK(pc.sp_meter_readout().rfind("0.0/", 0) == 0);
+    IM_CHECK_STR_EQ(pc.sp_meter_readout().c_str(), readout_of(0.0, pc.sp_meter_cap()).c_str());
     const hydra::app::PreviewDrainBox drain = pc.drain_box();
     IM_CHECK(drain.shown);
     IM_CHECK(!drain.active);
-    IM_CHECK_STR_EQ(drain.header.c_str(), "SP drain (if activated)");
     IM_CHECK(screenshot(ctx, "solo-box-playing.png"));
 
-    // On to the last note: the end message.
-    double end_ms = -1.0;
-    for (double t = start_ms; t <= pc.playback_end_ms() && end_ms < 0.0; t += kStepMs) {
-        pc.seek_ms(t);
-        if (pc.solo_box().headline == "Perfect Solo!") end_ms = t;
-    }
-    IM_CHECK(end_ms > start_ms);
-    IM_CHECK(pc.solo_box().detail.empty());
+    // Just before the solo's last chord the running count still shows.
+    pc.seek_ms(last_ms - 1.0);
+    const hydra::app::PreviewSoloBox running = pc.solo_box();
+    IM_CHECK(running.shown);
+    IM_CHECK(!running.detail.empty());
+
+    // On the last chord: the one-line end message, no count under it. Its
+    // words are build_solo_box's literal, with no owner to read them from.
+    pc.seek_ms(last_ms);
+    const hydra::app::PreviewSoloBox result = pc.solo_box();
+    IM_CHECK(result.shown);
+    IM_CHECK(result.detail.empty());
+    IM_CHECK(!result.headline.empty());
+    IM_CHECK(result.headline != running.headline);
     ctx->Yield(2);
     check_overlay_boxes(ctx);
     // The one-line result keeps the left edge the two-line box had.
     IM_CHECK_EQ(ctx->ItemInfo("**/##solo_box").RectFull.Min.x, playing_left);
     IM_CHECK(screenshot(ctx, "solo-box-perfect.png"));
 
-    // kSoloResultMs later the bonus, kSoloTailMs later nothing (the last
-    // chord is at most one step before end_ms).
-    pc.seek_ms(end_ms + hydra::app::kSoloResultMs);
+    // kSoloResultMs after the last chord the bonus: the solo's own bonus
+    // (the scene's sum of solo_bonus over its chords).
+    pc.seek_ms(last_ms + hydra::app::kSoloResultMs);
     const hydra::app::PreviewSoloBox bonus = pc.solo_box();
     IM_CHECK(bonus.shown);
-    IM_CHECK(bonus.headline.size() >= 2 && bonus.headline[0] == '+');
+    IM_CHECK(bonus.headline != result.headline);
+    IM_CHECK(bonus.headline.find(hydra::group_thousands(solo.bonus)) != std::string::npos);
+    IM_CHECK(bonus.detail.empty());
     std::fprintf(stderr, "bonus: %s\n", bonus.headline.c_str());
     ctx->Yield(2);
     IM_CHECK(screenshot(ctx, "solo-box-bonus.png"));
     IM_CHECK_EQ(pc.overlay_scale(), scale);
-    pc.seek_ms(end_ms + hydra::app::kSoloTailMs);
-    const hydra::app::PreviewSoloBox after = pc.solo_box();
-    // Hidden, unless the chart's next solo has already begun.
-    IM_CHECK(!after.shown || after.headline.back() == '%');
+
+    // kSoloTailMs after the last chord the box is gone, unless the chart's
+    // next solo has begun by then.
+    const double tail_ms = last_ms + hydra::app::kSoloTailMs;
+    pc.seek_ms(tail_ms);
+    const bool next_begun = solos.size() > 1 && solos[1].steps.front().ms <= tail_ms;
+    IM_CHECK_EQ(pc.solo_box().shown, next_begun);
 }
 
 // The SP drain box beside the gauge. Its values are build_drain_box's, pinned
@@ -482,37 +484,67 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !pc.loading() && pc.score_box().shown; }, 60));
     IM_CHECK(pc.has_sp_gauge());
 
+    // The drawn path is the default selection, the record's first path.
+    const hydra::Path* drawn = h.app->viewed.record->all_paths().front();
+    IM_CHECK(wait_until(ctx, [&] { return pc.shows_path(hydra::app::path_overlay_key(drawn)); }, 10));
+    const hydra::ActivationWalk acts = drawn->walk_activations();
+    const std::vector<hydra::app::PreviewActivation>& shown = pc.scene().activations;
+    IM_CHECK_EQ(shown.size(), acts.size());
+    if (shown.size() != acts.size()) return;
+
     // Before anything is banked or spent: the idle box.
     pc.seek_ms(0.0);
-    hydra::app::PreviewDrainBox idle = pc.drain_box();
+    const hydra::app::PreviewDrainBox idle = pc.drain_box();
     IM_CHECK(idle.shown);
     IM_CHECK(!idle.active);
-    IM_CHECK_STR_EQ(idle.header.c_str(), "SP drain (if activated)");
-    IM_CHECK(idle.rate.rfind("1 bar / ", 0) == 0);
-    IM_CHECK(idle.detail.rfind("full meter ", 0) == 0);
-    // All five drawn, the next-activation box under the drain box.
-    IM_CHECK(pc.next_act_box().shown);
+    IM_CHECK(!idle.header.empty());
+    IM_CHECK(!idle.rate.empty());
+    // All drawn, the next-activation box under the drain box when the path
+    // has an activation ahead.
+    IM_CHECK_EQ(pc.next_act_box().shown, !acts.empty());
     ctx->Yield(2);
-    IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
+    IM_CHECK_EQ(check_overlay_boxes(ctx), acts.empty() ? 4 : 5);
 
-    // Somewhere the path has SP running. Walk the playhead to find it, so the
-    // test needs no timing of its own.
-    double active_ms = -1.0;
-    for (double t = 0.0; t <= pc.playback_end_ms() && active_ms < 0.0; t += 50.0) {
-        pc.seek_ms(t);
-        if (pc.drain_box().active) active_ms = t;
+    // Each activation's Star Power, at the moments the record gives: the box
+    // is active from the activation's chord to the record's SP end, and idle
+    // from that end on unless the next activation has begun by then. The
+    // header and the second line change with it; their words are
+    // build_drain_box's literals, with no owner to read them from.
+    bool saved = false;
+    for (size_t i = 0; i < acts.size(); ++i) {
+        const hydra::Activation& rec = acts[i];
+        const hydra::app::PreviewActivation& act = shown[i];
+        IM_CHECK_EQ(act.tick, rec.timecode.ticks());
+        IM_CHECK_FLOAT_NEAR_EQ(act.ms, rec.timecode.ms(), 0.5);
+        const std::optional<int64_t> end = rec.window_end_tick();
+        IM_CHECK_EQ(act.has_sp_end, end.has_value());
+        if (!end || !act.has_sp_end) continue;  // no window: nothing runs (checked above)
+        IM_CHECK_EQ(act.sp_end_tick, *end);
+        IM_CHECK(act.sp_end_ms > act.ms);
+        for (double at : {act.ms, (act.ms + act.sp_end_ms) / 2.0}) {
+            pc.seek_ms(at);
+            const hydra::app::PreviewDrainBox on = pc.drain_box();
+            IM_CHECK(on.shown);
+            IM_CHECK(on.active);
+            IM_CHECK(on.header != idle.header);
+            IM_CHECK(!on.detail.empty());
+        }
+        if (!saved) {
+            // A frame of the active box, for a person to look at.
+            ctx->Yield(2);
+            check_overlay_boxes(ctx);
+            IM_CHECK(screenshot(ctx, "drain-box-active.png"));
+            saved = true;
+        }
+        // At the SP end. The boxes read the playhead held inside the song, so
+        // an end past where playback stops is never reached: SP still runs
+        // there.
+        pc.seek_ms(act.sp_end_ms);
+        const bool next_begun = i + 1 < shown.size() && shown[i + 1].ms <= act.sp_end_ms;
+        const bool past_song = act.sp_end_ms > pc.playback_end_ms();
+        IM_CHECK_EQ(pc.drain_box().active, next_begun || past_song);
+        if (!next_begun && !past_song) IM_CHECK(pc.drain_box().header == idle.header);
     }
-    IM_CHECK(active_ms >= 0.0);
-    pc.seek_ms(active_ms);
-    hydra::app::PreviewDrainBox on = pc.drain_box();
-    IM_CHECK_STR_EQ(on.header.c_str(), "SP drain");
-    IM_CHECK(on.rate.rfind("1 bar / ", 0) == 0);
-    IM_CHECK(on.detail.rfind("empties in ", 0) == 0);
-
-    // A frame of the active box, for a person to look at.
-    ctx->Yield(2);
-    check_overlay_boxes(ctx);
-    IM_CHECK(screenshot(ctx, "drain-box-active.png"));
 }
 
 // The readout under the SP gauge for a level of `bars`, in sp_meter_readout's
@@ -666,9 +698,11 @@ void test_preview_overlay_fit(ImGuiTestContext* ctx) {
     IM_CHECK(screenshot(ctx, "overlay-fit-narrow.png"));
 }
 
-// The Preview's new transport buttons and keys: -5s / +5s and Left / Right
-// jump 5 s, < 10 ms / 10 ms > and comma / period step 10 ms, Space plays and
-// pauses.
+// The Preview's transport buttons and keys: the jump buttons and Left / Right
+// jump kJumpMs, the step buttons and comma / period step kPanelStepMs, Space
+// plays and pauses. The step buttons' labels have no public owner
+// (preview_panel.cpp builds them in a function-local static), so they are
+// clicked by the words they show.
 void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     if (!open_preview(ctx)) return;
@@ -676,18 +710,21 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     IM_CHECK(!pc.playing());
     IM_CHECK(pc.playback_end_ms() > kChart0MinMs);
 
-    pc.seek_ms(10000.0);
-    ctx->ItemClick("**/+5s");
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 15000.0, 0.5);
-    ctx->ItemClick("**/-5s");
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.5);
+    // The jump buttons by the labels the panel gives them (jump_forward_label,
+    // jump_back_label), each moving one jump (kJumpMs).
+    pc.seek_ms(kParkMs);
+    ctx->ItemClick(("**/" + escape_ref(hydra::ui::jump_forward_label())).c_str());
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs + kJumpMs, 0.5);
+    ctx->ItemClick(("**/" + escape_ref(hydra::ui::jump_back_label())).c_str());
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs, 0.5);
 
-    // The arrows jump exactly 5 s. Had keyboard navigation also taken the
-    // arrow and nudged the scrubber, the playhead would be off by the nudge.
+    // The arrows jump exactly one jump. Had keyboard navigation also taken
+    // the arrow and nudged the scrubber, the playhead would be off by the
+    // nudge.
     ctx->KeyPress(ImGuiKey_RightArrow);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 15000.0, 0.5);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs + kJumpMs, 0.5);
     ctx->KeyPress(ImGuiKey_LeftArrow);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.5);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs, 0.5);
 
     // A step pauses.
     ctx->ItemClick("**/Play");
@@ -695,16 +732,16 @@ void test_preview_buttons_keys(ImGuiTestContext* ctx) {
     ctx->ItemClick("**/10 ms >");
     IM_CHECK(!pc.playing());
 
-    // The buttons and the keys each step exactly 10 ms.
-    pc.seek_ms(10000.0);
+    // The buttons and the keys each step exactly one step (kPanelStepMs).
+    pc.seek_ms(kParkMs);
     ctx->ItemClick("**/10 ms >");
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10010.0, 0.001);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs + kPanelStepMs, 0.001);
     ctx->ItemClick(("**/" + escape_ref("< 10 ms")).c_str());
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.001);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs, 0.001);
     ctx->KeyPress(ImGuiKey_Period);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10010.0, 0.001);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs + kPanelStepMs, 0.001);
     ctx->KeyPress(ImGuiKey_Comma);
-    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), 10000.0, 0.001);
+    IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), kParkMs, 0.001);
 
     // Space plays and pauses. Tab puts the keyboard focus box on the button
     // after "< 10 ms"; had navigation also taken Space it would have
@@ -921,8 +958,13 @@ void test_preview_error_wraps(ImGuiTestContext* ctx) {
     // That sentence is wider than any of the song panel's windows, so on one
     // line it would overflow whichever one holds it: nothing overflowing
     // below means it wrapped.
-    const std::string message = "Preview failed: " + pc.error();
-    IM_CHECK(visible_text(h).find("Preview failed:") != std::string::npos);
+    // The sentence on screen is the controller's error (app::plain_error's
+    // sentence for the failure), shown whole: ImGui logs wrapped text as one
+    // piece. The words the panel puts before it are preview_tab.cpp's own,
+    // with no owner to read them from, so the check is on the sentence.
+    const std::string message = pc.error();
+    IM_CHECK(!message.empty());
+    IM_CHECK(on_screen(h, message));
     // The sentence already quotes the chart's refusal, so no details line
     // repeats it (app::plain_error_detail; the user's rule of 2026-10-15).
     IM_CHECK(pc.error_detail().empty());
