@@ -603,7 +603,8 @@ def classify(body, params, cap_names, default_cap, defined, r):
     body = blank_nested(body)
     stmts = [s.strip() for s in split_statements(body) if s.strip()]
     only_throw = len(stmts) == 1 and stmts[0].startswith("throw")
-    rets = [x.strip() for x in RETURN.findall(body)]
+    # A bare `return;` leaves a void body early and hands nothing back.
+    rets = [x.strip() for x in RETURN.findall(body) if x.strip()]
     real, captured, other = [], [], []
     for e in rets:
         e2 = strip_move(e)

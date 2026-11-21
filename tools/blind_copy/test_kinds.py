@@ -125,6 +125,14 @@ TEST_CASE("cases") {
     store.fail_chart_list_reader_open_for_test(2);  // L:fail_int
     const ScopedHook a(hydra::ui::set_scan_hold_for_test, [&] { wait_until([&] { return go; }, "go"); });  // L:void_wait
     const ScopedHook b(hydra::ui::set_scan_hold_for_test, [&] { ++count; });  // L:void_plain
+    const ScopedHook b2(hydra::ui::set_scan_hold_for_test, [&] {  // L:void_early_return
+        if (row != 3) return;
+        wait_until([&] { return go; }, "go");
+    });
+    const ScopedHook b3(hydra::ui::set_scan_hold_for_test, [&] {  // L:void_early_return_no_wait
+        if (row != 3) return;
+        ++count;
+    });
     hydra::net::set_downloader([](const std::string& url, const std::string& path) { throw std::runtime_error("x"); });  // L:dl_throw
     hydra::net::set_downloader([](const std::string& url, const std::string& path) { write_file(path, "x"); });  // L:dl_write
     const ScopedHook c(hydra::ui::set_store_open_gate_for_test, [&] { ++opened; });  // L:alias
@@ -253,6 +261,10 @@ class BodySorts(Copy):
     def test_void_with_wait_against_without(self):
         self.assertEqual(self.outcome("void_wait"), k.WAIT)
         self.assertEqual(self.outcome("void_plain"), k.MIDSTEP)
+
+    def test_bare_return_hands_nothing_back(self):
+        self.assertEqual(self.outcome("void_early_return"), k.WAIT)
+        self.assertEqual(self.outcome("void_early_return_no_wait"), k.MIDSTEP)
 
     def test_downloader_that_throws_against_one_that_writes(self):
         self.assertEqual(self.outcome("dl_throw"), k.FAIL)
