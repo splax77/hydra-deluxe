@@ -163,20 +163,26 @@ class ScrapeMode(Base):
         self.assertIn("CHANGED SINCE 2026-09-30", out)
 
     def test_usage(self):
+        # A bad call stops before any check: exit 2, nothing on stdout, and the
+        # error names what was wrong with the call.
         code, out, err = run()
-        self.assertEqual(code, 2)
-        self.assertIn("usage", err)
-        code, _, err = run(os.path.join(self.tmp, "no-such-handoff.md"), "--repo", self.repo)
-        self.assertEqual(code, 2)
-        self.assertIn("usage", err)
-        code, _, err = run(self.handoff("x\n"), "--repo", self.repo, "--since", "last week")
-        self.assertEqual(code, 2)
+        self.assertEqual((code, out), (2, ""), err)
+        self.assertNotEqual(err.strip(), "")
+        missing = os.path.join(self.tmp, "no-such-handoff.md")
+        code, out, err = run(missing, "--repo", self.repo)
+        self.assertEqual((code, out), (2, ""), err)
+        self.assertIn(missing, err)
+        code, out, err = run(self.handoff("x\n"), "--repo", self.repo, "--since", "last week")
+        self.assertEqual((code, out), (2, ""), err)
+        self.assertIn("last week", err)
 
     def test_doc_mention_is_not_a_function(self):
         commit(self.repo, {"docs/notes.md": "Old::gone_function was removed.\n"}, "notes")
         code, out, _ = self.scrape("See `Old::gone_function`.\n")
+        # Missing, not found, and its line points at the doc that names it.
+        self.assertEqual(section(out, "EXISTS"), [], out)
         missing = section(out, "MISSING")
-        self.assertTrue(any(l.startswith("Old::gone_function") and "named only in docs, docs/notes.md:1" in l
+        self.assertTrue(any(l.startswith("Old::gone_function") and "docs/notes.md:1" in l
                             for l in missing), out)
         self.assertEqual(code, 1)
 
@@ -195,9 +201,11 @@ class ScrapeMode(Base):
         self.assertTrue(any(l.startswith("thing.cpp") and "src/thing.cpp" in l for l in missing), out)
         self.assertTrue(any(l.startswith("app/thing.cpp") for l in missing), out)
         self.assertEqual(code, 1)
+        # The file whose path only ends the same way is named, never found.
         commit(self.repo, {"deep/src/other.cpp": "x\n"}, "another file")
         _, out, _ = self.scrape("See `src/other.cpp`.\n")
-        self.assertTrue(any(l.startswith("src/other.cpp") and "a different file ends the same way" in l
+        self.assertEqual(section(out, "EXISTS"), [], out)
+        self.assertTrue(any(l.startswith("src/other.cpp") and "deep/src/other.cpp" in l
                             for l in section(out, "MISSING")), out)
 
     def test_path_outside_the_repo_or_in_the_wrong_case_is_missing(self):
