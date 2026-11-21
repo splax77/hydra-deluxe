@@ -7,18 +7,22 @@
 #include "doctest.h"
 
 #include <algorithm>
+#include <cstdint>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "app/analysis.h"  // discover_charts
 #include "store/record_store.h"
+#include "store_fixtures.h"  // OldLibrary
 #include "testdata_dirs.h"  // corpus::root
 #include "ui/library_model.h"
 
 using hydra::store::ChartLibraryEntry;
 using hydra::store::LibraryOrder;
+using hydra::store::RecordLookup;
 using hydra::store::RecordStore;
+using hydra::test::OldLibrary;
 using hydra::ui::LibraryModel;
 using hydra::ui::LibrarySort;
 
@@ -61,6 +65,28 @@ TEST_CASE("library: the shown order does not depend on the order the rows were r
     named.set_charts(by_name);
     plain.set_charts(unsorted);
     backwards.set_charts(reversed);
+
+    // Real scores, so the Best path sort orders by score and not only by its
+    // tie-break: the three records a real v2.12.1 hydra_batch run saved for
+    // three corpus charts (testdata/store/README.md). They read Stale here,
+    // and a Stale row still sorts by its stored score.
+    OldLibrary old("library_read_order");
+    RecordStore old_store(old.path);
+    const std::vector<std::string> ids = OldLibrary::song_ids();
+    const std::vector<RecordLookup> lookups = old_store.lookup(ids, OldLibrary::profile());
+    REQUIRE(lookups.size() == ids.size());
+    std::set<int64_t> scores;
+    for (size_t i = 0; i < ids.size(); ++i) {
+        CAPTURE(ids[i]);
+        REQUIRE(lookups[i].record.summary().has_scored_best_path());
+        scores.insert(*lookups[i].record.summary().score);
+        // Each record's chart is a corpus row: a hash no row lists changes nothing.
+        CHECK(named.set_summary_for(ids[i], lookups[i]) > 0);
+        CHECK(plain.set_summary_for(ids[i], lookups[i]) > 0);
+        CHECK(backwards.set_summary_for(ids[i], lookups[i]) > 0);
+    }
+    // Two or more scores that differ, or the score order is not exercised.
+    REQUIRE(scores.size() > 1);
     for (LibrarySort column : {LibrarySort::Title, LibrarySort::Artist, LibrarySort::Album,
                                LibrarySort::Charter, LibrarySort::Folder, LibrarySort::BestPath}) {
         for (bool ascending : {true, false}) {
