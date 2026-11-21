@@ -475,22 +475,6 @@ void test_choose_an_ending(ImGuiTestContext* ctx) {
         IM_CHECK(!on_screen(h, gone));
 }
 
-// The Preview's clock as its time box words it at `ms` on the open song
-// (app::build_time_box, the text the panel draws), "0:10.000 / 2:10.088".
-std::string expected_clock(Harness& h, double ms) {
-    const hydra::ui::PreviewController& preview = *h.app->preview();
-    return hydra::app::build_time_box(preview.scene(), ms, preview.playback_end_ms()).timestamp;
-}
-
-// The part of the clock that stays put: everything after its first word,
-// where the song ends (" / 2:10.088" on Burnout). Empty when the time box has
-// no second word.
-std::string clock_tail(Harness& h) {
-    const std::string whole = expected_clock(h, 0.0);
-    const size_t gap = whole.find(' ');
-    return gap == std::string::npos ? std::string() : whole.substr(gap);
-}
-
 // The Preview's clock as the screen drew it last frame, "0:25.123 / 2:10.088",
 // or empty when it is not drawn.
 std::string burnout_clock(Harness& h) {
@@ -511,7 +495,7 @@ std::string clock_on_fill(Harness& h, int64_t tick) {
     const hydra::app::PreviewScene& scene = h.app->preview()->scene();
     const std::optional<size_t> i = hydra::app::fill_index_on_chord(scene, tick);
     if (!i) return std::string();
-    return expected_clock(h, hydra::ui::timeline_fill_ms(scene.fills[*i]));
+    return clock_text_at(h, hydra::ui::timeline_fill_ms(scene.fills[*i]));
 }
 
 // The moment these tests park the paused Preview on, a test input.
@@ -528,7 +512,7 @@ bool open_burnout_parked(ImGuiTestContext* ctx) {
     move_off_timeline(ctx);
     h.app->preview()->seek_ms(kParkedMs);
     ctx->Yield(2);
-    return burnout_clock(h) == expected_clock(h, kParkedMs);
+    return burnout_clock(h) == clock_text_at(h, kParkedMs);
 }
 
 // The panel's button reads "Pause" while the Preview plays, and "Play" while
@@ -562,7 +546,7 @@ std::string clock_under_pointer(ImGuiTestContext* ctx) {
     hydra::ui::TimelineLayout layout;
     layout.width = rows.GetWidth();
     layout.view = hydra::ui::open_view(h.app->preview()->playback_end_ms());
-    return expected_clock(h, hydra::ui::timeline_ms_at(layout, ImGui::GetIO().MousePos.x - rows.Min.x));
+    return clock_text_at(h, hydra::ui::timeline_ms_at(layout, ImGui::GetIO().MousePos.x - rows.Min.x));
 }
 
 // A hover moves nothing. Paused, a fill's card shows and a list row lights its
@@ -637,7 +621,7 @@ void test_drag_moves_the_clock(ImGuiTestContext* ctx) {
     ctx->Yield(2);
     const std::string at_quarter = burnout_clock(h);
     IM_CHECK_STR_EQ(at_quarter.c_str(), clock_under_pointer(ctx).c_str());
-    IM_CHECK(at_quarter != expected_clock(h, kParkedMs));
+    IM_CHECK(at_quarter != clock_text_at(h, kParkedMs));
     ctx->MouseMoveToPos(saved_row_point(ctx, 0.5f));
     ctx->Yield(2);
     IM_CHECK_STR_EQ(burnout_clock(h).c_str(), clock_under_pointer(ctx).c_str());
@@ -721,7 +705,7 @@ void test_fill_click_moves_clock(ImGuiTestContext* ctx) {
     const std::string first_dot = clock_on_fill(h, *first);
     IM_CHECK_RETV(!first_dot.empty(), );
     // A click that left the clock parked would not pass.
-    IM_CHECK_RETV(first_dot != expected_clock(h, kParkedMs), );
+    IM_CHECK_RETV(first_dot != clock_text_at(h, kParkedMs), );
     ctx->ItemClick(fill_ref(*first).c_str());
     IM_CHECK_RETV(wait_for_edit(ctx), );
     IM_CHECK_STR_EQ(burnout_clock(h).c_str(), first_dot.c_str());

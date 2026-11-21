@@ -55,10 +55,14 @@ bool wait_for_edit(ImGuiTestContext* ctx);
 // does, and waits for the edit to land (wait_for_edit).
 bool click_fill(ImGuiTestContext* ctx, int64_t act_tick);
 
-// Burnout's first two fills the player can activate on (m20 and m40), by chord
-// tick, from one run under the GUI tests' settings.
-inline constexpr int64_t kFirstFillTick = 36480;
-inline constexpr int64_t kSecondFillTick = 74880;
+// The Preview's clock as its time box words it at `ms` on the open song
+// (app::build_time_box, the text the panel draws), "0:10.000 / 2:10.088".
+std::string clock_text_at(Harness& h, double ms);
+
+// The part of the clock that stays put: everything after its first word,
+// where the song ends (" / 2:10.088" on Burnout). Empty when the time box has
+// no second word.
+std::string clock_tail(Harness& h);
 
 // Symphony X - Set the World on Fire's notes.chart in the corpus: a song
 // about six minutes long, so longer than the timeline's window.
