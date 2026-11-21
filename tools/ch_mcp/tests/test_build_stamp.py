@@ -173,11 +173,13 @@ class StampTest(unittest.TestCase):
 
     def test_each_build_script_writes_the_stamp_after_the_compile(self):
         scripts = real_scripts()
+        checked = set()
         for js in real_agent_js_paths():
             try:
                 script = BS.build_command(js)[len("npm run "):]
             except BS.StampError:
                 continue
+            checked.add(script)
             with self.subTest(script=script):
                 name = os.path.basename(js)
                 steps = [step.split() for step in scripts[script].split("&&")]
@@ -190,6 +192,8 @@ class StampTest(unittest.TestCase):
                 self.assertEqual(len(compiles), 1)
                 self.assertEqual(len(stamps), 1)
                 self.assertLess(compiles[0], stamps[0])
+        # Every script was reached; a folder that gives none fails here.
+        self.assertEqual(checked, set(scripts))
 
     def test_a_bundle_with_no_source_map_writes_no_stamp(self):
         with open(self.js, "wb") as f:
