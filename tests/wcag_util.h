@@ -11,6 +11,13 @@
 
 namespace testwcag {
 
+// WCAG 2.2's contrast minimums. No code in src/ holds these floors; every
+// colour test reads them here. The first is for normal text (success
+// criterion 1.4.3). The second is for large text (1.4.3) and for a mark that
+// is not text, such as a dot, an outline or a focus ring (1.4.11).
+constexpr double kTextContrast = 4.5;
+constexpr double kLargeTextOrMarkContrast = 3.0;
+
 // Relative luminance of an sRGB colour whose channels run from 0 to 1.
 inline double relative_luminance(double r, double g, double b) {
     auto linear = [](double c) {

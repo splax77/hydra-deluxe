@@ -28,6 +28,7 @@
 #include "core/scoring.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
+#include "corpus_fixtures.h"  // sweep_settings, kSweepDepthScores
 #include "corpus_util.h"
 #include "db_file_util.h"  // scalar_on_file
 #include "parse/song.h"
@@ -615,18 +616,14 @@ TEST_CASE("rules: a path over the Path limit stays kept when it ties the optimal
 // 10 ms limit the over one is dropped, not filed under the inside one as a
 // tie, and the inside one stays.
 // The unlimited settings are the invariants sweep's deep ones
-// (test_engine_sweeps.cpp), so in a full run that record comes from the
+// (corpus::sweep_settings), so in a full run that record comes from the
 // corpus::analyzed cache; the deep search keeps many scores below the top,
 // which is where the case lives.
 TEST_CASE("rules: a path over the Path limit below the best score is dropped even as a tie") {
     constexpr double kLimitMs = 10.0;
-    SearchSettings unlimited;
-    unlimited.sp_cap = 4;
-    unlimited.depth_mode = DepthMode::Scores;
-    unlimited.depth_value = 200;
-    unlimited.ms_filter = std::nullopt;
-    SearchSettings settings = unlimited;
-    settings.ms_filter = kLimitMs;
+    const SearchSettings unlimited =
+        corpus::sweep_settings(corpus::kSweepDepthScores, std::nullopt);
+    const SearchSettings settings = corpus::sweep_settings(corpus::kSweepDepthScores, kLimitMs);
 
     int walked = 0;
     int found = 0;

@@ -30,6 +30,7 @@
 #include "core/model.h"
 #include "core/squeeze_rating.h"
 #include "core/strutil.h"
+#include "corpus_fixtures.h"  // scanned_copy
 #include "corpus_util.h"
 #include "parse/song.h"  // NoNotesError
 #include "dm_fixture.h"  // testdm::save
@@ -93,26 +94,7 @@ store::ChartLibraryEntry library_entry_for_file(const std::string& md5, const st
     return e;
 }
 
-// A second copy of the corpus chart `chart` in another folder, as a scan
-// lists it: the chart file, and its song.ini when it has one, copied into the
-// scratch folder testtemp::temp_dir(tag), and the copy's own scanned row
-// titled `title` (corpus::scanned_entry). The scan's own hash of the copy
-// must be the original's, or the two rows are not one chart.
-store::ChartLibraryEntry scanned_copy(const std::string& chart, const std::string& tag,
-                                      const std::string& title) {
-    const size_t slash = chart.rfind('\\');
-    REQUIRE(slash != std::string::npos);
-    const std::string dir = testtemp::temp_dir(tag);
-    const std::string copied = dir + chart.substr(slash);
-    testtemp::write_bytes(copied, hydra::read_file_bytes(chart));
-    const std::string ini = chart.substr(0, slash) + "\\song.ini";
-    if (std::filesystem::exists(hydra::os_path(ini)))
-        testtemp::write_bytes(dir + "\\song.ini", hydra::read_file_bytes(ini));
-    store::ChartLibraryEntry e = corpus::scanned_entry(copied, title);
-    REQUIRE(e.md5 == app::hash_chart_file(chart));
-    REQUIRE(e.rootfolder != chart.substr(0, slash));
-    return e;
-}
+using corpus::scanned_copy;
 
 // Analyzes the first `want` corpus charts with paths under
 // fixture_settings(cap) into `store`, each listed in the library by the row a

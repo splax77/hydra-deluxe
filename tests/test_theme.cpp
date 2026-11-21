@@ -26,10 +26,9 @@ using namespace hydra::ui;
 namespace {
 
 // The least contrast that counts as readable for text, and for a mark that
-// is not text (a dot, an outline). No code in src/ holds these floors; this
-// file and test_report_page.cpp each name them.
-constexpr double kReadableTextContrast = 4.5;
-constexpr double kReadableMarkContrast = 3.0;
+// is not text: wcag_util.h holds both floors.
+constexpr double kReadableTextContrast = testwcag::kTextContrast;
+constexpr double kReadableMarkContrast = testwcag::kLargeTextOrMarkContrast;
 
 double luminance(const ImVec4& c) { return testwcag::relative_luminance(c.x, c.y, c.z); }
 

@@ -29,6 +29,7 @@
 #include "core/squeeze_rating.h"  // beyond_tier, timing_tiers
 #include "store/chart_index.h"
 #include "store/record_store.h"
+#include "corpus_fixtures.h"  // scanned_copy
 #include "corpus_util.h"
 #include "dm_fixture.h"  // testdm::settings, testdm::save
 #include "report_samples.h"
@@ -51,19 +52,6 @@ size_t occurrences(const std::string& text, const std::string& what) {
 // title too, two charts can only be told apart by their hash.
 const char* const kSharedTitle = "Same Title";
 
-// A second library folder holding the corpus chart `chart`: the chart file,
-// and its song.ini when it has one, copied into the folder `dir`, and the row
-// a scan writes for the copy.
-store::ChartLibraryEntry listed_again(const std::string& chart, const std::string& dir) {
-    const size_t slash = chart.rfind('\\');
-    REQUIRE(slash != std::string::npos);
-    testtemp::write_bytes(dir + chart.substr(slash), hydra::read_file_bytes(chart));
-    const std::string ini = chart.substr(0, slash) + "\\song.ini";
-    if (std::filesystem::exists(hydra::os_path(ini)))
-        testtemp::write_bytes(dir + "\\song.ini", hydra::read_file_bytes(ini));
-    return corpus::scanned_entry(dir + chart.substr(slash), kSharedTitle);
-}
-
 // The path report's rows and the library they were read against.
 struct CorpusPage {
     std::vector<report::ReportRow> rows;
@@ -85,12 +73,11 @@ const CorpusPage& shared_title_page() {
         std::vector<store::ChartLibraryEntry> library;
         for (const corpus::ChartWithPaths& c : charts)
             library.push_back(corpus::scanned_entry(c.chart, kSharedTitle));
-        // The scan reads the copy here; nothing opens it after.
-        const std::string copy_dir = testtemp::temp_dir("report_page_copy");
-        library.push_back(listed_again(charts[0].chart, copy_dir));
-        testtemp::remove_dir(copy_dir);
-        // The copy is the same chart, or the library would hold four charts.
-        REQUIRE(library.back().md5 == library.front().md5);
+        // The scan reads the copy here; nothing opens it after. scanned_copy
+        // requires the copy to hash as the same chart, or the library would
+        // hold four charts.
+        library.push_back(corpus::scanned_copy(charts[0].chart, "report_page_copy", kSharedTitle));
+        testtemp::remove_dir(library.back().rootfolder);
         store.rebuild_chart_library(library);
         for (size_t i = 0; i < charts.size(); ++i)
             testdm::save(store, library[i].md5, settings, charts[i].result.record);
@@ -329,11 +316,6 @@ std::set<std::string> text_tokens(const std::string& css) {
     return out;
 }
 
-// WCAG 2.2's contrast minimums (success criterion 1.4.3): normal text, and
-// large text, which 1.4.11 also asks of a focus ring.
-constexpr double kWcagTextContrast = 4.5;
-constexpr double kWcagLargeTextContrast = 3.0;
-
 }  // namespace
 
 TEST_CASE("the fill page is a standards-mode document") {
@@ -357,7 +339,8 @@ TEST_CASE("report colours meet WCAG contrast in every colour scheme") {
         // the header band. The accent is the large bold heading word and the
         // focus ring.
         for (const std::string& text : texts) {
-            const double minimum = text == "sp" ? kWcagLargeTextContrast : kWcagTextContrast;
+            const double minimum =
+                text == "sp" ? testwcag::kLargeTextOrMarkContrast : testwcag::kTextContrast;
             for (const char* ground : {"paper", "surface", "raised"}) {
                 INFO(schemes << ": " << text << " on " << std::string(ground));
                 REQUIRE(scheme.count(text) == 1);
