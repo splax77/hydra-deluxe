@@ -58,9 +58,12 @@ struct ChordsAround {
 // tick order, as both parsers emit it. A caller with a range drops the chord
 // before the tick when it sits earlier than `earliest`, and the chord after
 // it when it sits later than `latest`; the pick is made from what is left.
+// A caller that searches on from a chord, as Clone Hero 1.0's generator does,
+// passes its index as `search_from`: no chord before that index is `after`.
 ChordsAround chords_around(const std::vector<SongTimestamp>& sequence, int64_t tick,
                            int64_t earliest = std::numeric_limits<int64_t>::min(),
-                           int64_t latest = std::numeric_limits<int64_t>::max());
+                           int64_t latest = std::numeric_limits<int64_t>::max(),
+                           size_t search_from = 0);
 
 // A practice section ("Verse 2B", "Chorus 1"), from the chart's own section
 // markers. Display only: nothing in the search or the stored record reads these.
@@ -227,8 +230,9 @@ public:
     void check_activations(const core::Rules& rules, FillDeadlineRule fills);
 
 private:
-    // The two generators check_activations chooses between.
-    void place_fills_ch10(const core::Rules& rules);
+    // The two generators check_activations chooses between. 1.0's reads no
+    // rule: its numbers are the game's own literals.
+    void place_fills_ch10();
     void place_fills_ch11(const core::Rules& rules);
 
     int64_t tick_resolution_;

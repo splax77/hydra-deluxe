@@ -61,8 +61,8 @@
       "pattern": "(\\.|->)fill_(max_distance_beats|cooldown_measures)\\b",
       "anchor": "fill_",
       "must_match": [
-        "const int64_t cooldown_measures = rules.fill_cooldown_measures;",
-        "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);",
+        "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats) + 1;",
+        "line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));",
         "const double reach = rules->fill_max_distance_beats * res;"
       ],
       "must_not_match": [
@@ -81,19 +81,9 @@
           "file": "src/core/song.cpp",
           "line_text": "line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));",
           "why": "Song::check_activations, the owner: the next candidate line after a placed fill"
-        },
-        {
-          "file": "src/core/song.cpp",
-          "line_text": "const int64_t cooldown_measures = rules.fill_cooldown_measures;",
-          "why": "Song::place_fills_ch10, the Clone Hero 1.0 generator check_activations chooses: the downbeats skipped after a placed fill"
-        },
-        {
-          "file": "src/core/song.cpp",
-          "line_text": "static_cast<int64_t>(tick_resolution_ * rules.fill_max_distance_beats);",
-          "why": "Song::place_fills_ch10, the Clone Hero 1.0 generator check_activations chooses: how far from a downbeat a chord may sit, with no extra tick"
         }
       ],
-      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. check_activations chooses between two generators in core/song.cpp, Clone Hero 1.1's (place_fills_ch11) and 1.0's (place_fills_ch10), and each reads the two fields."
+      "note": "Reading either generated-fill rule from a Rules value. Song::check_activations places every generated fill from the measure lines, as Clone Hero's generator does; rules_fields in src/core/rules.cpp names the fields through member pointers, which is loading them, not placing fills. check_activations chooses between two generators in core/song.cpp: Clone Hero 1.1's (place_fills_ch11) reads the two fields, and 1.0's (place_fills_ch10) reads neither, as it keeps the 1.0 game's own literals."
     },
     {
       "question": "Which game version's generator places a chart's own fills?",
@@ -106,7 +96,7 @@
       "pattern": "\\b(check_activations|place_fills_ch1[01])\\(|\\bkNotesOnlyFills\\b",
       "must_match": [
         "song.check_activations(rules_, fills_rule_);",
-        "song.place_fills_ch10(rules);",
+        "song.place_fills_ch10();",
         "place_fills_ch11(settings.rules);",
         "Song song = load_songpath(path, reading, rules, kNotesOnlyFills);"
       ],
@@ -118,7 +108,7 @@
       "owner_lines": [
         {
           "file": "src/core/song.cpp",
-          "line_text": "place_fills_ch10(rules);",
+          "line_text": "place_fills_ch10();",
           "why": "Song::check_activations, the owner: Clone Hero 1.0 mode's generator"
         },
         {
@@ -133,7 +123,7 @@
         },
         {
           "file": "src/core/song.cpp",
-          "line_text": "void Song::place_fills_ch10(const core::Rules& rules) {",
+          "line_text": "void Song::place_fills_ch10() {",
           "why": "the 1.0 generator's definition, called only by the owner"
         },
         {
@@ -173,7 +163,7 @@
         },
         {
           "file": "src/core/song.h",
-          "line_text": "void place_fills_ch10(const core::Rules& rules);",
+          "line_text": "void place_fills_ch10();",
           "why": "the 1.0 generator's private declaration"
         },
         {
@@ -254,7 +244,7 @@
           "why": "chords_around, the owner: how far the chord at or before the tick sits from it"
         }
       ],
-      "note": "Measuring a chord's distance from a tick, or comparing two such distances, which is how a copy of the nearest-chord pick starts. Song::place_fills_ch11 and place_authored_fills (src/parse/song.cpp) call chords_around; place_authored_fills passes its own range limits in. Song::place_fills_ch10 still keeps its own nearest-chord walk, in a shape this pattern does not read, until the ch10-fills plan's task T3 replaces it."
+      "note": "Measuring a chord's distance from a tick, or comparing two such distances, which is how a copy of the nearest-chord pick starts. Song::place_fills_ch10, Song::place_fills_ch11 and place_authored_fills (src/parse/song.cpp) call chords_around; place_authored_fills passes its own range limits in, and place_fills_ch10 the chord its search starts from."
     }
   ]
 }
