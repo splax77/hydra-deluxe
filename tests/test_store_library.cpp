@@ -384,6 +384,21 @@ void save_fixture_chart(RecordStore& store, const std::string& md5) {
     store.save(prepare_record(md5, at4(), hydra::test::fixture().record));
 }
 
+// A fresh store file at `path` whose library lists rows `a` and `b`, each
+// chart saved once as the click saves it.
+void store_two_saved_charts(const std::string& path, const ChartLibraryEntry& a,
+                            const ChartLibraryEntry& b) {
+    std::remove(path.c_str());
+    {
+        RecordStore store(path);
+        store.rebuild_chart_library({a, b});
+        save_chart(store, a);
+        save_chart(store, b);
+    }
+    REQUIRE(results_of(path, a.md5) == 1);
+    REQUIRE(results_of(path, b.md5) == 1);
+}
+
 }  // namespace
 
 // The rows are the corpus scan's and the records the engine's analyses of
@@ -394,15 +409,7 @@ TEST_CASE("a scan that drops a chart deletes its stored rows") {
     const ChartLibraryEntry& a = rows[0];
     const ChartLibraryEntry& b = rows[1];
     const std::string path = testtemp::temp_path("scan_drops_chart", ".db");
-    std::remove(path.c_str());
-    {
-        RecordStore store(path);
-        store.rebuild_chart_library({a, b});
-        save_chart(store, a);
-        save_chart(store, b);
-    }
-    REQUIRE(results_of(path, a.md5) == 1);
-    REQUIRE(results_of(path, b.md5) == 1);
+    store_two_saved_charts(path, a, b);
     {
         RecordStore store(path);
         store.rebuild_chart_library({a});
@@ -475,15 +482,7 @@ TEST_CASE("reidentify_chart moves the library row to the new md5 and deletes the
     const ChartLibraryEntry& b = rows[1];
     const ChartLibraryEntry& c = rows[2];
     const std::string path = testtemp::temp_path("reidentify_moves", ".db");
-    std::remove(path.c_str());
-    {
-        RecordStore store(path);
-        store.rebuild_chart_library({a, b});
-        save_chart(store, a);
-        save_chart(store, b);
-    }
-    REQUIRE(results_of(path, a.md5) == 1);
-    REQUIRE(results_of(path, b.md5) == 1);
+    store_two_saved_charts(path, a, b);
     {
         RecordStore store(path);
         store.reidentify_chart(a.notespath, c.md5, c.sig);
@@ -833,8 +832,10 @@ TEST_CASE("store: a chart list read on threads whose connection fails to open fa
 TEST_CASE("store: rows read by name compare byte for byte, and one name keeps scan order") {
     // Four copies of one corpus chart and one other corpus chart, read by
     // the real scan from two charts folders. "Song" twice, the scan reaching
-    // the later path first (its folder is listed first); "song" (lowercase
-    // sorts after every uppercase letter byte for byte) and "Alpha".
+    // the later path first: the walk (walk_folders in app/analysis.cpp) seeds
+    // a stack with the roots in the order given and pops from its top, so it
+    // walks the last root first, and the later root is given last. "song"
+    // (lowercase sorts after every uppercase letter byte for byte) and "Alpha".
     const std::string chart = hydra::test::fixture_chart();
     const std::string id = hydra::app::hash_chart_file(chart);
     const std::string other_chart = corpus_row_other_than(id).notespath;
@@ -848,7 +849,7 @@ TEST_CASE("store: rows read by name compare byte for byte, and one name keeps sc
          SongFolder{"o_other", other_chart, ChartNames{"Other", "A", "C", "Al"}}});
     REQUIRE(late_root > early_root);
     std::pair<std::vector<ChartLibraryEntry>, std::vector<std::string>> scan =
-        hydra::app::discover_charts({late_root, early_root});
+        hydra::app::discover_charts({early_root, late_root});
     REQUIRE(scan.second.empty());
     REQUIRE(scan.first.size() == 5);
     // The chart file the scan found in song folder `folder`.
