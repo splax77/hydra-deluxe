@@ -583,14 +583,13 @@ TEST_CASE("the next start deletes the kept download folder") {
     // inside the scratch temp folder.
     const std::string folder = hydra::ui::update_folder();
     // What a declined start leaves: the installer under the name the job
-    // gives it, the installer's log beside it ("setup.log", named by
-    // installer_log_path in app_state.cpp, which is not public), and a file
-    // in a folder below, so a removal of single files would leave something.
+    // gives it, the installer's log beside it, and a file in a folder
+    // below, so a removal of single files would leave something.
     const hydra::app::UpdateRelease& release = w.replay.release();
     const std::string sub = hydra::join_folder(folder, "sub");
     const std::vector<std::string> left = {
         hydra::join_folder(folder, hydra::ui::update_installer_name(release)),
-        hydra::join_folder(folder, "setup.log"),
+        hydra::ui::installer_log_path(),
         hydra::join_folder(sub, "inner.txt"),
     };
     std::filesystem::create_directories(hydra::os_path(sub));

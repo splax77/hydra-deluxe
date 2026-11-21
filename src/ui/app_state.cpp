@@ -1112,10 +1112,9 @@ std::string available_text(const core::AppVersion& version) {
     return core::named_version(version) + " is available.";
 }
 
-// Inno Setup's log, beside the download.
-std::string installer_log_path() { return join_folder(update_folder(), "setup.log"); }
-
 }  // namespace
+
+std::string installer_log_path() { return join_folder(update_folder(), "setup.log"); }
 
 void AppState::start_updates() {
     // The first start after any version change says so once. An empty value
