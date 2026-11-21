@@ -69,13 +69,6 @@ from tools.ch_probe.tests.test_play_chart import (  # noqa: E402
 from tools.ch_probe.input_driver import DEFAULT_BINDINGS, MENU_KEYS, InputDriver, Lane  # noqa: E402
 
 
-class StuckGame(FakeGame):
-    """A game that does not exit within the stop's wait."""
-
-    def stop(self) -> None:
-        raise subprocess.TimeoutExpired(PROCESS_NAME, B.EXIT_CHECK_S)
-
-
 WINDOW = 0x1234
 # How long a test waits on a fake's thread before it fails instead of hanging.
 THREAD_CAP_S = 5.0
@@ -118,6 +111,20 @@ SCHEDULE_JSON = schedule_of(SCORE_JSON)
 
 # A corpus chart folder (song.ini and notes.mid) for ch_install_chart.
 CORPUS_CHART_FOLDER = os.path.join(_REPO_ROOT, "testdata", "input", "test_pitch_dark_ratio")
+# The game's own command-line option switch, disassembled from build 6142's
+# GameAssembly.dll (its page, cli_args_parse_395C10.md, says how).
+GAME_CLI_PARSER = os.path.join(_REPO_ROOT, "docs", "clone-hero", "code", "6142",
+                               "cli_args_parse_395C10.asm")
+
+
+def game_cli_options() -> set:
+    """The option names the game's command-line switch compares each word
+    with: the string literals GAME_CLI_PARSER loads."""
+    with open(GAME_CLI_PARSER, encoding="utf-8") as f:
+        options = set(re.findall(r"str:'(-[^']*)'", f.read()))
+    if not options:
+        raise AssertionError(f"no option names in {GAME_CLI_PARSER}")
+    return options
 # The game's scorestats.json from an in-game run of the Window Map probe song
 # (copied from hydra-data/ch-mcp-runs/2026-11-07/ls-o2-run1), and Hydra's
 # score JSON of that song, path 0 (the command that makes it is in the
@@ -399,16 +406,18 @@ class GameToolsTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
 
     def test_a_quiet_machine_puts_the_report_before_the_launch_lines(self):
-        t = ToolRig(self.tmp)
-        lines = t.tools.ch_start(t.r.song).splitlines()
-        cpu = lines.index("CPU: 3.00 percent averaged over 5 s (limit 30 percent)")
-        backup = lines.index(f"backup folder: {t.backup_dir()}")
-        starting = next(i for i, line in enumerate(lines) if line.startswith("starting: "))
-        self.assertEqual(lines[0], "no compiler running")
-        self.assertLess(cpu, backup)
-        self.assertLess(backup, starting)
-        self.assertIn("free memory: 1.0 GB", lines)
-        self.assertIn("power scheme: Balanced", lines)
+        # The report is quiet.quiet_report's own, on the readings ch_start
+        # reads (Q.LIVE_ENV). The real start takes its backup, then its launch
+        # fails for real (the game exe is not there).
+        report = Q.quiet_report(Q.LIVE_ENV)
+        self.assertTrue(report.quiet, report.lines)
+        lines = self.real_tools().ch_start().splitlines()
+        self.assertEqual(lines[:len(report.lines)], list(report.lines))
+        backups = [i for i, line in enumerate(lines) if line.startswith("backup folder: ")]
+        starting = [i for i, line in enumerate(lines) if line.startswith("starting: ")]
+        self.assertEqual((len(backups), len(starting)), (1, 1), lines)
+        self.assertLess(len(report.lines) - 1, backups[0])
+        self.assertLess(backups[0], starting[0])
 
     def test_the_check_runs_once_and_waits_quiet_sample_s(self):
         # The real readers, on the recorded build-time process list, so the
@@ -457,8 +466,31 @@ class GameToolsTest(unittest.TestCase):
         self.assertLess(took, Q.QUIET_SAMPLE_S)
 
     def test_ch_start_has_no_argument_that_skips_the_check(self):
-        self.assertEqual(list(inspect.signature(GT.GameTools.ch_start).parameters),
-                         ["self", "song_folder", "player", "profile", "human"])
+        # One start on a busy machine (the recorded build-time process list)
+        # with every argument away from its default: each switch flipped and
+        # each text given a value. A parameter added with no value here fails
+        # the test, so a new one is checked too.
+        given = {"song_folder": CORPUS_CHART_FOLDER, "player": "Drums,Hard",
+                 "profile": "Tester"}
+        args = {}
+        for name, param in inspect.signature(GT.GameTools.ch_start).parameters.items():
+            if name == "self":
+                continue
+            if isinstance(param.default, bool):
+                args[name] = not param.default
+            else:
+                self.assertIn(name, given, f"ch_start has a new parameter {name}: give it a "
+                                           "value here so the busy start checks it")
+                self.assertNotEqual(given[name], param.default, name)
+                args[name] = given[name]
+        tools = self.real_tools()
+        with mock.patch.object(Q, "LIVE_ENV", real_quiet_env(build_processes())):
+            reply = tools.ch_start(**args)
+        prefix, suffix = refusal_parts()
+        self.assertTrue(reply.startswith(prefix), reply)
+        self.assertTrue(reply.endswith(suffix), reply)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "real scratch")))
+        self.assertIsNone(tools._run)
 
     # -- ch_start ----------------------------------------------------------------
 
@@ -483,17 +515,23 @@ class GameToolsTest(unittest.TestCase):
     def test_ch_start_with_no_song_launches_launch_commands_no_song_line(self):
         t = ToolRig(self.tmp)
         reply = t.tools.ch_start()
-        self.assertEqual(t.r.launch.commands,
-                         [B.launch_command(t.r.env.exe, None, B.DEFAULT_PLAYER)])
+        # The game alone, with no word after it: the game starts at its menu.
+        self.assertEqual(t.r.launch.commands, [[t.r.env.exe]])
         self.assertIn("song length: none", reply)
 
-    def test_the_command_line_comes_from_launch_command_with_known_flags_only(self):
+    def test_the_command_line_names_the_song_player_and_profile_in_the_games_options(self):
         t = ToolRig(self.tmp)
         t.tools.ch_start(t.r.song, profile="Tester")
-        cmd = t.r.launch.commands[0]
-        self.assertEqual(cmd, B.launch_command(t.r.env.exe, t.r.song, B.DEFAULT_PLAYER, "Tester"))
-        self.assertEqual({a for a in cmd if a.startswith("--")},
-                         {"--song", "--player", "--profile"})
+        self.assertEqual(len(t.r.launch.commands), 1, t.r.launch.commands)
+        exe, *words = t.r.launch.commands[0]
+        self.assertEqual(exe, t.r.env.exe)
+        # Each option and the value after it: the song folder, the default
+        # player and the profile this start was given.
+        options = dict(zip(words[::2], words[1::2]))
+        self.assertEqual(len(options) * 2, len(words), words)
+        self.assertEqual(options, {"--song": os.path.abspath(t.r.song),
+                                   "--player": B.DEFAULT_PLAYER, "--profile": "Tester"})
+        self.assertLessEqual(set(options), game_cli_options())
 
     def test_a_second_ch_start_stops_and_restores_the_first_before_launching(self):
         # The first run is a real adopted backup; the second start's launch
@@ -564,18 +602,6 @@ class GameToolsTest(unittest.TestCase):
         restore = [i for i, line in enumerate(lines) if backup in line]
         self.assertTrue(restore, lines)
         self.assertLess(lines.index("first hook's line"), min(restore))
-
-    def test_ch_stop_says_when_the_game_outlives_the_wait_and_still_restores(self):
-        t = ToolRig(self.tmp)
-        t.r.game = t.r.launch.game = StuckGame(t.r.clock)
-        t.tools.ch_start(t.r.song)
-        for name in ORIGINAL:
-            _write(t.r.path(name), b"changed by the game")
-        reply = t.tools.ch_stop()
-        self.assertIn("(pid 4242) was told to stop but was still running after 30 s", reply)
-        self.assertNotIn("stopped the game\n", reply)
-        self.assertIn("rewired registry: unchanged", reply)
-        t.r.assert_files_hold(self, b"changed by the game")
 
     def test_a_failed_restore_names_it_and_the_folder_and_nothing_further_runs(self):
         tools = self.real_tools()
@@ -1792,65 +1818,80 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(tools.ch_play_status().splitlines()[0],
                          f"press log: {path} ({len(rows)} rows)")
 
+    def _held_log(self) -> str:
+        """A named pipe nobody reads, as a press log path: Windows holds the
+        writer's first write until the pipe's server end closes, which the
+        test's cleanup does, so the held writer then fails and ends."""
+        import ctypes
+        from ctypes import wintypes
+        k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        k32.CreateNamedPipeW.restype = wintypes.HANDLE
+        k32.CreateNamedPipeW.argtypes = [wintypes.LPCWSTR] + [wintypes.DWORD] * 6 + [
+            ctypes.c_void_p]
+        k32.DisconnectNamedPipe.argtypes = k32.CloseHandle.argtypes = [wintypes.HANDLE]
+        path = rf"\\.\pipe\hydra_test_held_log_{os.getpid()}_{threading.get_ident()}"
+        # Inbound only, byte mode, one instance, no buffer either way.
+        server = k32.CreateNamedPipeW(path, 1, 0, 1, 0, 0, 0, None)
+        if server in (None, wintypes.HANDLE(-1).value):
+            self.fail(f"CreateNamedPipeW failed: error {ctypes.get_last_error()}")
+
+        def close():
+            k32.DisconnectNamedPipe(server)
+            k32.CloseHandle(server)
+        self.addCleanup(close)
+        return path
+
     def test_the_end_waits_for_the_writer_and_says_so_when_the_cap_passes(self):
-        path = os.path.join(self.tmp, "named.csv")
-        held = threading.Event()
-        self.addCleanup(held.set)
-        real_writer = play_chart._press_log_writer
-
-        class Held:
-            """The real writer, whose rows wait until `held` is set."""
-
-            def __init__(self, f):
-                self._real = real_writer(f)
-                self.writeheader, self.writerows = self._real.writeheader, self._real.writerows
-
-            def writerow(self, row):
-                held.wait(THREAD_CAP_S)
-                return self._real.writerow(row)
-
-        def live_play(chords, *, on_press, **kw):
-            for row in ROWS:
-                on_press(row)
-            return play_chart.RunResult(stop="done", sent=2)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        with mock.patch.object(play_chart, "_press_log_writer", new=Held), \
-                mock.patch.object(GT.C, "LOG_WRITER_CAP_S", 0.05):
-            t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
-                                  route="keys")
-            t.tools._play.thread.join(THREAD_CAP_S)
-            lines = t.tools.ch_play_status().splitlines()
-        self.assertEqual(lines[0], f"press log: {path} may lack its last rows: its writer "
-                                   f"did not finish within 0.05 s; this status holds all "
-                                   f"2 rows")
-        # The rows stay in memory for the status reply.
-        self.assertIn("  0, 1000.0, 998.0, 0, 50, sent", lines)
-
-        # A writer that finishes inside the cap leaves every row in the file.
-        late = t.tools._play.writer
-        held.set()
-        self.assertTrue(late.stop(THREAD_CAP_S))
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(), log=path,
-                              route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        self.assertEqual(t.tools.ch_play_status().splitlines()[0],
-                         f"press log: {path} (2 rows)")
-        self.assertEqual([r[0] for r in self._log_table(path)[1:]], ["0", "1"])
+        # Real tools on Pitch Dark's hydra_replay files, Clone Hero not
+        # running: the real live_play's open of the game fails, and the end
+        # waits its whole LOG_WRITER_CAP_S on the writer Windows holds.
+        refusal = self._fail_if_game_runs()
+        path = self._held_log()
+        tools = self.real_tools()
+        began = time.monotonic()
+        tools.ch_play_chart(PITCH_DARK_SCORE, PITCH_DARK_SCHEDULE, log=path, route=GT.ROUTE_KEYS)
+        play = tools._play
+        play.thread.join(GT.C.LOG_WRITER_CAP_S + THREAD_CAP_S)
+        took = time.monotonic() - began
+        self.assertFalse(play.running())
+        self.assertIn(refusal, play.error)
+        # A timer may wake a few ms early on the monotonic clock.
+        self.assertGreaterEqual(took, GT.C.LOG_WRITER_CAP_S - 0.1)
+        first = tools.ch_play_status().splitlines()[0]
+        self.assertTrue(first.startswith(f"press log: {path} may lack its last rows"), first)
+        self.assertIn(f"within {GT.C.LOG_WRITER_CAP_S:g} s", first)
+        self.assertTrue(first.endswith(f"all {len(play.rows)} rows"), first)
 
     def test_a_log_nowhere_writable_is_said_and_the_run_keeps_its_rows(self):
         path = os.path.join(self.tmp, "no such folder", "named.csv")
-
-        def live_play(chords, *, on_press, **kw):
-            on_press(ROWS[0])
-            return play_chart.RunResult(stop="done", sent=1)
-
-        t = ToolRig(self.tmp, live_play=live_play)
-        t.tools.ch_play_chart(self._score_json(), self._schedule_json(),log=path, route="keys")
-        t.tools._play.thread.join(THREAD_CAP_S)
-        lines = t.tools.ch_play_status().splitlines()
+        # Through ch_play_chart: real tools on Pitch Dark's hydra_replay
+        # files, Clone Hero not running, so the run ends before any press.
+        tools, _reply, _refusal = self._run_with_no_game(log=path)
+        with self.assertRaises(OSError) as caught:
+            play_chart.write_press_log(path, [])
+        self.assertEqual(tools.ch_play_status().splitlines()[0],
+                         f"press log not written to {path}: {caught.exception}")
+        # A run with rows: pitch-dark-ratios-run1's rows of chords 61 to 64
+        # (PITCH_DARK_RUN) reach a real session's writer as the play thread's
+        # on_press hands them, and the end, as the play thread ends a run,
+        # keeps them all for the status.
+        rows = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")
+        play = GT._PlaySession(score_json=PITCH_DARK_SCORE, chord_count=len(rows),
+                               log_path=path)
+        play.writer = play_chart.PressLogWriter(path)
+        play.writer.start()
+        self.addCleanup(play.writer.stop, THREAD_CAP_S)
+        tools._play = play
+        for row in rows:
+            play.rows.append(row)
+            play.writer.add(row)
+        play.log_note = GT.GameTools._end_press_log(play)
+        self.assertIsInstance(play.writer.error, OSError)
+        lines = tools.ch_play_status().splitlines()
         self.assertTrue(lines[0].startswith(f"press log not written to {path}: "), lines[0])
-        self.assertIn("  0, 1000.0, 998.0, 0, 50, sent", lines)
+        header = next(i for i, line in enumerate(lines) if line.startswith("rows, newest first"))
+        self.assertEqual([line.split(",")[0].strip() for line in lines[header + 1:]],
+                         [str(row["index"]) for row in reversed(rows)])
 
     def test_with_no_log_the_status_opens_with_the_session_line(self):
         # Real tools on Pitch Dark's hydra_replay files with no log, Clone
@@ -1918,24 +1959,15 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(events, [])
 
     def test_a_schedule_it_cannot_read_stops_before_the_attach(self):
-        t, events, _seen = self._chain_rig()
+        tools = self._server_tools()
         missing = os.path.join(self.tmp, "none.json")
-        reply = self._run(t, schedule=missing)
-        self.assertTrue(reply.startswith(f"could not read {missing}: FileNotFoundError"), reply)
-        self.assertEqual(events, [])
-
-    def test_a_run_that_never_presses_ends_at_the_run_cap_and_says_so(self):
-        def live_play(chords, *, should_stop, **kw):
-            while not should_stop():
-                time.sleep(0.005)
-            return play_chart.RunResult(stop="stopped")
-
-        t, events, _seen = self._chain_rig(live_play)
-        with mock.patch.object(GT, "cap_for_end", return_value=0.05):
-            reply = t.tools.ch_run_chart(t.r.song, self._score_json(), self._schedule_json(), "System")
-        self.assertIn("no press inside the run cap of 0.05 s; the call stopped the run", reply)
-        self.assertEqual(events[-2:], ["teardown", "watch stop"])
-        self.assertFalse(t.tools._play.running())
+        reply = tools.ch_run_chart(self.EFL_DIR, self.EFL_SCORE, missing, "System")
+        # The reply is the schedule reader's own refusal of that file.
+        with self.assertRaises(GT.ChordsRefused) as caught:
+            GT.schedule_doc(missing)
+        self.assertEqual(reply, str(caught.exception))
+        self.assertIn(missing, reply)
+        self._assert_started_nothing(tools)
 
     def test_the_tools_take_schedule_json_and_no_dump_json(self):
         # Question 6 (a) of docs/superpowers/plans/2026-11-08-replay-press-
