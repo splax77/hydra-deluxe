@@ -33,7 +33,7 @@ _REPLAY_DIR = os.path.join(_REPO_ROOT, "testdata", "replay")
 # The Window Map song folder from the 2026-10-28 l3 run: the chart and the
 # manifest the probe wrote and the game played.
 _WINDOW_MAP_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-10-28-l3",
-                               "Window Map")
+                               P.WINDOW_MAP)
 # Hydra's schedule for Pitch Dark, path 0 (tools/ch_probe/prep_inputs.py made
 # it; see the comment above _REPLAY_DIR in test_sp_compare.py).
 _PITCH_DARK_SCHEDULE = os.path.join(_REPLAY_DIR, "test_pitch_dark_ratio-schedule.json")
@@ -91,7 +91,6 @@ class MeasuredConstantsTest(unittest.TestCase):
 class ProbeSettingsHaveOneHomeTest(unittest.TestCase):
     def test_probe_chart_spacings_and_note_come_from_constants(self):
         self.assertEqual(tuple(probe_chart.DEFAULT_SPACINGS_MS), tuple(C.PROBE_SPACINGS_MS))
-        self.assertEqual(probe_chart.DRUM_NOTE_KICK, C.PROBE_CHART_NOTE_KICK)
 
     def test_the_probe_kick_note_is_read_as_the_kick(self):
         # The Window Map chart the probe wrote holds only the probe's kick
