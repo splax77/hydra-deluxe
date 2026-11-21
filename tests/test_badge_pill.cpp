@@ -174,10 +174,18 @@ TEST_CASE("badge pill: every other badge keeps the shared pill colours") {
 }
 
 TEST_CASE("badge pill: the shared width grows only for a longer text") {
-    // Literals: 201.6 px is the 21-character longest badge in the mono font,
-    // and a pill is 8 px wider each side at scale 1, 16 px at scale 2.
-    CHECK(hydra::ui::shared_pill_width(201.6f, mono(13), 1.0f) == doctest::Approx(217.6f));
-    CHECK(hydra::ui::shared_pill_width(201.6f, 201.6f, 1.0f) == doctest::Approx(217.6f));
-    CHECK(hydra::ui::shared_pill_width(201.6f, mono(24), 1.0f) == doctest::Approx(246.4f));
-    CHECK(hydra::ui::shared_pill_width(403.2f, mono(13) * 2.0f, 2.0f) == doctest::Approx(435.2f));
+    // The shared width is the pill around the wider of the two texts (pill_width).
+    for (float scale : {1.0f, 2.0f}) {
+        CAPTURE(scale);
+        const float pill_text = longest_w() * scale;
+        // A shorter text, and one as long, leave it at the pill text's width.
+        CHECK(hydra::ui::shared_pill_width(pill_text, mono(13) * scale, scale) ==
+              doctest::Approx(hydra::ui::pill_width(pill_text, scale)));
+        CHECK(hydra::ui::shared_pill_width(pill_text, pill_text, scale) ==
+              doctest::Approx(hydra::ui::pill_width(pill_text, scale)));
+        // A longer one grows it to its own width.
+        const float longer = (longest_w() + mono(3)) * scale;
+        CHECK(hydra::ui::shared_pill_width(pill_text, longer, scale) ==
+              doctest::Approx(hydra::ui::pill_width(longer, scale)));
+    }
 }
