@@ -14,6 +14,7 @@
 #include <windows.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cfloat>
 #include <chrono>
 #include <deque>
@@ -544,13 +545,18 @@ void test_command_bare_ref_ambiguous(ImGuiTestContext* ctx) {
     IM_CHECK(!r.ok);
     IM_CHECK(!ctx->IsError());
     // How many "-" buttons there are follows the panel's number inputs, so the
-    // count is not pinned here; the refusal's wording around it is.
+    // count is not pinned here: the reply's own count must be two or more, and
+    // the reply must name that many "-" widgets, each by its id.
     const std::string head = "refused: \"-\" matches ";
-    const std::string tail =
-        " widgets, and **/- would take only one of them; "
-        "name one with a longer ref: \"-\" id=0x";
     IM_CHECK_STR_EQ(r.text.substr(0, head.size()).c_str(), head.c_str());
-    IM_CHECK(r.text.find(tail) != std::string::npos);
+    IM_CHECK_RETV(r.text.size() > head.size() && std::isdigit(static_cast<unsigned char>(r.text[head.size()])), );
+    const size_t claimed = static_cast<size_t>(std::stoull(r.text.substr(head.size())));
+    const std::string one_named = "\"-\" id=0x";
+    size_t listed = 0;
+    for (size_t at = r.text.find(one_named); at != std::string::npos; at = r.text.find(one_named, at + 1))
+        ++listed;
+    IM_CHECK(claimed >= 2);
+    IM_CHECK_EQ(listed, claimed);
 }
 
 // A scan leaves its "Scanning charts" dialog open until Continue, and the
