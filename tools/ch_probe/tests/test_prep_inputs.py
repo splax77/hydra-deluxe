@@ -43,8 +43,9 @@ LIMITS_PREP_README = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-11-07
 
 # A schedule hydra_replay (build Nov 12 2026) wrote for Pitch Dark, copied
 # from hydra-data\ch-mcp-runs\2026-11-12\pitch-dark-prep\schedule.json with
-# path_source's file cut to its file name. Today's loader refuses it: its
-# presses lack a key later builds write.
+# path_source's file cut to its file name, and cut down to the one press
+# (entry 244) that today's loader refuses and the one chord (243) it names.
+# That press lacks a key later builds write; every other key is as recorded.
 STALE_SCHEDULE = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "2026-11-12-pitch-dark-prep",
                               "schedule.json")
 
