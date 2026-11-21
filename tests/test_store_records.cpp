@@ -287,11 +287,11 @@ TEST_CASE("a store opened under other rules reads the same through its reader") 
 TEST_CASE("a reader's lookup reads one moment") {
     StoreFile file("store_records");
     RecordStore store(file.path);
-    const PreparedRecord first = prepare_record("h1", at4(), fixture().record);
-    store.save(first);
-    PreparedRecord second = first;
-    second.record.paths.resize(1);
-    second.record.paths.front().path = "second";
+    // Two real corpus records saved under one song id: the second differs
+    // from the first in its path rows.
+    const std::pair<HydraRecord, HydraRecord> records = more_and_fewer_paths();
+    store.save(prepare_record("h1", at4(), records.first));
+    const PreparedRecord second = prepare_record("h1", at4(), records.second);
     const RecordLookup before = store.lookup_one("h1", at4());
 
     // The writer saves the second record between the reader's two reads.
