@@ -2333,7 +2333,24 @@
       "scope": [
         "tests"
       ],
-      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it."
+      "note": "A test that adds one to a combo to find a note's multiplier, where category_scores already stamps it.",
+      "owner_lines": [
+        {
+          "file": "tests/test_stars.cpp",
+          "line_text": "const int multiplier = to_multiplier(combo + 1);",
+          "why": "the unit test of category_scores itself: its expected multiplier comes from to_multiplier at the combo the note lands on, so it does not read the stamp it checks"
+        },
+        {
+          "file": "tests/test_stars.cpp",
+          "line_text": "CHECK(total.multiplier == to_multiplier(start + 1));",
+          "why": "the unit test of category_scores itself: the chord's first note lands at start + 1, and to_multiplier, not the stamp under test, gives its multiplier"
+        },
+        {
+          "file": "tests/test_stars.cpp",
+          "line_text": "CHECK(per_note[static_cast<size_t>(i)].multiplier == to_multiplier(start + 1 + i));",
+          "why": "the unit test of category_scores itself: note i lands at start + 1 + i, and to_multiplier, not the stamp under test, gives its multiplier"
+        }
+      ]
     },
     {
       "question": "What running total does the score box show during a solo? (tests)",
