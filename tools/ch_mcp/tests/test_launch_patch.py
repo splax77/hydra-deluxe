@@ -45,6 +45,10 @@ RUN_MD5_NOTES = os.path.join(RUN_DIR, "replies-md5.txt")
 _REGS64 = ["rax", "rcx", "rdx", "rbx", "rsp", "rbp", "rsi", "rdi",
            "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"]
 _REGS32 = ["eax", "ecx", "edx", "ebx", "esp", "ebp", "esi", "edi"]
+# The one-byte opcodes that carry their register in their low three bits:
+# push r64 and mov r32, imm32.
+_PUSH_OPCODES = {0x50 + i: i for i in range(8)}
+_MOV_IMM32_OPCODES = {0xB8 + i: i for i in range(8)}
 
 
 def _load_patch() -> dict:
@@ -120,14 +124,14 @@ def _decode(code: bytes) -> str:
     body = code[1:] if rex is not None else code
     rex_b = 8 if rex is not None and rex & 1 else 0
     op = body[0]
-    if 0x50 <= op <= 0x57 and len(body) == 1:
-        return f"push {_REGS64[rex_b + (op - 0x50)]}"
+    if op in _PUSH_OPCODES and len(body) == 1:
+        return f"push {_REGS64[rex_b + _PUSH_OPCODES[op]]}"
     if op == 0x81 and rex is not None and rex & 8 and len(body) == 6:
         modrm = body[1]
         if modrm >> 6 == 3 and (modrm >> 3) & 7 == 5:
             return f"sub {_REGS64[rex_b + (modrm & 7)]}, {_imm32(body[2:]):#x}"
-    if 0xB8 <= op <= 0xBF and rex is None and len(body) == 5:
-        return f"mov {_REGS32[op - 0xB8]}, {_imm32(body[1:])}"
+    if op in _MOV_IMM32_OPCODES and rex is None and len(body) == 5:
+        return f"mov {_REGS32[_MOV_IMM32_OPCODES[op]]}, {_imm32(body[1:])}"
     raise AssertionError(f"no decoding for {code.hex(' ')}")
 
 
