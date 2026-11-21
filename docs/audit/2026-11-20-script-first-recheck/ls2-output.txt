@@ -1,0 +1,58 @@
+records read at a4ad3306; tests read from the stripped copy C:\Users\Patrick\Downloads\Hydra\hydra-blind
+headings: 5158 record headings and 687 section headings; git grep counts 5845 `##`, `###` and `####` headings
+records read from a title that is not a heading: 464
+  same test, same place: 1177
+  same test, moved: 2437
+  test gone: 49
+  record names no test the script can find: 1959
+    of the unmatched, bare file name that names 0 files: 780
+    of the unmatched, bare file name that names 2 files: 16
+    of the unmatched, no heading above names a file: 26
+states: flagged 2701, says something else 2921
+  same test, same place: flagged 684, says something else 493
+  same test, moved: flagged 1380, says something else 1057
+  test gone: flagged 18, says something else 31
+  record names no test the script can find: flagged 619, says something else 1340
+  says something else because no line 11: 205
+  says something else because no line 9: 79
+  says something else because no line 9 and no line 11: 2389
+line 9 rows: script 3175 on 3175 lines, git grep 3175 lines; owned by a record 3154 (0 of them past a section heading), under a shared heading 20, listed because a heading ended their record 1, under neither 0
+  shape labelled: 2362
+  shape labelled, after '- ': 278
+  shape labelled, after '- ', after another answer on its line: 6
+  shape labelled, after '- ', in bold: 15
+  shape labelled, after another answer on its line: 4
+  shape no label: 230
+  shape no label, after '- ': 23
+  shape no label, after '- ', after another answer on its line: 4
+  shape no label, after '- ', number then ':': 3
+  shape no label, after '- ', number then ':', after another answer on its line: 1
+  shape no label, after another answer on its line: 182
+  shape no label, inside a 'Read:' line: 8
+  shape no label, number then ':': 4
+  shape no label, number then ':', after another answer on its line: 6
+  shape no label, number then ':', inside a 'Read:' line: 49
+line 11 rows: script 3054 on 3054 lines, git grep 3054 lines; owned by a record 3028 (0 of them past a section heading), under a shared heading 23, listed because a heading ended their record 3, under neither 0
+  shape labelled: 2288
+  shape labelled, after '- ': 216
+  shape labelled, after '- ', after another answer on its line: 54
+  shape labelled, after '- ', in bold: 15
+  shape labelled, after another answer on its line: 3
+  shape labelled, inside a 'Read:' line: 2
+  shape no label: 155
+  shape no label, after '- ': 2
+  shape no label, after '- ', after another answer on its line: 14
+  shape no label, after another answer on its line: 260
+  shape no label, inside a 'Read:' line: 8
+  shape no label, number then ':': 3
+  shape no label, number then ':', after another answer on its line: 2
+  shape no label, number then ':', inside a 'Read:' line: 32
+ranges or lists of answer numbers covering line 9 or 11, not read: 6
+  B6.md:949: 1-11        Same as 1090 for the .mid reader: same table kDiscoAnswers,
+  D6.md:21: - 5/6/9/10/11 as in each record.
+  D6.md:140: - 9/10 per record.
+  E2.md:410: - 5/9 none. 10 Same rule: test_percall_rewrite.py:52 repeats the notice presence.
+  delta-DL3.md:504: 7-11 as test 32.
+  delta-DL5b.md:414: 2-11: as record 18 (the literals are 68 and the Easy hash).
+tests with more than one record: 177; with two or more line 9 rows to time: 118; of those, every copy at one blame time: 0
+wrote matched.tsv (5622 rows), unmatched.tsv (2008 rows), sections.tsv (687 rows) and shared_rows.tsv (47 rows) to .claude\worktrees\sfr-run\docs\audit\2026-11-20-script-first-recheck

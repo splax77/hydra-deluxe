@@ -1,0 +1,48 @@
+file	line	section heading	answer	row	listed because
+A17.md	728	40. tests/test_main.cpp, the whole file (the suite's `main`)	9	The listener's `numTestCasesPassingFilters` stands for "the filters matched something". Leans on doctest's own count. If `REGISTER_LISTENER` were not linked, the post-run guard would quietly never run, and no test checks that it does (`test_run_guard.cpp` tests the functions, not `main`).	its record was ended by a heading
+A17.md	730	40. tests/test_main.cpp, the whole file (the suite's `main`)	11	Yes.	its record was ended by a heading
+D10.md	36	Shared answers (S-EN)	9	Each test builds its own fake memory (`make_engine`), so none leans on order, the corpus or timing. A failure prints the assertion; no chart is involved. The fake memory answers an unmapped read with `OSError` (`fakes.py:72-73`), so a wrong offset fails loudly.	under a shared heading
+D10.md	38	Shared answers (S-EN)	11	The scenario (read a field of a live engine object) happens in every run. A debugger that fires its breakpoint during the call (the fake) does not happen in a real run (`engine.py:176-181` says so).	under a shared heading
+D10.md	233	Shared answers (S-EF)	9	Each test builds its own fake process and clock. No chart, file order or other test is involved. A failure prints the assertion; the candidates are named by their addresses in the test's own locals.	under a shared heading
+D10.md	235	Shared answers (S-EF)	11	Several engine-shaped objects on the heap, one live: named in the finder's own docstring (`engine_finder.py:183-187`); not seen on a saved real scan.	under a shared heading
+D10.md	314	Shared answers (S-FC)	9	Each test builds fresh fake memory. No chart, file order or timing; the clock is fake. A failure prints the assertion and the text.	under a shared heading
+D10.md	316	Shared answers (S-FC)	11	The spike needs a playing game, so each run has a real chart; the fake layouts are the scenario's stand-ins.	under a shared heading
+D10.md	465	Shared answers (S-HW)	9	Each test builds its own fake clock or samples; no chart, file order or other test. The block tests lean on the probe song's layout (`P.window_map()`), which the test file does not pin.	under a shared heading
+D10.md	466	Shared answers (S-HW)	11	Each scenario is a real probe-run event, except where a record says otherwise.	under a shared heading
+D10.md	591	Shared answers (S-ID)	9	Each test builds its own driver. `test_constructor_copies_defaults` changes lane 0 on its own driver and never restores a shared value, so a failing copy would leave `DEFAULT_BINDINGS[0]` changed for later tests (side note).	under a shared heading
+D10.md	736	Shared answers (S-OC)	9	Each test is one call. A failure prints the two values.	under a shared heading
+D10.md	738	Shared answers (S-OC)	11	Real OCR output of the game's text has not been saved, so no input is a real one.	under a shared heading
+D10.md	786	Shared answers (S-OL)	11	Older logs are real files only for the watch log and the six-column press log.	under a shared heading
+D12.md	28	Shared answers (S-PG)	9	Each test builds its own chords and player; no order, corpus or clock leaned on except test 14 (a fake clock). A failure prints the assertion; no chord is named.	under a shared heading
+D12.md	30	Shared answers (S-PG)	11	The scenario (a run, a retime, a stop) happens in every in-game run.	under a shared heading
+D12.md	166	Shared answers (S-PI)	9	Each test builds its own temp folder and stub; no order or corpus lean.	under a shared heading
+D12.md	168	Shared answers (S-PI)	11	Prep for a real chart is the normal use.	under a shared heading
+D12.md	246	Shared answers (S-PC)	9	No order, corpus or timing lean; failures print the spacing for tests 11 only; others print nothing named.	under a shared heading
+D12.md	248	Shared answers (S-PC)	11	Probe charts are generated for experiments; the cases are the experiments' own.	under a shared heading
+D12.md	362	Shared answers (S-PS)	9	`setUpModule` starts `FAKE`; tests share that module state.	under a shared heading
+D12.md	363	Shared answers (S-PS)	11	The probe songs are the real experiment inputs.	under a shared heading
+D12.md	468	Shared answers (S-PR)	9	Each test builds its own fake; no order or timing lean. A failure prints the values (`assertEqual`).	under a shared heading
+D12.md	469	Shared answers (S-PR)	11	a live game is read exactly this way.	under a shared heading
+D12.md	743	Shared answers (S-SC)	9	Each test builds its own rows. No order lean. A failure prints values (not the chord) except where the report text carries the chord.	under a shared heading
+D12.md	744	Shared answers (S-SC)	11	A real run is judged exactly this way.	under a shared heading
+D6.md	141	G-patch (group block)	11	yes, the file is the real one.	under a shared heading
+D6.md	301	G-core (group block)	9	The tests lean on `node` being on PATH (skipped otherwise, named in the skip reason) and on a 30 s cap per run.	under a shared heading
+D6.md	302	G-core (group block)	11	the fake patch has a 3-byte entry where the real one has 12; the logic is length-generic (`readBytes(rva, n)` with n = the expect length).	under a shared heading
+D6.md	446	G-kit (group block)	9	Many tests assert whole printed lines (long typed strings) that restate production messages: a reworded message turns them red without a behaviour change. Per-record where it matters.	under a shared heading
+D6.md	448	G-kit (group block)	11	yes unless stated.	under a shared heading
+D8.md	28	Shared answers (S-MW)	9	Each test builds a fresh temp folder (`setUp`, lines 140-148), so none leans on order, the corpus or timing (`quick_wait` cuts the cap to 0.05 s, line 56-58; so the real 120 s cap is never waited). A failure prints the assertion, with no chart involved.	under a shared heading
+D8.md	30	Shared answers (S-MW)	11	The scenario (start a watch, stop it, read the log) happens in every watch run.	under a shared heading
+D8.md	271	Shared answers (S-MF)	9	`pwsh` must be on PATH (asserted, :195, :214); the two real-reader tests lean on the PowerShell version installed on the machine.	under a shared heading
+D8.md	272	Shared answers (S-MF)	11	The fixture stands for a game dll whose names are scrambled; the scrambled names are copies of real ones, not checked against a real dump here.	under a shared heading
+D8.md	385	Shared answers (S-PS)	9	Each `run` is a fresh Node process, so no test leans on another. A failure prints the assertion with the typed lists. The skip when `node` is absent hides the whole class on a machine without Node.	under a shared heading
+D8.md	387	Shared answers (S-PS)	11	The scenarios (a late frame, a stall, a retime that never arrives) happen in real runs: D342 says LS-G4 had 9 declined and none dropped, and the plan's live tests exist because late frames occur.	under a shared heading
+D8.md	499	Shared answers (S-Q)	9	No test reads this machine's processes, counters or worktrees (docstring :1-3). Fresh fakes and temp folders each test.	under a shared heading
+D8.md	501	Shared answers (S-Q)	11	Compilers, MSBuild helpers and build folders written to recently occur on this machine whenever a build runs; the user's rulings and the docs say so (clone-hero.md:72 states ch_start refused three runs because of another session's CPU load).	under a shared heading
+D8.md	804	Shared answers (S-RL)	9	Each test uses a fresh temp folder and a fresh `FakePopen` (`setUp` :103-110). `FakeProcess.wait` waits for the close thread for `THREAD_CAP_S` 5.0 (:22, :72); a thread that never closes fails the test after 5 s. Failures print the typed text.	under a shared heading
+D8.md	806	Shared answers (S-RL)	11	The scenarios (a recorder that hangs, a pipe that closes, a half-written last line) happen: the half-written line (:280) happens whenever the recorder is mid-write, and a hang is the case the cap exists for.	under a shared heading
+D8.md	998	Shared answers (S-SV)	9	Each test builds a fresh `Helper` over a temp folder with a launch function that fails the test if called (`_no_launch`, :50-51), so none can start the game. The tests set private fields (`_run`, `_adopted_backup`, `_agent`, `_watch`, `_session`, `_trace`) to drive `open_items`; the public checks they stand in for are tested by :128.	under a shared heading
+D8.md	1000	Shared answers (S-SV)	11	Every tool call is a real call shape; the fakes (a game with no run open) are the state at the start of every session.	under a shared heading
+E2.md	16	Group R (test_percall_rewrite.py)	11	yes; builds and refused deletes are everyday calls.	under a shared heading
+E2.md	184	Group P (test_posture.py)	11	yes.	under a shared heading
+E2.md	401	test_progress.py (75 records)	11	Real (all): yes for budgets; boundary seeds (98, 148, 149, 150) stand for real call counts.	its record was ended by a heading
+E2.md	913	test_publish.py (40 records)	11	Real (all): yes for plans and pages; the gh flag cases are real gh syntaxes.	its record was ended by a heading

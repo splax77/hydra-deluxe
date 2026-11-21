@@ -1,0 +1,8 @@
+B1 pass: 281 tests with a hit, one row each
+B2 pass: all 7 update tests are flagged
+B3 pass: 193 hit lines in 266 rows: fake data 124, forced wait 72, forced failure 28, test code run mid-step 11, replaces nothing 18, unsorted 13
+B4 pass: four questions, each with its counts and quoted examples
+B5 pass: every row is open
+B6 pass: every uncovered name and unsorted hit is named
+B7 pass: 3614 joined and 2008 unmatched make 5622 records
+B8 pass: 179 contradicted, each through an answer
