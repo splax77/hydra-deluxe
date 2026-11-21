@@ -650,7 +650,7 @@ Found: 2026-10-28, feasibility study line 162; plan question 6.
 
 Rule: The 1.1 fill generator `0x20D2B30` and the 1.1 Star Power gain method `0x20F4FA0` carry the same scrambled method names as the 1.0 fill generator and the 1.0 meter methods. A shared name is evidence of the same function, not proof of the same body.
 Label: Proven in the game's code
-Evidence: 6142 `script.json` (the generator's name at `0x20D2B30`) and `dump.cs` line 530117 (the gain method's name); the same names are in `code/4045/fill_generator.cs` line 30 and `code/4045/fill_deadline.cs` lines 7 and 34. Names only.
+Evidence: 6142 `script.json` (the generator's name at `0x20D2B30`) and `dump.cs` line 530117 (the gain method's name); the same names are in `code/4045/fill_generator.cs` line 32 and `code/4045/fill_deadline.cs` lines 7 and 34. Names only.
 Game code (6142): generator RVA `0x20D2B30`; gain method RVA `0x20F4FA0`.
 Hydra: no owner.
 Ruling: none needed: no Hydra rule reads it.

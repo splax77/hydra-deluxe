@@ -196,3 +196,16 @@ update. On `testdata/input` (115 charts), the 1.1 score check found two
 charts that changed: one gained 1920 points where two SP phrase ends sat on
 the new deadlines, and one had its 40 fills moved onto the restarted grid. In
 1.0 mode no best score, best path or fill chord changed.
+
+## Note, 2026-11-21: generated fills in 1.0 mode follow Clone Hero 1.0's generator
+
+The 1.0 build's own fill code has been read (docs/clone-hero/04-fills.md,
+FL-35 to FL-42), and the user chose "Match the old game" (session
+63088e3d). So the last item of the 2026-10-15 note no longer holds: 1.0 mode
+does not keep the generator Hydra had before. `Song::place_fills_ch10` takes
+the game's steps (FL-36), on the game's measure lines (FL-40), and the 1.0
+deadline measures its lead to a 64th note past the chord, as the game does
+(FL-42). Both generators step a fixed 4 lines after a fill, so the rules
+file's `fill_cooldown_measures` key is retired, read and ignored, like
+`fill_length_measures`. The results stamp went to `3.2.0+ch10fills`, so every
+saved result, 1.1 ones included, reads Stale once after the update.

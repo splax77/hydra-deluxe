@@ -54,7 +54,7 @@ struct ChordsAround {
 
 // The one owner of "which chord is nearest this tick", a tie going to the
 // later chord. It is Clone Hero's own search (docs/clone-hero/code/4045/
-// fill_generator.cs, section F4, the tie at line 162). `sequence` must be in
+// fill_generator.cs, section F4, the tie at line 164). `sequence` must be in
 // tick order, as both parsers emit it. A caller with a range drops the chord
 // before the tick when it sits earlier than `earliest`, and the chord after
 // it when it sits later than `latest`; the pick is made from what is left.

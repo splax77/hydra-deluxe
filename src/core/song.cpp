@@ -98,7 +98,7 @@ int Song::note_count() const {
 // ---- chords_around --------------------------------------------------------
 
 // The game's two searches are the first chord after the tick and the last at
-// or before it (fill_generator.cs lines 170 to 194); one binary search finds
+// or before it (fill_generator.cs lines 172 to 196); one binary search finds
 // both, as they sit side by side in a tick-ordered sequence. The game's
 // search for the chord after starts at `search_from` (line 174), and its
 // search for the chord before walks down from there to chord 0 (line 188,
