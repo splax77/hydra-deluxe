@@ -247,17 +247,22 @@ TEST_CASE("ImGui's own file calls write and load the app's resource files past 2
     }
 }
 
-// fits_shell is the one place that asks whether the shell takes a path: under
-// 260 characters and without a \\?\ or \\.\ prefix. The edge is pinned here as
-// a literal so the test doesn't share the owner's arithmetic.
-TEST_CASE("fits_shell takes 259 characters, not 260, and no prefixed path") {
-    const std::wstring at_259 = L"C:\\" + std::wstring(251, L'a') + L".html";
-    const std::wstring at_260 = L"C:\\" + std::wstring(252, L'a') + L".html";
-    REQUIRE(at_259.size() == 259);
-    REQUIRE(at_260.size() == 260);
-    CHECK(hydra::fits_shell(at_259));
-    CHECK_FALSE(hydra::fits_shell(at_260));
-    CHECK_FALSE(hydra::fits_shell(at_260 + L"x"));
+// fits_shell is the one place that asks whether the shell takes a path:
+// shorter than the platform's MAX_PATH (the shell's own edge, which ADR 0020
+// measured) and without a \\?\ or \\.\ prefix. The edge is MAX_PATH from
+// windows.h, a platform constant, so the test shares none of the owner's
+// arithmetic and types no number.
+TEST_CASE("fits_shell takes a path shorter than MAX_PATH, and no prefixed path") {
+    const std::wstring head = L"C:\\";
+    const std::wstring tail = L".html";
+    const size_t fixed = head.size() + tail.size();
+    const std::wstring below_edge = head + std::wstring(MAX_PATH - 1 - fixed, L'a') + tail;
+    const std::wstring at_edge = head + std::wstring(MAX_PATH - fixed, L'a') + tail;
+    REQUIRE(below_edge.size() == static_cast<size_t>(MAX_PATH - 1));
+    REQUIRE(at_edge.size() == static_cast<size_t>(MAX_PATH));
+    CHECK(hydra::fits_shell(below_edge));
+    CHECK_FALSE(hydra::fits_shell(at_edge));
+    CHECK_FALSE(hydra::fits_shell(at_edge + L"x"));
     CHECK(hydra::fits_shell(L"C:\\Songs\\hydra_paths.html"));
     CHECK_FALSE(hydra::fits_shell(L"\\\\?\\C:\\Songs\\hydra_paths.html"));
     CHECK_FALSE(hydra::fits_shell(L"\\\\?\\UNC\\server\\share\\hydra_paths.html"));
