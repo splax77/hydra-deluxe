@@ -798,8 +798,9 @@ public:
     // reads no chart.
 
     // The rows the fill replays under `profile`: every Ready path row with
-    // no saved figure and at least one squeeze-in, whose chart the library
-    // lists. In chart, profile row and rank order. A profile the store holds
+    // no saved figure whose own columns say engine_hardest_ms gives its path
+    // one, and whose chart the library lists. In chart, profile row and rank
+    // order. A profile the store holds
     // no Ready row for has none.
     std::vector<MissingHardestRow> rows_missing_hardest(const Profile& profile);
     // Writes `figures` onto chart `song_id`'s path rows under profile row
