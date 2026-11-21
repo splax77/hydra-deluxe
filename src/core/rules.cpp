@@ -35,7 +35,12 @@ namespace {
 // The text keeps a fill_cooldown_measures line, before
 // fill_max_distance_beats, holding the fixed four measure lines both games
 // step after a generated fill (kLinesAfterFill in core/song.cpp). No Rules
-// field sets it; it is there so the frozen text stays whole.
+// field sets it. The line stays because the stored fingerprint is what marks a
+// result Stale: a library analysed at the old default of 4 keeps results this
+// engine would reproduce, so its fingerprint must stay equal and it must not
+// be re-analysed for nothing, while a library written under another value
+// differs from this text and goes Stale, as it should. Dropping the line
+// would stale every library.
 constexpr const char* kFixedFillCooldownLine = "fill_cooldown_measures=4\n";
 
 std::string fixed_cap_text(const Rules& r) {
