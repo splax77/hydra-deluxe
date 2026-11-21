@@ -8,8 +8,10 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "app/display_format.h"
 #include "app/dynamics_breakdown.h"
 #include "load_util.h"
 #include "midi_util.h"
@@ -32,6 +34,24 @@ NoteDynamicType red(const Song& song, size_t i) {
 }
 
 constexpr const char* kTag = "[ENABLE_CHART_DYNAMICS]";
+
+// A drum chart with `marks` accented reds one beat apart, then the tag a beat
+// after the last, then a priced red at the tag's tick: a late tag with
+// `marks` earlier markings.
+Song late_tag_song(int marks) {
+    const uint32_t beat = 480;  // one beat: smf_tracks writes 480 ticks per beat
+    std::vector<std::vector<uint8_t>> events;
+    for (int i = 0; i < marks; ++i)
+        events.push_back(i == 0 ? note_on(97, 127) : after(beat, note_on(97, 127)));
+    events.push_back(after(beat, text_event(kTag)));
+    events.push_back(note_on(97, 127));
+    return drums(std::move(events));
+}
+
+// The song's late tag time in whole ms, read through its own tempo map.
+uint32_t late_tag_ms(const Song& song) {
+    return static_cast<uint32_t>(song.timecode(*song.dynamics_late_tag_tick).ms());
+}
 
 }  // namespace
 
@@ -116,32 +136,45 @@ TEST_CASE("dynamics tag: a tag in the EVENTS track does nothing") {
 }
 
 TEST_CASE("dynamics tag: the breakdown carries the tag's time and the count") {
-    const Song song = drums({note_on(97, 127), after(480,text_event(kTag)),
-                             note_on(97, 127)});  // tag and a priced note at tick 480
+    const Song song = late_tag_song(1);
+    REQUIRE(song.dynamics_late_tag_tick.has_value());
+    REQUIRE(song.dynamics_marks_before_tag == 1);
     const app::DynamicsBreakdown bd = app::count_dynamics(song);
     REQUIRE(bd.late_tag_ms.has_value());
-    CHECK(*bd.late_tag_ms == 500);  // tick 480 is one beat at 120 BPM
-    CHECK(bd.marks_before_tag == 1);
+    // The time is the song's own tag tick read through its tempo map, in ms,
+    // so a tick passed through unconverted fails.
+    CHECK(*bd.late_tag_ms == late_tag_ms(song));
+    CHECK(static_cast<int64_t>(*bd.late_tag_ms) != *song.dynamics_late_tag_tick);
+    CHECK(bd.marks_before_tag == song.dynamics_marks_before_tag);
 
-    const app::DynamicsBreakdown none;
-    CHECK_FALSE(none.late_tag_ms.has_value());
-    CHECK(none.marks_before_tag == 0);
+    // A chart whose tag comes before any marking stores no late tag.
+    const app::DynamicsBreakdown clean = app::count_dynamics(drums({text_event(kTag), note_on(97, 127)}));
+    CHECK(clean.dynamics_enabled);
+    CHECK_FALSE(clean.late_tag_ms.has_value());
+    CHECK(clean.marks_before_tag == 0);
 }
 
 TEST_CASE("dynamics tag: the Dynamics tab's Chart line") {
     using ui::detail::dynamics_enabled_text;
-    app::DynamicsBreakdown bd;
-    CHECK(dynamics_enabled_text(bd) == "Dynamics enabled: no (markings ignored by Clone Hero)");
-    bd.dynamics_enabled = true;
-    CHECK(dynamics_enabled_text(bd) == "Dynamics enabled: yes");
-    bd.late_tag_ms = 241'000;
-    bd.marks_before_tag = 142;
-    CHECK(dynamics_enabled_text(bd) ==
-          "Dynamics enabled: from 4:01 on (142 earlier markings ignored by Clone Hero)");
-    bd.marks_before_tag = 1;
-    CHECK(dynamics_enabled_text(bd) ==
-          "Dynamics enabled: from 4:01 on (1 earlier marking ignored by Clone Hero)");
-    bd.marks_before_tag = 1234;
-    CHECK(dynamics_enabled_text(bd) ==
-          "Dynamics enabled: from 4:01 on (1,234 earlier markings ignored by Clone Hero)");
+    CHECK(dynamics_enabled_text(app::count_dynamics(drums({note_on(97, 127)}))) ==
+          "Dynamics enabled: no (markings ignored by Clone Hero)");
+    CHECK(dynamics_enabled_text(app::count_dynamics(drums({text_event(kTag), note_on(97, 127)}))) ==
+          "Dynamics enabled: yes");
+
+    // A late tag: the line names the song's own tag time and how many
+    // markings came before it, one in the singular and a thousand-plus with
+    // a comma.
+    struct LateCase {
+        int marks;
+        const char* count_text;
+    };
+    for (const LateCase& c : {LateCase{1, "1 earlier marking"}, LateCase{1234, "1,234 earlier markings"}}) {
+        CAPTURE(c.marks);
+        const Song song = late_tag_song(c.marks);
+        REQUIRE(song.dynamics_marks_before_tag == c.marks);
+        const std::string time_text = app::format_duration(late_tag_ms(song) / 1000.0);
+        const std::string expected = "Dynamics enabled: from " + time_text + " on (" +
+                                     std::string(c.count_text) + " ignored by Clone Hero)";
+        CHECK(dynamics_enabled_text(app::count_dynamics(song)) == expected);
+    }
 }
