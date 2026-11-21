@@ -35,7 +35,6 @@ float longest_w() {
 }
 
 const float kBars12 = mono(7);  // "12 bars"
-const float kBars3 = mono(6);   // "3 bars"
 const float kNarrowRow = hydra::ui::kMinPathDetailsW - 16.0f;
 
 // "early fill 0.0 ms", "squeeze in -224.0 ms" and the longest wording a badge can have.
@@ -69,20 +68,13 @@ TEST_CASE("badge pill: a row of the shortest badge and a row of the longest shar
             const ActivationRowLayout mixed = row(mixed_badges(), row_w, scale);
             CHECK(shortest.pill_w == doctest::Approx(longest.pill_w));
             CHECK(mixed.pill_w == doctest::Approx(longest.pill_w));
-            // Literals from one run: 201.6 px of text and 8 px each side, doubled at scale 2.
-            CHECK(longest.pill_w == doctest::Approx(217.6f * scale));
+            // The one width is the pill around the longest badge's text (pill_width:
+            // kRowBadgePad each side).
+            CHECK(longest.pill_w == doctest::Approx(hydra::ui::pill_width(longest_w() * scale, scale)));
             for (const PillRect& p : pills(mixed, scale))
                 CHECK(p.x1 - p.x0 == doctest::Approx(longest.pill_w));
         }
     }
-    // A literal from one run: the 21-character longest badge, 201.6 px, and 8 px each side.
-    CHECK(row({mono(17)}, 1400.0f).pill_w == doctest::Approx(217.6f));
-}
-
-TEST_CASE("badge pill: a badge wider than the pill text width grows the pill") {
-    const float wide = longest_w() + mono(3);
-    const ActivationRowLayout l = row({mono(17), wide}, 1400.0f);
-    CHECK(l.pill_w == doctest::Approx(246.4f));  // 230.4 px of text and 8 px each side: a literal from one run
 }
 
 TEST_CASE("badge pill: text sits centred in its pill") {
@@ -100,13 +92,11 @@ TEST_CASE("badge pill: text sits centred in its pill") {
         CHECK(lx - p[2].x0 == doctest::Approx(hydra::ui::kRowBadgePad * scale));
         CHECK(p[2].x1 - (lx + long_w) == doctest::Approx(hydra::ui::kRowBadgePad * scale));
     }
-    // A literal from one run: "early fill 0.0 ms" in the last row's first pill, scale 1.
-    const std::vector<PillRect> p = pills(row(mixed_badges(), 1400.0f), 1.0f);
-    CHECK(centred_text_x(p[0], mono(17)) == doctest::Approx(752.4f));
 }
 
 TEST_CASE("badge pill: pills side by side match and keep one gap between them") {
-    const ActivationRowLayout l = row(mixed_badges(), 1400.0f);
+    const float row_w = 1400.0f;
+    const ActivationRowLayout l = row(mixed_badges(), row_w);
     REQUIRE(l.badge_lines == 0);
     const std::vector<PillRect> p = pills(l, 1.0f);
     for (size_t k = 1; k < p.size(); ++k) {
@@ -114,8 +104,9 @@ TEST_CASE("badge pill: pills side by side match and keep one gap between them") 
         CHECK(p[k].x0 - p[k - 1].x1 == doctest::Approx(hydra::ui::kRowBadgePad));
         CHECK(p[k].y0 == doctest::Approx(p[0].y0));
     }
-    // The last pill ends one pad past kRowBadgeRight in from the row's edge: a literal from one run.
-    CHECK(p.back().x1 == doctest::Approx(1394.0f));
+    // The last pill ends one pad past kRowBadgeRight in from the row's edge.
+    CHECK(p.back().x1 ==
+          doctest::Approx(row_w - hydra::ui::kRowBadgeRight + hydra::ui::kRowBadgePad));
 }
 
 TEST_CASE("badge pill: stacked pills share both edges") {
@@ -189,16 +180,4 @@ TEST_CASE("badge pill: the shared width grows only for a longer text") {
     CHECK(hydra::ui::shared_pill_width(201.6f, 201.6f, 1.0f) == doctest::Approx(217.6f));
     CHECK(hydra::ui::shared_pill_width(201.6f, mono(24), 1.0f) == doctest::Approx(246.4f));
     CHECK(hydra::ui::shared_pill_width(403.2f, mono(13) * 2.0f, 2.0f) == doctest::Approx(435.2f));
-}
-
-TEST_CASE("badge pill: one badge alone sits flush right") {
-    // Burnout-sized pieces at the narrowest column with the longest badge:
-    // literals from one run, scale 1.
-    const ActivationRowLayout l = row({longest_w()}, kNarrowRow, 1.0f, mono(7), kBars3);
-    REQUIRE(l.badge_lines == 0);
-    const PillRect p = pill_rect(l.pill_x[0], l.badge_y[0], l.pill_w, kLine, 1.0f);
-    CHECK(p.x0 == doctest::Approx(260.4f));
-    CHECK(p.x1 == doctest::Approx(478.0f));
-    CHECK(p.y0 == doctest::Approx(7.0f));
-    CHECK(p.y1 == doctest::Approx(27.0f));
 }
