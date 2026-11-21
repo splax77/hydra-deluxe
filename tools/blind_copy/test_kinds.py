@@ -154,6 +154,12 @@ TEST_CASE("cases") {
         wait_until([&] { return go; }, "go");
         take_reading(app);
     });
+    job.set_analyzer_for_test([&](const std::string& path, const AnalysisSettings& settings) {  // L:real_args
+        return hydra::app::analyze_chart_file(path, settings);
+    }, 1);
+    job.set_analyzer_for_test([&](const std::string& path, const AnalysisSettings& settings) {  // L:real_no_args
+        return hydra::app::make_default_result();
+    }, 1);
 }
 """,
     "tests/ui/harness.h": """\
@@ -265,6 +271,10 @@ class BodySorts(Copy):
     def test_bare_return_hands_nothing_back(self):
         self.assertEqual(self.outcome("void_early_return"), k.WAIT)
         self.assertEqual(self.outcome("void_early_return_no_wait"), k.MIDSTEP)
+
+    def test_hydra_call_with_the_lambdas_parameters_against_one_with_none(self):
+        self.assertEqual(self.outcome("real_args"), k.NOTHING)
+        self.assertEqual(self.outcome("real_no_args"), k.FAKE)
 
     def test_downloader_that_throws_against_one_that_writes(self):
         self.assertEqual(self.outcome("dl_throw"), k.FAIL)

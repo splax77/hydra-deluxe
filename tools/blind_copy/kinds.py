@@ -154,7 +154,7 @@ def split_top(s, a, b):
     spans, depth, start = [], 0, a
     for j in range(a, b):
         c = s[j]
-        if c in OPEN_BR or (c == "<" and False):
+        if c in OPEN_BR:
             depth += 1
         elif c in CLOSE_BR:
             depth -= 1
@@ -227,27 +227,22 @@ class Sorter:
                 self.files[path] = File(path, f.read())
         return self.files[path]
 
-    def walk(self, root, suffixes):
-        base = os.path.join(self.copy, "code", root)
-        out = []
-        for d, dirs, names in os.walk(base):
-            dirs.sort()
-            for n in sorted(names):
-                if n.lower().endswith(suffixes):
-                    out.append(os.path.relpath(os.path.join(d, n), os.path.join(self.copy, "code")).replace("\\", "/"))
-        return out
+    def walk(self, root, keep):
+        """The copy's files under root that `keep` accepts, as paths
+        without the leading code/. find_seams.walk owns the walk."""
+        return [fs.shown(p) for p in fs.walk(self.copy, "code/" + root) if keep(p)]
 
     def aliases(self):
         if self._aliases is None:
             self._aliases = {}
-            for p in self.walk("src", (".h", ".hpp")):
+            for p in self.walk("src", is_header):
                 for m in USING.finditer(self.file(p).code):
                     self._aliases.setdefault(m.group(1), " ".join(m.group(2).split()))
         return self._aliases
 
     def test_headers(self):
         if self._headers is None:
-            self._headers = self.walk("tests", (".h", ".hpp"))
+            self._headers = self.walk("tests", is_header)
         return self._headers
 
     def paired(self, path):
@@ -399,12 +394,10 @@ class Sorter:
             name = m.group(1).split("::")[-1]
             found = self.find_units(name, f.path)
             for g, u in found:
-                k = g.code.find("return", g.starts[u.start - 1])
                 end = g.starts[u.end - 1] + len(g.lines[u.end - 1])
                 rm = re.compile(r"\breturn\s*\[").search(g.code, g.starts[u.start - 1], end)
                 if rm:
                     return [self.sort_lambda(g, rm.end() - 1, r)]
-                del k
             r.note = f"the helper {name} has no definition that returns a lambda in reach" if not found \
                 else f"the helper {name} returns no lambda"
             return [r]
@@ -428,7 +421,7 @@ class Sorter:
             return [r]
         rows = []
         call = re.compile(r"\b" + re.escape(u.name) + r"\s*\(")
-        for p in self.walk("tests", tuple(gs_suffixes())):
+        for p in self.walk("tests", fs.is_code):
             g = self.file(p)
             for m in call.finditer(g.code):
                 ln = g.line_of(m.start())
@@ -590,14 +583,12 @@ class Sorter:
         return rows
 
 
-def gs_suffixes():
-    import facts_format as ff
-    return ff.CODE_SUFFIXES
+def is_header(path):
+    return path.lower().endswith(fs.HEADER_SUFFIXES)
 
 
 def classify(body, params, cap_names, default_cap, defined, r):
     """Step 3's five lines, in order, with the marks."""
-    text = " ".join(body.split())
     # A lambda inside the body, such as a wait's condition, is not the
     # replacement's own code: its returns and calls are left out.
     body = blank_nested(body)
@@ -611,7 +602,8 @@ def classify(body, params, cap_names, default_cap, defined, r):
         m = re.fullmatch(r"(hydra::[\w:]+)\s*\((.*)\)", e2, re.S)
         if m:
             args = [strip_move(a) for a in angle_split(m.group(2))]
-            if all(a in params for a in args):
+            # A call with no argument passes none of the lambda's parameters.
+            if args and all(a in params for a in args):
                 real.append(e)
                 continue
         m = re.fullmatch(r"([A-Za-z_]\w*)\s*\(.*\)", e2, re.S)
@@ -657,7 +649,6 @@ def classify(body, params, cap_names, default_cap, defined, r):
     else:
         r.outcome, r.note = MIDSTEP, "a void body that neither waits nor throws"
     r.mark = "; ".join(marks)
-    del text
 
 
 def is_plain_call(s, m):
