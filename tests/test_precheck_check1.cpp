@@ -15,6 +15,7 @@
 
 #include "core/winstr.h"
 #include "precheck/braces.h"
+#include "precheck/check_1_text.h"
 #include "precheck/checks.h"
 #include "precheck/definitions.h"
 #include "precheck/git_text.h"
@@ -100,7 +101,7 @@ struct Fixture {
         write_fixture_file(dir, "tests/test_two.cpp", "TEST_CASE(\"two\") {\n    int k = 0;\n    CHECK(k == 0);\n}\n");
         // A MIDI varlen delta typed by hand: printed outside its owner.
         write_fixture_file(dir, "tests/varlen.cpp", "void put(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
-        write_fixture_file(dir, "tests/midi_util.h", "inline void put_varlen(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
+        write_fixture_file(dir, kVarlenOwner, "inline void put_varlen(int d) {\n    out.push_back(0x80 | (d >> 7));\n}\n");
         commit_all(dir, "feature");
     }
     ~Fixture() { testtemp::remove_dir(dir); }
@@ -240,8 +241,6 @@ TEST_CASE("precheck check 1: a helper copied under new names prints C, the near 
         for (const std::string& l : lines) all += l + "\n";
         return all;
     }());
-    // Check 1's wording lives in check_1.cpp's own file-local strings, so each
-    // item is checked for the names and places it must give, not its prose.
     const std::vector<WhatWhy> copied = items_at(lines, "C", "tests/helpers_b.cpp", 5);
     const std::vector<WhatWhy> same_name = items_at(lines, "C", "tests/short_c.cpp", 1);
     const std::vector<WhatWhy> varlen = items_at(lines, "C", "tests/varlen.cpp", 2);
@@ -255,19 +254,22 @@ TEST_CASE("precheck check 1: a helper copied under new names prints C, the near 
     // The same name with another body names the first definition's place.
     CHECK(same_name[0].what.find("tiny_a") != std::string::npos);
     CHECK(same_name[0].what.find("tests/short_a.cpp:1") != std::string::npos);
-    // Both helper items give one reason, and it is not the varlen spelling's.
-    CHECK_FALSE(copied[0].why.empty());
-    CHECK(same_name[0].why == copied[0].why);
-    CHECK(varlen[0].why != copied[0].why);
-    // The hand-typed delta quotes its line, read from the fixture file, and
-    // names the header that owns it.
+    // Both helper items give check 1's helper reason; no fixture line is a
+    // known copy, so no note follows it.
+    CHECK(copied[0].why == kHelperWhy);
+    CHECK(same_name[0].why == kHelperWhy);
+    // The hand-typed delta gives the varlen spelling's description and
+    // reason, quotes its line, read from the fixture file, and names the
+    // header that owns it.
+    CHECK(varlen[0].why == kVarlenWhy);
+    CHECK(varlen[0].what.rfind(std::string(kVarlenWhat) + ": ", 0) == 0);
     const View varlen_file = make_view(hydra::read_file_text(fx.dir + "/tests/varlen.cpp"), codelex::Lang::Cpp);
     const std::string varlen_line = varlen_file.line(varlen_file.raw, 2);
     const std::string quoted =
         varlen_line.substr((std::min)(varlen_line.find_first_not_of(' '), varlen_line.size()));
     REQUIRE_FALSE(quoted.empty());
     CHECK(varlen[0].what.find(quoted) != std::string::npos);
-    CHECK(varlen[0].why.find("tests/midi_util.h") != std::string::npos);
+    CHECK(varlen[0].why.find(kVarlenOwner) != std::string::npos);
     CHECK(count_matching(lines, "total_of|far_sum|first_copy|second_copy|tiny_b|TEST_CASE|midi_util\\.h:") == 0);
     CHECK(count_matching(lines, "^C tests/helpers_a\\.cpp:") == 0);
     CHECK(lines.size() == 3);
