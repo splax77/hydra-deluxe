@@ -47,6 +47,8 @@ RULINGS_FOLDER = os.path.join("docs", "agents", "rulings")
 HANDOFFS_FOLDER = "docs/handoffs/"
 HANDOFF_DATED = r"docs[/\\]handoffs[/\\][0-9]{4}-[0-9]{2}-[0-9]{2}-"  # also git grep -E's form
 HANDOFF_PATH = re.compile(HANDOFF_DATED + r"[^\s`'\")\]]*")
+# The folders whose pages quote people word for word: the session cards and the rulings.
+QUOTING_FOLDERS = ("docs/sessions/", "docs/agents/rulings/")
 
 
 def _slashes(p):
@@ -274,8 +276,10 @@ def handoff_cites(repo_root, memory):
     """Every line outside the handoffs folder that names a dated handoff file, as
     "file:line: <path> (cites a handoff)". A handoff is never a source (docs/agents/handoff.md,
     "A handoff is never a source"), so no wording and no git show beside it makes such a line
-    pass. It reads every tracked text file through git grep (the start-of-session hook has a
-    few seconds) and the top-level memory notes."""
+    pass. The one thing it passes over is a path inside double quotes on a session card or a
+    rulings page (QUOTING_FOLDERS): those quote what the user typed or was asked, and nobody
+    changes those words. It reads every tracked text file through git grep (the
+    start-of-session hook has a few seconds) and the top-level memory notes."""
     code, out = check_handoff.git(repo_root, ["grep", "-n", "-I", "-E", HANDOFF_DATED,
                                               "--", ".", ":!" + HANDOFFS_FOLDER])[:2]
     if code not in (0, 1):  # 1 is git grep's "nothing found"
@@ -283,15 +287,18 @@ def handoff_cites(repo_root, memory):
     cites = []
     for hit in out.splitlines():
         shown, n, line = hit.split(":", 2)
+        quotes_people = _slashes(shown).startswith(QUOTING_FOLDERS)
         for m in HANDOFF_PATH.finditer(line):
-            cites.append("%s:%s: %s (cites a handoff)" % (shown, n, m.group(0)))
+            if quotes_people and line.count('"', 0, m.start()) % 2 == 1:
+                continue
+            cites.append("%s:%s: %s (cites a handoff)" % (shown, n, m.group(0).rstrip(".,;:")))
     for shown, full in documents(repo_root, memory):
         if _inside(repo_root, full):
             continue
         with open(full, encoding="utf-8", errors="replace") as f:
             for n, line in enumerate(f.read().splitlines(), 1):
                 for m in HANDOFF_PATH.finditer(line):
-                    cites.append("%s:%d: %s (cites a handoff)" % (shown, n, m.group(0)))
+                    cites.append("%s:%d: %s (cites a handoff)" % (shown, n, m.group(0).rstrip(".,;:")))
     return cites
 
 

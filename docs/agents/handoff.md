@@ -4,7 +4,7 @@ A handoff is the note one session leaves so the next session can carry on. It is
 
 ## A handoff is never a source
 
-A handoff proves nothing. It exists only as a summary the next session can pick up. So no file names a handoff: not a doc, a plan, an audit record, a session card, a memory note or a code comment. A fact a session learns from a handoff is checked against the code, a ruling or a card, and that is what gets cited. A card may say a session ended with a handoff, but it gives no path. Only the handoff's own folder names handoff files. `tools/check_pointers.py` refuses a dated handoff path anywhere else (`handoff_cites`).
+A handoff proves nothing. It exists only as a summary the next session can pick up. So no file names a handoff: not a doc, a plan, an audit record, a session card, a memory note or a code comment. A fact a session learns from a handoff is checked against the code, a ruling or a card, and that is what gets cited. A card may say a session ended with a handoff, but it gives no path. Only the handoff's own folder names handoff files, and words someone typed stay as typed: a card or rulings page that quotes the user, or the start of a question they answered, keeps the path inside the quotes. `tools/check_pointers.py` refuses a dated handoff path anywhere else (`handoff_cites`).
 
 ## Where a handoff lives
 
