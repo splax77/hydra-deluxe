@@ -3,8 +3,8 @@
 The harm guard for the agent effort test. The main session runs it before and
 after every live step of that test.
 
-    pwsh -NoProfile -File tools/effort_test_guard.ps1
-    pwsh -NoProfile -File tools/effort_test_guard.ps1 -Record
+    pwsh -NoProfile -File tools/effort_test_guard.ps1 -VersionFile <file>
+    pwsh -NoProfile -File tools/effort_test_guard.ps1 -VersionFile <file> -Record
 
 It prints one line for each of four checks and starts each with PASS or FAIL.
 It exits 0 when all four pass and 1 otherwise.
@@ -20,14 +20,14 @@ delete rule trusts.
 $TestBranchPrefix below owns what counts as a test branch. A branch that holds
 the test's own tools or results does not count.
 
--VersionFile and -Repo exist for tools/test_effort_test_guard.ps1 and for the
-plan's run with a temporary version file. -Repo may name any checkout of the
-repository.
+-VersionFile names the version file and has no default: the plan that runs the
+test names its file. With none given, the version check fails. -Repo exists for
+tools/test_effort_test_guard.ps1 and may name any checkout of the repository.
 #>
 [CmdletBinding()]
 param(
     [switch]$Record,
-    [string]$VersionFile = 'C:\Users\Patrick\Downloads\Hydra\hydra-test\.claude\worktrees\effort-test-results\docs\superpowers\specs\2026-11-07-agent-effort-test\claude-version.txt',
+    [string]$VersionFile,
     [string]$Repo = (Split-Path $PSScriptRoot -Parent)
 )
 
@@ -71,6 +71,7 @@ function Test-EffortLevel {
 }
 
 function Test-ClaudeVersion {
+    if (-not $VersionFile) { throw 'no -VersionFile given' }
     $running = Get-ClaudeVersion
     if ($Record) {
         # A missing folder is a failure, not something to create: a folder

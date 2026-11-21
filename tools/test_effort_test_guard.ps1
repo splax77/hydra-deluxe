@@ -6,7 +6,8 @@ Self-test for tools/effort_test_guard.ps1.
 
 It builds a tiny git repository and a stand-in `claude` command in a new
 folder inside -Scratch (the system temp folder by default), then runs the real
-guard on them through -Repo and -VersionFile, in its own pwsh each time. The
+guard on them through -Repo and -VersionFile (and without -VersionFile),
+in its own pwsh each time. The
 fixture is deleted at the end; this repository is never touched.
 #>
 [CmdletBinding()]
@@ -99,6 +100,16 @@ try {
     Check ((Line-Of $r 'version') -match '9\.9\.9.*9\.9\.8') "other version: the line does not name both:`n$($r.Text)"
     Remove-Item -LiteralPath $versionFile
     Check-Run 'no version file' (Invoke-Guard) 1 @('version')
+
+    # No -VersionFile at all: the guard has no default file to fall back on,
+    # with or without -Record.
+    foreach ($record in $false, $true) {
+        $extra = @(if ($record) { '-Record' })
+        $lines = @(& pwsh -NoProfile -File $tool -Repo $repo @extra 2>&1 | ForEach-Object { "$_" })
+        $r = [pscustomobject]@{ Code = $LASTEXITCODE; Lines = $lines; Text = ($lines -join "`n") }
+        Check-Run "no -VersionFile $($extra -join ' ')" $r 1 @('version')
+        Check ((Line-Of $r 'version') -match 'no -VersionFile given') "no -VersionFile: the line does not say so:`n$($r.Text)"
+    }
 
     # -Record writes the running version, and the next plain run passes.
     $r = Invoke-Guard @('-Record')
