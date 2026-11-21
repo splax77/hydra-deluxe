@@ -211,13 +211,18 @@ Acceptance: each of the four lines matches the code it describes, and the review
 
 ## Not planned
 
-Twelve rows get no task. Four of them need an owner map or the user. Eight need no work.
+Twelve rows got no task here. One still needs the user. Three were fixed later from owner maps, and eight need no work.
 
-### Needs an owner map or the user
+### Fixed later from owner maps
 
-- Row 12 (two checks in the engine sweeps test). I read one of the two: the test turns a backend row's offset back into a tick with its own rounding and its own special case for zero. Replacing that needs the engine's own answer to "which tick does this row's offset point at". That is an owner-map question. I could not identify the other check (the "deadline check") from the scout's one line.
-- Row 27 (the Preview's meter used as referee for the engine's list of passed fills). The test checks an engine list against a display value. Turning that round needs the engine's own record of how much Star Power a path held at a fill. That is an owner-map question.
-- Row 28 (one reader for the all-0 answer). The record states the answer in two ways, and the paths screen reads it at `src/app/path_view.cpp`. A single reader would change what that screen is built from, so it needs an owner map.
+Session 9f61bc5c-157a-46d3-b01b-4ecfd6fdb6c7 wrote an owner map for each of these, found an owner for every question, and fixed the three tests on `claude/tff-rows-12-27-28`, merged into main as `0e15b33d766f6756dd0e227c32308d758d7d9532`.
+
+- Row 12 (two checks in the engine sweeps test). The "deadline check" is not one: that test only checks that a 1.0-rule record says so, keeps its cap and has paths. The tick conversion now checks each backend row forward with `offset_from_sp_end` from `Activation::deact_tick()`, with no rounding of its own. Closed.
+- Row 27 (the Preview's meter used as referee for the engine's list of passed fills). The trailing-fills checks now judge by `Path::trailing_sp_ready_tick()` and `fill_refuses`, and the empty-path test walks the chart's fill chords, not the Preview's. Closed.
+- Row 28 (one reader for the all-0 answer). Commit `f3958a53a` had already added `best_allzero_paths` as the one reader. The test now reads it, and the `HydraRecord::allzero_paths` comment names it. Closed.
+
+### Needs the user
+
 - Row 63 (the handoff branches). Eighteen `claude/test-fix-*handoff*` branches are unmerged (none is an ancestor of main), and `claude/tf-C183` is left over. Merging or deleting branches is the user's call, not an executor's.
 
 ### Needs no work
