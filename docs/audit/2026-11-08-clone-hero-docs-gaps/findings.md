@@ -173,7 +173,7 @@ Each row: the block, what to write, the source, and the label the evidence earns
 
 - **Hydra line numbers have drifted.** Examples: `src/core/model.h` shifted by one from about line 56 (`kHitWindowMs` 105, `kSqueezeWindowMs` 111, `kSoloBonusPerNote` 147); `src/core/squeeze_rating.cpp` `squeeze_budget_ms` 126; `src/core/timing.cpp` `plusmeasure` 320; `src/app/dm_report.cpp` 128; `src/core/model.cpp` `Path::avg_mult` 841; `src/parse/song.cpp` `close_sp_phrase` 400. Re-pin every Hydra line cite on the pages and run the docs check.
 - **`docs/sessions/index.md`.** Clear the stale `[write-back]` tags on b132faae and d0a3868c (TM-49 and SP-47 hold them), and on 70bddae3 once SP-17 is written.
-- **The handoffs.** `docs/handoffs/2026-10-31-audit-of-audits-rest-handoff.md` line 31 says a live run is needed for `prev_tick = 0`; NL-72 already proves it in code.
+- **The handoffs.** `docs/handoffs/2026-10-31-audit-of-audits-rest-handoff.md` (removed; `git show 13738279889ceb4840285f1eba78ba46c01c2fa5:docs/handoffs/2026-10-31-audit-of-audits-rest-handoff.md`) line 31 says a live run is needed for `prev_tick = 0`; NL-72 already proves it in code.
 
 ## Open, needing a run or a read not in the repo
 

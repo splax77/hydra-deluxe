@@ -10,7 +10,7 @@ The question is the FL-24 row on `docs/clone-hero/live-checks.md`: how far early
 
 ## Background
 
-The handoff is `docs/handoffs/2026-11-12-early-fill-live-check-handoff.md`. Its checker run gave 9 ok, 2 not-pushed and 3 manual rows. I read every row against the code and the pages. Two things differ from what the handoff says.
+The handoff is `docs/handoffs/2026-11-12-early-fill-live-check-handoff.md` (removed; `git show 13738279889ceb4840285f1eba78ba46c01c2fa5:docs/handoffs/2026-11-12-early-fill-live-check-handoff.md`). Its checker run gave 9 ok, 2 not-pushed and 3 manual rows. I read every row against the code and the pages. Two things differ from what the handoff says.
 
 First, one manual row is stale. The handoff says question 1 of the Dynamic Hit Window plan was unanswered. It has since been answered "Yes, ship it now" (commit 9965ca83, `docs/agents/rulings/ui-and-display.md`). So the early fill row ships without waiting for this check. This plan does not reopen that.
 
