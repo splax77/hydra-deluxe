@@ -30,7 +30,7 @@ questions.md, which B4 and B6 read, is plain text in this shape:
 
 A quote is found when its text, with runs of spaces made one, is inside the
 cited line. A code line is read from <copy>/code; a record line from
---records/<NAME>.md, or else from git at kinds.RECORDS_COMMIT in --repo.
+--records/<NAME>.md, or else from git at match_records.RECORDS_COMMIT in --repo.
 """
 
 import argparse
@@ -66,7 +66,8 @@ def table(path, need):
         raise Bad(f"no file {path}")
     with open(path, encoding="utf-8", newline="") as f:
         rows = list(csv.DictReader(f, delimiter="\t", quoting=csv.QUOTE_NONE))
-        cols = rows[0].keys() if rows else next(csv.reader(open(path, encoding="utf-8"), delimiter="\t"), [])
+        f.seek(0)
+        cols = rows[0].keys() if rows else f.readline().rstrip("\r\n").split("\t")
     missing = [c for c in need if c not in cols]
     if missing:
         raise Bad(f"{os.path.basename(path)} has no column {', '.join(missing)}")
@@ -76,7 +77,7 @@ def table(path, need):
 def text(path):
     if not path or not os.path.isfile(path):
         raise Bad(f"no file {path}")
-    with open(path, encoding="utf-8") as f:
+    with open(path, encoding="utf-8", errors="replace") as f:
         return f.read()
 
 
@@ -184,7 +185,7 @@ class Lines:
         if path.startswith("records/") or (path.endswith(".md") and "/" not in path):
             if self.records:
                 real = os.path.join(self.records, base)
-                return open(real, encoding="utf-8").read().split("\n") if os.path.isfile(real) else None
+                return text(real).split("\n") if os.path.isfile(real) else None
             if self.repo:
                 out = subprocess.run(["git", "-C", self.repo, "show",
                                       f"{mr.RECORDS_COMMIT}:{mr.RECORDS_DIR}{base}"],
@@ -192,7 +193,7 @@ class Lines:
                 return out.stdout.split("\n") if out.returncode == 0 else None
             return None
         real = os.path.join(self.copy or "", "code", *path.removeprefix("code/").split("/"))
-        return open(real, encoding="utf-8", errors="replace").read().split("\n") if os.path.isfile(real) else None
+        return text(real).split("\n") if os.path.isfile(real) else None
 
 
 def squash(s):

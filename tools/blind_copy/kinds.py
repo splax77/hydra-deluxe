@@ -865,6 +865,15 @@ def summary(lines, rows):
     return "\n".join(out) + "\n"
 
 
+def write_outputs(out, rows, joined):
+    os.makedirs(out, exist_ok=True)
+    write_tsv(os.path.join(out, "hits.tsv"), HIT_COLUMNS,
+              [[r.hit, r.via, r.hook, r.decl, r.body, r.outcome, r.mark, r.note, OPEN] for r in rows])
+    write_tsv(os.path.join(out, "joined.tsv"), JOINED_COLUMNS, joined)
+    with open(os.path.join(out, "kinds.md"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(kinds_md(rows, joined))
+
+
 def run(copy, seams_path, coverage_path, matched_path, out, repo=None, at=None, answers_path=None,
         base=BASE, say=None):
     say = say or sys.stdout.write
@@ -874,12 +883,7 @@ def run(copy, seams_path, coverage_path, matched_path, out, repo=None, at=None, 
     lines, rows = sort_all(copy, seams, coverage)
     answers = read_answers(answers_path) if answers_path else None
     joined = join(seams, rows, matched, changed_files(repo, base, at), answers, base)
-    os.makedirs(out, exist_ok=True)
-    write_tsv(os.path.join(out, "hits.tsv"), HIT_COLUMNS,
-              [[r.hit, r.via, r.hook, r.decl, r.body, r.outcome, r.mark, r.note, OPEN] for r in rows])
-    write_tsv(os.path.join(out, "joined.tsv"), JOINED_COLUMNS, joined)
-    with open(os.path.join(out, "kinds.md"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(kinds_md(rows, joined))
+    write_outputs(out, rows, joined)
     say(summary(lines, rows))
     if answers:
         c = collections.Counter(j[4] for j in joined)
