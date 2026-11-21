@@ -349,6 +349,15 @@ void check_solo_hugs_highway(ImGuiTestContext* ctx, const hydra::ui::PreviewCont
     IM_CHECK_NO_RET(std::fabs(solo.Min.x - (railing + gap)) <= kSamePlace);
 }
 
+// How many of the overlay's boxes the controller says are showing now: the
+// time box always, and each other box when its own `shown` is set (the gauge
+// when the scene has one). What check_overlay_boxes should find on screen.
+int boxes_showing(const hydra::ui::PreviewController& pc) {
+    return 1 + (pc.score_box().shown ? 1 : 0) + (pc.has_sp_gauge() ? 1 : 0) +
+           (pc.drain_box().shown ? 1 : 0) + (pc.next_act_box().shown ? 1 : 0) +
+           (pc.solo_box().shown ? 1 : 0);
+}
+
 std::string readout_of(double bars, int cap);  // defined below, by its first users
 
 // The solo box on a chart with solos: the running percent and count, the end
@@ -500,7 +509,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     // has an activation ahead.
     IM_CHECK_EQ(pc.next_act_box().shown, !acts.empty());
     ctx->Yield(2);
-    IM_CHECK_EQ(check_overlay_boxes(ctx), acts.empty() ? 4 : 5);
+    IM_CHECK_EQ(check_overlay_boxes(ctx), boxes_showing(pc));
 
     // Each activation's Star Power, at the moments the record gives: the box
     // is active from the activation's chord to the record's SP end, and idle
@@ -508,6 +517,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
     // header and the second line change with it; their words are
     // build_drain_box's literals, with no owner to read them from.
     bool saved = false;
+    size_t walked = 0;  // activations whose Star Power window was checked
     for (size_t i = 0; i < acts.size(); ++i) {
         const hydra::Activation& rec = acts[i];
         const hydra::app::PreviewActivation& act = shown[i];
@@ -518,6 +528,7 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
         if (!end || !act.has_sp_end) continue;  // no window: nothing runs (checked above)
         IM_CHECK_EQ(act.sp_end_tick, *end);
         IM_CHECK(act.sp_end_ms > act.ms);
+        ++walked;
         for (double at : {act.ms, (act.ms + act.sp_end_ms) / 2.0}) {
             pc.seek_ms(at);
             const hydra::app::PreviewDrainBox on = pc.drain_box();
@@ -542,6 +553,9 @@ void test_preview_drain_box(ImGuiTestContext* ctx) {
         IM_CHECK_EQ(pc.drain_box().active, next_begun || past_song);
         if (!next_begun && !past_song) IM_CHECK(pc.drain_box().header == idle.header);
     }
+    // Chart 0's path has Star Power running somewhere; a path with none would
+    // pass the loop above without checking a thing.
+    IM_CHECK(walked > 0);
 }
 
 // The readout under the SP gauge for a level of `bars`, in sp_meter_readout's
@@ -1194,7 +1208,8 @@ void test_preview_overlay_steady(ImGuiTestContext* ctx) {
             IM_CHECK(pc.jump_activation(+1));
             ctx->Yield(2);
             IM_CHECK_FLOAT_NEAR_EQ(pc.position_ms(), checked_activation(ctx, best, i).ms, 0.5);
-            IM_CHECK_EQ(check_overlay_boxes(ctx), 5);
+            IM_CHECK(pc.next_act_box().shown);
+            IM_CHECK_EQ(check_overlay_boxes(ctx), boxes_showing(pc));
             if (i == 1) {
                 // Burnout's long second chord, its box wrapped beside the lane.
                 IM_CHECK(screenshot(ctx, share > 0.9f ? "overlay-steady-narrow.png"
