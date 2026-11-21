@@ -1,7 +1,9 @@
 // Tests for generated fills (Song::check_activations, core/song.cpp). A chart
 // with no fills of its own gets fills placed on the measure lines of Clone
 // Hero's grid (MeasureIndex). Each expected tick here is read from that grid,
-// and each rule value from core::Rules or search/graph.h, never typed.
+// and each rule value from core::Rules or search/graph.h, never typed. The
+// one exception is the 1.0 measure-line cases: their ticks are typed, each
+// worked by hand from the 1.0 game's walk in the case's comment.
 
 #include "doctest.h"
 
@@ -333,6 +335,94 @@ TEST_CASE("chords_around: the nearer chord, a tie going to the later one, as the
         CHECK(around.after == std::optional<size_t>{2});
         CHECK(around.pick == std::optional<size_t>{1});
     }
+}
+
+// ---- Clone Hero 1.0's measure lines ----------------------------------------
+//
+// Each expected list below is worked from the game's walk,
+// docs/clone-hero/code/4045/fill_generator.cs section F5 (lines 199 to 257):
+// from tick 0, while tick <= last tick (line 207), read the meter at the tick;
+// on a new meter restart both counters (lines 211 to 216); wrap the beat in
+// the measure at the numerator (lines 217 to 220); a beat whose count is 0
+// is stored as a measure (line 240), except in a meter with 1 on top after
+// its first beat (line 223); then step resolution x 4 / bottom number ticks
+// (line 253). Only a stored measure reaches the list (F11, lines 661 to 669).
+
+namespace {
+
+// The resolution the plan's 1.0 line cases use.
+constexpr int64_t kCh10Res = 192;
+
+struct Meter {
+    int64_t tick;
+    int numerator;
+    int denominator;
+};
+
+// A song at kCh10Res and 120 BPM, 4/4 until the first of `meters`.
+Song song_with_meters(const std::vector<Meter>& meters) {
+    Song song(kCh10Res);
+    song.bpm_changes[0] = 120.0;
+    for (const Meter& m : meters) apply_timesig(song, m.tick, m.numerator, m.denominator);
+    song.build_timing();
+    return song;
+}
+
+std::vector<int64_t> ch10_lines(const Song& song, int64_t last_tick) {
+    return ch10_measure_lines(song.timing().measure_index(), last_tick);
+}
+
+}  // namespace
+
+TEST_CASE("1.0 measure lines: in 4/4 a line every four beats, none past the last tick") {
+    // Inputs: resolution 192, 4/4 throughout, last tick 3000.
+    // The step is 192 x 4 / 4 = 192 ticks. The beat count runs 0, 1, 2, 3 and
+    // wraps at 4, so every fourth beat is a measure: 0, 768, 1536, 2304. The
+    // next would be 3072, and 3072 <= 3000 is false, so the walk stops.
+    CHECK(ch10_lines(song_with_meters({}), 3000) == std::vector<int64_t>{0, 768, 1536, 2304});
+}
+
+TEST_CASE("1.0 measure lines: a meter with 1 on top keeps only its first beat") {
+    // Inputs: resolution 192, 4/4, then 1/4 from tick 1536; last tick 2400.
+    // 4/4 gives measures at 0 and 768. At 1536 the meter changes, so both
+    // counters restart at 0 and the beat is a measure (beats since the
+    // change is 0). The step stays 192 x 4 / 4 = 192. At 1728, 1920, 2112 and
+    // 2304 the beat count wraps to 0 again, but the numerator is 1 and the
+    // beats since the change are above 0, so line 223 stores each as a beat,
+    // not a measure. 2496 is past 2400.
+    CHECK(ch10_lines(song_with_meters({{1536, 1, 4}}), 2400) ==
+          std::vector<int64_t>{0, 768, 1536});
+}
+
+TEST_CASE("1.0 measure lines: a mid-measure meter change puts a line on the change") {
+    // Inputs: resolution 192, 4/4, then 7/8 from tick 1152; last tick 2600.
+    // 4/4 steps 192: measures at 0 and 768, and 1152 is the third beat of
+    // the second measure. At 1152 the meter changes, so the counters restart
+    // and 1152 is a measure. 7/8 steps 192 x 4 / 8 = 96, and the beat count
+    // wraps at 7, so the next measures are 1152 + 7 x 96 = 1824 and
+    // 1824 + 672 = 2496. The next, 3168, is past 2600.
+    CHECK(ch10_lines(song_with_meters({{1152, 7, 8}}), 2600) ==
+          std::vector<int64_t>{0, 768, 1152, 1824, 2496});
+}
+
+TEST_CASE("1.0 measure lines: the last tick is a line when a measure lands on it") {
+    // Inputs: resolution 192, 4/4, last tick 1536. The walk's test is
+    // tick <= last tick (line 207), so the measure at 1536 is walked.
+    CHECK(ch10_lines(song_with_meters({}), 1536) == std::vector<int64_t>{0, 768, 1536});
+    // One tick less and it is not.
+    CHECK(ch10_lines(song_with_meters({}), 1535) == std::vector<int64_t>{0, 768});
+}
+
+TEST_CASE("1.0 measure lines: the walk ends one beat past the chart's last note end") {
+    // The game's last tick is the largest note tick plus sustain over every
+    // track and difficulty, plus the resolution (F10, fill_generator.cs lines
+    // 626 to 658). Inputs: resolution 192, last note end 2808: 2808 + 192 = 3000.
+    Song song = song_with_meters({});
+    song.last_note_end_tick = 2808;
+    CHECK(ch10_last_line_tick(song) == 3000);
+    // A chart with no note: the game's largest end starts at 0, so 0 + 192.
+    song.last_note_end_tick.reset();
+    CHECK(ch10_last_line_tick(song) == kCh10Res);
 }
 
 // ---- the corpus -----------------------------------------------------------

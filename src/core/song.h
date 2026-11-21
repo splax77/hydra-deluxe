@@ -166,7 +166,7 @@ public:
     // when the file has no such note. Clone Hero measures a song's last note
     // this way. In a .mid, MidiFile::last_note_end_tick says which tracks
     // count; in a .chart, ChartParser::load_sections reads every section's
-    // note lines. Its one reader is app::song_length_ms.
+    // note lines. Its readers are app::song_length_ms and ch10_last_line_tick.
     std::optional<int64_t> last_note_end_tick;
 
     // Solo sections in song order. Both parsers fill it once the sequence is
@@ -240,6 +240,19 @@ private:
 // the meter rule: both parsers, Song's default and test fixtures call it. A
 // numerator of 0 is ignored; a bottom number of 0 or less refuses the chart.
 void apply_timesig(Song& song, int64_t tick, int numerator, int denominator);
+
+// The last tick of Clone Hero 1.0's measure-line walk, which the walk
+// includes: F10 of docs/clone-hero/code/4045/fill_generator.md, at 100% song
+// speed. The chart's last note end is Song::last_note_end_tick, the one answer
+// to it, read as 0 when the chart has no note, as the game's F10 does.
+int64_t ch10_last_line_tick(const Song& song);
+
+// Clone Hero 1.0's measure lines, in tick order: the list its fill generator
+// walks (FL-40 on docs/clone-hero/04-fills.md). They are the measure lines of
+// MeasureIndex::walk from tick 0 to `last_tick`, that tick included, less the
+// ones 1.0 stores as beats (fill_generator.cs lines 223 to 233). MeasureIndex
+// is not changed for it, so the 1.1 generator's lines stay as they are.
+std::vector<int64_t> ch10_measure_lines(const MeasureIndex& grid, int64_t last_tick);
 
 // Whether a cymbal marker on `pad` counts, with Pro Drums on (`pro`) or off.
 // The one home of that rule: the chart readers and the Preview's gem builder

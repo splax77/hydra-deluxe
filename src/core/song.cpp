@@ -247,4 +247,29 @@ void Song::place_fills_ch11(const core::Rules& rules) {
     }
 }
 
+// ---- Clone Hero 1.0's measure lines ----------------------------------------
+
+// The game adds one beat of its timing resolution, the chart's resolution
+// times the song speed (F9 and F10 of fill_generator.md); Hydra scores at 100%
+// speed, so that beat is the chart's resolution.
+int64_t ch10_last_line_tick(const Song& song) {
+    return song.last_note_end_tick.value_or(0) + song.tick_resolution();
+}
+
+// MeasureIndex::walk already restarts the grid where the game's walk does
+// (fill_generator.cs lines 211 to 220). The one place the two disagree is a
+// meter with 1 on top: MeasureIndex makes every beat a measure line there,
+// while 1.0 keeps only the meter's first beat as one (line 223 tests the
+// numerator against 1, and the beats since the change against 0).
+std::vector<int64_t> ch10_measure_lines(const MeasureIndex& grid, int64_t last_tick) {
+    std::vector<int64_t> lines;
+    grid.walk(last_tick, [&](int64_t tick, MeasureIndex::Line line) {
+        if (line != MeasureIndex::Line::Measure) return;
+        const int span = grid.span_at(tick);
+        if (grid.numerator_at(span) == 1 && tick != grid.restart_at(span)) return;
+        lines.push_back(tick);
+    });
+    return lines;
+}
+
 }  // namespace hydra
