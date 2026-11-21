@@ -1,58 +1,78 @@
 // The live channel's pieces that need no GUI: the seed guard,
 // testtemp::is_under_temp (tests/temp_util.h), which live mode uses to refuse
 // a seed that is not a copy in the temp folder, and the JSON lines it writes
-// (tests/ui/live_protocol.h), pinned as literals.
+// (tests/ui/live_protocol.h), parsed back the way the reader
+// (tools/hydra_ui_mcp.py) reads them. The real hello line is checked from a
+// real run by tools/test_hydra_ui_mcp.py, test_the_real_hello_line.
 
 #include "doctest.h"
 
 #include <cctype>
 #include <string>
 
+#include "json.hpp"
+#include "scratch_paths.h"
 #include "temp_util.h"
 #include "ui/live_protocol.h"
 
+namespace {
+
+// One wire line parsed back as JSON. A line is one object that ends in its
+// only newline, so the reader never has to guess where an answer ends.
+nlohmann::json parse_line(const std::string& line) {
+    REQUIRE(!line.empty());
+    REQUIRE(line.find('\n') == line.size() - 1);
+    return nlohmann::json::parse(line);
+}
+
+// A reply line holds exactly ok, text and timeout, and reads back as the
+// values that went in.
+void check_reply(const std::string& line, bool ok, const std::string& text, double timeout) {
+    INFO(line);
+    const nlohmann::json reply = parse_line(line);
+    REQUIRE(reply.is_object());
+    CHECK(reply.size() == 3u);
+    CHECK(reply.at("ok").get<bool>() == ok);
+    CHECK(reply.at("text").get<std::string>() == text);
+    CHECK(reply.at("timeout").get<double>() == timeout);
+}
+
+}  // namespace
+
 TEST_CASE("live reply: a command that worked") {
-    CHECK(live::ok_line("", 30.0) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":30}\n");
-    CHECK(live::ok_line("charts=97\n", 2.5) ==
-          "{\"ok\":true,\"text\":\"charts=97\\n\",\"timeout\":2.5}\n");
+    // A command that produced nothing answers "ok".
+    check_reply(live::ok_line("", 30.0), true, "ok", 30.0);
+    check_reply(live::ok_line("charts=97\n", 2.5), true, "charts=97\n", 2.5);
 }
 
 TEST_CASE("live reply: the timeout reads back as the exact number") {
-    CHECK(live::ok_line("", 12.345678901) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":12.345678901}\n");
-    CHECK(live::ok_line("", 0.1) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":0.1}\n");
-    CHECK(live::ok_line("", 0.0) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":0}\n");
-    CHECK(live::ok_line("", 100000.0) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":100000}\n");
-    CHECK(live::ok_line("", 1e-05) == "{\"ok\":true,\"text\":\"ok\",\"timeout\":0.00001}\n");
-    CHECK(live::ok_line("", 1e22) ==
-          "{\"ok\":true,\"text\":\"ok\",\"timeout\":10000000000000000000000}\n");
+    for (const double seconds : {12.345678901, 0.1, 0.0, 100000.0, 1e-05, 1e22}) {
+        INFO(seconds);
+        check_reply(live::ok_line("", seconds), true, "ok", seconds);
+    }
 }
 
 TEST_CASE("live reply: a failure with a quote, a backslash and a newline in it") {
-    CHECK(live::fail_line("failed: click \"Scan\"", "[error] C:\\x\nnext\n", 90.0) ==
-          "{\"ok\":false,\"text\":\"failed: click \\\"Scan\\\"\\n[error] C:\\\\x\\nnext\\n\","
-          "\"timeout\":90}\n");
+    const std::string error = "failed: click \"Scan\"";
+    const std::string log = "[error] C:\\x\nnext\n";
+    check_reply(live::fail_line(error, log, 90.0), false, error + "\n" + log, 90.0);
 }
 
 TEST_CASE("live reply: a failure with no log lines") {
-    CHECK(live::fail_line("wait 99 is longer than the 30 s timeout in force", "", 30.0) ==
-          "{\"ok\":false,\"text\":\"wait 99 is longer than the 30 s timeout in force\\n\","
-          "\"timeout\":30}\n");
+    const std::string error = "wait 99 is longer than the 30 s timeout in force";
+    check_reply(live::fail_line(error, "", 30.0), false, error + "\n", 30.0);
 }
 
 TEST_CASE("live reply: control characters are escaped, UTF-8 passes through") {
-    CHECK(live::json_string("a\tb\rc\x01\x1f") == "\"a\\tb\\rc\\u0001\\u001f\"");
-    CHECK(live::json_string("caf\xC3\xA9") == "\"caf\xC3\xA9\"");
-}
+    const std::string controls = "a\tb\rc\x01\x1f";
+    const std::string quoted = live::json_string(controls);
+    CHECK(parse_line(quoted + "\n").get<std::string>() == controls);
+    for (const char ch : quoted) CHECK(static_cast<unsigned char>(ch) >= 0x20);
 
-TEST_CASE("live hello line") {
-    CHECK(live::hello_line("headless", "C:\\Temp\\hydra_test_uitest_1234", 1234, 30.0, "",
-                           "C:\\Temp\\hydra_test_uitest_1234\\crash.dmp") ==
-          "{\"ok\":true,\"hello\":{\"mode\":\"headless\","
-          "\"scratch\":\"C:\\\\Temp\\\\hydra_test_uitest_1234\",\"pid\":1234,\"timeout\":30,"
-          "\"log\":\"\",\"crash_dump\":\"C:\\\\Temp\\\\hydra_test_uitest_1234\\\\crash.dmp\"}}\n");
-    CHECK(live::hello_line("window", "s", 7, 2.5, "C:\\x\\hydra_uitest.log", "") ==
-          "{\"ok\":true,\"hello\":{\"mode\":\"window\",\"scratch\":\"s\",\"pid\":7,\"timeout\":2.5,"
-          "\"log\":\"C:\\\\x\\\\hydra_uitest.log\",\"crash_dump\":\"\"}}\n");
+    const std::string accent = "caf\xC3\xA9";
+    const std::string quoted_accent = live::json_string(accent);
+    CHECK(parse_line(quoted_accent + "\n").get<std::string>() == accent);
+    CHECK(quoted_accent.find(accent) != std::string::npos);
 }
 
 TEST_CASE("is_under_temp: a file in a folder under the temp folder passes") {
@@ -60,8 +80,10 @@ TEST_CASE("is_under_temp: a file in a folder under the temp folder passes") {
     CHECK(testtemp::is_under_temp(testtemp::temp_root() + "hydra.db"));
 }
 
-TEST_CASE("is_under_temp: the installed library is refused") {
-    CHECK_FALSE(testtemp::is_under_temp("C:\\Program Files\\Hydra\\hydra.db"));
+TEST_CASE("is_under_temp: the library beside the exe is refused") {
+    // With no override, app::db_path() is the real library file next to the exe.
+    ScopedPathOverrides real_paths([](hydra::app::PathOverrides& o) { o.db_path.clear(); });
+    CHECK_FALSE(testtemp::is_under_temp(hydra::app::db_path()));
 }
 
 TEST_CASE("is_under_temp: the temp folder itself, an empty path and a look-alike are refused") {
