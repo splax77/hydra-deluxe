@@ -960,11 +960,13 @@ TEST_CASE("a reader's chart list does not wait while a save group is open") {
     RecordStore store(file.path);
     store.rebuild_chart_library(timed_library().rows);
     const std::vector<ChartLibraryEntry> want_list = store.list_chart_library(0, -1);
-    const std::vector<ChartLibraryEntry> want_copies = store.list_chart_library_copies(timed_library().twice);
+    const std::vector<ChartLibraryEntry> want_copies =
+        store.list_chart_library_copies(timed_library().twice);
 
     HeldSaveGroup group(store);
     const std::vector<ChartLibraryEntry> list = store.reader().list_chart_library(0, -1);
-    const std::vector<ChartLibraryEntry> copies = store.reader().list_chart_library_copies(timed_library().twice);
+    const std::vector<ChartLibraryEntry> copies =
+        store.reader().list_chart_library_copies(timed_library().twice);
     const bool returned_while_held = group.held();
     group.let_go();
     CHECK(returned_while_held);
@@ -1071,7 +1073,8 @@ TEST_CASE("an own reader lists and indexes the library as the writer does") {
     const std::unique_ptr<OwnReader> reader = store.open_own_reader();
 
     const std::vector<ChartLibraryEntry> want_list = store.list_chart_library(0, -1);
-    const std::vector<ChartLibraryEntry> want_copies = store.list_chart_library_copies(timed_library().twice);
+    const std::vector<ChartLibraryEntry> want_copies =
+        store.list_chart_library_copies(timed_library().twice);
     const ChartIndex want_index = store.chart_index();
     REQUIRE(want_copies.size() == 2);
     check_same_list(reader->reads().list_chart_library(0, -1), want_list);
