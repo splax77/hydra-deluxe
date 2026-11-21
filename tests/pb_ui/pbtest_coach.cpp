@@ -169,12 +169,10 @@ bool shows_end_lines(Harness& h, size_t step) {
     return true;
 }
 
-// The test engine's reference for an ending line. draw_steps names it
-// "##end_" and the ending's deact tick, or its notation when it has none;
-// pb_window.cpp builds that name inline, and no header gives it.
+// The test engine's reference for an ending line, by the name draw_steps
+// gives it (end_line_id).
 std::string end_ref(const EndChoice& c) {
-    return any_ref("##end_" + (c.window.deact_tick ? std::to_string(*c.window.deact_tick)
-                                                   : c.activation.notationstr()));
+    return any_ref(hydra::pathbuilder::end_line_id(c.window.deact_tick, c.activation));
 }
 
 // The vertical span of the glyphs the steps panel drew last frame in
@@ -737,9 +735,9 @@ void test_fill_click_moves_clock(ImGuiTestContext* ctx) {
 
 // The numbers the fill card gives the fill at chord tick `tick` once its
 // price has landed: the decision list's candidate for it, its ladder's BF(n)
-// and the name of the fill that costs nothing. pb_window.cpp's draw_preview
-// fills FillHoverNumbers from these, in its own file's helpers (best_candidate,
-// best_fill_name), which no header gives. None while any of them is missing.
+// and the name of the fill that costs nothing (best_fill_name, the helper
+// pb_window.cpp's draw_preview fills FillHoverNumbers with). None while any
+// of them is missing.
 std::optional<hydra::pathbuilder::FillHoverNumbers> card_numbers(const PbState& s,
                                                                  const hydra::app::PreviewScene& scene,
                                                                  int64_t tick) {
@@ -747,22 +745,18 @@ std::optional<hydra::pathbuilder::FillHoverNumbers> card_numbers(const PbState& 
     const hydra::app::LadderRun* run = d.run();
     if (!run || !run->complete || run->ladder.bf.empty()) return std::nullopt;
     const std::vector<hydra::app::CandidateCost>& cands = d.candidates();
-    std::optional<size_t> mine;
-    std::optional<size_t> best;
-    for (size_t i = 0; i < cands.size(); ++i) {
-        if (!mine && cands[i].act_tick == tick) mine = i;
-        if (!best && hydra::app::costs_nothing(cands[i].cost)) best = i;
-    }
-    if (!mine || !best) return std::nullopt;
-    const std::optional<size_t> best_fill = hydra::app::fill_index_on_chord(scene, cands[*best].act_tick);
+    const auto mine = std::find_if(cands.begin(), cands.end(),
+                                   [&](const hydra::app::CandidateCost& c) { return c.act_tick == tick; });
+    if (mine == cands.end()) return std::nullopt;
+    const std::optional<std::string> best_fill = hydra::pathbuilder::best_fill_name(scene, cands);
     if (!best_fill) return std::nullopt;
     hydra::pathbuilder::FillHoverNumbers n;
-    n.best_finish = cands[*mine].best_finish;
+    n.best_finish = mine->best_finish;
     n.best_now = run->ladder.bf.back();
-    n.cost = cands[*mine].cost;
-    n.tier = cands[*mine].tier;
-    n.best_fill = hydra::pathbuilder::fill_name(scene, scene.fills[*best_fill]);
-    n.hydra_end = d.candidate_end(*mine);
+    n.cost = mine->cost;
+    n.tier = mine->tier;
+    n.best_fill = *best_fill;
+    n.hydra_end = d.candidate_end(static_cast<size_t>(mine - cands.begin()));
     return n;
 }
 

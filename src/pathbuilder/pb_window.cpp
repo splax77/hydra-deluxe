@@ -109,24 +109,6 @@ std::string figure_or_pending(const std::optional<int64_t>& v) {
     return v ? group_thousands(*v) : std::string(kPendingText);
 }
 
-// The first candidate that costs nothing: the best next fill (candidate_costs
-// gives the best one cost 0), or null while none has landed.
-const app::CandidateCost* best_candidate(const std::vector<app::CandidateCost>& candidates) {
-    for (const app::CandidateCost& c : candidates)
-        if (app::costs_nothing(c.cost)) return &c;
-    return nullptr;
-}
-
-// The name of the best next fill, once it has landed and the scene has it.
-std::optional<std::string> best_fill_name(const app::PreviewScene& scene,
-                                          const std::vector<app::CandidateCost>& candidates) {
-    const app::CandidateCost* best = best_candidate(candidates);
-    if (!best) return std::nullopt;
-    const std::optional<size_t> i = app::fill_index_on_chord(scene, best->act_tick);
-    if (!i) return std::nullopt;
-    return fill_name(scene, scene.fills[*i]);
-}
-
 // `text` at the right edge of the line the cursor is on, which starts at
 // window x `line_x` and is `line_w` wide, in `col`.
 void text_at_right(const std::string& text, float line_x, float line_w, const ImVec4& col) {
@@ -863,9 +845,7 @@ void PbApp::draw_steps(const OpenChart& chart) {
                     const ImVec2 line = ImGui::GetCursorPos();
                     const float line_w = ImGui::GetContentRegionAvail().x;
                     const float line_h = ImGui::GetFrameHeight();
-                    const std::string id =
-                        "##end_" + (c.window.deact_tick ? std::to_string(*c.window.deact_tick)
-                                                        : c.activation.notationstr());
+                    const std::string id = end_line_id(c.window.deact_tick, c.activation);
                     ImGui::SetNextItemAllowOverlap();
                     bool picked = ImGui::Selectable(id.c_str(), kept, 0, ImVec2(0, line_h));
                     ImGui::SetCursorPos(line);
