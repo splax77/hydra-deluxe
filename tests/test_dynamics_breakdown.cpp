@@ -291,6 +291,7 @@ TEST_CASE("dynamics_breakdown: the 2x kick line counts its noun from the total")
     // On every corpus chart the line names the chart's 2x kicks, then every
     // kick note (counted picks the noun from that total), then the 2x share
     // of them, in that order.
+    REQUIRE_FALSE(corpus_counts().empty());
     for (const CorpusCount& c : corpus_counts()) {
         CAPTURE(c.path);
         const int twice = c.bd.row(DynamicsRow::Kick2x).all();
@@ -352,6 +353,7 @@ TEST_CASE("dynamics_breakdown: the Kicks line says not counted only with 2x Bass
     // On every corpus chart, with or without 2x kicks: the lead is the 2x kick
     // line either way; with 2x Bass on there is no tail, and with it off the
     // tail is the fact dot and the not counted status.
+    REQUIRE_FALSE(corpus_counts().empty());
     for (const CorpusCount& c : corpus_counts()) {
         CAPTURE(c.path);
         const TwoPartLine on = dynamics_kicks_heading(c.bd, true);
