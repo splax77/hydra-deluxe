@@ -940,7 +940,7 @@ TEST_CASE("a library file v2.12.1 wrote opens, gains the album column, and keeps
             CHECK(got[i].status == (stamp_current ? RecordStatus::Ready : RecordStatus::Stale));
             CHECK(got[i].stale_build == !stamp_current);
         }
-        CHECK(store.ready_records(batch_profile).empty() == !stamp_current);
+        CHECK(store.settled_song_ids(batch_profile).empty() == !stamp_current);
     }
     CHECK(charts_have_album(path));
     CHECK(classify_library_file(path) == LibraryFileKind::Current);
@@ -1315,7 +1315,7 @@ void check_read_fails(const std::function<void()>& read) {
 
 }  // namespace
 
-// D73: ready_song_ids is the batch's list of analyzed charts. Read on a
+// D73: settled_song_ids is the batch's list of analyzed charts. Read on a
 // failing database, an empty answer would make a batch treat every chart as
 // not analyzed.
 TEST_CASE("a read on a failing database throws instead of answering empty") {
@@ -1325,13 +1325,14 @@ TEST_CASE("a read on a failing database throws instead of answering empty") {
     {
         RecordStore store(path);
         store.save(prepare_record("h", profile, at_cap(4)));
-        REQUIRE(store.ready_song_ids(profile).count("h") == 1);
+        REQUIRE(store.settled_song_ids(profile) ==
+                std::unordered_map<std::string, RecordStatus>{{"h", RecordStatus::Ready}});
         exec_on_file(path, "DROP TABLE records;");
         // The first read fails when it steps; by then the connection has
         // reloaded the schema, so the second fails when it compiles.
         for (const char* when : {"step", "compile"}) {
             INFO(std::string(when));
-            check_read_fails([&] { store.ready_song_ids(profile); });
+            check_read_fails([&] { store.settled_song_ids(profile); });
         }
     }
     std::remove(path.c_str());
@@ -1348,8 +1349,6 @@ TEST_CASE("each store read named in the test throws a database read error when i
         {"lookup", [&](RecordStore& s) { s.lookup({"h"}, profile); }},
         {"lookup_one", [&](RecordStore& s) { s.lookup_one("h", profile); }},
         {"settled_song_ids", [&](RecordStore& s) { s.settled_song_ids(profile); }},
-        {"ready_song_ids", [&](RecordStore& s) { s.ready_song_ids(profile); }},
-        {"ready_records", [&](RecordStore& s) { s.ready_records(profile); }},
         {"rows_missing_hardest", [&](RecordStore& s) { s.rows_missing_hardest(profile); }},
         {"hardest_figure_filled", [&](RecordStore& s) { s.hardest_figure_filled(profile); }},
         {"record_count", [](RecordStore& s) { s.record_count(); }},

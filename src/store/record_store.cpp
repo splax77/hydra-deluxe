@@ -1569,35 +1569,6 @@ std::unique_ptr<OwnReader> RecordStore::open_own_reader() {
     return std::unique_ptr<OwnReader>(new OwnReader(*this, shared_file_));
 }
 
-std::unordered_set<std::string> RecordStore::ready_song_ids(const Profile& want) {
-    // settled_song_ids' Ready charts, so both read one lookup.
-    std::unordered_set<std::string> out;
-    for (const auto& [id, status] : settled_song_ids(want))
-        if (status == RecordStatus::Ready) out.insert(id);
-    return out;
-}
-
-std::vector<RecordRow> RecordStore::ready_records(const Profile& want) {
-    std::vector<RecordRow> out;
-    {
-        // As ready_song_ids: one lock over both reads.
-        std::lock_guard<std::recursive_mutex> lock(writer_.mutex);
-        const std::vector<std::string> candidates = candidate_song_ids(writer_, want);
-        for (RecordLookup& found : lookup(candidates, want))
-            if (found.status == RecordStatus::Ready) out.push_back(std::move(found.record));
-    }
-    // Best score first; a record that kept no paths has no score and goes
-    // last. Equal scores keep the song id's order, so a listing never
-    // shuffles between two reads.
-    std::sort(out.begin(), out.end(), [](const RecordRow& a, const RecordRow& b) {
-        if (a.paths.empty() != b.paths.empty()) return b.paths.empty();
-        if (!a.paths.empty() && a.paths.front().score != b.paths.front().score)
-            return a.paths.front().score > b.paths.front().score;
-        return a.song_id < b.song_id;
-    });
-    return out;
-}
-
 namespace {
 
 // RecordStore::record_count, read on the connection `db`. Every connection's

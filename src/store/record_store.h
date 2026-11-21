@@ -789,13 +789,6 @@ public:
     void set_between_lookup_reads_for_test(std::function<void()> fn) {
         between_lookup_reads_for_test_ = std::move(fn);
     }
-    // Every chart lookup calls Ready under `want`.
-    std::unordered_set<std::string> ready_song_ids(const Profile& want);
-    // Every Ready record under `want`, paths included, best score first (a
-    // record with no paths last, equal scores by song id). Names come from
-    // chart_index(), not from here.
-    std::vector<RecordRow> ready_records(const Profile& want);
-
     // How many real records the file holds, under any profile. A failure
     // record is not counted.
     int64_t record_count() override;
