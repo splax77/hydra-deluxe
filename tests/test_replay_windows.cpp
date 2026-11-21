@@ -172,7 +172,7 @@ struct CorpusChart {
 
 // Every corpus chart under `cfg`. A chart that loads with no notes fails the
 // calling test, by name; it is never passed over.
-std::vector<CorpusChart> corpus_charts(const app::AnalysisSettings& cfg) {
+std::vector<CorpusChart> analyzed_corpus_charts(const app::AnalysisSettings& cfg) {
     std::vector<CorpusChart> out;
     for (const std::string& path : corpus::chart_paths()) {
         const Song& song = corpus::song(path, cfg.reading());
@@ -200,7 +200,7 @@ TEST_CASE("replay: each window alone pays each chord the engine's price, on ever
     int unpaid_past_leeway = 0;
     int unpaid_after_sqout = 0;
     int paid_in_leeway = 0;
-    for (const CorpusChart& c : corpus_charts(cfg)) {
+    for (const CorpusChart& c : analyzed_corpus_charts(cfg)) {
         INFO(c.path);
         const Song& song = *c.song;
         const TablesByRule tables(song, variants);
@@ -260,7 +260,7 @@ TEST_CASE("replay: a one-note chord squeezed out on D keeps none of its doubling
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::vector<core::Rules> variants = sqout_rule_variants(cfg.rules);
     int one_note = 0;
-    for (const CorpusChart& c : corpus_charts(cfg)) {
+    for (const CorpusChart& c : analyzed_corpus_charts(cfg)) {
         INFO(c.path);
         const Song& song = *c.song;
         const TablesByRule tables(song, variants);
@@ -353,7 +353,7 @@ std::vector<ReplayWindow> picked_windows(const WindowPool& pool, const std::vect
 TEST_CASE("replay: window order does not matter and windows add up, shrunk by RapidCheck") {
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::vector<core::Rules> variants = sqout_rule_variants(cfg.rules);
-    const std::vector<WindowPool> pools = window_pools(corpus_charts(cfg));
+    const std::vector<WindowPool> pools = window_pools(analyzed_corpus_charts(cfg));
     REQUIRE_FALSE(pools.empty());
     std::vector<TablesByRule> tables;
     tables.reserve(pools.size());
@@ -409,7 +409,7 @@ TEST_CASE("replay: on every corpus path the disc follows SP's payment and window
     const std::vector<core::Rules> variants = sqout_rule_variants(cfg.rules);
     int charts = 0;
     int runs = 0;
-    for (const CorpusChart& c : corpus_charts(cfg)) {
+    for (const CorpusChart& c : analyzed_corpus_charts(cfg)) {
         ++charts;
         const Song& song = *c.song;
         const TablesByRule tables(song, variants);
@@ -469,7 +469,7 @@ TEST_CASE("replay_path with a table handed in equals replay_path building its ow
     const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
     const std::vector<core::Rules> variants = sqout_rule_variants(cfg.rules);
     int paths = 0;
-    for (const CorpusChart& c : corpus_charts(cfg)) {
+    for (const CorpusChart& c : analyzed_corpus_charts(cfg)) {
         const Song& song = *c.song;
         const TablesByRule priced(song, variants);
         for (const Path& p : c.record->paths) {
