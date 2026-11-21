@@ -225,6 +225,6 @@ With Pro Drums off there are no cymbals either way, so E can't tell anything apa
 
 `songs/` holds the ten song folders. Each has a song.ini, a notes.chart or notes.mid, and a silent song.ogg.
 
-`predictions.json` holds every song's written notes and every prediction, including the rows the tables leave out.
+`predictions.json` holds every song's written notes and every prediction, including the rows the tables leave out. `build-scripts/build.py` writes it; the committed copy is `docs/audit/note-shuffle/game-tests/predictions.json` (removed; `git show b2287e56:docs/audit/note-shuffle/game-tests/predictions.json`).
 
 `build-scripts/` holds the scripts that made all of this. `build.py` writes the songs and predictions, and `ns_lib.py` holds the writers. `run_refs.py` runs each scout's reference on a note list. `design.py` and `design_e.py` searched for layouts where the guesses differ. `hydra_check.py` loads each song in Hydra and compares the chords. `mid_order.py` reads B's file back byte by byte to confirm the written order (`b_file_order.txt`). The references they run live in `../scout-flag/` and `../scout-strings/`.

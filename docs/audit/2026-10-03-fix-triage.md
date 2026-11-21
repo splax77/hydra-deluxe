@@ -10,7 +10,7 @@ Three agents built it on 2026-10-03 at HEAD 02976c1, each taking a third of the 
 
 Almost half the findings are duplicates that agree today: 182 of them. Folding those changes nothing you see. The engine-facts step has 24 findings, the parser step 21 and display formatting 49. Docs have 44 and the shell path-length owner has 1. Another 75 are real fixes that fit none of the audit's steps. They are in the store, audio, CLI, tools and search rules.
 
-The full rows are also in `2026-10-03-fix-triage.json` next to this file, for scripts.
+The full rows were also in `docs/audit/2026-10-03-fix-triage.json` (removed; `git show b2287e56:docs/audit/2026-10-03-fix-triage.json`).
 
 133 findings need a call from you before their fix can be planned. 33 of those are weighty: the answer changes scores, ratings, paths or stored results, or needs checking against Clone Hero. The rest are wording, colour or edge-case choices. Each of those will come with a recommended answer when its plan is written.
 
