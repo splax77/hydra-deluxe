@@ -433,6 +433,11 @@ TEST_CASE("StemReader: Opus header gain is applied") {
     page_opus(pk, 7, loud);
     const float gain = opus_head_gain(loud);
     REQUIRE(gain != 1.0f);
+    // Fixed figures from the RFC 7845 definition, not from the owner:
+    // +6.0195 dB (1541 / 256) is x1.9997, -6 dB (-1536 / 256) is x0.50119.
+    CHECK(std::fabs(gain - 1.9997f) < 1e-4f);
+    CHECK(std::fabs(detail::opus_output_gain(-1536) - 0.50119f) < 1e-4f);
+    CHECK(detail::opus_output_gain(0) == 1.0f);
 
     auto a = open_stem_reader(StemBytes{plain, nullptr});
     auto b = open_stem_reader(StemBytes{loud, nullptr});
