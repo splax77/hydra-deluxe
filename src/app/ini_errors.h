@@ -43,8 +43,9 @@ inline constexpr std::string_view kWantWholeNumber = "a whole number";
 // Both files' whole-number keys and hydra_replay's --cap read through here.
 inline std::optional<int> parse_whole_number(std::string_view text) {
     const std::optional<double> d = parse_finite_number(text);
-    if (!d || *d != std::trunc(*d) || *d < std::numeric_limits<int>::min() ||
-        *d > std::numeric_limits<int>::max())
+    // The parentheses keep windows.h's min and max macros off these calls.
+    if (!d || *d != std::trunc(*d) || *d < (std::numeric_limits<int>::min)() ||
+        *d > (std::numeric_limits<int>::max)())
         return std::nullopt;
     return static_cast<int>(*d);
 }

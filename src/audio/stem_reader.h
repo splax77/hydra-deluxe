@@ -106,6 +106,11 @@ struct OpusReaderOptions {
 
 std::unique_ptr<StemReader> open_opus_reader(StemBytes bytes, const OpenProgress& progress,
                                              const OpusReaderOptions& options = {});
+
+// The linear multiplier the Opus reader applies to every sample of a link,
+// from its OpusHead output gain field (`q78`, signed Q7.8 dB, RFC 7845
+// section 5.1). Exactly 1 when the field is 0, so such a link is not scaled.
+float opus_output_gain(int q78);
 std::unique_ptr<StemReader> open_vorbis_reader(StemBytes bytes);
 // `format` is sniff_format's answer for these bytes (Wav, Mp3 or Flac), so
 // the reader does not sniff again: Mp3 goes to dr_mp3, the rest to

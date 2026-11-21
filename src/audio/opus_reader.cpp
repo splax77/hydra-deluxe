@@ -312,9 +312,7 @@ private:
         headers_left_ = headers;
         gpos_ = gpos;
         want_g_ = std::max<int64_t>(want, l.preskip);
-        gain_ = l.gain_q78 == 0
-                    ? 1.0f
-                    : static_cast<float>(std::pow(10.0, l.gain_q78 / (20.0 * 256.0)));
+        gain_ = opus_output_gain(l.gain_q78);
         pk_count_ = pk_next_ = 0;
         at_end_ = false;
         opus_decoder_ctl(dec_, OPUS_RESET_STATE);
@@ -420,6 +418,11 @@ private:
 std::unique_ptr<StemReader> open_opus_reader(StemBytes bytes, const OpenProgress& progress,
                                              const OpusReaderOptions& options) {
     return std::make_unique<OpusReader>(std::move(bytes), progress, options);
+}
+
+float opus_output_gain(int q78) {
+    // Q7.8 holds 256ths of a dB; a dB value d is the amplitude 10^(d / 20).
+    return q78 == 0 ? 1.0f : static_cast<float>(std::pow(10.0, q78 / (20.0 * 256.0)));
 }
 
 }  // namespace hydra::audio::detail
