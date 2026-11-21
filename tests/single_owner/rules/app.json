@@ -148,7 +148,7 @@
       "owner_file": "src/app/config.cpp",
       "owner_symbol": "Settings::load_for_command_line",
       "date": "2026-10-07",
-      "decision": "perf follow-up B, hydra_bench takes the fills setting through the same owner as hydra_batch (docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md (removed; git show 444631e6:docs/handoffs/2026-10-06-perf-speedups-wave2-handoff.md))",
+      "decision": "perf follow-up B, hydra_bench takes the fills setting through the same owner as hydra_batch",
       "added_by": "perf-bench-fills",
       "pattern": "\\bSettings::load\\(\\)",
       "anchor": "Settings::load()",

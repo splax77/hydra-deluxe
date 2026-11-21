@@ -20,8 +20,7 @@ which also names the design and the build plan they came from.
 
 The path report was the one slow thing Hydra did. On 2026-10-11 the main
 session profiled the real app on the user's library. D115 records the
-analysis count; the profile's other numbers are in
-`docs/handoffs/2026-10-11-path-report-speed-handoff.md` (removed; `git show 444631e6:docs/handoffs/2026-10-11-path-report-speed-handoff.md`).
+analysis count; the profile's other numbers, below, are unchecked.
 Building the report
 took 41.6 of the session's 62 CPU-seconds and about 17 s of wall time. It ran
 37,691 analyses of 18,907 chart files, because ADR 0026 kept only summaries

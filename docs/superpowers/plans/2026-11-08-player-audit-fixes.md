@@ -12,7 +12,7 @@ One thing the audit itself got wrong, found while checking: the C++ schedule has
 
 ## What was checked, and how
 
-Every claim below was read in the code on branch `claude/player-audit-fix-plan` at `e9657b17` (main's tip), not taken from the handoff. The handoff (`git show claude/handoff-274bd9dd:docs/handoffs/2026-11-08-player-audit-fix-plan-handoff.md`) was read whole; its Claims table held on every row this plan uses, with two exceptions noted in the Premise map (P30 and P31). `py -I tools/check_handoff.py` was not run on it, because the handoff lives on a branch, not a path; its own checker output is in the file.
+Every claim below was read in the code on branch `claude/player-audit-fix-plan` at `e9657b17` (main's tip), not taken from the handoff. The handoff was read whole; its Claims table held on every row this plan uses, with two exceptions noted in the Premise map (P30 and P31). `py -I tools/check_handoff.py` was not run on it, because the handoff lives on a branch, not a path; its own checker output is in the file.
 
 `hydra_replay` writes none of the three fields today. `git grep -i -E 'song_length|ready|sqout|SqOut|sp_ready|kSpActivationBars' -- tools/replay*.cpp` finds `song_length` nowhere, `ready` nowhere, and `sqout` only as the squeeze's tick and offset (`sqout_tick`, `sqout_offset_ms`), never as the rule or the gem list.
 
