@@ -23,6 +23,14 @@ COMMENT = "# Files named test_*.py are tests.\n# Any other name is not a test.\n
 COPY = "def is_test(n):\n    return n.startswith('test_')\n"
 
 
+def script():
+    """The script as a module, so a test reads a message from the code that writes it."""
+    if HERE not in sys.path:
+        sys.path.insert(0, HERE)
+    import effort_test_faults
+    return effort_test_faults
+
+
 def remove_repo(path):
     """Git marks its object files read-only, which Windows will not delete."""
     def make_writable(remove, target, _):
@@ -134,9 +142,14 @@ class FaultCheckTest(unittest.TestCase):
                          "F1 named: src/calc.py line 9")
 
     def test_a_file_alone_does_not_name_a_fault(self):
-        self.assertEqual(self.lines("calc.py looks fine.")[0],
-                         "F1 missed: src/calc.py line 9 (the report mentions this file with no line "
-                         "or words match; read it)")
+        # A miss whose file the report mentions carries score_fault's note, so the main session
+        # reads that paragraph; a miss with no mention of the file carries none.
+        report = "calc.py looks fine."
+        result, note = script().score_fault(self.faults[0], self.calc_at_tip, self.calc_at_tip, report)
+        self.assertEqual(result, "missed")
+        self.assertNotEqual(note, "")
+        self.assertEqual(script().score_fault(self.faults[0], self.calc_at_tip, self.calc_at_tip, "")[1], "")
+        self.assertEqual(self.lines(report)[0], "F1 missed: src/calc.py line 9" + note)
 
     def test_a_line_with_no_file_does_not_name_a_fault(self):
         self.assertEqual(self.lines("Line 9 is off by one at the limit.")[0], "F1 missed: src/calc.py line 9")
@@ -158,8 +171,7 @@ class FaultCheckTest(unittest.TestCase):
         self.assertEqual(self.lines("calc.py:9 was off by one.")[0], "F1 fixed: src/calc.py line 9")
 
     def test_fixing_the_planted_copy_counts_when_the_same_text_stands_elsewhere(self):
-        sys.path.insert(0, HERE)
-        import effort_test_faults
+        effort_test_faults = script()
         fault = dict(self.faults[0], planted_text="return n <= limit")
         twice = "a\nreturn n <= limit\nb\nreturn n <= limit\n"
         once = "a\nreturn n < limit\nb\nreturn n <= limit\n"
@@ -211,27 +223,34 @@ class FaultCheckTest(unittest.TestCase):
         self.assertEqual(lines[-3:-2], ["false finding: src/other.py line 4"])
         self.assertEqual(lines[-2], "0 fixed, 0 named, 3 missed, 1 false findings")
 
-    def assert_cannot_score(self, tip, words):
+    def assert_cannot_score(self, tip, *names):
+        """The run exits 2 with no score and prints the script's own refusal, which names `names`."""
+        faults = script()
+        with self.assertRaises(faults.CannotScore) as refused:
+            faults.score(faults.load_key(self.key), self.repo, tip, "")
+        message = str(refused.exception)
+        for name in names:
+            self.assertIn(name, message)
         code, lines, err = self.score(tip=tip)
         self.assertEqual(code, 2)
         self.assertEqual(lines, [])
-        self.assertIn(words, err)
+        self.assertIn(message, err)
 
     def test_a_planted_text_missing_at_the_tip_fails_loudly(self):
         self.faults[0]["planted_text"] = "not in the file"
         self.write_key()
-        self.assert_cannot_score("review", "planted_text is not in src/calc.py")
+        self.assert_cannot_score("review", "F1", "planted_text", "src/calc.py")
 
     def test_an_empty_key_field_fails_loudly(self):
         self.faults[1]["what"] = ""
         self.write_key()
-        self.assert_cannot_score("review", "fault F2 has no what")
+        self.assert_cannot_score("review", "F2", "what")
 
     def test_a_tip_that_does_not_descend_from_the_key_fails_loudly(self):
-        self.assert_cannot_score(self.base, "does not descend")
+        self.assert_cannot_score(self.base, self.base, self.tip)
 
     def test_an_unknown_tip_fails_loudly(self):
-        self.assert_cannot_score("no-such-branch", "git rev-parse")
+        self.assert_cannot_score("no-such-branch", "no-such-branch")
 
 
 if __name__ == "__main__":

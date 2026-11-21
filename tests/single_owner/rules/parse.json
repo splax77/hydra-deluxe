@@ -421,6 +421,11 @@
           "file": "tests/test_precheck_pick_exe.cpp",
           "line_text": "const auto names_file = [&](const PickedTest& t) { return hydra::ends_with(t.file, one_name); };",
           "why": "checks that a picked test file's path ends with the file name a tests-line pattern gives, not a file format"
+        },
+        {
+          "file": "tests/test_precheck_check24.cpp",
+          "line_text": "if (text.size() <= tail.size() || !hydra::ends_with(text, tail)) return \"\";",
+          "why": "checks that a precheck item's text ends with the code line it prints, not a file format"
         }
       ],
       "scope": [
