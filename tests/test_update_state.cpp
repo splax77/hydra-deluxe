@@ -26,7 +26,6 @@
 #include "app/config.h"
 #include "app/user_messages.h"
 #include "core/app_version.h"
-#include "core/strutil.h"
 #include "core/winstr.h"
 #include "json.hpp"
 #include "net/http.h"
@@ -40,6 +39,7 @@
 using update_fixtures::GitHubReplay;
 using update_fixtures::other_release_sig_path;
 using update_fixtures::real_asset_path;
+using update_fixtures::real_dir;
 using update_fixtures::real_not_found_text;
 using update_fixtures::real_reply_at;
 using update_fixtures::real_reply_text;
@@ -136,19 +136,19 @@ std::string saved_reply_notes() {
     return nlohmann::json::parse(real_reply_text()).at("body").get<std::string>();
 }
 
-// The installer's size as the saved reply states it: the "size" of its one
-// asset whose name ends "-setup.exe".
-uint64_t saved_installer_size() {
-    const std::string suffix = "-setup.exe";
+// The installer's size as the saved reply states it: the "size" of the asset
+// whose saved file is the installer `replay` serves. GitHubReplay::installer_file
+// finds that file by the installer address Hydra's own parser picked.
+uint64_t saved_installer_size(const GitHubReplay& replay) {
+    const std::string installer = replay.installer_file();
     const nlohmann::json reply = nlohmann::json::parse(real_reply_text());
     std::optional<uint64_t> size;
     for (const nlohmann::json& asset : reply.at("assets")) {
-        const std::string name = asset.at("name").get<std::string>();
-        if (!hydra::ends_with(name, suffix)) continue;
-        REQUIRE_MESSAGE(!size.has_value(), "the saved reply has two assets ending " << suffix);
+        if (real_dir() + "/" + asset.at("name").get<std::string>() != installer) continue;
+        REQUIRE_MESSAGE(!size.has_value(), "the saved reply has two assets saved as " << installer);
         size = asset.at("size").get<uint64_t>();
     }
-    REQUIRE_MESSAGE(size.has_value(), "the saved reply has no asset ending " << suffix);
+    REQUIRE_MESSAGE(size.has_value(), "the saved reply has no asset saved as " << installer);
     return *size;
 }
 
@@ -497,7 +497,7 @@ TEST_CASE("Cancel during the download goes back to the offer and leaves no part-
     // The installed exe: AppState checks only for it.
     const ScopedHook installed(hydra::app::set_installed_for_test, std::optional<bool>(true));
     // The installer's size as GitHub stated it in the saved reply.
-    const uint64_t stated_size = saved_installer_size();
+    const uint64_t stated_size = saved_installer_size(w.replay);
     REQUIRE(stated_size > 0);
     std::unique_ptr<AppState> app = offered_app(w);
     REQUIRE(app->update.release.has_value());
