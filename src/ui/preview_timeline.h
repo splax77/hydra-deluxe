@@ -243,11 +243,13 @@ struct TimelineLayout {
     // order, so a jump between two segments is a vertical step.
     std::vector<TimelinePoint> saved_line;
     float activate_y = 0.0f;  // the saved row's height at kSpActivationBars
-    // The stretches, each over the saved row's full height, where the player
-    // has enough saved to activate: after the end of the last activation's
-    // band (from the start with none), wherever saved_line is at or above
-    // activate_y. A point exactly on the line counts as enough. Stretches
-    // that touch are one.
+    // The stretch, over the saved row's full height, where the player has
+    // enough saved to activate after the last activation: from where the
+    // engine's rule says so (hydra::sp_ready_tick over the scene's
+    // trailing_bank_ticks), held no earlier than the end of the last
+    // activation's band, to where saved_line ends. Empty when that rule gives
+    // no tick, or the scene has no timing to place it. Never read off the
+    // drawn line.
     std::vector<TimelineRect> saved_enough;
     // The ghost path's windows (PreviewScene::ghost_windows), one band each
     // in the Ghost row. The ghost row is 0 tall when there are none. A point

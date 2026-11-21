@@ -46,6 +46,20 @@ extern const char* const kPendingText;  // a figure whose search has not landed
 // A fill's name on screen: its measure, "m96" (measure_label).
 std::string fill_name(const PreviewScene& scene, const PreviewFill& fill);
 
+// The first candidate that costs nothing: the best next fill (candidate_costs
+// gives the best one cost 0), or null while none has landed.
+const app::CandidateCost* best_candidate(const std::vector<app::CandidateCost>& candidates);
+
+// The name of the best next fill (best_candidate, named by fill_name), once
+// it has landed and the scene has a fill on its chord; none otherwise.
+std::optional<std::string> best_fill_name(const PreviewScene& scene,
+                                          const std::vector<app::CandidateCost>& candidates);
+
+// The hidden widget name of one ending line in an opened step: built from the
+// pinned window's deact tick (PinnedWindow::deact_tick), or from `act`'s
+// notation when the pin has none. The screen tests find a line by it.
+std::string end_line_id(const std::optional<int64_t>& deact_tick, const Activation& act);
+
 // The bars of Star Power saved when `fill` ends, as the Preview's meter reads
 // them (sp_meter_bars_at), in whole bars.
 int bars_saved_at(const PreviewScene& scene, const PreviewFill& fill);

@@ -6,18 +6,23 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
-#include "analyzed_chart.h"  // corpus::analyzed_by_ten_scores
+#include "analyzed_chart.h"  // corpus::analyzed_by_ten_scores, chart_paths, song, analyzed
 #include "app/display_format.h"  // format_duration, the axis labels' text
 #include "app/preview_view.h"
 #include "app/song_length.h"  // song_length_ms, the real scenes' length
+#include "core/model.h"  // sp_ready_tick, Path::trailing_sp_ready_tick
 #include "core/rules.h"
 #include "core/timing.h"
 #include "fixed_pitch.h"  // ten_per_char
 #include "preview_scene_fixtures.h"
+#include "scratch_settings.h"  // the GUI tests' settings, as the Path Builder's tests use
+#include "search/pather.h"  // search_target, search_graph: the Path Builder's empty path
 #include "ui/preview_timeline.h"
 #include "ui/timeline_view.h"
 
@@ -536,49 +541,125 @@ TEST_CASE("preview timeline: the insets move the bands, the fills and the saved 
     CHECK(l.activate_y == doctest::Approx(saved_y(l, m, s.sp_meter.cap, kSpActivationBars)));
 }
 
-TEST_CASE("preview timeline: the saved row's enough stretches start after the last activation and split a segment at the line") {
-    // The engine's best path on a real corpus chart. Every activation spends
-    // at least kSpActivationBars, so the meter has that much before each
-    // one; none of it before the last activation's band ends is shaded.
-    const app::PreviewScene& s = real_scenes().path;
-    REQUIRE_FALSE(s.activations.empty());
-    const std::optional<std::pair<double, double>> last = s.activations.back().sp_window();
-    REQUIRE(last.has_value());
-    const bool enough_before = std::any_of(
-        s.sp_meter.segments.begin(), s.sp_meter.segments.end(), [&](const app::SpMeterSegment& seg) {
-            return seg.start_ms < last->second &&
-                   (seg.start_bars >= kSpActivationBars || seg.end_bars >= kSpActivationBars);
-        });
-    REQUIRE(enough_before);
-    const ui::TimelineLayout l = whole_song_layout(s, metrics());
-    check_saved_enough(s, l);
+TEST_CASE("preview timeline: every corpus best path shades its saved row exactly when the engine says enough is saved") {
+    // For each corpus chart's best path, under the GUI tests' settings: the
+    // shaded stretch exists exactly when Path::trailing_sp_ready_tick gives a
+    // tick, and starts there, held to the end of the last band. The shading
+    // is also read against the drawn meter (check_saved_enough), so a best
+    // path whose shaded row moved from where the line reaches the activate
+    // line fails here.
+    const app::AnalysisSettings cfg = scratch_settings().to_analysis_settings();
+    int scenes = 0;
+    int ready = 0;
+    for (const std::string& chart : corpus::chart_paths()) {
+        CAPTURE(chart);
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        const HydraRecord& rec = corpus::analyzed(chart, cfg);
+        if (rec.paths.empty()) continue;
+        const Path& best = rec.best_path();
+        CAPTURE(best.pathstring());
+        const app::PreviewScene s = app::build_preview_scene(
+            song, &best, cfg.sp_cap, cfg.rules, app::song_length_ms(store::ChartTimingMeta{}, song));
+        if (s.sp_meter.segments.empty()) continue;
+        ++scenes;
+        const ui::TimelineLayout l = whole_song_layout(s, metrics());
+        const std::optional<int64_t> tick = best.trailing_sp_ready_tick();
+        CHECK(l.saved_enough.empty() == !tick.has_value());
+        check_saved_enough(s, l);
+        if (!tick || l.saved_enough.empty()) continue;
+        ++ready;
+        REQUIRE(s.timing.has_value());
+        float start = x_at(l, s.timing->ms_index().at(*tick));
+        for (const ui::TimelineBand& b : l.bands) start = (std::max)(start, b.rect.x1);
+        REQUIRE(l.saved_enough.size() == 1);
+        CHECK(l.saved_enough[0].x0 == doctest::Approx(start));
+        CHECK(l.saved_enough[0].x1 == doctest::Approx(l.saved_line.back().x));
+    }
+    REQUIRE(scenes > 0);
+    // Premise P14 of the V2 plan: no corpus best path saves enough after its
+    // last activation. A count above 0 is not a failure; it says which charts
+    // the checks above covered.
+    MESSAGE("corpus best paths with enough saved after their last activation: " << ready);
 }
 
-TEST_CASE("preview timeline: a segment ending exactly on the line is enough") {
-    app::PreviewScene s = fx::timed_scene();
-    // A climb that ends on two bars, a stretch on the line, then a drain
-    // that starts on it.
+TEST_CASE("preview timeline: the saved row's shading starts at the engine's ready tick, not where the drawn line crosses") {
+    // Ticks are ms on fx::timed_scene's timing. The meter drawn here sits at
+    // no bars the whole song, so a layout that read the line would shade
+    // nothing; the stored bars say enough is saved at the second arrival.
+    app::PreviewScene s = scene_with_fills();  // its one band ends at 6,500 ms
     s.sp_meter.cap = 4;
-    s.sp_meter.segments = {{0.0, 3000.0, 0.0, 2.0},
-                           {3000.0, 6000.0, 2.0, 2.0},
-                           {6000.0, 8000.0, 2.0, 0.0},
-                           {8000.0, 10000.0, 0.0, 0.0}};
+    s.sp_meter.segments = {{0.0, kLengthMs, 0.0, 0.0}};
+    const std::optional<std::pair<double, double>> band = s.activations.back().sp_window();
+    REQUIRE(band.has_value());
+
+    s.trailing_bank_ticks = {7000, 8000};
+    REQUIRE(sp_ready_tick(s.trailing_bank_ticks) == int64_t{8000});
     const ui::TimelineLayout l = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
-    // Pinned from one run.
+    const ui::TimelineRect& row = l.row(ui::TimelineRow::Saved);
     REQUIRE(l.saved_enough.size() == 1);
-    CHECK(l.saved_enough[0].x0 == doctest::Approx(300.0f));
-    CHECK(l.saved_enough[0].x1 == doctest::Approx(600.0f));
+    CHECK(l.saved_enough[0].x0 == doctest::Approx(x_at(l, s.timing->ms_index().at(8000))));
+    CHECK(l.saved_enough[0].x1 == doctest::Approx(l.saved_line.back().x));
+    CHECK(l.saved_enough[0].y0 == doctest::Approx(row.y0));
+    CHECK(l.saved_enough[0].y1 == doctest::Approx(row.y1));
+
+    // A ready tick inside the last band: the shading waits for the band's end.
+    s.trailing_bank_ticks = {5500, 6000};
+    REQUIRE(s.timing->ms_index().at(6000) < band->second);
+    const ui::TimelineLayout held = *ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics());
+    REQUIRE(held.saved_enough.size() == 1);
+    REQUIRE(held.bands.size() == 1);
+    CHECK(held.saved_enough[0].x0 == doctest::Approx(held.bands[0].rect.x1));
+
+    // One bar stored: the rule gives no tick, so nothing is shaded, even
+    // where a drawn line stands well above the activate line.
+    s.trailing_bank_ticks = {7000};
+    s.sp_meter.segments = {{0.0, kLengthMs, 4.0, 4.0}};
+    REQUIRE_FALSE(sp_ready_tick(s.trailing_bank_ticks).has_value());
+    CHECK(ui::timeline_layout(s, kLengthMs, whole(kLengthMs), kWidth, metrics())->saved_enough.empty());
 }
 
-TEST_CASE("preview timeline: with no activation every stretch at or above the line is shaded") {
-    // The same real chart with no path: the meter fills a bar at each phrase
-    // and nothing drains it. The chart has a path, whose first activation
-    // needed kSpActivationBars banked, so this meter reaches the line too.
+TEST_CASE("preview timeline: the Path Builder's path with no activation shades from the engine's ready tick") {
+    // The path the Path Builder shows before the player picks a window:
+    // search_target over no windows (pathbuilder/pb_state.cpp, empty_path).
+    // Every bar it banks is trailing, so the engine's rule places the start.
+    const app::AnalysisSettings cfg = scratch_settings().to_analysis_settings();
+    bool found = false;
+    for (const std::string& chart : corpus::chart_paths()) {
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
+        if (song.is_empty()) continue;
+        TargetResult none = search_target(search_graph(song, cfg), {});
+        if (none.paths.empty()) continue;
+        const Path& empty = none.paths.front();
+        const std::optional<int64_t> tick = empty.trailing_sp_ready_tick();
+        if (!tick) continue;
+        CAPTURE(chart);
+        found = true;
+        REQUIRE(empty.walk_activations().empty());
+        const app::PreviewScene s = app::build_preview_scene(
+            song, &empty, cfg.sp_cap, cfg.rules, app::song_length_ms(store::ChartTimingMeta{}, song));
+        REQUIRE(s.activations.empty());
+        REQUIRE(s.trailing_bank_ticks == empty.trailing_bank_ticks);
+        const ui::TimelineLayout l = whole_song_layout(s, metrics());
+        REQUIRE(l.saved_enough.size() == 1);
+        CHECK(l.saved_enough[0].x0 == doctest::Approx(x_at(l, s.timing->ms_index().at(*tick))));
+        CHECK(l.saved_enough[0].x1 == doctest::Approx(l.saved_line.back().x));
+        // Against the drawn meter: a failure here means the ready tick and
+        // the point where the line reaches the activate line disagree, which
+        // the main session shows the user (both positions) before merge.
+        check_saved_enough(s, l);
+        break;
+    }
+    REQUIRE(found);
+}
+
+TEST_CASE("preview timeline: with no path nothing on the saved row is shaded") {
+    // The real chart with no path: the meter fills a bar at each phrase, but
+    // there is no record, so the engine has no ready tick to shade from.
     const app::PreviewScene& s = real_scenes().bare;
-    REQUIRE(s.activations.empty());
+    REQUIRE(s.trailing_bank_ticks.empty());
     const ui::TimelineLayout l = whole_song_layout(s, metrics());
-    REQUIRE_FALSE(l.saved_enough.empty());
-    check_saved_enough(s, l);
+    CHECK(l.saved_enough.empty());
 }
 
 TEST_CASE("preview timeline: the ghost path's windows are bands in their own row, which is 0 tall with no ghost") {

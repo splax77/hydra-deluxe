@@ -60,7 +60,7 @@ jobs:
     steps:
       # The full history, so the precheck self-test's two real commit ranges
       # (c6debcd^2...c6debcd and 11b9d44^2...11b9d44, in tests/test_precheck.cpp)
-      # are in the clone; without them it skips that part. The build folder
+      # are in the clone; without them those two test cases fail. The build folder
       # step also needs the history back to the saved folder's commit.
       - name: Check out the code
         uses: actions/checkout@v7

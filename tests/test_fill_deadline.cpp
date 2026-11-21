@@ -31,11 +31,10 @@ using hydra::SongTiming;
 
 namespace {
 
-// FL-42's clamp on the 1.0 lead: "held between 0.25 s and 10 s" (the game's
-// code/4045/fill_deadline.cs lines 21 to 29). graph.cpp types the same two
-// numbers inside activation_fill_deadline_ms and exposes no constant.
-constexpr double kCh10LeadFloorMs = 250.0;
-constexpr double kCh10LeadCeilingMs = 10000.0;
+// FL-42's clamp on the 1.0 lead (the game's code/4045/fill_deadline.cs lines
+// 21 to 29) is search/graph.h's to hold.
+using hydra::kCh10FillLeadCeilingMs;
+using hydra::kCh10FillLeadFloorMs;
 
 // The tolerance for two deadlines computed in a different order of the same
 // sums: far above a double's rounding, far below a tick at any corpus tempo.
@@ -119,25 +118,25 @@ int check_ch10_deadlines(double lo, double hi, Lead lead) {
 TEST_CASE("fill deadline: CH 1.0 is the fill's start less its length and a 64th note") {
     // Every fill whose lead lies inside FL-42's clamp: the lead is the fill's
     // own length plus a 64th note at that fill's tempo.
-    const int checked = check_ch10_deadlines(kCh10LeadFloorMs, kCh10LeadCeilingMs,
+    const int checked = check_ch10_deadlines(kCh10FillLeadFloorMs, kCh10FillLeadCeilingMs,
                                              [](double unclamped) { return unclamped; });
     REQUIRE(checked > 0);
 }
 
-TEST_CASE("fill deadline: CH 1.0 lead is held at 250 ms at the least") {
+TEST_CASE("fill deadline: CH 1.0 lead is held at the 0.25 s floor at the least") {
     // The fast-tempo fixtures' fills (a 384-tick fill at 4,000 BPM leads by
     // about 31 ms) fall under FL-42's 0.25 s floor.
-    const int checked = check_ch10_deadlines(-kNoBound, kCh10LeadFloorMs,
-                                             [](double) { return kCh10LeadFloorMs; });
+    const int checked = check_ch10_deadlines(-kNoBound, kCh10FillLeadFloorMs,
+                                             [](double) { return kCh10FillLeadFloorMs; });
     REQUIRE(checked > 0);
 }
 
-TEST_CASE("fill deadline: CH 1.0 lead is held at 10000 ms at the most") {
+TEST_CASE("fill deadline: CH 1.0 lead is held at the 10 s ceiling at the most") {
     // Chaotrope - Senescence (shortened) has a 4,992-tick fill (26 beats) at
     // 150 BPM, res 192: its unclamped lead is (4992 + 12) ticks at 2.083 ms a
     // tick, about 10,425 ms, over FL-42's 10 s ceiling.
-    const int checked = check_ch10_deadlines(kCh10LeadCeilingMs, kNoBound,
-                                             [](double) { return kCh10LeadCeilingMs; });
+    const int checked = check_ch10_deadlines(kCh10FillLeadCeilingMs, kNoBound,
+                                             [](double) { return kCh10FillLeadCeilingMs; });
     REQUIRE(checked > 0);
 }
 

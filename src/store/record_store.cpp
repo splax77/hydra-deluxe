@@ -1177,6 +1177,7 @@ void RecordStore::in_save_frame(F work) {
         ctl("BEGIN");
     }
     try {
+        after_save_step();
         work();
         ctl(grouped ? "RELEASE chart" : "COMMIT");
     } catch (...) {
@@ -1192,6 +1193,18 @@ void RecordStore::in_save_frame(F work) {
         }
         throw;
     }
+    // Still under the lock: the step after COMMIT or RELEASE.
+    after_save_step();
+}
+
+void RecordStore::after_save_step() {
+    if (after_save_step_for_test_) after_save_step_for_test_();
+}
+
+bool RecordStore::writer_lock_held_by_other_thread_for_test() {
+    if (!writer_.mutex.try_lock()) return true;
+    writer_.mutex.unlock();
+    return false;
 }
 
 void RecordStore::save(const PreparedRecord& prepared) {
@@ -1262,6 +1275,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
             sqlite3_bind_int64(s, 2, profile_id);
         },
         "replacing a record");
+    after_save_step();
     {
         CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
             std::string("INSERT INTO records (song_id, profile_id, ") + kRecordColumnList +
@@ -1285,6 +1299,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         }
         step_done(s, "saving a record");
     }
+    after_save_step();
     for (const PathRow& p : record.paths) {
         CachedStmt s = use_write(writer_.db, writer_.stmt_cache,
             std::string("INSERT INTO record_paths (song_id, profile_id, rank, ") +
@@ -1304,6 +1319,7 @@ void RecordStore::write_record(int64_t profile_id, const RecordRow& record) {
         sqlite3_bind_int(s, 12, p.sqout_count);
         sqlite3_bind_int(s, 13, p.optimal ? 1 : 0);
         step_done(s, "saving a record's path");
+        after_save_step();
     }
 }
 
@@ -1343,9 +1359,12 @@ void RecordStore::file_record(const Profile& profile, const std::string& hyversi
             bind_readable_params(s, 2);
         },
         "unreadable purge");
+    after_save_step();
 
     // (2) The record, replacing the chart's record under the same profile.
-    write_record(profile_id_for(profile, hyversion, rules_fp_bytes(rules_fp)), record);
+    const int64_t profile_id = profile_id_for(profile, hyversion, rules_fp_bytes(rules_fp));
+    after_save_step();
+    write_record(profile_id, record);
     // A profile the purge emptied stays until the next open
     // (drop_empty_profiles, from set_up_schema).
 }

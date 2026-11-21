@@ -45,15 +45,10 @@ std::function<void(float)> scaled_progress(const std::function<void(float)>& cb,
 // record.
 void attach_allzero(const ScoreGraph& graph, HydraRecord& record,
                     const std::function<void(float)>& on_progress) {
-    // Nothing to add when the optimal path is itself an all-0 path inside the
-    // all-0 pass's limit: it already answers the question, and it is already
-    // at the top of the list. This is the same test search_allzero's paths
-    // pass (Path::is_allzero, and the limit allzero_options sets), so this
-    // shortcut and the display's identity dedupe agree by construction.
-    if (!record.paths.empty()) {
-        const Path& best = record.best_path();
-        if (best.is_allzero() && best.within_ms_limit(*allzero_options().ms_filter)) return;
-    }
+    // Nothing to add when the optimal path already answers the question
+    // (best_path_is_allzero): it is already at the top of the list, and
+    // best_allzero_paths returns it.
+    if (best_path_is_allzero(record)) return;
     try {
         record.allzero_paths = search_allzero(graph, on_progress);
     } catch (const std::exception&) {
@@ -104,6 +99,19 @@ std::vector<Path> search_allzero(const ScoreGraph& graph,
                                [](const Path& p) { return !p.is_allzero(); }),
                 paths.end());
     return paths;
+}
+
+bool best_path_is_allzero(const HydraRecord& record) {
+    // The same test search_allzero's paths pass: Path::is_allzero, inside the
+    // limit allzero_options sets.
+    if (record.paths.empty()) return false;
+    const Path& best = record.best_path();
+    return best.is_allzero() && best.within_ms_limit(*allzero_options().ms_filter);
+}
+
+std::vector<const Path*> best_allzero_paths(const HydraRecord& record) {
+    if (best_path_is_allzero(record)) return {&record.best_path()};
+    return record.all_allzero_paths();
 }
 
 namespace {

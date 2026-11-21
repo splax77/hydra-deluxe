@@ -536,6 +536,7 @@ add_library(hydra_uibase STATIC
     src/ui/generation.h
     src/ui/label_layout.h
     src/ui/preview_panel.h
+    src/ui/preview_panel_layout.h
     src/ui/report_state.h
     src/ui/text_role.h
     src/ui/timeline_view.h
@@ -742,6 +743,13 @@ add_executable(hydra_tests
     tests/single_owner/scan.cpp
     tests/single_owner/clones.cpp
     tests/single_owner/special.cpp
+)
+# resource/ beside the test exe, as beside Hydra and HydraPathBuilder: the
+# resource_dir test in test_config.cpp checks that folder, and a build of only
+# the tests (as CI's is) builds neither app.
+add_custom_command(TARGET hydra_tests POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/resource" "$<TARGET_FILE_DIR:hydra_tests>/resource"
 )
 # hydra_dm: test_dm_report exercises the leaderboards join and JSON parsers.
 # hydra_audio: test_audio_decode exercises the stem decoders and mixer.

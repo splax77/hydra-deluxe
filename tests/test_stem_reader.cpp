@@ -268,14 +268,14 @@ void set_opus_head_gain(std::vector<unsigned char>& head, int16_t q78) {
     head.at(17) = static_cast<unsigned char>(u >> 8);
 }
 
-// The linear output gain the OpusHead of `file`'s first stream asks for: its
-// Q7.8 dB field as 10^(dB / 20), in float, as OpusReader::start_link
-// (opus_reader.cpp) computes it. That owner is private to the reader.
+// The linear output gain the OpusHead of `file`'s first stream asks for, as
+// the reader's owner (detail::opus_output_gain) turns its Q7.8 dB field into
+// a multiplier.
 float opus_head_gain(const std::vector<uint8_t>& file) {
     const std::vector<std::vector<unsigned char>> pk = opus_packets(file);
     REQUIRE(!pk.empty());
     const int16_t q78 = static_cast<int16_t>(opus_head_u16(pk[0], 16));
-    return q78 == 0 ? 1.0f : static_cast<float>(std::pow(10.0, q78 / (20.0 * 256.0)));
+    return detail::opus_output_gain(q78);
 }
 
 // Every sample of `x` times `gain`, the multiply the reader applies.
@@ -433,6 +433,11 @@ TEST_CASE("StemReader: Opus header gain is applied") {
     page_opus(pk, 7, loud);
     const float gain = opus_head_gain(loud);
     REQUIRE(gain != 1.0f);
+    // Fixed figures from the RFC 7845 definition, not from the owner:
+    // +6.0195 dB (1541 / 256) is x1.9997, -6 dB (-1536 / 256) is x0.50119.
+    CHECK(std::fabs(gain - 1.9997f) < 1e-4f);
+    CHECK(std::fabs(detail::opus_output_gain(-1536) - 0.50119f) < 1e-4f);
+    CHECK(detail::opus_output_gain(0) == 1.0f);
 
     auto a = open_stem_reader(StemBytes{plain, nullptr});
     auto b = open_stem_reader(StemBytes{loud, nullptr});

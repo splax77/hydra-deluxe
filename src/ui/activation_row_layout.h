@@ -28,6 +28,14 @@ inline constexpr float kRowBadgeRight = 14.0f;  // a flush-right pill ends kRowB
 // Heights, unscaled.
 inline constexpr float kRowLineH = 34.0f;       // the row's first line
 
+// The row's top padding, scaled: the first line's text sits in the middle of
+// its band, so this is half of what a `line`-tall text line leaves of
+// kRowLineH. It is also the gap above, between and below the lines under the
+// measure. `line` is the scaled text line height; `scale` is px(1).
+inline float activation_row_top_pad(float line, float scale) {
+    return (kRowLineH * scale - line) * 0.5f;
+}
+
 // Pixel positions of one row's pieces, relative to the row's top-left corner.
 struct ActivationRowLayout {
     float measure_x = 0.0f;
@@ -61,9 +69,7 @@ inline ActivationRowLayout activation_row_layout(float widest_measure_w, float b
     const float pad = kRowBadgePad * scale;
     const float line_h = kRowLineH * scale;
     const float reach = kRowPillReachY * scale;
-    // The first line's text sits in the middle of its band; that top padding is
-    // also the gap above, between and below the lines under the measure.
-    const float pad_y = (line_h - line) * 0.5f;
+    const float pad_y = activation_row_top_pad(line, scale);
     l.text_y = pad_y;
     l.row_h = line_h;
     const size_t n = badge_ws.size();

@@ -19,7 +19,7 @@
 #include "imgui_internal.h"
 #include "ui/app_state.h"
 #include "ui/library_jobs.h"
-#include "ui/library_parts.h"  // analyze_shown_label
+#include "ui/library_parts.h"  // analyze_shown_label, batch_strip_progress
 
 namespace fs = std::filesystem;
 
@@ -49,15 +49,10 @@ int64_t scanned_rows(Harness& h) {
     return static_cast<int64_t>(h.app->library.rows().size());
 }
 
-// The running strip's progress words, `completed` of `total` after `lead`
-// ("Analyzing..." or "Paused"), as the strip in src/ui/library_dialogs.cpp
-// draws them. That line is built inline there, with no function to call.
-std::string strip_progress(const char* lead, int64_t completed, int64_t total) {
-    return std::string(lead) + "  " + hydra::group_thousands(completed) + " of " +
-           hydra::group_thousands(total);
-}
-
 }  // namespace
+
+// The running strip's progress words come from the strip's own function.
+using hydra::ui::detail::batch_strip_progress;
 
 // Start a whole-library batch from the main window, through the confirm.
 // Leaves the ref on the confirm. Shared with uitest_report_windows.cpp, which
@@ -152,7 +147,7 @@ void test_batch_strip_drift(ImGuiTestContext* ctx) {
         IM_CHECK_EQ(static_cast<int64_t>(s.total), rows);
         IM_CHECK(!s.current_title.empty());
         const std::string text = visible_text(h);
-        IM_CHECK(text.find(strip_progress("Analyzing...", s.completed, rows)) != std::string::npos);
+        IM_CHECK(text.find(batch_strip_progress(false, false, s.completed, rows)) != std::string::npos);
         IM_CHECK(text.find("Now: " + s.current_title) != std::string::npos);
     }
     h.app->batch_job->stop();
@@ -352,6 +347,13 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     scan_library(ctx);
     if (ctx->IsError()) return;
     const int64_t rows = scanned_rows(h);
+    // The words themselves, pinned as literals: the strip checks below call
+    // the function, so only these fail if a lead word or the count text changes.
+    IM_CHECK_STR_EQ(batch_strip_progress(false, false, 0, 3).c_str(), "Analyzing...  0 of 3");
+    IM_CHECK_STR_EQ(batch_strip_progress(false, true, 2, 10).c_str(), "Paused  2 of 10");
+    IM_CHECK_STR_EQ(batch_strip_progress(true, false, 1234, 5678).c_str(),
+                    "Stopping...  1,234 of 5,678");
+    IM_CHECK_STR_EQ(batch_strip_progress(true, true, 1, 2).c_str(), "Stopping...  1 of 2");
     constexpr int kWorkers = 3;
     BatchGate gate(kWorkers);
     start_library_batch(ctx);
@@ -373,7 +375,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK_EQ(gate.started(), kWorkers);
     IM_CHECK(wait_until(ctx, [&] { return child_window(ctx, "//Hydra/##batchstrip") != nullptr; }, 5));
     ctx->Yield(2);
-    IM_CHECK(has(strip_progress("Analyzing...", 0, rows)));
+    IM_CHECK(has(batch_strip_progress(false, false, 0, rows)));
     IM_CHECK(has("Now: "));
     ImGuiWindow* strip = child_window(ctx, "//Hydra/##batchstrip");
     IM_CHECK(strip != nullptr);
@@ -386,7 +388,7 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->batch_job->snapshot().completed == 2 && gate.started() == 2 + kWorkers;
     }, 60));
-    IM_CHECK(has(strip_progress("Analyzing...", 2, rows)));
+    IM_CHECK(has(batch_strip_progress(false, false, 2, rows)));
     const ImRect stop1 = ctx->ItemInfo("Stop").RectFull;
     IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.x, stop0.Min.x, 0.01f);
     IM_CHECK_FLOAT_NEAR_EQ(stop1.Min.y, stop0.Min.y, 0.01f);
@@ -399,14 +401,14 @@ void test_batch_strip_workers(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return h.app->batch_job->snapshot().completed == 2 + kWorkers; }, 60));
     settle();
     IM_CHECK_EQ(gate.started(), 2 + kWorkers);
-    IM_CHECK(has(strip_progress("Paused", 2 + kWorkers, rows)));
+    IM_CHECK(has(batch_strip_progress(false, true, 2 + kWorkers, rows)));
     IM_CHECK(!has("Now: "));
     IM_CHECK(ctx->ItemExists("Resume"));
 
     // Resume fills every worker again.
     ctx->ItemClick("Resume");
     IM_CHECK(wait_until(ctx, [&] { return gate.started() == 2 + 2 * kWorkers; }, 30));
-    IM_CHECK(has(strip_progress("Analyzing...", 2 + kWorkers, rows)));
+    IM_CHECK(has(batch_strip_progress(false, false, 2 + kWorkers, rows)));
     IM_CHECK(has("Now: "));
 
     // Stop: the three held charts are dropped, not counted and not failed.

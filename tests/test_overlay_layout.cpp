@@ -23,6 +23,7 @@
 #include "render/preview_config.h"
 #include "fixed_pitch.h"  // ten_per_char
 #include "preview_config_util.h"
+#include "ui/preview_panel_layout.h"
 
 using namespace hydra::render;
 
@@ -175,15 +176,10 @@ TEST_CASE("image_to_floor_time refuses a point below the strike line") {
 namespace {
 
 // The Preview panel's text sizes at scale 1, as ui/preview_panel.cpp sets
-// them. The body size and the inset are the config's time box. The rest are
-// that file's own factors: a line is 1.25 times its text size (line_height),
-// two panels sit 6 px apart, the next-activation box's notation is 17/12 of
-// the body size (kNextActNotationScale), the large type is 1.8 times the body
-// size with a line 1.2 times its own size, the header's last 3 words stay
-// together (kHeaderCountWords), the right column starts 10 px down (v_margin)
-// and ends 30 px from the image's right edge (the gauge's 10 px inset, its
-// 14 px bar and the 6 px before it). They sit in that file's unnamed
-// namespace, so a test cannot read them; they are typed here once.
+// them. The body size and the inset are the config's time box; the rest are
+// the panel's own layout numbers, read from ui/preview_panel_layout.h. The
+// right column ends left of the gauge: its inset, its bar and the gap before
+// it, as the panel's right_edge adds them up.
 struct PanelText {
     float size = 0.0f;
     float inset = 0.0f;
@@ -196,19 +192,20 @@ struct PanelText {
     float gauge_room = 0.0f;
 };
 
-float panel_line_h(float size) { return size * 1.25f; }
+float panel_line_h(float size) { return size * hydra::ui::kOverlayLineHeight; }
 
 PanelText panel_text(const PreviewConfig& cfg) {
+    namespace ui = hydra::ui;
     PanelText p;
     p.size = cfg.text.time_box_size;
     p.inset = cfg.text.time_box_margin;
-    p.gap = 6.0f;
-    p.notation_size = p.size * 17.0f / 12.0f;
-    p.big_size = p.size * 1.8f;
-    p.big_line_h = p.big_size * 1.2f;
-    p.header_count_words = 3;
-    p.top_margin = 10.0f;
-    p.gauge_room = 10.0f + 14.0f + 6.0f;
+    p.gap = ui::kOverlayPanelGap;
+    p.notation_size = p.size * ui::kNextActNotationScale;
+    p.big_size = p.size * ui::kBigTypeScale;
+    p.big_line_h = p.big_size * ui::kBigTypeLineHeight;
+    p.header_count_words = ui::kHeaderCountWords;
+    p.top_margin = ui::kGaugeVMargin;
+    p.gauge_room = ui::kGaugeInset + ui::kGaugeBarWidth + ui::kDrainGaugeGap;
     return p;
 }
 

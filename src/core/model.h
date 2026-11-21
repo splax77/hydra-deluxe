@@ -599,6 +599,13 @@ struct ActivationTiming {
     bool difficult = false;
 };
 
+// Where the meter reached the activation level (kSpActivationBars), read off
+// a stored list of bar arrivals in order (Activation::bank_rise_ticks, or
+// Path::trailing_bank_ticks after the last window): that bar's arrival.
+// Unset when fewer bars are stored, never a guess. The one home of "enough
+// Star Power saved to activate" for a stored list.
+std::optional<int64_t> sp_ready_tick(const std::vector<int64_t>& bank_ticks);
+
 struct Activation {
     // The search sets these on every activation it makes, so they are
     // plain values (docs/adr/0017).
@@ -650,9 +657,8 @@ struct Activation {
     // Bars of SP this activation spends: one per stored arrival.
     int sp_meter() const { return static_cast<int>(bank_rise_ticks.size()); }
 
-    // Where the meter reached the activation level (kSpActivationBars): that
-    // bar's stored arrival in bank_rise_ticks. Unset when fewer bars are
-    // stored (a hand-built activation), never a guess.
+    // The free sp_ready_tick over bank_rise_ticks. Unset on a hand-built
+    // activation that stores too few bars.
     std::optional<int64_t> sp_ready_tick() const;
 
     // The fills the path was shown and passed over before this activation,
@@ -877,6 +883,10 @@ struct Path {
 
     // Bars left after the last window: one per stored arrival.
     int leftover_sp() const { return static_cast<int>(trailing_bank_ticks.size()); }
+
+    // Where enough is saved to activate again after the last window: the free
+    // sp_ready_tick over trailing_bank_ticks.
+    std::optional<int64_t> trailing_sp_ready_tick() const;
 
     // Where the bars spent by activation i (walk_activations order) arrived;
     // i equal to the activation count means the trailing bars, and i is never

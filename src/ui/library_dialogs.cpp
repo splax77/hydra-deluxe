@@ -155,6 +155,12 @@ std::string scan_reused_text(int64_t charts_cached) {
     return group_thousands(charts_cached) + " unchanged since last scan, reused.";
 }
 
+std::string batch_strip_progress(bool stopping, bool paused, int64_t completed, int64_t total) {
+    std::string line = stopping ? "Stopping..." : paused ? "Paused" : "Analyzing...";
+    line += "  " + group_thousands(completed) + " of " + group_thousands(total);
+    return line;
+}
+
 const char* empty_library_message(const app::Settings& s) {
     return s.chartfolders.empty()
                ? "No song folders yet. Click \"Manage folders...\" to add the folder your "
@@ -440,8 +446,7 @@ void render_batch_strip(AppState& app) {
     if (s.preparing) {
         ImGui::TextUnformatted(app::kBatchPreparingText);
     } else {
-        std::string line = stopping ? "Stopping..." : s.paused ? "Paused" : "Analyzing...";
-        line += "  " + group_thousands(s.completed) + " of " + group_thousands(s.total);
+        std::string line = batch_strip_progress(stopping, s.paused, s.completed, s.total);
         if (!s.current_title.empty() && !s.paused) {
             line += app::kFactSeparator;
             line += "Now: " + s.current_title;

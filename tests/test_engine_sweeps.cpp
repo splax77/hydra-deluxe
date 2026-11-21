@@ -28,6 +28,7 @@
 #include "core/scoring.h"
 #include "core/sqout_chord.h"
 #include "core/squeeze_rating.h"
+#include "corpus_fixtures.h"  // sweep_settings, kSweepDepthScores
 #include "corpus_util.h"
 #include "parse/song.h"
 #include "record_fixtures.h"
@@ -81,26 +82,15 @@ bool loads_notes(const Song& song, const std::string& path) {
     return !song.is_empty();
 }
 
-// A depth far past the app's default (kDefaultDepthValue), in scores below
-// the best, so a sweep's record keeps many alternate paths for the checks
-// below to walk.
-constexpr int kSweepDepthScores = 200;
+// The sweeps' depth and settings live in corpus_fixtures.h, so another file's
+// corpus loop can ask for the same records.
+using corpus::kSweepDepthScores;
+using corpus::sweep_settings;
 
 // The Path limit the sweeps search under, in ms: one player-pickable limit
 // that every sweep shares, so the limit-walk case reuses the invariants
 // case's cached records.
 constexpr double kSweepLimitMs = 20.0;
-
-// The settings every sweep searches with: Clone Hero's SP cap, a depth in
-// scores below the best and an optional Path limit.
-SearchSettings sweep_settings(int depth_scores, std::optional<double> limit_ms) {
-    SearchSettings cfg;
-    cfg.sp_cap = kCloneHeroSpCap;
-    cfg.depth_mode = DepthMode::Scores;
-    cfg.depth_value = depth_scores;
-    cfg.ms_filter = limit_ms;
-    return cfg;
-}
 
 // Adds `why` to a list of what went wrong, so a chart reports every reason.
 void add_reason(std::string& d, const std::string& why) {

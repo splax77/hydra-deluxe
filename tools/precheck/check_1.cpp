@@ -6,6 +6,7 @@
 #include <map>
 #include <regex>
 
+#include "check_1_text.h"
 #include "check_rows.h"
 #include "checks.h"
 #include "core/strutil.h"
@@ -37,8 +38,6 @@ std::string known_copy_fix(const std::vector<single_owner::KnownCopy>& copies, c
 // A known copy's note in an item's reason.
 std::string bracketed_known_copy(const std::string& fix) { return " (" + known_copy_note(fix) + ")"; }
 
-const char* const kHelperWhy = "a test helper written in two files; keep one in a shared header";
-
 // Fixture spellings no scan row asks about yet, outside the shared header
 // that owns them. The MIDI row ("Which test helper writes MThd/MTrk
 // chunks?") matches only the chunk tags, so a variable-length delta typed as
@@ -52,8 +51,7 @@ struct Spelling {
 const std::vector<Spelling>& spellings() {
     static const std::vector<Spelling> list = {
         {std::regex(R"(&\s*0x7[Ff]\b[^;]*\|\s*0x80|0x80\s*\|\s*\(|\{\s*0x8[1-9A-Fa-f],\s*0x[0-7][0-9A-Fa-f]\s*\})"),
-         "tests/midi_util.h", "a MIDI variable-length delta encoded by hand",
-         "the varlen writer belongs in tests/midi_util.h"},
+         kVarlenOwner, kVarlenWhat, kVarlenWhy},
     };
     return list;
 }

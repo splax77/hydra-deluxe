@@ -521,18 +521,20 @@ TEST_CASE("candidate rows: no fill the path passed sits inside a running window"
 }
 
 TEST_CASE("candidate rows: a fill on the window's end tick is not a choice row") {
-    // Trivium "Feast of Fire" with one window at 180000 that ends at 195360,
-    // and a fill exactly on 195360. A chord on the end tick is still under
-    // Star Power (core::after_sp_end), so the engine must not list that fill
-    // as passed, and so it is no row.
+    // Trivium "Feast of Fire" with one window at 180000, whose end tick (read
+    // from the engine) has a fill exactly on it. A chord on the end tick is
+    // still under Star Power (core::after_sp_end), so the engine must not list
+    // that fill as passed, and so it is no row.
     const Song& song = song_named("Trivium - Feast of Fire");
     const app::PreviewScene one = scene_for(song, player_path(song, {180000}));
     REQUIRE(one.activations.size() == 1);
-    REQUIRE(one.activations[0].sp_end_tick == 195360);
-    const size_t at_end = fill_index(one, 195360);
+    const int64_t end_tick = one.activations[0].sp_end_tick;
+    // fill_index fails the case when no fill sits on end_tick, so the case
+    // fails loudly if the chart ever stops giving it.
+    const size_t at_end = fill_index(one, end_tick);
     REQUIRE(fill_refusal(one, at_end) == FillRefusal::SpRunning);
     const std::vector<int64_t>& rows = one.trailing_skipped_fill_ticks;
-    CHECK(std::find(rows.begin(), rows.end(), int64_t{195360}) == rows.end());
+    CHECK(std::find(rows.begin(), rows.end(), end_tick) == rows.end());
     CHECK(one.fills[at_end].state != app::PreviewFillState::Offered);
     // The path does pass fills after the window, so the rows are there to
     // check, and none of them is inside it.

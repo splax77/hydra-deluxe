@@ -74,11 +74,14 @@ def run_reader(paths: list[str], runner=subprocess.run) -> dict:
         except subprocess.TimeoutExpired:
             raise FactsError(f"mono_reader.ps1 did not finish in {READER_CAP_S:.0f} s") from None
         if proc.returncode != 0 or not os.path.isfile(out):
-            raise FactsError(
-                f"mono_reader.ps1 failed (exit {proc.returncode}): {(proc.stderr or proc.stdout).strip()}"
-            )
+            raise FactsError(reader_failure(proc))
         with open(out, encoding="utf-8") as f:
             return json.load(f)
+
+
+def reader_failure(proc: subprocess.CompletedProcess) -> str:
+    """The message for a reader run that failed: its exit code and what it said."""
+    return f"mono_reader.ps1 failed (exit {proc.returncode}): {(proc.stderr or proc.stdout).strip()}"
 
 
 def class_kind(raw: dict) -> str:

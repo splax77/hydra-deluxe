@@ -12,6 +12,7 @@ from __future__ import annotations
 import csv
 import ctypes
 import json
+import math
 import os
 import re
 import subprocess
@@ -197,6 +198,17 @@ class RecordedTest(Recorded):
         counted = self.lines_naming(got, "helpers")
         self.assertEqual(len(counted), 1)
         self.assertTrue(counted[0].endswith(f": {len(msbuilds) - 1}"))
+
+    def test_a_cpu_share_at_the_limit_is_quiet_and_one_just_above_is_not(self):
+        """The limit itself counts as quiet. Just above is the next float past
+        it, so the test needs no step of its own."""
+        at_limit = float(Q.QUIET_CPU_PCT)
+        just_above = math.nextafter(at_limit, math.inf)
+        helpers = recorded_helpers()
+        at = self.report(helpers, sample_cpu=lambda _seconds: at_limit)
+        above = self.report(helpers, sample_cpu=lambda _seconds: just_above)
+        self.assertTrue(at.quiet)
+        self.assertFalse(above.quiet)
 
     def test_every_recorded_compiler_but_the_helpers_stops_it_on_its_own(self):
         helpers = {p.pid for p in recorded_helpers()}

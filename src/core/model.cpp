@@ -697,11 +697,15 @@ bool Path::is_difficult() const {
     return d && past_difficult_floor(*d);
 }
 
-std::optional<int64_t> Activation::sp_ready_tick() const {
+std::optional<int64_t> sp_ready_tick(const std::vector<int64_t>& bank_ticks) {
     const size_t ready = static_cast<size_t>(kSpActivationBars);
-    if (bank_rise_ticks.size() < ready) return std::nullopt;
-    return bank_rise_ticks[ready - 1];
+    if (bank_ticks.size() < ready) return std::nullopt;
+    return bank_ticks[ready - 1];
 }
+
+std::optional<int64_t> Activation::sp_ready_tick() const { return hydra::sp_ready_tick(bank_rise_ticks); }
+
+std::optional<int64_t> Path::trailing_sp_ready_tick() const { return hydra::sp_ready_tick(trailing_bank_ticks); }
 
 // ---- the SP-end history's readers -----------------------------------------
 // Each one reads the history from sp_end_steps and no other field. An empty

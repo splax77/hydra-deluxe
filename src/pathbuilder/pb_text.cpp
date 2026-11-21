@@ -42,6 +42,25 @@ std::string fill_name(const PreviewScene& scene, const PreviewFill& fill) {
     return measure_at(scene_timing(scene), fill.chord_tick);
 }
 
+const app::CandidateCost* best_candidate(const std::vector<app::CandidateCost>& candidates) {
+    for (const app::CandidateCost& c : candidates)
+        if (app::costs_nothing(c.cost)) return &c;
+    return nullptr;
+}
+
+std::optional<std::string> best_fill_name(const PreviewScene& scene,
+                                          const std::vector<app::CandidateCost>& candidates) {
+    const app::CandidateCost* best = best_candidate(candidates);
+    if (!best) return std::nullopt;
+    const std::optional<size_t> i = app::fill_index_on_chord(scene, best->act_tick);
+    if (!i) return std::nullopt;
+    return fill_name(scene, scene.fills[*i]);
+}
+
+std::string end_line_id(const std::optional<int64_t>& deact_tick, const Activation& act) {
+    return "##end_" + (deact_tick ? std::to_string(*deact_tick) : act.notationstr());
+}
+
 // The gauge's curve holds the record's levels (build_sp_meter_curve reads
 // Path::bank_arrivals and Activation::meter_bars_at), so nothing is counted here.
 int bars_saved_at(const PreviewScene& scene, const PreviewFill& fill) {

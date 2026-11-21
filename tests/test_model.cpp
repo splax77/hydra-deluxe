@@ -1533,7 +1533,7 @@ TEST_CASE("title_or_unknown: one fallback for a song with no usable name") {
     CHECK(std::string(kUnknownTitle) == "(unknown)");
     CHECK(title_or_unknown("") == "(unknown)");
     // An older scan's stored name, which the rescan cache can still hold.
-    CHECK(title_or_unknown("<unknown title>") == "(unknown)");
+    CHECK(title_or_unknown(kOldTitlePlaceholder) == "(unknown)");
     CHECK(title_or_unknown("Some Song") == "Some Song");
 }
 

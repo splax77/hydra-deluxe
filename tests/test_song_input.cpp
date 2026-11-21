@@ -386,7 +386,7 @@ TEST_CASE("display_title: tags go, words stay, spaces are trimmed") {
 
 TEST_CASE("display_title: a clean name and the old placeholder behave like title_or_unknown") {
     CHECK(display_title("Some Song") == "Some Song");
-    CHECK(display_title("<unknown title>") == kUnknownTitle);
+    CHECK(display_title(kOldTitlePlaceholder) == kUnknownTitle);
 }
 
 TEST_CASE("display_title: an artist reads by the same rule (D50 item 5)") {

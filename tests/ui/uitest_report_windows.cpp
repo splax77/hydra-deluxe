@@ -33,10 +33,10 @@
 #include "../wait_util.h"
 #include "imgui_internal.h"
 #include "app/dm_report.h"
-#include "app/html_page.h"  // kNothingMatches
+#include "app/html_page.h"  // kNothingMatches, path_report_search_hint
 #include "app/path_report_view.h"  // timing_choices
 #include "app/report.h"
-#include "app/user_messages.h"  // kPathReportFailed, kComparisonFailed, kLeaderboardWaking
+#include "app/user_messages.h"  // the report windows' sentences
 #include "core/error_kind.h"
 #include "core/model.h"  // kCloneHeroSpCap
 #include "net/dmbot_client.h"
@@ -321,7 +321,7 @@ void test_filters(ImGuiTestContext* ctx) {
     const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
     open_path_all_rows(ctx);
     if (ctx->IsError()) return;
-    IM_CHECK(shows("Search song, artist, charter, or path notation"));
+    IM_CHECK(shows(hydra::app::html::path_report_search_hint()));
     // A word none of the rows' search texts holds, so the search keeps none.
     const std::string word = "zzz";
     for (const auto& r : rows)
@@ -352,16 +352,16 @@ void test_states(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     // The subtitle while it builds (D103 item 21, board 2a), not the old
     // result's. The build only reads the store, so no bar counts anything.
-    IM_CHECK(shows("Building the report from your library..."));
+    IM_CHECK(shows(hydra::app::kPathReportBuilding));
     IM_CHECK(!shows(subtitle));
-    IM_CHECK(!shows("Analyzing "));
+    IM_CHECK(!shows(hydra::app::kPathReportAnalyzing));
     ctx->SetRef(path_window());
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 1);
 
     f.path.state = ReportBuild::Cancelled;
     ctx->Yield(2);
-    IM_CHECK(shows("Report cancelled."));
+    IM_CHECK(shows(hydra::app::kReportCancelled));
     ctx->ItemClick("Try again");
     IM_CHECK_EQ(f.retries, 1);
 
@@ -396,8 +396,8 @@ void test_states(ImGuiTestContext* ctx) {
     // The comparison while its first fetch runs (real_path_fixture leaves
     // it building with no rows), then failed.
     open_dm(ctx);
-    IM_CHECK(shows("Fetching scores and building the report..."));
-    IM_CHECK(!shows("Building the report from your library..."));
+    IM_CHECK(shows(hydra::app::kComparisonBuilding));
+    IM_CHECK(!shows(hydra::app::kPathReportBuilding));
     IM_CHECK(shows(hydra::app::kLeaderboardWaking));
     ctx->ItemClick("Cancel");
     IM_CHECK_EQ(f.cancels, 2);
@@ -641,7 +641,7 @@ void test_both(ImGuiTestContext* ctx) {
     IM_CHECK(path_window() != nullptr);
     IM_CHECK(dm_window() != nullptr);
     IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
-    IM_CHECK(shows("Fetching scores and building the report..."));
+    IM_CHECK(shows(hydra::app::kComparisonBuilding));
 }
 
 // ---- Column widths and the window's size (one column-width rule) ----------
@@ -811,6 +811,78 @@ void test_cells_left(ImGuiTestContext* ctx) {
     }
     // Row 1 always fits a window this tall, so at least it was read.
     IM_CHECK_GT(checked, size_t{0});
+}
+
+// A dragged column lets go when Clear filters is clicked (Memory::clear_search
+// moves the table's reset key). The filter that empties the table is a Timing
+// tier, not a search: a typed search moves the key by itself, so only a
+// dropdown change leaves Clear filters as the one thing that can let the drag
+// go. Both widths are the table's own, before the drag and after the click.
+// The rows are the real report a batch of the corpus's first chart built,
+// with Optimal paths only left ticked as the window opens.
+void test_clear_lets_drag_go(ImGuiTestContext* ctx) {
+    Harness& h = harness(ctx);
+    if (!real_path_fixture(ctx)) return;
+    Fixture& f = fixture();
+    const std::vector<hydra::app::report::ReportRow>& rows = f.path.result->paths;
+    f.path_open = true;
+    ctx->Yield(3);
+    IM_CHECK_RETV(path_window() != nullptr, );
+    ctx->SetRef(path_window());
+    // Wide enough that every column is on screen.
+    ctx->WindowResize("", ImVec2(static_cast<float>(h.width), 600.0f));
+    ctx->Yield(3);
+
+    // A Timing tier that keeps none of the optimal paths, by the window's own
+    // keep-rule (path_keep).
+    const auto choices = hydra::app::path_report_view::timing_choices();
+    std::string empty_label;
+    for (size_t i = 1; i < choices.size() && empty_label.empty(); ++i)
+        if (std::none_of(rows.begin(), rows.end(),
+                         hydra::app::path_report_view::path_keep(choices[i].tier, true)))
+            empty_label = choices[i].label;
+    IM_CHECK_RETV(!empty_label.empty(), );
+
+    // Score, a column the "#" freeze leaves free to widen (a number column
+    // only ever widens under the width rule, place_columns).
+    ImGuiTable* table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr && table->InnerWindow != nullptr, );
+    const auto columns = hydra::app::path_report_view::path_columns();
+    int score = -1;
+    for (size_t c = 0; c < columns.size(); ++c)
+        if (columns[c].title == "Score") score = static_cast<int>(c) + 1;
+    IM_CHECK_RETV(score > 0 && table->Columns[score].IsVisibleX, );
+    const float before = table->Columns[score].WidthGiven;
+    IM_CHECK_RETV(before > 0.0f, );
+
+    // Drag Score's right edge, on its header row, right by the column's own
+    // width.
+    const ImRect header = ctx->ItemInfo("**/Score").RectFull;
+    const ImVec2 edge(table->Columns[score].MaxX, header.GetCenter().y);
+    ctx->MouseMoveToPos(edge);
+    ctx->MouseDown(ImGuiMouseButton_Left);
+    ctx->MouseMoveToPos(ImVec2(edge.x + before, edge.y));
+    ctx->MouseUp(ImGuiMouseButton_Left);
+    ctx->Yield(3);
+    table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr, );
+    const float dragged = table->Columns[score].WidthGiven;
+    ctx->LogInfo("Score %.1f wide, %.1f after the drag", before, dragged);
+    IM_CHECK_RETV(dragged > before, );
+
+    // The tier that keeps no row, then Clear filters.
+    ctx->SetRef(path_window());
+    ctx->ComboClick(("##timing/" + empty_label).c_str());
+    ctx->Yield(2);
+    IM_CHECK_RETV(shows(hydra::app::html::kNothingMatches), );
+    ctx->ItemClick("Clear filters");
+    ctx->Yield(3);
+    IM_CHECK(shows(fixture_path_count(fixture_optimal_rows())));
+    table = path_table(ctx);
+    IM_CHECK_RETV(table != nullptr, );
+    const float after = table->Columns[score].WidthGiven;
+    ctx->LogInfo("Score %.1f wide after Clear filters", after);
+    IM_CHECK_EQ(after, before);
 }
 
 // The reason store_first_chart_failure's record keeps: the NoNotesError's own
@@ -1029,8 +1101,8 @@ void held_build_then_rows(ImGuiTestContext* ctx, ReportHold& hold) {
                h.app->path_report_build() == hydra::ui::ReportBuild::Building;
     }, 10), );
     ctx->Yield(2);
-    IM_CHECK(on_screen(h, "Building the report from your library..."));
-    IM_CHECK(!on_screen(h, "Analyzing "));
+    IM_CHECK(on_screen(h, hydra::app::kPathReportBuilding));
+    IM_CHECK(!on_screen(h, hydra::app::kPathReportAnalyzing));
     hold.release();
     IM_CHECK(wait_until(ctx, [&] {
         return h.app->report_job == nullptr &&
@@ -1128,7 +1200,7 @@ void test_open_asks(ImGuiTestContext* ctx) {
         IM_CHECK_RETV(s.paused && !s.finished, );
     }
     IM_CHECK_RETV(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
-        return !s.preparing && s.total > 0 && on_screen(h, "Analyzing ");
+        return !s.preparing && s.total > 0 && on_screen(h, hydra::app::kPathReportAnalyzing);
     }, 10), );
     IM_CHECK(window_named("Analyze library") == nullptr);
     IM_CHECK(!h.app->batch_confirm_pending);
@@ -1239,7 +1311,7 @@ void test_open_analyzes(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->path_report_batch() == h.app->batch_job.get());
     // The window shows the batch's own total over its bar.
     IM_CHECK(while_batch_runs(ctx, [&](const hydra::ui::BatchJob::Snapshot& s) {
-        return !s.preparing && s.total > 0 && on_screen(h, "Analyzing ") &&
+        return !s.preparing && s.total > 0 && on_screen(h, hydra::app::kPathReportAnalyzing) &&
                on_screen(h, " of " + hydra::counted(s.total, "chart", "charts"));
     }, 10));
     IM_CHECK_RETV(path_window() != nullptr, );
@@ -1384,7 +1456,7 @@ void test_reopen(ImGuiTestContext* ctx) {
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK(h.app->report_job == nullptr);
     IM_CHECK(h.app->path_report_build() == hydra::ui::ReportBuild::Ready);
-    IM_CHECK(!on_screen(h, "Building the report from your library..."));
+    IM_CHECK(!on_screen(h, hydra::app::kPathReportBuilding));
     IM_CHECK(h.app->path_report.result.get() == rows);
     IM_CHECK_STR_EQ(shown_count(h).c_str(), count.c_str());  // the same rows as before
 }
@@ -1548,7 +1620,7 @@ void test_fresh_state(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     IM_CHECK_RETV(path_window() != nullptr, );
     IM_CHECK(h.app->report_job == nullptr);
-    IM_CHECK(on_screen(h, "Search song, artist, charter, or path notation"));
+    IM_CHECK(on_screen(h, hydra::app::html::path_report_search_hint()));
     IM_CHECK(!on_screen(h, typed));
     IM_CHECK(best_only_ticked(ctx));
     IM_CHECK_STR_EQ(shown_count(h).c_str(), default_count.c_str());
@@ -1662,6 +1734,7 @@ void register_report_window_tests(Harness& h) {
         {"report-window-chip-outline", test_chip_outline},
         {"report-window-column-widths", test_column_widths},
         {"report-window-cells-left", test_cells_left},
+        {"report-window-clear-lets-drag-go", test_clear_lets_drag_go},
         {"report-window-header-narrow", test_header_narrow},
         {"report-window-fits-screen", test_fits_screen},
     };

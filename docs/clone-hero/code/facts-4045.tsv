@@ -4,11 +4,19 @@
 build	kind	typedef_index	class	member	rva	offset	cited
 4045	field	562	GameManager	ʲʻʺʹʺʲʷʾʻʺʹ			GameManager.songTime
 4045	method	104		ʴˀʲʸʷʶˁˀʺʶʲ			BeatGrid.BuildLines
+4045	method	104		ʼʺʾʼˁʼʹˁˁʷʻ			BeatGrid.AddLine
+4045	method	271		ʵʲˁˀʲʳʼʶʾˀʺ			Chart.SecondsToTick
+4045	method	271		ʸʳʾʸʼʹʽʾʿʸʵ			Chart.SecondsBetween
+4045	method	271		ʹʴʶʸʾʲʶˀʼʺʷ			Chart.TickToSeconds
 4045	method	32		ʶʲˁʿʹʵˀʺʲˁʿ<T>			ChordListSearch.NearestChord
 4045	method	369		ʳʷˁʸʵʾʼʷˀʲˁ			TrackBuilder.PlaceWrittenFills
+4045	method	369		ʴʺʵʽʻʷʴˀʸʹʺ			TrackBuilder.DrumLaneBit
 4045	method	369		ʶʸʲʷʵʸʻʻʸʹʸ			TrackBuilder.PickActivationNote
 4045	method	369		ʸˀʽʸʽʳʳʸʼʾʿ			TrackBuilder.GenerateFills
 4045	method	369		ʹʹʾʴʳʶʼʵʳʼʼ			TrackBuilder.BuildPlayData
+4045	method	369		ʺʷʸˀʷʴʿʲʵʼʾ			TrackBuilder.LaneBitsFor
+4045	method	369		ʿʹʽʽʵʻʺʸʻʵʳ			TrackBuilder.ActivationNoteFor
+4045	method	392		ʴʽʸʿʼʸˁʷʿʹʸ			BitMath.LowestSetBit
 4045	method	392		ʷʹʾˁʳʸʲʾʴʾʿ			BitMath.HighestSetBit
 4045	method	480	BasePlayer	ʸʸʳʽʲʻʿʸʳʸʽ			BasePlayer.AddStarPower
 4045	method	628	DrumsPlayer	ʸʸʳʽʲʻʿʸʳʸʽ			DrumsPlayer.AddStarPower
