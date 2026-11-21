@@ -279,7 +279,8 @@ def _recording_lines(rec: Recording, folder: str, whole: Window) -> List[str]:
         lines.append("recorder stopped: not said, the last row of samples.csv is missing, "
                      "so the recorder was probably terminated")
     if rec.half_rows:
-        lines.append(f"left out {rec.half_rows} half-written rows")
+        lines.append(f"left out {rec.half_rows} half-written row"
+                     f"{'' if rec.half_rows == 1 else 's'}")
 
     gaps = [_ms(b.wall_s - a.wall_s) for a, b in zip(samples, samples[1:])]
     over = gap_summary([{"wall_s": s.wall_s, "clock_s": 0} for s in samples], GAP_MS).count
@@ -401,7 +402,8 @@ def _stretch_text(stretches: List[List[int]], walls: Dict[int, Fraction],
            if ms > 0]
     return (f"longest ready stretch: ready in {len(longest)} consecutive samples spanning "
             f"{float(_ms(walls[longest[-1]] - walls[longest[0]])):.1f} ms "
-            f"from wall {_wall(walls[longest[0]])}, {inside} context switches gained inside"
+            f"from wall {_wall(walls[longest[0]])}, {inside} context "
+            f"switch{'' if inside == 1 else 'es'} gained inside"
             f"{late}, CPU gained in those samples: {', '.join(who) or 'by nobody'}")
 
 
@@ -541,8 +543,9 @@ def report_lines(folder: str, pid: int, worker: Optional[int] = None,
         raise Refused(f"{first}\nrefused: no thread rows for pid {pid}, "
                       "so this recording is not of that process")
     if len(rec.samples) < 2:
-        raise Refused(f"{first}\nrefused: {SAMPLES_FILE} holds {len(rec.samples)} whole samples, "
-                      "and a slice needs two")
+        held = len(rec.samples)
+        raise Refused(f"{first}\nrefused: {SAMPLES_FILE} holds {held} whole "
+                      f"sample{'' if held == 1 else 's'}, and a slice needs two")
 
     whole = window_of(rec.samples, None, None)
     window = window_of(rec.samples, start, end)

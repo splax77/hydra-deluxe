@@ -1,35 +1,24 @@
-"""The two checks on a Star Power watcher log that need no activation.
+"""The pause check on a Star Power watcher log that needs no activation.
 
 Plain version: sp_watch.py writes a CSV of the engine's fields while a song
 plays. This script reads that CSV (columns from overlay_logs.WATCH_COLUMNS)
-and prints two checks, each with a PASS or FAIL line and its numbers:
-
-  * +0x2E0. Does the field at +0x2E0 change at each chord? For each
-    chord in the `hydra_replay score` JSON, take the first row near the
-    chord's time in which `round_start_s` changed, and see how far the new
-    value sits from the chord. The verdict uses constants.ROUND_START_MAX_GAP_MS, the
-    same limit experiments/watch_window.py uses. This check means something
-    only on an auto-player run: the game's bot may hit exactly on the note's
-    time, which would match whatever the field holds.
-  * Pause. Two rows far apart in wall time whose clock barely moved are a
-    pause. The report prints each pause and every other field that changed
-    across it (expected: none).
+and prints one check: two rows far apart in wall time whose clock barely moved
+are a pause. The report prints each pause and every other field that changed
+across it (expected: none).
 
 Everything here is pure: it reads files and returns lines, and touches no
 process.
 
 Usage:
-    py tools\\ch_probe\\experiments\\watch_checks.py <watch.csv> [--score <score.json>]
+    py tools\\ch_probe\\experiments\\watch_checks.py <watch.csv>
 """
 
 from __future__ import annotations
 
 import argparse
 import csv
-import json
 import math
 import os
-import statistics
 import sys
 from typing import Optional, Sequence
 
@@ -39,13 +28,8 @@ _REPO_ROOT = os.path.abspath(
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import constants as C
 from tools.ch_probe.experiments.overlay_logs import (
     WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_HALF_COLUMNS, watch_header)
-
-# How far from a chord's time (song clock, ms) a row may be and still be
-# searched for that chord's +0x2E0 change (the plan's Task A step 4).
-HIT_SEARCH_MS = 50.0
 
 # A pause: two consecutive rows more than PAUSE_MIN_WALL_S apart in wall time
 # whose clocks differ by less than PAUSE_MAX_CLOCK_S (the plan's Task A
@@ -102,68 +86,6 @@ def load_watch_rows(path: str) -> list[dict]:
                 for row in reader]
 
 
-def load_chords(path: str) -> list[dict]:
-    """The `chords` list of a `hydra_replay score` JSON."""
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)["chords"]
-
-
-# --- the +0x2E0 check ------------------------------------------------------------
-
-def round_start_check(rows: Sequence[dict], chords: Sequence[dict]) -> list[str]:
-    """Whether +0x2E0 (`round_start_s`, constants.OFF_ROUND_START) changes at
-    each chord, to a value next to it.
-
-    For each chord whose `ms` lies inside the log's clock span, the change
-    row is the first row within HIT_SEARCH_MS of the chord in which
-    `round_start_s` differs from the row before. A row an earlier chord already
-    took is skipped, so two close chords do not share one change. The chord
-    counts when the new value sits within C.ROUND_START_MAX_GAP_MS of the
-    chord. PASS when every chord in the span counts."""
-    changes = [(C.s_to_ms(cur["clock_s"]), C.s_to_ms(cur["round_start_s"]), i)
-               for i, (prev, cur) in enumerate(zip(rows, rows[1:]), start=1)
-               if not same_value(cur["round_start_s"], prev["round_start_s"])]
-    if not rows:
-        return ["FAIL +0x2E0: the log has no rows"]
-    first_ms = C.s_to_ms(rows[0]["clock_s"])
-    last_ms = C.s_to_ms(rows[-1]["clock_s"])
-    in_span = [ch for ch in chords if first_ms <= ch["ms"] <= last_ms]
-
-    taken: set[int] = set()
-    counted, gaps, misses = 0, [], []
-    for ch in in_span:
-        found = None
-        for clock_ms, value_ms, row_i in changes:
-            if row_i in taken or abs(clock_ms - ch["ms"]) > HIT_SEARCH_MS:
-                continue
-            found = (value_ms, row_i)
-            break
-        if found is None:
-            misses.append(f"  chord {ch['index']} at {ch['ms']:.1f} ms: "
-                          f"no +0x2E0 change within {HIT_SEARCH_MS:g} ms")
-            continue
-        taken.add(found[1])
-        gap = found[0] - ch["ms"]
-        gaps.append(gap)
-        if abs(gap) <= C.ROUND_START_MAX_GAP_MS:
-            counted += 1
-        else:
-            misses.append(f"  chord {ch['index']} at {ch['ms']:.1f} ms: "
-                          f"+0x2E0 {found[0]:.1f} ms, {gap:+.1f} ms away")
-
-    ok = bool(in_span) and counted == len(in_span)
-    lines = [f"{'PASS' if ok else 'FAIL'} +0x2E0: {counted} of "
-             f"{len(in_span)} chords in the log have a +0x2E0 value within "
-             f"{C.ROUND_START_MAX_GAP_MS:g} ms ({len(chords) - len(in_span)} "
-             f"chords outside the log's clock span)"]
-    if gaps:
-        lines.append(f"  distance from the chord: median "
-                     f"{statistics.median(gaps):+.1f} ms, largest "
-                     f"{max(gaps, key=abs):+.1f} ms")
-    lines.extend(misses)
-    return lines
-
-
 # --- the pause check -------------------------------------------------------------
 
 def find_pauses(rows: Sequence[dict]) -> list[tuple[int, int]]:
@@ -201,19 +123,13 @@ def pause_check(rows: Sequence[dict]) -> list[str]:
 # --- the script ------------------------------------------------------------------
 
 def run(argv: Optional[Sequence[str]] = None) -> list[str]:
-    """Read the files named in `argv` and return the report lines."""
+    """Read the file named in `argv` and return the report lines."""
     parser = argparse.ArgumentParser(
-        description="+0x2E0 and pause checks on an sp_watch.py log.")
+        description="The pause check on an sp_watch.py log.")
     parser.add_argument("watch_csv")
-    parser.add_argument("--score", help="hydra_replay score JSON for the "
-                        "+0x2E0 check (auto-player runs only)")
     args = parser.parse_args(argv)
     rows = load_watch_rows(args.watch_csv)
     lines = [f"{os.path.basename(args.watch_csv)}: {len(rows)} rows"]
-    if args.score:
-        lines.extend(round_start_check(rows, load_chords(args.score)))
-    else:
-        lines.append("+0x2E0: not checked (no --score given)")
     lines.extend(pause_check(rows))
     return lines
 

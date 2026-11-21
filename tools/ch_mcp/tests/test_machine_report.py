@@ -552,10 +552,11 @@ class LateStretchesInARealRecording(RealRecordingCase):
                for (pid, name), ms in sorted(gained.items(), key=lambda kv: (-kv[1], kv[0]))
                if ms > 0]
         late = f", {self.LATE_MARK}" if any(self.late_gaps(run)) else ""
+        inside = sum(switches[n] for n in run[1:])
         return (f"longest ready stretch: ready in {len(run)} consecutive samples spanning "
                 f"{float(self.gap_ms(run[0], run[-1])):.1f} ms "
                 f"from wall {R._wall(Fraction(self.walls[run[0]]))}, "
-                f"{sum(switches[n] for n in run[1:])} context switches gained inside{late}, "
+                f"{inside} context switch{'' if inside == 1 else 'es'} gained inside{late}, "
                 f"CPU gained in those samples: {', '.join(who) or 'by nobody'}")
 
     def test_a_stretch_across_late_samples(self):
@@ -575,7 +576,7 @@ class LateStretchesInARealRecording(RealRecordingCase):
         self.assertGreater(switches[run[1]], 0)
         line = self.window_line(tid, run[1:])
         self.assertIn(self.expected_stretch(tid, run[1:]), line)
-        self.assertNotIn(f" {sum(switches[n] for n in run[1:])} context switches", line)
+        self.assertNotIn(f" {sum(switches[n] for n in run[1:])} context switch", line)
 
     def test_samples_just_over_twice_the_period_apart_carry_the_mark(self):
         tid, run = 4832, [1702, 1703]
@@ -1064,7 +1065,7 @@ class TerminatedRecordingInARealRecording(RealRecordingCase):
             f.write(last[:last.index(",", last.index(",") + 1)])
         code, cut = self.report_on(folder)
         self.assertEqual(code, 0, cut)
-        self.assertIn("left out 1 half-written rows", cut)
+        self.assertIn("left out 1 half-written row", cut)
         self.assertIn(self.TERMINATED, cut)
 
 
@@ -1107,7 +1108,7 @@ class OneSampleInARealRecording(RealRecordingCase):
         code, lines = self.report_on(folder)
         self.assertEqual(code, 1)
         self.assertEqual(lines, [f"the recording holds {len(mine)} thread samples for pid {self.game}",
-                                 f"refused: {R.SAMPLES_FILE} holds 1 whole samples, "
+                                 f"refused: {R.SAMPLES_FILE} holds 1 whole sample, "
                                  "and a slice needs two"])
 
 

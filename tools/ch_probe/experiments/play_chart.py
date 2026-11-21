@@ -84,6 +84,12 @@ DROPPED = "dropped"
 # Power was off right after the press, so the plan's times stand.
 NO_ACTIVATION_READ = "no activation read"
 
+# The words for the two routes a chart is played by: the virtual kit inside
+# the game (live_in_game) or keys sent to the focused game window
+# (live_play). ch_play_chart's `route` and score_compare's `--route` take them.
+ROUTE_KIT = "kit"
+ROUTE_KEYS = "keys"
+
 # What a press row says in `retimed` about a press the schedule gave a
 # `fallback` (design point 5 of
 # docs/superpowers/plans/2026-11-08-replay-press-schedule.md): a squeeze-out's
@@ -107,11 +113,13 @@ END_FIELDS = ("own_end_ms", "read_stored_end_ms", "own_stored_end_ms", "conversi
               "read_range_ms")
 
 # The score is read this long after a press: a dense chart's next chord comes
-# sooner than constants.INPUT_SETTLE_MS.
+# sooner than constants.INPUT_SETTLE_MS. The 5 ms is an engineering choice;
+# no rule or ruling names it.
 SCORE_READ_DELAY_S = 0.005
 
 # A run stops after this much wall time, counted from the first clock read
-# (the overlay spike plan, Task B step 1), when its caller gives no cap.
+# (the overlay spike plan, Task B step 1), when its caller gives no cap. The
+# 240 s is an engineering choice; no ruling sets it.
 RUN_CAP_S = 240.0
 
 # The key for each gem in a chord's "gems" list, by the gem's color (Kick,

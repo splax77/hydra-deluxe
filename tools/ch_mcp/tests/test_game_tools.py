@@ -1792,6 +1792,21 @@ class GameToolsTest(unittest.TestCase):
         self.assertEqual(tools.ch_play_status().splitlines()[0],
                          f"press log: {path} ({len(rows)} rows)")
 
+    def test_the_end_of_a_one_row_log_counts_one_row(self):
+        # pitch-dark-ratios-run1's first row of chords 61 to 64
+        # (PITCH_DARK_RUN) goes to a real press-log writer, which the end
+        # stops as the play thread does.
+        row = _press_rows(*PITCH_DARK_RUN, "press-1-chords-61-64.csv")[0]
+        path = os.path.join(self.tmp, "one.csv")
+        play = GT._PlaySession(score_json=PITCH_DARK_SCORE, chord_count=1,
+                               log_path=path, rows=[row])
+        play.writer = play_chart.PressLogWriter(path)
+        play.writer.start()
+        self.addCleanup(play.writer.stop, THREAD_CAP_S)
+        play.writer.add(row)
+        self.assertEqual(GT.GameTools._end_press_log(play),
+                         f"press log: {path} (1 row)")
+
     def _held_log(self) -> str:
         """A named pipe nobody reads, as a press log path: Windows holds the
         writer's first write until the pipe's server end closes, which the

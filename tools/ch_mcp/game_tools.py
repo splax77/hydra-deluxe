@@ -64,11 +64,10 @@ OPEN_RUN_MARKER = "ch_open_run.json"
 _ERROR_INVALID_PARAMETER = 87
 _STILL_ACTIVE = 259
 
-# ch_play_chart's two routes: the virtual kit inside the game, or keys sent to
-# the focused game window (the plan docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "The
-# tools").
-ROUTE_KIT = "kit"
-ROUTE_KEYS = "keys"
+# ch_play_chart's two routes (the plan docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md), "The
+# tools"); play_chart owns their words.
+ROUTE_KIT = play_chart.ROUTE_KIT
+ROUTE_KEYS = play_chart.ROUTE_KEYS
 ROUTES = (ROUTE_KIT, ROUTE_KEYS)
 # ch_play_chart's reply when no route is given and the kit is not set up. It
 # names the kit setup and not the keys route, so no run takes the keyboard
@@ -1676,16 +1675,17 @@ class GameTools:
         writer that failed leaves the log to one whole write of the rows."""
         cap_s = C.LOG_WRITER_CAP_S
         rows = list(play.rows)
+        counted = f"{len(rows)} row{'' if len(rows) == 1 else 's'}"
         if not play.writer.stop(cap_s):
             return (f"press log: {play.log_path} may lack its last rows: its writer "
                     f"did not finish within {cap_s:g} s; this status holds all "
-                    f"{len(rows)} rows")
+                    f"{counted}")
         if play.writer.error is not None:
             try:
                 play_chart.write_press_log(play.log_path, rows)
             except OSError as e:
                 return f"press log not written to {play.log_path}: {e}"
-        return f"press log: {play.log_path} ({len(rows)} rows)"
+        return f"press log: {play.log_path} ({counted})"
 
     @staticmethod
     def _stop_reason(play: _PlaySession) -> str:
@@ -1735,7 +1735,9 @@ class GameTools:
                 elif presses_sent == result.sent:
                     sent = f"sent {result.sent} presses for {chords}"
                 else:
-                    sent = f"sent {result.sent} messages ({presses_sent} presses) for {chords}"
+                    messages = f"{result.sent} message{'' if result.sent == 1 else 's'}"
+                    presses = f"{presses_sent} press{'' if presses_sent == 1 else 'es'}"
+                    sent = f"sent {messages} ({presses}) for {chords}"
                 lines.append(sent + (f", declined {result.declined}" if result.declined else ""))
                 lines.append(dropped_line(rows))
                 if jumped:

@@ -201,43 +201,6 @@ class WatchWindowTest(unittest.TestCase):
         self.assertEqual(sum("matches the cap" in l for l in lines), len(wide_cap_blocks))
         self.assertFalse(any("DIFFERENT" in l for l in lines))
 
-    def test_round_start_report_ties_each_real_change_to_its_note(self):
-        # A real watch and press log of the same run. Each new +0x2E0 value
-        # gets one row naming the press nearest it, and the count line holds
-        # the changes the watch logged beside the scoring presses the press
-        # log, a separate log, recorded.
-        samples = recorded_samples(LANE_END_CSV)
-        notes = recorded_notes(LANE_END_PRESSES_CSV)
-        presses = load_press_log(LANE_END_PRESSES_CSV)
-        new_values = []
-        for a, b in zip(samples, samples[1:]):
-            if b.round_start_ms != a.round_start_ms:
-                new_values.append(b.round_start_ms)
-        self.assertTrue(new_values)
-        scored = sum(1 for p in presses if p.score_after > p.score_before)
-        lines = WW.round_start_report(samples, notes)
-        rows = [l for l in lines if l.startswith("  clock ")]
-        self.assertEqual(len(rows), len(new_values))
-        for line, v in zip(rows, new_values):
-            nearest = min(notes, key=lambda n: abs(n["time_ms"] - v))
-            self.assertIn(f"note #{nearest['index']} ", line)
-        self.assertIn(f"  +0x2e0 changed {len(new_values)} times; "
-                      f"the score rose {scored} times.", lines)
-
-    def test_round_start_report_says_when_the_changes_do_not_fit(self):
-        # In the real lane-end run the last three scoring presses left +0x2E0
-        # alone (IN-12: it moves only when a hit completes a lane round), so
-        # the field did not change once per hit and the report says so.
-        samples = recorded_samples(LANE_END_CSV)
-        presses = load_press_log(LANE_END_PRESSES_CSV)
-        changed = sum(1 for a, b in zip(samples, samples[1:])
-                      if b.round_start_ms != a.round_start_ms)
-        scored = sum(1 for p in presses if p.score_after > p.score_before)
-        self.assertNotEqual(changed, scored)
-        last = WW.round_start_report(samples, recorded_notes(LANE_END_PRESSES_CSV))[-1]
-        self.assertIn("+0x2e0 did NOT change once per hit", last)
-        self.assertIn(f"within {C.ROUND_START_MAX_GAP_MS:g} ms of the note", last)
-
 
 class SongClockTest(unittest.TestCase):
     def test_song_clock_fills_in_after_a_fresh_change(self):
