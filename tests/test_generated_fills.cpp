@@ -2,9 +2,9 @@
 // with no fills of its own gets fills placed on the measure lines of Clone
 // Hero's grid (MeasureIndex). Each expected tick here is read from that grid,
 // and each rule value from core::Rules or search/graph.h, never typed. The
-// exceptions are the 1.0 cases, the measure lines and the generator: their
-// ticks are typed, each worked by hand from the 1.0 game's code in the case's
-// comment.
+// exceptions are kLinesAfterFill below, and the 1.0 cases, the measure lines
+// and the generator: their ticks are typed, each worked by hand from the 1.0
+// game's code in the case's comment.
 
 #include "doctest.h"
 
@@ -27,6 +27,13 @@ namespace {
 
 // The resolution of the songs these tests build.
 constexpr int64_t kRes = 480;
+
+// How many measure lines on the next candidate sits after a generated fill.
+// It is fixed in both games, so no header exposes it: 1.0's `i += 4`
+// (docs/clone-hero/code/4045/fill_generator.cs line 42) and 1.1's
+// `add ebx, 4` (FL-17 in docs/clone-hero/04-fills.md). core/song.cpp's
+// kLinesAfterFill is the generators' copy.
+constexpr int64_t kLinesAfterFill = 4;
 
 // A song at resolution kRes and 120 BPM with one red note at each tick in
 // `chords`, and no fills yet. `seven_eight_at`, when above 0, switches 4/4 to
@@ -90,10 +97,10 @@ int64_t ch11_reach(int64_t resolution, const core::Rules& rules) {
 }
 
 // A chord on every measure line from `first` to `last` (4/4). The 1.1 fills
-// sit on the first such line from the second on, then every
-// core::Rules::fill_cooldown_measures lines on.
+// sit on the first such line from the second on, then every kLinesAfterFill
+// lines on.
 void check_chord_on_every_line(int64_t first, int64_t last) {
-    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    const int64_t cooldown = kLinesAfterFill;
     std::vector<int64_t> chords;
     for (int64_t n = first; n <= last; ++n) chords.push_back(line_tick(n));
     Fills want;
@@ -110,7 +117,7 @@ constexpr int64_t kMidMeasureChange = 6 * kRes;
 // the line the cooldown reaches.
 std::vector<int64_t> restart_chords() {
     const int64_t restart = line_at_or_after(kMidMeasureChange, kMidMeasureChange);
-    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    const int64_t cooldown = kLinesAfterFill;
     return {line_tick(restart, kMidMeasureChange) + 120,
             line_tick(restart + 1, kMidMeasureChange) + 100,
             line_tick(restart + cooldown, kMidMeasureChange) + 50};
@@ -134,7 +141,7 @@ TEST_CASE("generated fills: a chord at the 1.1 reach after the second measure li
 }
 
 TEST_CASE("generated fills: Clone Hero 1.0 mode starts fills at the midpoint, 1.1 starts them on the line") {
-    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    const int64_t cooldown = kLinesAfterFill;
     // One chord 10 ticks after each of two lines a cooldown apart.
     const std::vector<int64_t> chords = {line_tick(1) + 10, line_tick(1 + cooldown) + 10};
     CHECK(fills_of(song_with_chords(chords, 0, FillDeadlineRule::Ch11)) ==
@@ -227,7 +234,7 @@ TEST_CASE("generated fills: a first chord in measure 3 still counts lines from t
 
 TEST_CASE("generated fills: a 4/4 to 7/8 change places fills on the restarted grid") {
     const int64_t restart = line_at_or_after(kMidMeasureChange, kMidMeasureChange);
-    const int64_t cooldown = core::default_rules().fill_cooldown_measures;
+    const int64_t cooldown = kLinesAfterFill;
     REQUIRE(cooldown > 1);
     // The grid restarts at the meter change: a measure line sits on it.
     CHECK(line_tick(restart, kMidMeasureChange) == kMidMeasureChange);
@@ -448,9 +455,8 @@ TEST_CASE("1.0 generator: after a fill the next candidate is four lines on") {
 TEST_CASE("1.0 generator: the step is the game's 4, whatever the rules file says") {
     // A chord on every line from 0 to 8: lines 0 to 8. Fills on lines 1 and
     // 5, the game's `i = 1; i += 4` (line 42), though these rules ask for a
-    // cooldown of 2 and a reach of two beats.
+    // reach of two beats.
     core::Rules rules = core::default_rules();
-    rules.fill_cooldown_measures = 2;
     rules.fill_max_distance_beats = 2.0;
     std::vector<int64_t> chords;
     for (int64_t n = 0; n <= 8; ++n) chords.push_back(768 * n);
@@ -589,13 +595,13 @@ namespace {
 // Checks one song's generated 1.1 fills against the placement rule. Each fill
 // starts on a measure line from the second on; its chord is the one nearest
 // that line (a tie going to the later chord) and within the reach; the next
-// fill sits at least core::Rules::fill_cooldown_measures lines on; and no
+// fill sits at least kLinesAfterFill lines on; and no
 // line the cooldown leaves open with a chord in reach is passed over.
 void check_ch11_placement(const Song& song, const core::Rules& rules) {
     if (song.sequence.empty()) return;
     const MeasureIndex& grid = song.timing().measure_index();
     const int64_t reach = ch11_reach(song.tick_resolution(), rules);
-    const int64_t cooldown = rules.fill_cooldown_measures;
+    const int64_t cooldown = kLinesAfterFill;
     std::vector<int64_t> ticks;
     for (const SongTimestamp& ts : song.sequence) ticks.push_back(ts.timecode.ticks());
 

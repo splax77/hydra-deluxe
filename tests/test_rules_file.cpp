@@ -34,7 +34,8 @@ hydra::core::Rules load_rules_text(const std::string& text) {
 TEST_CASE("each retired rules key loads silently, whatever it says") {
     // Pinned: the keys in kRetiredRulesKeys (app/rules_file.cpp), which owns
     // why each one retired.
-    for (const char* key : {"auto_cap_ladder", "auto_budget_s", "fill_length_measures"}) {
+    for (const char* key : {"auto_cap_ladder", "auto_budget_s", "fill_length_measures",
+                            "fill_cooldown_measures"}) {
         CAPTURE(key);
         hydra::core::Rules r;
         CHECK_NOTHROW(r = load_rules_text(std::string(key) + " = banana\n"));
@@ -48,7 +49,7 @@ TEST_CASE("a key that is neither live nor retired still stops the rules file") {
 
 // D270 call 3: unlike the settings file, which lands on the nearest edge, the
 // rules file refuses a number below its floor. A value on the floor loads.
-TEST_CASE("the rules file refuses below each of its five floors and reads the floor itself") {
+TEST_CASE("the rules file refuses below each of its four floors and reads the floor itself") {
     struct Case {
         const char* key;
         const char* below;
@@ -56,7 +57,6 @@ TEST_CASE("the rules file refuses below each of its five floors and reads the fl
     };
     for (const Case& c : {Case{"backend_leeway_ms", "-0.5", "0"},
                           Case{"max_tied_paths", "0", "1"},
-                          Case{"fill_cooldown_measures", "0", "1"},
                           Case{"fill_max_distance_beats", "-0.5", "0"},
                           Case{"fill_land_slop_beats", "-0.5", "0"}}) {
         CAPTURE(c.key);

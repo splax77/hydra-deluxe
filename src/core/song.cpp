@@ -153,9 +153,10 @@ namespace {
 // fill_generator.cs (lines 31 to 79 of that file); its clock is F9 and the
 // rounding F13, explained in fill_generator.md.
 
-// After a fill, the 1.0 generator moves on this many measure lines: the
-// literal of the loop's `i += 4` (fill_generator.cs line 42).
-constexpr size_t kCh10LinesAfterFill = 4;
+// After a fill, both games' generators move on this many measure lines. It is
+// a literal in each: 1.0's loop step `i += 4` (fill_generator.cs line 42) and
+// 1.1's `add ebx, 4` (FL-17 in docs/clone-hero/04-fills.md).
+constexpr size_t kLinesAfterFill = 4;
 
 // How far in real time, in seconds, a chord may sit from its measure line and
 // still take a 1.0 generated fill: the game's `num5 > 0.25f`, so exactly this
@@ -203,7 +204,7 @@ int64_t ch10_tick_at_second(const MsIndex& ms, float second) {
 // Otherwise the fill starts on the tick of the second halfway between the
 // line before and this one (lines 44 and 65), so its length is the chord tick
 // minus that tick and can be negative; the next candidate is
-// kCh10LinesAfterFill lines on. The 64th note the game adds past the chord
+// kLinesAfterFill lines on. The 64th note the game adds past the chord
 // (lines 41 and 72) belongs to the deadline, activation_fill_deadline_ms.
 // The game's miss branch (`num4 == -1`, line 47) never runs on a chart with a
 // chord, which is the only chart check_activations hands here.
@@ -233,7 +234,7 @@ void Song::place_fills_ch10() {
         last_used = chord;
         const int64_t start = ch10_tick_at_second(ms, start_s);
         sequence[chord].activation_length = chord_tick - start;
-        i += kCh10LinesAfterFill;
+        i += kLinesAfterFill;
     }
 }
 
@@ -245,7 +246,7 @@ void Song::place_fills_ch10() {
 // line tick and may be 0 or negative for a chord on or before the line
 // (question 6, as recommended, of
 // docs/superpowers/plans/2026-10-12-one-record-per-chart.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-12-one-record-per-chart.md)).
-// The next candidate is rules.fill_cooldown_measures lines on after a fill
+// The next candidate is kLinesAfterFill lines on after a fill
 // (`add ebx, 4`), else the next line.
 //
 // The limit is Clone Hero's: the whole ticks of resolution x
@@ -285,9 +286,7 @@ void Song::place_fills_ch11(const core::Rules& rules) {
             continue;
         }
         sequence[best].activation_length = chord_tick - line_tick;
-        // hydra_rules.ini refuses a cooldown below 1 (rules_fields); a Rules
-        // value built in code gets the same floor, so the walk always moves.
-        line += static_cast<int64_t>(std::max(rules.fill_cooldown_measures, 1));
+        line += static_cast<int64_t>(kLinesAfterFill);
     }
 }
 
