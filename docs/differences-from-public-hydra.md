@@ -8,7 +8,7 @@ Both do the same job. They read Clone Hero drum charts and find the Star Power p
 
 ![The Hydra Deluxe toolbar, the library and Burnout open in the song panel on its Paths tab](images/main-screen.png)
 
-*Hydra Deluxe with the 97 charts of its test library loaded, and Burnout open on its Paths tab beside the library.*
+*Hydra Deluxe with the 98 charts of its test library loaded, and Burnout open on its Paths tab beside the library.*
 
 ## At a glance
 
