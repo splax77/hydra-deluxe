@@ -13,7 +13,8 @@ at the commit. --leaks prints every comment marker still left in a stripped file
 with the line it sits on and the kind of text the scanner found it in.
 
 Exit codes: 0 done; 1 a leak sits outside a literal; 2 a file the lists do not
-cover, or bad arguments; 3 a stripped file changed its line count or would not scan.
+cover, a tracked symbolic link in a copied folder, or bad arguments; 3 a stripped
+file changed its line count or would not scan.
 """
 
 import argparse
@@ -36,9 +37,12 @@ PY_EXTS = {".py"}
 PS_EXTS = {".ps1"}
 CMAKE_EXTS = {".cmake"}
 CMAKE_NAMES = {"cmakelists.txt"}
-LEFT_OUT_EXTS = {".md", ".html"}
+XML_EXTS = {".xml", ".manifest"}
+HASH_LINE_EXTS = {".dict", ".txt"}
+JSON_EXTS = {".json"}
+LEFT_OUT_EXTS = {".md", ".html", ".gitattributes", ".gitignore"}
 DATA_EXTS = {
-    ".txt", ".json", ".jsonl", ".ini", ".csv", ".tsv", ".chart", ".mid", ".sng", ".srb",
+    ".jsonl", ".ini", ".csv", ".tsv", ".chart", ".mid", ".sng", ".srb",
     ".png", ".jpg", ".ico", ".ttf", ".obj", ".ogg", ".flac", ".wav", ".opus", ".mp3",
     ".db", ".bin", ".sig", ".log", ".reg", ".after-run", ".gitkeep",
 }
@@ -76,6 +80,12 @@ def language(path):
         return "ps1"
     if ext in CMAKE_EXTS:
         return "cmake"
+    if ext in XML_EXTS:
+        return "xml"
+    if ext in HASH_LINE_EXTS:
+        return "hashlines"
+    if ext in JSON_EXTS:
+        return "json"
     return None
 
 
@@ -444,7 +454,37 @@ def scan_cmake(text):
     return segs
 
 
-SCANNERS = {"c": scan_c, "js": lambda t: scan_c(t, js=True), "ps1": scan_ps, "cmake": scan_cmake}
+XML_OPENERS = re.compile(r"<!--|<!\[CDATA\[|<\?")
+XML_CLOSERS = {"<!--": ("-->", "comment", "removed"), "<![CDATA[": ("]]>", "literal", "CDATA"),
+               "<?": ("?>", "literal", "processing instruction")}
+
+
+def scan_xml(text):
+    segs = []
+    start = 0
+    pos = 0
+    while True:
+        m = XML_OPENERS.search(text, pos)
+        if not m:
+            break
+        close, kind, label = XML_CLOSERS[m.group(0)]
+        e = text.find(close, m.end())
+        if e < 0:
+            raise StripError("unterminated %s" % m.group(0))
+        if m.start() > start:
+            segs.append(("code", start, m.start(), ""))
+        segs.append((kind, m.start(), e + len(close), label))
+        start = pos = e + len(close)
+    if len(text) > start:
+        segs.append(("code", start, len(text), ""))
+    return segs
+
+
+SCANNERS = {"c": scan_c, "js": lambda t: scan_c(t, js=True), "ps1": scan_ps, "cmake": scan_cmake,
+            "xml": scan_xml}
+
+HASH_LINE = re.compile(r"^[ \t]*#[^\r\n]*", re.M)
+JSON_COMMENT_KEY = re.compile(r'("_comment"\s*:\s*)"(?:[^"\\\r\n]|\\.)*"')
 
 
 def _newlines(s):
@@ -458,7 +498,9 @@ def strip_segments(text, segs):
             out.append(text[a:b])
             continue
         keep = _newlines(text[a:b])
-        if label == "line":
+        if label == "removed":
+            out.append(keep)
+        elif label == "line":
             while out:
                 tail = out[-1].rstrip(" \t")
                 if tail:
@@ -561,12 +603,17 @@ def python_leaks(text):
 
 # ---------------------------------------------------------------- one file
 
-MARKERS = {"c": ("//", "/*"), "js": ("//", "/*"), "ps1": ("#",), "cmake": ("#",)}
+MARKERS = {"c": ("//", "/*"), "js": ("//", "/*"), "ps1": ("#",), "cmake": ("#",),
+           "xml": ("<!--",)}
 
 
 def strip_text(text, lang):
     if lang == "py":
         return strip_python(text)
+    if lang == "hashlines":
+        return HASH_LINE.sub("", text)
+    if lang == "json":
+        return JSON_COMMENT_KEY.sub(r'\1""', text)
     return strip_segments(text, SCANNERS[lang](text))
 
 
@@ -578,6 +625,12 @@ def leaks(text, lang):
     """
     if lang == "py":
         return python_leaks(text)
+    if lang == "hashlines":
+        return [(text.count("\n", 0, m.start()) + 1, "#", "comment") for m in HASH_LINE.finditer(text)]
+    if lang == "json":
+        return [(text.count("\n", 0, m.start()) + 1, "_comment", "comment")
+                for m in JSON_COMMENT_KEY.finditer(text)
+                if m.group(0)[len(m.group(1)):] != '""']
     found = []
     for kind, a, b, label in SCANNERS[lang](text):
         piece = text[a:b]
@@ -625,8 +678,34 @@ def _git(repo, *args):
     return r.stdout
 
 
+def stop_on_symlinks(entries):
+    """entries: (git mode, path) pairs. A tracked symlink in a copied folder stops the run.
+
+    The blind auditors follow no link on Read, but a Grep from the root could walk through
+    one, so the copy must hold none.
+    """
+    links = sorted(p for mode, p in entries if mode == "120000" and in_copied_folders(p))
+    for p in links:
+        print("SYMLINK %s: a tracked symbolic link in a copied folder" % p, file=sys.stderr)
+    if links:
+        print("stopped: %d symbolic link(s); nothing was written" % len(links), file=sys.stderr)
+        raise SystemExit(2)
+
+
+def tree_entries(repo, commit):
+    """(mode, path) for every file of the commit."""
+    out = _git(repo, "ls-tree", "-r", "-z", commit).decode("utf-8", "surrogateescape")
+    entries = []
+    for rec in out.split("\0"):
+        if rec:
+            meta, path = rec.split("\t", 1)
+            entries.append((meta.split(" ", 1)[0], path))
+    return entries
+
+
 def export(repo, commit):
     """{path: bytes} for every tracked file of the commit."""
+    stop_on_symlinks(tree_entries(repo, commit))
     data = _git(repo, "archive", "--format=tar", commit)
     files = {}
     with tarfile.open(fileobj=io.BytesIO(data)) as tar:
@@ -634,7 +713,9 @@ def export(repo, commit):
             if m.isdir():
                 continue
             if not m.isfile():
-                raise SystemExit("not a plain file in the commit: %s" % m.name)
+                if in_copied_folders(m.name):
+                    raise SystemExit("not a plain file in the commit: %s" % m.name)
+                continue
             files[m.name] = tar.extractfile(m).read()
     return files
 
@@ -728,7 +809,10 @@ def make_copy(repo, commit, dest, preamble=None, show_leaks=False):
 
 
 def in_place(folder, show_leaks=False):
-    tracked = [p for p in _git(folder, "ls-files", "-z").decode("utf-8").split("\0") if p]
+    staged = [r for r in _git(folder, "ls-files", "-s", "-z").decode("utf-8").split("\0") if r]
+    entries = [(r.split(" ", 1)[0], r.split("\t", 1)[1]) for r in staged]
+    stop_on_symlinks(entries)
+    tracked = sorted({p for _, p in entries})
     tracked = [p for p in tracked if os.path.isfile(_long(os.path.join(folder, *p.split("/"))))]
     stop_on_unknown(tracked)
     code = [p for p in tracked if classify(p)[0] == STRIPPED]

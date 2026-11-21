@@ -152,6 +152,63 @@ class PowerShellTraps(unittest.TestCase):
         self.assertEqual(strip("#Requires -Version 7\n$x = 1\n", "ps1"), "\n$x = 1\n")
 
 
+class XmlTraps(unittest.TestCase):
+    def test_one_line_comment_is_removed(self):
+        self.assertEqual(strip("<a><!-- gone --><b/></a>\n", "xml"), "<a><b/></a>\n")
+
+    def test_multi_line_comment_keeps_its_line_breaks(self):
+        self.assertEqual(strip("<a>\n<!-- one\n two\n-->\n<b/>\n</a>\n", "xml"),
+                         "<a>\n\n\n\n<b/>\n</a>\n")
+
+    def test_cdata_and_processing_instruction_keep_comment_markers(self):
+        src = '<?xml version="1.0"?>\n<a><![CDATA[ <!-- kept --> ]]><!-- gone --></a>\n'
+        self.assertEqual(strip(src, "xml"), '<?xml version="1.0"?>\n<a><![CDATA[ <!-- kept --> ]]></a>\n')
+
+    def test_comment_inside_doctype_subset(self):
+        self.assertEqual(strip("<!DOCTYPE a [ <!-- gone --> ]>\n<a/>\n", "xml"),
+                         "<!DOCTYPE a [  ]>\n<a/>\n")
+
+    def test_unterminated_comment_stops(self):
+        with self.assertRaises(mc.StripError):
+            strip("<a><!-- never closed </a>\n", "xml")
+
+    def test_file_without_comments_is_unchanged(self):
+        src = '<?xml version="1.0"?>\r\n<key id="1">abc</key>\r\n'
+        self.assertEqual(strip(src, "xml"), src)
+
+    def test_leak_in_cdata_is_named(self):
+        self.assertEqual(mc.leaks("<a><![CDATA[<!-- x -->]]></a>\n", "xml"), [(1, "<!--", "CDATA")])
+
+
+class HashLineTraps(unittest.TestCase):
+    def test_whole_comment_lines_become_empty(self):
+        self.assertEqual(strip("# header\n  \t# indented\n\"a\"\n\n# end", "hashlines"),
+                         "\n\n\"a\"\n\n")
+
+    def test_hash_inside_a_token_stays(self):
+        src = '"a#b"\n"#"\nkw="x" # not a whole-line comment\n'
+        self.assertEqual(strip(src, "hashlines"), src)
+
+    def test_crlf_is_kept(self):
+        self.assertEqual(strip("# c\r\nx\r\n", "hashlines"), "\r\nx\r\n")
+
+    def test_leaks_names_a_remaining_comment_line(self):
+        self.assertEqual(mc.leaks("x\n # c\n", "hashlines"), [(2, "#", "comment")])
+
+
+class JsonComment(unittest.TestCase):
+    def test_comment_value_is_blanked_and_json_stays_valid(self):
+        import json
+        src = '{\n  "_comment": "why \\" it # is",\n  "k": "_comment"\n}\n'
+        out = strip(src, "json")
+        self.assertEqual(out, '{\n  "_comment": "",\n  "k": "_comment"\n}\n')
+        self.assertEqual(json.loads(out), {"_comment": "", "k": "_comment"})
+
+    def test_leak_names_a_surviving_comment(self):
+        self.assertEqual(mc.leaks('{\n "_comment": "x"\n}\n', "json"), [(2, "_comment", "comment")])
+        self.assertEqual(mc.leaks('{\n "_comment": ""\n}\n', "json"), [])
+
+
 class EachFileType(unittest.TestCase):
     """One case per extension the script strips, through its own classification."""
 
@@ -168,6 +225,11 @@ class EachFileType(unittest.TestCase):
         "tools/a.ps1": ("$x = '#' # c\n", "$x = '#'\n"),
         "tools/a.cmake": ('set(X "#") # c\n', 'set(X "#")\n'),
         "tests/CMakeLists.txt": ('add(T "#") # c\n', 'add(T "#")\n'),
+        "testdata/update/k.xml": ("<a/><!-- c -->\n", "<a/>\n"),
+        "src/app/x.manifest": ("<!-- c\nd -->\n<assembly/>\n", "\n\n<assembly/>\n"),
+        "tests/fuzz/c.dict": ('# c\n"#a"\n', '\n"#a"\n'),
+        "tests/shards.txt": ("# c\nname a,b\n", "\nname a,b\n"),
+        "assets/c.json": ('{"_comment": "c", "a": 1}\n', '{"_comment": "", "a": 1}\n'),
     }
 
     def test_each_code_type_strips(self):
@@ -185,13 +247,19 @@ class Classification(unittest.TestCase):
     def test_states(self):
         self.assertEqual(mc.classify("src/x.md"), (mc.LEFT_OUT, ".md"))
         self.assertEqual(mc.classify("tools/page.html"), (mc.LEFT_OUT, ".html"))
-        self.assertEqual(mc.classify("tests/shards.txt"), (mc.COPIED, "data"))
+        self.assertEqual(mc.classify("tests/shards.txt"), (mc.STRIPPED, "hashlines"))
+        self.assertEqual(mc.classify("testdata/a/list.csv"), (mc.COPIED, "data"))
         self.assertEqual(mc.classify("testdata/fuzz/mid/.gitkeep"), (mc.COPIED, "data"))
         self.assertEqual(mc.classify("CMakeLists.txt"), (mc.STRIPPED, "cmake"))
         self.assertEqual(mc.classify("docs/a.cpp"), (mc.LEFT_OUT, "outside the copied folders"))
         self.assertEqual(mc.classify("third_party/x/y.cpp"),
                          (mc.LEFT_OUT, "outside the copied folders"))
-        self.assertEqual(mc.classify("src/app/x.manifest"), (mc.UNKNOWN, ".manifest"))
+        self.assertEqual(mc.classify("src/app/x.manifest"), (mc.STRIPPED, "xml"))
+        self.assertEqual(mc.classify("tests/fuzz/chart.dict"), (mc.STRIPPED, "hashlines"))
+        self.assertEqual(mc.classify("tools/ch_mcp/.gitignore"), (mc.LEFT_OUT, ".gitignore"))
+        self.assertEqual(mc.classify("testdata/fuzz/.gitattributes"),
+                         (mc.LEFT_OUT, ".gitattributes"))
+        self.assertEqual(mc.classify("testdata/x/y.jsonl"), (mc.COPIED, "data"))
         self.assertEqual(mc.classify("tools/noext"), (mc.UNKNOWN, "(no extension)"))
 
 
@@ -231,10 +299,13 @@ class WholeRuns(unittest.TestCase):
     FILES = {
         "src/a.cpp": b"int a; // gone\n",
         "tests/t.py": b'"""Doc."""\nx = 1  # gone\n',
-        "testdata/in.txt": b"# a data file keeps this\r\n",
+        "testdata/in.csv": b"# a data file keeps this\r\n",
         "tools/notes.md": b"# left out\n",
         "docs/page.cpp": b"// outside\n",
         "CMakeLists.txt": b"project(X) # gone\n",
+        "testdata/update/test-key.xml": b'<?xml version="1.0"?>\r\n<key>abc</key>\r\n',
+        "tests/fuzz/c.dict": b'# gone\n"#kept"\n',
+        "tools/.gitignore": b"# left out\n",
     }
 
     def setUp(self):
@@ -265,8 +336,12 @@ class WholeRuns(unittest.TestCase):
         code = os.path.join(dest, "code")
         self.assertEqual(self.read(code, "src", "a.cpp"), b"int a;\n")
         self.assertEqual(self.read(code, "tests", "t.py"), b"\nx = 1\n")
-        self.assertEqual(self.read(code, "testdata", "in.txt"), self.FILES["testdata/in.txt"])
+        self.assertEqual(self.read(code, "testdata", "in.csv"), self.FILES["testdata/in.csv"])
         self.assertEqual(self.read(code, "CMakeLists.txt"), b"project(X)\n")
+        self.assertEqual(self.read(code, "testdata", "update", "test-key.xml"),
+                         self.FILES["testdata/update/test-key.xml"])
+        self.assertEqual(self.read(code, "tests", "fuzz", "c.dict"), b'\n"#kept"\n')
+        self.assertFalse(os.path.exists(os.path.join(code, "tools", ".gitignore")))
         self.assertFalse(os.path.exists(os.path.join(code, "tools", "notes.md")))
         self.assertFalse(os.path.exists(os.path.join(code, "docs")))
         self.assertEqual(os.listdir(os.path.join(dest, "out")), [])
@@ -277,7 +352,10 @@ class WholeRuns(unittest.TestCase):
             "CMakeLists.txt\tstripped\tcmake\t2",
             "docs/page.cpp\tleft out\toutside the copied folders\t",
             "src/a.cpp\tstripped\tc\t2",
-            "testdata/in.txt\tcopied\tdata\t",
+            "testdata/in.csv\tcopied\tdata\t",
+            "testdata/update/test-key.xml\tstripped\txml\t3",
+            "tests/fuzz/c.dict\tstripped\thashlines\t3",
+            "tools/.gitignore\tleft out\t.gitignore\t",
             "tests/t.py\tstripped\tpy\t3",
             "tools/notes.md\tleft out\t.md\t",
         ]))
@@ -302,6 +380,35 @@ class WholeRuns(unittest.TestCase):
         self.assertIn("src/x.weird", r.stderr)
         self.assertFalse(os.path.exists(os.path.join(dest, "manifest.tsv")))
 
+    def commit_symlink(self, path):
+        """Track `path` as a symbolic link (git mode 120000) without making a link on disk."""
+        blob = subprocess.run(["git", "-C", self.repo, "hash-object", "-w", "--stdin"],
+                              input=b"a.cpp", capture_output=True).stdout.decode().strip()
+        git(self.repo, "update-index", "--add", "--cacheinfo", "120000,%s,%s" % (blob, path))
+        git(self.repo, "commit", "-q", "-m", "link")
+
+    def test_symlink_in_a_copied_folder_stops_and_names_the_file(self):
+        self.commit_symlink("src/link.cpp")
+        dest = os.path.join(self.tmp, "dest")
+        r = run("--repo", self.repo, "HEAD", dest)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("src/link.cpp", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(dest, "manifest.tsv")))
+
+    def test_symlink_outside_the_copied_folders_is_not_copied_and_does_not_stop(self):
+        self.commit_symlink("docs/link.md")
+        dest = os.path.join(self.tmp, "dest")
+        r = run("--repo", self.repo, "HEAD", dest)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(dest, "code", "docs")))
+
+    def test_symlink_stops_an_in_place_run(self):
+        self.commit_symlink("tools/link.py")
+        r = run("--in-place", self.repo)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("tools/link.py", r.stderr)
+        self.assertEqual(self.read(self.repo, "src", "a.cpp"), self.FILES["src/a.cpp"])
+
     def test_non_empty_destination_is_refused(self):
         dest = os.path.join(self.tmp, "dest")
         os.makedirs(dest)
@@ -324,7 +431,7 @@ class WholeRuns(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.read(self.repo, "src", "a.cpp"), b"int a;\n")
         self.assertEqual(self.read(self.repo, "tests", "t.py"), b"\nx = 1\n")
-        for p in ("testdata/in.txt", "tools/notes.md", "docs/page.cpp"):
+        for p in ("testdata/in.csv", "tools/notes.md", "docs/page.cpp"):
             self.assertEqual(self.read(self.repo, *p.split("/")), self.FILES[p], p)
 
 
@@ -354,6 +461,24 @@ class WholeCommitProperties(unittest.TestCase):
             with self.subTest(path=p):
                 out = mc.strip_bytes(self.files[p], lang)
                 self.assertEqual(out.count(b"\n"), self.files[p].count(b"\n"))
+
+    def test_json_differs_only_in_comment_values(self):
+        import json
+
+        def blank(v):
+            if isinstance(v, dict):
+                return {k: ("" if k == "_comment" else blank(x)) for k, x in v.items()}
+            if isinstance(v, list):
+                return [blank(x) for x in v]
+            return v
+
+        for p, lang in self.code_files():
+            if lang != "json":
+                continue
+            with self.subTest(path=p):
+                src = json.loads(self.files[p].decode("utf-8-sig"))
+                out = json.loads(mc.strip_bytes(self.files[p], lang).decode("utf-8-sig"))
+                self.assertEqual(out, blank(src))
 
     def test_python_ast_equals_original_without_docstrings(self):
         for p, lang in self.code_files():
