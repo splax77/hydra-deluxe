@@ -10,7 +10,6 @@ Plans live in the order of the ls-tree listing. "Named by" lists every line on m
   docs/audit/2026-10-03-fix-decisions.md:1048 (already has the removed form, but the plan is NOT removed)
   docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W2a.md:71 (already has the removed form)
   docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W3c.md:74 (plain path, needs the form)
-  docs/handoffs/2026-10-18-song-length-end-event-handoff.md:3 (removed; git show 6804353f:docs/handoffs/2026-10-18-song-length-end-event-handoff.md) (plain path, needs the form; this handoff is itself a file that may leave)
   tests/test_song_parse.cpp:332-333 (already has the removed form)
   docs/clone-hero/01-reading-a-chart.md:477 names the handoff, not the plan (listed for completeness only)
 
@@ -59,14 +58,13 @@ Plans live in the order of the ls-tree listing. "Named by" lists every line on m
 - evidence: Phase 0 spike. Tasks P, I, A, S, B, C, D merged on 2026-10-28 (merge subjects a356dc3c S, ff739d0b B, d34c3b5f I, 924be297 C). The sitting ran: tools/ch_probe/experiments/results/overlay-spike/run1_cal0_*.csv, run2_cal30_*, run2b_vid30_* exist. Task E write-up: docs/research/2026-10-28-overlay-spike-results.md exists on main (merge 7d94dd2e). The Clone Hero pages cite the results (03-timing.md:135/155, 04-fills.md:256, 07-internals.md:117/261). Passed-over fills, delay, guitar were declared out of scope in the plan (lines 213-222) for a "Phase 1", for which no plan exists on main.
 - left: none of this plan. Phase 1 (the overlay itself) is unplanned.
 - named by:
-  docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md:3 (removed; git show 6804353f:docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md) (plain path "(on main)", needs the form)
   tools/ch_probe/experiments/results/overlay-spike/il2cpp-fields.md:3 (check the exact form there)
   tools/ch_probe/experiments/sp_compare.py:25 (already has the removed form, but the plan is NOT removed yet)
   (docs/clone-hero/*.md lines that say "overlay-spike" name the results folder, not this file)
 
 ## 2026-10-30-ch-mcp-in-game-input.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-in-game-input.md)
 - verdict: live
-- evidence: K1 to K10 are merged (K5 at 894e4c37, K10 at 42f2ff24 etc.). LS-K0 and LS-K2 ran (docs/sessions/2026-10-31-a379bc75.md, docs/clone-hero/07-internals.md:795-801). LS-K3 and T8 are struck (plan lines 188, 214; user's answer to question 4 of the direct-start plan). LS-K4 (auto-player on Window Map) and LS-K5 (Senri fill check) have not run: handoff docs/handoffs/2026-11-06-optimal-score-plan-handoff.md:94 (removed; git show 6804353f:docs/handoffs/2026-11-06-optimal-score-plan-handoff.md) says "no ls-k4 or ls-k5 folder exists". The plan's status line (line 5) is dated 2026-10-30 and says K5 is unmerged and the live steps have not run, which is stale.
+- evidence: K1 to K10 are merged (K5 at 894e4c37, K10 at 42f2ff24 etc.). LS-K0 and LS-K2 ran (docs/sessions/2026-10-31-a379bc75.md, docs/clone-hero/07-internals.md:795-801). LS-K3 and T8 are struck (plan lines 188, 214; user's answer to question 4 of the direct-start plan). LS-K4 (auto-player on Window Map) and LS-K5 (Senri fill check) have not run (unchecked). The plan's status line (line 5) is dated 2026-10-30 and says K5 is unmerged and the live steps have not run, which is stale.
 - left: LS-K4 and LS-K5. They are named by docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md:299-309 (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md) and by the 2026-11-06 optimal-score plan (its LS-O2 is LS-K4, its LS-O4 is LS-K5, and its section 9 asks the user whether to accept LS-K5).
 - named by: not computed (live plan).
 
@@ -78,7 +76,7 @@ Plans live in the order of the ls-tree listing. "Named by" lists every line on m
 
 ## 2026-10-31-ch-mcp-direct-start.md (removed; git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md)
 - verdict: live
-- evidence: Tasks D1 to D6 and live steps LS-D0 to LS-D3 are done (commits 30207a3c LS-D2a, d2778773 LS-D1b to D1d, e9f26f2a LS-D2d to LS-D3 pass, f64f201d LS-D1a). Left open: LS-K4 and LS-K5 (plan lines 299-309), still unrun (handoff 2026-11-06-optimal-score-plan-handoff.md:94, removed; git show 6804353f:docs/handoffs/2026-11-06-optimal-score-plan-handoff.md). Premise-map row P40 is recorded as checked in caf69cd9.
+- evidence: Tasks D1 to D6 and live steps LS-D0 to LS-D3 are done (commits 30207a3c LS-D2a, d2778773 LS-D1b to D1d, e9f26f2a LS-D2d to LS-D3 pass, f64f201d LS-D1a). Left open: LS-K4 and LS-K5 (plan lines 299-309), still unrun (unchecked). Premise-map row P40 is recorded as checked in caf69cd9.
 - left: LS-K4 and LS-K5, now taken up by the 2026-11-06 optimal-score plan (LS-O2, LS-O4).
 - named by: not computed (live plan).
 
@@ -107,12 +105,12 @@ Plans live in the order of the ls-tree listing. "Named by" lists every line on m
 ## 2026-11-06-optimal-score-run.md (removed; git show d7e47a20:docs/superpowers/plans/2026-11-06-optimal-score-run.md)
 - verdict: live
 - evidence: Built today. Merges osr-T2 f7d4087c, osr-T3 (inside d1c2880d), osr-T4 b009b591, osr-T5 10d3308f, osr-T6 4b8f7a40 and e3bbc276, osr-T7 (inside a70c04b4). LS-O1 passed (893950d7). No commit or run record for LS-O2 to LS-O5.
-- left: LS-O2 (chained start on Window Map, which is LS-K4), LS-O3 (declining chord 405), LS-O4 (the LS-K5 read), LS-O5 (full run against 1,229,730), and the user's answer to its section 9 question (accept LS-K5). Named by the plan itself and docs/handoffs/2026-11-06-optimal-score-plan-handoff.md (removed; git show 6804353f:docs/handoffs/2026-11-06-optimal-score-plan-handoff.md).
+- left: LS-O2 (chained start on Window Map, which is LS-K4), LS-O3 (declining chord 405), LS-O4 (the LS-K5 read), LS-O5 (full run against 1,229,730), and the user's answer to its section 9 question (accept LS-K5). Named by the plan itself.
 - named by: not computed (live plan).
 
 ## Side notes
 - Five lines already carry the "(removed; git show 444631e6:...)" form for plans that are still on main: docs/audit/2026-10-03-fix-decisions.md:1048, docs/audit/2026-10-29-audit-of-audits/blocks/AOA-W2a.md:71, tests/test_song_parse.cpp:332-333, tools/ci_build_folder.ps1:24, tools/ch_probe/experiments/sp_compare.py:25. Commit 444631e6 does hold the plans (225 plan files), so `git show` works, but the claim "removed" is false today and the plans never left main (git log --diff-filter=D on the ci-build-speed plan finds no delete). Either a removal was planned and not merged, or these lines came early. Those plans left in 7a9f5b1c, so the form is true now.
-- docs/handoffs/ still holds handoffs for finished plans (2026-10-18-song-length-end-event-handoff.md, 2026-10-28-overlay-spike-sitting-handoff.md); they are not in my brief but they will name the plans. Both left in 7a9f5b1c: git show 6804353f:docs/handoffs/2026-10-18-song-length-end-event-handoff.md and git show 6804353f:docs/handoffs/2026-10-28-overlay-spike-sitting-handoff.md.
+- docs/handoffs/ still holds two handoffs for finished plans; they are not in my brief but they will name the plans. Both left in 7a9f5b1c.
 - The plans' own status lines are stale in at least these: song-length line 3, libraries line 3, harness-instructions line 3, ch-mcp-in-game-input line 5. All four left in 7a9f5b1c; read each with git show 6804353f:docs/superpowers/plans/<file name>.
 - docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md and 2026-10-30-ch-mcp-star-power-and-song-start.md each still name tasks and live steps that were struck or replaced; if they stay, they will keep misleading. Both left in 7a9f5b1c: git show 6804353f:docs/superpowers/plans/2026-10-31-ch-mcp-direct-start.md and git show 6804353f:docs/superpowers/plans/2026-10-30-ch-mcp-star-power-and-song-start.md.
 - The star-power plan's live steps LS0, LS1, LS2 and LS4: I found no record that they ran as written; they look replaced by the direct-start route but the plan has no line that says so.
