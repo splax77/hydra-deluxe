@@ -1,7 +1,11 @@
 // The Path Builder's main window, driven headless: a chart opened from the
 // command line, a chart with no Star Power, and a chart that fails to open.
 
-// First: its Windows headers come before the test engine's, which undefine
+// Before the harness: its Windows headers define min and max macros, which
+// would break this header's std::numeric_limits<int>::min() and max().
+#include "app/ini_errors.h"  // ini_bad_value_text, kWantWholeNumber
+
+// Then the harness: its Windows headers come before the test engine's, which undefine
 // their Yield() macro (uitest_engine.h says why).
 #include "pbtest_harness.h"
 
@@ -22,7 +26,6 @@
 
 #include "app/config.h"          // path_overrides
 #include "app/display_format.h"  // kFactSeparator
-#include "app/ini_errors.h"      // ini_bad_value_text, kWantWholeNumber
 #include "app/path_costs.h"      // CandidateCost
 #include "app/preview_view.h"
 #include "app/user_messages.h"  // kSettingsRefusedSentence, kRulesRefusedSentence, plain_error
