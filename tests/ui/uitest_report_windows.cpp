@@ -1,7 +1,7 @@
 // The report windows' GUI tests. Those in register_report_window_tests
-// open the path report or the comparison window on the sample rows
-// (tests/report_samples.h) through ReportWindowInput, the struct AppState
-// fills in the app, and drive the window by its labels. Their own GUI
+// open the path report or the comparison window through ReportWindowInput,
+// the struct AppState fills in the app, on the real report a batch of the
+// corpus built, and drive the window by its labels. Their own GUI
 // function draws the windows. Among them are the
 // column widths and the window's fit to the screen, from the one column-width
 // rule plan,
@@ -29,7 +29,6 @@
 #include <utility>
 #include <vector>
 
-#include "../report_samples.h"  // tests/ is not on the runner's include path
 #include "../scoped_hook.h"
 #include "../wait_util.h"
 #include "imgui_internal.h"
@@ -56,7 +55,6 @@ void start_library_batch(ImGuiTestContext* ctx);
 
 namespace {
 
-using hydra::app::dm_report::GeneratedDmReport;
 using hydra::app::report::GeneratedReport;
 using hydra::ui::DmReportInput;
 using hydra::ui::PathReportInput;
@@ -101,30 +99,6 @@ Fixture& fixture() {
     return f;
 }
 
-std::shared_ptr<GeneratedReport> sample_path_result() {
-    auto r = std::make_shared<GeneratedReport>();
-    // The sample rows counted against the sample library, as generate_report
-    // hands them over: each row carries its chart's copies, and
-    // library_charts is the library's own count.
-    const hydra::store::ChartIndex library = report_samples::sample_index();
-    r->paths = report_samples::counted_against(report_samples::sample_path_rows(), library);
-    r->library_charts = library.count(library.song_ids());
-    r->rows = static_cast<int64_t>(r->paths.size());
-    r->subtitle = "sample path subtitle";
-    r->footer = "sample path footer";
-    return r;
-}
-
-std::shared_ptr<GeneratedDmReport> sample_dm_result() {
-    auto r = std::make_shared<GeneratedDmReport>();
-    r->rows = report_samples::sample_dm_rows();
-    r->stats = hydra::app::dm_report::tally_dm_rows(r->rows);
-    r->username = "SamplePlayer";
-    r->subtitle = "sample dm subtitle";
-    r->footer = "sample dm footer";
-    return r;
-}
-
 hydra::ui::ReportCallbacks recording_callbacks(std::vector<size_t>& clicks) {
     hydra::ui::ReportCallbacks cb;
     cb.row_click = [&clicks](size_t row) { clicks.push_back(row); };
@@ -136,15 +110,14 @@ hydra::ui::ReportCallbacks recording_callbacks(std::vector<size_t>& clicks) {
     return cb;
 }
 
-// Both windows closed, each holding a freshly built sample report.
+// Both windows closed and ready, with no report in either yet:
+// real_path_fixture puts the real one in.
 void reset_fixture() {
     Fixture& f = fixture();
     f = Fixture{};
-    f.path.result = sample_path_result();
     f.path.state = ReportBuild::Ready;
     f.path.built = std::chrono::system_clock::now();
     f.path.callbacks = recording_callbacks(f.path_clicks);
-    f.dm.result = sample_dm_result();
     f.dm.state = ReportBuild::Ready;
     f.dm.built = std::chrono::system_clock::now();
     f.dm.callbacks = recording_callbacks(f.dm_clicks);
