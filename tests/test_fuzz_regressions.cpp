@@ -30,6 +30,10 @@
 #include "srb_util.h"
 #include "temp_util.h"
 
+#ifndef HYDRA_ASSET_DIR
+#error "HYDRA_ASSET_DIR must be defined (see CMakeLists.txt)"
+#endif
+
 namespace fs = std::filesystem;
 using hydra::fuzz::kTargets;
 
@@ -165,12 +169,12 @@ TEST_CASE("fuzz seeds: every target gets a seed folder") {
         }
     }
 
-    // Every file in the audio fixture folder, and the PNG the preview tests
-    // compare against.
+    // Every file in the audio fixture folder, and the Preview's textures in
+    // assets/preview/textures, the PNGs the Preview renderer decodes.
     for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(corpus::testdata_root() + "/audio")))
         if (e.is_regular_file())
             put("audio", e.path().filename().u8string(), hydra::read_file_bytes(e.path().u8string()));
-    for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(corpus::testdata_root() + "/preview")))
+    for (const fs::directory_entry& e : fs::directory_iterator(fs::u8path(HYDRA_ASSET_DIR) / "textures"))
         if (e.is_regular_file() && e.path().extension() == ".png")
             put("image", e.path().filename().u8string(), hydra::read_file_bytes(e.path().u8string()));
 
