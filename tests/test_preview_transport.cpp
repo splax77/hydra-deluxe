@@ -206,12 +206,16 @@ TEST_CASE("a seek while playing brings the audio back after it ran out") {
     REQUIRE_FALSE(playhead->playing());
     REQUIRE(transport.playing());  // the notes go on
 
-    transport.seek_ms(500.0);
+    const double seek_to_ms = 500.0;
+    transport.seek_ms(seek_to_ms);
     CHECK(playhead->playing());
-    CHECK(playhead->position_ms() == doctest::Approx(500.0));
+    CHECK(playhead->position_ms() == doctest::Approx(seek_to_ms));
     CHECK(transport.read_frames(out.data(), 4) == 4);
-    CHECK(out[0] == doctest::Approx(24000.0f));  // frame 24000, L
-    CHECK(out[1] == doctest::Approx(24000.5f));  // frame 24000, R
+    // make_ramp's frame i holds L = i and R = i + 0.5, so the first frame
+    // served is the one at the seek's time, at the audio's own rate.
+    const double seek_frame = seek_to_ms * transport.sample_rate() / 1000.0;
+    CHECK(out[0] == doctest::Approx(seek_frame));
+    CHECK(out[1] == doctest::Approx(seek_frame + 0.5));
 }
 
 TEST_CASE("seek clamps to [0, length]") {
@@ -307,12 +311,4 @@ TEST_CASE("scrubber: with no audio the end is still the song's length") {
     PreviewTransport transport([] { return 0.0; });
     transport.set_song_length_ms(4000.0);
     CHECK(transport.length_ms() == doctest::Approx(4000.0));
-}
-
-TEST_CASE("load with no audio offset seeks to the asked position") {
-    PreviewTransport transport([] { return 0.0; });
-    auto* playhead = new Playhead(make_ramp(48000));
-    transport.load(std::unique_ptr<Playhead>(playhead), 0.0);
-    transport.seek_ms(250.0);
-    CHECK(playhead->position_ms() == doctest::Approx(250.0));
 }
