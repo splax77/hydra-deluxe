@@ -66,24 +66,54 @@ struct ScratchRules {
     }
 };
 
+// The list row of the first fill the engine lists (the empty path's
+// trailing_skipped_fill_ticks, in chart order) as draw_choices writes it
+// before that fill's cost lands: its name, its middle with the end still
+// pending (candidate_row_text with no end), and kPendingText for the cost.
+// Empty while the scene has no listed fill.
+std::string first_pending_row(const hydra::app::PreviewScene& scene) {
+    if (scene.trailing_skipped_fill_ticks.empty()) return {};
+    const std::optional<size_t> fill =
+        hydra::app::fill_index_on_chord(scene, scene.trailing_skipped_fill_ticks.front());
+    if (!fill) return {};
+    return hydra::pathbuilder::fill_name(scene, scene.fills[*fill]) + " " +
+           hydra::pathbuilder::candidate_row_text(scene, *fill, nullptr) + " " +
+           hydra::pathbuilder::kPendingText;
+}
+
 // Opens the chart from the command line: the screen starts from nothing. The
 // three scores are on screen, the intro, the coach line and the old decision
 // list are not, and "Show Hydra's best path" sits in the head row. The fill
 // keys and the saved row's words show only while their label is hovered. A
 // fill under two saved phrases is drawn as can't. Then a click on the highway
-// at the earliest fill the player can take activates there.
+// at the earliest fill the player can take activates there. Every fill, time
+// and step it reads is the engine's, through the scene and the player's path.
 void test_open_starts_empty(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     h.chart_arg = corpus::burnout_notes();
     reset_app(h);
-    // Before the costs land, every fill the engine lists has a row whose end
-    // and cost read kPendingText (plan Q3); once nothing is running, no
-    // figure on screen does. From one run: the first fill's row, which the
-    // first frame with the highway loaded shows. The wait is wait_idle's.
-    const std::string pending_row = std::string("m20 0:25.123 · 2 phrases · ") +
-                                    hydra::pathbuilder::kPendingText + " " +
-                                    hydra::pathbuilder::kPendingText;
-    IM_CHECK(uitest::wait_until(ctx, [&] { return on_screen(h, pending_row); }, 60.0));
+    // Before the costs land, the first listed fill's row reads kPendingText
+    // for its end and its cost; once nothing is running, no figure on screen
+    // does. The wait ends as soon as that fill's cost has landed, since its
+    // pending row can no longer show.
+    bool pending_shown = false;
+    IM_CHECK(uitest::wait_until(
+        ctx,
+        [&] {
+            hydra::ui::PreviewController* pc = h.app->preview();
+            if (!pc) return false;
+            const hydra::app::PreviewScene& scene = pc->scene();
+            const std::string row = first_pending_row(scene);
+            if (row.empty()) return false;
+            pending_shown = on_screen(h, row);
+            const int64_t first = scene.trailing_skipped_fill_ticks.front();
+            const std::vector<hydra::app::CandidateCost>& priced = h.app->state.decisions().candidates();
+            const bool landed = std::any_of(priced.begin(), priced.end(),
+                                            [&](const hydra::app::CandidateCost& c) { return c.act_tick == first; });
+            return pending_shown || landed;
+        },
+        60.0));
+    IM_CHECK(pending_shown);
     IM_CHECK(wait_idle(ctx));
     ctx->Yield(2);
     IM_CHECK(!on_screen(h, hydra::pathbuilder::kPendingText));
@@ -91,17 +121,22 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK(!h.app->state.history().current().path.has_value());
     IM_CHECK(h.app->shown_path() == &*h.app->state.chart()->empty_path);
     // The title line is the song.ini's name and artist, not the file path.
-    // From one run.
-    IM_CHECK(on_screen(h, "Burnout — Green Day"));
+    const std::string title = hydra::pathbuilder::chart_title_line(*h.app->state.chart());
+    IM_CHECK(title != h.chart_arg);
+    IM_CHECK(on_screen(h, title));
     IM_CHECK(!on_screen(h, h.chart_arg));
     IM_CHECK(!on_screen(h, "Build your own"));
-    // The Preview panel's clock at the song's start, from one run.
-    IM_CHECK(on_screen(h, "0:00.000"));
+    hydra::ui::PreviewController& pc = *h.app->preview();
+    const hydra::app::PreviewScene& scene = pc.scene();
+    const double len = pc.playback_end_ms();
+    // The Preview panel's clock at the song's start.
+    IM_CHECK(on_screen(h, hydra::app::build_time_box(scene, 0.0, len).timestamp));
     IM_CHECK(!on_screen(h, "Step 1."));
     // Burnout is shorter than the window, so the window is the whole song
-    // (plan 3's Q1): the scrollbar's readout, from one run. The scrollbar's
-    // name is on screen.
-    IM_CHECK(on_screen(h, "0:00 – 2:10 of 2:10"));
+    // (plan 3's Q1), as the scrollbar's readout says. The scrollbar's name is
+    // on screen.
+    IM_CHECK(len < hydra::ui::kTimelineWindowMs);
+    IM_CHECK(on_screen(h, hydra::ui::readout(hydra::ui::whole_song_view(len), len)));
     IM_CHECK(on_screen(h, hydra::ui::kTimelineScrollLabel));
     // The list; no cost line under the fills, and no highway of the
     // builder's own.
@@ -120,14 +155,16 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
 
     // Each label's words show only while the pointer is on that label. "Your
     // activation" is read with its line's end, because the row's own label
-    // starts with the same words.
+    // starts with the same words. The activate line's words start with its
+    // number, kSpActivationBars, as the saved row draws them.
     const std::string mine_key = std::string(hydra::pathbuilder::kLegendMineText) + IM_NEWLINE;
+    const std::string needed = std::to_string(hydra::kSpActivationBars) + hydra::ui::kTimelineActivateLabelTail;
     const std::vector<const char*> fill_keys = {
         hydra::pathbuilder::kLegendBestText,      hydra::pathbuilder::kLegendUnderOnePercentText,
         hydra::pathbuilder::kLegendCostsMoreText, mine_key.c_str(),
         hydra::pathbuilder::kLegendCantText,      hydra::pathbuilder::kLegendLockedText};
-    const std::vector<const char*> saved_words = {hydra::ui::kTimelinePhrasesLabel,
-                                                  "2 phrases: needed to activate", "enough to activate"};
+    const std::vector<const char*> saved_words = {hydra::ui::kTimelinePhrasesLabel, needed.c_str(),
+                                                  hydra::ui::kTimelineEnoughLabel};
     const auto all_on_screen = [&](const std::vector<const char*>& words) {
         return std::all_of(words.begin(), words.end(), [&](const char* w) { return on_screen(h, w); });
     };
@@ -137,7 +174,7 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     move_off_timeline(ctx);
     IM_CHECK(none_on_screen(fill_keys));
     IM_CHECK(none_on_screen(saved_words));
-    IM_CHECK(!on_screen(h, "needed to activate"));
+    IM_CHECK(!on_screen(h, hydra::ui::kTimelineActivateLabelTail));
 
     ctx->MouseMove(any_ref("##label_activations").c_str());
     IM_CHECK(uitest::wait_until(ctx, [&] { return all_on_screen(fill_keys); }, 5.0));
@@ -149,7 +186,7 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
 
     move_off_timeline(ctx);
     IM_CHECK(none_on_screen(saved_words));
-    IM_CHECK(!on_screen(h, "needed to activate"));
+    IM_CHECK(!on_screen(h, hydra::ui::kTimelineActivateLabelTail));
 
     // The Preview's "< Act" is on screen and greyed: the empty path has no
     // activation to jump to.
@@ -163,31 +200,34 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     IM_CHECK(!on_screen(h, "Your decisions"));
     IM_CHECK(on_screen(h, hydra::pathbuilder::kNoStepsText));
 
-    // From one run: Burnout's second fill comes with one phrase saved, so it
-    // does not glow.
-    static constexpr int64_t kUnderTwoTick = 21120;
-    const hydra::app::PreviewScene& scene = h.app->preview()->scene();
-    const auto under_two =
-        std::find_if(scene.fills.begin(), scene.fills.end(),
-                     [](const hydra::app::PreviewFill& f) { return f.chord_tick == kUnderTwoTick; });
-    IM_CHECK_RETV(under_two != scene.fills.end(), );
-    IM_CHECK(under_two->state != hydra::app::PreviewFillState::Offered);
-    IM_CHECK_STR_EQ(
-        hydra::pathbuilder::fill_reason(scene, static_cast<size_t>(under_two - scene.fills.begin()))
-            .c_str(),
-        "You have 1 phrase saved here. You need 2 to activate.");
+    // A fill that comes with fewer than kSpActivationBars phrases saved does
+    // not glow, and its hover sentence names the phrases saved there and the
+    // phrases needed. Burnout has one: its second fill comes with one saved.
+    std::optional<size_t> under_bars;
+    for (size_t i = 0; i < scene.fills.size() && !under_bars; ++i)
+        if (hydra::pathbuilder::fill_refusal(scene, i) == hydra::pathbuilder::FillRefusal::UnderBars)
+            under_bars = i;
+    IM_CHECK_RETV(under_bars.has_value(), );
+    const hydra::app::PreviewFill& under = scene.fills[*under_bars];
+    IM_CHECK(under.state != hydra::app::PreviewFillState::Offered);
+    const int saved_there = hydra::pathbuilder::bars_saved_at(scene, under);
+    IM_CHECK_LT(saved_there, hydra::kSpActivationBars);
+    const std::string reason = hydra::pathbuilder::fill_reason(scene, *under_bars);
+    IM_CHECK(reason.find(std::to_string(saved_there)) != std::string::npos);
+    IM_CHECK(reason.find(std::to_string(hydra::kSpActivationBars)) != std::string::npos);
 
-    // A click on the highway at the earliest fill the player can take, from
-    // one run the one at tick 36480 (m20), activates there, as a click on it
-    // in the timeline does. The highway is moved so the fill starts on the
-    // strike line, and the click lands on the floor halfway up the part of
-    // the fill the highway shows (project_to_image, the renderer's camera).
-    static constexpr int64_t kEarliestTick = 36480;
-    hydra::ui::PreviewController& pc = *h.app->preview();
+    // A click on the highway at the earliest fill the player can take (the
+    // first the scene draws Offered) activates there, as a click on it in the
+    // timeline does. The highway is moved so the fill starts on the strike
+    // line, and the click lands on the floor halfway up the part of the fill
+    // the highway shows (project_to_image, the renderer's camera).
     const auto earliest =
-        std::find_if(scene.fills.begin(), scene.fills.end(),
-                     [](const hydra::app::PreviewFill& f) { return f.chord_tick == kEarliestTick; });
+        std::find_if(scene.fills.begin(), scene.fills.end(), [](const hydra::app::PreviewFill& f) {
+            return f.state == hydra::app::PreviewFillState::Offered;
+        });
     IM_CHECK_RETV(earliest != scene.fills.end(), );
+    const int64_t earliest_tick = earliest->chord_tick;
+    const double earliest_dot_ms = hydra::ui::timeline_fill_ms(*earliest);
     pc.seek_ms(earliest->span.start_ms);
     ctx->Yield(2);
     ctx->SetRef(h.home_ref.c_str());
@@ -205,10 +245,21 @@ void test_open_starts_empty(ImGuiTestContext* ctx) {
     ctx->MouseMoveToPos(ImVec2(img.Min.x + p.x, img.Min.y + p.y));
     ctx->MouseClick(ImGuiMouseButton_Left);
     IM_CHECK_RETV(wait_for_edit(ctx), );
-    // From one run: the step's compact row, and the clock on the fill's dot,
-    // where every click on a fill leaves it.
-    IM_CHECK(on_screen(h, "m20 → m24 2 phrases −140"));
-    IM_CHECK(on_screen(h, "0:25.123 / 2:10.088"));
+    // The player's path is one window at that fill, and its compact row is on
+    // screen: the line holding the step's span holds the phrases it spends.
+    const std::vector<hydra::PinnedWindow>& windows = h.app->state.history().current().windows;
+    IM_CHECK_RETV(windows.size() == 1, );
+    IM_CHECK_EQ(windows.front().act_tick, earliest_tick);
+    const auto& mine = h.app->state.history().current().path;
+    IM_CHECK_RETV(mine.has_value(), );
+    const hydra::ActivationWalk acts = mine->walk_activations();
+    IM_CHECK_RETV(acts.size() == 1, );
+    const hydra::pathbuilder::StepShort brief =
+        hydra::pathbuilder::step_short(h.app->state.chart()->song.timing(), acts[0]);
+    const std::string step_line = uitest::lines_holding(uitest::visible_text(h), brief.span);
+    IM_CHECK(step_line.find(brief.saved) != std::string::npos);
+    // The clock stays on the fill's dot, where every click on a fill leaves it.
+    IM_CHECK(on_screen(h, hydra::app::build_time_box(pc.scene(), earliest_dot_ms, len).timestamp));
 }
 
 // The line of visible text that holds the scrollbar's readout for a song
