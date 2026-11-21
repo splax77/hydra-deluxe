@@ -18,6 +18,7 @@
 #include "app/config.h"  // Settings: the app's default analysis settings
 #include "app/preview_view.h"
 #include "core/song.h"  // cymbal_counts: the engine's rule for which pads are cymbals
+#include "corpus_default_cfg.h"
 #include "corpus_util.h"
 #include "record_fixtures.h"
 #include "preview_scene_fixtures.h"
@@ -125,21 +126,11 @@ bool same_instant(const TrackInstant& a, const TrackInstant& b) {
            a.drum_lane_blue == b.drum_lane_blue && a.drum_lane_green == b.drum_lane_green;
 }
 
-// The app's default analysis settings, which the corpus walks analyse under.
-const app::AnalysisSettings& default_cfg() {
-    static const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    return cfg;
-}
-
-// The song of a corpus chart. Every chart the corpus scan lists has Expert
-// drum notes, so a chart that loads empty fails the test by name instead of
-// being passed over.
-const Song& corpus_song_with_notes(const std::string& chart) {
-    const Song& song = corpus::song(chart, default_cfg().reading());
-    INFO("corpus chart " << chart);
-    REQUIRE_FALSE(song.is_empty());
-    return song;
-}
+// The corpus walks below analyse each chart under corpus::default_cfg before
+// they read its song. corpus::analyzed refuses a chart with no notes
+// (require_notes throws), and every chart the corpus scan lists has Expert
+// drum notes, so a chart that loads empty fails the test instead of being
+// passed over.
 
 // One corpus chart and the Preview's scene for it: the record's first stored
 // path (the scene the Preview opens on), or the no-path scene when the record
@@ -154,10 +145,11 @@ struct ChartScene {
 const std::vector<ChartScene>& corpus_path_scenes() {
     static const std::vector<ChartScene> scenes = [] {
         std::vector<ChartScene> out;
-        const app::AnalysisSettings& cfg = default_cfg();
+        const app::AnalysisSettings& cfg = corpus::default_cfg();
         for (const std::string& chart : corpus::chart_paths()) {
-            const Song& song = corpus_song_with_notes(chart);
+            INFO("corpus chart " << chart);
             const std::vector<const Path*> paths = corpus::analyzed(chart, cfg).all_paths();
+            const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
             const Path* first = paths.empty() ? nullptr : paths.front();
             out.push_back(ChartScene{chart, build_preview_scene(song, first, cfg.sp_cap, cfg.rules)});
         }
@@ -1183,11 +1175,11 @@ TEST_CASE("synthesize between instants reads the scene's own spans") {
 
     // Pitch Dark, whose record keeps paths that activate SP and pass over
     // fills: its base, every stored path's scene, and the no-path scene.
-    const app::AnalysisSettings& cfg = default_cfg();
+    const app::AnalysisSettings& cfg = corpus::default_cfg();
     const std::string chart = corpus::chart_named("test_pitch_dark_ratio");
     REQUIRE_FALSE(chart.empty());
-    const Song& song = corpus_song_with_notes(chart);
     const HydraRecord& rec = corpus::analyzed(chart, cfg);
+    const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
     check_fallback_reads_spans(build_preview_base(song), chart + " base");
     for (const Path* p : rec.all_paths())
         check_fallback_reads_spans(build_preview_scene(song, p, cfg.sp_cap, cfg.rules),
@@ -1213,7 +1205,7 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on random overlays") {
 // chart in the sample that loads empty fails rather than being passed over.
 TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart's stored paths") {
     constexpr size_t kEvery = 8;
-    const app::AnalysisSettings& cfg = default_cfg();
+    const app::AnalysisSettings& cfg = corpus::default_cfg();
     const std::vector<std::string>& charts = corpus::chart_paths();
     // An empty list would check nothing: chart_paths throws on a broken tree,
     // so an empty one means the corpus is gone.
@@ -1221,8 +1213,8 @@ TEST_CASE("rebuild_overlay_fields: equals a full build on every 8th corpus chart
     for (size_t place = 0; place < charts.size(); place += kEvery) {
         const std::string& chart = charts[place];
         INFO("corpus chart " << chart);
-        const Song& song = corpus_song_with_notes(chart);
         const std::vector<const Path*> paths = corpus::analyzed(chart, cfg).all_paths();
+        const Song& song = corpus::song(chart, cfg.reading(), cfg.rules);
         // The base (what the Preview's first scene job builds the timeline
         // from), then each stored path's scene in turn, then the no-path
         // scene, so every path's scene is swapped in from the one before it
