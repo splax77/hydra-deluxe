@@ -20,6 +20,8 @@
 #include "app/display_format.h"  // kAverageMultiplierLabel
 #include "app/dynamics_breakdown.h"
 #include "app/launch.h"  // set_sibling_dir_for_test, kPathBuilderExe
+#include "app/path_view.h"  // build_path_buttons
+#include "app/user_messages.h"  // kAnalysisOffSentence
 #include "core/model.h"
 #include "core/stars.h"
 #include "core/winstr.h"  // join_folder, os_path
@@ -33,6 +35,7 @@
 #include "ui/fonts.h"  // px()
 #include "ui/library_view.h"  // library_split_width
 #include "ui/preview_controller.h"
+#include "ui/preview_load_job.h"  // PreviewLoadJob::Progress, the load bar's step names
 #include "ui/text_role.h"
 #include "ui/theme.h"  // kBestPathColor, kWarningColor
 
@@ -40,17 +43,27 @@ namespace uitest {
 
 namespace {
 
-// The width the production rule gives a Dynamics or Stars number column for
-// `cells`: its header measured as a Label and its cells as Figures, the roles
-// those tables draw them in (ui/text_role.h).
-float figure_rule_width(const char* header, const std::vector<std::string>& cells) {
-    hydra::ui::ColumnSpec spec{header, false, 0.0f,
-                               hydra::ui::measure_in_role(hydra::ui::TextRole::Figure)};
-    spec.header_width_of = hydra::ui::measure_in_role(hydra::ui::TextRole::Label);
-    const std::vector<hydra::ui::ColumnSpec> specs = {spec};
-    const hydra::ui::MeasuredWidths measured = hydra::ui::measure_widths(
-        specs, cells.size(), [&](size_t r, size_t) { return cells[r]; });
-    return hydra::ui::place_columns(measured, specs, hydra::ui::TableRoom{}).widths[0];
+// Whether column `column` of the drawn table `t` holds its header and every
+// one of `cells` uncut: each text, measured in the role the Dynamics and
+// Stars tables draw it in (a Label header, Figure cells; ui/text_role.h), is
+// no wider than the room ImGui gave the column. ImGui truncates that room to
+// a whole pixel (ImTrunc on WidthGiven, imgui_tables.cpp), so each text's
+// width is truncated the same way before the compare.
+bool column_fits(const ImGuiTable* t, int column, const char* header,
+                 const std::vector<std::string>& cells) {
+    const float room = t->Columns[column].WidthGiven;
+    if (ImTrunc(hydra::ui::text_size(hydra::ui::TextRole::Label, header).x) > room) return false;
+    for (const std::string& cell : cells)
+        if (ImTrunc(hydra::ui::text_size(hydra::ui::TextRole::Figure, cell.c_str()).x) > room)
+            return false;
+    return true;
+}
+
+// The Dynamics tab's Totals ghost line for `bd` under this 2x Bass setting:
+// the count is the breakdown's own (DynamicsBreakdown::played_total), so a
+// test reads it from the record it holds, never types it.
+std::string ghosts_line(const hydra::app::DynamicsBreakdown& bd, bool bass2x) {
+    return "Ghosts: " + hydra::group_thousands(bd.played_total(bass2x).ghost);
 }
 
 // Sets the SP cap in the settings panel, then closes the panel (with Esc,
@@ -92,6 +105,14 @@ std::vector<ImGuiTable*> drawn_tables(int column, const char* header) {
         if (std::strcmp(ImGui::TableGetColumnName(t, column), header) == 0) found.push_back(t);
     }
     return found;
+}
+
+// The kicks table the Dynamics tab drew in the last two frames (##kicktable,
+// its first column headed "Pad"), or null when it drew none.
+ImGuiTable* drawn_kick_table() {
+    for (ImGuiTable* t : drawn_tables(0, "Pad"))
+        if (t->ID == t->OuterWindow->GetID("##kicktable")) return t;
+    return nullptr;
 }
 
 // Waits for the open song's analysis (wait_song_analyzed); true when it
@@ -268,38 +289,48 @@ void test_dynamics(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return !h.app->view_job && h.app->viewed.dynamics.has_value();
     }, 60));
+    if (ctx->IsError()) return;
 
+    // Every count below is the click's own breakdown (viewed.dynamics), read
+    // through the functions that word it (app/dynamics_breakdown.h), so the
+    // test types no count. The chart has 2x kicks, which the colour and "not
+    // counted" checks need.
+    const hydra::app::DynamicsBreakdown on = *h.app->viewed.dynamics;
+    IM_CHECK(on.row(hydra::app::DynamicsRow::Kick2x).all() > 0);
+    if (ctx->IsError()) return;
+    // The header's 2x kick fact, drawn after the facts line's dot (one
+    // TwoPartLine apart, render_headline), shown while this tab is active.
+    const std::string header_fact =
+        hydra::app::TwoPartLine{hydra::app::fact_separator_dot(),
+                                hydra::app::dynamics_kick2x_fact(on)}.whole();
+    // The kicks table's All column (4): the kicks, the 2x kicks and all kicks.
+    auto all_cells = [](const hydra::app::DynamicsBreakdown& bd, bool bass2x) {
+        return std::vector<std::string>{
+            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick).all()),
+            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick2x).all()),
+            hydra::group_thousands(bd.kicks_total(bass2x).all())};
+    };
 
     std::string text = visible_text(h);
-    IM_CHECK(text.find("Dynamics enabled: yes") != std::string::npos);
-    // The doctest pins 418 kicks and 37 2x kicks. The Kicks line and the
-    // Chart box show the same sentence; the status sits under the second.
-    IM_CHECK_EQ(count_on_screen(h, "2x kicks: 37 of 455 kick notes (8%)"), (size_t)2);
-    IM_CHECK(text.find("counted (2x Bass on)") != std::string::npos);
-    IM_CHECK(text.find("not counted") == std::string::npos);
-    // The header's fact, shown while the Dynamics tab is the active tab.
-    IM_CHECK(text.find("\xC2\xB7 37 2x kicks (8%)") != std::string::npos);
-    // The doctest pins 5 ghosts for this chart (all from the red snare).
-    IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    IM_CHECK(text.find(hydra::ui::detail::dynamics_enabled_text(on)) != std::string::npos);
+    // With 2x Bass on the Kicks line has no tail, so it and the Chart box
+    // show the same sentence; the status sits under the second.
+    IM_CHECK_EQ(count_on_screen(h, hydra::app::dynamics_kick2x_line(on)), (size_t)2);
+    IM_CHECK(text.find(hydra::app::dynamics_kick2x_status(true)) != std::string::npos);
+    IM_CHECK(text.find(hydra::app::dynamics_kick2x_status(false)) == std::string::npos);
+    IM_CHECK(text.find(header_fact) != std::string::npos);
+    IM_CHECK(text.find(ghosts_line(on, true)) != std::string::npos);
     // Colours, read off last frame's vertices: the Chart box's count line is
     // gold, and with 2x Bass on nothing in either box is orange.
     IM_CHECK(vertices_in("dynright", hydra::ui::kBestPathColor) > 0);
     IM_CHECK_EQ(vertices_in("dynright", hydra::ui::kWarningColor), (size_t)0);
     IM_CHECK_EQ(vertices_in("dynleft", hydra::ui::kWarningColor), (size_t)0);
-    // The kicks table's All is as wide as the width rule gives it for its
-    // three rows: the kicks, the 2x kicks and all kicks (2x Bass on).
+    // The kicks table's All column holds its header and its three cells uncut.
     {
-        const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
-        const std::vector<std::string> all = {
-            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick).all()),
-            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick2x).all()),
-            hydra::group_thousands(bd.kicks_total(true).all())};
-        ImGuiTable* kicks = nullptr;
-        for (ImGuiTable* t : drawn_tables(0, "Pad"))
-            if (t->ID == t->OuterWindow->GetID("##kicktable")) kicks = t;
+        ImGuiTable* kicks = drawn_kick_table();
         IM_CHECK(kicks != nullptr);
         if (ctx->IsError()) return;
-        IM_CHECK_EQ(kicks->Columns[4].WidthGiven, figure_rule_width("All", all));
+        IM_CHECK(column_fits(kicks, 4, "All", all_cells(on, true)));
     }
 
     // Toggle 2x Bass off via app state: the song is analyzed again under it
@@ -307,31 +338,30 @@ void test_dynamics(ImGuiTestContext* ctx) {
     h.app->settings.view_bass2x = false;
     h.app->commit_settings();
     ctx->Yield(2);
+    const std::string off_row =
+        hydra::app::dynamics_kick2x_row_label(h.app->settings.view_prodrums, false).whole();
     IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("2x kick (not counted)") != std::string::npos;
+        return visible_text(h).find(off_row) != std::string::npos;
     }, 5));
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->viewed.dynamics.has_value());
+    if (ctx->IsError()) return;
+    const hydra::app::DynamicsBreakdown& off = *h.app->viewed.dynamics;
     text = visible_text(h);
-    IM_CHECK(text.find("2x kicks: 37 of 455 kick notes (8%) \xC2\xB7 not counted (2x Bass off)") !=
+    IM_CHECK(text.find(hydra::app::dynamics_kicks_heading(off, false).whole()) !=
              std::string::npos);
     // The header shows the same count with 2x Bass off.
-    IM_CHECK(text.find("\xC2\xB7 37 2x kicks (8%)") != std::string::npos);
-    IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    IM_CHECK(text.find(header_fact) != std::string::npos);
+    IM_CHECK(text.find(ghosts_line(off, false)) != std::string::npos);
     // With 2x Bass off the not counted words are orange in both boxes: the
     // Chart box's status, and the Kicks line's ending and 2x kick row.
     IM_CHECK(vertices_in("dynright", hydra::ui::kWarningColor) > 0);
     IM_CHECK(vertices_in("dynleft", hydra::ui::kWarningColor) > 0);
     {
-        const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
-        const std::vector<std::string> all = {
-            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick).all()),
-            hydra::group_thousands(bd.row(hydra::app::DynamicsRow::Kick2x).all()),
-            hydra::group_thousands(bd.kicks_total(false).all())};
-        ImGuiTable* kicks = nullptr;
-        for (ImGuiTable* t : drawn_tables(0, "Pad"))
-            if (t->ID == t->OuterWindow->GetID("##kicktable")) kicks = t;
+        ImGuiTable* kicks = drawn_kick_table();
         IM_CHECK(kicks != nullptr);
         if (ctx->IsError()) return;
-        IM_CHECK_EQ(kicks->Columns[4].WidthGiven, figure_rule_width("All", all));
+        IM_CHECK(column_fits(kicks, 4, "All", all_cells(off, false)));
     }
 
     // Restore.
@@ -339,10 +369,10 @@ void test_dynamics(ImGuiTestContext* ctx) {
     h.app->commit_settings();
 }
 
-// The Dynamics count comes from the click, never the store (D87 item 1): the
-// first open counts the chart, and a second open counts it again from the
-// file and shows the same numbers. With 2x Bass on, the count is ready the
-// moment the click's analysis is, from that same job.
+// The Dynamics count comes with the click (D87 item 1: kick dynamics are no
+// longer stored): after another chart was open and the panel closed, a
+// reopen counts the chart again and shows the same numbers. With 2x Bass on,
+// the count is ready the moment the click's analysis is, from that same job.
 void test_dynamics_reopen(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
 
@@ -352,25 +382,30 @@ void test_dynamics_reopen(ImGuiTestContext* ctx) {
     if (ctx->IsError()) return;
 
     // Open Acid Romance on its Dynamics tab, wait for the click's job to
-    // count it, and check its 5 ghosts. The search goes through app state to
-    // avoid the ImGui input-buffer residue from the previous dynamics test.
-    auto open_and_count = [&] {
+    // count it, and check the tab shows that count's ghosts. Returns the
+    // count. The search goes through app state to avoid the ImGui
+    // input-buffer residue from the previous dynamics test.
+    auto open_and_count = [&]() -> std::optional<hydra::app::DynamicsBreakdown> {
         h.app->set_search("Acid Romance");
         ctx->Yield(2);
-        IM_CHECK(h.app->library_shown_count() > 0);
-        IM_CHECK(h.app->library_row_at(0).title == "Acid Romance");
+        IM_CHECK_RETV(h.app->library_shown_count() > 0, std::nullopt);
+        IM_CHECK_RETV(h.app->library_row_at(0).title == "Acid Romance", std::nullopt);
         open_details(ctx, 0);
-        if (ctx->IsError()) return;
+        if (ctx->IsError()) return std::nullopt;
         ctx->ItemClick("##DetailsTabs/Dynamics");
-        IM_CHECK(wait_until(ctx, [&] {
+        IM_CHECK_RETV(wait_until(ctx, [&] {
             return !h.app->view_job && h.app->viewed.dynamics.has_value();
-        }, 60));
-        IM_CHECK(visible_text(h).find("Ghosts: 5") != std::string::npos);
+        }, 60), std::nullopt);
+        const bool bass2x = h.app->settings.effective_bass2x();
+        IM_CHECK_RETV(visible_text(h).find(ghosts_line(*h.app->viewed.dynamics, bass2x)) !=
+                          std::string::npos,
+                      std::nullopt);
+        return h.app->viewed.dynamics;
     };
-    open_and_count();
-    if (ctx->IsError()) return;
+    const std::optional<hydra::app::DynamicsBreakdown> first = open_and_count();
+    if (ctx->IsError() || !first) return;
 
-    // Select a different chart so Acid Romance's count is dropped, then
+    // Open a different chart, so the panel's count is that chart's, then
     // close the panel so the tab stops rendering.
     h.app->set_search("");
     size_t other_idx = 0;
@@ -384,9 +419,11 @@ void test_dynamics_reopen(ImGuiTestContext* ctx) {
     h.app->show_details = false;
     ctx->Yield(3);
 
-    // Reopen Acid Romance. The click counts it again from the file.
-    open_and_count();
-    if (ctx->IsError()) return;
+    // Reopen Acid Romance. The click counts it again from the file, and the
+    // count is the same as the first.
+    const std::optional<hydra::app::DynamicsBreakdown> again = open_and_count();
+    if (ctx->IsError() || !again) return;
+    IM_CHECK(*again == *first);
 
     // ---- Scenario 2: the click's analysis and its count land together ----
     reset_app(h);
@@ -407,17 +444,17 @@ void test_dynamics_reopen(ImGuiTestContext* ctx) {
     ctx->Yield(3);
     IM_CHECK(h.app->viewed.dynamics.has_value());
     IM_CHECK(!h.app->view_job);
-    // The counts are on screen (the first chart has notes, so "All" > 0).
-    std::string text = visible_text(h);
-    IM_CHECK(text.find("Ghosts:") != std::string::npos ||
-             text.find("Accents:") != std::string::npos);
+    // The tab shows that count.
+    if (ctx->IsError()) return;
+    IM_CHECK(visible_text(h).find(ghosts_line(*h.app->viewed.dynamics, true)) !=
+             std::string::npos);
 }
 
 // At Hard the Dynamics tab counts Hard's own kicks (findings 10, 12, 255).
-// Pathfinder - When The Sunrise Breaks The Darkness has 1,613 Expert 2x kicks
-// (pitch 95) and no Hard ones; 139 of its 972 Hard kicks share a tick with a
-// 95. Those Expert notes must not reach Hard's counts: they add no "2x kicks"
-// row and take no Hard kick away (D20).
+// Pathfinder - When The Sunrise Breaks The Darkness charts 2x kicks at
+// Expert (pitch 95) and none at Hard. Those Expert notes must not reach
+// Hard's counts (D20): Hard's 2x kick row stays empty, the header carries no
+// 2x kick fact, and 2x Bass off changes no Hard total.
 void test_dynamics_hard(ImGuiTestContext* ctx) {
     Harness& h = harness(ctx);
     reset_app(h);
@@ -433,26 +470,47 @@ void test_dynamics_hard(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] {
         return !h.app->view_job && h.app->viewed.dynamics.has_value();
     }, 60));
+    if (ctx->IsError()) return;
+    const hydra::app::DynamicsBreakdown hard = *h.app->viewed.dynamics;
+
+    // The same chart counted at Expert by the count's own parse
+    // (app::load_dynamics_song): its 2x kicks are there to leak.
+    hydra::ChartReading expert = h.app->settings.reading();
+    expert.difficulty = hydra::Difficulty::Expert;
+    const hydra::app::DynamicsBreakdown at_expert = hydra::app::count_dynamics(
+        hydra::app::load_dynamics_song(h.app->selected->notespath, expert));
+    IM_CHECK(at_expert.row(hydra::app::DynamicsRow::Kick2x).all() > 0);
+    IM_CHECK(!hydra::app::dynamics_kick2x_fact(at_expert).empty());
+    // None reached Hard: no 2x kick row, so no header fact.
+    IM_CHECK_EQ(hard.row(hydra::app::DynamicsRow::Kick2x).all(), 0);
+    IM_CHECK(hydra::app::dynamics_kick2x_fact(hard).empty());
+    if (ctx->IsError()) return;
+
     std::string text = visible_text(h);
-    IM_CHECK(text.find("2x kicks: 0 of 972 kick notes (0%)") != std::string::npos);
-    IM_CHECK(text.find(" of 3,426 (") != std::string::npos);  // Dynamic notes: X of 3,426
-    // No 2x kicks: the header shows no 2x kick fact.
-    IM_CHECK(text.find("2x kicks (") == std::string::npos);
-    IM_CHECK(text.find("0 2x kicks") == std::string::npos);
+    IM_CHECK(text.find(hydra::app::dynamics_kick2x_line(hard)) != std::string::npos);
+    IM_CHECK(text.find(hydra::app::dynamics_kick2x_fact(at_expert)) == std::string::npos);
 
     // 2x Bass off: Totals is unchanged, because Hard has no 2x kicks to drop.
     h.app->settings.view_bass2x = false;
     h.app->commit_settings();
     IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("not counted (2x Bass off)") != std::string::npos;
+        return visible_text(h).find(hydra::app::dynamics_kick2x_status(false)) !=
+               std::string::npos;
     }, 5));
+    if (ctx->IsError()) return;
+    IM_CHECK(h.app->viewed.dynamics.has_value());
+    if (ctx->IsError()) return;
+    const hydra::app::DynamicsBreakdown& off = *h.app->viewed.dynamics;
+    IM_CHECK(off.played_total(false) == hard.played_total(true));
     text = visible_text(h);
-    IM_CHECK(text.find(" of 3,426 (") != std::string::npos);
-    IM_CHECK(text.find("2x kicks: 0 of 972 kick notes (0%)") != std::string::npos);
+    IM_CHECK(text.find(hydra::app::dynamics_kicks_heading(off, false).whole()) !=
+             std::string::npos);
+    IM_CHECK(text.find(ghosts_line(off, false)) != std::string::npos);
     // The row's tag does not depend on the count.
-    IM_CHECK(text.find("2x kick (not counted)") != std::string::npos);
-    IM_CHECK(text.find("2x kicks (") == std::string::npos);
-    IM_CHECK(text.find("0 2x kicks") == std::string::npos);
+    IM_CHECK(text.find(hydra::app::dynamics_kick2x_row_label(h.app->settings.view_prodrums,
+                                                             false).whole()) !=
+             std::string::npos);
+    IM_CHECK(text.find(hydra::app::dynamics_kick2x_fact(at_expert)) == std::string::npos);
 
     // Restore the defaults the next test relies on.
     h.app->settings.view_bass2x = true;
@@ -496,20 +554,37 @@ void test_stars(ImGuiTestContext* ctx) {
                        " (not counted toward stars)") != std::string::npos);
     IM_CHECK(text.find("With full solo bonus") != std::string::npos);
     // The factor column's title is the shared label.
-    IM_CHECK(text.find(hydra::app::kAverageMultiplierLabel) != std::string::npos);
-    for (int64_t cutoff : sc.cutoffs)
-        IM_CHECK(text.find(hydra::group_thousands(cutoff)) != std::string::npos);
-    for (int64_t with_solo : sc.with_solo)
-        IM_CHECK(text.find(hydra::group_thousands(with_solo)) != std::string::npos);
-    IM_CHECK(text.find("4.4") != std::string::npos);
-    // Cutoff is as wide as the width rule gives it for the seven cutoffs.
+    const size_t table_at = text.find(hydra::app::kAverageMultiplierLabel);
+    IM_CHECK(table_at != std::string::npos);
+    if (ctx->IsError()) return;
+    // Each star's row, in star order after the table's headers: its factor
+    // (kStarMultipliers, one decimal as the tab words it), its cutoff, then
+    // its with-solo figure, the last two star_cutoffs()'s. The tab draws a
+    // row's cells one after another, so a figure found after the previous
+    // row's last cell is in its own row, not in a headline or another row.
+    size_t at = table_at;
+    for (int stars = 1; stars <= hydra::kMaxStars; ++stars) {
+        char factor[16];
+        std::snprintf(factor, sizeof(factor), "%.1f",
+                      static_cast<double>(hydra::kStarMultipliers[stars - 1]));
+        at = text.find(factor, at);
+        IM_CHECK(at != std::string::npos);
+        if (ctx->IsError()) return;
+        at = text.find(hydra::group_thousands(sc.cutoffs[stars - 1]), at);
+        IM_CHECK(at != std::string::npos);
+        if (ctx->IsError()) return;
+        at = text.find(hydra::group_thousands(sc.with_solo[stars - 1]), at);
+        IM_CHECK(at != std::string::npos);
+        if (ctx->IsError()) return;
+    }
+    // Cutoff holds its header and the seven cutoffs uncut.
     {
         std::vector<std::string> cutoffs;
         for (int64_t cutoff : sc.cutoffs) cutoffs.push_back(hydra::group_thousands(cutoff));
         const std::vector<ImGuiTable*> tables = drawn_tables(2, "Cutoff");
         IM_CHECK_EQ(tables.size(), size_t{1});
         if (ctx->IsError()) return;
-        IM_CHECK_EQ(tables[0]->Columns[2].WidthGiven, figure_rule_width("Cutoff", cutoffs));
+        IM_CHECK(column_fits(tables[0], 2, "Cutoff", cutoffs));
     }
 
     // ---- A song with no drum solo ----
@@ -533,20 +608,64 @@ void test_stars(ImGuiTestContext* ctx) {
     IM_CHECK(text.find("With full solo bonus") == std::string::npos);
 }
 
+// Copies the corpus chart Allister - Overrated (its notes.mid and song.ini)
+// into a fresh scratch folder `folder` under the harness's temp dir, makes
+// that folder the only song folder and scans it. Returns the chart's copied
+// folder; the corpus itself is never touched.
+std::filesystem::path scan_scratch_overrated(ImGuiTestContext* ctx, const std::string& folder) {
+    namespace fs = std::filesystem;
+    Harness& h = harness(ctx);
+    const fs::path from = fs::u8path(corpus::root()) / "common" / "IB24" / "T1" / "Allister - Overrated";
+    const fs::path songs = fs::u8path(h.temp_dir) / folder;
+    const fs::path chart = songs / "Allister - Overrated";
+    fs::remove_all(songs);
+    fs::create_directories(chart);
+    fs::copy_file(from / "notes.mid", chart / "notes.mid");
+    fs::copy_file(from / "song.ini", chart / "song.ini");
+    h.app->settings.chartfolders = {songs.u8string()};
+    scan_library(ctx);
+    return chart;
+}
+
 // Hiding the details panel by any route tears it down. The "Rescan library"
 // button sets show_details = false directly and leaves the teardown to
 // tick(). Without it, the Preview would keep its audio device and keep playing.
+// The button shows only when the chart file is missing, so the test deletes
+// the notes file of a scratch copy and clicks the button the panel shows.
 void test_details_close_teardown(ImGuiTestContext* ctx) {
+    namespace fs = std::filesystem;
     Harness& h = harness(ctx);
-    if (!open_preview(ctx)) return;
+    reset_app(h);
+    const fs::path chart = scan_scratch_overrated(ctx, "close_teardown");
+    if (ctx->IsError()) return;
+    IM_CHECK_EQ(h.app->library_shown_count(), (size_t)1);
+    open_details(ctx, 0);
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/Preview");
+    IM_CHECK(wait_until(ctx, [&] {
+        return h.app->preview && h.app->preview->active() && !h.app->preview->loading();
+    }, 120));
+    if (ctx->IsError()) return;
+    IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
     ctx->ItemClick("**/Play");
     IM_CHECK(h.app->preview->playing());
+    if (ctx->IsError()) return;
 
-    // Exactly what the Rescan library button does. The button itself only
-    // shows when the chart file is missing, which never happens here.
-    h.app->request_scan = true;
-    h.app->show_details = false;
+    // The chart file goes; the panel's next file check (kFileCheckSeconds
+    // apart, D54) finds it missing and shows the button. The wait ends at
+    // once if the panel closes, since the button can then never show.
+    fs::remove(chart / "notes.mid");
+    IM_CHECK(wait_until(ctx, [&] {
+        return !h.app->details_open() || !h.app->details_ui.file_ok;
+    }, hydra::ui::AppState::kFileCheckSeconds * 3));
+    IM_CHECK(h.app->details_open());
+    if (ctx->IsError()) return;
+    ctx->Yield(2);
+    IM_CHECK(ctx->ItemExists("**/Rescan library"));
+    if (ctx->IsError()) return;
+    ctx->ItemClick("**/Rescan library");
     ctx->Yield(3);
+    IM_CHECK(!h.app->details_open());
     IM_CHECK(!h.app->preview->active());
     IM_CHECK(!h.app->preview->playing());
 
@@ -567,15 +686,7 @@ void test_panel_follows_rescan(ImGuiTestContext* ctx) {
     namespace fs = std::filesystem;
     Harness& h = harness(ctx);
     reset_app(h);
-    const fs::path from = fs::u8path(corpus::root()) / "common" / "IB24" / "T1" / "Allister - Overrated";
-    const fs::path songs = fs::u8path(h.temp_dir) / "follow_rescan";
-    const fs::path chart = songs / "Allister - Overrated";
-    fs::remove_all(songs);
-    fs::create_directories(chart);
-    fs::copy_file(from / "notes.mid", chart / "notes.mid");
-    fs::copy_file(from / "song.ini", chart / "song.ini");
-    h.app->settings.chartfolders = {songs.u8string()};
-    scan_library(ctx);
+    const fs::path chart = scan_scratch_overrated(ctx, "follow_rescan");
     if (ctx->IsError()) return;
     IM_CHECK_EQ(h.app->library_shown_count(), (size_t)1);
     open_details(ctx, 0);
@@ -611,15 +722,23 @@ void test_panel_follows_rescan(ImGuiTestContext* ctx) {
 }
 
 // The Preview's loading bar while a real load runs: every frame's label
-// starts with one of the four step names, and the bar never moves backwards.
-// The test charts load in a few frames, so this sees few polls; the bar's
-// arithmetic itself is pinned in tests/test_preview_load_progress.cpp.
+// starts with one of the load's step names, and the bar never moves
+// backwards. The step names are PreviewLoadJob::Progress::label()'s own, one
+// per Step with no bytes counted (the name alone). The bar's arithmetic is
+// pinned in tests/test_preview_load_progress.cpp. A run that sees no frame
+// of the load fails: it checked nothing.
 void test_preview_load_bar(ImGuiTestContext* ctx) {
+    using Job = hydra::ui::PreviewLoadJob;
     Harness& h = harness(ctx);
     start_preview(ctx);
     if (ctx->IsError()) return;
-    static const char* const kSteps[] = {"Reading chart", "Opening audio", "Building scene",
-                                         "Building highway"};
+    std::vector<std::string> steps;
+    for (Job::Step s : {Job::Step::Reading, Job::Step::Opening, Job::Step::Building,
+                        Job::Step::Highway}) {
+        Job::Progress p;
+        p.step = s;
+        steps.push_back(p.label());
+    }
     int polls = 0;
     int bad_labels = 0;
     int backwards = 0;
@@ -630,7 +749,7 @@ void test_preview_load_bar(ImGuiTestContext* ctx) {
         const hydra::ui::PreviewController::LoadProgress lp = h.app->preview->load_progress();
         ++polls;
         bool named = false;
-        for (const char* s : kSteps) named = named || lp.label.rfind(s, 0) == 0;
+        for (const std::string& s : steps) named = named || lp.label.rfind(s, 0) == 0;
         if (!named) {
             ++bad_labels;
             if (first_bad.empty()) first_bad = lp.label;
@@ -640,6 +759,7 @@ void test_preview_load_bar(ImGuiTestContext* ctx) {
         return false;
     }, 120));
     ctx->LogInfo("load bar polled %d times; first bad label '%s'", polls, first_bad.c_str());
+    IM_CHECK(polls > 0);
     IM_CHECK_EQ(bad_labels, 0);
     IM_CHECK_EQ(backwards, 0);
     IM_CHECK_STR_EQ(h.app->preview->error().c_str(), "");
@@ -652,26 +772,36 @@ void test_panel_open_close(ImGuiTestContext* ctx) {
     reset_app(h);
     scan_library(ctx);
     if (ctx->IsError()) return;
-    const float main_w = ctx->GetWindowByRef("//Hydra")->Size.x;
     auto library_w = [&] { return ctx->WindowInfo("//Hydra/##library").Window->Size.x; };
-    IM_CHECK(library_w() > main_w * 0.9f);
+    const float closed_w = library_w();
 
+    // Open, the library is as wide as the split gives it (library_split_width
+    // at the remembered share, as test_panel_split checks the default), and
+    // the panel sits beside it, not over it.
     open_details(ctx, 0);
     if (ctx->IsError()) return;
-    IM_CHECK(library_w() < main_w * 0.7f);
-    IM_CHECK(ctx->WindowInfo("//Hydra/##songpanel").Window != nullptr);
+    ctx->Yield(2);
+    ImGuiWindow* panel = ctx->WindowInfo("//Hydra/##songpanel").Window;
+    IM_CHECK(panel != nullptr);
+    if (ctx->IsError()) return;
+    const float room = library_w() + panel->Size.x;
+    IM_CHECK_FLOAT_NEAR_EQ(library_w(),
+                           hydra::ui::library_split_width(room, hydra::ui::library_share()), 1.0f);
+    IM_CHECK(library_w() < closed_w);
     IM_CHECK(!ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId));  // the panel is not a modal
 
+    // The X closes it and the library gets back the width it had closed.
     ctx->ItemClick("X##closepanel");
     ctx->Yield(3);
     IM_CHECK(!h.app->details_open());
-    IM_CHECK(library_w() > main_w * 0.9f);
+    IM_CHECK_EQ(library_w(), closed_w);
 
     open_details(ctx, 0);
     if (ctx->IsError()) return;
     ctx->KeyPress(ImGuiKey_Escape);
     ctx->Yield(3);
     IM_CHECK(!h.app->details_open());
+    IM_CHECK_EQ(library_w(), closed_w);
 }
 
 // The split beside the panel. A drag of the library's edge is the only thing
@@ -892,6 +1022,7 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
         // right box carries its longest line.
         {"themata", "Themata"},
     };
+    int swept_with_rows = 0;  // Paths sweeps whose best path drew activation rows
     for (const Chart& c : charts) {
         open_titled(ctx, c.search, c.title);
         if (ctx->IsError()) return;
@@ -905,23 +1036,38 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
             set_panel_ref(ctx);
             ctx->ItemClick("**/##DetailsTabs/Paths");
             ctx->Yield(2);
-            if (ctx->ItemExists("**/Expand all")) ctx->ItemClick("**/Expand all");
-            ctx->Yield(2);
+            // A best path with activations draws its rows under the Expand all
+            // toggle, which reads Collapse all once the first share has opened
+            // them; neither toggle there means the rows were never drawn. A
+            // best path with none (Themata's) draws no toggle at all.
+            if (!h.app->viewed.record->best_path().has_activations()) {
+                IM_CHECK(!ctx->ItemExists("**/Expand all"));
+                IM_CHECK(!ctx->ItemExists("**/Collapse all"));
+            } else {
+                ++swept_with_rows;
+                if (ctx->ItemExists("**/Expand all")) ctx->ItemClick("**/Expand all");
+                ctx->Yield(2);
+                IM_CHECK(ctx->ItemExists("**/Collapse all"));
+            }
+            if (ctx->IsError()) return;
             open_paths_folds(ctx);  // the backend tables and the two folds under the rows
             overflowing_windows(at + "Paths", found);
             ctx->ItemClick("**/##DetailsTabs/Preview");
-            wait_until(ctx, [&] { return h.app->preview && h.app->preview->active() &&
-                                         !h.app->preview->loading(); }, 120);
+            IM_CHECK(wait_until(ctx, [&] { return h.app->preview && h.app->preview->active() &&
+                                                  !h.app->preview->loading(); }, 120));
+            if (ctx->IsError()) return;
             ctx->Yield(3);
             overflowing_windows(at + "Preview", found);
             ctx->ItemClick("**/##DetailsTabs/Dynamics");
-            ctx->Yield(10);
-            if (std::strcmp(c.title, "Themata") == 0)
-                IM_CHECK(wait_until(ctx, [&] {
-                    return visible_text(h).find(
-                               "Dynamics enabled: no (markings ignored by Clone Hero)") !=
-                           std::string::npos;
-                }, 60));
+            IM_CHECK(wait_until(ctx, [&] { return h.app->viewed.dynamics.has_value(); }, 60));
+            if (ctx->IsError()) return;
+            ctx->Yield(3);
+            // Themata is a MIDI chart without [ENABLE_CHART_DYNAMICS]; its
+            // enabled line is the longest the right box draws.
+            const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
+            if (std::strcmp(c.title, "Themata") == 0) IM_CHECK(!bd.dynamics_enabled);
+            IM_CHECK(visible_text(h).find(hydra::ui::detail::dynamics_enabled_text(bd)) !=
+                     std::string::npos);
             overflowing_windows(at + "Dynamics", found);
             ctx->ItemClick("**/##DetailsTabs/Stars");
             ctx->Yield(3);
@@ -929,6 +1075,9 @@ void test_layout_sweep(ImGuiTestContext* ctx) {
             if (ctx->IsError()) return;
         }
     }
+    // The sweep must have opened real activation rows on some chart, or the
+    // Paths checks above measured nothing.
+    IM_CHECK(swept_with_rows > 0);
     for (const std::string& f : found) std::fprintf(stderr, "OVERFLOW %s\n", f.c_str());
     IM_CHECK_EQ(found.size(), (size_t)0);
 }
@@ -1006,6 +1155,17 @@ void test_panel_prev_next(ImGuiTestContext* ctx) {
     ctx->ItemClick("<##prevsong");
     ctx->Yield(2);
     IM_CHECK(h.app->selected->notespath == h.app->view_row(0).notespath);
+
+    // The other end: at the last row ">" is greyed and "<" is not.
+    const size_t rows = h.app->view_row_count();
+    IM_CHECK(rows > 1);
+    if (ctx->IsError()) return;
+    h.app->select(h.app->view_row(rows - 1), hydra::ui::SelectionSource::Click);
+    ctx->Yield(3);
+    IM_CHECK(h.app->details_open());
+    IM_CHECK(h.app->selected->notespath == h.app->view_row(rows - 1).notespath);
+    IM_CHECK((ctx->ItemInfo(">##nextsong").ItemFlags & ImGuiItemFlags_Disabled) != 0);
+    IM_CHECK((ctx->ItemInfo("<##prevsong").ItemFlags & ImGuiItemFlags_Disabled) == 0);
 }
 
 // The panel's top on Burnout (Green Day, charted by Hoph2o), before and after
@@ -1024,8 +1184,9 @@ void test_panel_headline(ImGuiTestContext* ctx) {
         IM_CHECK(wait_until(ctx, [&] { return gate.started() >= 1; }, 30));
         text = visible_text(h);
         IM_CHECK(text.find("Green Day \xC2\xB7 charted by Hoph2o") != std::string::npos);
-        IM_CHECK(text.find("378,315") == std::string::npos);  // no headline yet
-        IM_CHECK(text.find("2x kicks (") == std::string::npos);  // nor its 2x kick fact
+        // No headline yet: the click holds no record, so nothing draws one.
+        IM_CHECK(!h.app->viewed.record.has_value());
+        IM_CHECK(text.find("Optimal path") == std::string::npos);
         // An artist made only of Clone Hero tags reads "(unknown)", as a
         // title does (D50 item 5).
         h.app->selected->artist = "<color=#FF8000></color><b></b>";
@@ -1048,22 +1209,48 @@ void test_panel_headline(ImGuiTestContext* ctx) {
 
     wait_song_analyzed(ctx);
     if (ctx->IsError()) return;
+    // Every figure below is the click's record's, read at run time: the best
+    // score (optimal_score), the best path's string and its stars, which the
+    // headline takes from the summary row and must equal path_stars.
+    const hydra::HydraRecord& record = *h.app->viewed.record;
+    IM_CHECK(!record.paths.empty());
+    if (ctx->IsError()) return;
+    const hydra::Path& best = record.best_path();
+    const std::string score = hydra::group_thousands(*record.optimal_score());
     IM_CHECK(wait_until(ctx, [&] {
-        return visible_text(h).find("378,315") != std::string::npos;
+        return visible_text(h).find(score) != std::string::npos;
     }, 5));
     text = visible_text(h);
-    IM_CHECK(text.find("3- 1 2") != std::string::npos);
-    // The whole facts line, read off one run of this test on the 2x kick
-    // count change: Burnout has no 2x kicks, so nothing follows the stars.
-    // The count itself is there, so the empty fact is the chart's, not a
-    // missing count's.
+    IM_CHECK(text.find(best.pathstring()) != std::string::npos);
+    IM_CHECK(h.app->viewed.summary.has_scored_best_path());
+    IM_CHECK(h.app->viewed.summary.stars == std::optional<int>(hydra::path_stars(best)));
+    const std::string facts = std::string("Optimal path") + hydra::app::kFactSeparator +
+                              hydra::counted(hydra::path_stars(best), "star", "stars");
+    IM_CHECK(text.find(facts) != std::string::npos);
+    // The 2x kick fact follows the stars only when the chart has 2x kicks;
+    // Burnout's count has none, so nothing follows them. The count itself is
+    // there, so the empty fact is the chart's, not a missing count's.
     IM_CHECK(h.app->viewed.dynamics.has_value());
-    IM_CHECK(text.find("Optimal path \xC2\xB7 7 stars") != std::string::npos);
-    IM_CHECK(text.find("Optimal path \xC2\xB7 7 stars \xC2\xB7") == std::string::npos);
-    IM_CHECK(text.find("2x kicks (") == std::string::npos);
-    // The hardest timing sits beside each path in the list, not in the headline.
+    if (ctx->IsError()) return;
+    IM_CHECK(hydra::app::dynamics_kick2x_fact(*h.app->viewed.dynamics).empty());
+    IM_CHECK(text.find(hydra::app::TwoPartLine{facts, hydra::app::fact_separator_dot()}.whole()) ==
+             std::string::npos);
+    // The hardest timing sits beside each path in the list (the best path's
+    // button, build_path_buttons), not in the headline.
     IM_CHECK(text.find("hardest squeeze") == std::string::npos);
-    IM_CHECK(text.find("163.0 ms") != std::string::npos);
+    const hydra::app::PathButtonsView list = hydra::app::build_path_buttons(
+        record, h.app->settings.depth_mode, h.app->settings.depth_value);
+    const hydra::app::PathButtonView* best_button = nullptr;
+    for (const hydra::app::PathButtonView& b : list.buttons)
+        if (b.path == &best) best_button = &b;
+    IM_CHECK(best_button != nullptr);
+    if (ctx->IsError()) return;
+    // Some path in the list carries a hardest timing, and it is on screen
+    // (a chart whose list names none would check nothing).
+    bool timing_shown = false;
+    for (const hydra::app::PathButtonView& b : list.buttons)
+        if (!b.timing.empty() && text.find(b.timing) != std::string::npos) timing_shown = true;
+    IM_CHECK(timing_shown);
     // The click's record is the engine's own, so the panel never calls it out
     // of date; only the library's tooltip can (D87 item 6).
     IM_CHECK(text.find("Out of date") == std::string::npos);
@@ -1140,9 +1327,9 @@ void test_view_rules_broken(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Paths");
     ctx->Yield(3);
     std::string text = visible_text(h);
-    // The panel uses the toolbar's sentence (D114 item 13).
-    IM_CHECK(text.find("hydra_rules.ini has an error, so analysis is off until the file is fixed "
-                       "and Hydra is restarted.") != std::string::npos);
+    // The panel uses the toolbar's sentence (D114 item 13), whose one home is
+    // kAnalysisOffSentence (app/user_messages.h).
+    IM_CHECK(text.find(hydra::app::kAnalysisOffSentence) != std::string::npos);
     IM_CHECK(text.find("Analysis is off until") == std::string::npos);
     IM_CHECK(!h.app->viewed.record.has_value());
     IM_CHECK(!ctx->ItemExists("**/##path0"));
@@ -1151,9 +1338,11 @@ void test_view_rules_broken(ImGuiTestContext* ctx) {
     ctx->ItemClick("##DetailsTabs/Dynamics");
     ctx->Yield(3);
     IM_CHECK(h.app->viewed.dynamics.has_value());
+    if (ctx->IsError()) return;
+    const hydra::app::DynamicsBreakdown& bd = *h.app->viewed.dynamics;
     text = visible_text(h);
-    IM_CHECK(text.find("Dynamics enabled: yes") != std::string::npos);
-    IM_CHECK(text.find("Ghosts: 5") != std::string::npos);
+    IM_CHECK(text.find(hydra::ui::detail::dynamics_enabled_text(bd)) != std::string::npos);
+    IM_CHECK(text.find(ghosts_line(bd, h.app->settings.effective_bass2x())) != std::string::npos);
     IM_CHECK(h.app->store->record_count() == 0);  // nothing saved
 }
 
