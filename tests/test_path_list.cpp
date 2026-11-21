@@ -265,6 +265,39 @@ TEST_CASE("path_identity: engine paths share one exactly when score, starts and 
     });
 }
 
+// Two answers to "are these the same path" exist: path_identity, which the
+// Paths tab's all-0 dedupe and the Preview's overlay key read, and the
+// notation text, which full_pin_mismatch compares. This case only finds out
+// whether they ever disagree on a path the search returns. It picks no side:
+// a failure names the chart (the captured corpus path) and both paths, for
+// the user to decide which answer is right.
+TEST_CASE("path_identity and pathstring: corpus paths share one exactly when they share the other") {
+    for_each_corpus_record([](const HydraRecord& rec) {
+        std::vector<const Path*> paths = rec.all_paths();
+        const std::vector<const Path*> zero = rec.all_allzero_paths();
+        paths.insert(paths.end(), zero.begin(), zero.end());
+
+        std::vector<std::string> ids;
+        std::vector<std::string> texts;
+        for (const Path* p : paths) {
+            ids.push_back(path_identity(*p));
+            texts.push_back(p->pathstring());
+        }
+        for (size_t i = 0; i < paths.size(); ++i) {
+            for (size_t j = 0; j < i; ++j) {
+                const bool same_identity = ids[i] == ids[j];
+                const bool same_text = texts[i] == texts[j];
+                CHECK_MESSAGE(same_identity == same_text,
+                              ("the two same-path tests disagree: path '" + texts[j] +
+                               "' (identity " + ids[j] + ") and path '" + texts[i] +
+                               "' (identity " + ids[i] + "): " +
+                               (same_identity ? "same identity, different text"
+                                              : "same text, different identity")));
+            }
+        }
+    });
+}
+
 TEST_CASE("build_multsqueezes: one entry per squeeze, each read from that squeeze") {
     // build_multsqueezes words its rows with Pro Drums on.
     size_t squeezes = 0;
