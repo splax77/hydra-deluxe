@@ -50,15 +50,6 @@ namespace {
 using hydra::ui::ReportBuild;
 using hydra::ui::ReportOutOfDate;
 
-// Waits for the comparison's job, then collects it as the app's frame does
-// (finish_path_report does the same for the path report's job).
-void finish_dm_report(AppState& app) {
-    REQUIRE(app.dm_report_job != nullptr);
-    wait_until([&] { return app.dm_report_job->finished(); }, "the comparison's job to finish");
-    app.update_background_jobs();
-    REQUIRE(app.dm_report_job == nullptr);
-}
-
 // A report hold that waits for `release` before the job reads the store.
 // Declare `release` BEFORE the AppState: the app joins the job's thread in
 // its destructor, so a failed check before the release must not destroy the
@@ -447,18 +438,6 @@ TEST_CASE("a comparison row click selects the chart and keeps the bar's mode") {
     CHECK(app->selected->notespath == clicked.notespath);
 }
 
-namespace {
-
-// The canned leaderboard: one player, whose one score is chart 0's.
-const char* const kDmUsersJson =
-    R"([{"id":"111","username":"alice","elo":1500,"stats":{"total_scores":1,"total_score":1}}])";
-const char* const kDmScoresJson =
-    R"({"scores":[{"identifier":"hash000","song_name":"x","artist":"y","charter_refs":["z"],)"
-    R"("score":100000,"is_fc":0,"percent":95,"speed":100,"rank":1,"posted":"2026-01-01"}],)"
-    R"("unknown_scores":[]})";
-
-}  // namespace
-
 // ---- opening the report analyzes first (D249 item 8) --------
 
 namespace {
@@ -806,13 +785,6 @@ namespace {
 
 using hydra::app::report::GeneratedReport;
 
-// The canned leaderboard of kDmUsersJson and kDmScoresJson, answered at once.
-hydra::net::Fetcher canned_dm_fetcher() {
-    return [](const std::string& url, const std::atomic<bool>*) -> std::string {
-        return url.find("/all-users") != std::string::npos ? kDmUsersJson : kDmScoresJson;
-    };
-}
-
 // Whether two path reports show the same page: every count, line and row the
 // window reads.
 void check_same_path_report(const GeneratedReport& got, const GeneratedReport& want) {
@@ -855,12 +827,6 @@ void save_during_report_lookup(AppState& app, std::atomic<bool>& saved,
         if (std::this_thread::get_id() == draw || saved.exchange(true)) return;
         store->save(prepared);
     });
-}
-
-// The same, saving the analysis that kept no paths (save_batch_record's).
-void save_during_report_lookup(AppState& app, std::atomic<bool>& saved) {
-    save_during_report_lookup(app, saved,
-                              hydra::test::empty_analysis_under(app.settings.profile()));
 }
 
 // What a reader of `store` that cannot open reads as: the store's own
@@ -966,7 +932,11 @@ TEST_CASE("a path report's separate store calls read one moment") {
     const ChartLibraryEntry song = corpus_chart("pathcalls");
     std::unique_ptr<AppState> app = app_with(paths, {song});
     app->report_confirm_above = 0;
-    save_during_report_lookup(*app, saved);
+    // The mid-read save is the engine's analysis of that chart, as a batch
+    // running beside the report would file it.
+    const hydra::app::AnalysisResult analyzed =
+        hydra::app::analyze_chart_file(song.notespath, app->settings.to_analysis_settings());
+    save_during_report_lookup(*app, saved, analyzed.record);
     app->request_path_report();
     REQUIRE(app->path_report_awaits_confirm());
     REQUIRE(app->batch_job == nullptr);
@@ -990,9 +960,10 @@ TEST_CASE("a path report's separate store calls read one moment") {
               hydra::KindedError(hydra::ErrorKind::NoRecords, "no records stored yet")));
 }
 
-TEST_CASE("a report whose connection cannot open fails with the store's sentence") {
+// The comparison's half needs a leaderboard reply, and no saved real one is
+// checked in, so only the path report is checked here.
+TEST_CASE("a path report whose connection cannot open fails with the store's sentence") {
     ScratchPaths paths("appstate_reportopenfail");
-    const ScopedHook fetcher(hydra::net::set_fetcher, canned_dm_fetcher());
     std::unique_ptr<AppState> app = app_with_result(paths, "reportopenfail");
     // The window's own reader opens now, so the armed open below is a report's.
     app->store->reader().chart_library_count();
@@ -1007,15 +978,6 @@ TEST_CASE("a report whose connection cannot open fails with the store's sentence
     hydra::ui::path_report_input(*app).callbacks.try_again();
     finish_path_report(*app);
     CHECK(app->path_report_build() == ReportBuild::Ready);
-
-    app->store->fail_next_reader_open_for_test();
-    app->start_dm_report("111", "alice");
-    finish_dm_report(*app);
-    CHECK(app->dm_report_build() == ReportBuild::Failed);
-    CHECK(app->dm_report.message == sentence);
-    hydra::ui::dm_report_input(*app).callbacks.try_again();
-    finish_dm_report(*app);
-    CHECK(app->dm_report_build() == ReportBuild::Ready);
 }
 
 // The comparison's half needs a leaderboard reply, and no saved real one is
