@@ -314,11 +314,23 @@ class Filters(Base):
         self.assertEqual(code, 2)
         self.assertIn("no-such-id", err)
 
+    def summary_fields(self, out, kind, effort):
+        """The fields of the one summary line for this type and effort."""
+        found = [text.split() for text in out.splitlines()
+                 if text.split()[:2] == [kind, effort]]
+        self.assertEqual(len(found), 1, out)
+        return found[0]
+
     def test_summary_groups_by_type_and_effort(self):
+        # The two high-effort executors' costs, as the script's own rows give them.
+        costs = [float(row["cost"]) for row in self.rows().values()
+                 if (row["type"], row["effort"]) == ("executor", "high")]
+        self.assertEqual(len(costs), 2, costs)
         _, out, _ = self.run_script()
-        summary = self.line(out, "executor         high")
-        self.assertEqual(summary.split()[2:6], ["2", "9.15", "9.15", "12.20"])
-        self.assertEqual(self.line(out, "scout            high").split()[2], "1")
+        self.assertEqual(self.summary_fields(out, "executor", "high")[2:6],
+                         ["2", "%.2f" % ((costs[0] + costs[1]) / 2),
+                          "%.2f" % ((costs[0] + costs[1]) / 2), "%.2f" % max(costs)])
+        self.assertEqual(self.summary_fields(out, "scout", "high")[2], "1")
 
 
 if __name__ == "__main__":
