@@ -11,7 +11,11 @@ files count as code is facts_format.CODE_SUFFIXES; other files are counted by
 folder and suffix as skipped, so none is left out silently.
 
 It writes three files to <folder>:
-  seams.tsv       one row per test and hit grade() gives, with the hit's kind
+  seams.tsv       one row per test and hit grade() gives, with the hit's kind.
+                  test_case is grade()'s own flag: "yes" for a TEST_CASE, "no"
+                  for a header struct or harness function grade() lists as a
+                  test because nothing else in its file names it, and "" for a
+                  hit with no test
   coverage.tsv    each seam name a src/ header declares and tests/ names,
                   and whether any hit line names it
   file_kinds.tsv  per folder and suffix: files, files with no test, tests, hits
@@ -134,6 +138,7 @@ def search(copy, patterns=None):
                         "test": t.label() if t else NO_TEST,
                         "test_file": shown(t.file) if t else "",
                         "test_line": str(t.start) if t else "",
+                        "test_case": ("yes" if t.is_test_case else "no") if t else "",
                         "hit_file": shown(hp),
                         "hit_line": str(hn),
                         "patterns": ", ".join(labels),
@@ -205,7 +210,7 @@ def write_tsv(path, header, rows):
             f.write("\t".join(cells) + "\n")
 
 
-SEAM_COLUMNS = ("test", "test_file", "test_line", "hit_file", "hit_line", "patterns", "kind")
+SEAM_COLUMNS = ("test", "test_file", "test_line", "test_case", "hit_file", "hit_line", "patterns", "kind")
 COVERAGE_COLUMNS = ("name", "state", "declared_at", "named_at")
 KIND_COLUMNS = ("file_kind", "state", "files", "no_test", "tests", "hits")
 

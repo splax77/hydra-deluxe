@@ -129,6 +129,14 @@ class Run(unittest.TestCase):
         self.run_script()
         self.assertNotIn("set_lookup_hold_for_test", {c["name"] for c in self.tsv("coverage.tsv")})
 
+    def test_a_header_struct_listed_as_a_test_is_marked_not_a_test_case(self):
+        self.run_script()
+        self.assertEqual({r["test_case"] for r in self.seams("update offered")}, {"yes"})
+        header = [r for r in self.seams("UpdateWorld")]
+        self.assertTrue(header)
+        self.assertEqual({r["test_case"] for r in header}, {"no"})
+        self.assertEqual({r["test_case"] for r in self.seams("no test")}, {""})
+
     def test_a_hit_no_test_owns_is_kept_as_no_test(self):
         out = self.run_script()
         rows = self.seams("no test")
