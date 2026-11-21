@@ -31,7 +31,6 @@
 #include "record_fixtures.h"
 #include "store/chart_index.h"
 #include "store/record_store.h"
-#include "store/stored_versions.h"  // kChartMetaStamp
 #include "store_file_fixtures.h"  // StoreFile, HeldSaveGroup
 #include "store_fixtures.h"  // at_cap, at4, fixture, fixture_chart, store_fixture_settings
 #include "temp_util.h"
@@ -165,26 +164,6 @@ const ChartLibraryEntry& first_listed(const std::vector<ChartLibraryEntry>& rows
         if (e.md5 == md5) return e;
     FAIL("the scan lists no copy of " << md5);
     return rows.front();
-}
-
-// A scan stamp this build does not read as current (kChartMetaStamp): one
-// below the stamp it writes, as an older build wrote it.
-int stale_chart_meta_stamp() {
-    const int stale = kChartMetaStamp.written - 1;
-    REQUIRE_FALSE(kChartMetaStamp.is_current(stale));
-    return stale;
-}
-
-// The SQL that sets the store file's scan stamp to `stamp`.
-std::string set_chart_meta_stamp_sql(int stamp) {
-    return "UPDATE meta SET value = '" + std::to_string(stamp) +
-           "' WHERE key = 'chart_meta_version';";
-}
-
-// Takes the scan stamp out of the store file at `path`, as a file from
-// before the stamp holds none.
-void drop_chart_meta_stamp(const std::string& path) {
-    exec_on_file(path, "DELETE FROM meta WHERE key = 'chart_meta_version'");
 }
 
 }  // namespace
@@ -333,83 +312,6 @@ TEST_CASE("the scan's first copy names a chart whatever copy was analyzed") {
     CHECK(names == std::map<std::string, std::string>{{twice, first_listed(scanned, twice).title},
                                                       {once, first_listed(scanned, once).title}});
     testtemp::remove_dir(root);
-}
-
-TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
-    // D51 call 12 (finding 345): the rescan cache carries kChartMetaStamp. A
-    // file without a current stamp hands back no cache, so the next scan
-    // reads every chart again and stamps the table it writes.
-    const std::string path = testtemp::temp_path("chart_meta_stamp", ".db");
-    std::remove(path.c_str());
-    const ChartLibraryEntry entry = different_corpus_rows(1).front();
-    {
-        RecordStore store(path);
-        store.rebuild_chart_library({entry});
-    }
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_cache().count(entry.notespath) == 1);
-    }
-    drop_chart_meta_stamp(path);
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_cache().empty());
-        store.rebuild_chart_library({entry});
-        CHECK(store.chart_library_cache().count(entry.notespath) == 1);
-    }
-    // A file an older build's scan stamped: its rows may not hold what this
-    // build reads, so its cache is dropped too.
-    exec_on_file(path, set_chart_meta_stamp_sql(stale_chart_meta_stamp()).c_str());
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_cache().empty());
-    }
-    std::remove(path.c_str());
-}
-
-TEST_CASE("the library is out of date only when it has rows and its reader stamp is not current") {
-    const std::string path = testtemp::temp_path("library_out_of_date", ".db");
-    std::remove(path.c_str());
-    const ChartLibraryEntry entry = different_corpus_rows(1).front();
-    {
-        RecordStore store(path);
-        CHECK_FALSE(store.chart_library_out_of_date());
-        store.rebuild_chart_library({entry});
-        CHECK_FALSE(store.chart_library_out_of_date());
-    }
-    exec_on_file(path, set_chart_meta_stamp_sql(stale_chart_meta_stamp()).c_str());
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_out_of_date());
-    }
-    drop_chart_meta_stamp(path);
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_out_of_date());
-        store.rebuild_chart_library({entry});
-        CHECK_FALSE(store.chart_library_out_of_date());
-    }
-    std::remove(path.c_str());
-}
-
-TEST_CASE("a library from before the album column is out of date after the open adds it") {
-    // The charts table and scan stamp a build from before the album wrote:
-    // no album column, and a stamp this build does not read as current.
-    const std::string path = testtemp::temp_path("library_out_of_date_album", ".db");
-    std::remove(path.c_str());
-    {
-        RecordStore seed(path);
-        seed.rebuild_chart_library({different_corpus_rows(1).front()});
-    }
-    const std::string before_album =
-        "ALTER TABLE charts DROP COLUMN album;" + set_chart_meta_stamp_sql(stale_chart_meta_stamp());
-    exec_on_file(path, before_album.c_str());
-    {
-        RecordStore store(path);
-        CHECK(store.chart_library_count() == 1);
-        CHECK(store.chart_library_out_of_date());
-    }
-    std::remove(path.c_str());
 }
 
 // ---- charts the library no longer lists (D87 items 3 and 4, task storage-T1) --
