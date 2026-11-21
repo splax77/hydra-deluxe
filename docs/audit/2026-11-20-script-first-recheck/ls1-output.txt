@@ -1,6 +1,6 @@
-files read: 430 | no test: 67 | skipped: 175
-file kind: tests .cpp | files: 143 | no test: 0 | tests: 2172 | hits: 337
-file kind: tests .h | files: 56 | no test: 2 | tests: 156 | hits: 4
+files read: 430 | no test: 71 | skipped: 175
+file kind: tests .cpp | files: 143 | no test: 0 | tests: 2171 | hits: 337
+file kind: tests .h | files: 56 | no test: 2 | tests: 155 | hits: 4
 skipped: tests .txt | files: 1
 file kind: tests/fuzz .cpp | files: 6 | no test: 6 | tests: 0 | hits: 0
 skipped: tests/fuzz .dict | files: 1
@@ -20,36 +20,36 @@ skipped: tests/single_owner/rules/search .json | files: 3
 skipped: tests/single_owner/rules/store .json | files: 5
 skipped: tests/single_owner/rules/tests .json | files: 1
 skipped: tests/single_owner/rules/ui .json | files: 15
-file kind: tests/ui .cpp | files: 13 | no test: 0 | tests: 179 | hits: 372
+file kind: tests/ui .cpp | files: 13 | no test: 0 | tests: 180 | hits: 373
 file kind: tests/ui .h | files: 4 | no test: 1 | tests: 9 | hits: 8
 skipped: tests/ui/scripts .txt | files: 1
 file kind: tools .cpp | files: 4 | no test: 0 | tests: 10 | hits: 0
 file kind: tools .h | files: 2 | no test: 2 | tests: 0 | hits: 0
 skipped: tools .ps1 | files: 20
-file kind: tools .py | files: 19 | no test: 5 | tests: 55 | hits: 0
+file kind: tools .py | files: 19 | no test: 5 | tests: 44 | hits: 0
 skipped: tools .xml | files: 1
 skipped: tools/capture .ps1 | files: 3
 skipped: tools/ch_mcp .json | files: 5
 skipped: tools/ch_mcp .ps1 | files: 1
-file kind: tools/ch_mcp .py | files: 28 | no test: 6 | tests: 122 | hits: 0
+file kind: tools/ch_mcp .py | files: 28 | no test: 7 | tests: 104 | hits: 0
 skipped: tools/ch_mcp/agent .json | files: 3
 skipped: tools/ch_mcp/agent .ts | files: 11
 skipped: tools/ch_mcp/tests .bin | files: 1
-file kind: tools/ch_mcp/tests .py | files: 29 | no test: 6 | tests: 100 | hits: 0
+file kind: tools/ch_mcp/tests .py | files: 29 | no test: 7 | tests: 62 | hits: 0
 file kind: tools/ch_probe .py | files: 13 | no test: 9 | tests: 5 | hits: 0
 skipped: tools/ch_probe/experiments .mjs | files: 1
-file kind: tools/ch_probe/experiments .py | files: 18 | no test: 9 | tests: 19 | hits: 0
+file kind: tools/ch_probe/experiments .py | files: 18 | no test: 9 | tests: 17 | hits: 0
 skipped: tools/ch_probe/experiments/results .csv | files: 2
 skipped: tools/ch_probe/experiments/results/overlay-spike .csv | files: 8
 skipped: tools/ch_probe/experiments/results/overlay-spike .json | files: 1
 skipped: tools/ch_probe/experiments/results/overlay-spike .txt | files: 16
 skipped: tools/ch_probe/tests .json | files: 19
-file kind: tools/ch_probe/tests .py | files: 28 | no test: 8 | tests: 53 | hits: 0
+file kind: tools/ch_probe/tests .py | files: 28 | no test: 10 | tests: 31 | hits: 0
 file kind: tools/doc_shots .py | files: 1 | no test: 0 | tests: 1 | hits: 0
 skipped: tools/doc_shots .txt | files: 1
 file kind: tools/mutate .cpp | files: 1 | no test: 1 | tests: 0 | hits: 0
 file kind: tools/mutate .h | files: 1 | no test: 0 | tests: 8 | hits: 0
-file kind: tools/mutate .py | files: 14 | no test: 1 | tests: 43 | hits: 0
+file kind: tools/mutate .py | files: 14 | no test: 1 | tests: 29 | hits: 0
 skipped: tools/mutate .txt | files: 1
 file kind: tools/precheck .cpp | files: 19 | no test: 0 | tests: 43 | hits: 0
 file kind: tools/precheck .h | files: 15 | no test: 9 | tests: 7 | hits: 0
@@ -61,21 +61,21 @@ no hits: tests/single_owner .cpp | files: 4 | tests: 27
 no hits: tests/single_owner .h | files: 4 | tests: 5
 no hits: tools .cpp | files: 4 | tests: 10
 no tests: tools .h | files: 2
-no hits: tools .py | files: 19 | tests: 55
-no hits: tools/ch_mcp .py | files: 28 | tests: 122
-no hits: tools/ch_mcp/tests .py | files: 29 | tests: 100
+no hits: tools .py | files: 19 | tests: 44
+no hits: tools/ch_mcp .py | files: 28 | tests: 104
+no hits: tools/ch_mcp/tests .py | files: 29 | tests: 62
 no hits: tools/ch_probe .py | files: 13 | tests: 5
-no hits: tools/ch_probe/experiments .py | files: 18 | tests: 19
-no hits: tools/ch_probe/tests .py | files: 28 | tests: 53
+no hits: tools/ch_probe/experiments .py | files: 18 | tests: 17
+no hits: tools/ch_probe/tests .py | files: 28 | tests: 31
 no hits: tools/doc_shots .py | files: 1 | tests: 1
 no tests: tools/mutate .cpp | files: 1
 no hits: tools/mutate .h | files: 1 | tests: 8
-no hits: tools/mutate .py | files: 14 | tests: 43
+no hits: tools/mutate .py | files: 14 | tests: 29
 no hits: tools/precheck .cpp | files: 19 | tests: 43
 no hits: tools/precheck .h | files: 15 | tests: 7
-tests: 3051
-hits: 721
-no test hits: 0
+tests: 2945
+hits: 722
+no test hits: 1
 kinds: 81
 kind: BatchGate (tests/ui/uitest_batch_reports.cpp) | hits: 4
 kind: BatchGate (tests/ui/uitest_details.cpp) | hits: 1
@@ -93,7 +93,7 @@ kind: ScopedHook (tests/test_library_jobs.cpp) | hits: 2
 kind: ScopedHook (tests/test_song_panel_state.cpp) | hits: 1
 kind: ScopedHook (tests/test_update_state.cpp) | hits: 52
 kind: ScopedHook (tests/ui/uitest_details.cpp) | hits: 1
-kind: ScopedHook (tests/ui/uitest_harness.h) | hits: 39
+kind: ScopedHook (tests/ui/uitest_harness.h) | hits: 37
 kind: ScopedHook (tests/ui/uitest_library.cpp) | hits: 6
 kind: ScopedHook (tests/ui/uitest_report_windows.cpp) | hits: 2
 kind: UpdateSeams (tests/ui/uitest_library.cpp) | hits: 1
@@ -123,13 +123,13 @@ kind: set_between_lookup_reads_for_test (tests/test_store_records.cpp) | hits: 2
 kind: set_downloader (tests/test_dm_report.cpp) | hits: 1
 kind: set_downloader (tests/test_http_download.cpp) | hits: 1
 kind: set_downloader (tests/test_update_state.cpp) | hits: 13
-kind: set_downloader (tests/ui/uitest_harness.cpp) | hits: 123
+kind: set_downloader (tests/ui/uitest_harness.cpp) | hits: 125
 kind: set_downloader (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_fetcher (tests/test_app_reports.cpp) | hits: 2
 kind: set_fetcher (tests/test_dm_report.cpp) | hits: 3
 kind: set_fetcher (tests/test_library_jobs.cpp) | hits: 3
 kind: set_fetcher (tests/test_update_state.cpp) | hits: 13
-kind: set_fetcher (tests/ui/uitest_harness.cpp) | hits: 123
+kind: set_fetcher (tests/ui/uitest_harness.cpp) | hits: 125
 kind: set_fetcher (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_installed_for_test (tests/test_update_release.cpp) | hits: 1
 kind: set_installed_for_test (tests/test_update_state.cpp) | hits: 16
@@ -147,7 +147,7 @@ kind: set_sibling_dir_for_test (tests/test_launch.cpp) | hits: 1
 kind: set_sibling_dir_for_test (tests/ui/uitest_details.cpp) | hits: 2
 kind: set_store_open_gate_for_test (tests/test_app_library.cpp) | hits: 3
 kind: set_store_open_gate_for_test (tests/test_library_jobs.cpp) | hits: 3
-kind: set_store_open_gate_for_test (tests/ui/uitest_harness.cpp) | hits: 17
+kind: set_store_open_gate_for_test (tests/ui/uitest_harness.cpp) | hits: 16
 kind: set_update_folder_for_test (tests/test_update_state.cpp) | hits: 13
 kind: set_update_folder_for_test (tests/ui/uitest_library.cpp) | hits: 1
 kind: set_view_after_save_check_for_test (tests/test_app_click.cpp) | hits: 5
