@@ -21,6 +21,8 @@ Group 1, the runs:
 
 Group 2, the files: all six hold. `python -m pytest -rs test_frida_tools.py test_method_watch.py` in tools/ch_mcp/tests ran with the real dumps in hydra-data/ch-dumps (builds 4045, 6142 and 6161 present): 70 passed, 132 subtests passed, none skipped.
 
+A fresh closure checker (session e3d99f2b, task O1-check) read each closure against the code at ac50ea51: 17 PASS, A12 GONE, A16 waits, no REOPEN. It found the A31.md:233 doubt is the verdict file's: B1's "A31 SR14" line describes SR15 (A31.md:248), and both tests were run. Every test line cited above is stale; the names still match.
+
 Group 3, the two scripts: by the user's choice, `tools/ch_probe/experiments/key_delivery_test.py` and `pad_flash_test.py` are not tests. They leave the test ledger; the scripts stay as experiments.
 
 T8 step E6 (`docs/superpowers/plans/2026-11-15-test-audit-t8-exits.md`). Written by the main session, session f3bbb32b, 2026-11-16.
