@@ -1,0 +1,48 @@
+# V1 item 2: Preview drain box ("1 bar / X s", "full meter X s") where a tempo or meter change lies inside the next bar.
+# Run: hydra_uitest.exe --script <this file>
+# Every playhead is a tick of the chart's own tempo map, converted to seconds from the file (see the report).
+timeout 300
+click Scan library
+wait-idle
+click //Scanning charts/Continue
+wait-idle
+
+# --- Chart 1: Brandon Burkhalter - Someday (notes.mid). Tempo 120 bpm until tick 3840 (4.000 s), then 180 bpm. 4/4 throughout.
+# Tick 1920 (2.000 s) is the start of measure 2, one measure before the change. Tick 2880 (3.000 s) is mid-measure 2.
+# Best path starts its first activation at tick 51840 (37.333 s), so neither playhead is inside an activation.
+open Someday
+wait-idle
+click **/##DetailsTabs/Preview
+wait-idle
+type **/##scrub | 2.0
+wait 0.6
+screenshot v1_item2_drain_1.png
+wait 0.4
+type **/##scrub | 3.0
+wait 0.6
+screenshot v1_item2_drain_2.png
+wait 0.4
+
+# --- Chart 2: Nova Charisma - The Greater Cause (notes.mid). Tempo stays 150 bpm; the METER changes: 3/4 from tick 152160, 5/4 from tick 155040.
+# Tick 153600 (128.000 s) is inside the 3/4 stretch; the 5/4 stretch begins inside the next bar.
+# Best path's second activation starts at tick 155040 (129.200 s), 1.2 s after this playhead, so this playhead is outside every activation.
+open The Greater Cause
+wait-idle
+click **/##DetailsTabs/Preview
+wait-idle
+type **/##scrub | 128.0
+wait 0.6
+screenshot v1_item2_drain_3.png
+wait 0.4
+
+# --- Chart 3: Car Bomb - The Sentinel (notes.mid). 324 tempo changes and 49 time-signature changes; around tick 158760 (147.366 s) the tempo changes inside the next bar.
+# Best path's fourth activation starts at tick 159360 (148.259 s), so this playhead sits just before an activation and is outside every window.
+open The Sentinel
+wait-idle
+click **/##DetailsTabs/Preview
+wait-idle
+type **/##scrub | 147.3663
+wait 0.6
+screenshot v1_item2_drain_4.png
+wait 0.4
+quit
