@@ -92,7 +92,7 @@ const std::vector<ChartLibraryEntry>& scanned_corpus() {
 }
 
 // The first `n` rows of scanned_corpus: `n` different charts.
-std::vector<ChartLibraryEntry> corpus_rows(size_t n) {
+std::vector<ChartLibraryEntry> different_corpus_rows(size_t n) {
     const std::vector<ChartLibraryEntry>& all = scanned_corpus();
     REQUIRE(all.size() >= n);
     return std::vector<ChartLibraryEntry>(all.begin(),
@@ -212,7 +212,7 @@ TEST_CASE("a failed library rebuild keeps the previous scan") {
     // that fails leaves the library and its rescan cache as they were. A
     // trigger that refuses one chart's md5 makes an insert fail partway. The
     // rows are the corpus scan's.
-    const std::vector<ChartLibraryEntry> rows = corpus_rows(4);
+    const std::vector<ChartLibraryEntry> rows = different_corpus_rows(4);
     const std::string path = testtemp::temp_path("rebuild_fail", ".db");
     std::remove(path.c_str());
     {
@@ -341,7 +341,7 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
     // reads every chart again and stamps the table it writes.
     const std::string path = testtemp::temp_path("chart_meta_stamp", ".db");
     std::remove(path.c_str());
-    const ChartLibraryEntry entry = corpus_rows(1).front();
+    const ChartLibraryEntry entry = different_corpus_rows(1).front();
     {
         RecordStore store(path);
         store.rebuild_chart_library({entry});
@@ -370,7 +370,7 @@ TEST_CASE("the scan cache is dropped when its reader stamp is not current") {
 TEST_CASE("the library is out of date only when it has rows and its reader stamp is not current") {
     const std::string path = testtemp::temp_path("library_out_of_date", ".db");
     std::remove(path.c_str());
-    const ChartLibraryEntry entry = corpus_rows(1).front();
+    const ChartLibraryEntry entry = different_corpus_rows(1).front();
     {
         RecordStore store(path);
         CHECK_FALSE(store.chart_library_out_of_date());
@@ -399,7 +399,7 @@ TEST_CASE("a library from before the album column is out of date after the open 
     std::remove(path.c_str());
     {
         RecordStore seed(path);
-        seed.rebuild_chart_library({corpus_rows(1).front()});
+        seed.rebuild_chart_library({different_corpus_rows(1).front()});
     }
     const std::string before_album =
         "ALTER TABLE charts DROP COLUMN album;" + set_chart_meta_stamp_sql(stale_chart_meta_stamp());
