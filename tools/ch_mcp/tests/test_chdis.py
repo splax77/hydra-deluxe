@@ -127,6 +127,8 @@ def test_a_missing_script_json_is_reported_by_its_path(tmp_path):
 
 REAL_DLL = os.path.join(game_files.GAME_DIR, "GameAssembly.dll")
 REAL_DUMPS = os.path.join(build_facts.DUMPS_ROOT, "6142")
+
+
 def test_a_real_method_lists_from_its_start_to_its_padding():
     # The dump's own method addresses are the independent measure: the
     # listing of a method the dump names starts on that method's first byte,

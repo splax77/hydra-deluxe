@@ -14,6 +14,7 @@
 
 #include "app/analysis.h"  // discover_charts
 #include "store/record_store.h"
+#include "corpus_util.h"      // corpus::analyzed
 #include "store_fixtures.h"  // OldLibrary
 #include "testdata_dirs.h"  // corpus::root
 #include "ui/library_model.h"
@@ -67,17 +68,25 @@ TEST_CASE("library: the shown order does not depend on the order the rows were r
     backwards.set_charts(reversed);
 
     // Real scores, so the Best path sort orders by score and not only by its
-    // tie-break: the three records a real v2.12.1 hydra_batch run saved for
-    // three corpus charts (testdata/store/README.md). They read Stale here,
-    // and a Stale row still sorts by its stored score.
-    OldLibrary old("library_read_order");
-    RecordStore old_store(old.path);
+    // tie-break: three corpus charts (the ones testdata/store/README.md names)
+    // analysed for real under the old library's settings and saved here. A
+    // Stale lookup carries no record, so they are saved under the profile they
+    // are read with and come back Ready.
+    const hydra::store::Profile profile = OldLibrary::profile();
     const std::vector<std::string> ids = OldLibrary::song_ids();
-    const std::vector<RecordLookup> lookups = old_store.lookup(ids, OldLibrary::profile());
+    for (const std::string& id : ids) {
+        const auto row = std::find_if(by_name.begin(), by_name.end(),
+                                      [&](const ChartLibraryEntry& e) { return e.md5 == id; });
+        REQUIRE_MESSAGE(row != by_name.end(), "no corpus row has the hash " << id);
+        store.save(hydra::store::prepare_record(
+            id, profile, corpus::analyzed(row->notespath, OldLibrary::settings())));
+    }
+    const std::vector<RecordLookup> lookups = store.lookup(ids, profile);
     REQUIRE(lookups.size() == ids.size());
     std::set<int64_t> scores;
     for (size_t i = 0; i < ids.size(); ++i) {
         CAPTURE(ids[i]);
+        REQUIRE(lookups[i].status == hydra::store::RecordStatus::Ready);
         REQUIRE(lookups[i].record.summary().has_scored_best_path());
         scores.insert(*lookups[i].record.summary().score);
         // Each record's chart is a corpus row: a hash no row lists changes nothing.
