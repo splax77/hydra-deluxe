@@ -228,14 +228,20 @@ class ServerTest(unittest.TestCase):
                        for arg, spec in self._schema(name).items()}
                 self.assertEqual(got, want)
 
-    def test_ch_edge_probe_passes_its_arguments_through(self):
-        seen = []
-        self.helper.game.ch_edge_probe = lambda *a: seen.append(a) or "probing"
-        result = asyncio.run(S.build_server(self.helper).call_tool("ch_edge_probe", {
-            "song_folder": "song", "score_json": "s.json", "schedule_json": "sched.json",
-            "probes_json": "p.json"}))
-        self.assertEqual(result.content[0].text, "probing")
-        self.assertEqual(seen, [("song", "s.json", "sched.json", "p.json")])
+    def test_ch_edge_probe_reaches_the_real_probe(self):
+        # The real GameTools.ch_edge_probe, on Pitch Dark's real files and the
+        # probes file of the 2026-11-07 ls-e-run1 run. With no kit set up the
+        # probe refuses before it reads any file, so only the reply the
+        # method itself gives is checked; which argument goes where needs a
+        # kit inside a running game.
+        score, schedule, _index = self._pitch_dark_schedule()
+        probes = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ls-e-run1", "probes.json")
+        self.assertTrue(os.path.isfile(probes), probes)
+        self._reaches("ch_edge_probe", self.helper.game.ch_edge_probe, [{
+            "song_folder": os.path.dirname(_PITCH_DARK_CHART), "score_json": score,
+            "schedule_json": schedule, "probes_json": probes}])
+        self.assertIsNone(self.helper.kit.game_player())
+        self.assertEqual(self.printed, [])
 
     def _pitch_dark_schedule(self) -> tuple[str, str, int]:
         """Hydra's score and schedule of Pitch Dark's path 0 in testdata/replay
