@@ -295,7 +295,7 @@ TEST_CASE("generated fills: a chart with its own fills gets none generated") {
     REQUIRE(song.sequence[1].has_activation());
     CHECK(*song.sequence[1].activation_length == written_length);
     CHECK_FALSE(song.generated_fills.has_value());
-    CHECK(std::find(song.features.begin(), song.features.end(), "Auto-Generated Fills") ==
+    CHECK(std::find(song.features.begin(), song.features.end(), kGeneratedFillsFeature) ==
           song.features.end());
 }
 
@@ -360,7 +360,7 @@ TEST_CASE("generated fills: every corpus chart's generated fills follow the 1.1 
         const Song& song = corpus::song(path, ChartReading{});
         INFO("chart " << path);
         const bool listed = std::find(song.features.begin(), song.features.end(),
-                                      "Auto-Generated Fills") != song.features.end();
+                                      kGeneratedFillsFeature) != song.features.end();
         CHECK(listed == song.generated_fills.has_value());
         if (!song.generated_fills.has_value()) continue;
         ++generated;

@@ -661,7 +661,7 @@ std::pair<std::vector<ScanItem>, std::vector<std::string>> discover_charts(
         if (!r) continue;
         // The one stored fallback for each field, whichever source produced
         // it: a fresh song.ini, .sng or .srb read, or the rescan cache holding
-        // an older scan's blank or "<unknown title>". What a screen shows is
+        // an older scan's blank or kOldTitlePlaceholder. What a screen shows is
         // decided later by display_title, display_artist and display_charter;
         // a stored "<unknown artist>" shows as "(unknown)" (D56 item 2). Each
         // field is trimmed here once, before its fallback, whatever the file
