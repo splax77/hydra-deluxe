@@ -146,11 +146,8 @@ private:
 // The installer's file name for a release, "HydraDeluxe-2.11.0-setup.exe".
 std::string update_installer_name(const app::UpdateRelease& release);
 
-// The folder downloads go to: <temp>\HydraDeluxe-update, or the test override.
+// The folder downloads go to: <temp>\HydraDeluxe-update.
 std::string update_folder();
-// Test seam: a non-empty folder replaces update_folder's answer; empty puts
-// the temp folder back.
-void set_update_folder_for_test(std::string folder);
 
 // Starts the installer at `installer`, writing Inno Setup's log to `log`, and
 // returns a check that says whether its process has ended. Throws when the

@@ -1,3 +1,7 @@
+// First: it brings in winsock2.h, which must come before the windows.h the
+// harness's Direct3D headers bring in (tests/loopback_server.h).
+#include "../update_replay.h"  // GitHubReplay, ScopedTempFolder
+
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -42,8 +46,8 @@
 #include "../scoped_hook.h"
 #include "../update_reply.h"
 #include "core/app_version.h"
-#include "core/winstr.h"  // read_file_text, os_path
-#include "net/http.h"     // set_fetcher, set_downloader
+#include "core/winstr.h"  // read_file_text, join_folder, same_folder
+#include "net/http.h"     // set_fetcher, set_downloader, http_get
 #include "ui/update_job.h"
 
 #include <array>
@@ -1895,93 +1899,116 @@ void test_scan_missing_folder(ImGuiTestContext* ctx) {
 
 // ---- the version bar ----------------------------------------------------------
 // The bar D260 rules on.
-// Nothing here touches the network: UpdateSeams serves the release reply, the
-// download and the installer start.
+// The update check and the download are Hydra's real network code, run
+// against GitHub's saved files replayed on this PC (tests/update_replay.h).
+// No step reaches the installer start.
 
 std::string running_version_text() {
     return hydra::core::version_text(hydra::core::running_version());
 }
 
-// The committed test key (sample.bin.sig was signed with it).
-std::array<uint8_t, 64> update_test_key(ImGuiTestContext* ctx) {
-    std::array<uint8_t, 64> key{};
-    IM_CHECK_NO_RET(update_fixtures::read_test_public_key(key));
-    if (ctx->IsError()) return {};
-    return key;
+// True when ui::update_folder() lies inside `temp`, the scratch temp folder.
+// Every AppState start deletes that folder, so no AppState is built unless
+// this holds.
+bool update_folder_is_scratch(const update_fixtures::ScopedTempFolder& temp) {
+    return hydra::same_folder(hydra::ui::update_folder(),
+                              hydra::join_folder(temp.folder(), "HydraDeluxe-update"));
 }
 
-// Sits while `hold` is set and nothing cancels, for at most 30 s; the test's
-// own waits give up before that.
-void wait_released(const std::atomic<bool>& hold, const std::atomic<bool>* cancel) {
-    const auto give_up = std::chrono::steady_clock::now() + std::chrono::seconds(30);
-    while (hold.load() && !(cancel && cancel->load()) && std::chrono::steady_clock::now() < give_up)
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
-}
-
-// The updater's seams for one test: Hydra counts as installed, GitHub's reply
-// is `reply`, the download copies sample.bin and serves sample.bin.sig, and
-// the installer "ends early", which is a declined UAC prompt (D259 call 10).
-// hold_check and hold_download keep the check or the download running until
-// the test clears them. Make it after reset_app, which installs the harness's
-// own fetcher. Its destructor drops the app first, so no job of it calls a
+// What the version bar test stands on, besides the scratch temp folder it is
+// given: GitHub replayed on this PC, the pretend-installed switch once the
+// test sets it, and the launcher guard. The release reply, the installer, its
+// signature and Hydra's built-in release key are all real.
+//
+// Two stand-ins remain. The address: GitHubReplay sends GitHub's addresses to
+// the local server, and any other address throws (net::set_address_map_for_test).
+// And "installed": AppState runs no check unless the build counts as
+// installed, and a test build never does, so the test sets the switch itself
+// where it needs a check.
+//
+// The harness's "no network" fetcher and downloader would answer before the
+// address map does, so they are cleared for this test's length; the map now
+// guards the network. The launcher seam is a guard, not a stand-in: no test
+// may start an installer, so it counts any call and throws, and the test
+// requires the count is zero.
+//
+// Make it after reset_app, which installs the harness's fetcher and
+// downloader. Its destructor drops the app first, so no job of it calls a
 // seam that is gone.
 struct UpdateSeams {
     Harness& h;
-    std::string reply = update_fixtures::release_reply_at("v9.9.9");
-    std::string sig = hydra::read_file_text(update_fixtures::update_dir() + "/sample.bin.sig");
-    std::atomic<bool> hold_check{false};
-    std::atomic<bool> hold_download{false};
-    std::string folder;
-    ScopedHook installed;
-    ScopedHook folder_seam;
-    ScopedHook fetcher;
-    ScopedHook downloader;
+    const update_fixtures::ScopedTempFolder& temp;
+    std::optional<ScopedHook> installed;  // set by the test where it needs a check
+    ScopedHook no_fetcher;
+    ScopedHook no_downloader;
+    std::optional<update_fixtures::GitHubReplay> replay;  // rebuilt by serve_fresh
+    std::atomic<int> launcher_calls{0};
     ScopedHook launcher;
 
-    explicit UpdateSeams(Harness& harness_)
+    UpdateSeams(Harness& harness_, const update_fixtures::ScopedTempFolder& temp_,
+                const std::string& reply)
         : h(harness_),
-          folder(h.temp_dir + "/update-download"),
-          installed(hydra::app::set_installed_for_test, std::optional<bool>(true)),
-          folder_seam(hydra::ui::set_update_folder_for_test, folder),
-          fetcher(hydra::net::set_fetcher,
-                  [this](const std::string& url, const std::atomic<bool>* cancel) -> std::string {
-                      if (url == hydra::ui::kLatestReleaseUrl) {
-                          wait_released(hold_check, cancel);
-                          return reply;
-                      }
-                      if (url.size() > 4 && url.substr(url.size() - 4) == ".sig") return sig;
-                      throw std::runtime_error("no canned reply for " + url);
-                  }),
-          downloader(hydra::net::set_downloader,
-                     [this](const std::string&, const std::string& path, uint64_t,
-                            std::atomic<uint64_t>* received, const std::atomic<bool>* cancel) {
-                         wait_released(hold_download, cancel);
-                         fs::copy_file(hydra::os_path(update_fixtures::sample_path()), hydra::os_path(path),
-                                       fs::copy_options::overwrite_existing);
-                         if (received) received->store(fs::file_size(hydra::os_path(path)));
-                     }),
-          launcher(hydra::ui::set_launcher_for_test, [](const std::string&, const std::string&) {
-              return hydra::ui::InstallerEnded([] { return true; });
-          }) {}
+          temp(temp_),
+          no_fetcher(hydra::net::set_fetcher, hydra::net::Fetcher{}),
+          no_downloader(hydra::net::set_downloader, hydra::net::Downloader{}),
+          launcher(hydra::ui::set_launcher_for_test,
+                   [this](const std::string& installer,
+                          const std::string&) -> hydra::ui::InstallerEnded {
+                       ++launcher_calls;
+                       throw std::logic_error("a test reached the installer start, for " + installer +
+                                              "; no test may start an installer");
+                   }) {
+        replay.emplace(reply);
+    }
     ~UpdateSeams() { h.app.reset(); }
     UpdateSeams(const UpdateSeams&) = delete;
     UpdateSeams& operator=(const UpdateSeams&) = delete;
+
+    // The check's address answers `reply` from the next request on. The
+    // installer and signature routes stay, so `reply` must name the saved
+    // release's assets (the saved reply, or real_reply_at of a tag).
+    void serve(const std::string& reply) {
+        replay->server().set_route(replay->check_route(), "200 OK", reply);
+    }
+
+    // Holds the check's reply after its headers until release_check.
+    void hold_check() { replay->server().pause(replay->check_route(), 0); }
+    void release_check() { replay->server().release(replay->check_route()); }
+
+    // Holds the installer's download after its first byte. Nothing in this
+    // test releases it, so the download never ends and no installer start
+    // can come.
+    void hold_download() { replay->server().pause(replay->installer_route(), 1); }
+    bool download_held() const { return replay->server().held(replay->installer_route()); }
+
+    // Stops the server while the address map stays, so the check is really
+    // refused, as by a server that is down.
+    void go_down() { replay->stop(); }
+
+    // A new server, serving `reply`, in place of a stopped one. The app goes
+    // first, so no job of it is asking the old server.
+    void serve_fresh(const std::string& reply) {
+        h.app.reset();
+        replay.reset();
+        replay.emplace(reply);
+    }
 };
 
 // A new start of Hydra on the same INI and database, as closing and opening
 // it again would be. `edit`, when given, changes the INI before the start
-// reads it.
-void restart_app(ImGuiTestContext* ctx, Harness& h,
-                 const std::function<void(hydra::app::Settings&)>& edit) {
+// reads it. The start stops first unless update_folder() is inside the
+// scratch temp folder.
+void restart_app(UpdateSeams& seams, const std::function<void(hydra::app::Settings&)>& edit) {
+    Harness& h = seams.h;
     h.app.reset();
     if (edit) {
         hydra::app::Settings s = hydra::app::Settings::load_file(h.ini_path);
         edit(s);
         IM_CHECK(s.save_file(h.ini_path));
     }
+    IM_CHECK(update_folder_is_scratch(seams.temp));
     h.app = std::make_unique<hydra::ui::AppState>();
     h.app->set_render_device(h.device.Get(), h.context.Get());
-    h.app->update_public_key = update_test_key(ctx);
     h.app->wait_store_open();
     IM_CHECK(!h.app->store_open_failed());
 }
@@ -1998,22 +2025,28 @@ void test_version_bar(ImGuiTestContext* ctx) {
     using Dot = hydra::ui::VersionBarStatus::Dot;
     using hydra::app::Settings;
     Harness& h = harness(ctx);
+    // Before the first AppState of this test: every start deletes
+    // update_folder(), which must lie inside the scratch temp folder.
+    const update_fixtures::ScopedTempFolder temp("uitest_version_bar");
+    IM_CHECK(update_folder_is_scratch(temp));
     reset_app(h);
-    UpdateSeams seams(h);
-    h.app->update_public_key = update_test_key(ctx);
-    if (ctx->IsError()) return;
+    // The newer release: the saved real reply with only its tag changed.
+    const std::string newer = "9.9.9";
+    UpdateSeams seams(h, temp, update_fixtures::real_reply_at("v" + newer));
     auto phase_is = [&](Phase phase) { return h.app && h.app->update.phase == phase; };
     auto dot_is = [&](Dot dot) { return h.app && h.app->version_bar_status().dot == dot; };
     const std::string running = running_version_text();
     // The app's name and a version as the bar reads them (core::named_version).
     const std::string named_running = hydra::core::named_version(hydra::core::running_version());
     const std::string named_release =
-        hydra::core::named_version(*hydra::core::parse_version("9.9.9"));
+        hydra::core::named_version(*hydra::core::parse_version(newer));
     const std::string name = hydra::core::named_version(hydra::core::running_version());
 
     // B4: a copy the installer didn't put in place never checks, and says so.
-    hydra::app::set_installed_for_test(false);
-    restart_app(ctx, h, {});
+    // A test build is not that copy, so with no switch set the registry check
+    // itself says so.
+    IM_CHECK(!hydra::app::installed_by_setup());
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     bool ever_running = false;
     for (int i = 0; i < 5; ++i) {
@@ -2052,19 +2085,20 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(h.app->version_bar_status().text == before.text);
     IM_CHECK(h.app->version_bar_status().dimmed == before.dimmed);
     IM_CHECK(ctx->UiContext->OpenPopupStack.Size == 0);
-    hydra::app::set_installed_for_test(true);
+    // The installed exe: AppState checks only for it.
+    seams.installed.emplace(hydra::app::set_installed_for_test, std::optional<bool>(true));
 
     // B2: with the latest release at the running version, the bar says
     // Checking for updates... while the check runs, then Up to date; nothing
     // about updates shows anywhere else.
-    seams.reply = update_fixtures::release_reply_at("v" + running);
-    seams.hold_check = true;
-    restart_app(ctx, h, {});
+    seams.serve(update_fixtures::real_reply_at("v" + running));
+    seams.hold_check();
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     IM_CHECK(h.app->update_check_running());
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kCheckingForUpdatesText); }, 5));
     IM_CHECK(dot_is(Dot::Neutral));
-    seams.hold_check = false;
+    seams.release_check();
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
     IM_CHECK(dot_is(Dot::UpToDate));
     IM_CHECK(phase_is(Phase::None));
@@ -2074,19 +2108,23 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(screenshot(ctx, "versionbar-uptodate.png"));
 
     // B3: the offer, its three buttons, and the notes on hover of the
-    // sentence, which ends just left of the Update button.
-    const std::string notes_part = "shows accented letters in song names correctly";
+    // sentence, which ends just left of the Update button. The notes are the
+    // ones the check found (UpdateState::found), drawn whole.
     auto notes_show_on_hover = [&] {
+        IM_CHECK_NO_RET(h.app->update.found.has_value());
+        if (ctx->IsError()) return;
+        const std::string notes = h.app->update.found->notes;
+        IM_CHECK_NO_RET(!notes.empty());
         const ImRect update_rect = ctx->ItemInfo("**/Update##update").RectFull;
-        IM_CHECK_NO_RET(!on_screen(h, notes_part));
+        IM_CHECK_NO_RET(!on_screen(h, notes));
         ctx->MouseMoveToPos(ImVec2(update_rect.Min.x - ImGui::GetStyle().ItemSpacing.x - hydra::ui::px(10),
                                    update_rect.GetCenter().y));
-        IM_CHECK_NO_RET(wait_until(ctx, [&] { return on_screen(h, notes_part); }, 5));
+        IM_CHECK_NO_RET(wait_until(ctx, [&] { return on_screen(h, notes); }, 5));
         ctx->MouseMoveToPos(ImVec2(update_rect.Max.x + hydra::ui::px(40), update_rect.GetCenter().y));
-        IM_CHECK_NO_RET(wait_until(ctx, [&] { return !on_screen(h, notes_part); }, 5));
+        IM_CHECK_NO_RET(wait_until(ctx, [&] { return !on_screen(h, notes); }, 5));
     };
-    seams.reply = update_fixtures::release_reply_at("v9.9.9");
-    restart_app(ctx, h, {});
+    seams.serve(update_fixtures::real_reply_at("v" + newer));
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     const std::string offer = named_release + " is available.";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, offer); }, 10));
@@ -2108,29 +2146,41 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(dot_is(Dot::Available));
     notes_show_on_hover();
 
-    // B7: the resting bar's Update downloads with a Cancel button; the
-    // installer ending early brings D259 call 10's sentence and the three
-    // buttons back.
-    seams.hold_download = true;
+    // B7: the resting bar's Update downloads with a Cancel button, and Skip
+    // this version is gone meanwhile. The download is held part-way, so it
+    // never ends; Cancel brings the offer and its three buttons back, and
+    // leaves no file.
+    seams.hold_download();
     ctx->ItemClick("**/Update##update");
     const std::string downloading = "Downloading " + named_release + "...";
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, downloading); }, 5));
     IM_CHECK(ctx->ItemExists("**/Cancel##update"));
     IM_CHECK(!ctx->ItemExists("**/Skip this version"));
-    seams.hold_download = false;
-    const std::string declined = hydra::ui::kUpdateDeclinedText;
-    IM_CHECK(wait_until(ctx, [&] { return on_screen(h, declined); }, 10));
+    IM_CHECK(wait_until(ctx, [&] { return seams.download_held(); }, 10));
+    IM_CHECK(phase_is(Phase::Downloading));
+    IM_CHECK(on_screen(h, downloading));
+    IM_CHECK_NO_RET(h.app->update.release.has_value());
+    if (ctx->IsError()) return;
+    const std::string installer = hydra::join_folder(
+        hydra::ui::update_folder(), hydra::ui::update_installer_name(*h.app->update.release));
+    ctx->ItemClick("**/Cancel##update");
+    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::Offered) && on_screen(h, offer); }, 10));
     IM_CHECK(ctx->ItemExists("**/Update##update"));
     IM_CHECK(ctx->ItemExists("**/Skip this version"));
     IM_CHECK(ctx->ItemExists("**/Later"));
     IM_CHECK(!ctx->ItemExists("**/Cancel##update"));
+    IM_CHECK(!on_screen(h, downloading));
+    IM_CHECK(!hydra::file_exists_utf8(installer + ".part"));
+    IM_CHECK(!hydra::file_exists_utf8(installer));
 
-    // B3: Skip this version, and the next start names the release, marked
-    // Skipped., with no buttons.
+    // B3: Skip this version, from that offer, and the next start names the
+    // release, marked Skipped., with no buttons.
     ctx->ItemClick("**/Skip this version");
-    IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, declined); }, 5));
-    IM_CHECK(Settings::load_file(h.ini_path).skipped_update_version == "9.9.9");
-    restart_app(ctx, h, {});
+    IM_CHECK(wait_until(ctx, [&] {
+        return phase_is(Phase::None) && !ctx->ItemExists("**/Skip this version");
+    }, 5));
+    IM_CHECK(Settings::load_file(h.ini_path).skipped_update_version == newer);
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return !h.app->update_check_running() && on_screen(h, offer); }, 10));
     ctx->Yield(2);
@@ -2142,15 +2192,24 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(!ctx->ItemExists("**/Later"));
 
     // B5: a start-up check that fails says so, with the job's plain_error
-    // sentence dimmed after it, and no buttons.
-    seams.reply = "this is not JSON";
-    restart_app(ctx, h, {});
+    // sentence dimmed after it, and no buttons. The failure is real: the
+    // server is down, so the check's connection is refused. The sentence is
+    // plain_error of the error Hydra's transport throws for the check's
+    // address as it answers now.
+    seams.go_down();
+    std::string reason;
+    try {
+        (void)hydra::net::http_get(hydra::ui::kLatestReleaseUrl, nullptr, hydra::NetService::GitHub);
+    } catch (const std::exception& e) {
+        reason = hydra::app::plain_error(e);
+    }
+    IM_CHECK(!reason.empty());
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     const std::string could_not = hydra::ui::kCouldNotCheckText;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, could_not); }, 10));
     ctx->Yield(2);
-    const std::string reason = h.app->update.check_error;
-    IM_CHECK(!reason.empty());
+    IM_CHECK(h.app->update.check_error == reason);
     IM_CHECK(on_screen(h, reason));
     IM_CHECK(dot_is(Dot::Neutral));
     IM_CHECK(!ctx->ItemExists("**/Later"));
@@ -2186,9 +2245,10 @@ void test_version_bar(ImGuiTestContext* ctx) {
     IM_CHECK(wait_until(ctx, [&] { return !jobs_busy(h); }, 120));
 
     // B7: the first start after a version change says so in
-    // the bar, and OK gives way to the offer the start-up check found.
-    seams.reply = update_fixtures::release_reply_at("v9.9.9");
-    restart_app(ctx, h, [](Settings& s) {
+    // the bar, and OK gives way to the offer the start-up check found. The
+    // server B5 stopped gives way to a new one.
+    seams.serve_fresh(update_fixtures::real_reply_at("v" + newer));
+    restart_app(seams, [](Settings& s) {
         s.last_run_version = "0.0.1";
         s.skipped_update_version.clear();
     });
@@ -2203,19 +2263,20 @@ void test_version_bar(ImGuiTestContext* ctx) {
 
     // B7: with nothing newer, OK gives the bar back to Up to date, and
     // the next start shows no note.
-    seams.reply = update_fixtures::release_reply_at("v" + running);
-    restart_app(ctx, h, [](Settings& s) { s.last_run_version = "0.0.1"; });
+    seams.serve(update_fixtures::real_reply_at("v" + running));
+    restart_app(seams, [](Settings& s) { s.last_run_version = "0.0.1"; });
     if (ctx->IsError()) return;
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, updated); }, 5));
     IM_CHECK(Settings::load_file(h.ini_path).last_run_version == running);
     ctx->ItemClick("**/OK##update");
     IM_CHECK(wait_until(ctx, [&] { return phase_is(Phase::None) && !on_screen(h, updated); }, 5));
     IM_CHECK(wait_until(ctx, [&] { return on_screen(h, hydra::ui::kUpToDateText); }, 10));
-    restart_app(ctx, h, {});
+    restart_app(seams, {});
     if (ctx->IsError()) return;
     ctx->Yield(3);
     IM_CHECK(phase_is(Phase::None));
     IM_CHECK(!on_screen(h, updated));
+    IM_CHECK(seams.launcher_calls.load() == 0);
 }
 
 // Decision 10 of docs/superpowers/plans/2026-10-24-album-search.md (removed; git show 444631e6:docs/superpowers/plans/2026-10-24-album-search.md):
