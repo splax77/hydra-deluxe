@@ -70,6 +70,12 @@ inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style
 // and fill_rule_description words it.
 inline constexpr int kCh11FillLeadBeats = 4;
 
+// Clone Hero 1.0's fill lead is held between these two times, in ms: the
+// game's 0.25 s floor and 10 s ceiling (docs/clone-hero/04-fills.md FL-42).
+// activation_fill_deadline_ms clamps with them.
+inline constexpr double kCh10FillLeadFloorMs = 250.0;
+inline constexpr double kCh10FillLeadCeilingMs = 10000.0;
+
 // One sentence saying when each rule's fill deadline falls. The "1.0 fills"
 // tooltip and the fill comparison report's footer both print it.
 inline std::string fill_rule_description(FillDeadlineRule rule) {
