@@ -244,6 +244,12 @@ class _Fields:
         return self._raw.get(key)
 
 
+def no_chords_refusal(path: str) -> str:
+    """load_schedule's refusal of the schedule file at `path` when its chord
+    list is empty."""
+    return f"{path} has no chords to play"
+
+
 def load_schedule(path: str) -> Schedule:
     """The schedule file at `path`, read as written. Raises ValueError,
     quoting the file, when its `refusals` list is not empty or a squeeze in
@@ -266,7 +272,7 @@ def load_schedule(path: str) -> Schedule:
     if not rows:
         # The one refusal of a schedule with no chords; every reader of a
         # schedule meets it here, through load_schedule.
-        raise ValueError(f"{path} has no chords to play")
+        raise ValueError(no_chords_refusal(path))
     song_length_ms = doc["song_length_ms"]
     if song_length_ms is None:
         raise ValueError(f"{path}: song_length_ms is null, so the file names no song end; "

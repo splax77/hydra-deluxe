@@ -2100,16 +2100,21 @@ class LoadRefusalTest(unittest.TestCase):
     def test_an_empty_chord_list_is_refused_before_the_presses_are_read(self):
         # The Freak fixture with its chord list emptied. Its presses still
         # name chords, so a refusal of a later step would name an entry of
-        # `presses`, and a missing key is named in backticks. The empty-list
-        # refusal comes first, starts with the file it read and names the
-        # chords it lacks. play_chart.load_schedule types its wording inline,
-        # so no owner gives the sentence to compare whole.
-        message, doc = self._freak_refusal(lambda doc: doc.update(chords=[]))
+        # `presses`. The refusal is the empty-list one, whole, for the file
+        # that was read.
+        doc = _read_json(_FREAK_SCHEDULE)
+        doc["chords"] = []
         self.assertTrue(doc["presses"])
-        self.assertIn("chords", message)
-        self.assertLess(message.index("schedule.json"), message.index("chords"), message)
-        self.assertNotRegex(message, r"\bentry \d+ of `")
-        self.assertNotIn("`chords`", message)
+        paths = []
+
+        def load(path):
+            paths.append(path)
+            return play_chart.load_schedule(path)
+
+        with self.assertRaises(ValueError) as caught:
+            _write_and_load(doc, load)
+        [path] = paths
+        self.assertEqual(str(caught.exception), play_chart.no_chords_refusal(path))
 
     def test_a_press_naming_a_missing_chord_or_gem_is_refused(self):
         # A chord number one past the file's last, and a gem one past the

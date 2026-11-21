@@ -273,14 +273,22 @@ def test_the_reader_cap_stops_with_a_line():
 
 def test_a_failed_reader_run_reports_its_error():
     # A native dll beside pwsh has no .NET metadata, so the real reader fails.
+    runs = []
+
+    def kept_runner(cmd, **kwargs):
+        runs.append(subprocess.run(cmd, **kwargs))
+        return runs[-1]
+
     with pytest.raises(FactsError) as caught:
-        mono_facts.run_reader([_runtime_dll("hostfxr.dll")])
+        mono_facts.run_reader([_runtime_dll("hostfxr.dll")], runner=kept_runner)
+    [proc] = runs
+    assert proc.returncode != 0
     message = str(caught.value)
+    assert message == mono_facts.reader_failure(proc)
     assert os.path.basename(mono_facts.READER_SCRIPT) in message
-    m = re.search(r"\(exit (\d+)\): (.+)", message, re.S)
-    assert m, message
-    assert int(m.group(1)) != 0
-    assert m.group(2).strip()
+    said = [text.strip() for text in (proc.stderr, proc.stdout) if text and text.strip()]
+    assert said, "the failed reader said nothing"
+    assert said[0] in message
 
 
 def test_the_real_reader_decodes_a_runtime_assembly():
