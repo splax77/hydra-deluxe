@@ -24,6 +24,7 @@ import io
 import json
 import math
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -1128,7 +1129,34 @@ class HeaderIntTest(unittest.TestCase):
                      if "constexpr int kStarPowerMultiplier =" in line]
         self.assertEqual(len(lines), 1)
         value = lines[0].split("=")[1].strip().rstrip(";").strip()
-        self.assertEqual(sp_compare.SP_MULTIPLIER, int(value))
+        self.assertEqual(sp_compare.sp_multiplier(), int(value))
+
+    def test_importing_sp_compare_reads_no_header(self):
+        # The ch_mcp worker imports sp_compare from a copy of tools/ with no
+        # src/ beside it (test_front's copied_worker), so the import itself
+        # must not open timing.h. A fresh interpreter counts every open of
+        # the header, first across the import and then across one
+        # sp_multiplier() call; the second count shows the watch sees an open.
+        script = (
+            "import os, sys\n"
+            f"sys.path.insert(0, {_REPO_ROOT!r})\n"
+            f"header = os.path.normcase(os.path.abspath({sp_compare.TIMING_H!r}))\n"
+            "opened = []\n"
+            "def watch(event, args):\n"
+            "    if event == 'open' and isinstance(args[0], str) and "
+            "os.path.normcase(os.path.abspath(args[0])) == header:\n"
+            "        opened.append(args[0])\n"
+            "sys.addaudithook(watch)\n"
+            "from tools.ch_probe.experiments import sp_compare\n"
+            "at_import = len(opened)\n"
+            "sp_compare.sp_multiplier()\n"
+            "print(at_import, len(opened) - at_import)\n")
+        done = subprocess.run([sys.executable, "-c", script], cwd=_REPO_ROOT,
+                              capture_output=True, text=True, timeout=60)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        at_import, on_use = done.stdout.split()
+        self.assertEqual(at_import, "0", "importing sp_compare opened timing.h")
+        self.assertEqual(on_use, "1", "sp_multiplier() did not read timing.h")
 
     def test_a_header_without_the_name_is_refused(self):
         path = self._header("inline constexpr int kOther = 3;\n")
