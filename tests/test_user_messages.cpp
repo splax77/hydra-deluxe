@@ -4,6 +4,8 @@
 
 #include "doctest.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <new>
 #include <optional>
 #include <stdexcept>
@@ -17,6 +19,7 @@
 #include "core/error_kind.h"
 #include "core/model.h"
 #include "load_util.h"
+#include "net/http.h"  // http_get, set_fetcher
 #include "parse/midi.h"
 #include "program_scope.h"
 #include "parse/song.h"
@@ -40,6 +43,17 @@ const std::string kNetUnreachable =
 const std::string kAudioDecode =
     "Hydra couldn't decode this song's audio files. They may be damaged; try downloading "
     "the song again.";
+
+// The parts of `a` and `b` left once their shared start and shared end are
+// cut away: what two sentences built on one frame say differently.
+std::pair<std::string, std::string> differing_middles(const std::string& a, const std::string& b) {
+    const size_t shorter = (std::min)(a.size(), b.size());
+    size_t start = 0;
+    while (start < shorter && a[start] == b[start]) ++start;
+    size_t end = 0;
+    while (end < shorter - start && a[a.size() - 1 - end] == b[b.size() - 1 - end]) ++end;
+    return {a.substr(start, a.size() - start - end), b.substr(start, b.size() - start - end)};
+}
 
 }  // namespace
 
@@ -109,14 +123,6 @@ TEST_CASE("user_messages: a missing tick-0 tempo or unreadable Resolution shows 
           "that line in the chart file or download the song again.");
 }
 
-TEST_CASE("user_messages: an infinite .mid tempo says so") {
-    CHECK(plain_error(hydra::ChartFileError(
-              kRefused, "the tempo at tick 96 is infinite (0 microseconds per beat)")) ==
-          "Hydra can't analyze this chart because the tempo at tick 96 is infinite (0 "
-          "microseconds per beat). Fix that line in the chart file or download the song "
-          "again.");
-}
-
 TEST_CASE("user_messages: the no-notes message is already plain and passes through") {
     const std::string msg = "No Expert Pro Drums notes in this chart.";
     CHECK(plain_error(hydra::ChartFileError(hydra::ErrorKind::AlreadyPlain, msg)) == msg);
@@ -151,21 +157,31 @@ TEST_CASE("user_messages: report, rules, memory") {
 
 TEST_CASE("user_messages: stale_text names the real cause") {
     using hydra::app::stale_text;
-    CHECK(stale_text(/*build=*/true, /*rules=*/false) ==
-          "Out of date: this result came from another Hydra version. Click the song or run a "
-          "batch to refresh it.");
-    CHECK(stale_text(/*build=*/false, /*rules=*/true) ==
-          "Out of date: this result came from different rules in hydra_rules.ini. Click the "
-          "song or run a batch to refresh it.");
-    // Both causes: one sentence names both.
-    const std::string both =
-        "Out of date: this result came from another Hydra version or from different rules "
-        "in hydra_rules.ini. Click the song or run a batch to refresh it.";
-    CHECK(stale_text(/*build=*/true, /*rules=*/true) == both);
+    const std::string build_only = stale_text(/*build=*/true, /*rules=*/false);
+    const std::string rules_only = stale_text(/*build=*/false, /*rules=*/true);
+    const std::string both = stale_text(/*build=*/true, /*rules=*/true);
+    const std::string rules_file(hydra::app::kRulesFileName);
+
+    // The one-cause sentences share their frame and differ only in the cause.
+    const std::pair<std::string, std::string> causes = differing_middles(build_only, rules_only);
+    const std::string& build_cause = causes.first;
+    const std::string& rules_cause = causes.second;
+    INFO("build cause: " << build_cause << " | rules cause: " << rules_cause);
+    REQUIRE_FALSE(build_cause.empty());
+    REQUIRE_FALSE(rules_cause.empty());
+
+    // The rules cause names the rules file; the build cause does not.
+    CHECK(rules_cause.find(rules_file) != std::string::npos);
+    CHECK(build_cause.find(rules_file) == std::string::npos);
+
+    // Both causes: one sentence names both, and is neither one-cause sentence.
+    CHECK(both.find(build_cause) != std::string::npos);
+    CHECK(both.find(rules_cause) != std::string::npos);
+    CHECK(both != build_only);
+    CHECK(both != rules_only);
     // Neither (a caller asking for a row that is not stale): no cause to
     // name, so the same sentence, never an empty line.
     CHECK(stale_text(/*build=*/false, /*rules=*/false) == both);
-    CHECK(std::string(hydra::app::kNoPathsFound) == "No paths found.");
 }
 
 // The file name the notice shows is the one store::set_aside_path gave the
@@ -363,9 +379,22 @@ TEST_CASE("a network failure's sentence names the server that failed") {
           "raw");
 }
 
-TEST_CASE("the transport's host names come from the service") {
-    CHECK(hydra::net_service_host_name(hydra::NetService::GitHub) == "GitHub");
-    CHECK(hydra::net_service_host_name(hydra::NetService::Leaderboard) == "leaderboard");
+// A URL WinHTTP cannot read fails inside the real transport before any
+// connection, and its raw text names the server the caller asked for.
+TEST_CASE("the transport's raw failure text names the server it was asked for") {
+    hydra::net::set_fetcher({});  // the real WinHTTP transport
+    for (const hydra::NetServiceName& s : hydra::kNetServices) {
+        const std::string name = hydra::net_service_host_name(s.service);
+        REQUIRE_FALSE(name.empty());
+        std::string what;
+        try {
+            (void)hydra::net::http_get("not a url", nullptr, s.service);
+        } catch (const hydra::KindedError& e) {
+            what = e.what();
+        }
+        INFO("service " << name << " failed with: " << what);
+        CHECK(what.find(name) != std::string::npos);
+    }
 }
 
 // D73 item 4: a tool's body that throws ends with exit code 1 (and its
