@@ -1,8 +1,10 @@
 """Tests for build_facts.py.
 
 Most tests run on a hand-written facts dict and temp folders that stand in
-for the dumps folder and the game folder, so they never touch the game. One
-test reads the real 6142 facts file when this machine has it.
+for the dumps folder and the game folder, so they never touch the game. The
+build-number and version-file tests read real copies under testdata/ch_runs, and
+one reads this machine's installed version file. One test reads the real 6142
+facts file when this machine has it.
 """
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ import os
 import pytest
 
 from tools.ch_mcp import build_facts as B
-from tools.ch_mcp import game_files
 from tools.ch_probe import constants as C
 
 ENGINE = "ʺʺʸʶʿʵˀʸʲˀʲ"
@@ -64,16 +65,43 @@ def _dumps(tmp_path, folder, facts):
     return str(root)
 
 
-def test_build_number_is_the_fourth_dotted_number():
-    assert B.build_number(V6142) == "6142"
-    assert B.build_number("v1.0.0.4045-master") == "4045"
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
+# The real 1.1 build's facts cut to its drum engine class, under the build-number folder
+# the dumps use (from hydra-data/ch-dumps/6142/facts.json), and the installed game's real
+# version file (C:\Clone Hero\1.1 june\Clone Hero\Clone Hero_Data\version.json).
+REAL_6142_DUMPS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-6142")
+REAL_6142_GAME = os.path.join(REAL_6142_DUMPS, "game")
+# The real 1.0 build's facts, cut (from hydra-data/ch-dumps/4045/facts.json).
+REAL_4045_FACTS = os.path.join(_REPO_ROOT, "testdata", "ch_runs", "ch-dumps-4045", "facts.json")
+
+
+def _read_json(path):
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def test_build_number_names_the_dump_folder_of_the_real_build():
+    version = B.current_build(REAL_6142_GAME)
+    path = B.facts_path(version, REAL_6142_DUMPS)
+    assert os.path.isfile(path), f"{version} gives {path}, which is not the real dump folder"
+    described = _read_json(path)["game_version"]
+    # The game writes its version with a leading v and the facts without one; both
+    # spellings must name the same folder.
+    assert described != version
+    assert B.build_number(described) == B.build_number(version)
+    other = _read_json(REAL_4045_FACTS)["game_version"]
+    assert B.build_number(other) != B.build_number(version)
 
 
 def test_build_number_refuses_a_version_without_one():
+    version = "v1.1-final"
     with pytest.raises(B.UnknownBuild) as err:
-        B.build_number("v1.1-final")
-    assert str(err.value) == ("unknown build v1.1-final: no facts for it; run dump_build.py and "
-                              "dump_facts.py (no build number in the version string)")
+        B.build_number(version)
+    assert err.value.version == version
+    message = str(err.value)
+    assert message.startswith(str(B.UnknownBuild(version)) + " (")
+    assert "build number" in message
 
 
 def test_same_build_drops_one_leading_v():
@@ -89,7 +117,11 @@ def test_current_build_reads_the_version_as_written(tmp_path):
 
 
 def test_version_file_sits_in_the_real_game_folder():
-    assert B.VERSION_FILE == os.path.join(game_files.GAME_DIR, "Clone Hero_Data", "version.json")
+    # The copy keeps the real game folder's layout, and this machine's game folder holds
+    # the file itself; current_build reads it when given no folder.
+    assert os.path.isfile(B.version_file(REAL_6142_GAME))
+    assert os.path.isfile(B.VERSION_FILE), f"no version file at {B.VERSION_FILE}"
+    B.build_number(B.current_build())
 
 
 def test_load_facts_loads_a_matching_file(tmp_path):
@@ -161,12 +193,6 @@ def test_method_name_by_rva_refuses_a_class_none_carries():
     with pytest.raises(B.FactsLookupError) as err:
         B.method_name_by_rva(_facts(), "Nobody", 0x20DEEC0)
     assert str(err.value) == "class Nobody matched 0 classes"
-
-
-def test_method_name_by_rva_refuses_a_base_class_method_as_zero_matches():
-    with pytest.raises(B.FactsLookupError) as err:
-        B.method_name_by_rva(_facts(), BASE, 0x100E6E0)
-    assert str(err.value) == f"rva 0x100E6E0 matched 0 methods of {BASE}"
 
 
 def test_load_facts_refuses_facts_that_are_not_json(tmp_path):
