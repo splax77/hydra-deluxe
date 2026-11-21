@@ -61,6 +61,7 @@ Under Confirmed are the user's exact words, filed with the user's approval or th
 - **2026-11-08** chose "Match the game" to "CR-24: 31 of your .mid charts end with a "[section _ENDOFSONG]" text, mostly Guitar Hero: Warriors of Rock charts. The game doesn't make a section from it. Hydra does: on The Cure "Fascination Street", Hydra's Preview timeline has a last section " ENDOFSONG" starting at 311,982 ms, right after "Chorus Out" at 273,514 ms. Matching the game would remove that section, so "Chorus Out" runs to the end. Should Hydra drop it?" (session 77057df2)
 - **2026-11-08** chose "Match the game (Recommended)" to "Q1, double lanes (NL-55): when a double lane's first chord has 2+ pads, which second pad is right? Game listing (f5de790.asm 69-78): always skips the first chord and takes the highest pad of a LATER chord. Hydra (song.cpp 144-145): takes the first chord's OWN highest pad. Example: red + yellow cymbal, then blue tom. Game lights red + blue tom; Hydra lights red + yellow cymbal. Your D112 ruling was "go with clone hero"." (session 77057df2)
 - **2026-11-08** chose "Unknown only" to "Besides the 96 blocks labelled Unknown, the Clone Hero pages have 30 labelled "Hydra assumes it, never checked". Should the plan check those 30 too?" (session 77057df2)
+- **2026-11-12** chose "Yes, drop it" to "Drop the frame-rate check from LS-G1's pass line?" (session 1ac0d6b4)
 
 
 
