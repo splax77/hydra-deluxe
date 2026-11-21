@@ -185,6 +185,17 @@ inline constexpr const char* kComparisonFailed = "The comparison could not be bu
 inline constexpr const char* kLeaderboardWaking =
     "The leaderboard server can take a moment to wake up.";
 
+// What the report windows say while they build. The path report's subtitle
+// reads kPathReportBuilding; while it waits on a batch, its count line starts
+// with kPathReportAnalyzing. The comparison window's first line is
+// kComparisonBuilding.
+inline constexpr const char* kPathReportBuilding = "Building the report from your library...";
+inline constexpr const char* kPathReportAnalyzing = "Analyzing ";
+inline constexpr const char* kComparisonBuilding = "Fetching scores and building the report...";
+
+// What a report window says after its build was cancelled, above Try again.
+inline constexpr const char* kReportCancelled = "Report cancelled.";
+
 }  // namespace hydra::app
 
 #endif  // HYDRA_APP_USER_MESSAGES_H

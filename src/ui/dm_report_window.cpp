@@ -122,8 +122,7 @@ void draw_dm_report_window(bool* open, const DmReportInput& input, DmWindow& w) 
     frame.window_name = "dmleaderboards: " + player + " \xE2\x80\x94 Hydra###dmreport";  // U+2014
     frame.heading = "vs dmleaderboards";
     // The picker box's two sentences; the server gives no count.
-    frame.building_lines = {"Fetching scores and building the report...",
-                            app::kLeaderboardWaking};
+    frame.building_lines = {app::kComparisonBuilding, app::kLeaderboardWaking};
     frame.failure_sentence = app::kComparisonFailed;
     frame.compare_another = true;
     // A player with no scores: the counts as the picker box gave them.
