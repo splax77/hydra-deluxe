@@ -108,21 +108,21 @@ class StallHarnessTest(unittest.TestCase):
 
     def test_the_cap_ends_the_run(self):
         run = _Run(self)
-        minutes = 0.01
+        # The whole schedule is far longer than the test's run length, so
+        # the cap must cut its first pass short.
+        chords = play_chart.load_schedule(_SCHEDULE).chords
+        self.assertGreater(C.ms_to_s(chords[-1].ms - chords[0].ms), 2 * _MINUTES * 60)
         began = time.perf_counter()
-        code = SH.main([_SCHEDULE, "--sink", SH.SINK_WRITER, "--minutes", f"{minutes:g}",
+        code = SH.main([_SCHEDULE, "--sink", SH.SINK_WRITER, "--minutes", repr(_MINUTES),
                         "--no-cdb", "--out", run.folder], out=run.lines.append)
         took_s = time.perf_counter() - began
         # 0 is the code of a run that went on to its cap; a pass that ended
         # any other way gives 1.
         self.assertEqual(code, 0)
-        self.assertGreaterEqual(took_s, minutes * 60)
-        # The schedule runs about two minutes, so the cap cut its first pass
-        # short and no second pass began.
+        self.assertGreaterEqual(took_s, _MINUTES * 60)
         logs = run.press_logs()
         self.assertEqual(list(logs), ["press-1.csv"])
-        self.assertLess(len(logs["press-1.csv"]),
-                        len(play_chart.load_schedule(_SCHEDULE).chords))
+        self.assertLess(len(logs["press-1.csv"]), len(chords))
 
     def test_the_defaults_are_the_users_numbers(self):
         seen = {}
