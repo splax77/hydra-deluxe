@@ -71,8 +71,9 @@ inline const char* fill_rule_name(FillDeadlineRule rule, FillRuleNameStyle style
 inline constexpr int kCh11FillLeadBeats = 4;
 
 // Clone Hero 1.0's fill lead is held between these two times, in ms: the
-// game's 0.25 s floor and 10 s ceiling (docs/clone-hero/04-fills.md FL-42).
-// activation_fill_deadline_ms clamps with them.
+// game's 0.25 s floor and 10 s ceiling. Source: docs/clone-hero/04-fills.md
+// FL-42, which gives the clamp as max(250, min(fill end - pad, 10000)) ms
+// (game code 4045). activation_fill_deadline_ms clamps with them.
 inline constexpr double kCh10FillLeadFloorMs = 250.0;
 inline constexpr double kCh10FillLeadCeilingMs = 10000.0;
 

@@ -269,6 +269,8 @@ TEST_CASE("activation row: badges under the measure clear the bars by the row's 
             ++dropped;
             const float line = kLine * scale;
             const float pad = top_pad(scale);
+            // The text line sits in the middle of the row's first band.
+            CHECK(l.text_y + line * 0.5f == doctest::Approx(kRowLineH * scale * 0.5f));
             CHECK(l.text_y == doctest::Approx(pad));
             float above = l.text_y + line;  // the bars' line bottom, then each pill line's
             float line_top = 0.0f;
