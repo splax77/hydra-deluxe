@@ -20,13 +20,13 @@
 using hydra::audio::DecodedAudio;
 using hydra::audio::Playhead;
 using hydra::ui::PreviewTransport;
-using testaudio::make_ramp;
+using testaudio::ramp_source;
 
 namespace {
 
 // A playhead `ms` milliseconds long at 48 kHz stereo.
 std::unique_ptr<Playhead> make_playhead(double ms) {
-    return std::make_unique<Playhead>(make_ramp(static_cast<int>(ms * 48.0)));
+    return std::make_unique<Playhead>(ramp_source(static_cast<int>(ms * 48.0)));
 }
 
 }  // namespace
@@ -80,7 +80,7 @@ TEST_CASE("the transport's end is the song's length; unload clears it") {
 TEST_CASE("set_song_length_ms moves the end and pulls the clock back to it") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
-    auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
+    auto* playhead = new Playhead(ramp_source(48000));  // 1000 ms
     transport.load(std::unique_ptr<Playhead>(playhead));
     transport.set_song_length_ms(3000.0);
     REQUIRE(transport.length_ms() == doctest::Approx(3000.0));
@@ -143,7 +143,7 @@ TEST_CASE("play seeks the playhead to the clock and both run") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
 
-    auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
+    auto* playhead = new Playhead(ramp_source(48000));  // 1000 ms
     transport.load(std::unique_ptr<Playhead>(playhead), 0.0);
     CHECK_FALSE(playhead->playing());
 
@@ -196,7 +196,7 @@ TEST_CASE("tick pauses at the end and pins the time") {
 TEST_CASE("a seek while playing brings the audio back after it ran out") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
-    auto* playhead = new Playhead(make_ramp(48000));  // 1000 ms
+    auto* playhead = new Playhead(ramp_source(48000));  // 1000 ms
     transport.load(std::unique_ptr<Playhead>(playhead));
     transport.set_song_length_ms(2000.0);
     transport.play();
@@ -233,7 +233,7 @@ TEST_CASE("seek clamps to [0, length]") {
 
 TEST_CASE("read_frames serves audio while playing and silence while paused") {
     PreviewTransport transport([] { return 0.0; });
-    transport.load(std::make_unique<Playhead>(make_ramp(5)), 0.0);
+    transport.load(std::make_unique<Playhead>(ramp_source(5)), 0.0);
 
     std::vector<float> out(8, -1.0f);  // 4 stereo frames, sentinel-filled
     CHECK(transport.read_frames(out.data(), 4) == 0);  // paused: silence
@@ -261,7 +261,7 @@ TEST_CASE("gain set before load applies to the next playhead") {
     transport.set_gain(0.5f);
     CHECK(transport.gain() == doctest::Approx(0.5f));
 
-    auto* playhead = new Playhead(make_ramp(100));
+    auto* playhead = new Playhead(ramp_source(100));
     transport.load(std::unique_ptr<Playhead>(playhead), 0.0);
     CHECK(playhead->gain() == doctest::Approx(0.5f));
 
@@ -280,7 +280,7 @@ TEST_CASE("an audio offset seeks the playhead ahead of the clock") {
     double t = 0.0;
     PreviewTransport transport([&] { return t; });
 
-    auto* playhead = new Playhead(make_ramp(96000));  // 2000 ms
+    auto* playhead = new Playhead(ramp_source(96000));  // 2000 ms
     transport.load(std::unique_ptr<Playhead>(playhead), /*audio_offset_ms=*/500.0);
 
     transport.seek_ms(250.0);

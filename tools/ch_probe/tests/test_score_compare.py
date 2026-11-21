@@ -244,10 +244,6 @@ class ScoreStepTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "'mouse'"):
             score_compare.compare_scores(presses, chords, "mouse")
 
-    def test_the_route_words_are_game_tools(self):
-        from tools.ch_mcp import game_tools
-        self.assertEqual((KIT, KEYS), (game_tools.ROUTE_KIT, game_tools.ROUTE_KEYS))
-
     def test_a_press_not_in_the_score_json_is_an_error(self):
         # Pitch Dark's chords 143 to 145, against the score of chords 136 to
         # 138 of another song, which holds none of them.

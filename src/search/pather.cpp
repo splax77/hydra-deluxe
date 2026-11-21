@@ -393,12 +393,6 @@ EngineOptions best_finish_options(const SearchSettings& settings,
     return options;
 }
 
-std::vector<Path> search_target(const Song& song, const SearchSettings& settings,
-                                const std::vector<int64_t>& act_ticks,
-                                std::vector<bool>* promoted) {
-    return run_target(search_graph(song, settings), activation_pins(act_ticks), promoted);
-}
-
 std::vector<PinnedWindow> activation_pins(std::vector<int64_t> ticks) {
     std::sort(ticks.begin(), ticks.end());
     ticks.erase(std::unique(ticks.begin(), ticks.end()), ticks.end());

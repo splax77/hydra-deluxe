@@ -827,7 +827,8 @@ TEST_CASE("report lists only the wanted cap and names it") {
         testdm::save(store, entry.md5, settings, result.record);
     };
     save_at(8, false);
-    REQUIRE(store.ready_records(fixture_settings(8).profile()).size() == 1);
+    REQUIRE(store.lookup_one(entry.md5, fixture_settings(8).profile()).status ==
+            store::RecordStatus::Ready);
 
     report::ReportOptions options = fixture_options(4);
     report::GeneratedReport four = report::generate_report(store, options);
@@ -949,8 +950,6 @@ TEST_CASE("the report names a chart the scan found twice by its first copy") {
 }
 
 TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
-    using report::tier_for;
-
     // The names and edges come from their owner, timing_tiers(). The ladder
     // opens at the difficult floor past_difficult_floor tests and closes at
     // the two-hit budget (nominal_budget_ms); each edge belongs to the band
@@ -959,15 +958,15 @@ TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     REQUIRE(tiers.size() >= 3);
     const TimingTier& none = hydra::none_tier(tiers);
     const TimingTier& beyond = hydra::beyond_tier(tiers);
-    CHECK(tier_for(std::nullopt) == std::make_pair(std::string(none.name), std::string(none.tok)));
+    CHECK(tier_for(std::nullopt, tiers) == std::make_pair(std::string(none.name), std::string(none.tok)));
 
     // The first band ends on the difficult floor: on it is not past it.
     REQUIRE(tiers.front().cutoff.has_value());
     const double difficult_floor = *tiers.front().cutoff;
     CHECK_FALSE(past_difficult_floor(difficult_floor));
     CHECK(past_difficult_floor(difficult_floor + 0.01));
-    CHECK(tier_for(difficult_floor).first == tiers.front().name);
-    CHECK(tier_for(difficult_floor + 0.01).first != tiers.front().name);
+    CHECK(tier_for(difficult_floor, tiers).first == tiers.front().name);
+    CHECK(tier_for(difficult_floor + 0.01, tiers).first != tiers.front().name);
 
     // The last banded edge is the two-hit budget: on it is still inside,
     // just past it reads Beyond.
@@ -981,8 +980,8 @@ TEST_CASE("tier_for: raw-ms bands derived from the two-hit budget") {
     }
     REQUIRE(last_edge.has_value());
     CHECK(*last_edge == nominal_budget_ms());
-    CHECK(tier_for(*last_edge).first == last_name);
-    CHECK(tier_for(*last_edge + 0.01) ==
+    CHECK(tier_for(*last_edge, tiers).first == last_name);
+    CHECK(tier_for(*last_edge + 0.01, tiers) ==
           std::make_pair(std::string(beyond.name), std::string(beyond.tok)));
 }
 

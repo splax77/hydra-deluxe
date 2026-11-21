@@ -396,16 +396,6 @@ TEST_CASE("timing: the measure count starts at tick 0, as the grid does, past a 
                     std::out_of_range);
 }
 
-TEST_CASE("timing: tick_at_measures_f stays the inverse across a mid-measure change") {
-    std::map<int64_t, int64_t> tpm{{0, 1920}, {2400, 1440}};
-    std::map<int64_t, double> bpm{{0, 120.0}};
-    hydra::SongTiming st(480, tpm, bpm, {{0, {4, 4}}, {2400, {3, 4}}});
-
-    for (double t : {2399.0, 2400.0, 2401.0, 2400.5})
-        CHECK(st.tick_at_measures_f(st.measures_at_tick_f(t)) ==
-              doctest::Approx(t).epsilon(1e-9));
-}
-
 TEST_CASE("timing: plusmeasure is exact inside one meter and across two changes (D115)") {
     std::map<int64_t, double> bpm{{0, 120.0}};
     hydra::SongTiming flat(480, {{0, 1680}}, bpm, {{0, {7, 8}}});

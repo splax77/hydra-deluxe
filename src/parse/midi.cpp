@@ -358,36 +358,12 @@ bool is_midi_header(const uint8_t* data, size_t size) {
     return size >= 4 && data[0] == 'M' && data[1] == 'T' && data[2] == 'h' && data[3] == 'd';
 }
 
-const char* message_type_name(Message::Type type) {
-    switch (type) {
-        case MType::NoteOn: return "note_on";
-        case MType::NoteOff: return "note_off";
-        case MType::SetTempo: return "set_tempo";
-        case MType::TimeSignature: return "time_signature";
-        case MType::Text: return "text";
-        case MType::Copyright: return "copyright";
-        case MType::Lyrics: return "lyrics";
-        case MType::Marker: return "marker";
-        case MType::CueMarker: return "cue_marker";
-        case MType::TrackName: return "track_name";
-        case MType::InstrumentName: return "instrument_name";
-        case MType::DeviceName: return "device_name";
-    }
-    return "unknown";
-}
-
 MidiFile::MidiFile(const std::vector<uint8_t>& data) {
     parse(data.data(), data.size());
 }
 
 MidiFile::MidiFile(const uint8_t* data, size_t size) {
     parse(data, size);
-}
-
-MidiFile MidiFile::from_file(const std::string& path) {
-    // read_file_bytes owns reading a whole file (UTF-8 paths, long paths,
-    // files past 2 GB) and its "cannot open file: " error (D54).
-    return MidiFile(read_file_bytes(path));
 }
 
 void MidiFile::parse(const uint8_t* data, size_t size) {

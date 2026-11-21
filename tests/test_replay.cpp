@@ -260,7 +260,8 @@ TEST_CASE("targeted search reproduces every corpus path") {
         cfg, [&cfg](const Song& song, const Path& p) -> std::string {
             const std::vector<Activation> want_acts = p.all_activations();
 
-            const std::vector<Path> got = search_target(song, cfg, test::act_ticks(p));
+            const std::vector<Path> got =
+                search_target(song, cfg, activation_pins(test::act_ticks(p))).paths;
 
             // Somewhere in the returned variants must be this exact path.
             const Path* match = nullptr;
@@ -418,7 +419,7 @@ TEST_CASE("targeted search rejects a tick that is not a fill") {
         CHECK_MESSAGE(not_a_fill.has_value(), "no chord without a fill before tick " << act_tick);
         if (!not_a_fill) continue;
         ++checked;
-        CHECK_MESSAGE(search_target(song, cfg, {*not_a_fill}).empty(),
+        CHECK_MESSAGE(search_target(song, cfg, activation_pins({*not_a_fill})).paths.empty(),
                       "a path came back for tick " << *not_a_fill << ", which is not a fill");
     }
     MESSAGE(checked << " charts checked, " << no_part << " with no notes at these settings, "

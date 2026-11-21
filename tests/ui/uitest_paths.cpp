@@ -302,9 +302,9 @@ std::vector<DrawnMark> drawn_marks(ImGuiTestContext* ctx) {
 const hydra::app::ActivationsView& shown_activations(hydra::ui::AppState& app) {
     return app.details_ui.paths_tab
         .details(*app.details_ui.selected_path, *app.viewed.record, app.record_generation.n,
-                 app.viewed.timing ? &*app.viewed.timing : nullptr, app.settings.backend_limit(),
-                 app.settings.rules, app.viewed.song_length_ms, app.settings.view_prodrums,
-                 app.viewed.chords ? &*app.viewed.chords : nullptr)
+                 app.viewed.timing ? &*app.viewed.timing : nullptr, *app.viewed.chords,
+                 app.settings.backend_limit(), app.settings.rules, app.viewed.song_length_ms,
+                 app.settings.view_prodrums)
         .activations;
 }
 

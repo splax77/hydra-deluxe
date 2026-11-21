@@ -97,12 +97,10 @@ private:
     std::vector<std::pair<core::SqOutRule, ChordScoreTable>> tables_;
 };
 
-// A scores-only replay priced from `table`; its score fields are a full
-// replay's.
-ReplayOptions scores_only_with(const ChordScoreTable& table) {
+// A scores-only replay; its score fields are a full replay's.
+ReplayOptions scores_only() {
     ReplayOptions o;
     o.scores_only = true;
-    o.table = &table;
     return o;
 }
 
@@ -210,7 +208,7 @@ TEST_CASE("replay: each window alone pays each chord the engine's price, on ever
                 for (const core::Rules& rules : variants) {
                     const ChordScoreTable& table = tables(rules);
                     const std::vector<ReplayWindow> one = {w};
-                    const ReplayResult alone = replay_path(song, one, rules, scores_only_with(table));
+                    const ReplayResult alone = replay_path(song, one, rules, scores_only());
                     check_rows_priced(song, one, rules, alone, table, rules_label(rules));
                     for (size_t i = 0; i < alone.chords.size(); ++i) {
                         const ReplayChord& row = alone.chords[i];
@@ -372,11 +370,11 @@ TEST_CASE("replay: window order does not matter and windows add up, shrunk by Ra
         const core::Rules& rules = variants[v];
         const ChordScoreTable& table = tables[c](rules);
         RC_LOG() << pool.path << ", " << rules_label(rules) << "\n";
-        const ReplayResult r = replay_path(*pool.song, wl, rules, scores_only_with(table));
+        const ReplayResult r = replay_path(*pool.song, wl, rules, scores_only());
         if (r.final.sp > 0) ++paying_runs;
         const std::vector<ReplayWindow> reversed(wl.rbegin(), wl.rend());
         RC_ASSERT(first_result_difference(
-                      r, replay_path(*pool.song, reversed, rules, scores_only_with(table))) == "");
+                      r, replay_path(*pool.song, reversed, rules, scores_only())) == "");
         const BadRows off = rows_off_price(*pool.song, wl, rules, r, table);
         RC_LOG() << "first row its windows' prices do not give: " << off.first << "\n";
         RC_ASSERT(off.count == 0u);
@@ -421,106 +419,14 @@ TEST_CASE("replay: on every corpus path the disc follows SP's payment and window
                 const std::string what = c.path + ", " + rules_label(rules);
                 INFO(what);
                 const ChordScoreTable& table = tables(rules);
-                const ReplayResult r = replay_path(song, wl, rules, scores_only_with(table));
+                const ReplayResult r = replay_path(song, wl, rules, scores_only());
                 check_rows_priced(song, wl, rules, r, table, what);
                 CHECK(first_result_difference(
-                          r, replay_path(song, reversed, rules, scores_only_with(table))) == "");
+                          r, replay_path(song, reversed, rules, scores_only())) == "");
             }
         }
     }
     MESSAGE("charts " << charts << ", runs " << runs);
     CHECK(charts > 0);
     CHECK(runs > 0);
-}
-
-namespace {
-
-// The squeeze chart under two windows, and the first corpus chart's first
-// stored path, each under the default and the whole-chord squeeze-out rule.
-struct TableCase {
-    std::string what;
-    const Song* song;
-    std::vector<ReplayWindow> windows;
-};
-
-std::vector<TableCase> table_cases(const Song& squeeze) {
-    std::vector<TableCase> out;
-    out.push_back({"squeeze chart", &squeeze, {window(0, 3072, 3256), window(1536, 3100)}});
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    for (const std::string& path : corpus::chart_paths()) {
-        const Song& song = corpus::song(path, cfg.reading());
-        if (song.is_empty()) continue;
-        const HydraRecord& rec = corpus::analyzed(path, cfg);
-        if (rec.paths.empty()) continue;
-        out.push_back({path, &song, windows_for_path(rec.paths.front())});
-        break;
-    }
-    if (out.size() != 2) throw std::logic_error("no corpus chart with a stored path");
-    return out;
-}
-
-}  // namespace
-
-// Every corpus chart's stored root paths, under each squeeze-out rule, in
-// full and scores-only: the replay handed a chord-score table it would build
-// itself gives the same rows as building its own, and both are what the
-// windows' prices give.
-TEST_CASE("replay_path with a table handed in equals replay_path building its own") {
-    const app::AnalysisSettings cfg = app::Settings().to_analysis_settings();
-    const std::vector<core::Rules> variants = sqout_rule_variants(cfg.rules);
-    int paths = 0;
-    for (const CorpusChart& c : analyzed_corpus_charts(cfg)) {
-        const Song& song = *c.song;
-        const TablesByRule priced(song, variants);
-        for (const Path& p : c.record->paths) {
-            ++paths;
-            const std::vector<ReplayWindow> wl = windows_for_path(p);
-            for (const core::Rules& rules : variants) {
-                for (const bool scores_only : {false, true}) {
-                    const std::string what = c.path + ", " + rules_label(rules) +
-                                             (scores_only ? ", scores only" : ", full");
-                    INFO(what);
-                    ReplayOptions own;
-                    own.scores_only = scores_only;
-                    const ChordScoreTable table = chord_score_table(
-                        song, rules.sqout_rule,
-                        scores_only ? ChordScoreDetail::ChordsOnly : ChordScoreDetail::WithNotes);
-                    ReplayOptions handed = own;
-                    handed.table = &table;
-                    const ReplayResult want = replay_path(song, wl, rules, own);
-                    const ReplayResult got = replay_path(song, wl, rules, handed);
-                    check_rows_priced(song, wl, rules, got, priced(rules), what);
-                    CHECK(first_result_difference(want, got) == "");
-                }
-            }
-        }
-    }
-    // A run with no stored root path anywhere compared nothing.
-    CHECK(paths > 0);
-}
-
-TEST_CASE("replay_path refuses a table of the wrong size or detail") {
-    const Song squeeze = squeeze_chart();
-    const std::vector<TableCase> cases = table_cases(squeeze);
-    const Song& other = *cases.back().song;
-    REQUIRE(other.sequence.size() != squeeze.sequence.size());
-    const core::Rules& rules = core::default_rules();
-    const std::vector<ReplayWindow> wl = cases.front().windows;
-
-    ReplayOptions scores;
-    scores.scores_only = true;
-    const ChordScoreTable wrong_size = chord_score_table(other, rules.sqout_rule);
-    scores.table = &wrong_size;
-    CHECK_THROWS_AS(replay_path(squeeze, wl, rules, scores), std::logic_error);
-
-    const ChordScoreTable with_notes =
-        chord_score_table(squeeze, rules.sqout_rule, ChordScoreDetail::WithNotes);
-    scores.table = &with_notes;
-    CHECK_THROWS_AS(replay_path(squeeze, wl, rules, scores), std::logic_error);
-
-    // And the other way round: a full replay handed a table without notes.
-    ReplayOptions full;
-    const ChordScoreTable chords_only = chord_score_table(squeeze, rules.sqout_rule);
-    full.table = &chords_only;
-    CHECK_THROWS_AS(replay_path(squeeze, wl, rules, full), std::logic_error);
 }

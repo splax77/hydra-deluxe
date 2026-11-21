@@ -157,13 +157,25 @@ inline Song make_overfill_song() {
                                      {6768},        {7500}});
 }
 
+// Writes a ReplayScore's six categories into a Path's score fields, the
+// reverse of score_of (core/replay.h). Only these fixtures need it: no Hydra
+// code builds a Path's score from a replay.
+inline void set_path_score(Path& path, const ReplayScore& s) {
+    path.notes_points = s.notes;
+    path.score_combo = s.combo;
+    path.score_sp = s.sp;
+    path.score_solo = s.solo;
+    path.score_accents = s.accent;
+    path.score_ghosts = s.ghost;
+}
+
 // A path whose stored score is what the replay prices it at, so the scene
 // trusts it. The corpus case proves the replay against the engine; these
 // hand-built fixtures only test the Preview's plumbing.
 inline Path priced_path(const Song& song, std::vector<Activation> acts) {
     Path p;
     p.activations = std::move(acts);
-    assign_score(p, replay_stored_path(song, p).result.final);
+    set_path_score(p, replay_stored_path(song, p).result.final);
     return p;
 }
 

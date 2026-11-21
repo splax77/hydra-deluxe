@@ -6,10 +6,8 @@ loads the song's manifest.json and prints each test block's window values in
 the order they appeared, next to the notes around them.
 
 It also logs the score (+0x94) and the field at +0x2e0, which holds the start
-of a double lane's round (docs/clone-hero/03-timing.md, TM-14). The same script
-covers step 4 of the hit-window plan: run it on Edge Walk while play_chart.py
-hits the notes, and the report checks whether +0x2e0 changes once per hit and
-sits next to the note time.
+of a double lane's round (docs/clone-hero/03-timing.md, TM-14). The report does
+not judge +0x2e0: TM-14 says it is not a hit time.
 
 The step numbers here and in the report it prints are that plan's:
 `docs/superpowers/plans/2026-09-25-hit-window-testing.md` (removed; `git show 444631e6:docs/superpowers/plans/2026-09-25-hit-window-testing.md`).
@@ -39,7 +37,7 @@ if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
 from tools.ch_probe import constants as C, engine_finder, probe_songs
-from tools.ch_probe.engine import EngineModel, pressed_input_hit
+from tools.ch_probe.engine import EngineModel
 from tools.ch_probe.process import open_process
 from tools.ch_probe.experiments import live
 
@@ -203,39 +201,6 @@ def window_report(samples: list[Sample], notes: list[dict]) -> list[str]:
     return lines
 
 
-def round_start_report(samples: list[Sample], notes: list[dict]) -> list[str]:
-    """Check whether +0x2e0 (constants.OFF_ROUND_START) changes once per hit,
-    next to the note (step 4)."""
-    hits = changes(samples, "round_start_ms")[1:]   # [0] is the starting value
-    score_rises = sum(1 for a, b in zip(samples, samples[1:])
-                      if pressed_input_hit(a.score, b.score))
-    lines = ["+0x2e0 against the note times:"]
-    if not hits:
-        lines.append("  +0x2e0 never changed.")
-        lines.append(f"  The score rose {score_rises} times.")
-        return lines
-
-    diffs = []
-    for c, v in hits:
-        n = min(notes, key=lambda n: abs(n["time_ms"] - v))
-        d = v - n["time_ms"]
-        diffs.append(d)
-        lines.append(f"  clock {C.ms_to_s(c):8.3f} s  +0x2e0 {C.ms_to_s(v):8.3f} s  "
-                     f"note #{n['index']} at {C.ms_to_s(n['time_ms']):8.3f} s  "
-                     f"diff {d:+6.1f} ms")
-    lines.append("")
-    lines.append(f"  +0x2e0 changed {len(hits)} times; the score rose {score_rises} times.")
-    lines.append(f"  |diff|: median {statistics.median(abs(d) for d in diffs):.1f} ms, "
-                 f"max {max(abs(d) for d in diffs):.1f} ms")
-    if len(hits) == score_rises and max(abs(d) for d in diffs) <= C.ROUND_START_MAX_GAP_MS:
-        lines.append("  +0x2e0 changed once per hit, within "
-                     f"{C.ROUND_START_MAX_GAP_MS:g} ms of the note.")
-    else:
-        lines.append("  +0x2e0 did NOT change once per hit, within "
-                     f"{C.ROUND_START_MAX_GAP_MS:g} ms of the note; read the rows above.")
-    return lines
-
-
 def clock_step_line(steps_ms: list[float]) -> str:
     if not steps_ms:
         return "The song clock never moved."
@@ -354,9 +319,6 @@ def main() -> None:
     print(f"Mode: {mode}")
     print()
     for line in window_report(samples, notes):
-        print(line)
-    print()
-    for line in round_start_report(samples, notes):
         print(line)
 
     os.makedirs(RESULTS_DIR, exist_ok=True)

@@ -107,10 +107,11 @@ void save_old_build(RecordStore& store, const std::string& id, const Profile& pr
     hydra::test::save_old_build_record(store, prepare_record(id, profile, analysis));
 }
 
-// The charts ready_records lists under `profile`, by song id.
+// The charts settled_song_ids answers Ready under `profile`, by song id.
 std::set<std::string> ready_ids_listed(RecordStore& store, const Profile& profile) {
     std::set<std::string> out;
-    for (const RecordRow& r : store.ready_records(profile)) out.insert(r.song_id);
+    for (const auto& [id, status] : store.settled_song_ids(profile))
+        if (status == RecordStatus::Ready) out.insert(id);
     return out;
 }
 
@@ -224,20 +225,18 @@ TEST_CASE("RecordStore maintenance: a lookup, the Ready list and the record coun
         INFO(id);
         CHECK(store.lookup_one(id, at4).status == RecordStatus::Stale);
     }
-    CHECK(store.ready_records(at4).empty());
-    CHECK(store.ready_song_ids(at4).empty());
+    CHECK(store.settled_song_ids(at4).empty());
 
     CHECK(store.lookup_one("h1", at4).status == RecordStatus::NotAnalyzed);
     save_record(store, "h1", at4, record);
-    CHECK(store.lookup_one("h1", at4).status == RecordStatus::Ready);
+    const RecordLookup saved = store.lookup_one("h1", at4);
+    CHECK(saved.status == RecordStatus::Ready);
     CHECK(store.lookup_one("h1", OldLibrary::profile(8)).status == RecordStatus::NotAnalyzed);
 
-    const std::vector<RecordRow> listing = store.ready_records(at4);
-    REQUIRE(listing.size() == 1);
-    CHECK(listing[0].song_id == "h1");
-    CHECK(listing[0].best_path_text() == record.best_path().pathstring());
+    CHECK(saved.record.best_path_text() == record.best_path().pathstring());
     CHECK(store.record_count() == old_records + 1);
-    CHECK(store.ready_song_ids(at4) == std::unordered_set<std::string>{"h1"});
+    CHECK(store.settled_song_ids(at4) ==
+          std::unordered_map<std::string, RecordStatus>{{"h1", RecordStatus::Ready}});
 }
 
 namespace {
@@ -265,7 +264,7 @@ TEST_CASE("records at different caps coexist; each lookup sees only its own cap"
     CHECK(store.lookup_one("h", profile_at(5)).status == RecordStatus::NotAnalyzed);
 
     // A stale 6-bar record, analyzed under other rules, leaves the 8-bar
-    // answer alone -- for single lookups and for the listing alike.
+    // answer alone -- for single lookups and for settled_song_ids alike.
     save_record(store, "h", profile_at(6), other_rules_at(6));
     CHECK(store.lookup_one("h", profile_at(8)).status == RecordStatus::Ready);
     CHECK(ready_ids_listed(store, profile_at(8)) == std::set<std::string>{"h"});
@@ -277,20 +276,20 @@ TEST_CASE("records at different caps coexist; each lookup sees only its own cap"
     CHECK(stale_lookup.stale_rules);
     CHECK(stale_lookup.record.paths.empty());
 
-    // The listing leaves it out. A stale record takes its chart out of the
-    // listing entirely, so a report counts it as never analyzed rather than
-    // reading numbers this build cannot vouch for.
-    CHECK(store.ready_records(profile_at(6)).empty());
-    const std::vector<RecordRow> at4 = store.ready_records(profile_at(4));
-    REQUIRE(at4.size() == 1);
-    CHECK(at4[0].summary().score == analysis_at(4).best_path().totalscore());
+    // settled_song_ids leaves it out entirely, so a batch analyzes the chart
+    // again rather than skipping it on numbers this build cannot vouch for.
+    CHECK(store.settled_song_ids(profile_at(6)).empty());
+    CHECK(ready_ids_listed(store, profile_at(4)) == std::set<std::string>{"h"});
+    const RecordLookup at4 = store.lookup_one("h", profile_at(4));
+    REQUIRE(at4.status == RecordStatus::Ready);
+    CHECK(at4.record.summary().score == analysis_at(4).best_path().totalscore());
 }
 
-TEST_CASE("the listing and a lookup agree on which record is a chart's answer") {
+TEST_CASE("settled_song_ids and a lookup agree on which record is a chart's answer") {
     // The lock between the two paths. Each chart below holds records at
-    // several caps. At every cap, whatever lookup picks is what the listing
-    // must show, and when that pick is not readable the chart must not be
-    // listed.
+    // several caps. At every cap, whatever lookup picks is what
+    // settled_song_ids must answer, and when that pick is not readable the
+    // chart must not be listed Ready.
     RecordStore store(":memory:");
     const std::vector<const char*> charts = {"two_caps", "over_stale", "all_stale"};
 
@@ -421,9 +420,9 @@ TEST_CASE("the same chart at the same cap keeps one result per lens") {
     // A lens nobody ran under has no answer here, and no stored record stands
     // in for it -- this is what stops a batch run skipping the chart.
     CHECK(store.lookup_one("h", profile_at(4, kLensC)).status == RecordStatus::NotAnalyzed);
-    CHECK(store.ready_song_ids(profile_at(4, kLensA)).count("h") == 1);
-    CHECK(store.ready_song_ids(profile_at(4, kLensB)).count("h") == 1);
-    CHECK(store.ready_song_ids(profile_at(4, kLensC)).empty());
+    CHECK(ready_ids_listed(store, profile_at(4, kLensA)) == std::set<std::string>{"h"});
+    CHECK(ready_ids_listed(store, profile_at(4, kLensB)) == std::set<std::string>{"h"});
+    CHECK(store.settled_song_ids(profile_at(4, kLensC)).empty());
 
     // Re-running one lens replaces that record and leaves the other alone. The
     // re-run's record is a second chart's analysis, so it differs from the
@@ -490,14 +489,14 @@ TEST_CASE("1.0 and 1.1 results for one chart sit side by side") {
 
     save_record(store, "h", ch11, analysis_at(4));
     CHECK(store.lookup_one("h", ch10).status == RecordStatus::NotAnalyzed);
-    CHECK(store.ready_song_ids(ch10).empty());
+    CHECK(store.settled_song_ids(ch10).empty());
 
     // Saving the 1.0 result keeps the 1.1 one, and each lookup finds its own.
     save_record(store, "h", ch10, legacy_at_cap(4));
     CHECK(store.record_count() == 2);
     CHECK(store.lookup_one("h", ch10).status == RecordStatus::Ready);
     CHECK(store.lookup_one("h", ch11).status == RecordStatus::Ready);
-    CHECK(store.ready_song_ids(ch10).count("h") == 1);
+    CHECK(ready_ids_listed(store, ch10) == std::set<std::string>{"h"});
 
     // Re-analyzing under 1.0 replaces only the 1.0 record.
     save_record(store, "h", ch10, legacy_at_cap(4));
@@ -706,11 +705,6 @@ TEST_CASE("a saved record stores its best path's star count") {
     CHECK_FALSE(got[1].record.stars.has_value());
     CHECK(got[2].status == RecordStatus::NotAnalyzed);
     CHECK_FALSE(got[2].record.stars.has_value());
-
-    const std::vector<RecordRow> listing = store.ready_records(at4);
-    REQUIRE(listing.size() == 1);
-    CHECK(listing[0].stars == stars);
-    CHECK(listing[0].song_id == "ready");
 }
 
 TEST_CASE("store: the saved hardest figure is the engine's, sign included") {

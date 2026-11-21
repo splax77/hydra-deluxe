@@ -73,13 +73,6 @@ void place_record(std::vector<ReportRow>& out, const store::RecordRow& record,
 
 }  // namespace
 
-std::pair<std::string, std::string> tier_for(const std::optional<double>& ms) {
-    // The ladder itself lives in core/squeeze_rating.h (timing_tiers) so
-    // these labels and every other reader of the tier table cannot drift
-    // apart.
-    return hydra::tier_for(ms, timing_tiers());
-}
-
 namespace {
 
 // A window edge as the reports print it: whole ms, the fraction dropped.

@@ -1,6 +1,5 @@
-"""Tests for watch_checks.py: the +0x2E0 and pause checks on a Star Power
-watcher log. The tests read real watcher logs under testdata/ch_runs and
-Hydra's score chords for the same runs; no game."""
+"""Tests for watch_checks.py: the pause check on a Star Power watcher log. The
+tests read real watcher logs under testdata/ch_runs; no game."""
 
 from __future__ import annotations
 
@@ -16,7 +15,6 @@ _REPO_ROOT = os.path.abspath(os.path.join(_HERE, "..", "..", ".."))
 if _REPO_ROOT not in sys.path:
     sys.path.insert(0, _REPO_ROOT)
 
-from tools.ch_probe import constants as C  # noqa: E402
 from tools.ch_probe.experiments import watch_checks as W  # noqa: E402
 from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
     WATCH_CLOCK_COLUMNS, WATCH_COLUMNS, WATCH_COLUMNS_WITHOUT_LATE_GROUPS,
@@ -24,103 +22,6 @@ from tools.ch_probe.experiments.overlay_logs import (  # noqa: E402
 
 
 _RUNS_DIR = os.path.join(_REPO_ROOT, "testdata", "ch_runs")
-
-# The +0x2E0 tests read a piece of a run on The Who - Won't Get Fooled Again
-# (O), whose notes.mid has one drum lane (note 126) starting at tick 548960,
-# chord 2108. The piece is the header and lines 110320 to 110945 of
-# hydra-data\ch-mcp-runs\2026-11-11\ls-a2-run1\sp_watch-1.csv, rows
-# unchanged: clock 507.009 s to 509.841 s, from just before chord 2107 to
-# just after chord 2133, the lane's last. Across the whole log +0x2E0 changes
-# only in these rows, once at each of the lane's 26 chords. The chords are
-# indexes 2106 to 2134 of the hydra_replay score JSON made for the run, copied
-# unchanged from hydra-data\ch-mcp-runs\2026-11-11\ls-a2-prep.
-LANE_CSV = os.path.join(_RUNS_DIR, "ls-a2-run1", "sp_watch-1-lane2108.csv")
-LANE_CHORDS_JSON = os.path.join(_RUNS_DIR, "ls-a2-prep",
-                                "score-chords-2106-2134.json")
-LANE_FIRST, LANE_LAST = 2108, 2133
-
-# A piece of a run of a chart with no drum lane: pitch-dark-ratios-run1's
-# sp_watch-1-act3.csv (the comment above its name in test_sp_compare.py says
-# where it comes from), with Hydra's score of the same chart.
-NO_LANE_CSV = os.path.join(_RUNS_DIR, "pitch-dark-ratios-run1",
-                           "sp_watch-1-act3.csv")
-NO_LANE_SCORE_JSON = os.path.join(_REPO_ROOT, "testdata", "replay",
-                                  "test_pitch_dark_ratio-score.json")
-
-
-def lane_chords(first=None, last=None):
-    """The copied score chords, those from `first` to `last` when given."""
-    return [c for c in W.load_chords(LANE_CHORDS_JSON)
-            if (first is None or c["index"] >= first)
-            and (last is None or c["index"] <= last)]
-
-
-def chords_in_span(rows, chords):
-    """The chords whose time lies inside the rows' clock span."""
-    first_ms, last_ms = (C.s_to_ms(rows[0]["clock_s"]),
-                         C.s_to_ms(rows[-1]["clock_s"]))
-    return [c for c in chords if first_ms <= c["ms"] <= last_ms]
-
-
-class RoundStartCheckTest(unittest.TestCase):
-    """The field at +0x2E0 is the start of a drum lane's round, written when a
-    hit completes one (docs/clone-hero/07-internals.md, IN-12). It is not a
-    hit time, so on a real log it changes at a lane's chords and nowhere
-    else."""
-
-    def test_each_chord_of_a_real_lane_takes_its_own_change(self):
-        rows = W.load_watch_rows(LANE_CSV)
-        lane = lane_chords(LANE_FIRST, LANE_LAST)
-        self.assertEqual(len(lane), LANE_LAST - LANE_FIRST + 1)
-        lines = W.round_start_check(rows, lane)
-        self.assertEqual(
-            lines[0],
-            f"PASS +0x2E0: {len(lane)} of {len(lane)} chords in the log have "
-            f"a +0x2E0 value within {C.ROUND_START_MAX_GAP_MS:g} ms (0 chords "
-            f"outside the log's clock span)")
-        # The piece holds one change per lane chord and no more, so a PASS on
-        # every chord means each took a change of its own.
-        changes = [cur for prev, cur in zip(rows, rows[1:])
-                   if not W.same_value(cur["round_start_s"],
-                                       prev["round_start_s"])]
-        self.assertEqual(len(changes), len(lane))
-
-    def test_a_chord_before_the_lane_finds_no_change(self):
-        rows = W.load_watch_rows(LANE_CSV)
-        in_span = chords_in_span(rows, lane_chords())
-        before = [c for c in in_span if c["index"] < LANE_FIRST]
-        self.assertEqual(len(before), 1)
-        lines = W.round_start_check(rows, lane_chords())
-        self.assertTrue(lines[0].startswith(
-            f"FAIL +0x2E0: {len(in_span) - 1} of {len(in_span)} "), lines[0])
-        self.assertEqual(lines[-1],
-                         f"  chord {before[0]['index']} at "
-                         f"{before[0]['ms']:.1f} ms: no +0x2E0 change within "
-                         f"{W.HIT_SEARCH_MS:g} ms")
-
-    def test_chords_outside_the_log_are_not_judged(self):
-        rows = W.load_watch_rows(LANE_CSV)
-        chords = lane_chords()
-        outside = [c for c in chords if c not in chords_in_span(rows, chords)]
-        self.assertEqual([c["index"] for c in outside],
-                         [LANE_FIRST - 2, LANE_LAST + 1])
-        self.assertIn(f"({len(outside)} chords outside the log's clock span)",
-                      W.round_start_check(rows, chords)[0])
-
-    def test_a_chart_with_no_lane_never_changes_the_field(self):
-        rows = W.load_watch_rows(NO_LANE_CSV)
-        self.assertTrue(all(r["round_start_s"] == 0.0 for r in rows))
-        chords = W.load_chords(NO_LANE_SCORE_JSON)
-        in_span = chords_in_span(rows, chords)
-        self.assertTrue(in_span)
-        lines = W.round_start_check(rows, chords)
-        self.assertTrue(lines[0].startswith(
-            f"FAIL +0x2E0: 0 of {len(in_span)} "), lines[0])
-        self.assertEqual(lines[1:],
-                         [f"  chord {c['index']} at {c['ms']:.1f} ms: no "
-                          f"+0x2E0 change within {W.HIT_SEARCH_MS:g} ms"
-                          for c in in_span])
-
 
 # The end of a real Star Power watch with every column: the last three reads
 # before the song ended, and the final row the watcher wrote once the clock
@@ -260,15 +161,12 @@ class FilesTest(unittest.TestCase):
             self.assertEqual(loaded["round_start_s"], W.parse_value(texts[old]))
             self.assertNotIn("hit_time_s", loaded)
 
-    def test_run_reads_both_files(self):
-        lines = W.run([LANE_CSV, "--score", LANE_CHORDS_JSON])
-        rows = W.load_watch_rows(LANE_CSV)
+    def test_run_reads_the_log_and_reports_its_pauses(self):
+        lines = W.run([FULL_ROWS_CSV])
+        rows = W.load_watch_rows(FULL_ROWS_CSV)
         self.assertEqual(lines[0],
-                         f"{os.path.basename(LANE_CSV)}: {len(rows)} rows")
-        self.assertEqual(lines[1:],
-                         W.round_start_check(rows, lane_chords())
-                         + W.pause_check(rows))
-        self.assertEqual(lines[-1], "pause: no pause in this log")
+                         f"{os.path.basename(FULL_ROWS_CSV)}: {len(rows)} rows")
+        self.assertEqual(lines[1:], W.pause_check(rows))
 
 
 if __name__ == "__main__":

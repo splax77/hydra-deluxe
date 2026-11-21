@@ -757,15 +757,13 @@ struct Activation {
     std::vector<ActivationTiming> badge_timings() const;
     // hardest()'s ms when it is a squeeze or a required fill; empty for an
     // optional early fill, so the search, filter and warning colors never
-    // count one. Empty, too, for an activation with nothing to time.
+    // count one. Empty, too, for an activation with nothing to time, so a
+    // value here means the activation needs timing. The Paths tab's path
+    // button and the stored summary read Path::difficulty(), which rests on
+    // this (D51 call 4, D302). The row badges alone also show a squeeze that
+    // needs no timing (SPSqueeze::needs_no_timing; badge_timings, D80) and a
+    // fill with time to spare (D261).
     std::optional<double> difficulty() const;
-    // Does this activation need any timing at all? The per-activation half of
-    // Path::needs_timing. The Paths tab's path button and the stored summary
-    // read Path::difficulty(), which rests on hardest() (D51 call 4, D302). The
-    // row badges alone also show a squeeze that needs no timing
-    // (SPSqueeze::needs_no_timing; badge_timings, D80) and a fill with time
-    // to spare (D261).
-    bool needs_timing() const;
     // Is every timing of this activation inside `limit_ms`? Each squeeze
     // answers through SPSqueeze::within_limit and the early fill through
     // fill_within_limit, the same pieces the search's Engine::act_within_limit
@@ -923,10 +921,9 @@ struct Path {
     int recount_tied_paths();
     void prepare_variants();
 
+    // The hardest Activation::difficulty() on the path. Empty when no
+    // activation needs timing, and for a path with no activations.
     std::optional<double> difficulty() const;
-    // Does any activation on this path need timing (Activation::needs_timing)?
-    // False for a path with no activations.
-    bool needs_timing() const;
     // Is every timing on this path at or below `limit_ms`
     // (Activation::within_ms_limit)? True for a path with no activations.
     // The all-0 pass's shortcut asks it at its 0 ms limit (search/pather.cpp).
