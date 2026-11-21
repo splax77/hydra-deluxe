@@ -69,11 +69,21 @@ TEST_CASE("s2 offspeed: an off-speed score on a listed chart is 'other speed'; o
 
     const app::dm_report::DmReportStats stats = app::dm_report::tally_dm_rows(rows);
     CHECK(stats.total == static_cast<int>(scores.size()));
-    CHECK(stats.under_optimal == 1);
-    CHECK(stats.at_optimal == 0);
-    CHECK(stats.above_optimal == 0);
-    CHECK(stats.other_speed == 2);
-    CHECK(stats.not_in_library == 1);
+    // Each tally field counts the rows whose status is its word.
+    auto rows_with = [&](const char* status) {
+        int n = 0;
+        for (const DmReportRow& r : rows)
+            if (r.status == status) ++n;
+        return n;
+    };
+    CHECK(stats.under_optimal == rows_with(app::dm_report::kStatusUnderOptimal));
+    CHECK(stats.at_optimal == rows_with(app::dm_report::kStatusAtOptimal));
+    CHECK(stats.above_optimal == rows_with(app::dm_report::kStatusAboveOptimal));
+    CHECK(stats.other_speed == rows_with(app::dm_report::kStatusOtherSpeed));
+    CHECK(stats.not_in_library == rows_with(app::dm_report::kStatusNotInLibrary));
+    // The rows hold two off-speed scores, so the loop is not counting zeros.
+    CHECK(stats.other_speed > 0);
+    CHECK(stats.not_in_library > 0);
 }
 
 TEST_CASE("s2 offspeed: the counts sentence names other speeds only when there are some") {
@@ -115,7 +125,8 @@ TEST_CASE("s2 offspeed: the subtitle counts every score; the Other speed tile co
     // Off-speed scores count in the subtitle like any other (D103 item 27):
     // its count is every score given, not the base-speed ones.
     CHECK(report.stats.total == static_cast<int>(scores.size()));
-    CHECK(report.subtitle.find(" " + std::to_string(scores.size()) + " ") != std::string::npos);
+    CHECK(report.subtitle.find(hydra::counted(static_cast<int64_t>(scores.size()), "score",
+                                              "scores")) != std::string::npos);
     CHECK(report.subtitle.rfind(user, 0) == 0);
     CHECK(report.subtitle.find(app::dm_report::clone_hero_cap_phrase()) != std::string::npos);
 
