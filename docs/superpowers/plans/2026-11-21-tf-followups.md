@@ -211,14 +211,13 @@ Acceptance: each of the four lines matches the code it describes, and the review
 
 ## Not planned
 
-Twelve rows get no task. Five of them need an owner map or the user. Seven need no work.
+Twelve rows get no task. Four of them need an owner map or the user. Eight need no work.
 
 ### Needs an owner map or the user
 
 - Row 12 (two checks in the engine sweeps test). I read one of the two: the test turns a backend row's offset back into a tick with its own rounding and its own special case for zero. Replacing that needs the engine's own answer to "which tick does this row's offset point at". That is an owner-map question. I could not identify the other check (the "deadline check") from the scout's one line.
 - Row 27 (the Preview's meter used as referee for the engine's list of passed fills). The test checks an engine list against a display value. Turning that round needs the engine's own record of how much Star Power a path held at a fill. That is an owner-map question.
 - Row 28 (one reader for the all-0 answer). The record states the answer in two ways, and the paths screen reads it at `src/app/path_view.cpp`. A single reader would change what that screen is built from, so it needs an owner map.
-- Row 50 (a name function beside `ViewedSong::State`). The names would come from the screen test harness, which is not a source, and the audit says one of them ("rules-broken") does not match the state it stands for. Fixing it changes what the test tool's `state` report prints, so it needs an owner map.
 - Row 63 (the handoff branches). Eighteen `claude/test-fix-*handoff*` branches are unmerged (none is an ancestor of main), and `claude/tf-C183` is left over. Merging or deleting branches is the user's call, not an executor's.
 
 ### Needs no work
@@ -230,6 +229,7 @@ Twelve rows get no task. Five of them need an owner map or the user. Seven need 
 - Row 41 (untested capture code). The row itself says no work is possible without a recorded capture, and the user ruled the capture out. Closed.
 - Row 42 (nothing formats the game's accuracy numbers). Hydra's tool only parses these numbers. The game formats them. A formatter in the tool would exist only for the test, and its rule would be made up. Closed.
 - Row 48 (`tools/check_pointers.py` builds its two hook replies itself). `tools/test_check_pointers.py` already loads the hooks repo's `gates/common.py` and checks each reply against `common.context` and `common.system_message` (lines 40-60), so a drift in the shape fails that test today. Making the tool itself import `common.py` would tie a Hydra tool to a file in another repo. The tool runs as a SessionStart hook under `py -I`, and its failure reply must print even when the gates folder cannot load, so that reply could not come from the helper. Closed: the existing test is the owner of the shape.
+- Row 50 (a name function beside `ViewedSong::State`). The test tool's half is already done on main: commit `f2a32c494` replaced the harness's list of names in enum order with `view_state_word` (`tests/ui/uitest_harness.cpp:446`), one case per state by name, so "rules-broken" is gone. Nothing in `src` prints a `ViewedSong::State` as a word, so a name function beside the enum would have no reader. The owner map found no owner for it, and the user chose "Close row 50" (session 9f61bc5c-157a-46d3-b01b-4ecfd6fdb6c7). Closed.
 
 ## Out of scope
 
